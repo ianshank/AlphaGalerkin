@@ -116,7 +116,7 @@ Input (Discrete Board)
 └─────────────┘ └─────────────┘
 ```
 
-See [docs/architecture/C4_ARCHITECTURE.md](docs/architecture/C4_ARCHITECTURE.md) for detailed C4 diagrams.
+See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for comprehensive C4 architecture diagrams in Mermaid format, or [docs/architecture/C4_ARCHITECTURE.md](docs/architecture/C4_ARCHITECTURE.md) for ASCII-art versions.
 
 ---
 

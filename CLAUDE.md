@@ -54,6 +54,7 @@ Monitors LBB condition during training:
 - [2026-01-26]: Pydantic-validated configs with no hardcoded values.
 - [2026-01-26]: Structured logging via structlog throughout.
 - [2026-01-26]: C4 architecture documentation in docs/architecture/c4_model.md.
+- [2026-01-26]: Added comprehensive C4 architecture in Mermaid format (docs/architecture/c4_mermaid.md).
 
 ## Known Issues
 - [None yet]

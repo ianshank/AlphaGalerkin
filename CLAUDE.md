@@ -42,6 +42,12 @@ Monitors LBB condition during training:
 - [2026-01-26]: Variable board size batching via padding and masking.
 - [2026-01-26]: Checkpoint manager with best model tracking and rotation.
 
+## Physics PoC (Supervised Learning Validation)
+- [2026-01-26]: Added Poisson equation solver for synthetic data generation.
+- [2026-01-26]: PhysicsOperator neural network for influence field prediction.
+- [2026-01-26]: Zero-shot transfer validation: Train on 9x9 → Evaluate on 19x19.
+- [2026-01-26]: Success criterion: MSE < 0.05 on 19x19 without retraining.
+
 ## Known Issues
 - [None yet]
 
@@ -83,6 +89,30 @@ python -m scripts.train +resume=checkpoints/alphagalerkin/checkpoint_00010000.pt
 python -m scripts.train device=cuda experiment_name=my_experiment
 ```
 
+## Physics PoC Commands
+```bash
+# Train physics operator on Poisson data (supervised learning)
+python -m src.experiments.train_physics
+
+# Custom training configuration
+python -m src.experiments.train_physics --train-size 9 --eval-size 19 --n-epochs 100
+
+# Verify zero-shot transfer (train 9x9 → eval 9,13,19)
+python -m src.experiments.verify_transfer
+
+# Verify with existing model
+python -m src.experiments.verify_transfer --model-path outputs/physics_poc/best_model.pt
+
+# Run FNet vs Softmax speed benchmark
+python -m src.experiments.benchmark_fnet
+
+# Benchmark with custom sizes
+python -m src.experiments.benchmark_fnet --sizes 81,169,361,625 --batch-size 64
+
+# Run Fredholm integral property tests
+pytest tests/math_kernel/test_fredholm.py -v
+```
+
 ## Directory Structure
 ```
 src/
@@ -90,23 +120,31 @@ src/
   math_kernel/  - Basis functions, integral approximations
   mcts/         - Monte Carlo Tree Search logic
   tools/        - Verification and utility scripts
-  training/     - Training infrastructure (NEW)
+  training/     - Training infrastructure
     loss.py           - AlphaGalerkinLoss (policy + value + LBB)
     replay_buffer.py  - Uniform and prioritized replay buffers
     self_play.py      - MCTS-based self-play game generation
     trainer.py        - Main Trainer class
     checkpoint.py     - Checkpoint save/load management
     evaluation.py     - Win rate and policy agreement metrics
-  data/         - Data loading and preprocessing (NEW)
+  data/         - Data loading and preprocessing
     dataset.py        - PyTorch Dataset classes
     collate.py        - Variable board size collation
+  physics/      - Synthetic physics data generation
+    poisson.py        - Poisson equation solver (DST-based)
+  experiments/  - Physics PoC experiments
+    physics_model.py  - PhysicsOperator neural network
+    train_physics.py  - Supervised learning on Poisson data
+    verify_transfer.py - Zero-shot transfer verification
+    benchmark_fnet.py - FNet O(N log N) speed benchmark
 tests/
   math_kernel/  - Property-based tests for mathematical operators
-  training/     - Tests for training infrastructure (NEW)
+    test_fredholm.py  - Fredholm integral equation tests
+  training/     - Tests for training infrastructure
   integration/  - End-to-end integration tests
 config/         - Hydra/Pydantic configuration schemas
-  train.yaml          - Default training config (NEW)
-  train_fast.yaml     - Fast test config (NEW)
-scripts/        - CLI entry points (NEW)
+  train.yaml          - Default training config
+  train_fast.yaml     - Fast test config
+scripts/        - CLI entry points
   train.py            - Training CLI with Hydra
 ```

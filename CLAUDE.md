@@ -56,6 +56,14 @@ Monitors LBB condition during training:
 - [2026-01-26]: C4 architecture documentation in docs/architecture/c4_model.md.
 - [2026-01-26]: Added comprehensive C4 architecture in Mermaid format (docs/architecture/c4_mermaid.md).
 
+## Validation Framework
+- [2026-01-26]: Added comprehensive validation framework (src/validation/).
+- [2026-01-26]: Four validation scenarios: tolerance_fix, gpu_training, transfer_validation, merge_readiness.
+- [2026-01-26]: Tolerance helpers with dtype-aware precision handling.
+- [2026-01-26]: GPU training validation with AMP support.
+- [2026-01-26]: Zero-shot transfer verification (9x9 → 19x19).
+- [2026-01-26]: PR merge readiness checker with configurable requirements.
+
 ## Known Issues
 - [None yet]
 
@@ -151,6 +159,45 @@ python -m src.poc.cli compare run_a run_b
 pytest tests/poc/ -v
 ```
 
+## Validation Framework Commands
+```bash
+# Run all validations (default config)
+python -m src.validation.cli run
+
+# Run specific validation
+python -m src.validation.cli run --only gpu_training
+python -m src.validation.cli run --only transfer
+python -m src.validation.cli run --only tolerance
+python -m src.validation.cli run --only merge_readiness
+
+# Run with custom config
+python -m src.validation.cli run --config config/validation/default.yaml
+
+# Quick validation (reduced scope)
+python -m src.validation.cli run --config config/validation/quick.yaml
+
+# Run in parallel
+python -m src.validation.cli run --parallel
+
+# Stop on first failure
+python -m src.validation.cli run --stop-on-failure
+
+# Check PR merge readiness
+python -m src.validation.cli merge-check --pr 7
+python -m src.validation.cli merge-check --pr 7 --allow-failures 5
+
+# Analyze tolerance issues in tests
+python -m src.validation.cli tolerance-check
+python -m src.validation.cli tolerance-check --test-dir tests/math_kernel/
+
+# Show/generate configuration
+python -m src.validation.cli config --show
+python -m src.validation.cli config --generate config/validation/custom.yaml
+
+# Validation framework tests
+pytest tests/validation/ -v
+```
+
 ## Directory Structure
 ```
 src/
@@ -186,6 +233,18 @@ src/
       transfer.py     - Zero-shot transfer scenario
       complexity.py   - O(N) complexity benchmark
       stability.py    - LBB stability monitoring
+  validation/   - Validation framework for next steps
+    config.py         - Pydantic configuration schemas
+    tolerance.py      - Tolerance/precision helpers
+    logging.py        - Structured logging utilities
+    runner.py         - Validation orchestration
+    cli.py            - CLI entry point
+    scenarios/        - Validation scenario implementations
+      base.py         - Base validator class
+      gpu_training.py - GPU training validation
+      transfer.py     - Zero-shot transfer verification
+      tolerance_fixer.py - Tolerance issue analyzer
+      merge_readiness.py - PR merge readiness checker
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests
@@ -196,6 +255,11 @@ tests/
     test_registry.py  - Scenario registration tests
     test_runner.py    - Runner execution tests
     test_results.py   - Result collection tests
+  validation/   - Validation framework tests
+    test_config.py    - Configuration validation tests
+    test_tolerance.py - Tolerance helper tests
+    test_scenarios.py - Scenario tests
+    test_runner.py    - Runner execution tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config
@@ -203,6 +267,9 @@ config/         - Hydra/Pydantic configuration schemas
     poc_full.yaml     - Full PoC suite
     poc_quick.yaml    - Quick validation suite
     transfer_ablation.yaml - Transfer ablation study
+  validation/         - Validation framework configurations
+    default.yaml      - Default validation config
+    quick.yaml        - Quick validation config
 docs/           - Documentation
   architecture/       - C4 architecture diagrams
     c4_model.md       - C4 model documentation

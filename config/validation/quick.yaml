@@ -1,0 +1,49 @@
+# Quick Validation Configuration
+# ==============================
+# Fast validation for development - reduced scope and resources.
+
+# Which validations to run
+run_tolerance_fix: true
+run_gpu_training: false  # Skip GPU training for quick validation
+run_transfer_validation: false  # Skip transfer for quick validation
+run_merge_readiness: true
+
+# Execution settings
+stop_on_failure: true  # Stop early on failure
+parallel: false
+max_workers: 2
+
+# Output settings
+output_dir: "outputs/validation_quick"
+save_results: true
+
+# Logging
+log_level: "INFO"
+verbose: false
+
+# Reproducibility
+seed: 42
+
+# Tolerance Configuration - use relaxed for quick checks
+tolerance:
+  level: "relaxed"
+  check_dtype: true
+  allow_nan: false
+  allow_inf: false
+  verbose: false
+  max_failures_to_report: 5
+
+# Merge Readiness - minimal checks
+merge_readiness:
+  name: "merge_readiness_quick"
+  description: "Quick merge readiness check"
+  pr_number: 7
+  require_all_tests_pass: false
+  allowed_test_failures: []
+  max_allowed_failures: 5  # Allow some failures for quick check
+  require_lint_pass: true
+  require_type_check_pass: false  # Skip slow type check
+  check_dependencies: false
+  test_command: "pytest tests/validation/ -v --tb=short"
+  test_timeout_seconds: 120
+  lint_timeout_seconds: 30

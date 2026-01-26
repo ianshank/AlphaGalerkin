@@ -1,0 +1,130 @@
+# Default Validation Configuration
+# ================================
+# Configuration for the AlphaGalerkin validation framework.
+# All values are configurable - no hardcoded values.
+
+# Which validations to run
+run_tolerance_fix: true
+run_gpu_training: true
+run_transfer_validation: true
+run_merge_readiness: true
+
+# Execution settings
+stop_on_failure: false
+parallel: false
+max_workers: 4
+
+# Output settings
+output_dir: "outputs/validation"
+save_results: true
+
+# Logging
+log_level: "INFO"
+verbose: false
+
+# Reproducibility
+seed: 42
+
+# Tolerance Configuration
+tolerance:
+  level: "standard"  # Options: strict, standard, relaxed, loose, custom
+  check_dtype: true
+  allow_nan: false
+  allow_inf: false
+  verbose: false
+  max_failures_to_report: 10
+  # Dtype-specific tolerances
+  float32_rtol: 1.0e-5
+  float32_atol: 1.0e-6
+  float64_rtol: 1.0e-7
+  float64_atol: 1.0e-9
+
+# GPU Training Configuration
+gpu_training:
+  name: "gpu_training"
+  description: "Validate training pipeline on GPU with larger model"
+  device: "auto"  # Options: auto, cuda, cuda:0, cpu
+  require_gpu: true
+  mixed_precision: true
+  # Model settings
+  d_model: 256
+  n_heads: 8
+  n_layers: 6
+  # Training settings
+  batch_size: 64
+  n_steps: 1000
+  learning_rate: 1.0e-4
+  warmup_steps: 100
+  # Data settings
+  board_sizes: [9, 13, 19]
+  n_train_samples: 10000
+  # Validation criteria
+  max_loss_threshold: 5.0
+  loss_decrease_threshold: 0.5
+  min_lbb_constant: 1.0e-6
+  max_gradient_norm: 100.0
+  # Resource limits
+  timeout_seconds: 3600
+  # Checkpointing
+  checkpoint_interval: 200
+  save_best_model: true
+  # Logging
+  log_interval: 10
+  log_gradients: false
+  seed: 42
+
+# Transfer Validation Configuration
+transfer_validation:
+  name: "transfer_validation"
+  description: "Validate zero-shot transfer from 9x9 to 19x19"
+  # Resolution settings
+  train_resolution: 9
+  eval_resolutions: [9, 13, 19]
+  primary_eval_resolution: 19
+  # Model source
+  model_path: null  # null = train new model
+  use_gpu_model: true
+  # Training settings (if training new model)
+  n_epochs: 100
+  n_train_samples: 5000
+  n_eval_samples: 500
+  # Model architecture
+  d_model: 128
+  n_heads: 4
+  n_layers: 4
+  # Evaluation settings
+  batch_size: 32
+  n_charges: 5
+  # Success criteria
+  mse_threshold: 0.05
+  relative_mse_threshold: 2.0
+  seed: 42
+
+# Merge Readiness Configuration
+merge_readiness:
+  name: "merge_readiness"
+  description: "Check PR #7 merge readiness"
+  pr_number: 7
+  # Test requirements
+  require_all_tests_pass: true
+  allowed_test_failures: []
+  max_allowed_failures: 0
+  # Tolerance requirements
+  check_tolerance_tests: true
+  # Code quality requirements
+  require_lint_pass: true
+  require_type_check_pass: true
+  require_no_fixmes: false
+  require_no_todos: false
+  # Documentation requirements
+  require_docstrings: false
+  require_changelog: false
+  # Dependency validation
+  check_dependencies: true
+  # Command overrides
+  lint_command: "ruff check src/"
+  type_check_command: "mypy src/ --strict"
+  test_command: "pytest tests/ -v"
+  # Timeouts
+  test_timeout_seconds: 600
+  lint_timeout_seconds: 60

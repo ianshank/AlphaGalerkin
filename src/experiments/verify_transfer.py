@@ -93,6 +93,8 @@ def evaluate_transfer(
     device: torch.device,
     seed: int = 42,
     threshold: float = 0.05,
+    n_charges: int = 5,
+    batch_size: int = 32,
 ) -> TransferResult:
     """Evaluate zero-shot transfer to a different resolution.
 
@@ -104,22 +106,33 @@ def evaluate_transfer(
         device: Computation device.
         seed: Random seed for reproducibility.
         threshold: MSE threshold for passing.
+        n_charges: Number of point charges per sample.
+        batch_size: Batch size for evaluation.
 
     Returns:
         TransferResult with metrics.
 
     """
+    # Use offset seed to ensure eval data differs from training
+    eval_seed = seed + 50000
     dataset = PoissonDataset(
         grid_size=eval_size,
         n_samples=n_samples,
-        n_charges=5,
-        seed=seed + 50000,  # Different from training seeds
+        n_charges=n_charges,
+        seed=eval_seed,
+    )
+
+    logger.debug(
+        "evaluate_transfer_start",
+        train_size=train_size,
+        eval_size=eval_size,
+        n_samples=n_samples,
+        threshold=threshold,
     )
 
     all_predictions = []
     all_targets = []
 
-    batch_size = 32
     indices = list(range(len(dataset)))
 
     for start in range(0, len(indices), batch_size):
@@ -295,6 +308,8 @@ def verify_resolution_independence(
     device: torch.device,
     resolutions: list[int] | None = None,
     n_samples: int = 100,
+    n_charges: int = 5,
+    seed: int = 12345,
 ) -> dict[str, NDArray[np.float32]]:
     """Verify that model predictions are consistent across resolutions.
 
@@ -306,6 +321,8 @@ def verify_resolution_independence(
         device: Computation device.
         resolutions: List of resolutions to test.
         n_samples: Number of test problems.
+        n_charges: Number of point charges per sample.
+        seed: Random seed for reproducibility.
 
     Returns:
         Dictionary with consistency metrics.
@@ -314,7 +331,7 @@ def verify_resolution_independence(
     if resolutions is None:
         resolutions = [9, 13, 19, 25]
 
-    rng = np.random.default_rng(12345)
+    rng = np.random.default_rng(seed)
 
     logger.info(
         "resolution_independence_start",
@@ -342,7 +359,6 @@ def verify_resolution_independence(
                 mean_error_so_far=float(np.mean(all_errors)) if all_errors else 0.0,
             )
         # Random charge positions (normalized)
-        n_charges = 5
         charge_positions = rng.uniform(0.1, 0.9, size=(n_charges, 2))
         charge_magnitudes = rng.normal(0, 1, size=n_charges)
 

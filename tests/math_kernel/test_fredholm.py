@@ -473,3 +473,207 @@ class TestNumericalStability:
 
         # Output should be bounded by some multiple of input
         assert output_norm < input_norm * 1000
+
+
+class TestEdgeCases:
+    """Edge case tests for Galerkin projection."""
+
+    def test_single_element_sequence(self) -> None:
+        """Test with minimal sequence length n=1."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.randn(2, 1, 32)  # n=1
+        output = projection(x)
+
+        assert output.shape == (2, 1, 32)
+        assert output.isfinite().all()
+
+    def test_small_sequence_length(self) -> None:
+        """Test with very small sequence lengths."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        for n in [1, 2, 3, 4]:
+            x = torch.randn(1, n, 32)
+            output = projection(x)
+
+            assert output.shape == (1, n, 32)
+            assert output.isfinite().all()
+
+    def test_large_batch_small_sequence(self) -> None:
+        """Test with large batch but small sequence."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.randn(64, 4, 32)  # Large batch, small sequence
+        output = projection(x)
+
+        assert output.shape == (64, 4, 32)
+        assert output.isfinite().all()
+
+    def test_different_key_value_dimensions(self) -> None:
+        """Test with d_key != d_value."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=64, d_key=32, d_value=16)
+
+        x = torch.randn(2, 49, 64)
+        output = projection(x)
+
+        assert output.shape == x.shape
+        assert output.isfinite().all()
+
+    def test_very_large_key_dimension(self) -> None:
+        """Test with d_key >> d_model."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=16, d_key=128, d_value=128)
+
+        x = torch.randn(2, 49, 16)
+        output = projection(x)
+
+        assert output.shape == x.shape
+        assert output.isfinite().all()
+
+    def test_minimal_key_dimension(self) -> None:
+        """Test with minimal d_key=1."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=1, d_value=1)
+
+        x = torch.randn(2, 49, 32)
+        output = projection(x)
+
+        assert output.shape == x.shape
+        assert output.isfinite().all()
+
+        # LBB constant should still be computable
+        lbb = projection.compute_lbb_constant(x)
+        assert lbb.shape == (2,)
+
+    def test_extreme_input_scales(self) -> None:
+        """Test with very small and very large input values."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        # Very small inputs
+        x_small = torch.randn(2, 49, 32) * 1e-8
+        output_small = projection(x_small)
+        assert output_small.isfinite().all()
+
+        # Very large inputs
+        x_large = torch.randn(2, 49, 32) * 1e6
+        output_large = projection(x_large)
+        assert output_large.isfinite().all()
+
+    def test_mixed_magnitude_inputs(self) -> None:
+        """Test with mixed magnitude values in same tensor."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.randn(2, 49, 32)
+        x[:, :25, :] *= 1e-6  # Small values
+        x[:, 25:, :] *= 1e6   # Large values
+
+        output = projection(x)
+
+        # Should handle mixed magnitudes without NaN
+        assert output.isfinite().all()
+
+
+class TestErrorHandling:
+    """Tests for error handling and boundary conditions."""
+
+    def test_nan_input_propagation(self) -> None:
+        """Test that NaN inputs propagate to outputs (expected behavior)."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.randn(2, 49, 32)
+        x[0, 0, 0] = float("nan")
+
+        output = projection(x)
+
+        # NaN should propagate (this is expected, not an error)
+        # The test verifies consistent behavior
+        assert not output.isfinite().all()
+
+    def test_inf_input_propagation(self) -> None:
+        """Test that Inf inputs propagate to outputs (expected behavior)."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.randn(2, 49, 32)
+        x[0, 0, 0] = float("inf")
+
+        output = projection(x)
+
+        # Inf should propagate
+        assert not output.isfinite().all()
+
+    def test_zero_input(self) -> None:
+        """Test with all-zero input."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.zeros(2, 49, 32)
+        output = projection(x)
+
+        assert output.shape == x.shape
+        assert output.isfinite().all()
+        # Output should also be approximately zero (due to linear operations)
+        assert output.abs().mean() < 1e-5
+
+    def test_constant_input(self) -> None:
+        """Test with constant (non-zero) input."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.ones(2, 49, 32) * 3.14
+        output = projection(x)
+
+        assert output.shape == x.shape
+        assert output.isfinite().all()
+
+
+class TestLBBEdgeCases:
+    """Edge case tests for LBB constant computation."""
+
+    def test_lbb_with_minimal_sequence(self) -> None:
+        """Test LBB computation with n=1."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x = torch.randn(2, 1, 32)
+        lbb = projection.compute_lbb_constant(x)
+
+        assert lbb.shape == (2,)
+        # With n=1, Gram matrix is rank-1, but should still be computable
+        assert lbb.isfinite().all()
+
+    def test_lbb_with_identical_inputs(self) -> None:
+        """Test LBB when all sequence elements are identical."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        # Create input where all sequence elements are the same
+        x_single = torch.randn(1, 32)
+        x = x_single.unsqueeze(0).expand(2, 49, 32).clone()
+
+        lbb = projection.compute_lbb_constant(x)
+
+        assert lbb.shape == (2,)
+        assert lbb.isfinite().all()
+        # LBB might be very small due to rank deficiency, but should be non-negative
+        assert (lbb >= 0).all()
+
+    def test_lbb_stability_across_batches(self) -> None:
+        """Test that LBB is consistent across batch elements with same input."""
+        torch.manual_seed(42)
+        projection = GalerkinProjection(d_model=32, d_key=16, d_value=16)
+
+        x_single = torch.randn(1, 49, 32)
+        x = x_single.expand(4, 49, 32).clone()
+
+        lbb = projection.compute_lbb_constant(x)
+
+        # All batch elements should have same LBB (same input)
+        assert torch.allclose(lbb, lbb[0].expand(4), atol=1e-5)

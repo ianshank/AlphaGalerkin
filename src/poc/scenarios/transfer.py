@@ -20,7 +20,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from src.poc.config import (
-    MetricThreshold,
     ScenarioResult,
     ScenarioStatus,
     TransferScenarioConfig,
@@ -93,6 +92,7 @@ class TransferScenario(BaseScenario):
 
         Returns:
             ScenarioResult with transfer metrics.
+
         """
         import sys
 
@@ -192,6 +192,7 @@ class TransferScenario(BaseScenario):
 
         Returns:
             Trained model.
+
         """
         from src.experiments.physics_model import PhysicsOperator
         from src.physics.poisson import PoissonDataset
@@ -293,6 +294,7 @@ class TransferScenario(BaseScenario):
 
         Returns:
             Dict of metrics (mse, mae, rmse, max_error).
+
         """
         from src.physics.poisson import PoissonDataset
 
@@ -359,6 +361,7 @@ class TransferScenario(BaseScenario):
 
         Args:
             path: Path to save model.
+
         """
         assert self._model is not None
 

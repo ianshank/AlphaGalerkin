@@ -25,6 +25,7 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -48,56 +49,97 @@ class ScenarioRegistry:
 
     Provides discovery, instantiation, and execution management.
     Thread-safe singleton pattern for global access.
+
+    Thread Safety:
+        All operations are protected by a lock to ensure thread-safe
+        registration and lookup.
     """
 
-    _instance: "ScenarioRegistry | None" = None
-    _scenarios: dict[str, type["BaseScenario"]]
+    _instance: ScenarioRegistry | None = None
+    _lock: threading.Lock = threading.Lock()
+    _scenarios: dict[str, type[BaseScenario]]
 
-    def __new__(cls) -> "ScenarioRegistry":
-        """Ensure singleton instance."""
+    def __new__(cls) -> ScenarioRegistry:
+        """Ensure singleton instance with thread-safe initialization."""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._scenarios = {}
+            with cls._lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._scenarios = {}
         return cls._instance
 
-    def register(self, name: str, scenario_cls: type["BaseScenario"]) -> None:
+    def register(self, name: str, scenario_cls: type[BaseScenario]) -> None:
         """Register a scenario class.
 
+        Thread-safe registration with duplicate check.
+
         Args:
-            name: Unique scenario identifier.
+            name: Unique scenario identifier (must be non-empty).
             scenario_cls: Scenario class to register.
 
         Raises:
-            ValueError: If name is already registered.
+            ValueError: If name is already registered or is empty.
+
         """
-        if name in self._scenarios:
-            raise ValueError(
-                f"Scenario '{name}' already registered by {self._scenarios[name]}"
-            )
+        if not name or not name.strip():
+            raise ValueError("Scenario name cannot be empty")
 
-        self._scenarios[name] = scenario_cls
-        logger.debug("scenario_registered", name=name, cls=scenario_cls.__name__)
+        with self._lock:
+            if name in self._scenarios:
+                raise ValueError(
+                    f"Scenario '{name}' already registered by {self._scenarios[name]}"
+                )
 
-    def get(self, name: str) -> type["BaseScenario"] | None:
-        """Get a registered scenario class by name."""
-        return self._scenarios.get(name)
+            self._scenarios[name] = scenario_cls
+            logger.debug("scenario_registered", name=name, cls=scenario_cls.__name__)
+
+    def get(self, name: str) -> type[BaseScenario] | None:
+        """Get a registered scenario class by name.
+
+        Thread-safe lookup.
+        """
+        with self._lock:
+            return self._scenarios.get(name)
 
     def list_scenarios(self) -> list[str]:
-        """List all registered scenario names."""
-        return list(self._scenarios.keys())
+        """List all registered scenario names.
 
-    def get_all(self) -> dict[str, type["BaseScenario"]]:
-        """Get all registered scenarios."""
-        return dict(self._scenarios)
+        Thread-safe list copy.
+        """
+        with self._lock:
+            return list(self._scenarios.keys())
+
+    def get_all(self) -> dict[str, type[BaseScenario]]:
+        """Get all registered scenarios.
+
+        Thread-safe dict copy.
+        """
+        with self._lock:
+            return dict(self._scenarios)
 
     def clear(self) -> None:
-        """Clear all registrations (primarily for testing)."""
-        self._scenarios.clear()
+        """Clear all registrations (primarily for testing).
+
+        Thread-safe clear with warning.
+
+        Warning:
+            This should only be called in test contexts. Clearing
+            during execution may cause unexpected behavior.
+
+        """
+        with self._lock:
+            logger.warning(
+                "registry_cleared",
+                count=len(self._scenarios),
+                message="Registry cleared - this should only happen in tests",
+            )
+            self._scenarios.clear()
 
 
 def scenario(
     name: str,
-) -> "Callable[[type[T]], type[T]]":
+) -> Callable[[type[T]], type[T]]:
     """Decorator to register a scenario class.
 
     Args:
@@ -110,6 +152,7 @@ def scenario(
         @scenario("transfer")
         class TransferScenario(BaseScenario):
             ...
+
     """
 
     def decorator(cls: type[T]) -> type[T]:
@@ -149,6 +192,7 @@ class BaseScenario(ABC):
         Args:
             config: Scenario configuration. If None, creates default.
             **kwargs: Override config fields.
+
         """
         if config is None:
             config = self.config_class(**kwargs)
@@ -190,6 +234,7 @@ class BaseScenario(ABC):
 
         Returns:
             ScenarioResult with metrics, status, and artifacts.
+
         """
         raise NotImplementedError
 
@@ -210,6 +255,7 @@ class BaseScenario(ABC):
         Args:
             name: Metric identifier.
             value: Metric value.
+
         """
         self._metrics[name] = value
         self._logger.debug("metric_recorded", metric=name, value=value)
@@ -220,6 +266,7 @@ class BaseScenario(ABC):
         Args:
             name: Artifact identifier.
             path: Path to artifact file.
+
         """
         self._artifacts[name] = path
         self._logger.debug("artifact_recorded", artifact=name, path=path)
@@ -231,6 +278,7 @@ class BaseScenario(ABC):
 
         Returns:
             ScenarioResult capturing the outcome.
+
         """
         import sys
 
@@ -306,6 +354,7 @@ class BaseScenario(ABC):
 
         Returns:
             Dict mapping threshold names to pass/fail.
+
         """
         results = {}
         for threshold in self.config.thresholds:
@@ -335,6 +384,7 @@ class BaseScenario(ABC):
 
         Returns:
             ScenarioResult instance.
+
         """
         import sys
 

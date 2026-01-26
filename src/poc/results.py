@@ -10,6 +10,7 @@ This module handles:
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -22,6 +23,21 @@ if TYPE_CHECKING:
     pass
 
 logger = structlog.get_logger(__name__)
+
+
+def _generate_run_id() -> str:
+    """Generate a unique run ID combining timestamp and UUID.
+
+    This ensures uniqueness even with concurrent collectors while
+    maintaining human-readable timestamp prefix.
+
+    Returns:
+        Unique run ID string.
+
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_suffix = uuid.uuid4().hex[:8]
+    return f"{timestamp}_{unique_suffix}"
 
 
 class ResultCollector:
@@ -44,11 +60,12 @@ class ResultCollector:
         Args:
             output_dir: Directory for result files.
             run_id: Unique identifier for this run. Auto-generated if None.
+
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.run_id = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.run_id = run_id or _generate_run_id()
         self.results: list[ScenarioResult] = []
 
         self._logger = structlog.get_logger(
@@ -61,6 +78,7 @@ class ResultCollector:
 
         Args:
             result: Scenario result to collect.
+
         """
         self.results.append(result)
 
@@ -82,6 +100,7 @@ class ResultCollector:
 
         Returns:
             Path to saved file.
+
         """
         results_dir = self.output_dir / "results" / self.run_id
         results_dir.mkdir(parents=True, exist_ok=True)
@@ -107,6 +126,7 @@ class ResultCollector:
 
         Returns:
             Path to summary file.
+
         """
         results = results or self.results
 
@@ -132,6 +152,7 @@ class ResultCollector:
 
         Returns:
             Summary dictionary.
+
         """
         if not results:
             return {
@@ -199,6 +220,7 @@ class ResultCollector:
 
         Returns:
             List of ScenarioResult.
+
         """
         results_dir = self.output_dir / "results" / run_id
 
@@ -208,9 +230,22 @@ class ResultCollector:
 
         results = []
         for filepath in results_dir.glob("*.json"):
-            with open(filepath) as f:
-                data = json.load(f)
-                results.append(ScenarioResult(**data))
+            try:
+                with open(filepath) as f:
+                    data = json.load(f)
+                    results.append(ScenarioResult(**data))
+            except json.JSONDecodeError as e:
+                self._logger.warning(
+                    "json_decode_error",
+                    file=str(filepath),
+                    error=str(e),
+                )
+            except Exception as e:
+                self._logger.warning(
+                    "result_load_error",
+                    file=str(filepath),
+                    error=str(e),
+                )
 
         self._logger.info("results_loaded", run_id=run_id, count=len(results))
 
@@ -229,6 +264,7 @@ class ResultCollector:
 
         Returns:
             Comparison dictionary.
+
         """
         results_a = self.load_results(run_id_a)
         results_b = self.load_results(run_id_b)
@@ -296,6 +332,7 @@ class ResultCollector:
 
         Returns:
             pandas DataFrame or dict if pandas not available.
+
         """
         results = results or self.results
 
@@ -335,5 +372,6 @@ def create_collector(
 
     Returns:
         Configured ResultCollector.
+
     """
     return ResultCollector(output_dir=output_dir, run_id=run_id)

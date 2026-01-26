@@ -96,9 +96,10 @@ class ComplexityScenario(BaseScenario):
 
         Returns:
             ScenarioResult with scaling analysis.
+
         """
-        assert self._device is not None
-        assert self._scenario_logger is not None
+        if self._device is None or self._scenario_logger is None:
+            raise RuntimeError("setup() must be called before execute()")
 
         torch.manual_seed(self.config.seed)
 
@@ -120,12 +121,21 @@ class ComplexityScenario(BaseScenario):
         galerkin_exponent = self._compute_scaling_exponent(galerkin_results)
 
         # Compute speedup at largest size
-        largest_n = max(r.n_tokens for r in fnet_results)
-        fnet_time = next(r.mean_time_ms for r in fnet_results if r.n_tokens == largest_n)
-        softmax_time = next(
-            r.mean_time_ms for r in softmax_results if r.n_tokens == largest_n
-        )
-        speedup = softmax_time / fnet_time if fnet_time > 0 else 0
+        largest_n = max((r.n_tokens for r in fnet_results), default=0)
+        if largest_n == 0:
+            fnet_time = 0.0
+            softmax_time = 0.0
+            speedup = 0.0
+        else:
+            fnet_time = next(
+                (r.mean_time_ms for r in fnet_results if r.n_tokens == largest_n),
+                0.0,
+            )
+            softmax_time = next(
+                (r.mean_time_ms for r in softmax_results if r.n_tokens == largest_n),
+                0.0,
+            )
+            speedup = softmax_time / fnet_time if fnet_time > 0 else 0.0
 
         # Record metrics
         self.record_metric("fnet_scaling_exponent", fnet_exponent)
@@ -192,10 +202,12 @@ class ComplexityScenario(BaseScenario):
 
         Returns:
             List of benchmark results per grid size.
+
         """
         from src.modeling.fnet import FNetMixingLayer
 
-        assert self._device is not None
+        if self._device is None:
+            raise RuntimeError("setup() must be called before benchmarking")
 
         results = []
 
@@ -259,10 +271,12 @@ class ComplexityScenario(BaseScenario):
 
         Returns:
             List of benchmark results per grid size.
+
         """
         from src.modeling.attention import SoftmaxAttention
 
-        assert self._device is not None
+        if self._device is None:
+            raise RuntimeError("setup() must be called before benchmarking")
 
         results = []
 
@@ -320,10 +334,12 @@ class ComplexityScenario(BaseScenario):
 
         Returns:
             List of benchmark results per grid size.
+
         """
         from src.modeling.attention import GalerkinLinearAttention
 
-        assert self._device is not None
+        if self._device is None:
+            raise RuntimeError("setup() must be called before benchmarking")
 
         results = []
 
@@ -389,6 +405,7 @@ class ComplexityScenario(BaseScenario):
 
         Returns:
             Scaling exponent (1.0 = O(N), 2.0 = O(N²), etc.)
+
         """
         if len(results) < 2:
             return 0.0

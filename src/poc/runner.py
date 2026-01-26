@@ -60,6 +60,7 @@ class ScenarioRunner:
             max_workers: Max parallel executions (1 = sequential).
             retry_delay_base: Base delay for exponential backoff retries.
             fail_fast: Stop on first failure.
+
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -81,6 +82,7 @@ class ScenarioRunner:
 
         Returns:
             List of scenario configs.
+
         """
         config_path = Path(config_path)
         self._logger.info("loading_config", path=str(config_path))
@@ -124,6 +126,7 @@ class ScenarioRunner:
 
         Raises:
             ValueError: If scenario not found.
+
         """
         scenario_cls = self.registry.get(scenario_name)
         if scenario_cls is None:
@@ -161,6 +164,7 @@ class ScenarioRunner:
 
         Returns:
             List of results.
+
         """
         scenarios = self.registry.get_all()
 
@@ -197,6 +201,7 @@ class ScenarioRunner:
 
         Returns:
             List of results.
+
         """
         configs = self.load_config(config_path)
 
@@ -223,18 +228,42 @@ class ScenarioRunner:
         self._print_summary(results)
         return results
 
-    def _run_with_retry(self, scenario: BaseScenario) -> ScenarioResult:
+    def _run_with_retry(
+        self,
+        scenario_or_cls: BaseScenario | type[BaseScenario],
+        config: BaseScenarioConfig | None = None,
+    ) -> ScenarioResult:
         """Run scenario with retry logic.
 
+        Creates a fresh scenario instance for each retry attempt to avoid
+        state contamination from previous failed attempts.
+
         Args:
-            scenario: Scenario instance.
+            scenario_or_cls: Scenario instance or class.
+            config: Optional config (used when passing class).
 
         Returns:
             Final result (last attempt).
+
         """
-        max_attempts = scenario.config.retry_count + 1
+        # Get scenario class and config for fresh instantiation
+        if isinstance(scenario_or_cls, type):
+            scenario_cls = scenario_or_cls
+            if config is None:
+                # Create temporary instance to get default config
+                temp = scenario_cls()
+                config = temp.config
+        else:
+            scenario_cls = type(scenario_or_cls)
+            config = scenario_or_cls.config
+
+        max_attempts = config.retry_count + 1
+        result: ScenarioResult | None = None
 
         for attempt in range(1, max_attempts + 1):
+            # Create fresh scenario instance for each attempt
+            scenario = scenario_cls(config=config)
+
             self._logger.debug(
                 "attempt_starting",
                 scenario=scenario.name,
@@ -257,6 +286,8 @@ class ScenarioRunner:
                 )
                 time.sleep(delay)
 
+        # result is guaranteed to be set after loop
+        assert result is not None
         return result
 
     def _run_sequential(
@@ -272,20 +303,24 @@ class ScenarioRunner:
 
         Returns:
             List of results.
+
         """
         results: list[ScenarioResult] = []
 
         for name, scenario_cls in scenarios.items():
-            scenario = scenario_cls()
+            # Create temporary instance to check config (filters)
+            temp_scenario = scenario_cls()
+            config = temp_scenario.config
 
             # Apply tier filter
-            if filter_tier and scenario.config.tier.value != filter_tier:
+            if filter_tier and config.tier.value != filter_tier:
                 continue
 
-            if not scenario.config.enabled:
+            if not config.enabled:
                 continue
 
-            result = self._run_with_retry(scenario)
+            # Run with fresh instance via retry logic
+            result = self._run_with_retry(scenario_cls, config=config)
             results.append(result)
             self.collector.collect(result)
 
@@ -307,59 +342,95 @@ class ScenarioRunner:
 
         Returns:
             List of results.
+
         """
+        from datetime import datetime
+
         results: list[ScenarioResult] = []
 
-        # Filter scenarios
-        filtered = []
+        # Filter scenarios and collect configs
+        filtered: list[tuple[str, type[BaseScenario], BaseScenarioConfig]] = []
         for name, scenario_cls in scenarios.items():
-            scenario = scenario_cls()
-            if filter_tier and scenario.config.tier.value != filter_tier:
+            temp_scenario = scenario_cls()
+            config = temp_scenario.config
+            if filter_tier and config.tier.value != filter_tier:
                 continue
-            if not scenario.config.enabled:
+            if not config.enabled:
                 continue
-            filtered.append((name, scenario_cls))
+            filtered.append((name, scenario_cls, config))
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_workers
         ) as executor:
-            future_to_name = {
-                executor.submit(self._run_scenario_task, cls): name
-                for name, cls in filtered
+            future_to_info: dict[
+                concurrent.futures.Future[ScenarioResult],
+                tuple[str, BaseScenarioConfig],
+            ] = {
+                executor.submit(self._run_scenario_task, cls, cfg): (name, cfg)
+                for name, cls, cfg in filtered
             }
 
-            for future in concurrent.futures.as_completed(future_to_name):
-                name = future_to_name[future]
+            for future in concurrent.futures.as_completed(future_to_info):
+                name, config = future_to_info[future]
                 try:
-                    result = future.result()
+                    # Use config timeout if available
+                    timeout = config.timeout_seconds
+                    result = future.result(timeout=timeout)
                     results.append(result)
                     self.collector.collect(result)
+                except concurrent.futures.TimeoutError:
+                    self._logger.error(
+                        "scenario_timeout",
+                        scenario=name,
+                        timeout=config.timeout_seconds,
+                    )
+                    # Create timeout result
+                    timeout_result = ScenarioResult(
+                        scenario_name=name,
+                        config_hash=config.compute_hash(),
+                        status=ScenarioStatus.ERROR,
+                        passed=False,
+                        metrics={},
+                        start_time=datetime.now(),
+                        end_time=datetime.now(),
+                        duration_seconds=config.timeout_seconds,
+                        error_message=f"Scenario timed out after {config.timeout_seconds}s",
+                    )
+                    results.append(timeout_result)
+                    self.collector.collect(timeout_result)
                 except Exception as e:
                     self._logger.error(
                         "parallel_execution_error",
                         scenario=name,
                         error=str(e),
+                        exc_info=True,
                     )
 
         return results
 
-    def _run_scenario_task(self, scenario_cls: type[BaseScenario]) -> ScenarioResult:
+    def _run_scenario_task(
+        self,
+        scenario_cls: type[BaseScenario],
+        config: BaseScenarioConfig,
+    ) -> ScenarioResult:
         """Task for parallel execution.
 
         Args:
             scenario_cls: Scenario class to instantiate and run.
+            config: Scenario configuration.
 
         Returns:
             ScenarioResult.
+
         """
-        scenario = scenario_cls()
-        return self._run_with_retry(scenario)
+        return self._run_with_retry(scenario_cls, config=config)
 
     def _print_summary(self, results: list[ScenarioResult]) -> None:
         """Print execution summary.
 
         Args:
             results: List of results.
+
         """
         if not results:
             print("\nNo scenarios executed.")
@@ -404,5 +475,6 @@ def create_runner(
 
     Returns:
         Configured ScenarioRunner.
+
     """
     return ScenarioRunner(output_dir=output_dir, **kwargs)

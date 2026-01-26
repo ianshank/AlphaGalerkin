@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
-from typing import TYPE_CHECKING
 
 import structlog
 
@@ -34,9 +32,6 @@ from src.poc.logging import configure_logging
 from src.poc.registry import ScenarioRegistry
 from src.poc.results import ResultCollector
 from src.poc.runner import ScenarioRunner
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 

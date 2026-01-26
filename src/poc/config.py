@@ -16,7 +16,6 @@ import hashlib
 import json
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -54,13 +53,19 @@ class MetricThreshold(BaseModel):
     description: str = Field(default="", description="Human-readable description")
 
     def evaluate(self, actual: float) -> bool:
-        """Check if actual value passes the threshold."""
-        ops = {
+        """Check if actual value passes the threshold.
+
+        Uses math.isclose() for equality comparison with both relative
+        and absolute tolerance for numerical stability.
+        """
+        import math
+
+        ops: dict[str, Any] = {
             "<": lambda a, b: a < b,
             "<=": lambda a, b: a <= b,
             ">": lambda a, b: a > b,
             ">=": lambda a, b: a >= b,
-            "==": lambda a, b: abs(a - b) < 1e-10,
+            "==": lambda a, b: math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12),
         }
         return ops[self.operator](actual, self.value)
 
@@ -186,7 +191,7 @@ class TransferScenarioConfig(BaseScenarioConfig):
         return sorted(set(v))  # Remove duplicates and sort
 
     @model_validator(mode="after")
-    def validate_primary_in_eval(self) -> "TransferScenarioConfig":
+    def validate_primary_in_eval(self) -> TransferScenarioConfig:
         """Ensure primary eval resolution is in eval list."""
         if self.primary_eval_resolution not in self.eval_resolutions:
             self.eval_resolutions = sorted(
@@ -305,7 +310,7 @@ class StabilityScenarioConfig(BaseScenarioConfig):
     )
 
     @model_validator(mode="after")
-    def validate_dimensions(self) -> "StabilityScenarioConfig":
+    def validate_dimensions(self) -> StabilityScenarioConfig:
         """Ensure d_key >= d_query for LBB condition."""
         # In our implementation, d_query == d_key (both derived from d_model)
         # This validator documents the constraint
@@ -410,6 +415,7 @@ def load_config_from_dict(
 
     Raises:
         ValueError: If scenario type cannot be determined.
+
     """
     type_map: dict[str, type[BaseScenarioConfig]] = {
         "transfer": TransferScenarioConfig,

@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 import torch
-from torch import nn
 
 from src.poc.config import (
     ScenarioResult,
@@ -81,9 +80,14 @@ class StabilityScenario(BaseScenario):
 
         Returns:
             ScenarioResult with stability metrics.
+
         """
-        assert self._device is not None
-        assert self._scenario_logger is not None
+        if self._device is None or self._scenario_logger is None:
+            raise RuntimeError("setup() must be called before execute()")
+
+        # Validate resolutions list is non-empty
+        if not self.config.resolutions:
+            raise ValueError("resolutions list cannot be empty")
 
         torch.manual_seed(self.config.seed)
 
@@ -156,10 +160,12 @@ class StabilityScenario(BaseScenario):
 
         Returns:
             Dict mapping resolution to list of LBB values.
+
         """
         from src.math_kernel.integral import GalerkinProjection
 
-        assert self._device is not None
+        if self._device is None:
+            raise RuntimeError("setup() must be called before testing stability")
 
         results: dict[int, list[float]] = {}
 
@@ -203,13 +209,14 @@ class StabilityScenario(BaseScenario):
 
         Returns:
             Dict with lbb_values list and n_violations count.
+
         """
         from src.math_kernel.integral import GalerkinProjection
 
-        assert self._device is not None
-        assert self._scenario_logger is not None
+        if self._device is None or self._scenario_logger is None:
+            raise RuntimeError("setup() must be called before testing stability")
 
-        # Use middle resolution for training test
+        # Use middle resolution for training test (validated non-empty in execute())
         resolution = self.config.resolutions[len(self.config.resolutions) // 2]
         n_tokens = resolution * resolution
 

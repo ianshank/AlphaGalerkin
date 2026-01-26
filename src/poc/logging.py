@@ -36,6 +36,7 @@ def configure_logging(
         level: Log level (DEBUG, INFO, WARNING, ERROR).
         json_format: Use JSON output format (for production).
         include_timestamp: Include timestamps in output.
+
     """
     processors: list[Any] = [
         structlog.stdlib.filter_by_level,
@@ -92,6 +93,7 @@ class ScenarioLogger:
             scenario_name: Name of the scenario.
             run_id: Optional run identifier.
             **context: Additional context to bind.
+
         """
         self._base_logger = structlog.get_logger(__name__)
         self._context = {
@@ -101,7 +103,7 @@ class ScenarioLogger:
         }
         self._logger = self._base_logger.bind(**self._context)
 
-    def bind(self, **context: Any) -> "ScenarioLogger":
+    def bind(self, **context: Any) -> ScenarioLogger:
         """Create a new logger with additional context.
 
         Args:
@@ -109,6 +111,7 @@ class ScenarioLogger:
 
         Returns:
             New ScenarioLogger with merged context.
+
         """
         new_context = {**self._context, **context}
         new_logger = ScenarioLogger.__new__(ScenarioLogger)
@@ -151,6 +154,7 @@ class ScenarioLogger:
             with logger.timed("model_inference") as timing:
                 result = model(input)
             # timing["duration_seconds"] is now set
+
         """
         timing: dict[str, float] = {}
         start_time = time.perf_counter()
@@ -176,6 +180,7 @@ class ScenarioLogger:
             name: Metric name.
             value: Metric value.
             **tags: Additional tags/dimensions.
+
         """
         self._logger.info(
             "metric",
@@ -196,6 +201,7 @@ class ScenarioLogger:
             current: Current step.
             total: Total steps.
             operation: Operation name.
+
         """
         pct = (current / total * 100) if total > 0 else 0
         self._logger.debug(
@@ -220,13 +226,14 @@ def get_scenario_logger(
 
     Returns:
         Configured ScenarioLogger.
+
     """
     return ScenarioLogger(scenario_name, run_id, **context)
 
 
 def log_timing(
     logger: structlog.stdlib.BoundLogger | None = None,
-) -> "Callable[[Callable[P, R]], Callable[P, R]]":
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to log function execution time.
 
     Args:
@@ -239,9 +246,10 @@ def log_timing(
         @log_timing()
         def slow_operation():
             time.sleep(1)
+
     """
 
-    def decorator(func: "Callable[P, R]") -> "Callable[P, R]":
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         nonlocal logger
         if logger is None:
             logger = structlog.get_logger(func.__module__)
@@ -270,7 +278,7 @@ def log_call(
     logger: structlog.stdlib.BoundLogger | None = None,
     log_args: bool = False,
     log_result: bool = False,
-) -> "Callable[[Callable[P, R]], Callable[P, R]]":
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to log function calls.
 
     Args:
@@ -285,9 +293,10 @@ def log_call(
         @log_call(log_args=True)
         def my_function(x, y):
             return x + y
+
     """
 
-    def decorator(func: "Callable[P, R]") -> "Callable[P, R]":
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         nonlocal logger
         if logger is None:
             logger = structlog.get_logger(func.__module__)
@@ -336,6 +345,7 @@ class DebugContext:
             name: Context name for identification.
             logger: Optional scenario logger.
             capture_memory: Track memory usage (requires torch).
+
         """
         self.name = name
         self.logger = logger or ScenarioLogger(name)
@@ -344,7 +354,7 @@ class DebugContext:
         self._start_time: float = 0
         self._start_memory: int = 0
 
-    def __enter__(self) -> "DebugContext":
+    def __enter__(self) -> DebugContext:
         """Enter debug context."""
         self._start_time = time.perf_counter()
 
@@ -396,6 +406,7 @@ class DebugContext:
         Args:
             label: Checkpoint label.
             **data: Additional data to log.
+
         """
         elapsed = time.perf_counter() - self._start_time
         self.logger.debug(

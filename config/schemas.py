@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DomainConfig(BaseModel):
@@ -152,7 +152,11 @@ class TrainingConfig(BaseModel):
 
 
 class WandbConfig(BaseModel):
-    """Configuration for Weights & Biases logging."""
+    """Configuration for Weights & Biases logging.
+
+    This is the single source of truth for W&B configuration.
+    The WandbLogger accepts this configuration via model_dump().
+    """
 
     # Core settings
     enabled: bool = Field(default=True, description="Enable W&B logging")
@@ -179,10 +183,15 @@ class WandbConfig(BaseModel):
     watch_model: bool = Field(default=False, description="Use wandb.watch() on model")
     watch_log_freq: int = Field(default=100, description="Frequency for gradient logging")
 
+    # Resume configuration (for resuming W&B runs)
+    resume_id: str | None = Field(default=None, description="W&B run ID to resume")
+    resume_mode: str = Field(default="allow", description="Resume mode: 'allow', 'must', 'never'")
+
 
 class AlphaGalerkinConfig(BaseModel):
     """Root configuration combining all sub-configurations."""
 
+    # Sub-configurations
     domain: DomainConfig = Field(default_factory=DomainConfig)
     operator: OperatorConfig = Field(default_factory=OperatorConfig)
     mcts: MCTSConfig = Field(default_factory=MCTSConfig)
@@ -198,3 +207,18 @@ class AlphaGalerkinConfig(BaseModel):
         default="INFO", description="Logging level"
     )
     log_lbb_metrics: bool = Field(default=True, description="Log LBB stability metrics")
+
+    # Runtime settings (previously unschematized)
+    device: str = Field(default="auto", description="Training device: 'auto', 'cuda', 'cpu'")
+    checkpoint_dir: str = Field(default="checkpoints", description="Directory for checkpoints")
+    log_interval: int = Field(default=100, description="Steps between console logging")
+    board_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19],
+        description="Board sizes to train on (resolution-independent)",
+    )
+
+    # Resume configuration
+    resume: str | None = Field(default=None, description="Path to checkpoint to resume from")
+
+    # Allow extra fields for forward compatibility
+    model_config = ConfigDict(extra="ignore")

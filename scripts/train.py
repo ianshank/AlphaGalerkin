@@ -134,8 +134,10 @@ def main(cfg: DictConfig) -> None:
         if wandb_config.get("name") is None:
             wandb_config["name"] = config.experiment_name
 
-        # Add useful tags
-        tags = list(wandb_config.get("tags", []))
+        # Add useful tags - safely handle None or missing tags
+        # Use `or []` to handle both missing key and explicit null/None
+        existing_tags = wandb_config.get("tags") or []
+        tags = list(existing_tags) if existing_tags else []
         if device != "auto":
             tags.append(f"device:{device}")
         tags.append(f"lr:{config.training.learning_rate}")

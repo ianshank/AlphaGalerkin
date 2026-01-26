@@ -8,7 +8,7 @@ using Monte Carlo methods, which naturally adapt to any resolution.
 from __future__ import annotations
 
 import torch
-from einops import einsum, rearrange
+from einops import einsum
 from jaxtyping import Float
 from torch import Tensor, nn
 
@@ -42,6 +42,7 @@ class MonteCarloIntegral(nn.Module):
 
         Returns:
             Integrated values.
+
         """
         n = values.shape[1]
 
@@ -97,6 +98,7 @@ class GalerkinProjection(nn.Module):
             d_model: Input/output dimension.
             d_key: Key/Query dimension (must satisfy LBB: d_key >= d_query).
             d_value: Value dimension.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -123,6 +125,7 @@ class GalerkinProjection(nn.Module):
 
         Returns:
             Projected output.
+
         """
         q = self.to_query(x)  # (batch, n, d_key)
         k = self.to_key(x)  # (batch, n, d_key)
@@ -153,7 +156,7 @@ class GalerkinProjection(nn.Module):
     def compute_lbb_constant(
         self,
         x: Float[Tensor, "batch n d"],
-    ) -> Float[Tensor, "batch"]:
+    ) -> Float[Tensor, batch]:
         """Compute the LBB stability constant (minimum singular value).
 
         The LBB condition requires:
@@ -166,6 +169,7 @@ class GalerkinProjection(nn.Module):
 
         Returns:
             Minimum singular value for each batch element.
+
         """
         k = self.to_key(x)  # (batch, n, d_key)
         n = x.shape[1]
@@ -204,6 +208,7 @@ class PetrovGalerkinProjection(nn.Module):
             d_trial: Trial space dimension (for Keys).
             d_test: Test space dimension (for Queries).
             d_value: Value dimension.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -234,6 +239,7 @@ class PetrovGalerkinProjection(nn.Module):
 
         Returns:
             Projected output.
+
         """
         q = self.to_query(x)  # (batch, n, d_test)
         k = self.to_key(x)  # (batch, n, d_trial)

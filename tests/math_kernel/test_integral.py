@@ -10,12 +10,10 @@ from __future__ import annotations
 
 import math
 
-import hypothesis
 import pytest
 import torch
 from hypothesis import given, settings
 from hypothesis import strategies as st
-from torch import nn
 
 from src.math_kernel.integral import (
     GalerkinProjection,

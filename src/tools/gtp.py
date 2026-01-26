@@ -7,12 +7,13 @@ Reference: https://www.lysator.liu.se/~gunnar/gtp/
 from __future__ import annotations
 
 import sys
-from typing import Callable, TextIO
+from collections.abc import Callable
+from typing import TextIO
 
 import numpy as np
 import torch
 
-from config.schemas import AlphaGalerkinConfig, OperatorConfig
+from config.schemas import OperatorConfig
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
@@ -31,6 +32,7 @@ def coord_to_gtp(row: int, col: int, board_size: int) -> str:
 
     Returns:
         GTP coordinate string (e.g., "D4").
+
     """
     # GTP columns: A-H, J-T (skip I)
     letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
@@ -51,6 +53,7 @@ def gtp_to_coord(gtp: str, board_size: int) -> tuple[int, int]:
 
     Returns:
         Tuple of (row, col) in internal format.
+
     """
     letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
 
@@ -72,6 +75,7 @@ def action_to_gtp(action: int, board_size: int) -> str:
 
     Returns:
         GTP move string.
+
     """
     if action == board_size ** 2:
         return "pass"
@@ -91,6 +95,7 @@ def gtp_to_action(gtp: str, board_size: int) -> int:
 
     Returns:
         Action index.
+
     """
     gtp = gtp.strip().lower()
 
@@ -120,6 +125,7 @@ class SimpleGoGame:
 
         Args:
             board_size: Size of the board.
+
         """
         self.board_size = board_size
         self.board = np.zeros((board_size, board_size), dtype=np.int8)
@@ -146,6 +152,7 @@ class SimpleGoGame:
 
         Returns:
             True if move was legal, False otherwise.
+
         """
         if row < 0 or row >= self.board_size:
             return False
@@ -262,6 +269,7 @@ class SimpleGoGame:
 
         Returns:
             State tensor of shape (17, board_size, board_size).
+
         """
         # Simplified feature planes:
         # Planes 0-7: Current player's stones (history)
@@ -326,6 +334,7 @@ class GTPEngine:
             model: AlphaGalerkin model (or None for random play).
             board_size: Default board size.
             device: Device for inference.
+
         """
         self.model = model
         self.board_size = board_size
@@ -372,6 +381,7 @@ class GTPEngine:
         Args:
             input_stream: Input stream for commands.
             output_stream: Output stream for responses.
+
         """
         while not self._quit_flag:
             try:
@@ -394,6 +404,7 @@ class GTPEngine:
 
         Returns:
             GTP response string.
+
         """
         line = line.strip()
         if not line or line.startswith("#"):

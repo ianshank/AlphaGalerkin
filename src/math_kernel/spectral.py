@@ -40,6 +40,7 @@ class SpectralFilter(nn.Module):
             cutoff_ratio: Cutoff frequency as ratio of Nyquist (0 to 1).
             filter_type: Type of filter ("gaussian", "butterworth", "ideal").
             learnable: Whether cutoff is learnable.
+
         """
         super().__init__()
         self.filter_type = filter_type
@@ -64,6 +65,7 @@ class SpectralFilter(nn.Module):
 
         Returns:
             2D filter mask.
+
         """
         # Frequency coordinates (normalized to [-0.5, 0.5] for full FFT)
         # For rfft2, we only need positive frequencies in the last dimension
@@ -109,6 +111,7 @@ class SpectralFilter(nn.Module):
 
         Returns:
             Filtered tensor.
+
         """
         # Apply 2D real FFT
         x_freq = torch.fft.rfft2(x)
@@ -146,6 +149,7 @@ class ResolutionAdapter(nn.Module):
         Args:
             base_resolution: Training resolution (None = adaptive).
             filter_cutoff: Spectral filter cutoff ratio.
+
         """
         super().__init__()
         self.base_resolution = base_resolution
@@ -169,6 +173,7 @@ class ResolutionAdapter(nn.Module):
 
         Returns:
             Adapted features at target resolution.
+
         """
         batch, n, d = features.shape
 
@@ -239,6 +244,7 @@ class ResolutionAdapter(nn.Module):
 
         Returns:
             Filtered tensor.
+
         """
         # Temporarily modify filter cutoff
         original_cutoff = self.spectral_filter.cutoff_ratio.clone()

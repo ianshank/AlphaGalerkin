@@ -7,10 +7,8 @@ This enables zero-shot transfer between different board sizes.
 
 from __future__ import annotations
 
-import math
-
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 
@@ -44,6 +42,7 @@ class FourierFeatures(nn.Module):
             scale: Standard deviation for frequency initialization.
             learnable: Whether frequencies are learnable.
             include_coordinates: Whether to concatenate raw coordinates.
+
         """
         super().__init__()
         self.n_features = n_features
@@ -74,6 +73,7 @@ class FourierFeatures(nn.Module):
 
         Returns:
             Fourier feature embeddings.
+
         """
         # Compute Fourier features
         features = self.fourier_basis(coords)
@@ -113,6 +113,7 @@ class ContinuousEmbedding(nn.Module):
             fourier_scale: Scale for Fourier features.
             use_learnable_positions: Whether to add learnable position embedding
                 (NOTE: This breaks resolution independence! Use only for comparison.)
+
         """
         super().__init__()
         self.input_channels = input_channels
@@ -152,6 +153,7 @@ class ContinuousEmbedding(nn.Module):
 
         Returns:
             Position embedding tensor.
+
         """
         if not self.use_learnable_positions:
             return torch.zeros(1, n_positions, self.d_model, device=device)
@@ -183,6 +185,7 @@ class ContinuousEmbedding(nn.Module):
 
         Returns:
             Embedded sequence (batch, n, d_model) where n = height * width.
+
         """
         batch_size, channels, height, width = x.shape
         n_positions = height * width
@@ -239,6 +242,7 @@ class StoneEmbedding(nn.Module):
             d_model: Embedding dimension.
             n_stone_types: Number of stone types (typically 3).
             n_special_features: Number of additional feature planes.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -265,6 +269,7 @@ class StoneEmbedding(nn.Module):
 
         Returns:
             Stone embeddings.
+
         """
         batch, height, width = stone_types.shape
 

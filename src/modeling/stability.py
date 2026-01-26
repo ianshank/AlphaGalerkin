@@ -11,8 +11,6 @@ singular value of the Key-to-Value projection is bounded away from zero.
 
 from __future__ import annotations
 
-from typing import Callable
-
 import structlog
 import torch
 from einops import einsum, rearrange
@@ -43,6 +41,7 @@ class StabilityGuard(nn.Module):
             beta_threshold: Minimum acceptable LBB constant.
             regularization_strength: Strength of regularization term.
             log_interval: Steps between stability logging.
+
         """
         super().__init__()
         self.beta_threshold = beta_threshold
@@ -60,7 +59,7 @@ class StabilityGuard(nn.Module):
     def compute_lbb_constant(
         self,
         keys: Float[Tensor, "batch n d_key"],
-    ) -> Float[Tensor, "batch"]:
+    ) -> Float[Tensor, batch]:
         """Compute LBB stability constant from key matrix.
 
         The LBB constant is the minimum singular value of K^T K / n.
@@ -70,6 +69,7 @@ class StabilityGuard(nn.Module):
 
         Returns:
             LBB constant (beta) for each batch element.
+
         """
         n = keys.shape[1]
 
@@ -89,7 +89,7 @@ class StabilityGuard(nn.Module):
     def compute_multihead_lbb(
         self,
         keys: Float[Tensor, "batch heads n d_key"],
-    ) -> tuple[Float[Tensor, "batch"], Float[Tensor, "batch heads"]]:
+    ) -> tuple[Float[Tensor, batch], Float[Tensor, "batch heads"]]:
         """Compute LBB constant for multi-head attention.
 
         Args:
@@ -97,6 +97,7 @@ class StabilityGuard(nn.Module):
 
         Returns:
             Tuple of (minimum beta across heads, beta per head).
+
         """
         batch, heads, n, d_key = keys.shape
 
@@ -116,7 +117,7 @@ class StabilityGuard(nn.Module):
         self,
         keys: Float[Tensor, "batch n d_key"] | Float[Tensor, "batch heads n d_key"],
         multihead: bool = False,
-    ) -> tuple[bool, Float[Tensor, "batch"]]:
+    ) -> tuple[bool, Float[Tensor, batch]]:
         """Check if LBB condition is satisfied.
 
         Args:
@@ -125,6 +126,7 @@ class StabilityGuard(nn.Module):
 
         Returns:
             Tuple of (is_stable, beta_values).
+
         """
         if multihead:
             beta, _ = self.compute_multihead_lbb(keys)
@@ -147,7 +149,7 @@ class StabilityGuard(nn.Module):
 
     def _log_stability(
         self,
-        beta: Float[Tensor, "batch"],
+        beta: Float[Tensor, batch],
         is_stable: bool,
     ) -> None:
         """Log stability metrics.
@@ -155,6 +157,7 @@ class StabilityGuard(nn.Module):
         Args:
             beta: Current LBB constants.
             is_stable: Whether condition is satisfied.
+
         """
         beta_mean = beta.mean().item()
         beta_min = beta.min().item()
@@ -188,6 +191,7 @@ class StabilityGuard(nn.Module):
 
         Returns:
             Regularization loss scalar.
+
         """
         if multihead:
             beta, _ = self.compute_multihead_lbb(keys)
@@ -205,9 +209,9 @@ class StabilityGuard(nn.Module):
 
     def forward(
         self,
-        keys: Float[Tensor, "..."],
+        keys: Float[Tensor, ...],
         multihead: bool = False,
-    ) -> tuple[bool, Float[Tensor, "batch"], Float[Tensor, ""]]:
+    ) -> tuple[bool, Float[Tensor, batch], Float[Tensor, ""]]:
         """Forward pass: check stability and compute regularization.
 
         Args:
@@ -216,6 +220,7 @@ class StabilityGuard(nn.Module):
 
         Returns:
             Tuple of (is_stable, beta, regularization_loss).
+
         """
         is_stable, beta = self.check_stability(keys, multihead)
         reg_loss = self.regularization_loss(keys, multihead)
@@ -227,6 +232,7 @@ class StabilityGuard(nn.Module):
 
         Returns:
             Dictionary of stability statistics.
+
         """
         return {
             "total_steps": self.step_counter.item(),
@@ -258,6 +264,7 @@ class StableGalerkinInitializer:
         Args:
             beta_target: Target LBB constant.
             max_iterations: Maximum initialization attempts.
+
         """
         self.beta_target = beta_target
         self.max_iterations = max_iterations
@@ -275,6 +282,7 @@ class StableGalerkinInitializer:
         Args:
             weight: Weight tensor to initialize.
             d_key: Key dimension (for computing variance).
+
         """
         # Start with orthogonal initialization
         nn.init.orthogonal_(weight)
@@ -296,6 +304,7 @@ class StableGalerkinInitializer:
 
         Returns:
             True if stable, False if adjustment failed.
+
         """
         for i in range(self.max_iterations):
             # Get keys from module
@@ -339,6 +348,7 @@ class StableGalerkinInitializer:
         Args:
             module: Module to adjust.
             current_beta: Current LBB constants.
+
         """
         # Add small perturbation to increase singular values
         if hasattr(module, "to_k"):

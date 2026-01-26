@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-from jaxtyping import Float
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -30,6 +29,7 @@ class MCTSNode:
         visit_count: Number of times this node was visited (N).
         total_value: Sum of values from all visits (W).
         virtual_loss: Virtual loss for parallel MCTS.
+
     """
 
     parent: MCTSNode | None = None
@@ -84,6 +84,7 @@ class MCTSNode:
 
         Returns:
             UCB score.
+
         """
         exploration = c_puct * self.prior * math.sqrt(parent_visits) / (
             1 + self.visit_count + self.virtual_loss
@@ -104,6 +105,7 @@ class MCTSNode:
 
         Raises:
             ValueError: If node has no children.
+
         """
         if not self.children:
             raise ValueError("Cannot select from node with no children")
@@ -129,6 +131,7 @@ class MCTSNode:
 
         Args:
             action_priors: Dictionary mapping actions to prior probabilities.
+
         """
         for action, prior in action_priors.items():
             if action not in self.children:
@@ -149,6 +152,7 @@ class MCTSNode:
 
         Args:
             value: Value estimate from neural network or terminal state.
+
         """
         node: MCTSNode | None = self
         current_value = value
@@ -173,6 +177,7 @@ class MCTSNode:
 
         Args:
             amount: Virtual loss amount.
+
         """
         self.virtual_loss += amount
 
@@ -184,6 +189,7 @@ class MCTSNode:
 
         Args:
             amount: Virtual loss amount to remove.
+
         """
         self.virtual_loss = max(0, self.virtual_loss - amount)
 
@@ -199,6 +205,7 @@ class MCTSNode:
 
         Returns:
             Dictionary mapping actions to probabilities.
+
         """
         if not self.children:
             return {}
@@ -227,6 +234,7 @@ class MCTSNode:
 
         Raises:
             ValueError: If node has no children.
+
         """
         if not self.children:
             raise ValueError("Cannot get best action from node with no children")
@@ -244,6 +252,7 @@ class MCTSNode:
 
         Returns:
             List of actions in the principal variation.
+
         """
         pv = []
         node = self
@@ -271,6 +280,7 @@ class MCTSNode:
 
         Returns:
             Child node for the action, or None if not found.
+
         """
         if action not in self.children:
             return None

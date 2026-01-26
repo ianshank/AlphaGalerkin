@@ -48,6 +48,13 @@ Monitors LBB condition during training:
 - [2026-01-26]: Zero-shot transfer validation: Train on 9x9 → Evaluate on 19x19.
 - [2026-01-26]: Success criterion: MSE < 0.05 on 19x19 without retraining.
 
+## PoC Scenario Framework
+- [2026-01-26]: Added configuration-driven PoC scenario framework (src/poc/).
+- [2026-01-26]: Three built-in scenarios: transfer, complexity, stability.
+- [2026-01-26]: Pydantic-validated configs with no hardcoded values.
+- [2026-01-26]: Structured logging via structlog throughout.
+- [2026-01-26]: C4 architecture documentation in docs/architecture/c4_model.md.
+
 ## Known Issues
 - [None yet]
 
@@ -113,6 +120,36 @@ python -m src.experiments.benchmark_fnet --sizes 81,169,361,625 --batch-size 64
 pytest tests/math_kernel/test_fredholm.py -v
 ```
 
+## PoC Scenario Framework Commands
+```bash
+# List available scenarios
+python -m src.poc.cli list
+
+# Show scenario details
+python -m src.poc.cli info transfer
+
+# Run all scenarios
+python -m src.poc.cli run
+
+# Run specific scenario
+python -m src.poc.cli run --scenario transfer
+
+# Run from config file (full suite)
+python -m src.poc.cli run --config config/scenarios/poc_full.yaml
+
+# Run quick validation suite
+python -m src.poc.cli run --config config/scenarios/poc_quick.yaml
+
+# Run with parallel workers
+python -m src.poc.cli run --parallel 4
+
+# Compare two runs
+python -m src.poc.cli compare run_a run_b
+
+# PoC framework unit tests
+pytest tests/poc/ -v
+```
+
 ## Directory Structure
 ```
 src/
@@ -137,14 +174,38 @@ src/
     train_physics.py  - Supervised learning on Poisson data
     verify_transfer.py - Zero-shot transfer verification
     benchmark_fnet.py - FNet O(N log N) speed benchmark
+  poc/          - PoC scenario framework
+    config.py         - Pydantic configuration schemas
+    registry.py       - Scenario registration and discovery
+    runner.py         - Scenario execution engine
+    results.py        - Result collection and persistence
+    logging.py        - Structured logging utilities
+    cli.py            - CLI entry point
+    scenarios/        - Built-in scenario implementations
+      transfer.py     - Zero-shot transfer scenario
+      complexity.py   - O(N) complexity benchmark
+      stability.py    - LBB stability monitoring
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests
   training/     - Tests for training infrastructure
   integration/  - End-to-end integration tests
+  poc/          - PoC framework tests
+    test_config.py    - Configuration validation tests
+    test_registry.py  - Scenario registration tests
+    test_runner.py    - Runner execution tests
+    test_results.py   - Result collection tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config
+  scenarios/          - PoC scenario configurations
+    poc_full.yaml     - Full PoC suite
+    poc_quick.yaml    - Quick validation suite
+    transfer_ablation.yaml - Transfer ablation study
+docs/           - Documentation
+  architecture/       - C4 architecture diagrams
+    c4_model.md       - C4 model documentation
+  PROMPT_TEMPLATE.md  - Agentic coding prompt template
 scripts/        - CLI entry points
   train.py            - Training CLI with Hydra
 ```

@@ -62,6 +62,9 @@ class TrainingConfig:
     log_interval: int = 10
     eval_interval: int = 10
 
+    # Success criteria
+    success_threshold: float = 0.05  # MSE threshold for zero-shot transfer success
+
     # Output
     output_dir: str = "outputs/physics_poc"
     seed: int = 42
@@ -74,8 +77,18 @@ def train_epoch(
     loss_fn: PhysicsLoss,
     device: torch.device,
     batch_size: int,
+    log_interval: int = 50,
 ) -> float:
     """Train for one epoch.
+
+    Args:
+        model: The neural network model.
+        dataset: Training dataset.
+        optimizer: Optimizer instance.
+        loss_fn: Loss function.
+        device: Computation device.
+        batch_size: Batch size for training.
+        log_interval: Log progress every N batches.
 
     Returns:
         Average loss for the epoch.
@@ -84,6 +97,14 @@ def train_epoch(
     model.train()
     total_loss = 0.0
     n_batches = 0
+    n_total_batches = (len(dataset) + batch_size - 1) // batch_size
+
+    logger.debug(
+        "epoch_start",
+        dataset_size=len(dataset),
+        batch_size=batch_size,
+        n_batches=n_total_batches,
+    )
 
     # Manual batching (no DataLoader for simplicity)
     indices = list(range(len(dataset)))
@@ -116,7 +137,18 @@ def train_epoch(
         total_loss += loss.item()
         n_batches += 1
 
-    return total_loss / n_batches
+        # Log progress periodically
+        if n_batches % log_interval == 0:
+            logger.debug(
+                "batch_progress",
+                batch=n_batches,
+                total_batches=n_total_batches,
+                running_loss=total_loss / n_batches,
+            )
+
+    avg_loss = total_loss / n_batches
+    logger.debug("epoch_complete", avg_loss=avg_loss, n_batches=n_batches)
+    return avg_loss
 
 
 @torch.no_grad()
@@ -129,14 +161,27 @@ def evaluate(
 ) -> dict[str, float]:
     """Evaluate model on dataset.
 
+    Args:
+        model: The neural network model.
+        dataset: Evaluation dataset.
+        loss_fn: Loss function (used for consistency, not computed here).
+        device: Computation device.
+        batch_size: Batch size for evaluation.
+
     Returns:
-        Dictionary with MSE and other metrics.
+        Dictionary with MSE, MAE, and RMSE metrics.
 
     """
     model.eval()
     total_mse = 0.0
     total_mae = 0.0
     n_samples = 0
+
+    logger.debug(
+        "evaluation_start",
+        dataset_size=len(dataset),
+        grid_size=dataset.grid_size,
+    )
 
     indices = list(range(len(dataset)))
 
@@ -164,11 +209,20 @@ def evaluate(
         total_mae += mae.item()
         n_samples += predictions.numel()
 
-    return {
+    metrics = {
         "mse": total_mse / n_samples,
         "mae": total_mae / n_samples,
         "rmse": np.sqrt(total_mse / n_samples),
     }
+
+    logger.debug(
+        "evaluation_complete",
+        mse=metrics["mse"],
+        mae=metrics["mae"],
+        rmse=metrics["rmse"],
+    )
+
+    return metrics
 
 
 def train(config: TrainingConfig) -> dict[str, Any]:
@@ -326,7 +380,8 @@ def train(config: TrainingConfig) -> dict[str, Any]:
         },
         "best_transfer_mse": best_transfer_mse,
         "training_time_seconds": elapsed,
-        "success": final_transfer["mse"] < 0.05,  # Template success criterion
+        "success": final_transfer["mse"] < config.success_threshold,
+        "success_threshold": config.success_threshold,
     }
 
     # Save results
@@ -343,12 +398,13 @@ def train(config: TrainingConfig) -> dict[str, Any]:
     print(f"Final MSE (same resolution): {final_same['mse']:.6f}")
     print(f"Final MSE (zero-shot transfer): {final_transfer['mse']:.6f}")
     print(f"Best transfer MSE: {best_transfer_mse:.6f}")
+    print(f"Success threshold: {config.success_threshold}")
     print()
 
     if results["success"]:
-        print("✓ PASS: Zero-shot transfer MSE < 0.05")
+        print(f"✓ PASS: Zero-shot transfer MSE < {config.success_threshold}")
     else:
-        print("✗ FAIL: Zero-shot transfer MSE >= 0.05")
+        print(f"✗ FAIL: Zero-shot transfer MSE >= {config.success_threshold}")
 
     print("=" * 60)
 
@@ -366,6 +422,8 @@ def main() -> None:
     parser.add_argument("--fourier-scale", type=float, default=10.0, help="Fourier scale")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
+    parser.add_argument("--success-threshold", type=float, default=0.05,
+                        help="MSE threshold for zero-shot transfer success")
     parser.add_argument("--output-dir", type=str, default="outputs/physics_poc")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
@@ -380,6 +438,7 @@ def main() -> None:
         fourier_scale=args.fourier_scale,
         learning_rate=args.lr,
         batch_size=args.batch_size,
+        success_threshold=args.success_threshold,
         output_dir=args.output_dir,
         seed=args.seed,
     )

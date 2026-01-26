@@ -60,6 +60,8 @@ def load_model(
         Tuple of (model, config dict).
 
     """
+    logger.debug("loading_model", path=str(model_path), device=str(device))
+
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
 
     config = checkpoint.get("config", {})
@@ -75,6 +77,9 @@ def load_model(
 
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
+
+    n_params = sum(p.numel() for p in model.parameters())
+    logger.info("model_loaded", path=str(model_path), n_parameters=n_params)
 
     return model, config
 
@@ -311,6 +316,12 @@ def verify_resolution_independence(
 
     rng = np.random.default_rng(12345)
 
+    logger.info(
+        "resolution_independence_start",
+        resolutions=resolutions,
+        n_samples=n_samples,
+    )
+
     # We'll test at common points that exist in all grids
     # Use the coarsest grid points and interpolate others
 
@@ -320,8 +331,16 @@ def verify_resolution_independence(
     # Generate random charge configurations
     # For consistency, we place charges at normalized positions
     all_errors = []
+    log_interval = max(1, n_samples // 10)  # Log ~10 times
 
-    for _ in range(n_samples):
+    for sample_idx in range(n_samples):
+        if sample_idx > 0 and sample_idx % log_interval == 0:
+            logger.debug(
+                "resolution_independence_progress",
+                completed=sample_idx,
+                total=n_samples,
+                mean_error_so_far=float(np.mean(all_errors)) if all_errors else 0.0,
+            )
         # Random charge positions (normalized)
         n_charges = 5
         charge_positions = rng.uniform(0.1, 0.9, size=(n_charges, 2))
@@ -369,12 +388,20 @@ def verify_resolution_independence(
         error = np.mean((coarse_preds - fine_at_coarse) ** 2)
         all_errors.append(error)
 
-    return {
+    results = {
         "mean_consistency_error": np.mean(all_errors),
         "std_consistency_error": np.std(all_errors),
         "max_consistency_error": np.max(all_errors),
         "resolutions_tested": resolutions,
     }
+
+    logger.info(
+        "resolution_independence_complete",
+        mean_error=float(results["mean_consistency_error"]),
+        max_error=float(results["max_consistency_error"]),
+    )
+
+    return results
 
 
 def main() -> None:

@@ -93,10 +93,22 @@ class PoissonSolver:
             charges_2d = charges
             grid_size = charges_2d.shape[0]
 
+        logger.debug(
+            "poisson_solve_start",
+            grid_size=grid_size,
+            use_spectral=self.use_spectral,
+            charge_range=(float(charges_2d.min()), float(charges_2d.max())),
+        )
+
         if self.use_spectral:
             potential_2d = self._solve_spectral(charges_2d)
         else:
             potential_2d = self._solve_iterative(charges_2d)
+
+        logger.debug(
+            "poisson_solve_complete",
+            potential_range=(float(potential_2d.min()), float(potential_2d.max())),
+        )
 
         # Return in same shape as input
         if charges.ndim == 1:
@@ -128,11 +140,19 @@ class PoissonSolver:
         ) / (h * h)
 
         # Avoid division by zero
+        n_regularized = np.sum(np.abs(eigenvalues) < self.regularization)
         eigenvalues = np.where(
             np.abs(eigenvalues) < self.regularization,
             self.regularization,
             eigenvalues,
         )
+
+        if n_regularized > 0:
+            logger.debug(
+                "poisson_spectral_regularized",
+                n_regularized=int(n_regularized),
+                regularization=self.regularization,
+            )
 
         # Solve in spectral domain
         potential_hat = rhs_hat / eigenvalues

@@ -18,12 +18,15 @@ Key constraints (from template):
 
 from __future__ import annotations
 
+import structlog
 import torch
 from torch import Tensor, nn
 
 from src.modeling.attention import GalerkinAttention
 from src.modeling.embeddings import FourierFeatures
 from src.modeling.fnet import FNetBlock
+
+logger = structlog.get_logger(__name__)
 
 
 class PhysicsOperator(nn.Module):
@@ -59,6 +62,17 @@ class PhysicsOperator(nn.Module):
 
         self.d_model = d_model
         self.use_fnet = use_fnet
+
+        logger.debug(
+            "physics_operator_init",
+            d_model=d_model,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            n_fourier_features=n_fourier_features,
+            fourier_scale=fourier_scale,
+            use_fnet=use_fnet,
+            dropout=dropout,
+        )
 
         # Fourier feature encoding for coordinates
         # Maps (x, y) → [sin(ωx), cos(ωx), sin(ωy), cos(ωy), ...]
@@ -112,6 +126,14 @@ class PhysicsOperator(nn.Module):
         """
         batch_size, n_points, _ = coords.shape
 
+        logger.debug(
+            "physics_operator_forward_start",
+            batch_size=batch_size,
+            n_points=n_points,
+            coords_shape=list(coords.shape),
+            charges_shape=list(charges.shape),
+        )
+
         # Encode coordinates with Fourier features
         coord_features = self.coord_encoder(coords)  # (B, N, 2*F)
 
@@ -134,6 +156,12 @@ class PhysicsOperator(nn.Module):
 
         # Output projection
         potential = self.output_head(x).squeeze(-1)  # (B, N)
+
+        logger.debug(
+            "physics_operator_forward_complete",
+            output_shape=list(potential.shape),
+            output_finite=bool(potential.isfinite().all()),
+        )
 
         return potential
 

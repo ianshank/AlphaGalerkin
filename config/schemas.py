@@ -177,7 +177,7 @@ class WandbConfig(BaseModel):
     log_model: bool = Field(default=True, description="Log model checkpoints as artifacts")
     log_gradients: bool = Field(default=False, description="Log gradient histograms")
     log_code: bool = Field(default=True, description="Log source code")
-    log_interval: int = Field(default=1, description="Steps between metric logging")
+    log_interval: int = Field(default=10, description="Steps between metric logging")
 
     # Model watching
     watch_model: bool = Field(default=False, description="Use wandb.watch() on model")

@@ -137,7 +137,7 @@ class Trainer:
             model=self.model,
             mcts_config=self.mcts_config,
             device=self.device,
-            board_sizes=getattr(config, "board_sizes", [9, 13, 19]),
+            board_sizes=config.board_sizes,
         )
 
         # Collator for batching
@@ -166,7 +166,7 @@ class Trainer:
             model=self.model,
             mcts_config=self.mcts_config,
             device=self.device,
-            board_sizes=getattr(config, "board_sizes", [9, 13, 19]),
+            board_sizes=config.board_sizes,
         )
 
         # Watch model with W&B if enabled
@@ -324,7 +324,7 @@ class Trainer:
             lbb_constant = output.lbb_constant.mean().item()
 
         # Convert grad_norm to float
-        grad_norm_float = float(grad_norm) if hasattr(grad_norm, "item") else grad_norm
+        grad_norm_float = grad_norm.item()
 
         return loss_output, lbb_constant, grad_norm_float
 
@@ -489,7 +489,7 @@ class Trainer:
         n_games = getattr(self.training_config, "eval_games", 20)
 
         # Evaluate on each board size
-        for board_size in getattr(self.config, "board_sizes", [9]):
+        for board_size in self.config.board_sizes:
             result = self.evaluator.evaluate_vs_random(
                 n_games=n_games,
                 board_size=board_size,

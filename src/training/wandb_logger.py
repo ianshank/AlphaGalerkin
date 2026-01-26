@@ -36,7 +36,7 @@ WandbMode = Literal["online", "offline", "disabled"]
 DEFAULT_PROJECT = "alphagalerkin"
 DEFAULT_JOB_TYPE = "train"
 DEFAULT_MODE: WandbMode = "online"
-DEFAULT_LOG_INTERVAL = 1
+DEFAULT_LOG_INTERVAL = 10
 DEFAULT_WATCH_LOG_FREQ = 100
 
 

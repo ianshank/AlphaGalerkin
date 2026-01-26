@@ -71,7 +71,7 @@ wandb:
   log_model: true
   log_gradients: false
   log_code: true
-  log_interval: 1
+  log_interval: 10
   watch_model: false
   watch_log_freq: 100
 

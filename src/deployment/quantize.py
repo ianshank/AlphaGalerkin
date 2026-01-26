@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 import torch
-from torch import Tensor
 
 from src.deployment.config import QuantizationConfig, QuantizationMode
 
@@ -51,9 +50,11 @@ class CalibrationDataReader:
             input_name: Name of the model input.
 
         """
-        self.data_generator = data_generator
         self.input_name = input_name
-        self._enum_data: list[dict[str, np.ndarray]] | None = None
+        self._enum_data: list[dict[str, np.ndarray]] = [
+            {input_name: data} for data in data_generator
+        ]
+        self._current_index: int = 0
 
     def get_next(self) -> dict[str, np.ndarray] | None:
         """Get next calibration sample.
@@ -62,19 +63,25 @@ class CalibrationDataReader:
             Dictionary mapping input name to numpy array, or None if exhausted.
 
         """
-        try:
-            data = next(self.data_generator)
-            return {self.input_name: data}
-        except StopIteration:
+        if self._current_index >= len(self._enum_data):
             return None
+        result = self._enum_data[self._current_index]
+        self._current_index += 1
+        return result
 
     def set_range(self, start_index: int, end_index: int) -> None:
-        """Set range for calibration (required interface method)."""
-        pass
+        """Set range for calibration (required interface method).
+
+        Args:
+            start_index: Index to start reading from.
+            end_index: End index (unused, kept for interface compatibility).
+
+        """
+        self._current_index = start_index
 
     def rewind(self) -> None:
-        """Rewind the data reader (required interface method)."""
-        pass
+        """Rewind the data reader to the beginning."""
+        self._current_index = 0
 
 
 class ModelQuantizer:
@@ -169,8 +176,7 @@ class ModelQuantizer:
 
         """
         try:
-            from onnxruntime.quantization import quantize_dynamic
-            from onnxruntime.quantization import QuantType
+            from onnxruntime.quantization import QuantType, quantize_dynamic
 
             weight_type = self._get_quant_type(self.config.weight_type)
 
@@ -206,10 +212,12 @@ class ModelQuantizer:
 
         """
         try:
-            from onnxruntime.quantization import quantize_static
-            from onnxruntime.quantization import CalibrationMethod
-            from onnxruntime.quantization import QuantFormat
-            from onnxruntime.quantization import QuantType
+            from onnxruntime.quantization import (
+                CalibrationMethod,
+                QuantFormat,
+                QuantType,
+                quantize_static,
+            )
 
             # Create calibration data reader
             calibration_reader = CalibrationDataReader(

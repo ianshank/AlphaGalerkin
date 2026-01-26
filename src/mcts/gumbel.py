@@ -24,7 +24,6 @@ import numpy as np
 import structlog
 import torch
 from pydantic import BaseModel, ConfigDict, Field
-from torch import Tensor
 
 if TYPE_CHECKING:
     from src.games.interface import GameInterface
@@ -365,7 +364,7 @@ class GumbelMCTS:
         """
         remaining_actions = actions.copy()
         remaining_budget = total_simulations
-        visit_counts: dict[int, int] = {a: 0 for a in actions}
+        visit_counts: dict[int, int] = dict.fromkeys(actions, 0)
 
         while len(remaining_actions) > 1 and remaining_budget > 0:
             # Allocate simulations uniformly
@@ -404,7 +403,7 @@ class GumbelMCTS:
                 scores.append((score, action))
 
             scores.sort(reverse=True)
-            remaining_actions = [a for _, a in scores[: len(scores) // 2 + 1]]
+            remaining_actions = [a for _, a in scores[: len(scores) // 2]]
 
         # Select best action
         best_action = max(

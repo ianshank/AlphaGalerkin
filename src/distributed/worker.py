@@ -15,7 +15,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -129,6 +129,14 @@ class SelfPlayWorker:
         experiences: list[Experience] = []
         game_times = []
 
+        # Create internal self-play worker once and reuse for all games
+        spw = SPW(
+            model=self.model,
+            mcts_config=self.mcts_config,
+            device=self.device,
+            board_sizes=board_sizes,
+        )
+
         self.model.eval()
         with torch.no_grad():
             for _ in range(n_games):
@@ -140,13 +148,8 @@ class SelfPlayWorker:
                 # Select random board size
                 board_size = choice(board_sizes)
 
-                # Create internal self-play worker for this game
-                spw = SPW(
-                    model=self.model,
-                    mcts_config=self.mcts_config,
-                    device=self.device,
-                    board_sizes=[board_size],
-                )
+                # Update board_sizes for this game (reusing worker instance)
+                spw.board_sizes = [board_size]
 
                 # Generate experiences from one game
                 game_experiences = spw.generate_experiences(1)

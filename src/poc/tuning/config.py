@@ -61,7 +61,34 @@ class SearchSpace(BaseModel):
     @field_validator("type")
     @classmethod
     def validate_bounds(cls, v: str, info: Any) -> str:
-        """Validate bounds based on type."""
+        """Validate bounds based on type.
+
+        For float/int types:
+            - Verifies low < high
+            - Verifies log_scale requires positive bounds (low > 0)
+        For categorical type:
+            - Verifies choices is non-empty
+
+        Args:
+            v: The type value being validated.
+            info: Validation info containing other field values.
+
+        Returns:
+            The validated type value.
+
+        Raises:
+            ValueError: If validation fails.
+
+        """
+        data = info.data if hasattr(info, "data") else {}
+        if v in ("float", "int"):
+            low, high = data.get("low"), data.get("high")
+            if low is not None and high is not None and low >= high:
+                raise ValueError(f"low ({low}) must be < high ({high})")
+            if data.get("log_scale") and low is not None and low <= 0:
+                raise ValueError(f"log_scale requires low > 0, got {low}")
+        elif v == "categorical" and not data.get("choices"):
+            raise ValueError("categorical type requires non-empty 'choices'")
         return v
 
     def sample_random(self) -> Any:

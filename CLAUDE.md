@@ -47,6 +47,8 @@ Monitors LBB condition during training:
 - [2026-01-26]: PhysicsOperator neural network for influence field prediction.
 - [2026-01-26]: Zero-shot transfer validation: Train on 9x9 → Evaluate on 19x19.
 - [2026-01-26]: Success criterion: MSE < 0.05 on 19x19 without retraining.
+- [2026-01-26]: **MILESTONE ACHIEVED**: Zero-shot transfer MSE = 0.000209 (240x better than threshold)
+- [2026-01-26]: Added W&B integration for experiment tracking (--wandb flag).
 
 ## PoC Scenario Framework
 - [2026-01-26]: Added configuration-driven PoC scenario framework (src/poc/).
@@ -55,6 +57,42 @@ Monitors LBB condition during training:
 - [2026-01-26]: Structured logging via structlog throughout.
 - [2026-01-26]: C4 architecture documentation in docs/architecture/c4_model.md.
 - [2026-01-26]: Added comprehensive C4 architecture in Mermaid format (docs/architecture/c4_mermaid.md).
+
+## Milestones
+- [2026-01-26]: **Zero-Shot Transfer Validated** - Physics PoC achieved MSE 0.000209 on 19x19 (trained on 9x9)
+- [2026-01-26]: **Training Pipeline Operational** - End-to-end GPU training with MCTS self-play working
+
+## Next-Phase Infrastructure (v2.0)
+
+### Distributed Training (src/distributed/)
+- [2026-01-26]: Multi-node training via PyTorch DDP with NCCL backend.
+- [2026-01-26]: Gradient synchronization with accumulation and compression support.
+- [2026-01-26]: Distributed self-play coordination across nodes.
+- [2026-01-26]: Model zoo for checkpoint management and curriculum learning.
+- [2026-01-26]: Support for torchrun, SLURM, and custom launchers.
+
+### ONNX Export (src/deployment/)
+- [2026-01-26]: PyTorch to ONNX conversion with dynamic shape support.
+- [2026-01-26]: Quantization support (dynamic/static) for edge deployment.
+- [2026-01-26]: ONNX Runtime inference wrapper with multi-provider support.
+- [2026-01-26]: Model validation against PyTorch outputs.
+
+### Multi-Game Support (src/games/)
+- [2026-01-26]: Abstract GameInterface for game-agnostic architecture.
+- [2026-01-26]: Game registry with decorator-based registration.
+- [2026-01-26]: Go implementation with full rules (Chinese scoring, superko).
+- [2026-01-26]: 8-fold symmetry support for data augmentation.
+
+### Advanced MCTS (src/mcts/)
+- [2026-01-26]: Gumbel AlphaZero implementation with sequential halving.
+- [2026-01-26]: Improved policy targets via completed Q-values.
+- [2026-01-26]: Gumbel-Top-k sampling for exploration.
+
+### Enhanced PoC Framework (src/poc/tuning/, src/poc/statistics/)
+- [2026-01-26]: Hyperparameter tuning with TPE, grid, and random samplers.
+- [2026-01-26]: Statistical significance testing (t-test, Mann-Whitney, bootstrap).
+- [2026-01-26]: Effect size calculations (Cohen's d, Hedges' g, Cliff's delta).
+- [2026-01-26]: Multiple comparison corrections (Bonferroni, Holm, FDR).
 
 ## Known Issues
 - [None yet]
@@ -101,6 +139,9 @@ python -m scripts.train device=cuda experiment_name=my_experiment
 ```bash
 # Train physics operator on Poisson data (supervised learning)
 python -m src.experiments.train_physics
+
+# Train with W&B logging
+python -m src.experiments.train_physics --wandb
 
 # Custom training configuration
 python -m src.experiments.train_physics --train-size 9 --eval-size 19 --n-epochs 100
@@ -151,12 +192,89 @@ python -m src.poc.cli compare run_a run_b
 pytest tests/poc/ -v
 ```
 
+## Distributed Training Commands
+```bash
+# Launch distributed training with torchrun (4 GPUs)
+torchrun --nproc_per_node=4 scripts/train_distributed.py
+
+# Multi-node training (2 nodes, 4 GPUs each)
+torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \
+    --master_addr=<MASTER_IP> scripts/train_distributed.py
+
+# Unit tests for distributed module
+pytest tests/distributed/ -v
+```
+
+## ONNX Export Commands
+```bash
+# Export model to ONNX
+python -m src.deployment.export_onnx \
+    --checkpoint path/to/model.pt \
+    --output model.onnx
+
+# Export with quantization
+python -m src.deployment.export_onnx \
+    --checkpoint path/to/model.pt \
+    --output model_int8.onnx \
+    --quantize dynamic
+
+# Validate exported model
+python -m src.deployment.validate \
+    --pytorch path/to/model.pt \
+    --onnx model.onnx
+
+# Unit tests for deployment module
+pytest tests/deployment/ -v
+```
+
+## Multi-Game Commands
+```bash
+# Train on Go (default)
+python -m scripts.train game=go
+
+# List registered games
+python -c "from src.games import GameRegistry; print(GameRegistry().list_games())"
+
+# Unit tests for games module
+pytest tests/games/ -v
+```
+
+## Hyperparameter Tuning Commands
+```bash
+# Run hyperparameter tuning for transfer scenario
+python -c "
+from src.poc.tuning import HyperparameterTuner, TuningConfig
+from src.poc.scenarios.transfer import TransferScenario
+
+config = TuningConfig(
+    n_trials=50,
+    sampler='tpe',
+    search_space={
+        'd_model': {'type': 'int', 'low': 64, 'high': 256, 'log_scale': True},
+        'learning_rate': {'type': 'float', 'low': 1e-5, 'high': 1e-2, 'log_scale': True},
+    }
+)
+tuner = HyperparameterTuner(config, TransferScenario)
+result = tuner.tune()
+print(f'Best params: {result.best_params}')
+"
+
+# Statistical comparison of two runs
+python -c "
+from src.poc.statistics import StatisticalAnalyzer
+analyzer = StatisticalAnalyzer()
+result = analyzer.compare_runs([0.05, 0.04, 0.06], [0.03, 0.02, 0.04])
+print(f'p-value: {result.p_value}, significant: {result.is_significant}')
+"
+```
+
 ## Directory Structure
 ```
 src/
   modeling/     - Neural architectures and layers
   math_kernel/  - Basis functions, integral approximations
   mcts/         - Monte Carlo Tree Search logic
+    gumbel.py         - Gumbel AlphaZero MCTS implementation
   tools/        - Verification and utility scripts
   training/     - Training infrastructure
     loss.py           - AlphaGalerkinLoss (policy + value + LBB)
@@ -175,6 +293,24 @@ src/
     train_physics.py  - Supervised learning on Poisson data
     verify_transfer.py - Zero-shot transfer verification
     benchmark_fnet.py - FNet O(N log N) speed benchmark
+  distributed/  - Distributed training infrastructure
+    config.py         - Pydantic distributed config schemas
+    trainer.py        - DistributedTrainer with DDP
+    gradient_sync.py  - NCCL gradient synchronization
+    launcher.py       - torchrun/SLURM launcher utilities
+    worker.py         - Distributed self-play workers
+    model_zoo.py      - Model checkpoint management
+  deployment/   - Model export and deployment
+    config.py         - Export/quantization config schemas
+    export_onnx.py    - PyTorch to ONNX conversion
+    quantize.py       - Model quantization utilities
+    runtime.py        - ONNX Runtime inference wrapper
+    validate.py       - Export validation tools
+  games/        - Multi-game support
+    interface.py      - Abstract GameInterface base class
+    registry.py       - Game registration and discovery
+    state.py          - Generic game state representation
+    go.py             - Go game implementation
   poc/          - PoC scenario framework
     config.py         - Pydantic configuration schemas
     registry.py       - Scenario registration and discovery
@@ -186,6 +322,12 @@ src/
       transfer.py     - Zero-shot transfer scenario
       complexity.py   - O(N) complexity benchmark
       stability.py    - LBB stability monitoring
+    tuning/           - Hyperparameter tuning
+      config.py       - Tuning configuration schemas
+      sampler.py      - Parameter samplers (TPE, grid, random)
+      tuner.py        - HyperparameterTuner orchestrator
+    statistics/       - Statistical analysis
+      significance.py - Significance testing & effect sizes
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests
@@ -196,6 +338,12 @@ tests/
     test_registry.py  - Scenario registration tests
     test_runner.py    - Runner execution tests
     test_results.py   - Result collection tests
+  distributed/  - Distributed training tests
+    test_config.py    - Config validation tests
+  deployment/   - Deployment tests
+    test_config.py    - Export/quantization config tests
+  games/        - Multi-game tests
+    test_go.py        - Go implementation tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config
@@ -206,6 +354,7 @@ config/         - Hydra/Pydantic configuration schemas
 docs/           - Documentation
   architecture/       - C4 architecture diagrams
     c4_model.md       - C4 model documentation
+  IMPLEMENTATION_PLAN.md - Next-phase implementation plan
   PROMPT_TEMPLATE.md  - Agentic coding prompt template
 scripts/        - CLI entry points
   train.py            - Training CLI with Hydra

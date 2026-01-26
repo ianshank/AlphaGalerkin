@@ -374,8 +374,9 @@ class Trainer:
         for step in range(start_step, start_step + n_steps):
             step_start = time.time()
 
-            # Periodically add more games
-            if step > 0 and step % (checkpoint_interval // 2) == 0:
+            # Periodically add more games (at half the checkpoint interval)
+            self_play_interval = max(checkpoint_interval // 2, 1)
+            if step > 0 and step % self_play_interval == 0:
                 self.model.eval()
                 new_experiences = self.self_play_worker.generate_experiences(
                     self.training_config.n_self_play_games // 2

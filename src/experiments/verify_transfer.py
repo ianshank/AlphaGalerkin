@@ -255,7 +255,7 @@ def run_verification(
         )
         results.append(result)
 
-        status = "✓ PASS" if result.passed else "✗ FAIL"
+        status = "[PASS]" if result.passed else "[FAIL]"
         logger.info(
             "transfer_result",
             eval_size=eval_size,
@@ -306,14 +306,14 @@ def run_verification(
     print("-" * 46)
 
     for r in results:
-        status = "✓ PASS" if r.passed else "✗ FAIL"
+        status = "[PASS]" if r.passed else "[FAIL]"
         print(f"{r.eval_size}x{r.eval_size:<7} {r.mse:<12.6f} {r.rmse:<12.6f} {status}")
 
     print()
     if all_passed:
-        print("✓ ALL TESTS PASSED - Zero-shot transfer verified!")
+        print("[PASS] ALL TESTS PASSED - Zero-shot transfer verified!")
     else:
-        print("✗ SOME TESTS FAILED - Zero-shot transfer not achieved")
+        print("[FAIL] SOME TESTS FAILED - Zero-shot transfer not achieved")
     print("=" * 60)
 
     # Save results

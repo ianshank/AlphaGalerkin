@@ -14,7 +14,6 @@ when W&B is unavailable or initialization fails.
 from __future__ import annotations
 
 import atexit
-import contextlib
 import threading
 from enum import Enum
 from pathlib import Path
@@ -68,6 +67,7 @@ class WandbLogger:
         >>> wandb_logger = create_wandb_logger(config.model_dump())
         >>> wandb_logger.log_metrics({"loss": 0.5}, step=1)
         >>> wandb_logger.finish()
+
     """
 
     def __init__(
@@ -80,6 +80,7 @@ class WandbLogger:
         Args:
             config: W&B configuration dictionary with fields matching WandbConfig.
             training_config: Full training configuration to log.
+
         """
         self._config = config or {}
         self._training_config = training_config or {}
@@ -131,6 +132,7 @@ class WandbLogger:
 
         Returns:
             A list of strings (empty list if value is None or invalid).
+
         """
         if value is None:
             return []
@@ -227,6 +229,7 @@ class WandbLogger:
 
         Returns:
             True if W&B is enabled and successfully initialized.
+
         """
         with self._lock:
             return self._enabled and self._initialized and not self._finished
@@ -237,6 +240,7 @@ class WandbLogger:
 
         Returns:
             The W&B run object, or None if not initialized.
+
         """
         with self._lock:
             return self._run
@@ -247,6 +251,7 @@ class WandbLogger:
 
         Returns:
             The run ID string, or None if not initialized.
+
         """
         with self._lock:
             return self._run.id if self._run else None
@@ -257,6 +262,7 @@ class WandbLogger:
 
         Returns:
             The run name string, or None if not initialized.
+
         """
         with self._lock:
             return self._run.name if self._run else None
@@ -266,6 +272,7 @@ class WandbLogger:
 
         Args:
             offset: Step number to start from.
+
         """
         with self._lock:
             self._step_offset = offset
@@ -276,6 +283,7 @@ class WandbLogger:
 
         Args:
             model: PyTorch model to watch.
+
         """
         if not self.is_enabled or not self._watch_model_enabled:
             return
@@ -303,6 +311,7 @@ class WandbLogger:
 
         Returns:
             Step with offset applied, or None if input is None.
+
         """
         if step is None:
             return None
@@ -318,6 +327,7 @@ class WandbLogger:
         Args:
             metrics: Training metrics dataclass.
             commit: Whether to commit the log (advance step).
+
         """
         if not self.is_enabled:
             return
@@ -360,6 +370,7 @@ class WandbLogger:
             result: Evaluation result dataclass.
             prefix: Metric prefix (e.g., 'eval', 'eval/9x9').
             step: Training step (None for current).
+
         """
         if not self.is_enabled:
             return
@@ -401,6 +412,7 @@ class WandbLogger:
             value_std: Std of target values in buffer.
             board_size_distribution: Distribution of board sizes.
             step: Training step.
+
         """
         if not self.is_enabled:
             return
@@ -434,6 +446,7 @@ class WandbLogger:
             metrics: Dictionary of metrics.
             step: Training step.
             commit: Whether to commit the log.
+
         """
         if not self.is_enabled:
             return
@@ -453,6 +466,7 @@ class WandbLogger:
             data: Data dictionary to log.
             step: Training step.
             commit: Whether to commit the log.
+
         """
         if not self.is_enabled:
             return
@@ -474,6 +488,7 @@ class WandbLogger:
             key: Metric key.
             values: Array of values.
             step: Training step.
+
         """
         if not self.is_enabled:
             return
@@ -498,6 +513,7 @@ class WandbLogger:
             name: Artifact name.
             metadata: Additional metadata.
             aliases: Artifact aliases (e.g., ['best', 'latest']).
+
         """
         if not self.is_enabled or not self._log_model:
             return
@@ -525,6 +541,7 @@ class WandbLogger:
 
         Args:
             config_updates: Configuration updates.
+
         """
         if not self.is_enabled:
             return
@@ -539,6 +556,7 @@ class WandbLogger:
 
         Args:
             summary: Summary metrics.
+
         """
         if not self.is_enabled:
             return
@@ -568,6 +586,7 @@ class WandbLogger:
             columns: Column names.
             data: Table data (list of rows).
             step: Training step.
+
         """
         if not self.is_enabled:
             return
@@ -593,6 +612,7 @@ class WandbLogger:
             step_metric: Step metric to use.
             summary: Summary type ('min', 'max', 'mean', 'last', 'none').
             goal: Goal for optimization ('minimize', 'maximize').
+
         """
         if not self.is_enabled:
             return
@@ -620,6 +640,7 @@ class WandbLogger:
             title: Alert title.
             text: Alert text.
             level: Alert level ('INFO', 'WARN', 'ERROR').
+
         """
         if not self.is_enabled:
             return
@@ -677,5 +698,6 @@ def create_wandb_logger(
         >>> from config.schemas import WandbConfig
         >>> config = WandbConfig(enabled=True, project="my-project")
         >>> wandb_logger = create_wandb_logger(config.model_dump())
+
     """
     return WandbLogger(config=wandb_config, training_config=training_config)

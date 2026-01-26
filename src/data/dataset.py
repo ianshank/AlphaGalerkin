@@ -12,8 +12,10 @@ from typing import TYPE_CHECKING
 import torch
 from torch.utils.data import Dataset, IterableDataset, Sampler
 
+from src.training.replay_buffer import Experience
+
 if TYPE_CHECKING:
-    from src.training.replay_buffer import Experience, ReplayBuffer
+    from src.training.replay_buffer import ReplayBuffer
 
 
 class ReplayDataset(Dataset):
@@ -153,7 +155,7 @@ class BoardSizeBatchSampler(Sampler):
         """
         all_batches = []
 
-        for size, indices in self.size_to_indices.items():
+        for _size, indices in self.size_to_indices.items():
             if self.shuffle:
                 import random
                 indices = indices.copy()

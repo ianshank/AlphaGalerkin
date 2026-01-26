@@ -318,6 +318,21 @@ class SimpleGoGame:
         """Check if game is over."""
         return self.is_game_over()
 
+    def apply_action(self, action: int) -> None:
+        """Apply action to game state.
+
+        Args:
+            action: Action index (0 to board_size^2-1 for moves, board_size^2 for pass).
+
+        """
+        pass_action = self.board_size ** 2
+        if action == pass_action:
+            self.play_pass()
+        else:
+            row = action // self.board_size
+            col = action % self.board_size
+            self.play(row, col)
+
 
 class GTPEngine:
     """GTP engine for AlphaGalerkin."""

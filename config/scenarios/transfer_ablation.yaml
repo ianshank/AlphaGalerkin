@@ -1,0 +1,146 @@
+# Transfer Scenario Ablation Study
+# Tests different configurations to understand what matters for transfer
+# Run with: python -m src.poc.cli run --config config/scenarios/transfer_ablation.yaml
+
+defaults:
+  seed: 42
+  timeout_seconds: 3600
+
+scenarios:
+  # Baseline: Standard configuration
+  - name: transfer
+    description: "Baseline transfer (standard config)"
+    tier: integration
+    enabled: true
+
+    train_resolution: 9
+    eval_resolutions: [9, 13, 19]
+    primary_eval_resolution: 19
+
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_epochs: 100
+
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 64
+    fourier_scale: 10.0
+    use_fnet: true
+
+    mse_threshold: 0.05
+
+  # Ablation 1: Without FNet mixing
+  - name: transfer
+    description: "Ablation: No FNet mixing layers"
+    tier: integration
+    enabled: true
+
+    train_resolution: 9
+    eval_resolutions: [9, 13, 19]
+    primary_eval_resolution: 19
+
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_epochs: 100
+
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 64
+    fourier_scale: 10.0
+    use_fnet: false  # KEY DIFFERENCE
+
+    mse_threshold: 0.10  # May be worse without FNet
+
+  # Ablation 2: Fewer Fourier features
+  - name: transfer
+    description: "Ablation: Reduced Fourier features (32 vs 64)"
+    tier: integration
+    enabled: true
+
+    train_resolution: 9
+    eval_resolutions: [9, 13, 19]
+    primary_eval_resolution: 19
+
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_epochs: 100
+
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 32  # KEY DIFFERENCE
+    fourier_scale: 10.0
+    use_fnet: true
+
+    mse_threshold: 0.08
+
+  # Ablation 3: Different Fourier scale
+  - name: transfer
+    description: "Ablation: Lower Fourier scale (1.0 vs 10.0)"
+    tier: integration
+    enabled: true
+
+    train_resolution: 9
+    eval_resolutions: [9, 13, 19]
+    primary_eval_resolution: 19
+
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_epochs: 100
+
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 64
+    fourier_scale: 1.0  # KEY DIFFERENCE
+    use_fnet: true
+
+    mse_threshold: 0.10
+
+  # Ablation 4: Deeper model
+  - name: transfer
+    description: "Ablation: Deeper model (8 layers vs 4)"
+    tier: integration
+    enabled: true
+
+    train_resolution: 9
+    eval_resolutions: [9, 13, 19]
+    primary_eval_resolution: 19
+
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_epochs: 100
+
+    d_model: 128
+    n_heads: 4
+    n_layers: 8  # KEY DIFFERENCE
+    n_fourier_features: 64
+    fourier_scale: 10.0
+    use_fnet: true
+
+    mse_threshold: 0.04  # May be better with more capacity
+
+  # Ablation 5: Larger training resolution
+  - name: transfer
+    description: "Ablation: Train on 13x13 instead of 9x9"
+    tier: integration
+    enabled: true
+
+    train_resolution: 13  # KEY DIFFERENCE
+    eval_resolutions: [9, 13, 19, 25]
+    primary_eval_resolution: 19
+
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_epochs: 100
+
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 64
+    fourier_scale: 10.0
+    use_fnet: true
+
+    mse_threshold: 0.03  # May be better with more training resolution

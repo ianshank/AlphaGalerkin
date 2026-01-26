@@ -361,7 +361,7 @@ C4Component
 | **Fourier Basis** | $\phi_k(x) = e^{2\pi i k \cdot x}$ | Resolution-independent encoding |
 | **Galerkin Projection** | $\langle Lu, v \rangle = \langle f, v \rangle$ | O(N) operator approximation |
 | **Spectral Filter** | Low-pass filter in frequency domain | Anti-aliasing for transfer |
-| **LBB Checker** | $\inf_u \sup_v \frac{\langle Lu, v \rangle}{\\|u\\| \\|v\\|} \geq \beta$ | Stability guarantee |
+| **LBB Checker** | $\inf_u \sup_v \frac{\langle Lu, v \rangle}{\|u\| \|v\|} \geq \beta$ | Stability guarantee |
 | **Fredholm Kernel** | $u(x) = \int K(x,y) f(y) dy$ | Influence field modeling |
 | **Monte Carlo Integral** | $\frac{1}{n} \sum_{i=1}^n f(x_i)$ | Numerical integration |
 

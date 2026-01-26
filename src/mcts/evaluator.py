@@ -10,8 +10,6 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 import numpy as np
 import torch
-from jaxtyping import Float
-from torch import Tensor
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -42,6 +40,7 @@ class Evaluator(Protocol):
 
         Returns:
             Policy and value estimates.
+
         """
         ...
 
@@ -58,6 +57,7 @@ class Evaluator(Protocol):
 
         Returns:
             List of policy and value estimates.
+
         """
         ...
 
@@ -83,6 +83,7 @@ class FNetEvaluator:
             device: Device for inference.
             use_fast_path: Use fast FNet-only path.
             temperature: Policy temperature.
+
         """
         self.model = model
         self.device = torch.device(device)
@@ -106,6 +107,7 @@ class FNetEvaluator:
 
         Returns:
             Policy and value estimates.
+
         """
         # Convert to tensor and add batch dimension
         state_tensor = torch.from_numpy(state).unsqueeze(0).to(self.device)
@@ -139,6 +141,7 @@ class FNetEvaluator:
 
         Returns:
             List of policy and value estimates.
+
         """
         if not states:
             return []
@@ -182,6 +185,7 @@ class FNetEvaluator:
 
         Returns:
             Probability distribution over all actions.
+
         """
         # Mask illegal actions
         mask = np.full(len(logits), float("-inf"))
@@ -212,6 +216,7 @@ class RandomEvaluator:
 
         Args:
             n_actions: Total number of possible actions.
+
         """
         self.n_actions = n_actions
 
@@ -228,6 +233,7 @@ class RandomEvaluator:
 
         Returns:
             Uniform random policy and zero value.
+
         """
         policy = np.zeros(self.n_actions, dtype=np.float32)
         if legal_actions:
@@ -250,6 +256,7 @@ class RandomEvaluator:
 
         Returns:
             List of random evaluations.
+
         """
         return [
             self.evaluate(s, la)

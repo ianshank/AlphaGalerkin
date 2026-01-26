@@ -32,6 +32,7 @@ class FNetMixing(nn.Module):
 
         Args:
             use_2d: Use 2D FFT (for board-like data) or 1D (for sequences).
+
         """
         super().__init__()
         self.use_2d = use_2d
@@ -49,6 +50,7 @@ class FNetMixing(nn.Module):
 
         Returns:
             Mixed tensor.
+
         """
         if self.use_2d and board_size is not None:
             return self._mix_2d(x, board_size)
@@ -66,6 +68,7 @@ class FNetMixing(nn.Module):
 
         Returns:
             Mixed tensor.
+
         """
         # FFT along sequence dimension
         x_freq = torch.fft.rfft(x, dim=1)
@@ -104,6 +107,7 @@ class FNetMixing(nn.Module):
 
         Returns:
             Mixed tensor.
+
         """
         batch, n, d = x.shape
 
@@ -151,6 +155,7 @@ class FNetBlock(nn.Module):
             d_ffn: Feed-forward network dimension (default: 4 * d_model).
             dropout: Dropout rate.
             use_2d_fft: Use 2D FFT for spatial mixing.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -185,6 +190,7 @@ class FNetBlock(nn.Module):
 
         Returns:
             Output tensor.
+
         """
         # FFT mixing with residual
         x_norm = self.norm1(x)
@@ -221,6 +227,7 @@ class FNetStack(nn.Module):
             d_ffn: Feed-forward dimension.
             dropout: Dropout rate.
             use_2d_fft: Use 2D FFT for spatial mixing.
+
         """
         super().__init__()
         self.layers = nn.ModuleList([
@@ -241,6 +248,7 @@ class FNetStack(nn.Module):
 
         Returns:
             Output tensor.
+
         """
         for layer in self.layers:
             x = layer(x, board_size)
@@ -273,6 +281,7 @@ class GalerkinFNetHybrid(nn.Module):
             d_ffn: Feed-forward dimension.
             dropout: Dropout rate.
             fnet_ratio: Ratio of FNet to Galerkin output.
+
         """
         super().__init__()
 
@@ -300,6 +309,7 @@ class GalerkinFNetHybrid(nn.Module):
 
         Returns:
             Combined output.
+
         """
         # Apply both pathways
         galerkin_out = self.galerkin(x)

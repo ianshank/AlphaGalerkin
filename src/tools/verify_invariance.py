@@ -40,6 +40,7 @@ def create_synthetic_input(
 
     Returns:
         Random input tensor.
+
     """
     return torch.randn(
         batch_size, input_channels, board_size, board_size, device=device
@@ -62,6 +63,7 @@ def verify_forward_pass(
 
     Returns:
         Dictionary with verification results.
+
     """
     model.eval()
     device = device or next(model.parameters()).device
@@ -152,6 +154,7 @@ def verify_lbb_stability(
 
     Returns:
         Dictionary with LBB verification results.
+
     """
     model.eval()
     device = device or next(model.parameters()).device
@@ -216,6 +219,7 @@ def verify_semantic_validity(
 
     Returns:
         Verification results.
+
     """
     model.eval()
     device = device or next(model.parameters()).device
@@ -294,6 +298,7 @@ def run_verification(
 
     Returns:
         True if all verifications pass, False otherwise.
+
     """
     logger.info(
         "starting_verification",

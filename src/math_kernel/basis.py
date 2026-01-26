@@ -31,6 +31,7 @@ class BasisFunction(Protocol):
 
         Returns:
             Basis function evaluations at each coordinate.
+
         """
         ...
 
@@ -59,6 +60,7 @@ class FourierBasis(nn.Module):
             n_features: Number of Fourier features (output dimension // 2).
             scale: Standard deviation for frequency sampling.
             learnable: Whether to make frequencies learnable.
+
         """
         super().__init__()
         self.n_features = n_features
@@ -83,6 +85,7 @@ class FourierBasis(nn.Module):
 
         Returns:
             Fourier features of shape (batch, n, 2*n_features).
+
         """
         # Project coordinates onto frequency basis
         # coords: (batch, n, 2), b_matrix: (2, n_features)
@@ -123,13 +126,14 @@ class ChebyshevBasis(nn.Module):
 
         Args:
             max_degree: Maximum polynomial degree.
+
         """
         super().__init__()
         self.max_degree = max_degree
 
     def _chebyshev_1d(
         self,
-        x: Float[Tensor, "..."],
+        x: Float[Tensor, ...],
         max_degree: int,
     ) -> Float[Tensor, "... degree"]:
         """Evaluate 1D Chebyshev polynomials.
@@ -140,6 +144,7 @@ class ChebyshevBasis(nn.Module):
 
         Returns:
             Chebyshev polynomial values for degrees 0 to max_degree-1.
+
         """
         # Recurrence relation
         polynomials = [torch.ones_like(x)]  # T_0 = 1
@@ -165,6 +170,7 @@ class ChebyshevBasis(nn.Module):
 
         Returns:
             Tensor product of Chebyshev polynomials.
+
         """
         # Map [0, 1] to [-1, 1] for Chebyshev domain
         x = 2 * coords[..., 0] - 1
@@ -207,6 +213,7 @@ def create_grid_coordinates(
 
     Returns:
         Normalized coordinates of shape (batch, board_size^2, 2).
+
     """
     # Create grid indices
     indices = torch.arange(board_size, device=device, dtype=torch.float32)

@@ -9,18 +9,16 @@ Implements PUCT-based MCTS with:
 
 from __future__ import annotations
 
-import math
-from typing import TYPE_CHECKING, Callable, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
-from jaxtyping import Float
 
 from src.mcts.node import MCTSNode
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from src.mcts.evaluator import EvaluationResult, Evaluator
+    from src.mcts.evaluator import Evaluator
 
 
 class GameInterface(Protocol):
@@ -76,6 +74,7 @@ class MCTS:
             dirichlet_alpha: Dirichlet noise concentration.
             dirichlet_epsilon: Dirichlet noise mixing weight.
             virtual_loss: Virtual loss for parallel search.
+
         """
         self.evaluator = evaluator
         self.c_puct = c_puct
@@ -100,6 +99,7 @@ class MCTS:
 
         Returns:
             Dictionary mapping actions to visit probabilities.
+
         """
         # Initialize or reuse root
         root = self._get_or_create_root(game)
@@ -130,6 +130,7 @@ class MCTS:
 
         Returns:
             Selected action.
+
         """
         # Run search
         self.search(game, add_noise)
@@ -159,6 +160,7 @@ class MCTS:
 
         Args:
             action: Action that was taken.
+
         """
         if self._root is not None:
             self._root = self._root.prune_except(action)
@@ -178,6 +180,7 @@ class MCTS:
 
         Returns:
             Root node.
+
         """
         if self._root is None:
             self._root = MCTSNode()
@@ -201,6 +204,7 @@ class MCTS:
 
         Returns:
             Value estimate from the simulation.
+
         """
         node = root
         path: list[MCTSNode] = [node]
@@ -246,6 +250,7 @@ class MCTS:
 
         Returns:
             Value estimate from neural network.
+
         """
         state = game.get_state()
         legal_actions = game.get_legal_actions()
@@ -281,6 +286,7 @@ class MCTS:
 
         Returns:
             Value estimate.
+
         """
         return self._expand_node(node, game)
 
@@ -294,6 +300,7 @@ class MCTS:
 
         Args:
             root: Root node.
+
         """
         n_actions = len(root.children)
         if n_actions == 0:
@@ -314,6 +321,7 @@ class MCTS:
 
         Returns:
             List of best actions from root.
+
         """
         if self._root is None:
             return []
@@ -324,6 +332,7 @@ class MCTS:
 
         Returns:
             Root Q-value.
+
         """
         if self._root is None:
             return 0.0
@@ -349,6 +358,7 @@ class BatchMCTS(MCTS):
             evaluator: Neural network evaluator.
             batch_size: Number of leaves to batch.
             **kwargs: Additional MCTS arguments.
+
         """
         super().__init__(evaluator, **kwargs)
         self.batch_size = batch_size
@@ -366,6 +376,7 @@ class BatchMCTS(MCTS):
 
         Returns:
             Action visit distribution.
+
         """
         root = self._get_or_create_root(game)
 
@@ -394,6 +405,7 @@ class BatchMCTS(MCTS):
             root: Root node.
             game: Base game state.
             batch_size: Number of simulations.
+
         """
         # Collect leaves to evaluate
         leaves: list[tuple[MCTSNode, GameInterface]] = []

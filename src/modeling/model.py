@@ -10,11 +10,9 @@ The model is resolution-independent: trained on 9x9, runs on 19x19.
 
 from __future__ import annotations
 
-import math
 from typing import NamedTuple
 
 import torch
-from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 
@@ -32,7 +30,7 @@ class ModelOutput(NamedTuple):
 
     policy_logits: Float[Tensor, "batch n+1"]  # +1 for pass move
     value: Float[Tensor, "batch 1"]
-    lbb_constant: Float[Tensor, "batch"] | None
+    lbb_constant: Float[Tensor, batch] | None
 
 
 class GalerkinBlock(nn.Module):
@@ -54,6 +52,7 @@ class GalerkinBlock(nn.Module):
             d_ffn: Feed-forward dimension.
             dropout: Dropout rate.
             norm_type: Normalization type.
+
         """
         super().__init__()
         d_ffn = d_ffn or 4 * d_model
@@ -87,7 +86,7 @@ class GalerkinBlock(nn.Module):
         self,
         x: Float[Tensor, "batch n d"],
         return_lbb: bool = False,
-    ) -> Float[Tensor, "batch n d"] | tuple[Float[Tensor, "batch n d"], Float[Tensor, "batch"]]:
+    ) -> Float[Tensor, "batch n d"] | tuple[Float[Tensor, "batch n d"], Float[Tensor, batch]]:
         """Forward pass through Galerkin block.
 
         Args:
@@ -96,6 +95,7 @@ class GalerkinBlock(nn.Module):
 
         Returns:
             Output tensor, optionally with LBB constant.
+
         """
         # Attention with residual
         x_norm = self.norm1(x)
@@ -133,6 +133,7 @@ class SoftmaxBlock(nn.Module):
             n_heads: Number of attention heads.
             d_ffn: Feed-forward dimension.
             dropout: Dropout rate.
+
         """
         super().__init__()
         d_ffn = d_ffn or 4 * d_model
@@ -162,6 +163,7 @@ class SoftmaxBlock(nn.Module):
 
         Returns:
             Output tensor.
+
         """
         # Attention with residual
         x_norm = self.norm1(x)
@@ -183,6 +185,7 @@ class ScaleNorm(nn.Module):
         Args:
             d_model: Model dimension.
             eps: Small constant for numerical stability.
+
         """
         super().__init__()
         self.scale = nn.Parameter(torch.ones(1) * d_model ** 0.5)
@@ -207,6 +210,7 @@ class PolicyHead(nn.Module):
         Args:
             d_model: Input dimension.
             d_hidden: Hidden dimension.
+
         """
         super().__init__()
         d_hidden = d_hidden or d_model
@@ -231,6 +235,7 @@ class PolicyHead(nn.Module):
 
         Returns:
             Policy logits including pass move.
+
         """
         # Per-position logits
         position_logits = self.net(x).squeeze(-1)  # (batch, n)
@@ -258,6 +263,7 @@ class ValueHead(nn.Module):
         Args:
             d_model: Input dimension.
             d_hidden: Hidden dimension.
+
         """
         super().__init__()
         d_hidden = d_hidden or d_model
@@ -282,6 +288,7 @@ class ValueHead(nn.Module):
 
         Returns:
             Value in [-1, 1].
+
         """
         # Global pooling
         global_features = x.mean(dim=1)  # (batch, d)
@@ -310,6 +317,7 @@ class AlphaGalerkinModel(nn.Module):
 
         Args:
             config: Model configuration.
+
         """
         super().__init__()
         self.config = config
@@ -396,6 +404,7 @@ class AlphaGalerkinModel(nn.Module):
 
         Returns:
             ModelOutput with policy, value, and optional LBB constant.
+
         """
         batch, channels, height, width = x.shape
         board_size = height  # Assume square board
@@ -458,6 +467,7 @@ class AlphaGalerkinModel(nn.Module):
 
         Returns:
             ModelOutput with policy and value.
+
         """
         batch, channels, height, width = x.shape
         board_size = height
@@ -496,6 +506,7 @@ class AlphaGalerkinModel(nn.Module):
         Args:
             source_size: Training board size.
             target_size: Target board size for inference.
+
         """
         self._training_resolution = source_size
         # Resolution adapter handles the actual adaptation during forward pass
@@ -517,6 +528,7 @@ class AlphaGalerkinFast(nn.Module):
         Args:
             config: Model configuration.
             n_layers: Number of FNet layers.
+
         """
         super().__init__()
         self.config = config
@@ -549,6 +561,7 @@ class AlphaGalerkinFast(nn.Module):
 
         Returns:
             ModelOutput with policy and value.
+
         """
         batch, channels, height, width = x.shape
         board_size = height

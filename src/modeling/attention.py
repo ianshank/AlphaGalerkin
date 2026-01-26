@@ -57,6 +57,7 @@ class GalerkinAttention(nn.Module):
             d_value: Value dimension per head (default: d_model // n_heads).
             dropout: Dropout rate.
             normalize_features: Whether to normalize Q and K before attention.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -74,13 +75,13 @@ class GalerkinAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # For LBB monitoring
-        self._last_lbb_constant: Float[Tensor, "batch"] | None = None
+        self._last_lbb_constant: Float[Tensor, batch] | None = None
 
     def forward(
         self,
         x: Float[Tensor, "batch n d"],
         return_lbb: bool = False,
-    ) -> Float[Tensor, "batch n d"] | tuple[Float[Tensor, "batch n d"], Float[Tensor, "batch"]]:
+    ) -> Float[Tensor, "batch n d"] | tuple[Float[Tensor, "batch n d"], Float[Tensor, batch]]:
         """Apply Galerkin attention.
 
         Args:
@@ -89,6 +90,7 @@ class GalerkinAttention(nn.Module):
 
         Returns:
             Output tensor, optionally with LBB constant.
+
         """
         batch, n, _ = x.shape
 
@@ -134,7 +136,7 @@ class GalerkinAttention(nn.Module):
     def _compute_lbb_constant(
         self,
         k: Float[Tensor, "batch heads n d_key"],
-    ) -> Float[Tensor, "batch"]:
+    ) -> Float[Tensor, batch]:
         """Compute LBB stability constant (minimum singular value).
 
         Args:
@@ -142,6 +144,7 @@ class GalerkinAttention(nn.Module):
 
         Returns:
             Minimum singular value across heads for each batch.
+
         """
         batch, heads, n, d_key = k.shape
 
@@ -185,6 +188,7 @@ class SoftmaxAttention(nn.Module):
             d_key: Key/Query dimension per head.
             d_value: Value dimension per head.
             dropout: Dropout rate.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -214,6 +218,7 @@ class SoftmaxAttention(nn.Module):
 
         Returns:
             Output tensor.
+
         """
         batch, n, _ = x.shape
 
@@ -274,6 +279,7 @@ class HybridAttention(nn.Module):
             galerkin_ratio: Initial ratio for Galerkin vs Softmax.
             learnable_gate: Whether the gate is learnable.
             dropout: Dropout rate.
+
         """
         super().__init__()
         self.galerkin = GalerkinAttention(d_model, n_heads, dropout=dropout)
@@ -295,6 +301,7 @@ class HybridAttention(nn.Module):
 
         Returns:
             Weighted combination of Galerkin and Softmax attention.
+
         """
         # Apply both attention types
         galerkin_out = self.galerkin(x)

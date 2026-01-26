@@ -9,10 +9,6 @@ Tests mathematical properties:
 
 from __future__ import annotations
 
-import math
-
-import hypothesis
-import numpy as np
 import pytest
 import torch
 from hypothesis import given, settings

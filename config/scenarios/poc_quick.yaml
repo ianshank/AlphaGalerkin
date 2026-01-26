@@ -1,0 +1,86 @@
+# Quick PoC Scenario Suite Configuration
+# For fast validation during development
+# Run with: python -m src.poc.cli run --config config/scenarios/poc_quick.yaml
+
+defaults:
+  seed: 42
+  timeout_seconds: 600  # 10 minutes max
+
+scenarios:
+  # Quick Transfer Test
+  - name: transfer
+    description: "Quick transfer validation (reduced samples)"
+    tier: integration
+    enabled: true
+
+    train_resolution: 9
+    eval_resolutions:
+      - 9
+      - 13
+    primary_eval_resolution: 13  # Smaller target for speed
+
+    # Reduced data for speed
+    n_train_samples: 500
+    n_eval_samples: 50
+    n_charges: 3
+    batch_size: 16
+    n_epochs: 20
+
+    # Smaller model
+    d_model: 64
+    n_heads: 2
+    n_layers: 2
+    n_fourier_features: 32
+
+    # Relaxed threshold for quick test
+    mse_threshold: 0.15
+
+    estimated_duration_seconds: 120
+
+  # Quick Complexity Check
+  - name: complexity
+    description: "Quick complexity benchmark"
+    tier: functional
+    enabled: true
+
+    grid_sizes:
+      - 5
+      - 9
+      - 13
+    batch_size: 16
+    n_warmup: 5
+    n_iterations: 20
+
+    d_model: 64
+    n_heads: 2
+
+    # Relaxed criteria
+    fnet_scaling_exponent_max: 2.0
+    softmax_scaling_exponent_min: 1.2
+    min_speedup_factor: 1.2
+
+    requires_gpu: false
+    estimated_duration_seconds: 60
+
+  # Quick Stability Check
+  - name: stability
+    description: "Quick LBB stability check"
+    tier: functional
+    enabled: true
+
+    d_model: 32
+    d_key: 16
+    d_value: 16
+
+    resolutions:
+      - 5
+      - 9
+    n_forward_passes: 20
+    batch_size: 2
+
+    n_training_steps: 100
+
+    lbb_threshold: 0.000001
+    max_lbb_violations: 0
+
+    estimated_duration_seconds: 60

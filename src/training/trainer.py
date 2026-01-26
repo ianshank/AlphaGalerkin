@@ -23,9 +23,11 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, LRScheduler
 
 from src.data.collate import TrainingBatch, VariableSizeCollator
 from src.training.checkpoint import CheckpointManager
+from src.training.evaluation import Evaluator
 from src.training.loss import AlphaGalerkinLoss, LossOutput
 from src.training.replay_buffer import create_replay_buffer
 from src.training.self_play import SelfPlayWorker
+from src.training.wandb_logger import WandbLogger
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
@@ -80,6 +82,7 @@ class Trainer:
         config: AlphaGalerkinConfig,
         device: torch.device | str = "auto",
         checkpoint_dir: Path | str | None = None,
+        wandb_logger: WandbLogger | None = None,
     ) -> None:
         """Initialize trainer.
 
@@ -88,11 +91,13 @@ class Trainer:
             config: Complete configuration.
             device: Training device ("auto" for automatic selection).
             checkpoint_dir: Directory for checkpoints.
+            wandb_logger: Optional W&B logger for experiment tracking.
 
         """
         self.config = config
         self.training_config = config.training
         self.mcts_config = config.mcts
+        self.wandb_logger = wandb_logger
 
         # Device selection
         if device == "auto":
@@ -155,6 +160,18 @@ class Trainer:
 
         # Metrics history
         self._metrics_history: list[TrainingMetrics] = []
+
+        # Evaluator for periodic evaluation
+        self.evaluator = Evaluator(
+            model=self.model,
+            mcts_config=self.mcts_config,
+            device=self.device,
+            board_sizes=getattr(config, "board_sizes", [9, 13, 19]),
+        )
+
+        # Watch model with W&B if enabled
+        if self.wandb_logger is not None:
+            self.wandb_logger.watch_model(self.model)
 
     def _create_optimizer(self) -> Optimizer:
         """Create optimizer from config."""
@@ -243,14 +260,16 @@ class Trainer:
         batch = self.collator(experiences)
         return batch.to(self.device)
 
-    def _training_step(self, batch: TrainingBatch) -> tuple[LossOutput, float | None]:
+    def _training_step(
+        self, batch: TrainingBatch
+    ) -> tuple[LossOutput, float | None, float]:
         """Execute single training step.
 
         Args:
             batch: Training batch.
 
         Returns:
-            Tuple of (loss output, LBB constant).
+            Tuple of (loss output, LBB constant, gradient norm).
 
         """
         self.optimizer.zero_grad()
@@ -304,7 +323,10 @@ class Trainer:
         if output.lbb_constant is not None:
             lbb_constant = output.lbb_constant.mean().item()
 
-        return loss_output, lbb_constant
+        # Convert grad_norm to float
+        grad_norm_float = float(grad_norm) if hasattr(grad_norm, "item") else grad_norm
+
+        return loss_output, lbb_constant, grad_norm_float
 
     def train(
         self,
@@ -319,12 +341,15 @@ class Trainer:
             n_steps: Number of training steps (None for config default).
             log_interval: Steps between logging.
             checkpoint_interval: Steps between checkpoints.
-            eval_interval: Steps between evaluation (not implemented yet).
+            eval_interval: Steps between evaluation.
 
         """
         n_steps = n_steps or self.training_config.total_steps
         checkpoint_interval = (
             checkpoint_interval or self.training_config.checkpoint_interval
+        )
+        eval_interval = eval_interval or getattr(
+            self.training_config, "eval_interval", None
         )
 
         # Minimum buffer size before training
@@ -361,7 +386,7 @@ class Trainer:
 
             # Sample batch and train
             batch = self._sample_batch()
-            loss_output, lbb_constant = self._training_step(batch)
+            loss_output, lbb_constant, grad_norm = self._training_step(batch)
 
             step_time = (time.time() - step_start) * 1000
 
@@ -374,13 +399,18 @@ class Trainer:
                 lbb_loss=loss_output.lbb.item(),
                 lbb_constant=lbb_constant or 0.0,
                 learning_rate=self.scheduler.get_last_lr()[0],
+                gradient_norm=grad_norm,
                 buffer_size=len(self.buffer),
                 games_generated=self.total_games_generated,
                 step_time_ms=step_time,
             )
             self._metrics_history.append(metrics)
 
-            # Logging
+            # W&B logging (every step by default, configurable via wandb.log_interval)
+            if self.wandb_logger is not None:
+                self.wandb_logger.log_training_step(metrics)
+
+            # Console logging
             if step % log_interval == 0:
                 logger.info(
                     "training_step",
@@ -390,13 +420,27 @@ class Trainer:
                     value_loss=f"{loss_output.value.item():.4f}",
                     lbb_loss=f"{loss_output.lbb.item():.4f}",
                     lr=f"{metrics.learning_rate:.2e}",
+                    grad_norm=f"{grad_norm:.4f}",
                     buffer_size=len(self.buffer),
                     step_time_ms=f"{step_time:.1f}",
                 )
 
+            # Periodic evaluation
+            if eval_interval and step > 0 and step % eval_interval == 0:
+                self._run_evaluation(step)
+
             # Checkpointing
             if step > 0 and step % checkpoint_interval == 0:
-                self.save_checkpoint(metrics=metrics.to_dict())
+                checkpoint_path = self.save_checkpoint(metrics=metrics.to_dict())
+
+                # Log checkpoint as W&B artifact
+                if self.wandb_logger is not None:
+                    self.wandb_logger.log_model_artifact(
+                        checkpoint_path=checkpoint_path,
+                        name=f"checkpoint-{step}",
+                        metadata=metrics.to_dict(),
+                        aliases=["latest"],
+                    )
 
             self.global_step = step + 1
 
@@ -407,9 +451,72 @@ class Trainer:
         )
 
         # Final checkpoint
-        self.save_checkpoint(
+        final_checkpoint_path = self.save_checkpoint(
             metrics=self._metrics_history[-1].to_dict() if self._metrics_history else {}
         )
+
+        # Log final summary to W&B
+        if self.wandb_logger is not None and self._metrics_history:
+            final_metrics = self._metrics_history[-1]
+            self.wandb_logger.log_summary({
+                "final/total_loss": final_metrics.total_loss,
+                "final/policy_loss": final_metrics.policy_loss,
+                "final/value_loss": final_metrics.value_loss,
+                "final/lbb_loss": final_metrics.lbb_loss,
+                "final/total_steps": n_steps,
+                "final/total_games": self.total_games_generated,
+            })
+
+            # Log final checkpoint as best model artifact
+            self.wandb_logger.log_model_artifact(
+                checkpoint_path=final_checkpoint_path,
+                name="model-final",
+                metadata=final_metrics.to_dict(),
+                aliases=["final"],
+            )
+
+    def _run_evaluation(self, step: int) -> None:
+        """Run evaluation and log results.
+
+        Args:
+            step: Current training step.
+
+        """
+        logger.info("evaluation_starting", step=step)
+        self.model.eval()
+
+        # Evaluate against random player
+        n_games = getattr(self.training_config, "eval_games", 20)
+
+        # Evaluate on each board size
+        for board_size in getattr(self.config, "board_sizes", [9]):
+            result = self.evaluator.evaluate_vs_random(
+                n_games=n_games,
+                board_size=board_size,
+            )
+
+            # Log to W&B
+            if self.wandb_logger is not None:
+                self.wandb_logger.log_evaluation(
+                    result=result,
+                    prefix=f"eval/{board_size}x{board_size}",
+                    step=step,
+                )
+
+        # Measure policy agreement
+        policy_agreement = self.evaluator.measure_policy_agreement(
+            n_positions=100,
+            board_size=9,
+        )
+
+        if self.wandb_logger is not None:
+            self.wandb_logger.log_metrics(
+                {"eval/policy_agreement": policy_agreement},
+                step=step,
+            )
+
+        self.model.train()
+        logger.info("evaluation_completed", step=step)
 
     def save_checkpoint(
         self,
@@ -485,8 +592,9 @@ def create_trainer(
     checkpoint_dir: Path | str | None = None,
     resume_from: Path | str | None = None,
     device: str = "auto",
+    wandb_logger: WandbLogger | None = None,
 ) -> Trainer:
-    """Factory function to create and optionally resume trainer.
+    """Create and optionally resume a trainer instance.
 
     Args:
         model: Model to train.
@@ -494,6 +602,7 @@ def create_trainer(
         checkpoint_dir: Checkpoint directory.
         resume_from: Path to checkpoint to resume from.
         device: Training device.
+        wandb_logger: Optional W&B logger for experiment tracking.
 
     Returns:
         Configured trainer.
@@ -504,10 +613,15 @@ def create_trainer(
         config=config,
         device=device,
         checkpoint_dir=checkpoint_dir,
+        wandb_logger=wandb_logger,
     )
 
     if resume_from is not None:
         trainer.load_checkpoint(path=resume_from)
         logger.info("training_resumed", from_step=trainer.global_step)
+
+        # Update W&B step offset for resumed training
+        if wandb_logger is not None:
+            wandb_logger.set_step_offset(trainer.global_step)
 
     return trainer

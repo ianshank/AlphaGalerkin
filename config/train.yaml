@@ -54,6 +54,26 @@ training:
   value_loss_weight: 1.0
   checkpoint_interval: 1000
   use_amp: true
+  eval_interval: 5000
+  eval_games: 20
+
+# Weights & Biases configuration
+wandb:
+  enabled: true
+  project: alphagalerkin
+  entity: null  # Uses default entity
+  name: null    # Auto-generated run name
+  tags: []
+  notes: null
+  group: null
+  job_type: train
+  mode: online  # 'online', 'offline', or 'disabled'
+  log_model: true
+  log_gradients: false
+  log_code: true
+  log_interval: 1
+  watch_model: false
+  watch_log_freq: 100
 
 # Experiment settings
 experiment_name: alphagalerkin

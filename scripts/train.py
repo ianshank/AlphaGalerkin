@@ -35,6 +35,7 @@ from omegaconf import DictConfig, OmegaConf
 from config.schemas import AlphaGalerkinConfig
 from src.modeling.model import AlphaGalerkinModel
 from src.training.trainer import create_trainer
+from src.training.wandb_logger import create_wandb_logger
 
 logger = structlog.get_logger(__name__)
 
@@ -125,6 +126,28 @@ def main(cfg: DictConfig) -> None:
     # Resume path
     resume_from = cfg_dict.get("resume", None)
 
+    # Initialize W&B logger
+    wandb_logger = None
+    wandb_config = cfg_dict.get("wandb", {})
+    if wandb_config.get("enabled", True):
+        # Set run name to experiment name if not specified
+        if wandb_config.get("name") is None:
+            wandb_config["name"] = config.experiment_name
+
+        # Add useful tags
+        tags = list(wandb_config.get("tags", []))
+        if device != "auto":
+            tags.append(f"device:{device}")
+        tags.append(f"lr:{config.training.learning_rate}")
+        tags.append(f"batch:{config.training.batch_size}")
+        wandb_config["tags"] = tags
+
+        wandb_logger = create_wandb_logger(
+            wandb_config=wandb_config,
+            training_config=cfg_dict,
+        )
+        logger.info("wandb_logger_created", enabled=wandb_logger.is_enabled)
+
     # Create trainer
     trainer = create_trainer(
         model=model,
@@ -132,6 +155,7 @@ def main(cfg: DictConfig) -> None:
         checkpoint_dir=checkpoint_dir,
         resume_from=resume_from,
         device=device,
+        wandb_logger=wandb_logger,
     )
 
     # Run training
@@ -140,6 +164,7 @@ def main(cfg: DictConfig) -> None:
             n_steps=config.training.total_steps,
             log_interval=cfg_dict.get("log_interval", 100),
             checkpoint_interval=config.training.checkpoint_interval,
+            eval_interval=getattr(config.training, "eval_interval", None),
         )
     except KeyboardInterrupt:
         logger.info("training_interrupted")
@@ -148,6 +173,10 @@ def main(cfg: DictConfig) -> None:
         logger.error("training_failed", error=str(e))
         trainer.save_checkpoint()
         raise
+    finally:
+        # Ensure W&B run is properly closed
+        if wandb_logger is not None:
+            wandb_logger.finish()
 
     logger.info("training_complete")
 

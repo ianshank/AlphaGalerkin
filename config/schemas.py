@@ -146,6 +146,39 @@ class TrainingConfig(BaseModel):
     # Mixed precision
     use_amp: bool = Field(default=True, description="Use automatic mixed precision")
 
+    # Evaluation
+    eval_interval: int = Field(default=5000, description="Steps between evaluations")
+    eval_games: int = Field(default=20, description="Number of evaluation games")
+
+
+class WandbConfig(BaseModel):
+    """Configuration for Weights & Biases logging."""
+
+    # Core settings
+    enabled: bool = Field(default=True, description="Enable W&B logging")
+    project: str = Field(default="alphagalerkin", description="W&B project name")
+    entity: str | None = Field(default=None, description="W&B team/user entity")
+    name: str | None = Field(default=None, description="Run name (auto-generated if None)")
+    tags: list[str] = Field(default_factory=list, description="Tags for the run")
+    notes: str | None = Field(default=None, description="Notes for the run")
+    group: str | None = Field(default=None, description="Group for organizing runs")
+    job_type: str = Field(default="train", description="Job type (train, eval, etc.)")
+
+    # Mode settings
+    mode: Literal["online", "offline", "disabled"] = Field(
+        default="online", description="W&B mode"
+    )
+
+    # Logging settings
+    log_model: bool = Field(default=True, description="Log model checkpoints as artifacts")
+    log_gradients: bool = Field(default=False, description="Log gradient histograms")
+    log_code: bool = Field(default=True, description="Log source code")
+    log_interval: int = Field(default=1, description="Steps between metric logging")
+
+    # Model watching
+    watch_model: bool = Field(default=False, description="Use wandb.watch() on model")
+    watch_log_freq: int = Field(default=100, description="Frequency for gradient logging")
+
 
 class AlphaGalerkinConfig(BaseModel):
     """Root configuration combining all sub-configurations."""
@@ -154,6 +187,7 @@ class AlphaGalerkinConfig(BaseModel):
     operator: OperatorConfig = Field(default_factory=OperatorConfig)
     mcts: MCTSConfig = Field(default_factory=MCTSConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
+    wandb: WandbConfig = Field(default_factory=WandbConfig)
 
     # Experiment tracking
     experiment_name: str = Field(default="alphagalerkin", description="Experiment name")

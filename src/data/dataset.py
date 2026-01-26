@@ -153,7 +153,7 @@ class BoardSizeBatchSampler(Sampler):
         """
         all_batches = []
 
-        for size, indices in self.size_to_indices.items():
+        for _size, indices in self.size_to_indices.items():
             if self.shuffle:
                 import random
                 indices = indices.copy()

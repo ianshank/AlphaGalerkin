@@ -83,3 +83,9 @@ outputs/
 wandb/
 *.pt
 *.pth
+*.log
+*.dist-info/
+nul
+
+# Hydra outputs
+hydra_outputs/

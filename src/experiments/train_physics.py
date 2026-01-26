@@ -29,6 +29,13 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None  # type: ignore[assignment]
+
 from src.experiments.physics_model import PhysicsLoss, PhysicsOperator
 from src.physics.poisson import PoissonDataset
 
@@ -73,6 +80,11 @@ class TrainingConfig:
     # Output
     output_dir: str = "outputs/physics_poc"
     seed: int = 42
+
+    # W&B logging
+    wandb_enabled: bool = False
+    wandb_project: str = "alphagalerkin-physics-poc"
+    wandb_name: str | None = None
 
 
 def train_epoch(
@@ -247,6 +259,18 @@ def train(config: TrainingConfig) -> dict[str, Any]:
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Initialize W&B if enabled
+    if config.wandb_enabled and WANDB_AVAILABLE:
+        wandb.init(
+            project=config.wandb_project,
+            name=config.wandb_name or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",  # noqa: E501
+            config=vars(config),
+            tags=["physics-poc", "zero-shot-transfer"],
+        )
+        logger.info("wandb_initialized", project=config.wandb_project)
+    elif config.wandb_enabled and not WANDB_AVAILABLE:
+        logger.warning("wandb_not_available", message="W&B requested but not installed")
+
     # Create datasets
     logger.info("creating_datasets", train_size=config.train_grid_size)
 
@@ -357,6 +381,19 @@ def train(config: TrainingConfig) -> dict[str, Any]:
                 eval_mse_transfer=f"{eval_transfer['mse']:.6f}",
                 lr=f"{scheduler.get_last_lr()[0]:.2e}",
             )
+
+            # W&B logging for evaluation
+            if config.wandb_enabled and WANDB_AVAILABLE:
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "train/loss": train_loss,
+                    "eval/mse_same_resolution": eval_same["mse"],
+                    "eval/mae_same_resolution": eval_same["mae"],
+                    "eval/mse_transfer": eval_transfer["mse"],
+                    "eval/mae_transfer": eval_transfer["mae"],
+                    "eval/best_transfer_mse": best_transfer_mse,
+                    "learning_rate": scheduler.get_last_lr()[0],
+                })
         elif (epoch + 1) % config.log_interval == 0:
             logger.info(
                 "training_step",
@@ -364,6 +401,14 @@ def train(config: TrainingConfig) -> dict[str, Any]:
                 train_loss=f"{train_loss:.6f}",
                 lr=f"{scheduler.get_last_lr()[0]:.2e}",
             )
+
+            # W&B logging for training steps
+            if config.wandb_enabled and WANDB_AVAILABLE:
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "train/loss": train_loss,
+                    "learning_rate": scheduler.get_last_lr()[0],
+                })
 
     # Final evaluation
     final_same = evaluate(
@@ -407,11 +452,25 @@ def train(config: TrainingConfig) -> dict[str, Any]:
     print()
 
     if results["success"]:
-        print(f"✓ PASS: Zero-shot transfer MSE < {config.success_threshold}")
+        print(f"[PASS] Zero-shot transfer MSE < {config.success_threshold}")
     else:
-        print(f"✗ FAIL: Zero-shot transfer MSE >= {config.success_threshold}")
+        print(f"[FAIL] Zero-shot transfer MSE >= {config.success_threshold}")
 
     print("=" * 60)
+
+    # Log final results to W&B and finish
+    if config.wandb_enabled and WANDB_AVAILABLE:
+        wandb.log({
+            "final/mse_same_resolution": final_same["mse"],
+            "final/mse_transfer": final_transfer["mse"],
+            "final/best_transfer_mse": best_transfer_mse,
+            "final/success": int(results["success"]),
+            "final/training_time_seconds": elapsed,
+        })
+        wandb.summary["success"] = results["success"]
+        wandb.summary["best_transfer_mse"] = best_transfer_mse
+        wandb.finish()
+        logger.info("wandb_finished")
 
     return results
 
@@ -431,6 +490,10 @@ def main() -> None:
                         help="MSE threshold for zero-shot transfer success")
     parser.add_argument("--output-dir", type=str, default="outputs/physics_poc")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--wandb", action="store_true", help="Enable W&B logging")
+    parser.add_argument("--wandb-project", type=str, default="alphagalerkin-physics-poc",
+                        help="W&B project name")
+    parser.add_argument("--wandb-name", type=str, default=None, help="W&B run name")
 
     args = parser.parse_args()
 
@@ -446,6 +509,9 @@ def main() -> None:
         success_threshold=args.success_threshold,
         output_dir=args.output_dir,
         seed=args.seed,
+        wandb_enabled=args.wandb,
+        wandb_project=args.wandb_project,
+        wandb_name=args.wandb_name,
     )
 
     train(config)

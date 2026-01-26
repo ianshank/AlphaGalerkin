@@ -47,6 +47,8 @@ Monitors LBB condition during training:
 - [2026-01-26]: PhysicsOperator neural network for influence field prediction.
 - [2026-01-26]: Zero-shot transfer validation: Train on 9x9 → Evaluate on 19x19.
 - [2026-01-26]: Success criterion: MSE < 0.05 on 19x19 without retraining.
+- [2026-01-26]: **MILESTONE ACHIEVED**: Zero-shot transfer MSE = 0.000209 (240x better than threshold)
+- [2026-01-26]: Added W&B integration for experiment tracking (--wandb flag).
 
 ## PoC Scenario Framework
 - [2026-01-26]: Added configuration-driven PoC scenario framework (src/poc/).
@@ -55,6 +57,10 @@ Monitors LBB condition during training:
 - [2026-01-26]: Structured logging via structlog throughout.
 - [2026-01-26]: C4 architecture documentation in docs/architecture/c4_model.md.
 - [2026-01-26]: Added comprehensive C4 architecture in Mermaid format (docs/architecture/c4_mermaid.md).
+
+## Milestones
+- [2026-01-26]: **Zero-Shot Transfer Validated** - Physics PoC achieved MSE 0.000209 on 19x19 (trained on 9x9)
+- [2026-01-26]: **Training Pipeline Operational** - End-to-end GPU training with MCTS self-play working
 
 ## Known Issues
 - [None yet]
@@ -101,6 +107,9 @@ python -m scripts.train device=cuda experiment_name=my_experiment
 ```bash
 # Train physics operator on Poisson data (supervised learning)
 python -m src.experiments.train_physics
+
+# Train with W&B logging
+python -m src.experiments.train_physics --wandb
 
 # Custom training configuration
 python -m src.experiments.train_physics --train-size 9 --eval-size 19 --n-epochs 100

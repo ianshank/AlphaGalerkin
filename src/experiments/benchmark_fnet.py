@@ -27,6 +27,17 @@ import torch.nn as nn
 
 logger = structlog.get_logger(__name__)
 
+# Module-level constants with documented rationale
+# These define thresholds for scaling analysis
+
+# Scaling exponent threshold for sub-quadratic vs quadratic classification
+# FNet should have exponent ~1.0-1.1 (N log N ≈ N^1 for log-log fitting)
+# Softmax should have exponent ~2.0 (N²)
+# 1.5 is the midpoint that cleanly separates these two regimes
+# - exponent < 1.5: Sub-quadratic (good for FNet)
+# - exponent > 1.5: Quadratic or worse (expected for Softmax)
+SUBQUADRATIC_EXPONENT_THRESHOLD: float = 1.5
+
 
 @dataclass
 class BenchmarkResult:
@@ -320,8 +331,8 @@ def analyze_scaling(results: list[BenchmarkResult]) -> dict[str, float]:
         "mean_speedup": float(np.mean(speedups)),
         "max_speedup": float(np.max(speedups)),
         "speedup_at_largest": float(speedups[-1]),
-        "fnet_scales_subquadratic": fnet_exponent < 1.5,
-        "softmax_scales_quadratic": softmax_exponent > 1.5,
+        "fnet_scales_subquadratic": fnet_exponent < SUBQUADRATIC_EXPONENT_THRESHOLD,
+        "softmax_scales_quadratic": softmax_exponent > SUBQUADRATIC_EXPONENT_THRESHOLD,
     }
 
 

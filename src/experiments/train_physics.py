@@ -65,6 +65,11 @@ class TrainingConfig:
     # Success criteria
     success_threshold: float = 0.05  # MSE threshold for zero-shot transfer success
 
+    # Seed offsets for reproducible data splits
+    # These ensure train/eval/transfer datasets don't overlap
+    train_eval_seed_offset: int = 10000  # Offset for same-resolution eval data
+    transfer_eval_seed_offset: int = 20000  # Offset for zero-shot transfer eval data
+
     # Output
     output_dir: str = "outputs/physics_poc"
     seed: int = 42
@@ -256,7 +261,7 @@ def train(config: TrainingConfig) -> dict[str, Any]:
         grid_size=config.train_grid_size,
         n_samples=config.n_eval_samples,
         n_charges=config.n_charges,
-        seed=config.seed + 10000,
+        seed=config.seed + config.train_eval_seed_offset,
     )
 
     # Zero-shot evaluation dataset (different grid size!)
@@ -264,7 +269,7 @@ def train(config: TrainingConfig) -> dict[str, Any]:
         grid_size=config.eval_grid_size,
         n_samples=config.n_eval_samples,
         n_charges=config.n_charges,
-        seed=config.seed + 20000,
+        seed=config.seed + config.transfer_eval_seed_offset,
     )
 
     logger.info(

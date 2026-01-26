@@ -31,6 +31,26 @@ from src.physics.poisson import PoissonDataset
 
 logger = structlog.get_logger(__name__)
 
+# Module-level constants with documented rationale
+# These can be overridden via function parameters where appropriate
+
+# Seed offset ensures eval data doesn't overlap with training data
+# Using large offset (50000) provides clear separation
+DEFAULT_EVAL_SEED_OFFSET: int = 50000
+
+# Default resolutions for zero-shot transfer testing
+# 9x9 is typical training size, 19x19 is standard Go board
+DEFAULT_EVAL_SIZES: list[int] = [9, 13, 19]
+DEFAULT_RESOLUTION_TEST_SIZES: list[int] = [9, 13, 19, 25]
+
+# Charge position bounds (fraction of grid)
+# Keeping charges away from boundaries (0.1-0.9) avoids boundary artifacts
+DEFAULT_CHARGE_POSITION_MIN: float = 0.1
+DEFAULT_CHARGE_POSITION_MAX: float = 0.9
+
+# Primary evaluation size for zero-shot transfer (standard Go board)
+PRIMARY_EVAL_SIZE: int = 19
+
 
 @dataclass
 class TransferResult:
@@ -114,7 +134,7 @@ def evaluate_transfer(
 
     """
     # Use offset seed to ensure eval data differs from training
-    eval_seed = seed + 50000
+    eval_seed = seed + DEFAULT_EVAL_SEED_OFFSET
     dataset = PoissonDataset(
         grid_size=eval_size,
         n_samples=n_samples,
@@ -197,7 +217,7 @@ def run_verification(
 
     """
     if eval_sizes is None:
-        eval_sizes = [9, 13, 19]
+        eval_sizes = DEFAULT_EVAL_SIZES.copy()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("verification_starting", device=str(device))
@@ -245,7 +265,10 @@ def run_verification(
 
     # Compute summary
     all_passed = all(r.passed for r in results)
-    primary_result = next((r for r in results if r.eval_size == 19), results[-1])
+    # Primary result is the standard Go board size (19x19) if available
+    primary_result = next(
+        (r for r in results if r.eval_size == PRIMARY_EVAL_SIZE), results[-1]
+    )
 
     summary = {
         "model_path": str(model_path),
@@ -329,7 +352,7 @@ def verify_resolution_independence(
 
     """
     if resolutions is None:
-        resolutions = [9, 13, 19, 25]
+        resolutions = DEFAULT_RESOLUTION_TEST_SIZES.copy()
 
     rng = np.random.default_rng(seed)
 
@@ -359,7 +382,11 @@ def verify_resolution_independence(
                 mean_error_so_far=float(np.mean(all_errors)) if all_errors else 0.0,
             )
         # Random charge positions (normalized)
-        charge_positions = rng.uniform(0.1, 0.9, size=(n_charges, 2))
+        charge_positions = rng.uniform(
+            DEFAULT_CHARGE_POSITION_MIN,
+            DEFAULT_CHARGE_POSITION_MAX,
+            size=(n_charges, 2),
+        )
         charge_magnitudes = rng.normal(0, 1, size=n_charges)
 
         predictions_at_finest: dict[int, NDArray[np.float32]] = {}

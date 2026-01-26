@@ -124,12 +124,14 @@ class PoissonSolver:
         For Poisson with zero Dirichlet BC, use DST Type I.
         The eigenvalues of the discrete Laplacian are known analytically.
         """
+        from scipy.fft import dstn, idstn
+
         n = charges.shape[0]
         h = 1.0 / (n + 1)  # Grid spacing
 
         # Compute DST-I of the right-hand side
-        # DST-I is its own inverse (up to normalization)
-        rhs_hat = self._dst2d(charges)
+        # Using scipy's DST for numerical stability
+        rhs_hat = dstn(charges.astype(np.float64), type=1)
 
         # Eigenvalues of the discrete Laplacian with DST basis
         i_indices = np.arange(1, n + 1)
@@ -157,35 +159,23 @@ class PoissonSolver:
         # Solve in spectral domain
         potential_hat = rhs_hat / eigenvalues
 
-        # Inverse transform
-        potential = self._idst2d(potential_hat)
+        # Inverse transform with proper normalization
+        # DST-I inverse has normalization factor 1/(2*(n+1))^2 which idstn handles
+        potential = idstn(potential_hat, type=1)
 
         return potential
 
     def _dst2d(self, x: NDArray) -> NDArray:
-        """2D Discrete Sine Transform (Type I)."""
-        # DST-I can be computed via FFT of extended signal
-        n = x.shape[0]
+        """2D Discrete Sine Transform (Type I) using scipy."""
+        from scipy.fft import dstn
 
-        # Extend to 2(n+1) and use FFT
-        # For DST-I: x_ext[k] = 0, x[0:n], 0, -x[n-1::-1]
-        x_ext = np.zeros((2 * (n + 1), 2 * (n + 1)))
-        x_ext[1 : n + 1, 1 : n + 1] = x
-        x_ext[n + 2 : 2 * n + 2, 1 : n + 1] = -x[::-1, :]
-        x_ext[1 : n + 1, n + 2 : 2 * n + 2] = -x[:, ::-1]
-        x_ext[n + 2 : 2 * n + 2, n + 2 : 2 * n + 2] = x[::-1, ::-1]
-
-        # FFT and extract imaginary part
-        fft_result = np.fft.fft2(x_ext)
-        dst = -fft_result[1 : n + 1, 1 : n + 1].imag / 2
-
-        return dst
+        return dstn(x.astype(np.float64), type=1)
 
     def _idst2d(self, x: NDArray) -> NDArray:
-        """Inverse 2D DST (Type I is self-inverse up to normalization)."""
-        n = x.shape[0]
-        # DST-I is its own inverse with factor 2/(n+1)
-        return self._dst2d(x) * (2.0 / (n + 1)) ** 2
+        """Inverse 2D DST (Type I) using scipy."""
+        from scipy.fft import idstn
+
+        return idstn(x.astype(np.float64), type=1)
 
     def _solve_iterative(
         self,

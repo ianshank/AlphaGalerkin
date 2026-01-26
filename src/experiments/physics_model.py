@@ -75,15 +75,17 @@ class PhysicsOperator(nn.Module):
         )
 
         # Fourier feature encoding for coordinates
-        # Maps (x, y) → [sin(ωx), cos(ωx), sin(ωy), cos(ωy), ...]
+        # Maps (x, y) → [x, y, sin(ωx), cos(ωx), sin(ωy), cos(ωy), ...]
         self.coord_encoder = FourierFeatures(
-            input_dim=2,  # (x, y) coordinates
             n_features=n_fourier_features,
             scale=fourier_scale,
+            learnable=True,
+            include_coordinates=True,  # Include raw (x, y) in output
         )
 
         # Input projection: Fourier features + charge → d_model
-        fourier_output_dim = 2 * n_fourier_features  # sin + cos
+        # output_dim = 2 * n_fourier_features (sin + cos) + 2 (raw coords)
+        fourier_output_dim = self.coord_encoder.output_dim
         self.input_proj = nn.Linear(fourier_output_dim + 1, d_model)  # +1 for charge
 
         # Galerkin attention layers (O(N) complexity)
@@ -151,8 +153,8 @@ class PhysicsOperator(nn.Module):
             # Interleave with FNet if enabled
             if self.fnet_layers is not None and i < len(self.fnet_layers):
                 # FNet needs to know the spatial structure
-                # For bag-of-points, we treat it as 1D sequence
-                x = self.fnet_layers[i](x, grid_size=1)  # 1D mode
+                # For bag-of-points, we treat it as 1D sequence (board_size=None)
+                x = self.fnet_layers[i](x, board_size=None)  # 1D mode
 
         # Output projection
         potential = self.output_head(x).squeeze(-1)  # (B, N)

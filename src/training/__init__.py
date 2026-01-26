@@ -24,6 +24,7 @@ from src.training.replay_buffer import (
 )
 from src.training.self_play import GameRecord, SelfPlayWorker
 from src.training.trainer import Trainer, TrainingMetrics, create_trainer
+from src.training.wandb_logger import WandbLogger, create_wandb_logger
 
 __all__ = [
     # Loss
@@ -50,4 +51,7 @@ __all__ = [
     "Evaluator",
     "EvaluationResult",
     "quick_evaluate",
+    # W&B Logging
+    "WandbLogger",
+    "create_wandb_logger",
 ]

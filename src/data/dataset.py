@@ -12,8 +12,10 @@ from typing import TYPE_CHECKING
 import torch
 from torch.utils.data import Dataset, IterableDataset, Sampler
 
+from src.training.replay_buffer import Experience
+
 if TYPE_CHECKING:
-    from src.training.replay_buffer import Experience, ReplayBuffer
+    from src.training.replay_buffer import ReplayBuffer
 
 
 class ReplayDataset(Dataset):

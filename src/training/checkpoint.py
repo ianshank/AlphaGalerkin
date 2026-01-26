@@ -173,7 +173,7 @@ class CheckpointManager:
         temp_path = checkpoint_path.with_suffix(".pt.tmp")
 
         torch.save(state.to_dict(), temp_path)
-        temp_path.rename(checkpoint_path)
+        temp_path.replace(checkpoint_path)  # Works on Windows even if target exists
 
         logger.info(
             "checkpoint_saved",

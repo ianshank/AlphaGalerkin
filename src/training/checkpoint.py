@@ -6,6 +6,16 @@ Provides save/load functionality for:
 - Learning rate scheduler state
 - Training step and metrics
 - Configuration
+
+Security Note:
+    Checkpoint loading uses `weights_only=False` because full training state
+    (optimizer, scheduler, config) requires pickle deserialization. This is
+    intentional but means checkpoints can execute arbitrary code if corrupted.
+
+    **Only load checkpoints from trusted sources.**
+
+    For loading untrusted model weights only, use `load_model_only()` with
+    proper validation, or implement signature verification for checkpoint files.
 """
 
 from __future__ import annotations

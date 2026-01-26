@@ -196,6 +196,12 @@ class QuantizationConfig(BaseModel):
         description="Calibration method for static quantization",
     )
 
+    # Model input configuration
+    input_name: str = Field(
+        default="board_state",
+        description="Model input tensor name for calibration data",
+    )
+
     # Operator selection
     operators_to_quantize: list[str] | None = Field(
         default=None,

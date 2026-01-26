@@ -220,9 +220,10 @@ class ModelQuantizer:
             )
 
             # Create calibration data reader
+            # NOTE: input_name must match the ONNX model's input tensor name, not operator names
             calibration_reader = CalibrationDataReader(
                 data_generator=calibration_data,
-                input_name=self.config.operators_to_quantize[0] if self.config.operators_to_quantize else "board_state",
+                input_name=self.config.input_name,
             )
 
             weight_type = self._get_quant_type(self.config.weight_type)

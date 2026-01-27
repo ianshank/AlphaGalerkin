@@ -98,8 +98,8 @@ Examples:
     merge_parser.add_argument(
         "--pr",
         type=int,
-        default=7,
-        help="PR number to check",
+        required=True,
+        help="PR number to check (required)",
     )
     merge_parser.add_argument(
         "--allow-failures",
@@ -170,9 +170,12 @@ def run_validations(args: argparse.Namespace) -> int:
     if args.config:
         import yaml
 
+        from src.validation.utils import deep_merge
+
         with open(args.config) as f:
             file_config = yaml.safe_load(f)
-        config_kwargs = {**file_config, **config_kwargs}
+        # Use deep_merge to properly merge nested Pydantic model configs
+        config_kwargs = deep_merge(file_config, config_kwargs)
 
     config = ValidationConfig(**config_kwargs)
     runner = ValidationRunner(config=config)

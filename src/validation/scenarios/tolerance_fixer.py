@@ -325,7 +325,7 @@ class ToleranceTestFixer(BaseValidator):
                     code_snippet=line.strip(),
                 )
         except ValueError:
-            pass
+            pass  # Regex matched but value isn't a valid float, skip this check
 
         return None
 
@@ -353,7 +353,7 @@ class ToleranceTestFixer(BaseValidator):
                     code_snippet=line.strip(),
                 )
         except ValueError:
-            pass
+            pass  # Regex matched but value isn't a valid float, skip this check
 
         return None
 

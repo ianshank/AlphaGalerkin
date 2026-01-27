@@ -237,9 +237,9 @@ class TestGPUTrainingValidator:
         config = GPUTrainingConfig(
             device="cpu",
             require_gpu=False,
-            n_steps=5,
+            n_steps=10,  # Minimum allowed value (ge=10)
             batch_size=2,
-            d_model=16,
+            d_model=64,  # Minimum allowed value (ge=64)
             n_heads=2,
             n_layers=1,
         )

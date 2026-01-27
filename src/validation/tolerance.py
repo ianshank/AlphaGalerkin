@@ -129,7 +129,13 @@ def assert_allclose(
 
     # Perform comparison
     try:
-        is_close = np.allclose(actual_np, expected_np, rtol=rtol, atol=atol)
+        is_close = np.allclose(
+            actual_np,
+            expected_np,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=config.allow_nan,
+        )
     except TypeError:
         # Handle cases where allclose doesn't work (complex, etc.)
         diff = np.abs(actual_np - expected_np)
@@ -282,7 +288,13 @@ def assert_tensor_allclose(
             )
 
     # Perform comparison
-    is_close = torch.allclose(actual_cpu, expected_cpu, rtol=rtol, atol=atol)
+    is_close = torch.allclose(
+        actual_cpu,
+        expected_cpu,
+        rtol=rtol,
+        atol=atol,
+        equal_nan=config.allow_nan,
+    )
 
     if not is_close:
         # Generate detailed error message
@@ -417,7 +429,7 @@ class ToleranceChecker:
                         actual, expected, config=self.config, msg=msg, **kwargs
                     )
             except ImportError:
-                pass
+                pass  # PyTorch not installed, fall back to numpy comparison
 
             return assert_allclose(
                 actual, expected, config=self.config, msg=msg, **kwargs

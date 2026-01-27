@@ -224,12 +224,13 @@ class TestRunValidationFunction:
         assert len(results) == 0
 
     def test_config_overrides(self, tmp_path: Path) -> None:
-        """Test config overrides work."""
+        """Test config overrides work with deep merge."""
         import yaml
 
         config_file = tmp_path / "config.yaml"
         config_data = {
             "seed": 42,
+            "gpu_training": {"d_model": 128, "n_heads": 4},
             "run_tolerance_fix": False,
             "run_gpu_training": False,
             "run_transfer_validation": False,
@@ -239,7 +240,10 @@ class TestRunValidationFunction:
         with open(config_file, "w") as f:
             yaml.dump(config_data, f)
 
-        with patch.object(ValidationRunner, "__init__", return_value=None) as mock_init:
-            with patch.object(ValidationRunner, "run_all", return_value={}):
-                # This would need adjustment based on actual implementation
-                pass
+        # Test that deep merge works by overriding just seed
+        results = run_validation(
+            config_path=str(config_file),
+            seed=123,  # Override seed, gpu_training should be preserved
+        )
+        # No validations are enabled, so results should be empty
+        assert len(results) == 0

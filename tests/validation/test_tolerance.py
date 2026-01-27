@@ -77,12 +77,14 @@ class TestAssertAllclose:
         assert "NaN" in str(exc_info.value)
 
     def test_nan_allowed(self) -> None:
-        """Test NaN values can be allowed."""
+        """Test NaN values can be allowed with equal_nan=True."""
         a = np.array([1.0, np.nan, 3.0])
         b = np.array([1.0, np.nan, 3.0])
         config = ToleranceConfig(allow_nan=True)
-        # Should not raise, but result depends on np.allclose behavior
-        # np.allclose returns False for NaN comparisons by default
+        # With allow_nan=True and equal_nan passed to np.allclose,
+        # NaN positions should match and the comparison should pass
+        result = assert_allclose(a, b, config=config)
+        assert result is True
 
     def test_inf_detection(self) -> None:
         """Test Inf values are detected."""

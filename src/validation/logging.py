@@ -373,7 +373,7 @@ class DebugContext:
                     torch.cuda.memory_allocated() / 1024 / 1024
                 )
         except ImportError:
-            pass
+            pass  # PyTorch not installed, skip GPU memory capture
 
     def _capture_memory_end(self) -> dict[str, float]:
         """Capture memory state at end.
@@ -392,7 +392,7 @@ class DebugContext:
                 )
                 memory["gpu_reserved_mb"] = torch.cuda.memory_reserved() / 1024 / 1024
         except ImportError:
-            pass
+            pass  # PyTorch not installed, skip GPU memory stats
 
         return memory
 

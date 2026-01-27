@@ -52,8 +52,11 @@ class ValidationRunner:
         if config is None:
             config = ValidationConfig(**kwargs)
         elif kwargs:
+            from src.validation.utils import deep_merge
+
             config_dict = config.model_dump()
-            config_dict.update(kwargs)
+            # Use deep_merge to properly merge nested configs
+            config_dict = deep_merge(config_dict, kwargs)
             config = ValidationConfig(**config_dict)
 
         self.config = config
@@ -349,9 +352,13 @@ def run_validation(
     if config_path:
         import yaml
 
+        from src.validation.utils import deep_merge
+
         with open(config_path) as f:
             config_data = yaml.safe_load(f)
-        config = ValidationConfig(**{**config_data, **overrides})
+        # Use deep_merge to properly merge nested Pydantic model configs
+        merged_config = deep_merge(config_data, overrides)
+        config = ValidationConfig(**merged_config)
     else:
         config = ValidationConfig(**overrides)
 

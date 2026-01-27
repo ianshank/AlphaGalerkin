@@ -44,8 +44,11 @@ class BaseValidator(ABC):
         if config is None:
             config = self.config_class(**kwargs)
         elif kwargs:
+            from src.validation.utils import deep_merge
+
             config_dict = config.model_dump()
-            config_dict.update(kwargs)
+            # Use deep_merge to properly merge nested configs
+            config_dict = deep_merge(config_dict, kwargs)
             config = self.config_class(**config_dict)
 
         self.config = config

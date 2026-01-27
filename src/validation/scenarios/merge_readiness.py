@@ -6,6 +6,7 @@ Validates that all requirements are met for merging a PR.
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -122,7 +123,7 @@ class MergeReadinessChecker(BaseValidator):
 
         try:
             result = subprocess.run(
-                self.config.test_command.split(),
+                shlex.split(self.config.test_command),
                 capture_output=True,
                 text=True,
                 timeout=self.config.test_timeout_seconds,
@@ -208,7 +209,7 @@ class MergeReadinessChecker(BaseValidator):
 
         try:
             result = subprocess.run(
-                self.config.lint_command.split(),
+                shlex.split(self.config.lint_command),
                 capture_output=True,
                 text=True,
                 timeout=self.config.lint_timeout_seconds,
@@ -247,7 +248,7 @@ class MergeReadinessChecker(BaseValidator):
 
         try:
             result = subprocess.run(
-                self.config.type_check_command.split(),
+                shlex.split(self.config.type_check_command),
                 capture_output=True,
                 text=True,
                 timeout=self.config.lint_timeout_seconds * 2,  # Type check can take longer

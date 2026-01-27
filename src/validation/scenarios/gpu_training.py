@@ -168,7 +168,9 @@ class GPUTrainingValidator(BaseValidator):
                 optimizer.zero_grad()
 
                 if scaler is not None:
-                    with torch.amp.autocast(device_type="cuda"):
+                    # Determine device type for autocast (cuda vs cpu)
+                    device_type = "cuda" if self._device.startswith("cuda") else "cpu"
+                    with torch.amp.autocast(device_type=device_type):
                         output = model(batch["features"])
                         loss_output = loss_fn(
                             output.policy_logits,

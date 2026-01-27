@@ -319,20 +319,38 @@ class QuickEvaluator:
         targets: list[float],
         metric_fn: Callable[[list[float], list[float]], float],
         alpha: float = 0.05,
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float | None, float | None, float | None]:
         """Compute bootstrap confidence intervals.
 
         Args:
             predictions: Predictions.
             targets: Targets.
             metric_fn: Metric function.
-            alpha: Significance level.
+            alpha: Significance level (must be between 0 and 1).
 
         Returns:
-            (ci_lower, ci_upper, std).
+            (ci_lower, ci_upper, std) or (None, None, None) if insufficient data.
 
         """
         n = len(predictions)
+
+        # Validate inputs
+        if n < 2:
+            self._logger.debug(
+                "bootstrap_insufficient_data",
+                n_samples=n,
+                required=2,
+            )
+            return None, None, None
+
+        if not 0 < alpha < 1:
+            self._logger.warning(
+                "bootstrap_invalid_alpha",
+                alpha=alpha,
+                using_default=0.05,
+            )
+            alpha = 0.05
+
         bootstrap_values = []
 
         for _ in range(self.config.n_bootstrap):
@@ -345,6 +363,10 @@ class QuickEvaluator:
         bootstrap_values.sort()
         lower_idx = int(alpha / 2 * len(bootstrap_values))
         upper_idx = int((1 - alpha / 2) * len(bootstrap_values))
+
+        # Clamp indices to valid range
+        lower_idx = max(0, min(lower_idx, len(bootstrap_values) - 1))
+        upper_idx = max(0, min(upper_idx, len(bootstrap_values) - 1))
 
         ci_lower = bootstrap_values[lower_idx]
         ci_upper = bootstrap_values[upper_idx]

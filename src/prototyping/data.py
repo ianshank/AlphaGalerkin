@@ -60,14 +60,21 @@ class SyntheticData:
         """Split data into train and test sets.
 
         Args:
-            train_ratio: Ratio of training data.
+            train_ratio: Ratio of training data (must be between 0 and 1).
             shuffle: Whether to shuffle before split.
             seed: Random seed.
 
         Returns:
             (train_data, test_data).
 
+        Raises:
+            ValueError: If train_ratio is not between 0 and 1.
+
         """
+        if not 0 < train_ratio < 1:
+            raise ValueError(
+                f"train_ratio must be between 0 and 1 exclusive, got {train_ratio}"
+            )
         if seed is not None:
             random.seed(seed)
 
@@ -110,14 +117,20 @@ class SyntheticData:
         """Iterate in batches.
 
         Args:
-            batch_size: Batch size.
+            batch_size: Batch size (must be positive).
             shuffle: Whether to shuffle.
             drop_last: Whether to drop incomplete batch.
 
         Yields:
             (batch_inputs, batch_targets).
 
+        Raises:
+            ValueError: If batch_size is not positive.
+
         """
+        if batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {batch_size}")
+
         indices = list(range(self.n_samples))
         if shuffle:
             random.shuffle(indices)

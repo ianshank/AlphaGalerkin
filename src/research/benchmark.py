@@ -277,9 +277,24 @@ class Benchmark:
         n_values = [r.size * r.size for r in results]  # tokens
         times = [r.mean_time_ms for r in results]
 
+        # Filter out invalid values (must be positive for log)
+        valid_pairs = [
+            (n, t) for n, t in zip(n_values, times)
+            if n > 0 and t > 0
+        ]
+        if len(valid_pairs) < 2:
+            self._logger.warning(
+                "insufficient_valid_data_for_scaling",
+                n_valid=len(valid_pairs),
+                required=2,
+            )
+            return 0.0, 0.0
+
+        n_values_valid, times_valid = zip(*valid_pairs)
+
         # Log-log fit
-        log_n = [math.log(n) for n in n_values]
-        log_t = [math.log(t) for t in times]
+        log_n = [math.log(n) for n in n_values_valid]
+        log_t = [math.log(t) for t in times_valid]
 
         # Linear regression
         n = len(log_n)
@@ -288,7 +303,16 @@ class Benchmark:
         sum_xy = sum(x * y for x, y in zip(log_n, log_t))
         sum_xx = sum(x * x for x in log_n)
 
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+        # Check for division by zero
+        denominator = n * sum_xx - sum_x * sum_x
+        if abs(denominator) < 1e-10:
+            self._logger.warning(
+                "linear_regression_singular",
+                denominator=denominator,
+            )
+            return 0.0, 0.0
+
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
 
         # R-squared
         mean_y = sum_y / n

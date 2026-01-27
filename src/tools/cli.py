@@ -27,6 +27,11 @@ def main() -> None:
     verify_parser.add_argument("--infer-size", type=int, default=19)
     verify_parser.add_argument("--device", type=str, default="cpu")
 
+    # Colab generation command
+    subparsers.add_parser(
+        "generate-colab", help="Generate Colab-compatible notebook"
+    )
+
     args = parser.parse_args()
 
     if args.command == "gtp":
@@ -50,6 +55,11 @@ def main() -> None:
             device=args.device,
         )
         sys.exit(0 if passed else 1)
+
+    elif args.command == "generate-colab":
+        from src.tools.colab import generate_colab_notebook
+
+        generate_colab_notebook()
 
     else:
         parser.print_help()

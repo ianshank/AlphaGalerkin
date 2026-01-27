@@ -11,6 +11,7 @@ from __future__ import annotations
 import structlog
 import torch
 from torch import nn, Tensor
+from typing import cast
 from jaxtyping import Float
 
 logger = structlog.get_logger(__name__)
@@ -53,6 +54,13 @@ class SpectralConv2d(nn.Module):
         )
         self.weights2 = nn.Parameter(
             scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat)
+        )
+        
+        logger.debug(
+            "spectral_conv_initialized",
+            in_channels=in_channels,
+            out_channels=out_channels,
+            modes=(modes1, modes2)
         )
 
     def compl_mul2d(
@@ -135,6 +143,7 @@ class FNOBlock(nn.Module):
         self.spectral_conv = SpectralConv2d(width, width, modes1, modes2)
         self.local_conv = nn.Conv2d(width, width, kernel_size=1)
         
+        self.activation: nn.Module
         if activation == "gelu":
             self.activation = nn.GELU()
         elif activation == "relu":
@@ -152,7 +161,7 @@ class FNOBlock(nn.Module):
         x2 = self.local_conv(x)
         
         # Combine and activate
-        return self.activation(x1 + x2)
+        return cast(Tensor, self.activation(x1 + x2))
 
 
 class FNO2d(nn.Module):
@@ -203,6 +212,7 @@ class FNO2d(nn.Module):
         self.fc1 = nn.Linear(width, 128)
         self.fc2 = nn.Linear(128, out_channels)
         
+        self.activation: nn.Module
         if activation == "gelu":
             self.activation = nn.GELU()
         else:
@@ -215,6 +225,7 @@ class FNO2d(nn.Module):
             width=width,
             n_layers=n_layers,
             modes=(modes1, modes2),
+            activation=activation,
         )
 
     def forward(
@@ -232,6 +243,13 @@ class FNO2d(nn.Module):
             Output field (batch, out_channels, h, w).
         """
         batch_size, _, h, w = x.shape
+        
+        logger.debug(
+            "fno2d_forward_start",
+            batch_size=batch_size,
+            input_resolution=(h, w),
+            coords_provided=coords is not None
+        )
         
         # Generate coordinates if not provided
         if coords is None:

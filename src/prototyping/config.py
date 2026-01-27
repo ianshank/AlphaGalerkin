@@ -40,6 +40,7 @@ class PrototypeConfig(BaseModel):
         seed: Random seed for reproducibility.
         device: Device to use (cpu, cuda).
         extra_config: Additional configuration.
+
     """
 
     model_config = ConfigDict(
@@ -137,6 +138,7 @@ class QuickTrainConfig(BaseModel):
         save_interval: Save interval.
         max_grad_norm: Maximum gradient norm.
         early_stopping_patience: Early stopping patience.
+
     """
 
     model_config = ConfigDict(
@@ -215,6 +217,7 @@ class QuickEvalConfig(BaseModel):
         metrics: Metrics to compute.
         compute_confidence: Whether to compute confidence intervals.
         n_bootstrap: Bootstrap samples for confidence intervals.
+
     """
 
     model_config = ConfigDict(
@@ -317,6 +320,7 @@ def create_prototype_config(
 
     Returns:
         PrototypeConfig instance.
+
     """
     if isinstance(preset, str):
         preset = PresetType(preset)
@@ -347,6 +351,7 @@ def create_quick_train_config(
 
     Returns:
         QuickTrainConfig instance.
+
     """
     if isinstance(preset, str):
         preset = PresetType(preset)

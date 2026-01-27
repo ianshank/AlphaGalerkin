@@ -10,36 +10,36 @@ Provides:
 
 from __future__ import annotations
 
+from src.research.benchmark import (
+    Benchmark,
+    BenchmarkResult,
+    BenchmarkSuite,
+)
+from src.research.comparison import (
+    ComparisonResult,
+    ModelComparison,
+    ModelMetrics,
+)
 from src.research.config import (
-    ExperimentConfig,
     BenchmarkConfig,
-    TransferConfig,
     ComparisonConfig,
+    ExperimentConfig,
+    TransferConfig,
 )
 from src.research.experiment import (
     Experiment,
     ExperimentRun,
     ExperimentTracker,
 )
-from src.research.benchmark import (
-    Benchmark,
-    BenchmarkResult,
-    BenchmarkSuite,
-)
-from src.research.validator import (
-    TransferValidator,
-    TransferResult,
-    create_transfer_validator,
-)
-from src.research.comparison import (
-    ModelComparison,
-    ComparisonResult,
-    ModelMetrics,
-)
 from src.research.reporter import (
     Reporter,
     ReportFormat,
     create_reporter,
+)
+from src.research.validator import (
+    TransferResult,
+    TransferValidator,
+    create_transfer_validator,
 )
 
 __all__ = [

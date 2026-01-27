@@ -9,11 +9,12 @@ Provides:
 from __future__ import annotations
 
 import json
+import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterator
-import uuid
+from typing import Any
 
 import structlog
 
@@ -68,6 +69,7 @@ class ExperimentRun:
             name: Metric name.
             value: Metric value.
             step: Optional step number.
+
         """
         if name not in self.metrics:
             self.metrics[name] = []
@@ -84,6 +86,7 @@ class ExperimentRun:
         Args:
             name: Artifact name.
             path: Path to artifact.
+
         """
         self.artifacts[name] = path
 
@@ -113,7 +116,7 @@ class ExperimentRun:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ExperimentRun":
+    def from_dict(cls, data: dict[str, Any]) -> ExperimentRun:
         """Create from dictionary."""
         run = cls(
             run_id=data.get("run_id", str(uuid.uuid4())[:8]),
@@ -146,6 +149,7 @@ class Experiment:
         Args:
             config: Experiment configuration.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -188,6 +192,7 @@ class Experiment:
 
         Returns:
             New ExperimentRun.
+
         """
         if self._current_run and self._current_run.status == "running":
             self._logger.warning("ending_previous_run")
@@ -221,6 +226,7 @@ class Experiment:
         Args:
             success: Whether run succeeded.
             error: Error message if failed.
+
         """
         if not self._current_run:
             return
@@ -250,6 +256,7 @@ class Experiment:
             name: Metric name.
             value: Metric value.
             step: Optional step number.
+
         """
         if self._current_run:
             self._current_run.log_metric(name, value, step)
@@ -264,6 +271,7 @@ class Experiment:
         Args:
             name: Artifact name.
             path: Path to artifact.
+
         """
         if self._current_run:
             self._current_run.log_artifact(name, str(path))
@@ -277,6 +285,7 @@ class Experiment:
 
         Returns:
             Best run or None.
+
         """
         completed_runs = [r for r in self._runs if r.status == "completed"]
         if not completed_runs:
@@ -299,6 +308,7 @@ class Experiment:
 
         Returns:
             Path to saved file.
+
         """
         if path is None:
             self._output_dir.mkdir(parents=True, exist_ok=True)
@@ -318,7 +328,7 @@ class Experiment:
         return path
 
     @classmethod
-    def load(cls, path: Path | str) -> "Experiment":
+    def load(cls, path: Path | str) -> Experiment:
         """Load experiment from file.
 
         Args:
@@ -326,6 +336,7 @@ class Experiment:
 
         Returns:
             Loaded Experiment.
+
         """
         path = Path(path)
         with open(path) as f:
@@ -342,6 +353,7 @@ class Experiment:
 
         Args:
             callback: Function to call.
+
         """
         self._on_run_start.append(callback)
 
@@ -350,6 +362,7 @@ class Experiment:
 
         Args:
             callback: Function to call.
+
         """
         self._on_run_end.append(callback)
 
@@ -358,6 +371,7 @@ class Experiment:
 
         Args:
             callback: Function to call.
+
         """
         self._on_metric.append(callback)
 
@@ -366,6 +380,7 @@ class Experiment:
 
         Returns:
             Summary dictionary.
+
         """
         completed = [r for r in self._runs if r.status == "completed"]
         failed = [r for r in self._runs if r.status == "failed"]
@@ -397,6 +412,7 @@ class ExperimentTracker:
         Args:
             base_dir: Base directory for experiments.
             logger: Optional structured logger.
+
         """
         self._base_dir = Path(base_dir)
         self._logger = logger or structlog.get_logger(__name__)
@@ -422,6 +438,7 @@ class ExperimentTracker:
 
         Returns:
             Created Experiment.
+
         """
         if config is None:
             config = ExperimentConfig(name=name, **kwargs)
@@ -441,6 +458,7 @@ class ExperimentTracker:
 
         Returns:
             Experiment or None.
+
         """
         return self._experiments.get(name)
 
@@ -449,6 +467,7 @@ class ExperimentTracker:
 
         Returns:
             List of names.
+
         """
         return list(self._experiments.keys())
 
@@ -457,6 +476,7 @@ class ExperimentTracker:
 
         Returns:
             Number of experiments loaded.
+
         """
         count = 0
         if self._base_dir.exists():
@@ -476,6 +496,7 @@ class ExperimentTracker:
 
         Returns:
             Number saved.
+
         """
         count = 0
         for experiment in self._experiments.values():
@@ -497,6 +518,7 @@ class ExperimentTracker:
 
         Returns:
             Tuple of (experiment_name, best_run) or None.
+
         """
         best_exp = None
         best_run = None
@@ -521,6 +543,7 @@ class ExperimentTracker:
 
         Yields:
             Tuples of (experiment_name, run).
+
         """
         for name, experiment in self._experiments.items():
             for run in experiment.runs:
@@ -541,6 +564,7 @@ def create_experiment(
 
     Returns:
         Experiment instance.
+
     """
     from src.research.config import ExperimentType
 

@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import gc
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Iterator
-import uuid
+from typing import Any
 
 import structlog
 
@@ -91,6 +91,7 @@ class Benchmark:
         Args:
             config: Benchmark configuration.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -120,6 +121,7 @@ class Benchmark:
 
         Returns:
             BenchmarkResult with timing metrics.
+
         """
         batch_size = batch_size or self.config.batch_size
         times = []
@@ -230,6 +232,7 @@ class Benchmark:
 
         Returns:
             List of results for each size.
+
         """
         results = []
 
@@ -262,6 +265,7 @@ class Benchmark:
 
         Returns:
             Tuple of (exponent, r_squared).
+
         """
         import math
 
@@ -300,6 +304,7 @@ class Benchmark:
 
         Returns:
             Summary dictionary.
+
         """
         if not self._results:
             return {"name": self.config.name, "results": []}
@@ -337,6 +342,7 @@ class BenchmarkSuite:
         Args:
             name: Suite name.
             logger: Optional structured logger.
+
         """
         self.name = name
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -363,6 +369,7 @@ class BenchmarkSuite:
 
         Returns:
             Created Benchmark.
+
         """
         if config is None:
             config = BenchmarkConfig(name=name)
@@ -387,6 +394,7 @@ class BenchmarkSuite:
 
         Returns:
             Results by benchmark name.
+
         """
         self._results.clear()
 
@@ -406,6 +414,7 @@ class BenchmarkSuite:
 
         Returns:
             Comparison data.
+
         """
         if not self._results:
             return {}
@@ -416,9 +425,9 @@ class BenchmarkSuite:
             for r in results:
                 all_sizes.add(r.size)
 
-        comparison = {}
+        comparison: dict[str, Any] = {}
         for size in sorted(all_sizes):
-            size_data = {}
+            size_data: dict[str, dict[str, float]] = {}
             for name, results in self._results.items():
                 matching = [r for r in results if r.size == size]
                 if matching:
@@ -439,6 +448,7 @@ class BenchmarkSuite:
 
         Returns:
             Speedup by size.
+
         """
         if baseline not in self._results or target not in self._results:
             return {}
@@ -470,6 +480,7 @@ def create_benchmark(
 
     Returns:
         Benchmark instance.
+
     """
     config = BenchmarkConfig(
         name=name,

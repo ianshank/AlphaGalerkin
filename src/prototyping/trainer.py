@@ -8,18 +8,19 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Iterator
+from typing import Any
 
 import structlog
 
+from src.prototyping.builder import PrototypeModel
 from src.prototyping.config import (
-    QuickTrainConfig,
     PresetType,
+    QuickTrainConfig,
     create_quick_train_config,
 )
-from src.prototyping.builder import PrototypeModel
 
 logger = structlog.get_logger(__name__)
 
@@ -39,6 +40,7 @@ class TrainResult:
         duration_seconds: Training duration.
         stopped_early: Whether training stopped early.
         metadata: Additional metadata.
+
     """
 
     result_id: str
@@ -94,6 +96,7 @@ class QuickTrainer:
 
     Attributes:
         config: Training configuration.
+
     """
 
     def __init__(
@@ -104,6 +107,7 @@ class QuickTrainer:
 
         Args:
             config: Training configuration.
+
         """
         self.config = config or create_quick_train_config()
         self._results: list[TrainResult] = []
@@ -131,6 +135,7 @@ class QuickTrainer:
         Args:
             event: Event name.
             callback: Callback function.
+
         """
         if event in self._callbacks:
             self._callbacks[event].append(callback)
@@ -154,6 +159,7 @@ class QuickTrainer:
 
         Returns:
             Training result.
+
         """
         # Extract model if wrapped
         if isinstance(model, PrototypeModel):
@@ -319,6 +325,7 @@ def create_quick_trainer(
 
     Returns:
         Configured QuickTrainer.
+
     """
     config = create_quick_train_config(preset=preset, **kwargs)
     return QuickTrainer(config=config)

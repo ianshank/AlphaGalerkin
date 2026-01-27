@@ -10,14 +10,15 @@ import math
 import random
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import structlog
 
-from src.prototyping.config import QuickEvalConfig
 from src.prototyping.builder import PrototypeModel
+from src.prototyping.config import QuickEvalConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -32,6 +33,7 @@ class MetricResult:
         ci_lower: Lower confidence interval.
         ci_upper: Upper confidence interval.
         std: Standard deviation.
+
     """
 
     name: str
@@ -62,6 +64,7 @@ class EvalResult:
         metrics: Computed metrics.
         duration_seconds: Evaluation duration.
         metadata: Additional metadata.
+
     """
 
     result_id: str
@@ -121,6 +124,7 @@ class QuickEvaluator:
 
     Attributes:
         config: Evaluation configuration.
+
     """
 
     def __init__(
@@ -131,6 +135,7 @@ class QuickEvaluator:
 
         Args:
             config: Evaluation configuration.
+
         """
         self.config = config or QuickEvalConfig()
         self._results: list[EvalResult] = []
@@ -158,6 +163,7 @@ class QuickEvaluator:
         Args:
             name: Metric name.
             fn: Function(predictions, targets) -> value.
+
         """
         self._metric_fns[name] = fn
         self._logger.info("registered_metric", name=name)
@@ -179,6 +185,7 @@ class QuickEvaluator:
 
         Returns:
             Evaluation result.
+
         """
         # Extract model if wrapped
         if isinstance(model, PrototypeModel):
@@ -282,8 +289,9 @@ class QuickEvaluator:
 
         Returns:
             Comparison summary.
+
         """
-        values = []
+        values: list[dict[str, str | float | None]] = []
         for result in results:
             if metric in result.metrics:
                 values.append({
@@ -294,7 +302,7 @@ class QuickEvaluator:
                 })
 
         # Sort by value (ascending for error metrics)
-        values.sort(key=lambda x: x["value"])
+        values.sort(key=lambda x: float(x["value"]) if x["value"] is not None else float("inf"))
 
         return {
             "metric": metric,
@@ -322,6 +330,7 @@ class QuickEvaluator:
 
         Returns:
             (ci_lower, ci_upper, std).
+
         """
         n = len(predictions)
         bootstrap_values = []
@@ -417,6 +426,7 @@ def create_quick_evaluator(
 
     Returns:
         Configured QuickEvaluator.
+
     """
     config = QuickEvalConfig(
         n_samples=n_samples,

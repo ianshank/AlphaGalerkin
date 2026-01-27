@@ -8,10 +8,11 @@ Provides:
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
-import uuid
+from typing import Any
 
 import structlog
 
@@ -37,6 +38,7 @@ class ModelMetrics:
         Args:
             size: Evaluation size.
             metrics: Metrics dictionary.
+
         """
         self.metrics_by_size[size] = metrics
 
@@ -102,6 +104,7 @@ class ComparisonResult:
 
         Returns:
             List of model names in rank order.
+
         """
         key = f"{metric}_mean" if f"{metric}_mean" in next(iter(self.model_metrics.values())).aggregate_metrics else metric
 
@@ -122,6 +125,7 @@ class ComparisonResult:
 
         Returns:
             Best model name or None.
+
         """
         ranking = self.get_ranking(metric, minimize)
         return ranking[0] if ranking else None
@@ -171,6 +175,7 @@ class ModelComparison:
         Args:
             config: Comparison configuration.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -198,6 +203,7 @@ class ModelComparison:
 
         Returns:
             ComparisonResult with all metrics.
+
         """
         result = ComparisonResult(
             start_time=datetime.utcnow().isoformat(),
@@ -258,8 +264,9 @@ class ModelComparison:
 
         Returns:
             Pairwise test results.
+
         """
-        from src.poc.statistics.significance import StatisticalAnalyzer, SignificanceTest
+        from src.poc.statistics.significance import SignificanceTest, StatisticalAnalyzer
 
         analyzer = StatisticalAnalyzer(
             SignificanceTest(
@@ -268,7 +275,7 @@ class ModelComparison:
             )
         )
 
-        pairwise = {}
+        pairwise: dict[str, dict[str, dict[str, float | bool]]] = {}
         model_names = list(model_metrics.keys())
 
         for i, name1 in enumerate(model_names):
@@ -319,6 +326,7 @@ class ModelComparison:
 
         Returns:
             List of row dictionaries.
+
         """
         result = result or (self._results[-1] if self._results else None)
         if not result:
@@ -328,7 +336,7 @@ class ModelComparison:
         rows = []
 
         for model_name, model_metrics in result.model_metrics.items():
-            row = {"model": model_name}
+            row: dict[str, Any] = {"model": model_name}
             for metric in metrics:
                 key = f"{metric}_mean"
                 if key in model_metrics.aggregate_metrics:
@@ -354,6 +362,7 @@ def create_comparison(
 
     Returns:
         ModelComparison instance.
+
     """
     config = ComparisonConfig(
         model_paths=model_paths or [],

@@ -6,7 +6,6 @@ heavy dependencies (outputs text/ASCII or data for plotting).
 
 from __future__ import annotations
 
-import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -15,8 +14,8 @@ from typing import Any
 
 import structlog
 
-from src.prototyping.trainer import TrainResult
 from src.prototyping.evaluator import EvalResult
+from src.prototyping.trainer import TrainResult
 
 logger = structlog.get_logger(__name__)
 
@@ -45,6 +44,7 @@ class PlotData:
         y_data: Y-axis data.
         series_names: Names for multiple series.
         metadata: Additional metadata.
+
     """
 
     plot_id: str
@@ -83,6 +83,7 @@ class Visualizer:
     Attributes:
         width: ASCII plot width.
         height: ASCII plot height.
+
     """
 
     def __init__(
@@ -95,6 +96,7 @@ class Visualizer:
         Args:
             width: ASCII plot width.
             height: ASCII plot height.
+
         """
         self.width = width
         self.height = height
@@ -119,6 +121,7 @@ class Visualizer:
 
         Returns:
             ASCII plot string.
+
         """
         losses = result.metrics.get("loss", [])
         if not losses:
@@ -160,6 +163,7 @@ class Visualizer:
 
         Returns:
             ASCII bar plot string.
+
         """
         labels = []
         values = []
@@ -209,6 +213,7 @@ class Visualizer:
 
         Returns:
             ASCII plot string.
+
         """
         if not results:
             return "No results to plot"
@@ -259,6 +264,7 @@ class Visualizer:
 
         Returns:
             Formatted table string.
+
         """
         if not results:
             return "No results to display"
@@ -305,6 +311,7 @@ class Visualizer:
 
         Returns:
             ASCII plot string.
+
         """
         if not y:
             return "No data"
@@ -332,7 +339,7 @@ class Visualizer:
             lines.append("           |" + "".join(row))
         lines.append(f"  {y_min:.4f} |" + "-" * self.width)
         lines.append(" " * 12 + x_label)
-        lines.append(f"           0" + " " * (self.width - 10) + f"{len(y)}")
+        lines.append("           0" + " " * (self.width - 10) + f"{len(y)}")
 
         return "\n".join(lines)
 
@@ -355,6 +362,7 @@ class Visualizer:
 
         Returns:
             ASCII plot string.
+
         """
         if not values:
             return "No data"
@@ -387,6 +395,7 @@ class Visualizer:
 
         Returns:
             Formatted table string.
+
         """
         # Calculate column widths
         widths = [len(h) for h in header]
@@ -415,6 +424,7 @@ class Visualizer:
 
         Returns:
             List of plot data dictionaries.
+
         """
         if plot_id:
             return [p.to_dict() for p in self._plots if p.plot_id == plot_id]
@@ -437,5 +447,6 @@ def create_visualizer(
 
     Returns:
         Configured Visualizer.
+
     """
     return Visualizer(width=width, height=height)

@@ -7,25 +7,23 @@ scenarios in AlphaGalerkin research.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 import structlog
 
+from src.prototyping.builder import ModelBuilder, PrototypeModel
 from src.prototyping.config import (
-    PrototypeConfig,
-    QuickTrainConfig,
-    QuickEvalConfig,
     PresetType,
+    PrototypeConfig,
     create_prototype_config,
     create_quick_train_config,
 )
-from src.prototyping.builder import ModelBuilder, PrototypeModel
+from src.prototyping.data import DataGenerator
+from src.prototyping.evaluator import EvalResult, QuickEvaluator
 from src.prototyping.trainer import QuickTrainer, TrainResult
-from src.prototyping.evaluator import QuickEvaluator, EvalResult
-from src.prototyping.data import DataGenerator, SyntheticData
-from src.prototyping.visualizer import Visualizer
 
 logger = structlog.get_logger(__name__)
 
@@ -42,6 +40,7 @@ class TemplateResult:
         eval_results: Evaluation results.
         duration_seconds: Total duration.
         metadata: Additional metadata.
+
     """
 
     template_id: str
@@ -99,7 +98,7 @@ class ExperimentTemplate:
 
     def __init__(
         self,
-        name: str,
+        name: str = "base",
         description: str = "",
     ) -> None:
         """Initialize template.
@@ -107,6 +106,7 @@ class ExperimentTemplate:
         Args:
             name: Template name.
             description: Template description.
+
         """
         self.name = name
         self.description = description
@@ -120,6 +120,7 @@ class ExperimentTemplate:
 
         Returns:
             Template result.
+
         """
         raise NotImplementedError("Subclasses must implement run()")
 
@@ -163,6 +164,7 @@ class TransferTemplate(ExperimentTemplate):
 
         Returns:
             Experiment result.
+
         """
         import time
         start_time = time.time()
@@ -290,6 +292,7 @@ class AblationTemplate(ExperimentTemplate):
 
         Returns:
             Experiment result.
+
         """
         import time
         start_time = time.time()
@@ -405,6 +408,7 @@ class BenchmarkTemplate(ExperimentTemplate):
 
         Returns:
             Experiment result.
+
         """
         import time
         start_time = time.time()
@@ -489,10 +493,10 @@ class TemplateRegistry:
     Provides discovery and instantiation of templates.
     """
 
-    _instance: "TemplateRegistry | None" = None
+    _instance: TemplateRegistry | None = None
     _templates: dict[str, type[ExperimentTemplate]] = {}
 
-    def __new__(cls) -> "TemplateRegistry":
+    def __new__(cls) -> TemplateRegistry:
         """Singleton pattern."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -514,6 +518,7 @@ class TemplateRegistry:
         Args:
             name: Template name.
             template_cls: Template class.
+
         """
         self._templates[name] = template_cls
         logger.info("registered_template", name=name)
@@ -526,6 +531,7 @@ class TemplateRegistry:
 
         Returns:
             Template instance or None.
+
         """
         template_cls = self._templates.get(name)
         if template_cls:
@@ -544,6 +550,7 @@ class TemplateRegistry:
 
         Returns:
             Template info or None.
+
         """
         template = self.get(name)
         if template:
@@ -562,6 +569,7 @@ def create_template(name: str) -> ExperimentTemplate | None:
 
     Returns:
         Template instance or None.
+
     """
     return TemplateRegistry().get(name)
 
@@ -574,6 +582,7 @@ def register_template(name: str) -> Callable[[type[ExperimentTemplate]], type[Ex
 
     Returns:
         Decorator function.
+
     """
     def decorator(cls: type[ExperimentTemplate]) -> type[ExperimentTemplate]:
         TemplateRegistry().register(name, cls)

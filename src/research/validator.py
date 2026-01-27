@@ -8,11 +8,11 @@ Provides:
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Callable
-import uuid
+from typing import Any
 
 import structlog
 
@@ -168,6 +168,7 @@ class TransferValidator:
         Args:
             config: Transfer configuration.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -195,6 +196,7 @@ class TransferValidator:
 
         Returns:
             TransferResult with all metrics.
+
         """
         result = TransferResult(
             source_size=self.config.source_size,
@@ -287,6 +289,7 @@ class TransferValidator:
 
         Returns:
             TransferResult with training and evaluation metrics.
+
         """
         result = TransferResult(
             source_size=self.config.source_size,
@@ -377,6 +380,7 @@ class TransferValidator:
 
         Returns:
             Best result by primary MSE.
+
         """
         passed_results = [r for r in self._results if r.passed]
         if not passed_results:
@@ -406,6 +410,7 @@ class TransferValidator:
 
         Returns:
             Comparison data.
+
         """
         comparison = {
             "result1_id": result1.result_id,
@@ -449,6 +454,7 @@ def create_transfer_validator(
 
     Returns:
         TransferValidator instance.
+
     """
     config = TransferConfig(
         source_size=source_size,

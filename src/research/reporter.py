@@ -17,10 +17,10 @@ from typing import Any
 
 import structlog
 
-from src.research.experiment import Experiment, ExperimentRun
 from src.research.benchmark import BenchmarkResult
-from src.research.validator import TransferResult
 from src.research.comparison import ComparisonResult
+from src.research.experiment import Experiment, ExperimentRun
+from src.research.validator import TransferResult
 
 
 class ReportFormat(str, Enum):
@@ -59,6 +59,7 @@ class Reporter:
             output_dir: Output directory for reports.
             default_format: Default report format.
             logger: Optional structured logger.
+
         """
         self._output_dir = Path(output_dir)
         self._default_format = default_format
@@ -79,6 +80,7 @@ class Reporter:
 
         Returns:
             Report content as string.
+
         """
         format = format or self._default_format
         sections = []
@@ -139,6 +141,7 @@ class Reporter:
 
         Returns:
             Report content as string.
+
         """
         format = format or self._default_format
         sections = []
@@ -194,6 +197,7 @@ class Reporter:
 
         Returns:
             Report content as string.
+
         """
         format = format or self._default_format
         sections = []
@@ -257,6 +261,7 @@ class Reporter:
 
         Returns:
             Report content as string.
+
         """
         format = format or self._default_format
         sections = []
@@ -304,6 +309,7 @@ class Reporter:
 
         Returns:
             Formatted report.
+
         """
         if format == ReportFormat.MARKDOWN:
             return self._build_markdown(title, sections)
@@ -384,6 +390,7 @@ class Reporter:
 
         Returns:
             Path to saved file.
+
         """
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -410,7 +417,9 @@ class Reporter:
 
     def _format_runs(self, runs: list[ExperimentRun]) -> str:
         """Format runs list."""
-        lines = ["| Run ID | Status | Duration | Final Loss |", "| ------ | ------ | -------- | ---------- |"]
+        header = "| Run ID | Status | Duration | Final Loss |"
+        separator = "| ------ | ------ | -------- | ---------- |"
+        lines = [header, separator]
         for run in runs:
             duration = f"{run.duration_seconds:.1f}s" if run.duration_seconds else "-"
             loss = run.final_metrics.get("loss_final", "-")
@@ -448,11 +457,14 @@ class Reporter:
 
     def _format_transfer_targets(self, result: TransferResult) -> str:
         """Format transfer target results."""
-        lines = ["| Target | MSE | MAE | Status |", "| ------ | --- | --- | ------ |"]
+        header = "| Target | MSE | MAE | Status |"
+        separator = "| ------ | --- | --- | ------ |"
+        lines = [header, separator]
         for size, metrics in sorted(result.target_metrics.items()):
             status = "PASS" if metrics.passed else "FAIL"
             primary = " *" if size == result.primary_target else ""
-            lines.append(f"| {size}x{size}{primary} | {metrics.mse:.6f} | {metrics.mae:.6f} | {status} |")
+            row = f"| {size}x{size}{primary} | {metrics.mse:.6f} | {metrics.mae:.6f} | {status} |"
+            lines.append(row)
         return "\n".join(lines)
 
     def _format_training_info(self, result: TransferResult) -> str:
@@ -500,7 +512,7 @@ class Reporter:
         if not results:
             return "No benchmark results."
 
-        sizes = sorted(set(r.size for r in results))
+        sizes = sorted({r.size for r in results})
         return "\n".join([
             f"- **Benchmarks**: {len(results)}",
             f"- **Sizes**: {sizes}",
@@ -514,9 +526,11 @@ class Reporter:
             "| ---- | --------- | -------- | ---------- |",
         ]
         for r in sorted(results, key=lambda x: x.size):
-            lines.append(
-                f"| {r.size}x{r.size} | {r.mean_time_ms:.2f} | {r.std_time_ms:.2f} | {r.throughput:.0f} |"
+            row = (
+                f"| {r.size}x{r.size} | {r.mean_time_ms:.2f} | "
+                f"{r.std_time_ms:.2f} | {r.throughput:.0f} |"
             )
+            lines.append(row)
         return "\n".join(lines)
 
 
@@ -532,6 +546,7 @@ def create_reporter(
 
     Returns:
         Reporter instance.
+
     """
     return Reporter(
         output_dir=Path(output_dir),

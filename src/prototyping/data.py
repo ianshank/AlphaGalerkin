@@ -9,9 +9,10 @@ from __future__ import annotations
 import math
 import random
 import uuid
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Iterator
+from typing import Any
 
 import structlog
 
@@ -30,6 +31,7 @@ class SyntheticData:
         input_shape: Shape of inputs.
         target_shape: Shape of targets.
         metadata: Additional metadata.
+
     """
 
     data_id: str
@@ -54,7 +56,7 @@ class SyntheticData:
         train_ratio: float = 0.8,
         shuffle: bool = True,
         seed: int | None = None,
-    ) -> tuple["SyntheticData", "SyntheticData"]:
+    ) -> tuple[SyntheticData, SyntheticData]:
         """Split data into train and test sets.
 
         Args:
@@ -64,6 +66,7 @@ class SyntheticData:
 
         Returns:
             (train_data, test_data).
+
         """
         if seed is not None:
             random.seed(seed)
@@ -113,6 +116,7 @@ class SyntheticData:
 
         Yields:
             (batch_inputs, batch_targets).
+
         """
         indices = list(range(self.n_samples))
         if shuffle:
@@ -147,6 +151,7 @@ class DataGenerator:
 
     Attributes:
         seed: Random seed for reproducibility.
+
     """
 
     def __init__(self, seed: int | None = None) -> None:
@@ -154,6 +159,7 @@ class DataGenerator:
 
         Args:
             seed: Random seed.
+
         """
         self.seed = seed
         self._rng = random.Random(seed) if seed is not None else random.Random()
@@ -177,6 +183,7 @@ class DataGenerator:
         Args:
             name: Generator name.
             fn: Generator function.
+
         """
         self._generators[name] = fn
         self._logger.info("registered_generator", name=name)
@@ -196,6 +203,7 @@ class DataGenerator:
 
         Returns:
             Generated SyntheticData.
+
         """
         if generator_type not in self._generators:
             raise ValueError(f"Unknown generator: {generator_type}")
@@ -224,6 +232,7 @@ class DataGenerator:
 
         Returns:
             SyntheticData with linear relationship.
+
         """
         # Generate random weights
         weights = [self._rng.gauss(0, 1) for _ in range(n_features)]
@@ -269,6 +278,7 @@ class DataGenerator:
 
         Returns:
             SyntheticData with polynomial relationship.
+
         """
         # Generate random coefficients
         coeffs = [self._rng.gauss(0, 1) for _ in range(degree + 1)]
@@ -315,6 +325,7 @@ class DataGenerator:
 
         Returns:
             SyntheticData with sinusoidal relationship.
+
         """
         inputs = []
         targets = []
@@ -358,6 +369,7 @@ class DataGenerator:
 
         Returns:
             SyntheticData for classification.
+
         """
         # Generate class centers
         centers = [
@@ -404,6 +416,7 @@ class DataGenerator:
 
         Returns:
             SyntheticData with board patterns.
+
         """
         inputs = []
         targets = []
@@ -461,6 +474,7 @@ class DataGenerator:
 
         Returns:
             SyntheticData with field patterns.
+
         """
         inputs = []
         targets = []
@@ -512,5 +526,6 @@ def create_data_generator(seed: int | None = None) -> DataGenerator:
 
     Returns:
         Configured DataGenerator.
+
     """
     return DataGenerator(seed=seed)

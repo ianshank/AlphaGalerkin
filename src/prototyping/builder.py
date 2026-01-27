@@ -7,13 +7,14 @@ and flexible customization.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 import structlog
 
-from src.prototyping.config import PrototypeConfig, PresetType, create_prototype_config
+from src.prototyping.config import PresetType, PrototypeConfig, create_prototype_config
 
 logger = structlog.get_logger(__name__)
 
@@ -40,6 +41,7 @@ class PrototypeModel:
         model: Underlying model instance.
         created_at: Creation timestamp.
         metadata: Additional metadata.
+
     """
 
     model_id: str
@@ -101,6 +103,7 @@ class ModelBuilder:
     Attributes:
         config: Prototype configuration.
         model_factory: Factory function for creating models.
+
     """
 
     def __init__(
@@ -113,6 +116,7 @@ class ModelBuilder:
         Args:
             config: Prototype configuration.
             model_factory: Optional custom model factory.
+
         """
         self.config = config or create_prototype_config()
         self._model_factory = model_factory or self._default_factory
@@ -135,6 +139,7 @@ class ModelBuilder:
         Args:
             name: Component name.
             factory: Factory function.
+
         """
         self._custom_components[name] = factory
         self._logger.info("registered_component", name=name)
@@ -154,6 +159,7 @@ class ModelBuilder:
 
         Returns:
             Built PrototypeModel.
+
         """
         # Merge configurations
         if config is None:
@@ -213,6 +219,7 @@ class ModelBuilder:
 
         Returns:
             Built PrototypeModel.
+
         """
         config = create_prototype_config(
             name=name or f"prototype_{preset if isinstance(preset, str) else preset.value}",
@@ -236,6 +243,7 @@ class ModelBuilder:
 
         Returns:
             List of built models.
+
         """
         models = []
         base = base_config or self.config
@@ -303,6 +311,7 @@ def create_model_builder(
 
     Returns:
         Configured ModelBuilder.
+
     """
     config = create_prototype_config(preset=preset, **kwargs)
     return ModelBuilder(config=config, model_factory=model_factory)

@@ -143,7 +143,7 @@ class DarcyFlowSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
             output_field=u.flatten().astype(np.float32),
             coords=coords,
             grid_size=resolution,
-             metadata={
+            metadata={
                 "forcing": self.forcing
             }
         )

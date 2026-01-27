@@ -348,8 +348,7 @@ def generate_influence_field(
     # Flatten to (N, 2) coordinates
     coords = np.stack([xx.flatten(), yy.flatten()], axis=-1).astype(np.float32)
 
-    # Flatten to (N, 2) coordinates
-    coords = np.stack([xx.flatten(), yy.flatten()], axis=-1).astype(np.float32)
+
 
     return PoissonSample(
         input_field=charges_2d.flatten().astype(np.float32),

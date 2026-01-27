@@ -144,7 +144,7 @@ class TestLosses:
         """Test loss factory function."""
         l2_loss = get_loss("l2_relative")
         h1_loss = get_loss("h1", lambda_grad=0.2)
-        mse_loss = get_loss("mse")
+
         
         assert isinstance(l2_loss, L2RelativeLoss)
         assert isinstance(h1_loss, H1Loss)

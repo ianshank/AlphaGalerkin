@@ -99,7 +99,7 @@ class HeatSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         # Initial condition: Random field
         u0 = generate_random_field(
             grid_size=resolution,
-            n_sources=None, # Continuous field often strictly better for heat
+            n_sources=None,  # Continuous field often strictly better for heat
             smooth=True,
             seed=seed
         )

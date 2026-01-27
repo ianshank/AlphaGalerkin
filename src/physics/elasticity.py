@@ -82,7 +82,7 @@ class ElasticitySolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         Fy_hat = np.fft.fft2(Fy)
         
         # Wavenumbers
-        freqs = np.fft.fftfreq(n) * n * 2 * np.pi # Scaled to domain size
+        freqs = np.fft.fftfreq(n) * n * 2 * np.pi  # Scaled to domain size
         kx, ky = np.meshgrid(freqs, freqs, indexing="ij")
         
         # Avoid zero mode (rigid body motion)
@@ -101,9 +101,7 @@ class ElasticitySolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         mu = self.mu
         lam = self.lam
         
-        # Prepare outputs
-        ux_hat = np.zeros_like(Fx_hat)
-        uy_hat = np.zeros_like(Fy_hat)
+
         
         # Efficient vectorization?
         # M[0,0] = (lam+mu)kx*kx + mu*k2

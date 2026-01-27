@@ -82,17 +82,24 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
 
         # Compute convolution for low-frequency modes
+        # Compute convolution for low-frequency modes
         out_ft = torch.zeros(
             batchsize, self.out_channels, x.size(-2), x.size(-1) // 2 + 1,
             dtype=torch.cfloat, device=x.device
         )
         
+        # Dynamic modes (clamp to input resolution)
+        modes1 = min(x_ft.size(-2), self.modes1)
+        modes2 = min(x_ft.size(-1), self.modes2)
+        
         # Apply weights to low-frequency modes
-        out_ft[:, :, :self.modes1, :self.modes2] = self.compl_mul2d(
-            x_ft[:, :, :self.modes1, :self.modes2], self.weights1
+        out_ft[:, :, :modes1, :modes2] = self.compl_mul2d(
+            x_ft[:, :, :modes1, :modes2], 
+            self.weights1[:, :, :modes1, :modes2]
         )
-        out_ft[:, :, -self.modes1:, :self.modes2] = self.compl_mul2d(
-            x_ft[:, :, -self.modes1:, :self.modes2], self.weights2
+        out_ft[:, :, -modes1:, :modes2] = self.compl_mul2d(
+            x_ft[:, :, -modes1:, :modes2], 
+            self.weights2[:, :, :modes1, :modes2]
         )
 
         # Transform back to spatial domain

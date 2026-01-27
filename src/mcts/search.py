@@ -147,7 +147,12 @@ class MCTS:
             actions = list(distribution.keys())
             probs = np.array(list(distribution.values()), dtype=np.float64)
             # Ensure probabilities sum to exactly 1.0 for np.random.choice
-            probs = probs / probs.sum()
+            prob_sum = probs.sum()
+            if prob_sum > 0:
+                probs = probs / prob_sum
+            else:
+                # Uniform fallback if all probabilities are zero
+                probs = np.ones_like(probs) / len(probs)
             action = np.random.choice(actions, p=probs)
 
         return int(action)

@@ -229,7 +229,10 @@ class MCTSNode:
                 # Uniform distribution if no visits
                 probs = np.ones_like(visits) / len(visits)
             # Ensure probabilities sum to exactly 1.0 for np.random.choice
-            probs = probs / probs.sum()
+            prob_sum = probs.sum()
+            if prob_sum > 0:
+                probs = probs / prob_sum
+            # Note: prob_sum == 0 case already handled by uniform fallback above
 
         return {a: float(p) for a, p in zip(actions, probs)}
 

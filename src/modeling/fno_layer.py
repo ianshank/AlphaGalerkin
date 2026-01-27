@@ -90,7 +90,6 @@ class SpectralConv2d(nn.Module):
         x_ft = torch.fft.rfft2(x)
 
         # Compute convolution for low-frequency modes
-        # Compute convolution for low-frequency modes
         out_ft = torch.zeros(
             batchsize, self.out_channels, x.size(-2), x.size(-1) // 2 + 1,
             dtype=torch.cfloat, device=x.device

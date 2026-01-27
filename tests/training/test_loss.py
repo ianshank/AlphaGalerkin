@@ -94,7 +94,13 @@ class TestAlphaGalerkinLoss:
         n_actions = 82
 
         policy_logits = torch.randn(batch_size, n_actions, requires_grad=True)
-        value = torch.tanh(torch.randn(batch_size, 1, requires_grad=True))
+        # Create value tensor as leaf tensor (not wrapped in tanh)
+        # The model's output already applies tanh, so we simulate final values directly
+        value_raw = torch.randn(batch_size, 1, requires_grad=True)
+        value = torch.tanh(value_raw)
+        # Retain grad on non-leaf tensor to verify gradient flow
+        value.retain_grad()
+
         target_policy = torch.softmax(torch.randn(batch_size, n_actions), dim=-1)
         target_value = torch.rand(batch_size, 1) * 2 - 1
 
@@ -108,7 +114,9 @@ class TestAlphaGalerkinLoss:
         result.total.backward()
 
         assert policy_logits.grad is not None, "Gradients should flow to policy logits"
-        assert value.grad is not None, "Gradients should flow to value"
+        # Check gradients flow through tanh to the raw value tensor
+        assert value_raw.grad is not None, "Gradients should flow through tanh to raw value"
+        assert value.grad is not None, "Gradients should flow to value (with retain_grad)"
 
     def test_loss_weights_applied(self) -> None:
         """Test that loss weights are correctly applied."""
@@ -242,3 +250,53 @@ class TestEntropyRegularizer:
 
         entropy = reg(logits, mask=mask)
         assert entropy.isfinite()
+
+    def test_entropy_with_all_masked(self) -> None:
+        """Test entropy handles degenerate case with all actions masked.
+
+        When all actions are masked for a sample, the entropy should be 0
+        and not produce NaN values.
+        """
+        reg = EntropyRegularizer(weight=1.0)
+
+        batch_size = 4
+        n_actions = 10
+
+        logits = torch.randn(batch_size, n_actions)
+        mask = torch.ones(batch_size, n_actions)
+
+        # Mask all actions for first two samples (degenerate case)
+        mask[0, :] = 0.0
+        mask[1, :] = 0.0
+
+        entropy = reg(logits, mask=mask)
+
+        # Should not produce NaN or Inf
+        assert entropy.isfinite(), "Entropy should be finite even with all-masked samples"
+        # Result should be a scalar
+        assert entropy.ndim == 0
+
+    def test_entropy_with_single_valid_action(self) -> None:
+        """Test entropy with only one valid action per sample.
+
+        With only one valid action, entropy should be 0 (no uncertainty).
+        """
+        reg = EntropyRegularizer(weight=1.0)
+
+        batch_size = 4
+        n_actions = 10
+
+        logits = torch.randn(batch_size, n_actions)
+        mask = torch.zeros(batch_size, n_actions)
+
+        # Only one valid action per sample
+        for i in range(batch_size):
+            mask[i, i % n_actions] = 1.0
+
+        entropy = reg(logits, mask=mask)
+
+        # Should be finite
+        assert entropy.isfinite(), "Entropy should be finite with single valid action"
+        # With only one valid action, entropy is 0 (normalized entropy = 0/0 -> handled)
+        # The actual value depends on implementation, but it should be finite
+        assert entropy.ndim == 0

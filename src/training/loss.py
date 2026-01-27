@@ -131,8 +131,9 @@ class AlphaGalerkinLoss(nn.Module):
             target_sum = target_policy.sum(dim=-1, keepdim=True).clamp(min=self.lbb_eps)
             target_policy = target_policy / target_sum
 
-        # Compute log softmax
+        # Compute log softmax with clamping to prevent -inf * 0 = NaN
         log_probs = torch.log_softmax(policy_logits, dim=-1)
+        log_probs = log_probs.clamp(min=-100.0)
 
         # Apply label smoothing if configured
         if self.label_smoothing > 0:
@@ -303,29 +304,66 @@ class EntropyRegularizer(nn.Module):
 
         Args:
             policy_logits: Policy logits.
-            mask: Optional action mask.
+            mask: Optional action mask (1 = valid, 0 = invalid).
 
         Returns:
             Negative entropy (to be added to loss for entropy bonus).
 
         """
-        # Compute probabilities
-        if mask is not None:
-            policy_logits = policy_logits.masked_fill(mask == 0, float("-inf"))
-
-        probs = torch.softmax(policy_logits, dim=-1)
-        log_probs = torch.log_softmax(policy_logits, dim=-1)
-
-        # Entropy: -sum(p * log(p))
-        entropy = -(probs * log_probs).sum(dim=-1)
-
-        # Maximum entropy for normalization
+        batch_size = policy_logits.size(0)
         n_actions = policy_logits.size(-1)
+        device = policy_logits.device
+
         if mask is not None:
-            n_valid = mask.sum(dim=-1).clamp(min=1)
-            max_entropy = torch.log(n_valid.float())
+            # Count valid actions per sample
+            n_valid = mask.sum(dim=-1)
+
+            # Identify degenerate samples (no valid actions)
+            degenerate_mask = n_valid < 1
+
+            if degenerate_mask.any():
+                logger.debug(
+                    "degenerate_action_mask_detected",
+                    n_degenerate=degenerate_mask.sum().item(),
+                    batch_size=batch_size,
+                )
+
+            # Create safe mask to prevent NaN in softmax
+            # For degenerate samples, set first action as valid (we'll zero out later)
+            safe_mask = mask.clone()
+            safe_mask[degenerate_mask, 0] = 1.0
+
+            # Apply safe mask to logits
+            masked_logits = policy_logits.masked_fill(safe_mask == 0, float("-inf"))
+
+            # Compute softmax safely (no all-inf rows now)
+            probs = torch.softmax(masked_logits, dim=-1)
+            log_probs = torch.log_softmax(masked_logits, dim=-1)
+
+            # Clamp log_probs to prevent -inf * 0 = NaN edge cases
+            log_probs = log_probs.clamp(min=-100.0)
+
+            # Compute entropy: -sum(p * log(p))
+            entropy = -(probs * log_probs).sum(dim=-1)
+
+            # Zero out entropy for degenerate samples (they contribute nothing)
+            entropy = entropy.masked_fill(degenerate_mask, 0.0)
+
+            # Maximum entropy based on valid actions (clamped to avoid log(0))
+            max_entropy = torch.log(n_valid.float().clamp(min=1.0))
+            # For degenerate samples, set max_entropy to 1 to avoid division issues
+            max_entropy = max_entropy.masked_fill(degenerate_mask, 1.0)
+
         else:
-            max_entropy = torch.log(torch.tensor(n_actions, dtype=torch.float32))
+            # No mask - compute normally
+            probs = torch.softmax(policy_logits, dim=-1)
+            log_probs = torch.log_softmax(policy_logits, dim=-1)
+            log_probs = log_probs.clamp(min=-100.0)
+
+            entropy = -(probs * log_probs).sum(dim=-1)
+            max_entropy = torch.log(
+                torch.tensor(n_actions, dtype=torch.float32, device=device)
+            )
 
         # Normalized entropy
         normalized_entropy = entropy / max_entropy.clamp(min=1e-8)

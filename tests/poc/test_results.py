@@ -234,9 +234,9 @@ class TestRunComparison:
 
         comp = comparison["comparisons"][0]
         assert comp["scenario"] == "test"
-        assert comp["metric_changes"]["mse"]["a"] == 0.05
-        assert comp["metric_changes"]["mse"]["b"] == 0.03
-        assert comp["metric_changes"]["mse"]["delta"] == -0.02
+        assert comp["metric_changes"]["mse"]["a"] == pytest.approx(0.05)
+        assert comp["metric_changes"]["mse"]["b"] == pytest.approx(0.03)
+        assert comp["metric_changes"]["mse"]["delta"] == pytest.approx(-0.02)
 
     def test_compare_with_new_scenario(self, temp_output_dir: Path) -> None:
         """Test comparing runs with scenario added in second run."""

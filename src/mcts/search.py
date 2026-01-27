@@ -145,7 +145,9 @@ class MCTS:
             action = self._root.get_best_action()
         else:
             actions = list(distribution.keys())
-            probs = list(distribution.values())
+            probs = np.array(list(distribution.values()), dtype=np.float64)
+            # Ensure probabilities sum to exactly 1.0 for np.random.choice
+            probs = probs / probs.sum()
             action = np.random.choice(actions, p=probs)
 
         return int(action)

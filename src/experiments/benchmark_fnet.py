@@ -421,20 +421,20 @@ def main() -> None:
     print()
     print("Scaling Analysis:")
     print(f"  FNet exponent: {scaling['fnet_scaling_exponent']:.3f} (expected ~1.0 for N log N)")
-    print(f"  Softmax exponent: {scaling['softmax_scaling_exponent']:.3f} (expected ~2.0 for N²)")
+    print(f"  Softmax exponent: {scaling['softmax_scaling_exponent']:.3f} (expected ~2.0 for N^2)")
     print(f"  Mean speedup: {scaling['mean_speedup']:.2f}x")
     print(f"  Max speedup: {scaling['max_speedup']:.2f}x")
     print()
 
     if scaling["fnet_scales_subquadratic"]:
-        print("✓ FNet scales sub-quadratically (O(N log N) verified)")
+        print("[PASS] FNet scales sub-quadratically (O(N log N) verified)")
     else:
-        print("✗ FNet scaling unexpected")
+        print("[FAIL] FNet scaling unexpected")
 
     if scaling["softmax_scales_quadratic"]:
-        print("✓ Softmax scales quadratically (O(N²) verified)")
+        print("[PASS] Softmax scales quadratically (O(N^2) verified)")
     else:
-        print("✗ Softmax scaling unexpected")
+        print("[FAIL] Softmax scaling unexpected")
 
     print("=" * 70)
 

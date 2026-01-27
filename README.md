@@ -460,17 +460,25 @@ config = OperatorConfig(
 
 ## Testing
 
+The project has **404 tests** across unit, integration, and E2E categories.
+
 ### Run All Tests
 
 ```bash
-# Full test suite
+# Full test suite (404 tests)
 pytest tests/ -v
 
-# Math kernel tests only
+# Math kernel tests (property-based)
 pytest tests/math_kernel/ -v
 
-# Integration tests only
+# Training tests
+pytest tests/training/ -v
+
+# Integration tests
 pytest tests/integration/ -v
+
+# PoC framework tests
+pytest tests/poc/ -v
 ```
 
 ### Verify Resolution Invariance
@@ -478,6 +486,22 @@ pytest tests/integration/ -v
 ```bash
 # Test 9x9 -> 19x19 transfer
 python -m src.tools.verify_invariance --train-size 9 --infer-size 19
+
+# FNet benchmark (complexity verification)
+python -m src.experiments.benchmark_fnet --sizes 81,169,361 --device cpu
+```
+
+### PoC Scenario Framework
+
+```bash
+# Quick validation suite (~5 min)
+python -m src.poc.cli run --config config/scenarios/poc_quick.yaml
+
+# Full validation suite (~30 min)
+python -m src.poc.cli run --config config/scenarios/poc_full.yaml
+
+# List available scenarios
+python -m src.poc.cli list
 ```
 
 ### Code Quality

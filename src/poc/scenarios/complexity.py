@@ -336,7 +336,7 @@ class ComplexityScenario(BaseScenario):
             List of benchmark results per grid size.
 
         """
-        from src.modeling.attention import GalerkinLinearAttention
+        from src.modeling.attention import GalerkinAttention
 
         if self._device is None:
             raise RuntimeError("setup() must be called before benchmarking")
@@ -345,7 +345,7 @@ class ComplexityScenario(BaseScenario):
 
         for grid_size in self.config.grid_sizes:
             n_tokens = grid_size * grid_size
-            layer = GalerkinLinearAttention(
+            layer = GalerkinAttention(
                 d_model=self.config.d_model,
                 n_heads=self.config.n_heads,
             ).to(self._device)

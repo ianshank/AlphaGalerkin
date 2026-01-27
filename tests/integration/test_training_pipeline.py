@@ -88,8 +88,10 @@ class TestFullTrainingPipeline:
 
         # Create replay buffer and add experiences
         buffer = UniformReplayBuffer(capacity=100)
+        # Self-play generates variable experiences per game based on game length
+        # Buffer correctly limits to capacity
         buffer.add_batch(experiences)
-        assert len(buffer) == len(experiences)
+        assert len(buffer) == min(len(experiences), buffer.capacity)
 
         # Sample batch
         batch_exps = buffer.sample(4)

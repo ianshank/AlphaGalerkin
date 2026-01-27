@@ -94,6 +94,16 @@ Monitors LBB condition during training:
 - [2026-01-26]: Effect size calculations (Cohen's d, Hedges' g, Cliff's delta).
 - [2026-01-26]: Multiple comparison corrections (Bonferroni, Holm, FDR).
 
+## Module Development Templates (src/templates/)
+- [2026-01-27]: Reusable infrastructure for building new AlphaGalerkin modules.
+- [2026-01-27]: Pydantic-based configuration with validation and no hardcoded values.
+- [2026-01-27]: Thread-safe singleton registries with decorator-based registration.
+- [2026-01-27]: Structured logging with context binding and timing utilities.
+- [2026-01-27]: Base executable classes with result tracking and error handling.
+- [2026-01-27]: CLI utilities with common options and error handling.
+- [2026-01-27]: C4 architecture template in Mermaid format.
+- [2026-01-27]: Full test suite with 107 tests (100% passing).
+
 ## Known Issues
 - [None yet]
 
@@ -239,6 +249,64 @@ python -c "from src.games import GameRegistry; print(GameRegistry().list_games()
 pytest tests/games/ -v
 ```
 
+## Module Development Template Commands
+```bash
+# Run template tests
+pytest tests/templates/ -v
+
+# Example: Create a new module configuration
+python -c "
+from src.templates.config import BaseModuleConfig, create_config_class
+from pydantic import Field
+
+# Method 1: Subclass directly
+class MyModuleConfig(BaseModuleConfig):
+    my_param: int = Field(default=100, ge=1, description='My parameter')
+
+config = MyModuleConfig(name='test')
+print(f'Config hash: {config.compute_hash()}')
+
+# Method 2: Use factory function
+QuickConfig = create_config_class(
+    'QuickConfig',
+    my_float=(float, Field(default=0.5, gt=0, lt=1)),
+)
+quick = QuickConfig(name='quick')
+print(f'Quick config: {quick.my_float}')
+"
+
+# Example: Create and use a registry
+python -c "
+from src.templates.registry import create_registry
+
+class BaseProcessor:
+    def process(self, data): raise NotImplementedError
+
+ProcessorRegistry, register_processor = create_registry('Processor', BaseProcessor)
+
+@register_processor('upper')
+class UpperProcessor(BaseProcessor):
+    def process(self, data): return data.upper()
+
+# Use the registry
+proc_cls = ProcessorRegistry().get('upper')
+processor = proc_cls()
+print(processor.process('hello'))  # HELLO
+"
+
+# Example: Use structured logging
+python -c "
+from src.templates.logging import create_logger_class, configure_module_logging
+
+configure_module_logging(level='DEBUG')
+MyLogger = create_logger_class('MyModule')
+logger = MyLogger('component', run_id='test123')
+
+with logger.timed('operation'):
+    logger.metric('accuracy', 0.95, epoch=1)
+"
+```
+
 ## Hyperparameter Tuning Commands
 ```bash
 # Run hyperparameter tuning for transfer scenario
@@ -328,6 +396,12 @@ src/
       tuner.py        - HyperparameterTuner orchestrator
     statistics/       - Statistical analysis
       significance.py - Significance testing & effect sizes
+  templates/    - Reusable module development infrastructure
+    config.py         - Base Pydantic configuration classes
+    registry.py       - Thread-safe singleton registry pattern
+    logging.py        - Structured logging with context binding
+    base.py           - Base executable classes with result tracking
+    cli.py            - CLI utilities with common options
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests
@@ -344,6 +418,11 @@ tests/
     test_config.py    - Export/quantization config tests
   games/        - Multi-game tests
     test_go.py        - Go implementation tests
+  templates/    - Module development template tests
+    test_config.py    - Configuration validation tests
+    test_registry.py  - Registry pattern tests
+    test_logging.py   - Logging utilities tests
+    test_base.py      - Base executable tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config
@@ -354,6 +433,9 @@ config/         - Hydra/Pydantic configuration schemas
 docs/           - Documentation
   architecture/       - C4 architecture diagrams
     c4_model.md       - C4 model documentation
+  templates/          - Module development templates
+    IMPLEMENTATION_TEMPLATE.md - Agentic coding system prompt template
+    C4_TEMPLATE.md    - C4 architecture template in Mermaid format
   IMPLEMENTATION_PLAN.md - Next-phase implementation plan
   PROMPT_TEMPLATE.md  - Agentic coding prompt template
 scripts/        - CLI entry points

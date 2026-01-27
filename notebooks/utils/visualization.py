@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import matplotlib.pyplot as plt
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+    from matplotlib.image import AxesImage
 
     from notebooks.utils.config import VisualizationConfig
 
@@ -338,7 +339,7 @@ def plot_policy_heatmap(
     top_k: int = 3,
     cmap: str = "Reds",
     marker_color: str = "blue",
-):
+) -> "AxesImage":
     """Plot policy heatmap with top-k moves marked.
 
     Args:

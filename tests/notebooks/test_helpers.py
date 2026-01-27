@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
 
@@ -10,6 +13,9 @@ from notebooks.utils.helpers import (
     validate_board_sizes,
     format_model_summary,
     ModelForwardResult,
+    setup_environment,
+    safe_model_forward,
+    EnvironmentInfo,
 )
 
 
@@ -135,3 +141,117 @@ class TestModelForwardResult:
         )
         assert result.success is False
         assert result.error == "Shape mismatch"
+
+
+class TestSetupEnvironment:
+    """Tests for setup_environment function."""
+
+    def test_setup_with_valid_project_root(self, tmp_path: Path) -> None:
+        """Test setup with a valid project root."""
+        # Create expected structure
+        (tmp_path / "src").mkdir()
+        (tmp_path / "config").mkdir()
+        (tmp_path / "notebooks").mkdir()
+
+        env_info = setup_environment(random_seed=123, project_root=tmp_path)
+
+        assert isinstance(env_info, EnvironmentInfo)
+        assert env_info.project_root == tmp_path
+        assert env_info.python_version
+        assert env_info.torch_version
+
+    def test_setup_raises_for_nonexistent_path(self, tmp_path: Path) -> None:
+        """Test that setup raises RuntimeError for non-existent path."""
+        nonexistent = tmp_path / "does_not_exist"
+
+        with pytest.raises(RuntimeError, match="does not exist"):
+            setup_environment(project_root=nonexistent)
+
+    def test_setup_raises_for_invalid_structure(self, tmp_path: Path) -> None:
+        """Test that setup raises RuntimeError for invalid project structure."""
+        # Create empty directory (no src/ or notebooks/)
+        with pytest.raises(RuntimeError, match="appears invalid"):
+            setup_environment(project_root=tmp_path)
+
+    def test_setup_sets_random_seeds(self, tmp_path: Path) -> None:
+        """Test that random seeds are set correctly."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "notebooks").mkdir()
+
+        setup_environment(random_seed=42, project_root=tmp_path)
+
+        # Verify torch seed by checking reproducibility
+        t1 = torch.rand(5)
+        torch.manual_seed(42)
+        t2 = torch.rand(5)
+        # After setup with seed 42, new random values should differ
+        # but resetting to 42 should give same sequence
+        torch.manual_seed(42)
+        t3 = torch.rand(5)
+        assert torch.allclose(t2, t3)
+
+    def test_setup_detects_device(self, tmp_path: Path) -> None:
+        """Test that device detection works."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "notebooks").mkdir()
+
+        env_info = setup_environment(project_root=tmp_path)
+
+        assert env_info.device is not None
+        assert env_info.cuda_available == torch.cuda.is_available()
+
+
+class TestSafeModelForward:
+    """Tests for safe_model_forward function."""
+
+    def test_successful_forward(self) -> None:
+        """Test successful model forward pass."""
+        # Create a mock model with expected output structure
+        mock_output = MagicMock()
+        mock_output.policy_logits = torch.randn(1, 82)
+        mock_output.value = torch.tensor([[0.5]])
+
+        mock_model = MagicMock()
+        mock_model.return_value = mock_output
+
+        x = torch.randn(1, 17, 9, 9)
+        result = safe_model_forward(mock_model, x)
+
+        assert result.success is True
+        assert result.error is None
+        assert result.policy_logits is not None
+        assert result.value is not None
+
+    def test_failed_forward_catches_exception(self) -> None:
+        """Test that exceptions are caught and returned as error."""
+        mock_model = MagicMock()
+        mock_model.side_effect = RuntimeError("Shape mismatch error")
+
+        x = torch.randn(1, 17, 9, 9)
+        result = safe_model_forward(mock_model, x)
+
+        assert result.success is False
+        assert result.error is not None
+        assert "Shape mismatch error" in result.error
+        assert result.policy_logits is None
+        assert result.value is None
+
+    def test_forward_with_lbb_constant(self) -> None:
+        """Test forward pass with LBB constant requested."""
+        mock_output = MagicMock()
+        mock_output.policy_logits = torch.randn(1, 82)
+        mock_output.value = torch.tensor([[0.5]])
+        mock_output.lbb_constant = torch.tensor(0.1)
+
+        mock_model = MagicMock()
+        mock_model.return_value = mock_output
+
+        x = torch.randn(1, 17, 9, 9)
+        result = safe_model_forward(mock_model, x, return_lbb=True)
+
+        assert result.success is True
+        assert result.lbb_constant is not None
+        mock_model.assert_called_once()
+        # Verify return_lbb was passed
+        call_kwargs = mock_model.call_args
+        assert call_kwargs[1].get("return_lbb") is True

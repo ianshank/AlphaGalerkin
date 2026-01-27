@@ -613,6 +613,11 @@ mypy src/ --strict
 
 ---
 
+##Created by 
+Ian Cruickshank 
+
+---
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.

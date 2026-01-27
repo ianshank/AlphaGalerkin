@@ -55,8 +55,15 @@ def plot_fourier_features(
     Returns:
         Matplotlib Figure object.
 
+    Raises:
+        ValueError: If board_sizes is empty.
+
     """
     from src.math_kernel.basis import create_grid_coordinates
+
+    # Validate inputs
+    if not board_sizes:
+        raise ValueError("board_sizes cannot be empty")
 
     plt = _get_plt()
     n_cols = len(board_sizes)
@@ -124,7 +131,24 @@ def plot_attention_comparison(
     Returns:
         Matplotlib Figure object.
 
+    Raises:
+        ValueError: If input sequences are empty or have mismatched lengths.
+
     """
+    # Validate inputs
+    if not galerkin_times or not softmax_times:
+        raise ValueError("Time sequences cannot be empty")
+    if len(galerkin_times) != len(softmax_times):
+        raise ValueError(
+            f"Sequence length mismatch: galerkin={len(galerkin_times)}, "
+            f"softmax={len(softmax_times)}"
+        )
+    if len(board_labels) != len(galerkin_times):
+        raise ValueError(
+            f"Label count mismatch: labels={len(board_labels)}, "
+            f"data={len(galerkin_times)}"
+        )
+
     plt = _get_plt()
     fig, ax = plt.subplots(figsize=figsize)
 
@@ -181,7 +205,7 @@ def plot_poisson_samples(
     """Plot Poisson equation samples (charges and potentials).
 
     Args:
-        samples: Sequence of PoissonSample objects.
+        samples: Sequence of PoissonSample objects with grid_size, charges, potential.
         figsize: Figure size.
         charge_cmap: Colormap for charge distribution.
         potential_cmap: Colormap for potential field.
@@ -189,7 +213,21 @@ def plot_poisson_samples(
     Returns:
         Matplotlib Figure object.
 
+    Raises:
+        ValueError: If samples is empty.
+        AttributeError: If samples lack required attributes.
+
     """
+    # Validate inputs
+    if not samples:
+        raise ValueError("samples cannot be empty")
+
+    # Validate sample structure
+    required_attrs = ("grid_size", "charges", "potential")
+    for attr in required_attrs:
+        if not hasattr(samples[0], attr):
+            raise AttributeError(f"Sample missing required attribute: {attr}")
+
     plt = _get_plt()
     n_samples = len(samples)
     fig, axes = plt.subplots(2, n_samples, figsize=figsize)
@@ -300,7 +338,7 @@ def plot_policy_heatmap(
     top_k: int = 3,
     cmap: str = "Reds",
     marker_color: str = "blue",
-) -> None:
+):
     """Plot policy heatmap with top-k moves marked.
 
     Args:
@@ -311,8 +349,23 @@ def plot_policy_heatmap(
         cmap: Colormap for heatmap.
         marker_color: Color for top-k markers.
 
+    Returns:
+        AxesImage from imshow for colorbar attachment.
+
+    Raises:
+        ValueError: If policy_logits shape is incompatible with board_size.
+
     """
     plt = _get_plt()
+
+    # Validate inputs
+    expected_moves = board_size * board_size + 1  # board positions + pass
+    if policy_logits.shape[-1] != expected_moves:
+        logger.warning(
+            "policy_shape_mismatch",
+            expected=expected_moves,
+            actual=policy_logits.shape[-1],
+        )
 
     # Convert to probabilities
     policy = torch.softmax(policy_logits, dim=-1)[0]
@@ -325,9 +378,10 @@ def plot_policy_heatmap(
     # Plot heatmap
     im = ax.imshow(board_policy, cmap=cmap, aspect="equal")
 
-    # Mark top-k moves
+    # Mark top-k moves (clamp to available positions)
     flat_policy = board_policy.flatten()
-    top_indices = np.argsort(flat_policy)[-top_k:][::-1]
+    actual_top_k = min(top_k, len(flat_policy))
+    top_indices = np.argsort(flat_policy)[-actual_top_k:][::-1]
 
     for rank, idx_flat in enumerate(top_indices):
         r, c = idx_flat // board_size, idx_flat % board_size

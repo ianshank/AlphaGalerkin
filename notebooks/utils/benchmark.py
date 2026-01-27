@@ -120,15 +120,28 @@ def benchmark_attention(
     Returns:
         Tuple of (galerkin_results, softmax_results).
 
+    Raises:
+        ValueError: If seq_lengths is empty.
+        RuntimeError: If module execution fails.
+
     """
+    # Validate inputs
+    if not seq_lengths:
+        raise ValueError("seq_lengths cannot be empty")
+
     galerkin_results = []
     softmax_results = []
 
     for seq_len in seq_lengths:
         x = torch.randn(batch_size, seq_len, d_model, device=device)
 
-        # Benchmark Galerkin
-        galerkin_ms = benchmark_module(galerkin_attn, x, n_warmup, n_runs)
+        # Benchmark Galerkin with error handling
+        try:
+            galerkin_ms = benchmark_module(galerkin_attn, x, n_warmup, n_runs)
+        except Exception as e:
+            logger.error("galerkin_benchmark_failed", seq_len=seq_len, error=str(e))
+            raise RuntimeError(f"Galerkin attention failed at seq_len={seq_len}: {e}") from e
+
         galerkin_results.append(
             BenchmarkResult(
                 name="Galerkin",
@@ -139,8 +152,13 @@ def benchmark_attention(
             )
         )
 
-        # Benchmark Softmax
-        softmax_ms = benchmark_module(softmax_attn, x, n_warmup, n_runs)
+        # Benchmark Softmax with error handling
+        try:
+            softmax_ms = benchmark_module(softmax_attn, x, n_warmup, n_runs)
+        except Exception as e:
+            logger.error("softmax_benchmark_failed", seq_len=seq_len, error=str(e))
+            raise RuntimeError(f"Softmax attention failed at seq_len={seq_len}: {e}") from e
+
         softmax_results.append(
             BenchmarkResult(
                 name="Softmax",
@@ -183,27 +201,58 @@ def benchmark_model_throughput(
     Returns:
         Throughput in positions evaluated per second.
 
+    Raises:
+        ValueError: If board_size or batch_size is non-positive.
+        RuntimeError: If model execution fails.
+
     """
+    # Validate inputs
+    if board_size <= 0:
+        raise ValueError(f"board_size must be positive, got {board_size}")
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be positive, got {batch_size}")
+    if n_evals <= 0:
+        raise ValueError(f"n_evals must be positive, got {n_evals}")
+
     model.eval()
     x = torch.randn(batch_size, input_channels, board_size, board_size, device=device)
 
-    # Warmup
-    with torch.no_grad():
-        _ = model(x)
-
-    if x.is_cuda:
-        torch.cuda.synchronize()
-
-    # Benchmark
-    start = time.perf_counter()
-    with torch.no_grad():
-        for _ in range(n_evals):
+    # Warmup with error handling
+    try:
+        with torch.no_grad():
             _ = model(x)
+    except Exception as e:
+        logger.error(
+            "model_warmup_failed",
+            model=model.__class__.__name__,
+            board_size=board_size,
+            error=str(e),
+        )
+        raise RuntimeError(f"Model warmup failed: {e}") from e
 
     if x.is_cuda:
         torch.cuda.synchronize()
 
-    elapsed = time.perf_counter() - start
+    # Benchmark with error handling
+    try:
+        start = time.perf_counter()
+        with torch.no_grad():
+            for _ in range(n_evals):
+                _ = model(x)
+
+        if x.is_cuda:
+            torch.cuda.synchronize()
+
+        elapsed = time.perf_counter() - start
+    except Exception as e:
+        logger.error(
+            "model_benchmark_failed",
+            model=model.__class__.__name__,
+            board_size=board_size,
+            error=str(e),
+        )
+        raise RuntimeError(f"Model benchmark failed: {e}") from e
+
     evals_per_sec = (batch_size * n_evals) / elapsed
 
     logger.debug(
@@ -231,7 +280,28 @@ def format_benchmark_table(
     Returns:
         Formatted table string.
 
+    Raises:
+        ValueError: If result lists have different lengths.
+
     """
+    # Handle empty results
+    if not galerkin_results and not softmax_results:
+        return "No benchmark results to display"
+
+    # Validate matching lengths
+    if len(galerkin_results) != len(softmax_results):
+        raise ValueError(
+            f"Result length mismatch: galerkin={len(galerkin_results)}, "
+            f"softmax={len(softmax_results)}"
+        )
+
+    # Validate labels if provided
+    if board_labels is not None and len(board_labels) != len(galerkin_results):
+        raise ValueError(
+            f"Label count mismatch: labels={len(board_labels)}, "
+            f"results={len(galerkin_results)}"
+        )
+
     lines = []
     header = f"{'Positions':^10} | {'Galerkin (ms)':^14} | {'Softmax (ms)':^14} | {'Speedup':^10}"
     lines.append(header)

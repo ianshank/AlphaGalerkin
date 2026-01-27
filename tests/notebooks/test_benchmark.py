@@ -191,6 +191,31 @@ class TestFormatBenchmarkTable:
 
         assert "5×5" in table
 
+    def test_format_table_empty_results(self) -> None:
+        """Test formatting with empty results."""
+        table = format_benchmark_table([], [])
+        assert "No benchmark results" in table
+
+    def test_format_table_mismatched_lengths(self) -> None:
+        """Test that mismatched lengths raise error."""
+        galerkin_results = [BenchmarkResult("Galerkin", 25, 1.0, 4, 50)]
+        softmax_results = []
+
+        with pytest.raises(ValueError, match="length mismatch"):
+            format_benchmark_table(galerkin_results, softmax_results)
+
+    def test_format_table_mismatched_labels(self) -> None:
+        """Test that mismatched labels raise error."""
+        galerkin_results = [BenchmarkResult("Galerkin", 25, 1.0, 4, 50)]
+        softmax_results = [BenchmarkResult("Softmax", 25, 2.0, 4, 50)]
+
+        with pytest.raises(ValueError, match="Label count mismatch"):
+            format_benchmark_table(
+                galerkin_results,
+                softmax_results,
+                board_labels=["5×5", "9×9"]  # Too many labels
+            )
+
 
 class TestFormatThroughputTable:
     """Tests for format_throughput_table function."""

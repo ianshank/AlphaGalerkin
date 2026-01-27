@@ -222,7 +222,17 @@ class MCTSNode:
         else:
             # Softmax with temperature
             visits_temp = visits ** (1.0 / temperature)
-            probs = visits_temp / (visits_temp.sum() + 1e-8)
+            total = visits_temp.sum()
+            if total > 0:
+                probs = visits_temp / total
+            else:
+                # Uniform distribution if no visits
+                probs = np.ones_like(visits) / len(visits)
+            # Ensure probabilities sum to exactly 1.0 for np.random.choice
+            prob_sum = probs.sum()
+            if prob_sum > 0:
+                probs = probs / prob_sum
+            # Note: prob_sum == 0 case already handled by uniform fallback above
 
         return {a: float(p) for a, p in zip(actions, probs)}
 

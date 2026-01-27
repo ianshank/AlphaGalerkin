@@ -320,3 +320,54 @@ class GalerkinFNetHybrid(nn.Module):
         output = (1 - ratio) * galerkin_out + ratio * fnet_out
 
         return self.norm(output)
+
+
+# Alias for backward compatibility with PoC scenarios
+class FNetMixingLayer(nn.Module):
+    """FNet-style FFT mixing layer for benchmarking.
+
+    Uses 2D FFT for O(N log N) token mixing on grid-structured inputs.
+    This is a simplified version for benchmarking purposes.
+    """
+
+    def __init__(self, d_model: int) -> None:
+        """Initialize FNet mixing layer.
+
+        Args:
+            d_model: Model dimension.
+
+        """
+        super().__init__()
+        self.d_model = d_model
+        self.norm = nn.LayerNorm(d_model)
+
+    def forward(
+        self,
+        x: Float[Tensor, "batch n d"],
+        grid_size: int,
+    ) -> Float[Tensor, "batch n d"]:
+        """Apply FFT-based mixing.
+
+        Args:
+            x: Input tensor (batch, n_tokens, d_model).
+            grid_size: Grid dimension (sqrt of n_tokens).
+
+        Returns:
+            Mixed tensor (batch, n_tokens, d_model).
+
+        """
+        batch, n_tokens, d = x.shape
+
+        # Reshape to grid
+        x_grid = x.view(batch, grid_size, grid_size, d)
+
+        # 2D FFT mixing (real-valued for efficiency)
+        x_freq = torch.fft.rfft2(x_grid, dim=(1, 2), norm="ortho")
+        x_mixed = torch.fft.irfft2(
+            x_freq, s=(grid_size, grid_size), dim=(1, 2), norm="ortho"
+        )
+
+        # Reshape back
+        x_mixed = x_mixed.view(batch, n_tokens, d)
+
+        return self.norm(x + x_mixed)

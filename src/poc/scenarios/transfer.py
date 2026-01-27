@@ -19,6 +19,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from src.physics.poisson import PoissonSample
 from src.poc.config import (
     ScenarioResult,
     ScenarioStatus,
@@ -31,6 +32,23 @@ if TYPE_CHECKING:
     pass
 
 logger = structlog.get_logger(__name__)
+
+
+def _collate_poisson_samples(batch: list[PoissonSample]) -> list[PoissonSample]:
+    """Custom collate function that keeps PoissonSample objects as-is.
+
+    The default collator tries to stack/batch the dataclass fields automatically,
+    which fails for numpy arrays in a dataclass. This function preserves the
+    list of samples, allowing manual batching in the training loop.
+
+    Args:
+        batch: List of PoissonSample objects.
+
+    Returns:
+        Same list unchanged.
+
+    """
+    return batch
 
 
 @scenario("transfer")
@@ -217,12 +235,14 @@ class TransferScenario(BaseScenario):
             seed=self.config.seed,
         )
 
-        # Create dataloader
+        # Create dataloader with custom collate function
+        # The default collator fails on PoissonSample dataclass
         dataloader = DataLoader(
             dataset,  # type: ignore[arg-type]
             batch_size=self.config.batch_size,
             shuffle=True,
             num_workers=0,
+            collate_fn=_collate_poisson_samples,
         )
 
         # Optimizer

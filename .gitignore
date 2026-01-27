@@ -89,3 +89,6 @@ nul
 
 # Hydra outputs
 hydra_outputs/
+
+# Claude Code
+.claude/

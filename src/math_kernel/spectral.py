@@ -225,9 +225,12 @@ class ResolutionAdapter(nn.Module):
         features_out = rearrange(features_target, "b d h w -> b (h w) d")
 
         # Normalize for Monte Carlo integral consistency
-        # The integral normalization factor changes with resolution
-        scale_factor = (source_size / target_size) ** 2
-        features_out = features_out * math.sqrt(scale_factor)
+        # FFT-based interpolation naturally preserves frequency content
+        # Scale to maintain feature magnitude across resolutions:
+        # - Upsampling (target > source): ratio > 1, compensates for energy dilution
+        # - Downsampling (target < source): ratio < 1, maintains relative proportions
+        scale_factor = target_size / source_size
+        features_out = features_out * scale_factor
 
         return features_out
 

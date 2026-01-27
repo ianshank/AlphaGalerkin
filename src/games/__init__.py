@@ -27,12 +27,24 @@ Usage:
     new_state = game.apply_action(state, actions[0])
 """
 
-from src.games.interface import GameInterface, GamePhase
-from src.games.registry import GameRegistry, register_game
-from src.games.state import GameState
+# Optional torch-dependent imports
+try:
+    from src.games.interface import GameInterface, GamePhase
+    from src.games.registry import GameRegistry, register_game
+    from src.games.state import GameState
 
-# Import game implementations to trigger registration
-from src.games import go  # noqa: F401
+    # Import game implementations to trigger registration
+    from src.games import go  # noqa: F401
+
+    _HAS_TORCH = True
+except ImportError:
+    # Torch not available - provide stubs
+    GameInterface = None  # type: ignore[assignment, misc]
+    GamePhase = None  # type: ignore[assignment, misc]
+    GameRegistry = None  # type: ignore[assignment, misc]
+    GameState = None  # type: ignore[assignment, misc]
+    register_game = None  # type: ignore[assignment]
+    _HAS_TORCH = False
 
 __all__ = [
     "GameInterface",

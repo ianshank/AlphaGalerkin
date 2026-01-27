@@ -53,9 +53,10 @@ def setup_environment(
         EnvironmentInfo with device and version details.
 
     Raises:
-        RuntimeError: If project root cannot be found.
+        RuntimeError: If project root cannot be found or is invalid.
 
     """
+    import random
     import numpy as np
 
     # Detect project root
@@ -70,8 +71,21 @@ def setup_environment(
         if project_root is None:
             # Fallback: assume we're in notebooks/
             project_root = current.parent
+            logger.warning(
+                "project_root_fallback",
+                message="Could not auto-detect project root, using parent directory",
+                fallback_path=str(project_root),
+            )
 
     project_root = Path(project_root)
+
+    # Validate project root has expected structure
+    if not project_root.exists():
+        raise RuntimeError(f"Project root does not exist: {project_root}")
+    if not (project_root / "src").exists() and not (project_root / "notebooks").exists():
+        raise RuntimeError(
+            f"Project root appears invalid (missing src/ or notebooks/): {project_root}"
+        )
 
     # Add project root to path
     root_str = str(project_root)
@@ -79,9 +93,10 @@ def setup_environment(
         sys.path.insert(0, root_str)
         logger.debug("added_to_path", path=root_str)
 
-    # Set random seeds
+    # Set random seeds for all random number generators
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
+    random.seed(random_seed)
     logger.debug("seeds_set", seed=random_seed)
 
     # Detect device

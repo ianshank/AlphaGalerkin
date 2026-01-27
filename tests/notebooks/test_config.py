@@ -115,9 +115,20 @@ class TestDemoConfig:
         """Test default configuration values."""
         config = DemoConfig()
         assert list(config.board_sizes) == [5, 9, 13, 19]
-        assert list(config.seq_lengths) == [25, 81, 169, 361, 625]
+        # seq_lengths is auto-computed from board_sizes
+        assert list(config.seq_lengths) == [25, 81, 169, 361]  # 5², 9², 13², 19²
         assert list(config.physics_board_sizes) == [9, 13, 19, 25]
         assert config.random_seed == 42
+
+    def test_seq_lengths_auto_computed(self) -> None:
+        """Test that seq_lengths is auto-computed from board_sizes."""
+        config = DemoConfig(board_sizes=[9, 19])
+        assert list(config.seq_lengths) == [81, 361]  # 9², 19²
+
+    def test_seq_lengths_length_validation(self) -> None:
+        """Test that custom seq_lengths must match board_sizes length."""
+        with pytest.raises(ValueError, match="must match"):
+            DemoConfig(board_sizes=[9, 19], seq_lengths=[81, 169, 361])
 
     def test_sub_configs_initialized(self) -> None:
         """Test that sub-configurations are initialized."""

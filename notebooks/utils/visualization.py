@@ -352,13 +352,12 @@ def plot_policy_heatmap(
     Returns:
         AxesImage from imshow for colorbar attachment.
 
-    Raises:
-        ValueError: If policy_logits shape is incompatible with board_size.
+    Note:
+        If policy_logits shape doesn't match expected board_size, a warning
+        is logged but plotting continues to allow flexible usage.
 
     """
-    plt = _get_plt()
-
-    # Validate inputs
+    # Validate inputs (warn but don't error to allow flexible usage)
     expected_moves = board_size * board_size + 1  # board positions + pass
     if policy_logits.shape[-1] != expected_moves:
         logger.warning(

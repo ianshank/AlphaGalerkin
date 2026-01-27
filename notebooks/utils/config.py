@@ -96,13 +96,18 @@ class DemoConfig:
 
     Centralizes all configurable parameters to avoid hard-coded values
     throughout the notebook.
+
+    Note:
+        seq_lengths is auto-computed from board_sizes if not explicitly provided.
+        If you provide custom seq_lengths, it must have the same length as board_sizes.
     """
 
     # Board sizes for demonstrations
     board_sizes: Sequence[int] = field(default_factory=lambda: [5, 9, 13, 19])
 
-    # Sequence lengths for attention benchmarks (squares of board sizes)
-    seq_lengths: Sequence[int] = field(default_factory=lambda: [25, 81, 169, 361, 625])
+    # Sequence lengths for attention benchmarks (auto-computed from board_sizes if None)
+    # These are the squared board sizes used for attention sequence length testing
+    seq_lengths: Sequence[int] | None = None
 
     # Physics demo board sizes
     physics_board_sizes: Sequence[int] = field(default_factory=lambda: [9, 13, 19, 25])
@@ -118,15 +123,27 @@ class DemoConfig:
     go_board: GoBoardConfig = field(default_factory=GoBoardConfig)
 
     def __post_init__(self) -> None:
-        """Validate configuration consistency."""
-        # Ensure seq_lengths match board_sizes squared
-        expected_seq = [s * s for s in self.board_sizes]
-        if list(self.seq_lengths)[: len(self.board_sizes)] != expected_seq:
-            logger.warning(
-                "seq_lengths_mismatch",
-                expected=expected_seq,
-                actual=list(self.seq_lengths),
-            )
+        """Validate configuration consistency and auto-compute derived values."""
+        # Auto-compute seq_lengths from board_sizes if not provided
+        if self.seq_lengths is None:
+            object.__setattr__(self, "seq_lengths", [s * s for s in self.board_sizes])
+        else:
+            # Validate that custom seq_lengths matches board_sizes length
+            if len(self.seq_lengths) != len(self.board_sizes):
+                raise ValueError(
+                    f"seq_lengths length ({len(self.seq_lengths)}) must match "
+                    f"board_sizes length ({len(self.board_sizes)}). "
+                    f"Either provide matching lengths or omit seq_lengths to auto-compute."
+                )
+            # Validate values match expected squares
+            expected_seq = [s * s for s in self.board_sizes]
+            if list(self.seq_lengths) != expected_seq:
+                logger.warning(
+                    "seq_lengths_custom",
+                    message="Custom seq_lengths provided; may not match board_sizes squared",
+                    expected=expected_seq,
+                    actual=list(self.seq_lengths),
+                )
 
 
 def create_demo_config(**overrides: object) -> DemoConfig:

@@ -13,7 +13,7 @@ import gc
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -49,7 +49,7 @@ class BenchmarkResult:
     allocated_memory_mb: float = 0.0
 
     # Metadata
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     device: str = "cpu"
     metadata: dict[str, Any] = field(default_factory=dict)
 

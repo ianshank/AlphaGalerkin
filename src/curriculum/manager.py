@@ -9,7 +9,7 @@ Provides:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -134,7 +134,7 @@ class CurriculumManager:
             return
 
         self._started = True
-        self._start_time = datetime.utcnow()
+        self._start_time = datetime.now(timezone.utc)
         self._scheduler.start()
 
         self._logger.info(
@@ -198,7 +198,7 @@ class CurriculumManager:
 
         duration = None
         if self._start_time:
-            duration = (datetime.utcnow() - self._start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - self._start_time).total_seconds()
 
         self._logger.info(
             "curriculum_completed",

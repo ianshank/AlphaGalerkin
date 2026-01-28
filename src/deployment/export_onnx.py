@@ -285,11 +285,6 @@ class ONNXExporter:
             # Add model info
             model.doc_string = f"AlphaGalerkin {self.config.model_version}"
 
-            # Add custom metadata
-            metadata_props = [
-                onnx.helper.make_operatorsetid("", self.config.opset_version),
-            ]
-
             # Add metadata key-value pairs
             meta_info = [
                 ("model_name", self.config.model_name),
@@ -306,7 +301,7 @@ class ONNXExporter:
             onnx.save(model, str(model_path))
 
         except ImportError:
-            pass
+            self._logger.debug("onnx_not_available_for_metadata")
 
     def create_sample_input(
         self,

@@ -7,8 +7,6 @@ spectral filtering to enable resolution-independent inference.
 
 from __future__ import annotations
 
-import math
-
 import torch
 from einops import rearrange
 from jaxtyping import Float

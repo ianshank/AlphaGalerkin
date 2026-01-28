@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -165,18 +165,18 @@ class CurriculumStage:
         """
         self.status = StageStatus.WARMUP if warmup_games > 0 else StageStatus.ACTIVE
         self.warmup_games_remaining = warmup_games
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(timezone.utc)
         self.metrics = StageMetrics()
 
     def complete(self) -> None:
         """Mark stage as completed."""
         self.status = StageStatus.COMPLETED
-        self.end_time = datetime.utcnow()
+        self.end_time = datetime.now(timezone.utc)
 
     def skip(self) -> None:
         """Skip this stage."""
         self.status = StageStatus.SKIPPED
-        self.end_time = datetime.utcnow()
+        self.end_time = datetime.now(timezone.utc)
 
     @property
     def board_size(self) -> int:
@@ -188,7 +188,7 @@ class CurriculumStage:
         """Get stage duration in seconds."""
         if self.start_time is None:
             return None
-        end = self.end_time or datetime.utcnow()
+        end = self.end_time or datetime.now(timezone.utc)
         return (end - self.start_time).total_seconds()
 
     def record_game(self, won: bool, drawn: bool = False) -> None:

@@ -173,10 +173,16 @@ class GradientSynchronizer:
         if not dist.is_initialized():
             return SyncMetrics()
 
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
+        # Use CUDA timing only if available and on CUDA device
+        use_cuda_timing = torch.cuda.is_available() and self._get_device().type == "cuda"
 
-        start_event.record()
+        if use_cuda_timing:
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+        else:
+            import time as time_module
+            start_time = time_module.perf_counter()
 
         # Collect gradients
         grads = []
@@ -217,9 +223,13 @@ class GradientSynchronizer:
         grads_after = [p.grad for p in self.model.parameters() if p.grad is not None]
         grad_norm_after = self._compute_grad_norm(grads_after)
 
-        end_event.record()
-        torch.cuda.synchronize()
-        sync_time = start_event.elapsed_time(end_event)
+        # Calculate sync time based on available timing method
+        if use_cuda_timing:
+            end_event.record()
+            torch.cuda.synchronize()
+            sync_time = start_event.elapsed_time(end_event)
+        else:
+            sync_time = (time_module.perf_counter() - start_time) * 1000  # Convert to ms
 
         metrics = SyncMetrics(
             sync_time_ms=sync_time,

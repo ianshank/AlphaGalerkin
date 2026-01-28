@@ -14,6 +14,7 @@ Features:
 from __future__ import annotations
 
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -475,7 +476,7 @@ class DistributedTrainer:
 
         """
         path = Path(path)
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -545,11 +546,7 @@ class DistributedTrainer:
         return self._is_main_process
 
 
-def nullcontext():
-    """Null context manager for compatibility."""
-    from contextlib import nullcontext as nc
-
-    return nc()
+# nullcontext imported at module level from contextlib
 
 
 def create_distributed_trainer(

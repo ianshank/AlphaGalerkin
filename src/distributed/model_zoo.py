@@ -13,7 +13,6 @@ Features:
 from __future__ import annotations
 
 import json
-import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -359,7 +358,7 @@ class ModelZoo:
         if metadata is None or not metadata.path.exists():
             return None
 
-        checkpoint = torch.load(metadata.path, map_location="cpu")
+        checkpoint = torch.load(metadata.path, map_location="cpu", weights_only=True)
         state_dict = checkpoint.get("state_dict", checkpoint)
 
         return state_dict, metadata

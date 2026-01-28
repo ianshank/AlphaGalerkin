@@ -3,6 +3,10 @@
 This document provides a comprehensive C4 architecture model for the AlphaGalerkin system using Mermaid diagrams.
 The C4 model consists of four levels: System Context, Containers, Components, and Code.
 
+The system supports two primary use cases:
+1. **Go AI**: Resolution-independent game playing with zero-shot transfer between board sizes
+2. **PDE Solving**: AlphaZero-style MCTS for adaptive basis selection and mesh refinement
+
 ---
 
 ## Level 1: System Context Diagram
@@ -13,22 +17,26 @@ The System Context diagram shows how AlphaGalerkin fits into the broader ecosyst
 C4Context
     title System Context - AlphaGalerkin
 
-    Person(researcher, "Go Researcher", "ML researcher studying resolution-independent learning and continuous operators")
-    Person(developer, "Developer", "Implements and experiments with Go AI algorithms")
+    Person(researcher, "Go/PDE Researcher", "ML researcher studying resolution-independent learning, continuous operators, and physics-informed neural networks")
+    Person(developer, "Developer", "Implements and experiments with Go AI and PDE solving algorithms")
     Person(player, "Go Player", "Uses the system to play games and analyze positions")
+    Person(scientist, "Computational Scientist", "Uses PDE Game Framework for adaptive numerical methods")
 
-    System(alphagalerkin, "AlphaGalerkin", "Resolution-independent Go AI using Continuous Operator Learning (Galerkin Transformers & FNet). Enables zero-shot transfer between board sizes.")
+    System(alphagalerkin, "AlphaGalerkin", "Resolution-independent AI using Continuous Operator Learning. Supports Go playing with zero-shot transfer AND PDE solving via MCTS-guided basis selection and mesh refinement.")
 
     System_Ext(go_gui, "Go GUI", "Visual interface for playing and analyzing games (Sabaki, GoGui, Lizzie, KaTrain)")
     System_Ext(go_engine, "Go Rules Engine", "Validates moves and manages game state (gym-go, PettingZoo)")
     System_Ext(compute, "Compute Infrastructure", "GPU clusters for training (CUDA, distributed training)")
+    System_Ext(visualization, "Scientific Visualization", "Matplotlib, ParaView for PDE solution visualization")
 
     Rel(researcher, alphagalerkin, "Runs PoC experiments, validates mathematical claims", "Python CLI")
     Rel(developer, alphagalerkin, "Trains models, implements features", "Python API")
     Rel(player, go_gui, "Plays games, analyzes positions", "GUI")
+    Rel(scientist, alphagalerkin, "Solves PDEs with adaptive methods", "Python CLI/API")
     Rel(go_gui, alphagalerkin, "Sends moves, receives evaluations", "GTP Protocol")
     Rel(alphagalerkin, go_engine, "Validates moves, queries legal actions", "Python API")
     Rel(alphagalerkin, compute, "Executes training, performs inference", "PyTorch/CUDA")
+    Rel(alphagalerkin, visualization, "Exports solutions for visualization", "NumPy arrays")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
@@ -38,7 +46,8 @@ C4Context
 - **Researchers** validate core mathematical claims (zero-shot transfer, O(N) complexity, LBB stability)
 - **Developers** train models and implement new features using the Python API
 - **Go Players** interact via GTP-compatible GUIs
-- **External Systems** provide game rules validation and compute resources
+- **Computational Scientists** use MCTS-guided PDE solving for adaptive basis/mesh refinement
+- **External Systems** provide game rules validation, compute resources, and visualization
 
 ---
 
@@ -50,24 +59,26 @@ The Container diagram shows the high-level technical building blocks of AlphaGal
 C4Container
     title Container Diagram - AlphaGalerkin System
 
-    Person(user, "User", "Researcher, Developer, or Go Player")
+    Person(user, "User", "Researcher, Developer, Go Player, or Computational Scientist")
 
     Container_Boundary(alphagalerkin, "AlphaGalerkin System") {
-        Container(cli, "CLI Entrypoints", "Python Scripts", "Command-line interface for training, benchmarking, and experiments")
+        Container(cli, "CLI Entrypoints", "Python Scripts", "Command-line interface for training, benchmarking, PDE solving, and experiments")
         Container(gtp_server, "GTP Server", "Python", "Go Text Protocol server for game playing and analysis")
-        
+
         Container(neural_operator, "Neural Operator Model", "PyTorch", "Core continuous operator learning model with Galerkin attention and FNet mixing")
-        
-        Container(mcts_engine, "MCTS Search Engine", "Python", "Monte Carlo Tree Search with neural network guidance for move selection")
-        
-        Container(training_pipeline, "Training Pipeline", "PyTorch", "Self-play, replay buffer, loss computation, and checkpoint management")
-        
-        Container(math_kernel, "Math Kernel", "NumPy/PyTorch", "Mathematical primitives: Fourier basis, Galerkin projection, spectral filtering")
-        
+
+        Container(mcts_engine, "MCTS Search Engine", "Python", "Monte Carlo Tree Search with neural network guidance for move/action selection")
+
+        Container(pde_framework, "PDE Game Framework", "Python/PyTorch", "Treats PDE solving as sequential decision-making with MCTS-guided basis selection and mesh refinement")
+
+        Container(training_pipeline, "Training Pipeline", "PyTorch", "Self-play, replay buffer, physics-informed loss, adaptive loss balancing, and checkpoint management")
+
+        Container(math_kernel, "Math Kernel", "NumPy/PyTorch", "Mathematical primitives: multi-scale Fourier features, Galerkin projection, spectral filtering")
+
         Container(poc_framework, "PoC Framework", "Python/Pydantic", "Scenario-based validation of mathematical claims with reproducible experiments")
-        
+
         Container(data_layer, "Data Layer", "PyTorch Dataset", "Board state preprocessing, variable-size batching, physics data generation")
-        
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -77,23 +88,28 @@ C4Container
 
     Rel(user, cli, "Runs commands", "CLI")
     Rel(go_gui, gtp_server, "Sends GTP commands", "GTP/TCP")
-    
+
     Rel(cli, training_pipeline, "Initiates training")
     Rel(cli, poc_framework, "Runs experiments")
+    Rel(cli, pde_framework, "Solves PDEs")
     Rel(gtp_server, neural_operator, "Gets policy/value")
     Rel(gtp_server, mcts_engine, "Performs search")
-    
+
     Rel(mcts_engine, neural_operator, "Evaluates positions")
+    Rel(mcts_engine, pde_framework, "Guides basis/mesh selection")
+    Rel(pde_framework, neural_operator, "Uses for solution approximation")
+    Rel(pde_framework, math_kernel, "Uses PDE operators, residuals")
     Rel(training_pipeline, neural_operator, "Trains weights")
+    Rel(training_pipeline, pde_framework, "Generates PDE training data")
     Rel(neural_operator, math_kernel, "Uses basis functions, projections")
-    
+
     Rel(training_pipeline, data_layer, "Loads training data")
     Rel(poc_framework, neural_operator, "Validates claims")
     Rel(poc_framework, data_layer, "Generates physics data")
-    
+
     Rel(training_pipeline, checkpoint_store, "Saves/loads models")
     Rel(poc_framework, results_store, "Persists results")
-    
+
     Rel(neural_operator, compute, "GPU execution")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
@@ -103,12 +119,13 @@ C4Container
 
 | Container | Responsibility | Key Technologies |
 |-----------|----------------|------------------|
-| **CLI Entrypoints** | User interface for training, benchmarking, and experiments | Python, argparse, Hydra |
+| **CLI Entrypoints** | User interface for training, benchmarking, PDE solving, and experiments | Python, argparse, Hydra |
 | **GTP Server** | Game playing interface compatible with Go GUIs | Python, GTP Protocol |
 | **Neural Operator Model** | Resolution-independent position evaluation | PyTorch, Galerkin Attention, FNet |
-| **MCTS Search Engine** | Tree search with neural guidance | Python, NumPy |
-| **Training Pipeline** | Model training via self-play and supervised learning | PyTorch, distributed training |
-| **Math Kernel** | Mathematical foundations and operators | NumPy, SciPy, FFT |
+| **MCTS Search Engine** | Tree search with neural guidance for games and PDEs | Python, NumPy, Gumbel AlphaZero |
+| **PDE Game Framework** | AlphaZero-style PDE solving via basis/mesh refinement | PyTorch, autodiff, PDE operators |
+| **Training Pipeline** | Model training with physics-informed loss and adaptive balancing | PyTorch, ReLoBRaLo, GradNorm |
+| **Math Kernel** | Mathematical foundations and operators | NumPy, SciPy, FFT, multi-scale Fourier |
 | **PoC Framework** | Validates mathematical claims through experiments | Pydantic, structlog |
 | **Data Layer** | Data loading and preprocessing | PyTorch Dataset, padding/masking |
 
@@ -367,6 +384,222 @@ C4Component
 
 ---
 
+## Level 3: Component Diagram - PDE Game Framework
+
+This diagram shows the internal components of the PDE Game Framework container.
+
+```mermaid
+C4Component
+    title Component Diagram - PDE Game Framework
+
+    Container_Boundary(pde_framework, "PDE Game Framework") {
+        Component(pde_game, "PDEGame", "Abstract Base Class", "Unified interface treating PDE solving as sequential decision-making")
+
+        Component(pde_state, "PDEState", "Dataclass", "Immutable state: coordinates, solution, residuals, error estimate, DoF budget")
+
+        Component(pde_operators, "PDE Operators", "PyTorch Module", "Poisson, Burgers, Heat, Advection-Diffusion with autodiff residuals")
+
+        Component(basis_game, "BasisSelectionGame", "PDEGame Implementation", "Galerkin basis function selection as action space")
+
+        Component(mesh_game, "MeshRefinementGame", "PDEGame Implementation", "Adaptive h/p/hp refinement as action space")
+
+        Component(operator_registry, "Operator Registry", "Singleton", "Thread-safe discovery and registration of PDE operators")
+
+        Component(pde_config, "PDE Configuration", "Pydantic", "PDEConfig, BasisSelectionConfig, MeshRefinementConfig, PDEGameConfig")
+    }
+
+    Component_Ext(mcts_engine, "MCTS Engine", "Searches action space")
+    Component_Ext(neural_operator, "Neural Operator", "Evaluates states, predicts policy/value")
+    Component_Ext(training_loss, "Physics-Informed Loss", "Residual + boundary + conservation losses")
+
+    Rel(pde_game, pde_state, "Manages state transitions")
+    Rel(basis_game, pde_game, "Implements")
+    Rel(mesh_game, pde_game, "Implements")
+    Rel(basis_game, pde_operators, "Computes residuals")
+    Rel(mesh_game, pde_operators, "Computes error indicators")
+
+    Rel(mcts_engine, pde_game, "Searches for optimal actions")
+    Rel(neural_operator, pde_state, "Encodes state to features")
+    Rel(pde_operators, training_loss, "Provides PDE residuals")
+
+    Rel(pde_game, pde_config, "Configured by")
+    Rel(pde_operators, operator_registry, "Registered with")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### PDE Game Framework Components
+
+| Component | Responsibility | Key Interface |
+|-----------|----------------|---------------|
+| **PDEGame** | Abstract base for PDE-as-game formulation | `get_valid_actions()`, `apply_action()`, `get_reward()` |
+| **PDEState** | Immutable state representation | `coords`, `solution`, `residuals`, `error_estimate`, `dof` |
+| **PDE Operators** | PDE-specific residual and boundary computation | `residual()`, `source_term()`, `boundary_value()` |
+| **BasisSelectionGame** | Galerkin basis selection actions | Add/remove/modify Fourier, polynomial, RBF bases |
+| **MeshRefinementGame** | Adaptive mesh refinement actions | h-refine, p-refine, coarsen elements |
+| **Operator Registry** | Plugin system for PDE types | `register()`, `get()`, `list()` |
+| **PDE Configuration** | Validated config schemas | Pydantic models with domain/boundary validation |
+
+---
+
+## Level 3: Component Diagram - Adaptive Loss Balancing
+
+This diagram shows the loss balancing strategies for multi-objective optimization.
+
+```mermaid
+C4Component
+    title Component Diagram - Adaptive Loss Balancing
+
+    Container_Boundary(loss_balancing, "Adaptive Loss Balancing") {
+        Component(loss_balancer, "LossBalancer", "Abstract Base Class", "Interface for adaptive weight computation")
+
+        Component(relobralo, "ReLoBRaLo", "LossBalancer Implementation", "Relative Loss Balancing with Random Lookback for stable training")
+
+        Component(gradnorm, "GradNorm", "LossBalancer Implementation", "Gradient normalization with learnable task weights")
+
+        Component(uncertainty, "UncertaintyWeighting", "LossBalancer Implementation", "Homoscedastic uncertainty with learned log-variance")
+
+        Component(softadapt, "SoftAdapt", "LossBalancer Implementation", "Softmax weighting based on loss improvement rates")
+
+        Component(static, "StaticWeighting", "LossBalancer Implementation", "Fixed weights for baseline comparison")
+
+        Component(loss_terms, "LossTerms", "Dataclass", "Structured loss output with weights and individual terms")
+
+        Component(balancing_config, "BalancingConfig", "Pydantic", "Strategy selection, hyperparameters, weight bounds")
+    }
+
+    Component_Ext(physics_loss, "Physics-Informed Loss", "Residual, boundary, conservation losses")
+    Component_Ext(alphagalerkin_loss, "AlphaGalerkin Loss", "Policy CE + Value MSE + LBB regularization")
+
+    Rel(relobralo, loss_balancer, "Implements")
+    Rel(gradnorm, loss_balancer, "Implements")
+    Rel(uncertainty, loss_balancer, "Implements")
+    Rel(softadapt, loss_balancer, "Implements")
+    Rel(static, loss_balancer, "Implements")
+
+    Rel(loss_balancer, loss_terms, "Produces")
+    Rel(loss_balancer, balancing_config, "Configured by")
+
+    Rel(physics_loss, loss_balancer, "Balanced by")
+    Rel(alphagalerkin_loss, loss_balancer, "Balanced by")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Loss Balancing Components
+
+| Component | Algorithm | Use Case |
+|-----------|-----------|----------|
+| **ReLoBRaLo** | Random lookback with softmax normalization | Default for PDE solving, handles scale differences |
+| **GradNorm** | Gradient magnitude balancing via shared layer | Multi-task learning with gradient conflicts |
+| **UncertaintyWeighting** | Learned log-variance per task | When task uncertainties vary significantly |
+| **SoftAdapt** | Improvement rate tracking | When some losses plateau while others improve |
+| **StaticWeighting** | Fixed weights | Baseline comparison, known good ratios |
+
+---
+
+## Level 3: Component Diagram - Multi-Scale Fourier Features
+
+This diagram shows the spectral bias mitigation components.
+
+```mermaid
+C4Component
+    title Component Diagram - Multi-Scale Fourier Features
+
+    Container_Boundary(fourier_features, "Multi-Scale Fourier Features") {
+        Component(multiscale, "MultiScaleFourierFeatures", "PyTorch Module", "Parallel frequency banks at multiple scales for capturing fine and coarse features")
+
+        Component(adaptive, "AdaptiveFourierFeatures", "PyTorch Module", "Attention-weighted combination of frequency banks")
+
+        Component(progressive, "ProgressiveFourierFeatures", "PyTorch Module", "Curriculum learning with progressive frequency activation")
+
+        Component(positional, "PositionalEncoding", "PyTorch Module", "Standard sinusoidal encoding for transformer sequences")
+
+        Component(spatial, "SpatialPositionalEncoding", "PyTorch Module", "2D grid encoding for image-like inputs")
+
+        Component(fourier_config, "FourierFeaturesConfig", "Pydantic", "Scale ranges, feature counts, learnable flag")
+    }
+
+    Component_Ext(neural_operator, "Neural Operator Model", "Uses for input encoding")
+    Component_Ext(pde_operators, "PDE Operators", "Encodes collocation points")
+
+    Rel(multiscale, fourier_config, "Configured by")
+    Rel(adaptive, multiscale, "Extends with attention")
+    Rel(progressive, multiscale, "Extends with curriculum")
+
+    Rel(neural_operator, multiscale, "Embeds positions")
+    Rel(neural_operator, spatial, "Encodes spatial grids")
+    Rel(pde_operators, multiscale, "Encodes coordinates")
+
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+```
+
+### Fourier Features Components
+
+| Component | Purpose | Mathematical Foundation |
+|-----------|---------|-------------------------|
+| **MultiScaleFourierFeatures** | Capture both high and low frequencies | $[\sin(2\pi \sigma_k B x), \cos(2\pi \sigma_k B x)]$ for scales $\sigma_k$ |
+| **AdaptiveFourierFeatures** | Learn which scales matter for task | Attention-weighted sum of scale-specific features |
+| **ProgressiveFourierFeatures** | Avoid spectral bias in early training | Gate high frequencies: $\alpha(t) \cdot \text{high\_freq} + \text{low\_freq}$ |
+| **PositionalEncoding** | Standard transformer position embedding | $PE_{pos,2i} = \sin(pos/10000^{2i/d})$ |
+| **SpatialPositionalEncoding** | 2D position embedding for grids | Separable encoding: $PE_x \oplus PE_y$ |
+
+---
+
+## Level 3: Component Diagram - Physics-Informed Loss
+
+This diagram shows the physics-informed loss components for PDE solving.
+
+```mermaid
+C4Component
+    title Component Diagram - Physics-Informed Loss
+
+    Container_Boundary(physics_loss, "Physics-Informed Loss") {
+        Component(residual_loss, "ResidualLoss", "PyTorch Module", "PDE residual minimization via collocation")
+
+        Component(boundary_loss, "BoundaryLoss", "PyTorch Module", "Dirichlet, Neumann, Robin boundary enforcement")
+
+        Component(ic_loss, "InitialConditionLoss", "PyTorch Module", "Time-dependent PDE initial state matching")
+
+        Component(conservation_loss, "ConservationLoss", "PyTorch Module", "Global conservation law enforcement (mass, energy)")
+
+        Component(pinn_loss, "PhysicsInformedLoss", "PyTorch Module", "Combined loss with adaptive balancing")
+
+        Component(combined_loss, "CombinedAlphaGalerkinPhysicsLoss", "PyTorch Module", "Policy + Value + Physics for MCTS-guided PDE")
+    }
+
+    Component_Ext(pde_operators, "PDE Operators", "Computes residuals via autodiff")
+    Component_Ext(loss_balancer, "Loss Balancer", "Weights physics terms")
+    Component_Ext(neural_operator, "Neural Operator", "Predicts solution field")
+
+    Rel(residual_loss, pde_operators, "Uses for residual computation")
+    Rel(boundary_loss, pde_operators, "Uses for boundary values")
+    Rel(ic_loss, pde_operators, "Uses for initial conditions")
+
+    Rel(pinn_loss, residual_loss, "Combines")
+    Rel(pinn_loss, boundary_loss, "Combines")
+    Rel(pinn_loss, ic_loss, "Combines")
+    Rel(pinn_loss, conservation_loss, "Combines")
+    Rel(pinn_loss, loss_balancer, "Balanced by")
+
+    Rel(combined_loss, pinn_loss, "Includes physics")
+    Rel(neural_operator, pinn_loss, "Trained with")
+
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+```
+
+### Physics-Informed Loss Components
+
+| Component | Loss Term | Mathematical Formulation |
+|-----------|-----------|--------------------------|
+| **ResidualLoss** | PDE residual | $\mathcal{L}_r = \frac{1}{N_r} \sum_i \|Lu(x_i) - f(x_i)\|^2$ |
+| **BoundaryLoss** | Boundary conditions | $\mathcal{L}_b = \frac{1}{N_b} \sum_i \|u(x_i) - g(x_i)\|^2$ |
+| **InitialConditionLoss** | Initial state | $\mathcal{L}_0 = \frac{1}{N_0} \sum_i \|u(x_i, 0) - u_0(x_i)\|^2$ |
+| **ConservationLoss** | Global conservation | $\mathcal{L}_c = \|\int_\Omega u \, dx - C_0\|^2$ |
+| **PhysicsInformedLoss** | Combined PINN loss | $\mathcal{L} = \lambda_r \mathcal{L}_r + \lambda_b \mathcal{L}_b + \lambda_0 \mathcal{L}_0 + \lambda_c \mathcal{L}_c$ |
+
+---
+
 ## Level 4: Code Diagram - Galerkin Attention
 
 This diagram shows the implementation details of the Galerkin Attention component.
@@ -449,6 +682,195 @@ if training:
 - Standard Attention: O(N² × d)
 - Galerkin Attention: O(N × d²)
 - For typical Go: N=361, d=32 → **10x speedup**
+
+---
+
+## Level 4: Code Diagram - PDE Game Framework
+
+This diagram shows the implementation details of the PDE Game Framework.
+
+```mermaid
+classDiagram
+    class PDEGame {
+        <<abstract>>
+        +PDEGameConfig config
+        +PDEOperator operator
+        +get_initial_state() PDEState
+        +get_valid_actions(state: PDEState) list~int~
+        +apply_action(state: PDEState, action: int) PDEState
+        +get_reward(state: PDEState, prev_state: PDEState) float
+        +is_terminal(state: PDEState) bool
+        +to_tensor(state: PDEState) Tensor
+    }
+
+    class PDEState {
+        +ndarray coords
+        +ndarray solution
+        +ndarray residuals
+        +float error_estimate
+        +int dof
+        +int step
+        +float budget_remaining
+        +list~int~ history
+    }
+
+    class PDEOperator {
+        <<abstract>>
+        +str name
+        +bool is_time_dependent
+        +bool is_linear
+        +int order
+        +residual(u: Tensor, coords: Tensor) PDEResidual
+        +source_term(coords: Tensor) Tensor
+        +boundary_value(coords: Tensor) Tensor
+        +compute_derivatives(u: Tensor, coords: Tensor) dict
+    }
+
+    class PDEResidual {
+        +ndarray values
+        +float l2_norm
+        +float max_norm
+        +dict derivatives
+        +to_numpy() PDEResidual
+    }
+
+    class BasisSelectionGame {
+        +list~BasisFunction~ active_bases
+        +int n_candidate_bases
+        +get_valid_actions(state) list~int~
+        +apply_action(state, action) PDEState
+        -_add_basis(state, basis_idx) PDEState
+        -_remove_basis(state, basis_idx) PDEState
+        -_solve_galerkin(state) ndarray
+    }
+
+    class MeshRefinementGame {
+        +Mesh mesh
+        +RefinementStrategy strategy
+        +get_valid_actions(state) list~int~
+        +apply_action(state, action) PDEState
+        -_h_refine(element_idx) Mesh
+        -_p_refine(element_idx) Mesh
+        -_coarsen(element_idx) Mesh
+    }
+
+    class PoissonOperator {
+        +residual(u, coords) PDEResidual
+        +source_term(coords) Tensor
+        -_laplacian(u, coords) Tensor
+    }
+
+    class BurgersOperator {
+        +float viscosity
+        +residual(u, coords) PDEResidual
+        -_nonlinear_term(u, coords) Tensor
+    }
+
+    PDEGame <|-- BasisSelectionGame : implements
+    PDEGame <|-- MeshRefinementGame : implements
+    PDEGame --> PDEState : manages
+    PDEGame --> PDEOperator : uses
+    PDEOperator <|-- PoissonOperator : implements
+    PDEOperator <|-- BurgersOperator : implements
+    PDEOperator --> PDEResidual : produces
+```
+
+---
+
+## Level 4: Code Diagram - Loss Balancing
+
+This diagram shows the implementation of adaptive loss balancing.
+
+```mermaid
+classDiagram
+    class LossBalancer {
+        <<abstract>>
+        +LossBalancingConfig config
+        +list~str~ loss_names
+        +dict~str,float~ weights
+        +update(losses: dict) dict~str,float~
+        +compute_weighted_loss(losses: dict) LossTerms
+        +reset() void
+    }
+
+    class LossTerms {
+        +dict~str,Tensor~ losses
+        +dict~str,float~ weights
+        +Tensor weighted_sum
+        +to_dict() dict
+    }
+
+    class ReLoBRaLo {
+        +float beta
+        +float tau
+        +int warmup_steps
+        +dict _running_losses
+        +dict _loss_history
+        +update(losses) dict
+        -_compute_relative_losses() dict
+        -_apply_random_lookback() dict
+    }
+
+    class GradNorm {
+        +float alpha
+        +dict _log_weights
+        +dict _initial_losses
+        +compute_gradnorm_loss(losses, shared_layer) Tensor
+        -_compute_grad_norms(losses, shared_layer) dict
+    }
+
+    class UncertaintyWeighting {
+        +dict _log_vars
+        +compute_regularized_loss(losses) Tensor
+        -_precision_from_log_var(log_var) float
+    }
+
+    class SoftAdapt {
+        +int window_size
+        +list _history
+        +update(losses) dict
+        -_compute_improvement_rates() dict
+    }
+
+    class StaticWeighting {
+        +update(losses) dict
+    }
+
+    LossBalancer <|-- ReLoBRaLo : implements
+    LossBalancer <|-- GradNorm : implements
+    LossBalancer <|-- UncertaintyWeighting : implements
+    LossBalancer <|-- SoftAdapt : implements
+    LossBalancer <|-- StaticWeighting : implements
+    LossBalancer --> LossTerms : produces
+```
+
+### ReLoBRaLo Algorithm
+
+```python
+# Relative Loss Balancing with Random Lookback
+def update(self, losses: dict) -> dict:
+    # Step 1: Update running averages
+    for name, loss in losses.items():
+        self._running_losses[name] = (
+            self.beta * self._running_losses.get(name, loss.item())
+            + (1 - self.beta) * loss.item()
+        )
+        self._loss_history[name].append(loss.item())
+
+    # Step 2: Random lookback (sample historical point)
+    lookback = random.randint(0, len(self._loss_history[name]) - 1)
+
+    # Step 3: Compute relative improvements
+    for name in self.loss_names:
+        current = self._running_losses[name]
+        historical = self._loss_history[name][lookback]
+        relative[name] = current / (historical + eps)
+
+    # Step 4: Softmax normalization with temperature
+    weights = softmax([relative[n] / self.tau for n in self.loss_names])
+
+    return dict(zip(self.loss_names, weights))
+```
 
 ---
 
@@ -548,6 +970,93 @@ flowchart TB
     style Train fill:#e1f5ff
     style Adapt fill:#ffe1e1
     style Infer fill:#e1ffe1
+```
+
+### PDE Solving Data Flow (MCTS-Guided)
+
+```mermaid
+flowchart TB
+    subgraph Init["Initialization"]
+        P1[PDE Configuration] --> P2[Create PDEGame]
+        P2 --> P3[Initial Mesh/Basis]
+        P3 --> P4[Compute Initial<br/>Residual]
+    end
+
+    subgraph MCTS["MCTS Search"]
+        M1[Encode State] --> M2[Neural Network<br/>Policy + Value]
+        M2 --> M3[MCTS Simulation]
+        M3 --> M4[Select Best Action]
+    end
+
+    subgraph Action["Action Execution"]
+        A1{Action Type}
+        A1 -->|Add Basis| A2[Expand Basis Set]
+        A1 -->|Refine Mesh| A3[h/p Refinement]
+        A1 -->|Adjust| A4[Modify Parameters]
+        A2 --> A5[Solve Galerkin<br/>System]
+        A3 --> A5
+        A4 --> A5
+        A5 --> A6[Update Solution]
+    end
+
+    subgraph Evaluate["Evaluation"]
+        E1[Compute PDE<br/>Residual] --> E2[Estimate Error]
+        E2 --> E3[Calculate Reward]
+        E3 --> E4{Converged?}
+        E4 -->|No| E5[Continue]
+        E4 -->|Yes| E6[Return Solution]
+    end
+
+    P4 --> M1
+    M4 --> A1
+    A6 --> E1
+    E5 --> M1
+
+    style Init fill:#e1f5ff
+    style MCTS fill:#ffe1f5
+    style Action fill:#fff5e1
+    style Evaluate fill:#e1ffe1
+```
+
+### Physics-Informed Training Flow
+
+```mermaid
+flowchart LR
+    subgraph Sampling["Collocation Sampling"]
+        S1[Domain Points] --> S2[Boundary Points]
+        S2 --> S3[Initial Points<br/>if time-dependent]
+    end
+
+    subgraph Forward["Forward Pass"]
+        F1[Multi-Scale<br/>Fourier Features] --> F2[Neural Operator]
+        F2 --> F3[Solution Field u]
+    end
+
+    subgraph Loss["Loss Computation"]
+        L1[PDE Residual<br/>Lu - f] --> L4[ReLoBRaLo<br/>Balancing]
+        L2[Boundary Loss<br/>u - g] --> L4
+        L3[IC Loss<br/>u₀ match] --> L4
+        L4 --> L5[Weighted Sum]
+    end
+
+    subgraph Update["Weight Update"]
+        U1[Backprop] --> U2[Optimizer Step]
+        U2 --> U3[Update Balancer<br/>Weights]
+    end
+
+    S1 --> F1
+    S2 --> F1
+    S3 --> F1
+    F3 --> L1
+    F3 --> L2
+    F3 --> L3
+    L5 --> U1
+    U3 --> L4
+
+    style Sampling fill:#e1f5ff
+    style Forward fill:#ffe1e1
+    style Loss fill:#fff5e1
+    style Update fill:#e1ffe1
 ```
 
 ---
@@ -686,9 +1195,50 @@ numpy >= 1.24.0         # Numerical computing
 - **Rationale**: Runtime validation, type safety, IDE support
 - **Trade-offs**: More verbose than plain dicts
 
+### Decision 6: PDE Solving as Sequential Decision-Making
+- **Context**: Adaptive basis selection and mesh refinement require intelligent choices
+- **Decision**: Model PDE solving as a game with MCTS search
+- **Rationale**: Leverages AlphaZero infrastructure, learns optimal refinement strategies
+- **Trade-offs**: Training overhead, requires careful reward design
+
+### Decision 7: ReLoBRaLo for Multi-Objective Loss Balancing
+- **Context**: Physics-informed losses have vastly different scales (residual vs boundary)
+- **Decision**: Use Relative Loss Balancing with Random Lookback
+- **Rationale**: Stable training, handles scale differences, minimal hyperparameters
+- **Trade-offs**: Randomness in lookback, warmup period needed
+
+### Decision 8: Multi-Scale Fourier Features for Spectral Bias
+- **Context**: Neural networks learn low frequencies first (spectral bias)
+- **Decision**: Parallel Fourier feature banks at multiple scales
+- **Rationale**: Captures both fine and coarse solution features from start
+- **Trade-offs**: Increased feature dimension, more parameters
+
+### Decision 9: Autodiff for PDE Residuals
+- **Context**: Need derivatives for PDE residual computation
+- **Decision**: Use PyTorch autograd for all derivative computations
+- **Rationale**: Exact gradients, GPU-accelerated, composable with neural networks
+- **Trade-offs**: Memory overhead for computation graph, requires careful batching
+
 ---
 
 ## Future Architecture Enhancements
+
+### Implemented (v2.0)
+
+1. **PDE Game Framework** ✓
+   - PDEGame abstraction for basis selection and mesh refinement
+   - PDE operators (Poisson, Burgers, Heat, Advection-Diffusion)
+   - MCTS-guided adaptive solving
+
+2. **Physics-Informed Training** ✓
+   - Multi-objective loss with residual, boundary, conservation terms
+   - ReLoBRaLo, GradNorm, Uncertainty weighting
+   - Combined AlphaGalerkin + Physics loss
+
+3. **Multi-Scale Fourier Features** ✓
+   - Spectral bias mitigation
+   - Adaptive and progressive variants
+   - Spatial positional encoding for 2D grids
 
 ### Planned Improvements
 
@@ -717,6 +1267,12 @@ numpy >= 1.24.0         # Numerical computing
    - Statistical significance testing
    - Comparative visualizations
 
+6. **PDE Extensions**
+   - 3D domain support
+   - Time-stepping for unsteady problems
+   - Multi-physics coupling
+   - Uncertainty quantification
+
 ---
 
 ## References
@@ -726,13 +1282,25 @@ numpy >= 1.24.0         # Numerical computing
 - **FNet**: Lee-Thorp et al. (2021)
 - **AlphaZero**: Silver et al. (2017)
 - **Fredholm Theory**: Classical operator theory
+- **Physics-Informed Neural Networks**: Raissi et al. (2019)
+- **ReLoBRaLo**: Bischof & Kraus (2021)
+- **GradNorm**: Chen et al. (2018)
+- **Fourier Features**: Tancik et al. (2020)
+
+---
+
+## Related Documentation
+
+- **PDE Game Framework C4**: [pde_game_c4.md](pde_game_c4.md) - Detailed C4 architecture for PDE solving
+- **C4 Template**: [../templates/C4_TEMPLATE.md](../templates/C4_TEMPLATE.md) - Template for new modules
 
 ---
 
 ## Document Metadata
 
-- **Version**: 1.0.0
+- **Version**: 2.0.0
 - **Created**: 2026-01-26
+- **Updated**: 2026-01-28
 - **Format**: Mermaid C4 Diagrams
 - **Status**: Complete
-- **Audience**: Developers, Researchers, Technical Stakeholders
+- **Audience**: Developers, Researchers, Computational Scientists, Technical Stakeholders

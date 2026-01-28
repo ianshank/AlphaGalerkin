@@ -157,11 +157,14 @@ class ONNXRuntime:
                 else:
                     provider_options.append({})
 
-            # Create session
+            # Create session with provider options
+            # ONNX Runtime accepts providers as list of (name, options) tuples
+            # or as separate providers and provider_options arguments
             self._session = ort.InferenceSession(
                 str(self.model_path),
                 sess_options=sess_options,
                 providers=providers,
+                provider_options=provider_options,
             )
 
             # Get active provider

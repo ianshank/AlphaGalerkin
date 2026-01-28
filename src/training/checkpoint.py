@@ -444,6 +444,16 @@ def load_model_only(
         strict: Whether to require exact state match.
 
     """
-    state = torch.load(path, map_location="cpu", weights_only=False)
+    # Try secure loading first, fall back to legacy format with warning
+    try:
+        state = torch.load(path, map_location="cpu", weights_only=True)
+    except Exception as e:
+        logger.warning(
+            "weights_only_load_failed_using_legacy",
+            path=str(path),
+            error=str(e),
+            hint="Checkpoint may contain legacy pickled objects. Consider re-saving.",
+        )
+        state = torch.load(path, map_location="cpu", weights_only=False)
     model.load_state_dict(state["model_state_dict"], strict=strict)
     logger.info("model_loaded", path=str(path))

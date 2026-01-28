@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, TypeVar
 
@@ -156,7 +156,7 @@ class BaseModuleConfig(BaseModel):
 
     # Metadata (auto-populated)
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Configuration creation timestamp",
     )
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 import structlog
@@ -47,7 +47,7 @@ class PrototypeModel:
     model_id: str
     config: PrototypeConfig
     model: Any
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -65,8 +65,12 @@ class PrototypeModel:
                     for p in self.model.parameters()
                     if hasattr(p, "requires_grad") and p.requires_grad
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "failed_to_count_parameters",
+                model_id=self.model_id,
+                error=str(e),
+            )
         return self.metadata.get("n_parameters", 0)
 
     def to_dict(self) -> dict[str, Any]:

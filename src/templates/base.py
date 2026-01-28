@@ -29,7 +29,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Generic, TypeVar
 
@@ -267,7 +267,7 @@ class BaseExecutable(ABC, Generic[T]):
         """
         self._status = ExecutionStatus.RUNNING
         self._start_time = time.perf_counter()
-        start_datetime = datetime.utcnow()
+        start_datetime = datetime.now(timezone.utc)
 
         self.logger.info(
             "execution_started",
@@ -296,7 +296,7 @@ class BaseExecutable(ABC, Generic[T]):
                 error=str(e),
                 error_traceback=traceback.format_exc(),
                 start_time=start_datetime,
-                end_time=datetime.utcnow(),
+                end_time=datetime.now(timezone.utc),
                 duration_seconds=duration,
                 config_hash=self.config.compute_hash(),
             )
@@ -308,7 +308,7 @@ class BaseExecutable(ABC, Generic[T]):
             if result.start_time is None:
                 result.start_time = start_datetime
             if result.end_time is None:
-                result.end_time = datetime.utcnow()
+                result.end_time = datetime.now(timezone.utc)
             if result.duration_seconds == 0.0:
                 result.duration_seconds = duration
             if not result.config_hash:

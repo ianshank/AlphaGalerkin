@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -206,7 +206,7 @@ class ModelComparison:
 
         """
         result = ComparisonResult(
-            start_time=datetime.utcnow().isoformat(),
+            start_time=datetime.now(timezone.utc).isoformat(),
         )
 
         model_metrics = {}
@@ -232,7 +232,7 @@ class ModelComparison:
             model_metrics[model_name] = metrics
 
         result.model_metrics = model_metrics
-        result.end_time = datetime.utcnow().isoformat()
+        result.end_time = datetime.now(timezone.utc).isoformat()
 
         # Compute rankings
         for metric in self.config.metrics:

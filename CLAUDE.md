@@ -104,6 +104,37 @@ Monitors LBB condition during training:
 - [2026-01-27]: C4 architecture template in Mermaid format.
 - [2026-01-27]: Full test suite with 107 tests (100% passing).
 
+## PDE Game Framework (src/pde/)
+- [2026-01-27]: PDEGame abstraction for treating PDE solving as sequential decision-making.
+- [2026-01-27]: PDEState and PDEResult dataclasses for state representation and metrics.
+- [2026-01-27]: PDE operator definitions with automatic differentiation (Poisson, Burgers, Advection-Diffusion, Heat).
+- [2026-01-27]: Basis selection game for MCTS-guided Galerkin approximation.
+- [2026-01-27]: Mesh refinement game for adaptive h/p-refinement strategies.
+- [2026-01-27]: PDEOperatorRegistry with decorator-based registration.
+- [2026-01-27]: Comprehensive test suite for all PDE components.
+
+## Adaptive Loss Balancing (src/training/loss_balancing.py)
+- [2026-01-27]: ReLoBRaLo (Relative Loss Balancing with Random Lookback) for physics-informed training.
+- [2026-01-27]: GradNorm gradient normalization for multi-task learning.
+- [2026-01-27]: Uncertainty weighting with learnable log-variance parameters.
+- [2026-01-27]: SoftAdapt rate-based adaptation for improving slower losses.
+- [2026-01-27]: Factory function for creating balancers with Pydantic configuration.
+
+## Physics-Informed Loss Components (src/training/physics_loss.py)
+- [2026-01-27]: ResidualLoss for PDE residual minimization via autodiff.
+- [2026-01-27]: BoundaryLoss for Dirichlet/Neumann/Robin BC enforcement.
+- [2026-01-27]: InitialConditionLoss for time-dependent PDEs.
+- [2026-01-27]: ConservationLoss for integral conservation properties.
+- [2026-01-27]: PhysicsInformedLoss combining all physics terms with adaptive balancing.
+- [2026-01-27]: CombinedAlphaGalerkinPhysicsLoss integrating policy/value with physics.
+
+## Multi-Scale Fourier Features (src/modeling/multiscale_fourier.py)
+- [2026-01-27]: MultiScaleFourierFeatures with multiple frequency bands to overcome spectral bias.
+- [2026-01-27]: AdaptiveFourierFeatures with attention-based frequency selection.
+- [2026-01-27]: ProgressiveFourierFeatures for curriculum-based frequency introduction.
+- [2026-01-27]: SpatialPositionalEncoding for 2D grid data.
+- [2026-01-27]: Configurable via Pydantic FourierFeaturesConfig.
+
 ## Known Issues
 - [None yet]
 
@@ -336,16 +367,64 @@ print(f'p-value: {result.p_value}, significant: {result.is_significant}')
 "
 ```
 
+## PDE Game Commands
+```bash
+# Run PDE game tests
+pytest tests/pde/ -v
+
+# Example: Create and use PDE operators
+python -c "
+from src.pde.operators import PoissonOperator
+from src.pde.config import PDEConfig, PDEType
+import numpy as np
+
+config = PDEConfig(name='test', pde_type=PDEType.POISSON)
+operator = PoissonOperator(config)
+points = operator.generate_collocation_points(100)
+source = operator.source_term(points)
+print(f'Generated {len(points)} collocation points')
+"
+
+# Example: Create basis selection game
+python -c "
+from src.pde.games import BasisSelectionGame
+from src.pde.operators import PoissonOperator
+from src.pde.config import PDEConfig, PDEGameConfig, PDEType
+
+pde_config = PDEConfig(name='poisson', pde_type=PDEType.POISSON)
+game_config = PDEGameConfig(name='basis_game', pde_config=pde_config, game_mode='basis_selection')
+operator = PoissonOperator(pde_config)
+game = BasisSelectionGame(operator, game_config)
+state = game.get_initial_state()
+print(f'Initial error: {state.error_estimate:.6f}')
+"
+
+# Example: Use adaptive loss balancing
+python -c "
+from src.training.loss_balancing import create_loss_balancer, LossBalancingConfig, BalancingStrategy
+import torch
+
+config = LossBalancingConfig(name='test', strategy=BalancingStrategy.RELOBRALO)
+balancer = create_loss_balancer(config, ['policy', 'value', 'physics'])
+losses = {'policy': torch.tensor(1.0), 'value': torch.tensor(0.5), 'physics': torch.tensor(2.0)}
+result = balancer.compute_weighted_loss(losses)
+print(f'Weights: {result.weights}')
+"
+```
+
 ## Directory Structure
 ```
 src/
   modeling/     - Neural architectures and layers
+    multiscale_fourier.py - Multi-scale Fourier features for spectral bias mitigation
   math_kernel/  - Basis functions, integral approximations
   mcts/         - Monte Carlo Tree Search logic
     gumbel.py         - Gumbel AlphaZero MCTS implementation
   tools/        - Verification and utility scripts
   training/     - Training infrastructure
     loss.py           - AlphaGalerkinLoss (policy + value + LBB)
+    loss_balancing.py - ReLoBRaLo and other adaptive loss balancing
+    physics_loss.py   - Physics-informed loss components
     replay_buffer.py  - Uniform and prioritized replay buffers
     self_play.py      - MCTS-based self-play game generation
     trainer.py        - Main Trainer class
@@ -379,6 +458,14 @@ src/
     registry.py       - Game registration and discovery
     state.py          - Generic game state representation
     go.py             - Go game implementation
+  pde/          - PDE Game Framework
+    config.py         - Pydantic PDE configuration schemas
+    game.py           - Abstract PDEGame base class
+    operators.py      - PDE operator definitions (Poisson, Burgers, etc.)
+    registry.py       - PDE operator registration
+    games/            - Concrete PDE game implementations
+      basis_selection.py  - Galerkin basis selection game
+      mesh_refinement.py  - Adaptive mesh refinement game
   poc/          - PoC scenario framework
     config.py         - Pydantic configuration schemas
     registry.py       - Scenario registration and discovery
@@ -418,6 +505,11 @@ tests/
     test_config.py    - Export/quantization config tests
   games/        - Multi-game tests
     test_go.py        - Go implementation tests
+  pde/          - PDE framework tests
+    test_config.py    - PDE configuration validation tests
+    test_operators.py - PDE operator tests
+  modeling/     - Neural network modeling tests
+    test_multiscale_fourier.py - Multi-scale Fourier feature tests
   templates/    - Module development template tests
     test_config.py    - Configuration validation tests
     test_registry.py  - Registry pattern tests

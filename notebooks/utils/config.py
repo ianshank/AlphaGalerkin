@@ -31,14 +31,16 @@ class ModelConfig:
 
     def __post_init__(self) -> None:
         """Validate configuration."""
-        if self.d_model % self.n_heads != 0:
-            raise ValueError(
-                f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
-            )
+        # Check positivity first to avoid ZeroDivisionError
         if self.d_model < 1:
             raise ValueError(f"d_model must be positive, got {self.d_model}")
         if self.n_heads < 1:
             raise ValueError(f"n_heads must be positive, got {self.n_heads}")
+        # Now safe to check divisibility
+        if self.d_model % self.n_heads != 0:
+            raise ValueError(
+                f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+            )
 
 
 @dataclass

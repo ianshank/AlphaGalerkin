@@ -11,7 +11,7 @@ import random
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -40,7 +40,7 @@ class SyntheticData:
     n_samples: int
     input_shape: tuple[int, ...] = field(default_factory=tuple)
     target_shape: tuple[int, ...] = field(default_factory=tuple)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __len__(self) -> int:

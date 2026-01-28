@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterator
 
 import structlog
@@ -44,7 +44,7 @@ class GameStatistics:
     win_rate_history: list[float] = field(default_factory=list)
     time_spent: list[float] = field(default_factory=list)
     timestamp: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
     def __post_init__(self) -> None:

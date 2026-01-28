@@ -26,9 +26,9 @@ from typing import Literal
 import numpy as np
 import structlog
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from jaxtyping import Float
-from pydantic import Field, field_validator
+from pydantic import Field
 from torch import Tensor, nn
 
 from src.templates.config import BaseModuleConfig

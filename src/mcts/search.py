@@ -135,7 +135,8 @@ class MCTS:
         # Run search
         self.search(game, add_noise)
 
-        assert self._root is not None
+        if self._root is None:
+            raise RuntimeError("Root node is None after search - internal error")
 
         # Get visit distribution with temperature
         distribution = self._root.get_visit_distribution(temperature)

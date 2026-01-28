@@ -14,8 +14,6 @@ Features:
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import torch
 from torch import Tensor

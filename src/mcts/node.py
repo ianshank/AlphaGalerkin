@@ -120,7 +120,8 @@ class MCTSNode:
                 best_score = score
                 best_child = child
 
-        assert best_child is not None
+        if best_child is None:
+            raise RuntimeError("No child selected - node has no children to select from")
         return best_child
 
     def expand(

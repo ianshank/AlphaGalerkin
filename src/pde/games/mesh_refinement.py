@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field
-from functools import reduce
-from operator import mul
 from typing import TYPE_CHECKING
 
 import numpy as np

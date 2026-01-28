@@ -259,7 +259,11 @@ class SelfPlayCoordinator:
 
     def _initialize_workers(self) -> None:
         """Initialize self-play workers."""
-        device = torch.device("cpu") if self.config.cpu_workers else torch.device("cuda")
+        if self.config.cpu_workers:
+            device = torch.device("cpu")
+        else:
+            # Use local_rank for proper GPU assignment in multi-GPU setups
+            device = torch.device(f"cuda:{self.local_rank}")
 
         for i in range(self.config.workers_per_node):
             worker_id = self.rank * self.config.workers_per_node + i

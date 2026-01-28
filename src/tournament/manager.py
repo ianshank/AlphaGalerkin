@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import Any, Callable
 
 import structlog
 
@@ -164,7 +164,7 @@ class TournamentManager:
         self._current_round = 0
 
         # Timing
-        self._created_at = datetime.utcnow().isoformat()
+        self._created_at = datetime.now(timezone.utc).isoformat()
         self._started_at: str | None = None
         self._completed_at: str | None = None
 
@@ -253,7 +253,7 @@ class TournamentManager:
             raise RuntimeError("Need at least 2 participants")
 
         self._state = TournamentState.IN_PROGRESS
-        self._started_at = datetime.utcnow().isoformat()
+        self._started_at = datetime.now(timezone.utc).isoformat()
         self._current_round = 1
 
         # Generate initial pairings
@@ -379,7 +379,7 @@ class TournamentManager:
 
         match.result = result
         match.status = MatchStatus.COMPLETED
-        match.end_time = datetime.utcnow().isoformat()
+        match.end_time = datetime.now(timezone.utc).isoformat()
 
         # Update standings
         self._standings.update_from_match(match)
@@ -480,7 +480,7 @@ class TournamentManager:
     def _complete_tournament(self) -> None:
         """Complete the tournament."""
         self._state = TournamentState.COMPLETED
-        self._completed_at = datetime.utcnow().isoformat()
+        self._completed_at = datetime.now(timezone.utc).isoformat()
 
         self._logger.info(
             "tournament_completed",

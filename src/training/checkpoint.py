@@ -444,6 +444,6 @@ def load_model_only(
         strict: Whether to require exact state match.
 
     """
-    state = torch.load(path, map_location="cpu", weights_only=False)
+    state = torch.load(path, map_location="cpu", weights_only=True)
     model.load_state_dict(state["model_state_dict"], strict=strict)
     logger.info("model_loaded", path=str(path))

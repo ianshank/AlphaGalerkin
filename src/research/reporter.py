@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -325,7 +325,7 @@ class Reporter:
         lines = [
             f"# {title}",
             "",
-            f"*Generated: {datetime.utcnow().isoformat()}*",
+            f"*Generated: {datetime.now(timezone.utc).isoformat()}*",
             "",
         ]
 
@@ -343,7 +343,7 @@ class Reporter:
         """Build JSON report."""
         data = {
             "title": title,
-            "generated": datetime.utcnow().isoformat(),
+            "generated": datetime.now(timezone.utc).isoformat(),
             "sections": [
                 {
                     "title": s.title,

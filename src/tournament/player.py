@@ -9,8 +9,8 @@ Provides:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Iterator
+from datetime import datetime, timezone
+from typing import Any, Iterator
 import uuid
 
 import structlog
@@ -115,7 +115,7 @@ class Player:
     stats: PlayerStats = field(default_factory=PlayerStats)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
     @property
@@ -179,7 +179,7 @@ class Player:
             model_path=data.get("model_path"),
             stats=stats,
             metadata=data.get("metadata", {}),
-            created_at=data.get("created_at", datetime.utcnow().isoformat()),
+            created_at=data.get("created_at", datetime.now(timezone.utc).isoformat()),
         )
 
     def __hash__(self) -> int:

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -233,7 +233,7 @@ class CurriculumScheduler:
         self._progression_history.append({
             "type": "advance",
             "from_stage": current_stage.config.name,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": current_stage.metrics.to_dict(),
         })
 
@@ -295,7 +295,7 @@ class CurriculumScheduler:
             "type": "regress",
             "from_stage": current_stage.config.name,
             "to_stage": self._stages[previous_index].config.name,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": current_stage.metrics.to_dict(),
         })
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -201,7 +201,7 @@ class TransferValidator:
         result = TransferResult(
             source_size=self.config.source_size,
             primary_target=self.config.primary_target,
-            start_time=datetime.utcnow().isoformat(),
+            start_time=datetime.now(timezone.utc).isoformat(),
         )
 
         target_metrics = {}
@@ -247,7 +247,7 @@ class TransferValidator:
             )
 
         result.target_metrics = target_metrics
-        result.end_time = datetime.utcnow().isoformat()
+        result.end_time = datetime.now(timezone.utc).isoformat()
 
         # Determine overall pass/fail
         all_passed = all(m.passed for m in target_metrics.values())
@@ -294,7 +294,7 @@ class TransferValidator:
         result = TransferResult(
             source_size=self.config.source_size,
             primary_target=self.config.primary_target,
-            start_time=datetime.utcnow().isoformat(),
+            start_time=datetime.now(timezone.utc).isoformat(),
         )
 
         # Create model
@@ -360,7 +360,7 @@ class TransferValidator:
             target_metrics[target_size] = metrics
 
         result.target_metrics = target_metrics
-        result.end_time = datetime.utcnow().isoformat()
+        result.end_time = datetime.now(timezone.utc).isoformat()
 
         # Determine pass/fail
         all_passed = all(m.passed for m in target_metrics.values())

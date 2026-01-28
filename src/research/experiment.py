@@ -12,7 +12,7 @@ import json
 import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,12 +42,12 @@ class ExperimentRun:
     def start(self) -> None:
         """Mark run as started."""
         self.status = "running"
-        self.start_time = datetime.utcnow().isoformat()
+        self.start_time = datetime.now(timezone.utc).isoformat()
 
     def complete(self) -> None:
         """Mark run as completed."""
         self.status = "completed"
-        self.end_time = datetime.utcnow().isoformat()
+        self.end_time = datetime.now(timezone.utc).isoformat()
 
         # Compute final metrics from history
         for name, values in self.metrics.items():
@@ -59,7 +59,7 @@ class ExperimentRun:
     def fail(self, error: str) -> None:
         """Mark run as failed."""
         self.status = "failed"
-        self.end_time = datetime.utcnow().isoformat()
+        self.end_time = datetime.now(timezone.utc).isoformat()
         self.metadata["error"] = error
 
     def log_metric(self, name: str, value: float, step: int | None = None) -> None:

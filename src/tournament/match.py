@@ -57,7 +57,7 @@ class GameRecord:
     sgf_path: str | None = None
     duration_seconds: float = 0.0
     timestamp: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
     @property
@@ -103,7 +103,7 @@ class GameRecord:
             moves=data.get("moves", 0),
             sgf_path=data.get("sgf_path"),
             duration_seconds=data.get("duration_seconds", 0.0),
-            timestamp=data.get("timestamp", datetime.utcnow().isoformat()),
+            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
         )
 
 
@@ -206,7 +206,7 @@ class Match:
     def start(self) -> None:
         """Start the match."""
         self.status = MatchStatus.IN_PROGRESS
-        self.start_time = datetime.utcnow().isoformat()
+        self.start_time = datetime.now(timezone.utc).isoformat()
 
     def add_game(
         self,
@@ -256,7 +256,7 @@ class Match:
     def _complete_match(self) -> None:
         """Complete the match and determine result."""
         self.status = MatchStatus.COMPLETED
-        self.end_time = datetime.utcnow().isoformat()
+        self.end_time = datetime.now(timezone.utc).isoformat()
 
         p1_score = self.player1_score
         p2_score = self.player2_score
@@ -289,7 +289,7 @@ class Match:
             reason: Reason for cancellation.
         """
         self.status = MatchStatus.CANCELLED
-        self.end_time = datetime.utcnow().isoformat()
+        self.end_time = datetime.now(timezone.utc).isoformat()
         self.metadata["cancel_reason"] = reason
 
     def forfeit(self, forfeiter_id: str) -> None:
@@ -299,7 +299,7 @@ class Match:
             forfeiter_id: ID of the player who forfeited.
         """
         self.status = MatchStatus.FORFEIT
-        self.end_time = datetime.utcnow().isoformat()
+        self.end_time = datetime.now(timezone.utc).isoformat()
 
         winner_id = (
             self.player2_id if forfeiter_id == self.player1_id

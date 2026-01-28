@@ -30,7 +30,7 @@ from typing import Any
 import structlog
 import torch
 from jaxtyping import Float
-from pydantic import Field, field_validator
+from pydantic import Field
 from torch import Tensor, nn
 
 from src.templates.config import BaseModuleConfig

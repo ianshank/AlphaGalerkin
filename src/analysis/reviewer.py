@@ -10,8 +10,8 @@ Provides:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Iterator
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -120,7 +120,7 @@ class GameAnalysis:
     opening_quality: float = 0.0
     endgame_quality: float = 0.0
     timestamp: str = field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     config_hash: str = ""
 

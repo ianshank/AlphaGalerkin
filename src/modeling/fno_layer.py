@@ -6,8 +6,6 @@ operator learning.
 
 from __future__ import annotations
 
-
-
 import structlog
 import torch
 from torch import nn, Tensor

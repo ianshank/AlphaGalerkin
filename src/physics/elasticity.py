@@ -100,9 +100,7 @@ class ElasticitySolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         
         mu = self.mu
         lam = self.lam
-        
 
-        
         # Efficient vectorization?
         # M[0,0] = (lam+mu)kx*kx + mu*k2
         # M[0,1] = (lam+mu)kx*ky

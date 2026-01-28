@@ -168,6 +168,10 @@ class OperatorTrainer:
             
             self.optimizer.step()
             
+            # Step scheduler if it's OneCycleLR (batch-wise)
+            if self.config.scheduler == "onecycle" and self.scheduler is not None:
+                self.scheduler.step()
+            
             total_loss += loss.item()
             n_batches += 1
         

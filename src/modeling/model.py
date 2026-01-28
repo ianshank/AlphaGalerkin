@@ -343,7 +343,6 @@ class DenseHead(nn.Module):
         return self.net(x)
 
 
-
 class AlphaGalerkinModel(nn.Module):
     """Main AlphaGalerkin model.
 

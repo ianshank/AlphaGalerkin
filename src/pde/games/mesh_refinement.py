@@ -8,14 +8,23 @@ This module implements a PDEGame where:
 
 MCTS can look ahead multiple refinement steps to find optimal
 refinement sequences, outperforming single-step error indicators.
+
+Note:
+    The current Mesh implementation supports 2D quadrilateral elements only.
+    For 1D (intervals), 3D (hexahedra), or higher dimensions, a specialized
+    mesh class would be required. This limitation is validated at runtime.
 """
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
+from functools import reduce
+from operator import mul
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 import torch
 from jaxtyping import Float
 from numpy.typing import NDArray
@@ -26,6 +35,8 @@ from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -59,13 +70,22 @@ class MeshElement:
 
 
 class Mesh:
-    """Simple 2D quad mesh for mesh refinement game.
+    """Multi-dimensional hypercube mesh for mesh refinement game.
 
     Supports:
+    - 1D (intervals), 2D (quads), 3D (hexahedra) elements
     - Uniform initial mesh
     - Local h-refinement (element subdivision)
     - Local p-refinement (polynomial degree increase)
+
+    Note:
+        Dimensions 4+ are theoretically supported but not practically tested.
+        For most PDE applications, 1D-3D covers the relevant cases.
     """
+
+    # Supported dimensions with vertex counts per element
+    VERTICES_PER_DIM: dict[int, int] = {1: 2, 2: 4, 3: 8, 4: 16}
+    MAX_SUPPORTED_DIM: int = 4
 
     def __init__(
         self,
@@ -79,6 +99,9 @@ class Mesh:
             domain_min: Domain minimum coordinates.
             domain_max: Domain maximum coordinates.
             initial_resolution: Initial elements per dimension.
+
+        Raises:
+            ValueError: If dimension is not supported (>4).
         """
         self.domain_min = domain_min
         self.domain_max = domain_max
@@ -86,40 +109,74 @@ class Mesh:
         self.dim = len(domain_min)
         self.initial_resolution = initial_resolution
 
+        # Validate dimension
+        if self.dim > self.MAX_SUPPORTED_DIM:
+            raise ValueError(
+                f"Dimension {self.dim} not supported. Maximum supported dimension "
+                f"is {self.MAX_SUPPORTED_DIM}. For higher dimensions, consider "
+                "using a specialized mesh library."
+            )
+        if self.dim < 1:
+            raise ValueError(f"Dimension must be at least 1, got {self.dim}")
+
+        logger.debug(
+            "initializing_mesh",
+            dim=self.dim,
+            resolution=initial_resolution,
+            domain_size=self.domain_size.tolist(),
+        )
+
         # Initialize uniform mesh
         self.elements: list[MeshElement] = []
         self._build_initial_mesh()
 
     def _build_initial_mesh(self) -> None:
-        """Build initial uniform mesh."""
+        """Build initial uniform mesh for any supported dimension."""
         n = self.initial_resolution
         dx = self.domain_size / n
 
+        # Generate all element corner indices using itertools.product
+        # For dim=2: [(0,0), (0,1), ..., (n-1,n-1)]
+        index_ranges = [range(n) for _ in range(self.dim)]
+        element_corners = list(itertools.product(*index_ranges))
+
         idx = 0
-        for i in range(n):
-            for j in range(n):
-                x0 = self.domain_min[0] + i * dx[0]
-                y0 = self.domain_min[1] + j * dx[1]
+        for corner_indices in element_corners:
+            # Compute element minimum corner
+            corner = np.array([
+                self.domain_min[d] + corner_indices[d] * dx[d]
+                for d in range(self.dim)
+            ], dtype=np.float32)
 
-                vertices = np.array([
-                    [x0, y0],
-                    [x0 + dx[0], y0],
-                    [x0 + dx[0], y0 + dx[1]],
-                    [x0, y0 + dx[1]],
-                ], dtype=np.float32)
+            # Generate all vertices of the hypercube element
+            # For dim=2: 4 vertices; for dim=3: 8 vertices
+            vertex_offsets = list(itertools.product(*[[0, 1]] * self.dim))
+            vertices = np.array([
+                corner + np.array([offset[d] * dx[d] for d in range(self.dim)])
+                for offset in vertex_offsets
+            ], dtype=np.float32)
 
-                center = np.array([x0 + dx[0]/2, y0 + dx[1]/2], dtype=np.float32)
-                size = float(np.sqrt(dx[0]**2 + dx[1]**2))
+            # Compute center
+            center = corner + dx / 2
 
-                self.elements.append(MeshElement(
-                    index=idx,
-                    vertices=vertices,
-                    center=center,
-                    size=size,
-                    level=0,
-                    polynomial_degree=1,
-                ))
-                idx += 1
+            # Compute element size (diagonal length)
+            size = float(np.sqrt(np.sum(dx ** 2)))
+
+            self.elements.append(MeshElement(
+                index=idx,
+                vertices=vertices,
+                center=center,
+                size=size,
+                level=0,
+                polynomial_degree=1,
+            ))
+            idx += 1
+
+        logger.debug(
+            "mesh_built",
+            n_elements=len(self.elements),
+            dim=self.dim,
+        )
 
     @property
     def n_elements(self) -> int:
@@ -133,9 +190,12 @@ class Mesh:
 
     @property
     def n_dof(self) -> int:
-        """Approximate degrees of freedom."""
+        """Approximate degrees of freedom.
+
+        For polynomial degree p in dim dimensions, DOFs = (p+1)^dim.
+        """
         return sum(
-            (e.polynomial_degree + 1) ** 2
+            (e.polynomial_degree + 1) ** self.dim
             for e in self.leaf_elements
         )
 
@@ -177,32 +237,46 @@ class Mesh:
         return [element_idx]
 
     def _subdivide_element(self, element: MeshElement) -> list[MeshElement]:
-        """Subdivide element into 4 children."""
-        v = element.vertices  # 4 vertices for quad
+        """Subdivide element into 2^dim children.
+
+        For 1D: 2 children (intervals split in half)
+        For 2D: 4 children (quads split into quadrants)
+        For 3D: 8 children (hexahedra split into octants)
+        """
         c = element.center
+        child_size = element.size / 2
 
-        # Midpoints of edges
-        m01 = (v[0] + v[1]) / 2
-        m12 = (v[1] + v[2]) / 2
-        m23 = (v[2] + v[3]) / 2
-        m30 = (v[3] + v[0]) / 2
+        # Generate child corners: each child occupies one "quadrant" of the parent
+        # Child corners are at parent center ± child_half_size in each dimension
+        child_half_extents = np.array([
+            element.vertices[0, d] - c[d] for d in range(self.dim)
+        ], dtype=np.float32) / 2
 
-        # Create 4 children
+        # Generate all 2^dim child corner offset patterns
+        # For dim=2: [(-1,-1), (-1,+1), (+1,-1), (+1,+1)]
+        sign_patterns = list(itertools.product(*[[-1, 1]] * self.dim))
+
         children = []
-        child_vertices = [
-            np.array([v[0], m01, c, m30], dtype=np.float32),
-            np.array([m01, v[1], m12, c], dtype=np.float32),
-            np.array([c, m12, v[2], m23], dtype=np.float32),
-            np.array([m30, c, m23, v[3]], dtype=np.float32),
-        ]
+        for signs in sign_patterns:
+            # Child center is parent center + signed offset
+            child_center = c + np.array([
+                signs[d] * abs(child_half_extents[d])
+                for d in range(self.dim)
+            ], dtype=np.float32)
 
-        for cv in child_vertices:
-            child_center = cv.mean(axis=0)
-            child_size = element.size / 2
+            # Generate child vertices (hypercube corners around child_center)
+            vertex_offsets = list(itertools.product(*[[-1, 1]] * self.dim))
+            child_vertices = np.array([
+                child_center + np.array([
+                    offset[d] * abs(child_half_extents[d])
+                    for d in range(self.dim)
+                ], dtype=np.float32)
+                for offset in vertex_offsets
+            ], dtype=np.float32)
 
             child = MeshElement(
                 index=len(self.elements),
-                vertices=cv,
+                vertices=child_vertices,
                 center=child_center,
                 size=child_size,
                 level=element.level + 1,
@@ -212,6 +286,13 @@ class Mesh:
             self.elements.append(child)
             element.children.append(child.index)
             children.append(child)
+
+        logger.debug(
+            "element_subdivided",
+            parent_index=element.index,
+            n_children=len(children),
+            child_indices=[c.index for c in children],
+        )
 
         return children
 
@@ -275,9 +356,11 @@ class MeshRefinementGame(PDEGame):
         """
         # Dynamic based on mesh state
         # Use maximum possible for fixed action space
+        # Initial elements: resolution^dim, each refinement creates 2^dim children
+        dim = self.mesh.dim
         max_elements = (
-            self.mesh_config.initial_resolution ** 2 *
-            4 ** self.mesh_config.max_refinement_level
+            self.mesh_config.initial_resolution ** dim *
+            (2 ** dim) ** self.mesh_config.max_refinement_level
         )
         return min(max_elements, self.mesh_config.n_candidate_elements)
 
@@ -485,17 +568,29 @@ class MeshRefinementGame(PDEGame):
         cost = self.config.cost_per_dof * dof_added
 
         # Efficiency bonus (reward good error/DOF ratio)
+        # Uses configurable threshold and multiplier from mesh_config
+        efficiency_threshold = self.mesh_config.efficiency_threshold
+        efficiency_multiplier = self.mesh_config.efficiency_multiplier
+
         if dof_added > 0:
             efficiency = error_reduction / dof_added
-            efficiency_bonus = max(0, efficiency - 0.001) * 10
+            efficiency_bonus = max(0, efficiency - efficiency_threshold) * efficiency_multiplier
         else:
-            efficiency_bonus = 0
+            efficiency_bonus = 0.0
 
         reward = self.config.reward_per_error_reduction * error_reduction - cost + efficiency_bonus
 
         # Terminal bonus
         if state.error_estimate < self.config.error_tolerance:
             reward += self.config.terminal_bonus
+
+        logger.debug(
+            "reward_computed",
+            error_reduction=error_reduction,
+            dof_added=dof_added,
+            efficiency_bonus=efficiency_bonus,
+            total_reward=reward,
+        )
 
         return reward
 
@@ -604,47 +699,59 @@ class MeshRefinementGame(PDEGame):
             "residual": residual_norm,
         }
 
-    def to_tensor(self, state: PDEState) -> Float[Tensor, "channels height width"]:
+    def to_tensor(self, state: PDEState) -> Float[Tensor, "..."]:
         """Convert state to neural network input.
 
         Args:
             state: PDE state.
 
         Returns:
-            Tensor encoding.
+            Tensor encoding with shape:
+            - 1D: (channels, resolution)
+            - 2D: (channels, height, width)
+            - 3D: (channels, depth, height, width)
         """
-        # Create grid representation
-        grid_size = self.mesh_config.initial_resolution
-
-        # Interpolate to regular grid
         from scipy.interpolate import griddata
 
-        x = np.linspace(0, 1, grid_size)
-        y = np.linspace(0, 1, grid_size)
-        grid_x, grid_y = np.meshgrid(x, y)
-        grid_points = np.stack([grid_x.flatten(), grid_y.flatten()], axis=-1)
+        grid_size = self.mesh_config.initial_resolution
+        dim = self.mesh.dim
+
+        # Generate grid points based on dimension
+        domain_min = self.pde_operator.domain_min
+        domain_max = self.pde_operator.domain_max
+
+        axes = [
+            np.linspace(domain_min[d], domain_max[d], grid_size)
+            for d in range(dim)
+        ]
+        grids = np.meshgrid(*axes, indexing='ij')
+        grid_points = np.stack([g.flatten() for g in grids], axis=-1)
+
+        # Grid shape for reshaping
+        grid_shape = tuple([grid_size] * dim)
 
         # Interpolate solution
         solution_grid = griddata(
             state.coords, state.solution, grid_points, method='linear', fill_value=0
-        ).reshape(grid_size, grid_size)
+        ).reshape(grid_shape)
 
         # Interpolate residuals
         residual_grid = griddata(
             state.coords, np.abs(state.residuals), grid_points, method='linear', fill_value=0
-        ).reshape(grid_size, grid_size)
+        ).reshape(grid_shape)
 
         # Refinement level indicator
         if state.mesh_levels is not None:
             level_grid = griddata(
                 state.coords, state.mesh_levels.astype(np.float32),
                 grid_points, method='nearest', fill_value=0
-            ).reshape(grid_size, grid_size)
+            ).reshape(grid_shape)
         else:
-            level_grid = np.zeros((grid_size, grid_size))
+            level_grid = np.zeros(grid_shape)
 
-        # Build tensor
-        tensor = torch.zeros(self.state_channels, grid_size, grid_size)
+        # Build tensor with shape (channels, *grid_shape)
+        tensor_shape = (self.state_channels,) + grid_shape
+        tensor = torch.zeros(tensor_shape)
         tensor[0] = torch.from_numpy(solution_grid.astype(np.float32))
         tensor[1] = torch.from_numpy(residual_grid.astype(np.float32))
         tensor[2] = torch.from_numpy(level_grid.astype(np.float32))

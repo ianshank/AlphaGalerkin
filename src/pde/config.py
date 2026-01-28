@@ -323,6 +323,20 @@ class MeshRefinementConfig(BaseModuleConfig):
         description="Allow mesh coarsening (de-refinement)",
     )
 
+    # Efficiency reward parameters
+    efficiency_threshold: float = Field(
+        default=0.001,
+        ge=0.0,
+        le=1.0,
+        description="Minimum efficiency threshold for bonus reward",
+    )
+    efficiency_multiplier: float = Field(
+        default=10.0,
+        gt=0.0,
+        le=1000.0,
+        description="Multiplier for efficiency bonus reward",
+    )
+
     @model_validator(mode="after")
     def validate_mesh_config(self) -> MeshRefinementConfig:
         """Validate mesh refinement parameters."""

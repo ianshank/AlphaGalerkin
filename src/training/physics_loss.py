@@ -21,8 +21,9 @@ Reference:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, Literal
 
+import numpy as np
 import structlog
 import torch
 from jaxtyping import Float
@@ -40,6 +41,23 @@ if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_device_from_model(model: nn.Module) -> torch.device:
+    """Safely get device from model parameters.
+
+    Args:
+        model: The neural network model.
+
+    Returns:
+        Device the model is on, or CPU if model has no parameters.
+    """
+    try:
+        return next(model.parameters()).device
+    except StopIteration:
+        # Model has no parameters (e.g., DataParallel wrapper or frozen model)
+        logger.warning("model_has_no_parameters", defaulting_to="cpu")
+        return torch.device("cpu")
 
 
 class PhysicsLossConfig(BaseModuleConfig):
@@ -149,18 +167,28 @@ class ResidualLoss(nn.Module):
     where L is the differential operator and f is the source term.
     """
 
+    VALID_REDUCTIONS: set[str] = {"mean", "sum", "none"}
+
     def __init__(
         self,
         pde_operator: PDEOperator,
-        reduction: str = "mean",
+        reduction: Literal["mean", "sum", "none"] = "mean",
     ) -> None:
         """Initialize residual loss.
 
         Args:
             pde_operator: PDE operator for residual computation.
             reduction: Reduction method ('mean', 'sum', 'none').
+
+        Raises:
+            ValueError: If reduction is not valid.
         """
         super().__init__()
+        if reduction not in self.VALID_REDUCTIONS:
+            raise ValueError(
+                f"Invalid reduction '{reduction}'. "
+                f"Must be one of: {self.VALID_REDUCTIONS}"
+            )
         self.pde_operator = pde_operator
         self.reduction = reduction
 
@@ -179,22 +207,40 @@ class ResidualLoss(nn.Module):
 
         Returns:
             Residual loss.
+
+        Raises:
+            RuntimeError: If PDE operator residual computation fails.
         """
         batch_size = u.shape[0]
         total_loss = torch.tensor(0.0, device=u.device)
 
         for b in range(batch_size):
             # Compute residual for this batch element
-            residual = self.pde_operator.residual(
-                u[b],
-                coords[b],
-                compute_derivatives=False,
-            )
+            try:
+                residual = self.pde_operator.residual(
+                    u[b],
+                    coords[b],
+                    compute_derivatives=False,
+                )
+            except Exception as e:
+                logger.error(
+                    "residual_computation_failed",
+                    batch_index=b,
+                    error=str(e),
+                )
+                raise RuntimeError(
+                    f"PDE operator residual computation failed: {e}"
+                ) from e
 
+            # Convert to tensor if needed
             if isinstance(residual.values, Tensor):
                 res_sq = residual.values ** 2
-            else:
+            elif isinstance(residual.values, np.ndarray):
                 res_sq = torch.from_numpy(residual.values).to(u.device) ** 2
+            else:
+                raise TypeError(
+                    f"Unexpected residual type: {type(residual.values)}"
+                )
 
             if self.reduction == "mean":
                 total_loss = total_loss + res_sq.mean()
@@ -220,11 +266,14 @@ class BoundaryLoss(nn.Module):
     - Robin: αu + β∂u/∂n = g on ∂Ω
     """
 
+    VALID_REDUCTIONS: set[str] = {"mean", "sum", "none"}
+    VALID_BC_TYPES: set[str] = {"dirichlet", "neumann", "robin"}
+
     def __init__(
         self,
         pde_operator: PDEOperator,
-        bc_type: str = "dirichlet",
-        reduction: str = "mean",
+        bc_type: Literal["dirichlet", "neumann", "robin"] = "dirichlet",
+        reduction: Literal["mean", "sum", "none"] = "mean",
     ) -> None:
         """Initialize boundary loss.
 
@@ -232,8 +281,21 @@ class BoundaryLoss(nn.Module):
             pde_operator: PDE operator for boundary values.
             bc_type: Boundary condition type.
             reduction: Reduction method.
+
+        Raises:
+            ValueError: If bc_type or reduction is invalid.
         """
         super().__init__()
+        if bc_type not in self.VALID_BC_TYPES:
+            raise ValueError(
+                f"Invalid bc_type '{bc_type}'. "
+                f"Must be one of: {self.VALID_BC_TYPES}"
+            )
+        if reduction not in self.VALID_REDUCTIONS:
+            raise ValueError(
+                f"Invalid reduction '{reduction}'. "
+                f"Must be one of: {self.VALID_REDUCTIONS}"
+            )
         self.pde_operator = pde_operator
         self.bc_type = bc_type
         self.reduction = reduction
@@ -253,19 +315,36 @@ class BoundaryLoss(nn.Module):
 
         Returns:
             Boundary loss.
+
+        Raises:
+            RuntimeError: If boundary value computation fails.
         """
         batch_size = u_boundary.shape[0]
         total_loss = torch.tensor(0.0, device=u_boundary.device)
 
         for b in range(batch_size):
             # Get target boundary values
-            target = self.pde_operator.boundary_value(
-                coords_boundary[b],
-                time=time,
-            )
+            try:
+                target = self.pde_operator.boundary_value(
+                    coords_boundary[b],
+                    time=time,
+                )
+            except Exception as e:
+                logger.error(
+                    "boundary_value_computation_failed",
+                    batch_index=b,
+                    error=str(e),
+                )
+                raise RuntimeError(
+                    f"PDE operator boundary_value failed: {e}"
+                ) from e
 
+            # Convert to tensor if needed
             if not isinstance(target, Tensor):
-                target = torch.from_numpy(target).to(u_boundary.device)
+                if isinstance(target, np.ndarray):
+                    target = torch.from_numpy(target).to(u_boundary.device)
+                else:
+                    raise TypeError(f"Unexpected target type: {type(target)}")
 
             # Compute MSE
             bc_error = (u_boundary[b] - target) ** 2
@@ -526,29 +605,45 @@ class PhysicsInformedLoss(nn.Module):
         Returns:
             PhysicsLossOutput with all loss components.
         """
-        # Get device from model
-        device = next(model.parameters()).device
-        batch_size = 1  # Default
+        # Get device from model (safely)
+        device = _get_device_from_model(model)
+
+        # Determine batch size from provided coordinates or default to 1
+        if coords_interior is not None:
+            batch_size = coords_interior.shape[0]
+        elif coords_boundary is not None:
+            batch_size = coords_boundary.shape[0]
+        else:
+            batch_size = 1
 
         # Generate or use provided collocation points
         if coords_interior is None:
-            coords_interior, coords_boundary = self._generate_collocation_points(
+            coords_interior, auto_boundary = self._generate_collocation_points(
                 batch_size, device
             )
+            if coords_boundary is None:
+                coords_boundary = auto_boundary
         elif coords_boundary is None:
             _, coords_boundary = self._generate_collocation_points(batch_size, device)
 
-        batch_size = coords_interior.shape[0]
-
+        # Clone coords to avoid modifying input tensor in-place
         # Enable gradients for coords (needed for residual computation)
-        coords_interior = coords_interior.requires_grad_(True)
+        coords_interior_grad = coords_interior.clone().requires_grad_(True)
+
+        logger.debug(
+            "computing_physics_loss",
+            batch_size=batch_size,
+            n_interior=coords_interior.shape[1],
+            n_boundary=coords_boundary.shape[1],
+            device=str(device),
+        )
 
         # Forward pass through model
-        u_interior = model(coords_interior)
+        u_interior = model(coords_interior_grad)
         u_boundary = model(coords_boundary)
 
         # Compute individual losses
-        loss_residual = self.residual_loss(u_interior, coords_interior, time)
+        loss_residual = self.residual_loss(u_interior, coords_interior_grad, time)
         loss_boundary = self.boundary_loss(u_boundary, coords_boundary, time)
 
         losses = {
@@ -566,7 +661,7 @@ class PhysicsInformedLoss(nn.Module):
         # Conservation loss
         loss_conservation = None
         if self.config.conservation_weight > 0:
-            loss_conservation = self.conservation_loss(u_interior, coords_interior)
+            loss_conservation = self.conservation_loss(u_interior, coords_interior_grad)
             losses["conservation"] = loss_conservation
 
         # Compute weighted total
@@ -705,11 +800,14 @@ class CombinedAlphaGalerkinPhysicsLoss(nn.Module):
         # Apply balancing
         result = self.balancer.compute_weighted_loss(losses)
 
+        # Get device from first loss for default physics tensor
+        device = next(iter(losses.values())).device
+
         return {
             "total": result.weighted_sum,
             "policy": losses["policy"],
             "value": losses["value"],
             "lbb": losses["lbb"],
-            "physics": losses.get("physics", torch.tensor(0.0)),
+            "physics": losses.get("physics", torch.tensor(0.0, device=device)),
             "weights": result.weights,
         }

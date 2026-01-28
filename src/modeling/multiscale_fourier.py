@@ -20,16 +20,34 @@ Reference:
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
 import numpy as np
+import structlog
 import torch
 from einops import rearrange, repeat
 from jaxtyping import Float
-from pydantic import Field
+from pydantic import Field, field_validator
 from torch import Tensor, nn
 
 from src.templates.config import BaseModuleConfig
+
+# Module-level logger
+logger = structlog.get_logger(__name__)
+
+# Constants
+TWO_PI = 2 * np.pi
+DEFAULT_SCALES = [1.0, 2.0, 4.0, 8.0, 16.0]
+
+__all__ = [
+    "FourierFeaturesConfig",
+    "MultiScaleFourierFeatures",
+    "AdaptiveFourierFeatures",
+    "ProgressiveFourierFeatures",
+    "PositionalEncoding",
+    "SpatialPositionalEncoding",
+]
 
 
 class FourierFeaturesConfig(BaseModuleConfig):
@@ -50,7 +68,7 @@ class FourierFeaturesConfig(BaseModuleConfig):
         description="Number of Fourier features per scale",
     )
     scales: list[float] = Field(
-        default_factory=lambda: [1.0, 2.0, 4.0, 8.0, 16.0],
+        default_factory=lambda: DEFAULT_SCALES.copy(),
         description="Frequency scales (sigma for random Fourier)",
     )
     learnable: bool = Field(
@@ -116,7 +134,7 @@ class MultiScaleFourierFeatures(nn.Module):
             include_input = config.include_input
 
         if scales is None:
-            scales = [1.0, 2.0, 4.0, 8.0, 16.0]
+            scales = DEFAULT_SCALES.copy()
 
         self.input_dim = input_dim
         self.n_features = n_features
@@ -158,7 +176,15 @@ class MultiScaleFourierFeatures(nn.Module):
 
         Returns:
             Fourier feature encoding.
+
+        Raises:
+            ValueError: If input dimension doesn't match expected.
         """
+        if x.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"Expected input_dim={self.input_dim}, got {x.shape[-1]}"
+            )
+
         original_shape = x.shape[:-1]
         x_flat = x.reshape(-1, self.input_dim)
 
@@ -179,8 +205,8 @@ class MultiScaleFourierFeatures(nn.Module):
             projected = x_flat @ B  # (batch, n_features)
 
             # Fourier features: sin and cos
-            features.append(torch.sin(2 * np.pi * projected))
-            features.append(torch.cos(2 * np.pi * projected))
+            features.append(torch.sin(TWO_PI * projected))
+            features.append(torch.cos(TWO_PI * projected))
 
         # Concatenate all features
         output = torch.cat(features, dim=-1)
@@ -217,8 +243,8 @@ class MultiScaleFourierFeatures(nn.Module):
 
         projected = x_flat @ B
         features = torch.cat([
-            torch.sin(2 * np.pi * projected),
-            torch.cos(2 * np.pi * projected),
+            torch.sin(TWO_PI * projected),
+            torch.cos(TWO_PI * projected),
         ], dim=-1)
 
         return features.reshape(*original_shape, 2 * self.n_features)
@@ -244,6 +270,7 @@ class AdaptiveFourierFeatures(nn.Module):
         n_frequency_banks: int = 8,
         scale_range: tuple[float, float] = (0.1, 100.0),
         use_attention: bool = True,
+        attention_hidden_dim: int = 64,
     ) -> None:
         """Initialize adaptive Fourier features.
 
@@ -251,10 +278,26 @@ class AdaptiveFourierFeatures(nn.Module):
             input_dim: Input coordinate dimension.
             n_features: Features per frequency bank.
             n_frequency_banks: Number of frequency banks.
-            scale_range: Range of frequency scales (log-uniform).
+            scale_range: Range of frequency scales (log-uniform spacing).
+                First value is minimum scale, second is maximum scale.
             use_attention: Whether to use attention weighting.
+            attention_hidden_dim: Hidden dimension for attention network.
+
+        Raises:
+            ValueError: If scale_range is invalid.
         """
         super().__init__()
+
+        # Validate scale_range
+        if scale_range[0] >= scale_range[1]:
+            raise ValueError(
+                f"scale_range[0] must be < scale_range[1], "
+                f"got {scale_range}"
+            )
+        if scale_range[0] <= 0:
+            raise ValueError(
+                f"scale_range values must be positive, got {scale_range}"
+            )
 
         self.input_dim = input_dim
         self.n_features = n_features
@@ -278,14 +321,22 @@ class AdaptiveFourierFeatures(nn.Module):
         # Attention network for weighting frequencies
         if use_attention:
             self.attention_net = nn.Sequential(
-                nn.Linear(input_dim, 64),
+                nn.Linear(input_dim, attention_hidden_dim),
                 nn.GELU(),
-                nn.Linear(64, n_frequency_banks),
+                nn.Linear(attention_hidden_dim, n_frequency_banks),
                 nn.Softmax(dim=-1),
             )
 
-        # Output projection
+        # Output projection (allows learning cross-frequency interactions)
         self.output_proj = nn.Linear(2 * n_features, 2 * n_features)
+
+        logger.debug(
+            "initialized_adaptive_fourier",
+            input_dim=input_dim,
+            n_features=n_features,
+            n_banks=n_frequency_banks,
+            scale_range=scale_range,
+        )
 
     @property
     def output_dim(self) -> int:
@@ -294,45 +345,58 @@ class AdaptiveFourierFeatures(nn.Module):
 
     def forward(
         self,
-        x: Float[Tensor, "batch n d"],
-    ) -> Float[Tensor, "batch n features"]:
+        x: Float[Tensor, "... d"],
+    ) -> Float[Tensor, "... features"]:
         """Encode with adaptive frequency selection.
 
         Args:
-            x: Input coordinates (batch, n_points, input_dim).
+            x: Input coordinates of any shape ending in input_dim.
 
         Returns:
             Encoded features.
+
+        Raises:
+            ValueError: If input dimension doesn't match expected.
         """
-        batch, n_points, _ = x.shape
+        if x.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"Expected input_dim={self.input_dim}, got {x.shape[-1]}"
+            )
+
+        # Handle arbitrary input shapes
+        original_shape = x.shape[:-1]
+        x_flat = x.reshape(-1, self.input_dim)  # (N, input_dim)
 
         # Compute features from each frequency bank
         bank_features = []
         for B in self.frequency_matrices:
-            projected = torch.matmul(x, B)  # (batch, n, n_features)
+            projected = torch.matmul(x_flat, B)  # (N, n_features)
             features = torch.cat([
-                torch.sin(2 * np.pi * projected),
-                torch.cos(2 * np.pi * projected),
-            ], dim=-1)  # (batch, n, 2*n_features)
+                torch.sin(TWO_PI * projected),
+                torch.cos(TWO_PI * projected),
+            ], dim=-1)  # (N, 2*n_features)
             bank_features.append(features)
 
-        # Stack: (batch, n, n_banks, 2*n_features)
-        bank_features = torch.stack(bank_features, dim=2)
+        # Stack: (N, n_banks, 2*n_features)
+        bank_features = torch.stack(bank_features, dim=1)
 
         if self.use_attention:
             # Compute attention weights
-            attention = self.attention_net(x)  # (batch, n, n_banks)
-            attention = attention.unsqueeze(-1)  # (batch, n, n_banks, 1)
+            attention = self.attention_net(x_flat)  # (N, n_banks)
+            attention = attention.unsqueeze(-1)  # (N, n_banks, 1)
 
             # Weighted sum across banks
-            combined = (bank_features * attention).sum(dim=2)  # (batch, n, 2*n_features)
+            combined = (bank_features * attention).sum(dim=1)  # (N, 2*n_features)
         else:
             # Simple average
-            combined = bank_features.mean(dim=2)
+            combined = bank_features.mean(dim=1)
 
         # Project and combine with raw coordinates
         combined = self.output_proj(combined)
-        output = torch.cat([x, combined], dim=-1)
+        output = torch.cat([x_flat, combined], dim=-1)  # (N, output_dim)
+
+        # Restore original shape
+        output = output.reshape(*original_shape, self.output_dim)
 
         return output
 
@@ -352,12 +416,16 @@ class ProgressiveFourierFeatures(nn.Module):
             model.fourier.set_progress(progress)  # Gradually add high freq
     """
 
+    # Default scales for progressive curriculum
+    DEFAULT_PROGRESSIVE_SCALES = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0]
+
     def __init__(
         self,
         input_dim: int,
         n_features: int = 128,
         scales: list[float] | None = None,
         learnable: bool = True,
+        gate_steepness: float = 10.0,
     ) -> None:
         """Initialize progressive Fourier features.
 
@@ -366,17 +434,19 @@ class ProgressiveFourierFeatures(nn.Module):
             n_features: Features per scale.
             scales: Frequency scales (low to high).
             learnable: Whether frequencies are learnable.
+            gate_steepness: Steepness of sigmoid gate activation (higher = sharper).
+                Controls how quickly frequencies are activated during curriculum.
         """
         super().__init__()
 
         if scales is None:
-            # Default: log-spaced from 1 to 256
-            scales = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0]
+            scales = self.DEFAULT_PROGRESSIVE_SCALES.copy()
 
         self.input_dim = input_dim
         self.n_features = n_features
         self.scales = scales
         self.n_scales = len(scales)
+        self.gate_steepness = gate_steepness
 
         # Initialize frequency matrices
         if learnable:
@@ -394,6 +464,14 @@ class ProgressiveFourierFeatures(nn.Module):
 
         # Scale-wise gating weights (interpolated based on progress)
         self.register_buffer("_gate_weights", torch.ones(len(scales)))
+
+        logger.debug(
+            "initialized_progressive_fourier",
+            input_dim=input_dim,
+            n_features=n_features,
+            n_scales=len(scales),
+            gate_steepness=gate_steepness,
+        )
 
     @property
     def output_dim(self) -> int:
@@ -415,6 +493,10 @@ class ProgressiveFourierFeatures(nn.Module):
         progress = max(0.0, min(1.0, progress))
         self._progress.fill_(progress)
 
+        # Get device from existing buffer to ensure consistency
+        device = self._gate_weights.device
+        dtype = self._gate_weights.dtype
+
         # Compute gate weights: smooth activation from low to high freq
         for i in range(self.n_scales):
             # Activation threshold for this scale
@@ -422,13 +504,18 @@ class ProgressiveFourierFeatures(nn.Module):
 
             if progress >= threshold:
                 # Smooth activation using sigmoid
-                gate = torch.sigmoid(
-                    torch.tensor(10.0 * (progress - threshold))
-                )
+                # Use math for scalar computation, then create tensor on correct device
+                gate_value = 1.0 / (1.0 + math.exp(-self.gate_steepness * (progress - threshold)))
+                self._gate_weights[i] = gate_value
             else:
-                gate = torch.tensor(0.0)
+                self._gate_weights[i] = 0.0
 
-            self._gate_weights[i] = gate
+        logger.debug(
+            "progress_updated",
+            progress=progress,
+            active_scales=int((self._gate_weights > 0.5).sum().item()),
+            total_scales=self.n_scales,
+        )
 
     def forward(
         self,
@@ -441,7 +528,15 @@ class ProgressiveFourierFeatures(nn.Module):
 
         Returns:
             Fourier features with gated high-frequency components.
+
+        Raises:
+            ValueError: If input dimension doesn't match expected.
         """
+        if x.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"Expected input_dim={self.input_dim}, got {x.shape[-1]}"
+            )
+
         original_shape = x.shape[:-1]
         x_flat = x.reshape(-1, self.input_dim)
 
@@ -457,8 +552,8 @@ class ProgressiveFourierFeatures(nn.Module):
 
             # Apply gate weight to scale
             gate = self._gate_weights[i]
-            sin_features = gate * torch.sin(2 * np.pi * projected)
-            cos_features = gate * torch.cos(2 * np.pi * projected)
+            sin_features = gate * torch.sin(TWO_PI * projected)
+            cos_features = gate * torch.cos(TWO_PI * projected)
 
             features.append(sin_features)
             features.append(cos_features)
@@ -519,7 +614,14 @@ class PositionalEncoding(nn.Module):
 
         Returns:
             Input with positional encoding added.
+
+        Raises:
+            ValueError: If input dimension doesn't match d_model.
         """
+        if x.size(-1) != self.d_model:
+            raise ValueError(
+                f"Expected d_model={self.d_model}, got {x.size(-1)}"
+            )
         return x + self.pe[:, :x.size(1)]
 
 
@@ -579,7 +681,14 @@ class SpatialPositionalEncoding(nn.Module):
 
         Returns:
             Input with spatial positional encoding.
+
+        Raises:
+            ValueError: If input is not 4D tensor.
         """
+        if x.dim() != 4:
+            raise ValueError(
+                f"Expected 4D input (batch, channels, height, width), got {x.dim()}D"
+            )
         _, _, h, w = x.shape
 
         # Get encodings for this size

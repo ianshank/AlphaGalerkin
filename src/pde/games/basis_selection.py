@@ -129,15 +129,17 @@ class BasisSelectionGame(PDEGame):
         # Generate candidate basis functions
         self._candidate_bases = self._generate_candidates()
 
-        # Cache collocation points
+        # Cache collocation points (use configurable count)
+        n_collocation = self.basis_config.n_collocation_points
         self._collocation_points = pde_operator.generate_collocation_points(
-            n_points=500,
+            n_points=n_collocation,
             method="lhs",
         )
 
-        # Cache boundary points
+        # Cache boundary points (use configurable count)
+        n_boundary_per_face = self.basis_config.n_boundary_points_per_face
         self._boundary_points = pde_operator.generate_boundary_points(
-            n_points_per_face=50,
+            n_points_per_face=n_boundary_per_face,
         )
 
         # Pre-compute exact solution if available
@@ -206,7 +208,7 @@ class BasisSelectionGame(PDEGame):
 
         elif basis_type == "rbf":
             # Generate RBF basis with various centers
-            rng = np.random.default_rng(self.config.seed)
+            rng = np.random.default_rng(self.basis_config.seed)
             scale_lo, scale_hi = self.basis_config.basis_scale_range
 
             for idx in range(n_candidates):

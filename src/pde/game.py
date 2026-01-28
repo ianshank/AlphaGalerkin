@@ -497,13 +497,21 @@ class PDEGame(ABC):
                 return GamePhase.CONVERGED
             return GamePhase.BUDGET_EXHAUSTED
 
-        # Heuristic based on progress
-        error_progress = state.error_estimate / 1.0  # Initial error assumed 1.0
-        budget_progress = state.budget_remaining / self.config.computational_budget
+        # Use configurable phase detection thresholds
+        early_step_threshold = self.config.early_phase_step_threshold
+        exploration_error_threshold = self.config.exploration_error_threshold
 
-        if state.step < 5:
+        # Get initial error from first step or estimate
+        initial_error = getattr(self, "_initial_error", None)
+        if initial_error is None:
+            # Use stored initial error if available, otherwise assume 1.0
+            initial_error = 1.0
+
+        error_progress = state.error_estimate / max(initial_error, 1e-10)
+
+        if state.step < early_step_threshold:
             return GamePhase.INITIAL
-        elif error_progress > 0.1:
+        elif error_progress > exploration_error_threshold:
             return GamePhase.EXPLORING
         else:
             return GamePhase.REFINING

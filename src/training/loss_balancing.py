@@ -20,6 +20,8 @@ Reference:
 
 from __future__ import annotations
 
+import math
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -28,12 +30,17 @@ from typing import Any
 import structlog
 import torch
 from jaxtyping import Float
-from pydantic import Field
+from pydantic import Field, field_validator
 from torch import Tensor, nn
 
 from src.templates.config import BaseModuleConfig
 
 logger = structlog.get_logger(__name__)
+
+# Default numerical stability constant
+DEFAULT_EPSILON = 1e-10
+# Default maximum exponential clipping value
+DEFAULT_MAX_EXP = 1e6
 
 
 class BalancingStrategy(str, Enum):
@@ -112,6 +119,33 @@ class LossBalancingConfig(BaseModuleConfig):
         description="Steps before starting adaptation",
     )
 
+    # Numerical stability parameters
+    epsilon: float = Field(
+        default=DEFAULT_EPSILON,
+        gt=0.0,
+        lt=1e-3,
+        description="Numerical stability constant for division",
+    )
+    max_exp_clip: float = Field(
+        default=DEFAULT_MAX_EXP,
+        gt=0.0,
+        description="Maximum value for exponential clipping",
+    )
+    history_buffer_size: int = Field(
+        default=1000,
+        ge=10,
+        le=100000,
+        description="Maximum history buffer size for lookback",
+    )
+
+    # SoftAdapt specific
+    softadapt_window_size: int = Field(
+        default=10,
+        ge=2,
+        le=100,
+        description="Window size for SoftAdapt rate computation",
+    )
+
 
 @dataclass
 class LossTerms:
@@ -184,15 +218,40 @@ class LossBalancer(ABC):
 
         Returns:
             LossTerms with weighted sum and current weights.
+
+        Raises:
+            ValueError: If no valid loss terms are provided.
         """
+        # Check for missing loss terms and log warning
+        missing_terms = [name for name in self.loss_names if name not in losses]
+        if missing_terms:
+            logger.warning(
+                "missing_loss_terms",
+                missing=missing_terms,
+                provided=list(losses.keys()),
+            )
+
+        # Ensure we have at least one valid loss
+        valid_losses = [name for name in self.loss_names if name in losses]
+        if not valid_losses:
+            raise ValueError(
+                f"No valid loss terms provided. Expected: {self.loss_names}, "
+                f"got: {list(losses.keys())}"
+            )
+
         # Update weights if needed
         if self._step % self.config.update_frequency == 0:
             if self._step >= self.config.warmup_steps:
                 self._weights = self.update(losses)
+                logger.debug(
+                    "weights_updated",
+                    step=self._step,
+                    weights=self._weights,
+                )
 
         self._step += 1
 
-        # Compute weighted sum
+        # Compute weighted sum (only for present losses)
         total = sum(
             self._weights[name] * losses[name]
             for name in self.loss_names
@@ -239,6 +298,10 @@ class ReLoBRaLo(LossBalancer):
 
     def update(self, losses: dict[str, Tensor]) -> dict[str, float]:
         """Update weights using ReLoBRaLo formula."""
+        eps = self.config.epsilon
+        max_exp = self.config.max_exp_clip
+        buffer_size = self.config.history_buffer_size
+
         # Update running averages
         for name in self.loss_names:
             if name not in losses:
@@ -248,8 +311,8 @@ class ReLoBRaLo(LossBalancer):
 
             # Store history for random lookback
             self._loss_history[name].append(loss_val)
-            if len(self._loss_history[name]) > 1000:
-                self._loss_history[name] = self._loss_history[name][-1000:]
+            if len(self._loss_history[name]) > buffer_size:
+                self._loss_history[name] = self._loss_history[name][-buffer_size:]
 
             # Update EMA
             if name not in self._running_losses:
@@ -268,7 +331,6 @@ class ReLoBRaLo(LossBalancer):
 
             if self.config.random_lookback and len(self._loss_history[name]) > 1:
                 # Random lookback: sample from history
-                import random
                 idx = random.randint(0, len(self._loss_history[name]) - 1)
                 lookback_losses[name] = self._loss_history[name][idx]
             else:
@@ -282,21 +344,22 @@ class ReLoBRaLo(LossBalancer):
                 continue
 
             loss_val = losses[name].detach().item()
-            lookback = lookback_losses[name]
+            lookback = max(lookback_losses[name], eps)  # Avoid division by zero
 
-            # Avoid division by zero
-            if lookback < 1e-10:
-                lookback = 1e-10
-
-            relative_losses[name] = loss_val / (lookback * self.config.tau + 1e-10)
+            relative_losses[name] = loss_val / (lookback * self.config.tau + eps)
 
         # Softmax to get weights
         if relative_losses:
             max_rel = max(relative_losses.values())
-            exp_rel = {
-                name: min(torch.exp(torch.tensor(val - max_rel)).item(), 1e6)
-                for name, val in relative_losses.items()
-            }
+            exp_rel = {}
+            for name, val in relative_losses.items():
+                # Use math.exp for scalar computation (avoid torch overhead)
+                try:
+                    exp_val = min(math.exp(val - max_rel), max_exp)
+                except OverflowError:
+                    exp_val = max_exp
+                exp_rel[name] = exp_val
+
             sum_exp = sum(exp_rel.values())
 
             weights = {}
@@ -392,6 +455,9 @@ class GradNorm(LossBalancer):
         Returns:
             GradNorm loss for updating weights.
         """
+        # Determine device from first loss tensor
+        device = next(iter(losses.values())).device if losses else torch.device("cpu")
+
         # Compute gradient norms for each task
         grad_norms = {}
         for name, loss in losses.items():
@@ -399,17 +465,25 @@ class GradNorm(LossBalancer):
                 continue
 
             # Get gradients w.r.t. shared layer
-            grads = torch.autograd.grad(
-                loss, shared_layer.parameters(),
-                retain_graph=True, allow_unused=True
-            )
-            grad_norm = sum(
-                g.norm() ** 2 for g in grads if g is not None
-            ) ** 0.5
-            grad_norms[name] = grad_norm
+            try:
+                grads = torch.autograd.grad(
+                    loss, shared_layer.parameters(),
+                    retain_graph=True, allow_unused=True
+                )
+                grad_norm = sum(
+                    g.norm() ** 2 for g in grads if g is not None
+                ) ** 0.5
+                grad_norms[name] = grad_norm
+            except RuntimeError as e:
+                logger.warning(
+                    "gradient_computation_failed",
+                    loss_name=name,
+                    error=str(e),
+                )
+                continue
 
         if not grad_norms:
-            return torch.tensor(0.0)
+            return torch.tensor(0.0, device=device)
 
         # Average gradient norm
         avg_grad_norm = sum(grad_norms.values()) / len(grad_norms)
@@ -427,7 +501,7 @@ class GradNorm(LossBalancer):
         avg_rel_rate = sum(rel_rates.values()) / len(rel_rates) if rel_rates else 1.0
 
         # GradNorm loss: make all gradient norms equal to avg * relative rate
-        gradnorm_loss = torch.tensor(0.0)
+        gradnorm_loss = torch.tensor(0.0, device=device)
         for name, grad_norm in grad_norms.items():
             target_norm = avg_grad_norm * (
                 (rel_rates.get(name, 1.0) / avg_rel_rate) ** self.config.alpha
@@ -526,14 +600,16 @@ class SoftAdapt(LossBalancer):
         """Initialize SoftAdapt balancer."""
         super().__init__(config, loss_names)
 
-        # Loss history for rate computation
+        # Loss history for rate computation (use configurable window size)
         self._loss_history: dict[str, list[float]] = {
             name: [] for name in loss_names
         }
-        self._window_size = 10
+        self._window_size = config.softadapt_window_size
 
     def update(self, losses: dict[str, Tensor]) -> dict[str, float]:
         """Update weights based on loss improvement rates."""
+        eps = self.config.epsilon
+
         # Update history
         for name in self.loss_names:
             if name not in losses:
@@ -550,7 +626,8 @@ class SoftAdapt(LossBalancer):
             history = self._loss_history.get(name, [])
             if len(history) >= 2:
                 # Rate of improvement (negative = improving)
-                rate = (history[-1] - history[0]) / (len(history) * max(history[0], 1e-10))
+                denominator = len(history) * max(history[0], eps)
+                rate = (history[-1] - history[0]) / denominator
                 rates[name] = rate
             else:
                 rates[name] = 0.0
@@ -558,10 +635,14 @@ class SoftAdapt(LossBalancer):
         # Softmax over rates (higher rate = higher weight)
         if rates:
             max_rate = max(rates.values())
-            exp_rates = {
-                name: torch.exp(torch.tensor((rate - max_rate) / self.config.tau)).item()
-                for name, rate in rates.items()
-            }
+            exp_rates = {}
+            for name, rate in rates.items():
+                try:
+                    exp_val = math.exp((rate - max_rate) / self.config.tau)
+                except OverflowError:
+                    exp_val = self.config.max_exp_clip
+                exp_rates[name] = exp_val
+
             sum_exp = sum(exp_rates.values())
 
             weights = {}

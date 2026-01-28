@@ -221,6 +221,26 @@ class BasisSelectionConfig(BaseModuleConfig):
         description="RBF kernel type",
     )
 
+    # Numerical parameters
+    n_collocation_points: int = Field(
+        default=500,
+        ge=10,
+        le=100000,
+        description="Number of collocation points for residual evaluation",
+    )
+    n_boundary_points_per_face: int = Field(
+        default=50,
+        ge=5,
+        le=1000,
+        description="Number of boundary points per face",
+    )
+
+    # Random seed for reproducibility
+    seed: int | None = Field(
+        default=None,
+        description="Random seed for basis initialization (None = random)",
+    )
+
     @model_validator(mode="after")
     def validate_basis_config(self) -> BasisSelectionConfig:
         """Validate basis selection parameters."""
@@ -414,6 +434,25 @@ class PDEGameConfig(BaseModuleConfig):
             ),
         ],
         description="Metrics for evaluating game success",
+    )
+
+    # Phase detection thresholds (for curriculum learning)
+    early_phase_step_threshold: int = Field(
+        default=5,
+        ge=0,
+        description="Step threshold for early phase detection",
+    )
+    exploration_error_threshold: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description="Error threshold for exploration vs refinement phase",
+    )
+
+    # Random seed for reproducibility
+    seed: int | None = Field(
+        default=None,
+        description="Random seed for game initialization (None = random)",
     )
 
     @model_validator(mode="after")

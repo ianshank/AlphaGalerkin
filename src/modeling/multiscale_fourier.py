@@ -493,22 +493,26 @@ class ProgressiveFourierFeatures(nn.Module):
         progress = max(0.0, min(1.0, progress))
         self._progress.fill_(progress)
 
-        # Get device from existing buffer to ensure consistency
+        # Get device and dtype from existing buffer to ensure consistency
         device = self._gate_weights.device
         dtype = self._gate_weights.dtype
 
-        # Compute gate weights: smooth activation from low to high freq
-        for i in range(self.n_scales):
-            # Activation threshold for this scale
-            threshold = i / self.n_scales
+        # Vectorized computation on the correct device to avoid device mismatch
+        # Thresholds: [0/n, 1/n, 2/n, ...] for each scale
+        thresholds = torch.arange(
+            self.n_scales, device=device, dtype=dtype
+        ) / float(self.n_scales)
 
-            if progress >= threshold:
-                # Smooth activation using sigmoid
-                # Use math for scalar computation, then create tensor on correct device
-                gate_value = 1.0 / (1.0 + math.exp(-self.gate_steepness * (progress - threshold)))
-                self._gate_weights[i] = gate_value
-            else:
-                self._gate_weights[i] = 0.0
+        # Compute sigmoid gate values: 1 / (1 + exp(-k * (progress - threshold)))
+        delta = progress - thresholds
+        gate_values = 1.0 / (1.0 + torch.exp(-self.gate_steepness * delta))
+
+        # Zero out gates for scales that haven't been activated yet
+        mask = progress >= thresholds
+        gate_values = torch.where(mask, gate_values, torch.zeros_like(gate_values))
+
+        # Update buffer in-place
+        self._gate_weights.copy_(gate_values)
 
         logger.debug(
             "progress_updated",

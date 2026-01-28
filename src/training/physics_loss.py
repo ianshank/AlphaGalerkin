@@ -32,7 +32,6 @@ from torch import Tensor, nn
 
 from src.templates.config import BaseModuleConfig
 from src.training.loss_balancing import (
-    LossBalancer,
     LossBalancingConfig,
     create_loss_balancer,
 )

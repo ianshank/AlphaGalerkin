@@ -9,7 +9,6 @@ from src.pde.operators import (
     AdvectionDiffusionOperator,
     BurgersOperator,
     HeatOperator,
-    PDEOperator,
     PDEResidual,
     PoissonOperator,
 )

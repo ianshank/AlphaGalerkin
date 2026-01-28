@@ -23,9 +23,8 @@ from __future__ import annotations
 import math
 import random
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 import structlog
 import torch
@@ -352,12 +351,12 @@ class ReLoBRaLo(LossBalancer):
         if relative_losses:
             max_rel = max(relative_losses.values())
             exp_rel = {}
+            # Maximum safe exponent to avoid overflow (exp(709) ≈ 8.2e307)
+            max_safe_exponent = 700.0
             for name, val in relative_losses.items():
-                # Use math.exp for scalar computation (avoid torch overhead)
-                try:
-                    exp_val = min(math.exp(val - max_rel), max_exp)
-                except OverflowError:
-                    exp_val = max_exp
+                # Clip exponent before computing exp to ensure numerical stability
+                clipped_exp = min(val - max_rel, max_safe_exponent)
+                exp_val = min(math.exp(clipped_exp), max_exp)
                 exp_rel[name] = exp_val
 
             sum_exp = sum(exp_rel.values())

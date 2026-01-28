@@ -299,6 +299,50 @@ class ValueHead(nn.Module):
         return value
 
 
+class DenseHead(nn.Module):
+    """Dense head for physics field regression.
+    
+    Maps sequence features back to a dense output field.
+    Used for operator learning tasks (e.g., Poisson, Heat, Darcy).
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        output_channels: int = 1,
+        d_hidden: int | None = None,
+    ) -> None:
+        """Initialize dense head.
+
+        Args:
+            d_model: Input feature dimension.
+            output_channels: Number of output channels per position.
+            d_hidden: Hidden dimension for MLP.
+        """
+        super().__init__()
+        d_hidden = d_hidden or d_model
+
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_hidden),
+            nn.GELU(),
+            nn.Linear(d_hidden, output_channels),
+        )
+
+    def forward(
+        self,
+        x: Float[Tensor, "batch n d"],
+    ) -> Float[Tensor, "batch n c"]:
+        """Compute dense output field.
+
+        Args:
+            x: Input features (batch, n, d_model).
+
+        Returns:
+            Output field (batch, n, output_channels).
+        """
+        return self.net(x)
+
+
 class AlphaGalerkinModel(nn.Module):
     """Main AlphaGalerkin model.
 

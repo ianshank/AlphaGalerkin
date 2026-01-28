@@ -135,6 +135,12 @@ def benchmark_attention(
     for seq_len in seq_lengths:
         x = torch.randn(batch_size, seq_len, d_model, device=device)
 
+        # Ensure modules are on the correct device
+        if hasattr(galerkin_attn, "to"):
+            galerkin_attn.to(device)
+        if hasattr(softmax_attn, "to"):
+            softmax_attn.to(device)
+
         # Benchmark Galerkin with error handling
         try:
             galerkin_ms = benchmark_module(galerkin_attn, x, n_warmup, n_runs)
@@ -213,6 +219,10 @@ def benchmark_model_throughput(
         raise ValueError(f"batch_size must be positive, got {batch_size}")
     if n_evals <= 0:
         raise ValueError(f"n_evals must be positive, got {n_evals}")
+
+    # Ensure model is on the correct device
+    if hasattr(model, "to"):
+        model.to(device)
 
     model.eval()
     x = torch.randn(batch_size, input_channels, board_size, board_size, device=device)

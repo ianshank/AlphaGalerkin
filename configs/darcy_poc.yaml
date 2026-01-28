@@ -1,0 +1,62 @@
+# Darcy Flow PoC Configuration
+# Uses Hydra for hierarchical config management
+
+defaults:
+  - _self_
+
+# Solver parameters
+solver:
+  resolution: 16
+  forcing: 1.0
+  n_sources: 5
+  source_std: 2.0
+
+# Data generation
+data:
+  n_train: 1000
+  n_val: 100
+  n_test: 100
+  seed: 42
+  cache: true
+  normalize: true
+
+# Model architecture
+model:
+  backend: fno
+  in_channels: 1
+  out_channels: 1
+  width: 64
+  n_layers: 4
+  modes: 12
+
+# Training
+training:
+  epochs: 100
+  batch_size: 32
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  gradient_clip: 1.0
+  loss_type: l2_relative
+  scheduler: cosine
+  patience: 20
+  save_every: 10
+  device: auto
+
+# Resolution transfer evaluation
+evaluation:
+  resolutions:
+    - 16
+    - 32
+    - 64
+    - 128
+  n_samples: 50
+
+# Paths
+paths:
+  checkpoint_dir: checkpoints/darcy_poc
+  log_dir: logs/darcy_poc
+
+# Logging
+logging:
+  level: INFO
+  structured: true

@@ -22,28 +22,34 @@ import numpy as np
 import structlog
 from numpy.typing import NDArray
 
+from src.physics.solver import DiffEqSolver, PhysicsSample
+
 logger = structlog.get_logger(__name__)
 
 
 @dataclass
-class PoissonSample:
+class PoissonSample(PhysicsSample[NDArray[np.float32], NDArray[np.float32]]):
     """A single Poisson equation sample.
 
     Attributes:
-        coords: Grid coordinates (N, 2) normalized to [0, 1].
-        charges: Charge density at each point (N,).
-        potential: Ground truth potential/influence field (N,).
+        input_field: Charge density (N,).
+        output_field: Potential/influence field (N,).
+        coords: Grid coordinates (N, 2).
         grid_size: Original grid resolution.
-
     """
 
-    coords: NDArray[np.float32]  # (N, 2)
-    charges: NDArray[np.float32]  # (N,)
-    potential: NDArray[np.float32]  # (N,)
-    grid_size: int
+    @property
+    def charges(self) -> NDArray[np.float32]:
+        """Alias for input_field for backward compatibility."""
+        return self.input_field
+
+    @property
+    def potential(self) -> NDArray[np.float32]:
+        """Alias for output_field for backward compatibility."""
+        return self.output_field
 
 
-class PoissonSolver:
+class PoissonSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
     """Solves the 2D Poisson equation on a grid.
 
     Uses finite difference discretization with Dirichlet boundary conditions.
@@ -56,6 +62,7 @@ class PoissonSolver:
         boundary_value: float = 0.0,
         use_spectral: bool = True,
         regularization: float = 1e-6,
+        resolution: int = 32,
     ) -> None:
         """Initialize Poisson solver.
 
@@ -63,8 +70,10 @@ class PoissonSolver:
             boundary_value: Value at domain boundaries (Dirichlet BC).
             use_spectral: Use spectral method (FFT) for faster solving.
             regularization: Small value to stabilize division.
+            resolution: Default grid resolution.
 
         """
+        super().__init__(resolution=resolution)
         self.boundary_value = boundary_value
         self.use_spectral = use_spectral
         self.regularization = regularization
@@ -213,6 +222,46 @@ class PoissonSolver:
 
         return potential
 
+    def generate_sample(
+        self,
+        seed: int | None = None,
+        n_charges: int | None = None,
+        charge_std: float = 1.0,
+    ) -> PoissonSample:
+        """Generate a random complete Poisson sample.
+
+        Args:
+            seed: Random seed.
+            n_charges: Number of point charges (None for continuous).
+            charge_std: Standard deviation of charges.
+
+        Returns:
+            PoissonSample with coordinates, charges, and potential.
+        """
+        # Define grid size (use instance resolution if not generic)
+        grid_size = self.resolution
+
+        # Generate charges
+        charges_2d = generate_random_charges(
+            grid_size=grid_size,
+            n_charges=n_charges,
+            charge_std=charge_std,
+            seed=seed,
+        )
+
+        # Solve for potential
+        potential_2d = self.solve(charges_2d)
+
+        # Create coordinate grid
+        coords = self._get_grid_coords(grid_size)
+
+        return PoissonSample(
+            input_field=charges_2d.flatten().astype(np.float32),
+            output_field=potential_2d.flatten().astype(np.float32),
+            coords=coords,
+            grid_size=grid_size,
+        )
+
 
 def generate_random_charges(
     grid_size: int,
@@ -300,9 +349,9 @@ def generate_influence_field(
     coords = np.stack([xx.flatten(), yy.flatten()], axis=-1).astype(np.float32)
 
     return PoissonSample(
+        input_field=charges_2d.flatten().astype(np.float32),
+        output_field=potential_2d.flatten().astype(np.float32),
         coords=coords,
-        charges=charges_2d.flatten().astype(np.float32),
-        potential=potential_2d.flatten().astype(np.float32),
         grid_size=grid_size,
     )
 

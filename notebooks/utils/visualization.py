@@ -74,6 +74,10 @@ def plot_fourier_features(
     if n_cols == 1:
         axes = axes.reshape(2, 1)
 
+    # Ensure encoder is on the correct device
+    if hasattr(fourier_encoder, "to"):
+        fourier_encoder.to(device)
+
     for idx, size in enumerate(board_sizes):
         coords = create_grid_coordinates(size, batch_size=1, device=device)
         features = fourier_encoder(coords)

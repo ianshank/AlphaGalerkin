@@ -331,8 +331,8 @@ def analyze_scaling(results: list[BenchmarkResult]) -> dict[str, float]:
         "mean_speedup": float(np.mean(speedups)),
         "max_speedup": float(np.max(speedups)),
         "speedup_at_largest": float(speedups[-1]),
-        "fnet_scales_subquadratic": fnet_exponent < SUBQUADRATIC_EXPONENT_THRESHOLD,
-        "softmax_scales_quadratic": softmax_exponent > SUBQUADRATIC_EXPONENT_THRESHOLD,
+        "fnet_scales_subquadratic": bool(fnet_exponent < SUBQUADRATIC_EXPONENT_THRESHOLD),
+        "softmax_scales_quadratic": bool(softmax_exponent > SUBQUADRATIC_EXPONENT_THRESHOLD),
     }
 
 

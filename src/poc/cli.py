@@ -203,13 +203,6 @@ def main() -> int:
         default="INFO",
         help="Logging level",
     )
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="outputs/poc",
-        help="Output directory for results",
-    )
-
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Run command
@@ -240,6 +233,12 @@ def main() -> int:
         action="store_true",
         help="Stop on first failure",
     )
+    run_parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="outputs/poc",
+        help="Output directory for results",
+    )
 
     # List command
     subparsers.add_parser("list", help="List available scenarios")
@@ -252,6 +251,12 @@ def main() -> int:
     compare_parser = subparsers.add_parser("compare", help="Compare two runs")
     compare_parser.add_argument("run_a", type=str, help="First run ID")
     compare_parser.add_argument("run_b", type=str, help="Second run ID")
+    compare_parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="outputs/poc",
+        help="Output directory for results",
+    )
 
     args = parser.parse_args()
 

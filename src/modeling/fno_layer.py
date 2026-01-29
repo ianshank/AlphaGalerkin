@@ -277,7 +277,7 @@ class FNO2d(nn.Module):
         
         # Project to output: (batch, h, w, out_channels)
         x = self.fc1(x)
-        x = self.activation(x)
+        x = cast(Tensor, self.activation(x))
         x = self.fc2(x)
         
         # Final shape: (batch, out_channels, h, w)

@@ -53,10 +53,6 @@ def test_train_physics_minimal(cli_runner: CLIRunnerType, temp_output_dir: Path)
         [
             "--n-epochs",
             "2",
-            "--n-train-samples",
-            "10",
-            "--n-eval-samples",
-            "5",
             "--output-dir",
             str(temp_output_dir),
             "--train-size",

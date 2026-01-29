@@ -14,6 +14,7 @@ from torch import nn, Tensor
 from jaxtyping import Float
 
 from src.modeling.fno_layer import FNO2d
+from src.modeling.galerkin_operator import Galerkin2d
 
 logger = structlog.get_logger(__name__)
 
@@ -59,7 +60,7 @@ class NeuralOperator(nn.Module):
         self.out_channels = out_channels
         self.backend = backend
         
-        self.model: FNO2d
+        self.model: FNO2d | Galerkin2d
         if backend == "fno":
             self.model = FNO2d(
                 in_channels=in_channels,
@@ -69,8 +70,17 @@ class NeuralOperator(nn.Module):
                 modes2=modes,
                 n_layers=n_layers,
             )
+        elif backend == "galerkin":
+            # Map modes to n_heads (reasonable heuristic)
+            n_heads = max(1, modes // 3)
+            self.model = Galerkin2d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                width=width,
+                n_layers=n_layers,
+                n_heads=n_heads,
+            )
         else:
-            # TODO: Implement Galerkin backend using existing blocks
             raise NotImplementedError(f"Backend '{backend}' not yet implemented")
         
         logger.info(

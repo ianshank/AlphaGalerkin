@@ -7,7 +7,10 @@ and LBB stability monitoring.
 from __future__ import annotations
 
 import pytest
-import torch
+
+# Skip entire module if torch not available
+torch = pytest.importorskip("torch")
+
 from pydantic import ValidationError
 
 from src.modeling.galerkin_operator import (
@@ -16,16 +19,6 @@ from src.modeling.galerkin_operator import (
     GalerkinOperatorConfig,
 )
 from src.modeling.operator import NeuralOperator
-
-
-# Skip if torch not available
-HAS_TORCH = True
-try:
-    import torch
-except ImportError:
-    HAS_TORCH = False
-
-pytestmark = pytest.mark.skipif(not HAS_TORCH, reason="torch not available")
 
 
 class TestGalerkinOperatorConfig:
@@ -92,6 +85,16 @@ class TestGalerkinOperatorConfig:
         config2 = GalerkinOperatorConfig(name="test", width=64)
         assert config1.compute_hash() == config2.compute_hash()
 
+    def test_validation_width_n_heads_divisibility(self) -> None:
+        """Test width must be divisible by n_heads."""
+        with pytest.raises(ValidationError):
+            GalerkinOperatorConfig(name="test", width=32, n_heads=5)  # 32 % 5 != 0
+
+    def test_validation_width_greater_than_n_heads(self) -> None:
+        """Test width must be >= n_heads."""
+        with pytest.raises(ValidationError):
+            GalerkinOperatorConfig(name="test", width=8, n_heads=16)
+
 
 class TestGalerkinOperatorBlock:
     """Tests for GalerkinOperatorBlock."""
@@ -143,6 +146,16 @@ class TestGalerkinOperatorBlock:
             x = torch.randn(2, 16, 32)
             y = block(x)
             assert y.shape == x.shape
+
+    def test_dimension_validation_divisibility(self) -> None:
+        """Test d_model must be divisible by n_heads."""
+        with pytest.raises(ValueError, match="must be divisible"):
+            GalerkinOperatorBlock(d_model=32, n_heads=5)
+
+    def test_dimension_validation_minimum(self) -> None:
+        """Test d_model must be >= n_heads."""
+        with pytest.raises(ValueError, match="must be >="):
+            GalerkinOperatorBlock(d_model=4, n_heads=8)
 
 
 class TestGalerkin2d:
@@ -291,6 +304,23 @@ class TestGalerkin2d:
         y = model(x)
         assert y.device == device
         assert y.shape == (2, 1, 16, 16)
+
+    def test_lbb_regularization_device_consistency(
+        self, model: Galerkin2d, device: torch.device
+    ) -> None:
+        """Test LBB regularization returns tensor on correct device."""
+        model = model.to(device)
+
+        # Test with no prior forward pass - should return zero on correct device
+        reg_loss = model.get_lbb_regularization()
+        assert reg_loss.device == device, "LBB reg should be on model device"
+        assert reg_loss.item() == 0.0
+
+        # Test after forward pass with return_lbb=True
+        x = torch.randn(2, 1, 16, 16, device=device)
+        _ = model(x, return_lbb=True)
+        reg_loss = model.get_lbb_regularization()
+        assert reg_loss.device == device, "LBB reg should be on model device"
 
 
 class TestNeuralOperatorGalerkinBackend:

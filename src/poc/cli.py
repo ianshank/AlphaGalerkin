@@ -251,6 +251,12 @@ def main() -> int:
     compare_parser = subparsers.add_parser("compare", help="Compare two runs")
     compare_parser.add_argument("run_a", type=str, help="First run ID")
     compare_parser.add_argument("run_b", type=str, help="Second run ID")
+    compare_parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="outputs/poc",
+        help="Output directory for results",
+    )
 
     args = parser.parse_args()
 

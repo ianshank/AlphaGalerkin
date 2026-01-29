@@ -6,20 +6,13 @@ Tests mathematical invariants and properties that should hold for any valid inpu
 from __future__ import annotations
 
 import pytest
-import torch
+
+# Skip entire module if torch not available
+torch = pytest.importorskip("torch")
+
 from hypothesis import given, settings, strategies as st
 
 from src.modeling.galerkin_operator import Galerkin2d, GalerkinOperatorBlock
-
-
-# Skip if torch not available
-HAS_TORCH = True
-try:
-    import torch
-except ImportError:
-    HAS_TORCH = False
-
-pytestmark = pytest.mark.skipif(not HAS_TORCH, reason="torch not available")
 
 
 class TestGalerkinResolutionIndependence:

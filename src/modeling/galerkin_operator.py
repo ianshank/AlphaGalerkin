@@ -16,7 +16,7 @@ from typing import cast
 import structlog
 import torch
 from einops import rearrange
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch import Tensor, nn
 
 from src.modeling.attention import GalerkinAttention
@@ -133,6 +133,19 @@ class GalerkinOperatorConfig(BaseModuleConfig):
         description="Activation function (gelu, relu, silu)",
     )
 
+    @model_validator(mode="after")
+    def validate_dimensions(self) -> GalerkinOperatorConfig:
+        """Validate that width is compatible with n_heads."""
+        if self.width < self.n_heads:
+            raise ValueError(
+                f"width ({self.width}) must be >= n_heads ({self.n_heads})"
+            )
+        if self.width % self.n_heads != 0:
+            raise ValueError(
+                f"width ({self.width}) must be divisible by n_heads ({self.n_heads})"
+            )
+        return self
+
 
 def _get_activation(name: str) -> nn.Module:
     """Get activation module by name.
@@ -193,6 +206,16 @@ class GalerkinOperatorBlock(nn.Module):
 
         """
         super().__init__()
+
+        # Validate dimensions for proper attention head splitting
+        if d_model < n_heads:
+            raise ValueError(
+                f"d_model ({d_model}) must be >= n_heads ({n_heads})"
+            )
+        if d_model % n_heads != 0:
+            raise ValueError(
+                f"d_model ({d_model}) must be divisible by n_heads ({n_heads})"
+            )
 
         self.d_model = d_model
         self.n_heads = n_heads
@@ -510,15 +533,18 @@ class Galerkin2d(nn.Module):
     def get_lbb_regularization(self) -> Tensor:
         """Compute LBB regularization loss for training stability.
 
-        Should be called after a forward pass with return_lbb=True,
-        or will run a forward pass to compute LBB constants.
+        Should be called after a forward pass with return_lbb=True.
+        Returns zero if no LBB constants are cached.
 
         Returns:
-            Scalar regularization loss penalizing small LBB constants.
+            Scalar regularization loss penalizing small LBB constants,
+            or zero tensor on the model's device if no constants are cached.
 
         """
         if self._last_lbb_constants is None:
-            return torch.tensor(0.0)
+            # Get device from model parameters to ensure device consistency
+            device = next(self.parameters()).device
+            return torch.tensor(0.0, device=device)
 
         total_loss = torch.tensor(0.0, device=self._last_lbb_constants[0].device)
         for lbb in self._last_lbb_constants:

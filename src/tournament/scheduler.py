@@ -9,7 +9,7 @@ Provides:
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import structlog
 
@@ -35,6 +35,7 @@ class Pairing:
 
         Returns:
             Match instance.
+
         """
         return Match(
             player1_id=self.player1.player_id,
@@ -64,6 +65,7 @@ class TournamentScheduler:
         Args:
             config: Tournament configuration.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__)
@@ -86,6 +88,7 @@ class TournamentScheduler:
 
         Returns:
             List of Pairings.
+
         """
         if len(players) < 2:
             return []
@@ -117,6 +120,7 @@ class TournamentScheduler:
 
         Returns:
             All pairings for round-robin.
+
         """
         n = len(players)
         player_list = list(players)
@@ -163,6 +167,7 @@ class TournamentScheduler:
 
         Returns:
             Pairings for current round.
+
         """
         # Sort by score, then by rating
         sorted_players = sorted(
@@ -192,6 +197,12 @@ class TournamentScheduler:
                     continue
 
                 opponent = player_map[opp_id]
+
+                # Check rating cutoff (skip if too large a rating gap)
+                rating_diff = abs(player.rating - opponent.rating)
+                if rating_diff > self.config.swiss_rating_cutoff:
+                    continue
+
                 score_diff = abs(
                     standings.get(player.player_id, 0)
                     - standings.get(opp_id, 0)
@@ -224,6 +235,7 @@ class TournamentScheduler:
 
         Returns:
             First round pairings.
+
         """
         # Seed players by rating
         seeded = sorted(players, key=lambda p: p.rating, reverse=True)
@@ -271,6 +283,7 @@ class TournamentScheduler:
 
         Returns:
             Pairings for next round.
+
         """
         if self.config.format == TournamentFormat.SWISS:
             # Update standings from results
@@ -307,6 +320,7 @@ class TournamentScheduler:
 
         Returns:
             Dictionary of player_id to score.
+
         """
         standings: dict[str, float] = {}
 
@@ -343,6 +357,7 @@ def create_round_robin_schedule(
 
     Returns:
         List of all matches.
+
     """
     from src.tournament.config import TournamentConfig
 

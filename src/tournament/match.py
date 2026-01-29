@@ -8,11 +8,11 @@ Provides:
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
-import uuid
 
 
 class MatchStatus(str, Enum):
@@ -45,6 +45,7 @@ class GameRecord:
         moves: Number of moves in game.
         sgf_path: Path to SGF file if saved.
         duration_seconds: Game duration.
+
     """
 
     game_number: int
@@ -91,7 +92,7 @@ class GameRecord:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GameRecord":
+    def from_dict(cls, data: dict[str, Any]) -> GameRecord:
         """Create from dictionary."""
         return cls(
             game_number=data["game_number"],
@@ -118,6 +119,7 @@ class MatchResult:
         player2_score: Score for player 2.
         player1_rating_change: Rating change for player 1.
         player2_rating_change: Rating change for player 2.
+
     """
 
     winner_id: str | None = None
@@ -139,6 +141,27 @@ class MatchResult:
             "player1_rating_change": self.player1_rating_change,
             "player2_rating_change": self.player2_rating_change,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MatchResult:
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary with match result data.
+
+        Returns:
+            MatchResult instance.
+
+        """
+        return cls(
+            winner_id=data.get("winner_id"),
+            loser_id=data.get("loser_id"),
+            is_draw=data.get("is_draw", False),
+            player1_score=data.get("player1_score", 0.0),
+            player2_score=data.get("player2_score", 0.0),
+            player1_rating_change=data.get("player1_rating_change", 0.0),
+            player2_rating_change=data.get("player2_rating_change", 0.0),
+        )
 
 
 @dataclass
@@ -233,6 +256,7 @@ class Match:
 
         Returns:
             Created GameRecord.
+
         """
         game = GameRecord(
             game_number=len(self.games) + 1,
@@ -287,6 +311,7 @@ class Match:
 
         Args:
             reason: Reason for cancellation.
+
         """
         self.status = MatchStatus.CANCELLED
         self.end_time = datetime.now(timezone.utc).isoformat()
@@ -297,6 +322,7 @@ class Match:
 
         Args:
             forfeiter_id: ID of the player who forfeited.
+
         """
         self.status = MatchStatus.FORFEIT
         self.end_time = datetime.now(timezone.utc).isoformat()
@@ -317,6 +343,7 @@ class Match:
 
         Returns:
             Tuple of (black_player_id, white_player_id).
+
         """
         # Alternate colors
         if len(self.games) % 2 == 0:
@@ -343,7 +370,7 @@ class Match:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Match":
+    def from_dict(cls, data: dict[str, Any]) -> Match:
         """Create from dictionary."""
         games = [
             GameRecord.from_dict(g) for g in data.get("games", [])

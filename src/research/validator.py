@@ -412,10 +412,11 @@ class TransferValidator:
             Comparison data.
 
         """
-        comparison = {
+        targets: dict[int, dict[str, Any]] = {}
+        comparison: dict[str, Any] = {
             "result1_id": result1.result_id,
             "result2_id": result2.result_id,
-            "targets": {},
+            "targets": targets,
         }
 
         all_targets = set(result1.target_metrics.keys()) | set(result2.target_metrics.keys())

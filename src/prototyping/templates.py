@@ -462,8 +462,8 @@ class BenchmarkTemplate(ExperimentTemplate):
                     batch_time = time.time() - batch_start
                     times.append(batch_time)
 
-                avg_time = sum(times) / len(times)
-                throughput = batch_size / avg_time
+                avg_time = sum(times) / len(times) if times else 0.0
+                throughput = batch_size / avg_time if avg_time > 0 else float("inf")
 
                 results["timings"][board_size][batch_size] = avg_time * 1000  # ms
                 results["throughput"][board_size][batch_size] = throughput

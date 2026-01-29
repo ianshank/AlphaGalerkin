@@ -11,6 +11,13 @@ try:
 except ImportError:
     HAS_TORCH = False
     torch = None  # type: ignore[assignment]
+    
+# Configure matplotlib for headless testing
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+except ImportError:
+    pass
 
 
 @pytest.fixture(autouse=True)

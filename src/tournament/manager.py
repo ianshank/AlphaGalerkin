@@ -9,11 +9,12 @@ Provides:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import structlog
 
@@ -56,6 +57,7 @@ class TournamentStandings:
 
         Args:
             match: Completed match.
+
         """
         if not match.result:
             return
@@ -103,6 +105,7 @@ class TournamentStandings:
 
         Returns:
             List of (player_id, score) sorted by rank.
+
         """
         if tiebreak == "wins":
             return sorted(
@@ -110,6 +113,19 @@ class TournamentStandings:
                 key=lambda x: (x[1], self.wins.get(x[0], 0)),
                 reverse=True,
             )
+        elif tiebreak == "head_to_head":
+            # For head-to-head, we sum scores against players with equal total score
+            def h2h_key(item: tuple[str, float]) -> tuple[float, float]:
+                pid, score = item
+                # Sum head-to-head scores against tied opponents
+                h2h_sum = sum(
+                    self.head_to_head.get(pid, {}).get(opp_id, 0.0)
+                    for opp_id, opp_score in self.scores.items()
+                    if opp_score == score and opp_id != pid
+                )
+                return (score, h2h_sum)
+
+            return sorted(self.scores.items(), key=h2h_key, reverse=True)
         return sorted(self.scores.items(), key=lambda x: x[1], reverse=True)
 
     def to_dict(self) -> dict[str, Any]:
@@ -146,6 +162,7 @@ class TournamentManager:
             player_registry: Optional existing player registry.
             rating_system: Optional existing rating system.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -192,9 +209,9 @@ class TournamentManager:
     def participants(self) -> list[Player]:
         """Get list of participants."""
         return [
-            self._registry.get(pid)
+            player
             for pid in self._participants
-            if self._registry.get(pid)
+            if (player := self._registry.get(pid)) is not None
         ]
 
     @property
@@ -218,6 +235,7 @@ class TournamentManager:
 
         Returns:
             True if registration successful.
+
         """
         if self._state not in (TournamentState.CREATED, TournamentState.REGISTRATION):
             self._logger.warning(
@@ -281,8 +299,20 @@ class TournamentManager:
                 self._standings.scores,
             )
 
-        # Create matches
+        # Create matches with validation
+        # Note: _participants is already a list of player IDs (strings)
+        participant_ids = set(self._participants)
         for pairing in pairings:
+            # Validate both players exist in participants
+            if pairing.player1.player_id not in participant_ids:
+                raise ValueError(
+                    f"Player {pairing.player1.player_id} not in tournament participants"
+                )
+            if pairing.player2.player_id not in participant_ids:
+                raise ValueError(
+                    f"Player {pairing.player2.player_id} not in tournament participants"
+                )
+
             match = pairing.to_match(
                 board_size=self.config.match_config.board_size,
                 games_to_play=self.config.match_config.games_per_match,
@@ -295,6 +325,7 @@ class TournamentManager:
 
         Returns:
             List of pending matches.
+
         """
         return [
             m for m in self._matches
@@ -307,6 +338,7 @@ class TournamentManager:
 
         Returns:
             List of in-progress matches.
+
         """
         return [
             m for m in self._matches
@@ -318,6 +350,7 @@ class TournamentManager:
 
         Returns:
             List of completed matches.
+
         """
         return [
             m for m in self._matches
@@ -332,6 +365,7 @@ class TournamentManager:
 
         Returns:
             Match or None if not found.
+
         """
         for match in self._matches:
             if match.match_id == match_id:
@@ -346,6 +380,7 @@ class TournamentManager:
 
         Returns:
             Started match or None if not found.
+
         """
         match = self.get_match(match_id)
         if match and match.status == MatchStatus.SCHEDULED:
@@ -372,6 +407,7 @@ class TournamentManager:
 
         Returns:
             True if recorded successfully.
+
         """
         match = self.get_match(match_id)
         if not match:
@@ -452,6 +488,7 @@ class TournamentManager:
 
         Returns:
             True if tournament should end.
+
         """
         format = self.config.format
 
@@ -497,6 +534,7 @@ class TournamentManager:
 
         Returns:
             Dictionary with complete results.
+
         """
         ranked = self._standings.get_ranked(self.config.tiebreak_method)
 
@@ -511,11 +549,7 @@ class TournamentManager:
                 {
                     "rank": i + 1,
                     "player_id": pid,
-                    "player_name": (
-                        self._registry.get(pid).name
-                        if self._registry.get(pid)
-                        else "Unknown"
-                    ),
+                    "player_name": player.name if (player := self._registry.get(pid)) else "Unknown",
                     "score": score,
                     "wins": self._standings.wins.get(pid, 0),
                     "losses": self._standings.losses.get(pid, 0),
@@ -533,6 +567,7 @@ class TournamentManager:
 
         Args:
             callback: Function to call when match completes.
+
         """
         self._on_match_complete.append(callback)
 
@@ -541,6 +576,7 @@ class TournamentManager:
 
         Args:
             callback: Function to call when round completes.
+
         """
         self._on_round_complete.append(callback)
 
@@ -549,6 +585,7 @@ class TournamentManager:
 
         Args:
             callback: Function to call when tournament completes.
+
         """
         self._on_tournament_complete.append(callback)
 
@@ -557,6 +594,7 @@ class TournamentManager:
 
         Args:
             path: Path to save state.
+
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -583,6 +621,7 @@ class TournamentManager:
 
         Returns:
             Summary dictionary.
+
         """
         return {
             "name": self.config.name,
@@ -612,6 +651,7 @@ def create_tournament(
 
     Returns:
         TournamentManager instance.
+
     """
     from src.tournament.config import create_tournament_config
 

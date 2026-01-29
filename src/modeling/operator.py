@@ -6,7 +6,7 @@ FNO or Galerkin-based architectures.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 import structlog
 import torch
@@ -59,6 +59,7 @@ class NeuralOperator(nn.Module):
         self.out_channels = out_channels
         self.backend = backend
         
+        self.model: FNO2d
         if backend == "fno":
             self.model = FNO2d(
                 in_channels=in_channels,
@@ -95,7 +96,7 @@ class NeuralOperator(nn.Module):
         Returns:
             Predicted output field.
         """
-        return self.model(x, coords)
+        return cast(Tensor, self.model(x, coords))
 
     def count_parameters(self) -> int:
         """Count trainable parameters."""

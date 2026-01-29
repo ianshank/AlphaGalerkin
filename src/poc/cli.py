@@ -203,13 +203,6 @@ def main() -> int:
         default="INFO",
         help="Logging level",
     )
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="outputs/poc",
-        help="Output directory for results",
-    )
-
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Run command
@@ -239,6 +232,12 @@ def main() -> int:
         "--fail-fast",
         action="store_true",
         help="Stop on first failure",
+    )
+    run_parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="outputs/poc",
+        help="Output directory for results",
     )
 
     # List command

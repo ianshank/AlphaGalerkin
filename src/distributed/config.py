@@ -27,8 +27,12 @@ class DistributedBackend(str, Enum):
     MPI = "mpi"  # Message Passing Interface
 
 
-class DistributedConfig(BaseModel):
+class DistributedInfraConfig(BaseModel):
     """Configuration for distributed training infrastructure.
+
+    This is the full-featured infrastructure config for advanced multi-node
+    setups. For basic single-node DDP training, use DistributedConfig from
+    config/schemas.py instead.
 
     Supports multi-node, multi-GPU training with gradient synchronization
     via NCCL or Gloo backends.
@@ -169,7 +173,7 @@ class DistributedConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_config(self) -> DistributedConfig:
+    def validate_config(self) -> DistributedInfraConfig:
         """Validate configuration consistency."""
         if not self.enabled:
             return self
@@ -399,7 +403,7 @@ def create_distributed_config(
     world_size: int = 1,
     backend: str = "nccl",
     **kwargs: Any,
-) -> DistributedConfig:
+) -> DistributedInfraConfig:
     """Factory function to create distributed config.
 
     Args:
@@ -408,11 +412,11 @@ def create_distributed_config(
         **kwargs: Additional configuration options.
 
     Returns:
-        Configured DistributedConfig instance.
+        Configured DistributedInfraConfig instance.
 
     """
     backend_enum = DistributedBackend(backend)
-    return DistributedConfig(
+    return DistributedInfraConfig(
         enabled=world_size > 1,
         world_size=world_size,
         backend=backend_enum,

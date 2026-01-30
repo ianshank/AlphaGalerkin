@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch import nn
 
-from src.distributed.config import DistributedConfig
+from src.distributed.config import DistributedInfraConfig
 from src.distributed.gradient_sync import (
     GradientAccumulator,
     GradientSynchronizer,
@@ -35,9 +35,9 @@ def simple_model() -> SimpleModel:
 
 
 @pytest.fixture
-def distributed_config() -> DistributedConfig:
+def distributed_config() -> DistributedInfraConfig:
     """Create a distributed config for testing."""
-    return DistributedConfig(
+    return DistributedInfraConfig(
         enabled=True,
         backend="gloo",
         world_size=2,
@@ -82,7 +82,7 @@ class TestGradientSynchronizer:
     def test_initialization(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test synchronizer initialization."""
         with patch("torch.distributed.is_initialized", return_value=False):
@@ -95,7 +95,7 @@ class TestGradientSynchronizer:
     def test_synchronize_non_distributed_returns_empty_metrics(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test synchronize returns empty metrics when distributed is not initialized."""
         with patch("torch.distributed.is_initialized", return_value=False):
@@ -109,7 +109,7 @@ class TestGradientSynchronizer:
     def test_synchronize_no_gradients(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test synchronize with no gradients attached."""
         with patch("torch.distributed.is_initialized", return_value=True):
@@ -123,7 +123,7 @@ class TestGradientSynchronizer:
     def test_should_sync_accumulation_steps_one(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test should_sync with accumulation_steps=1."""
         with patch("torch.distributed.is_initialized", return_value=False):
@@ -137,7 +137,7 @@ class TestGradientSynchronizer:
         simple_model: SimpleModel,
     ) -> None:
         """Test should_sync with gradient accumulation."""
-        config = DistributedConfig(
+        config = DistributedInfraConfig(
             enabled=True,
             backend="gloo",
             world_size=2,
@@ -159,7 +159,7 @@ class TestGradientSynchronizer:
     def test_step_and_reset(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test step and reset counter methods."""
         with patch("torch.distributed.is_initialized", return_value=False):
@@ -179,7 +179,7 @@ class TestGradientSynchronizer:
     def test_compute_grad_norm(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test gradient norm computation."""
         with patch("torch.distributed.is_initialized", return_value=False):
@@ -196,7 +196,7 @@ class TestGradientSynchronizer:
     def test_all_reduce_scalar_non_distributed(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test scalar all-reduce without distributed."""
         with patch("torch.distributed.is_initialized", return_value=False):
@@ -268,10 +268,10 @@ class TestGradientCompression:
     def test_compress_decompress_roundtrip(
         self,
         simple_model: SimpleModel,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
     ) -> None:
         """Test compression/decompression preserves top values."""
-        config = DistributedConfig(
+        config = DistributedInfraConfig(
             enabled=True,
             backend="gloo",
             world_size=2,

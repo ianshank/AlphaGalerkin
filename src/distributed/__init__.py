@@ -20,7 +20,8 @@ Usage:
 """
 
 from src.distributed.config import (
-    DistributedConfig,
+    DistributedInfraConfig,
+    DistributedInfraConfig as DistributedConfig,  # Backward-compat alias
     LauncherConfig,
     SelfPlayDistributedConfig,
 )
@@ -31,7 +32,8 @@ from src.distributed.trainer import DistributedTrainer
 from src.distributed.worker import SelfPlayCoordinator
 
 __all__ = [
-    "DistributedConfig",
+    "DistributedInfraConfig",
+    "DistributedConfig",  # Backward-compat alias for DistributedInfraConfig
     "DistributedTrainer",
     "GradientSynchronizer",
     "LauncherConfig",

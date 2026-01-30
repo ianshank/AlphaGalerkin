@@ -150,6 +150,124 @@ class TrainingConfig(BaseModel):
     eval_interval: int = Field(default=5000, description="Steps between evaluations")
     eval_games: int = Field(default=20, description="Number of evaluation games")
 
+    # Loss balancing configuration
+    loss_balancing_strategy: Literal["static", "relobralo", "gradnorm", "uncertainty", "softadapt"] = Field(
+        default="relobralo", description="Loss balancing strategy"
+    )
+    loss_balancing_beta: float = Field(
+        default=0.99, ge=0.0, lt=1.0, description="EMA decay for ReLoBRaLo"
+    )
+    loss_balancing_tau: float = Field(
+        default=1.0, gt=0.0, description="Temperature for softmax weighting"
+    )
+    loss_balancing_warmup: int = Field(
+        default=100, ge=0, description="Steps before starting loss adaptation"
+    )
+
+    # Prioritized Experience Replay
+    use_prioritized_replay: bool = Field(
+        default=False, description="Use prioritized experience replay"
+    )
+    per_alpha: float = Field(
+        default=0.6, ge=0.0, le=1.0, description="Priority exponent for PER"
+    )
+    per_beta: float = Field(
+        default=0.4, ge=0.0, le=1.0, description="Importance sampling start for PER"
+    )
+
+    # Curriculum learning
+    curriculum_enabled: bool = Field(
+        default=False, description="Enable board size curriculum"
+    )
+
+    # Evaluation enhancements
+    eval_vs_checkpoints: bool = Field(
+        default=False, description="Evaluate against previous checkpoints"
+    )
+    elo_k_factor: float = Field(
+        default=32.0, gt=0.0, description="Elo K-factor for rating updates"
+    )
+    n_tournament_opponents: int = Field(
+        default=5, ge=1, description="Number of previous checkpoints to play against"
+    )
+    multi_resolution_eval: bool = Field(
+        default=True, description="Evaluate on multiple board sizes"
+    )
+
+    # Training stability
+    early_stopping_enabled: bool = Field(
+        default=False, description="Enable early stopping"
+    )
+    early_stopping_patience: int = Field(
+        default=10, ge=1, description="Evaluations without improvement before stopping"
+    )
+    early_stopping_min_delta: float = Field(
+        default=0.01, ge=0.0, description="Minimum improvement to count as progress"
+    )
+    plateau_detection_enabled: bool = Field(
+        default=False, description="Enable learning rate plateau detection"
+    )
+    plateau_patience: int = Field(
+        default=5, ge=1, description="Steps without improvement before reducing LR"
+    )
+    plateau_factor: float = Field(
+        default=0.5, gt=0.0, lt=1.0, description="Factor to reduce LR by on plateau"
+    )
+    plateau_min_lr: float = Field(
+        default=1e-6, gt=0.0, description="Minimum learning rate"
+    )
+
+
+class DistributedConfig(BaseModel):
+    """Configuration for distributed training.
+
+    Supports single-node multi-GPU (DDP) via torchrun.
+    """
+
+    # Enable/disable distributed training
+    enabled: bool = Field(
+        default=False,
+        description="Enable distributed training (auto-detected from environment if False)"
+    )
+
+    # World size (number of processes)
+    world_size: int = Field(
+        default=1, ge=1, description="Total number of processes"
+    )
+
+    # Communication backend
+    backend: Literal["nccl", "gloo"] = Field(
+        default="nccl", description="Distributed backend: 'nccl' for GPU, 'gloo' for CPU"
+    )
+
+    # Gradient accumulation
+    gradient_accumulation_steps: int = Field(
+        default=1, ge=1, description="Steps before gradient synchronization"
+    )
+
+    # Sync batch normalization
+    sync_batch_norm: bool = Field(
+        default=True, description="Convert BatchNorm to SyncBatchNorm"
+    )
+
+    # DDP settings
+    find_unused_parameters: bool = Field(
+        default=False, description="Allow unused parameters in model"
+    )
+    broadcast_buffers: bool = Field(
+        default=True, description="Broadcast buffers on forward"
+    )
+
+    # Checkpointing
+    save_on_rank_0_only: bool = Field(
+        default=True, description="Only rank 0 saves checkpoints"
+    )
+
+    # Timeout
+    timeout_seconds: int = Field(
+        default=1800, ge=60, description="Timeout for collective operations"
+    )
+
 
 class WandbConfig(BaseModel):
     """Configuration for Weights & Biases logging.
@@ -197,6 +315,7 @@ class AlphaGalerkinConfig(BaseModel):
     mcts: MCTSConfig = Field(default_factory=MCTSConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     wandb: WandbConfig = Field(default_factory=WandbConfig)
+    distributed: DistributedConfig = Field(default_factory=DistributedConfig)
 
     # Experiment tracking
     experiment_name: str = Field(default="alphagalerkin", description="Experiment name")

@@ -3,14 +3,17 @@
 Provides metrics for assessing model quality:
 - Win rate against baseline (random) player
 - Win rate against previous model version
+- Win rate against checkpoint
 - Policy agreement with MCTS
 - Value prediction accuracy
+- Multi-resolution evaluation
 """
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -260,6 +263,108 @@ class Evaluator:
         )
 
         return result
+
+    def evaluate_vs_checkpoint(
+        self,
+        checkpoint_path: Path | str,
+        n_games: int = 50,
+        board_size: int | None = None,
+    ) -> EvaluationResult:
+        """Evaluate model against a checkpoint.
+
+        Loads the opponent model from checkpoint and plays games.
+
+        Args:
+            checkpoint_path: Path to opponent checkpoint.
+            n_games: Number of games to play.
+            board_size: Board size (random if None).
+
+        Returns:
+            Evaluation results.
+
+        """
+        # Load opponent model from checkpoint
+        opponent_model = self._load_model_from_checkpoint(checkpoint_path)
+
+        result = self.evaluate_vs_model(
+            opponent_model=opponent_model,
+            n_games=n_games,
+            board_size=board_size,
+        )
+
+        # Add checkpoint info to metadata
+        result.metadata["opponent"] = "checkpoint"
+        result.metadata["checkpoint_path"] = str(checkpoint_path)
+
+        return result
+
+    def _load_model_from_checkpoint(
+        self,
+        checkpoint_path: Path | str,
+    ) -> AlphaGalerkinModel:
+        """Load a model from checkpoint.
+
+        Args:
+            checkpoint_path: Path to checkpoint file.
+
+        Returns:
+            Loaded model.
+
+        """
+        from src.modeling.model import AlphaGalerkinModel
+
+        checkpoint_path = Path(checkpoint_path)
+
+        # Load checkpoint
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+
+        # Create model with same config
+        cfg = checkpoint.get("config")
+        if isinstance(cfg, dict):
+            from config.schemas import AlphaGalerkinConfig
+
+            config = AlphaGalerkinConfig(**cfg)
+            opponent_model = AlphaGalerkinModel(config.operator)
+        else:
+            # Fallback: create model with same config as self.model
+            opponent_model = AlphaGalerkinModel(self.model.config)
+
+        # Load weights
+        opponent_model.load_state_dict(checkpoint["model_state_dict"])
+        opponent_model.to(self.device)
+        opponent_model.eval()
+
+        return opponent_model
+
+    def evaluate_multi_resolution(
+        self,
+        n_games_per_size: int = 20,
+    ) -> dict[int, EvaluationResult]:
+        """Evaluate model at multiple board sizes.
+
+        Args:
+            n_games_per_size: Games to play at each size.
+
+        Returns:
+            Dictionary mapping board size to evaluation result.
+
+        """
+        results = {}
+
+        for board_size in self.board_sizes:
+            result = self.evaluate_vs_random(
+                n_games=n_games_per_size,
+                board_size=board_size,
+            )
+            results[board_size] = result
+
+            logger.info(
+                "multi_resolution_eval",
+                board_size=board_size,
+                win_rate=f"{result.win_rate:.2%}",
+            )
+
+        return results
 
     def _play_game(
         self,

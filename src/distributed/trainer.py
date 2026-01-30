@@ -29,7 +29,7 @@ from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 
-from src.distributed.config import DistributedConfig, from_environment
+from src.distributed.config import DistributedInfraConfig, from_environment
 from src.distributed.gradient_sync import GradientAccumulator, GradientSynchronizer
 
 if TYPE_CHECKING:
@@ -100,7 +100,7 @@ class DistributedTrainer:
         self,
         model: AlphaGalerkinModel,
         config: AlphaGalerkinConfig,
-        distributed_config: DistributedConfig,
+        distributed_config: DistributedInfraConfig,
         loss_fn: AlphaGalerkinLoss,
         optimizer: Optimizer | None = None,
         scheduler: LRScheduler | None = None,
@@ -552,7 +552,7 @@ class DistributedTrainer:
 def create_distributed_trainer(
     model: AlphaGalerkinModel,
     config: AlphaGalerkinConfig,
-    distributed_config: DistributedConfig,
+    distributed_config: DistributedInfraConfig,
     loss_fn: AlphaGalerkinLoss,
     **kwargs: Any,
 ) -> DistributedTrainer:

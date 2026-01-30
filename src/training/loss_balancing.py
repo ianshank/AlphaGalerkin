@@ -63,6 +63,7 @@ class LossBalancingConfig(BaseModuleConfig):
         update_frequency: How often to update weights.
         min_weight: Minimum allowed weight per loss term.
         max_weight: Maximum allowed weight per loss term.
+
     """
 
     strategy: BalancingStrategy = Field(
@@ -154,6 +155,7 @@ class LossTerms:
         losses: Dictionary mapping loss names to values.
         weights: Current weights per loss term.
         weighted_sum: Total weighted loss.
+
     """
 
     losses: dict[str, Float[Tensor, ""]]
@@ -183,6 +185,7 @@ class LossBalancer(ABC):
         Args:
             config: Balancing configuration.
             loss_names: Names of loss terms to balance.
+
         """
         self.config = config
         self.loss_names = loss_names
@@ -190,7 +193,7 @@ class LossBalancer(ABC):
         self._step = 0
 
         # Initialize weights uniformly
-        self._weights = {name: 1.0 for name in loss_names}
+        self._weights = dict.fromkeys(loss_names, 1.0)
 
     @property
     def weights(self) -> dict[str, float]:
@@ -206,6 +209,7 @@ class LossBalancer(ABC):
 
         Returns:
             Updated weights.
+
         """
         raise NotImplementedError
 
@@ -220,6 +224,7 @@ class LossBalancer(ABC):
 
         Raises:
             ValueError: If no valid loss terms are provided.
+
         """
         # Check for missing loss terms and log warning
         missing_terms = [name for name in self.loss_names if name not in losses]
@@ -266,7 +271,7 @@ class LossBalancer(ABC):
     def reset(self) -> None:
         """Reset balancer state."""
         self._step = 0
-        self._weights = {name: 1.0 for name in self.loss_names}
+        self._weights = dict.fromkeys(self.loss_names, 1.0)
 
 
 class ReLoBRaLo(LossBalancer):
@@ -406,6 +411,7 @@ class GradNorm(LossBalancer):
             config: Balancing configuration.
             loss_names: Names of loss terms.
             model: Model for gradient computation (optional).
+
         """
         super().__init__(config, loss_names)
         self.model = model
@@ -453,6 +459,7 @@ class GradNorm(LossBalancer):
 
         Returns:
             GradNorm loss for updating weights.
+
         """
         # Determine device from first loss tensor
         device = next(iter(losses.values())).device if losses else torch.device("cpu")
@@ -570,6 +577,7 @@ class UncertaintyWeighting(LossBalancer):
 
         Returns:
             Total regularized loss.
+
         """
         total = torch.tensor(0.0, device=next(iter(losses.values())).device)
 
@@ -684,6 +692,7 @@ class StaticWeighting(LossBalancer):
             config: Balancing configuration.
             loss_names: Names of loss terms.
             initial_weights: Fixed weights (defaults to uniform).
+
         """
         super().__init__(config, loss_names)
 
@@ -714,6 +723,7 @@ def create_loss_balancer(
 
     Returns:
         Configured LossBalancer instance.
+
     """
     if config.strategy == BalancingStrategy.STATIC:
         return StaticWeighting(config, loss_names, initial_weights)

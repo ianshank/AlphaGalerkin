@@ -1,0 +1,116 @@
+# Default Video Codec Configuration
+# AlphaGalerkin Neural Video Compression
+#
+# Usage:
+#   python -m scripts.encode_video --config codec_default.yaml
+#
+# This preset provides a balanced configuration suitable for
+# general-purpose video compression with good quality/bitrate tradeoff.
+
+name: "default"
+
+encoder:
+  name: "encoder"
+  in_channels: 3
+  latent_channels: 192
+  n_layers: 4
+  d_model: 256
+  n_heads: 8
+  d_ffn: 1024
+  use_fnet_mixing: true
+  fnet_ratio: 0.5
+  normalize_features: true
+  dropout: 0.1
+  downsample_factor: 16
+
+decoder:
+  name: "decoder"
+  latent_channels: 192
+  out_channels: 3
+  n_layers: 4
+  d_model: 256
+  n_heads: 8
+  d_ffn: 1024
+  use_fnet_mixing: true
+  fnet_ratio: 0.5
+  normalize_features: true
+  dropout: 0.1
+  upsample_factor: 16
+
+quantizer:
+  name: "quantizer"
+  mode: "noise"  # noise, ste, soft
+  temperature: 1.0
+  temperature_annealing: true
+  min_temperature: 0.5
+  noise_scale: 0.5
+
+entropy:
+  name: "entropy"
+  model_type: "hyperprior"  # factorized, hyperprior, autoregressive
+  hyper_channels: 192
+  hyper_layers: 3
+  num_filters: 192
+  context_size: 5
+  use_range_coder: true
+  precision: 16
+
+mcts:
+  name: "mcts"
+  # MCTS parameters
+  num_simulations: 50
+  c_puct: 1.25
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  discount: 0.99
+  value_support_size: 51
+
+  # GOP structure
+  gop_size: 16
+  i_frame_interval: 16
+  use_b_frames: true
+  b_frame_count: 3
+
+  # Rate control
+  rate_control_mode: "vbr"  # cbr, vbr, crf
+  target_bitrate_kbps: 2000.0
+  crf_value: 23
+  bitrate_tolerance: 0.15
+  qp_min: 0
+  qp_max: 51
+
+training:
+  name: "training"
+  # Optimizer
+  learning_rate: 0.0001
+  weight_decay: 0.0001
+
+  # R-D tradeoff
+  lambda_rd: 0.01
+  lambda_values:
+    - 0.0016
+    - 0.0032
+    - 0.0075
+    - 0.015
+    - 0.03
+    - 0.045
+    - 0.09
+    - 0.18
+
+  # Distortion
+  distortion_metric: "mixed"  # mse, ms_ssim, mixed
+  ms_ssim_weight: 0.84
+
+  # Perceptual loss
+  use_perceptual_loss: true
+  perceptual_weight: 0.1
+
+  # Training data
+  patch_size: 256
+  variable_resolution: true
+  min_resolution: 128
+  max_resolution: 512
+
+  # Quality constraints
+  vmaf_min: 70.0

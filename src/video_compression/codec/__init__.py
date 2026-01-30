@@ -11,8 +11,20 @@ from src.video_compression.codec.entropy_coder import (
     RangeEncoder,
     RangeDecoder,
 )
-from src.video_compression.codec.gop_manager import GOPManager, FrameInfo
-from src.video_compression.codec.codec import VideoCodec, CodecOutput
+from src.video_compression.codec.gop_manager import (
+    GOPManager,
+    FrameInfo,
+    FrameType,
+    ReferenceBuffer,
+)
+from src.video_compression.codec.codec import (
+    VideoCodec,
+    CodecOutput,
+    VideoHeader,
+    ReferenceFrameError,
+    create_codec,
+    load_codec,
+)
 
 __all__ = [
     "EntropyCoder",
@@ -20,6 +32,12 @@ __all__ = [
     "RangeDecoder",
     "GOPManager",
     "FrameInfo",
+    "FrameType",
+    "ReferenceBuffer",
     "VideoCodec",
     "CodecOutput",
+    "VideoHeader",
+    "ReferenceFrameError",
+    "create_codec",
+    "load_codec",
 ]

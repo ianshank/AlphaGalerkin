@@ -135,6 +135,24 @@ Monitors LBB condition during training:
 - [2026-01-27]: SpatialPositionalEncoding for 2D grid data.
 - [2026-01-27]: Configurable via Pydantic FourierFeaturesConfig.
 
+## Neural Video Compression (src/video_compression/)
+- [2026-01-30]: Resolution-independent neural video codec using Galerkin attention and FNet mixing.
+- [2026-01-30]: Analysis transform (encoder) with O(N) Galerkin attention and O(N log N) FFT mixing.
+- [2026-01-30]: Synthesis transform (decoder) with temporal cross-attention for P/B frames.
+- [2026-01-30]: Scale hyperprior entropy model (Ballé et al.) for learned compression.
+- [2026-01-30]: Differentiable quantization: noise, STE, and soft quantization modes.
+- [2026-01-30]: MCTS-based rate control for GOP-level bit allocation with MuZero-style learned models.
+- [2026-01-30]: Quality metrics: PSNR, SSIM, MS-SSIM, BD-rate computation.
+- [2026-01-30]: R-D training with MSE, MS-SSIM, and perceptual (VGG) losses.
+- [2026-01-30]: GOP manager for I/P/B frame scheduling and reference management.
+- [2026-01-30]: Range encoder/decoder for lossless entropy coding.
+
+### Key Architecture Decisions
+- **Resolution Independence**: All encoder/decoder layers accept arbitrary (H, W) divisible by downsample factor.
+- **Galerkin Attention**: Q(K^T V) formula with O(N) complexity, no softmax.
+- **FNet Mixing**: torch.fft.fft2() for O(N log N) spatial mixing, no learnable parameters.
+- **GDN/IGDN**: Generalized Divisive Normalization for density modeling.
+
 ## Known Issues
 - [None yet]
 
@@ -367,6 +385,30 @@ print(f'p-value: {result.p_value}, significant: {result.is_significant}')
 "
 ```
 
+## Video Compression Commands
+```bash
+# Train compression model
+python scripts/train_compression.py --data-dir data/images --epochs 100
+
+# Train with specific lambda
+python scripts/train_compression.py --data-dir data/images --lambda-rd 0.01
+
+# Encode video
+python scripts/encode_video.py input.mp4 output.agk --qp 32
+
+# Encode with custom model
+python scripts/encode_video.py input.mp4 output.agk --model checkpoints/codec.pt
+
+# Run video compression tests
+pytest tests/video_compression/ -v
+
+# Test configuration validation
+pytest tests/video_compression/unit/test_config.py -v
+
+# Test encoder/decoder
+pytest tests/video_compression/unit/test_encoder.py tests/video_compression/unit/test_decoder.py -v
+```
+
 ## PDE Game Commands
 ```bash
 # Run PDE game tests
@@ -489,6 +531,26 @@ src/
     logging.py        - Structured logging with context binding
     base.py           - Base executable classes with result tracking
     cli.py            - CLI utilities with common options
+  video_compression/  - Neural video compression system
+    config.py         - Pydantic configuration schemas
+    models/           - Neural network models
+      encoder.py      - Analysis transform with FNet + Galerkin
+      decoder.py      - Synthesis transform
+      hyperprior.py   - Scale hyperprior entropy model
+      quantizer.py    - Differentiable quantization
+    codec/            - Codec implementation
+      codec.py        - Complete encode/decode pipeline
+      entropy_coder.py - Range encoder/decoder
+      gop_manager.py  - GOP and reference management
+    mcts/             - MCTS rate control
+      networks.py     - Policy, value, dynamics networks
+      rate_control.py - MCTS-based rate controller
+    metrics/          - Quality metrics
+      quality.py      - PSNR, SSIM, MS-SSIM
+      rd_curves.py    - BD-rate computation
+    training/         - Training utilities
+      loss.py         - R-D loss functions
+      trainer.py      - Compression trainer
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests
@@ -515,6 +577,13 @@ tests/
     test_registry.py  - Registry pattern tests
     test_logging.py   - Logging utilities tests
     test_base.py      - Base executable tests
+  video_compression/  - Video compression tests
+    unit/             - Unit tests
+      test_config.py    - Configuration validation
+      test_encoder.py   - Encoder tests
+      test_decoder.py   - Decoder tests
+      test_quantizer.py - Quantizer tests
+      test_metrics.py   - Quality metrics tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config

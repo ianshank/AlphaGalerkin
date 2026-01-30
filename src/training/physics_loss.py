@@ -20,8 +20,9 @@ Reference:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import structlog
@@ -50,6 +51,7 @@ def _get_device_from_model(model: nn.Module) -> torch.device:
 
     Returns:
         Device the model is on, or CPU if model has no parameters.
+
     """
     try:
         return next(model.parameters()).device
@@ -72,6 +74,7 @@ class PhysicsLossConfig(BaseModuleConfig):
         n_collocation_points: Number of interior collocation points.
         n_boundary_points: Number of boundary points.
         sampling_method: How to sample collocation points.
+
     """
 
     residual_weight: float = Field(
@@ -133,6 +136,7 @@ class PhysicsLossOutput:
         initial: Initial condition loss.
         conservation: Conservation loss.
         weights: Current loss weights.
+
     """
 
     total: Float[Tensor, ""]
@@ -181,6 +185,7 @@ class ResidualLoss(nn.Module):
 
         Raises:
             ValueError: If reduction is not valid.
+
         """
         super().__init__()
         if reduction not in self.VALID_REDUCTIONS:
@@ -209,6 +214,7 @@ class ResidualLoss(nn.Module):
 
         Raises:
             RuntimeError: If PDE operator residual computation fails.
+
         """
         batch_size = u.shape[0]
         total_loss = torch.tensor(0.0, device=u.device)
@@ -283,6 +289,7 @@ class BoundaryLoss(nn.Module):
 
         Raises:
             ValueError: If bc_type or reduction is invalid.
+
         """
         super().__init__()
         if bc_type not in self.VALID_BC_TYPES:
@@ -317,6 +324,7 @@ class BoundaryLoss(nn.Module):
 
         Raises:
             RuntimeError: If boundary value computation fails.
+
         """
         batch_size = u_boundary.shape[0]
         total_loss = torch.tensor(0.0, device=u_boundary.device)
@@ -375,6 +383,7 @@ class InitialConditionLoss(nn.Module):
         Args:
             pde_operator: PDE operator for initial values.
             reduction: Reduction method.
+
         """
         super().__init__()
         self.pde_operator = pde_operator
@@ -393,6 +402,7 @@ class InitialConditionLoss(nn.Module):
 
         Returns:
             Initial condition loss.
+
         """
         batch_size = u_initial.shape[0]
         total_loss = torch.tensor(0.0, device=u_initial.device)
@@ -436,6 +446,7 @@ class ConservationLoss(nn.Module):
         Args:
             conserved_quantity: Function computing conserved quantity.
             initial_integral: Expected integral value (default: preserve from t=0).
+
         """
         super().__init__()
         self.conserved_quantity = conserved_quantity or self._default_mass
@@ -467,6 +478,7 @@ class ConservationLoss(nn.Module):
 
         Returns:
             Conservation loss.
+
         """
         # Compute current integral
         current_integral = self.conserved_quantity(u, coords)
@@ -511,6 +523,7 @@ class PhysicsInformedLoss(nn.Module):
         Args:
             pde_operator: PDE operator for residual/BC computation.
             config: Loss configuration.
+
         """
         super().__init__()
         self.pde_operator = pde_operator
@@ -566,6 +579,7 @@ class PhysicsInformedLoss(nn.Module):
 
         Returns:
             Tuple of (interior_points, boundary_points).
+
         """
         # Interior points
         interior_np = self.pde_operator.generate_collocation_points(
@@ -603,6 +617,7 @@ class PhysicsInformedLoss(nn.Module):
 
         Returns:
             PhysicsLossOutput with all loss components.
+
         """
         # Get device from model (safely)
         device = _get_device_from_model(model)
@@ -715,6 +730,7 @@ class CombinedAlphaGalerkinPhysicsLoss(nn.Module):
             lbb_weight: Weight for LBB regularization.
             physics_weight: Overall weight for physics losses.
             physics_config: Configuration for physics losses.
+
         """
         super().__init__()
 
@@ -774,6 +790,7 @@ class CombinedAlphaGalerkinPhysicsLoss(nn.Module):
 
         Returns:
             Dictionary with all loss components and total.
+
         """
         # Compute AlphaGalerkin losses
         ag_loss = self.alphagalerkin_loss(

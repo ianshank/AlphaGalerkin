@@ -57,6 +57,35 @@ training:
   eval_interval: 5000
   eval_games: 20
 
+  # Loss balancing (ReLoBRaLo for adaptive multi-objective training)
+  loss_balancing_strategy: relobralo
+  loss_balancing_beta: 0.99
+  loss_balancing_tau: 1.0
+  loss_balancing_warmup: 100
+
+  # Prioritized Experience Replay
+  use_prioritized_replay: false
+  per_alpha: 0.6
+  per_beta: 0.4
+
+  # Curriculum learning
+  curriculum_enabled: false
+
+  # Evaluation enhancements
+  eval_vs_checkpoints: false
+  elo_k_factor: 32.0
+  n_tournament_opponents: 5
+  multi_resolution_eval: true
+
+  # Training stability
+  early_stopping_enabled: false
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.01
+  plateau_detection_enabled: false
+  plateau_patience: 5
+  plateau_factor: 0.5
+  plateau_min_lr: 1e-6
+
 # Weights & Biases configuration
 wandb:
   enabled: true
@@ -74,6 +103,18 @@ wandb:
   log_interval: 10
   watch_model: false
   watch_log_freq: 100
+
+# Distributed training configuration
+distributed:
+  enabled: false  # Auto-detected from WORLD_SIZE environment variable
+  world_size: 1
+  backend: nccl
+  gradient_accumulation_steps: 1
+  sync_batch_norm: true
+  find_unused_parameters: false
+  broadcast_buffers: true
+  save_on_rank_0_only: true
+  timeout_seconds: 1800
 
 # Experiment settings
 experiment_name: alphagalerkin

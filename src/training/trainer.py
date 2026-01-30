@@ -825,7 +825,7 @@ class Trainer:
             return
 
         # Get list of available checkpoints
-        checkpoint_paths = self.checkpoint_manager.list_checkpoints()
+        checkpoint_paths = self.checkpoint_manager.get_all_checkpoints()
         n_opponents = min(
             len(checkpoint_paths),
             getattr(self.training_config, "n_tournament_opponents", 5),

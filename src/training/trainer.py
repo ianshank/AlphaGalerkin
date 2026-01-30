@@ -25,6 +25,7 @@ from src.data.collate import TrainingBatch, VariableSizeCollator
 from src.training.checkpoint import CheckpointManager
 from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
+from src.training.eval_utils import EloTracker
 from src.training.evaluation import Evaluator
 from src.training.loss import AlphaGalerkinLoss, LossOutput
 from src.training.loss_balancing import (
@@ -35,6 +36,13 @@ from src.training.loss_balancing import (
 )
 from src.training.replay_buffer import create_replay_buffer
 from src.training.self_play import SelfPlayWorker
+from src.training.stability import (
+    EarlyStopping,
+    EarlyStoppingConfig,
+    PlateauConfig,
+    PlateauDetector,
+    TrainingStabilityMonitor,
+)
 from src.training.wandb_logger import WandbLogger
 
 if TYPE_CHECKING:
@@ -238,6 +246,16 @@ class Trainer:
             board_sizes=config.board_sizes,
         )
 
+        # Elo tracker for checkpoint evaluation (optional)
+        self.elo_tracker: EloTracker | None = None
+        if getattr(self.training_config, "eval_vs_checkpoints", False):
+            k_factor = getattr(self.training_config, "elo_k_factor", 32.0)
+            self.elo_tracker = EloTracker(k_factor=k_factor)
+            logger.info("elo_tracker_enabled", k_factor=k_factor)
+
+        # Training stability monitor (optional)
+        self.stability_monitor = self._create_stability_monitor()
+
         # Watch model with W&B if enabled
         if self.wandb_logger is not None:
             self.wandb_logger.watch_model(self.model)
@@ -364,6 +382,62 @@ class Trainer:
 
         return curriculum
 
+    def _create_stability_monitor(self) -> TrainingStabilityMonitor | None:
+        """Create training stability monitor from config.
+
+        Returns:
+            Configured stability monitor or None if no features enabled.
+
+        """
+        early_stopping: EarlyStopping | None = None
+        plateau_detector: PlateauDetector | None = None
+
+        # Early stopping
+        if getattr(self.training_config, "early_stopping_enabled", False):
+            patience = getattr(self.training_config, "early_stopping_patience", 10)
+            min_delta = getattr(self.training_config, "early_stopping_min_delta", 0.01)
+            es_config = EarlyStoppingConfig(
+                patience=patience,
+                min_delta=min_delta,
+                metric="eval/win_rate",
+                mode="max",  # Higher win rate is better
+            )
+            early_stopping = EarlyStopping(es_config)
+            logger.info(
+                "early_stopping_enabled",
+                patience=patience,
+                min_delta=min_delta,
+            )
+
+        # Plateau detection (LR reduction)
+        if getattr(self.training_config, "plateau_detection_enabled", False):
+            patience = getattr(self.training_config, "plateau_patience", 5)
+            factor = getattr(self.training_config, "plateau_factor", 0.5)
+            min_lr = getattr(self.training_config, "plateau_min_lr", 1e-6)
+            pd_config = PlateauConfig(
+                patience=patience,
+                factor=factor,
+                min_lr=min_lr,
+                metric="train/loss/total",
+                mode="min",  # Lower loss is better
+            )
+            plateau_detector = PlateauDetector(pd_config, self.optimizer)
+            logger.info(
+                "plateau_detection_enabled",
+                patience=patience,
+                factor=factor,
+                min_lr=min_lr,
+            )
+
+        # Return monitor if any feature is enabled
+        if early_stopping is not None or plateau_detector is not None:
+            return TrainingStabilityMonitor(
+                early_stopping=early_stopping,
+                plateau_detector=plateau_detector,
+            )
+
+        return None
+
     def _fill_buffer(self, min_size: int) -> None:
         """Fill replay buffer to minimum size.
 
@@ -380,9 +454,14 @@ class Trainer:
                 target_size=min_size,
             )
 
-            # Generate games
+            # Generate games (use curriculum board size if enabled)
             self.model.eval()
-            experiences = self.self_play_worker.generate_experiences(n_games)
+            board_size = None
+            if self.curriculum is not None:
+                board_size = self.curriculum.sample_board_size(self.global_step)
+            experiences = self.self_play_worker.generate_experiences(
+                n_games, board_size=board_size
+            )
             self.model.train()
 
             # Add to buffer
@@ -546,8 +625,13 @@ class Trainer:
             self_play_interval = max(checkpoint_interval // 2, 1)
             if step > 0 and step % self_play_interval == 0:
                 self.model.eval()
+                # Use curriculum board size if enabled
+                board_size = None
+                if self.curriculum is not None:
+                    board_size = self.curriculum.sample_board_size(step)
                 new_experiences = self.self_play_worker.generate_experiences(
-                    self.training_config.n_self_play_games // 2
+                    self.training_config.n_self_play_games // 2,
+                    board_size=board_size,
                 )
                 self.buffer.add_batch(new_experiences)
                 self.total_games_generated += self.training_config.n_self_play_games // 2
@@ -599,7 +683,21 @@ class Trainer:
 
             # Periodic evaluation
             if eval_interval and step > 0 and step % eval_interval == 0:
-                self._run_evaluation(step)
+                avg_win_rate = self._run_evaluation(step)
+
+                # Check early stopping
+                if self.stability_monitor is not None:
+                    if self.stability_monitor.check_early_stopping(avg_win_rate):
+                        logger.info(
+                            "early_stopping_triggered",
+                            step=step,
+                            win_rate=avg_win_rate,
+                        )
+                        break
+
+            # Check plateau detection (LR reduction)
+            if self.stability_monitor is not None:
+                self.stability_monitor.check_plateau(loss_output.total.item())
 
             # Checkpointing
             if step > 0 and step % checkpoint_interval == 0:
@@ -647,33 +745,55 @@ class Trainer:
                 aliases=["final"],
             )
 
-    def _run_evaluation(self, step: int) -> None:
+    def _run_evaluation(self, step: int) -> float:
         """Run evaluation and log results.
 
         Args:
             step: Current training step.
 
+        Returns:
+            Average win rate across board sizes (for early stopping).
+
         """
         logger.info("evaluation_starting", step=step)
         self.model.eval()
 
-        # Evaluate against random player
         n_games = getattr(self.training_config, "eval_games", 20)
+        use_multi_res = getattr(self.training_config, "multi_resolution_eval", True)
 
-        # Evaluate on each board size
-        for board_size in self.config.board_sizes:
-            result = self.evaluator.evaluate_vs_random(
-                n_games=n_games,
-                board_size=board_size,
+        win_rates: list[float] = []
+
+        if use_multi_res and hasattr(self.evaluator, "evaluate_multi_resolution"):
+            # Use multi-resolution evaluation
+            results = self.evaluator.evaluate_multi_resolution(
+                n_games_per_size=n_games
             )
-
-            # Log to W&B
-            if self.wandb_logger is not None:
-                self.wandb_logger.log_evaluation(
-                    result=result,
-                    prefix=f"eval/{board_size}x{board_size}",
-                    step=step,
+            for board_size, result in results.items():
+                win_rates.append(result.win_rate)
+                if self.wandb_logger is not None:
+                    self.wandb_logger.log_evaluation(
+                        result=result,
+                        prefix=f"eval/{board_size}x{board_size}",
+                        step=step,
+                    )
+        else:
+            # Evaluate on each board size individually
+            for board_size in self.config.board_sizes:
+                result = self.evaluator.evaluate_vs_random(
+                    n_games=n_games,
+                    board_size=board_size,
                 )
+                win_rates.append(result.win_rate)
+                if self.wandb_logger is not None:
+                    self.wandb_logger.log_evaluation(
+                        result=result,
+                        prefix=f"eval/{board_size}x{board_size}",
+                        step=step,
+                    )
+
+        # Checkpoint tournament evaluation (Elo tracking)
+        if self.elo_tracker is not None:
+            self._run_checkpoint_tournament(step, n_games)
 
         # Measure policy agreement
         policy_agreement = self.evaluator.measure_policy_agreement(
@@ -690,11 +810,108 @@ class Trainer:
         self.model.train()
         logger.info("evaluation_completed", step=step)
 
+        # Return average win rate for early stopping
+        return sum(win_rates) / len(win_rates) if win_rates else 0.0
+
+    def _run_checkpoint_tournament(self, step: int, n_games: int) -> None:
+        """Run tournament against previous checkpoints for Elo tracking.
+
+        Args:
+            step: Current training step.
+            n_games: Number of games per opponent.
+
+        """
+        if self.elo_tracker is None:
+            return
+
+        # Get list of available checkpoints
+        checkpoint_paths = self.checkpoint_manager.list_checkpoints()
+        n_opponents = min(
+            len(checkpoint_paths),
+            getattr(self.training_config, "n_tournament_opponents", 5),
+        )
+
+        if n_opponents == 0:
+            return
+
+        logger.info(
+            "checkpoint_tournament_starting",
+            step=step,
+            n_opponents=n_opponents,
+        )
+
+        # Select recent checkpoints as opponents
+        opponent_paths = checkpoint_paths[-n_opponents:]
+
+        for opponent_path in opponent_paths:
+            try:
+                result = self.evaluator.evaluate_vs_checkpoint(
+                    checkpoint_path=opponent_path,
+                    n_games=n_games,
+                )
+
+                # Extract opponent step from checkpoint filename
+                opponent_step = self._extract_step_from_checkpoint(opponent_path)
+
+                # Determine score: 1.0=win, 0.5=draw, 0.0=loss
+                if result.win_rate > 0.55:
+                    score = 1.0
+                elif result.win_rate < 0.45:
+                    score = 0.0
+                else:
+                    score = 0.5
+
+                # Update Elo ratings
+                self.elo_tracker.update_ratings(step, opponent_step, score)
+
+                # Log to W&B
+                if self.wandb_logger is not None:
+                    current_rating = self.elo_tracker.get_rating(step)
+                    self.wandb_logger.log_metrics(
+                        {
+                            f"elo/vs_step_{opponent_step}": result.win_rate,
+                            "elo/current_rating": current_rating,
+                        },
+                        step=step,
+                    )
+
+                logger.debug(
+                    "checkpoint_match_completed",
+                    opponent_step=opponent_step,
+                    win_rate=result.win_rate,
+                    score=score,
+                )
+
+            except Exception as e:
+                logger.warning(
+                    "checkpoint_match_failed",
+                    opponent_path=str(opponent_path),
+                    error=str(e),
+                )
+
+    def _extract_step_from_checkpoint(self, checkpoint_path: Path) -> int:
+        """Extract training step from checkpoint filename.
+
+        Args:
+            checkpoint_path: Path to checkpoint file.
+
+        Returns:
+            Training step number.
+
+        """
+        # Filename format: checkpoint_00010000.pt
+        import re
+
+        match = re.search(r"checkpoint_(\d+)", checkpoint_path.stem)
+        if match:
+            return int(match.group(1))
+        return 0
+
     def save_checkpoint(
         self,
         path: Path | str | None = None,
         metrics: dict[str, Any] | None = None,
-    ) -> Path:
+    ) -> Path | None:
         """Save training checkpoint.
 
         Only rank 0 saves checkpoints in distributed mode.
@@ -704,14 +921,13 @@ class Trainer:
             metrics: Current metrics.
 
         Returns:
-            Path to saved checkpoint (or empty path on non-main ranks).
+            Path to saved checkpoint, or None on non-main ranks.
 
         """
         # Only save on main process in distributed mode
         if not self.dist_ctx.is_main_process:
-            # Return a placeholder path for non-main ranks
             self.dist_ctx.barrier()  # Wait for main to save
-            return Path("")
+            return None
 
         # Use raw model state dict (not DDP wrapper)
         checkpoint_path = self.checkpoint_manager.save(
@@ -735,8 +951,8 @@ class Trainer:
     ) -> int:
         """Load training checkpoint.
 
-        All ranks load from the same checkpoint. Rank 0 loads first,
-        then broadcasts completion to ensure consistency.
+        All ranks load from the same checkpoint, then synchronize to
+        ensure consistency.
 
         Args:
             path: Specific checkpoint path.

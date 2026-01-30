@@ -319,10 +319,11 @@ class Evaluator:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         # Create model with same config
-        if "config" in checkpoint:
+        cfg = checkpoint.get("config")
+        if isinstance(cfg, dict):
             from config.schemas import AlphaGalerkinConfig
 
-            config = AlphaGalerkinConfig(**checkpoint["config"])
+            config = AlphaGalerkinConfig(**cfg)
             opponent_model = AlphaGalerkinModel(config.operator)
         else:
             # Fallback: create model with same config as self.model

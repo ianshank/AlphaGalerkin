@@ -40,6 +40,10 @@ class CurriculumStage:
                 )
             # Normalize weights
             total = sum(self.size_weights)
+            if total <= 0:
+                raise ValueError(
+                    f"size_weights must sum to a positive value, got {total}"
+                )
             self.size_weights = [w / total for w in self.size_weights]
 
 

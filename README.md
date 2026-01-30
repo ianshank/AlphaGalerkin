@@ -43,6 +43,7 @@ AlphaGalerkin treats the Go board as a **continuous domain** Ω = [0,1]² rather
 - **Spectral Adaptation**: Zero-shot transfer via proper frequency filtering
 
 We achieve a model that:
+
 - Trains on 9x9, plays on 19x19 without modification
 - Learns "physics" of Go (influence, territory) rather than pixel patterns
 - Accelerates MCTS with FFT-based mixing (5x+ speedup)
@@ -52,6 +53,7 @@ We achieve a model that:
 ## Key Features
 
 ### Resolution Independence
+
 ```python
 # Train on 9x9
 model.fit(board_9x9_dataset)
@@ -62,6 +64,7 @@ move = model.predict(board_19x19)
 ```
 
 ### O(N) Attention Complexity
+
 Traditional attention is O(N²). Galerkin attention achieves O(N) through Petrov-Galerkin projection:
 
 ```
@@ -70,7 +73,9 @@ Galerkin:  O(361 × d²) = O(361 × d²)     for 19x19
 ```
 
 ### Fast MCTS Rollouts
+
 FNet mixing replaces attention with FFT operations:
+
 ```
 Softmax Attention: O(N²)
 FNet Mixing:       O(N log N)
@@ -78,7 +83,9 @@ Speedup:           ~5x for leaf evaluation
 ```
 
 ### Mathematical Rigor
+
 Built on solid mathematical foundations:
+
 - **Fredholm Integral Equations**: Model influence as Green's function solutions
 - **LBB Stability**: Guaranteed convergence via inf-sup condition monitoring
 - **Spectral Methods**: Proper anti-aliasing for resolution transfer
@@ -252,6 +259,7 @@ for size in test_sizes:
 ```
 
 **Research Questions**:
+
 - Does influence understanding transfer from 9x9 to 19x19?
 - What's the minimum training size for effective 19x19 play?
 - How does spectral filtering affect transfer quality?
@@ -399,6 +407,7 @@ model_int8 = torch.quantization.quantize_dynamic(
 ### Core Classes
 
 #### `AlphaGalerkinModel`
+
 Main model combining all components.
 
 ```python
@@ -407,6 +416,7 @@ output = model(x: Tensor, return_lbb: bool = False) -> ModelOutput
 ```
 
 #### `GalerkinAttention`
+
 O(N) attention via Petrov-Galerkin projection.
 
 ```python
@@ -415,6 +425,7 @@ out = attn(x: Tensor, return_lbb: bool = False)
 ```
 
 #### `MCTS`
+
 Monte Carlo Tree Search with neural guidance.
 
 ```python
@@ -424,6 +435,7 @@ action = mcts.get_action(game, temperature=1.0)
 ```
 
 #### `GTPEngine`
+
 Go Text Protocol interface.
 
 ```python
@@ -527,11 +539,13 @@ Find u ∈ U: ⟨Lu, v⟩ = ⟨f, v⟩  ∀v ∈ V
 ```
 
 In attention form:
+
 - **Q** (Query): Test function basis
 - **K** (Key): Trial function basis
 - **V** (Value): Function to project
 
 The projection becomes:
+
 ```
 Context = K^T V / n     (Monte Carlo integral)
 Output = Q × Context    (Reconstruction)
@@ -637,8 +651,9 @@ mypy src/ --strict
 
 ---
 
-##Created by 
-Ian Cruickshank 
+## Created by
+
+Ian Cruickshank
 
 ---
 

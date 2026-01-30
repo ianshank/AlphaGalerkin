@@ -8,6 +8,7 @@ Provides:
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Literal
@@ -342,7 +343,7 @@ class GradientMonitor:
             grad_norm = grad_norm.item()
 
         # Check for NaN
-        is_nan = grad_norm != grad_norm  # NaN check
+        is_nan = math.isnan(grad_norm)
 
         status = GradientStatus(
             gradient_norm=grad_norm,

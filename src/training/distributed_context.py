@@ -17,7 +17,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 if TYPE_CHECKING:
-    from src.distributed.config import DistributedConfig
+    from config.schemas import DistributedConfig  # User-facing config from schemas
 
 logger = structlog.get_logger(__name__)
 
@@ -68,13 +68,27 @@ class DistributedContext:
 
         """
         # Check environment for distributed setup
-        world_size = int(os.environ.get("WORLD_SIZE", 1))
-        rank = int(os.environ.get("RANK", 0))
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        # Only consider distributed if WORLD_SIZE env var is actually set
+        env_world_size = os.environ.get("WORLD_SIZE")
+        env_rank = os.environ.get("RANK")
 
-        # Override with config if provided and enabled
-        if config is not None and config.enabled:
-            world_size = max(world_size, config.world_size)
+        if env_world_size is not None and env_rank is not None:
+            # Distributed environment is properly set up (via torchrun)
+            world_size = int(env_world_size)
+            rank = int(env_rank)
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        else:
+            # Not in distributed environment
+            world_size = 1
+            rank = 0
+            local_rank = 0
+
+            # Warn if config enables distributed but env isn't set up
+            if config is not None and config.enabled and config.world_size > 1:
+                logger.warning(
+                    "distributed_config_enabled_but_env_not_set",
+                    hint="Use torchrun to launch distributed training",
+                )
 
         is_distributed = world_size > 1
 

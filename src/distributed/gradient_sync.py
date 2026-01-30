@@ -24,7 +24,7 @@ from torch import Tensor, nn
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from src.distributed.config import DistributedConfig
+    from src.distributed.config import DistributedInfraConfig
 
 logger = structlog.get_logger(__name__)
 
@@ -58,7 +58,7 @@ class GradientSynchronizer:
     def __init__(
         self,
         model: nn.Module,
-        config: DistributedConfig,
+        config: DistributedInfraConfig,
         process_group: dist.ProcessGroup | None = None,
     ) -> None:
         """Initialize gradient synchronizer.
@@ -435,7 +435,7 @@ class GradientAccumulator:
 
 def create_gradient_synchronizer(
     model: nn.Module,
-    config: DistributedConfig,
+    config: DistributedInfraConfig,
 ) -> GradientSynchronizer:
     """Factory function to create gradient synchronizer.
 

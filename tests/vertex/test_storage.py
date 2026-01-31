@@ -21,6 +21,7 @@ from src.vertex.storage import (
     _with_retry,
 )
 
+
 class SimpleModel(nn.Module):
     """Simple model for testing."""
 

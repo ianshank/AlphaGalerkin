@@ -20,6 +20,7 @@ from src.vertex.config import (
     create_vertex_config,
 )
 
+
 class TestVertexStorageConfig:
     """Tests for VertexStorageConfig."""
 

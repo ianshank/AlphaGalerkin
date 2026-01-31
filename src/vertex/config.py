@@ -643,7 +643,8 @@ class VertexTrainingConfig(BaseModel):
 
         """
         # Lazy import to avoid circular dependency
-        from src.vertex.auth import AuthConfig as AuthConfigClass, AuthMethod
+        from src.vertex.auth import AuthConfig as AuthConfigClass
+        from src.vertex.auth import AuthMethod
 
         return AuthConfigClass(
             auth_method=AuthMethod(self.auth_method),
@@ -795,20 +796,3 @@ def create_vertex_config(
         enable_spot=enable_spot,
         **kwargs,
     )
-    validate_auth_before_launch: bool = Field(
-        default=True,
-        description="Validate credentials before ensuring SDK initialization/launch",
-    )
-
-    def get_auth_config(self) -> "AuthConfig":
-        """Get authentication configuration.
-        
-        Returns:
-             AuthConfig derived from settings.
-        """
-        from src.vertex.auth import AuthConfig, AuthMethod
-        
-        return AuthConfig(
-             auth_method=AuthMethod.APPLICATION_DEFAULT,
-             project_id=self.project_id,
-        )

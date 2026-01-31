@@ -15,6 +15,7 @@ from src.vertex.multi_node import (
     setup_distributed_training,
 )
 
+
 class TestDistributedContext:
     """Tests for DistributedContext."""
 

@@ -342,11 +342,16 @@ class CostTracker:
         # Scale by replica count
         machine_cost = machine_rate * self._replica_count
 
-        # Accelerator cost
+        # Accelerator cost - skip for machine types with integrated GPUs
+        # A2/A3/G2 machine types include GPU pricing in base rate
         accel_cost = 0.0
-        if self._accelerator_type is not None and self._accelerator_count > 0:
-            accel_rate = ACCELERATOR_HOURLY_RATES.get(self._accelerator_type, 0.0)
-            accel_cost = accel_rate * self._accelerator_count * self._replica_count
+        machine_type_value = machine_type.value if machine_type else ""
+        has_integrated_gpu = machine_type_value.startswith(("a2-", "a3-", "g2-"))
+
+        if not has_integrated_gpu:
+            if self._accelerator_type is not None and self._accelerator_count > 0:
+                accel_rate = ACCELERATOR_HOURLY_RATES.get(self._accelerator_type, 0.0)
+                accel_cost = accel_rate * self._accelerator_count * self._replica_count
 
         # Apply spot discount
         total_hourly = machine_cost + accel_cost
@@ -433,9 +438,14 @@ def get_hourly_rate(
     """
     machine_rate = MACHINE_HOURLY_RATES.get(machine_type, 0.0)
 
+    # Skip accelerator costs for machine types with integrated GPUs
     accel_rate = 0.0
-    if accelerator_type is not None and accelerator_count > 0:
-        accel_rate = ACCELERATOR_HOURLY_RATES.get(accelerator_type, 0.0) * accelerator_count
+    machine_type_value = machine_type.value if machine_type else ""
+    has_integrated_gpu = machine_type_value.startswith(("a2-", "a3-", "g2-"))
+
+    if not has_integrated_gpu:
+        if accelerator_type is not None and accelerator_count > 0:
+            accel_rate = ACCELERATOR_HOURLY_RATES.get(accelerator_type, 0.0) * accelerator_count
 
     total = machine_rate + accel_rate
 

@@ -16,6 +16,7 @@ from src.vertex.preemption import (
     create_preemption_handler,
 )
 
+
 class TestPreemptionEvent:
     """Tests for PreemptionEvent."""
 

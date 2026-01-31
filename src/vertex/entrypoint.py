@@ -262,20 +262,77 @@ def run_training(
         Training results dictionary.
 
     """
-    # This is a placeholder - actual implementation would integrate
-    # with the existing AlphaGalerkin training infrastructure
-
     logger.info(
         "training_starting",
         is_main_process=ctx.is_main_process(),
         world_size=ctx.world_size,
     )
 
-    results = {
+    results: dict[str, Any] = {
         "status": "completed",
         "final_step": 0,
         "final_loss": 0.0,
     }
+
+    try:
+        # Import training infrastructure
+        from src.vertex.trainer import VertexTrainer
+
+        # Create trainer with vertex-aware configuration
+        trainer = VertexTrainer(
+            training_config=config,
+            vertex_config=vertex_config,
+            checkpoint_manager=checkpoint_manager,
+            is_main_process=ctx.is_main_process(),
+            world_size=ctx.world_size,
+            local_rank=ctx.local_rank,
+        )
+
+        # Resume from checkpoint if specified
+        if resume_path:
+            trainer.load_checkpoint(resume_path)
+            logger.info("checkpoint_loaded", path=resume_path)
+
+        # Run training loop
+        train_results = trainer.train()
+
+        results.update({
+            "status": "completed",
+            "final_step": train_results.get("step", 0),
+            "final_loss": train_results.get("loss", 0.0),
+            "metrics": train_results.get("metrics", {}),
+        })
+
+    except ImportError as e:
+        # VertexTrainer not available - fall back to basic training
+        logger.warning(
+            "vertex_trainer_unavailable",
+            error=str(e),
+            fallback="basic_training",
+        )
+
+        # Try direct training approach
+        try:
+            from config.schemas import TrainingConfig
+            from src.training.trainer import AlphaGalerkinTrainer
+
+            training_cfg = TrainingConfig(**config.get("training", {}))
+            trainer = AlphaGalerkinTrainer(config=training_cfg)
+
+            if resume_path:
+                trainer.load_checkpoint(resume_path)
+
+            train_results = trainer.train()
+            results.update({
+                "status": "completed",
+                "final_step": getattr(train_results, "step", 0),
+                "final_loss": getattr(train_results, "loss", 0.0),
+            })
+
+        except Exception as inner_e:
+            logger.error("training_fallback_failed", error=str(inner_e))
+            results["status"] = "failed"
+            results["error"] = str(inner_e)
 
     logger.info("training_completed", results=results)
     return results

@@ -19,6 +19,7 @@ from src.vertex.cost import (
     get_hourly_rate,
 )
 
+
 class TestCostEstimate:
     """Tests for CostEstimate."""
 

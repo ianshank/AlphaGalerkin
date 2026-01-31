@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +40,7 @@ def generate_colab_notebook(
 
     logger.info("generating_colab_notebook", source=str(source), target=str(target))
 
-    with open(source, "r", encoding="utf-8") as f:
+    with open(source, encoding="utf-8") as f:
         notebook = json.load(f)
 
     # Define the setup cell
@@ -120,7 +119,7 @@ def _update_colab_badge(cells: list[dict[str, Any]], filename: str, repo_name: s
         if cell["cell_type"] == "markdown":
             markdown_cell = cell
             break
-    
+
     if not markdown_cell:
         return
 
@@ -142,7 +141,7 @@ def _update_colab_badge(cells: list[dict[str, Any]], filename: str, repo_name: s
 
     # Check if badge already exists
     has_badge = any("colab-badge.svg" in line for line in source)
-    
+
     if not has_badge:
         # Insert after title
         source.insert(1, badge_html)

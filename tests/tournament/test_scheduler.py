@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
 
-from src.tournament.config import TournamentConfig, TournamentFormat
-from src.tournament.match import Match, MatchResult, MatchStatus
+from src.tournament.config import TournamentConfig
+from src.tournament.match import MatchResult, MatchStatus
 from src.tournament.player import Player
 from src.tournament.scheduler import (
     Pairing,

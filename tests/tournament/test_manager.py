@@ -16,7 +16,6 @@ from src.tournament.manager import (
 )
 from src.tournament.match import Match, MatchResult, MatchStatus
 from src.tournament.player import Player, PlayerRegistry
-from src.tournament.rating import RatingSystem
 
 
 class TestTournamentState:

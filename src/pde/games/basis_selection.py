@@ -37,6 +37,7 @@ class BasisFunction:
         type: Basis type ('fourier', 'polynomial', 'rbf').
         params: Parameters defining the basis function.
         index: Index in the candidate set.
+
     """
 
     type: str
@@ -54,6 +55,7 @@ class BasisFunction:
 
         Returns:
             Basis function values (N,).
+
         """
         if self.type == "fourier":
             k_x = self.params.get("k_x", 1)
@@ -119,6 +121,7 @@ class BasisSelectionGame(PDEGame):
         Args:
             pde_operator: PDE operator to solve.
             config: Game configuration.
+
         """
         super().__init__(pde_operator, config)
 
@@ -150,6 +153,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             List of candidate BasisFunction objects.
+
         """
         candidates = []
         basis_type = self.basis_config.basis_type
@@ -246,6 +250,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Initial PDEState.
+
         """
         n_points = len(self._collocation_points)
         dim = self._collocation_points.shape[1]
@@ -290,6 +295,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             List of valid action indices.
+
         """
         # All bases not yet selected
         selected = set(state.history)
@@ -309,6 +315,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Boolean mask array.
+
         """
         mask = np.ones(self.action_space_size, dtype=bool)
 
@@ -334,6 +341,7 @@ class BasisSelectionGame(PDEGame):
 
         Raises:
             ValueError: If action is invalid.
+
         """
         if action in state.history:
             raise ValueError(f"Basis {action} already selected")
@@ -418,6 +426,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Matrix Phi where Phi[i,j] = phi_j(x_i).
+
         """
         n_points = len(coords)
         n_basis = len(basis_funcs)
@@ -437,6 +446,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Reward value.
+
         """
         # Error reduction
         error_reduction = prev_state.error_estimate - state.error_estimate
@@ -462,6 +472,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             True if terminal.
+
         """
         # Check error tolerance
         if state.error_estimate < self.config.error_tolerance:
@@ -494,6 +505,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             PDEResult with metrics.
+
         """
         errors = self.compute_exact_error(state)
 
@@ -548,6 +560,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Dictionary with error metrics.
+
         """
         # L2 error
         if self._exact_solution is not None:
@@ -582,6 +595,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Tensor encoding of state.
+
         """
         n_points = state.n_points
 
@@ -629,6 +643,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Description of basis function.
+
         """
         if action < 0 or action >= len(self._candidate_bases):
             return f"invalid_action_{action}"

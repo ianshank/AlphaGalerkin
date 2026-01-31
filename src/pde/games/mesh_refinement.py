@@ -13,6 +13,7 @@ Note:
     The current Mesh implementation supports 2D quadrilateral elements only.
     For 1D (intervals), 3D (hexahedra), or higher dimensions, a specialized
     mesh class would be required. This limitation is validated at runtime.
+
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ class MeshElement:
         polynomial_degree: Polynomial degree for p-refinement.
         parent: Parent element index (None for initial elements).
         children: Child element indices (empty if not refined).
+
     """
 
     index: int
@@ -79,6 +81,7 @@ class Mesh:
     Note:
         Dimensions 4+ are theoretically supported but not practically tested.
         For most PDE applications, 1D-3D covers the relevant cases.
+
     """
 
     # Supported dimensions with vertex counts per element
@@ -100,6 +103,7 @@ class Mesh:
 
         Raises:
             ValueError: If dimension is not supported (>4).
+
         """
         self.domain_min = domain_min
         self.domain_max = domain_max
@@ -210,6 +214,7 @@ class Mesh:
 
         Returns:
             Indices of new/modified elements.
+
         """
         element = self.elements[element_idx]
 
@@ -328,6 +333,7 @@ class MeshRefinementGame(PDEGame):
         Args:
             pde_operator: PDE operator to solve.
             config: Game configuration.
+
         """
         super().__init__(pde_operator, config)
 
@@ -372,6 +378,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Initial PDEState.
+
         """
         # Reset mesh to initial state
         self.mesh = Mesh(
@@ -420,6 +427,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             List of valid element indices to refine.
+
         """
         valid = []
         for i, element in enumerate(self.mesh.leaf_elements):
@@ -444,6 +452,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Boolean mask.
+
         """
         mask = np.zeros(self.action_space_size, dtype=bool)
         valid = self.get_valid_actions(state)
@@ -461,6 +470,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             New state after refinement.
+
         """
         # Get leaf element to refine
         leaf_elements = self.mesh.leaf_elements
@@ -519,9 +529,7 @@ class MeshRefinementGame(PDEGame):
         # Update phase
         if new_state.error_estimate < self.config.error_tolerance:
             new_state.phase = GamePhase.CONVERGED
-        elif new_state.budget_remaining <= 0:
-            new_state.phase = GamePhase.BUDGET_EXHAUSTED
-        elif new_state.dof > self.config.max_dof:
+        elif new_state.budget_remaining <= 0 or new_state.dof > self.config.max_dof:
             new_state.phase = GamePhase.BUDGET_EXHAUSTED
 
         return new_state
@@ -539,6 +547,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Interpolated solution.
+
         """
         # Simple nearest-neighbor interpolation
         from scipy.spatial import cKDTree
@@ -557,6 +566,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Reward value.
+
         """
         # Error reduction
         error_reduction = prev_state.error_estimate - state.error_estimate
@@ -600,6 +610,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             True if terminal.
+
         """
         if state.error_estimate < self.config.error_tolerance:
             return True
@@ -622,6 +633,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             PDEResult.
+
         """
         errors = self.compute_exact_error(state)
         converged = state.error_estimate < self.config.error_tolerance
@@ -674,6 +686,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Error dictionary.
+
         """
         # Get exact solution if available
         exact = self.pde_operator.exact_solution(state.coords)
@@ -697,7 +710,7 @@ class MeshRefinementGame(PDEGame):
             "residual": residual_norm,
         }
 
-    def to_tensor(self, state: PDEState) -> Float[Tensor, "..."]:
+    def to_tensor(self, state: PDEState) -> Float[Tensor, ...]:
         """Convert state to neural network input.
 
         Args:
@@ -708,6 +721,7 @@ class MeshRefinementGame(PDEGame):
             - 1D: (channels, resolution)
             - 2D: (channels, height, width)
             - 3D: (channels, depth, height, width)
+
         """
         from scipy.interpolate import griddata
 
@@ -765,6 +779,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Action description.
+
         """
         if action < len(self.mesh.leaf_elements):
             element = self.mesh.leaf_elements[action]

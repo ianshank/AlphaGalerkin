@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
 
-from src.templates.registry import BaseRegistry, create_registry, create_typed_registry
+from src.templates.registry import BaseRegistry, create_typed_registry
 
 
 class TestBaseRegistry:

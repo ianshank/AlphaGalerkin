@@ -5,8 +5,6 @@ from __future__ import annotations
 import pytest
 
 from src.curriculum.config import (
-    ProgressionCriterion,
-    ProgressionOperator,
     StageConfig,
 )
 from src.curriculum.stage import CurriculumStage, StageMetrics, StageStatus

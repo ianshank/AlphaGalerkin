@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 import torch
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, LRScheduler
 
@@ -191,7 +191,7 @@ class Trainer:
 
         # Mixed precision
         self.use_amp = self.training_config.use_amp and self.device.type == "cuda"
-        self.scaler = GradScaler() if self.use_amp else None
+        self.scaler = GradScaler("cuda") if self.use_amp else None
 
         # Replay buffer (prioritized or uniform based on config)
         self.use_prioritized_replay = getattr(
@@ -255,6 +255,11 @@ class Trainer:
 
         # Training stability monitor (optional)
         self.stability_monitor = self._create_stability_monitor()
+
+        # Track warmup completion for plateau gating
+        # Plateau detection should not trigger during warmup (unstable losses)
+        self._warmup_completed = self.training_config.warmup_steps == 0
+        self._warmup_steps = self.training_config.warmup_steps
 
         # Watch model with W&B if enabled
         if self.wandb_logger is not None:
@@ -445,6 +450,9 @@ class Trainer:
             min_size: Minimum number of experiences needed.
 
         """
+        fill_start = time.time()
+        initial_size = len(self.buffer)
+
         while len(self.buffer) < min_size:
             n_games = self.training_config.n_self_play_games
             logger.info(
@@ -467,6 +475,47 @@ class Trainer:
             # Add to buffer
             self.buffer.add_batch(experiences)
             self.total_games_generated += n_games
+
+            # Log self-play progress to W&B
+            if self.wandb_logger is not None:
+                stats = self.self_play_worker.get_stats()
+                self.wandb_logger.log_metrics(
+                    {
+                        "self_play/games_completed": stats["games_played"],
+                        "self_play/avg_game_length": stats["avg_game_length"],
+                        "self_play/buffer_size": len(self.buffer),
+                        "self_play/black_wins": stats["outcomes"]["black"],
+                        "self_play/white_wins": stats["outcomes"]["white"],
+                        "self_play/draws": stats["outcomes"]["draw"],
+                    },
+                    step=self.global_step,
+                )
+
+        # Log buffer fill statistics
+        fill_time = time.time() - fill_start
+        experiences_added = len(self.buffer) - initial_size
+        fill_rate = experiences_added / max(fill_time, 0.001)
+        logger.info(
+            "buffer_filled",
+            initial_size=initial_size,
+            final_size=len(self.buffer),
+            target_size=min_size,
+            experiences_added=experiences_added,
+            fill_time_seconds=round(fill_time, 2),
+            fill_rate_per_second=round(fill_rate, 1),
+        )
+
+        # Log buffer fill summary to W&B
+        if self.wandb_logger is not None:
+            self.wandb_logger.log_metrics(
+                {
+                    "self_play/fill_time_seconds": round(fill_time, 2),
+                    "self_play/experiences_added": experiences_added,
+                    "self_play/fill_rate_per_second": round(fill_rate, 1),
+                    "self_play/total_games_generated": self.total_games_generated,
+                },
+                step=self.global_step,
+            )
 
     def _sample_batch(self) -> TrainingBatch:
         """Sample and collate a training batch.
@@ -572,6 +621,16 @@ class Trainer:
 
         # Convert grad_norm to float
         grad_norm_float = grad_norm.item()
+
+        # Log if gradient norm is near clipping threshold (debugging aid)
+        clip_threshold = self.training_config.gradient_clip
+        if grad_norm_float > clip_threshold * 0.9:
+            logger.debug(
+                "gradient_near_clip_threshold",
+                grad_norm=f"{grad_norm_float:.4f}",
+                clip_threshold=clip_threshold,
+                ratio=f"{grad_norm_float / clip_threshold:.2f}",
+            )
 
         return loss_output, lbb_constant, grad_norm_float, weights
 
@@ -695,9 +754,29 @@ class Trainer:
                         )
                         break
 
-            # Check plateau detection (LR reduction)
-            if self.stability_monitor is not None:
-                self.stability_monitor.check_plateau(loss_output.total.item())
+            # Check if warmup just completed (log transition)
+            if not self._warmup_completed and step >= self._warmup_steps:
+                self._warmup_completed = True
+                current_lr = self.scheduler.get_last_lr()[0]
+                logger.info(
+                    "warmup_completed",
+                    step=step,
+                    warmup_steps=self._warmup_steps,
+                    current_lr=f"{current_lr:.2e}",
+                )
+
+            # Check plateau detection (LR reduction) - ONLY after warmup completes
+            # During warmup, losses are naturally unstable and shouldn't trigger LR reduction
+            if self.stability_monitor is not None and self._warmup_completed:
+                lr_reduced = self.stability_monitor.check_plateau(loss_output.total.item())
+                if lr_reduced:
+                    new_lr = self.scheduler.get_last_lr()[0]
+                    logger.info(
+                        "plateau_lr_reduced",
+                        step=step,
+                        new_lr=f"{new_lr:.2e}",
+                        loss=f"{loss_output.total.item():.4f}",
+                    )
 
             # Checkpointing
             if step > 0 and step % checkpoint_interval == 0:
@@ -825,7 +904,7 @@ class Trainer:
             return
 
         # Get list of available checkpoints
-        checkpoint_paths = self.checkpoint_manager.list_checkpoints()
+        checkpoint_paths = self.checkpoint_manager.get_all_checkpoints()
         n_opponents = min(
             len(checkpoint_paths),
             getattr(self.training_config, "n_tournament_opponents", 5),

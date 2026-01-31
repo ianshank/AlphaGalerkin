@@ -1,0 +1,29 @@
+# Medium scale training preset
+# Include with: defaults: [presets/scale_medium]
+#
+# Provides medium-scale training settings:
+# - 7,500 training steps (between fast/100 and production/100k)
+# - 128 batch size (balance of speed and stability)
+# - 75 self-play games per batch
+# - 10,000 replay buffer capacity
+#
+# Usage:
+#   defaults:
+#     - train
+#     - presets/scale_medium
+#     - _self_
+
+training:
+  # Training duration
+  total_steps: 7500
+  warmup_steps: 500
+
+  # Batch and buffer sizing
+  batch_size: 128
+  n_self_play_games: 75
+  replay_buffer_size: 10000
+
+  # Checkpointing and evaluation
+  checkpoint_interval: 500
+  eval_interval: 750
+  eval_games: 15

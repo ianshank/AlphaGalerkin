@@ -10,7 +10,7 @@ from typing import TextIO
 
 import structlog
 
-from src.games.sgf.config import SGFConfig, SGF_PROPERTIES
+from src.games.sgf.config import SGFConfig
 from src.games.sgf.node import SGFGameTree, SGFNode
 
 logger = structlog.get_logger(__name__)
@@ -31,6 +31,7 @@ class SGFWriter:
 
         # Or write to file
         writer.write_file(game_tree, "output.sgf")
+
     """
 
     # Property ordering for readability
@@ -49,6 +50,7 @@ class SGFWriter:
 
         Args:
             config: Writer configuration (uses defaults if None)
+
         """
         self.config = config or SGFConfig(name="sgf_writer")
 
@@ -60,6 +62,7 @@ class SGFWriter:
 
         Returns:
             SGF format string
+
         """
         lines: list[str] = []
         self._write_node(tree.root, lines, is_root=True)
@@ -80,6 +83,7 @@ class SGFWriter:
             tree: Game tree to write
             path: Output file path
             encoding: Character encoding (uses config default if None)
+
         """
         path = Path(path)
         enc = encoding or self.config.encoding
@@ -95,6 +99,7 @@ class SGFWriter:
         Args:
             tree: Game tree to write
             stream: Text stream to write to
+
         """
         sgf_text = self.write(tree)
         stream.write(sgf_text)
@@ -113,6 +118,7 @@ class SGFWriter:
             lines: Lines to append to
             is_root: Whether this is the root node
             depth: Current nesting depth
+
         """
         # Start game tree for root
         if is_root:
@@ -160,6 +166,7 @@ class SGFWriter:
 
         Returns:
             SGF string for this node
+
         """
         parts = [";"]
 
@@ -192,6 +199,7 @@ class SGFWriter:
 
         Returns:
             SGF property string
+
         """
         escaped_values = [self._escape_value(v) for v in values]
         return key + "".join(f"[{v}]" for v in escaped_values)
@@ -204,6 +212,7 @@ class SGFWriter:
 
         Returns:
             Escaped value safe for SGF
+
         """
         # Escape backslashes first, then brackets
         value = value.replace("\\", "\\\\")
@@ -223,6 +232,7 @@ class SGFWriter:
 
         Returns:
             Ordered list of keys
+
         """
         result = []
         remaining = set(keys)
@@ -270,6 +280,7 @@ def write_game_tree(
 
     Returns:
         SGF string
+
     """
     config = SGFConfig(name="quick_writer", pretty_print=pretty)
     writer = SGFWriter(config)

@@ -134,6 +134,92 @@ class TestSimpleGoGame:
         # Clone should be unchanged
         assert clone.board[5, 5] == SimpleGoGame.EMPTY
 
+    def test_suicide_not_in_legal_actions(self) -> None:
+        """Test that suicide moves are not included in legal actions.
+
+        Set up a position where playing in a corner would be suicide:
+           0 1 2
+        0  . X .
+        1  X . .
+        2  . . .
+
+        Playing at (0,0) would be suicide for Black.
+        """
+        game = SimpleGoGame(9)
+
+        # White surrounds corner (0,0)
+        game.board[0, 1] = SimpleGoGame.WHITE  # Right of corner
+        game.board[1, 0] = SimpleGoGame.WHITE  # Below corner
+        game.current_player = SimpleGoGame.BLACK
+
+        legal_actions = game.get_legal_actions()
+        corner_action = 0  # Action for (0,0)
+
+        # Corner should NOT be in legal actions (suicide)
+        assert corner_action not in legal_actions
+
+        # But other empty positions should be legal
+        assert 2 in legal_actions  # (0,2) is empty and legal
+        assert game.board_size ** 2 in legal_actions  # Pass is always legal
+
+    def test_capture_move_is_legal(self) -> None:
+        """Test that capturing moves are legal even if position looks like suicide.
+
+        Set up:
+           0 1 2
+        0  . W B
+        1  B B .
+        2  . . .
+
+        White at (0,1), Black at (0,2), (1,0), (1,1).
+        White's only liberty is (0,0).
+        Black plays at (0,0):
+        - Would normally look like suicide (surrounded by stones)
+        - But captures White at (0,1) first, giving Black liberty
+        - So this move should be legal.
+        """
+        game = SimpleGoGame(9)
+
+        # Set up: White in atari (one liberty), Black can capture
+        game.board[0, 1] = SimpleGoGame.WHITE  # White stone with one liberty at (0,0)
+        game.board[0, 2] = SimpleGoGame.BLACK  # Black surrounds White
+        game.board[1, 0] = SimpleGoGame.BLACK  # Black surrounds corner
+        game.board[1, 1] = SimpleGoGame.BLACK  # Black surrounds White (removes (1,1) liberty)
+        game.current_player = SimpleGoGame.BLACK
+
+        legal_actions = game.get_legal_actions()
+        capture_action = 0  # Action for (0,0) - captures White
+
+        # This move captures White first, so it's NOT suicide
+        assert capture_action in legal_actions
+
+        # Verify the capture actually works
+        assert game.play(0, 0)
+        assert game.board[0, 1] == SimpleGoGame.EMPTY  # White was captured
+
+    def test_all_legal_actions_are_playable(self) -> None:
+        """Test that every action from get_legal_actions() succeeds with play()."""
+        game = SimpleGoGame(5)  # Small board for speed
+
+        # Play some random moves to create an interesting position
+        moves = [(0, 0), (1, 1), (0, 1), (2, 2), (1, 0), (3, 3)]
+        for row, col in moves:
+            game.play(row, col)
+
+        # Get legal actions
+        legal = game.get_legal_actions()
+        pass_action = game.board_size ** 2
+
+        # Every non-pass legal action should succeed
+        for action in legal:
+            if action == pass_action:
+                continue
+            test_game = game.clone()
+            row = action // game.board_size
+            col = action % game.board_size
+            result = test_game.play(row, col)
+            assert result, f"Action {action} at ({row},{col}) was in legal_actions but play() returned False"
+
 
 class TestGTPEngine:
     """Tests for GTP engine."""

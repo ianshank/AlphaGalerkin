@@ -318,6 +318,7 @@ class DenseHead(nn.Module):
             d_model: Input feature dimension.
             output_channels: Number of output channels per position.
             d_hidden: Hidden dimension for MLP.
+
         """
         super().__init__()
         d_hidden = d_hidden or d_model
@@ -339,6 +340,7 @@ class DenseHead(nn.Module):
 
         Returns:
             Output field (batch, n, output_channels).
+
         """
         return self.net(x)
 

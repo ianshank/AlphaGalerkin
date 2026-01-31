@@ -22,8 +22,9 @@ Supported PDEs:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import torch
@@ -42,6 +43,7 @@ class PDEResidual:
         l2_norm: L2 norm of residual.
         max_norm: Maximum absolute residual.
         derivatives: Dictionary of computed derivatives.
+
     """
 
     values: NDArray[np.float32] | Tensor
@@ -95,6 +97,7 @@ class PDEOperator(ABC):
 
         Args:
             config: PDE configuration.
+
         """
         self.config = config
         self.dim = config.domain_dim
@@ -121,6 +124,7 @@ class PDEOperator(ABC):
 
         Returns:
             PDEResidual with values and norms.
+
         """
         raise NotImplementedError
 
@@ -138,6 +142,7 @@ class PDEOperator(ABC):
 
         Returns:
             Source term values (N,).
+
         """
         raise NotImplementedError
 
@@ -155,6 +160,7 @@ class PDEOperator(ABC):
 
         Returns:
             Boundary values (N_b,).
+
         """
         raise NotImplementedError
 
@@ -171,6 +177,7 @@ class PDEOperator(ABC):
 
         Returns:
             Exact solution values (N,), or None if unknown.
+
         """
         return None
 
@@ -185,6 +192,7 @@ class PDEOperator(ABC):
 
         Returns:
             Initial values (N,).
+
         """
         if isinstance(coords, Tensor):
             return torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
@@ -203,6 +211,7 @@ class PDEOperator(ABC):
 
         Returns:
             Boolean mask (N,) with True for boundary points.
+
         """
         if isinstance(coords, Tensor):
             on_boundary = torch.zeros(coords.shape[0], dtype=torch.bool, device=coords.device)
@@ -232,6 +241,7 @@ class PDEOperator(ABC):
 
         Returns:
             Dictionary with derivative tensors.
+
         """
         coords = coords.requires_grad_(True)
 
@@ -283,6 +293,7 @@ class PDEOperator(ABC):
 
         Returns:
             Collocation points (n_points, dim).
+
         """
         rng = np.random.default_rng(seed)
 
@@ -334,6 +345,7 @@ class PDEOperator(ABC):
 
         Returns:
             Boundary points (N_boundary, dim).
+
         """
         rng = np.random.default_rng(seed)
         points = []
@@ -396,6 +408,7 @@ class PoissonOperator(PDEOperator):
             config: PDE configuration.
             source_function: Custom source term function.
             exact_solution_function: Known exact solution (for testing).
+
         """
         super().__init__(config)
         self.diffusion = config.diffusion_coeff
@@ -523,6 +536,7 @@ class BurgersOperator(PDEOperator):
         Args:
             config: PDE configuration.
             viscosity: Kinematic viscosity (overrides config if provided).
+
         """
         super().__init__(config)
         self.viscosity = viscosity if viscosity is not None else config.diffusion_coeff
@@ -629,6 +643,7 @@ class AdvectionDiffusionOperator(PDEOperator):
             config: PDE configuration.
             advection_velocity: Advection velocity vector.
             diffusion: Diffusion coefficient.
+
         """
         super().__init__(config)
         self.advection_velocity = np.array(
@@ -768,6 +783,7 @@ class HeatOperator(PDEOperator):
         Args:
             config: PDE configuration.
             diffusivity: Thermal diffusivity κ.
+
         """
         super().__init__(config)
         self.diffusivity = diffusivity if diffusivity is not None else config.diffusion_coeff

@@ -158,6 +158,7 @@ class AnalysisConfig(BaseModel):
 
         Returns:
             Hexadecimal hash string.
+
         """
         data = self.model_dump(mode="json")
         json_str = json.dumps(data, sort_keys=True)
@@ -168,6 +169,7 @@ class AnalysisConfig(BaseModel):
 
         Returns:
             Number of MCTS simulations.
+
         """
         mode_simulations = {
             AnalysisMode.QUICK: min(100, self.mcts_simulations),
@@ -190,6 +192,7 @@ class AnalysisConfig(BaseModel):
 
         Returns:
             Move classification.
+
         """
         diff = best_win_rate - actual_win_rate
 
@@ -242,6 +245,7 @@ def create_analysis_config(
 
     Returns:
         Configured AnalysisConfig.
+
     """
     if mode == "quick":
         config = QuickAnalysisConfig(**kwargs)

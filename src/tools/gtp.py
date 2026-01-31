@@ -8,15 +8,20 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import TextIO
 
 import numpy as np
-import torch
+import structlog
 
-from config.schemas import OperatorConfig
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
+
+logger = structlog.get_logger(__name__)
+
+# GTP column letters (A-H, J-T, skipping I to avoid confusion with 1)
+GTP_LETTERS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
 
 
 def coord_to_gtp(row: int, col: int, board_size: int) -> str:
@@ -34,9 +39,7 @@ def coord_to_gtp(row: int, col: int, board_size: int) -> str:
         GTP coordinate string (e.g., "D4").
 
     """
-    # GTP columns: A-H, J-T (skip I)
-    letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
-    col_letter = letters[col]
+    col_letter = GTP_LETTERS[col]
 
     # GTP rows: 1 at bottom, board_size at top
     gtp_row = board_size - row
@@ -55,12 +58,10 @@ def gtp_to_coord(gtp: str, board_size: int) -> tuple[int, int]:
         Tuple of (row, col) in internal format.
 
     """
-    letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
-
     col_letter = gtp[0].upper()
     gtp_row = int(gtp[1:])
 
-    col = letters.index(col_letter)
+    col = GTP_LETTERS.index(col_letter)
     row = board_size - gtp_row
 
     return row, col
@@ -252,17 +253,59 @@ class SimpleGoGame:
         return self.passes >= 2
 
     def get_legal_actions(self) -> list[int]:
-        """Get list of legal action indices."""
+        """Get list of legal action indices.
+
+        A move is legal if:
+        1. The position is empty
+        2. The move doesn't result in suicide (group has liberty after captures)
+        """
         legal = []
         for row in range(self.board_size):
             for col in range(self.board_size):
-                if self.board[row, col] == self.EMPTY:
+                if self._is_legal_move(row, col):
                     legal.append(row * self.board_size + col)
 
         # Pass is always legal
         legal.append(self.board_size ** 2)
 
         return legal
+
+    def _is_legal_move(self, row: int, col: int) -> bool:
+        """Check if a move at (row, col) is legal.
+
+        Args:
+            row: Row index.
+            col: Column index.
+
+        Returns:
+            True if the move is legal, False otherwise.
+
+        """
+        # Must be empty
+        if self.board[row, col] != self.EMPTY:
+            return False
+
+        # Simulate placing the stone
+        self.board[row, col] = self.current_player
+        opponent = self.WHITE if self.current_player == self.BLACK else self.BLACK
+
+        # Check if any adjacent opponent group would be captured
+        captures_any = False
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
+                if self.board[nr, nc] == opponent:
+                    if not self._has_liberty(nr, nc):
+                        captures_any = True
+                        break
+
+        # Check if our stone/group has liberty (or captures give us liberty)
+        has_liberty = self._has_liberty(row, col) or captures_any
+
+        # Undo the simulation
+        self.board[row, col] = self.EMPTY
+
+        return has_liberty
 
     def get_state(self) -> np.ndarray:
         """Get state tensor for neural network.
@@ -523,11 +566,27 @@ class GTPEngine:
         return ""
 
     def _genmove(self, color: str) -> str:
-        # Set current player based on color
+        """Generate a move for the specified color.
+
+        Args:
+            color: Color to play ("black", "b", "white", or "w").
+
+        Returns:
+            GTP move string (e.g., "D4" or "pass").
+        """
+        # Determine expected player from GTP color
         if color.lower() in ("b", "black"):
             expected_player = SimpleGoGame.BLACK
         else:
             expected_player = SimpleGoGame.WHITE
+
+        # Validate that game state matches expected player
+        if self.game.current_player != expected_player:
+            logger.warning(
+                "genmove_player_mismatch",
+                expected=expected_player,
+                actual=self.game.current_player,
+            )
 
         # Generate move using MCTS
         action = self.mcts.get_action(
@@ -554,10 +613,9 @@ class GTPEngine:
     def _showboard(self) -> str:
         """Show current board state."""
         lines = []
-        letters = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
 
         # Column labels
-        col_labels = "   " + " ".join(letters[: self.board_size])
+        col_labels = "   " + " ".join(GTP_LETTERS[: self.board_size])
         lines.append(col_labels)
 
         for row in range(self.board_size):
@@ -582,10 +640,20 @@ class GTPEngine:
 
 
 def main() -> None:
-    """Run GTP engine."""
+    """Run GTP engine.
+
+    Loads a trained AlphaGalerkin model and runs a GTP interface for
+    communication with Go GUIs and engines.
+
+    Usage:
+        python -m src.tools.gtp --model checkpoints/best.pt --board-size 9
+    """
     import argparse
 
-    parser = argparse.ArgumentParser(description="AlphaGalerkin GTP Engine")
+    parser = argparse.ArgumentParser(
+        description="AlphaGalerkin GTP Engine",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     parser.add_argument("--model", type=str, help="Path to model checkpoint")
     parser.add_argument("--board-size", type=int, default=19, help="Board size")
     parser.add_argument("--device", type=str, default="cpu", help="Device")
@@ -595,12 +663,30 @@ def main() -> None:
     # Load model if provided
     model = None
     if args.model:
-        config = OperatorConfig()
-        model = AlphaGalerkinModel(config)
-        model.load_state_dict(torch.load(args.model, map_location=args.device))
-        model.eval()
+        model_path = Path(args.model)
+        if not model_path.exists():
+            logger.error("model_not_found", path=str(model_path))
+            sys.exit(1)
+
+        logger.info("loading_model", path=str(model_path), device=args.device)
+
+        try:
+            from src.training.checkpoint import create_model_from_checkpoint
+
+            model, config_dict = create_model_from_checkpoint(
+                path=model_path,
+                device=args.device,
+            )
+            if config_dict:
+                logger.info("model_config_loaded_from_checkpoint")
+            else:
+                logger.info("using_default_model_config")
+        except Exception as e:
+            logger.error("model_load_failed", error=str(e))
+            sys.exit(1)
 
     # Create and run engine
+    logger.info("starting_gtp_engine", board_size=args.board_size)
     engine = GTPEngine(model=model, board_size=args.board_size, device=args.device)
     engine.run()
 

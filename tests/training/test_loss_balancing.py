@@ -6,7 +6,6 @@ import torch
 from src.training.loss_balancing import (
     BalancingStrategy,
     GradNorm,
-    LossBalancer,
     LossBalancingConfig,
     LossTerms,
     ReLoBRaLo,

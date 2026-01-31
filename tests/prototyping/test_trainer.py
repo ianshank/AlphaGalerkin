@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Iterator
 
-import pytest
 
-from src.prototyping.config import QuickTrainConfig, PresetType
-from src.prototyping.builder import PrototypeModel, ModelBuilder
+from src.prototyping.config import QuickTrainConfig
+from src.prototyping.builder import PrototypeModel
 from src.prototyping.trainer import (
     QuickTrainer,
     TrainResult,

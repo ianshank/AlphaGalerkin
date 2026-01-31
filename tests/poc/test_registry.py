@@ -8,8 +8,6 @@ Validates:
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
 
 import pytest
 
@@ -17,7 +15,6 @@ from src.poc.config import (
     BaseScenarioConfig,
     ScenarioResult,
     ScenarioStatus,
-    ScenarioTier,
 )
 from src.poc.registry import BaseScenario, ScenarioRegistry, scenario
 

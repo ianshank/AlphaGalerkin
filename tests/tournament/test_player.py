@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from src.tournament.player import Player, PlayerRegistry, PlayerStats
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from src.tournament.config import RatingConfig
 from src.tournament.rating import (
     EloRating,
     RatingChange,

@@ -252,17 +252,59 @@ class SimpleGoGame:
         return self.passes >= 2
 
     def get_legal_actions(self) -> list[int]:
-        """Get list of legal action indices."""
+        """Get list of legal action indices.
+
+        A move is legal if:
+        1. The position is empty
+        2. The move doesn't result in suicide (group has liberty after captures)
+        """
         legal = []
         for row in range(self.board_size):
             for col in range(self.board_size):
-                if self.board[row, col] == self.EMPTY:
+                if self._is_legal_move(row, col):
                     legal.append(row * self.board_size + col)
 
         # Pass is always legal
         legal.append(self.board_size ** 2)
 
         return legal
+
+    def _is_legal_move(self, row: int, col: int) -> bool:
+        """Check if a move at (row, col) is legal.
+
+        Args:
+            row: Row index.
+            col: Column index.
+
+        Returns:
+            True if the move is legal, False otherwise.
+
+        """
+        # Must be empty
+        if self.board[row, col] != self.EMPTY:
+            return False
+
+        # Simulate placing the stone
+        self.board[row, col] = self.current_player
+        opponent = self.WHITE if self.current_player == self.BLACK else self.BLACK
+
+        # Check if any adjacent opponent group would be captured
+        captures_any = False
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
+                if self.board[nr, nc] == opponent:
+                    if not self._has_liberty(nr, nc):
+                        captures_any = True
+                        break
+
+        # Check if our stone/group has liberty (or captures give us liberty)
+        has_liberty = self._has_liberty(row, col) or captures_any
+
+        # Undo the simulation
+        self.board[row, col] = self.EMPTY
+
+        return has_liberty
 
     def get_state(self) -> np.ndarray:
         """Get state tensor for neural network.
@@ -597,7 +639,12 @@ def main() -> None:
     if args.model:
         config = OperatorConfig()
         model = AlphaGalerkinModel(config)
-        model.load_state_dict(torch.load(args.model, map_location=args.device))
+        checkpoint = torch.load(args.model, map_location=args.device, weights_only=False)
+        if "model_state_dict" in checkpoint:
+            model.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            model.load_state_dict(checkpoint)
+        model.to(args.device)
         model.eval()
 
     # Create and run engine

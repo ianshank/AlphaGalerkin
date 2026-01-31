@@ -39,6 +39,7 @@ class Pattern:
         description: Human-readable description.
         variations: Named variations of this pattern.
         tags: Tags for categorization.
+
     """
 
     name: str
@@ -69,6 +70,7 @@ class Pattern:
 
         Returns:
             True if pattern matches.
+
         """
         board_size = len(board)
 
@@ -105,6 +107,7 @@ class Pattern:
 
         Returns:
             Transformed (dx, dy).
+
         """
         if flip:
             dx = -dx
@@ -130,7 +133,7 @@ class Pattern:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Pattern":
+    def from_dict(cls, data: dict[str, Any]) -> Pattern:
         """Create from dictionary."""
         stones = {}
         for key, color in data.get("stones", {}).items():
@@ -158,6 +161,7 @@ class PatternMatch:
         rotation: Rotation applied.
         flipped: Whether horizontally flipped.
         confidence: Match confidence (0-1).
+
     """
 
     pattern: Pattern
@@ -196,6 +200,7 @@ class PatternLibrary:
 
         Args:
             logger: Optional structured logger.
+
         """
         self._logger = logger or structlog.get_logger(__name__)
         self._patterns: dict[str, Pattern] = {}
@@ -207,6 +212,7 @@ class PatternLibrary:
 
         Args:
             pattern: Pattern to add.
+
         """
         self._patterns[pattern.name] = pattern
         self._by_type[pattern.pattern_type].append(pattern.name)
@@ -226,6 +232,7 @@ class PatternLibrary:
 
         Returns:
             Pattern or None if not found.
+
         """
         return self._patterns.get(name)
 
@@ -237,6 +244,7 @@ class PatternLibrary:
 
         Returns:
             List of patterns.
+
         """
         return [
             self._patterns[name]
@@ -251,6 +259,7 @@ class PatternLibrary:
 
         Returns:
             List of matching patterns.
+
         """
         return [
             self._patterns[name]
@@ -262,6 +271,7 @@ class PatternLibrary:
 
         Returns:
             List of pattern names.
+
         """
         return list(self._patterns.keys())
 
@@ -270,6 +280,7 @@ class PatternLibrary:
 
         Returns:
             List of pattern types.
+
         """
         return [t for t in PatternType if self._by_type.get(t)]
 
@@ -278,6 +289,7 @@ class PatternLibrary:
 
         Returns:
             List of tags.
+
         """
         return list(self._by_tag.keys())
 
@@ -289,6 +301,7 @@ class PatternLibrary:
 
         Returns:
             True if pattern was removed.
+
         """
         if name not in self._patterns:
             return False
@@ -311,13 +324,14 @@ class PatternLibrary:
 
         Returns:
             Dictionary with all patterns.
+
         """
         return {
             "patterns": [p.to_dict() for p in self._patterns.values()],
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PatternLibrary":
+    def from_dict(cls, data: dict[str, Any]) -> PatternLibrary:
         """Create library from dictionary.
 
         Args:
@@ -325,6 +339,7 @@ class PatternLibrary:
 
         Returns:
             PatternLibrary instance.
+
         """
         library = cls()
         for pattern_data in data.get("patterns", []):
@@ -352,6 +367,7 @@ class PatternMatcher:
         Args:
             library: Pattern library to use.
             logger: Optional structured logger.
+
         """
         self._library = library or PatternLibrary()
         self._logger = logger or structlog.get_logger(__name__)
@@ -380,6 +396,7 @@ class PatternMatcher:
 
         Returns:
             List of pattern matches.
+
         """
         matches: list[PatternMatch] = []
 
@@ -426,6 +443,7 @@ class PatternMatcher:
 
         Returns:
             List of matches for this pattern.
+
         """
         pattern = self._library.get_pattern(pattern_name)
         if pattern is None:
@@ -464,6 +482,7 @@ class PatternMatcher:
 
         Returns:
             List of patterns to check.
+
         """
         if pattern_types is None and tags is None:
             return list(self._library._patterns.values())
@@ -495,6 +514,7 @@ class PatternMatcher:
 
         Returns:
             List of patterns matching at this position.
+
         """
         matches: list[PatternMatch] = []
 
@@ -518,6 +538,7 @@ def create_basic_library() -> PatternLibrary:
 
     Returns:
         PatternLibrary with common patterns.
+
     """
     library = PatternLibrary()
 

@@ -9,9 +9,10 @@ Provides:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterator
+from typing import Any
 
 import structlog
 
@@ -32,6 +33,7 @@ class GameStatistics:
         move_counts: Counts by move classification.
         win_rate_history: Win rate at each move.
         time_spent: Time spent per move (if available).
+
     """
 
     game_id: str = ""
@@ -65,6 +67,7 @@ class GameStatistics:
         Args:
             color: Move color ("B" or "W").
             classification: Move classification.
+
         """
         if color not in self.move_counts:
             self.move_counts[color] = defaultdict(int)
@@ -78,6 +81,7 @@ class GameStatistics:
 
         Returns:
             Accuracy percentage (0-100).
+
         """
         if color not in self.move_counts:
             return 0.0
@@ -103,6 +107,7 @@ class GameStatistics:
 
         Returns:
             Mistake rate percentage (0-100).
+
         """
         if color not in self.move_counts:
             return 0.0
@@ -137,7 +142,7 @@ class GameStatistics:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "GameStatistics":
+    def from_dict(cls, data: dict[str, Any]) -> GameStatistics:
         """Create from dictionary."""
         stats = cls(
             game_id=data.get("game_id", ""),
@@ -164,6 +169,7 @@ class AggregateStatistics:
         total_moves: Total number of moves.
         win_counts: Win counts by result type.
         accuracy_history: Accuracy trend over games.
+
     """
 
     total_games: int = 0
@@ -184,6 +190,7 @@ class AggregateStatistics:
 
         Args:
             stats: Game statistics to add.
+
         """
         self.total_games += 1
         self.total_moves += stats.total_moves
@@ -229,6 +236,7 @@ class AggregateStatistics:
 
         Returns:
             Accuracy percentage.
+
         """
         if color not in self.classification_totals:
             return 0.0
@@ -280,6 +288,7 @@ class StatisticsCollector:
 
         Args:
             logger: Optional structured logger.
+
         """
         self._logger = logger or structlog.get_logger(__name__)
         self._games: list[GameStatistics] = []
@@ -290,6 +299,7 @@ class StatisticsCollector:
 
         Args:
             stats: Game statistics to add.
+
         """
         self._games.append(stats)
         self._aggregate.add_game(stats)
@@ -308,6 +318,7 @@ class StatisticsCollector:
 
         Returns:
             GameStatistics or None if not found.
+
         """
         for game in self._games:
             if game.game_id == game_id:
@@ -322,6 +333,7 @@ class StatisticsCollector:
 
         Returns:
             List of recent game statistics.
+
         """
         return self._games[-n:]
 
@@ -330,6 +342,7 @@ class StatisticsCollector:
 
         Returns:
             AggregateStatistics.
+
         """
         return self._aggregate
 
@@ -341,6 +354,7 @@ class StatisticsCollector:
 
         Returns:
             List of accuracy values.
+
         """
         return self._aggregate.accuracy_history[-window:]
 
@@ -349,6 +363,7 @@ class StatisticsCollector:
 
         Returns:
             Dictionary of board size to performance metrics.
+
         """
         by_size: dict[int, list[GameStatistics]] = defaultdict(list)
 
@@ -379,6 +394,7 @@ class StatisticsCollector:
 
         Yields:
             GameStatistics for each game.
+
         """
         yield from self._games
 
@@ -397,6 +413,7 @@ class StatisticsCollector:
 
         Returns:
             Dictionary with all statistics.
+
         """
         return {
             "games": [g.to_dict() for g in self._games],

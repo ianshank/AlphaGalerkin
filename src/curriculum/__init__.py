@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from src.curriculum.config import (
     CurriculumConfig,
-    StageConfig,
     ProgressionCriterion,
     ProgressionOperator,
+    StageConfig,
 )
-from src.curriculum.stage import CurriculumStage, StageStatus
-from src.curriculum.scheduler import CurriculumScheduler
 from src.curriculum.manager import CurriculumManager
+from src.curriculum.scheduler import CurriculumScheduler
+from src.curriculum.stage import CurriculumStage, StageStatus
 
 __all__ = [
     # Configuration

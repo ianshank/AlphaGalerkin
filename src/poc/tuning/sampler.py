@@ -105,6 +105,7 @@ class GridSampler(BaseSampler):
 
         """
         import itertools
+
         import numpy as np
 
         param_values: dict[str, list[Any]] = {}

@@ -92,3 +92,10 @@ hydra_outputs/
 
 # Claude Code
 .claude/
+
+# HuggingFace Space deployment (local only)
+hf_space/
+deploy_space.py
+
+# ONNX models
+*.onnx

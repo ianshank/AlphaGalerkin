@@ -10,8 +10,8 @@ from src.tournament.config import (
     TournamentConfig,
     TournamentFormat,
 )
-from src.tournament.match import GameRecord, Match, MatchResult, MatchStatus
-from src.tournament.player import Player, PlayerRegistry, PlayerStats
+from src.tournament.match import GameRecord, Match, MatchResult
+from src.tournament.player import Player, PlayerRegistry
 from src.tournament.rating import EloRating, RatingSystem
 from src.tournament.scheduler import TournamentScheduler
 

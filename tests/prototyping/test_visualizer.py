@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from src.prototyping.trainer import TrainResult
 from src.prototyping.evaluator import EvalResult, MetricResult

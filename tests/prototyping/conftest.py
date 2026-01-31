@@ -15,7 +15,7 @@ from src.prototyping.trainer import QuickTrainer, TrainResult
 from src.prototyping.evaluator import QuickEvaluator, EvalResult, MetricResult
 from src.prototyping.data import DataGenerator, SyntheticData
 from src.prototyping.visualizer import Visualizer
-from src.prototyping.templates import TemplateRegistry, TransferTemplate
+from src.prototyping.templates import TemplateRegistry
 
 
 @pytest.fixture

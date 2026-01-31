@@ -20,7 +20,6 @@ Reference:
 
 from __future__ import annotations
 
-import math
 from typing import Literal
 
 import numpy as np
@@ -59,6 +58,7 @@ class FourierFeaturesConfig(BaseModuleConfig):
         learnable: Whether frequencies are learnable.
         include_input: Whether to include raw coordinates.
         encoding_type: Type of encoding ('positional', 'random', 'gaussian').
+
     """
 
     n_features: int = Field(
@@ -124,6 +124,7 @@ class MultiScaleFourierFeatures(nn.Module):
             scales: Frequency scales (if config not provided).
             learnable: Whether frequencies are learnable.
             include_input: Whether to include raw coordinates.
+
         """
         super().__init__()
 
@@ -179,6 +180,7 @@ class MultiScaleFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match expected.
+
         """
         if x.shape[-1] != self.input_dim:
             raise ValueError(
@@ -229,6 +231,7 @@ class MultiScaleFourierFeatures(nn.Module):
 
         Returns:
             Features from specified scale.
+
         """
         if scale_idx < 0 or scale_idx >= self.n_scales:
             raise ValueError(f"Invalid scale index: {scale_idx}")
@@ -285,6 +288,7 @@ class AdaptiveFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If scale_range is invalid.
+
         """
         super().__init__()
 
@@ -357,6 +361,7 @@ class AdaptiveFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match expected.
+
         """
         if x.shape[-1] != self.input_dim:
             raise ValueError(
@@ -436,6 +441,7 @@ class ProgressiveFourierFeatures(nn.Module):
             learnable: Whether frequencies are learnable.
             gate_steepness: Steepness of sigmoid gate activation (higher = sharper).
                 Controls how quickly frequencies are activated during curriculum.
+
         """
         super().__init__()
 
@@ -489,6 +495,7 @@ class ProgressiveFourierFeatures(nn.Module):
         Args:
             progress: Value in [0, 1] indicating training progress.
                      0 = only lowest frequency, 1 = all frequencies.
+
         """
         progress = max(0.0, min(1.0, progress))
         self._progress.fill_(progress)
@@ -535,6 +542,7 @@ class ProgressiveFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match expected.
+
         """
         if x.shape[-1] != self.input_dim:
             raise ValueError(
@@ -590,6 +598,7 @@ class PositionalEncoding(nn.Module):
             d_model: Encoding dimension.
             max_len: Maximum sequence length.
             temperature: Base for frequency computation.
+
         """
         super().__init__()
 
@@ -621,6 +630,7 @@ class PositionalEncoding(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match d_model.
+
         """
         if x.size(-1) != self.d_model:
             raise ValueError(
@@ -648,6 +658,7 @@ class SpatialPositionalEncoding(nn.Module):
             d_model: Encoding dimension (must be divisible by 4).
             max_size: Maximum grid size.
             temperature: Base for frequency computation.
+
         """
         super().__init__()
 
@@ -688,6 +699,7 @@ class SpatialPositionalEncoding(nn.Module):
 
         Raises:
             ValueError: If input is not 4D tensor.
+
         """
         if x.dim() != 4:
             raise ValueError(

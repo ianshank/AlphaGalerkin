@@ -337,7 +337,11 @@ class CheckpointManager:
         """
         is_better = False
 
-        if self._best_value is None or self.best_mode == "min" and metric_value < self._best_value or self.best_mode == "max" and metric_value > self._best_value:
+        if self._best_value is None:
+            is_better = True
+        elif self.best_mode == "min" and metric_value < self._best_value:
+            is_better = True
+        elif self.best_mode == "max" and metric_value > self._best_value:
             is_better = True
 
         if is_better:
@@ -457,3 +461,146 @@ def load_model_only(
         state = torch.load(path, map_location="cpu", weights_only=False)
     model.load_state_dict(state["model_state_dict"], strict=strict)
     logger.info("model_loaded", path=str(path))
+
+
+def load_checkpoint_with_config(
+    path: Path | str,
+    device: str = "cpu",
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Load checkpoint and extract configuration.
+
+    This is the recommended way to load checkpoints when you need both
+    model weights and the saved configuration. It handles:
+    - Multiple checkpoint formats (full state vs weights-only)
+    - Configuration extraction from checkpoint
+    - Proper device mapping
+    - Logging and error handling
+
+    Args:
+        path: Path to checkpoint file.
+        device: Target device for loading (default: cpu for safety).
+
+    Returns:
+        Tuple of (checkpoint_dict, config_dict or None).
+
+    Raises:
+        FileNotFoundError: If checkpoint path doesn't exist.
+        RuntimeError: If checkpoint is corrupted or incompatible.
+
+    Example:
+        >>> checkpoint, config = load_checkpoint_with_config("model.pt")
+        >>> if config and "operator" in config:
+        ...     op_config = OperatorConfig(**config["operator"])
+        >>> model.load_state_dict(checkpoint["model_state_dict"])
+
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {path}")
+
+    logger.info("loading_checkpoint", path=str(path), device=device)
+
+    try:
+        # Load checkpoint - use weights_only=False for full training state
+        checkpoint = torch.load(path, map_location=device, weights_only=False)
+    except Exception as e:
+        logger.error("checkpoint_load_failed", path=str(path), error=str(e))
+        raise RuntimeError(f"Failed to load checkpoint: {e}") from e
+
+    # Extract config if present
+    config = checkpoint.get("config")
+    if config is not None:
+        logger.debug("checkpoint_config_found", config_keys=list(config.keys()))
+    else:
+        logger.warning("checkpoint_config_not_found", path=str(path))
+
+    return checkpoint, config
+
+
+def create_model_from_checkpoint(
+    path: Path | str,
+    device: str = "cpu",
+    model_class: type | None = None,
+    config_class: type | None = None,
+    strict: bool = True,
+) -> tuple[Any, dict[str, Any] | None]:
+    """Create and load model from checkpoint with proper configuration.
+
+    This is the highest-level utility for loading a trained model. It:
+    1. Loads the checkpoint
+    2. Extracts the configuration (or uses defaults)
+    3. Creates the model with the correct architecture
+    4. Loads the weights
+    5. Moves to the target device
+
+    Args:
+        path: Path to checkpoint file.
+        device: Target device (cuda, cpu, etc.).
+        model_class: Model class to instantiate (default: AlphaGalerkinModel).
+        config_class: Config class for model (default: OperatorConfig).
+        strict: Whether to require exact state dict match.
+
+    Returns:
+        Tuple of (loaded_model, config_dict or None).
+
+    Raises:
+        FileNotFoundError: If checkpoint doesn't exist.
+        RuntimeError: If loading fails.
+
+    Example:
+        >>> model, config = create_model_from_checkpoint(
+        ...     "checkpoints/best.pt",
+        ...     device="cuda"
+        ... )
+        >>> model.eval()
+        >>> output = model(input_tensor)
+
+    """
+    # Import here to avoid circular imports
+    if model_class is None:
+        from src.modeling.model import AlphaGalerkinModel
+        model_class = AlphaGalerkinModel
+    if config_class is None:
+        from config.schemas import OperatorConfig
+        config_class = OperatorConfig
+
+    # Load checkpoint and config
+    checkpoint, config_dict = load_checkpoint_with_config(path, device="cpu")
+
+    # Create model config from checkpoint or use defaults
+    if config_dict is not None and "operator" in config_dict:
+        logger.info("using_checkpoint_config")
+        try:
+            model_config = config_class(**config_dict["operator"])
+        except Exception as e:
+            logger.warning(
+                "checkpoint_config_parse_failed",
+                error=str(e),
+                fallback="default_config",
+            )
+            model_config = config_class()
+    else:
+        logger.info("using_default_config")
+        model_config = config_class()
+
+    # Create and load model
+    model = model_class(model_config)
+
+    if "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
+    else:
+        # Legacy format: checkpoint is the state dict directly
+        model.load_state_dict(checkpoint, strict=strict)
+
+    # Move to target device and set to eval mode
+    model.to(device)
+    model.eval()
+
+    logger.info(
+        "model_created_from_checkpoint",
+        path=str(path),
+        device=device,
+        config_source="checkpoint" if config_dict else "default",
+    )
+
+    return model, config_dict

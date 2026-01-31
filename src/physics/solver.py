@@ -48,6 +48,7 @@ class DiffEqSolver(abc.ABC, Generic[T_Input, T_Output]):
 
         Args:
             resolution: Default grid resolution.
+
         """
         self.resolution = resolution
 
@@ -60,6 +61,7 @@ class DiffEqSolver(abc.ABC, Generic[T_Input, T_Output]):
 
         Returns:
             The solution field.
+
         """
         pass
 
@@ -72,6 +74,7 @@ class DiffEqSolver(abc.ABC, Generic[T_Input, T_Output]):
 
         Returns:
             A generic PhysicsSample.
+
         """
         pass
 
@@ -83,6 +86,7 @@ class DiffEqSolver(abc.ABC, Generic[T_Input, T_Output]):
 
         Returns:
             (N, 2) array of coordinates.
+
         """
         x = np.linspace(0, 1, grid_size, dtype=np.float32)
         y = np.linspace(0, 1, grid_size, dtype=np.float32)
@@ -108,6 +112,7 @@ def generate_random_field(
 
     Returns:
         Field array of shape (grid_size, grid_size).
+
     """
     rng = np.random.default_rng(seed)
 

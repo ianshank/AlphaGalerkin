@@ -23,7 +23,7 @@ import structlog
 import torch
 import torch.distributed as dist
 from torch import nn
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import LRScheduler
@@ -139,7 +139,7 @@ class DistributedTrainer:
         self.use_amp = (
             distributed_config.use_amp and self.device.type == "cuda"
         )
-        self.scaler = GradScaler() if self.use_amp else None
+        self.scaler = GradScaler("cuda") if self.use_amp else None
         self.amp_dtype = getattr(
             torch, distributed_config.amp_dtype, torch.float16
         )

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -11,14 +10,13 @@ from src.research.config import (
     BenchmarkConfig,
     ComparisonConfig,
     ExperimentConfig,
-    ExperimentType,
     TransferConfig,
 )
 from src.research.experiment import Experiment, ExperimentRun, ExperimentTracker
 from src.research.benchmark import Benchmark, BenchmarkResult
 from src.research.validator import TransferMetrics, TransferResult, TransferValidator
 from src.research.comparison import ComparisonResult, ModelComparison, ModelMetrics
-from src.research.reporter import Reporter, ReportFormat
+from src.research.reporter import Reporter
 
 
 @pytest.fixture

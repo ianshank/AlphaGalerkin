@@ -154,8 +154,8 @@ class GalerkinAttention(nn.Module):
         # Average over heads for overall stability
         gram_avg = gram.mean(dim=1)
 
-        # Compute singular values
-        singular_values = torch.linalg.svdvals(gram_avg)
+        # Compute singular values in float32 as CUDA does not support float16/half for SVD
+        singular_values = torch.linalg.svdvals(gram_avg.to(torch.float32))
 
         # Return minimum singular value
         return singular_values.min(dim=-1).values

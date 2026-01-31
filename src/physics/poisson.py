@@ -36,6 +36,7 @@ class PoissonSample(PhysicsSample[NDArray[np.float32], NDArray[np.float32]]):
         output_field: Potential/influence field (N,).
         coords: Grid coordinates (N, 2).
         grid_size: Original grid resolution.
+
     """
 
     @property
@@ -237,6 +238,7 @@ class PoissonSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
 
         Returns:
             PoissonSample with coordinates, charges, and potential.
+
         """
         # Define grid size (use instance resolution if not generic)
         grid_size = self.resolution

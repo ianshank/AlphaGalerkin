@@ -6,7 +6,7 @@ import pytest
 from pydantic import Field
 
 from src.templates.config import BaseModuleConfig
-from src.templates.registry import BaseRegistry, create_registry
+from src.templates.registry import create_registry
 from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
 
 

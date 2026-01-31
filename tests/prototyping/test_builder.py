@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 
-from src.prototyping.config import PrototypeConfig, PresetType, create_prototype_config
+from src.prototyping.config import PrototypeConfig, PresetType
 from src.prototyping.builder import (
     ModelBuilder,
     PrototypeModel,

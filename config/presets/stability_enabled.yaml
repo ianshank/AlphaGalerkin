@@ -1,0 +1,28 @@
+# Stability monitoring preset
+# Include with: defaults: [presets/stability_enabled]
+#
+# Enables all training stability features:
+# - Early stopping when win rate stops improving
+# - Plateau detection with LR reduction
+# - Conservative thresholds for reliable detection
+#
+# IMPORTANT: Plateau detection is gated until warmup completes
+# to prevent premature LR reduction during initial instability.
+#
+# Usage:
+#   defaults:
+#     - train
+#     - presets/stability_enabled
+#     - _self_
+
+training:
+  # Early stopping configuration
+  early_stopping_enabled: true
+  early_stopping_patience: 8  # Evaluations without improvement
+  early_stopping_min_delta: 0.005  # Minimum improvement threshold
+
+  # Plateau detection configuration
+  plateau_detection_enabled: true
+  plateau_patience: 10  # Steps without improvement before LR reduction
+  plateau_factor: 0.5  # Multiply LR by this factor
+  plateau_min_lr: 1e-6  # Minimum learning rate floor

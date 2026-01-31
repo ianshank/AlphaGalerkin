@@ -25,13 +25,14 @@ Example:
     # Write to SGF
     writer = SGFWriter()
     sgf_text = writer.write(game_tree)
+
 """
 
-from src.games.sgf.parser import SGFParser
-from src.games.sgf.writer import SGFWriter
-from src.games.sgf.node import SGFNode, SGFGameTree
 from src.games.sgf.config import SGFConfig
 from src.games.sgf.converter import SGFConverter
+from src.games.sgf.node import SGFGameTree, SGFNode
+from src.games.sgf.parser import SGFParser
+from src.games.sgf.writer import SGFWriter
 
 __all__ = [
     "SGFParser",

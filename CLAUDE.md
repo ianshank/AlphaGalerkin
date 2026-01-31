@@ -94,6 +94,18 @@ Monitors LBB condition during training:
 - [2026-01-26]: Effect size calculations (Cohen's d, Hedges' g, Cliff's delta).
 - [2026-01-26]: Multiple comparison corrections (Bonferroni, Holm, FDR).
 
+### Google Vertex AI Training (src/vertex/)
+- [2026-01-31]: Complete Vertex AI training integration for cloud-based training.
+- [2026-01-31]: Pydantic configuration schemas for machine types, regions, and accelerators.
+- [2026-01-31]: GCS checkpoint manager with local caching and atomic operations.
+- [2026-01-31]: Multi-node distributed training setup with automatic environment detection.
+- [2026-01-31]: Spot instance preemption handling with signal-based detection.
+- [2026-01-31]: Cost tracking and estimation with GCP pricing data.
+- [2026-01-31]: Vertex-aware trainer wrapper integrating all Vertex AI features.
+- [2026-01-31]: Docker container infrastructure for training jobs.
+- [2026-01-31]: CLI tools for job launching, monitoring, and management.
+- [2026-01-31]: Full test suite with 124 tests (100% passing).
+
 ## Module Development Templates (src/templates/)
 - [2026-01-27]: Reusable infrastructure for building new AlphaGalerkin modules.
 - [2026-01-27]: Pydantic-based configuration with validation and no hardcoded values.
@@ -244,6 +256,55 @@ torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \
 
 # Unit tests for distributed module
 pytest tests/distributed/ -v
+```
+
+## Vertex AI Training Commands
+```bash
+# Build and push training container to Artifact Registry
+./scripts/build_vertex_container.sh my-project us-central1
+
+# Launch training job on Vertex AI
+python -m scripts.train_vertex \
+    --project my-project \
+    --region us-central1 \
+    --bucket gs://my-training-bucket \
+    --machine-type a2-highgpu-1g \
+    --accelerator-type NVIDIA_TESLA_A100 \
+    --accelerator-count 1 \
+    --container-uri us-central1-docker.pkg.dev/my-project/alphagalerkin/trainer:latest
+
+# Launch spot (preemptible) training for cost savings
+python -m scripts.train_vertex \
+    --project my-project \
+    --bucket gs://my-training-bucket \
+    --spot
+
+# Launch multi-node distributed training
+python -m scripts.train_vertex \
+    --project my-project \
+    --bucket gs://my-training-bucket \
+    --machine-type a2-highgpu-8g \
+    --accelerator-type NVIDIA_TESLA_A100 \
+    --accelerator-count 8 \
+    --replica-count 4
+
+# List running Vertex AI jobs
+python -m scripts.vertex_jobs list --project my-project
+
+# Show job status
+python -m scripts.vertex_jobs show JOB_ID --project my-project
+
+# Wait for job completion
+python -m scripts.vertex_jobs wait JOB_ID --project my-project
+
+# Cancel a running job
+python -m scripts.vertex_jobs cancel JOB_ID --project my-project
+
+# View job logs
+python -m scripts.vertex_jobs logs JOB_ID --project my-project
+
+# Unit tests for Vertex AI module
+pytest tests/vertex/ -v
 ```
 
 ## ONNX Export Commands
@@ -489,6 +550,15 @@ src/
     logging.py        - Structured logging with context binding
     base.py           - Base executable classes with result tracking
     cli.py            - CLI utilities with common options
+  vertex/       - Google Vertex AI training integration
+    config.py         - Pydantic configuration schemas (machine types, regions, etc.)
+    storage.py        - GCS checkpoint manager with local caching
+    launcher.py       - Vertex AI job launching and monitoring
+    multi_node.py     - Multi-node distributed training setup
+    preemption.py     - Spot instance preemption handling
+    cost.py           - Cost tracking and estimation
+    trainer.py        - Vertex-aware trainer wrapper
+    entrypoint.py     - Container entrypoint script
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests
@@ -515,6 +585,13 @@ tests/
     test_registry.py  - Registry pattern tests
     test_logging.py   - Logging utilities tests
     test_base.py      - Base executable tests
+  vertex/       - Vertex AI integration tests
+    test_config.py    - Configuration validation tests
+    test_storage.py   - GCS storage tests
+    test_launcher.py  - Launcher tests
+    test_multi_node.py - Multi-node setup tests
+    test_preemption.py - Preemption handler tests
+    test_cost.py      - Cost tracking tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config
@@ -532,4 +609,9 @@ docs/           - Documentation
   PROMPT_TEMPLATE.md  - Agentic coding prompt template
 scripts/        - CLI entry points
   train.py            - Training CLI with Hydra
+  train_vertex.py     - Vertex AI training job launcher
+  vertex_jobs.py      - Vertex AI job management CLI
+  build_vertex_container.sh - Build and push training container
+docker/         - Container definitions
+  Dockerfile.vertex   - Vertex AI training container
 ```

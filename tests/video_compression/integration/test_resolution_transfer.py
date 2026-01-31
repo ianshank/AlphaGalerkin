@@ -19,6 +19,7 @@ from src.video_compression.config import (
     CodecConfig,
     EncoderConfig,
     DecoderConfig,
+    EntropyConfig,
     QuantizerConfig,
     MCTSRateControlConfig,
     QuantizationMode,
@@ -62,6 +63,11 @@ class TestResolutionTransfer:
             quantizer=QuantizerConfig(
                 name="quantizer",
                 mode=QuantizationMode.STE,
+            ),
+            entropy=EntropyConfig(
+                name="entropy",
+                hyper_channels=64,
+                num_filters=64,
             ),
             mcts=MCTSRateControlConfig(
                 name="mcts",
@@ -210,6 +216,11 @@ class TestVariableResolutionVideo:
                 latent_channels=64,
                 upsample_factor=8,
             ),
+            entropy=EntropyConfig(
+                name="entropy",
+                hyper_channels=64,
+                num_filters=64,
+            ),
             mcts=MCTSRateControlConfig(
                 name="mcts",
                 gop_size=4,
@@ -271,7 +282,7 @@ class TestGalerkinResolutionInvariance:
     """Tests specific to Galerkin attention resolution invariance."""
 
     @pytest.fixture
-    def codec(self) -> CodecConfig:
+    def codec(self) -> VideoCodec:
         """Create codec with emphasis on Galerkin attention."""
         config = CodecConfig(
             name="galerkin_test",
@@ -294,6 +305,11 @@ class TestGalerkinResolutionInvariance:
                 use_fnet_mixing=True,
                 fnet_ratio=0.0,
                 upsample_factor=8,
+            ),
+            entropy=EntropyConfig(
+                name="entropy",
+                hyper_channels=64,
+                num_filters=64,
             ),
         )
         return create_codec(config)
@@ -361,6 +377,11 @@ class TestResolutionEdgeCases:
                 name="decoder",
                 latent_channels=64,
                 upsample_factor=8,
+            ),
+            entropy=EntropyConfig(
+                name="entropy",
+                hyper_channels=64,
+                num_filters=64,
             ),
         )
         return create_codec(config)
@@ -456,6 +477,11 @@ class TestBppConsistency:
                 name="decoder",
                 latent_channels=64,
                 upsample_factor=8,
+            ),
+            entropy=EntropyConfig(
+                name="entropy",
+                hyper_channels=64,
+                num_filters=64,
             ),
             mcts=MCTSRateControlConfig(
                 name="mcts",

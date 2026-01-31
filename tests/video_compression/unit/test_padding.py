@@ -78,24 +78,23 @@ class TestComputePadding:
         expected_w: int,
     ) -> None:
         """Test computed padding dimensions."""
-        pad_h, pad_w = compute_padding(height, width, align_to)
+        pad_info = compute_padding(height, width, align_to)
 
-        padded_h = height + pad_h
-        padded_w = width + pad_w
-
-        assert padded_h == expected_h
-        assert padded_w == expected_w
-        assert padded_h % align_to == 0
-        assert padded_w % align_to == 0
+        assert pad_info.padded_height == expected_h
+        assert pad_info.padded_width == expected_w
+        assert pad_info.padded_height % align_to == 0
+        assert pad_info.padded_width % align_to == 0
 
     def test_symmetric_padding(self) -> None:
         """Test symmetric padding distribution."""
-        pad_h, pad_w = compute_padding(60, 70, 16, symmetric=True)
+        pad_info = compute_padding(60, 70, 16, symmetric=True)
 
         # Height: 60 -> 64 needs 4 padding
         # Width: 70 -> 80 needs 10 padding
-        assert pad_h == 4
-        assert pad_w == 10
+        total_pad_h = pad_info.pad_top + pad_info.pad_bottom
+        total_pad_w = pad_info.pad_left + pad_info.pad_right
+        assert total_pad_h == 4
+        assert total_pad_w == 10
 
 
 class TestPadToMultiple:
@@ -194,13 +193,16 @@ class TestPadToMultipleModule:
 
     def test_forward(self) -> None:
         """Test forward pass."""
-        module = PadToMultiple(align_to=16)
+        config = PaddingConfig(align_to=16)
+        module = PadToMultiple(config=config)
         x = torch.rand(1, 3, 60, 70)
 
-        padded, info = module(x)
+        padded = module(x)
+        info = module.last_padding_info
 
         assert padded.shape[2] % 16 == 0
         assert padded.shape[3] % 16 == 0
+        assert info is not None
 
     def test_module_config(self) -> None:
         """Test module with custom config."""
@@ -212,7 +214,7 @@ class TestPadToMultipleModule:
         module = PadToMultiple(config=config)
 
         x = torch.rand(1, 3, 50, 50)
-        padded, info = module(x)
+        padded = module(x)
 
         assert padded.shape[2] % 32 == 0
 
@@ -225,7 +227,7 @@ class TestDynamicPadding:
         module = DynamicPadding(downsample_factor=16)
 
         x = torch.rand(1, 3, 60, 70)
-        padded, info = module(x)
+        padded, info = module.pad(x)
 
         assert padded.shape[2] % 16 == 0
         assert padded.shape[3] % 16 == 0
@@ -235,10 +237,10 @@ class TestDynamicPadding:
         module = DynamicPadding(downsample_factor=8)
 
         original = torch.rand(1, 3, 45, 55)
-        padded, info = module(original)
+        padded, info = module.pad(original)
 
         # Apply inverse
-        cropped = module.inverse(padded, info)
+        cropped = module.unpad(padded, info)
 
         assert cropped.shape == original.shape
         assert torch.allclose(cropped, original)
@@ -272,7 +274,8 @@ class TestEdgeCases:
         """Test with single pixel input."""
         x = torch.rand(1, 3, 1, 1)
 
-        padded, info = pad_to_multiple(x, align_to=8)
+        # Use replicate mode which works with any size (reflect fails for small inputs)
+        padded, info = pad_to_multiple(x, align_to=8, mode=PaddingMode.REPLICATE)
 
         assert padded.shape[2] == 8
         assert padded.shape[3] == 8

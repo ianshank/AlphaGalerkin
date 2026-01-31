@@ -81,6 +81,11 @@ class TestEndToEndEncodeDecode:
                 name="test_quantizer",
                 mode=QuantizationMode.STE,
             ),
+            entropy=EntropyConfig(
+                name="test_entropy",
+                hyper_channels=64,
+                num_filters=64,
+            ),
             mcts=MCTSRateControlConfig(
                 name="test_mcts",
                 gop_size=4,
@@ -385,6 +390,11 @@ class TestReferenceFrameValidation:
                 d_model=128,
                 upsample_factor=8,
             ),
+            entropy=EntropyConfig(
+                name="entropy",
+                hyper_channels=64,
+                num_filters=64,
+            ),
             mcts=MCTSRateControlConfig(
                 name="mcts",
                 gop_size=8,
@@ -444,6 +454,7 @@ class TestCodecStatistics:
             name="stats_test",
             encoder=EncoderConfig(name="e", latent_channels=64, downsample_factor=8),
             decoder=DecoderConfig(name="d", latent_channels=64, upsample_factor=8),
+            entropy=EntropyConfig(name="e", hyper_channels=64, num_filters=64),
         )
         return create_codec(config)
 
@@ -478,6 +489,7 @@ class TestVariableResolution:
             name="var_res_test",
             encoder=EncoderConfig(name="e", latent_channels=64, downsample_factor=8),
             decoder=DecoderConfig(name="d", latent_channels=64, upsample_factor=8),
+            entropy=EntropyConfig(name="e", hyper_channels=64, num_filters=64),
         )
         return create_codec(config)
 

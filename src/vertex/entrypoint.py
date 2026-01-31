@@ -18,22 +18,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import signal
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 import torch
 import torch.distributed as dist
 
 from src.vertex.config import VertexTrainingConfig
-from src.vertex.multi_node import setup_distributed_training, DistributedContext
+from src.vertex.multi_node import DistributedContext, setup_distributed_training
 from src.vertex.storage import GCSCheckpointManager
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 
@@ -133,6 +129,7 @@ def init_distributed(
     Args:
         ctx: Distributed context from Vertex AI environment.
         backend: Distributed backend (nccl or gloo).
+
     """
     if ctx.world_size <= 1:
         logger.info("single_node_training", world_size=1)
@@ -169,6 +166,7 @@ def load_training_config(config_path: str) -> dict[str, Any]:
 
     Returns:
         Configuration dictionary.
+
     """
     import yaml
 
@@ -184,6 +182,7 @@ def create_vertex_config_from_env() -> VertexTrainingConfig:
 
     Returns:
         VertexTrainingConfig instance.
+
     """
     return VertexTrainingConfig.from_environment()
 
@@ -206,9 +205,8 @@ def run_training(
 
     Returns:
         Training results dictionary.
-    """
-    from src.vertex.trainer import VertexTrainer
 
+    """
     # This is a placeholder - actual implementation would integrate
     # with the existing AlphaGalerkin training infrastructure
 
@@ -236,6 +234,7 @@ class GracefulShutdownHandler:
 
         Args:
             checkpoint_callback: Function to call for emergency checkpoint.
+
         """
         self.checkpoint_callback = checkpoint_callback
         self._shutdown_requested = False
@@ -273,6 +272,7 @@ def main() -> int:
 
     Returns:
         Exit code (0 for success, non-zero for failure).
+
     """
     args = parse_args()
     setup_logging(debug=args.debug)

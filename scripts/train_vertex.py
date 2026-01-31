@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch AlphaGalerkin training on Vertex AI.
+r"""Launch AlphaGalerkin training on Vertex AI.
 
 This script provides a CLI for launching training jobs on Google Cloud
 Vertex AI, including job configuration, container specification, and
@@ -213,6 +213,7 @@ def parse_labels(label_strs: list[str] | None) -> dict[str, str]:
 
     Returns:
         Dictionary of labels.
+
     """
     if not label_strs:
         return {}
@@ -230,6 +231,7 @@ def main() -> int:
 
     Returns:
         Exit code (0 for success).
+
     """
     args = parse_args()
     setup_logging(debug=args.debug)

@@ -25,20 +25,18 @@ Example:
     # Get current cost
     current = tracker.get_current_cost()
     print(f"Current cost: ${current.estimated_total_cost:.2f}")
+
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 import structlog
 
 from src.vertex.config import AcceleratorType, VertexMachineType
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 
@@ -120,6 +118,7 @@ class CostEstimate:
         duration_hours: Duration in hours.
         is_spot: Whether using spot instances.
         discount_applied: Discount percentage applied.
+
     """
 
     machine_cost_per_hour: float
@@ -165,6 +164,7 @@ class CostBreakdown:
         network_cost: Network egress cost (estimated).
         storage_cost: GCS storage cost (estimated).
         total_cost: Total cost.
+
     """
 
     compute_cost: float = 0.0
@@ -215,6 +215,7 @@ class CostTracker:
         # After training
         tracker.stop()
         final = tracker.get_current_cost()
+
     """
 
     def __init__(self) -> None:
@@ -243,6 +244,7 @@ class CostTracker:
             accelerator_count: Number of accelerators per replica.
             replica_count: Number of training replicas.
             is_spot: Whether using spot instances.
+
         """
         self._start_time = datetime.now()
         self._end_time = None
@@ -273,6 +275,7 @@ class CostTracker:
 
         Returns:
             CostEstimate or None if tracking not started.
+
         """
         if self._start_time is None or self._machine_type is None:
             return None
@@ -291,6 +294,7 @@ class CostTracker:
 
         Returns:
             Projected CostEstimate.
+
         """
         if self._machine_type is None:
             return None
@@ -302,6 +306,7 @@ class CostTracker:
 
         Returns:
             CostBreakdown with component costs.
+
         """
         estimate = self.get_current_cost()
         if estimate is None:
@@ -329,6 +334,7 @@ class CostTracker:
 
         Returns:
             CostEstimate.
+
         """
         machine_type = self._machine_type or VertexMachineType.N1_STANDARD_8
         machine_rate = MACHINE_HOURLY_RATES.get(machine_type, 0.0)
@@ -395,6 +401,7 @@ def estimate_job_cost(
             is_spot=True,
         )
         print(f"Estimated cost: ${estimate.estimated_total_cost:.2f}")
+
     """
     tracker = CostTracker()
     tracker._machine_type = machine_type
@@ -422,6 +429,7 @@ def get_hourly_rate(
 
     Returns:
         Hourly rate in USD.
+
     """
     machine_rate = MACHINE_HOURLY_RATES.get(machine_type, 0.0)
 
@@ -449,6 +457,7 @@ def format_cost_table(
 
     Returns:
         Formatted table string.
+
     """
     if machine_types is None:
         machine_types = list(MACHINE_HOURLY_RATES.keys())

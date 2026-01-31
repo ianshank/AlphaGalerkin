@@ -28,13 +28,14 @@ Example:
         ),
         storage=VertexStorageConfig(bucket_name="my-bucket"),
     )
+
 """
 
 from __future__ import annotations
 
 import os
 from enum import Enum
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -173,6 +174,7 @@ class VertexStorageConfig(BaseModel):
         artifact_prefix: Prefix path for output artifacts.
         max_checkpoints: Maximum number of checkpoints to retain.
         enable_versioning: Enable GCS object versioning for safety.
+
     """
 
     model_config = ConfigDict(
@@ -250,6 +252,7 @@ class VertexStorageConfig(BaseModel):
 
         Returns:
             Full GCS URI (gs://bucket/path).
+
         """
         return f"gs://{self.bucket_name}/{prefix}".rstrip("/")
 
@@ -272,6 +275,7 @@ class VertexResourceConfig(BaseModel):
         replica_count: Number of training replicas.
         boot_disk_type: Boot disk type.
         boot_disk_size_gb: Boot disk size in GB.
+
     """
 
     model_config = ConfigDict(
@@ -328,28 +332,35 @@ class VertexResourceConfig(BaseModel):
         machine = self.machine_type.value
 
         # A2 machines have integrated A100 GPUs
-        if machine.startswith("a2-"):
-            if self.accelerator_type is not None and self.accelerator_type not in (
-                AcceleratorType.NVIDIA_TESLA_A100,
-                AcceleratorType.NVIDIA_A100_80GB,
-            ):
-                raise ValueError(
-                    f"A2 machines only support A100 GPUs, got {self.accelerator_type}"
-                )
+        if (
+            machine.startswith("a2-")
+            and self.accelerator_type is not None
+            and self.accelerator_type
+            not in (AcceleratorType.NVIDIA_TESLA_A100, AcceleratorType.NVIDIA_A100_80GB)
+        ):
+            raise ValueError(
+                f"A2 machines only support A100 GPUs, got {self.accelerator_type}"
+            )
 
         # A3 machines have integrated H100 GPUs
-        if machine.startswith("a3-"):
-            if self.accelerator_type is not None and self.accelerator_type != AcceleratorType.NVIDIA_H100_80GB:
-                raise ValueError(
-                    f"A3 machines only support H100 GPUs, got {self.accelerator_type}"
-                )
+        if (
+            machine.startswith("a3-")
+            and self.accelerator_type is not None
+            and self.accelerator_type != AcceleratorType.NVIDIA_H100_80GB
+        ):
+            raise ValueError(
+                f"A3 machines only support H100 GPUs, got {self.accelerator_type}"
+            )
 
         # G2 machines have integrated L4 GPUs
-        if machine.startswith("g2-"):
-            if self.accelerator_type is not None and self.accelerator_type != AcceleratorType.NVIDIA_L4:
-                raise ValueError(
-                    f"G2 machines only support L4 GPUs, got {self.accelerator_type}"
-                )
+        if (
+            machine.startswith("g2-")
+            and self.accelerator_type is not None
+            and self.accelerator_type != AcceleratorType.NVIDIA_L4
+        ):
+            raise ValueError(
+                f"G2 machines only support L4 GPUs, got {self.accelerator_type}"
+            )
 
         return self
 
@@ -358,6 +369,7 @@ class VertexResourceConfig(BaseModel):
 
         Returns:
             Total number of processes (replicas * accelerators per replica).
+
         """
         gpus_per_replica = max(1, self.accelerator_count)
         return self.replica_count * gpus_per_replica
@@ -371,6 +383,7 @@ class VertexNetworkConfig(BaseModel):
         subnetwork: Subnetwork resource name.
         enable_private_service_connect: Use Private Service Connect.
         reserved_ip_ranges: Reserved IP ranges for PSC.
+
     """
 
     model_config = ConfigDict(
@@ -427,6 +440,7 @@ class VertexTrainingConfig(BaseModel):
         restart_on_preemption: Restart training on spot preemption.
         max_restarts: Maximum restart attempts on preemption.
         labels: Custom labels for the training job.
+
     """
 
     model_config = ConfigDict(
@@ -577,6 +591,7 @@ class VertexTrainingConfig(BaseModel):
 
         Returns:
             Checkpoint interval in minutes.
+
         """
         if self.enable_spot and self.aggressive_checkpointing_on_spot:
             # Use more frequent checkpoints for spot instances
@@ -588,6 +603,7 @@ class VertexTrainingConfig(BaseModel):
 
         Returns:
             Training timeout in seconds.
+
         """
         return self.timeout_hours * 3600
 
@@ -596,6 +612,7 @@ class VertexTrainingConfig(BaseModel):
 
         Returns:
             Dictionary of environment variable name-value pairs.
+
         """
         return {
             "VERTEX_PROJECT_ID": self.project_id,
@@ -626,6 +643,7 @@ class VertexTrainingConfig(BaseModel):
 
         Raises:
             ValueError: If required environment variables are missing.
+
         """
         project_id = os.environ.get("VERTEX_PROJECT_ID", overrides.get("project_id"))
         staging_bucket = os.environ.get("VERTEX_STAGING_BUCKET", overrides.get("staging_bucket"))
@@ -693,6 +711,7 @@ def create_vertex_config(
             accelerator_type="NVIDIA_TESLA_A100",
             accelerator_count=1,
         )
+
     """
     # Parse machine type
     machine_enum = VertexMachineType(machine_type)

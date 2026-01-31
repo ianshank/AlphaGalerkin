@@ -23,6 +23,7 @@ Example:
         world_size=ctx.world_size,
         rank=ctx.rank,
     )
+
 """
 
 from __future__ import annotations
@@ -31,7 +32,6 @@ import json
 import os
 import socket
 from dataclasses import dataclass
-from typing import Any
 
 import structlog
 
@@ -66,6 +66,7 @@ class DistributedContext:
         num_nodes: Number of nodes in the cluster.
         node_rank: Rank of this node (0 to num_nodes-1).
         gpus_per_node: Number of GPUs on each node.
+
     """
 
     world_size: int
@@ -131,6 +132,7 @@ class VertexDistributedSetup:
 
         Returns:
             DistributedContext with all configuration values.
+
         """
         # Check for PyTorch-style env vars first (most common)
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
@@ -370,6 +372,7 @@ class VertexDistributedSetup:
 
         Returns:
             Master node IP address.
+
         """
         ctx = VertexDistributedSetup.setup_from_environment()
         return ctx.master_addr
@@ -396,6 +399,7 @@ class VertexDistributedSetup:
 
         Returns:
             Local IP address string.
+
         """
         try:
             # Create a socket to determine the local IP
@@ -426,6 +430,7 @@ class VertexDistributedSetup:
 
         Raises:
             RuntimeError: If no free port found.
+
         """
         for offset in range(max_attempts):
             port = start_port + offset
@@ -461,6 +466,7 @@ def setup_distributed_training() -> DistributedContext:
             world_size=ctx.world_size,
             rank=ctx.rank,
         )
+
     """
     VertexDistributedSetup.configure_nccl_for_vertex()
     ctx = VertexDistributedSetup.setup_from_environment()

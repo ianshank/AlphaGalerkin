@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
@@ -19,10 +18,6 @@ from src.vertex.config import (
     VertexTrainingConfig,
     create_vertex_config,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 class TestVertexStorageConfig:
     """Tests for VertexStorageConfig."""

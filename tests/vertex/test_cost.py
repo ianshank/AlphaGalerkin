@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,10 +18,6 @@ from src.vertex.cost import (
     format_cost_table,
     get_hourly_rate,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 class TestCostEstimate:
     """Tests for CostEstimate."""

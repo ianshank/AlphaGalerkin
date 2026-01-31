@@ -4,23 +4,17 @@ from __future__ import annotations
 
 import signal
 import time
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.vertex.preemption import (
-    DEFAULT_CHECKPOINT_INTERVAL,
     SPOT_CHECKPOINT_INTERVAL,
     PreemptionEvent,
     PreemptionHandler,
     PreemptionMonitor,
     create_preemption_handler,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 class TestPreemptionEvent:
     """Tests for PreemptionEvent."""

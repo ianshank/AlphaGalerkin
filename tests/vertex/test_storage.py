@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,17 +14,12 @@ from torch import nn
 
 from src.vertex.config import VertexStorageConfig
 from src.vertex.storage import (
-    DEFAULT_MAX_RETRIES,
     GCS_CHECKPOINT_VERSION,
     GCSCheckpointManager,
     GCSCheckpointMetadata,
     GCSDataSource,
     _with_retry,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 class SimpleModel(nn.Module):
     """Simple model for testing."""
@@ -216,8 +210,11 @@ class TestGCSCheckpointManager:
         # Check GCS path
         assert gcs_path == "gs://test-bucket/checkpoints/checkpoint_00001000.pt"
 
-        # Check upload was called
-        manager_with_mocked_gcs._upload_file.assert_called_once()
+        # Check upload was called (main checkpoint + best.pt if metrics provided)
+        assert manager_with_mocked_gcs._upload_file.call_count >= 1
+        # Verify the main checkpoint was uploaded
+        calls = manager_with_mocked_gcs._upload_file.call_args_list
+        assert any("checkpoint_00001000.pt" in str(call) for call in calls)
 
     def test_save_checkpoint_content(
         self,

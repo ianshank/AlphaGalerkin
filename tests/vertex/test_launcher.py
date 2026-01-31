@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,14 +16,10 @@ from src.vertex.config import (
 from src.vertex.launcher import (
     JobState,
     JobStatus,
-    VertexLaunchResult,
     VertexLauncher,
+    VertexLaunchResult,
     create_launcher,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 class TestJobState:
     """Tests for JobState enum."""

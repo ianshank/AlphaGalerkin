@@ -25,28 +25,27 @@ Example:
     # Load checkpoint
     state = manager.load(gcs_path)
     model.load_state_dict(state["model_state_dict"])
+
 """
 
 from __future__ import annotations
 
 import hashlib
-import io
-import json
 import shutil
 import tempfile
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from src.vertex.config import VertexStorageConfig
 
 if TYPE_CHECKING:
-    import torch
-    from google.cloud.storage import Blob, Bucket, Client
+    from google.cloud.storage import Bucket, Client
     from torch import nn
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
@@ -82,6 +81,7 @@ class GCSCheckpointMetadata:
         size_bytes: Checkpoint size in bytes.
         md5_hash: MD5 hash for integrity verification.
         metrics: Training metrics at checkpoint time.
+
     """
 
     step: int
@@ -140,6 +140,7 @@ def _with_retry(
 
     Raises:
         Exception: If all retry attempts fail.
+
     """
     delay = initial_delay
     last_exception = None
@@ -193,6 +194,7 @@ class GCSCheckpointManager:
 
         # Load latest
         state = manager.load_latest()
+
     """
 
     def __init__(
@@ -213,6 +215,7 @@ class GCSCheckpointManager:
             max_checkpoints: Maximum checkpoints to retain.
             max_retries: Maximum retry attempts for GCS operations.
             chunk_size: Chunk size for streaming uploads.
+
         """
         self.bucket_name = bucket_name
         self.checkpoint_prefix = checkpoint_prefix.rstrip("/") + "/"
@@ -252,6 +255,7 @@ class GCSCheckpointManager:
 
         Returns:
             Configured GCSCheckpointManager instance.
+
         """
         return cls(
             bucket_name=config.bucket_name,
@@ -307,6 +311,7 @@ class GCSCheckpointManager:
 
         Returns:
             GCS path of saved checkpoint (gs://bucket/path).
+
         """
         metrics = metrics or {}
         extra = extra or {}
@@ -381,6 +386,7 @@ class GCSCheckpointManager:
         Raises:
             FileNotFoundError: If checkpoint not found.
             ValueError: If neither gcs_path nor step provided.
+
         """
         if gcs_path is None and step is None:
             raise ValueError("Either gcs_path or step must be provided")
@@ -426,6 +432,7 @@ class GCSCheckpointManager:
 
         Raises:
             FileNotFoundError: If no checkpoints found.
+
         """
         checkpoints = self.list_checkpoints()
         if not checkpoints:
@@ -444,6 +451,7 @@ class GCSCheckpointManager:
 
         Raises:
             FileNotFoundError: If no best checkpoint found.
+
         """
         best_path = f"{self.checkpoint_prefix}best.pt"
         return self.load(gcs_path=best_path)
@@ -453,6 +461,7 @@ class GCSCheckpointManager:
 
         Returns:
             List of checkpoint metadata, sorted by step.
+
         """
         prefix = self.checkpoint_prefix
         blobs = self.bucket.list_blobs(prefix=prefix)
@@ -491,6 +500,7 @@ class GCSCheckpointManager:
 
         Returns:
             Latest step number, or None if no checkpoints.
+
         """
         checkpoints = self.list_checkpoints()
         return checkpoints[-1].step if checkpoints else None
@@ -503,6 +513,7 @@ class GCSCheckpointManager:
 
         Returns:
             True if checkpoint exists.
+
         """
         gcs_path = f"{self.checkpoint_prefix}checkpoint_{step:08d}.pt"
         blob = self.bucket.blob(gcs_path)
@@ -516,6 +527,7 @@ class GCSCheckpointManager:
 
         Returns:
             True if deleted, False if not found.
+
         """
         gcs_path = f"{self.checkpoint_prefix}checkpoint_{step:08d}.pt"
         blob = self.bucket.blob(gcs_path)
@@ -541,6 +553,7 @@ class GCSCheckpointManager:
 
         Returns:
             Full GCS path (gs://bucket/path).
+
         """
         if gcs_path is None:
             gcs_path = f"{self.checkpoint_prefix}{local_path.name}"
@@ -557,6 +570,7 @@ class GCSCheckpointManager:
 
         Returns:
             Local file path.
+
         """
         if local_path is None:
             filename = Path(gcs_path).name
@@ -570,6 +584,7 @@ class GCSCheckpointManager:
 
         Returns:
             Number of files removed.
+
         """
         count = 0
         for file in self.local_cache_dir.glob("*.pt"):
@@ -592,6 +607,7 @@ class GCSCheckpointManager:
         Args:
             metric: Metric name to track.
             mode: "min" or "max" for best value determination.
+
         """
         self._best_metric = metric
         self._best_mode = mode
@@ -667,11 +683,7 @@ class GCSCheckpointManager:
         """Update best checkpoint if metric improved."""
         is_better = False
 
-        if self._best_value is None:
-            is_better = True
-        elif self._best_mode == "min" and metric_value < self._best_value:
-            is_better = True
-        elif self._best_mode == "max" and metric_value > self._best_value:
+        if self._best_value is None or self._best_mode == "min" and metric_value < self._best_value or self._best_mode == "max" and metric_value > self._best_value:
             is_better = True
 
         if is_better:
@@ -725,6 +737,7 @@ class GCSDataSource:
             data = source.load_shard(shard)
             for batch in data:
                 train(batch)
+
     """
 
     def __init__(
@@ -741,6 +754,7 @@ class GCSDataSource:
             prefix: Prefix path for data files.
             local_cache_dir: Local cache directory.
             max_retries: Maximum retry attempts.
+
         """
         self.bucket_name = bucket_name
         self.prefix = prefix.rstrip("/") + "/"
@@ -777,6 +791,7 @@ class GCSDataSource:
 
         Returns:
             List of shard paths relative to prefix.
+
         """
         blobs = self.bucket.list_blobs(prefix=self.prefix)
 
@@ -799,6 +814,7 @@ class GCSDataSource:
 
         Returns:
             Loaded shard data.
+
         """
         local_path = self.local_cache_dir / shard_name
 
@@ -837,6 +853,7 @@ class GCSDataSource:
 
         Returns:
             GCS path of uploaded shard.
+
         """
         local_path = self.local_cache_dir / shard_name
         local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -869,6 +886,7 @@ class GCSDataSource:
 
         Yields:
             Items from the shard.
+
         """
         # For now, just load the full shard
         # A true streaming implementation would require a different format

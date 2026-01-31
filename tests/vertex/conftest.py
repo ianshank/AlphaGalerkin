@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Generator
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,10 +16,6 @@ from src.vertex.config import (
     VertexStorageConfig,
     VertexTrainingConfig,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 # Mock google.cloud module tree if not installed
 _google_mock = MagicMock()

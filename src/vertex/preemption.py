@@ -23,6 +23,7 @@ Example:
 
         if handler.should_save_checkpoint(step):
             save_checkpoint(step)
+
 """
 
 from __future__ import annotations
@@ -30,15 +31,12 @@ from __future__ import annotations
 import os
 import signal
 import threading
-import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any
 
 import structlog
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger(__name__)
 
@@ -59,6 +57,7 @@ class PreemptionEvent:
         signal: Signal that triggered preemption.
         checkpoint_saved: Whether emergency checkpoint was saved.
         step_at_preemption: Training step when preempted.
+
     """
 
     timestamp: str
@@ -98,6 +97,7 @@ class PreemptionHandler:
         if handler.is_preempted:
             logger.warning("Preemption detected, shutting down")
             break
+
     """
 
     def __init__(
@@ -112,6 +112,7 @@ class PreemptionHandler:
             checkpoint_callback: Function to call for emergency checkpoint.
             checkpoint_interval: Steps between regular checkpoints.
             enable_spot_mode: Use more aggressive checkpointing for spot.
+
         """
         self._checkpoint_callback = checkpoint_callback
         self._base_checkpoint_interval = checkpoint_interval
@@ -155,6 +156,7 @@ class PreemptionHandler:
         Args:
             signum: Signal number.
             frame: Current stack frame.
+
         """
         signal_name = signal.Signals(signum).name
 
@@ -196,6 +198,7 @@ class PreemptionHandler:
 
         Returns:
             True if preemption was detected.
+
         """
         return self._preempted.is_set()
 
@@ -205,6 +208,7 @@ class PreemptionHandler:
 
         Returns:
             PreemptionEvent or None.
+
         """
         return self._preemption_event
 
@@ -213,6 +217,7 @@ class PreemptionHandler:
 
         Args:
             step: Current training step.
+
         """
         with self._lock:
             self._current_step = step
@@ -227,6 +232,7 @@ class PreemptionHandler:
 
         Returns:
             True if checkpoint should be saved.
+
         """
         self.update_step(step)
         return step > 0 and step % self._checkpoint_interval == 0
@@ -264,6 +270,7 @@ class PreemptionMonitor:
                 train_step()
         finally:
             monitor.stop()
+
     """
 
     def __init__(
@@ -276,6 +283,7 @@ class PreemptionMonitor:
         Args:
             check_interval: Seconds between checks.
             preemption_file: Optional file to check for preemption.
+
         """
         self._check_interval = check_interval
         self._preemption_file = preemption_file
@@ -322,6 +330,7 @@ class PreemptionMonitor:
 
         Returns:
             True if preemption detected.
+
         """
         # Check for preemption file
         if self._preemption_file and os.path.exists(self._preemption_file):
@@ -340,6 +349,7 @@ class PreemptionMonitor:
 
         Returns:
             True if preempted.
+
         """
         return self._preempted.is_set()
 
@@ -358,6 +368,7 @@ def create_preemption_handler(
 
     Returns:
         Configured PreemptionHandler.
+
     """
     return PreemptionHandler(
         checkpoint_callback=checkpoint_callback,

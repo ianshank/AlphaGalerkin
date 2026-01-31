@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,10 +14,6 @@ from src.vertex.multi_node import (
     VertexDistributedSetup,
     setup_distributed_training,
 )
-
-if TYPE_CHECKING:
-    pass
-
 
 class TestDistributedContext:
     """Tests for DistributedContext."""

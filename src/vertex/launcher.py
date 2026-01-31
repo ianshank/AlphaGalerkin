@@ -17,24 +17,19 @@ Example:
         args=["--config", "config.yaml"],
     )
     print(f"Job launched: {result.console_url}")
+
 """
 
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
 from src.vertex.config import VertexTrainingConfig
-
-if TYPE_CHECKING:
-    from google.cloud import aiplatform
-    from google.cloud.aiplatform import CustomContainerTrainingJob, CustomJob
 
 logger = structlog.get_logger(__name__)
 
@@ -86,6 +81,7 @@ class VertexLaunchResult:
         state: Current job state.
         create_time: Job creation timestamp.
         labels: Job labels.
+
     """
 
     job_name: str
@@ -118,6 +114,7 @@ class JobStatus:
         start_time: When job started running.
         end_time: When job finished.
         error_message: Error message if failed.
+
     """
 
     job_id: str
@@ -148,6 +145,7 @@ class VertexLauncher:
         status = launcher.get_job_status(result.job_id)
         if status.state == JobState.FAILED:
             print(f"Job failed: {status.error_message}")
+
     """
 
     def __init__(self, config: VertexTrainingConfig) -> None:
@@ -155,6 +153,7 @@ class VertexLauncher:
 
         Args:
             config: Vertex AI training configuration.
+
         """
         self.config = config
         self._initialized = False
@@ -202,6 +201,7 @@ class VertexLauncher:
 
         Returns:
             VertexLaunchResult with job details.
+
         """
         self._ensure_initialized()
         from google.cloud import aiplatform
@@ -287,6 +287,7 @@ class VertexLauncher:
 
         Returns:
             JobStatus with current state.
+
         """
         self._ensure_initialized()
         from google.cloud import aiplatform
@@ -314,6 +315,7 @@ class VertexLauncher:
 
         Returns:
             True if cancellation was requested successfully.
+
         """
         self._ensure_initialized()
         from google.cloud import aiplatform
@@ -345,6 +347,7 @@ class VertexLauncher:
 
         Raises:
             TimeoutError: If timeout exceeded.
+
         """
         start_time = time.time()
 
@@ -386,6 +389,7 @@ class VertexLauncher:
 
         Returns:
             List of job results.
+
         """
         self._ensure_initialized()
         from google.cloud import aiplatform
@@ -477,5 +481,6 @@ def create_launcher(config: VertexTrainingConfig) -> VertexLauncher:
 
     Returns:
         Configured VertexLauncher instance.
+
     """
     return VertexLauncher(config)

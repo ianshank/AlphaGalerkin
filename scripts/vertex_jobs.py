@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
 from typing import TYPE_CHECKING
 
 import structlog
@@ -170,6 +169,7 @@ def get_project(args: argparse.Namespace) -> str:
 
     Raises:
         ValueError: If project cannot be determined.
+
     """
     if args.project:
         return args.project
@@ -202,9 +202,10 @@ def cmd_list(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code.
+
     """
     from src.vertex.config import VertexRegion, VertexStorageConfig, VertexTrainingConfig
-    from src.vertex.launcher import JobState, VertexLauncher
+    from src.vertex.launcher import VertexLauncher
 
     try:
         project = get_project(args)
@@ -275,6 +276,7 @@ def cmd_show(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code.
+
     """
     from src.vertex.config import VertexRegion, VertexStorageConfig, VertexTrainingConfig
     from src.vertex.launcher import VertexLauncher
@@ -300,7 +302,7 @@ def cmd_show(args: argparse.Namespace) -> int:
         logger.error("show_failed", error=str(e))
         return 1
 
-    print(f"\nJob Details")
+    print("\nJob Details")
     print("=" * 60)
     print(f"Job ID:       {status.job_id}")
     print(f"State:        {status.state.name}")
@@ -325,6 +327,7 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code.
+
     """
     from src.vertex.config import VertexRegion, VertexStorageConfig, VertexTrainingConfig
     from src.vertex.launcher import VertexLauncher
@@ -366,6 +369,7 @@ def cmd_wait(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code.
+
     """
     from src.vertex.config import VertexRegion, VertexStorageConfig, VertexTrainingConfig
     from src.vertex.launcher import JobState, VertexLauncher
@@ -418,6 +422,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
 
     Returns:
         Exit code.
+
     """
     try:
         project = get_project(args)
@@ -426,7 +431,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
         return 1
 
     # For logs, we use gcloud CLI as it provides better streaming
-    print(f"To stream logs, run:")
+    print("To stream logs, run:")
     print(f"  gcloud ai custom-jobs stream-logs {args.job_id} \\")
     print(f"    --region={args.region} \\")
     print(f"    --project={project}")
@@ -442,6 +447,7 @@ def main() -> int:
 
     Returns:
         Exit code.
+
     """
     args = parse_args()
     setup_logging(debug=args.debug)

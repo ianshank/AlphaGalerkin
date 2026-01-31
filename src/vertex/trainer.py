@@ -14,14 +14,15 @@ Example:
     )
 
     results = trainer.train(resume_from="gs://bucket/checkpoint.pt")
+
 """
 
 from __future__ import annotations
 
-import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -32,8 +33,6 @@ from src.vertex.preemption import PreemptionHandler, create_preemption_handler
 from src.vertex.storage import GCSCheckpointManager
 
 if TYPE_CHECKING:
-    import torch
-    import torch.distributed as dist
     from torch import nn
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
@@ -66,6 +65,7 @@ class VertexTrainingResult:
         metrics: Final training metrics.
         cost_estimate: Estimated training cost.
         preemption_event: Preemption details if preempted.
+
     """
 
     status: str
@@ -112,6 +112,7 @@ class VertexTrainer:
         results = trainer.train(resume_from=resume_path)
 
         print(f"Training {results.status} at step {results.final_step}")
+
     """
 
     def __init__(
@@ -132,6 +133,7 @@ class VertexTrainer:
             optimizer: Optimizer (created if None).
             scheduler: LR scheduler (optional).
             train_step_fn: Custom training step function.
+
         """
         self.model = model
         self.config = config
@@ -231,6 +233,7 @@ class VertexTrainer:
 
         Returns:
             VertexTrainingResult with training outcomes.
+
         """
         # Setup if not already done
         if self._checkpoint_manager is None:
@@ -332,6 +335,7 @@ class VertexTrainer:
 
         Returns:
             Dictionary of metrics from the step.
+
         """
         if self._train_step_fn is not None:
             return self._train_step_fn()
@@ -346,6 +350,7 @@ class VertexTrainer:
 
         Args:
             checkpoint_path: GCS or local checkpoint path.
+
         """
         assert self._checkpoint_manager is not None
 
@@ -363,6 +368,7 @@ class VertexTrainer:
 
         Args:
             state: Checkpoint state dictionary.
+
         """
         # Load model state
         model_state = state["model_state_dict"]
@@ -403,6 +409,7 @@ class VertexTrainer:
 
         Returns:
             GCS path of saved checkpoint.
+
         """
         assert self._checkpoint_manager is not None
         assert self._distributed_ctx is not None
@@ -447,6 +454,7 @@ class VertexTrainer:
 
         Args:
             metrics: Metrics to log.
+
         """
         assert self._cost_tracker is not None
 
@@ -503,6 +511,7 @@ def create_vertex_trainer(
 
     Returns:
         Configured VertexTrainer instance.
+
     """
     return VertexTrainer(
         model=model,

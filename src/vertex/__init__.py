@@ -34,6 +34,7 @@ Example:
         display_name="alphagalerkin-training",
         container_uri="gcr.io/my-project/trainer:latest",
     )
+
 """
 
 from src.vertex.config import (
@@ -57,8 +58,8 @@ from src.vertex.cost import (
 from src.vertex.launcher import (
     JobState,
     JobStatus,
-    VertexLaunchResult,
     VertexLauncher,
+    VertexLaunchResult,
     create_launcher,
 )
 from src.vertex.multi_node import (

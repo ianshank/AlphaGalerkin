@@ -118,11 +118,13 @@ class AuthConfig(BaseModel):
     @model_validator(mode="after")
     def validate_service_account_config(self) -> AuthConfig:
         """Ensure service account key is provided when using SA auth."""
-        if self.auth_method == AuthMethod.SERVICE_ACCOUNT_KEY:
-            if self.service_account_key_path is None:
-                raise ValueError(
-                    "service_account_key_path is required when auth_method is SERVICE_ACCOUNT_KEY"
-                )
+        if (
+            self.auth_method == AuthMethod.SERVICE_ACCOUNT_KEY
+            and self.service_account_key_path is None
+        ):
+            raise ValueError(
+                "service_account_key_path is required when auth_method is SERVICE_ACCOUNT_KEY"
+            )
         return self
 
 
@@ -399,7 +401,9 @@ class ValidationResult:
 class AuthenticationError(Exception):
     """Raised when GCP authentication fails."""
 
-    def __init__(self, message: str, validation_result: ValidationResult | None = None):
+    def __init__(
+        self, message: str, validation_result: ValidationResult | None = None
+    ) -> None:
         """Initialize authentication error.
 
         Args:

@@ -295,12 +295,13 @@ class VertexLauncher:
             **self.config.labels,
         }
 
+        accel_type = self.config.resources.accelerator_type
         logger.info(
             "launching_vertex_job",
             display_name=display_name,
             container_uri=container_uri,
             machine_type=self.config.resources.machine_type.value,
-            accelerator_type=self.config.resources.accelerator_type.value if self.config.resources.accelerator_type else None,
+            accelerator_type=accel_type.value if accel_type else None,
             accelerator_count=self.config.resources.accelerator_count,
             replica_count=self.config.resources.replica_count,
             enable_spot=self.config.enable_spot,
@@ -501,10 +502,9 @@ class VertexLauncher:
         machine_type_value = self.config.resources.machine_type.value
         has_integrated_gpu = machine_type_value.startswith(("a2-", "a3-", "g2-"))
 
-        if not has_integrated_gpu:
-            if self.config.resources.accelerator_type is not None:
-                spec["accelerator_type"] = self.config.resources.accelerator_type.value
-                spec["accelerator_count"] = self.config.resources.accelerator_count
+        if not has_integrated_gpu and self.config.resources.accelerator_type is not None:
+            spec["accelerator_type"] = self.config.resources.accelerator_type.value
+            spec["accelerator_count"] = self.config.resources.accelerator_count
 
         return spec
 

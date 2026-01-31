@@ -182,7 +182,8 @@ class VertexTrainer:
         )
 
         # Setup preemption handler
-        checkpoint_interval = self.vertex_config.get_effective_checkpoint_interval() * 60  # Convert to steps
+        # Convert checkpoint interval from minutes to steps
+        checkpoint_interval = self.vertex_config.get_effective_checkpoint_interval() * 60
         self._preemption_handler = create_preemption_handler(
             checkpoint_callback=self._emergency_checkpoint,
             enable_spot=self.vertex_config.enable_spot,
@@ -201,8 +202,10 @@ class VertexTrainer:
 
         # Move model to device
         torch = _get_torch()
-        if torch.cuda.is_available() and self._distributed_ctx.local_rank < torch.cuda.device_count():
-            device = torch.device(f"cuda:{self._distributed_ctx.local_rank}")
+        cuda_available = torch.cuda.is_available()
+        local_rank = self._distributed_ctx.local_rank
+        if cuda_available and local_rank < torch.cuda.device_count():
+            device = torch.device(f"cuda:{local_rank}")
             self.model = self.model.to(device)
 
         # Wrap with DDP if distributed

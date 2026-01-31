@@ -348,10 +348,13 @@ class CostTracker:
         machine_type_value = machine_type.value if machine_type else ""
         has_integrated_gpu = machine_type_value.startswith(("a2-", "a3-", "g2-"))
 
-        if not has_integrated_gpu:
-            if self._accelerator_type is not None and self._accelerator_count > 0:
-                accel_rate = ACCELERATOR_HOURLY_RATES.get(self._accelerator_type, 0.0)
-                accel_cost = accel_rate * self._accelerator_count * self._replica_count
+        if (
+            not has_integrated_gpu
+            and self._accelerator_type is not None
+            and self._accelerator_count > 0
+        ):
+            accel_rate = ACCELERATOR_HOURLY_RATES.get(self._accelerator_type, 0.0)
+            accel_cost = accel_rate * self._accelerator_count * self._replica_count
 
         # Apply spot discount
         total_hourly = machine_cost + accel_cost
@@ -443,9 +446,12 @@ def get_hourly_rate(
     machine_type_value = machine_type.value if machine_type else ""
     has_integrated_gpu = machine_type_value.startswith(("a2-", "a3-", "g2-"))
 
-    if not has_integrated_gpu:
-        if accelerator_type is not None and accelerator_count > 0:
-            accel_rate = ACCELERATOR_HOURLY_RATES.get(accelerator_type, 0.0) * accelerator_count
+    if (
+        not has_integrated_gpu
+        and accelerator_type is not None
+        and accelerator_count > 0
+    ):
+        accel_rate = ACCELERATOR_HOURLY_RATES.get(accelerator_type, 0.0) * accelerator_count
 
     total = machine_rate + accel_rate
 

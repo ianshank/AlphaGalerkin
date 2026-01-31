@@ -441,7 +441,8 @@ class VertexDistributedSetup:
                 return port
             except OSError:
                 continue
-        raise RuntimeError(f"Could not find free port in range {start_port}-{start_port + max_attempts}")
+        end_port = start_port + max_attempts
+        raise RuntimeError(f"Could not find free port in range {start_port}-{end_port}")
 
 
 def setup_distributed_training() -> DistributedContext:

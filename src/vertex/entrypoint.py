@@ -65,9 +65,10 @@ def init_wandb_for_vertex(
 
     # Build W&B config from environment and training config
     wandb_config = training_config.get("wandb", {}).copy()
+    default_project = wandb_config.get("project", "alphagalerkin")
     wandb_config.update({
         "enabled": True,
-        "project": os_module.environ.get("WANDB_PROJECT", wandb_config.get("project", "alphagalerkin")),
+        "project": os_module.environ.get("WANDB_PROJECT", default_project),
         "entity": os_module.environ.get("WANDB_ENTITY", wandb_config.get("entity")),
         "name": os_module.environ.get("WANDB_RUN_NAME", wandb_config.get("name")),
         "mode": mode,
@@ -444,7 +445,8 @@ def main() -> int:
             # Placeholder - actual implementation would save current state
             pass
 
-        shutdown_handler = GracefulShutdownHandler(
+        # Note: Handler registers signal handlers in __init__ and must stay in scope
+        _shutdown_handler = GracefulShutdownHandler(
             checkpoint_callback=emergency_checkpoint,
         )
 

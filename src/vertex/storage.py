@@ -683,7 +683,11 @@ class GCSCheckpointManager:
         """Update best checkpoint if metric improved."""
         is_better = False
 
-        if self._best_value is None or self._best_mode == "min" and metric_value < self._best_value or self._best_mode == "max" and metric_value > self._best_value:
+        if self._best_value is None:
+            is_better = True
+        elif self._best_mode == "min" and metric_value < self._best_value:
+            is_better = True
+        elif self._best_mode == "max" and metric_value > self._best_value:
             is_better = True
 
         if is_better:

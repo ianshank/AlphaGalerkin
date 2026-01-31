@@ -114,3 +114,10 @@ huggingface_hub_cache/
 *.tmp
 *.temp
 *.bak
+
+# HuggingFace Space deployment (local only)
+hf_space/
+deploy_space.py
+
+# ONNX models
+*.onnx

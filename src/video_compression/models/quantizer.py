@@ -12,6 +12,7 @@ All quantizers:
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
 
 import torch
@@ -249,68 +250,3 @@ def create_quantizer(config: QuantizerConfig) -> Quantizer:
             raise ValueError(f"Unknown quantization mode: {config.mode}")
 
 
-class LearnedQuantizer(Quantizer):
-    """Quantizer with learned scale and offset per channel.
-
-    Learns optimal quantization parameters for each channel to minimize
-    rate-distortion cost.
-
-    Parameters:
-        scale: Per-channel scaling (default 1.0)
-        offset: Per-channel offset (default 0.0)
-
-    Quantization:
-        q(x) = round((x - offset) / scale) * scale + offset
-    """
-
-    def __init__(
-        self,
-        num_channels: int,
-        init_scale: float = 1.0,
-        base_quantizer: Quantizer | None = None,
-    ) -> None:
-        """Initialize learned quantizer.
-
-        Args:
-            num_channels: Number of channels to quantize.
-            init_scale: Initial scale value.
-            base_quantizer: Base quantizer for the round operation.
-        """
-        super().__init__()
-        self.base_quantizer = base_quantizer or STEQuantizer()
-
-        # Learnable parameters (in log space for scale)
-        self.log_scale = nn.Parameter(torch.full((num_channels,), math.log(init_scale)))
-        self.offset = nn.Parameter(torch.zeros(num_channels))
-
-    @property
-    def scale(self) -> Tensor:
-        """Get scale from log_scale."""
-        return torch.exp(self.log_scale)
-
-    def forward(
-        self,
-        x: Float[Tensor, "batch channels ..."],
-        training: bool | None = None,
-    ) -> Float[Tensor, "batch channels ..."]:
-        """Quantize with learned scale and offset.
-
-        Args:
-            x: Input tensor (B, C, ...).
-            training: Override training mode.
-
-        Returns:
-            Quantized tensor.
-        """
-        # Get parameters with proper shape
-        scale = self.scale.view(1, -1, *([1] * (x.ndim - 2)))
-        offset = self.offset.view(1, -1, *([1] * (x.ndim - 2)))
-
-        # Normalize, quantize, denormalize
-        x_norm = (x - offset) / (scale + 1e-8)
-        x_quant = self.base_quantizer(x_norm, training)
-        return x_quant * scale + offset
-
-
-# Import math for LearnedQuantizer
-import math

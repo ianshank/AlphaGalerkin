@@ -135,8 +135,8 @@ class MCTSRateController:
     def _compute_target_bits(self) -> float:
         """Compute target bits per frame from config."""
         if self.config.rate_control_mode == RateControlMode.CBR:
-            # Target bitrate in kbps, assume 30 fps
-            fps = 30.0
+            # Target bitrate in kbps, use configured fps
+            fps = self.config.fps
             return (self.config.target_bitrate_kbps * 1000) / fps
         else:
             # VBR/CRF: use a reasonable default
@@ -432,13 +432,18 @@ class GOPPlanner:
         # Determine frame types
         frame_types = self._get_frame_types(gop_size)
 
-        # Allocate bits based on frame type weights
-        type_weights = {"I": 2.0, "P": 1.0, "B": 0.5}
+        # Allocate bits based on frame type weights from config
+        type_weights = {
+            "I": self.config.weight_i,
+            "P": self.config.weight_p,
+            "B": self.config.weight_b,
+        }
         total_weight = sum(type_weights[t] for t in frame_types)
 
+        # Use configured fps for bitrate calculation
         target_bits = (
-            self.config.target_bitrate_kbps * 1000 * gop_size / 30
-        )  # Assume 30 fps
+            self.config.target_bitrate_kbps * 1000 * gop_size / self.config.fps
+        )
 
         # Plan each frame
         for i, (latent, frame_type) in enumerate(zip(frame_latents, frame_types)):

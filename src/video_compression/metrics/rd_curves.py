@@ -13,6 +13,12 @@ from typing import Literal
 
 import numpy as np
 
+# Compatibility for numpy.trapz (renamed to trapezoid in numpy 2.0)
+try:
+    _trapezoid = np.trapezoid
+except AttributeError:
+    _trapezoid = _trapezoid  # type: ignore[attr-defined]
+
 
 @dataclass
 class RDPoint:
@@ -265,8 +271,8 @@ def _bd_rate_cubic(
 
     # Integrate using trapezoidal rule
     dq = (max_quality - min_quality) / (num_samples - 1)
-    anchor_area = np.trapz(anchor_log_rates_interp, dx=dq)
-    test_area = np.trapz(test_log_rates_interp, dx=dq)
+    anchor_area = _trapezoid(anchor_log_rates_interp, dx=dq)
+    test_area = _trapezoid(test_log_rates_interp, dx=dq)
 
     # Compute average log rate difference
     avg_log_diff = (test_area - anchor_area) / (max_quality - min_quality)

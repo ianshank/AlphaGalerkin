@@ -408,6 +408,62 @@ class MCTSRateControlConfig(BaseModuleConfig):
         description="Maximum QP value",
     )
 
+    # Frame rate
+    fps: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=120.0,
+        description="Video frame rate for bitrate calculations",
+    )
+
+    # Frame-type QP offsets
+    qp_offset_i: int = Field(
+        default=-2,
+        ge=-10,
+        le=10,
+        description="QP offset for I-frames (negative = higher quality)",
+    )
+    qp_offset_p: int = Field(
+        default=0,
+        ge=-10,
+        le=10,
+        description="QP offset for P-frames",
+    )
+    qp_offset_b: int = Field(
+        default=2,
+        ge=-10,
+        le=10,
+        description="QP offset for B-frames (positive = lower quality)",
+    )
+
+    # Frame-type bit allocation weights
+    weight_i: float = Field(
+        default=2.0,
+        gt=0.0,
+        le=10.0,
+        description="Bit allocation weight for I-frames",
+    )
+    weight_p: float = Field(
+        default=1.0,
+        gt=0.0,
+        le=10.0,
+        description="Bit allocation weight for P-frames",
+    )
+    weight_b: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=10.0,
+        description="Bit allocation weight for B-frames",
+    )
+
+    # MCTS network state dimension
+    state_dim: int = Field(
+        default=256,
+        ge=64,
+        le=1024,
+        description="Hidden state dimension for MCTS networks",
+    )
+
     @model_validator(mode="after")
     def validate_qp_range(self) -> MCTSRateControlConfig:
         """Ensure QP min <= max."""

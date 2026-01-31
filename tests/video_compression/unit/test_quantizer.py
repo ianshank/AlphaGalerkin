@@ -8,7 +8,6 @@ from src.video_compression.models.quantizer import (
     NoiseQuantizer,
     STEQuantizer,
     SoftQuantizer,
-    LearnedQuantizer,
     create_quantizer,
 )
 
@@ -116,31 +115,6 @@ class TestSoftQuantizer:
 
         assert final_temp < initial_temp
         assert final_temp >= 0.5  # Min temperature
-
-
-class TestLearnedQuantizer:
-    """Tests for learned quantization parameters."""
-
-    def test_scale_and_offset(self) -> None:
-        """Test learned scale and offset."""
-        quantizer = LearnedQuantizer(num_channels=3, init_scale=1.0)
-
-        x = torch.randn(2, 3, 8, 8)
-        y = quantizer(x)
-
-        assert y.shape == x.shape
-
-    def test_gradient_to_parameters(self) -> None:
-        """Test gradients flow to learned parameters."""
-        quantizer = LearnedQuantizer(num_channels=3)
-
-        x = torch.randn(2, 3, 8, 8, requires_grad=True)
-        y = quantizer(x, training=True)
-        loss = y.mean()
-        loss.backward()
-
-        assert quantizer.log_scale.grad is not None
-        assert quantizer.offset.grad is not None
 
 
 class TestCreateQuantizer:

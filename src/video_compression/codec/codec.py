@@ -139,7 +139,7 @@ class VideoCodec(nn.Module):
     def _init_rate_controller(self) -> None:
         """Initialize MCTS rate controller networks."""
         latent_channels = self.config.encoder.latent_channels
-        state_dim = 256
+        state_dim = self.config.mcts.state_dim
 
         # Create MCTS networks
         representation_net = RepresentationNetwork(
@@ -286,9 +286,13 @@ class VideoCodec(nn.Module):
             )
             return decision.qp
 
-        # Fallback: use frame-type-based QP
+        # Fallback: use frame-type-based QP from config
         base_qp = self.config.mcts.crf_value
-        qp_offset = {"I": -2, "P": 0, "B": 2}
+        qp_offset = {
+            "I": self.config.mcts.qp_offset_i,
+            "P": self.config.mcts.qp_offset_p,
+            "B": self.config.mcts.qp_offset_b,
+        }
         qp = base_qp + qp_offset.get(frame_info.frame_type.value, 0)
 
         return max(self.config.mcts.qp_min, min(self.config.mcts.qp_max, qp))

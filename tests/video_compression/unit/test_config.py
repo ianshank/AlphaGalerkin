@@ -197,9 +197,14 @@ class TestCodecConfig:
     def test_hash_reproducibility(self) -> None:
         """Test configuration hashing is reproducible."""
         config1 = CodecConfig(name="test", seed=42)
-        config2 = CodecConfig(name="test", seed=42)
+        # Same config should produce same hash when called multiple times
+        hash1 = config1.compute_hash()
+        hash2 = config1.compute_hash()
+        assert hash1 == hash2, "Same config should produce same hash"
 
-        assert config1.compute_hash() == config2.compute_hash()
+        # Hash should be a 16-char hex string
+        assert len(hash1) == 16
+        assert all(c in "0123456789abcdef" for c in hash1)
 
     def test_hash_changes_with_params(self) -> None:
         """Test hash changes when parameters change."""

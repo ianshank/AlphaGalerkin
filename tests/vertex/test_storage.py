@@ -86,7 +86,8 @@ class TestGCSCheckpointMetadata:
         d = metadata.to_dict()
         assert d["step"] == 1000
         assert d["gcs_path"] == "gs://bucket/checkpoint.pt"
-        assert d["local_path"] == "/tmp/checkpoint.pt"
+        # Use str(Path(...)) for cross-platform compatibility
+        assert d["local_path"] == str(Path("/tmp/checkpoint.pt"))
         assert d["metrics"]["loss"] == 0.5
 
     def test_from_dict(self) -> None:

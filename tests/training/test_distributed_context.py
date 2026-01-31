@@ -101,18 +101,28 @@ class TestDistributedContextMultiGPU:
     """Tests for DistributedContext in multi-GPU mode (mocked)."""
 
     def test_from_environment_with_env_vars(self) -> None:
-        """Test context creation with environment variables."""
-        with patch.dict(os.environ, {
-            "WORLD_SIZE": "4",
-            "RANK": "2",
-            "LOCAL_RANK": "2",
-        }):
+        """Test context creation with environment variables.
+
+        Note: We mock CUDA availability to prevent "invalid device ordinal"
+        errors when LOCAL_RANK exceeds the number of available GPUs on the
+        test machine. This test validates env var parsing, not CUDA device
+        allocation.
+        """
+        with (
+            patch.dict(os.environ, {
+                "WORLD_SIZE": "4",
+                "RANK": "2",
+                "LOCAL_RANK": "2",
+            }),
+            patch("torch.cuda.is_available", return_value=False),
+        ):
             ctx = DistributedContext.from_environment()
             assert ctx.world_size == 4
             assert ctx.rank == 2
             assert ctx.local_rank == 2
             assert ctx.is_distributed
             assert not ctx.is_main_process
+            assert ctx.device == torch.device("cpu")
 
     def test_from_environment_rank_0(self) -> None:
         """Test rank 0 is main process."""

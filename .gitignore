@@ -92,3 +92,25 @@ hydra_outputs/
 
 # Claude Code
 .claude/
+
+# Benchmarks
+.benchmarks/
+
+# Performance profiling
+*.prof
+*.lprof
+
+# Hugging Face
+.cache/huggingface/
+huggingface_hub_cache/
+
+# Security - never commit tokens/secrets
+*.secret
+*.token
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+*.bak

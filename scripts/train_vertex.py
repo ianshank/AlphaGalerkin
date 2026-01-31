@@ -34,6 +34,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -178,6 +179,37 @@ def parse_args() -> argparse.Namespace:
         help="Enable debug logging",
     )
 
+    # W&B configuration
+    wandb_group = parser.add_argument_group("Weights & Biases")
+    wandb_group.add_argument(
+        "--wandb-api-key",
+        type=str,
+        help="W&B API key (or set WANDB_API_KEY env var)",
+    )
+    wandb_group.add_argument(
+        "--wandb-project",
+        type=str,
+        default="alphagalerkin",
+        help="W&B project name (default: alphagalerkin)",
+    )
+    wandb_group.add_argument(
+        "--wandb-entity",
+        type=str,
+        help="W&B entity (team or username)",
+    )
+    wandb_group.add_argument(
+        "--wandb-run-name",
+        type=str,
+        help="W&B run name (auto-generated if not set)",
+    )
+    wandb_group.add_argument(
+        "--wandb-mode",
+        type=str,
+        default="online",
+        choices=["online", "offline", "disabled"],
+        help="W&B mode (default: online)",
+    )
+
     return parser.parse_args()
 
 
@@ -314,6 +346,18 @@ def main() -> int:
         is_spot=args.spot,
     )
 
+    # Build W&B environment variables
+    wandb_env: dict[str, str] = {}
+    api_key = args.wandb_api_key or os.environ.get("WANDB_API_KEY")
+    if api_key:
+        wandb_env["WANDB_API_KEY"] = api_key
+        wandb_env["WANDB_PROJECT"] = args.wandb_project
+        wandb_env["WANDB_MODE"] = args.wandb_mode
+        if args.wandb_entity:
+            wandb_env["WANDB_ENTITY"] = args.wandb_entity
+        if args.wandb_run_name:
+            wandb_env["WANDB_RUN_NAME"] = args.wandb_run_name
+
     # Print configuration summary
     print("\n" + "=" * 60)
     print("Vertex AI Training Job Configuration")
@@ -329,6 +373,11 @@ def main() -> int:
         print(f"  Accelerator:   {args.accelerator_count}x {args.accelerator_type}")
     print(f"  Replicas:      {args.replica_count}")
     print(f"  Spot:          {args.spot}")
+    print()
+    if wandb_env.get("WANDB_API_KEY"):
+        print(f"W&B:             Enabled (project: {args.wandb_project})")
+    else:
+        print("W&B:             Disabled (no API key)")
     print()
     print("Cost Estimate:")
     print(f"  Hourly Rate:   ${estimate.total_cost_per_hour:.2f}/hr")
@@ -352,6 +401,7 @@ def main() -> int:
             display_name=args.display_name,
             container_uri=args.container_uri,
             args=training_args,
+            environment_variables=wandb_env if wandb_env else None,
             sync=args.sync,
         )
 

@@ -34,6 +34,61 @@ from src.vertex.storage import GCSCheckpointManager
 logger = structlog.get_logger(__name__)
 
 
+def init_wandb_for_vertex(
+    training_config: dict[str, Any],
+    ctx: DistributedContext,
+) -> Any:
+    """Initialize W&B logger from environment variables.
+
+    Only initializes on main process (rank 0) to avoid duplicate runs.
+
+    Args:
+        training_config: Training configuration dictionary.
+        ctx: Distributed context.
+
+    Returns:
+        WandbLogger instance or None if disabled.
+
+    """
+    import os as os_module
+
+    # Only main process logs to W&B
+    if not ctx.is_main_process():
+        return None
+
+    api_key = os_module.environ.get("WANDB_API_KEY")
+    mode = os_module.environ.get("WANDB_MODE", "online")
+
+    if not api_key or mode == "disabled":
+        logger.info("wandb_disabled", reason="no API key or mode=disabled")
+        return None
+
+    # Build W&B config from environment and training config
+    wandb_config = training_config.get("wandb", {}).copy()
+    wandb_config.update({
+        "enabled": True,
+        "project": os_module.environ.get("WANDB_PROJECT", wandb_config.get("project", "alphagalerkin")),
+        "entity": os_module.environ.get("WANDB_ENTITY", wandb_config.get("entity")),
+        "name": os_module.environ.get("WANDB_RUN_NAME", wandb_config.get("name")),
+        "mode": mode,
+        "tags": wandb_config.get("tags", []) + ["vertex-ai"],
+    })
+
+    try:
+        from src.training.wandb_logger import create_wandb_logger
+
+        wandb_logger = create_wandb_logger(wandb_config, training_config)
+        logger.info(
+            "wandb_initialized",
+            project=wandb_config["project"],
+            run_id=getattr(wandb_logger, "run_id", None),
+        )
+        return wandb_logger
+    except Exception as e:
+        logger.warning("wandb_init_failed", error=str(e))
+        return None
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -305,6 +360,9 @@ def main() -> int:
         # Load configurations
         training_config = load_training_config(args.config)
 
+        # Initialize W&B (only on main process)
+        wandb_logger = init_wandb_for_vertex(training_config, ctx)
+
         try:
             vertex_config = create_vertex_config_from_env()
         except ValueError as e:
@@ -333,14 +391,23 @@ def main() -> int:
             checkpoint_callback=emergency_checkpoint,
         )
 
-        # Run training
-        results = run_training(
-            config=training_config,
-            vertex_config=vertex_config,
-            ctx=ctx,
-            checkpoint_manager=checkpoint_manager,
-            resume_path=args.resume,
-        )
+        # Run training with W&B cleanup
+        try:
+            results = run_training(
+                config=training_config,
+                vertex_config=vertex_config,
+                ctx=ctx,
+                checkpoint_manager=checkpoint_manager,
+                resume_path=args.resume,
+            )
+        finally:
+            # Cleanup W&B
+            if wandb_logger is not None:
+                try:
+                    wandb_logger.finish()
+                    logger.info("wandb_finished")
+                except Exception as e:
+                    logger.warning("wandb_finish_failed", error=str(e))
 
         # Cleanup distributed
         if dist.is_initialized():

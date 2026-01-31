@@ -1,0 +1,96 @@
+# 5-hour training configuration
+# Use with: python -m scripts.train --config-name=train_5hr
+#
+# Optimized for ~5 hour training run on GPU:
+# - Reduced MCTS simulations (100 vs 400) for 4x faster self-play
+# - Smaller self-play batches (25 games) for more frequent training
+# - ~45 sec/game = 19 min per 25-game batch
+# - 5000 training steps with buffer refills as needed
+
+defaults:
+  - train
+  - _self_
+
+# MCTS configuration - REDUCED for speed
+mcts:
+  n_simulations: 100  # Was 400, now 4x faster self-play
+  c_puct: 1.5
+  dirichlet_alpha: 0.03
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_drop_move: 30
+  batch_size: 8
+  virtual_loss: 3.0
+
+# Training configuration
+training:
+  # Optimization
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  batch_size: 128
+  gradient_clip: 1.0
+
+  # Learning rate schedule
+  lr_scheduler: cosine
+  warmup_steps: 200
+  total_steps: 5000
+
+  # Self-play - smaller batches for more training iterations
+  n_self_play_games: 25  # Was 75, faster buffer fills
+  replay_buffer_size: 5000
+
+  # Checkpointing
+  checkpoint_interval: 1000
+  use_amp: true
+
+  # Evaluation
+  eval_interval: 500
+  eval_games: 10
+
+  # Loss balancing
+  loss_balancing_strategy: relobralo
+  loss_balancing_beta: 0.99
+  loss_balancing_tau: 1.0
+  loss_balancing_warmup: 50
+
+  # Prioritized replay
+  use_prioritized_replay: false
+
+  # Curriculum learning
+  curriculum_enabled: true
+
+  # Evaluation enhancements
+  eval_vs_checkpoints: true
+  elo_k_factor: 32.0
+  n_tournament_opponents: 2
+  multi_resolution_eval: false  # Faster evals
+
+  # Training stability
+  early_stopping_enabled: false  # Let it run for 5 hours
+  plateau_detection_enabled: true
+  plateau_patience: 15
+  plateau_factor: 0.5
+  plateau_min_lr: 0.000001
+
+# Enable W&B for tracking
+wandb:
+  enabled: true
+  project: alphagalerkin
+  mode: online
+  tags:
+    - 5hr-run
+    - fast-mcts
+  log_model: true
+  log_code: true
+  log_interval: 25  # More frequent logging
+
+# Runtime settings
+device: auto
+log_interval: 50
+
+# Start with 9x9 only for speed
+board_sizes:
+  - 9
+
+experiment_name: alphagalerkin_5hr
+log_level: INFO

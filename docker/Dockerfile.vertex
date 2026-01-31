@@ -49,7 +49,6 @@ WORKDIR /app
 
 # Copy dependency files first for better caching
 COPY pyproject.toml ./
-COPY setup.py ./
 
 # Install Python dependencies
 # Using --no-cache-dir to reduce image size

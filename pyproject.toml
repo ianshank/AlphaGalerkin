@@ -42,6 +42,10 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+vertex = [
+    "google-cloud-aiplatform>=1.36.0",
+    "google-cloud-storage>=2.10.0",
+]
 
 [project.scripts]
 alphagalerkin = "src.tools.cli:main"

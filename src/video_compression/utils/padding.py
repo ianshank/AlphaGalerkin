@@ -19,7 +19,7 @@ from typing import Literal
 import torch
 import torch.nn.functional as F
 from jaxtyping import Float
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor, nn
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,7 @@ class PaddingConfig(BaseModel):
         description="Use symmetric padding (equal on both sides)",
     )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @dataclass

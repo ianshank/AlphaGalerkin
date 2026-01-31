@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import BinaryIO, Iterator
 
 import torch
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor
 
 from src.video_compression.utils.padding import PaddingInfo
@@ -67,8 +67,7 @@ class BitstreamHeader(BaseModel):
     # Computed fields
     total_bits: int = Field(default=0, ge=0, description="Total encoded bits")
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
     @property
     def fps(self) -> float:

@@ -1,0 +1,108 @@
+# Full PoC Scenario Suite Configuration
+# Run with: python -m src.poc.cli run --config config/scenarios/poc_full.yaml
+
+# Global settings
+defaults:
+  seed: 42
+  timeout_seconds: 7200  # 2 hours max per scenario
+
+scenarios:
+  # Tier 1: Zero-Shot Transfer (Primary PoC)
+  - name: transfer
+    description: "Zero-shot transfer validation: Train 9x9 -> Eval 19x19"
+    tier: integration
+    enabled: true
+
+    # Resolution settings
+    train_resolution: 9
+    eval_resolutions:
+      - 9   # Sanity check (should be very low MSE)
+      - 13  # Intermediate resolution
+      - 19  # Primary target (standard Go board)
+    primary_eval_resolution: 19
+
+    # Data settings
+    n_train_samples: 5000
+    n_eval_samples: 500
+    n_charges: 5
+    batch_size: 32
+
+    # Training settings
+    n_epochs: 100
+    learning_rate: 0.001
+
+    # Model architecture
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 64
+    fourier_scale: 10.0
+    use_fnet: true
+
+    # Success criteria
+    mse_threshold: 0.05
+
+    # Resource hints
+    requires_gpu: false
+    estimated_duration_seconds: 1800  # 30 minutes
+
+  # Tier 2: Computational Complexity Benchmark
+  - name: complexity
+    description: "Verify O(N) Galerkin and O(N log N) FNet complexity"
+    tier: functional
+    enabled: true
+
+    # Benchmark settings
+    grid_sizes:
+      - 9   # 81 tokens
+      - 13  # 169 tokens
+      - 19  # 361 tokens
+      - 25  # 625 tokens
+    batch_size: 32
+    n_warmup: 10
+    n_iterations: 100
+
+    # Model settings
+    d_model: 128
+    n_heads: 4
+
+    # Success criteria
+    fnet_scaling_exponent_max: 1.5     # O(N log N) => exponent < 1.5
+    softmax_scaling_exponent_min: 1.5  # O(N²) => exponent > 1.5
+    min_speedup_factor: 1.5            # FNet should be 1.5x faster at largest size
+
+    # Resource hints
+    requires_gpu: true
+    estimated_duration_seconds: 300  # 5 minutes
+
+  # Tier 3: LBB Stability Monitoring
+  - name: stability
+    description: "Verify LBB stability constant remains positive during training"
+    tier: integration
+    enabled: true
+
+    # Model settings
+    d_model: 64
+    d_key: 32
+    d_value: 32
+
+    # Test settings
+    resolutions:
+      - 5
+      - 9
+      - 13
+      - 19
+    n_forward_passes: 100
+    batch_size: 4
+
+    # Training stability test
+    n_training_steps: 1000
+    learning_rate: 0.001
+
+    # Success criteria
+    lbb_threshold: 0.000001  # 1e-6
+    max_lbb_violations: 0
+
+    # Resource hints
+    requires_gpu: false
+    estimated_duration_seconds: 600  # 10 minutes

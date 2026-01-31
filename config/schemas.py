@@ -99,9 +99,7 @@ class MCTSConfig(BaseModel):
 
     # Dirichlet noise for root exploration
     dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise alpha")
-    dirichlet_epsilon: float = Field(
-        default=0.25, description="Dirichlet noise mixing coefficient"
-    )
+    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing coefficient")
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")
@@ -151,9 +149,9 @@ class TrainingConfig(BaseModel):
     eval_games: int = Field(default=20, description="Number of evaluation games")
 
     # Loss balancing configuration
-    loss_balancing_strategy: Literal["static", "relobralo", "gradnorm", "uncertainty", "softadapt"] = Field(
-        default="relobralo", description="Loss balancing strategy"
-    )
+    loss_balancing_strategy: Literal[
+        "static", "relobralo", "gradnorm", "uncertainty", "softadapt"
+    ] = Field(default="relobralo", description="Loss balancing strategy")
     loss_balancing_beta: float = Field(
         default=0.99, ge=0.0, lt=1.0, description="EMA decay for ReLoBRaLo"
     )
@@ -168,25 +166,19 @@ class TrainingConfig(BaseModel):
     use_prioritized_replay: bool = Field(
         default=False, description="Use prioritized experience replay"
     )
-    per_alpha: float = Field(
-        default=0.6, ge=0.0, le=1.0, description="Priority exponent for PER"
-    )
+    per_alpha: float = Field(default=0.6, ge=0.0, le=1.0, description="Priority exponent for PER")
     per_beta: float = Field(
         default=0.4, ge=0.0, le=1.0, description="Importance sampling start for PER"
     )
 
     # Curriculum learning
-    curriculum_enabled: bool = Field(
-        default=False, description="Enable board size curriculum"
-    )
+    curriculum_enabled: bool = Field(default=False, description="Enable board size curriculum")
 
     # Evaluation enhancements
     eval_vs_checkpoints: bool = Field(
         default=False, description="Evaluate against previous checkpoints"
     )
-    elo_k_factor: float = Field(
-        default=32.0, gt=0.0, description="Elo K-factor for rating updates"
-    )
+    elo_k_factor: float = Field(default=32.0, gt=0.0, description="Elo K-factor for rating updates")
     n_tournament_opponents: int = Field(
         default=5, ge=1, description="Number of previous checkpoints to play against"
     )
@@ -195,9 +187,7 @@ class TrainingConfig(BaseModel):
     )
 
     # Training stability
-    early_stopping_enabled: bool = Field(
-        default=False, description="Enable early stopping"
-    )
+    early_stopping_enabled: bool = Field(default=False, description="Enable early stopping")
     early_stopping_patience: int = Field(
         default=10, ge=1, description="Evaluations without improvement before stopping"
     )
@@ -213,9 +203,7 @@ class TrainingConfig(BaseModel):
     plateau_factor: float = Field(
         default=0.5, gt=0.0, lt=1.0, description="Factor to reduce LR by on plateau"
     )
-    plateau_min_lr: float = Field(
-        default=1e-6, gt=0.0, description="Minimum learning rate"
-    )
+    plateau_min_lr: float = Field(default=1e-6, gt=0.0, description="Minimum learning rate")
 
 
 class DistributedConfig(BaseModel):
@@ -227,13 +215,11 @@ class DistributedConfig(BaseModel):
     # Enable/disable distributed training
     enabled: bool = Field(
         default=False,
-        description="Enable distributed training (auto-detected from environment if False)"
+        description="Enable distributed training (auto-detected from environment if False)",
     )
 
     # World size (number of processes)
-    world_size: int = Field(
-        default=1, ge=1, description="Total number of processes"
-    )
+    world_size: int = Field(default=1, ge=1, description="Total number of processes")
 
     # Communication backend
     backend: Literal["nccl", "gloo"] = Field(
@@ -246,22 +232,16 @@ class DistributedConfig(BaseModel):
     )
 
     # Sync batch normalization
-    sync_batch_norm: bool = Field(
-        default=True, description="Convert BatchNorm to SyncBatchNorm"
-    )
+    sync_batch_norm: bool = Field(default=True, description="Convert BatchNorm to SyncBatchNorm")
 
     # DDP settings
     find_unused_parameters: bool = Field(
         default=False, description="Allow unused parameters in model"
     )
-    broadcast_buffers: bool = Field(
-        default=True, description="Broadcast buffers on forward"
-    )
+    broadcast_buffers: bool = Field(default=True, description="Broadcast buffers on forward")
 
     # Checkpointing
-    save_on_rank_0_only: bool = Field(
-        default=True, description="Only rank 0 saves checkpoints"
-    )
+    save_on_rank_0_only: bool = Field(default=True, description="Only rank 0 saves checkpoints")
 
     # Timeout
     timeout_seconds: int = Field(
@@ -287,9 +267,7 @@ class WandbConfig(BaseModel):
     job_type: str = Field(default="train", description="Job type (train, eval, etc.)")
 
     # Mode settings
-    mode: Literal["online", "offline", "disabled"] = Field(
-        default="online", description="W&B mode"
-    )
+    mode: Literal["online", "offline", "disabled"] = Field(default="online", description="W&B mode")
 
     # Logging settings
     log_model: bool = Field(default=True, description="Log model checkpoints as artifacts")

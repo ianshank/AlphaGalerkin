@@ -4,6 +4,7 @@ This module provides infrastructure for running distributed training
 on Google Cloud Vertex AI, including:
 
 - Configuration schemas for Vertex AI resources
+- Platform-aware GCP authentication utilities
 - GCS-backed checkpoint management with local caching
 - Multi-node distributed training setup
 - Spot instance preemption handling
@@ -15,7 +16,15 @@ Example:
         VertexTrainingConfig,
         VertexLauncher,
         GCSCheckpointManager,
+        GCPAuthenticator,
+        AuthConfig,
     )
+
+    # Validate credentials before training
+    auth = GCPAuthenticator(AuthConfig())
+    result = auth.validate_credentials()
+    if not result.is_valid:
+        print(f"Auth failed: {result.error_message}")
 
     # Configure Vertex AI training
     config = VertexTrainingConfig(
@@ -28,7 +37,7 @@ Example:
         storage=VertexStorageConfig(bucket_name="my-bucket"),
     )
 
-    # Launch training job
+    # Launch training job (with pre-flight auth check)
     launcher = VertexLauncher(config)
     result = launcher.launch(
         display_name="alphagalerkin-training",
@@ -37,6 +46,19 @@ Example:
 
 """
 
+from src.vertex.auth import (
+    AuthConfig,
+    AuthenticationError,
+    AuthMethod,
+    CommandResult,
+    GCPAuthenticator,
+    PlatformInfo,
+    ValidationResult,
+    create_authenticator,
+    detect_platform,
+    find_gcloud_path,
+    run_gcloud_command,
+)
 from src.vertex.config import (
     AcceleratorType,
     DiskType,
@@ -87,15 +109,23 @@ from src.vertex.trainer import (
 __all__ = [
     # Enums
     "AcceleratorType",
+    "AuthMethod",
     "DiskType",
     "JobState",
     "VertexMachineType",
     "VertexRegion",
     # Config classes
+    "AuthConfig",
     "VertexNetworkConfig",
     "VertexResourceConfig",
     "VertexStorageConfig",
     "VertexTrainingConfig",
+    # Authentication
+    "AuthenticationError",
+    "CommandResult",
+    "GCPAuthenticator",
+    "PlatformInfo",
+    "ValidationResult",
     # Launcher
     "JobStatus",
     "VertexLaunchResult",
@@ -119,11 +149,15 @@ __all__ = [
     "VertexTrainer",
     "VertexTrainingResult",
     # Factory functions
+    "create_authenticator",
     "create_launcher",
     "create_preemption_handler",
     "create_vertex_config",
     "create_vertex_trainer",
+    "detect_platform",
     "estimate_job_cost",
+    "find_gcloud_path",
     "get_hourly_rate",
+    "run_gcloud_command",
     "setup_distributed_training",
 ]

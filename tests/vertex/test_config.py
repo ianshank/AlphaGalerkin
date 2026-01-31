@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -472,3 +473,124 @@ class TestAcceleratorType:
         nvidia_types = [a for a in AcceleratorType if a.name.startswith("NVIDIA_")]
         for accel_type in nvidia_types:
             assert accel_type.value.startswith("NVIDIA_")
+
+
+class TestAuthIntegration:
+    """Tests for auth integration in VertexTrainingConfig."""
+
+    @pytest.fixture
+    def sample_storage_config(self) -> VertexStorageConfig:
+        """Create sample storage config."""
+        return VertexStorageConfig(bucket_name="test-bucket")
+
+    def test_default_auth_method(
+        self, sample_storage_config: VertexStorageConfig
+    ) -> None:
+        """Test default auth method is ADC."""
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+        )
+        assert config.auth_method == "adc"
+        assert config.service_account_key_path is None
+        assert config.validate_auth_before_launch is True
+
+    def test_gcloud_auth_method(
+        self, sample_storage_config: VertexStorageConfig
+    ) -> None:
+        """Test gcloud auth method configuration."""
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+            auth_method="gcloud",
+        )
+        assert config.auth_method == "gcloud"
+
+    def test_service_account_auth_method(
+        self, sample_storage_config: VertexStorageConfig, tmp_path: Path
+    ) -> None:
+        """Test service account auth method configuration."""
+        key_file = tmp_path / "key.json"
+        key_file.write_text('{"type": "service_account"}')
+
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+            auth_method="service_account",
+            service_account_key_path=str(key_file),
+        )
+        assert config.auth_method == "service_account"
+        assert config.service_account_key_path == str(key_file)
+
+    def test_invalid_auth_method(
+        self, sample_storage_config: VertexStorageConfig
+    ) -> None:
+        """Test invalid auth method is rejected."""
+        with pytest.raises(ValidationError, match="auth_method must be one of"):
+            VertexTrainingConfig(
+                project_id="my-project",
+                staging_bucket="gs://bucket",
+                storage=sample_storage_config,
+                auth_method="invalid",
+            )
+
+    def test_validate_auth_before_launch_false(
+        self, sample_storage_config: VertexStorageConfig
+    ) -> None:
+        """Test disabling auth validation before launch."""
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+            validate_auth_before_launch=False,
+        )
+        assert config.validate_auth_before_launch is False
+
+    def test_get_auth_config(
+        self, sample_storage_config: VertexStorageConfig
+    ) -> None:
+        """Test get_auth_config creates AuthConfig instance."""
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+            auth_method="gcloud",
+        )
+        auth_config = config.get_auth_config()
+
+        from src.vertex.auth import AuthConfig, AuthMethod
+
+        assert isinstance(auth_config, AuthConfig)
+        assert auth_config.auth_method == AuthMethod.GCLOUD_CLI
+        assert auth_config.project_id == "my-project"
+
+    def test_to_environment_vars_includes_auth(
+        self, sample_storage_config: VertexStorageConfig
+    ) -> None:
+        """Test environment variables include auth settings."""
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+            auth_method="gcloud",
+        )
+        env_vars = config.to_environment_vars()
+        assert env_vars["VERTEX_AUTH_METHOD"] == "gcloud"
+
+    def test_to_environment_vars_with_service_account(
+        self, sample_storage_config: VertexStorageConfig, tmp_path: Path
+    ) -> None:
+        """Test environment variables include service account key path."""
+        key_path = str(tmp_path / "key.json")
+        config = VertexTrainingConfig(
+            project_id="my-project",
+            staging_bucket="gs://bucket",
+            storage=sample_storage_config,
+            auth_method="service_account",
+            service_account_key_path=key_path,
+        )
+        env_vars = config.to_environment_vars()
+        assert env_vars["GOOGLE_APPLICATION_CREDENTIALS"] == key_path

@@ -29,6 +29,11 @@ from typing import Any
 
 import structlog
 
+from src.vertex.auth import (
+    AuthenticationError,
+    GCPAuthenticator,
+    ValidationResult,
+)
 from src.vertex.config import VertexTrainingConfig
 
 logger = structlog.get_logger(__name__)
@@ -157,6 +162,59 @@ class VertexLauncher:
         """
         self.config = config
         self._initialized = False
+        self._auth_validated = False
+
+    def _ensure_authenticated(self) -> ValidationResult:
+        """Validate GCP credentials before job submission.
+
+        Returns:
+            ValidationResult with credential status.
+
+        Raises:
+            AuthenticationError: If validation fails and validate_before_launch is True.
+
+        """
+        if self._auth_validated:
+            # Return cached result (credentials already validated this session)
+            return ValidationResult(
+                is_valid=True,
+                account="cached",
+                project=self.config.project_id,
+            )
+
+        auth_config = self.config.get_auth_config()
+        authenticator = GCPAuthenticator(auth_config)
+
+        logger.debug(
+            "validating_credentials",
+            auth_method=auth_config.auth_method.value,
+            project=self.config.project_id,
+        )
+
+        result = authenticator.validate_credentials()
+
+        if result.is_valid:
+            self._auth_validated = True
+            logger.info(
+                "credentials_validated",
+                account=result.account,
+                project=result.project,
+            )
+        else:
+            logger.warning(
+                "credentials_invalid",
+                error=result.error_message,
+                error_code=result.error_code,
+                suggestions=result.suggestions,
+            )
+
+            if self.config.validate_auth_before_launch:
+                raise AuthenticationError(
+                    f"GCP authentication failed: {result.error_message}",
+                    validation_result=result,
+                )
+
+        return result
 
     def _ensure_initialized(self) -> None:
         """Initialize Vertex AI SDK if not already done."""
@@ -202,7 +260,14 @@ class VertexLauncher:
         Returns:
             VertexLaunchResult with job details.
 
+        Raises:
+            AuthenticationError: If credential validation fails.
+
         """
+        # Pre-flight auth check (if configured)
+        if self.config.validate_auth_before_launch:
+            self._ensure_authenticated()
+
         self._ensure_initialized()
         from google.cloud import aiplatform
 
@@ -249,16 +314,28 @@ class VertexLauncher:
             staging_bucket=self.config.staging_bucket,
         )
 
-        # Run job
-        job.run(
-            service_account=self.config.service_account,
-            network=self.config.network.network,
-            timeout=self.config.get_timeout_seconds(),
-            restart_job_on_worker_restart=self.config.restart_on_preemption,
-            enable_web_access=self.config.enable_web_access,
-            tensorboard=self.config.tensorboard_name,
-            sync=sync,
-        )
+        # Run job - use submit() for async to avoid blocking
+        if sync:
+            # Blocking mode - wait for completion
+            job.run(
+                service_account=self.config.service_account,
+                network=self.config.network.network,
+                timeout=self.config.get_timeout_seconds(),
+                restart_job_on_worker_restart=self.config.restart_on_preemption,
+                enable_web_access=self.config.enable_web_access,
+                tensorboard=self.config.tensorboard_name,
+                sync=True,
+            )
+        else:
+            # Non-blocking mode - submit and return immediately
+            job.submit(
+                service_account=self.config.service_account,
+                network=self.config.network.network,
+                timeout=self.config.get_timeout_seconds(),
+                restart_job_on_worker_restart=self.config.restart_on_preemption,
+                enable_web_access=self.config.enable_web_access,
+                tensorboard=self.config.tensorboard_name,
+            )
 
         # Build result
         result = VertexLaunchResult(
@@ -471,6 +548,21 @@ class VertexLauncher:
                 f"{job_id}/cpu?project={self.config.project_id}&region={location}"
             )
         return f"https://console.cloud.google.com/vertex-ai/training?project={self.config.project_id}"
+
+
+    def validate_auth(self) -> ValidationResult:
+        """Validate GCP credentials without launching a job.
+
+        This method can be used for pre-flight checks or CLI tools
+        to verify credentials before submitting a job.
+
+        Returns:
+            ValidationResult with credential status.
+
+        """
+        auth_config = self.config.get_auth_config()
+        authenticator = GCPAuthenticator(auth_config)
+        return authenticator.validate_credentials()
 
 
 def create_launcher(config: VertexTrainingConfig) -> VertexLauncher:

@@ -110,6 +110,12 @@ huggingface_hub_cache/
 .env.local
 .env.*.local
 
+# GCP Service Account Keys
+sa-key.json
+*-key.json
+*.credentials.json
+gcp-*.json
+
 # Temporary files
 *.tmp
 *.temp

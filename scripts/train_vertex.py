@@ -210,6 +210,32 @@ def parse_args() -> argparse.Namespace:
         help="W&B mode (default: online)",
     )
 
+    # Authentication configuration
+    auth_group = parser.add_argument_group("Authentication")
+    auth_group.add_argument(
+        "--auth-method",
+        type=str,
+        default="adc",
+        choices=["adc", "service_account", "gcloud"],
+        help="GCP auth method: adc (default), service_account, or gcloud",
+    )
+    auth_group.add_argument(
+        "--service-account-key",
+        type=str,
+        help="Path to service account JSON key file (for --auth-method service_account)",
+    )
+    auth_group.add_argument(
+        "--validate-auth",
+        action="store_true",
+        default=True,
+        help="Validate credentials before job submission (default: enabled)",
+    )
+    auth_group.add_argument(
+        "--no-validate-auth",
+        action="store_true",
+        help="Skip credential validation before job submission",
+    )
+
     return parser.parse_args()
 
 
@@ -323,6 +349,9 @@ def main() -> int:
         bucket_name=args.bucket,
     )
 
+    # Determine auth validation setting
+    validate_auth = not args.no_validate_auth
+
     config = VertexTrainingConfig(
         project_id=args.project,
         region=region,
@@ -334,6 +363,10 @@ def main() -> int:
         timeout_hours=args.timeout_hours,
         enable_spot=args.spot,
         labels=labels,
+        # Auth settings
+        auth_method=args.auth_method,
+        service_account_key_path=args.service_account_key,
+        validate_auth_before_launch=validate_auth,
     )
 
     # Estimate cost
@@ -379,6 +412,12 @@ def main() -> int:
     else:
         print("W&B:             Disabled (no API key)")
     print()
+    print("Authentication:")
+    print(f"  Method:        {args.auth_method}")
+    print(f"  Validate:      {validate_auth}")
+    if args.service_account_key:
+        print(f"  Key File:      {args.service_account_key}")
+    print()
     print("Cost Estimate:")
     print(f"  Hourly Rate:   ${estimate.total_cost_per_hour:.2f}/hr")
     print(f"  Max Duration:  {args.timeout_hours} hours")
@@ -396,6 +435,8 @@ def main() -> int:
 
     # Launch job
     try:
+        from src.vertex.auth import AuthenticationError
+
         launcher = VertexLauncher(config)
         result = launcher.launch(
             display_name=args.display_name,
@@ -415,6 +456,17 @@ def main() -> int:
             print(f"\nJob completed with state: {result.state.value}")
 
         return 0
+
+    except AuthenticationError as e:
+        print("\nAuthentication failed!")
+        print(f"  Error: {e}")
+        if e.validation_result:
+            if e.validation_result.suggestions:
+                print("\n  Suggestions:")
+                for suggestion in e.validation_result.suggestions:
+                    print(f"    - {suggestion}")
+        print("\n  Use --no-validate-auth to skip this check (not recommended).")
+        return 1
 
     except Exception as e:
         logger.exception("launch_failed", error=str(e))

@@ -39,6 +39,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# Import AuthConfig for type annotation (deferred to avoid circular imports)
+# We use a lazy import pattern in get_auth_config() instead
+
 
 class VertexMachineType(str, Enum):
     """Vertex AI machine types for training.
@@ -484,6 +487,20 @@ class VertexTrainingConfig(BaseModel):
         description="Network configuration",
     )
 
+    # Authentication settings (primitive fields to avoid circular imports)
+    auth_method: str = Field(
+        default="adc",
+        description="Auth method: 'adc', 'service_account', or 'gcloud'",
+    )
+    service_account_key_path: str | None = Field(
+        default=None,
+        description="Path to service account JSON key file",
+    )
+    validate_auth_before_launch: bool = Field(
+        default=True,
+        description="Validate credentials before job submission",
+    )
+
     # Observability
     tensorboard_name: str | None = Field(
         default=None,
@@ -573,6 +590,17 @@ class VertexTrainingConfig(BaseModel):
                 raise ValueError(f"Label key '{key}' must start with a letter")
         return v
 
+    @field_validator("auth_method")
+    @classmethod
+    def validate_auth_method(cls, v: str) -> str:
+        """Validate auth method value."""
+        valid_methods = {"adc", "service_account", "gcloud"}
+        if v not in valid_methods:
+            raise ValueError(
+                f"auth_method must be one of {valid_methods}, got '{v}'"
+            )
+        return v
+
     @model_validator(mode="after")
     def validate_spot_config(self) -> VertexTrainingConfig:
         """Validate spot instance configuration."""
@@ -607,6 +635,23 @@ class VertexTrainingConfig(BaseModel):
         """
         return self.timeout_hours * 3600
 
+    def get_auth_config(self) -> Any:
+        """Get authentication configuration as AuthConfig instance.
+
+        Returns:
+            AuthConfig instance for credential validation.
+
+        """
+        # Lazy import to avoid circular dependency
+        from src.vertex.auth import AuthConfig as AuthConfigClass, AuthMethod
+
+        return AuthConfigClass(
+            auth_method=AuthMethod(self.auth_method),
+            service_account_key_path=self.service_account_key_path,
+            project_id=self.project_id,
+            validate_before_launch=self.validate_auth_before_launch,
+        )
+
     def to_environment_vars(self) -> dict[str, str]:
         """Convert to environment variables for training container.
 
@@ -614,7 +659,7 @@ class VertexTrainingConfig(BaseModel):
             Dictionary of environment variable name-value pairs.
 
         """
-        return {
+        env_vars = {
             "VERTEX_PROJECT_ID": self.project_id,
             "VERTEX_REGION": self.region.value,
             "VERTEX_STAGING_BUCKET": self.staging_bucket,
@@ -623,7 +668,14 @@ class VertexTrainingConfig(BaseModel):
             "VERTEX_DATA_PREFIX": self.storage.data_prefix,
             "VERTEX_ENABLE_SPOT": str(self.enable_spot).lower(),
             "VERTEX_CHECKPOINT_INTERVAL": str(self.get_effective_checkpoint_interval()),
+            "VERTEX_AUTH_METHOD": self.auth_method,
         }
+
+        # Add service account key path if configured
+        if self.service_account_key_path is not None:
+            env_vars["GOOGLE_APPLICATION_CREDENTIALS"] = self.service_account_key_path
+
+        return env_vars
 
     @classmethod
     def from_environment(cls, **overrides: Any) -> VertexTrainingConfig:
@@ -743,3 +795,20 @@ def create_vertex_config(
         enable_spot=enable_spot,
         **kwargs,
     )
+    validate_auth_before_launch: bool = Field(
+        default=True,
+        description="Validate credentials before ensuring SDK initialization/launch",
+    )
+
+    def get_auth_config(self) -> "AuthConfig":
+        """Get authentication configuration.
+        
+        Returns:
+             AuthConfig derived from settings.
+        """
+        from src.vertex.auth import AuthConfig, AuthMethod
+        
+        return AuthConfig(
+             auth_method=AuthMethod.APPLICATION_DEFAULT,
+             project_id=self.project_id,
+        )

@@ -292,3 +292,136 @@ class TestCreateLauncher:
         launcher = create_launcher(config)
         assert isinstance(launcher, VertexLauncher)
         assert launcher.config.project_id == "test-project"
+
+
+class TestLauncherAuthIntegration:
+    """Tests for launcher authentication integration."""
+
+    @pytest.fixture
+    def launcher_with_auth(self) -> VertexLauncher:
+        """Create launcher with auth validation enabled."""
+        config = VertexTrainingConfig(
+            project_id="test-project",
+            staging_bucket="gs://bucket",
+            storage=VertexStorageConfig(bucket_name="bucket"),
+            validate_auth_before_launch=True,
+        )
+        return VertexLauncher(config)
+
+    @pytest.fixture
+    def launcher_without_auth(self) -> VertexLauncher:
+        """Create launcher with auth validation disabled."""
+        config = VertexTrainingConfig(
+            project_id="test-project",
+            staging_bucket="gs://bucket",
+            storage=VertexStorageConfig(bucket_name="bucket"),
+            validate_auth_before_launch=False,
+        )
+        return VertexLauncher(config)
+
+    def test_auth_validated_flag_initial(
+        self, launcher_with_auth: VertexLauncher
+    ) -> None:
+        """Test auth_validated flag is initially False."""
+        assert launcher_with_auth._auth_validated is False
+
+    def test_validate_auth_method(
+        self, launcher_with_auth: VertexLauncher
+    ) -> None:
+        """Test validate_auth method returns ValidationResult."""
+        from src.vertex.auth import ValidationResult
+
+        with patch("src.vertex.launcher.GCPAuthenticator") as mock_auth_class:
+            mock_auth = MagicMock()
+            mock_auth.validate_credentials.return_value = ValidationResult(
+                is_valid=True,
+                account="test@example.com",
+                project="test-project",
+            )
+            mock_auth_class.return_value = mock_auth
+
+            result = launcher_with_auth.validate_auth()
+
+            assert result.is_valid is True
+            assert result.account == "test@example.com"
+            mock_auth.validate_credentials.assert_called_once()
+
+    def test_ensure_authenticated_success(
+        self, launcher_with_auth: VertexLauncher
+    ) -> None:
+        """Test _ensure_authenticated sets flag on success."""
+        from src.vertex.auth import ValidationResult
+
+        with patch("src.vertex.launcher.GCPAuthenticator") as mock_auth_class:
+            mock_auth = MagicMock()
+            mock_auth.validate_credentials.return_value = ValidationResult(
+                is_valid=True,
+                account="test@example.com",
+                project="test-project",
+            )
+            mock_auth_class.return_value = mock_auth
+
+            launcher_with_auth._ensure_authenticated()
+
+            assert launcher_with_auth._auth_validated is True
+
+    def test_ensure_authenticated_failure_raises(
+        self, launcher_with_auth: VertexLauncher
+    ) -> None:
+        """Test _ensure_authenticated raises on failure when validation enabled."""
+        from src.vertex.auth import ValidationResult
+        from src.vertex.launcher import AuthenticationError
+
+        with patch("src.vertex.launcher.GCPAuthenticator") as mock_auth_class:
+            mock_auth = MagicMock()
+            mock_auth.validate_credentials.return_value = ValidationResult(
+                is_valid=False,
+                account=None,
+                project=None,
+                error_message="No credentials found",
+                error_code="NO_ADC",
+            )
+            mock_auth_class.return_value = mock_auth
+
+            with pytest.raises(AuthenticationError) as exc_info:
+                launcher_with_auth._ensure_authenticated()
+
+            assert "No credentials found" in str(exc_info.value)
+            assert launcher_with_auth._auth_validated is False
+
+    def test_ensure_authenticated_cached(
+        self, launcher_with_auth: VertexLauncher
+    ) -> None:
+        """Test _ensure_authenticated uses cached result."""
+        from src.vertex.auth import ValidationResult
+
+        # Pre-set the validated flag
+        launcher_with_auth._auth_validated = True
+
+        with patch("src.vertex.launcher.GCPAuthenticator") as mock_auth_class:
+            result = launcher_with_auth._ensure_authenticated()
+
+            # Should not call authenticator since already validated
+            mock_auth_class.assert_not_called()
+            assert result.is_valid is True
+
+    def test_ensure_authenticated_disabled_no_raise(
+        self, launcher_without_auth: VertexLauncher
+    ) -> None:
+        """Test _ensure_authenticated doesn't raise when validation disabled."""
+        from src.vertex.auth import ValidationResult
+
+        with patch("src.vertex.launcher.GCPAuthenticator") as mock_auth_class:
+            mock_auth = MagicMock()
+            mock_auth.validate_credentials.return_value = ValidationResult(
+                is_valid=False,
+                account=None,
+                project=None,
+                error_message="No credentials",
+                error_code="NO_ADC",
+            )
+            mock_auth_class.return_value = mock_auth
+
+            # Should not raise even with invalid credentials
+            result = launcher_without_auth._ensure_authenticated()
+            assert result.is_valid is False

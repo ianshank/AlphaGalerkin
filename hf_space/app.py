@@ -796,10 +796,11 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
         create_physics_demo_tab(model=MODEL, device=DEVICE)
 
         # ===== TAB 4: Benchmark Demo (PR #20) =====
-        create_benchmark_demo_tab(device=DEVICE)
+        create_benchmark_demo_tab()
 
         # ===== TAB 5: Architecture Demo (PR #20) =====
-        create_architecture_demo_tab(device=DEVICE)
+        create_architecture_demo_tab(model=MODEL, device=DEVICE)
+
 
         # ===== TAB 6: About =====
         with gr.TabItem("About"):

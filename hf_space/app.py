@@ -811,7 +811,10 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
             )
 
         # ===== TAB 3: Physics Demo (PR #20) =====
-        create_physics_demo_tab(model=MODEL, device=DEVICE)
+        # Note: Physics demo does not use the Go model - it generates ground truth
+        # using the Poisson solver. A separate physics model would be needed for
+        # neural operator predictions.
+        create_physics_demo_tab(model=None, device=DEVICE)
 
         # ===== TAB 4: Benchmark Demo (PR #20) =====
         create_benchmark_demo_tab()

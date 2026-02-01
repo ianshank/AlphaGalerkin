@@ -42,7 +42,6 @@ class GameSession:
         komi: Komi value for this game.
         move_history: List of moves played (coordinates or "PASS").
         is_human_vs_ai: Whether this is a human vs AI game.
-        ai_color: Color AI is playing (if applicable).
 
     """
 
@@ -51,7 +50,6 @@ class GameSession:
     komi: float
     move_history: list[tuple[int, int] | str] = field(default_factory=list)
     is_human_vs_ai: bool = True
-    ai_color: int = field(default_factory=lambda: SimpleGoGame.WHITE)
 
     @property
     def move_count(self) -> int:

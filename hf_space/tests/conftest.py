@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 # Ensure imports work from test directory

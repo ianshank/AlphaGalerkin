@@ -28,13 +28,20 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def mcts_config():
     """Get MCTS rate control configuration."""
-    from src.video_compression.config import CodecConfig
+    from src.video_compression.config import CodecConfig, MCTSRateControlConfig
     
-    config = CodecConfig(name="mcts_test")
-    # Enable MCTS rate control
-    config.mcts.enabled = True
-    config.mcts.num_simulations = 10  # Reduced for testing speed
-    config.mcts.gop_size = 4
+    # Create config with MCTS settings for testing
+    # Note: MCTSRateControlConfig doesn't have 'enabled' field
+    # MCTS is enabled by passing use_mcts_rate_control=True to create_codec
+    mcts_settings = MCTSRateControlConfig(
+        name="mcts_test",
+        num_simulations=10,  # Reduced for testing speed
+        gop_size=4,
+    )
+    config = CodecConfig(
+        name="mcts_test",
+        mcts=mcts_settings,
+    )
     return config
 
 

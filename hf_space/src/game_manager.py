@@ -213,8 +213,8 @@ class GameManager:
         transfer_tag = " [Zero-shot]" if session.is_zero_shot else ""
 
         return (
-            f"⚫ Black captures: {black_captures} | "
-            f"⚪ White captures: {white_captures} | "
+            f"Black captures: {black_captures} | "
+            f"White captures: {white_captures} | "
             f"Move: {session.move_count} | "
             f"{session.current_player_name} to play | "
             f"Komi: {session.komi}{transfer_tag}"
@@ -248,17 +248,17 @@ class GameManager:
         if black_score > white_score:
             margin = black_score - white_score
             return (
-                f"🏆 Black wins by {margin:.1f} points! "
+                f"Black wins by {margin:.1f} points "
                 f"(B: {black_score:.1f}, W: {white_score:.1f})"
             )
         elif white_score > black_score:
             margin = white_score - black_score
             return (
-                f"🏆 White wins by {margin:.1f} points! "
+                f"White wins by {margin:.1f} points "
                 f"(B: {black_score:.1f}, W: {white_score:.1f})"
             )
         else:
-            return f"🤝 Draw! (B: {black_score:.1f}, W: {white_score:.1f})"
+            return f"Draw (B: {black_score:.1f}, W: {white_score:.1f})"
 
     def get_board_size_label(self, size: int) -> str:
         """Get descriptive label for board size.

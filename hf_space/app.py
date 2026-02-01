@@ -154,7 +154,7 @@ def update_game(
         game = SimpleGoGame(board_size)
         return (
             history,
-            "❌ Model failed to load.",
+            "Error: Model failed to load.",
             RENDERER.render(game),
             "",
         )
@@ -173,7 +173,7 @@ def update_game(
         )
         return (
             history,
-            f"⚠️ {str(e)}",
+            f"Warning: {str(e)}",
             RENDERER.render(game),
             GAME_MANAGER.get_score_display(session),
         )
@@ -195,7 +195,7 @@ def update_game(
             )
             return (
                 history,
-                f"❌ Illegal move: {r},{c}",
+                f"Error: Illegal move at {r},{c}",
                 RENDERER.render(game),
                 GAME_MANAGER.get_score_display(session),
             )
@@ -212,7 +212,7 @@ def update_game(
         final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"🏁 Game Over! {final}",
+            f"Game Over. {final}",
             RENDERER.render(game),
             GAME_MANAGER.get_score_display(session),
         )
@@ -241,14 +241,14 @@ def update_game(
         final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"🤖 AI played: {ai_move_str}. 🏁 Game Over! {final}",
+            f"AI played: {ai_move_str}. Game Over. {final}",
             RENDERER.render(game, last_move_idx),
             GAME_MANAGER.get_score_display(session),
         )
 
     return (
         history,
-        f"🤖 AI played: {ai_move_str}",
+        f"AI played: {ai_move_str}",
         RENDERER.render(game, last_move_idx),
         GAME_MANAGER.get_score_display(session),
     )
@@ -277,7 +277,7 @@ def reset_game(board_size: int) -> tuple[list, str, np.ndarray, str]:
 
     return (
         [],
-        f"♟️ Game Reset. You are Black (first). {komi_info} ({transfer_info})",
+        f"Game Reset. You are Black (first). {komi_info} ({transfer_info})",
         RENDERER.render(session.game),
         GAME_MANAGER.get_score_display(session),
     )
@@ -318,7 +318,7 @@ def ai_vs_ai_step(
         game = SimpleGoGame(board_size)
         return (
             history,
-            "❌ Model failed to load.",
+            "Error: Model failed to load.",
             RENDERER.render(game),
             "",
         )
@@ -336,7 +336,7 @@ def ai_vs_ai_step(
         final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"🏁 Game Over! {final}",
+            f"Game Over. {final}",
             RENDERER.render(game),
             GAME_MANAGER.get_score_display(session),
         )
@@ -373,7 +373,7 @@ def ai_vs_ai_step(
         final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"Move {len(history)}: {move_str}. 🏁 {final}",
+            f"Move {len(history)}: {move_str}. Game Over. {final}",
             RENDERER.render(game, last_move_idx),
             GAME_MANAGER.get_score_display(session),
         )
@@ -401,7 +401,7 @@ def ai_vs_ai_reset(board_size: int) -> tuple[list, str, np.ndarray, str, bool]:
 
     return (
         [],
-        f"🔄 Ready ({transfer_info}). Click 'Next Move' or toggle 'Auto-Play'",
+        f"Ready ({transfer_info}). Click 'Next Move' or toggle 'Auto-Play'",
         RENDERER.render(session.game),
         GAME_MANAGER.get_score_display(session),
         False,
@@ -434,7 +434,7 @@ def ai_vs_ai_auto_step(
         )
         return (
             history,
-            "⏸️ Auto-play paused",
+            "Auto-play paused",
             RENDERER.render(game),
             GAME_MANAGER.get_score_display(session),
             False,
@@ -444,7 +444,7 @@ def ai_vs_ai_auto_step(
         game = SimpleGoGame(board_size)
         return (
             history,
-            "❌ Model failed to load.",
+            "Error: Model failed to load.",
             RENDERER.render(game),
             "",
             False,
@@ -463,7 +463,7 @@ def ai_vs_ai_auto_step(
         final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"🏁 Game Over! {final}",
+            f"Game Over. {final}",
             RENDERER.render(game),
             GAME_MANAGER.get_score_display(session),
             False,
@@ -501,7 +501,7 @@ def ai_vs_ai_auto_step(
         final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"Move {len(history)}: {move_str}. 🏁 {final}",
+            f"Move {len(history)}: {move_str}. Game Over. {final}",
             RENDERER.render(game, last_move_idx),
             GAME_MANAGER.get_score_display(session),
             False,  # Stop auto-play when game ends
@@ -510,7 +510,7 @@ def ai_vs_ai_auto_step(
     # Continue playing
     return (
         history,
-        f"▶️ Move {len(history)}: {move_str}",
+        f"Playing: Move {len(history)}: {move_str}",
         RENDERER.render(game, last_move_idx),
         GAME_MANAGER.get_score_display(session),
         True,  # Continue auto-play
@@ -536,15 +536,15 @@ def on_ai_board_size_change(
 # ============ GRADIO UI ============
 
 with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
-    gr.Markdown("# ⚫ AlphaGalerkin Go Demo ⚪")
+    gr.Markdown("# AlphaGalerkin Go Demo")
     gr.Markdown(
-        "Play Go against AlphaGalerkin or watch AI vs AI! "
-        "**Zero-shot transfer**: Model trained on 9×9, generalizes to 13×13 and 19×19."
+        "Play Go against AlphaGalerkin or watch AI vs AI. "
+        "**Zero-shot transfer**: Model trained on 9x9, generalizes to 13x13 and 19x19."
     )
 
     with gr.Tabs():
         # ===== TAB 1: Human vs AI =====
-        with gr.TabItem("🎮 Play vs AI"):
+        with gr.TabItem("Play vs AI"):
             gr.Markdown(
                 "### You are Black. Enter moves as `row,col` (0-indexed) or `PASS`"
             )
@@ -578,7 +578,7 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                 with gr.Column(scale=1):
                     status = gr.Textbox(
                         label="Status",
-                        value="♟️ Ready to play. You are Black (first).",
+                        value="Ready to play. You are Black (first).",
                         interactive=False,
                         lines=2,
                     )
@@ -586,8 +586,8 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                         label="Your Move",
                         placeholder="row,col (e.g., 4,4) or PASS",
                     )
-                    submit_btn = gr.Button("▶️ Submit Move", variant="primary")
-                    reset_btn = gr.Button("🔄 Reset Game")
+                    submit_btn = gr.Button("Submit Move", variant="primary")
+                    reset_btn = gr.Button("Reset Game")
 
                     gr.Markdown("---")
                     gr.Markdown("### Coordinate Guide")
@@ -626,8 +626,8 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
             )
 
         # ===== TAB 2: AI vs AI =====
-        with gr.TabItem("🤖 Watch AI vs AI"):
-            gr.Markdown("### Watch the AI play against itself!")
+        with gr.TabItem("Watch AI vs AI"):
+            gr.Markdown("### Watch the AI play against itself")
 
             with gr.Row():
                 with gr.Column(scale=2):
@@ -658,16 +658,16 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                 with gr.Column(scale=1):
                     ai_status = gr.Textbox(
                         label="Status",
-                        value="🔄 Ready. Click 'Next Move' or toggle 'Auto-Play'",
+                        value="Ready. Click 'Next Move' or toggle 'Auto-Play'",
                         interactive=False,
                         lines=2,
                     )
-                    step_btn = gr.Button("⏭️ Next Move", variant="primary")
+                    step_btn = gr.Button("Next Move", variant="primary")
 
                     gr.Markdown("---")
                     gr.Markdown("### Auto-Play")
                     auto_play_checkbox = gr.Checkbox(
-                        label="▶️ Auto-Play (toggle on/off)",
+                        label="Auto-Play (toggle on/off)",
                         value=False,
                     )
                     speed_slider = gr.Slider(
@@ -677,7 +677,7 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                         step=0.5,
                         label="Speed (seconds between moves)",
                     )
-                    ai_reset_btn = gr.Button("🔄 Reset Game")
+                    ai_reset_btn = gr.Button("Reset Game")
 
                     gr.Markdown("---")
                     gr.Markdown("*Toggle Auto-Play to watch continuously.*")
@@ -729,56 +729,54 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
             )
 
         # ===== TAB 3: About =====
-        with gr.TabItem("ℹ️ About"):
+        with gr.TabItem("About"):
             gr.Markdown(
                 """
 ## About AlphaGalerkin
 
-**AlphaGalerkin** is a resolution-independent neural network for Go,
-built using Continuous Operator Learning (Galerkin Transformers & FNet).
+AlphaGalerkin is a resolution-independent neural network for Go
+that demonstrates zero-shot transfer across board sizes using
+Continuous Operator Learning with Galerkin Transformers and FNet.
 
-### 🎯 Zero-Shot Transfer
+**Developer:** Ian Cruickshank
 
-The key innovation is **zero-shot resolution transfer**:
+### Key Innovation
+
+The model achieves zero-shot resolution transfer by learning the underlying
+dynamics of Go rather than memorizing discrete board positions. A network
+trained on 9x9 boards generalizes directly to 13x13 and 19x19 without retraining.
 
 | Board Size | Type | Komi |
 |------------|------|------|
-| 9×9 | Training size | 5.5 |
-| 13×13 | Zero-shot transfer | 6.5 |
-| 19×19 | Zero-shot transfer | 7.5 |
+| 9x9 | Training size | 5.5 |
+| 13x13 | Zero-shot transfer | 6.5 |
+| 19x19 | Zero-shot transfer | 7.5 |
 
-The model learns the underlying dynamics of Go rather than memorizing
-discrete board positions, enabling generalization to any board size.
-
-### 🧠 Technical Features
+### Technical Architecture
 
 - **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection
-- **FNet Mixing**: FFT-based token mixing for efficient rollouts
-- **Fourier Positional Encoding**: Resolution-independent coordinate encoding
-- **MCTS Search**: Monte Carlo Tree Search for move selection
+- **FNet Mixing**: FFT-based token mixing for efficient MCTS rollouts
+- **Fourier Positional Encoding**: Resolution-independent coordinate representation
+- **Monte Carlo Tree Search**: Policy-guided search for move selection
 
-### 🎮 How to Play
+### How to Play
 
-**Human vs AI:**
 1. Select a board size from the dropdown
 2. Enter moves as `row,col` (0-indexed from top-left)
 3. Use `PASS` to pass your turn
 4. The AI responds automatically
 
-**Coordinate System:**
-- Row 0 is at the top, increases downward
-- Column 0 is at the left, increases rightward
-- Board perimeter shows letters (A-T) and numbers (1-19)
-- Example: Center of 9×9 board = `4,4`
+**Coordinate System:** Row 0 is at the top (increases downward),
+Column 0 is at the left (increases rightward). The board perimeter
+displays letters (A-T) and numbers (1-19) for reference.
 
-### 📊 Scoring
+### Scoring
 
-Uses simplified Chinese rules:
-- Score = Stones on board + Captures + Komi (for White)
-- Game ends after two consecutive passes
+Uses simplified Chinese rules: Score = Stones + Captures + Komi (White).
+Game ends after two consecutive passes.
 
 ---
-*Built with ❤️ using Gradio, PyTorch, and the AlphaGalerkin framework.*
+Built with Gradio, PyTorch, and the AlphaGalerkin framework.
             """
             )
 

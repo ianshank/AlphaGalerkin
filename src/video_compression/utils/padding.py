@@ -14,9 +14,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal
 
-import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, Field

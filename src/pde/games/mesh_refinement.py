@@ -480,7 +480,7 @@ class MeshRefinementGame(PDEGame):
         element = leaf_elements[action]
 
         # Perform refinement
-        new_indices = self.mesh.refine_element(
+        self.mesh.refine_element(
             element.index,
             self._refinement_strategy,
         )

@@ -12,12 +12,12 @@ import logging
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator, Sequence
+from typing import Callable, Iterator
 
 import torch
 from pydantic import BaseModel, Field
 from torch import Tensor
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
 

@@ -253,7 +253,7 @@ class BasisSelectionGame(PDEGame):
 
         """
         n_points = len(self._collocation_points)
-        dim = self._collocation_points.shape[1]
+        self._collocation_points.shape[1]
 
         # Start with zero solution
         solution = np.zeros(n_points, dtype=np.float32)

@@ -11,7 +11,7 @@ Provides a complete training loop with:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -21,10 +21,9 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.cuda.amp import GradScaler, autocast
 
-from src.video_compression.config import CodecConfig, TrainingConfig
+from src.video_compression.config import TrainingConfig
 from src.video_compression.codec.codec import VideoCodec
 from src.video_compression.training.loss import CompressionLoss
-from src.video_compression.metrics.quality import compute_psnr, compute_ms_ssim
 
 
 logger = logging.getLogger(__name__)

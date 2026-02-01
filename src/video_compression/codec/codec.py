@@ -9,17 +9,16 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Callable, Iterator, NamedTuple
+from typing import Callable, Iterator, NamedTuple
 
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
-from src.video_compression.config import CodecConfig, RateControlMode
+from src.video_compression.config import CodecConfig
 from src.video_compression.models.encoder import Encoder
 from src.video_compression.models.decoder import Decoder, TemporalDecoder
 from src.video_compression.models.hyperprior import (
-    HyperpriorEntropyModel,
     create_entropy_model,
 )
 from src.video_compression.models.quantizer import create_quantizer
@@ -28,7 +27,6 @@ from src.video_compression.codec.gop_manager import GOPManager, FrameInfo, Frame
 from src.video_compression.mcts.rate_control import (
     MCTSRateController,
     GOPPlanner,
-    RateControlDecision,
 )
 from src.video_compression.mcts.networks import (
     RepresentationNetwork,
@@ -368,7 +366,7 @@ class VideoCodec(nn.Module):
             y_hat = torch.round(y_scaled) * qp_scale
 
             # Get entropy model output for rate estimation
-            entropy_output = self.entropy_model(y_scaled, training=False)
+            self.entropy_model(y_scaled, training=False)
 
             # Compress with entropy coder
             compressed = self.entropy_model.compress(y_scaled)
@@ -563,7 +561,6 @@ class VideoCodec(nn.Module):
         logger.info("Starting video encoding: %d frames", num_frames)
 
         # If MCTS GOP planning is enabled, pre-plan GOPs
-        gop_plans: dict[int, list[RateControlDecision]] = {}
 
         for frame_idx, frame in enumerate(frames):
             if frame_idx >= num_frames:

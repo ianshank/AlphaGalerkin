@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import torch
-from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 import torch.nn.functional as F

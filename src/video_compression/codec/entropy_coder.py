@@ -10,10 +10,8 @@ The entropy coder must be lossless:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import BinaryIO
 
 import torch
-from jaxtyping import Float
 from torch import Tensor
 import numpy as np
 

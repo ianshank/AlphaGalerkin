@@ -16,17 +16,14 @@ File format (.agk):
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Iterator
 
-import torch
 from pydantic import BaseModel, ConfigDict, Field
-from torch import Tensor
 
 from src.video_compression.utils.padding import PaddingInfo
 from src.video_compression.codec.gop_manager import FrameType

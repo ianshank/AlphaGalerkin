@@ -449,7 +449,7 @@ class GOPPlanner:
         for i, (latent, frame_type) in enumerate(zip(frame_latents, frame_types)):
             # Adjust target based on remaining budget
             weight = type_weights[frame_type]
-            frame_target = target_bits * weight / total_weight
+            target_bits * weight / total_weight
 
             # Get decision from MCTS
             decision = self.rate_controller.select_qp(latent, frame_type)

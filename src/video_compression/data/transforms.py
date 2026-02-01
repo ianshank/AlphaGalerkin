@@ -36,10 +36,8 @@ class RandomCrop(nn.Module):
         """
         if x.dim() == 3:
             _, h, w = x.shape
-            spatial_dims = (-2, -1)
         else:
             _, _, h, w = x.shape
-            spatial_dims = (-2, -1)
 
         if h < self.size or w < self.size:
             # Resize if too small

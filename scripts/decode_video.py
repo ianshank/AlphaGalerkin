@@ -416,8 +416,17 @@ def main() -> int:
                     num_symbols=header.latent_channels * latent_h * latent_w,
                 )
 
-                # Create scales tensor (uniform scales as placeholder)
-                scales = torch.ones(1, header.latent_channels, latent_h, latent_w)
+                # WARNING: Using uniform scales as placeholder
+                # TODO: Properly decode hyperprior z_data to get accurate scales
+                # The encoder should store z_data in frame.z_data, which needs to be
+                # decoded through the hyper-synthesis network to reconstruct scales.
+                # Using torch.ones produces incorrect decoding - this is a known limitation.
+                logger.warning(
+                    "using_placeholder_scales",
+                    message="Hyperprior scales not available - using uniform scales",
+                    frame_idx=frame.header.frame_idx,
+                )
+                scales = torch.ones(1, header.latent_channels, latent_h, latent_w, device=device)
 
                 # Decode frame
                 decoded = codec.decode_frame(

@@ -10,8 +10,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterator
 
-import torch
-from jaxtyping import Float
 from torch import Tensor
 
 

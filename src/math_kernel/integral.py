@@ -44,7 +44,7 @@ class MonteCarloIntegral(nn.Module):
             Integrated values.
 
         """
-        n = values.shape[1]
+        values.shape[1]
 
         if weights is None:
             # Uniform weights for Monte Carlo

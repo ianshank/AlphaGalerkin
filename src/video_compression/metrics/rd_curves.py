@@ -227,8 +227,8 @@ def _bd_rate_cubic(
     log_test_rates = np.log10(test_rates + 1e-10)
 
     # Fit cubic polynomials: quality = f(log_rate)
-    anchor_poly = np.polyfit(log_anchor_rates, anchor_qualities, 3)
-    test_poly = np.polyfit(log_test_rates, test_qualities, 3)
+    np.polyfit(log_anchor_rates, anchor_qualities, 3)
+    np.polyfit(log_test_rates, test_qualities, 3)
 
     # Find overlapping quality range
     min_quality = max(anchor_qualities.min(), test_qualities.min())

@@ -9,7 +9,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import io
 import sys
 from pathlib import Path
 
@@ -150,18 +149,6 @@ def get_video_fps(path: Path) -> float:
         return 30.0
 
 
-def serialize_latent(tensor: torch.Tensor) -> bytes:
-    """Serialize tensor to bytes for bitstream storage.
-
-    Args:
-        tensor: Input tensor to serialize.
-
-    Returns:
-        Bytes representation of tensor.
-    """
-    buffer = io.BytesIO()
-    torch.save(tensor.cpu(), buffer)
-    return buffer.getvalue()
 
 
 def main() -> None:
@@ -267,9 +254,11 @@ def main() -> None:
                 psnr = 10 * torch.log10(1.0 / (distortion_tensor + 1e-10)).item()
                 total_psnr += psnr
 
-                # Serialize latent to bytes for bitstream
-                latent_bytes = serialize_latent(output.latent)
-                # Note: CodecOutput doesn't expose hyperprior z tensor separately
+                # Use entropy-coded bitstream data (not raw tensor)
+                # This is the actual compressed representation
+                latent_bytes = output.bitstream.data
+                # Store bitstream metadata for decoding
+                # TODO: Add hyperprior z encoding when available
                 z_bytes = b""
 
                 # Create frame header

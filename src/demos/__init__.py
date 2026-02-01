@@ -23,7 +23,7 @@ from typing import Any
 import structlog
 
 # Core configuration - always available
-from src.demos.config import (  # noqa: E402
+from src.demos.config import (
     ArchitectureDemoConfig,
     BenchmarkDemoConfig,
     ColorScheme,
@@ -34,7 +34,7 @@ from src.demos.config import (  # noqa: E402
 )
 
 # Visualization utilities - require matplotlib
-from src.demos.visualizations import (  # noqa: E402
+from src.demos.visualizations import (
     AttentionVisualizer,
     BoardVisualizer,
     ChartVisualizer,

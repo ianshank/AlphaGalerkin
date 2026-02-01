@@ -1,0 +1,4 @@
+*.pt filter=xet diff=xet merge=xet -text
+*.pth filter=xet diff=xet merge=xet -text
+*.ckpt filter=xet diff=xet merge=xet -text
+*.safetensors filter=xet diff=xet merge=xet -text

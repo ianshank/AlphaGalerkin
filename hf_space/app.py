@@ -29,6 +29,11 @@ from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
 from src.tools.gtp import SimpleGoGame
 
+# Demo modules from PR #20
+from src.demos.physics_demo import create_physics_demo_tab
+from src.demos.benchmark_demo import create_benchmark_demo_tab
+from src.demos.architecture_demo import create_architecture_demo_tab
+
 # Configure structured logging
 structlog.configure(
     processors=[
@@ -787,7 +792,16 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                 ],
             )
 
-        # ===== TAB 3: About =====
+        # ===== TAB 3: Physics Demo (PR #20) =====
+        create_physics_demo_tab(model=MODEL, device=DEVICE)
+
+        # ===== TAB 4: Benchmark Demo (PR #20) =====
+        create_benchmark_demo_tab(device=DEVICE)
+
+        # ===== TAB 5: Architecture Demo (PR #20) =====
+        create_architecture_demo_tab(device=DEVICE)
+
+        # ===== TAB 6: About =====
         with gr.TabItem("About"):
             gr.Markdown(
                 """

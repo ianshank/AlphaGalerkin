@@ -7,8 +7,8 @@ Provides:
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import Iterator
 
 from src.games.sgf.config import SGF_PROPERTIES
 
@@ -22,7 +22,6 @@ class SGFMove:
         x: Column coordinate (0-indexed, -1 for pass)
         y: Row coordinate (0-indexed, -1 for pass)
         sgf_coord: Original SGF coordinate string
-
     """
 
     color: str
@@ -53,7 +52,6 @@ class SGFMove:
 
         Returns:
             SGFMove instance
-
         """
         if not coord or coord == "tt" or len(coord) != 2:
             return cls(color=color, x=-1, y=-1, sgf_coord=coord)
@@ -79,7 +77,6 @@ class SGFMove:
 
         Returns:
             SGF coordinate string
-
         """
         if self.is_pass:
             return ""
@@ -101,7 +98,6 @@ class SGFMove:
 
         Returns:
             GTP coordinate string
-
         """
         if self.is_pass:
             return "pass"
@@ -147,7 +143,6 @@ class SGFNode:
 
         Returns:
             First property value or default
-
         """
         values = self.properties.get(key, [])
         return values[0] if values else default
@@ -160,7 +155,6 @@ class SGFNode:
 
         Returns:
             List of values (empty if not found)
-
         """
         return self.properties.get(key, [])
 
@@ -170,7 +164,6 @@ class SGFNode:
         Args:
             key: Property key
             value: Value or list of values
-
         """
         if isinstance(value, list):
             self.properties[key] = value
@@ -183,7 +176,6 @@ class SGFNode:
         Args:
             key: Property key
             value: Value to add
-
         """
         if key not in self.properties:
             self.properties[key] = []
@@ -197,7 +189,6 @@ class SGFNode:
 
         Returns:
             True if property was removed
-
         """
         if key in self.properties:
             del self.properties[key]
@@ -277,7 +268,6 @@ class SGFNode:
 
         Returns:
             The added child
-
         """
         child.parent = self
         child._board_size = self._board_size
@@ -289,7 +279,6 @@ class SGFNode:
 
         Returns:
             The new child node
-
         """
         child = SGFNode()
         return self.add_child(child)
@@ -302,7 +291,6 @@ class SGFNode:
 
         Returns:
             True if child was removed
-
         """
         if child in self.children:
             self.children.remove(child)
@@ -322,7 +310,6 @@ class SGFNode:
 
         Returns:
             List of nodes from this node to root (inclusive)
-
         """
         path = []
         node: SGFNode | None = self
@@ -419,7 +406,6 @@ class SGFGameTree:
 
         Args:
             **kwargs: Property values by name (e.g., player_black="Lee Sedol")
-
         """
         # Reverse lookup: name -> key
         name_to_key = {name: key for key, (name, _) in SGF_PROPERTIES.items()}
@@ -434,7 +420,6 @@ class SGFGameTree:
 
         Yields:
             Nodes along the main line, starting from root
-
         """
         node: SGFNode | None = self.root
         while node is not None:
@@ -446,7 +431,6 @@ class SGFGameTree:
 
         Yields:
             Moves (excluding nodes without moves)
-
         """
         for node in self.mainline():
             if node.move is not None:
@@ -457,7 +441,6 @@ class SGFGameTree:
 
         Yields:
             All nodes in depth-first order
-
         """
 
         def traverse(node: SGFNode) -> Iterator[SGFNode]:
@@ -483,7 +466,6 @@ class SGFGameTree:
 
         Returns:
             Node at that move, or None if not found
-
         """
         count = 0
         for node in self.mainline():
@@ -502,7 +484,6 @@ class SGFGameTree:
 
         Args:
             result: Result string (e.g., "B+2.5", "W+R", "0")
-
         """
         self.root.set_property("RE", result)
 
@@ -531,7 +512,6 @@ class SGFGameTree:
 
         Returns:
             List of (x, y) coordinates for handicap stones
-
         """
         stones = []
         ab_values = self.root.get_property_list("AB")

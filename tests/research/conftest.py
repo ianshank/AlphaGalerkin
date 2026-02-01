@@ -78,8 +78,12 @@ def experiment_tracker() -> ExperimentTracker:
 
 
 @pytest.fixture
-def benchmark(default_benchmark_config: BenchmarkConfig) -> Benchmark:
-    """Create a benchmark."""
+def research_benchmark(default_benchmark_config: BenchmarkConfig) -> Benchmark:
+    """Create a research benchmark instance.
+    
+    Named 'research_benchmark' to avoid conflict with pytest-benchmark's
+    built-in 'benchmark' fixture.
+    """
     return Benchmark(config=default_benchmark_config)
 
 

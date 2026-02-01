@@ -37,18 +37,18 @@ class TestBenchmarkResult:
 class TestBenchmark:
     """Tests for Benchmark."""
 
-    def test_initialization(self, benchmark: Benchmark) -> None:
+    def test_initialization(self, research_benchmark: Benchmark) -> None:
         """Test benchmark initialization."""
-        assert benchmark.config.name == "test_benchmark"
-        assert len(benchmark.results) == 0
+        assert research_benchmark.config.name == "test_benchmark"
+        assert len(research_benchmark.results) == 0
 
-    def test_benchmark_function(self, benchmark: Benchmark) -> None:
+    def test_benchmark_function(self, research_benchmark: Benchmark) -> None:
         """Test benchmarking a function."""
 
         def simple_func() -> int:
             return sum(range(1000))
 
-        result = benchmark.benchmark_function(
+        result = research_benchmark.benchmark_function(
             func=simple_func,
             name="simple",
             size=10,
@@ -58,16 +58,16 @@ class TestBenchmark:
         assert result.name == "simple"
         assert result.size == 10
         assert result.mean_time_ms > 0
-        assert result.n_iterations == benchmark.config.n_iterations
-        assert len(benchmark.results) == 1
+        assert result.n_iterations == research_benchmark.config.n_iterations
+        assert len(research_benchmark.results) == 1
 
-    def test_benchmark_function_timing(self, benchmark: Benchmark) -> None:
+    def test_benchmark_function_timing(self, research_benchmark: Benchmark) -> None:
         """Test that timing is accurate."""
 
         def slow_func() -> None:
             time.sleep(0.001)  # 1ms
 
-        result = benchmark.benchmark_function(
+        result = research_benchmark.benchmark_function(
             func=slow_func,
             name="slow",
             size=1,
@@ -76,23 +76,23 @@ class TestBenchmark:
         # Should be at least 1ms per iteration
         assert result.mean_time_ms >= 0.5
 
-    def test_benchmark_multiple_sizes(self, benchmark: Benchmark) -> None:
+    def test_benchmark_multiple_sizes(self, research_benchmark: Benchmark) -> None:
         """Test benchmarking across sizes."""
         calls = []
 
         def tracked_func() -> None:
             calls.append(1)
 
-        for size in benchmark.config.sizes:
-            benchmark.benchmark_function(
+        for size in research_benchmark.config.sizes:
+            research_benchmark.benchmark_function(
                 func=tracked_func,
                 name="tracked",
                 size=size,
             )
 
-        assert len(benchmark.results) == len(benchmark.config.sizes)
+        assert len(research_benchmark.results) == len(research_benchmark.config.sizes)
 
-    def test_compute_scaling_exponent(self, benchmark: Benchmark) -> None:
+    def test_compute_scaling_exponent(self, research_benchmark: Benchmark) -> None:
         """Test scaling exponent computation."""
         # Add some synthetic results
         for size in [9, 13, 19, 25]:
@@ -107,17 +107,17 @@ class TestBenchmark:
                 max_time_ms=size * size * 0.11,
                 total_time_s=1.0,
             )
-            benchmark._results.append(result)
+            research_benchmark._results.append(result)
 
-        exponent, r_squared = benchmark.compute_scaling_exponent()
+        exponent, r_squared = research_benchmark.compute_scaling_exponent()
 
         # Should be close to 1.0 for O(N) with N = size^2
         assert 0.8 <= exponent <= 1.5
         assert r_squared > 0.9
 
-    def test_get_summary(self, benchmark: Benchmark) -> None:
+    def test_get_summary(self, research_benchmark: Benchmark) -> None:
         """Test getting summary."""
-        benchmark._results.append(BenchmarkResult(
+        research_benchmark._results.append(BenchmarkResult(
             name="test",
             size=9,
             batch_size=32,
@@ -130,14 +130,14 @@ class TestBenchmark:
             throughput=3200.0,
         ))
 
-        summary = benchmark.get_summary()
+        summary = research_benchmark.get_summary()
 
         assert summary["name"] == "test_benchmark"
         assert summary["n_benchmarks"] == 1
 
-    def test_clear(self, benchmark: Benchmark) -> None:
+    def test_clear(self, research_benchmark: Benchmark) -> None:
         """Test clearing results."""
-        benchmark._results.append(BenchmarkResult(
+        research_benchmark._results.append(BenchmarkResult(
             name="test",
             size=9,
             batch_size=32,
@@ -149,8 +149,8 @@ class TestBenchmark:
             total_time_s=1.0,
         ))
 
-        benchmark.clear()
-        assert len(benchmark.results) == 0
+        research_benchmark.clear()
+        assert len(research_benchmark.results) == 0
 
 
 class TestBenchmarkSuite:

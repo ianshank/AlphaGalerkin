@@ -1,0 +1,103 @@
+# High Quality Video Codec Configuration
+# AlphaGalerkin Neural Video Compression
+#
+# Usage:
+#   python -m scripts.encode_video --config codec_quality.yaml
+#
+# This preset maximizes visual quality at the cost of encoding speed.
+# Suitable for archival, professional, and high-fidelity applications.
+
+name: "quality"
+
+encoder:
+  name: "encoder_hq"
+  in_channels: 3
+  latent_channels: 256
+  n_layers: 6
+  d_model: 384
+  n_heads: 12
+  d_ffn: 1536
+  use_fnet_mixing: true
+  fnet_ratio: 0.3  # More Galerkin for quality
+  normalize_features: true
+  dropout: 0.1
+  downsample_factor: 16
+
+decoder:
+  name: "decoder_hq"
+  latent_channels: 256
+  out_channels: 3
+  n_layers: 6
+  d_model: 384
+  n_heads: 12
+  d_ffn: 1536
+  use_fnet_mixing: true
+  fnet_ratio: 0.3
+  normalize_features: true
+  dropout: 0.1
+  upsample_factor: 16
+
+quantizer:
+  name: "quantizer_hq"
+  mode: "soft"  # Soft quantization for smoother gradients
+  temperature: 0.5
+  temperature_annealing: true
+  min_temperature: 0.1
+  noise_scale: 0.3
+
+entropy:
+  name: "entropy_hq"
+  model_type: "hyperprior"
+  hyper_channels: 256
+  hyper_layers: 4
+  num_filters: 256
+  context_size: 7
+  use_range_coder: true
+  precision: 18
+
+mcts:
+  name: "mcts_hq"
+  # More MCTS simulations for better decisions
+  num_simulations: 100
+  c_puct: 1.5
+  dirichlet_alpha: 0.25
+  dirichlet_epsilon: 0.2
+  temperature: 0.8
+  discount: 0.995
+  value_support_size: 101
+
+  # Larger GOP for better compression
+  gop_size: 32
+  i_frame_interval: 32
+  use_b_frames: true
+  b_frame_count: 3
+
+  # Rate control
+  rate_control_mode: "crf"
+  target_bitrate_kbps: 5000.0
+  crf_value: 18  # High quality
+  bitrate_tolerance: 0.1
+  qp_min: 0
+  qp_max: 40
+
+training:
+  name: "training_hq"
+  learning_rate: 0.00005
+  weight_decay: 0.0001
+  lambda_rd: 0.005
+  lambda_values:
+    - 0.0008
+    - 0.0016
+    - 0.0032
+    - 0.0064
+    - 0.0128
+    - 0.0256
+  distortion_metric: "mixed"
+  ms_ssim_weight: 0.9  # Emphasize perceptual quality
+  use_perceptual_loss: true
+  perceptual_weight: 0.15
+  patch_size: 384
+  variable_resolution: true
+  min_resolution: 256
+  max_resolution: 768
+  vmaf_min: 80.0

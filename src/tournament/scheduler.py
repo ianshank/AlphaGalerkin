@@ -247,7 +247,7 @@ class TournamentScheduler:
             bracket_size *= 2
 
         # Add byes
-        byes_needed = bracket_size - n
+        bracket_size - n
 
         pairings = []
 

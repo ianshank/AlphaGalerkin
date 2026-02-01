@@ -93,37 +93,12 @@ hydra_outputs/
 # Claude Code
 .claude/
 
-# Benchmarks
-.benchmarks/
+# Video compression testing
+Test_Video_Materals/
+validation_outputs/
 
-# Performance profiling
-*.prof
-*.lprof
-
-# Hugging Face
-.cache/huggingface/
-huggingface_hub_cache/
-
-# Security - never commit tokens/secrets
-*.secret
-*.token
-.env.local
-.env.*.local
-
-# GCP Service Account Keys
-sa-key.json
-*-key.json
-*.credentials.json
-gcp-*.json
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-
-# HuggingFace Space deployment (local only)
-hf_space/
-deploy_space.py
-
-# ONNX models
-*.onnx
+# Credentials and secrets
+*.json
+!package.json
+!tsconfig.json
+notebooks/utils/*.json

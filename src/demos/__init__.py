@@ -18,8 +18,12 @@ Import them directly when needed:
     from src.demos.architecture_demo import ArchitectureDemo
 """
 
+from typing import Any
+
+import structlog
+
 # Core configuration - always available
-from src.demos.config import (
+from src.demos.config import (  # noqa: E402
     ArchitectureDemoConfig,
     BenchmarkDemoConfig,
     ColorScheme,
@@ -30,7 +34,7 @@ from src.demos.config import (
 )
 
 # Visualization utilities - require matplotlib
-from src.demos.visualizations import (
+from src.demos.visualizations import (  # noqa: E402
     AttentionVisualizer,
     BoardVisualizer,
     ChartVisualizer,
@@ -40,10 +44,14 @@ from src.demos.visualizations import (
     get_colormap,
 )
 
+logger = structlog.get_logger(__name__)
+
+
 # Lazy imports for demo modules that require torch
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:  # noqa: ANN401
     """Lazy import for heavy demo modules."""
     if name in ("PhysicsDemo", "TransferResult", "create_physics_demo_tab"):
+        logger.debug("lazy_import_physics_demo", requested_name=name)
         from src.demos.physics_demo import (
             PhysicsDemo,
             TransferResult,
@@ -56,6 +64,7 @@ def __getattr__(name: str):
         }[name]
 
     if name in ("BenchmarkDemo", "BenchmarkResult", "BenchmarkSuite", "create_benchmark_demo_tab"):
+        logger.debug("lazy_import_benchmark_demo", requested_name=name)
         from src.demos.benchmark_demo import (
             BenchmarkDemo,
             BenchmarkResult,
@@ -70,6 +79,7 @@ def __getattr__(name: str):
         }[name]
 
     if name in ("ArchitectureDemo", "create_architecture_demo_tab"):
+        logger.debug("lazy_import_architecture_demo", requested_name=name)
         from src.demos.architecture_demo import (
             ArchitectureDemo,
             create_architecture_demo_tab,

@@ -12,14 +12,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-import torch
-import torch.nn as nn
-
-from src.demos.config import BenchmarkDemoConfig, VisualizationConfig
-from src.demos.visualizations import ChartVisualizer, PlotResult
 
 # Module-level logger
 import structlog
+import torch
+import torch.nn as nn
+
+from src.demos.config import BenchmarkDemoConfig
+from src.demos.visualizations import ChartVisualizer
 
 logger = structlog.get_logger(__name__)
 
@@ -547,7 +547,7 @@ reserving Softmax attention only for the final tactical head.
 
 def create_benchmark_demo_tab(
     config: BenchmarkDemoConfig | None = None,
-) -> Any:
+) -> Any:  # noqa: ANN401 - Gradio Tab has complex type
     """Create Gradio tab for benchmark demo.
 
     Args:

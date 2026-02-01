@@ -14,12 +14,15 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import structlog
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.colors import Colormap
 from matplotlib.figure import Figure
 from numpy.typing import NDArray
 
 from src.demos.config import ColorScheme, VisualizationConfig
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -91,6 +94,7 @@ class BoardVisualizer:
 
         """
         self.config = config or VisualizationConfig()
+        logger.debug("board_visualizer_initialized", dpi=self.config.dpi)
 
     def render_board(
         self,
@@ -190,7 +194,7 @@ class BoardVisualizer:
 
         # Mark suggested moves
         if suggested_moves:
-            for rank, (r, c, prob) in enumerate(suggested_moves[:5], 1):
+            for rank, (r, c, _prob) in enumerate(suggested_moves[:5], 1):
                 ax.annotate(
                     f"{rank}",
                     (c, r),
@@ -231,19 +235,17 @@ class BoardVisualizer:
             List of (x, y) star point coordinates.
 
         """
-        if size == 19:
-            return [
+        star_points: dict[int, list[tuple[int, int]]] = {
+            19: [
                 (3, 3), (3, 9), (3, 15),
                 (9, 3), (9, 9), (9, 15),
                 (15, 3), (15, 9), (15, 15),
-            ]
-        elif size == 13:
-            return [(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)]
-        elif size == 9:
-            return [(2, 2), (2, 6), (4, 4), (6, 2), (6, 6)]
-        elif size == 7:
-            return [(2, 2), (2, 4), (3, 3), (4, 2), (4, 4)]
-        return []
+            ],
+            13: [(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)],
+            9: [(2, 2), (2, 6), (4, 4), (6, 2), (6, 6)],
+            7: [(2, 2), (2, 4), (3, 3), (4, 2), (4, 4)],
+        }
+        return star_points.get(size, [])
 
 
 class FieldVisualizer:
@@ -264,6 +266,7 @@ class FieldVisualizer:
 
         """
         self.config = config or VisualizationConfig()
+        logger.debug("field_visualizer_initialized", dpi=self.config.dpi)
 
     def render_field(
         self,
@@ -430,7 +433,7 @@ class FieldVisualizer:
             pred = data["prediction"]
 
             # Top row: Predictions
-            im = axes[0, i].imshow(pred, cmap=cmap, origin="lower")
+            axes[0, i].imshow(pred, cmap=cmap, origin="lower")
             axes[0, i].set_title(f"{grid_size}×{grid_size}\nMSE: {data['mse']:.6f}")
             axes[0, i].axis("off")
 
@@ -470,6 +473,7 @@ class ChartVisualizer:
 
         """
         self.config = config or VisualizationConfig()
+        logger.debug("chart_visualizer_initialized", dpi=self.config.dpi)
 
     def render_scaling_comparison(
         self,
@@ -517,7 +521,7 @@ class ChartVisualizer:
         ax.grid(True, alpha=0.3)
 
         # Add speedup annotations
-        for i, (n, ft, st) in enumerate(zip(sizes, fnet_times, softmax_times)):
+        for n, ft, st in zip(sizes, fnet_times, softmax_times, strict=True):
             if st > 0:
                 speedup = st / ft if ft > 0 else 0
                 ax.annotate(
@@ -537,7 +541,10 @@ class ChartVisualizer:
                 "sizes": sizes,
                 "fnet_times_ms": fnet_times,
                 "softmax_times_ms": softmax_times,
-                "speedups": [st / ft if ft > 0 else 0 for ft, st in zip(fnet_times, softmax_times)],
+                "speedups": [
+                    st / ft if ft > 0 else 0
+                    for ft, st in zip(fnet_times, softmax_times, strict=True)
+                ],
             },
         )
 
@@ -571,7 +578,7 @@ class ChartVisualizer:
         bars = ax.bar(labels, mse_values, color=colors, edgecolor="black")
 
         # Add value labels on bars
-        for bar, mse in zip(bars, mse_values):
+        for bar, mse in zip(bars, mse_values, strict=True):
             ax.annotate(
                 f"{mse:.6f}",
                 (bar.get_x() + bar.get_width() / 2, bar.get_height()),
@@ -717,6 +724,7 @@ class AttentionVisualizer:
         """
         self.config = config or VisualizationConfig()
         self.chart_viz = ChartVisualizer(config)
+        logger.debug("attention_visualizer_initialized", dpi=self.config.dpi)
 
     def render_galerkin_vs_softmax(
         self,

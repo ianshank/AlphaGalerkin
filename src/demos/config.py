@@ -107,9 +107,8 @@ class VisualizationConfig(BaseModel):
         """Validate color string format."""
         v = v.strip()
         # Accept hex colors or named colors
-        if v.startswith("#"):
-            if len(v) not in (4, 7):
-                raise ValueError(f"Invalid hex color: {v}")
+        if v.startswith("#") and len(v) not in (4, 7):
+            raise ValueError(f"Invalid hex color: {v}")
         return v
 
 

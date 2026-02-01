@@ -12,20 +12,19 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Module-level logger
+import structlog
 import torch
 import torch.nn as nn
 
-from src.demos.config import ArchitectureDemoConfig, ColorScheme, VisualizationConfig
+from src.demos.config import ArchitectureDemoConfig, ColorScheme
 from src.demos.visualizations import (
     AttentionVisualizer,
     ChartVisualizer,
     figure_to_image,
     get_colormap,
-    PlotResult,
 )
-
-# Module-level logger
-import structlog
 
 logger = structlog.get_logger(__name__)
 
@@ -94,10 +93,10 @@ class ArchitectureDemo:
         # Generate Fourier features
         # Using simple random Fourier features for visualization
         torch.manual_seed(42)
-        B = torch.randn(2, n_features) * scale * 2 * np.pi
+        freq_matrix = torch.randn(2, n_features) * scale * 2 * np.pi
 
         # Compute features: [sin(Bx), cos(Bx)]
-        proj = coords @ B  # (N, n_features)
+        proj = coords @ freq_matrix  # (N, n_features)
         features = torch.cat([torch.sin(proj), torch.cos(proj)], dim=-1)  # (N, 2*n_features)
 
         # Visualize first few feature dimensions as 2D fields
@@ -124,7 +123,7 @@ class ArchitectureDemo:
         plt.close(fig)
 
         # Frequency spectrum
-        frequencies = torch.sqrt((B ** 2).sum(dim=0)).numpy()
+        frequencies = torch.sqrt((freq_matrix ** 2).sum(dim=0)).numpy()
 
         spectrum_plot = self.chart_viz.render_fourier_spectrum(
             frequencies=frequencies,
@@ -299,10 +298,10 @@ AlphaGalerkin Strategy:
         for step in steps:
             # Simulated Key-Value projection matrix
             noise_scale = 1.0 / (1 + 0.1 * step)
-            W = torch.randn(d_key, d_value) * noise_scale + torch.eye(d_key, d_value) * 0.5
+            kv_proj = torch.randn(d_key, d_value) * noise_scale + torch.eye(d_key, d_value) * 0.5
 
             # Compute singular values
-            svd = torch.linalg.svdvals(W)
+            svd = torch.linalg.svdvals(kv_proj)
             sigma_mins.append(float(svd.min()))
             sigma_maxs.append(float(svd.max()))
 
@@ -326,7 +325,10 @@ AlphaGalerkin Strategy:
         ax1.grid(True, alpha=0.3)
 
         # Condition number
-        condition_numbers = [smax / (smin + 1e-10) for smax, smin in zip(sigma_maxs, sigma_mins)]
+        condition_numbers = [
+            smax / (smin + 1e-10)
+            for smax, smin in zip(sigma_maxs, sigma_mins, strict=True)
+        ]
         ax2.semilogy(steps, condition_numbers, color="#3498db", linewidth=2)
         ax2.axhline(y=100, color="orange", linestyle="--", label="Good threshold")
         ax2.set_xlabel("Training Step")
@@ -401,9 +403,21 @@ guarantees existence, uniqueness, and stability of the solution.
         # Draw architecture blocks
         blocks = [
             {"y": 0.9, "text": "Input: Board State", "color": "#3498db"},
-            {"y": 0.8, "text": "Continuous Embedding\n(Fourier Features)", "color": "#9b59b6"},
-            {"y": 0.65, "text": "Strategy Body\n(6× Galerkin Attention + FNet)\nO(N) complexity", "color": "#2ecc71"},
-            {"y": 0.45, "text": "Tactical Head\n(2× Softmax Attention)\nO(N²) for precision", "color": "#e74c3c"},
+            {
+                "y": 0.8,
+                "text": "Continuous Embedding\n(Fourier Features)",
+                "color": "#9b59b6",
+            },
+            {
+                "y": 0.65,
+                "text": "Strategy Body\n(6× Galerkin + FNet)\nO(N) complexity",
+                "color": "#2ecc71",
+            },
+            {
+                "y": 0.45,
+                "text": "Tactical Head\n(2× Softmax)\nO(N²) for precision",
+                "color": "#e74c3c",
+            },
             {"y": 0.25, "text": "Policy Head\n(Move Probabilities)", "color": "#f39c12"},
             {"y": 0.1, "text": "Value Head\n(Win Probability)", "color": "#f39c12"},
         ]
@@ -425,11 +439,14 @@ guarantees existence, uniqueness, and stability of the solution.
                 "",
                 xy=(0.5, blocks[i + 1]["y"] + 0.05),
                 xytext=(0.5, blocks[i]["y"] - 0.05),
-                arrowprops=dict(arrowstyle="->", color="black", lw=2),
+                arrowprops={"arrowstyle": "->", "color": "black", "lw": 2},
             )
 
         # Add title
-        ax.text(0.5, 0.98, "AlphaGalerkin Architecture", ha="center", va="top", fontsize=14, fontweight="bold")
+        ax.text(
+            0.5, 0.98, "AlphaGalerkin Architecture",
+            ha="center", va="top", fontsize=14, fontweight="bold",
+        )
 
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
@@ -479,7 +496,7 @@ def create_architecture_demo_tab(
     config: ArchitectureDemoConfig | None = None,
     model: nn.Module | None = None,
     device: str = "cpu",
-) -> Any:
+) -> Any:  # noqa: ANN401 - Gradio Tab has complex type
     """Create Gradio tab for architecture demo.
 
     Args:

@@ -201,7 +201,7 @@ class TestBenchmarkDemo:
             benchmark_sizes=[81, 169],  # Small for fast tests
             batch_size=4,
             n_warmup_runs=1,
-            n_benchmark_runs=3,
+            n_benchmark_runs=5,  # Minimum valid value
             d_model=64,
             n_heads=4,
             device="cpu",
@@ -287,7 +287,7 @@ class TestBenchmarkDemoEdgeCases:
             benchmark_sizes=[64],
             batch_size=1,
             n_warmup_runs=1,
-            n_benchmark_runs=2,
+            n_benchmark_runs=5,  # Minimum valid value
             device="cpu",
         )
         demo = BenchmarkDemo(config)
@@ -301,7 +301,7 @@ class TestBenchmarkDemoEdgeCases:
             benchmark_sizes=[100],
             batch_size=4,
             n_warmup_runs=1,
-            n_benchmark_runs=2,
+            n_benchmark_runs=5,  # Minimum valid value
             device="cpu",
         )
         demo = BenchmarkDemo(config)
@@ -317,7 +317,7 @@ class TestBenchmarkDemoEdgeCases:
             max_sequence_length=500,
             batch_size=4,
             n_warmup_runs=1,
-            n_benchmark_runs=2,
+            n_benchmark_runs=5,  # Minimum valid value
             device="cpu",
         )
         demo = BenchmarkDemo(config)

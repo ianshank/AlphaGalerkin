@@ -9,18 +9,17 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
-from numpy.typing import NDArray
-
-from src.demos.config import PhysicsDemoConfig, VisualizationConfig
-from src.demos.visualizations import ChartVisualizer, FieldVisualizer, PlotResult
 
 # Module-level logger
 import structlog
+import torch
+from numpy.typing import NDArray
+
+from src.demos.config import PhysicsDemoConfig
+from src.demos.visualizations import ChartVisualizer, FieldVisualizer
 
 logger = structlog.get_logger(__name__)
 
@@ -100,7 +99,7 @@ class PhysicsDemo:
         )
 
     @property
-    def solver(self) -> Any:
+    def solver(self) -> Any:  # noqa: ANN401 - PoissonSolver type varies by import
         """Get or create Poisson solver (lazy initialization)."""
         if self._solver is None:
             from src.physics.poisson import PoissonSolver
@@ -326,7 +325,7 @@ class PhysicsDemo:
         )
 
         # Create MSE bar chart
-        labels = [f"{size}×{size}" for size in results.keys()]
+        labels = [f"{size}×{size}" for size in results]
         mse_values = [result.mse for result in results.values()]
 
         mse_plot = self.chart_viz.render_mse_bar_chart(
@@ -376,7 +375,8 @@ class PhysicsDemo:
 
         """
         # Use same seed for both to show same underlying physics
-        small_result = self.evaluate_transfer(int(small_size), int(seed))
+        # Note: small_result is used for logging/debugging purposes only
+        _ = self.evaluate_transfer(int(small_size), int(seed))  # Warm up with small size
         large_result = self.evaluate_transfer(int(large_size), int(seed))
 
         comparison_plot = self.field_viz.render_comparison(
@@ -415,7 +415,7 @@ def create_physics_demo_tab(
     config: PhysicsDemoConfig | None = None,
     model: torch.nn.Module | None = None,
     device: str = "cpu",
-) -> Any:
+) -> Any:  # noqa: ANN401 - Gradio Tab has complex type
     """Create Gradio tab for physics demo.
 
     Args:
@@ -477,10 +477,12 @@ by solving the Poisson equation: ∇²φ = ρ
                     label="Random Seed",
                     precision=0,
                 )
-                eval_sizes_text = gr.Textbox(
+                # Note: eval_sizes displayed for user info, not used in callback
+                gr.Textbox(
                     value=", ".join(map(str, effective_config.eval_grid_sizes)),
                     label="Evaluation Sizes",
-                    info="Comma-separated grid sizes",
+                    info="Comma-separated grid sizes (configured in config)",
+                    interactive=False,
                 )
                 run_transfer_btn = gr.Button("Run Transfer Evaluation", variant="primary")
 

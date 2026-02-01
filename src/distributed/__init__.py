@@ -21,9 +21,11 @@ Usage:
 
 from src.distributed.config import (
     DistributedInfraConfig,
-    DistributedInfraConfig as DistributedConfig,  # Backward-compat alias
     LauncherConfig,
     SelfPlayDistributedConfig,
+)
+from src.distributed.config import (
+    DistributedInfraConfig as DistributedConfig,  # Backward-compat alias
 )
 from src.distributed.gradient_sync import GradientSynchronizer
 from src.distributed.launcher import DistributedLauncher

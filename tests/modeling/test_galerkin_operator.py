@@ -11,14 +11,41 @@ import pytest
 # Skip entire module if torch not available
 torch = pytest.importorskip("torch")
 
-from pydantic import ValidationError
+from pydantic import ValidationError  # noqa: E402
 
-from src.modeling.galerkin_operator import (
+from src.modeling.galerkin_operator import (  # noqa: E402
     Galerkin2d,
     GalerkinOperatorBlock,
     GalerkinOperatorConfig,
 )
-from src.modeling.operator import NeuralOperator
+from src.modeling.operator import NeuralOperator  # noqa: E402
+
+
+def devices_equal(device1: torch.device, device2: torch.device) -> bool:
+    """Compare two devices, handling CUDA index normalization.
+
+    torch.device('cuda') and torch.device('cuda:0') refer to the same GPU
+    but are not equal. This function normalizes the comparison.
+
+    Args:
+        device1: First device to compare.
+        device2: Second device to compare.
+
+    Returns:
+        True if devices are functionally equivalent.
+
+    """
+    if device1.type != device2.type:
+        return False
+
+    if device1.type == "cuda":
+        # Both are CUDA - normalize indices (None -> 0 for default device)
+        idx1 = device1.index if device1.index is not None else 0
+        idx2 = device2.index if device2.index is not None else 0
+        return idx1 == idx2
+
+    # For non-CUDA devices, types matching is sufficient
+    return True
 
 
 class TestGalerkinOperatorConfig:
@@ -302,7 +329,7 @@ class TestGalerkin2d:
         model = model.to(device)
         x = torch.randn(2, 1, 16, 16, device=device)
         y = model(x)
-        assert y.device == device
+        assert devices_equal(y.device, device), f"Expected {device}, got {y.device}"
         assert y.shape == (2, 1, 16, 16)
 
     def test_lbb_regularization_device_consistency(
@@ -313,14 +340,18 @@ class TestGalerkin2d:
 
         # Test with no prior forward pass - should return zero on correct device
         reg_loss = model.get_lbb_regularization()
-        assert reg_loss.device == device, "LBB reg should be on model device"
+        assert devices_equal(reg_loss.device, device), (
+            f"LBB reg should be on model device, expected {device}, got {reg_loss.device}"
+        )
         assert reg_loss.item() == 0.0
 
         # Test after forward pass with return_lbb=True
         x = torch.randn(2, 1, 16, 16, device=device)
         _ = model(x, return_lbb=True)
         reg_loss = model.get_lbb_regularization()
-        assert reg_loss.device == device, "LBB reg should be on model device"
+        assert devices_equal(reg_loss.device, device), (
+            f"LBB reg should be on model device, expected {device}, got {reg_loss.device}"
+        )
 
 
 class TestNeuralOperatorGalerkinBackend:

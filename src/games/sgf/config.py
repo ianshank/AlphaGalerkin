@@ -60,6 +60,7 @@ class SGFConfig(BaseModuleConfig):
         include_comments: Include comment properties in output.
         pretty_print: Format output for readability.
         max_variations: Maximum number of variations to parse.
+
     """
 
     name: str = Field(default="sgf", description="Configuration name")

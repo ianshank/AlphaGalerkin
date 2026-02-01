@@ -1,0 +1,55 @@
+# Fast training configuration for testing
+# Use with: python -m scripts.train --config-name=train_fast
+
+defaults:
+  - train
+  - _self_
+
+# Smaller model for fast iteration
+operator:
+  d_model: 64
+  d_key: 32
+  d_value: 32
+  d_ffn: 256
+  n_heads: 4
+  n_galerkin_layers: 2
+  n_softmax_layers: 1
+  n_fourier_features: 32
+  use_fnet_mixing: true
+  fnet_dropout: 0.1
+
+# Reduced MCTS
+mcts:
+  n_simulations: 50
+  batch_size: 4
+
+# Fast training settings
+training:
+  learning_rate: 1e-3
+  batch_size: 32
+  gradient_clip: 1.0
+  lr_scheduler: constant
+  warmup_steps: 10
+  total_steps: 100
+  n_self_play_games: 5
+  replay_buffer_size: 1000
+  checkpoint_interval: 50
+  use_amp: false
+  eval_interval: 50
+  eval_games: 5
+
+# Disable W&B for fast tests
+wandb:
+  enabled: false
+  mode: disabled
+
+# Experiment settings
+experiment_name: alphagalerkin_fast_test
+seed: 42
+log_level: DEBUG
+
+# Fast settings
+device: cpu
+log_interval: 10
+board_sizes:
+  - 9

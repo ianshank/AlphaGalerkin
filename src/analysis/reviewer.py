@@ -23,7 +23,7 @@ from src.analysis.config import (
 from src.analysis.evaluator import EvaluationResult, PositionEvaluator
 
 if TYPE_CHECKING:
-    from src.games.sgf.node import SGFGameTree, SGFMove
+    from src.games.sgf.node import SGFGameTree
 
 
 @dataclass
@@ -42,6 +42,7 @@ class MoveAnalysis:
         is_best: Whether the played move is the best.
         alternatives: Alternative moves with analysis.
         comment: Generated comment for this move.
+
     """
 
     move_number: int
@@ -111,6 +112,7 @@ class GameAnalysis:
         endgame_quality: Endgame phase assessment.
         timestamp: When analysis was performed.
         config_hash: Configuration hash for reproducibility.
+
     """
 
     move_analyses: list[MoveAnalysis] = field(default_factory=list)
@@ -153,6 +155,7 @@ class GameAnalysis:
 
         Returns:
             MoveAnalysis or None if not found.
+
         """
         for analysis in self.move_analyses:
             if analysis.move_number == move_number:
@@ -170,6 +173,7 @@ class GameAnalysis:
 
         Returns:
             List of matching move analyses.
+
         """
         return [
             m for m in self.move_analyses
@@ -213,6 +217,7 @@ class GameReviewer:
             evaluator: Position evaluator instance.
             config: Analysis configuration.
             logger: Optional structured logger.
+
         """
         self.config = config or AnalysisConfig()
         self._evaluator = evaluator or PositionEvaluator(config=self.config)
@@ -233,6 +238,7 @@ class GameReviewer:
 
         Returns:
             Complete GameAnalysis.
+
         """
         self._logger.info(
             "review_started",
@@ -335,6 +341,7 @@ class GameReviewer:
 
         Returns:
             MoveAnalysis for this move.
+
         """
         # Create board state representation for evaluation
         # This is a placeholder - actual implementation would use game state
@@ -397,6 +404,7 @@ class GameReviewer:
 
         Returns:
             2D list representing board state.
+
         """
         # Create empty board
         board = [[0] * board_size for _ in range(board_size)]
@@ -420,6 +428,7 @@ class GameReviewer:
 
         Returns:
             Formatted move string (e.g., "D4").
+
         """
         x, y = move
         col = chr(ord('A') + x + (1 if x >= 8 else 0))  # Skip 'I'
@@ -447,6 +456,7 @@ class GameReviewer:
 
         Returns:
             Generated comment string.
+
         """
         level = self.config.annotation_level
 
@@ -486,6 +496,7 @@ class GameReviewer:
 
         Returns:
             Quality score (0.0 to 1.0).
+
         """
         if not moves:
             return 0.5
@@ -509,6 +520,7 @@ class GameReviewer:
 
         Returns:
             Quality score (0.0 to 1.0).
+
         """
         return self._assess_opening(moves)  # Same logic for now
 
@@ -522,6 +534,7 @@ class GameReviewer:
         Args:
             game_tree: SGF game tree to annotate.
             analysis: Game analysis to add.
+
         """
         from src.games.sgf.converter import SGFConverter
 
@@ -558,6 +571,7 @@ def create_game_reviewer(
 
     Returns:
         Configured GameReviewer.
+
     """
     from src.analysis.config import create_analysis_config
     from src.analysis.evaluator import PositionEvaluator

@@ -30,6 +30,7 @@ Example:
     with DebugContext("processing", capture_memory=True) as ctx:
         result = process_data()
         ctx.checkpoint("halfway", items_processed=50)
+
 """
 
 from __future__ import annotations
@@ -37,8 +38,9 @@ from __future__ import annotations
 import functools
 import sys
 import time
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 import structlog
 
@@ -61,6 +63,7 @@ def configure_module_logging(
         json_format: If True, output JSON; else colored console.
         include_timestamp: If True, include ISO timestamp.
         include_caller: If True, include caller info (file:line).
+
     """
     import logging
 
@@ -133,6 +136,7 @@ class BaseModuleLogger:
             component: Component name within the module.
             run_id: Optional unique identifier for this run.
             **context: Additional context to bind.
+
         """
         self._base_logger = structlog.get_logger(self._module_name)
         self._context: dict[str, Any] = {
@@ -153,6 +157,7 @@ class BaseModuleLogger:
 
         Returns:
             New logger instance with merged context.
+
         """
         new_logger = self.__class__.__new__(self.__class__)
         new_logger._base_logger = self._base_logger
@@ -199,6 +204,7 @@ class BaseModuleLogger:
             value: Metric value.
             step: Optional step/iteration number.
             **tags: Additional tags for the metric.
+
         """
         extra: dict[str, Any] = {
             "metric_name": name,
@@ -223,6 +229,7 @@ class BaseModuleLogger:
             total: Total count.
             message: Optional progress message.
             **extra: Additional context.
+
         """
         percentage = (current / total * 100) if total > 0 else 0.0
         self._logger.info(
@@ -247,6 +254,7 @@ class BaseModuleLogger:
 
         Returns:
             Elapsed time in seconds.
+
         """
         if self._start_time is None:
             self._start_time = time.perf_counter()
@@ -275,6 +283,7 @@ class BaseModuleLogger:
             with logger.timed("model_inference") as timing:
                 result = model(input)
             print(f"Took {timing['duration_seconds']:.2f}s")
+
         """
         timing: dict[str, float] = {}
         start_time = time.perf_counter()
@@ -312,6 +321,7 @@ def create_logger_class(module_name: str) -> type[BaseModuleLogger]:
         MyLogger = create_logger_class("MyModule")
         logger = MyLogger("component_name", run_id="abc123")
         logger.info("started")
+
     """
     return type(
         f"{module_name}Logger",
@@ -341,6 +351,7 @@ def log_timing(
         @log_timing(level="info")
         def important_operation():
             pass
+
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
@@ -391,6 +402,7 @@ def log_call(
         @log_call(log_args=True, log_result=True)
         def process_data(data: list) -> dict:
             return {"count": len(data)}
+
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
@@ -446,6 +458,7 @@ class DebugContext:
             ctx.checkpoint("forward_done", loss=loss.item())
             optimizer.step()
             ctx.checkpoint("backward_done")
+
     """
 
     def __init__(
@@ -462,6 +475,7 @@ class DebugContext:
             logger: Logger to use; if None, creates a basic one.
             capture_memory: If True, track GPU memory usage.
             log_level: Log level for debug messages.
+
         """
         self.name = name
         self.capture_memory = capture_memory
@@ -528,6 +542,7 @@ class DebugContext:
 
         Returns:
             Elapsed time since context entry.
+
         """
         elapsed = time.perf_counter() - self._start_time
 

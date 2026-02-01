@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from src.analysis.config import AnalysisConfig, MoveClassification
 from src.analysis.evaluator import (

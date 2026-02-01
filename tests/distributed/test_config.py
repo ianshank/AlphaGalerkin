@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from src.distributed.config import (
     DistributedBackend,
-    DistributedConfig,
+    DistributedInfraConfig,
     LauncherConfig,
     SelfPlayDistributedConfig,
     create_distributed_config,
@@ -15,12 +15,12 @@ from src.distributed.config import (
 )
 
 
-class TestDistributedConfig:
-    """Tests for DistributedConfig."""
+class TestDistributedInfraConfig:
+    """Tests for DistributedInfraConfig."""
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
-        config = DistributedConfig()
+        config = DistributedInfraConfig()
 
         assert config.enabled is False
         assert config.world_size == 1
@@ -30,27 +30,27 @@ class TestDistributedConfig:
 
     def test_enabled_with_world_size(self) -> None:
         """Test that enabled=True requires world_size > 1."""
-        config = DistributedConfig(enabled=True, world_size=4)
+        config = DistributedInfraConfig(enabled=True, world_size=4)
 
         assert config.enabled is True
         assert config.world_size == 4
 
     def test_backend_validation(self) -> None:
         """Test backend enum validation."""
-        config = DistributedConfig(backend="gloo")
+        config = DistributedInfraConfig(backend="gloo")
         assert config.backend == DistributedBackend.GLOO
 
-        config = DistributedConfig(backend=DistributedBackend.NCCL)
+        config = DistributedInfraConfig(backend=DistributedBackend.NCCL)
         assert config.backend == DistributedBackend.NCCL
 
     def test_invalid_world_size(self) -> None:
         """Test that world_size must be >= 1."""
         with pytest.raises(ValidationError):
-            DistributedConfig(world_size=0)
+            DistributedInfraConfig(world_size=0)
 
     def test_effective_batch_size(self) -> None:
         """Test effective batch size calculation."""
-        config = DistributedConfig(
+        config = DistributedInfraConfig(
             world_size=4,
             gradient_accumulation_steps=2,
         )
@@ -61,7 +61,7 @@ class TestDistributedConfig:
     def test_extra_fields_forbidden(self) -> None:
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError):
-            DistributedConfig(unknown_field="value")
+            DistributedInfraConfig(unknown_field="value")
 
 
 class TestLauncherConfig:

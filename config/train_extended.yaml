@@ -1,0 +1,95 @@
+# Extended training configuration for medium-scale runs
+# Use with: python -m scripts.train --config-name=train_extended
+#
+# Key differences from train_fast.yaml:
+# - 7,500 steps (vs 100) for meaningful training
+# - 1e-3 learning rate (higher) with 500-step warmup
+# - 75 self-play games per batch (vs 5)
+# - 10,000 replay buffer capacity (vs 1,000)
+# - Plateau patience of 10 (vs 2) to allow more exploration
+# - GPU optimized with AMP enabled
+
+defaults:
+  - train
+  - _self_
+
+# Training configuration for extended runs
+training:
+  # Optimization - Higher LR with proper warmup
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  batch_size: 128 # Smaller than production for faster iteration
+  gradient_clip: 1.0 # Keep tight clip with higher LR
+
+  # Learning rate schedule
+  # CRITICAL: warmup_steps must complete BEFORE plateau can trigger
+  lr_scheduler: cosine
+  warmup_steps: 500
+  total_steps: 7500
+
+  # Self-play configuration
+  n_self_play_games: 75 # More than fast, less than production
+  replay_buffer_size: 10000 # Sufficient diversity for medium runs
+
+  # Checkpointing
+  checkpoint_interval: 500
+  use_amp: true # GPU optimization
+
+  # Evaluation
+  eval_interval: 750 # Every 10% of training
+  eval_games: 15
+
+  # Loss balancing
+  loss_balancing_strategy: relobralo
+  loss_balancing_beta: 0.99
+  loss_balancing_tau: 1.0
+  loss_balancing_warmup: 100 # Start balancing after initial instability
+
+  # Prioritized replay (disabled for extended - simpler is better)
+  use_prioritized_replay: false
+
+  # Curriculum learning
+  curriculum_enabled: true
+
+  # Evaluation enhancements
+  eval_vs_checkpoints: true
+  elo_k_factor: 32.0
+  n_tournament_opponents: 3
+  multi_resolution_eval: true
+
+  # Training stability - KEY SETTINGS
+  # CRITICAL: plateau_patience should be > warmup_steps / eval_interval
+  # With warmup_steps=500 and eval_interval=750, plateau kicks in after warmup
+  early_stopping_enabled: true
+  early_stopping_patience: 8 # Evaluations without improvement before stopping
+  early_stopping_min_delta: 0.005 # Smaller threshold for sensitivity
+
+  plateau_detection_enabled: true
+  plateau_patience: 10 # Steps without improvement before LR reduction
+  plateau_factor: 0.5
+  plateau_min_lr: 0.000001
+
+# Enable W&B for tracking
+wandb:
+  enabled: true
+  project: alphagalerkin
+  mode: online
+  tags:
+    - extended
+    - medium-run
+  log_model: true
+  log_code: true
+  log_interval: 50 # Log every 50 steps
+
+# Runtime settings
+device: auto # Use GPU if available
+log_interval: 100 # Console logging every 100 steps
+
+# Board sizes for curriculum (progressive difficulty)
+board_sizes:
+  - 9
+  - 13
+  - 19
+
+experiment_name: alphagalerkin_extended
+log_level: INFO

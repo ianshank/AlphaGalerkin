@@ -83,6 +83,7 @@ class StageMetrics:
         Args:
             won: Whether the game was won.
             drawn: Whether the game was drawn.
+
         """
         self.games_played += 1
         if drawn:
@@ -107,6 +108,7 @@ class StageMetrics:
             total_loss: Total loss value.
             policy_loss: Policy loss component.
             value_loss: Value loss component.
+
         """
         self.training_steps += 1
         self.total_loss += total_loss
@@ -131,7 +133,7 @@ class StageMetrics:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "StageMetrics":
+    def from_dict(cls, data: dict[str, Any]) -> StageMetrics:
         """Create from dictionary."""
         metrics = cls()
         metrics.games_played = data.get("games_played", 0)
@@ -162,6 +164,7 @@ class CurriculumStage:
 
         Args:
             warmup_games: Number of warmup games before evaluation.
+
         """
         self.status = StageStatus.WARMUP if warmup_games > 0 else StageStatus.ACTIVE
         self.warmup_games_remaining = warmup_games
@@ -197,6 +200,7 @@ class CurriculumStage:
         Args:
             won: Whether the game was won.
             drawn: Whether the game was drawn.
+
         """
         self.metrics.record_game(won, drawn)
 
@@ -218,6 +222,7 @@ class CurriculumStage:
             total_loss: Total loss value.
             policy_loss: Policy loss component.
             value_loss: Value loss component.
+
         """
         self.metrics.record_training_step(total_loss, policy_loss, value_loss)
 
@@ -226,6 +231,7 @@ class CurriculumStage:
 
         Returns:
             True if minimum games and steps are reached.
+
         """
         return (
             self.metrics.games_played >= self.config.min_games
@@ -237,6 +243,7 @@ class CurriculumStage:
 
         Returns:
             True if max games or steps are exceeded.
+
         """
         if (
             self.config.max_games is not None
@@ -255,6 +262,7 @@ class CurriculumStage:
 
         Returns:
             True if ready to advance to next stage.
+
         """
         # Skip evaluation during warmup
         if self.status == StageStatus.WARMUP:
@@ -297,6 +305,7 @@ class CurriculumStage:
 
         Returns:
             Dictionary of metric name to value.
+
         """
         return {
             "win_rate": self.metrics.win_rate,
@@ -314,6 +323,7 @@ class CurriculumStage:
 
         Returns:
             Adjusted learning rate.
+
         """
         return base_lr * self.config.learning_rate_multiplier
 
@@ -325,6 +335,7 @@ class CurriculumStage:
 
         Returns:
             Adjusted batch size.
+
         """
         return max(1, int(base_batch_size * self.config.batch_size_multiplier))
 

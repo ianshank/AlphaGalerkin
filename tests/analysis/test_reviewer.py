@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 
 from src.analysis.config import AnnotationLevel, MoveClassification
-from src.analysis.evaluator import EvaluationResult
 from src.analysis.reviewer import (
     GameAnalysis,
     GameReviewer,

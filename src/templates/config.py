@@ -23,6 +23,7 @@ Example:
             le=1024,
             description="Training batch size",
         )
+
 """
 
 from __future__ import annotations
@@ -56,6 +57,7 @@ class MetricDefinition(BaseModel):
         operator: Comparison operator for threshold.
         threshold: Value to compare against.
         unit: Optional unit of measurement.
+
     """
 
     model_config = ConfigDict(
@@ -81,6 +83,7 @@ class MetricDefinition(BaseModel):
 
         Returns:
             True if the value satisfies the threshold condition.
+
         """
         match self.operator:
             case ThresholdOperator.LESS_THAN:
@@ -104,6 +107,7 @@ class MetricDefinition(BaseModel):
 
         Returns:
             Human-readable result string.
+
         """
         passed = self.evaluate(value)
         status = "PASS" if passed else "FAIL"
@@ -168,6 +172,7 @@ class BaseModuleConfig(BaseModel):
 
         Returns:
             16-character hex hash string.
+
         """
         # Exclude volatile fields from hash
         hash_data = self.model_dump(exclude={"created_at"})
@@ -181,6 +186,7 @@ class BaseModuleConfig(BaseModel):
 
         Returns:
             Dictionary suitable for YAML serialization.
+
         """
         data = self.model_dump()
 
@@ -205,6 +211,7 @@ class BaseModuleConfig(BaseModel):
 
         Returns:
             New configuration instance with overrides applied.
+
         """
         current = self.model_dump()
         current.update(overrides)
@@ -357,6 +364,7 @@ def create_config_class(
             my_param=(int, Field(default=100, ge=1)),
             my_float=(float, Field(default=0.5, gt=0, lt=1)),
         )
+
     """
     # Create annotations dict
     annotations: dict[str, type] = {}

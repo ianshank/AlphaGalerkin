@@ -9,10 +9,11 @@ Provides:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import structlog
 
@@ -52,6 +53,7 @@ class CurriculumScheduler:
         Args:
             config: Curriculum configuration.
             logger: Optional structured logger.
+
         """
         self.config = config
         self._logger = logger or structlog.get_logger(__name__).bind(
@@ -126,6 +128,7 @@ class CurriculumScheduler:
 
         Args:
             index: Stage index to activate.
+
         """
         if index < 0 or index >= len(self._stages):
             return
@@ -160,6 +163,7 @@ class CurriculumScheduler:
 
         Returns:
             True if stage transition occurred.
+
         """
         self._total_games += 1
         self._games_since_evaluation += 1
@@ -186,6 +190,7 @@ class CurriculumScheduler:
             total_loss: Total loss value.
             policy_loss: Policy loss component.
             value_loss: Value loss component.
+
         """
         self._total_steps += 1
         self.current_stage.record_training_step(total_loss, policy_loss, value_loss)
@@ -195,6 +200,7 @@ class CurriculumScheduler:
 
         Returns:
             True if stage transition occurred.
+
         """
         stage = self.current_stage
 
@@ -217,6 +223,7 @@ class CurriculumScheduler:
 
         Returns:
             True if advancement occurred.
+
         """
         current_stage = self.current_stage
         current_stage.complete()
@@ -258,6 +265,7 @@ class CurriculumScheduler:
 
         Returns:
             True if regression should occur.
+
         """
         stage = self.current_stage
         win_rate = stage.metrics.recent_win_rate
@@ -275,6 +283,7 @@ class CurriculumScheduler:
 
         Returns:
             True if regression occurred.
+
         """
         if self._current_stage_index <= 0:
             return False
@@ -312,6 +321,7 @@ class CurriculumScheduler:
 
         Returns:
             True if advancement occurred.
+
         """
         if self.is_final_stage:
             return False
@@ -330,6 +340,7 @@ class CurriculumScheduler:
 
         Returns:
             True if skip was successful.
+
         """
         index = self.config.get_stage_index(stage_name)
         if index < 0:
@@ -363,6 +374,7 @@ class CurriculumScheduler:
 
         Returns:
             Dictionary of adjusted parameters.
+
         """
         stage = self.current_stage
         config = stage.config
@@ -379,6 +391,7 @@ class CurriculumScheduler:
 
         Args:
             callback: Function to call when stage completes.
+
         """
         self._on_stage_complete.append(callback)
 
@@ -387,6 +400,7 @@ class CurriculumScheduler:
 
         Args:
             callback: Function to call when stage starts.
+
         """
         self._on_stage_start.append(callback)
 
@@ -395,6 +409,7 @@ class CurriculumScheduler:
 
         Args:
             callback: Function called with (from_index, to_index).
+
         """
         self._on_regression.append(callback)
 
@@ -403,6 +418,7 @@ class CurriculumScheduler:
 
         Returns:
             SchedulerState object.
+
         """
         return SchedulerState(
             current_stage_index=self._current_stage_index,
@@ -418,6 +434,7 @@ class CurriculumScheduler:
 
         Args:
             path: Path to save state.
+
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -445,6 +462,7 @@ class CurriculumScheduler:
 
         Raises:
             ValueError: If config hash doesn't match.
+
         """
         path = Path(path)
         if not path.exists():
@@ -481,6 +499,7 @@ class CurriculumScheduler:
 
         Returns:
             Dictionary with curriculum status summary.
+
         """
         return {
             "curriculum_name": self.config.name,

@@ -1,0 +1,135 @@
+# Default training configuration for AlphaGalerkin
+# Override with: python -m scripts.train training.batch_size=64
+
+defaults:
+  - _self_
+
+# Domain configuration (unit square)
+domain:
+  x_min: 0.0
+  x_max: 1.0
+  y_min: 0.0
+  y_max: 1.0
+
+# Model/operator configuration
+operator:
+  d_model: 256
+  d_key: 64
+  d_value: 64
+  d_ffn: 1024
+  n_heads: 8
+  n_galerkin_layers: 6
+  n_softmax_layers: 2
+  n_fourier_features: 128
+  fourier_scale: 1.0
+  use_fnet_mixing: true
+  fnet_dropout: 0.1
+  lbb_beta_threshold: 1e-6
+  norm_type: layernorm
+  input_channels: 17
+
+# MCTS configuration for self-play
+mcts:
+  n_simulations: 400
+  c_puct: 1.5
+  dirichlet_alpha: 0.03
+  dirichlet_epsilon: 0.25
+  temperature: 1.0
+  temperature_drop_move: 30
+  batch_size: 8
+  virtual_loss: 3.0
+
+# Training configuration
+training:
+  learning_rate: 2e-4
+  weight_decay: 1e-4
+  batch_size: 256
+  gradient_clip: 1.0
+  lr_scheduler: cosine
+  warmup_steps: 1000
+  total_steps: 100000
+  n_self_play_games: 100
+  replay_buffer_size: 500000
+  policy_loss_weight: 1.0
+  value_loss_weight: 1.0
+  checkpoint_interval: 1000
+  use_amp: true
+  eval_interval: 5000
+  eval_games: 20
+
+  # Loss balancing (ReLoBRaLo for adaptive multi-objective training)
+  loss_balancing_strategy: relobralo
+  loss_balancing_beta: 0.99
+  loss_balancing_tau: 1.0
+  loss_balancing_warmup: 100
+
+  # Prioritized Experience Replay
+  use_prioritized_replay: false
+  per_alpha: 0.6
+  per_beta: 0.4
+
+  # Curriculum learning
+  curriculum_enabled: false
+
+  # Evaluation enhancements
+  eval_vs_checkpoints: false
+  elo_k_factor: 32.0
+  n_tournament_opponents: 5
+  multi_resolution_eval: true
+
+  # Training stability
+  early_stopping_enabled: false
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.01
+  plateau_detection_enabled: false
+  plateau_patience: 5
+  plateau_factor: 0.5
+  plateau_min_lr: 1e-6
+
+# Weights & Biases configuration
+wandb:
+  enabled: true
+  project: alphagalerkin
+  entity: null  # Uses default entity
+  name: null    # Auto-generated run name
+  tags: []
+  notes: null
+  group: null
+  job_type: train
+  mode: online  # 'online', 'offline', or 'disabled'
+  log_model: true
+  log_gradients: false
+  log_code: true
+  log_interval: 10
+  watch_model: false
+  watch_log_freq: 100
+
+# Distributed training configuration
+distributed:
+  enabled: false  # Auto-detected from WORLD_SIZE environment variable
+  world_size: 1
+  backend: nccl
+  gradient_accumulation_steps: 1
+  sync_batch_norm: true
+  find_unused_parameters: false
+  broadcast_buffers: true
+  save_on_rank_0_only: true
+  timeout_seconds: 1800
+
+# Experiment settings
+experiment_name: alphagalerkin
+seed: 42
+log_level: INFO
+log_lbb_metrics: true
+
+# Training-specific settings (not in schemas.py)
+device: auto
+checkpoint_dir: checkpoints
+log_interval: 100
+board_sizes:
+  - 9
+  - 13
+  - 19
+
+# Optional: path to resume from
+# resume: null

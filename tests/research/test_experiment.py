@@ -5,9 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
 
-from src.research.config import ExperimentConfig
 from src.research.experiment import (
     Experiment,
     ExperimentRun,

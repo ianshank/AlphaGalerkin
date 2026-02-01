@@ -22,7 +22,7 @@ import torch
 from torch import Tensor, nn
 
 if TYPE_CHECKING:
-    from src.deployment.runtime import ONNXRuntime
+    pass
 
 logger = structlog.get_logger(__name__)
 

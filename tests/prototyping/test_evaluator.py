@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from src.prototyping.config import QuickEvalConfig
 from src.prototyping.builder import PrototypeModel
 from src.prototyping.evaluator import (
     QuickEvaluator,

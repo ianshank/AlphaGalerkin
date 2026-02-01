@@ -1,0 +1,27 @@
+# High learning rate preset
+# Include with: defaults: [presets/lr_high]
+#
+# Provides higher learning rate settings for faster convergence:
+# - 1e-3 learning rate (vs default 2e-4)
+# - 500-step warmup to stabilize early training
+# - Tight gradient clipping (1.0) to prevent instability
+# - Cosine annealing scheduler
+#
+# IMPORTANT: Use with warmup to prevent early instability
+#
+# Usage:
+#   defaults:
+#     - train
+#     - presets/lr_high
+#     - _self_
+
+training:
+  # Higher learning rate
+  learning_rate: 1e-3
+
+  # Warmup to stabilize initial training
+  warmup_steps: 500
+  lr_scheduler: cosine
+
+  # Tight gradient clipping for stability with high LR
+  gradient_clip: 1.0

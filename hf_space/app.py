@@ -170,6 +170,7 @@ def update_game(
             board_size=board_size,
             komi=SPACE_CONFIG.get_komi(board_size),
             move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
         )
         return (
             history,
@@ -192,6 +193,7 @@ def update_game(
                 board_size=board_size,
                 komi=SPACE_CONFIG.get_komi(board_size),
                 move_history=history,
+                training_board_size=SPACE_CONFIG.training_board_size,
             )
             return (
                 history,
@@ -205,6 +207,7 @@ def update_game(
         board_size=board_size,
         komi=SPACE_CONFIG.get_komi(board_size),
         move_history=history,
+        training_board_size=SPACE_CONFIG.training_board_size,
     )
 
     # Check game over after human move
@@ -332,6 +335,7 @@ def ai_vs_ai_step(
             board_size=board_size,
             komi=SPACE_CONFIG.get_komi(board_size),
             move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
         )
         final = GAME_MANAGER.calculate_final_score(session)
         return (
@@ -366,6 +370,7 @@ def ai_vs_ai_step(
         board_size=board_size,
         komi=SPACE_CONFIG.get_komi(board_size),
         move_history=history,
+        training_board_size=SPACE_CONFIG.training_board_size,
     )
 
     # Check game over
@@ -431,6 +436,7 @@ def ai_vs_ai_auto_step(
             board_size=board_size,
             komi=SPACE_CONFIG.get_komi(board_size),
             move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
         )
         return (
             history,
@@ -459,6 +465,7 @@ def ai_vs_ai_auto_step(
             board_size=board_size,
             komi=SPACE_CONFIG.get_komi(board_size),
             move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
         )
         final = GAME_MANAGER.calculate_final_score(session)
         return (
@@ -494,6 +501,7 @@ def ai_vs_ai_auto_step(
         board_size=board_size,
         komi=SPACE_CONFIG.get_komi(board_size),
         move_history=history,
+        training_board_size=SPACE_CONFIG.training_board_size,
     )
 
     # Check game over

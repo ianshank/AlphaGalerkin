@@ -310,8 +310,9 @@ class GameManager:
         """Parse move input from user.
 
         Accepts formats:
-        - "row,col" (0-indexed): "4,4"
-        - "PASS": Pass move
+        - GTP format: "D4", "A1", "J10" (letter + number, skipping I)
+        - Numeric format: "row,col" or "row col" (0-indexed)
+        - Pass: "PASS", "pass", "P", "p"
 
         Args:
             input_text: User input text.
@@ -324,27 +325,58 @@ class GameManager:
             ValueError: If input format is invalid.
 
         """
+        from src.tools.gtp import gtp_to_coord
+
         text = input_text.strip().upper()
 
-        if text == "PASS":
+        # Handle pass moves
+        if text in ("PASS", "P"):
             return "PASS"
 
-        parts = text.split(",")
-        if len(parts) != 2:
-            raise ValueError(
-                "Invalid format. Use 'row,col' (e.g., '4,4') or 'PASS'"
-            )
+        # Try GTP format first: letter + optional space + digits (e.g., A4, D10, J 5)
+        # GTP letters are A-H, J-T (skipping I)
+        if len(text) >= 2 and text[0].isalpha():
+            # Extract letter and number parts
+            letter = text[0]
+            rest = text[1:].strip()
+            if rest.isdigit():
+                try:
+                    gtp_coord = f"{letter}{rest}"
+                    row, col = gtp_to_coord(gtp_coord, board_size)
+                    if 0 <= row < board_size and 0 <= col < board_size:
+                        logger.debug(
+                            "parsed_gtp_move",
+                            input=input_text,
+                            gtp=gtp_coord,
+                            row=row,
+                            col=col,
+                        )
+                        return (row, col)
+                except (ValueError, IndexError):
+                    pass  # Fall through to numeric parsing
 
-        try:
-            row, col = int(parts[0]), int(parts[1])
-        except ValueError as e:
-            raise ValueError(
-                "Invalid format. Row and column must be numbers."
-            ) from e
+        # Try numeric format: row,col or row col (0-indexed)
+        parts = text.replace(",", " ").split()
+        if len(parts) == 2:
+            try:
+                row, col = int(parts[0]), int(parts[1])
+                if 0 <= row < board_size and 0 <= col < board_size:
+                    logger.debug(
+                        "parsed_numeric_move",
+                        input=input_text,
+                        row=row,
+                        col=col,
+                    )
+                    return (row, col)
+                raise ValueError(
+                    f"Position ({row},{col}) is outside the "
+                    f"{board_size}×{board_size} board (valid: 0-{board_size-1})"
+                )
+            except ValueError:
+                pass
 
-        if not (0 <= row < board_size and 0 <= col < board_size):
-            raise ValueError(
-                f"Position ({row},{col}) is outside the {board_size}×{board_size} board"
-            )
-
-        return (row, col)
+        # If nothing worked, provide helpful error
+        raise ValueError(
+            f"Invalid format. Use GTP (e.g., D4, A1) or "
+            f"numeric row,col (e.g., 3,3). Range: 0-{board_size-1}"
+        )

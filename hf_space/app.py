@@ -28,6 +28,7 @@ from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
 from src.tools.gtp import SimpleGoGame
+from src.endgame import EndgameDetector
 
 # Demo modules from PR #20
 from src.demos.physics_demo import create_physics_demo_tab
@@ -59,6 +60,9 @@ HF_SPACE_ID = "ianshank/alphagalerkin-demo"
 
 # Initialize renderer with coordinate labels enabled
 RENDERER = BoardRenderer(SPACE_CONFIG.render)
+
+# Initialize endgame detector for proper game termination
+ENDGAME_DETECTOR = EndgameDetector(SPACE_CONFIG.endgame)
 
 
 def _ensure_checkpoint(path: Path) -> Path:
@@ -280,8 +284,21 @@ def update_game(
     mcts = MCTS(evaluator=EVALUATOR, **GAME_MANAGER.mcts_kwargs)
     action = mcts.get_action(game, temperature=0.0, add_noise=False)
 
+    # Check if we should override MCTS action to pass (endgame detection)
+    human_just_passed = move == "PASS"
+    if human_just_passed and ENDGAME_DETECTOR.should_override_to_pass(
+        game, action, human_just_passed
+    ):
+        action = ENDGAME_DETECTOR.get_pass_action(board_size)
+        logger.info(
+            "endgame_override_applied",
+            original_action=mcts.get_action(game, temperature=0.0, add_noise=False),
+            new_action=action,
+        )
+
     last_move_idx = None
-    if action == board_size * board_size:  # Pass
+    pass_action = board_size * board_size
+    if action == pass_action:
         game.play_pass()
         history.append("PASS")
         ai_move_str = "Pass"
@@ -292,6 +309,7 @@ def update_game(
         history.append((ai_r, ai_c))
         ai_move_str = GAME_MANAGER.format_move(ai_r, ai_c, board_size)
         last_move_idx = action
+
 
     session.move_history = history
 

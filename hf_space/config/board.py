@@ -130,16 +130,22 @@ class SpaceConfig(BaseModel):
 
     Attributes:
         default_board_size: Default board size for new games.
+        training_board_size: Board size used during model training (for zero-shot detection).
         supported_sizes: List of supported board sizes.
         render: Board rendering configuration.
         mcts_simulations: Number of MCTS simulations for AI moves.
         show_zero_shot_info: Show zero-shot transfer information in UI.
+        fallback_komi: Default komi value for unsupported board sizes.
 
     """
 
     model_config = ConfigDict(extra="forbid")
 
     default_board_size: int = Field(default=9, description="Default board size")
+    training_board_size: int = Field(
+        default=9,
+        description="Board size used during model training",
+    )
     supported_sizes: list[int] = Field(
         default_factory=lambda: [9, 13, 19],
         description="Supported board sizes",
@@ -157,6 +163,12 @@ class SpaceConfig(BaseModel):
     show_zero_shot_info: bool = Field(
         default=True,
         description="Show zero-shot transfer information in UI",
+    )
+    fallback_komi: float = Field(
+        default=7.5,
+        ge=0.0,
+        le=15.0,
+        description="Default komi for unsupported board sizes",
     )
 
     @field_validator("supported_sizes")
@@ -194,7 +206,21 @@ class SpaceConfig(BaseModel):
             Komi value for the board size.
 
         """
-        return KOMI_BY_SIZE.get(board_size, 7.5)
+        return KOMI_BY_SIZE.get(board_size, self.fallback_komi)
+
+    def is_zero_shot_size(self, board_size: int) -> bool:
+        """Check if a board size is a zero-shot transfer size.
+
+        A board size is considered zero-shot if it differs from the training size.
+
+        Args:
+            board_size: Board dimension.
+
+        Returns:
+            True if the size requires zero-shot transfer.
+
+        """
+        return board_size != self.training_board_size
 
     def get_star_points(self, board_size: int) -> list[tuple[int, int]]:
         """Get star point coordinates for a board size.

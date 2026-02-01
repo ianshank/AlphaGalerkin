@@ -42,6 +42,7 @@ class GameSession:
         komi: Komi value for this game.
         move_history: List of moves played (coordinates or "PASS").
         is_human_vs_ai: Whether this is a human vs AI game.
+        training_board_size: Board size the model was trained on.
 
     """
 
@@ -50,6 +51,7 @@ class GameSession:
     komi: float
     move_history: list[tuple[int, int] | str] = field(default_factory=list)
     is_human_vs_ai: bool = True
+    training_board_size: int = 9
 
     @property
     def move_count(self) -> int:
@@ -71,7 +73,7 @@ class GameSession:
     @property
     def is_zero_shot(self) -> bool:
         """Check if this game uses zero-shot transfer (not training size)."""
-        return self.board_size != 9
+        return self.board_size != self.training_board_size
 
 
 class GameManager:
@@ -154,6 +156,7 @@ class GameManager:
             board_size=board_size,
             komi=komi,
             is_human_vs_ai=is_human_vs_ai,
+            training_board_size=self.config.training_board_size,
         )
 
         self._logger.info(
@@ -269,12 +272,9 @@ class GameManager:
             Descriptive label with training/zero-shot info.
 
         """
-        labels = {
-            9: f"{size}×{size} (Training size)",
-            13: f"{size}×{size} (Zero-shot transfer)",
-            19: f"{size}×{size} (Zero-shot transfer)",
-        }
-        return labels.get(size, f"{size}×{size}")
+        if size == self.config.training_board_size:
+            return f"{size}×{size} (Training size)"
+        return f"{size}×{size} (Zero-shot transfer)"
 
     def get_board_size_choices(self) -> list[tuple[str, int]]:
         """Get board size choices for UI dropdown.

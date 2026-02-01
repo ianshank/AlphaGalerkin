@@ -11,13 +11,13 @@ from pydantic import ValidationError
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.board import (
+    GTP_LETTERS,
+    KOMI_BY_SIZE,
+    STAR_POINTS_BY_SIZE,
     BoardRenderConfig,
     BoardSize,
     CoordinateLabelConfig,
-    GTP_LETTERS,
-    KOMI_BY_SIZE,
     SpaceConfig,
-    STAR_POINTS_BY_SIZE,
     get_column_letter,
     get_default_space_config,
 )
@@ -106,7 +106,7 @@ class TestGTPLetters:
     def test_consecutive_except_i(self) -> None:
         """Test letters are consecutive except for 'I'."""
         expected = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
-        assert GTP_LETTERS == expected
+        assert expected == GTP_LETTERS
 
 
 class TestGetColumnLetter:
@@ -219,8 +219,28 @@ class TestSpaceConfig:
         """Test default configuration values."""
         config = SpaceConfig()
         assert config.default_board_size == 9
+        assert config.training_board_size == 9
         assert config.supported_sizes == [9, 13, 19]
         assert config.mcts_simulations == 60
+        assert config.fallback_komi == 7.5
+
+    def test_training_board_size_configurable(self) -> None:
+        """Test training_board_size can be customized."""
+        config = SpaceConfig(training_board_size=19)
+        assert config.training_board_size == 19
+
+    def test_fallback_komi_configurable(self) -> None:
+        """Test fallback_komi can be customized."""
+        config = SpaceConfig(fallback_komi=6.5)
+        assert config.fallback_komi == 6.5
+
+    def test_fallback_komi_bounds(self) -> None:
+        """Test fallback_komi must be within bounds."""
+        with pytest.raises(ValidationError):
+            SpaceConfig(fallback_komi=-1.0)  # Below minimum
+
+        with pytest.raises(ValidationError):
+            SpaceConfig(fallback_komi=20.0)  # Above maximum
 
     def test_get_komi(self) -> None:
         """Test komi retrieval."""
@@ -229,11 +249,29 @@ class TestSpaceConfig:
         assert config.get_komi(13) == 6.5
         assert config.get_komi(19) == 7.5
 
-    def test_get_komi_unknown_size(self) -> None:
-        """Test komi for unknown size returns default."""
-        config = SpaceConfig()
-        # Unknown sizes should return default 7.5
-        assert config.get_komi(11) == 7.5
+    def test_get_komi_unknown_size_uses_fallback(self) -> None:
+        """Test komi for unknown size returns fallback_komi."""
+        config = SpaceConfig(fallback_komi=8.5)
+        # Unknown sizes should return fallback_komi
+        assert config.get_komi(11) == 8.5
+
+    def test_is_zero_shot_size_training(self) -> None:
+        """Test is_zero_shot_size returns False for training size."""
+        config = SpaceConfig(training_board_size=9)
+        assert config.is_zero_shot_size(9) is False
+
+    def test_is_zero_shot_size_non_training(self) -> None:
+        """Test is_zero_shot_size returns True for non-training sizes."""
+        config = SpaceConfig(training_board_size=9)
+        assert config.is_zero_shot_size(13) is True
+        assert config.is_zero_shot_size(19) is True
+
+    def test_is_zero_shot_size_custom_training(self) -> None:
+        """Test is_zero_shot_size with custom training size."""
+        config = SpaceConfig(training_board_size=19)
+        assert config.is_zero_shot_size(9) is True
+        assert config.is_zero_shot_size(13) is True
+        assert config.is_zero_shot_size(19) is False
 
     def test_get_star_points(self) -> None:
         """Test star point retrieval."""

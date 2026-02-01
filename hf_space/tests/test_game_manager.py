@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.board import KOMI_BY_SIZE, SpaceConfig
 from src.game_manager import GameManager, GameSession
+
 from src.tools.gtp import SimpleGoGame
 
 
@@ -76,23 +77,38 @@ class TestGameSession:
     def test_is_zero_shot_9x9(self) -> None:
         """Test is_zero_shot for training size."""
         game = SimpleGoGame(9)
-        session = GameSession(game=game, board_size=9, komi=5.5)
+        session = GameSession(game=game, board_size=9, komi=5.5, training_board_size=9)
 
         assert session.is_zero_shot is False
 
     def test_is_zero_shot_13x13(self) -> None:
         """Test is_zero_shot for 13x13."""
         game = SimpleGoGame(13)
-        session = GameSession(game=game, board_size=13, komi=6.5)
+        session = GameSession(game=game, board_size=13, komi=6.5, training_board_size=9)
 
         assert session.is_zero_shot is True
 
     def test_is_zero_shot_19x19(self) -> None:
         """Test is_zero_shot for 19x19."""
         game = SimpleGoGame(19)
-        session = GameSession(game=game, board_size=19, komi=7.5)
+        session = GameSession(game=game, board_size=19, komi=7.5, training_board_size=9)
 
         assert session.is_zero_shot is True
+
+    def test_is_zero_shot_custom_training_size(self) -> None:
+        """Test is_zero_shot with custom training size."""
+        game = SimpleGoGame(9)
+        session = GameSession(game=game, board_size=9, komi=5.5, training_board_size=19)
+
+        # 9x9 is now zero-shot because training was on 19x19
+        assert session.is_zero_shot is True
+
+    def test_training_board_size_default(self) -> None:
+        """Test training_board_size defaults to 9."""
+        game = SimpleGoGame(9)
+        session = GameSession(game=game, board_size=9, komi=5.5)
+
+        assert session.training_board_size == 9
 
 
 class TestGameManager:
@@ -297,6 +313,23 @@ class TestGameManager:
 
         assert "19×19" in label
         assert "Zero-shot" in label
+
+    def test_get_board_size_label_custom_training(self) -> None:
+        """Test board size label with custom training size."""
+        from config.board import SpaceConfig
+
+        custom_config = SpaceConfig(training_board_size=19)
+        manager = GameManager(config=custom_config)
+
+        # 19x19 should now be training size
+        label_19 = manager.get_board_size_label(19)
+        assert "19×19" in label_19
+        assert "Training" in label_19
+
+        # 9x9 should now be zero-shot
+        label_9 = manager.get_board_size_label(9)
+        assert "9×9" in label_9
+        assert "Zero-shot" in label_9
 
     def test_get_board_size_choices(
         self,

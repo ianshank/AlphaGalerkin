@@ -49,8 +49,55 @@ SPACE_CONFIG = get_default_space_config()
 MODEL_PATH = Path("checkpoint.pt")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# HuggingFace Space ID for runtime checkpoint download
+HF_SPACE_ID = "ianshank/alphagalerkin-demo"
+
 # Initialize renderer with coordinate labels enabled
 RENDERER = BoardRenderer(SPACE_CONFIG.render)
+
+
+def _ensure_checkpoint(path: Path) -> Path:
+    """Ensure checkpoint file exists, downloading from Hub if needed.
+
+    HuggingFace Spaces may skip LFS smudge during builds. This function
+    downloads the checkpoint at runtime if it's missing or is just a pointer.
+
+    Args:
+        path: Expected local path to checkpoint.
+
+    Returns:
+        Path to the actual checkpoint file.
+
+    """
+    # Check if file exists and is a real checkpoint (not LFS pointer)
+    if path.exists():
+        size = path.stat().st_size
+        # LFS pointer files are typically < 200 bytes
+        if size > 1000:
+            logger.info("checkpoint_found_local", path=str(path), size=size)
+            return path
+        else:
+            logger.warning(
+                "checkpoint_appears_to_be_lfs_pointer",
+                path=str(path),
+                size=size,
+            )
+
+    # Download from HuggingFace Hub
+    try:
+        from huggingface_hub import hf_hub_download
+
+        logger.info("downloading_checkpoint_from_hub", repo_id=HF_SPACE_ID)
+        downloaded_path = hf_hub_download(
+            repo_id=HF_SPACE_ID,
+            filename="checkpoint.pt",
+            repo_type="space",
+        )
+        logger.info("checkpoint_downloaded", path=downloaded_path)
+        return Path(downloaded_path)
+    except Exception as e:
+        logger.warning("checkpoint_download_failed", error=str(e))
+        return path
 
 
 def load_model(path: Path) -> AlphaGalerkinModel | None:
@@ -63,9 +110,13 @@ def load_model(path: Path) -> AlphaGalerkinModel | None:
         Loaded model or None if loading fails.
 
     """
+    # Ensure checkpoint exists (download from Hub if needed)
+    path = _ensure_checkpoint(path)
+
     if not path.exists():
         logger.warning("checkpoint_not_found", path=str(path))
         return None
+
 
     try:
         checkpoint = torch.load(path, map_location=DEVICE, weights_only=False)

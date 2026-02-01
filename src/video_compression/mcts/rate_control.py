@@ -263,7 +263,7 @@ class MCTSRateController:
     def _select_child(
         self,
         node: MCTSNode,
-    ) -> tuple[int, MCTSNode]:
+    ) -> tuple[int | None, MCTSNode | None]:
         """Select child with highest UCB score.
 
         Args:
@@ -351,7 +351,7 @@ class MCTSRateController:
             ])
             probs = visits / visits.sum()
             actions = sorted(root.children.keys())
-            idx = torch.multinomial(probs, 1).item()
+            idx = int(torch.multinomial(probs, 1).item())
             best_action = actions[idx]
             confidence = probs[idx].item()
 
@@ -376,7 +376,7 @@ class MCTSRateController:
         # Simple exponential model
         base_bits = latent.numel() * 8  # Maximum bits
         qp_factor = math.exp(-qp / 10)  # Higher QP = fewer bits
-        return base_bits * qp_factor * 0.1  # Scale factor
+        return base_bits * qp_factor * self.config.bit_estimation_slope  # Scale factor
 
     def _estimate_quality(self, qp: int) -> float:
         """Estimate quality (PSNR) for given QP.
@@ -389,8 +389,8 @@ class MCTSRateController:
         Returns:
             Estimated PSNR.
         """
-        # Linear model: PSNR = 50 - 0.5 * QP
-        return max(20.0, 50.0 - 0.5 * qp)
+        # Linear model: PSNR = intercept - slope * QP
+        return max(20.0, self.config.quality_estimation_intercept - self.config.quality_estimation_slope * qp)
 
 
 class GOPPlanner:

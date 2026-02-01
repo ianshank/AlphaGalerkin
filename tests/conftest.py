@@ -20,6 +20,15 @@ except ImportError:
     pass
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Configure pytest markers for video and other test categories."""
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "e2e: end-to-end workflow tests")
+    config.addinivalue_line("markers", "video: video compression tests")
+    config.addinivalue_line("markers", "requires_video: tests requiring real video files")
+    config.addinivalue_line("markers", "integration: integration tests")
+
+
 @pytest.fixture(autouse=True)
 def set_random_seed() -> None:
     """Set random seed for reproducibility."""
@@ -33,3 +42,4 @@ def device():
     if not HAS_TORCH:
         pytest.skip("torch not available")
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+

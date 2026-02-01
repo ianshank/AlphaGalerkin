@@ -16,7 +16,6 @@ Features:
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 import time
 from pathlib import Path
@@ -25,12 +24,16 @@ from typing import Iterator
 import torch
 from torch import Tensor
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+from src.templates.logging import (
+    configure_module_logging,
+    create_logger_class,
+    DebugContext,
 )
-logger = logging.getLogger(__name__)
+
+# Configure logging
+configure_module_logging(level="INFO")
+Logger = create_logger_class("decode_video")
+logger = Logger("cli")
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,6 +93,11 @@ def parse_args() -> argparse.Namespace:
         help="Enable verbose logging",
     )
     parser.add_argument(
+        "--prores",
+        action="store_true",
+        help="Use Apple ProRes 422 codec for .mov output",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate bitstream without decoding",
@@ -123,6 +131,7 @@ def write_video_frames(
     fps: float,
     width: int,
     height: int,
+    use_prores: bool = False,
 ) -> int:
     """Write decoded frames to video file.
 
@@ -132,6 +141,7 @@ def write_video_frames(
         fps: Frame rate.
         width: Frame width.
         height: Frame height.
+        use_prores: Whether to use ProRes codec for .mov.
 
     Returns:
         Number of frames written.
@@ -147,12 +157,20 @@ def write_video_frames(
     fourcc_map = {
         ".mp4": "mp4v",
         ".avi": "XVID",
-        ".mov": "mp4v",
+        ".mov": "mp4v",  # Standard QuickTime
         ".mkv": "XVID",
         ".webm": "VP80",
     }
 
-    fourcc_code = fourcc_map.get(ext, "mp4v")
+    # Handle ProRes option
+    if use_prores and ext == ".mov":
+        fourcc_code = "apcn"  # ProRes 422
+    else:
+        # Default to mp4v if unknown, but log warning
+        if ext not in fourcc_map:
+            logger.warning(f"Unknown extension {ext}, defaulting to mp4v", extension=ext)
+        fourcc_code = fourcc_map.get(ext, "mp4v")
+
     fourcc = cv2.VideoWriter_fourcc(*fourcc_code)
 
     writer = cv2.VideoWriter(
@@ -163,7 +181,7 @@ def write_video_frames(
     )
 
     if not writer.isOpened():
-        logger.error("Failed to open video writer for %s", output_path)
+        logger.error("video_writer_failed", path=str(output_path))
         sys.exit(1)
 
     frame_count = 0
@@ -178,6 +196,10 @@ def write_video_frames(
 
             writer.write(frame_bgr)
             frame_count += 1
+
+            if frame_count % 10 == 0:
+                 logger.debug("frames_written", count=frame_count)
+
     finally:
         writer.release()
 
@@ -201,21 +223,21 @@ def compute_quality_metrics(
         import cv2
         import numpy as np
     except ImportError:
-        logger.error("OpenCV/NumPy not installed")
+        logger.error("deps_missing", message="OpenCV/NumPy not installed")
         return {}
 
     # Import quality metrics
     try:
         from src.video_compression.metrics.quality import compute_psnr, compute_ssim
     except ImportError:
-        logger.warning("Quality metrics not available")
+        logger.warning("metrics_missing", message="Quality metrics not available")
         return {}
 
     decoded_cap = cv2.VideoCapture(str(decoded_path))
     reference_cap = cv2.VideoCapture(str(reference_path))
 
     if not decoded_cap.isOpened() or not reference_cap.isOpened():
-        logger.error("Failed to open video files for comparison")
+        logger.error("comparison_failed", message="Failed to open video files")
         return {}
 
     psnr_values = []
@@ -270,154 +292,196 @@ def main() -> int:
     args = parse_args()
 
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+        configure_module_logging(level="DEBUG")
+
+    logger.info("decoding_start", input=str(args.input), output=str(args.output))
 
     # Validate input file
     if not args.input.exists():
-        logger.error("Input file not found: %s", args.input)
+        logger.error("input_not_found", path=str(args.input))
         return 1
 
     # Validate checkpoint
     if not args.checkpoint.exists():
-        logger.error("Checkpoint not found: %s", args.checkpoint)
+        logger.error("checkpoint_not_found", path=str(args.checkpoint))
         return 1
 
     # Get device
     device = get_device(args.device)
-    logger.info("Using device: %s", device)
+    logger.info("device_selected", device=str(device))
 
     # Import codec modules
     try:
         from src.video_compression.codec import load_codec
-        from src.video_compression.utils.bitstream import (
-            load_bitstream,
-            BitstreamHeader,
-        )
+        from src.video_compression.utils.bitstream import load_bitstream
     except ImportError as e:
-        logger.error("Failed to import codec modules: %s", e)
+        logger.error("import_failed", error=str(e))
         return 1
 
-    # Load bitstream
-    logger.info("Loading bitstream from %s", args.input)
-    try:
-        header, encoded_frames = load_bitstream(args.input)
-    except Exception as e:
-        logger.error("Failed to load bitstream: %s", e)
-        return 1
+    with DebugContext("video_decoding", capture_memory=True) as ctx:
+        # Load bitstream
+        logger.info("loading_bitstream", path=str(args.input))
+        try:
+            header, encoded_frames = load_bitstream(args.input)
+        except Exception as e:
+            logger.error("bitstream_load_failed", error=str(e))
+            return 1
 
-    logger.info(
-        "Bitstream info: %dx%d, %d frames, %.2f fps",
-        header.width,
-        header.height,
-        header.num_frames,
-        header.fps,
-    )
+        logger.info(
+            "bitstream_info",
+            resolution=f"{header.width}x{header.height}",
+            frames=header.num_frames,
+            fps=header.fps,
+        )
 
-    if args.dry_run:
-        logger.info("Dry run complete - bitstream is valid")
-        return 0
+        if args.dry_run:
+            logger.info("dry_run_complete")
+            return 0
 
-    # Load codec
-    logger.info("Loading codec from %s", args.checkpoint)
-    try:
-        codec = load_codec(args.checkpoint, device=device)
-    except Exception as e:
-        logger.error("Failed to load codec: %s", e)
-        return 1
+        # Load codec
+        logger.info("loading_codec", path=str(args.checkpoint))
+        try:
+            # Try using the load_codec utility first
+            codec = load_codec(args.checkpoint, device=device)
+        except Exception as e:
+            logger.warning("load_codec_failed", error=str(e), message="Retrying with manual load")
+            # Fallback: manual loading for robustness
+            try:
+                from src.video_compression.config import CodecConfig
+                from src.video_compression.codec.codec import create_codec
 
-    # Create output directory if needed
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+                checkpoint_data = torch.load(args.checkpoint, map_location=device, weights_only=False)
 
-    # Decode frames
-    logger.info("Decoding %d frames to %s", header.num_frames, args.output)
-    start_time = time.time()
+                # Try to reconstruct config from checkpoint, fallback to default
+                if "config" in checkpoint_data and isinstance(checkpoint_data["config"], dict):
+                    config = CodecConfig(**checkpoint_data["config"])
+                else:
+                    config = CodecConfig(name="decoder")
 
-    def frame_generator():
-        """Generate decoded frames."""
-        from src.video_compression.codec.gop_manager import FrameInfo, FrameType
-        from src.video_compression.codec.entropy_coder import EncodedBitstream
+                codec = create_codec(config)
+                codec.to(device)
+                codec.eval()
 
-        for frame in encoded_frames:
-            # Reconstruct FrameInfo from stored metadata in frame header
-            frame_info = FrameInfo(
-                index=frame.header.frame_idx,
-                gop_index=frame.header.frame_idx % codec.config.mcts.gop_size,
-                frame_type=frame.header.frame_type,
-                display_order=frame.header.frame_idx % codec.config.mcts.gop_size,
-                encode_order=frame.header.frame_idx % codec.config.mcts.gop_size,
-                forward_ref=frame.header.forward_ref_idx if frame.header.forward_ref_idx >= 0 else None,
-                backward_ref=frame.header.backward_ref_idx if frame.header.backward_ref_idx >= 0 else None,
-            )
+                # Load state dict with flexible key detection
+                if "model_state_dict" in checkpoint_data:
+                    codec.load_state_dict(checkpoint_data["model_state_dict"], strict=False)
+                elif "model_state" in checkpoint_data:
+                    codec.load_state_dict(checkpoint_data["model_state"], strict=False)
+                else:
+                    codec.load_state_dict(checkpoint_data, strict=False)
 
-            # Reconstruct bitstream object from raw bytes
-            bitstream = EncodedBitstream(data=frame.data, symbols=None)
+                logger.info("manual_load_success")
+            except Exception as fallback_error:
+                logger.error("codec_load_failed", error=str(fallback_error))
+                return 1
 
-            # Compute latent shape from header dimensions
-            latent_h = header.padded_height // header.downsample_factor
-            latent_w = header.padded_width // header.downsample_factor
 
-            # Create scales tensor (uniform scales as placeholder)
-            # In a full implementation, scales would be stored in z_data
-            scales = torch.ones(1, header.latent_channels, latent_h, latent_w)
+        ctx.checkpoint("codec_loaded")
 
-            # Decode frame
-            decoded = codec.decode_frame(
-                bitstream=bitstream,
-                frame_info=frame_info,
-                scales=scales,
-                latent_shape=(latent_h, latent_w),
-                qp=frame.header.qp,
-            )
+        # Create output directory if needed
+        args.output.parent.mkdir(parents=True, exist_ok=True)
 
-            # Crop to original dimensions if padding was applied
-            if frame.header.padding_info is not None:
-                from src.video_compression.utils.padding import crop_to_original
-                decoded = crop_to_original(decoded, frame.header.padding_info)
+        # Decode frames
+        logger.info("decoding_frames", count=header.num_frames)
+        start_time = time.time()
 
-            yield decoded
+        def frame_generator() -> Iterator[Tensor]:
+            """Generate decoded frames."""
+            from src.video_compression.codec.gop_manager import FrameInfo
+            from src.video_compression.codec.entropy_coder import EncodedBitstream
 
-    # Write to output video
-    num_written = write_video_frames(
-        frames=frame_generator(),
-        output_path=args.output,
-        fps=header.fps,
-        width=header.width,
-        height=header.height,
-    )
+            for frame in encoded_frames:
+                # Reconstruct FrameInfo from stored metadata in frame header
+                frame_info = FrameInfo(
+                    index=frame.header.frame_idx,
+                    gop_index=frame.header.frame_idx % codec.config.mcts.gop_size,
+                    frame_type=frame.header.frame_type,
+                    display_order=frame.header.frame_idx % codec.config.mcts.gop_size,
+                    encode_order=frame.header.frame_idx % codec.config.mcts.gop_size,
+                    forward_ref=frame.header.forward_ref_idx if frame.header.forward_ref_idx >= 0 else None,
+                    backward_ref=frame.header.backward_ref_idx if frame.header.backward_ref_idx >= 0 else None,
+                )
 
-    elapsed = time.time() - start_time
-    fps = num_written / elapsed if elapsed > 0 else 0
+                # Compute latent shape from header dimensions (needed for bitstream)
+                latent_h = header.padded_height // header.downsample_factor
+                latent_w = header.padded_width // header.downsample_factor
 
-    logger.info(
-        "Decoded %d frames in %.2fs (%.2f fps)",
-        num_written,
-        elapsed,
-        fps,
-    )
+                # Reconstruct bitstream object from raw bytes
+                # EncodedBitstream requires: data, shape, min_val, max_val, num_symbols
+                bitstream = EncodedBitstream(
+                    data=frame.data,
+                    shape=(1, header.latent_channels, latent_h, latent_w),
+                    min_val=-128,  # Typical quantized symbol range
+                    max_val=127,
+                    num_symbols=header.latent_channels * latent_h * latent_w,
+                )
 
-    # Compute quality metrics if reference provided
-    if args.reference_video is not None:
-        if not args.reference_video.exists():
-            logger.warning("Reference video not found: %s", args.reference_video)
-        else:
-            logger.info("Computing quality metrics against %s", args.reference_video)
-            metrics = compute_quality_metrics(args.output, args.reference_video)
+                # Create scales tensor (uniform scales as placeholder)
+                scales = torch.ones(1, header.latent_channels, latent_h, latent_w)
 
-            if metrics:
-                logger.info("Quality metrics:")
-                logger.info("  Avg PSNR: %.2f dB", metrics["avg_psnr"])
-                logger.info("  Avg SSIM: %.4f", metrics["avg_ssim"])
+                # Decode frame
+                decoded = codec.decode_frame(
+                    bitstream=bitstream,
+                    frame_info=frame_info,
+                    scales=scales,
+                    latent_shape=(latent_h, latent_w),
+                    qp=frame.header.qp,
+                )
 
-                # Write quality report if requested
-                if args.quality_report is not None:
-                    import json
+                # Crop to original dimensions if padding was applied
+                if frame.header.padding_info is not None:
+                    from src.video_compression.utils.padding import crop_to_original
+                    decoded = crop_to_original(decoded, frame.header.padding_info)
 
-                    args.quality_report.parent.mkdir(parents=True, exist_ok=True)
-                    with open(args.quality_report, "w") as f:
-                        json.dump(metrics, f, indent=2)
-                    logger.info("Quality report written to %s", args.quality_report)
+                yield decoded
 
-    logger.info("Decoding complete: %s", args.output)
+        # Write to output video
+        num_written = write_video_frames(
+            frames=frame_generator(),
+            output_path=args.output,
+            fps=header.fps,
+            width=header.width,
+            height=header.height,
+            use_prores=args.prores,
+        )
+
+        ctx.checkpoint("frames_written", count=num_written)
+
+        elapsed = time.time() - start_time
+        fps = num_written / elapsed if elapsed > 0 else 0
+
+        logger.info(
+            "decoding_complete",
+            frames=num_written,
+            duration=round(elapsed, 2),
+            fps=round(fps, 2),
+            output=str(args.output),
+        )
+
+        # Compute quality metrics if reference provided
+        if args.reference_video is not None:
+            if not args.reference_video.exists():
+                logger.warning("reference_missing", path=str(args.reference_video))
+            else:
+                logger.info("computing_metrics", reference=str(args.reference_video))
+                metrics = compute_quality_metrics(args.output, args.reference_video)
+
+                if metrics:
+                    logger.info(
+                        "quality_metrics",
+                        avg_psnr=round(metrics["avg_psnr"], 2),
+                        avg_ssim=round(metrics["avg_ssim"], 4),
+                    )
+
+                    # Write quality report if requested
+                    if args.quality_report is not None:
+                        import json
+
+                        args.quality_report.parent.mkdir(parents=True, exist_ok=True)
+                        with open(args.quality_report, "w") as f:
+                            json.dump(metrics, f, indent=2)
+                        logger.info("report_saved", path=str(args.quality_report))
+
     return 0
 
 

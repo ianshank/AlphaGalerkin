@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Generator
 from pathlib import Path
 
 import torch
@@ -27,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class ImageDataset(Dataset):
+class ImageDataset(Dataset[torch.Tensor]):
     """Simple image dataset for training."""
 
     def __init__(
@@ -46,7 +47,7 @@ class ImageDataset(Dataset):
         self.root = Path(root)
         self.patch_size = patch_size
 
-        self.files = []
+        self.files: list[Path] = []
         for ext in extensions:
             self.files.extend(self.root.glob(f"**/*{ext}"))
 
@@ -72,17 +73,17 @@ class ImageDataset(Dataset):
         except ImportError:
             raise ImportError("PIL not installed. Install with: pip install pillow")
 
-        img = Image.open(self.files[idx]).convert("RGB")
-        img = torch.from_numpy(
-            __import__("numpy").array(img)
+        pil_img = Image.open(self.files[idx]).convert("RGB")
+        img: torch.Tensor = torch.from_numpy(
+            __import__("numpy").array(pil_img)
         ).float() / 255.0
         img = img.permute(2, 0, 1)  # HWC to CHW
 
         # Random crop
         _, h, w = img.shape
         if h >= self.patch_size and w >= self.patch_size:
-            top = torch.randint(0, h - self.patch_size + 1, (1,)).item()
-            left = torch.randint(0, w - self.patch_size + 1, (1,)).item()
+            top = int(torch.randint(0, h - self.patch_size + 1, (1,)).item())
+            left = int(torch.randint(0, w - self.patch_size + 1, (1,)).item())
             img = img[:, top:top + self.patch_size, left:left + self.patch_size]
         else:
             # Resize if too small
@@ -233,7 +234,7 @@ def main() -> None:
     logger.info(f"Starting training for {args.epochs} epochs")
     logger.info(f"Lambda R-D: {args.lambda_rd}")
 
-    def infinite_loader():
+    def infinite_loader() -> Generator[torch.Tensor, None, None]:
         while True:
             for batch in train_loader:
                 yield batch

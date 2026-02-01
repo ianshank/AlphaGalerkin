@@ -435,3 +435,8 @@ def from_environment() -> tuple[int, int, int]:
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     return rank, local_rank, world_size
+
+
+# Backward-compatible alias for tests and external usage
+# DistributedInfraConfig is the full-featured class; this alias maintains API compatibility
+DistributedConfig = DistributedInfraConfig

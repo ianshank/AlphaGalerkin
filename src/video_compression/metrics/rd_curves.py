@@ -15,9 +15,9 @@ import numpy as np
 
 # Compatibility for numpy.trapz (renamed to trapezoid in numpy 2.0)
 try:
-    _trapezoid = np.trapezoid
+    _trapezoid = np.trapezoid  # numpy >= 2.0
 except AttributeError:
-    _trapezoid = _trapezoid  # type: ignore[attr-defined]
+    _trapezoid = np.trapz  # numpy < 2.0
 
 
 @dataclass

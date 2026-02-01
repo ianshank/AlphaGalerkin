@@ -464,6 +464,26 @@ class MCTSRateControlConfig(BaseModuleConfig):
         description="Hidden state dimension for MCTS networks",
     )
 
+    # Heuristic model parameters
+    bit_estimation_slope: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=10.0,
+        description="Slope for bit estimation model",
+    )
+    quality_estimation_intercept: float = Field(
+        default=50.0,
+        ge=0.0,
+        le=100.0,
+        description="Intercept for quality estimation model",
+    )
+    quality_estimation_slope: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=5.0,
+        description="Slope for quality estimation model",
+    )
+
     @model_validator(mode="after")
     def validate_qp_range(self) -> MCTSRateControlConfig:
         """Ensure QP min <= max."""

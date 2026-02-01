@@ -9,20 +9,30 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import logging
+import io
+import sys
 from pathlib import Path
 
 import torch
 
 from src.video_compression.config import CodecConfig
 from src.video_compression.codec.codec import create_codec
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+from src.video_compression.utils.bitstream import (
+    BitstreamHeader,
+    FrameHeader,
+    EncodedFrame,
+    save_bitstream,
 )
-logger = logging.getLogger(__name__)
+from src.templates.logging import (
+    configure_module_logging,
+    create_logger_class,
+    DebugContext,
+)
+
+# Configure logging
+configure_module_logging(level="INFO")
+Logger = create_logger_class("encode_video")
+logger = Logger("cli")
 
 
 def parse_args() -> argparse.Namespace:
@@ -95,6 +105,7 @@ def load_video_frames(path: Path) -> torch.Tensor:
         logger.error("OpenCV not installed. Install with: pip install opencv-python")
         raise
 
+    logger.info("loading_video", path=str(path))
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise ValueError(f"Could not open video: {path}")
@@ -119,20 +130,53 @@ def load_video_frames(path: Path) -> torch.Tensor:
     return torch.stack(frames)
 
 
+def get_video_fps(path: Path) -> float:
+    """Get video frame rate.
+
+    Args:
+        path: Path to video file.
+
+    Returns:
+        Frame rate (fps), defaults to 30.0 if unavailable.
+    """
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(path))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+        return fps if fps > 0 else 30.0
+    except ImportError:
+        return 30.0
+
+
+def serialize_latent(tensor: torch.Tensor) -> bytes:
+    """Serialize tensor to bytes for bitstream storage.
+
+    Args:
+        tensor: Input tensor to serialize.
+
+    Returns:
+        Bytes representation of tensor.
+    """
+    buffer = io.BytesIO()
+    torch.save(tensor.cpu(), buffer)
+    return buffer.getvalue()
+
+
 def main() -> None:
     """Main entry point."""
     args = parse_args()
 
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+        configure_module_logging(level="DEBUG")
 
-    logger.info(f"Input: {args.input}")
-    logger.info(f"Output: {args.output}")
+    logger.info("encoding_start", input=str(args.input), output=str(args.output))
 
     # Check input exists
     if not args.input.exists():
-        logger.error(f"Input file not found: {args.input}")
-        return
+        logger.error("input_not_found", path=str(args.input))
+        sys.exit(1)
 
     # Create output directory
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -142,61 +186,134 @@ def main() -> None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         device = torch.device(args.device)
-    logger.info(f"Device: {device}")
+    logger.info("device_selected", device=str(device))
 
-    # Load config
-    config = CodecConfig(name="encoder")
-    config.mcts.gop_size = args.gop_size
+    with DebugContext("video_encoding", capture_memory=True) as ctx:
+        # Load config
+        config = CodecConfig(name="encoder")
+        config.mcts.gop_size = args.gop_size
 
-    if args.lambda_rd is not None:
-        config.training.lambda_rd = args.lambda_rd
+        if args.lambda_rd is not None:
+            config.training.lambda_rd = args.lambda_rd
 
-    # Create codec
-    codec = create_codec(config)
-    codec.to(device)
-    codec.eval()
+        # Create codec on target device
+        codec = create_codec(config, device=str(device))
+        codec.to(device)
+        codec.eval()
 
-    # Load model checkpoint if provided
-    if args.model is not None:
-        logger.info(f"Loading model from {args.model}")
-        checkpoint = torch.load(args.model, map_location=device)
-        codec.load_state_dict(checkpoint["model_state"])
+        # Load model checkpoint if provided
+        if args.model is not None:
+            logger.info("loading_model", path=str(args.model))
+            try:
+                checkpoint = torch.load(args.model, map_location=device, weights_only=False)
+                logger.info("checkpoint_debug", type=str(type(checkpoint)), keys=str(list(checkpoint.keys())) if isinstance(checkpoint, dict) else "N/A")
+                if "model_state_dict" in checkpoint:
+                    state_dict = checkpoint["model_state_dict"]
+                elif "model_state" in checkpoint:
+                    state_dict = checkpoint["model_state"]
+                else:
+                    state_dict = checkpoint
 
-    # Load video
-    logger.info("Loading video frames...")
-    frames = load_video_frames(args.input)
-    logger.info(f"Loaded {len(frames)} frames, shape: {frames.shape[1:]}")
+                missing, unexpected = codec.load_state_dict(state_dict, strict=False)
+                if missing:
+                    logger.warning("model_load_partial", missing_keys_count=len(missing))
+                    logger.debug("missing_keys", keys=missing)
+                if unexpected:
+                    logger.warning("model_load_unexpected", unexpected_keys_count=len(unexpected))
+            except Exception as e:
+                logger.exception("model_load_failed", error=str(e))
+                sys.exit(1)
 
-    # Encode
-    logger.info("Encoding...")
-    total_bits = 0
-    total_psnr = 0.0
+        # Load video
+        frames = load_video_frames(args.input)
+        num_frames = len(frames)
+        _, height, width = frames.shape[1:]
+        ctx.checkpoint("video_loaded", frames=num_frames, height=height, width=width)
 
-    with torch.no_grad():
-        for i, frame in enumerate(frames):
-            frame = frame.unsqueeze(0).to(device)
-            frame_info = codec.gop_manager.get_frame_info(i)
+        # Calculate padded dimensions (codec uses 16x downsampling)
+        downsample_factor = config.encoder.downsample_factor
+        padded_height = ((height + downsample_factor - 1) // downsample_factor) * downsample_factor
+        padded_width = ((width + downsample_factor - 1) // downsample_factor) * downsample_factor
 
-            output = codec.encode_frame(frame, frame_info)
-            total_bits += output.rate
+        # Create bitstream header
+        header = BitstreamHeader(
+            width=width,
+            height=height,
+            num_frames=num_frames,
+            frame_rate=get_video_fps(args.input),
+            gop_size=args.gop_size,
+            downsample_factor=downsample_factor,
+            latent_channels=config.encoder.latent_channels,
+            padded_width=padded_width,
+            padded_height=padded_height,
+            lambda_rd=args.lambda_rd if args.lambda_rd else config.training.lambda_rd,
+        )
 
-            psnr = 10 * torch.log10(1.0 / (output.distortion + 1e-10)).item()
-            total_psnr += psnr
+        # Encode and write to bitstream
+        logger.info("encoding_frames", count=num_frames)
+        total_bits = 0.0
+        total_psnr = 0.0
+        encoded_frames: list[EncodedFrame] = []
 
-            if i % 10 == 0:
-                logger.info(f"Frame {i}: {output.rate:.0f} bits, PSNR: {psnr:.2f} dB")
+        with torch.no_grad():
+            for i, frame in enumerate(frames):
+                frame_tensor = frame.unsqueeze(0).to(device)
+                frame_info = codec.gop_manager.get_frame_info(i)
 
-    # Summary
-    avg_psnr = total_psnr / len(frames)
-    bpp = total_bits / (len(frames) * frames.shape[2] * frames.shape[3])
+                output = codec.encode_frame(frame_tensor, frame_info)
+                total_bits += output.rate
 
-    logger.info(f"Encoding complete!")
-    logger.info(f"Total bits: {total_bits:.0f}")
-    logger.info(f"Average PSNR: {avg_psnr:.2f} dB")
-    logger.info(f"Average BPP: {bpp:.4f}")
+                distortion_tensor = torch.tensor(output.distortion) if not isinstance(output.distortion, torch.Tensor) else output.distortion
+                psnr = 10 * torch.log10(1.0 / (distortion_tensor + 1e-10)).item()
+                total_psnr += psnr
 
-    # Save compressed file (placeholder - would need actual bitstream writing)
-    logger.info(f"Output saved to: {args.output}")
+                # Serialize latent to bytes for bitstream
+                latent_bytes = serialize_latent(output.latent)
+                # Note: CodecOutput doesn't expose hyperprior z tensor separately
+                z_bytes = b""
+
+                # Create frame header
+                frame_header = FrameHeader(
+                    frame_idx=i,
+                    frame_type=frame_info.frame_type,
+                    data_length=len(latent_bytes),
+                    qp=args.qp,
+                    forward_ref_idx=frame_info.forward_ref if frame_info.forward_ref else -1,
+                    backward_ref_idx=frame_info.backward_ref if frame_info.backward_ref else -1,
+                )
+
+                encoded_frame = EncodedFrame(
+                    header=frame_header,
+                    data=latent_bytes,
+                    z_data=z_bytes,
+                )
+                encoded_frames.append(encoded_frame)
+
+                if i % 10 == 0 or i == num_frames - 1:
+                    logger.info(
+                        "frame_encoded",
+                        index=i,
+                        type=frame_info.frame_type,
+                        bits=int(output.rate),
+                        psnr=round(psnr, 2),
+                    )
+
+        # Write bitstream to file
+        bytes_written = save_bitstream(args.output, header, encoded_frames)
+        ctx.checkpoint("bitstream_saved", bytes=bytes_written)
+
+        # Summary
+        avg_psnr = total_psnr / num_frames
+        bpp = total_bits / (num_frames * height * width)
+
+        logger.info(
+            "encoding_complete",
+            total_bits=int(total_bits),
+            avg_psnr=round(avg_psnr, 2),
+            avg_bpp=round(bpp, 4),
+            file_size=bytes_written,
+            output_path=str(args.output),
+        )
 
 
 if __name__ == "__main__":

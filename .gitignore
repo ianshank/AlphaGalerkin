@@ -92,3 +92,13 @@ hydra_outputs/
 
 # Claude Code
 .claude/
+
+# Video compression testing
+Test_Video_Materals/
+validation_outputs/
+
+# Credentials and secrets
+*.json
+!package.json
+!tsconfig.json
+notebooks/utils/*.json

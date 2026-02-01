@@ -1,20 +1,27 @@
 """Hugging Face Space for AlphaGalerkin.
 
+Demonstrates zero-shot resolution transfer across multiple board sizes.
+Model trained on 9x9 generalizes to 13x13 and 19x19 without retraining.
+
 Hosted at: hf.co/spaces/ianshank/alphagalerkin-demo
 """
 
-import logging
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
 import gradio as gr
-import matplotlib.pyplot as plt
 import numpy as np
+import structlog
 import torch
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 # Ensure local imports work
-sys.path.append(str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent))
+
+from config.board import get_default_space_config
+from src.game_manager import GameManager, GameSession
+from src.rendering.board_renderer import BoardRenderer
 
 from config.schemas import AlphaGalerkinConfig
 from src.mcts.evaluator import FNetEvaluator
@@ -22,479 +29,654 @@ from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
 from src.tools.gtp import SimpleGoGame
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer(colors=True),
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+)
+logger = structlog.get_logger(__name__)
 
-model_path = Path("checkpoint.pt")
-device = "cpu"  # Force CPU for HF Spaces (unless GPU is available)
-if torch.cuda.is_available():
-    device = "cuda"
+# Configuration
+SPACE_CONFIG = get_default_space_config()
+MODEL_PATH = Path("checkpoint.pt")
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Constants
-BOARD_SIZE = 9
-KOMI = 6.5  # Standard komi for 9x9
+# Initialize renderer with coordinate labels enabled
+RENDERER = BoardRenderer(SPACE_CONFIG.render)
 
 
-def load_model(path: Path) -> AlphaGalerkinModel:
-    """Load AlphaGalerkin model from checkpoint."""
+def load_model(path: Path) -> AlphaGalerkinModel | None:
+    """Load AlphaGalerkin model from checkpoint.
+
+    Args:
+        path: Path to checkpoint file.
+
+    Returns:
+        Loaded model or None if loading fails.
+
+    """
     if not path.exists():
-        raise FileNotFoundError(f"Checkpoint not found at {path}")
+        logger.warning("checkpoint_not_found", path=str(path))
+        return None
 
-    checkpoint = torch.load(path, map_location=device)
+    try:
+        checkpoint = torch.load(path, map_location=DEVICE, weights_only=False)
+        cfg = checkpoint.get("config", {})
 
-    # Extract config
-    cfg = checkpoint.get("config", {})
-    if isinstance(cfg, dict):
-        config = AlphaGalerkinConfig(**cfg)
-        model = AlphaGalerkinModel(config.operator)
-    else:
-        raise ValueError("Could not load config from checkpoint")
+        if isinstance(cfg, dict):
+            config = AlphaGalerkinConfig(**cfg)
+            model = AlphaGalerkinModel(config.operator)
+        else:
+            raise ValueError("Could not load config from checkpoint")
 
-    if "model_state_dict" in checkpoint:
-        model.load_state_dict(checkpoint["model_state_dict"])
-    else:
-        model.load_state_dict(checkpoint)
+        if "model_state_dict" in checkpoint:
+            model.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            model.load_state_dict(checkpoint)
 
-    model.to(device)
-    model.eval()
-    return model
+        model.to(DEVICE)
+        model.eval()
+
+        logger.info("model_loaded", device=DEVICE, path=str(path))
+        return model
+
+    except Exception as e:
+        logger.exception("model_load_failed", error=str(e))
+        return None
 
 
-# Global model instance
-try:
-    MODEL = load_model(model_path)
-    logger.info("Model loaded successfully.")
-
-    # Initialize Evaluator
-    EVALUATOR = FNetEvaluator(MODEL, device=device, use_fast_path=True)
-
-    # MCTS Config - modest for web demo speed
-    MCTS_KWARGS = {
-        "n_simulations": 60,
-        "c_puct": 1.5,
-        "dirichlet_alpha": 0.03,
-        "dirichlet_epsilon": 0.0,
-    }
-except Exception as e:
-    logger.error(f"Failed to load model: {e}")
-    MODEL = None
-    EVALUATOR = None
+# Global instances
+MODEL = load_model(MODEL_PATH)
+EVALUATOR = FNetEvaluator(MODEL, device=DEVICE, use_fast_path=True) if MODEL else None
+GAME_MANAGER = GameManager(
+    config=SPACE_CONFIG,
+    evaluator=EVALUATOR,
+)
 
 
 # ============ HELPER FUNCTIONS ============
 
 
-def replay_history(history: list, size: int = BOARD_SIZE) -> SimpleGoGame:
-    """Reconstruct game state from move history."""
-    game = SimpleGoGame(size)
-    for move in history:
-        if move == "PASS":
-            game.play_pass()
-        else:
-            r, c = move
-            game.play(r, c)
-    return game
+def get_board_size_choices() -> list[tuple[str, int]]:
+    """Get board size choices for dropdown.
+
+    Returns:
+        List of (label, value) tuples for Gradio dropdown.
+
+    """
+    return GAME_MANAGER.get_board_size_choices()
 
 
-def get_score_display(game: SimpleGoGame) -> str:
-    """Return formatted score string for live display."""
-    # Get captures from the game's captures dict
-    black_captures = game.captures.get(SimpleGoGame.BLACK, 0)
-    white_captures = game.captures.get(SimpleGoGame.WHITE, 0)
+def create_game_state(board_size: int) -> tuple[list, np.ndarray, str]:
+    """Create initial game state for a board size.
 
-    move_count = len(game.move_history)
-    current = "Black" if game.current_player == SimpleGoGame.BLACK else "White"
+    Args:
+        board_size: Board size to create.
 
-    return (
-        f"⚫ Black captures: {black_captures} | ⚪ White captures: {white_captures} "
-        f"| Move: {move_count} | {current} to play"
-    )
+    Returns:
+        Tuple of (empty history, board image, score display).
 
-
-def calculate_final_score(game: SimpleGoGame, komi: float = KOMI) -> str:
-    """Calculate and format end-game score."""
-    # Count stones on board + captures
-    black_stones = (game.board == SimpleGoGame.BLACK).sum()
-    white_stones = (game.board == SimpleGoGame.WHITE).sum()
-
-    black_captures = game.captures.get(SimpleGoGame.BLACK, 0)
-    white_captures = game.captures.get(SimpleGoGame.WHITE, 0)
-
-    # Simplified scoring: stones + captures
-    black_score = float(black_stones + black_captures)
-    white_score = float(white_stones + white_captures + komi)
-
-    if black_score > white_score:
-        margin = black_score - white_score
-        return f"🏆 Black wins by {margin:.1f} points! (B: {black_score:.1f}, W: {white_score:.1f})"
-    elif white_score > black_score:
-        margin = white_score - black_score
-        return f"🏆 White wins by {margin:.1f} points! (B: {black_score:.1f}, W: {white_score:.1f})"
-    else:
-        return f"🤝 Draw! (B: {black_score:.1f}, W: {white_score:.1f})"
-
-
-def plot_board(game: SimpleGoGame, last_move: int = None) -> np.ndarray:
-    """Render the board using Matplotlib."""
-    size = game.board_size
-
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.set_aspect("equal")
-    ax.set_facecolor("#e3c586")  # Wood-like color
-
-    # Draw grid
-    for i in range(size):
-        ax.plot([i, i], [0, size - 1], color="black", linewidth=1, zorder=1)
-        ax.plot([0, size - 1], [i, i], color="black", linewidth=1, zorder=1)
-
-    # Draw stars (hoshi)
-    if size == 19:
-        stars = [(3, 3), (3, 9), (3, 15), (9, 3), (9, 9), (9, 15), (15, 3), (15, 9), (15, 15)]
-    elif size == 13:
-        stars = [(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)]
-    elif size == 9:
-        stars = [(2, 2), (2, 6), (6, 2), (6, 6), (4, 4)]
-    else:
-        stars = []
-
-    for x, y in stars:
-        ax.scatter(x, y, s=20, color="black", zorder=2)
-
-    # Draw stones
-    for r in range(size):
-        for c in range(size):
-            p = game.board[r, c]
-            if p == SimpleGoGame.BLACK:
-                circle = plt.Circle((c, r), 0.45, color="black", zorder=3)
-                ax.add_patch(circle)
-            elif p == SimpleGoGame.WHITE:
-                circle = plt.Circle((c, r), 0.45, color="white", ec="black", zorder=3)
-                ax.add_patch(circle)
-
-            # Mark last move
-            if last_move is not None:
-                lr = last_move // size
-                lc = last_move % size
-                if lr == r and lc == c:
-                    ax.scatter(c, r, s=20, color="red", marker="x", zorder=4)
-
-    ax.set_xlim(-0.5, size - 0.5)
-    ax.set_ylim(-0.5, size - 0.5)
-    ax.invert_yaxis()
-    ax.axis("off")
-
-    # Convert to image
-    canvas = FigureCanvas(fig)
-    canvas.draw()
-    image = np.asarray(canvas.buffer_rgba())[:, :, :3]
-    plt.close(fig)
-    return image
+    """
+    session = GAME_MANAGER.create_game(board_size)
+    board_image = RENDERER.render(session.game)
+    score_display = GAME_MANAGER.get_score_display(session)
+    return [], board_image, score_display
 
 
 # ============ HUMAN VS AI MODE ============
 
 
 def update_game(
-    history: list, input_text: str
+    history: list,
+    board_size: int,
+    input_text: str,
 ) -> tuple[list, str, np.ndarray, str]:
-    """Process human move and get AI response."""
-    if not MODEL:
-        return history, "Model failed to load.", None, ""
+    """Process human move and get AI response.
 
-    game = replay_history(history)
-    input_text = input_text.strip().upper()
+    Args:
+        history: Current move history.
+        board_size: Current board size.
+        input_text: User's move input.
+
+    Returns:
+        Tuple of (updated history, status, board image, score display).
+
+    """
+    if not MODEL:
+        game = SimpleGoGame(board_size)
+        return (
+            history,
+            "Error: Model failed to load.",
+            RENDERER.render(game),
+            "",
+        )
+
+    game = GAME_MANAGER.replay_history(history, board_size)
 
     # Parse human move
-    if input_text == "PASS":
+    try:
+        move = GAME_MANAGER.parse_move(input_text, board_size)
+    except ValueError as e:
+        session = GameSession(
+            game=game,
+            board_size=board_size,
+            komi=SPACE_CONFIG.get_komi(board_size),
+            move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
+        )
+        return (
+            history,
+            f"Warning: {str(e)}",
+            RENDERER.render(game),
+            GAME_MANAGER.get_score_display(session),
+        )
+
+    # Apply human move
+    if move == "PASS":
         game.play_pass()
         history.append("PASS")
     else:
-        try:
-            parts = input_text.split(",")
-            if len(parts) == 2:
-                r, c = int(parts[0]), int(parts[1])
-                if game.play(r, c):
-                    history.append((r, c))
-                else:
-                    return (
-                        history,
-                        f"❌ Illegal move: {r},{c}",
-                        plot_board(game),
-                        get_score_display(game),
-                    )
-            else:
-                return (
-                    history,
-                    "⚠️ Invalid format. Use 'row,col' e.g. '3,3' or 'PASS'",
-                    plot_board(game),
-                    get_score_display(game),
-                )
-        except ValueError:
+        r, c = move
+        if game.play(r, c):
+            history.append((r, c))
+        else:
+            session = GameSession(
+                game=game,
+                board_size=board_size,
+                komi=SPACE_CONFIG.get_komi(board_size),
+                move_history=history,
+                training_board_size=SPACE_CONFIG.training_board_size,
+            )
             return (
                 history,
-                "⚠️ Invalid format. Use numbers 'row,col'",
-                plot_board(game),
-                get_score_display(game),
+                f"Error: Illegal move at {r},{c}",
+                RENDERER.render(game),
+                GAME_MANAGER.get_score_display(session),
             )
+
+    session = GameSession(
+        game=game,
+        board_size=board_size,
+        komi=SPACE_CONFIG.get_komi(board_size),
+        move_history=history,
+        training_board_size=SPACE_CONFIG.training_board_size,
+    )
 
     # Check game over after human move
     if game.is_terminal():
-        final = calculate_final_score(game)
-        return history, f"Game Over! {final}", plot_board(game), get_score_display(game)
+        final = GAME_MANAGER.calculate_final_score(session)
+        return (
+            history,
+            f"Game Over. {final}",
+            RENDERER.render(game),
+            GAME_MANAGER.get_score_display(session),
+        )
 
     # AI Move
-    mcts = MCTS(evaluator=EVALUATOR, **MCTS_KWARGS)
+    mcts = MCTS(evaluator=EVALUATOR, **GAME_MANAGER.mcts_kwargs)
     action = mcts.get_action(game, temperature=0.0, add_noise=False)
 
     last_move_idx = None
-    if action == BOARD_SIZE * BOARD_SIZE:  # Pass
+    if action == board_size * board_size:  # Pass
         game.play_pass()
         history.append("PASS")
         ai_move_str = "Pass"
     else:
-        ai_r = action // BOARD_SIZE
-        ai_c = action % BOARD_SIZE
+        ai_r = action // board_size
+        ai_c = action % board_size
         game.play(ai_r, ai_c)
         history.append((ai_r, ai_c))
-        ai_move_str = f"{ai_r},{ai_c}"
+        ai_move_str = GAME_MANAGER.format_move(ai_r, ai_c, board_size)
         last_move_idx = action
+
+    session.move_history = history
 
     # Check game over after AI move
     if game.is_terminal():
-        final = calculate_final_score(game)
+        final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"AI played: {ai_move_str}. Game Over! {final}",
-            plot_board(game, last_move_idx),
-            get_score_display(game),
+            f"AI played: {ai_move_str}. Game Over. {final}",
+            RENDERER.render(game, last_move_idx),
+            GAME_MANAGER.get_score_display(session),
         )
 
     return (
         history,
-        f"🤖 AI played: {ai_move_str}",
-        plot_board(game, last_move_idx),
-        get_score_display(game),
+        f"AI played: {ai_move_str}",
+        RENDERER.render(game, last_move_idx),
+        GAME_MANAGER.get_score_display(session),
     )
 
 
-def reset_game() -> tuple[list, str, np.ndarray, str]:
-    """Reset the game state."""
-    game = SimpleGoGame(BOARD_SIZE)
-    return [], "♟️ Game Reset. You are Black (first).", plot_board(game), get_score_display(game)
+def reset_game(board_size: int) -> tuple[list, str, np.ndarray, str]:
+    """Reset the game state.
+
+    Args:
+        board_size: Board size for new game.
+
+    Returns:
+        Tuple of (empty history, status, board image, score display).
+
+    """
+    session = GAME_MANAGER.create_game(board_size)
+    komi_info = f"Komi: {session.komi}"
+    transfer_info = "Zero-shot transfer" if session.is_zero_shot else "Training size"
+
+    logger.info(
+        "game_reset",
+        board_size=board_size,
+        komi=session.komi,
+        is_zero_shot=session.is_zero_shot,
+    )
+
+    return (
+        [],
+        f"Game Reset. You are Black (first). {komi_info} ({transfer_info})",
+        RENDERER.render(session.game),
+        GAME_MANAGER.get_score_display(session),
+    )
+
+
+def on_board_size_change(board_size: int) -> tuple[list, str, np.ndarray, str]:
+    """Handle board size change from dropdown.
+
+    Args:
+        board_size: New board size selected.
+
+    Returns:
+        Reset game state for new board size.
+
+    """
+    logger.info("board_size_changed", new_size=board_size)
+    return reset_game(board_size)
 
 
 # ============ AI VS AI MODE ============
 
 
-def ai_vs_ai_step(history: list) -> tuple[list, str, np.ndarray, str]:
-    """Execute one AI move."""
-    if not MODEL:
-        game = SimpleGoGame(BOARD_SIZE)
-        return history, "❌ Model failed to load.", plot_board(game), get_score_display(game)
+def ai_vs_ai_step(
+    history: list,
+    board_size: int,
+) -> tuple[list, str, np.ndarray, str]:
+    """Execute one AI move in AI vs AI mode.
 
-    game = replay_history(history)
+    Args:
+        history: Current move history.
+        board_size: Current board size.
+
+    Returns:
+        Tuple of (updated history, status, board image, score display).
+
+    """
+    if not MODEL:
+        game = SimpleGoGame(board_size)
+        return (
+            history,
+            "Error: Model failed to load.",
+            RENDERER.render(game),
+            "",
+        )
+
+    game = GAME_MANAGER.replay_history(history, board_size)
 
     # Check if game is already over
     if game.is_terminal():
-        final = calculate_final_score(game)
-        return history, f"🏁 Game Over! {final}", plot_board(game), get_score_display(game)
+        session = GameSession(
+            game=game,
+            board_size=board_size,
+            komi=SPACE_CONFIG.get_komi(board_size),
+            move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
+        )
+        final = GAME_MANAGER.calculate_final_score(session)
+        return (
+            history,
+            f"Game Over. {final}",
+            RENDERER.render(game),
+            GAME_MANAGER.get_score_display(session),
+        )
 
     # Get AI move
-    mcts = MCTS(evaluator=EVALUATOR, **MCTS_KWARGS)
+    mcts = MCTS(evaluator=EVALUATOR, **GAME_MANAGER.mcts_kwargs)
     action = mcts.get_action(game, temperature=0.1, add_noise=False)
 
     last_move_idx = None
     current_player = "Black" if game.current_player == SimpleGoGame.BLACK else "White"
 
-    if action == BOARD_SIZE * BOARD_SIZE:  # Pass
+    if action == board_size * board_size:  # Pass
         game.play_pass()
         history.append("PASS")
         move_str = f"{current_player} passes"
     else:
-        r = action // BOARD_SIZE
-        c = action % BOARD_SIZE
+        r = action // board_size
+        c = action % board_size
         game.play(r, c)
         history.append((r, c))
-        move_str = f"{current_player} plays {r},{c}"
+        formatted_move = GAME_MANAGER.format_move(r, c, board_size)
+        move_str = f"{current_player} plays {formatted_move}"
         last_move_idx = action
+
+    session = GameSession(
+        game=game,
+        board_size=board_size,
+        komi=SPACE_CONFIG.get_komi(board_size),
+        move_history=history,
+        training_board_size=SPACE_CONFIG.training_board_size,
+    )
 
     # Check game over
     if game.is_terminal():
-        final = calculate_final_score(game)
+        final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"Move {len(history)}: {move_str}. 🏁 {final}",
-            plot_board(game, last_move_idx),
-            get_score_display(game),
+            f"Move {len(history)}: {move_str}. Game Over. {final}",
+            RENDERER.render(game, last_move_idx),
+            GAME_MANAGER.get_score_display(session),
         )
 
     return (
         history,
         f"Move {len(history)}: {move_str}",
-        plot_board(game, last_move_idx),
-        get_score_display(game),
+        RENDERER.render(game, last_move_idx),
+        GAME_MANAGER.get_score_display(session),
     )
 
 
-def ai_vs_ai_reset() -> tuple[list, str, np.ndarray, str, bool]:
-    """Reset AI vs AI game."""
-    game = SimpleGoGame(BOARD_SIZE)
+def ai_vs_ai_reset(board_size: int) -> tuple[list, str, np.ndarray, str, bool]:
+    """Reset AI vs AI game.
+
+    Args:
+        board_size: Board size for new game.
+
+    Returns:
+        Tuple of (empty history, status, board image, score display, autoplay=False).
+
+    """
+    session = GAME_MANAGER.create_game(board_size, is_human_vs_ai=False)
+    transfer_info = "Zero-shot transfer" if session.is_zero_shot else "Training size"
+
     return (
         [],
-        "🔄 Ready. Click 'Next Move' or toggle 'Auto-Play'",
-        plot_board(game),
-        get_score_display(game),
+        f"Ready ({transfer_info}). Click 'Next Move' or toggle 'Auto-Play'",
+        RENDERER.render(session.game),
+        GAME_MANAGER.get_score_display(session),
         False,
     )
 
 
 def ai_vs_ai_auto_step(
-    history: list, is_playing: bool
+    history: list,
+    board_size: int,
+    is_playing: bool,
 ) -> tuple[list, str, np.ndarray, str, bool]:
-    """Auto-play step - returns updated state and whether to continue."""
+    """Auto-play step for AI vs AI mode.
+
+    Args:
+        history: Current move history.
+        board_size: Current board size.
+        is_playing: Whether auto-play is active.
+
+    Returns:
+        Tuple of (history, status, board image, score display, continue_playing).
+
+    """
     if not is_playing:
-        game = replay_history(history)
-        return history, "⏸️ Auto-play paused", plot_board(game), get_score_display(game), False
+        game = GAME_MANAGER.replay_history(history, board_size)
+        session = GameSession(
+            game=game,
+            board_size=board_size,
+            komi=SPACE_CONFIG.get_komi(board_size),
+            move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
+        )
+        return (
+            history,
+            "Auto-play paused",
+            RENDERER.render(game),
+            GAME_MANAGER.get_score_display(session),
+            False,
+        )
 
     if not MODEL:
-        game = SimpleGoGame(BOARD_SIZE)
-        return history, "❌ Model failed to load.", plot_board(game), get_score_display(game), False
+        game = SimpleGoGame(board_size)
+        return (
+            history,
+            "Error: Model failed to load.",
+            RENDERER.render(game),
+            "",
+            False,
+        )
 
-    game = replay_history(history)
+    game = GAME_MANAGER.replay_history(history, board_size)
 
     # Check if game is already over
     if game.is_terminal():
-        final = calculate_final_score(game)
-        return history, f"🏁 Game Over! {final}", plot_board(game), get_score_display(game), False
+        session = GameSession(
+            game=game,
+            board_size=board_size,
+            komi=SPACE_CONFIG.get_komi(board_size),
+            move_history=history,
+            training_board_size=SPACE_CONFIG.training_board_size,
+        )
+        final = GAME_MANAGER.calculate_final_score(session)
+        return (
+            history,
+            f"Game Over. {final}",
+            RENDERER.render(game),
+            GAME_MANAGER.get_score_display(session),
+            False,
+        )
 
     # Get AI move
-    mcts = MCTS(evaluator=EVALUATOR, **MCTS_KWARGS)
+    mcts = MCTS(evaluator=EVALUATOR, **GAME_MANAGER.mcts_kwargs)
     action = mcts.get_action(game, temperature=0.1, add_noise=False)
 
     last_move_idx = None
     current_player = "Black" if game.current_player == SimpleGoGame.BLACK else "White"
 
-    if action == BOARD_SIZE * BOARD_SIZE:  # Pass
+    if action == board_size * board_size:  # Pass
         game.play_pass()
         history.append("PASS")
         move_str = f"{current_player} passes"
     else:
-        r = action // BOARD_SIZE
-        c = action % BOARD_SIZE
+        r = action // board_size
+        c = action % board_size
         game.play(r, c)
         history.append((r, c))
-        move_str = f"{current_player} plays {r},{c}"
+        formatted_move = GAME_MANAGER.format_move(r, c, board_size)
+        move_str = f"{current_player} plays {formatted_move}"
         last_move_idx = action
+
+    session = GameSession(
+        game=game,
+        board_size=board_size,
+        komi=SPACE_CONFIG.get_komi(board_size),
+        move_history=history,
+        training_board_size=SPACE_CONFIG.training_board_size,
+    )
 
     # Check game over
     if game.is_terminal():
-        final = calculate_final_score(game)
+        final = GAME_MANAGER.calculate_final_score(session)
         return (
             history,
-            f"Move {len(history)}: {move_str}. 🏁 {final}",
-            plot_board(game, last_move_idx),
-            get_score_display(game),
-            False,
+            f"Move {len(history)}: {move_str}. Game Over. {final}",
+            RENDERER.render(game, last_move_idx),
+            GAME_MANAGER.get_score_display(session),
+            False,  # Stop auto-play when game ends
         )
 
     # Continue playing
     return (
         history,
-        f"▶️ Move {len(history)}: {move_str}",
-        plot_board(game, last_move_idx),
-        get_score_display(game),
-        True,
+        f"Playing: Move {len(history)}: {move_str}",
+        RENDERER.render(game, last_move_idx),
+        GAME_MANAGER.get_score_display(session),
+        True,  # Continue auto-play
     )
+
+
+def on_ai_board_size_change(
+    board_size: int,
+) -> tuple[list, str, np.ndarray, str, bool]:
+    """Handle board size change in AI vs AI mode.
+
+    Args:
+        board_size: New board size selected.
+
+    Returns:
+        Reset game state for new board size.
+
+    """
+    logger.info("ai_vs_ai_board_size_changed", new_size=board_size)
+    return ai_vs_ai_reset(board_size)
 
 
 # ============ GRADIO UI ============
 
 with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
-    gr.Markdown("# ⚫ AlphaGalerkin Go Demo ⚪")
-    gr.Markdown("Watch the AI play Go (9x9) or challenge it yourself!")
+    gr.Markdown("# AlphaGalerkin Go Demo")
+    gr.Markdown(
+        "Play Go against AlphaGalerkin or watch AI vs AI. "
+        "**Zero-shot transfer**: Model trained on 9x9, generalizes to 13x13 and 19x19."
+    )
 
     with gr.Tabs():
         # ===== TAB 1: Human vs AI =====
-        with gr.TabItem("🎮 Play vs AI"):
-            gr.Markdown("### You are Black. Enter moves as `row,col` (e.g., `3,3`) or `PASS`")
+        with gr.TabItem("Play vs AI"):
+            gr.Markdown(
+                "### You are Black. Enter moves as `row,col` (0-indexed) or `PASS`"
+            )
 
             with gr.Row():
                 with gr.Column(scale=2):
+                    # Board size selector
+                    board_size_selector = gr.Dropdown(
+                        choices=get_board_size_choices(),
+                        value=SPACE_CONFIG.default_board_size,
+                        label="Board Size",
+                        info="9×9: Training | 13×13, 19×19: Zero-shot transfer",
+                    )
+
                     board_img = gr.Image(
                         label="Board",
-                        value=plot_board(SimpleGoGame(BOARD_SIZE)),
+                        value=RENDERER.render(
+                            SimpleGoGame(SPACE_CONFIG.default_board_size)
+                        ),
                         interactive=False,
-                        height=400,
+                        height=480,
                     )
                     score_display = gr.Textbox(
-                        label="Score",
-                        value=get_score_display(SimpleGoGame(BOARD_SIZE)),
+                        label="Game Info",
+                        value=GAME_MANAGER.get_score_display(
+                            GAME_MANAGER.create_game(SPACE_CONFIG.default_board_size)
+                        ),
                         interactive=False,
                     )
 
                 with gr.Column(scale=1):
                     status = gr.Textbox(
                         label="Status",
-                        value="♟️ Ready to play. You are Black (first).",
+                        value="Ready to play. You are Black (first).",
                         interactive=False,
                         lines=2,
                     )
                     move_input = gr.Textbox(
-                        label="Your Move", placeholder="row,col (e.g. 3,3) or PASS"
+                        label="Your Move",
+                        placeholder="row,col (e.g., 4,4) or PASS",
                     )
-                    submit_btn = gr.Button("▶️ Submit Move", variant="primary")
-                    reset_btn = gr.Button("🔄 Reset Game")
+                    submit_btn = gr.Button("Submit Move", variant="primary")
+                    reset_btn = gr.Button("Reset Game")
+
+                    gr.Markdown("---")
+                    gr.Markdown("### Coordinate Guide")
+                    gr.Markdown(
+                        "- **Row**: 0 at top, increases downward\n"
+                        "- **Col**: 0 at left, increases rightward\n"
+                        "- **Example**: Center of 9×9 = `4,4`\n"
+                        "- **Perimeter labels**: Letters (A-T) + Numbers (1-19)"
+                    )
 
             game_history = gr.State([])
 
+            # Event handlers
+            board_size_selector.change(
+                on_board_size_change,
+                inputs=[board_size_selector],
+                outputs=[game_history, status, board_img, score_display],
+            )
+
             submit_btn.click(
                 update_game,
-                inputs=[game_history, move_input],
+                inputs=[game_history, board_size_selector, move_input],
                 outputs=[game_history, status, board_img, score_display],
             )
 
             move_input.submit(
                 update_game,
-                inputs=[game_history, move_input],
+                inputs=[game_history, board_size_selector, move_input],
                 outputs=[game_history, status, board_img, score_display],
             )
 
             reset_btn.click(
-                reset_game, inputs=[], outputs=[game_history, status, board_img, score_display]
+                reset_game,
+                inputs=[board_size_selector],
+                outputs=[game_history, status, board_img, score_display],
             )
 
         # ===== TAB 2: AI vs AI =====
-        with gr.TabItem("🤖 Watch AI vs AI"):
-            gr.Markdown("### Watch the AI play against itself!")
+        with gr.TabItem("Watch AI vs AI"):
+            gr.Markdown("### Watch the AI play against itself")
 
             with gr.Row():
                 with gr.Column(scale=2):
+                    # Board size selector for AI vs AI
+                    ai_board_size_selector = gr.Dropdown(
+                        choices=get_board_size_choices(),
+                        value=SPACE_CONFIG.default_board_size,
+                        label="Board Size",
+                        info="9×9: Training | 13×13, 19×19: Zero-shot transfer",
+                    )
+
                     ai_board_img = gr.Image(
                         label="Board",
-                        value=plot_board(SimpleGoGame(BOARD_SIZE)),
+                        value=RENDERER.render(
+                            SimpleGoGame(SPACE_CONFIG.default_board_size)
+                        ),
                         interactive=False,
-                        height=400,
+                        height=480,
                     )
                     ai_score_display = gr.Textbox(
-                        label="Score",
-                        value=get_score_display(SimpleGoGame(BOARD_SIZE)),
+                        label="Game Info",
+                        value=GAME_MANAGER.get_score_display(
+                            GAME_MANAGER.create_game(SPACE_CONFIG.default_board_size)
+                        ),
                         interactive=False,
                     )
 
                 with gr.Column(scale=1):
                     ai_status = gr.Textbox(
                         label="Status",
-                        value="🔄 Ready. Click 'Next Move' or toggle 'Auto-Play'",
+                        value="Ready. Click 'Next Move' or toggle 'Auto-Play'",
                         interactive=False,
                         lines=2,
                     )
-                    step_btn = gr.Button("⏭️ Next Move", variant="primary")
+                    step_btn = gr.Button("Next Move", variant="primary")
 
                     gr.Markdown("---")
                     gr.Markdown("### Auto-Play")
                     auto_play_checkbox = gr.Checkbox(
-                        label="▶️ Auto-Play (toggle on/off)", value=False
+                        label="Auto-Play (toggle on/off)",
+                        value=False,
                     )
                     speed_slider = gr.Slider(
                         minimum=0.5,
@@ -503,25 +685,17 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                         step=0.5,
                         label="Speed (seconds between moves)",
                     )
-                    ai_reset_btn = gr.Button("🔄 Reset Game")
+                    ai_reset_btn = gr.Button("Reset Game")
 
                     gr.Markdown("---")
                     gr.Markdown("*Toggle Auto-Play to watch continuously.*")
 
             ai_game_history = gr.State([])
 
-            # Timer for auto-play (only available in newer Gradio, using checkbox change instead)
-            step_btn.click(
-                ai_vs_ai_step,
-                inputs=[ai_game_history],
-                outputs=[ai_game_history, ai_status, ai_board_img, ai_score_display],
-            )
-
-            # Auto-play: when checkbox is toggled on, trigger a step
-            # The step function returns whether to continue, which updates the checkbox
-            auto_play_checkbox.change(
-                ai_vs_ai_auto_step,
-                inputs=[ai_game_history, auto_play_checkbox],
+            # Event handlers for AI vs AI
+            ai_board_size_selector.change(
+                on_ai_board_size_change,
+                inputs=[ai_board_size_selector],
                 outputs=[
                     ai_game_history,
                     ai_status,
@@ -529,12 +703,30 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                     ai_score_display,
                     auto_play_checkbox,
                 ],
-                every=1.0,  # Check every second when active
+            )
+
+            step_btn.click(
+                ai_vs_ai_step,
+                inputs=[ai_game_history, ai_board_size_selector],
+                outputs=[ai_game_history, ai_status, ai_board_img, ai_score_display],
+            )
+
+            auto_play_checkbox.change(
+                ai_vs_ai_auto_step,
+                inputs=[ai_game_history, ai_board_size_selector, auto_play_checkbox],
+                outputs=[
+                    ai_game_history,
+                    ai_status,
+                    ai_board_img,
+                    ai_score_display,
+                    auto_play_checkbox,
+                ],
+                every=1.0,
             )
 
             ai_reset_btn.click(
                 ai_vs_ai_reset,
-                inputs=[],
+                inputs=[ai_board_size_selector],
                 outputs=[
                     ai_game_history,
                     ai_status,
@@ -545,29 +737,56 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
             )
 
         # ===== TAB 3: About =====
-        with gr.TabItem("ℹ️ About"):
-            gr.Markdown("""
+        with gr.TabItem("About"):
+            gr.Markdown(
+                """
 ## About AlphaGalerkin
 
-**AlphaGalerkin** is a resolution-independent neural network for Go,
-built using Continuous Operator Learning (Galerkin Transformers & FNet).
+AlphaGalerkin is a resolution-independent neural network for Go
+that demonstrates zero-shot transfer across board sizes using
+Continuous Operator Learning with Galerkin Transformers and FNet.
 
-### Key Features
-- 🧠 **Zero-shot resolution transfer**: Trained on 9×9, generalizes to 19×19
-- 🔄 **MCTS-based search**: Monte Carlo Tree Search for move selection
-- ⚡ **FNet acceleration**: Fast Fourier Transform mixing layers
+**Developer:** Ian Cruickshank
+
+### Key Innovation
+
+The model achieves zero-shot resolution transfer by learning the underlying
+dynamics of Go rather than memorizing discrete board positions. A network
+trained on 9x9 boards generalizes directly to 13x13 and 19x19 without retraining.
+
+| Board Size | Type | Komi |
+|------------|------|------|
+| 9x9 | Training size | 5.5 |
+| 13x13 | Zero-shot transfer | 6.5 |
+| 19x19 | Zero-shot transfer | 7.5 |
+
+### Technical Architecture
+
+- **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection
+- **FNet Mixing**: FFT-based token mixing for efficient MCTS rollouts
+- **Fourier Positional Encoding**: Resolution-independent coordinate representation
+- **Monte Carlo Tree Search**: Policy-guided search for move selection
 
 ### How to Play
-1. **Play vs AI**: Enter moves as `row,col` (0-indexed from top-left)
-2. **Watch AI vs AI**: Click "Next Move" to step through an AI game
+
+1. Select a board size from the dropdown
+2. Enter moves as `row,col` (0-indexed from top-left)
+3. Use `PASS` to pass your turn
+4. The AI responds automatically
+
+**Coordinate System:** Row 0 is at the top (increases downward),
+Column 0 is at the left (increases rightward). The board perimeter
+displays letters (A-T) and numbers (1-19) for reference.
 
 ### Scoring
-- Chinese rules with **6.5 komi** (compensation for White)
-- Score = Territory + Captures
+
+Uses simplified Chinese rules: Score = Stones + Captures + Komi (White).
+Game ends after two consecutive passes.
 
 ---
-*Built with ❤️ using Gradio, PyTorch, and the AlphaGalerkin framework.*
-            """)
+Built with Gradio, PyTorch, and the AlphaGalerkin framework.
+            """
+            )
 
 if __name__ == "__main__":
     demo.launch()

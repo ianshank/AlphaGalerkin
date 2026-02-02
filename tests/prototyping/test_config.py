@@ -6,11 +6,11 @@ import pytest
 from pydantic import ValidationError
 
 from src.prototyping.config import (
-    PrototypeConfig,
-    QuickTrainConfig,
-    QuickEvalConfig,
-    PresetType,
     PRESETS,
+    PresetType,
+    PrototypeConfig,
+    QuickEvalConfig,
+    QuickTrainConfig,
     create_prototype_config,
     create_quick_train_config,
 )
@@ -38,9 +38,7 @@ class TestPresetType:
 class TestPrototypeConfig:
     """Tests for PrototypeConfig."""
 
-    def test_default_values(
-        self, default_prototype_config: PrototypeConfig
-    ) -> None:
+    def test_default_values(self, default_prototype_config: PrototypeConfig) -> None:
         """Test default configuration values."""
         assert default_prototype_config.name == "test_prototype"
         assert default_prototype_config.preset == PresetType.SMALL
@@ -103,9 +101,7 @@ class TestPrototypeConfig:
 class TestQuickTrainConfig:
     """Tests for QuickTrainConfig."""
 
-    def test_default_values(
-        self, default_train_config: QuickTrainConfig
-    ) -> None:
+    def test_default_values(self, default_train_config: QuickTrainConfig) -> None:
         """Test default training config values."""
         assert default_train_config.n_epochs == 2
         assert default_train_config.batch_size == 16
@@ -137,9 +133,7 @@ class TestQuickTrainConfig:
 class TestQuickEvalConfig:
     """Tests for QuickEvalConfig."""
 
-    def test_default_values(
-        self, default_eval_config: QuickEvalConfig
-    ) -> None:
+    def test_default_values(self, default_eval_config: QuickEvalConfig) -> None:
         """Test default eval config values."""
         assert default_eval_config.n_samples == 100
         assert default_eval_config.batch_size == 32

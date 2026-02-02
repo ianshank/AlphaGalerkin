@@ -7,7 +7,7 @@ augmentation during compression training.
 from __future__ import annotations
 
 import random
-from typing import Sequence
+from collections.abc import Sequence
 
 import torch
 from torch import Tensor, nn
@@ -21,6 +21,7 @@ class RandomCrop(nn.Module):
 
         Args:
             size: Crop size (square).
+
         """
         super().__init__()
         self.size = size
@@ -33,6 +34,7 @@ class RandomCrop(nn.Module):
 
         Returns:
             Cropped tensor.
+
         """
         if x.dim() == 3:
             _, h, w = x.shape
@@ -67,6 +69,7 @@ class CenterCrop(nn.Module):
 
         Args:
             size: Crop size (square).
+
         """
         super().__init__()
         self.size = size
@@ -79,6 +82,7 @@ class CenterCrop(nn.Module):
 
         Returns:
             Cropped tensor.
+
         """
         h, w = x.shape[-2:]
 
@@ -109,6 +113,7 @@ class RandomFlip(nn.Module):
 
         Args:
             p: Probability of flipping.
+
         """
         super().__init__()
         self.p = p
@@ -121,6 +126,7 @@ class RandomFlip(nn.Module):
 
         Returns:
             Possibly flipped tensor.
+
         """
         if random.random() < self.p:
             return torch.flip(x, dims=[-1])
@@ -145,6 +151,7 @@ class ColorJitter(nn.Module):
             brightness: Brightness jitter range.
             contrast: Contrast jitter range.
             saturation: Saturation jitter range.
+
         """
         super().__init__()
         self.brightness = brightness
@@ -159,6 +166,7 @@ class ColorJitter(nn.Module):
 
         Returns:
             Jittered tensor.
+
         """
         # Brightness
         if self.brightness > 0:
@@ -188,14 +196,11 @@ class Normalize(nn.Module):
         Args:
             mean: Per-channel mean.
             std: Per-channel std.
+
         """
         super().__init__()
-        self.register_buffer(
-            "mean", torch.tensor(mean).view(-1, 1, 1)
-        )
-        self.register_buffer(
-            "std", torch.tensor(std).view(-1, 1, 1)
-        )
+        self.register_buffer("mean", torch.tensor(mean).view(-1, 1, 1))
+        self.register_buffer("std", torch.tensor(std).view(-1, 1, 1))
 
     def forward(self, x: Tensor) -> Tensor:
         """Apply normalization.
@@ -205,6 +210,7 @@ class Normalize(nn.Module):
 
         Returns:
             Normalized tensor.
+
         """
         return (x - self.mean) / self.std
 
@@ -216,6 +222,7 @@ class Normalize(nn.Module):
 
         Returns:
             Tensor in [0, 1].
+
         """
         return x * self.std + self.mean
 
@@ -242,6 +249,7 @@ class CompressionTransforms(nn.Module):
             random_flip: Use random horizontal flip.
             color_jitter: Apply color jittering.
             training: Training mode (enables augmentation).
+
         """
         super().__init__()
         self.training_mode = training
@@ -271,5 +279,6 @@ class CompressionTransforms(nn.Module):
 
         Returns:
             Transformed tensor.
+
         """
         return self.transforms(x)

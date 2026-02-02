@@ -297,9 +297,7 @@ def generate_random_charges(
             charges[i, j] += mag
     else:
         # Continuous random field
-        charges = rng.normal(0, charge_std, size=(grid_size, grid_size)).astype(
-            np.float32
-        )
+        charges = rng.normal(0, charge_std, size=(grid_size, grid_size)).astype(np.float32)
 
     if smooth:
         # Apply Gaussian smoothing

@@ -333,9 +333,7 @@ class TestNestedValidation:
 
     def test_nested_visualization_config(self) -> None:
         """Test nested VisualizationConfig validation."""
-        config = PhysicsDemoConfig(
-            visualization=VisualizationConfig(dpi=200)
-        )
+        config = PhysicsDemoConfig(visualization=VisualizationConfig(dpi=200))
         assert config.visualization.dpi == 200
 
     def test_nested_invalid_config(self) -> None:

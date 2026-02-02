@@ -13,41 +13,39 @@ import pytest
 import torch
 from torch import Tensor
 
-from src.video_compression.config import (
-    CodecConfig,
-    EncoderConfig,
-    DecoderConfig,
-    QuantizerConfig,
-    EntropyConfig,
-    MCTSRateControlConfig,
-    QuantizationMode,
-)
 from src.video_compression.codec.codec import (
-    VideoCodec,
     CodecOutput,
-    create_codec,
-    load_codec,
     ReferenceFrameError,
+    VideoCodec,
+    create_codec,
 )
 from src.video_compression.codec.gop_manager import (
-    GOPManager,
     FrameInfo,
     FrameType,
     ReferenceBuffer,
 )
+from src.video_compression.config import (
+    CodecConfig,
+    DecoderConfig,
+    EncoderConfig,
+    EntropyConfig,
+    MCTSRateControlConfig,
+    QuantizationMode,
+    QuantizerConfig,
+)
 from src.video_compression.utils.bitstream import (
     BitstreamHeader,
-    BitstreamWriter,
     BitstreamReader,
-    FrameHeader,
+    BitstreamWriter,
     EncodedFrame,
-    save_bitstream,
+    FrameHeader,
     load_bitstream,
+    save_bitstream,
 )
 from src.video_compression.utils.padding import (
-    pad_to_multiple,
-    crop_to_original,
     PaddingMode,
+    crop_to_original,
+    pad_to_multiple,
 )
 
 
@@ -496,10 +494,10 @@ class TestVariableResolution:
     @pytest.mark.parametrize(
         "height,width",
         [
-            (64, 64),    # Aligned
-            (64, 128),   # Different aspect ratio
-            (128, 64),   # Tall
-            (72, 96),    # Non-aligned
+            (64, 64),  # Aligned
+            (64, 128),  # Different aspect ratio
+            (128, 64),  # Tall
+            (72, 96),  # Non-aligned
         ],
     )
     def test_various_resolutions(

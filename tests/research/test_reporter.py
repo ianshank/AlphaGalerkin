@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import tempfile
 
-
+from src.research.benchmark import BenchmarkResult
+from src.research.comparison import ComparisonResult
 from src.research.config import ExperimentConfig
 from src.research.experiment import Experiment, ExperimentRun
-from src.research.benchmark import BenchmarkResult
-from src.research.validator import TransferResult
-from src.research.comparison import ComparisonResult
 from src.research.reporter import Reporter, ReportFormat, create_reporter
+from src.research.validator import TransferResult
 
 
 class TestReportFormat:
@@ -31,9 +30,7 @@ class TestReporter:
         """Test reporter initialization."""
         assert reporter._default_format == ReportFormat.MARKDOWN
 
-    def test_report_experiment_markdown(
-        self, reporter: Reporter
-    ) -> None:
+    def test_report_experiment_markdown(self, reporter: Reporter) -> None:
         """Test experiment report in markdown."""
         config = ExperimentConfig(name="test_exp")
         experiment = Experiment(config=config)
@@ -51,9 +48,7 @@ class TestReporter:
         assert "Experiment Summary" in report
         assert "Runs" in report
 
-    def test_report_experiment_json(
-        self, reporter: Reporter
-    ) -> None:
+    def test_report_experiment_json(self, reporter: Reporter) -> None:
         """Test experiment report in JSON."""
         config = ExperimentConfig(name="test_exp")
         experiment = Experiment(config=config)
@@ -65,12 +60,11 @@ class TestReporter:
         )
 
         import json
+
         data = json.loads(report)
         assert data["title"] == "Experiment: test_exp"
 
-    def test_report_experiment_text(
-        self, reporter: Reporter
-    ) -> None:
+    def test_report_experiment_text(self, reporter: Reporter) -> None:
         """Test experiment report in text."""
         config = ExperimentConfig(name="test_exp")
         experiment = Experiment(config=config)
@@ -84,9 +78,7 @@ class TestReporter:
         assert "Experiment: test_exp" in report
         assert "=" in report  # Text dividers
 
-    def test_report_transfer(
-        self, reporter: Reporter, transfer_result: TransferResult
-    ) -> None:
+    def test_report_transfer(self, reporter: Reporter, transfer_result: TransferResult) -> None:
         """Test transfer report."""
         report = reporter.report_transfer(
             transfer_result,
@@ -111,9 +103,7 @@ class TestReporter:
         assert "Model Comparison" in report
         assert "model_a" in report
 
-    def test_report_benchmarks(
-        self, reporter: Reporter, benchmark_result: BenchmarkResult
-    ) -> None:
+    def test_report_benchmarks(self, reporter: Reporter, benchmark_result: BenchmarkResult) -> None:
         """Test benchmark report."""
         report = reporter.report_benchmarks(
             results=[benchmark_result],

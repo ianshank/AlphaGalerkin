@@ -116,17 +116,11 @@ class PDEState:
             solution=self.solution.copy(),
             residuals=self.residuals.copy(),
             basis_coefficients=(
-                self.basis_coefficients.copy()
-                if self.basis_coefficients is not None
-                else None
+                self.basis_coefficients.copy() if self.basis_coefficients is not None else None
             ),
-            mesh_levels=(
-                self.mesh_levels.copy() if self.mesh_levels is not None else None
-            ),
+            mesh_levels=(self.mesh_levels.copy() if self.mesh_levels is not None else None),
             polynomial_degrees=(
-                self.polynomial_degrees.copy()
-                if self.polynomial_degrees is not None
-                else None
+                self.polynomial_degrees.copy() if self.polynomial_degrees is not None else None
             ),
             error_estimate=self.error_estimate,
             dof=self.dof,
@@ -143,17 +137,11 @@ class PDEState:
             "solution": self.solution.tolist(),
             "residuals": self.residuals.tolist(),
             "basis_coefficients": (
-                self.basis_coefficients.tolist()
-                if self.basis_coefficients is not None
-                else None
+                self.basis_coefficients.tolist() if self.basis_coefficients is not None else None
             ),
-            "mesh_levels": (
-                self.mesh_levels.tolist() if self.mesh_levels is not None else None
-            ),
+            "mesh_levels": (self.mesh_levels.tolist() if self.mesh_levels is not None else None),
             "polynomial_degrees": (
-                self.polynomial_degrees.tolist()
-                if self.polynomial_degrees is not None
-                else None
+                self.polynomial_degrees.tolist() if self.polynomial_degrees is not None else None
             ),
             "error_estimate": self.error_estimate,
             "dof": self.dof,

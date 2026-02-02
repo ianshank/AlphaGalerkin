@@ -55,9 +55,7 @@ class MCTSNode:
         """Q value adjusted for virtual loss (for parallel MCTS)."""
         if self.visit_count + self.virtual_loss == 0:
             return 0.0
-        return (self.total_value - self.virtual_loss) / (
-            self.visit_count + self.virtual_loss
-        )
+        return (self.total_value - self.virtual_loss) / (self.visit_count + self.virtual_loss)
 
     @property
     def is_leaf(self) -> bool:
@@ -86,8 +84,11 @@ class MCTSNode:
             UCB score.
 
         """
-        exploration = c_puct * self.prior * math.sqrt(parent_visits) / (
-            1 + self.visit_count + self.virtual_loss
+        exploration = (
+            c_puct
+            * self.prior
+            * math.sqrt(parent_visits)
+            / (1 + self.visit_count + self.virtual_loss)
         )
         return self.q_value_with_virtual_loss + exploration
 
@@ -212,9 +213,7 @@ class MCTSNode:
             return {}
 
         actions = list(self.children.keys())
-        visits = np.array([
-            self.children[a].visit_count for a in actions
-        ], dtype=np.float32)
+        visits = np.array([self.children[a].visit_count for a in actions], dtype=np.float32)
 
         if temperature == 0:
             # Deterministic: select most visited
@@ -235,7 +234,7 @@ class MCTSNode:
                 probs = probs / prob_sum
             # Note: prob_sum == 0 case already handled by uniform fallback above
 
-        return {a: float(p) for a, p in zip(actions, probs)}
+        return {a: float(p) for a, p in zip(actions, probs, strict=False)}
 
     def get_best_action(self) -> int:
         """Get action with highest visit count.

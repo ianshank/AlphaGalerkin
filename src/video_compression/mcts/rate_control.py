@@ -22,10 +22,10 @@ from torch import Tensor
 
 from src.video_compression.config import MCTSRateControlConfig, RateControlMode
 from src.video_compression.mcts.networks import (
-    RepresentationNetwork,
     DynamicsNetwork,
     PredictionNetwork,
     PredictionOutput,
+    RepresentationNetwork,
 )
 
 
@@ -52,8 +52,8 @@ class MCTSNode:
     reward: float = 0.0
 
     # Tree structure
-    children: dict[int, "MCTSNode"] = field(default_factory=dict)
-    parent: "MCTSNode | None" = None
+    children: dict[int, MCTSNode] = field(default_factory=dict)
+    parent: MCTSNode | None = None
 
     @property
     def value(self) -> float:
@@ -75,6 +75,7 @@ class MCTSNode:
 
         Returns:
             UCB score.
+
         """
         if parent_visits is None:
             parent_visits = self.parent.visit_count if self.parent else 1
@@ -112,6 +113,7 @@ class MCTSRateController:
             dynamics_net: Network to predict state transitions.
             prediction_net: Network to predict policy and value.
             device: Device for computation.
+
         """
         self.config = config
         self.device = device
@@ -155,6 +157,7 @@ class MCTSRateController:
 
         Returns:
             Rate control decision.
+
         """
         with torch.no_grad():
             # Encode frame to state
@@ -194,6 +197,7 @@ class MCTSRateController:
 
         Returns:
             Root node after search.
+
         """
         # Initialize root
         root = MCTSNode(state=state, prior=1.0)
@@ -224,7 +228,9 @@ class MCTSRateController:
                 # Expand node
                 next_state, reward = self.dynamics_net(
                     node.state.unsqueeze(0) if node.state.dim() == 1 else node.state,
-                    torch.tensor([node.action], device=self.device) if node.action else torch.tensor([0], device=self.device),
+                    torch.tensor([node.action], device=self.device)
+                    if node.action
+                    else torch.tensor([0], device=self.device),
                 )
                 node.state = next_state.squeeze(0)
                 node.reward = reward.item()
@@ -248,6 +254,7 @@ class MCTSRateController:
         Args:
             node: Node to expand.
             prediction: Policy and value prediction.
+
         """
         priors = prediction.policy.probs.squeeze(0).cpu().numpy()
 
@@ -271,6 +278,7 @@ class MCTSRateController:
 
         Returns:
             Tuple of (action, child_node).
+
         """
         best_score = float("-inf")
         best_action = None
@@ -293,6 +301,7 @@ class MCTSRateController:
 
         Args:
             root: Root node.
+
         """
         if not root.children:
             return
@@ -317,6 +326,7 @@ class MCTSRateController:
         Args:
             search_path: Path from root to leaf.
             value: Value at leaf.
+
         """
         for node in reversed(search_path):
             node.visit_count += 1
@@ -334,6 +344,7 @@ class MCTSRateController:
 
         Returns:
             Tuple of (selected_qp, confidence).
+
         """
         # Select based on visit count (for evaluation, use argmax)
         if self.config.temperature == 0:
@@ -345,10 +356,12 @@ class MCTSRateController:
             confidence = root.children[best_action].visit_count / root.visit_count
         else:
             # Sample proportional to visit count ^ (1/temperature)
-            visits = torch.tensor([
-                root.children[a].visit_count ** (1 / self.config.temperature)
-                for a in sorted(root.children.keys())
-            ])
+            visits = torch.tensor(
+                [
+                    root.children[a].visit_count ** (1 / self.config.temperature)
+                    for a in sorted(root.children.keys())
+                ]
+            )
             probs = visits / visits.sum()
             actions = sorted(root.children.keys())
             idx = int(torch.multinomial(probs, 1).item())
@@ -372,6 +385,7 @@ class MCTSRateController:
 
         Returns:
             Estimated bits.
+
         """
         # Simple exponential model
         base_bits = latent.numel() * 8  # Maximum bits
@@ -388,9 +402,13 @@ class MCTSRateController:
 
         Returns:
             Estimated PSNR.
+
         """
         # Linear model: PSNR = intercept - slope * QP
-        return max(20.0, self.config.quality_estimation_intercept - self.config.quality_estimation_slope * qp)
+        return max(
+            20.0,
+            self.config.quality_estimation_intercept - self.config.quality_estimation_slope * qp,
+        )
 
 
 class GOPPlanner:
@@ -410,6 +428,7 @@ class GOPPlanner:
         Args:
             config: Rate control configuration.
             rate_controller: MCTS rate controller instance.
+
         """
         self.config = config
         self.rate_controller = rate_controller
@@ -425,6 +444,7 @@ class GOPPlanner:
 
         Returns:
             List of rate control decisions.
+
         """
         decisions = []
         gop_size = len(frame_latents)
@@ -441,12 +461,10 @@ class GOPPlanner:
         total_weight = sum(type_weights[t] for t in frame_types)
 
         # Use configured fps for bitrate calculation
-        target_bits = (
-            self.config.target_bitrate_kbps * 1000 * gop_size / self.config.fps
-        )
+        target_bits = self.config.target_bitrate_kbps * 1000 * gop_size / self.config.fps
 
         # Plan each frame
-        for i, (latent, frame_type) in enumerate(zip(frame_latents, frame_types)):
+        for _i, (latent, frame_type) in enumerate(zip(frame_latents, frame_types, strict=False)):
             # Adjust target based on remaining budget
             weight = type_weights[frame_type]
             target_bits * weight / total_weight
@@ -465,6 +483,7 @@ class GOPPlanner:
 
         Returns:
             List of frame types.
+
         """
         frame_types = []
 

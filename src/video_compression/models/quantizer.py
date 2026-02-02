@@ -18,7 +18,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
-from src.video_compression.config import QuantizerConfig, QuantizationMode
+from src.video_compression.config import QuantizationMode, QuantizerConfig
 
 
 class Quantizer(nn.Module, ABC):
@@ -27,9 +27,9 @@ class Quantizer(nn.Module, ABC):
     @abstractmethod
     def forward(
         self,
-        x: Float[Tensor, "..."],
+        x: Float[Tensor, ...],
         training: bool | None = None,
-    ) -> Float[Tensor, "..."]:
+    ) -> Float[Tensor, ...]:
         """Quantize input.
 
         Args:
@@ -38,12 +38,13 @@ class Quantizer(nn.Module, ABC):
 
         Returns:
             Quantized tensor.
+
         """
         pass
 
     def encode(
         self,
-        x: Float[Tensor, "..."],
+        x: Float[Tensor, ...],
     ) -> Tensor:
         """Quantize for encoding (always uses hard quantization).
 
@@ -52,13 +53,14 @@ class Quantizer(nn.Module, ABC):
 
         Returns:
             Integer-valued quantized tensor.
+
         """
         return torch.round(x).to(torch.int32)
 
     def decode(
         self,
         x: Tensor,
-    ) -> Float[Tensor, "..."]:
+    ) -> Float[Tensor, ...]:
         """Dequantize (convert back to float).
 
         Args:
@@ -66,6 +68,7 @@ class Quantizer(nn.Module, ABC):
 
         Returns:
             Float tensor.
+
         """
         return x.float()
 
@@ -85,15 +88,16 @@ class NoiseQuantizer(Quantizer):
 
         Args:
             noise_scale: Scale of uniform noise (relative to bin width).
+
         """
         super().__init__()
         self.noise_scale = noise_scale
 
     def forward(
         self,
-        x: Float[Tensor, "..."],
+        x: Float[Tensor, ...],
         training: bool | None = None,
-    ) -> Float[Tensor, "..."]:
+    ) -> Float[Tensor, ...]:
         """Quantize with noise or rounding.
 
         Args:
@@ -102,6 +106,7 @@ class NoiseQuantizer(Quantizer):
 
         Returns:
             Quantized tensor.
+
         """
         is_training = training if training is not None else self.training
 
@@ -127,9 +132,9 @@ class STEQuantizer(Quantizer):
 
     def forward(
         self,
-        x: Float[Tensor, "..."],
+        x: Float[Tensor, ...],
         training: bool | None = None,
-    ) -> Float[Tensor, "..."]:
+    ) -> Float[Tensor, ...]:
         """Quantize with straight-through estimator.
 
         Args:
@@ -138,6 +143,7 @@ class STEQuantizer(Quantizer):
 
         Returns:
             Quantized tensor with STE gradient.
+
         """
         return x + (torch.round(x) - x).detach()
 
@@ -166,6 +172,7 @@ class SoftQuantizer(Quantizer):
             num_bins: Number of quantization bins.
             temperature: Initial temperature for softmax.
             min_temperature: Minimum temperature after annealing.
+
         """
         super().__init__()
         self.num_bins = num_bins
@@ -180,9 +187,9 @@ class SoftQuantizer(Quantizer):
 
     def forward(
         self,
-        x: Float[Tensor, "..."],
+        x: Float[Tensor, ...],
         training: bool | None = None,
-    ) -> Float[Tensor, "..."]:
+    ) -> Float[Tensor, ...]:
         """Quantize with soft bins.
 
         Args:
@@ -191,6 +198,7 @@ class SoftQuantizer(Quantizer):
 
         Returns:
             Soft-quantized tensor.
+
         """
         is_training = training if training is not None else self.training
 
@@ -219,6 +227,7 @@ class SoftQuantizer(Quantizer):
 
         Returns:
             New temperature value.
+
         """
         with torch.no_grad():
             self.temperature.mul_(factor)
@@ -234,6 +243,7 @@ def create_quantizer(config: QuantizerConfig) -> Quantizer:
 
     Returns:
         Configured quantizer instance.
+
     """
     match config.mode:
         case QuantizationMode.NOISE:
@@ -247,5 +257,3 @@ def create_quantizer(config: QuantizerConfig) -> Quantizer:
             )
         case _:
             raise ValueError(f"Unknown quantization mode: {config.mode}")
-
-

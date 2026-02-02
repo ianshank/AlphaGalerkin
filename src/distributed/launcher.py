@@ -254,13 +254,15 @@ srun --ntasks-per-node={self.config.nproc_per_node} \\
         """
         # Set environment variables
         env = os.environ.copy()
-        env.update({
-            "MASTER_ADDR": self.config.master_addr,
-            "MASTER_PORT": str(self.config.master_port),
-            "WORLD_SIZE": str(self.config.get_world_size()),
-            "RANK": str(self.config.node_rank * self.config.nproc_per_node),
-            "LOCAL_RANK": "0",
-        })
+        env.update(
+            {
+                "MASTER_ADDR": self.config.master_addr,
+                "MASTER_PORT": str(self.config.master_port),
+                "WORLD_SIZE": str(self.config.get_world_size()),
+                "RANK": str(self.config.node_rank * self.config.nproc_per_node),
+                "LOCAL_RANK": "0",
+            }
+        )
 
         cmd = [sys.executable, str(self.script_path)] + self.script_args
 

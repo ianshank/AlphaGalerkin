@@ -109,11 +109,14 @@ class TestDistributedContextMultiGPU:
         allocation.
         """
         with (
-            patch.dict(os.environ, {
-                "WORLD_SIZE": "4",
-                "RANK": "2",
-                "LOCAL_RANK": "2",
-            }),
+            patch.dict(
+                os.environ,
+                {
+                    "WORLD_SIZE": "4",
+                    "RANK": "2",
+                    "LOCAL_RANK": "2",
+                },
+            ),
             patch("torch.cuda.is_available", return_value=False),
         ):
             ctx = DistributedContext.from_environment()
@@ -126,11 +129,14 @@ class TestDistributedContextMultiGPU:
 
     def test_from_environment_rank_0(self) -> None:
         """Test rank 0 is main process."""
-        with patch.dict(os.environ, {
-            "WORLD_SIZE": "4",
-            "RANK": "0",
-            "LOCAL_RANK": "0",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "WORLD_SIZE": "4",
+                "RANK": "0",
+                "LOCAL_RANK": "0",
+            },
+        ):
             ctx = DistributedContext.from_environment()
             assert ctx.is_main_process
 
@@ -186,9 +192,7 @@ class TestDistributedContextMultiGPU:
 
     @patch("torch.distributed.destroy_process_group")
     @patch("torch.distributed.is_initialized", return_value=True)
-    def test_cleanup(
-        self, mock_is_init: MagicMock, mock_destroy: MagicMock
-    ) -> None:
+    def test_cleanup(self, mock_is_init: MagicMock, mock_destroy: MagicMock) -> None:
         """Test cleanup destroys process group."""
         ctx = DistributedContext(
             rank=0,
@@ -216,10 +220,7 @@ class TestDistributedContextDeviceSelection:
             ctx = DistributedContext.from_environment()
             assert ctx.device == torch.device("cpu")
 
-    @pytest.mark.skipif(
-        not torch.cuda.is_available(),
-        reason="CUDA not available"
-    )
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_cuda_device_single_gpu(self) -> None:
         """Test CUDA device selection for single GPU."""
         # Clear distributed env vars

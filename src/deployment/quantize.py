@@ -176,7 +176,7 @@ class ModelQuantizer:
 
         """
         try:
-            from onnxruntime.quantization import QuantType, quantize_dynamic
+            from onnxruntime.quantization import quantize_dynamic
 
             weight_type = self._get_quant_type(self.config.weight_type)
 
@@ -215,7 +215,6 @@ class ModelQuantizer:
             from onnxruntime.quantization import (
                 CalibrationMethod,
                 QuantFormat,
-                QuantType,
                 quantize_static,
             )
 

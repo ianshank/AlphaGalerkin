@@ -6,8 +6,8 @@ Supports variable board sizes through padding and masking.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch.utils.data import Dataset, IterableDataset, Sampler
@@ -28,7 +28,7 @@ class ReplayDataset(Dataset):
     def __init__(
         self,
         buffer: ReplayBuffer,
-        transform: callable | None = None,
+        transform: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize dataset.
 
@@ -81,7 +81,7 @@ class StreamingReplayDataset(IterableDataset):
         self,
         buffer: ReplayBuffer,
         batch_size: int = 32,
-        transform: callable | None = None,
+        transform: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize streaming dataset.
 
@@ -158,6 +158,7 @@ class BoardSizeBatchSampler(Sampler):
         for _size, indices in self.size_to_indices.items():
             if self.shuffle:
                 import random
+
                 indices = indices.copy()
                 random.shuffle(indices)
 
@@ -170,6 +171,7 @@ class BoardSizeBatchSampler(Sampler):
         # Shuffle batches (not within batches)
         if self.shuffle:
             import random
+
             random.shuffle(all_batches)
 
         yield from all_batches
@@ -195,7 +197,7 @@ class ExperienceListDataset(Dataset):
     def __init__(
         self,
         experiences: list[Experience],
-        transform: callable | None = None,
+        transform: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize dataset.
 
@@ -252,20 +254,24 @@ class AugmentedExperience:
         self.use_reflections = use_reflections
 
         # Build transformation list
-        self.transforms: list[callable] = [lambda x: x]  # Identity
+        self.transforms: list[Callable[..., Any]] = [lambda x: x]  # Identity
 
         if use_rotations:
-            self.transforms.extend([
-                lambda x: torch.rot90(x, 1, [-2, -1]),
-                lambda x: torch.rot90(x, 2, [-2, -1]),
-                lambda x: torch.rot90(x, 3, [-2, -1]),
-            ])
+            self.transforms.extend(
+                [
+                    lambda x: torch.rot90(x, 1, [-2, -1]),
+                    lambda x: torch.rot90(x, 2, [-2, -1]),
+                    lambda x: torch.rot90(x, 3, [-2, -1]),
+                ]
+            )
 
         if use_reflections:
-            self.transforms.extend([
-                lambda x: torch.flip(x, [-1]),  # Horizontal
-                lambda x: torch.flip(x, [-2]),  # Vertical
-            ])
+            self.transforms.extend(
+                [
+                    lambda x: torch.flip(x, [-1]),  # Horizontal
+                    lambda x: torch.flip(x, [-2]),  # Vertical
+                ]
+            )
 
     def __call__(self, experience: Experience) -> Experience:
         """Apply random augmentation.
@@ -286,7 +292,7 @@ class AugmentedExperience:
 
         # Transform policy (reshape, transform, flatten)
         board_size = experience.board_size
-        n_positions = board_size ** 2
+        n_positions = board_size**2
 
         # Separate position policy and pass move
         position_policy = experience.target_policy[:n_positions]

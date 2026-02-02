@@ -43,6 +43,7 @@ class UpsampleBlock(nn.Module):
             out_channels: Output channels.
             kernel_size: Convolution kernel size.
             stride: Upsampling stride.
+
         """
         super().__init__()
         padding = kernel_size // 2
@@ -69,6 +70,7 @@ class UpsampleBlock(nn.Module):
 
         Returns:
             Upsampled tensor.
+
         """
         return self.igdn(self.conv(x))
 
@@ -104,6 +106,7 @@ class DecoderBlock(nn.Module):
             fnet_ratio: FNet to Galerkin ratio.
             dropout: Dropout rate.
             upsample_stride: Spatial upsampling factor.
+
         """
         super().__init__()
 
@@ -112,21 +115,21 @@ class DecoderBlock(nn.Module):
         self.channel_proj_back = nn.Linear(d_model, in_channels)
 
         # FNet-Galerkin attention layers
-        self.attention_layers = nn.ModuleList([
-            FNetGalerkinBlock(
-                d_model=d_model,
-                n_heads=n_heads,
-                d_ffn=d_ffn,
-                fnet_ratio=fnet_ratio,
-                dropout=dropout,
-            )
-            for _ in range(n_attention_layers)
-        ])
+        self.attention_layers = nn.ModuleList(
+            [
+                FNetGalerkinBlock(
+                    d_model=d_model,
+                    n_heads=n_heads,
+                    d_ffn=d_ffn,
+                    fnet_ratio=fnet_ratio,
+                    dropout=dropout,
+                )
+                for _ in range(n_attention_layers)
+            ]
+        )
 
         # Spatial upsampling
-        self.upsample = UpsampleBlock(
-            in_channels, out_channels, stride=upsample_stride
-        )
+        self.upsample = UpsampleBlock(in_channels, out_channels, stride=upsample_stride)
 
     def forward(
         self,
@@ -139,6 +142,7 @@ class DecoderBlock(nn.Module):
 
         Returns:
             Output tensor (B, C', H'*s, W'*s).
+
         """
         batch, channels, height, width = x.shape
 
@@ -183,13 +187,14 @@ class Decoder(nn.Module):
 
         Args:
             config: Decoder configuration.
+
         """
         super().__init__()
         self.config = config
 
         # Calculate intermediate channels based on upsample factor
         n_upsamples = int(math.log2(config.upsample_factor))
-        channel_mult = [2 ** i for i in range(n_upsamples, -1, -1)]
+        channel_mult = [2**i for i in range(n_upsamples, -1, -1)]
         base_channels = config.latent_channels // channel_mult[0]
 
         # Input convolution (no upsampling)
@@ -208,7 +213,9 @@ class Decoder(nn.Module):
         in_ch = base_channels * channel_mult[0]
 
         for i in range(n_upsamples):
-            out_ch = base_channels * channel_mult[i + 1] if i + 1 < len(channel_mult) else base_channels
+            out_ch = (
+                base_channels * channel_mult[i + 1] if i + 1 < len(channel_mult) else base_channels
+            )
 
             # Distribute attention layers across blocks
             n_attn = max(1, config.n_layers // n_upsamples)
@@ -250,6 +257,7 @@ class Decoder(nn.Module):
 
         Returns:
             Reconstructed tensor (B, 3, H, W) in [0, 1] range.
+
         """
         # Input conv
         x = self.input_conv(x)
@@ -281,19 +289,22 @@ class TemporalDecoder(nn.Module):
         Args:
             config: Decoder configuration.
             temporal_layers: Number of temporal cross-attention layers.
+
         """
         super().__init__()
         self.base_decoder = Decoder(config)
 
         # Temporal cross-attention
-        self.temporal_attention = nn.ModuleList([
-            TemporalCrossAttention(
-                d_model=config.d_model,
-                n_heads=config.n_heads,
-                dropout=config.dropout,
-            )
-            for _ in range(temporal_layers)
-        ])
+        self.temporal_attention = nn.ModuleList(
+            [
+                TemporalCrossAttention(
+                    d_model=config.d_model,
+                    n_heads=config.n_heads,
+                    dropout=config.dropout,
+                )
+                for _ in range(temporal_layers)
+            ]
+        )
 
         self.norm = nn.LayerNorm(config.latent_channels)
 
@@ -310,6 +321,7 @@ class TemporalDecoder(nn.Module):
 
         Returns:
             Reconstructed tensor (B, 3, H, W).
+
         """
         if reference is not None:
             batch, channels, h, w = x.shape
@@ -348,6 +360,7 @@ class TemporalCrossAttention(nn.Module):
             d_model: Model dimension.
             n_heads: Number of attention heads.
             dropout: Dropout rate.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -383,6 +396,7 @@ class TemporalCrossAttention(nn.Module):
 
         Returns:
             Updated features (B, N, D).
+
         """
         batch, n, _ = x.shape
 

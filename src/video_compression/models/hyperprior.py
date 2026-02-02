@@ -12,6 +12,7 @@ The hyperprior z is encoded with a factorized prior.
 References:
 - Ballé et al., "Variational image compression with a scale hyperprior" (2018)
 - Minnen et al., "Joint autoregressive and hierarchical priors" (2018)
+
 """
 
 from __future__ import annotations
@@ -20,9 +21,9 @@ import math
 from typing import NamedTuple
 
 import torch
+import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor, nn
-import torch.nn.functional as F
 
 from src.video_compression.config import EntropyConfig, EntropyModelType
 
@@ -60,6 +61,7 @@ class FactorizedPrior(nn.Module):
             channels: Number of latent channels.
             num_filters: Number of filters in CDF network.
             init_scale: Initial scale for parameter initialization.
+
         """
         super().__init__()
         self.channels = channels
@@ -83,7 +85,7 @@ class FactorizedPrior(nn.Module):
     def forward(
         self,
         x: Float[Tensor, "batch channels ..."],
-    ) -> tuple[Float[Tensor, "batch channels ..."], Float[Tensor, "batch"]]:
+    ) -> tuple[Float[Tensor, "batch channels ..."], Float[Tensor, batch]]:
         """Compute likelihoods for input.
 
         Args:
@@ -91,6 +93,7 @@ class FactorizedPrior(nn.Module):
 
         Returns:
             Tuple of (quantized, likelihoods).
+
         """
         # Compute CDF at x ± 0.5
         lower = self._cdf(x - 0.5)
@@ -115,6 +118,7 @@ class FactorizedPrior(nn.Module):
 
         Returns:
             CDF values.
+
         """
         # Move to (-inf, inf) range with appropriate scaling
         x_scaled = x / self.init_scale
@@ -156,6 +160,7 @@ class GaussianConditional(nn.Module):
 
         Args:
             scale_bound: Minimum scale value for numerical stability.
+
         """
         super().__init__()
         self.scale_bound = scale_bound
@@ -165,7 +170,7 @@ class GaussianConditional(nn.Module):
         x: Float[Tensor, "batch channels ..."],
         scales: Float[Tensor, "batch channels ..."],
         means: Float[Tensor, "batch channels ..."] | None = None,
-    ) -> tuple[Float[Tensor, "batch channels ..."], Float[Tensor, "batch"]]:
+    ) -> tuple[Float[Tensor, "batch channels ..."], Float[Tensor, batch]]:
         """Compute likelihoods for Gaussian conditional.
 
         Args:
@@ -175,6 +180,7 @@ class GaussianConditional(nn.Module):
 
         Returns:
             Tuple of (values, rate in bits).
+
         """
         if means is not None:
             x = x - means
@@ -206,6 +212,7 @@ class GaussianConditional(nn.Module):
 
         Returns:
             CDF values.
+
         """
         return 0.5 * (1 + torch.erf(x / math.sqrt(2)))
 
@@ -231,6 +238,7 @@ class HyperAnalysis(nn.Module):
             in_channels: Input latent channels.
             out_channels: Hyperprior channels.
             n_layers: Number of layers.
+
         """
         super().__init__()
 
@@ -239,10 +247,12 @@ class HyperAnalysis(nn.Module):
 
         for i in range(n_layers):
             out_ch = out_channels if i == n_layers - 1 else in_channels
-            layers.extend([
-                nn.Conv2d(ch, out_ch, 3, stride=2 if i < n_layers - 1 else 1, padding=1),
-                nn.LeakyReLU(0.2) if i < n_layers - 1 else nn.Identity(),
-            ])
+            layers.extend(
+                [
+                    nn.Conv2d(ch, out_ch, 3, stride=2 if i < n_layers - 1 else 1, padding=1),
+                    nn.LeakyReLU(0.2) if i < n_layers - 1 else nn.Identity(),
+                ]
+            )
             ch = out_ch
 
         self.net = nn.Sequential(*layers)
@@ -258,6 +268,7 @@ class HyperAnalysis(nn.Module):
 
         Returns:
             Hyperprior tensor.
+
         """
         # Use absolute value to model scale
         return self.net(torch.abs(y))
@@ -282,6 +293,7 @@ class HyperSynthesis(nn.Module):
             in_channels: Hyperprior channels.
             out_channels: Output channels (latent channels).
             n_layers: Number of layers.
+
         """
         super().__init__()
 
@@ -290,15 +302,19 @@ class HyperSynthesis(nn.Module):
 
         for i in range(n_layers):
             out_ch = out_channels if i == n_layers - 1 else in_channels * 2
-            layers.extend([
-                nn.ConvTranspose2d(
-                    ch, out_ch, 3,
-                    stride=2 if i < n_layers - 1 else 1,
-                    padding=1,
-                    output_padding=1 if i < n_layers - 1 else 0,
-                ),
-                nn.LeakyReLU(0.2) if i < n_layers - 1 else nn.Identity(),
-            ])
+            layers.extend(
+                [
+                    nn.ConvTranspose2d(
+                        ch,
+                        out_ch,
+                        3,
+                        stride=2 if i < n_layers - 1 else 1,
+                        padding=1,
+                        output_padding=1 if i < n_layers - 1 else 0,
+                    ),
+                    nn.LeakyReLU(0.2) if i < n_layers - 1 else nn.Identity(),
+                ]
+            )
             ch = out_ch
 
         self.net = nn.Sequential(*layers)
@@ -314,6 +330,7 @@ class HyperSynthesis(nn.Module):
 
         Returns:
             Scale tensor (same spatial size as latent).
+
         """
         # Output is log-scale, exp for positivity
         return torch.exp(self.net(z))
@@ -335,6 +352,7 @@ class HyperpriorEntropyModel(nn.Module):
 
         Args:
             config: Entropy model configuration.
+
         """
         super().__init__()
         self.config = config
@@ -371,6 +389,7 @@ class HyperpriorEntropyModel(nn.Module):
 
         Returns:
             EntropyOutput with quantized values and rates.
+
         """
         is_training = training if training is not None else self.training
 
@@ -378,25 +397,17 @@ class HyperpriorEntropyModel(nn.Module):
         z = self.hyper_analysis(y)
 
         # Quantize hyperprior
-        if is_training:
-            z_hat = z + torch.empty_like(z).uniform_(-0.5, 0.5)
-        else:
-            z_hat = torch.round(z)
+        z_hat = z + torch.empty_like(z).uniform_(-0.5, 0.5) if is_training else torch.round(z)
 
         # Hyper-synthesis: predict scales
         scales = self.hyper_synthesis(z_hat)
 
         # Resize scales to match y if needed
         if scales.shape != y.shape:
-            scales = F.interpolate(
-                scales, size=y.shape[-2:], mode="bilinear", align_corners=False
-            )
+            scales = F.interpolate(scales, size=y.shape[-2:], mode="bilinear", align_corners=False)
 
         # Quantize latent
-        if is_training:
-            y_hat = y + torch.empty_like(y).uniform_(-0.5, 0.5)
-        else:
-            y_hat = torch.round(y)
+        y_hat = y + torch.empty_like(y).uniform_(-0.5, 0.5) if is_training else torch.round(y)
 
         # Compute likelihoods
         _, y_rate = self.gaussian(y_hat, scales)
@@ -428,6 +439,7 @@ class HyperpriorEntropyModel(nn.Module):
 
         Returns:
             Dictionary with quantized symbols for entropy coding.
+
         """
         # Hyper-analysis and quantization
         z = self.hyper_analysis(y)
@@ -436,9 +448,7 @@ class HyperpriorEntropyModel(nn.Module):
         # Predict scales
         scales = self.hyper_synthesis(z_hat)
         if scales.shape != y.shape:
-            scales = F.interpolate(
-                scales, size=y.shape[-2:], mode="bilinear", align_corners=False
-            )
+            scales = F.interpolate(scales, size=y.shape[-2:], mode="bilinear", align_corners=False)
 
         # Quantize latent
         y_hat = torch.round(y)
@@ -462,6 +472,7 @@ class HyperpriorEntropyModel(nn.Module):
 
         Returns:
             Reconstructed latent tensor.
+
         """
         return y_symbols.float()
 
@@ -474,6 +485,7 @@ def create_entropy_model(config: EntropyConfig) -> nn.Module:
 
     Returns:
         Configured entropy model instance.
+
     """
     match config.model_type:
         case EntropyModelType.FACTORIZED:

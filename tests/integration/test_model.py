@@ -69,7 +69,7 @@ class TestAlphaGalerkinModel:
             x = torch.randn(batch_size, 17, board_size, board_size)
             output = model(x)
 
-            expected_policy_size = board_size ** 2 + 1
+            expected_policy_size = board_size**2 + 1
             assert output.policy_logits.shape == (batch_size, expected_policy_size)
 
     def test_forward_with_lbb(self, model: AlphaGalerkinModel) -> None:

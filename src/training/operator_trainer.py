@@ -64,11 +64,11 @@ class TrainingConfig:
 
 class OperatorTrainer:
     """Training loop for neural operators.
-    
+
     Example:
         >>> from src.modeling.operator import NeuralOperator
         >>> from src.data.physics_dataset import PhysicsDataset
-        >>> 
+        >>>
         >>> model = NeuralOperator(in_channels=1, out_channels=1)
         >>> trainer = OperatorTrainer(model, config=TrainingConfig())
         >>> trainer.fit(train_loader, val_loader)
@@ -260,9 +260,8 @@ class OperatorTrainer:
             self.history["lr"].append(current_lr)
 
             # Step scheduler
-            if self.scheduler is not None:
-                if self.config.scheduler != "onecycle":
-                    self.scheduler.step()
+            if self.scheduler is not None and self.config.scheduler != "onecycle":
+                self.scheduler.step()
 
             # Logging
             logger.info(

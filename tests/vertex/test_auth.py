@@ -107,9 +107,7 @@ class TestRunGcloudCommand:
                 stdout='[{"account": "test@example.com", "status": "ACTIVE"}]',
                 stderr="",
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = run_gcloud_command(["auth", "list", "--format=json"])
                 assert result.success is True
                 assert result.return_code == 0
@@ -123,9 +121,7 @@ class TestRunGcloudCommand:
                 stdout="",
                 stderr="ERROR: Not authenticated",
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = run_gcloud_command(["auth", "list"])
                 assert result.success is False
                 assert "Not authenticated" in result.stderr
@@ -134,9 +130,7 @@ class TestRunGcloudCommand:
         """Test command timeout handling."""
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired(cmd=["gcloud"], timeout=30)
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = run_gcloud_command(["auth", "list"], timeout=30)
                 assert result.success is False
                 assert "timed out" in result.stderr
@@ -163,9 +157,7 @@ class TestRunGcloudCommand:
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("C:\\gcloud.cmd")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("C:\\gcloud.cmd")):
                 run_gcloud_command(["auth", "list"], platform=platform)
 
                 # Verify gcloud is called directly (subprocess with shell=False
@@ -179,9 +171,7 @@ class TestRunGcloudCommand:
         """Test handling of FileNotFoundError."""
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("gcloud not found")
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = run_gcloud_command(["auth", "list"])
                 assert result.success is False
                 assert "not found" in result.stderr.lower()
@@ -200,9 +190,7 @@ class TestAuthConfig:
 
     def test_service_account_requires_key_path(self) -> None:
         """Test service account method requires key path."""
-        with pytest.raises(
-            ValidationError, match="service_account_key_path is required"
-        ):
+        with pytest.raises(ValidationError, match="service_account_key_path is required"):
             AuthConfig(auth_method=AuthMethod.SERVICE_ACCOUNT_KEY)
 
     def test_service_account_with_key_path(self, tmp_path: Path) -> None:
@@ -265,16 +253,12 @@ class TestGCPAuthenticator:
                 stderr="",
                 command=["gcloud", "auth", "list"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = authenticator.validate_credentials()
                 assert result.is_valid is True
                 assert result.account == "test@example.com"
 
-    def test_validate_gcloud_no_active_account(
-        self, authenticator: GCPAuthenticator
-    ) -> None:
+    def test_validate_gcloud_no_active_account(self, authenticator: GCPAuthenticator) -> None:
         """Test gcloud validation with no active account."""
         with patch("src.vertex.auth.run_gcloud_command") as mock_run:
             mock_run.return_value = CommandResult(
@@ -284,9 +268,7 @@ class TestGCPAuthenticator:
                 stderr="",
                 command=["gcloud", "auth", "list"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = authenticator.validate_credentials()
                 assert result.is_valid is False
                 assert result.error_code == "NO_ACTIVE_ACCOUNT"
@@ -395,9 +377,7 @@ class TestGCPAuthenticator:
             assert result.is_valid is False
             assert result.error_code == "NO_ADC"
 
-    def test_ps_security_exception_handling(
-        self, authenticator: GCPAuthenticator
-    ) -> None:
+    def test_ps_security_exception_handling(self, authenticator: GCPAuthenticator) -> None:
         """Test PSSecurityException is properly handled."""
         with patch("src.vertex.auth.run_gcloud_command") as mock_run:
             mock_run.return_value = CommandResult(
@@ -407,17 +387,13 @@ class TestGCPAuthenticator:
                 stderr="PSSecurityException: execution policy",
                 command=["gcloud", "auth", "list"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("C:\\gcloud.cmd")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("C:\\gcloud.cmd")):
                 result = authenticator.validate_credentials()
                 assert result.is_valid is False
                 assert result.error_code == "PS_SECURITY_EXCEPTION"
                 assert any("cmd /c" in s.lower() for s in result.suggestions)
 
-    def test_expired_credentials_handling(
-        self, authenticator: GCPAuthenticator
-    ) -> None:
+    def test_expired_credentials_handling(self, authenticator: GCPAuthenticator) -> None:
         """Test expired credentials error handling."""
         with patch("src.vertex.auth.run_gcloud_command") as mock_run:
             mock_run.return_value = CommandResult(
@@ -427,9 +403,7 @@ class TestGCPAuthenticator:
                 stderr="ERROR: credentials have expired",
                 command=["gcloud", "auth", "list"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = authenticator.validate_credentials()
                 assert result.is_valid is False
                 assert result.error_code == "CREDENTIALS_EXPIRED"
@@ -444,9 +418,7 @@ class TestGCPAuthenticator:
                 stderr="ERROR: Permission denied",
                 command=["gcloud", "auth", "list"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 result = authenticator.validate_credentials()
                 assert result.is_valid is False
                 assert result.error_code == "PERMISSION_DENIED"
@@ -461,9 +433,7 @@ class TestGCPAuthenticator:
                 stderr="",
                 command=["gcloud", "auth", "print-access-token"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 token = authenticator.get_access_token()
                 assert token == "ya29.token123"
 
@@ -477,9 +447,7 @@ class TestGCPAuthenticator:
                 stderr="ERROR: not authenticated",
                 command=["gcloud", "auth", "print-access-token"],
             )
-            with patch(
-                "src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")
-            ):
+            with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
                 token = authenticator.get_access_token()
                 assert token is None
 

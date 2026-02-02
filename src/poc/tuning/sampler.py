@@ -136,7 +136,7 @@ class GridSampler(BaseSampler):
         values = [param_values[k] for k in keys]
         combinations = list(itertools.product(*values))
 
-        return [dict(zip(keys, combo)) for combo in combinations]
+        return [dict(zip(keys, combo, strict=False)) for combo in combinations]
 
     def sample(
         self,

@@ -47,28 +47,34 @@ class TestBoardSizeCurriculum:
 
     def test_from_schedule(self) -> None:
         """Test creation from schedule."""
-        curriculum = BoardSizeCurriculum.from_schedule({
-            0: [9],
-            100: [9, 13],
-        })
+        curriculum = BoardSizeCurriculum.from_schedule(
+            {
+                0: [9],
+                100: [9, 13],
+            }
+        )
         assert len(curriculum.stages) == 2
 
     def test_from_config(self) -> None:
         """Test creation from config with string keys."""
-        curriculum = BoardSizeCurriculum.from_config({
-            "0": [9],
-            "100": [9, 13],
-        })
+        curriculum = BoardSizeCurriculum.from_config(
+            {
+                "0": [9],
+                "100": [9, 13],
+            }
+        )
         assert curriculum.get_board_sizes(0) == [9]
         assert curriculum.get_board_sizes(100) == [9, 13]
 
     def test_get_board_sizes(self) -> None:
         """Test getting board sizes at different steps."""
-        curriculum = BoardSizeCurriculum.from_schedule({
-            0: [9],
-            100: [9, 13],
-            200: [9, 13, 19],
-        })
+        curriculum = BoardSizeCurriculum.from_schedule(
+            {
+                0: [9],
+                100: [9, 13],
+                200: [9, 13, 19],
+            }
+        )
         assert curriculum.get_board_sizes(0) == [9]
         assert curriculum.get_board_sizes(50) == [9]
         assert curriculum.get_board_sizes(100) == [9, 13]
@@ -78,10 +84,12 @@ class TestBoardSizeCurriculum:
 
     def test_sample_board_size(self) -> None:
         """Test sampling board sizes."""
-        curriculum = BoardSizeCurriculum.from_schedule({
-            0: [9],
-            100: [9, 13],
-        })
+        curriculum = BoardSizeCurriculum.from_schedule(
+            {
+                0: [9],
+                100: [9, 13],
+            }
+        )
         # At step 0, only 9 available
         for _ in range(10):
             assert curriculum.sample_board_size(0) == 9
@@ -93,10 +101,12 @@ class TestBoardSizeCurriculum:
 
     def test_is_transition_step(self) -> None:
         """Test transition step detection."""
-        curriculum = BoardSizeCurriculum.from_schedule({
-            0: [9],
-            100: [9, 13],
-        })
+        curriculum = BoardSizeCurriculum.from_schedule(
+            {
+                0: [9],
+                100: [9, 13],
+            }
+        )
         assert curriculum.is_transition_step(0)
         assert curriculum.is_transition_step(100)
         assert not curriculum.is_transition_step(50)

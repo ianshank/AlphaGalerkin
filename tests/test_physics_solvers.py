@@ -6,16 +6,16 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
-from src.physics.solver import generate_random_field
-from src.physics.heat import HeatSolver, HeatSample
 from src.physics.darcy import DarcyFlowSolver, DarcySample
-from src.physics.elasticity import ElasticitySolver, ElasticitySample
-from src.physics.poisson import PoissonSolver, PoissonSample
-
+from src.physics.elasticity import ElasticitySample, ElasticitySolver
+from src.physics.heat import HeatSample, HeatSolver
+from src.physics.poisson import PoissonSample, PoissonSolver
+from src.physics.solver import generate_random_field
 
 # =============================================================================
 # Test Fixtures
 # =============================================================================
+
 
 @pytest.fixture(params=[16, 32])
 def resolution(request):
@@ -50,6 +50,7 @@ def poisson_solver(resolution):
 # =============================================================================
 # Unit Tests: generate_random_field
 # =============================================================================
+
 
 class TestGenerateRandomField:
     """Tests for the random field generator utility."""
@@ -88,6 +89,7 @@ class TestGenerateRandomField:
 # Unit Tests: Heat Solver
 # =============================================================================
 
+
 class TestHeatSolver:
     """Tests for the Heat equation solver."""
 
@@ -124,6 +126,7 @@ class TestHeatSolver:
 # =============================================================================
 # Unit Tests: Darcy Flow Solver
 # =============================================================================
+
 
 class TestDarcyFlowSolver:
     """Tests for the Darcy flow solver."""
@@ -170,6 +173,7 @@ class TestDarcyFlowSolver:
 # Unit Tests: Elasticity Solver
 # =============================================================================
 
+
 class TestElasticitySolver:
     """Tests for the Linear Elasticity solver."""
 
@@ -203,6 +207,7 @@ class TestElasticitySolver:
 # Unit Tests: Poisson Solver
 # =============================================================================
 
+
 class TestPoissonSolver:
     """Tests for the Poisson equation solver."""
 
@@ -222,15 +227,19 @@ class TestPoissonSolver:
 # Integration Tests
 # =============================================================================
 
+
 class TestSolverIntegration:
     """Integration tests across all solvers."""
 
-    @pytest.mark.parametrize("SolverClass,kwargs", [
-        (HeatSolver, {"alpha": 0.01, "total_time": 0.5}),
-        (DarcyFlowSolver, {"forcing": 1.0}),
-        (ElasticitySolver, {"young_modulus": 1.0, "poisson_ratio": 0.3}),
-        (PoissonSolver, {}),
-    ])
+    @pytest.mark.parametrize(
+        "SolverClass,kwargs",
+        [
+            (HeatSolver, {"alpha": 0.01, "total_time": 0.5}),
+            (DarcyFlowSolver, {"forcing": 1.0}),
+            (ElasticitySolver, {"young_modulus": 1.0, "poisson_ratio": 0.3}),
+            (PoissonSolver, {}),
+        ],
+    )
     def test_sample_coordinates_normalized(self, SolverClass, kwargs, resolution):
         """All samples should have coordinates in [0, 1]."""
         solver = SolverClass(resolution=resolution, **kwargs)
@@ -238,24 +247,30 @@ class TestSolverIntegration:
         assert np.all(sample.coords >= 0)
         assert np.all(sample.coords <= 1)
 
-    @pytest.mark.parametrize("SolverClass,kwargs", [
-        (HeatSolver, {"alpha": 0.01, "total_time": 0.5}),
-        (DarcyFlowSolver, {"forcing": 1.0}),
-        (ElasticitySolver, {"young_modulus": 1.0, "poisson_ratio": 0.3}),
-        (PoissonSolver, {}),
-    ])
+    @pytest.mark.parametrize(
+        "SolverClass,kwargs",
+        [
+            (HeatSolver, {"alpha": 0.01, "total_time": 0.5}),
+            (DarcyFlowSolver, {"forcing": 1.0}),
+            (ElasticitySolver, {"young_modulus": 1.0, "poisson_ratio": 0.3}),
+            (PoissonSolver, {}),
+        ],
+    )
     def test_sample_grid_size_correct(self, SolverClass, kwargs, resolution):
         """Sample grid_size should match solver resolution."""
         solver = SolverClass(resolution=resolution, **kwargs)
         sample = solver.generate_sample(seed=42)
         assert sample.grid_size == resolution
 
-    @pytest.mark.parametrize("SolverClass,kwargs", [
-        (HeatSolver, {"alpha": 0.01, "total_time": 0.5}),
-        (DarcyFlowSolver, {"forcing": 1.0}),
-        (ElasticitySolver, {"young_modulus": 1.0, "poisson_ratio": 0.3}),
-        (PoissonSolver, {}),
-    ])
+    @pytest.mark.parametrize(
+        "SolverClass,kwargs",
+        [
+            (HeatSolver, {"alpha": 0.01, "total_time": 0.5}),
+            (DarcyFlowSolver, {"forcing": 1.0}),
+            (ElasticitySolver, {"young_modulus": 1.0, "poisson_ratio": 0.3}),
+            (PoissonSolver, {}),
+        ],
+    )
     def test_reproducibility(self, SolverClass, kwargs, resolution):
         """Same seed should produce identical samples."""
         solver = SolverClass(resolution=resolution, **kwargs)

@@ -51,10 +51,10 @@ class DarcyFlowSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
 
     def solve(self, input_field: NDArray[np.float32]) -> NDArray[np.float32]:
         """Solve Darcy flow for permeability map a(x).
-        
+
         Uses finite difference method.
         -∇⋅(a ∇u) = f
-        
+
         Discretized on grid.
         """
         logger.debug(
@@ -97,16 +97,16 @@ class DarcyFlowSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
                 # a_left = 2 / (1/a[i,j] + 1/a[i,j-1])
                 # Simplified: arithmetic average for demo speed
                 a_curr = permeability[i, j]
-                a_left = (permeability[i, j-1] + a_curr) / 2
-                a_right = (permeability[i, j+1] + a_curr) / 2
-                a_top = (permeability[i-1, j] + a_curr) / 2
-                a_bottom = (permeability[i+1, j] + a_curr) / 2
+                a_left = (permeability[i, j - 1] + a_curr) / 2
+                a_right = (permeability[i, j + 1] + a_curr) / 2
+                a_top = (permeability[i - 1, j] + a_curr) / 2
+                a_bottom = (permeability[i + 1, j] + a_curr) / 2
 
                 A[k, k] = a_left + a_right + a_top + a_bottom
-                A[k, idx(i, j-1)] = -a_left
-                A[k, idx(i, j+1)] = -a_right
-                A[k, idx(i-1, j)] = -a_top
-                A[k, idx(i+1, j)] = -a_bottom
+                A[k, idx(i, j - 1)] = -a_left
+                A[k, idx(i, j + 1)] = -a_right
+                A[k, idx(i - 1, j)] = -a_top
+                A[k, idx(i + 1, j)] = -a_bottom
 
         # Solve linear system
         A_csr = A.tocsr()
@@ -125,12 +125,7 @@ class DarcyFlowSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
 
         # Permeability: Random field, usually strictly positive
         # Log-normal distribution is common for permeability
-        log_k = generate_random_field(
-            grid_size=resolution,
-            smooth=True,
-            seed=seed,
-            source_std=2.0
-        )
+        log_k = generate_random_field(grid_size=resolution, smooth=True, seed=seed, source_std=2.0)
         permeability = np.exp(log_k)
 
         # Clip to ensure numerical stability
@@ -145,9 +140,7 @@ class DarcyFlowSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
             output_field=u.flatten().astype(np.float32),
             coords=coords,
             grid_size=resolution,
-            metadata={
-                "forcing": self.forcing
-            }
+            metadata={"forcing": self.forcing},
         )
 
     def generate_batch(

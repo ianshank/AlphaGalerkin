@@ -1,0 +1,67 @@
+# YAMLLint configuration for AlphaGalerkin
+# Compatible with Hydra configuration files
+
+extends: default
+
+rules:
+  # Allow longer lines for Hydra configs
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # Hydra uses custom tags like ${...}
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false
+
+  # Allow document start marker to be optional
+  document-start: disable
+
+  # Allow inline comments
+  comments:
+    min-spaces-from-content: 1
+
+  # Consistent indentation
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow empty values in Hydra configs (null placeholders)
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+
+  # Braces and brackets formatting
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+
+  # Colons
+  colons:
+    max-spaces-before: 0
+    max-spaces-after: 1
+
+  # Commas
+  commas:
+    max-spaces-before: 0
+    min-spaces-after: 1
+    max-spaces-after: 1
+
+  # Hyphens (for lists)
+  hyphens:
+    max-spaces-after: 1
+
+# Ignore patterns
+ignore: |
+  .venv/
+  venv/
+  node_modules/
+  *.egg-info/
+  .git/
+  outputs/
+  checkpoints/

@@ -6,9 +6,9 @@ I/P/B frame structure for temporal compression.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Iterator
 
 from torch import Tensor
 
@@ -62,6 +62,7 @@ class ReferenceBuffer:
             frame_idx: Frame index.
             decoded: Decoded frame tensor.
             latent: Optional latent tensor.
+
         """
         self.frames[frame_idx] = decoded
         if latent is not None:
@@ -82,6 +83,7 @@ class ReferenceBuffer:
 
         Returns:
             Reference frame tensor or None.
+
         """
         return self.frames.get(frame_idx)
 
@@ -93,6 +95,7 @@ class ReferenceBuffer:
 
         Returns:
             Reference latent tensor or None.
+
         """
         return self.latents.get(frame_idx)
 
@@ -126,6 +129,7 @@ class GOPManager:
             i_frame_interval: Interval between I-frames.
             use_b_frames: Whether to use B-frames.
             b_frame_count: Number of B-frames between references.
+
         """
         self.gop_size = gop_size
         self.i_frame_interval = i_frame_interval
@@ -145,6 +149,7 @@ class GOPManager:
 
         Returns:
             FrameInfo for the frame.
+
         """
         gop_idx = frame_idx // self.gop_size
         gop_position = frame_idx % self.gop_size
@@ -195,6 +200,7 @@ class GOPManager:
 
         Returns:
             Encoding order within GOP.
+
         """
         if not self.use_b_frames:
             return display_order
@@ -219,6 +225,7 @@ class GOPManager:
 
         Returns:
             List of FrameInfo for all frames in GOP.
+
         """
         frames = []
         for i in range(self.gop_size):
@@ -233,6 +240,7 @@ class GOPManager:
 
         Returns:
             List of FrameInfo sorted by encoding order.
+
         """
         frames = self.get_gop_frames(gop_start)
         return sorted(frames, key=lambda f: f.encode_order)
@@ -250,6 +258,7 @@ class GOPManager:
 
         Yields:
             FrameInfo for each frame in encoding order.
+
         """
         current = start
         while end is None or current < end:
@@ -273,6 +282,7 @@ class GOPManager:
 
         Returns:
             True if frame starts a new GOP.
+
         """
         return frame_idx % self.gop_size == 0
 

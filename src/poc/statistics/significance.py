@@ -305,7 +305,7 @@ class StatisticalAnalyzer:
             p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df))
         except ImportError:
             # Very rough approximation
-            p_value = 2 * np.exp(-0.5 * t_stat ** 2) if abs(t_stat) < 3 else 0.001
+            p_value = 2 * np.exp(-0.5 * t_stat**2) if abs(t_stat) < 3 else 0.001
 
         return t_stat, p_value
 
@@ -481,8 +481,7 @@ class StatisticalAnalyzer:
         """
         mean_diff = np.mean(treatment) - np.mean(baseline)
         se = np.sqrt(
-            np.var(baseline, ddof=1) / len(baseline)
-            + np.var(treatment, ddof=1) / len(treatment)
+            np.var(baseline, ddof=1) / len(baseline) + np.var(treatment, ddof=1) / len(treatment)
         )
 
         # Z-score for confidence level

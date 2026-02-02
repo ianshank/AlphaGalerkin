@@ -74,7 +74,7 @@ class BasisFunction:
             x = coords[:, 0]
             y = coords[:, 1] if coords.shape[1] > 1 else np.ones_like(x)
 
-            return (x ** degree_x * y ** degree_y).astype(np.float32)
+            return (x**degree_x * y**degree_y).astype(np.float32)
 
         elif self.type == "rbf":
             center_x = self.params.get("center_x", 0.5)
@@ -85,7 +85,7 @@ class BasisFunction:
             y = coords[:, 1] if coords.shape[1] > 1 else np.zeros_like(x)
 
             r_sq = (x - center_x) ** 2 + (y - center_y) ** 2
-            return np.exp(-r_sq / (2 * sigma ** 2)).astype(np.float32)
+            return np.exp(-r_sq / (2 * sigma**2)).astype(np.float32)
 
         else:
             raise ValueError(f"Unknown basis type: {self.type}")
@@ -125,9 +125,7 @@ class BasisSelectionGame(PDEGame):
         """
         super().__init__(pde_operator, config)
 
-        self.basis_config = config.basis_config or BasisSelectionConfig(
-            name="default_basis"
-        )
+        self.basis_config = config.basis_config or BasisSelectionConfig(name="default_basis")
 
         # Generate candidate basis functions
         self._candidate_bases = self._generate_candidates()
@@ -169,11 +167,13 @@ class BasisSelectionGame(PDEGame):
                         continue  # Skip DC component (or add separately)
 
                     for phase in [0.0, np.pi / 2]:  # sin and cos
-                        candidates.append(BasisFunction(
-                            type="fourier",
-                            params={"k_x": k_x, "k_y": k_y, "phase": phase},
-                            index=idx,
-                        ))
+                        candidates.append(
+                            BasisFunction(
+                                type="fourier",
+                                params={"k_x": k_x, "k_y": k_y, "phase": phase},
+                                index=idx,
+                            )
+                        )
                         idx += 1
 
                         if len(candidates) >= n_candidates:
@@ -185,11 +185,14 @@ class BasisSelectionGame(PDEGame):
 
             # Add DC component if configured
             if self.basis_config.include_dc_component:
-                candidates.insert(0, BasisFunction(
-                    type="fourier",
-                    params={"k_x": 0, "k_y": 0, "phase": 0.0},
-                    index=len(candidates),
-                ))
+                candidates.insert(
+                    0,
+                    BasisFunction(
+                        type="fourier",
+                        params={"k_x": 0, "k_y": 0, "phase": 0.0},
+                        index=len(candidates),
+                    ),
+                )
 
         elif basis_type == "polynomial":
             # Generate polynomial basis up to certain degree
@@ -198,11 +201,13 @@ class BasisSelectionGame(PDEGame):
             for deg in range(max_deg + 1):
                 for dx in range(deg + 1):
                     dy = deg - dx
-                    candidates.append(BasisFunction(
-                        type="polynomial",
-                        params={"degree_x": dx, "degree_y": dy},
-                        index=idx,
-                    ))
+                    candidates.append(
+                        BasisFunction(
+                            type="polynomial",
+                            params={"degree_x": dx, "degree_y": dy},
+                            index=idx,
+                        )
+                    )
                     idx += 1
 
                     if len(candidates) >= n_candidates:
@@ -216,15 +221,17 @@ class BasisSelectionGame(PDEGame):
             scale_lo, scale_hi = self.basis_config.basis_scale_range
 
             for idx in range(n_candidates):
-                candidates.append(BasisFunction(
-                    type="rbf",
-                    params={
-                        "center_x": rng.uniform(0, 1),
-                        "center_y": rng.uniform(0, 1),
-                        "sigma": rng.uniform(scale_lo, scale_hi),
-                    },
-                    index=idx,
-                ))
+                candidates.append(
+                    BasisFunction(
+                        type="rbf",
+                        params={
+                            "center_x": rng.uniform(0, 1),
+                            "center_y": rng.uniform(0, 1),
+                            "sigma": rng.uniform(scale_lo, scale_hi),
+                        },
+                        index=idx,
+                    )
+                )
 
         return candidates[:n_candidates]
 
@@ -272,7 +279,7 @@ class BasisSelectionGame(PDEGame):
                 exact = self._exact_solution
             error = float(np.sqrt(np.mean((solution - exact) ** 2)))
         else:
-            error = float(np.sqrt(np.mean(residuals ** 2)))
+            error = float(np.sqrt(np.mean(residuals**2)))
 
         return PDEState(
             coords=self._collocation_points.copy(),
@@ -491,10 +498,7 @@ class BasisSelectionGame(PDEGame):
             return True
 
         # Check no valid actions
-        if len(self.get_valid_actions(state)) == 0:
-            return True
-
-        return False
+        return len(self.get_valid_actions(state)) == 0
 
     def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
         """Get final game result.
@@ -522,13 +526,17 @@ class BasisSelectionGame(PDEGame):
         budget_used = self.config.computational_budget - state.budget_remaining
         compute_efficiency = (
             (error_history[0] - error_history[-1]) / max(1, budget_used)
-            if len(error_history) > 1 else 0.0
+            if len(error_history) > 1
+            else 0.0
         )
 
         termination_reason = (
-            "converged" if converged
-            else "max_basis" if state.n_basis >= self.basis_config.max_basis_functions
-            else "budget_exhausted" if state.budget_remaining <= 0
+            "converged"
+            if converged
+            else "max_basis"
+            if state.n_basis >= self.basis_config.max_basis_functions
+            else "budget_exhausted"
+            if state.budget_remaining <= 0
             else "max_steps"
         )
 
@@ -571,14 +579,14 @@ class BasisSelectionGame(PDEGame):
             l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
             linf_error = float(np.max(np.abs(state.solution - exact)))
         else:
-            l2_error = float(np.sqrt(np.mean(state.residuals ** 2)))
+            l2_error = float(np.sqrt(np.mean(state.residuals**2)))
             linf_error = float(np.max(np.abs(state.residuals)))
 
         # H1 error (would need gradient computation)
         h1_error = l2_error  # Approximation
 
         # Residual norm
-        residual_norm = float(np.sqrt(np.mean(state.residuals ** 2)))
+        residual_norm = float(np.sqrt(np.mean(state.residuals**2)))
 
         return {
             "l2": l2_error,
@@ -601,7 +609,7 @@ class BasisSelectionGame(PDEGame):
 
         # Assume square grid (simplification)
         grid_size = int(np.sqrt(n_points))
-        if grid_size ** 2 != n_points:
+        if grid_size**2 != n_points:
             # Non-square: use 1D representation
             grid_size = n_points
             n_channels = self.state_channels
@@ -612,7 +620,7 @@ class BasisSelectionGame(PDEGame):
             tensor[2, 0] = torch.from_numpy(np.abs(state.residuals))  # Error indicator
 
             # Basis selection indicators
-            for i, idx in enumerate(state.history):
+            for i, _idx in enumerate(state.history):
                 if i + 3 < n_channels:
                     tensor[i + 3, 0] = 1.0
 
@@ -628,7 +636,7 @@ class BasisSelectionGame(PDEGame):
         tensor[2] = torch.from_numpy(np.abs(state.residuals).reshape(grid_size, grid_size))
 
         # Basis selection indicators (one channel per selected basis)
-        for i, idx in enumerate(state.history):
+        for i, _idx in enumerate(state.history):
             if i + 3 < n_channels:
                 # Mark this basis as selected (uniform indicator)
                 tensor[i + 3] = 1.0

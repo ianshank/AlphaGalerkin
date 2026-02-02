@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from src.analysis.config import AnalysisConfig, MoveClassification
 from src.analysis.evaluator import (
     EvaluationResult,
@@ -24,22 +23,16 @@ class TestEvaluationResult:
         result = EvaluationResult(win_rate=0.5)
         assert result.best_move is None
 
-    def test_best_move_probability(
-        self, sample_evaluation: EvaluationResult
-    ) -> None:
+    def test_best_move_probability(self, sample_evaluation: EvaluationResult) -> None:
         """Test best_move_probability property."""
         assert sample_evaluation.best_move_probability == 0.25
 
-    def test_get_move_probability(
-        self, sample_evaluation: EvaluationResult
-    ) -> None:
+    def test_get_move_probability(self, sample_evaluation: EvaluationResult) -> None:
         """Test getting move probability."""
         assert sample_evaluation.get_move_probability((3, 3)) == 0.25
         assert sample_evaluation.get_move_probability((99, 99)) == 0.0
 
-    def test_get_move_rank(
-        self, sample_evaluation: EvaluationResult
-    ) -> None:
+    def test_get_move_rank(self, sample_evaluation: EvaluationResult) -> None:
         """Test getting move rank."""
         assert sample_evaluation.get_move_rank((3, 3)) == 0
         assert sample_evaluation.get_move_rank((15, 3)) == 1
@@ -117,15 +110,14 @@ class TestLRUCache:
 class TestPositionEvaluator:
     """Tests for PositionEvaluator."""
 
-    def test_initialization(
-        self, position_evaluator: PositionEvaluator
-    ) -> None:
+    def test_initialization(self, position_evaluator: PositionEvaluator) -> None:
         """Test evaluator initialization."""
         assert position_evaluator.config is not None
         assert position_evaluator.evaluation_count == 0
 
     def test_evaluate_without_model(
-        self, position_evaluator: PositionEvaluator,
+        self,
+        position_evaluator: PositionEvaluator,
         sample_board: list[list[int]],
     ) -> None:
         """Test evaluation without model returns dummy result."""
@@ -136,7 +128,8 @@ class TestPositionEvaluator:
         assert result.confidence == 0.0
 
     def test_cache_hit(
-        self, position_evaluator: PositionEvaluator,
+        self,
+        position_evaluator: PositionEvaluator,
         sample_board: list[list[int]],
     ) -> None:
         """Test cache hit."""
@@ -162,7 +155,8 @@ class TestPositionEvaluator:
         assert evaluator.cache_size == 0
 
     def test_evaluate_batch(
-        self, position_evaluator: PositionEvaluator,
+        self,
+        position_evaluator: PositionEvaluator,
         sample_board: list[list[int]],
     ) -> None:
         """Test batch evaluation."""
@@ -173,9 +167,7 @@ class TestPositionEvaluator:
         for result in results:
             assert isinstance(result, EvaluationResult)
 
-    def test_set_model_evaluator(
-        self, position_evaluator: PositionEvaluator
-    ) -> None:
+    def test_set_model_evaluator(self, position_evaluator: PositionEvaluator) -> None:
         """Test setting model evaluator."""
 
         def mock_evaluator(board):
@@ -191,7 +183,8 @@ class TestPositionEvaluator:
     ) -> None:
         """Test comparing moves when best move is played."""
         classification, loss = position_evaluator.compare_moves(
-            sample_evaluation, (3, 3)  # Best move
+            sample_evaluation,
+            (3, 3),  # Best move
         )
 
         assert classification == MoveClassification.EXCELLENT
@@ -204,14 +197,16 @@ class TestPositionEvaluator:
     ) -> None:
         """Test comparing moves when not best move."""
         classification, loss = position_evaluator.compare_moves(
-            sample_evaluation, (15, 3)  # Second best
+            sample_evaluation,
+            (15, 3),  # Second best
         )
 
         # Should have some loss
         assert loss >= 0.0
 
     def test_clear_cache(
-        self, position_evaluator: PositionEvaluator,
+        self,
+        position_evaluator: PositionEvaluator,
         sample_board: list[list[int]],
     ) -> None:
         """Test clearing cache."""

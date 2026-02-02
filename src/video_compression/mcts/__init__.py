@@ -6,15 +6,15 @@ Uses MuZero-style learned world model for GOP-level bit allocation:
 - Dynamics network: Predicts next frame state
 """
 
-from src.video_compression.mcts.rate_control import (
-    MCTSRateController,
-    RateControlDecision,
-    GOPPlanner,
-)
 from src.video_compression.mcts.networks import (
+    DynamicsNetwork,
     PolicyNetwork,
     ValueNetwork,
-    DynamicsNetwork,
+)
+from src.video_compression.mcts.rate_control import (
+    GOPPlanner,
+    MCTSRateController,
+    RateControlDecision,
 )
 
 __all__ = [

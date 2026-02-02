@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from src.analysis.config import AnnotationLevel, MoveClassification
 from src.analysis.reviewer import (
     GameAnalysis,
@@ -109,9 +108,7 @@ class TestGameAnalysis:
         analysis = GameAnalysis()
         assert analysis.total_moves == 0
 
-        analysis.move_analyses.append(
-            MoveAnalysis(move_number=1, color="B", move=(3, 3))
-        )
+        analysis.move_analyses.append(MoveAnalysis(move_number=1, color="B", move=(3, 3)))
         assert analysis.total_moves == 1
 
     def test_black_mistakes(self) -> None:

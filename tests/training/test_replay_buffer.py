@@ -20,7 +20,7 @@ from src.training.replay_buffer import (
 def create_test_experience(board_size: int = 9, value: float = 0.0) -> Experience:
     """Create a test experience."""
     n_channels = 17
-    n_actions = board_size ** 2 + 1
+    n_actions = board_size**2 + 1
 
     return Experience(
         board_state=torch.randn(n_channels, board_size, board_size),

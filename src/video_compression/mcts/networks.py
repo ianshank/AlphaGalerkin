@@ -11,9 +11,9 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import torch
+import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor, nn
-import torch.nn.functional as F
 
 
 class PolicyOutput(NamedTuple):
@@ -49,6 +49,7 @@ class RepresentationNetwork(nn.Module):
             latent_channels: Channels in encoded frame latent.
             state_dim: Hidden state dimension.
             n_layers: Number of processing layers.
+
         """
         super().__init__()
         self.state_dim = state_dim
@@ -61,11 +62,13 @@ class RepresentationNetwork(nn.Module):
 
         for i in range(n_layers):
             out_ch = state_dim if i == n_layers - 1 else ch
-            layers.extend([
-                nn.Linear(ch, out_ch),
-                nn.LayerNorm(out_ch),
-                nn.GELU() if i < n_layers - 1 else nn.Identity(),
-            ])
+            layers.extend(
+                [
+                    nn.Linear(ch, out_ch),
+                    nn.LayerNorm(out_ch),
+                    nn.GELU() if i < n_layers - 1 else nn.Identity(),
+                ]
+            )
             ch = out_ch
 
         self.mlp = nn.Sequential(*layers)
@@ -81,6 +84,7 @@ class RepresentationNetwork(nn.Module):
 
         Returns:
             Hidden state vector.
+
         """
         # Pool to fixed size and flatten
         x = self.pool(y)
@@ -108,6 +112,7 @@ class DynamicsNetwork(nn.Module):
             state_dim: Hidden state dimension.
             num_actions: Number of possible actions (QP values).
             n_layers: Number of residual layers.
+
         """
         super().__init__()
         self.state_dim = state_dim
@@ -148,6 +153,7 @@ class DynamicsNetwork(nn.Module):
 
         Returns:
             Tuple of (next_state, reward).
+
         """
         # Embed action and combine with state
         action_emb = self.action_embed(action)
@@ -182,6 +188,7 @@ class PolicyNetwork(nn.Module):
             state_dim: Hidden state dimension.
             num_actions: Number of possible actions.
             hidden_dim: Hidden layer dimension.
+
         """
         super().__init__()
         self.num_actions = num_actions
@@ -207,6 +214,7 @@ class PolicyNetwork(nn.Module):
 
         Returns:
             PolicyOutput with logits and probabilities.
+
         """
         logits = self.net(state)
         probs = F.softmax(logits / temperature, dim=-1)
@@ -233,6 +241,7 @@ class ValueNetwork(nn.Module):
             state_dim: Hidden state dimension.
             support_size: Size of categorical support.
             hidden_dim: Hidden layer dimension.
+
         """
         super().__init__()
         self.support_size = support_size
@@ -252,7 +261,7 @@ class ValueNetwork(nn.Module):
     def forward(
         self,
         state: Float[Tensor, "batch state_dim"],
-    ) -> Float[Tensor, "batch"]:
+    ) -> Float[Tensor, batch]:
         """Predict value.
 
         Args:
@@ -260,6 +269,7 @@ class ValueNetwork(nn.Module):
 
         Returns:
             Expected value.
+
         """
         logits = self.net(state)
         probs = F.softmax(logits, dim=-1)
@@ -280,6 +290,7 @@ class ValueNetwork(nn.Module):
 
         Returns:
             Value distribution probabilities.
+
         """
         logits = self.net(state)
         return F.softmax(logits, dim=-1)
@@ -306,6 +317,7 @@ class PredictionNetwork(nn.Module):
             num_actions: Number of possible actions.
             support_size: Size of value categorical support.
             hidden_dim: Hidden layer dimension.
+
         """
         super().__init__()
 
@@ -340,6 +352,7 @@ class PredictionNetwork(nn.Module):
 
         Returns:
             PredictionOutput with policy and value.
+
         """
         features = self.trunk(state)
 

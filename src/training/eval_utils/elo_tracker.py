@@ -243,7 +243,5 @@ class EloTracker:
 
         self.k_factor = data.get("k_factor", self.k_factor)
         self.initial_rating = data.get("initial_rating", self.initial_rating)
-        self._ratings = {
-            int(k): EloRating.from_dict(v) for k, v in data.get("ratings", {}).items()
-        }
+        self._ratings = {int(k): EloRating.from_dict(v) for k, v in data.get("ratings", {}).items()}
         logger.info("elo_tracker_loaded", path=str(path), n_ratings=len(self._ratings))

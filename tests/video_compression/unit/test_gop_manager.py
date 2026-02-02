@@ -13,10 +13,10 @@ import pytest
 import torch
 
 from src.video_compression.codec.gop_manager import (
-    FrameType,
     FrameInfo,
-    ReferenceBuffer,
+    FrameType,
     GOPManager,
+    ReferenceBuffer,
 )
 
 

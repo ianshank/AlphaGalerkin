@@ -160,7 +160,7 @@ class TestSimpleGoGame:
 
         # But other empty positions should be legal
         assert 2 in legal_actions  # (0,2) is empty and legal
-        assert game.board_size ** 2 in legal_actions  # Pass is always legal
+        assert game.board_size**2 in legal_actions  # Pass is always legal
 
     def test_capture_move_is_legal(self) -> None:
         """Test that capturing moves are legal even if position looks like suicide.
@@ -208,7 +208,7 @@ class TestSimpleGoGame:
 
         # Get legal actions
         legal = game.get_legal_actions()
-        pass_action = game.board_size ** 2
+        pass_action = game.board_size**2
 
         # Every non-pass legal action should succeed
         for action in legal:
@@ -218,7 +218,9 @@ class TestSimpleGoGame:
             row = action // game.board_size
             col = action % game.board_size
             result = test_game.play(row, col)
-            assert result, f"Action {action} at ({row},{col}) was in legal_actions but play() returned False"
+            assert result, (
+                f"Action {action} at ({row},{col}) was in legal_actions but play() returned False"
+            )
 
 
 class TestGTPEngine:

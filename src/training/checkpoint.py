@@ -337,11 +337,13 @@ class CheckpointManager:
         """
         is_better = False
 
-        if self._best_value is None:
-            is_better = True
-        elif self.best_mode == "min" and metric_value < self._best_value:
-            is_better = True
-        elif self.best_mode == "max" and metric_value > self._best_value:
+        if (
+            self._best_value is None
+            or self.best_mode == "min"
+            and metric_value < self._best_value
+            or self.best_mode == "max"
+            and metric_value > self._best_value
+        ):
             is_better = True
 
         if is_better:
@@ -559,9 +561,11 @@ def create_model_from_checkpoint(
     # Import here to avoid circular imports
     if model_class is None:
         from src.modeling.model import AlphaGalerkinModel
+
         model_class = AlphaGalerkinModel
     if config_class is None:
         from config.schemas import OperatorConfig
+
         config_class = OperatorConfig
 
     # Load checkpoint and config

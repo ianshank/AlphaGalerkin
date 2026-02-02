@@ -16,9 +16,9 @@ logger = structlog.get_logger(__name__)
 
 class L2RelativeLoss(nn.Module):
     """Relative L2 loss for operator learning.
-    
+
     Computes: ||pred - target||_2 / ||target||_2
-    
+
     This is the standard loss for neural operators as it's
     scale-invariant across different output magnitudes.
     """
@@ -70,9 +70,9 @@ class L2RelativeLoss(nn.Module):
 
 class H1Loss(nn.Module):
     """H1 Sobolev loss including gradient penalty.
-    
+
     Computes: L2(pred, target) + lambda * L2(grad(pred), grad(target))
-    
+
     This encourages matching not just values but also spatial derivatives,
     useful for physics problems where smoothness matters.
     """

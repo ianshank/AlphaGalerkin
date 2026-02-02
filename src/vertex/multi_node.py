@@ -341,10 +341,7 @@ class VertexDistributedSetup:
         task_type = task.get("type", "worker")
         task_index = task.get("index", 0)
 
-        if task_type == "chief":
-            rank = task_index
-        else:
-            rank = len(chiefs) + task_index
+        rank = task_index if task_type == "chief" else len(chiefs) + task_index
 
         world_size = len(all_hosts)
 

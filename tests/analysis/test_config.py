@@ -9,9 +9,9 @@ from src.analysis.config import (
     AnalysisConfig,
     AnalysisMode,
     AnnotationLevel,
+    DeepAnalysisConfig,
     MoveClassification,
     QuickAnalysisConfig,
-    DeepAnalysisConfig,
     create_analysis_config,
 )
 

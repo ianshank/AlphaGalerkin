@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -20,12 +20,11 @@ from torch import Tensor
 
 from src.video_compression.data.dataset import (
     DatasetConfig,
-    VideoClip,
     ImageDataset,
-    VideoDataset,
     VariableResolutionBatchSampler,
+    VideoClip,
+    VideoDataset,
 )
-
 
 # --------------------------------------------------------------------------
 # Fixtures
@@ -66,11 +65,11 @@ def temp_image_dir() -> Path:
     """Create temporary directory with test images."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        
+
         # Create mock image files
         for i in range(5):
             (tmp_path / f"image_{i}.jpg").touch()
-        
+
         yield tmp_path
 
 
@@ -85,7 +84,7 @@ class TestDatasetConfig:
     def test_valid_config(self) -> None:
         """Test valid configuration is accepted."""
         config = DatasetConfig(root_dir="/data/videos")
-        
+
         assert config.root_dir == "/data/videos"
         assert config.patch_size == 256  # Default
         assert config.clip_length == 8  # Default
@@ -95,7 +94,7 @@ class TestDatasetConfig:
         # Valid bounds
         config = DatasetConfig(root_dir="/data", patch_size=64)
         assert config.patch_size == 64
-        
+
         config = DatasetConfig(root_dir="/data", patch_size=1024)
         assert config.patch_size == 1024
 
@@ -103,7 +102,7 @@ class TestDatasetConfig:
         """Test patch size validation rejects invalid values."""
         with pytest.raises(ValueError):
             DatasetConfig(root_dir="/data", patch_size=16)  # Too small
-        
+
         with pytest.raises(ValueError):
             DatasetConfig(root_dir="/data", patch_size=2048)  # Too large
 
@@ -111,7 +110,7 @@ class TestDatasetConfig:
         """Test clip length validation."""
         config = DatasetConfig(root_dir="/data", clip_length=1)
         assert config.clip_length == 1
-        
+
         config = DatasetConfig(root_dir="/data", clip_length=64)
         assert config.clip_length == 64
 
@@ -119,7 +118,7 @@ class TestDatasetConfig:
         """Test clip length validation rejects invalid values."""
         with pytest.raises(ValueError):
             DatasetConfig(root_dir="/data", clip_length=0)  # Too small
-        
+
         with pytest.raises(ValueError):
             DatasetConfig(root_dir="/data", clip_length=100)  # Too large
 
@@ -150,7 +149,7 @@ class TestVideoClip:
             video_path=Path("/test/video.mp4"),
             fps=30.0,
         )
-        
+
         assert clip.num_frames == 8
         assert clip.height == 256
         assert clip.width == 256
@@ -159,13 +158,13 @@ class TestVideoClip:
     def test_video_clip_properties(self) -> None:
         """Test VideoClip property accessors."""
         frames = torch.rand(4, 3, 128, 192)
-        
+
         clip = VideoClip(
             frames=frames,
             frame_indices=[0, 2, 4, 6],
             video_path=Path("/test.mp4"),
         )
-        
+
         assert clip.num_frames == 4
         assert clip.height == 128
         assert clip.width == 192
@@ -177,7 +176,7 @@ class TestVideoClip:
             frame_indices=[0, 1],
             video_path=Path("/test.mp4"),
         )
-        
+
         assert clip.fps == 30.0
 
 
@@ -193,17 +192,17 @@ class TestImageDataset:
         """Test finding images with various extensions."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            
+
             # Create files with different extensions
             for ext in [".jpg", ".jpeg", ".png", ".bmp", ".webp"]:
                 (tmp_path / f"image{ext}").touch()
-            
+
             # Create non-image file (should be ignored)
             (tmp_path / "document.txt").touch()
-            
+
             with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 64, 64)):
                 dataset = ImageDataset(tmp_path)
-                
+
                 # Check expected extensions are found (handles Windows case-insensitive FS)
                 unique_files = set(dataset.files)
                 assert len(unique_files) >= 5
@@ -212,13 +211,13 @@ class TestImageDataset:
         """Test finding images with uppercase extensions."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            
+
             (tmp_path / "image.JPG").touch()
             (tmp_path / "image.PNG").touch()
-            
+
             with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 64, 64)):
                 dataset = ImageDataset(tmp_path)
-                
+
                 # Check files are found (may include duplicates on case-insensitive FS)
                 unique_files = set(dataset.files)
                 assert len(unique_files) >= 2
@@ -231,16 +230,14 @@ class TestImageDataset:
 
     def test_getitem_returns_tensor(self, temp_image_dir: Path) -> None:
         """Test __getitem__ returns tensor."""
-        with patch.object(
-            ImageDataset, "_load_image", return_value=torch.rand(3, 256, 256)
-        ):
+        with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 256, 256)):
             dataset = ImageDataset(
                 temp_image_dir,
                 config=DatasetConfig(root_dir=str(temp_image_dir), random_crop=False),
             )
-            
+
             item = dataset[0]
-            
+
             assert isinstance(item, Tensor)
             assert item.dim() == 3
             assert item.shape[0] == 3  # RGB channels
@@ -250,19 +247,17 @@ class TestImageDataset:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "image.jpg").touch()
-            
+
             config = DatasetConfig(
                 root_dir=str(tmp_path),
                 patch_size=64,
                 random_crop=True,
             )
-            
-            with patch.object(
-                ImageDataset, "_load_image", return_value=torch.rand(3, 256, 256)
-            ):
+
+            with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 256, 256)):
                 dataset = ImageDataset(tmp_path, config=config)
                 item = dataset[0]
-                
+
                 assert item.shape[-2:] == (64, 64)
 
     def test_random_crop_small_image(self) -> None:
@@ -270,41 +265,38 @@ class TestImageDataset:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "image.jpg").touch()
-            
+
             config = DatasetConfig(
                 root_dir=str(tmp_path),
                 patch_size=256,
                 random_crop=True,
             )
-            
+
             # Image smaller than patch size
-            with patch.object(
-                ImageDataset, "_load_image", return_value=torch.rand(3, 64, 64)
-            ):
+            with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 64, 64)):
                 dataset = ImageDataset(tmp_path, config=config)
                 item = dataset[0]
-                
+
                 # Should be resized and cropped to patch size
                 assert item.shape[-2:] == (256, 256)
 
     def test_custom_transform_applied(self, temp_image_dir: Path) -> None:
         """Test custom transform is applied."""
+
         def custom_transform(x: Tensor) -> Tensor:
             return x * 2
-        
-        with patch.object(
-            ImageDataset, "_load_image", return_value=torch.rand(3, 256, 256)
-        ):
+
+        with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 256, 256)):
             dataset = ImageDataset(
                 temp_image_dir,
                 config=DatasetConfig(root_dir=str(temp_image_dir), random_crop=False),
                 transform=custom_transform,
             )
-            
+
             original = torch.rand(3, 256, 256)
             with patch.object(ImageDataset, "_load_image", return_value=original.clone()):
                 item = dataset[0]
-                
+
                 # Transform should have been applied
                 assert item.max() <= 2.0
 
@@ -312,16 +304,16 @@ class TestImageDataset:
         """Test images in subdirectories are found."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            
+
             # Create subdirectory with images
             subdir = tmp_path / "subdir"
             subdir.mkdir()
             (subdir / "image.jpg").touch()
             (tmp_path / "root_image.jpg").touch()
-            
+
             with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 64, 64)):
                 dataset = ImageDataset(tmp_path)
-                
+
                 # Check both root and subdir images found
                 unique_files = set(dataset.files)
                 assert len(unique_files) >= 2
@@ -339,14 +331,18 @@ class TestVideoDataset:
         """Test finding videos with various extensions."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            
+
             for ext in [".mp4", ".avi", ".mov", ".mkv", ".webm"]:
                 (tmp_path / f"video{ext}").touch()
-            
+
             with patch.object(VideoDataset, "_get_video_length", return_value=100):
-                with patch.object(VideoDataset, "_load_frames", return_value=(torch.rand(8, 3, 64, 64), list(range(8)))):
+                with patch.object(
+                    VideoDataset,
+                    "_load_frames",
+                    return_value=(torch.rand(8, 3, 64, 64), list(range(8))),
+                ):
                     dataset = VideoDataset(tmp_path)
-                    
+
                     # Check expected extensions are found
                     unique_files = set(dataset.files)
                     assert len(unique_files) >= 5
@@ -362,18 +358,22 @@ class TestVideoDataset:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "video.mp4").touch()
-            
+
             config = DatasetConfig(
                 root_dir=str(tmp_path),
                 clip_length=4,
                 frame_skip=1,
             )
-            
+
             # Video with 20 frames should have multiple clips
             with patch.object(VideoDataset, "_get_video_length", return_value=20):
-                with patch.object(VideoDataset, "_load_frames", return_value=(torch.rand(4, 3, 64, 64), list(range(4)))):
+                with patch.object(
+                    VideoDataset,
+                    "_load_frames",
+                    return_value=(torch.rand(4, 3, 64, 64), list(range(4))),
+                ):
                     dataset = VideoDataset(tmp_path, config=config)
-                    
+
                     # Expected clips: 0-4, 4-8, 8-12, 12-16
                     assert len(dataset._clips) >= 4
 
@@ -382,19 +382,23 @@ class TestVideoDataset:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "video.mp4").touch()
-            
+
             config = DatasetConfig(
                 root_dir=str(tmp_path),
                 clip_length=4,
                 random_crop=False,
             )
-            
+
             with patch.object(VideoDataset, "_get_video_length", return_value=100):
-                with patch.object(VideoDataset, "_load_frames", return_value=(torch.rand(4, 3, 64, 64), [0, 1, 2, 3])):
+                with patch.object(
+                    VideoDataset,
+                    "_load_frames",
+                    return_value=(torch.rand(4, 3, 64, 64), [0, 1, 2, 3]),
+                ):
                     with patch.object(VideoDataset, "_get_video_fps", return_value=30.0):
                         dataset = VideoDataset(tmp_path, config=config)
                         clip = dataset[0]
-                        
+
                         assert isinstance(clip, VideoClip)
                         assert clip.num_frames == 4
 
@@ -403,20 +407,24 @@ class TestVideoDataset:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "video.mp4").touch()
-            
+
             config = DatasetConfig(
                 root_dir=str(tmp_path),
                 clip_length=4,
                 frame_skip=2,  # Skip every other frame
                 random_crop=False,
             )
-            
+
             with patch.object(VideoDataset, "_get_video_length", return_value=100):
-                with patch.object(VideoDataset, "_load_frames", return_value=(torch.rand(4, 3, 64, 64), [0, 2, 4, 6])) as mock_load:
+                with patch.object(
+                    VideoDataset,
+                    "_load_frames",
+                    return_value=(torch.rand(4, 3, 64, 64), [0, 2, 4, 6]),
+                ) as mock_load:
                     with patch.object(VideoDataset, "_get_video_fps", return_value=30.0):
                         dataset = VideoDataset(tmp_path, config=config)
                         _ = dataset[0]
-                        
+
                         # Verify frame skip was passed
                         call_args = mock_load.call_args
                         assert call_args.kwargs.get("skip", 1) == 2 or call_args[0][3] == 2
@@ -444,9 +452,9 @@ class TestVariableResolutionBatchSampler:
             batch_size=8,
             shuffle=False,
         )
-        
+
         batches = list(sampler)
-        
+
         for batch in batches[:-1]:  # All except last
             assert len(batch) <= 8
 
@@ -457,11 +465,11 @@ class TestVariableResolutionBatchSampler:
             batch_size=8,
             shuffle=False,
         )
-        
+
         all_indices = []
         for batch in sampler:
             all_indices.extend(batch)
-        
+
         assert sorted(all_indices) == list(range(100))
 
     def test_len_correct(self, mock_dataset: MagicMock) -> None:
@@ -471,21 +479,21 @@ class TestVariableResolutionBatchSampler:
             batch_size=8,
             shuffle=False,
         )
-        
+
         expected = (100 + 8 - 1) // 8  # Ceiling division
         assert len(sampler) == expected
 
     def test_custom_resolution_buckets(self, mock_dataset: MagicMock) -> None:
         """Test custom resolution buckets are used."""
         custom_buckets = [128, 256, 512]
-        
+
         sampler = VariableResolutionBatchSampler(
             dataset=mock_dataset,
             batch_size=8,
             resolution_buckets=custom_buckets,
             shuffle=False,
         )
-        
+
         assert sampler.buckets == custom_buckets
 
     def test_shuffle_changes_order(self, mock_dataset: MagicMock) -> None:
@@ -500,13 +508,13 @@ class TestVariableResolutionBatchSampler:
             batch_size=8,
             shuffle=True,
         )
-        
+
         torch.manual_seed(42)
         batches1 = list(sampler1)
-        
+
         torch.manual_seed(123)
         batches2 = list(sampler2)
-        
+
         # Different seeds should produce different orders (most of the time)
         # This is probabilistic but very likely to differ
         assert batches1 != batches2 or len(batches1) <= 1
@@ -525,18 +533,16 @@ class TestDataPipelineIntegration:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "image.jpg").touch()
-            
+
             config = DatasetConfig(
                 root_dir=str(tmp_path),
                 patch_size=64,
                 random_crop=True,
             )
-            
-            with patch.object(
-                ImageDataset, "_load_image", return_value=torch.rand(3, 128, 128)
-            ):
+
+            with patch.object(ImageDataset, "_load_image", return_value=torch.rand(3, 128, 128)):
                 dataset = ImageDataset(tmp_path, config=config)
-                
+
                 # Should be able to get item
                 item = dataset[0]
                 assert item.shape[-2:] == (64, 64)
@@ -551,8 +557,8 @@ class TestDataPipelineIntegration:
             )
             for i in range(4)
         ]
-        
+
         # Stack frames for batch
         batch = torch.stack([clip.frames for clip in clips])
-        
+
         assert batch.shape == (4, 4, 3, 64, 64)  # B, T, C, H, W

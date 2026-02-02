@@ -226,9 +226,7 @@ class TestCurriculumStage:
 
         assert curriculum_stage.metrics.training_steps == 1
 
-    def test_check_min_requirements_not_met(
-        self, curriculum_stage: CurriculumStage
-    ) -> None:
+    def test_check_min_requirements_not_met(self, curriculum_stage: CurriculumStage) -> None:
         """Test minimum requirements not met."""
         curriculum_stage.activate()
 
@@ -239,9 +237,7 @@ class TestCurriculumStage:
 
         assert not curriculum_stage.check_min_requirements()
 
-    def test_check_min_requirements_met(
-        self, curriculum_stage: CurriculumStage
-    ) -> None:
+    def test_check_min_requirements_met(self, curriculum_stage: CurriculumStage) -> None:
         """Test minimum requirements met."""
         curriculum_stage.activate()
 
@@ -252,9 +248,7 @@ class TestCurriculumStage:
 
         assert curriculum_stage.check_min_requirements()
 
-    def test_check_max_limits_not_exceeded(
-        self, simple_stage_config: StageConfig
-    ) -> None:
+    def test_check_max_limits_not_exceeded(self, simple_stage_config: StageConfig) -> None:
         """Test max limits not exceeded."""
         config = StageConfig(
             name="limited",
@@ -300,9 +294,7 @@ class TestCurriculumStage:
 
         assert not curriculum_stage.check_progression_criteria()
 
-    def test_check_progression_criteria_satisfied(
-        self, curriculum_stage: CurriculumStage
-    ) -> None:
+    def test_check_progression_criteria_satisfied(self, curriculum_stage: CurriculumStage) -> None:
         """Test progression criteria satisfied."""
         curriculum_stage.activate()
 
@@ -326,9 +318,7 @@ class TestCurriculumStage:
 
         assert not curriculum_stage.check_progression_criteria()
 
-    def test_effective_learning_rate(
-        self, curriculum_stage: CurriculumStage
-    ) -> None:
+    def test_effective_learning_rate(self, curriculum_stage: CurriculumStage) -> None:
         """Test effective learning rate calculation."""
         base_lr = 1e-4
         effective = curriculum_stage.get_effective_learning_rate(base_lr)

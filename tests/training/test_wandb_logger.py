@@ -30,7 +30,6 @@ from src.training.wandb_logger import (
     create_wandb_logger,
 )
 
-
 # =============================================================================
 # Test Fixtures
 # =============================================================================
@@ -147,6 +146,7 @@ class TestWandbLoggerInit:
         """Test graceful fallback when wandb import fails."""
         # Temporarily remove wandb from sys.modules to simulate import failure
         import sys
+
         original_wandb = sys.modules.get("wandb")
         sys.modules["wandb"] = None  # type: ignore[assignment]
 
@@ -288,9 +288,7 @@ class TestNullHandling:
 class TestMetricLogging:
     """Test metric logging functionality."""
 
-    def test_log_training_step(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_training_step(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test logging training step metrics."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -337,9 +335,7 @@ class TestMetricLogging:
         # Should not raise
         logger.log_training_step(metrics)
 
-    def test_log_evaluation(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_evaluation(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test logging evaluation results."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -355,9 +351,7 @@ class TestMetricLogging:
             assert "eval/9x9/n_games" in log_dict
             assert "eval/9x9/meta/board_size" in log_dict
 
-    def test_log_buffer_stats(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_buffer_stats(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test logging buffer statistics."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -401,9 +395,7 @@ class TestMetricLogging:
 class TestStepOffset:
     """Test step offset functionality for resumed training."""
 
-    def test_set_step_offset(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_set_step_offset(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test setting step offset."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -513,9 +505,7 @@ class TestArtifactLogging:
 class TestFinishCleanup:
     """Test finish and cleanup behavior."""
 
-    def test_finish_closes_run(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_finish_closes_run(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test that finish() properly closes the W&B run."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -527,9 +517,7 @@ class TestFinishCleanup:
             assert not logger.is_enabled
             assert logger.run is None
 
-    def test_finish_idempotent(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_finish_idempotent(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test that finish() can be called multiple times safely."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -579,10 +567,7 @@ class TestThreadSafety:
                         step=thread_id * 100 + i,
                     )
 
-            threads = [
-                threading.Thread(target=log_metrics, args=(i,))
-                for i in range(5)
-            ]
+            threads = [threading.Thread(target=log_metrics, args=(i,)) for i in range(5)]
 
             for t in threads:
                 t.start()
@@ -599,10 +584,7 @@ class TestThreadSafety:
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
 
-            threads = [
-                threading.Thread(target=logger.finish)
-                for _ in range(10)
-            ]
+            threads = [threading.Thread(target=logger.finish) for _ in range(10)]
 
             for t in threads:
                 t.start()
@@ -725,9 +707,7 @@ class TestCreateWandbLogger:
 class TestAdditionalMethods:
     """Test additional WandbLogger methods."""
 
-    def test_log_histogram(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_histogram(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test histogram logging."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -738,9 +718,7 @@ class TestAdditionalMethods:
             mock_wandb.Histogram.assert_called_once_with(values)
             mock_wandb.log.assert_called()
 
-    def test_log_table(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_table(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test table logging."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -755,9 +733,7 @@ class TestAdditionalMethods:
             mock_wandb.Table.assert_called_once()
             mock_wandb.log.assert_called()
 
-    def test_define_metric(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_define_metric(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test metric definition."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -771,9 +747,7 @@ class TestAdditionalMethods:
 
             mock_wandb.define_metric.assert_called_once()
 
-    def test_alert(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_alert(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test alert sending."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -786,9 +760,7 @@ class TestAdditionalMethods:
 
             mock_wandb.alert.assert_called_once()
 
-    def test_log_config_update(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_config_update(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test config update."""
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             logger = WandbLogger(config=enabled_config)
@@ -797,9 +769,7 @@ class TestAdditionalMethods:
 
             mock_wandb.config.update.assert_called_once_with({"new_param": "value"})
 
-    def test_log_summary(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_summary(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test summary logging."""
         mock_run = MagicMock()
         mock_run.summary = {}
@@ -836,9 +806,7 @@ class TestResumeConfiguration:
             assert call_kwargs["id"] == "existing_run_123"
             assert call_kwargs["resume"] == "must"
 
-    def test_run_id_property(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_run_id_property(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test run_id property."""
         mock_run = MagicMock()
         mock_run.id = "test_id_456"
@@ -890,9 +858,7 @@ class TestEdgeCases:
 
             mock_wandb.log.assert_called()
 
-    def test_log_interval_zero(
-        self, enabled_config: dict[str, Any], mock_wandb: MagicMock
-    ) -> None:
+    def test_log_interval_zero(self, enabled_config: dict[str, Any], mock_wandb: MagicMock) -> None:
         """Test that log_interval=0 logs every step."""
         enabled_config["log_interval"] = 0
 

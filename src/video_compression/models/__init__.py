@@ -7,18 +7,18 @@ Components:
 - Quantizer: Differentiable quantization module
 """
 
-from src.video_compression.models.encoder import Encoder, EncoderBlock
 from src.video_compression.models.decoder import Decoder, DecoderBlock
+from src.video_compression.models.encoder import Encoder, EncoderBlock
 from src.video_compression.models.hyperprior import (
-    HyperpriorEntropyModel,
     FactorizedPrior,
     GaussianConditional,
+    HyperpriorEntropyModel,
 )
 from src.video_compression.models.quantizer import (
-    Quantizer,
     NoiseQuantizer,
-    STEQuantizer,
+    Quantizer,
     SoftQuantizer,
+    STEQuantizer,
 )
 
 __all__ = [

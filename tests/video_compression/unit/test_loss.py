@@ -13,10 +13,10 @@ import torch
 from torch import Tensor
 
 from src.video_compression.training.loss import (
-    LossOutput,
-    DistortionLoss,
-    RDLoss,
     CompressionLoss,
+    DistortionLoss,
+    LossOutput,
+    RDLoss,
 )
 
 
@@ -219,9 +219,7 @@ class TestCompressionLoss:
         rate = torch.tensor([1000.0, 1500.0])
         return pred, target, rate
 
-    def test_forward_returns_dict(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_forward_returns_dict(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test that forward returns dictionary."""
         pred, target, rate = sample_data
         loss = CompressionLoss(use_perceptual=False)
@@ -235,9 +233,7 @@ class TestCompressionLoss:
         assert "mse" in output
         assert "psnr" in output
 
-    def test_perceptual_loss_enabled(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_perceptual_loss_enabled(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test with perceptual loss enabled."""
         pytest.importorskip("torchvision", reason="torchvision not installed")
         pred, target, rate = sample_data
@@ -248,9 +244,7 @@ class TestCompressionLoss:
         assert "perceptual" in output
         assert output["perceptual"].item() >= 0
 
-    def test_perceptual_loss_disabled(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_perceptual_loss_disabled(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test with perceptual loss disabled."""
         pred, target, rate = sample_data
         loss = CompressionLoss(use_perceptual=False)
@@ -259,9 +253,7 @@ class TestCompressionLoss:
 
         assert "perceptual" not in output
 
-    def test_ms_ssim_in_output(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_ms_ssim_in_output(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test MS-SSIM loss is included."""
         pred, target, rate = sample_data
         loss = CompressionLoss(distortion_metric="mixed", use_perceptual=False)
@@ -270,9 +262,7 @@ class TestCompressionLoss:
 
         assert "ms_ssim_loss" in output
 
-    def test_total_combines_all_losses(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_total_combines_all_losses(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test that total includes all components."""
         pytest.importorskip("torchvision", reason="torchvision not installed")
         pred, target, rate = sample_data
@@ -288,9 +278,7 @@ class TestCompressionLoss:
         # Total with perceptual should be higher
         assert output_with_perc["total"] >= output_no_perc["total"]
 
-    def test_gradient_flow(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_gradient_flow(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test gradient flow through complete loss."""
         pred, target, rate = sample_data
         pred = pred.clone().requires_grad_(True)
@@ -303,9 +291,7 @@ class TestCompressionLoss:
         assert pred.grad is not None
         assert rate.grad is not None
 
-    def test_different_lambda_values(
-        self, sample_data: tuple[Tensor, Tensor, Tensor]
-    ) -> None:
+    def test_different_lambda_values(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
         """Test different lambda_rd values."""
         pred, target, rate = sample_data
 

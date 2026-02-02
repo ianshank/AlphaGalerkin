@@ -79,6 +79,7 @@ def run_script(script: str, args: list[str], timeout: int = 120) -> subprocess.C
 
     Returns:
         CompletedProcess result.
+
     """
     cmd = [sys.executable, script, *args]
     logger.info(f"Running: {' '.join(cmd)}")
@@ -131,10 +132,14 @@ class TestSyntheticVideoE2E:
             [
                 str(input_video),
                 str(bitstream_path),
-                "--qp", "32",
-                "--model", str(dummy_codec_checkpoint),
-                "--device", "cpu",
-                "--gop-size", "4",
+                "--qp",
+                "32",
+                "--model",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
+                "--gop-size",
+                "4",
             ],
         )
 
@@ -146,10 +151,14 @@ class TestSyntheticVideoE2E:
         result = run_script(
             "scripts/decode_video.py",
             [
-                "--input", str(bitstream_path),
-                "--output", str(decoded_path),
-                "--checkpoint", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--input",
+                str(bitstream_path),
+                "--output",
+                str(decoded_path),
+                "--checkpoint",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
 
@@ -182,9 +191,12 @@ class TestSyntheticVideoE2E:
             [
                 str(input_video),
                 str(bitstream_path),
-                "--qp", "32",
-                "--model", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--qp",
+                "32",
+                "--model",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
         assert result.returncode == 0, f"Encode failed: {result.stderr}"
@@ -193,10 +205,14 @@ class TestSyntheticVideoE2E:
         result = run_script(
             "scripts/decode_video.py",
             [
-                "--input", str(bitstream_path),
-                "--output", str(decoded_path),
-                "--checkpoint", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--input",
+                str(bitstream_path),
+                "--output",
+                str(decoded_path),
+                "--checkpoint",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
         assert result.returncode == 0, f"Decode failed: {result.stderr}"
@@ -242,9 +258,12 @@ class TestRealVideoE2E:
             [
                 str(clip_path),
                 str(bitstream_path),
-                "--qp", "28",
-                "--model", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--qp",
+                "28",
+                "--model",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
         assert result.returncode == 0, f"Encode failed: {result.stderr}"
@@ -253,12 +272,18 @@ class TestRealVideoE2E:
         result = run_script(
             "scripts/decode_video.py",
             [
-                "--input", str(bitstream_path),
-                "--output", str(decoded_path),
-                "--checkpoint", str(dummy_codec_checkpoint),
-                "--device", "cpu",
-                "--quality-report", str(metrics_path),
-                "--reference-video", str(clip_path),
+                "--input",
+                str(bitstream_path),
+                "--output",
+                str(decoded_path),
+                "--checkpoint",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
+                "--quality-report",
+                str(metrics_path),
+                "--reference-video",
+                str(clip_path),
             ],
         )
         assert result.returncode == 0, f"Decode failed: {result.stderr}"
@@ -272,7 +297,9 @@ class TestRealVideoE2E:
             with open(metrics_path) as f:
                 metrics = json.load(f)
 
-            logger.info(f"Quality metrics: PSNR={metrics.get('avg_psnr')}, SSIM={metrics.get('avg_ssim')}")
+            logger.info(
+                f"Quality metrics: PSNR={metrics.get('avg_psnr')}, SSIM={metrics.get('avg_ssim')}"
+            )
 
             # Check quality thresholds (relaxed for CPU/random model)
             avg_psnr = metrics.get("avg_psnr", 0)
@@ -310,9 +337,12 @@ class TestRealVideoE2E:
             [
                 str(clip_path),
                 str(bitstream_path),
-                "--qp", "32",
-                "--model", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--qp",
+                "32",
+                "--model",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
         assert result.returncode == 0, f"Encode failed at {resolution}: {result.stderr}"
@@ -321,16 +351,21 @@ class TestRealVideoE2E:
         result = run_script(
             "scripts/decode_video.py",
             [
-                "--input", str(bitstream_path),
-                "--output", str(decoded_path),
-                "--checkpoint", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--input",
+                str(bitstream_path),
+                "--output",
+                str(decoded_path),
+                "--checkpoint",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
         assert result.returncode == 0, f"Decode failed at {resolution}: {result.stderr}"
 
         # Verify frame dimensions
         import cv2
+
         cap = cv2.VideoCapture(str(decoded_path))
         try:
             frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -378,10 +413,14 @@ class TestGOPHandling:
             [
                 str(input_video),
                 str(bitstream_path),
-                "--qp", "32",
-                "--model", str(dummy_codec_checkpoint),
-                "--device", "cpu",
-                "--gop-size", str(gop_size),
+                "--qp",
+                "32",
+                "--model",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
+                "--gop-size",
+                str(gop_size),
             ],
         )
         assert result.returncode == 0, f"Encode failed with GOP {gop_size}: {result.stderr}"
@@ -390,21 +429,28 @@ class TestGOPHandling:
         result = run_script(
             "scripts/decode_video.py",
             [
-                "--input", str(bitstream_path),
-                "--output", str(decoded_path),
-                "--checkpoint", str(dummy_codec_checkpoint),
-                "--device", "cpu",
+                "--input",
+                str(bitstream_path),
+                "--output",
+                str(decoded_path),
+                "--checkpoint",
+                str(dummy_codec_checkpoint),
+                "--device",
+                "cpu",
             ],
         )
         assert result.returncode == 0, f"Decode failed with GOP {gop_size}: {result.stderr}"
 
         # Verify frame count
         import cv2
+
         cap = cv2.VideoCapture(str(decoded_path))
         try:
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             # Allow some tolerance
-            assert frame_count >= num_frames - 1, f"Frame count mismatch: expected {num_frames}, got {frame_count}"
+            assert frame_count >= num_frames - 1, (
+                f"Frame count mismatch: expected {num_frames}, got {frame_count}"
+            )
         finally:
             cap.release()
 
@@ -415,17 +461,17 @@ class TestGOPHandling:
 
 # These fixtures are imported via conftest pattern
 from tests.video_compression.video_fixtures import (
-    video_test_config,
-    has_real_videos,
-    sample_video_mp4,
-    sample_video_mov,
     all_sample_videos,
+    auto_cleanup_cuda,
+    dummy_codec_checkpoint,
+    has_real_videos,
+    sample_video_mov,
+    sample_video_mp4,
     short_clip_factory,
     short_clip_from_real_video,
-    synthetic_video_factory,
     synthetic_test_video,
-    dummy_codec_checkpoint,
-    auto_cleanup_cuda,
+    synthetic_video_factory,
+    video_test_config,
 )
 
 # Re-declare for pytest fixture discovery

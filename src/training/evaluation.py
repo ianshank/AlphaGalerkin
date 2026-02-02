@@ -133,7 +133,7 @@ class Evaluator:
             size = board_size or random.choice(self.board_sizes)
 
             # Create players
-            n_actions = size ** 2 + 1
+            n_actions = size**2 + 1
             random_evaluator = RandomEvaluator(n_actions)
 
             # Alternate colors
@@ -149,10 +149,7 @@ class Evaluator:
             total_moves += moves
 
             # Determine result from model's perspective
-            if model_is_black:
-                model_outcome = outcome
-            else:
-                model_outcome = -outcome
+            model_outcome = outcome if model_is_black else -outcome
 
             if model_outcome > 0:
                 wins += 1
@@ -231,10 +228,7 @@ class Evaluator:
 
             total_moves += moves
 
-            if model_is_black:
-                model_outcome = outcome
-            else:
-                model_outcome = -outcome
+            model_outcome = outcome if model_is_black else -outcome
 
             if model_outcome > 0:
                 wins += 1
@@ -406,7 +400,7 @@ class Evaluator:
             )
 
             # Apply action
-            if action == board_size ** 2:
+            if action == board_size**2:
                 game.play_pass()
             else:
                 row = action // board_size
@@ -467,7 +461,7 @@ class Evaluator:
                 if not legal_actions or game.is_terminal():
                     break
                 action = random.choice(legal_actions)
-                if action == board_size ** 2:
+                if action == board_size**2:
                     game.play_pass()
                 else:
                     row = action // board_size

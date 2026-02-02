@@ -23,10 +23,12 @@ from src.vertex.launcher import (
 
 # Check if aiplatform SDK is available for mocking
 try:
-    from google.cloud import aiplatform
+    from google.cloud import aiplatform  # noqa: F401
+
     HAS_AIPLATFORM = True
 except ImportError:
     HAS_AIPLATFORM = False
+
 
 class TestJobState:
     """Tests for JobState enum."""
@@ -287,15 +289,11 @@ class TestLauncherAuthIntegration:
         )
         return VertexLauncher(config)
 
-    def test_auth_validated_flag_initial(
-        self, launcher_with_auth: VertexLauncher
-    ) -> None:
+    def test_auth_validated_flag_initial(self, launcher_with_auth: VertexLauncher) -> None:
         """Test auth_validated flag is initially False."""
         assert launcher_with_auth._auth_validated is False
 
-    def test_validate_auth_method(
-        self, launcher_with_auth: VertexLauncher
-    ) -> None:
+    def test_validate_auth_method(self, launcher_with_auth: VertexLauncher) -> None:
         """Test validate_auth method returns ValidationResult."""
         from src.vertex.auth import ValidationResult
 
@@ -314,9 +312,7 @@ class TestLauncherAuthIntegration:
             assert result.account == "test@example.com"
             mock_auth.validate_credentials.assert_called_once()
 
-    def test_ensure_authenticated_success(
-        self, launcher_with_auth: VertexLauncher
-    ) -> None:
+    def test_ensure_authenticated_success(self, launcher_with_auth: VertexLauncher) -> None:
         """Test _ensure_authenticated sets flag on success."""
         from src.vertex.auth import ValidationResult
 
@@ -333,9 +329,7 @@ class TestLauncherAuthIntegration:
 
             assert launcher_with_auth._auth_validated is True
 
-    def test_ensure_authenticated_failure_raises(
-        self, launcher_with_auth: VertexLauncher
-    ) -> None:
+    def test_ensure_authenticated_failure_raises(self, launcher_with_auth: VertexLauncher) -> None:
         """Test _ensure_authenticated raises on failure when validation enabled."""
         from src.vertex.auth import ValidationResult
         from src.vertex.launcher import AuthenticationError
@@ -357,9 +351,7 @@ class TestLauncherAuthIntegration:
             assert "No credentials found" in str(exc_info.value)
             assert launcher_with_auth._auth_validated is False
 
-    def test_ensure_authenticated_cached(
-        self, launcher_with_auth: VertexLauncher
-    ) -> None:
+    def test_ensure_authenticated_cached(self, launcher_with_auth: VertexLauncher) -> None:
         """Test _ensure_authenticated uses cached result."""
         # Pre-set the validated flag
         launcher_with_auth._auth_validated = True

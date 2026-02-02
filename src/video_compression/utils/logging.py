@@ -12,10 +12,11 @@ from __future__ import annotations
 import functools
 import logging
 import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, TypeVar
 
 import structlog
 
@@ -39,6 +40,7 @@ def get_codec_logger(name: str) -> structlog.BoundLogger:
 
     Returns:
         Configured structlog logger.
+
     """
     return structlog.get_logger(f"video_compression.{name}")
 
@@ -59,7 +61,9 @@ def log_function_call(
 
     Returns:
         Decorated function.
+
     """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -172,6 +176,7 @@ class CodecLogContext:
             psnr: PSNR in dB.
             ssim: Optional SSIM value.
             **extra: Additional metrics.
+
         """
         self.frames_processed += 1
         self.total_bits += bits
@@ -197,6 +202,7 @@ class CodecLogContext:
 
         Yields:
             None.
+
         """
         start = time.perf_counter()
         try:
@@ -219,6 +225,7 @@ def configure_codec_logging(
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR).
         json_output: Use JSON output format.
+
     """
     # Configure structlog
     processors = [
@@ -277,6 +284,7 @@ class EncodingMetrics:
             mse: MSE distortion.
             frame_type: Frame type (I, P, B).
             ssim: Optional SSIM value.
+
         """
         import math
 
@@ -285,10 +293,7 @@ class EncodingMetrics:
         self.total_mse += mse
 
         # PSNR from MSE
-        if mse > 0:
-            psnr = -10 * math.log10(mse)
-        else:
-            psnr = 100.0
+        psnr = -10 * math.log10(mse) if mse > 0 else 100.0
         self.total_psnr += psnr
 
         if ssim is not None:
@@ -307,6 +312,7 @@ class EncodingMetrics:
 
         Returns:
             Dictionary of average metrics.
+
         """
         if self.frame_count == 0:
             return {}
@@ -331,6 +337,7 @@ class EncoderLogger:
 
         Args:
             name: Logger name.
+
         """
         self.logger = get_codec_logger(name)
         self.metrics = EncodingMetrics()
@@ -349,6 +356,7 @@ class EncoderLogger:
             width: Frame width.
             height: Frame height.
             **extra: Additional parameters.
+
         """
         self.metrics = EncodingMetrics()  # Reset
         self.logger.info(
@@ -376,6 +384,7 @@ class EncoderLogger:
             mse: MSE distortion.
             qp: QP value used.
             **extra: Additional metrics.
+
         """
         import math
 
@@ -400,6 +409,7 @@ class EncoderLogger:
 
         Returns:
             Summary statistics.
+
         """
         summary = self.metrics.summary()
         summary["elapsed_s"] = round(elapsed_s, 2)
@@ -417,6 +427,7 @@ class DecoderLogger:
 
         Args:
             name: Logger name.
+
         """
         self.logger = get_codec_logger(name)
         self.frame_count = 0
@@ -435,6 +446,7 @@ class DecoderLogger:
             width: Frame width.
             height: Frame height.
             **extra: Additional parameters.
+
         """
         self.frame_count = 0
         self.logger.info(
@@ -456,6 +468,7 @@ class DecoderLogger:
             frame_idx: Frame index.
             frame_type: Frame type.
             **extra: Additional info.
+
         """
         self.frame_count += 1
         self.logger.debug(
@@ -470,6 +483,7 @@ class DecoderLogger:
 
         Args:
             elapsed_s: Total elapsed time.
+
         """
         fps = self.frame_count / elapsed_s if elapsed_s > 0 else 0.0
         self.logger.info(

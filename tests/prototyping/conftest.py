@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from src.prototyping.config import (
-    PrototypeConfig,
-    QuickTrainConfig,
-    QuickEvalConfig,
-    PresetType,
-)
 from src.prototyping.builder import ModelBuilder, PrototypeModel
-from src.prototyping.trainer import QuickTrainer, TrainResult
-from src.prototyping.evaluator import QuickEvaluator, EvalResult, MetricResult
+from src.prototyping.config import (
+    PresetType,
+    PrototypeConfig,
+    QuickEvalConfig,
+    QuickTrainConfig,
+)
 from src.prototyping.data import DataGenerator, SyntheticData
-from src.prototyping.visualizer import Visualizer
+from src.prototyping.evaluator import EvalResult, MetricResult, QuickEvaluator
 from src.prototyping.templates import TemplateRegistry
+from src.prototyping.trainer import QuickTrainer, TrainResult
+from src.prototyping.visualizer import Visualizer
 
 
 @pytest.fixture

@@ -233,8 +233,7 @@ class Visualizer:
                 end_loss = losses[-1]
                 improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
                 lines.append(
-                    f"  {result.model_id}: {start_loss:.4f} -> {end_loss:.4f} "
-                    f"({improvement:+.1f}%)"
+                    f"  {result.model_id}: {start_loss:.4f} -> {end_loss:.4f} ({improvement:+.1f}%)"
                 )
 
         plot_data = PlotData(
@@ -372,7 +371,7 @@ class Visualizer:
 
         lines = [title, "=" * len(title), "", f"{y_label}"]
 
-        for label, value in zip(labels, values):
+        for label, value in zip(labels, values, strict=False):
             bar_width = int((value / max_val) * max_bar_width) if max_val > 0 else 0
             bar = "#" * bar_width
             lines.append(f"  {label:8s} |{bar} {value:.4f}")

@@ -133,12 +133,8 @@ class TestAlphaGalerkinLoss:
         target_policy = torch.softmax(torch.randn(batch_size, n_actions), dim=-1)
         target_value = torch.rand(batch_size, 1) * 2 - 1
 
-        result_default = loss_fn_default(
-            policy_logits, value, target_policy, target_value
-        )
-        result_policy = loss_fn_policy(
-            policy_logits, value, target_policy, target_value
-        )
+        result_default = loss_fn_default(policy_logits, value, target_policy, target_value)
+        result_policy = loss_fn_policy(policy_logits, value, target_policy, target_value)
 
         # Policy loss contribution should be doubled
         expected_diff = result_default.policy.item()

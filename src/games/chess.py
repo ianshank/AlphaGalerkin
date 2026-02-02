@@ -33,7 +33,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from src.games.interface import GameInterface, GamePhase, GameResult
+from src.games.interface import GameInterface, GameResult
 from src.games.registry import register_game
 from src.games.state import ActionMask, GameState
 
@@ -162,6 +162,7 @@ class ChessGame(GameInterface):
 
         Returns:
             4672 (8×8×73 possible move encodings).
+
         """
         return ACTION_SPACE_SIZE
 
@@ -176,6 +177,7 @@ class ChessGame(GameInterface):
 
         Returns:
             119 feature planes.
+
         """
         return 119
 
@@ -187,6 +189,7 @@ class ChessGame(GameInterface):
 
         Returns:
             Initial GameState with starting position.
+
         """
         board = np.array(STARTING_POSITION, dtype=np.int8)
 
@@ -217,11 +220,11 @@ class ChessGame(GameInterface):
 
         Returns:
             List of legal action indices.
+
         """
         legal_moves = []
         board = state.board
         current_player = state.current_player
-        metadata = state.metadata
 
         # Find all pieces of current player
         for row in range(BOARD_SIZE):
@@ -238,11 +241,17 @@ class ChessGame(GameInterface):
                 elif piece_type == Piece.KNIGHT:
                     moves = self._get_knight_moves(state, row, col, current_player)
                 elif piece_type == Piece.BISHOP:
-                    moves = self._get_sliding_moves(state, row, col, current_player, ["NE", "SE", "SW", "NW"])
+                    moves = self._get_sliding_moves(
+                        state, row, col, current_player, ["NE", "SE", "SW", "NW"]
+                    )
                 elif piece_type == Piece.ROOK:
-                    moves = self._get_sliding_moves(state, row, col, current_player, ["N", "E", "S", "W"])
+                    moves = self._get_sliding_moves(
+                        state, row, col, current_player, ["N", "E", "S", "W"]
+                    )
                 elif piece_type == Piece.QUEEN:
-                    moves = self._get_sliding_moves(state, row, col, current_player, list(DIRECTIONS.keys()))
+                    moves = self._get_sliding_moves(
+                        state, row, col, current_player, list(DIRECTIONS.keys())
+                    )
                 elif piece_type == Piece.KING:
                     moves = self._get_king_moves(state, row, col, current_player)
                 else:
@@ -294,9 +303,7 @@ class ChessGame(GameInterface):
 
             target = board[to_row, to_col]
             is_enemy = target != 0 and _get_piece_color(target) != player
-            is_en_passant = (
-                state.metadata.get("en_passant_square") == (to_row, to_col)
-            )
+            is_en_passant = state.metadata.get("en_passant_square") == (to_row, to_col)
 
             if is_enemy or is_en_passant:
                 if to_row == promotion_row:
@@ -386,17 +393,15 @@ class ChessGame(GameInterface):
 
             # Kingside castling
             k_key = "K" if player == WHITE else "k"
-            if castling.get(k_key):
-                if self._can_castle_kingside(state, player):
-                    to_col = col + 2  # King moves 2 squares right
-                    moves.append((row, to_col, None))
+            if castling.get(k_key) and self._can_castle_kingside(state, player):
+                to_col = col + 2  # King moves 2 squares right
+                moves.append((row, to_col, None))
 
             # Queenside castling
             q_key = "Q" if player == WHITE else "q"
-            if castling.get(q_key):
-                if self._can_castle_queenside(state, player):
-                    to_col = col - 2  # King moves 2 squares left
-                    moves.append((row, to_col, None))
+            if castling.get(q_key) and self._can_castle_queenside(state, player):
+                to_col = col - 2  # King moves 2 squares left
+                moves.append((row, to_col, None))
 
         return moves
 
@@ -694,6 +699,7 @@ class ChessGame(GameInterface):
 
         Returns:
             ActionMask with legal moves marked True.
+
         """
         mask = np.zeros(self.action_space_size, dtype=bool)
         legal_actions = self.get_legal_actions(state)
@@ -715,6 +721,7 @@ class ChessGame(GameInterface):
 
         Raises:
             ValueError: If move is illegal.
+
         """
         from_row, from_col, to_row, to_col, promotion = self._decode_move(action)
 
@@ -832,6 +839,7 @@ class ChessGame(GameInterface):
 
         Returns:
             True if game is over.
+
         """
         # No legal moves = checkmate or stalemate
         if len(self.get_legal_actions(state)) == 0:
@@ -849,10 +857,7 @@ class ChessGame(GameInterface):
                 return True
 
         # Insufficient material
-        if self._is_insufficient_material(state):
-            return True
-
-        return False
+        return bool(self._is_insufficient_material(state))
 
     def _is_insufficient_material(self, state: GameState) -> bool:
         """Check for insufficient material to mate."""
@@ -902,6 +907,7 @@ class ChessGame(GameInterface):
 
         Returns:
             GameResult with winner and reason.
+
         """
         if not self.is_terminal(state):
             return GameResult(winner=None, reason="game_ongoing")
@@ -916,7 +922,10 @@ class ChessGame(GameInterface):
                 return GameResult(
                     winner=-player,
                     reason="checkmate",
-                    scores={WHITE: 0.0 if player == WHITE else 1.0, BLACK: 0.0 if player == BLACK else 1.0},
+                    scores={
+                        WHITE: 0.0 if player == WHITE else 1.0,
+                        BLACK: 0.0 if player == BLACK else 1.0,
+                    },
                 )
             else:
                 # Stalemate
@@ -924,18 +933,24 @@ class ChessGame(GameInterface):
 
         # 50-move rule
         if state.metadata.get("halfmove_clock", 0) >= 100:
-            return GameResult(winner=None, reason="fifty_move_rule", scores={WHITE: 0.5, BLACK: 0.5})
+            return GameResult(
+                winner=None, reason="fifty_move_rule", scores={WHITE: 0.5, BLACK: 0.5}
+            )
 
         # Threefold repetition
         pos_history = state.metadata.get("position_history", [])
         if pos_history:
             current_pos = pos_history[-1]
             if pos_history.count(current_pos) >= 3:
-                return GameResult(winner=None, reason="threefold_repetition", scores={WHITE: 0.5, BLACK: 0.5})
+                return GameResult(
+                    winner=None, reason="threefold_repetition", scores={WHITE: 0.5, BLACK: 0.5}
+                )
 
         # Insufficient material
         if self._is_insufficient_material(state):
-            return GameResult(winner=None, reason="insufficient_material", scores={WHITE: 0.5, BLACK: 0.5})
+            return GameResult(
+                winner=None, reason="insufficient_material", scores={WHITE: 0.5, BLACK: 0.5}
+            )
 
         return GameResult(winner=None, reason="unknown")
 
@@ -947,6 +962,7 @@ class ChessGame(GameInterface):
 
         Returns:
             1 for white win, -1 for black win, None for draw or ongoing.
+
         """
         result = self.get_result(state)
         return result.winner
@@ -964,6 +980,7 @@ class ChessGame(GameInterface):
 
         Returns:
             Tensor of shape (119, 8, 8).
+
         """
         planes = np.zeros((self.state_channels, BOARD_SIZE, BOARD_SIZE), dtype=np.float32)
         board = state.board
@@ -1027,6 +1044,7 @@ class ChessGame(GameInterface):
 
         Returns:
             List of (state, policy) pairs including original.
+
         """
         result: list[tuple[GameState, np.ndarray | Tensor]] = [(state, policy)]
 
@@ -1058,10 +1076,7 @@ class ChessGame(GameInterface):
         )
 
         # Flip policy
-        if isinstance(policy, Tensor):
-            policy_np = policy.cpu().numpy()
-        else:
-            policy_np = policy
+        policy_np = policy.cpu().numpy() if isinstance(policy, Tensor) else policy
 
         flipped_policy = self._flip_policy(policy_np)
 
@@ -1101,6 +1116,7 @@ class ChessGame(GameInterface):
 
         Returns:
             Move in algebraic notation (e.g., "e2e4", "e1g1" for castling).
+
         """
         from_row, from_col, to_row, to_col, promotion = self._decode_move(action)
 
@@ -1126,6 +1142,7 @@ class ChessGame(GameInterface):
 
         Returns:
             Action index or None if invalid.
+
         """
         if len(move_str) < 4:
             return None

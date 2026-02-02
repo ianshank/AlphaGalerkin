@@ -17,31 +17,29 @@ import pytest
 import torch
 from torch import Tensor
 
-from src.video_compression.config import (
-    CodecConfig,
-    EncoderConfig,
-    DecoderConfig,
-    QuantizerConfig,
-    EntropyConfig,
-    EntropyModelType,
-    MCTSRateControlConfig,
-    QuantizationMode,
-)
 from src.video_compression.codec.codec import (
     VideoCodec,
-    CodecOutput,
     create_codec,
+)
+from src.video_compression.codec.entropy_coder import (
+    EncodedBitstream,
+    EntropyCoder,
 )
 from src.video_compression.codec.gop_manager import (
     FrameInfo,
     FrameType,
 )
-from src.video_compression.codec.entropy_coder import (
-    EntropyCoder,
-    EncodedBitstream,
+from src.video_compression.config import (
+    CodecConfig,
+    DecoderConfig,
+    EncoderConfig,
+    EntropyConfig,
+    EntropyModelType,
+    MCTSRateControlConfig,
+    QuantizationMode,
+    QuantizerConfig,
 )
 from src.video_compression.models.hyperprior import (
-    HyperpriorEntropyModel,
     HyperAnalysis,
     HyperSynthesis,
 )
@@ -123,8 +121,12 @@ class TestCodecOutputWithHyperprior:
 
         # Verify CodecOutput has z_bitstream
         assert hasattr(output, "z_bitstream"), "CodecOutput should have z_bitstream field"
-        assert output.z_bitstream is not None, "z_bitstream should be populated for hyperprior model"
-        assert isinstance(output.z_bitstream, EncodedBitstream), "z_bitstream should be EncodedBitstream"
+        assert output.z_bitstream is not None, (
+            "z_bitstream should be populated for hyperprior model"
+        )
+        assert isinstance(output.z_bitstream, EncodedBitstream), (
+            "z_bitstream should be EncodedBitstream"
+        )
 
     def test_codec_output_has_scales(
         self,

@@ -79,7 +79,7 @@ class TestPoissonOperator:
         source = poisson_operator.source_term(coords)
         assert source.shape == (1,)
         # For manufactured solution sin(πx)sin(πy), source = 2π²sin(πx)sin(πy)
-        expected = 2 * (np.pi ** 2) * np.sin(np.pi * 0.5) * np.sin(np.pi * 0.5)
+        expected = 2 * (np.pi**2) * np.sin(np.pi * 0.5) * np.sin(np.pi * 0.5)
         np.testing.assert_allclose(source[0], expected, rtol=1e-5)
 
     def test_boundary_value(self, poisson_operator: PoissonOperator) -> None:
@@ -101,12 +101,15 @@ class TestPoissonOperator:
 
     def test_is_boundary_point(self, poisson_operator: PoissonOperator) -> None:
         """Test boundary point detection."""
-        coords = np.array([
-            [0.0, 0.5],   # on boundary (x=0)
-            [0.5, 0.5],   # interior
-            [1.0, 0.25],  # on boundary (x=1)
-            [0.5, 0.0],   # on boundary (y=0)
-        ], dtype=np.float32)
+        coords = np.array(
+            [
+                [0.0, 0.5],  # on boundary (x=0)
+                [0.5, 0.5],  # interior
+                [1.0, 0.25],  # on boundary (x=1)
+                [0.5, 0.0],  # on boundary (y=0)
+            ],
+            dtype=np.float32,
+        )
         on_boundary = poisson_operator.is_boundary_point(coords)
         np.testing.assert_array_equal(on_boundary, [True, False, True, True])
 
@@ -142,6 +145,7 @@ class TestPoissonOperator:
 
     def test_custom_source_function(self, poisson_config: PDEConfig) -> None:
         """Test operator with custom source function."""
+
         def custom_source(coords):
             return np.ones(coords.shape[0], dtype=np.float32)
 
@@ -322,14 +326,10 @@ class TestDerivativeComputation:
         assert "u_x0" in derivatives
         assert "u_x1" in derivatives
         np.testing.assert_allclose(
-            derivatives["u_x0"].detach().numpy(),
-            2 * coords[:, 0].detach().numpy(),
-            rtol=1e-4
+            derivatives["u_x0"].detach().numpy(), 2 * coords[:, 0].detach().numpy(), rtol=1e-4
         )
         np.testing.assert_allclose(
-            derivatives["u_x1"].detach().numpy(),
-            2 * coords[:, 1].detach().numpy(),
-            rtol=1e-4
+            derivatives["u_x1"].detach().numpy(), 2 * coords[:, 1].detach().numpy(), rtol=1e-4
         )
 
     def test_laplacian_computation(self) -> None:
@@ -348,5 +348,5 @@ class TestDerivativeComputation:
         np.testing.assert_allclose(
             derivatives["laplacian"].detach().numpy(),
             [expected_laplacian, expected_laplacian],
-            rtol=1e-4
+            rtol=1e-4,
         )

@@ -60,11 +60,13 @@ class TestSyntheticData:
 
     def test_batch_drop_last(self, synthetic_data: SyntheticData) -> None:
         """Test batch with drop_last."""
-        batches = list(synthetic_data.batch(
-            batch_size=32,
-            shuffle=False,
-            drop_last=True,
-        ))
+        batches = list(
+            synthetic_data.batch(
+                batch_size=32,
+                shuffle=False,
+                drop_last=True,
+            )
+        )
 
         assert len(batches) == 3  # Drop incomplete batch
         for batch_inputs, batch_targets in batches:
@@ -166,6 +168,7 @@ class TestDataGenerator:
 
     def test_register_generator(self, data_generator: DataGenerator) -> None:
         """Test registering custom generator."""
+
         def custom_generator(n_samples: int, **kwargs: int) -> SyntheticData:
             return SyntheticData(
                 data_id="custom",
@@ -200,23 +203,17 @@ class TestDataGenerator:
 class TestSyntheticDataValidation:
     """Tests for SyntheticData validation."""
 
-    def test_split_invalid_train_ratio_zero(
-        self, synthetic_data: SyntheticData
-    ) -> None:
+    def test_split_invalid_train_ratio_zero(self, synthetic_data: SyntheticData) -> None:
         """Test split with train_ratio=0 raises error."""
         with pytest.raises(ValueError, match="train_ratio must be between"):
             synthetic_data.split(train_ratio=0)
 
-    def test_split_invalid_train_ratio_one(
-        self, synthetic_data: SyntheticData
-    ) -> None:
+    def test_split_invalid_train_ratio_one(self, synthetic_data: SyntheticData) -> None:
         """Test split with train_ratio=1 raises error."""
         with pytest.raises(ValueError, match="train_ratio must be between"):
             synthetic_data.split(train_ratio=1)
 
-    def test_split_invalid_train_ratio_negative(
-        self, synthetic_data: SyntheticData
-    ) -> None:
+    def test_split_invalid_train_ratio_negative(self, synthetic_data: SyntheticData) -> None:
         """Test split with negative train_ratio raises error."""
         with pytest.raises(ValueError, match="train_ratio must be between"):
             synthetic_data.split(train_ratio=-0.5)
@@ -228,16 +225,12 @@ class TestSyntheticDataValidation:
         with pytest.raises(ValueError, match="train_ratio must be between"):
             synthetic_data.split(train_ratio=1.5)
 
-    def test_batch_invalid_batch_size_zero(
-        self, synthetic_data: SyntheticData
-    ) -> None:
+    def test_batch_invalid_batch_size_zero(self, synthetic_data: SyntheticData) -> None:
         """Test batch with batch_size=0 raises error."""
         with pytest.raises(ValueError, match="batch_size must be positive"):
             list(synthetic_data.batch(batch_size=0))
 
-    def test_batch_invalid_batch_size_negative(
-        self, synthetic_data: SyntheticData
-    ) -> None:
+    def test_batch_invalid_batch_size_negative(self, synthetic_data: SyntheticData) -> None:
         """Test batch with negative batch_size raises error."""
         with pytest.raises(ValueError, match="batch_size must be positive"):
             list(synthetic_data.batch(batch_size=-1))

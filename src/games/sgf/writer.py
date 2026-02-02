@@ -37,9 +37,29 @@ class SGFWriter:
     # Property ordering for readability
     _ROOT_PROPS_ORDER = ["FF", "GM", "SZ", "CA", "AP", "ST"]
     _GAME_INFO_ORDER = [
-        "GN", "EV", "RO", "DT", "PC", "PB", "BR", "PW", "WR",
-        "BT", "WT", "RU", "TM", "OT", "KM", "HA", "RE", "GC",
-        "AN", "US", "SO", "CP", "ON",
+        "GN",
+        "EV",
+        "RO",
+        "DT",
+        "PC",
+        "PB",
+        "BR",
+        "PW",
+        "WR",
+        "BT",
+        "WT",
+        "RU",
+        "TM",
+        "OT",
+        "KM",
+        "HA",
+        "RE",
+        "GC",
+        "AN",
+        "US",
+        "SO",
+        "CP",
+        "ON",
     ]
     _MOVE_ORDER = ["B", "W", "KO", "MN"]
     _SETUP_ORDER = ["AB", "AW", "AE", "PL"]

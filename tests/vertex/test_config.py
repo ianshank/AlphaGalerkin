@@ -484,9 +484,7 @@ class TestAuthIntegration:
         """Create sample storage config."""
         return VertexStorageConfig(bucket_name="test-bucket")
 
-    def test_default_auth_method(
-        self, sample_storage_config: VertexStorageConfig
-    ) -> None:
+    def test_default_auth_method(self, sample_storage_config: VertexStorageConfig) -> None:
         """Test default auth method is ADC."""
         config = VertexTrainingConfig(
             project_id="my-project",
@@ -497,9 +495,7 @@ class TestAuthIntegration:
         assert config.service_account_key_path is None
         assert config.validate_auth_before_launch is True
 
-    def test_gcloud_auth_method(
-        self, sample_storage_config: VertexStorageConfig
-    ) -> None:
+    def test_gcloud_auth_method(self, sample_storage_config: VertexStorageConfig) -> None:
         """Test gcloud auth method configuration."""
         config = VertexTrainingConfig(
             project_id="my-project",
@@ -526,9 +522,7 @@ class TestAuthIntegration:
         assert config.auth_method == "service_account"
         assert config.service_account_key_path == str(key_file)
 
-    def test_invalid_auth_method(
-        self, sample_storage_config: VertexStorageConfig
-    ) -> None:
+    def test_invalid_auth_method(self, sample_storage_config: VertexStorageConfig) -> None:
         """Test invalid auth method is rejected."""
         with pytest.raises(ValidationError, match="auth_method must be one of"):
             VertexTrainingConfig(
@@ -550,9 +544,7 @@ class TestAuthIntegration:
         )
         assert config.validate_auth_before_launch is False
 
-    def test_get_auth_config(
-        self, sample_storage_config: VertexStorageConfig
-    ) -> None:
+    def test_get_auth_config(self, sample_storage_config: VertexStorageConfig) -> None:
         """Test get_auth_config creates AuthConfig instance."""
         config = VertexTrainingConfig(
             project_id="my-project",

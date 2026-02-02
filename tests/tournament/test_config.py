@@ -144,9 +144,7 @@ class TestTournamentConfig:
         with pytest.raises(ValidationError):
             TournamentConfig()  # type: ignore
 
-    def test_default_values(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_default_values(self, round_robin_config: TournamentConfig) -> None:
         """Test default configuration values."""
         assert round_robin_config.format == TournamentFormat.ROUND_ROBIN
         assert round_robin_config.rounds == 1
@@ -174,9 +172,7 @@ class TestTournamentConfig:
         with pytest.raises(ValidationError):
             TournamentConfig(name="Test", tiebreak_method="invalid")
 
-    def test_compute_hash(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_compute_hash(self, round_robin_config: TournamentConfig) -> None:
         """Test configuration hash computation."""
         hash1 = round_robin_config.compute_hash()
         assert isinstance(hash1, str)

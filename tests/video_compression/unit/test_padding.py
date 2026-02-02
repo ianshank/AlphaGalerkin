@@ -6,14 +6,14 @@ import pytest
 import torch
 
 from src.video_compression.utils.padding import (
+    DynamicPadding,
     PaddingConfig,
     PaddingInfo,
     PaddingMode,
-    pad_to_multiple,
-    crop_to_original,
-    compute_padding,
     PadToMultiple,
-    DynamicPadding,
+    compute_padding,
+    crop_to_original,
+    pad_to_multiple,
 )
 
 
@@ -62,9 +62,9 @@ class TestComputePadding:
     @pytest.mark.parametrize(
         "height,width,align_to,expected_h,expected_w",
         [
-            (64, 64, 16, 64, 64),    # Already aligned
-            (60, 70, 16, 64, 80),    # Needs padding
-            (1, 1, 8, 8, 8),          # Small input
+            (64, 64, 16, 64, 64),  # Already aligned
+            (60, 70, 16, 64, 80),  # Needs padding
+            (1, 1, 8, 8, 8),  # Small input
             (1080, 1920, 16, 1088, 1920),  # HD video
             (100, 100, 32, 128, 128),  # Larger alignment
         ],

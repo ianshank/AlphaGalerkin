@@ -17,9 +17,7 @@ class TestGalerkinAttentionIntegration:
         torch.manual_seed(42)
         return GalerkinAttention(d_model=64, n_heads=4)
 
-    def test_error_vs_explicit_petrov_galerkin(
-        self, attention: GalerkinAttention
-    ) -> None:
+    def test_error_vs_explicit_petrov_galerkin(self, attention: GalerkinAttention) -> None:
         """Test that error vs explicit Petrov-Galerkin projection is < 1e-5.
 
         This is a key success criterion from the specification.
@@ -88,9 +86,7 @@ class TestSoftmaxAttentionIntegration:
         torch.manual_seed(42)
         return SoftmaxAttention(d_model=64, n_heads=4)
 
-    def test_attention_preserves_injectivity(
-        self, attention: SoftmaxAttention
-    ) -> None:
+    def test_attention_preserves_injectivity(self, attention: SoftmaxAttention) -> None:
         """Test that softmax attention preserves distinctness of inputs.
 
         Different inputs should produce different outputs (injectivity).
@@ -106,9 +102,7 @@ class TestSoftmaxAttentionIntegration:
         diff = (output1 - output2).abs().mean()
         assert diff > 1e-6
 
-    def test_attention_weights_sum_to_one(
-        self, attention: SoftmaxAttention
-    ) -> None:
+    def test_attention_weights_sum_to_one(self, attention: SoftmaxAttention) -> None:
         """Test that attention weights form valid distribution."""
         x = torch.randn(2, 16, 64)
 
@@ -136,9 +130,7 @@ class TestHybridAttentionIntegration:
         torch.manual_seed(42)
         return HybridAttention(d_model=64, n_heads=4, galerkin_ratio=0.7)
 
-    def test_combines_both_attention_types(
-        self, attention: HybridAttention
-    ) -> None:
+    def test_combines_both_attention_types(self, attention: HybridAttention) -> None:
         """Test that hybrid attention combines both mechanisms."""
         x = torch.randn(2, 81, 64)
 

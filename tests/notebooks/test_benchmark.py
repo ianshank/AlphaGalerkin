@@ -8,9 +8,9 @@ from torch import nn
 
 from notebooks.utils.benchmark import (
     BenchmarkResult,
-    benchmark_module,
     benchmark_attention,
     benchmark_model_throughput,
+    benchmark_module,
     format_benchmark_table,
     format_throughput_table,
 )
@@ -130,6 +130,7 @@ class TestBenchmarkModelThroughput:
 
     def test_throughput_simple_model(self) -> None:
         """Test throughput calculation for simple model."""
+
         # Simple model that outputs policy and value
         class SimpleModel(nn.Module):
             def __init__(self):
@@ -142,7 +143,8 @@ class TestBenchmarkModelThroughput:
                 x = self.conv(x)
                 x = x.mean(dim=(2, 3))  # Global pool
                 from collections import namedtuple
-                Output = namedtuple('Output', ['policy_logits', 'value'])
+
+                Output = namedtuple("Output", ["policy_logits", "value"])
                 return Output(self.fc(x), self.value(x))
 
         model = SimpleModel()
@@ -183,11 +185,7 @@ class TestFormatBenchmarkTable:
         galerkin_results = [BenchmarkResult("Galerkin", 25, 1.0, 4, 50)]
         softmax_results = [BenchmarkResult("Softmax", 25, 2.0, 4, 50)]
 
-        table = format_benchmark_table(
-            galerkin_results,
-            softmax_results,
-            board_labels=["5×5"]
-        )
+        table = format_benchmark_table(galerkin_results, softmax_results, board_labels=["5×5"])
 
         assert "5×5" in table
 
@@ -213,7 +211,7 @@ class TestFormatBenchmarkTable:
             format_benchmark_table(
                 galerkin_results,
                 softmax_results,
-                board_labels=["5×5", "9×9"]  # Too many labels
+                board_labels=["5×5", "9×9"],  # Too many labels
             )
 
 

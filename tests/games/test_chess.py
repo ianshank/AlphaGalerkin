@@ -18,17 +18,15 @@ import pytest
 import torch
 
 from src.games.chess import (
-    ChessGame,
-    Piece,
-    WHITE,
+    ACTION_SPACE_SIZE,
     BLACK,
     BOARD_SIZE,
-    ACTION_SPACE_SIZE,
-    STARTING_POSITION,
+    WHITE,
+    ChessGame,
+    Piece,
 )
-from src.games.interface import GameResult
 from src.games.registry import GameRegistry
-from src.games.state import GameState, ActionMask
+from src.games.state import ActionMask, GameState
 
 
 class TestChessRegistration:
@@ -327,7 +325,12 @@ class TestChessTermination:
             current_player=WHITE,
             move_number=0,
             move_history=[],
-            metadata={"castling_rights": {}, "en_passant_square": None, "halfmove_clock": 0, "position_history": []},
+            metadata={
+                "castling_rights": {},
+                "en_passant_square": None,
+                "halfmove_clock": 0,
+                "position_history": [],
+            },
         )
 
         assert game._is_insufficient_material(state)

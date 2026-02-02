@@ -4,16 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from src.video_compression.config import (
-    EncoderConfig,
-    DecoderConfig,
-    QuantizerConfig,
-    EntropyConfig,
-    MCTSRateControlConfig,
-    TrainingConfig,
     CodecConfig,
-    QuantizationMode,
+    DecoderConfig,
+    EncoderConfig,
+    EntropyConfig,
     EntropyModelType,
+    MCTSRateControlConfig,
+    QuantizationMode,
+    QuantizerConfig,
     RateControlMode,
+    TrainingConfig,
 )
 
 

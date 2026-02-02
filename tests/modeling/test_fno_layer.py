@@ -1,11 +1,14 @@
 import pytest
 import torch
 import torch.nn as nn
-from src.modeling.fno_layer import SpectralConv2d, FNOBlock, FNO2d
+
+from src.modeling.fno_layer import FNO2d, FNOBlock, SpectralConv2d
+
 
 @pytest.fixture
 def device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class TestSpectralConv2d:
     @pytest.mark.parametrize("in_channels, out_channels", [(1, 1), (16, 32)])
@@ -23,7 +26,7 @@ class TestSpectralConv2d:
         c_out = 16
         layer = SpectralConv2d(c_in, c_out, modes1=8, modes2=8).to(device)
         x = torch.randn(bs, c_in, h, w).to(device)
-        
+
         out = layer(x)
         assert out.shape == (bs, c_out, h, w)
 
@@ -34,10 +37,11 @@ class TestSpectralConv2d:
         out = layer(x)
         loss = out.sum()
         loss.backward()
-        
+
         assert layer.weights1.grad is not None
         assert layer.weights2.grad is not None
         assert x.grad is not None
+
 
 class TestFNOBlock:
     @pytest.mark.parametrize("activation_name", ["gelu", "relu"])
@@ -47,10 +51,11 @@ class TestFNOBlock:
             assert isinstance(block.activation, nn.GELU)
         else:
             assert isinstance(block.activation, nn.ReLU)
-            
+
         x = torch.randn(2, 16, 32, 32).to(device)
         out = block(x)
         assert out.shape == (2, 16, 32, 32)
+
 
 class TestFNO2d:
     def test_end_to_end_shape(self, device):
@@ -58,19 +63,19 @@ class TestFNO2d:
         h, w = 32, 32
         model = FNO2d(in_channels=c_in, out_channels=c_out, width=16, n_layers=2).to(device)
         x = torch.randn(bs, c_in, h, w).to(device)
-        
+
         out = model(x)
         assert out.shape == (bs, c_out, h, w)
 
     def test_variable_resolution(self, device):
         # FNO should handle different resolutions at inference time
         model = FNO2d(in_channels=1, width=16, modes1=4, modes2=4).to(device)
-        
+
         # Train resolution
         x1 = torch.randn(1, 1, 32, 32).to(device)
         out1 = model(x1)
         assert out1.shape == (1, 1, 32, 32)
-        
+
         # Test resolution (e.g. higher res)
         x2 = torch.randn(1, 1, 64, 64).to(device)
         out2 = model(x2)
@@ -80,9 +85,9 @@ class TestFNO2d:
         bs, h, w = 2, 16, 16
         model = FNO2d(in_channels=1, width=16).to(device)
         x = torch.randn(bs, 1, h, w).to(device)
-        
+
         # Create dummy coords
         coords = torch.randn(bs, h, w, 2).to(device)
-        
+
         out = model(x, coords=coords)
         assert out.shape == (bs, 1, h, w)

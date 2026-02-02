@@ -179,9 +179,7 @@ class ResolutionAdapter(nn.Module):
             return features
 
         # Reshape to 2D spatial format
-        features_2d = rearrange(
-            features, "b (h w) d -> b d h w", h=source_size, w=source_size
-        )
+        features_2d = rearrange(features, "b (h w) d -> b d h w", h=source_size, w=source_size)
 
         # Spectral interpolation
         features_freq = torch.fft.rfft2(features_2d)
@@ -192,8 +190,12 @@ class ResolutionAdapter(nn.Module):
 
         # Create output frequency tensor
         out_freq = torch.zeros(
-            batch, d, target_freq_h, target_freq_w,
-            dtype=features_freq.dtype, device=features.device
+            batch,
+            d,
+            target_freq_h,
+            target_freq_w,
+            dtype=features_freq.dtype,
+            device=features.device,
         )
 
         # Copy frequencies (zero-pad or truncate)
@@ -215,9 +217,7 @@ class ResolutionAdapter(nn.Module):
         if target_size > source_size:
             # Cutoff based on source resolution
             cutoff_ratio = source_size / target_size
-            features_target = self._apply_adaptive_filter(
-                features_target, cutoff_ratio
-            )
+            features_target = self._apply_adaptive_filter(features_target, cutoff_ratio)
 
         # Reshape back to sequence format
         features_out = rearrange(features_target, "b d h w -> b (h w) d")

@@ -9,13 +9,13 @@ import pytest
 import torch
 
 from notebooks.utils.helpers import (
-    create_sample_board,
-    validate_board_sizes,
-    format_model_summary,
-    ModelForwardResult,
-    setup_environment,
-    safe_model_forward,
     EnvironmentInfo,
+    ModelForwardResult,
+    create_sample_board,
+    format_model_summary,
+    safe_model_forward,
+    setup_environment,
+    validate_board_sizes,
 )
 
 

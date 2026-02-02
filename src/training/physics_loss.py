@@ -190,8 +190,7 @@ class ResidualLoss(nn.Module):
         super().__init__()
         if reduction not in self.VALID_REDUCTIONS:
             raise ValueError(
-                f"Invalid reduction '{reduction}'. "
-                f"Must be one of: {self.VALID_REDUCTIONS}"
+                f"Invalid reduction '{reduction}'. Must be one of: {self.VALID_REDUCTIONS}"
             )
         self.pde_operator = pde_operator
         self.reduction = reduction
@@ -233,19 +232,15 @@ class ResidualLoss(nn.Module):
                     batch_index=b,
                     error=str(e),
                 )
-                raise RuntimeError(
-                    f"PDE operator residual computation failed: {e}"
-                ) from e
+                raise RuntimeError(f"PDE operator residual computation failed: {e}") from e
 
             # Convert to tensor if needed
             if isinstance(residual.values, Tensor):
-                res_sq = residual.values ** 2
+                res_sq = residual.values**2
             elif isinstance(residual.values, np.ndarray):
                 res_sq = torch.from_numpy(residual.values).to(u.device) ** 2
             else:
-                raise TypeError(
-                    f"Unexpected residual type: {type(residual.values)}"
-                )
+                raise TypeError(f"Unexpected residual type: {type(residual.values)}")
 
             if self.reduction == "mean":
                 total_loss = total_loss + res_sq.mean()
@@ -293,14 +288,10 @@ class BoundaryLoss(nn.Module):
         """
         super().__init__()
         if bc_type not in self.VALID_BC_TYPES:
-            raise ValueError(
-                f"Invalid bc_type '{bc_type}'. "
-                f"Must be one of: {self.VALID_BC_TYPES}"
-            )
+            raise ValueError(f"Invalid bc_type '{bc_type}'. Must be one of: {self.VALID_BC_TYPES}")
         if reduction not in self.VALID_REDUCTIONS:
             raise ValueError(
-                f"Invalid reduction '{reduction}'. "
-                f"Must be one of: {self.VALID_REDUCTIONS}"
+                f"Invalid reduction '{reduction}'. Must be one of: {self.VALID_REDUCTIONS}"
             )
         self.pde_operator = pde_operator
         self.bc_type = bc_type
@@ -342,9 +333,7 @@ class BoundaryLoss(nn.Module):
                     batch_index=b,
                     error=str(e),
                 )
-                raise RuntimeError(
-                    f"PDE operator boundary_value failed: {e}"
-                ) from e
+                raise RuntimeError(f"PDE operator boundary_value failed: {e}") from e
 
             # Convert to tensor if needed
             if not isinstance(target, Tensor):
@@ -632,9 +621,7 @@ class PhysicsInformedLoss(nn.Module):
 
         # Generate or use provided collocation points
         if coords_interior is None:
-            coords_interior, auto_boundary = self._generate_collocation_points(
-                batch_size, device
-            )
+            coords_interior, auto_boundary = self._generate_collocation_points(batch_size, device)
             if coords_boundary is None:
                 coords_boundary = auto_boundary
         elif coords_boundary is None:
@@ -685,10 +672,7 @@ class PhysicsInformedLoss(nn.Module):
             weights = result.weights
         else:
             weights = self._static_weights
-            total_loss = sum(
-                weights.get(name, 0.0) * loss
-                for name, loss in losses.items()
-            )
+            total_loss = sum(weights.get(name, 0.0) * loss for name, loss in losses.items())
 
         return PhysicsLossOutput(
             total=total_loss,

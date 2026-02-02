@@ -106,7 +106,7 @@ def sample_experience_9x9() -> Experience:
     """Create sample experience for 9x9 board."""
     board_size = 9
     n_channels = 17
-    n_actions = board_size ** 2 + 1
+    n_actions = board_size**2 + 1
 
     return Experience(
         board_state=torch.randn(n_channels, board_size, board_size),
@@ -122,7 +122,7 @@ def sample_experience_19x19() -> Experience:
     """Create sample experience for 19x19 board."""
     board_size = 19
     n_channels = 17
-    n_actions = board_size ** 2 + 1
+    n_actions = board_size**2 + 1
 
     return Experience(
         board_state=torch.randn(n_channels, board_size, board_size),

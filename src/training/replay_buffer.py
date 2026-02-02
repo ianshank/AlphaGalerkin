@@ -243,7 +243,7 @@ class PrioritizedReplayBuffer:
         if priorities is None:
             priorities = [self.max_priority] * len(experiences)
 
-        for exp, prio in zip(experiences, priorities):
+        for exp, prio in zip(experiences, priorities, strict=False):
             self.add(exp, prio)
 
     def sample(
@@ -316,7 +316,7 @@ class PrioritizedReplayBuffer:
 
         """
         with self._lock:
-            for idx, priority in zip(indices, priorities):
+            for idx, priority in zip(indices, priorities, strict=False):
                 # Apply alpha exponent
                 priority = (priority + self.epsilon) ** self.alpha
                 self.tree.update(idx, priority)

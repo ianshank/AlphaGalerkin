@@ -6,13 +6,13 @@ import time
 
 import pytest
 
-from src.research.config import BenchmarkConfig
 from src.research.benchmark import (
     Benchmark,
     BenchmarkResult,
     BenchmarkSuite,
     create_benchmark,
 )
+from src.research.config import BenchmarkConfig
 
 
 class TestBenchmarkResult:
@@ -117,18 +117,20 @@ class TestBenchmark:
 
     def test_get_summary(self, research_benchmark: Benchmark) -> None:
         """Test getting summary."""
-        research_benchmark._results.append(BenchmarkResult(
-            name="test",
-            size=9,
-            batch_size=32,
-            n_iterations=100,
-            mean_time_ms=10.0,
-            std_time_ms=1.0,
-            min_time_ms=8.0,
-            max_time_ms=12.0,
-            total_time_s=1.0,
-            throughput=3200.0,
-        ))
+        research_benchmark._results.append(
+            BenchmarkResult(
+                name="test",
+                size=9,
+                batch_size=32,
+                n_iterations=100,
+                mean_time_ms=10.0,
+                std_time_ms=1.0,
+                min_time_ms=8.0,
+                max_time_ms=12.0,
+                total_time_s=1.0,
+                throughput=3200.0,
+            )
+        )
 
         summary = research_benchmark.get_summary()
 
@@ -137,17 +139,19 @@ class TestBenchmark:
 
     def test_clear(self, research_benchmark: Benchmark) -> None:
         """Test clearing results."""
-        research_benchmark._results.append(BenchmarkResult(
-            name="test",
-            size=9,
-            batch_size=32,
-            n_iterations=100,
-            mean_time_ms=10.0,
-            std_time_ms=1.0,
-            min_time_ms=8.0,
-            max_time_ms=12.0,
-            total_time_s=1.0,
-        ))
+        research_benchmark._results.append(
+            BenchmarkResult(
+                name="test",
+                size=9,
+                batch_size=32,
+                n_iterations=100,
+                mean_time_ms=10.0,
+                std_time_ms=1.0,
+                min_time_ms=8.0,
+                max_time_ms=12.0,
+                total_time_s=1.0,
+            )
+        )
 
         research_benchmark.clear()
         assert len(research_benchmark.results) == 0
@@ -180,16 +184,30 @@ class TestBenchmarkSuite:
         # Add some results
         suite._results["fast"] = [
             BenchmarkResult(
-                name="fast", size=9, batch_size=32, n_iterations=100,
-                mean_time_ms=5.0, std_time_ms=0.5, min_time_ms=4.0, max_time_ms=6.0,
-                total_time_s=0.5, throughput=6400.0,
+                name="fast",
+                size=9,
+                batch_size=32,
+                n_iterations=100,
+                mean_time_ms=5.0,
+                std_time_ms=0.5,
+                min_time_ms=4.0,
+                max_time_ms=6.0,
+                total_time_s=0.5,
+                throughput=6400.0,
             ),
         ]
         suite._results["slow"] = [
             BenchmarkResult(
-                name="slow", size=9, batch_size=32, n_iterations=100,
-                mean_time_ms=15.0, std_time_ms=1.5, min_time_ms=12.0, max_time_ms=18.0,
-                total_time_s=1.5, throughput=2133.0,
+                name="slow",
+                size=9,
+                batch_size=32,
+                n_iterations=100,
+                mean_time_ms=15.0,
+                std_time_ms=1.5,
+                min_time_ms=12.0,
+                max_time_ms=18.0,
+                total_time_s=1.5,
+                throughput=2133.0,
             ),
         ]
 
@@ -205,16 +223,30 @@ class TestBenchmarkSuite:
 
         suite._results["baseline"] = [
             BenchmarkResult(
-                name="baseline", size=9, batch_size=32, n_iterations=100,
-                mean_time_ms=20.0, std_time_ms=2.0, min_time_ms=16.0, max_time_ms=24.0,
-                total_time_s=2.0, throughput=1600.0,
+                name="baseline",
+                size=9,
+                batch_size=32,
+                n_iterations=100,
+                mean_time_ms=20.0,
+                std_time_ms=2.0,
+                min_time_ms=16.0,
+                max_time_ms=24.0,
+                total_time_s=2.0,
+                throughput=1600.0,
             ),
         ]
         suite._results["optimized"] = [
             BenchmarkResult(
-                name="optimized", size=9, batch_size=32, n_iterations=100,
-                mean_time_ms=5.0, std_time_ms=0.5, min_time_ms=4.0, max_time_ms=6.0,
-                total_time_s=0.5, throughput=6400.0,
+                name="optimized",
+                size=9,
+                batch_size=32,
+                n_iterations=100,
+                mean_time_ms=5.0,
+                std_time_ms=0.5,
+                min_time_ms=4.0,
+                max_time_ms=6.0,
+                total_time_s=0.5,
+                throughput=6400.0,
             ),
         ]
 

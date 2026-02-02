@@ -6,24 +6,24 @@ Components:
 - Codec: Complete encode/decode pipeline
 """
 
-from src.video_compression.codec.entropy_coder import (
-    EntropyCoder,
-    RangeEncoder,
-    RangeDecoder,
-)
-from src.video_compression.codec.gop_manager import (
-    GOPManager,
-    FrameInfo,
-    FrameType,
-    ReferenceBuffer,
-)
 from src.video_compression.codec.codec import (
-    VideoCodec,
     CodecOutput,
-    VideoHeader,
     ReferenceFrameError,
+    VideoCodec,
+    VideoHeader,
     create_codec,
     load_codec,
+)
+from src.video_compression.codec.entropy_coder import (
+    EntropyCoder,
+    RangeDecoder,
+    RangeEncoder,
+)
+from src.video_compression.codec.gop_manager import (
+    FrameInfo,
+    FrameType,
+    GOPManager,
+    ReferenceBuffer,
 )
 
 __all__ = [

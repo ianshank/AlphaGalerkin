@@ -78,7 +78,7 @@ def action_to_gtp(action: int, board_size: int) -> str:
         GTP move string.
 
     """
-    if action == board_size ** 2:
+    if action == board_size**2:
         return "pass"
 
     row = action // board_size
@@ -101,7 +101,7 @@ def gtp_to_action(gtp: str, board_size: int) -> int:
     gtp = gtp.strip().lower()
 
     if gtp == "pass":
-        return board_size ** 2
+        return board_size**2
 
     if gtp == "resign":
         return -1  # Special value for resign
@@ -170,10 +170,9 @@ class SimpleGoGame:
         for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nr, nc = row + dr, col + dc
             if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
-                if self.board[nr, nc] == opponent:
-                    if not self._has_liberty(nr, nc):
-                        captured = self._remove_group(nr, nc)
-                        self.captures[self.current_player] += captured
+                if self.board[nr, nc] == opponent and not self._has_liberty(nr, nc):
+                    captured = self._remove_group(nr, nc)
+                    self.captures[self.current_player] += captured
 
         # Check if own group has liberty (suicide rule - simplified)
         if not self._has_liberty(row, col):
@@ -190,9 +189,7 @@ class SimpleGoGame:
     def play_pass(self) -> None:
         """Play a pass move."""
         self.move_history.append(None)
-        self.current_player = (
-            self.WHITE if self.current_player == self.BLACK else self.BLACK
-        )
+        self.current_player = self.WHITE if self.current_player == self.BLACK else self.BLACK
         self.passes += 1
 
     def _has_liberty(self, row: int, col: int) -> bool:
@@ -266,7 +263,7 @@ class SimpleGoGame:
                     legal.append(row * self.board_size + col)
 
         # Pass is always legal
-        legal.append(self.board_size ** 2)
+        legal.append(self.board_size**2)
 
         return legal
 
@@ -294,10 +291,9 @@ class SimpleGoGame:
         for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
             nr, nc = row + dr, col + dc
             if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
-                if self.board[nr, nc] == opponent:
-                    if not self._has_liberty(nr, nc):
-                        captures_any = True
-                        break
+                if self.board[nr, nc] == opponent and not self._has_liberty(nr, nc):
+                    captures_any = True
+                    break
 
         # Check if our stone/group has liberty (or captures give us liberty)
         has_liberty = self._has_liberty(row, col) or captures_any
@@ -348,9 +344,7 @@ class SimpleGoGame:
         """Get winner (simplified scoring)."""
         # Count territory (simplified - just count stones + captures)
         black_score = (self.board == self.BLACK).sum() + self.captures[self.BLACK]
-        white_score = (
-            (self.board == self.WHITE).sum() + self.captures[self.WHITE] + self.komi
-        )
+        white_score = (self.board == self.WHITE).sum() + self.captures[self.WHITE] + self.komi
 
         if black_score > white_score:
             return 1 if self.current_player == self.BLACK else -1
@@ -368,7 +362,7 @@ class SimpleGoGame:
             action: Action index (0 to board_size^2-1 for moves, board_size^2 for pass).
 
         """
-        pass_action = self.board_size ** 2
+        pass_action = self.board_size**2
         if action == pass_action:
             self.play_pass()
         else:
@@ -403,7 +397,7 @@ class GTPEngine:
         if model is not None:
             self.evaluator = FNetEvaluator(model, device=device)
         else:
-            n_actions = board_size ** 2 + 1
+            n_actions = board_size**2 + 1
             self.evaluator = RandomEvaluator(n_actions)
 
         self.mcts = MCTS(
@@ -532,7 +526,7 @@ class GTPEngine:
 
         # Update evaluator if using random
         if isinstance(self.evaluator, RandomEvaluator):
-            self.evaluator = RandomEvaluator(size_int ** 2 + 1)
+            self.evaluator = RandomEvaluator(size_int**2 + 1)
 
         self.mcts.reset()
         return ""
@@ -573,6 +567,7 @@ class GTPEngine:
 
         Returns:
             GTP move string (e.g., "D4" or "pass").
+
         """
         # Determine expected player from GTP color
         if color.lower() in ("b", "black"):
@@ -599,7 +594,7 @@ class GTPEngine:
         move = action_to_gtp(action, self.board_size)
 
         # Apply move
-        if action == self.board_size ** 2:
+        if action == self.board_size**2:
             self.game.play_pass()
         else:
             row = action // self.board_size

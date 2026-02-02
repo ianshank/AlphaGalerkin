@@ -14,9 +14,7 @@ from src.curriculum.manager import CurriculumManager, CurriculumMetrics, create_
 class TestCurriculumManager:
     """Tests for CurriculumManager class."""
 
-    def test_initialization(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_initialization(self, curriculum_manager: CurriculumManager) -> None:
         """Test manager initialization."""
         assert not curriculum_manager.is_started
         assert not curriculum_manager.is_completed
@@ -28,25 +26,19 @@ class TestCurriculumManager:
         assert curriculum_manager.is_started
         assert curriculum_manager.current_board_size == 9
 
-    def test_start_idempotent(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_start_idempotent(self, curriculum_manager: CurriculumManager) -> None:
         """Test starting twice doesn't break."""
         curriculum_manager.start()
         curriculum_manager.start()  # Should not raise
 
         assert curriculum_manager.is_started
 
-    def test_step_before_start_raises(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_step_before_start_raises(self, curriculum_manager: CurriculumManager) -> None:
         """Test step before start raises error."""
         with pytest.raises(RuntimeError, match="not started"):
             curriculum_manager.step(game_result={"won": True})
 
-    def test_step_with_game_result(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_step_with_game_result(self, curriculum_manager: CurriculumManager) -> None:
         """Test step with game result."""
         curriculum_manager.start()
 
@@ -56,24 +48,22 @@ class TestCurriculumManager:
         assert metrics.games_played == 1
         assert metrics.games_won == 1
 
-    def test_step_with_training_metrics(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_step_with_training_metrics(self, curriculum_manager: CurriculumManager) -> None:
         """Test step with training metrics."""
         curriculum_manager.start()
 
-        curriculum_manager.step(training_metrics={
-            "total_loss": 0.5,
-            "policy_loss": 0.3,
-            "value_loss": 0.2,
-        })
+        curriculum_manager.step(
+            training_metrics={
+                "total_loss": 0.5,
+                "policy_loss": 0.3,
+                "value_loss": 0.2,
+            }
+        )
 
         metrics = curriculum_manager.scheduler.current_stage.metrics
         assert metrics.training_steps == 1
 
-    def test_step_with_both(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_step_with_both(self, curriculum_manager: CurriculumManager) -> None:
         """Test step with both game result and training metrics."""
         curriculum_manager.start()
 
@@ -86,9 +76,7 @@ class TestCurriculumManager:
         assert metrics.games_played == 1
         assert metrics.training_steps == 1
 
-    def test_get_training_params(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_get_training_params(self, curriculum_manager: CurriculumManager) -> None:
         """Test getting training parameters."""
         curriculum_manager.start()
 
@@ -102,9 +90,7 @@ class TestCurriculumManager:
         assert params["learning_rate"] == 1e-4
         assert params["batch_size"] == 64
 
-    def test_get_metrics(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_get_metrics(self, curriculum_manager: CurriculumManager) -> None:
         """Test getting curriculum metrics."""
         curriculum_manager.start()
 
@@ -117,9 +103,7 @@ class TestCurriculumManager:
         assert metrics.total_games == 5
         assert metrics.current_board_size == 9
 
-    def test_force_advance(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_force_advance(self, curriculum_manager: CurriculumManager) -> None:
         """Test forced advancement."""
         curriculum_manager.start()
 
@@ -128,9 +112,7 @@ class TestCurriculumManager:
         assert result
         assert curriculum_manager.current_board_size == 13
 
-    def test_skip_to_board_size(
-        self, three_stage_config: CurriculumConfig
-    ) -> None:
+    def test_skip_to_board_size(self, three_stage_config: CurriculumConfig) -> None:
         """Test skipping to specific board size."""
         manager = CurriculumManager(config=three_stage_config)
         manager.start()
@@ -140,18 +122,14 @@ class TestCurriculumManager:
         assert result
         assert manager.current_board_size == 19
 
-    def test_skip_to_invalid_board_size(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_skip_to_invalid_board_size(self, curriculum_manager: CurriculumManager) -> None:
         """Test skipping to invalid board size."""
         curriculum_manager.start()
 
         result = curriculum_manager.skip_to_board_size(25)
         assert not result
 
-    def test_checkpoint_save_and_load(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_checkpoint_save_and_load(self, curriculum_manager: CurriculumManager) -> None:
         """Test checkpoint save and load."""
         curriculum_manager.start()
 
@@ -167,18 +145,14 @@ class TestCurriculumManager:
             assert saved_path.exists()
 
             # Create new manager and load
-            new_manager = CurriculumManager(
-                config=curriculum_manager.config
-            )
+            new_manager = CurriculumManager(config=curriculum_manager.config)
             new_manager.load_checkpoint(saved_path)
 
             assert new_manager.is_started
             summary = new_manager.get_summary()
             assert summary["total_games"] == 5
 
-    def test_on_curriculum_complete_callback(
-        self, two_stage_config: CurriculumConfig
-    ) -> None:
+    def test_on_curriculum_complete_callback(self, two_stage_config: CurriculumConfig) -> None:
         """Test curriculum completion callback."""
         manager = CurriculumManager(config=two_stage_config)
         completed = []
@@ -199,9 +173,7 @@ class TestCurriculumManager:
 
         assert len(completed) == 1
 
-    def test_get_summary(
-        self, curriculum_manager: CurriculumManager
-    ) -> None:
+    def test_get_summary(self, curriculum_manager: CurriculumManager) -> None:
         """Test getting full summary."""
         curriculum_manager.start()
 

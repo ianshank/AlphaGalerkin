@@ -139,9 +139,7 @@ class TestTournamentStandings:
 class TestTournamentManager:
     """Tests for TournamentManager."""
 
-    def test_initialization(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_initialization(self, round_robin_config: TournamentConfig) -> None:
         """Test manager initialization."""
         manager = TournamentManager(config=round_robin_config)
 
@@ -150,7 +148,8 @@ class TestTournamentManager:
         assert len(manager.participants) == 0
 
     def test_with_existing_registry(
-        self, round_robin_config: TournamentConfig,
+        self,
+        round_robin_config: TournamentConfig,
         populated_registry: PlayerRegistry,
     ) -> None:
         """Test manager with existing registry."""
@@ -161,18 +160,14 @@ class TestTournamentManager:
 
         assert len(manager._registry) == 4
 
-    def test_open_registration(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_open_registration(self, round_robin_config: TournamentConfig) -> None:
         """Test opening registration."""
         manager = TournamentManager(config=round_robin_config)
         manager.open_registration()
 
         assert manager.state == TournamentState.REGISTRATION
 
-    def test_open_registration_already_started(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_open_registration_already_started(self, round_robin_config: TournamentConfig) -> None:
         """Test cannot open registration after start."""
         manager = TournamentManager(config=round_robin_config)
         manager.open_registration()
@@ -183,9 +178,7 @@ class TestTournamentManager:
         with pytest.raises(RuntimeError):
             manager.open_registration()
 
-    def test_register_player(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_register_player(self, round_robin_config: TournamentConfig) -> None:
         """Test registering a player."""
         manager = TournamentManager(config=round_robin_config)
         player = Player(name="TestPlayer")
@@ -195,9 +188,7 @@ class TestTournamentManager:
         assert result is True
         assert len(manager.participants) == 1
 
-    def test_register_player_duplicate(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_register_player_duplicate(self, round_robin_config: TournamentConfig) -> None:
         """Test registering duplicate player."""
         manager = TournamentManager(config=round_robin_config)
         player = Player(name="TestPlayer", player_id="same")
@@ -234,9 +225,7 @@ class TestTournamentManager:
         assert manager.current_round == 1
         assert len(manager.get_pending_matches()) > 0
 
-    def test_start_requires_players(
-        self, round_robin_config: TournamentConfig
-    ) -> None:
+    def test_start_requires_players(self, round_robin_config: TournamentConfig) -> None:
         """Test start requires at least 2 players."""
         manager = TournamentManager(config=round_robin_config)
         manager.register_player(Player(name="Only"))
@@ -431,10 +420,7 @@ class TestTournamentCompletion:
         )
         manager = TournamentManager(config=config)
 
-        players = [
-            Player(name=f"P{i}", player_id=f"p{i}")
-            for i in range(4)
-        ]
+        players = [Player(name=f"P{i}", player_id=f"p{i}") for i in range(4)]
         for p in players:
             manager.register_player(p)
         manager.start()

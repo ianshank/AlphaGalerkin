@@ -7,32 +7,33 @@ into a unified encoding/decoding pipeline.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator, NamedTuple
+from typing import NamedTuple
 
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from src.video_compression.codec.entropy_coder import EncodedBitstream, EntropyCoder
+from src.video_compression.codec.gop_manager import FrameInfo, FrameType, GOPManager
 from src.video_compression.config import CodecConfig
-from src.video_compression.models.encoder import Encoder
+from src.video_compression.mcts.networks import (
+    DynamicsNetwork,
+    PredictionNetwork,
+    RepresentationNetwork,
+)
+from src.video_compression.mcts.rate_control import (
+    GOPPlanner,
+    MCTSRateController,
+)
 from src.video_compression.models.decoder import Decoder, TemporalDecoder
+from src.video_compression.models.encoder import Encoder
 from src.video_compression.models.hyperprior import (
     create_entropy_model,
 )
 from src.video_compression.models.quantizer import create_quantizer
-from src.video_compression.codec.entropy_coder import EntropyCoder, EncodedBitstream
-from src.video_compression.codec.gop_manager import GOPManager, FrameInfo, FrameType
-from src.video_compression.mcts.rate_control import (
-    MCTSRateController,
-    GOPPlanner,
-)
-from src.video_compression.mcts.networks import (
-    RepresentationNetwork,
-    DynamicsNetwork,
-    PredictionNetwork,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ class VideoCodec(nn.Module):
             config: Complete codec configuration.
             use_mcts_rate_control: Whether to use MCTS-based rate control.
             device: Device for computation.
+
         """
         super().__init__()
         self.config = config
@@ -192,6 +194,7 @@ class VideoCodec(nn.Module):
 
         Raises:
             ReferenceFrameError: If required reference is missing.
+
         """
         if frame_info.frame_type == FrameType.I:
             return  # I-frames don't need references
@@ -199,9 +202,7 @@ class VideoCodec(nn.Module):
         # Check forward reference
         if frame_info.forward_ref is not None:
             ref_frame = self.gop_manager.reference_buffer.get(frame_info.forward_ref)
-            ref_latent = self.gop_manager.reference_buffer.get_latent(
-                frame_info.forward_ref
-            )
+            ref_latent = self.gop_manager.reference_buffer.get_latent(frame_info.forward_ref)
 
             if ref_frame is None or ref_latent is None:
                 msg = (
@@ -215,9 +216,7 @@ class VideoCodec(nn.Module):
         # Check backward reference (for B-frames)
         if frame_info.backward_ref is not None:
             ref_frame = self.gop_manager.reference_buffer.get(frame_info.backward_ref)
-            ref_latent = self.gop_manager.reference_buffer.get_latent(
-                frame_info.backward_ref
-            )
+            ref_latent = self.gop_manager.reference_buffer.get_latent(frame_info.backward_ref)
 
             if ref_frame is None or ref_latent is None:
                 msg = (
@@ -239,6 +238,7 @@ class VideoCodec(nn.Module):
 
         Returns:
             Reference latent tensor or None for I-frames.
+
         """
         if frame_info.frame_type == FrameType.I:
             return None
@@ -272,6 +272,7 @@ class VideoCodec(nn.Module):
 
         Returns:
             Selected QP value.
+
         """
         if self.rate_controller is not None:
             decision = self.rate_controller.select_qp(
@@ -310,6 +311,7 @@ class VideoCodec(nn.Module):
 
         Returns:
             Tuple of (reconstructed, rate, distortion).
+
         """
         # Encode
         y = self.encoder(x)
@@ -348,6 +350,7 @@ class VideoCodec(nn.Module):
 
         Raises:
             ReferenceFrameError: If required reference is unavailable.
+
         """
         # Validate references before encoding
         if validate_refs:
@@ -410,9 +413,7 @@ class VideoCodec(nn.Module):
 
             # Store reference if needed
             if frame_info.is_reference:
-                self.gop_manager.reference_buffer.add(
-                    frame_info.index, x_hat, y_hat
-                )
+                self.gop_manager.reference_buffer.add(frame_info.index, x_hat, y_hat)
                 logger.debug(
                     "Stored reference frame %d (type=%s)",
                     frame_info.index,
@@ -466,6 +467,7 @@ class VideoCodec(nn.Module):
 
         Raises:
             ReferenceFrameError: If required reference is unavailable.
+
         """
         # Validate references
         if validate_refs and frame_info.frame_type != FrameType.I:
@@ -477,26 +479,22 @@ class VideoCodec(nn.Module):
                 h, w = latent_shape
             else:
                 # Estimate from bitstream
-                h = w = int(
-                    (bitstream.num_symbols // self.config.encoder.latent_channels) ** 0.5
-                )
+                h = w = int((bitstream.num_symbols // self.config.encoder.latent_channels) ** 0.5)
 
             # Reconstruct scales from hyperprior if z_bitstream provided
-            if z_bitstream is not None and hasattr(self.entropy_model, 'hyper_synthesis'):
+            if z_bitstream is not None and hasattr(self.entropy_model, "hyper_synthesis"):
                 # Decode z symbols (uniform/factorized prior)
                 z_symbols = self.entropy_coder.decode(z_bitstream, scales=None)
 
                 # Compute z shape (hyper-analysis typically downsamples by 4x from latent)
                 # This depends on hyper_analysis architecture (n_layers with stride 2)
-                hyper_layers = getattr(self.config.entropy, 'hyper_layers', 3)
+                hyper_layers = getattr(self.config.entropy, "hyper_layers", 3)
                 z_downsample = 2 ** (hyper_layers - 1)  # Last layer has stride 1
                 z_h = max(1, h // z_downsample)
                 z_w = max(1, w // z_downsample)
 
                 # Reshape z to proper dimensions
-                z_hat = z_symbols.float().reshape(
-                    1, self.config.entropy.hyper_channels, z_h, z_w
-                )
+                z_hat = z_symbols.float().reshape(1, self.config.entropy.hyper_channels, z_h, z_w)
 
                 # Reconstruct scales using hyper-synthesis network
                 scales = self.entropy_model.hyper_synthesis(z_hat)
@@ -511,7 +509,8 @@ class VideoCodec(nn.Module):
                     )
 
                 logger.debug(
-                    "Reconstructed scales from hyperprior for frame %d (z_shape=%s, scales_shape=%s)",
+                    "Reconstructed scales from hyperprior for frame %d "
+                    "(z_shape=%s, scales_shape=%s)",
                     frame_info.index,
                     z_hat.shape,
                     scales.shape,
@@ -523,7 +522,10 @@ class VideoCodec(nn.Module):
                     frame_info.index,
                 )
                 scales = torch.ones(
-                    1, self.config.encoder.latent_channels, h, w,
+                    1,
+                    self.config.encoder.latent_channels,
+                    h,
+                    w,
                     device=next(self.parameters()).device,
                 )
 
@@ -531,9 +533,7 @@ class VideoCodec(nn.Module):
             symbols = self.entropy_coder.decode(bitstream, scales)
 
             # Reshape to latent dimensions (h, w already determined above)
-            y_hat = symbols.float().reshape(
-                1, self.config.encoder.latent_channels, h, w
-            )
+            y_hat = symbols.float().reshape(1, self.config.encoder.latent_channels, h, w)
 
             # Apply inverse QP scaling
             if qp is not None:
@@ -580,6 +580,7 @@ class VideoCodec(nn.Module):
 
         Yields:
             Decoded frames.
+
         """
         self.eval()
         self.gop_manager.reset()
@@ -626,6 +627,7 @@ class VideoCodec(nn.Module):
 
         Yields:
             CodecOutput for each frame.
+
         """
         self.eval()
         self.gop_manager.reset()
@@ -672,11 +674,10 @@ class VideoCodec(nn.Module):
 
             # Log progress
             if (frame_idx + 1) % 10 == 0 or frame_idx == num_frames - 1:
-                avg_bits = sum(self._encoding_stats["bits"]) / len(
-                    self._encoding_stats["bits"]
-                )
+                avg_bits = sum(self._encoding_stats["bits"]) / len(self._encoding_stats["bits"])
                 avg_psnr = (
-                    -10 * torch.log10(
+                    -10
+                    * torch.log10(
                         torch.tensor(
                             sum(self._encoding_stats["distortion"])
                             / len(self._encoding_stats["distortion"])
@@ -705,6 +706,7 @@ class VideoCodec(nn.Module):
 
         Returns:
             Dictionary with average statistics.
+
         """
         if not self._encoding_stats["bits"]:
             return {}
@@ -737,6 +739,7 @@ class VideoCodec(nn.Module):
 
         Returns:
             Dictionary of loss components.
+
         """
         x_hat, rate, distortion = self(x, reference)
 
@@ -763,6 +766,7 @@ class VideoCodec(nn.Module):
 
         Returns:
             Tuple of (rate_bpp, psnr_db).
+
         """
         self.eval()
 
@@ -792,6 +796,7 @@ def create_codec(
 
     Returns:
         Configured VideoCodec instance.
+
     """
     if config is None:
         config = CodecConfig(name="default")
@@ -825,6 +830,7 @@ def load_codec(
 
     Returns:
         Loaded VideoCodec instance.
+
     """
     checkpoint_path = Path(checkpoint_path)
 

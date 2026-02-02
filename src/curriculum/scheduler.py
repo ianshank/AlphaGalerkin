@@ -62,8 +62,7 @@ class CurriculumScheduler:
 
         # Initialize stages
         self._stages: list[CurriculumStage] = [
-            CurriculumStage(config=stage_config)
-            for stage_config in config.stages
+            CurriculumStage(config=stage_config) for stage_config in config.stages
         ]
         self._current_stage_index = 0
         self._games_since_evaluation = 0
@@ -109,9 +108,7 @@ class CurriculumScheduler:
         if self.is_final_stage and self.current_stage.status.is_terminal():
             return 100.0
 
-        completed = sum(
-            1 for s in self._stages if s.status.is_terminal()
-        )
+        completed = sum(1 for s in self._stages if s.status.is_terminal())
         return (completed / self.total_stages) * 100
 
     def start(self) -> None:
@@ -237,12 +234,14 @@ class CurriculumScheduler:
         )
 
         # Record progression
-        self._progression_history.append({
-            "type": "advance",
-            "from_stage": current_stage.config.name,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "metrics": current_stage.metrics.to_dict(),
-        })
+        self._progression_history.append(
+            {
+                "type": "advance",
+                "from_stage": current_stage.config.name,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "metrics": current_stage.metrics.to_dict(),
+            }
+        )
 
         # Fire callbacks
         for callback in self._on_stage_complete:
@@ -300,13 +299,15 @@ class CurriculumScheduler:
         )
 
         # Record regression
-        self._progression_history.append({
-            "type": "regress",
-            "from_stage": current_stage.config.name,
-            "to_stage": self._stages[previous_index].config.name,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "metrics": current_stage.metrics.to_dict(),
-        })
+        self._progression_history.append(
+            {
+                "type": "regress",
+                "from_stage": current_stage.config.name,
+                "to_stage": self._stages[previous_index].config.name,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "metrics": current_stage.metrics.to_dict(),
+            }
+        )
 
         # Fire callbacks
         for callback in self._on_regression:

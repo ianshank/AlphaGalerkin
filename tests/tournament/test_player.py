@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from src.tournament.player import Player, PlayerRegistry, PlayerStats
 
 
@@ -170,9 +169,7 @@ class TestPlayerRegistry:
         """Test registry initialization."""
         assert len(player_registry) == 0
 
-    def test_register_player(
-        self, player_registry: PlayerRegistry, sample_player: Player
-    ) -> None:
+    def test_register_player(self, player_registry: PlayerRegistry, sample_player: Player) -> None:
         """Test player registration."""
         player_registry.register(sample_player)
         assert len(player_registry) == 1
@@ -201,9 +198,7 @@ class TestPlayerRegistry:
         assert player.metadata["version"] == "1.0"
         assert len(player_registry) == 1
 
-    def test_get_by_id(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_get_by_id(self, populated_registry: PlayerRegistry) -> None:
         """Test getting player by ID."""
         player = populated_registry.get("p1")
         assert player is not None
@@ -211,9 +206,7 @@ class TestPlayerRegistry:
 
         assert populated_registry.get("nonexistent") is None
 
-    def test_get_by_name(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_get_by_name(self, populated_registry: PlayerRegistry) -> None:
         """Test getting player by name."""
         player = populated_registry.get_by_name("Player1")
         assert player is not None
@@ -225,9 +218,7 @@ class TestPlayerRegistry:
 
         assert populated_registry.get_by_name("nonexistent") is None
 
-    def test_remove_player(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_remove_player(self, populated_registry: PlayerRegistry) -> None:
         """Test removing a player."""
         assert len(populated_registry) == 4
 
@@ -239,25 +230,19 @@ class TestPlayerRegistry:
         result = populated_registry.remove("nonexistent")
         assert result is False
 
-    def test_list_players(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_list_players(self, populated_registry: PlayerRegistry) -> None:
         """Test listing all players."""
         players = populated_registry.list_players()
         assert len(players) == 4
 
-    def test_get_ranked_by_rating(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_get_ranked_by_rating(self, populated_registry: PlayerRegistry) -> None:
         """Test getting ranked players by rating."""
         ranked = populated_registry.get_ranked(by="rating")
         assert len(ranked) == 4
         assert ranked[0].name == "Player1"  # Highest rating
         assert ranked[-1].name == "Player3"  # Lowest rating
 
-    def test_get_ranked_by_wins(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_get_ranked_by_wins(self, populated_registry: PlayerRegistry) -> None:
         """Test getting ranked players by wins."""
         # Add some wins
         populated_registry.get("p2").stats.wins = 10
@@ -266,9 +251,7 @@ class TestPlayerRegistry:
         ranked = populated_registry.get_ranked(by="wins")
         assert ranked[0].player_id == "p2"
 
-    def test_get_ranked_by_score(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_get_ranked_by_score(self, populated_registry: PlayerRegistry) -> None:
         """Test getting ranked players by score."""
         # Add some scores
         populated_registry.get("p1").stats.wins = 3
@@ -279,24 +262,18 @@ class TestPlayerRegistry:
         assert ranked[0].player_id == "p1"  # 3.0
         assert ranked[1].player_id == "p2"  # 3.0 (ties possible)
 
-    def test_iter_players(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_iter_players(self, populated_registry: PlayerRegistry) -> None:
         """Test iterating through players."""
         player_ids = [p.player_id for p in populated_registry.iter_players()]
         assert len(player_ids) == 4
         assert "p1" in player_ids
 
-    def test_contains(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_contains(self, populated_registry: PlayerRegistry) -> None:
         """Test contains check."""
         assert "p1" in populated_registry
         assert "nonexistent" not in populated_registry
 
-    def test_to_dict(
-        self, populated_registry: PlayerRegistry
-    ) -> None:
+    def test_to_dict(self, populated_registry: PlayerRegistry) -> None:
         """Test serialization to dict."""
         data = populated_registry.to_dict()
         assert "players" in data

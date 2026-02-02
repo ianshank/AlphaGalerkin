@@ -200,20 +200,14 @@ class Trainer:
         # Physics-informed loss (optional)
         self.physics_loss_fn: PhysicsInformedLoss | None = None
         self.use_physics_loss = getattr(self.training_config, "physics_informed", False)
-        self.physics_loss_weight = getattr(
-            self.training_config, "physics_loss_weight", 0.1
-        )
+        self.physics_loss_weight = getattr(self.training_config, "physics_loss_weight", 0.1)
         if self.use_physics_loss:
             self.physics_loss_fn = self._create_physics_loss()
             logger.info(
                 "physics_loss_enabled",
                 weight=self.physics_loss_weight,
-                n_collocation=getattr(
-                    self.training_config, "physics_n_collocation_points", 1000
-                ),
-                n_boundary=getattr(
-                    self.training_config, "physics_n_boundary_points", 200
-                ),
+                n_collocation=getattr(self.training_config, "physics_n_collocation_points", 1000),
+                n_boundary=getattr(self.training_config, "physics_n_boundary_points", 200),
             )
 
         # Loss balancer for adaptive weighting
@@ -230,9 +224,7 @@ class Trainer:
         self.scaler = GradScaler("cuda") if self.use_amp else None
 
         # Replay buffer (prioritized or uniform based on config)
-        self.use_prioritized_replay = getattr(
-            self.training_config, "use_prioritized_replay", False
-        )
+        self.use_prioritized_replay = getattr(self.training_config, "use_prioritized_replay", False)
         self.buffer = create_replay_buffer(
             capacity=self.training_config.replay_buffer_size,
             prioritized=self.use_prioritized_replay,
@@ -241,9 +233,11 @@ class Trainer:
         )
 
         # Board size curriculum (optional)
-        self.curriculum = self._create_curriculum() if getattr(
-            self.training_config, "curriculum_enabled", False
-        ) else None
+        self.curriculum = (
+            self._create_curriculum()
+            if getattr(self.training_config, "curriculum_enabled", False)
+            else None
+        )
 
         # Self-play worker (use raw model, not DDP-wrapped)
         self.self_play_worker = SelfPlayWorker(
@@ -374,24 +368,16 @@ class Trainer:
             # Create physics loss config from training config
             physics_config = PhysicsLossConfig(
                 name="training_physics_loss",
-                residual_weight=getattr(
-                    self.training_config, "physics_residual_weight", 1.0
-                ),
-                boundary_weight=getattr(
-                    self.training_config, "physics_boundary_weight", 10.0
-                ),
-                initial_weight=getattr(
-                    self.training_config, "physics_initial_weight", 10.0
-                ),
+                residual_weight=getattr(self.training_config, "physics_residual_weight", 1.0),
+                boundary_weight=getattr(self.training_config, "physics_boundary_weight", 10.0),
+                initial_weight=getattr(self.training_config, "physics_initial_weight", 10.0),
                 conservation_weight=getattr(
                     self.training_config, "physics_conservation_weight", 1.0
                 ),
                 n_collocation_points=getattr(
                     self.training_config, "physics_n_collocation_points", 1000
                 ),
-                n_boundary_points=getattr(
-                    self.training_config, "physics_n_boundary_points", 200
-                ),
+                n_boundary_points=getattr(self.training_config, "physics_n_boundary_points", 200),
                 use_adaptive_weights=getattr(
                     self.training_config, "physics_use_adaptive_weights", True
                 ),
@@ -570,9 +556,7 @@ class Trainer:
             board_size = None
             if self.curriculum is not None:
                 board_size = self.curriculum.sample_board_size(self.global_step)
-            experiences = self.self_play_worker.generate_experiences(
-                n_games, board_size=board_size
-            )
+            experiences = self.self_play_worker.generate_experiences(n_games, board_size=board_size)
             self.model.train()
 
             # Add to buffer
@@ -771,12 +755,8 @@ class Trainer:
 
         """
         n_steps = n_steps or self.training_config.total_steps
-        checkpoint_interval = (
-            checkpoint_interval or self.training_config.checkpoint_interval
-        )
-        eval_interval = eval_interval or getattr(
-            self.training_config, "eval_interval", None
-        )
+        checkpoint_interval = checkpoint_interval or self.training_config.checkpoint_interval
+        eval_interval = eval_interval or getattr(self.training_config, "eval_interval", None)
 
         # Minimum buffer size before training
         min_buffer_size = min(
@@ -946,14 +926,16 @@ class Trainer:
         # Log final summary to W&B
         if self.wandb_logger is not None and self._metrics_history:
             final_metrics = self._metrics_history[-1]
-            self.wandb_logger.log_summary({
-                "final/total_loss": final_metrics.total_loss,
-                "final/policy_loss": final_metrics.policy_loss,
-                "final/value_loss": final_metrics.value_loss,
-                "final/lbb_loss": final_metrics.lbb_loss,
-                "final/total_steps": n_steps,
-                "final/total_games": self.total_games_generated,
-            })
+            self.wandb_logger.log_summary(
+                {
+                    "final/total_loss": final_metrics.total_loss,
+                    "final/policy_loss": final_metrics.policy_loss,
+                    "final/value_loss": final_metrics.value_loss,
+                    "final/lbb_loss": final_metrics.lbb_loss,
+                    "final/total_steps": n_steps,
+                    "final/total_games": self.total_games_generated,
+                }
+            )
 
             # Log final checkpoint as best model artifact
             self.wandb_logger.log_model_artifact(
@@ -983,9 +965,7 @@ class Trainer:
 
         if use_multi_res and hasattr(self.evaluator, "evaluate_multi_resolution"):
             # Use multi-resolution evaluation
-            results = self.evaluator.evaluate_multi_resolution(
-                n_games_per_size=n_games
-            )
+            results = self.evaluator.evaluate_multi_resolution(n_games_per_size=n_games)
             for board_size, result in results.items():
                 win_rates.append(result.win_rate)
                 if self.wandb_logger is not None:

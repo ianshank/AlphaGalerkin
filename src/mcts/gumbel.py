@@ -274,16 +274,13 @@ class GumbelMCTS:
         action_mask = self.game.get_action_mask(root_state)
 
         # Add Dirichlet noise for exploration
-        noise = np.random.dirichlet(
-            [self.config.root_dirichlet_alpha] * action_mask.num_legal
-        )
+        noise = np.random.dirichlet([self.config.root_dirichlet_alpha] * action_mask.num_legal)
         noise_full = np.zeros_like(policy)
         noise_full[action_mask.mask] = noise
 
         policy = (
-            (1 - self.config.root_exploration_fraction) * policy
-            + self.config.root_exploration_fraction * noise_full
-        )
+            1 - self.config.root_exploration_fraction
+        ) * policy + self.config.root_exploration_fraction * noise_full
 
         # Mask illegal actions
         policy = policy * action_mask.mask.astype(np.float32)

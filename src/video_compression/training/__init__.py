@@ -1,9 +1,9 @@
 """Training utilities for video compression."""
 
 from src.video_compression.training.loss import (
-    RDLoss,
     CompressionLoss,
     DistortionLoss,
+    RDLoss,
 )
 from src.video_compression.training.trainer import VideoCompressionTrainer
 

@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-
 from src.prototyping.templates import (
-    ExperimentTemplate,
-    TemplateResult,
-    TransferTemplate,
     AblationTemplate,
     BenchmarkTemplate,
+    ExperimentTemplate,
     TemplateRegistry,
+    TemplateResult,
+    TransferTemplate,
     create_template,
     register_template,
 )
@@ -229,6 +228,7 @@ class TestTemplateRegistry:
 
     def test_register(self, template_registry: TemplateRegistry) -> None:
         """Test registering template."""
+
         class CustomTemplate(ExperimentTemplate):
             def __init__(self) -> None:
                 super().__init__("custom", "Custom template")
@@ -280,6 +280,7 @@ class TestRegisterTemplateDecorator:
 
     def test_decorator(self) -> None:
         """Test decorator registration."""
+
         @register_template("decorated")
         class DecoratedTemplate(ExperimentTemplate):
             def __init__(self) -> None:

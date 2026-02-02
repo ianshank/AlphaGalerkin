@@ -58,12 +58,13 @@ class ElasticitySolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
 
     def solve(self, input_field: NDArray[np.float32]) -> NDArray[np.float32]:
         """Solve for displacement given body force F.
-        
+
         Input: F (N*N, 2)
         Output: u (N*N, 2)
-        
+
         Uses spectral method assuming Periodic BCs for simplicity in this demo,
-        or we can implement FD/FEM. Periodic is much faster and cleaner for "resolution independence" demos.
+        or we can implement FD/FEM. Periodic is much faster and cleaner for
+        "resolution independence" demos.
         """
         resolution = int(np.sqrt(input_field.shape[0]))
 
@@ -170,8 +171,5 @@ class ElasticitySolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
             output_field=u,
             coords=coords,
             grid_size=resolution,
-            metadata={
-                "E": self.E,
-                "nu": self.nu
-            }
+            metadata={"E": self.E, "nu": self.nu},
         )

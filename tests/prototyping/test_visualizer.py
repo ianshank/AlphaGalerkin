@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-
-from src.prototyping.trainer import TrainResult
 from src.prototyping.evaluator import EvalResult, MetricResult
+from src.prototyping.trainer import TrainResult
 from src.prototyping.visualizer import (
-    Visualizer,
     PlotData,
     PlotType,
+    Visualizer,
     create_visualizer,
 )
 

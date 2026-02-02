@@ -575,7 +575,7 @@ class TestEdgeCases:
 
         x = torch.randn(2, 49, 32)
         x[:, :25, :] *= 1e-6  # Small values
-        x[:, 25:, :] *= 1e6   # Large values
+        x[:, 25:, :] *= 1e6  # Large values
 
         output = projection(x)
 

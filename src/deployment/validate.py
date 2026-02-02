@@ -146,7 +146,11 @@ class ModelValidator:
                     pytorch_value = pytorch_output.value.cpu().numpy()
                 elif isinstance(pytorch_output, tuple):
                     pytorch_policy = pytorch_output[0].cpu().numpy()
-                    pytorch_value = pytorch_output[1].cpu().numpy() if len(pytorch_output) > 1 else np.array([0.0])
+                    pytorch_value = (
+                        pytorch_output[1].cpu().numpy()
+                        if len(pytorch_output) > 1
+                        else np.array([0.0])
+                    )
                 else:
                     pytorch_policy = pytorch_output.cpu().numpy()
                     pytorch_value = np.array([0.0])
@@ -260,7 +264,7 @@ class ModelValidator:
                 if expected:
                     # Compare, allowing -1 for dynamic dims
                     match = True
-                    for s, e in zip(shape, expected):
+                    for s, e in zip(shape, expected, strict=False):
                         if s != -1 and e != -1 and s != e:
                             match = False
                     results[f"input_{inp.name}"] = match
@@ -279,7 +283,7 @@ class ModelValidator:
                 expected = expected_outputs.get(out.name)
                 if expected:
                     match = True
-                    for s, e in zip(shape, expected):
+                    for s, e in zip(shape, expected, strict=False):
                         if s != -1 and e != -1 and s != e:
                             match = False
                     results[f"output_{out.name}"] = match
@@ -353,7 +357,9 @@ class ModelValidator:
             "mean_value_diff": np.mean(value_diffs) if value_diffs else 0.0,
             "original_time_ms": avg_original_time,
             "quantized_time_ms": avg_quantized_time,
-            "speedup_ratio": avg_original_time / avg_quantized_time if avg_quantized_time > 0 else 0,
+            "speedup_ratio": avg_original_time / avg_quantized_time
+            if avg_quantized_time > 0
+            else 0,
             "n_samples": len(test_inputs),
         }
 

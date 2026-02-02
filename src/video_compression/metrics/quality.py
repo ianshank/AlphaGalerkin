@@ -24,7 +24,7 @@ def compute_psnr(
     target: Float[Tensor, "batch channels height width"],
     max_val: float = 1.0,
     reduction: Literal["mean", "none"] = "mean",
-) -> Float[Tensor, "..."]:
+) -> Float[Tensor, ...]:
     """Compute Peak Signal-to-Noise Ratio.
 
     PSNR = 10 * log10(max_val^2 / MSE)
@@ -37,6 +37,7 @@ def compute_psnr(
 
     Returns:
         PSNR value(s) in dB.
+
     """
     mse = torch.mean((pred - target) ** 2, dim=[1, 2, 3])
 
@@ -60,9 +61,10 @@ def _gaussian_kernel_1d(size: int, sigma: float, device: torch.device) -> Tensor
 
     Returns:
         1D Gaussian kernel.
+
     """
     coords = torch.arange(size, dtype=torch.float32, device=device) - size // 2
-    kernel = torch.exp(-coords**2 / (2 * sigma**2))
+    kernel = torch.exp(-(coords**2) / (2 * sigma**2))
     kernel = kernel / kernel.sum()
     return kernel
 
@@ -83,6 +85,7 @@ def _gaussian_kernel_2d(
 
     Returns:
         2D Gaussian kernel (channels, 1, size, size).
+
     """
     kernel_1d = _gaussian_kernel_1d(size, sigma, device)
     kernel_2d = kernel_1d.unsqueeze(0) * kernel_1d.unsqueeze(1)
@@ -99,7 +102,7 @@ def compute_ssim(
     k2: float = 0.03,
     max_val: float = 1.0,
     reduction: Literal["mean", "none"] = "mean",
-) -> Float[Tensor, "..."]:
+) -> Float[Tensor, ...]:
     """Compute Structural Similarity Index.
 
     SSIM compares luminance, contrast, and structure between images.
@@ -116,6 +119,7 @@ def compute_ssim(
 
     Returns:
         SSIM value(s) in [0, 1].
+
     """
     batch, channels, height, width = pred.shape
     device = pred.device
@@ -133,13 +137,15 @@ def compute_ssim(
     mu_target = F.conv2d(target, kernel, padding=padding, groups=channels)
 
     # Compute local variances and covariance
-    mu_pred_sq = mu_pred ** 2
-    mu_target_sq = mu_target ** 2
+    mu_pred_sq = mu_pred**2
+    mu_target_sq = mu_target**2
     mu_pred_target = mu_pred * mu_target
 
-    sigma_pred_sq = F.conv2d(pred ** 2, kernel, padding=padding, groups=channels) - mu_pred_sq
-    sigma_target_sq = F.conv2d(target ** 2, kernel, padding=padding, groups=channels) - mu_target_sq
-    sigma_pred_target = F.conv2d(pred * target, kernel, padding=padding, groups=channels) - mu_pred_target
+    sigma_pred_sq = F.conv2d(pred**2, kernel, padding=padding, groups=channels) - mu_pred_sq
+    sigma_target_sq = F.conv2d(target**2, kernel, padding=padding, groups=channels) - mu_target_sq
+    sigma_pred_target = (
+        F.conv2d(pred * target, kernel, padding=padding, groups=channels) - mu_pred_target
+    )
 
     # SSIM formula
     numerator = (2 * mu_pred_target + c1) * (2 * sigma_pred_target + c2)
@@ -163,7 +169,7 @@ def compute_ms_ssim(
     weights: list[float] | None = None,
     max_val: float = 1.0,
     reduction: Literal["mean", "none"] = "mean",
-) -> Float[Tensor, "..."]:
+) -> Float[Tensor, ...]:
     """Compute Multi-Scale Structural Similarity.
 
     MS-SSIM computes SSIM at multiple scales and combines them.
@@ -179,6 +185,7 @@ def compute_ms_ssim(
 
     Returns:
         MS-SSIM value(s) in [0, 1].
+
     """
     if weights is None:
         weights = [0.0448, 0.2856, 0.3001, 0.2363, 0.1333]
@@ -207,10 +214,7 @@ def compute_ms_ssim(
             target = F.avg_pool2d(target, 2)
 
         # Compute SSIM components
-        ssim_val = compute_ssim(
-            pred, target, window_size, sigma,
-            max_val=max_val, reduction="none"
-        )
+        ssim_val = compute_ssim(pred, target, window_size, sigma, max_val=max_val, reduction="none")
 
         if scale < num_scales - 1:
             # Extract contrast-structure component (CS)
@@ -237,6 +241,7 @@ class PSNR(nn.Module):
 
         Args:
             max_val: Maximum pixel value.
+
         """
         super().__init__()
         self.max_val = max_val
@@ -254,6 +259,7 @@ class PSNR(nn.Module):
 
         Returns:
             Mean PSNR in dB.
+
         """
         return compute_psnr(pred, target, self.max_val)
 
@@ -275,6 +281,7 @@ class SSIM(nn.Module):
             sigma: Gaussian standard deviation.
             max_val: Maximum pixel value.
             as_loss: If True, returns 1 - SSIM for use as loss.
+
         """
         super().__init__()
         self.window_size = window_size
@@ -295,10 +302,9 @@ class SSIM(nn.Module):
 
         Returns:
             SSIM value (or 1 - SSIM if as_loss=True).
+
         """
-        ssim_val = compute_ssim(
-            pred, target, self.window_size, self.sigma, max_val=self.max_val
-        )
+        ssim_val = compute_ssim(pred, target, self.window_size, self.sigma, max_val=self.max_val)
         if self.as_loss:
             return 1 - ssim_val
         return ssim_val
@@ -323,6 +329,7 @@ class MSSSIM(nn.Module):
             weights: Weights for each scale.
             max_val: Maximum pixel value.
             as_loss: If True, returns 1 - MS-SSIM for use as loss.
+
         """
         super().__init__()
         self.window_size = window_size
@@ -344,10 +351,10 @@ class MSSSIM(nn.Module):
 
         Returns:
             MS-SSIM value (or 1 - MS-SSIM if as_loss=True).
+
         """
         ms_ssim_val = compute_ms_ssim(
-            pred, target, self.window_size, self.sigma,
-            self.weights, self.max_val
+            pred, target, self.window_size, self.sigma, self.weights, self.max_val
         )
         if self.as_loss:
             return 1 - ms_ssim_val
@@ -370,6 +377,7 @@ class PerceptualLoss(nn.Module):
         Args:
             layers: VGG layers to use.
             weights: Loss weights per layer.
+
         """
         super().__init__()
         self.layers = layers or ["relu1_2", "relu2_2", "relu3_3"]
@@ -386,14 +394,17 @@ class PerceptualLoss(nn.Module):
 
         Returns:
             VGG feature extractor module.
+
         """
         if self._vgg is None:
             try:
-                from torchvision.models import vgg16, VGG16_Weights
+                from torchvision.models import VGG16_Weights, vgg16
+
                 vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features
             except ImportError:
                 # Fallback for older torchvision
                 from torchvision.models import vgg16
+
                 vgg = vgg16(pretrained=True).features
 
             # Freeze VGG
@@ -417,6 +428,7 @@ class PerceptualLoss(nn.Module):
 
         Returns:
             Perceptual loss value.
+
         """
         vgg = self._get_vgg(pred.device)
 

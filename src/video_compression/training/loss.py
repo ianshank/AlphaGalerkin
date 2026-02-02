@@ -18,9 +18,9 @@ from jaxtyping import Float
 from torch import Tensor, nn
 
 from src.video_compression.metrics.quality import (
-    compute_psnr,
     MSSSIM,
     PerceptualLoss,
+    compute_psnr,
 )
 
 
@@ -54,6 +54,7 @@ class DistortionLoss(nn.Module):
         Args:
             metric: Distortion metric type.
             ms_ssim_weight: Weight for MS-SSIM in mixed mode.
+
         """
         super().__init__()
         self.metric = metric
@@ -75,6 +76,7 @@ class DistortionLoss(nn.Module):
 
         Returns:
             Tuple of (distortion_loss, mse, ms_ssim_loss).
+
         """
         # MSE
         mse = torch.mean((pred - target) ** 2)
@@ -92,10 +94,7 @@ class DistortionLoss(nn.Module):
         else:  # mixed
             # Combined loss: balance MSE and MS-SSIM
             # MS-SSIM is scale-invariant, MSE is not
-            distortion = (
-                self.ms_ssim_weight * ms_ssim_loss +
-                (1 - self.ms_ssim_weight) * mse
-            )
+            distortion = self.ms_ssim_weight * ms_ssim_loss + (1 - self.ms_ssim_weight) * mse
 
         return distortion, mse, ms_ssim_loss
 
@@ -120,6 +119,7 @@ class RDLoss(nn.Module):
             lambda_rd: Rate-distortion tradeoff parameter.
             distortion_metric: Distortion metric type.
             ms_ssim_weight: MS-SSIM weight in mixed mode.
+
         """
         super().__init__()
         self.lambda_rd = lambda_rd
@@ -129,7 +129,7 @@ class RDLoss(nn.Module):
         self,
         pred: Float[Tensor, "batch 3 height width"],
         target: Float[Tensor, "batch 3 height width"],
-        rate: Float[Tensor, "batch"],
+        rate: Float[Tensor, batch],
     ) -> LossOutput:
         """Compute R-D loss.
 
@@ -140,6 +140,7 @@ class RDLoss(nn.Module):
 
         Returns:
             LossOutput with all loss components.
+
         """
         batch, _, h, w = pred.shape
 
@@ -193,6 +194,7 @@ class CompressionLoss(nn.Module):
             ms_ssim_weight: MS-SSIM weight in mixed mode.
             use_perceptual: Whether to use perceptual loss.
             perceptual_weight: Weight for perceptual loss.
+
         """
         super().__init__()
         self.lambda_rd = lambda_rd
@@ -209,7 +211,7 @@ class CompressionLoss(nn.Module):
         self,
         pred: Float[Tensor, "batch 3 height width"],
         target: Float[Tensor, "batch 3 height width"],
-        rate: Float[Tensor, "batch"],
+        rate: Float[Tensor, batch],
     ) -> dict[str, Tensor]:
         """Compute compression loss.
 
@@ -220,6 +222,7 @@ class CompressionLoss(nn.Module):
 
         Returns:
             Dictionary of loss components.
+
         """
         # R-D loss
         rd_output = self.rd_loss(pred, target, rate)

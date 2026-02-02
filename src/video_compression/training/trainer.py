@@ -11,20 +11,19 @@ Provides a complete training loop with:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 import torch
 from torch import nn
+from torch.cuda.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.cuda.amp import GradScaler, autocast
 
-from src.video_compression.config import TrainingConfig
 from src.video_compression.codec.codec import VideoCodec
+from src.video_compression.config import TrainingConfig
 from src.video_compression.training.loss import CompressionLoss
-
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +65,7 @@ class VideoCompressionTrainer:
             codec: Video codec model.
             config: Training configuration.
             output_dir: Output directory for checkpoints.
+
         """
         self.codec = codec
         self.config = config
@@ -119,6 +119,7 @@ class VideoCompressionTrainer:
 
         Returns:
             Training metrics.
+
         """
         self.codec.train()
         batch = batch.to(self.device)
@@ -167,7 +168,9 @@ class VideoCompressionTrainer:
             rate=losses["rate"].item(),
             distortion=losses["distortion"].item(),
             psnr=losses["psnr"].item(),
-            ms_ssim=losses.get("ms_ssim_loss", torch.tensor(0.0)).item() if "ms_ssim_loss" in losses else None,
+            ms_ssim=losses.get("ms_ssim_loss", torch.tensor(0.0)).item()
+            if "ms_ssim_loss" in losses
+            else None,
             lr=self.optimizer.param_groups[0]["lr"],
         )
 
@@ -183,6 +186,7 @@ class VideoCompressionTrainer:
 
         Returns:
             Evaluation metrics.
+
         """
         self.codec.eval()
         batch = batch.to(self.device)
@@ -195,7 +199,9 @@ class VideoCompressionTrainer:
             rate=losses["rate"].item(),
             distortion=losses["distortion"].item(),
             psnr=losses["psnr"].item(),
-            ms_ssim=losses.get("ms_ssim_loss", torch.tensor(0.0)).item() if "ms_ssim_loss" in losses else None,
+            ms_ssim=losses.get("ms_ssim_loss", torch.tensor(0.0)).item()
+            if "ms_ssim_loss" in losses
+            else None,
         )
 
     def train(
@@ -208,6 +214,7 @@ class VideoCompressionTrainer:
         Args:
             train_loader: Training data iterator.
             val_loader: Optional validation data iterator.
+
         """
         logger.info(f"Starting training for {self.config.total_steps} steps")
         logger.info(f"Device: {self.device}")
@@ -231,8 +238,7 @@ class VideoCompressionTrainer:
             if val_loader is not None and self.state.step % self.config.eval_interval == 0:
                 val_metrics = self._evaluate(val_loader)
                 logger.info(
-                    f"Validation: loss={val_metrics.loss:.4f}, "
-                    f"PSNR={val_metrics.psnr:.2f}dB"
+                    f"Validation: loss={val_metrics.loss:.4f}, PSNR={val_metrics.psnr:.2f}dB"
                 )
 
                 # Save best model
@@ -261,6 +267,7 @@ class VideoCompressionTrainer:
 
         Returns:
             Averaged metrics.
+
         """
         total_metrics = {
             "loss": 0.0,
@@ -296,6 +303,7 @@ class VideoCompressionTrainer:
 
         Returns:
             Path to saved checkpoint.
+
         """
         path = self.output_dir / filename
 
@@ -322,6 +330,7 @@ class VideoCompressionTrainer:
 
         Args:
             path: Path to checkpoint.
+
         """
         checkpoint = torch.load(path, map_location=self.device)
 

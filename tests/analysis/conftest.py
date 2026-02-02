@@ -6,9 +6,9 @@ import pytest
 
 from src.analysis.config import AnalysisConfig, AnalysisMode, AnnotationLevel
 from src.analysis.evaluator import EvaluationResult, PositionEvaluator
+from src.analysis.patterns import Pattern, PatternLibrary, PatternMatcher, PatternType
 from src.analysis.reviewer import GameReviewer
 from src.analysis.statistics import GameStatistics, StatisticsCollector
-from src.analysis.patterns import Pattern, PatternLibrary, PatternMatcher, PatternType
 
 
 @pytest.fixture
@@ -78,9 +78,9 @@ def game_reviewer(default_config: AnalysisConfig) -> GameReviewer:
 def sample_game_moves() -> list[tuple[str, int, int]]:
     """Create sample game moves."""
     return [
-        ("B", 3, 3),    # Move 1
-        ("W", 15, 3),   # Move 2
-        ("B", 3, 15),   # Move 3
+        ("B", 3, 3),  # Move 1
+        ("W", 15, 3),  # Move 2
+        ("B", 3, 15),  # Move 3
         ("W", 15, 15),  # Move 4
         ("B", 10, 10),  # Move 5
     ]

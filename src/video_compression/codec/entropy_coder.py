@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from torch import Tensor
-import numpy as np
 
 
 @dataclass
@@ -39,6 +39,7 @@ class RangeEncoder:
 
         Args:
             precision: Precision bits for probability representation.
+
         """
         self.precision = precision
         self.max_range = 1 << precision
@@ -62,6 +63,7 @@ class RangeEncoder:
             cdf_low: CDF value at symbol (lower bound).
             cdf_high: CDF value at symbol + 1 (upper bound).
             cdf_total: Total CDF range.
+
         """
         # Update range
         range_size = self.range // cdf_total
@@ -87,6 +89,7 @@ class RangeEncoder:
 
         Returns:
             Encoded bytes.
+
         """
         symbols_np = symbols.flatten().cpu().numpy().astype(np.int32)
         cdfs_np = cdfs.cpu().numpy().astype(np.int32)
@@ -119,6 +122,7 @@ class RangeEncoder:
 
         Returns:
             Encoded bytes.
+
         """
         # Flush remaining state
         for _ in range(4):
@@ -139,6 +143,7 @@ class RangeDecoder:
 
         Args:
             precision: Precision bits for probability representation.
+
         """
         self.precision = precision
         self.max_range = 1 << precision
@@ -155,6 +160,7 @@ class RangeDecoder:
 
         Args:
             data: Encoded bytes.
+
         """
         self.data = data
         self.pos = 0
@@ -185,6 +191,7 @@ class RangeDecoder:
 
         Returns:
             Decoded symbol.
+
         """
         cdf_total = int(cdf[-1])
         range_size = self.range // cdf_total
@@ -220,6 +227,7 @@ class RangeDecoder:
 
         Returns:
             Decoded symbols.
+
         """
         symbols = np.zeros(num_symbols, dtype=np.int32)
 
@@ -241,6 +249,7 @@ class EntropyCoder:
 
         Args:
             precision: Precision bits for probability representation.
+
         """
         self.precision = precision
         self.encoder = RangeEncoder(precision)
@@ -259,6 +268,7 @@ class EntropyCoder:
 
         Returns:
             Encoded bitstream.
+
         """
         # Get symbol statistics
         symbols_int = symbols.to(torch.int32)
@@ -296,19 +306,26 @@ class EntropyCoder:
 
         Returns:
             Decoded symbols.
+
         """
         # Initialize decoder
         self.decoder.init_from_bytes(bitstream.data)
 
         # Build CDFs
         if scales is not None:
-            cdfs = self._build_gaussian_cdfs(
-                scales, bitstream.min_val, bitstream.max_val
-            ).cpu().numpy()
+            cdfs = (
+                self._build_gaussian_cdfs(scales, bitstream.min_val, bitstream.max_val)
+                .cpu()
+                .numpy()
+            )
         else:
-            cdfs = self._build_uniform_cdfs(
-                bitstream.min_val, bitstream.max_val, bitstream.num_symbols
-            ).cpu().numpy()
+            cdfs = (
+                self._build_uniform_cdfs(
+                    bitstream.min_val, bitstream.max_val, bitstream.num_symbols
+                )
+                .cpu()
+                .numpy()
+            )
 
         # Decode
         symbols_np = self.decoder.decode_symbols(bitstream.num_symbols, cdfs)
@@ -333,6 +350,7 @@ class EntropyCoder:
 
         Returns:
             CDF tensor (N, num_bins + 1).
+
         """
         import math
 
@@ -376,6 +394,7 @@ class EntropyCoder:
 
         Returns:
             CDF tensor (num_bins + 1,).
+
         """
         num_bins = max_val - min_val + 1
         step = (1 << self.precision) // num_bins

@@ -48,8 +48,7 @@ class SyntheticData:
 
     def __iter__(self) -> Iterator[tuple[Any, Any]]:
         """Iterate over (input, target) pairs."""
-        for inp, target in zip(self.inputs, self.targets):
-            yield inp, target
+        yield from zip(self.inputs, self.targets, strict=False)
 
     def split(
         self,
@@ -72,9 +71,7 @@ class SyntheticData:
 
         """
         if not 0 < train_ratio < 1:
-            raise ValueError(
-                f"train_ratio must be between 0 and 1 exclusive, got {train_ratio}"
-            )
+            raise ValueError(f"train_ratio must be between 0 and 1 exclusive, got {train_ratio}")
         if seed is not None:
             random.seed(seed)
 
@@ -136,7 +133,7 @@ class SyntheticData:
             random.shuffle(indices)
 
         for i in range(0, self.n_samples, batch_size):
-            batch_indices = indices[i:i + batch_size]
+            batch_indices = indices[i : i + batch_size]
             if drop_last and len(batch_indices) < batch_size:
                 break
             yield (
@@ -256,7 +253,7 @@ class DataGenerator:
 
         for _ in range(n_samples):
             x = [self._rng.gauss(0, 1) for _ in range(n_features)]
-            y = sum(w * xi for w, xi in zip(weights, x)) + bias
+            y = sum(w * xi for w, xi in zip(weights, x, strict=False)) + bias
             y += self._rng.gauss(0, noise_std)
             inputs.append(x)
             targets.append([y])
@@ -301,7 +298,7 @@ class DataGenerator:
 
         for _ in range(n_samples):
             x = self._rng.uniform(-2, 2)
-            y = sum(c * (x ** i) for i, c in enumerate(coeffs))
+            y = sum(c * (x**i) for i, c in enumerate(coeffs))
             y += self._rng.gauss(0, noise_std)
             inputs.append([x])
             targets.append([y])
@@ -386,8 +383,7 @@ class DataGenerator:
         """
         # Generate class centers
         centers = [
-            [self._rng.gauss(0, separation) for _ in range(n_features)]
-            for _ in range(n_classes)
+            [self._rng.gauss(0, separation) for _ in range(n_features)] for _ in range(n_classes)
         ]
 
         inputs = []
@@ -436,10 +432,7 @@ class DataGenerator:
 
         for _ in range(n_samples):
             # Generate random board state
-            board = [
-                [0.0 for _ in range(board_size)]
-                for _ in range(board_size)
-            ]
+            board = [[0.0 for _ in range(board_size)] for _ in range(board_size)]
             # Place random stones
             n_stones = int(board_size * board_size * density)
             for _ in range(n_stones):

@@ -11,11 +11,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from src.games.sgf.config import SGFConfig, SGFFileFormat, SGFGameType
-from src.games.sgf.node import SGFMove, SGFNode, SGFGameTree
-from src.games.sgf.parser import SGFParser, SGFParseError
-from src.games.sgf.writer import SGFWriter
 from src.games.sgf.converter import SGFConverter
-
+from src.games.sgf.node import SGFGameTree, SGFMove, SGFNode
+from src.games.sgf.parser import SGFParseError, SGFParser
+from src.games.sgf.writer import SGFWriter
 
 # =============================================================================
 # Test Data
@@ -47,6 +46,7 @@ PASS_MOVE_SGF = "(;GM[1]FF[4]SZ[19];B[pd];W[];B[pq])"
 # Test SGFMove
 # =============================================================================
 
+
 class TestSGFMove:
     """Tests for SGFMove class."""
 
@@ -55,7 +55,7 @@ class TestSGFMove:
         move = SGFMove.from_sgf("B", "pd", 19)
         assert move.color == "B"
         assert move.x == 15  # p = 15
-        assert move.y == 3   # d = 3
+        assert move.y == 3  # d = 3
         assert not move.is_pass
 
     def test_from_sgf_pass(self) -> None:
@@ -99,6 +99,7 @@ class TestSGFMove:
 # =============================================================================
 # Test SGFNode
 # =============================================================================
+
 
 class TestSGFNode:
     """Tests for SGFNode class."""
@@ -184,6 +185,7 @@ class TestSGFNode:
 # Test SGFGameTree
 # =============================================================================
 
+
 class TestSGFGameTree:
     """Tests for SGFGameTree class."""
 
@@ -260,6 +262,7 @@ class TestSGFGameTree:
 # Test SGFParser
 # =============================================================================
 
+
 class TestSGFParser:
     """Tests for SGFParser class."""
 
@@ -281,7 +284,9 @@ class TestSGFParser:
         assert info["player_white"] == "White Player"
         assert info["result"] == "B+2.5"
 
-    @pytest.mark.skip(reason="Variation parsing requires complex tree handling - future improvement")
+    @pytest.mark.skip(
+        reason="Variation parsing requires complex tree handling - future improvement"
+    )
     def test_parse_variations(self) -> None:
         """Test parsing game with variations."""
         parser = SGFParser()
@@ -342,6 +347,7 @@ class TestSGFParser:
 # =============================================================================
 # Test SGFWriter
 # =============================================================================
+
 
 class TestSGFWriter:
     """Tests for SGFWriter class."""
@@ -410,6 +416,7 @@ class TestSGFWriter:
 # Test SGFConverter
 # =============================================================================
 
+
 class TestSGFConverter:
     """Tests for SGFConverter class."""
 
@@ -427,10 +434,10 @@ class TestSGFConverter:
         converter = SGFConverter()
 
         moves = [
-            ("B", 15, 3),   # pd
-            ("W", 3, 3),    # dd
+            ("B", 15, 3),  # pd
+            ("W", 3, 3),  # dd
             ("B", 15, 16),  # pq
-            ("W", 3, 15),   # dp
+            ("W", 3, 15),  # dp
         ]
 
         tree = converter.from_move_sequence(
@@ -479,6 +486,7 @@ class TestSGFConverter:
 # =============================================================================
 # Test SGFConfig
 # =============================================================================
+
 
 class TestSGFConfig:
     """Tests for SGFConfig class."""

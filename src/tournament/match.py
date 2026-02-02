@@ -57,9 +57,7 @@ class GameRecord:
     moves: int = 0
     sgf_path: str | None = None
     duration_seconds: float = 0.0
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def is_complete(self) -> bool:
@@ -327,10 +325,7 @@ class Match:
         self.status = MatchStatus.FORFEIT
         self.end_time = datetime.now(timezone.utc).isoformat()
 
-        winner_id = (
-            self.player2_id if forfeiter_id == self.player1_id
-            else self.player1_id
-        )
+        winner_id = self.player2_id if forfeiter_id == self.player1_id else self.player1_id
 
         self.result = MatchResult(
             winner_id=winner_id,
@@ -372,9 +367,7 @@ class Match:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Match:
         """Create from dictionary."""
-        games = [
-            GameRecord.from_dict(g) for g in data.get("games", [])
-        ]
+        games = [GameRecord.from_dict(g) for g in data.get("games", [])]
 
         result_data = data.get("result")
         result = None

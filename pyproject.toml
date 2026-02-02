@@ -60,7 +60,53 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "D", "UP", "ANN", "B", "C4", "SIM"]
-ignore = ["D100", "D104", "ANN101", "ANN102"]
+ignore = [
+    "D100",   # Missing docstring in public module
+    "D102",   # Missing docstring in public method
+    "D104",   # Missing docstring in public package
+    "D105",   # Missing docstring in magic method
+    "D106",   # Missing docstring in public nested class
+    "D107",   # Missing docstring in __init__
+    "ANN001", # Missing type annotation for function argument (use mypy instead)
+    "ANN002", # Missing type annotation for *args
+    "ANN003", # Missing type annotation for **kwargs (intentional Any)
+    "ANN101", # (removed rule)
+    "ANN102", # (removed rule)
+    "ANN202", # Missing return type for private function
+    "ANN204", # Missing return type for special method
+    "F722",   # Syntax error in forward annotation (jaxtyping)
+    "F821",   # Undefined name (jaxtyping dimension names)
+    "ANN401", # Dynamically typed expressions (Any) allowed in **kwargs
+    "D401",   # First line should be imperative mood (overly strict)
+    "N806",   # Variable in function should be lowercase (math notation exceptions)
+    "N812",   # Lowercase imported as non-lowercase (e.g., numpy as np)
+    "N817",   # CamelCase imported as acronym (e.g., DDP)
+    "SIM102", # Nested if statements (sometimes clearer for readability)
+    "SIM103", # Return condition directly (sometimes clearer with explicit if)
+    "SIM108", # Use ternary operator (sometimes less clear)
+    "SIM112", # Use capitalized env variable
+    "SIM113", # Use enumerate (not always applicable)
+    "B904",   # Raise from within except (typer.Exit doesn't support from)
+    "B027",   # Empty method in abstract class without abstract decorator
+    "B023",   # Function definition does not bind loop variable
+    "E741",   # Ambiguous variable name (e.g., I for Intra frame)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files have more relaxed linting
+"tests/**/*.py" = [
+    "ANN201",  # Missing return type annotation for public function
+    "B007",    # Loop control variable not used
+    "B017",    # assertRaises / pytest.raises without match
+    "B905",    # zip without strict
+    "D101",    # Missing docstring in public class
+    "D103",    # Missing docstring in public function
+    "E402",    # Module level import not at top of file
+    "F841",    # Local variable assigned but never used
+    "N803",    # Argument name should be lowercase
+    "SIM117",  # Use single with statement
+    "SIM222",  # Use True/False instead of expressions
+]
 
 [tool.mypy]
 python_version = "3.10"

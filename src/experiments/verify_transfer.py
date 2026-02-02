@@ -159,12 +159,8 @@ def evaluate_transfer(
         batch_indices = indices[start : start + batch_size]
         samples = [dataset[i] for i in batch_indices]
 
-        coords = torch.tensor(
-            np.stack([s.coords for s in samples]), device=device
-        )
-        charges = torch.tensor(
-            np.stack([s.charges for s in samples]), device=device
-        )
+        coords = torch.tensor(np.stack([s.coords for s in samples]), device=device)
+        charges = torch.tensor(np.stack([s.charges for s in samples]), device=device)
         targets = np.stack([s.potential for s in samples])
 
         predictions = model(coords, charges).cpu().numpy()
@@ -266,9 +262,7 @@ def run_verification(
     # Compute summary
     all_passed = all(r.passed for r in results)
     # Primary result is the standard Go board size (19x19) if available
-    primary_result = next(
-        (r for r in results if r.eval_size == PRIMARY_EVAL_SIZE), results[-1]
-    )
+    primary_result = next((r for r in results if r.eval_size == PRIMARY_EVAL_SIZE), results[-1])
 
     summary = {
         "model_path": str(model_path),
@@ -449,9 +443,7 @@ def verify_resolution_independence(
 
 def main() -> None:
     """Run the zero-shot transfer verification."""
-    parser = argparse.ArgumentParser(
-        description="Verify zero-shot transfer of trained model"
-    )
+    parser = argparse.ArgumentParser(description="Verify zero-shot transfer of trained model")
     parser.add_argument(
         "--model-path",
         type=str,

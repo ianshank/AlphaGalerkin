@@ -128,13 +128,15 @@ class BoardVisualizer:
         # Draw grid
         for i in range(size):
             ax.plot(
-                [i, i], [0, size - 1],
+                [i, i],
+                [0, size - 1],
                 color=self.config.grid_color,
                 linewidth=1,
                 zorder=1,
             )
             ax.plot(
-                [0, size - 1], [i, i],
+                [0, size - 1],
+                [i, i],
                 color=self.config.grid_color,
                 linewidth=1,
                 zorder=1,
@@ -147,7 +149,7 @@ class BoardVisualizer:
 
         # Draw policy heatmap if provided
         if policy is not None:
-            policy_2d = policy[:size * size].reshape(size, size)
+            policy_2d = policy[: size * size].reshape(size, size)
             # Normalize and apply transparency
             policy_norm = policy_2d / (policy_2d.max() + 1e-8)
             cmap = get_colormap(self.config.color_scheme)
@@ -155,7 +157,9 @@ class BoardVisualizer:
                 for c in range(size):
                     if policy_norm[r, c] > 0.01:  # Only show significant probabilities
                         rect = plt.Rectangle(
-                            (c - 0.4, r - 0.4), 0.8, 0.8,
+                            (c - 0.4, r - 0.4),
+                            0.8,
+                            0.8,
                             color=cmap(policy_norm[r, c]),
                             alpha=0.3,
                             zorder=1,
@@ -167,14 +171,16 @@ class BoardVisualizer:
             for c in range(size):
                 if board[r, c] == 0:  # Black stone
                     circle = plt.Circle(
-                        (c, r), 0.45,
+                        (c, r),
+                        0.45,
                         color=self.config.black_stone_color,
                         zorder=3,
                     )
                     ax.add_patch(circle)
                 elif board[r, c] == 1:  # White stone
                     circle = plt.Circle(
-                        (c, r), 0.45,
+                        (c, r),
+                        0.45,
                         color=self.config.white_stone_color,
                         ec=self.config.stone_border_color,
                         zorder=3,
@@ -185,7 +191,9 @@ class BoardVisualizer:
         if last_move is not None:
             lr, lc = last_move
             ax.scatter(
-                lc, lr, s=30,
+                lc,
+                lr,
+                s=30,
                 color=self.config.last_move_marker_color,
                 marker="x",
                 linewidth=2,
@@ -237,9 +245,15 @@ class BoardVisualizer:
         """
         star_points: dict[int, list[tuple[int, int]]] = {
             19: [
-                (3, 3), (3, 9), (3, 15),
-                (9, 3), (9, 9), (9, 15),
-                (15, 3), (15, 9), (15, 15),
+                (3, 3),
+                (3, 9),
+                (3, 15),
+                (9, 3),
+                (9, 9),
+                (9, 15),
+                (15, 3),
+                (15, 9),
+                (15, 15),
             ],
             13: [(3, 3), (3, 9), (6, 6), (9, 3), (9, 9)],
             9: [(2, 2), (2, 6), (4, 4), (6, 2), (6, 6)],
@@ -345,7 +359,8 @@ class FieldVisualizer:
         """
         n_plots = 3 if show_difference else 2
         fig, axes = plt.subplots(
-            1, n_plots,
+            1,
+            n_plots,
             figsize=(self.config.figure_width * n_plots / 2, self.config.figure_height),
             dpi=self.config.dpi,
         )
@@ -418,7 +433,8 @@ class FieldVisualizer:
         """
         n_sizes = len(results)
         fig, axes = plt.subplots(
-            2, n_sizes,
+            2,
+            n_sizes,
             figsize=(self.config.figure_width * n_sizes / 3, self.config.figure_height * 1.5),
             dpi=self.config.dpi,
         )
@@ -500,15 +516,19 @@ class ChartVisualizer:
         )
 
         ax.plot(
-            sizes, fnet_times,
-            "o-", label="FNet O(N log N)",
+            sizes,
+            fnet_times,
+            "o-",
+            label="FNet O(N log N)",
             color="#2ecc71",
             linewidth=2,
             markersize=8,
         )
         ax.plot(
-            sizes, softmax_times,
-            "s-", label="Softmax O(N²)",
+            sizes,
+            softmax_times,
+            "s-",
+            label="Softmax O(N²)",
             color="#e74c3c",
             linewidth=2,
             markersize=8,
@@ -572,8 +592,9 @@ class ChartVisualizer:
             dpi=self.config.dpi,
         )
 
-        colors = ["#27ae60" if mse < (threshold or float("inf")) else "#e74c3c"
-                  for mse in mse_values]
+        colors = [
+            "#27ae60" if mse < (threshold or float("inf")) else "#e74c3c" for mse in mse_values
+        ]
 
         bars = ax.bar(labels, mse_values, color=colors, edgecolor="black")
 
@@ -684,7 +705,8 @@ class ChartVisualizer:
         )
 
         ax.stem(
-            frequencies, amplitudes,
+            frequencies,
+            amplitudes,
             linefmt="C0-",
             markerfmt="C0o",
             basefmt="k-",
@@ -744,7 +766,8 @@ class AttentionVisualizer:
 
         """
         fig, axes = plt.subplots(
-            1, 2,
+            1,
+            2,
             figsize=(self.config.figure_width * 1.5, self.config.figure_height),
             dpi=self.config.dpi,
         )

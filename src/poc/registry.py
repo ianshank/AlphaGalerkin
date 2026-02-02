@@ -87,9 +87,7 @@ class ScenarioRegistry:
 
         with self._lock:
             if name in self._scenarios:
-                raise ValueError(
-                    f"Scenario '{name}' already registered by {self._scenarios[name]}"
-                )
+                raise ValueError(f"Scenario '{name}' already registered by {self._scenarios[name]}")
 
             self._scenarios[name] = scenario_cls
             logger.debug("scenario_registered", name=name, cls=scenario_cls.__name__)
@@ -359,9 +357,7 @@ class BaseScenario(ABC):
         results = {}
         for threshold in self.config.thresholds:
             if threshold.name in self._metrics:
-                results[threshold.name] = threshold.evaluate(
-                    self._metrics[threshold.name]
-                )
+                results[threshold.name] = threshold.evaluate(self._metrics[threshold.name])
             else:
                 # Missing metric fails the threshold
                 results[threshold.name] = False

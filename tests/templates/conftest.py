@@ -5,10 +5,9 @@ from __future__ import annotations
 import pytest
 from pydantic import Field
 
+from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
 from src.templates.config import BaseModuleConfig
 from src.templates.registry import create_registry
-from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
-
 
 # ============================================================================
 # Sample Configuration for Testing

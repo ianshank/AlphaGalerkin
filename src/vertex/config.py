@@ -67,10 +67,10 @@ class VertexMachineType(str, Enum):
     N1_HIGHMEM_96 = "n1-highmem-96"
 
     # A2 machines (A100 GPUs)
-    A2_HIGHGPU_1G = "a2-highgpu-1g"   # 1x A100 40GB
-    A2_HIGHGPU_2G = "a2-highgpu-2g"   # 2x A100 40GB
-    A2_HIGHGPU_4G = "a2-highgpu-4g"   # 4x A100 40GB
-    A2_HIGHGPU_8G = "a2-highgpu-8g"   # 8x A100 40GB
+    A2_HIGHGPU_1G = "a2-highgpu-1g"  # 1x A100 40GB
+    A2_HIGHGPU_2G = "a2-highgpu-2g"  # 2x A100 40GB
+    A2_HIGHGPU_4G = "a2-highgpu-4g"  # 4x A100 40GB
+    A2_HIGHGPU_8G = "a2-highgpu-8g"  # 8x A100 40GB
     A2_MEGAGPU_16G = "a2-megagpu-16g"  # 16x A100 40GB
     A2_ULTRAGPU_1G = "a2-ultragpu-1g"  # 1x A100 80GB
     A2_ULTRAGPU_2G = "a2-ultragpu-2g"  # 2x A100 80GB
@@ -78,11 +78,11 @@ class VertexMachineType(str, Enum):
     A2_ULTRAGPU_8G = "a2-ultragpu-8g"  # 8x A100 80GB
 
     # A3 machines (H100 GPUs)
-    A3_HIGHGPU_8G = "a3-highgpu-8g"   # 8x H100 80GB
+    A3_HIGHGPU_8G = "a3-highgpu-8g"  # 8x H100 80GB
 
     # G2 machines (L4 GPUs)
-    G2_STANDARD_4 = "g2-standard-4"   # 1x L4
-    G2_STANDARD_8 = "g2-standard-8"   # 1x L4
+    G2_STANDARD_4 = "g2-standard-4"  # 1x L4
+    G2_STANDARD_8 = "g2-standard-8"  # 1x L4
     G2_STANDARD_12 = "g2-standard-12"  # 1x L4
     G2_STANDARD_16 = "g2-standard-16"  # 1x L4
     G2_STANDARD_24 = "g2-standard-24"  # 2x L4
@@ -324,9 +324,7 @@ class VertexResourceConfig(BaseModel):
             # Auto-set to 1 if type specified but count is 0
             self.accelerator_count = 1
         if self.accelerator_count > 0 and self.accelerator_type is None:
-            raise ValueError(
-                "accelerator_type must be specified when accelerator_count > 0"
-            )
+            raise ValueError("accelerator_type must be specified when accelerator_count > 0")
         return self
 
     @model_validator(mode="after")
@@ -341,9 +339,7 @@ class VertexResourceConfig(BaseModel):
             and self.accelerator_type
             not in (AcceleratorType.NVIDIA_TESLA_A100, AcceleratorType.NVIDIA_A100_80GB)
         ):
-            raise ValueError(
-                f"A2 machines only support A100 GPUs, got {self.accelerator_type}"
-            )
+            raise ValueError(f"A2 machines only support A100 GPUs, got {self.accelerator_type}")
 
         # A3 machines have integrated H100 GPUs
         if (
@@ -351,9 +347,7 @@ class VertexResourceConfig(BaseModel):
             and self.accelerator_type is not None
             and self.accelerator_type != AcceleratorType.NVIDIA_H100_80GB
         ):
-            raise ValueError(
-                f"A3 machines only support H100 GPUs, got {self.accelerator_type}"
-            )
+            raise ValueError(f"A3 machines only support H100 GPUs, got {self.accelerator_type}")
 
         # G2 machines have integrated L4 GPUs
         if (
@@ -361,9 +355,7 @@ class VertexResourceConfig(BaseModel):
             and self.accelerator_type is not None
             and self.accelerator_type != AcceleratorType.NVIDIA_L4
         ):
-            raise ValueError(
-                f"G2 machines only support L4 GPUs, got {self.accelerator_type}"
-            )
+            raise ValueError(f"G2 machines only support L4 GPUs, got {self.accelerator_type}")
 
         return self
 
@@ -596,9 +588,7 @@ class VertexTrainingConfig(BaseModel):
         """Validate auth method value."""
         valid_methods = {"adc", "service_account", "gcloud"}
         if v not in valid_methods:
-            raise ValueError(
-                f"auth_method must be one of {valid_methods}, got '{v}'"
-            )
+            raise ValueError(f"auth_method must be one of {valid_methods}, got '{v}'")
         return v
 
     @model_validator(mode="after")
@@ -606,6 +596,7 @@ class VertexTrainingConfig(BaseModel):
         """Validate spot instance configuration."""
         if not self.enable_spot and self.restart_on_preemption:
             import warnings
+
             warnings.warn(
                 "restart_on_preemption is True but enable_spot is False. "
                 "This setting will have no effect.",

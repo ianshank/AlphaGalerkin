@@ -287,8 +287,8 @@ class TestGradNorm:
         out = shared_layer(x)
 
         losses = {
-            "policy": (out ** 2).mean(),
-            "value": (out ** 3).mean(),
+            "policy": (out**2).mean(),
+            "value": (out**3).mean(),
         }
 
         # Store initial losses

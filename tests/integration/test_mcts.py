@@ -92,9 +92,7 @@ class TestMCTSWithRandomEvaluator:
         """Create simple Go game."""
         return SimpleGoGame(board_size=9)
 
-    def test_search_returns_distribution(
-        self, mcts: MCTS, game: SimpleGoGame
-    ) -> None:
+    def test_search_returns_distribution(self, mcts: MCTS, game: SimpleGoGame) -> None:
         """Test that search returns valid distribution."""
         distribution = mcts.search(game)
 
@@ -105,9 +103,7 @@ class TestMCTSWithRandomEvaluator:
         total = sum(distribution.values())
         assert abs(total - 1.0) < 1e-5
 
-    def test_get_action_returns_valid_move(
-        self, mcts: MCTS, game: SimpleGoGame
-    ) -> None:
+    def test_get_action_returns_valid_move(self, mcts: MCTS, game: SimpleGoGame) -> None:
         """Test that get_action returns valid action."""
         action = mcts.get_action(game, temperature=1.0)
 
@@ -158,9 +154,7 @@ class TestMCTSWithNeuralNetwork:
             n_simulations=20,  # Reduced for testing speed
         )
 
-    def test_neural_mcts_search(
-        self, mcts: MCTS
-    ) -> None:
+    def test_neural_mcts_search(self, mcts: MCTS) -> None:
         """Test MCTS search with neural network."""
         game = SimpleGoGame(board_size=9)
 
@@ -169,9 +163,7 @@ class TestMCTSWithNeuralNetwork:
         assert len(distribution) > 0
         assert all(p >= 0 for p in distribution.values())
 
-    def test_neural_mcts_policy_guidance(
-        self, mcts: MCTS
-    ) -> None:
+    def test_neural_mcts_policy_guidance(self, mcts: MCTS) -> None:
         """Test that neural network policy guides search."""
         game = SimpleGoGame(board_size=9)
 

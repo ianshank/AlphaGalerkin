@@ -188,7 +188,7 @@ class ScaleNorm(nn.Module):
 
         """
         super().__init__()
-        self.scale = nn.Parameter(torch.ones(1) * d_model ** 0.5)
+        self.scale = nn.Parameter(torch.ones(1) * d_model**0.5)
         self.eps = eps
 
     def forward(self, x: Tensor) -> Tensor:
@@ -301,7 +301,7 @@ class ValueHead(nn.Module):
 
 class DenseHead(nn.Module):
     """Dense head for physics field regression.
-    
+
     Maps sequence features back to a dense output field.
     Used for operator learning tasks (e.g., Poisson, Heat, Darcy).
     """
@@ -377,40 +377,46 @@ class AlphaGalerkinModel(nn.Module):
         )
 
         # Strategy body: Galerkin attention layers
-        self.strategy_body = nn.ModuleList([
-            GalerkinBlock(
-                d_model=config.d_model,
-                n_heads=config.n_heads,
-                d_ffn=config.d_ffn,
-                dropout=config.fnet_dropout,
-                norm_type=config.norm_type,
-            )
-            for _ in range(config.n_galerkin_layers)
-        ])
+        self.strategy_body = nn.ModuleList(
+            [
+                GalerkinBlock(
+                    d_model=config.d_model,
+                    n_heads=config.n_heads,
+                    d_ffn=config.d_ffn,
+                    dropout=config.fnet_dropout,
+                    norm_type=config.norm_type,
+                )
+                for _ in range(config.n_galerkin_layers)
+            ]
+        )
 
         # FNet mixing layers (for speed)
         if config.use_fnet_mixing:
-            self.fnet_layers = nn.ModuleList([
-                FNetBlock(
-                    d_model=config.d_model,
-                    d_ffn=config.d_ffn,
-                    dropout=config.fnet_dropout,
-                )
-                for _ in range(config.n_galerkin_layers // 2)
-            ])
+            self.fnet_layers = nn.ModuleList(
+                [
+                    FNetBlock(
+                        d_model=config.d_model,
+                        d_ffn=config.d_ffn,
+                        dropout=config.fnet_dropout,
+                    )
+                    for _ in range(config.n_galerkin_layers // 2)
+                ]
+            )
         else:
             self.fnet_layers = None
 
         # Tactical head: Softmax attention for precision
-        self.tactical_head = nn.ModuleList([
-            SoftmaxBlock(
-                d_model=config.d_model,
-                n_heads=config.n_heads,
-                d_ffn=config.d_ffn,
-                dropout=config.fnet_dropout,
-            )
-            for _ in range(config.n_softmax_layers)
-        ])
+        self.tactical_head = nn.ModuleList(
+            [
+                SoftmaxBlock(
+                    d_model=config.d_model,
+                    n_heads=config.n_heads,
+                    d_ffn=config.d_ffn,
+                    dropout=config.fnet_dropout,
+                )
+                for _ in range(config.n_softmax_layers)
+            ]
+        )
 
         # Output heads
         self.policy_head = PolicyHead(config.d_model)

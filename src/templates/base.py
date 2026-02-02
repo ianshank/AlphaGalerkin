@@ -178,15 +178,9 @@ class ExecutionResult:
             status=ExecutionStatus(data.get("status", "pending")),
             error=data.get("error"),
             start_time=(
-                datetime.fromisoformat(data["start_time"])
-                if data.get("start_time")
-                else None
+                datetime.fromisoformat(data["start_time"]) if data.get("start_time") else None
             ),
-            end_time=(
-                datetime.fromisoformat(data["end_time"])
-                if data.get("end_time")
-                else None
-            ),
+            end_time=(datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None),
             duration_seconds=data.get("duration_seconds", 0.0),
             metrics=data.get("metrics", {}),
             artifacts=data.get("artifacts", {}),

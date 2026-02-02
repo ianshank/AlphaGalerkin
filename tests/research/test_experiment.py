@@ -5,7 +5,6 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-
 from src.research.experiment import (
     Experiment,
     ExperimentRun,
@@ -224,24 +223,18 @@ class TestExperiment:
 class TestExperimentTracker:
     """Tests for ExperimentTracker."""
 
-    def test_initialization(
-        self, experiment_tracker: ExperimentTracker
-    ) -> None:
+    def test_initialization(self, experiment_tracker: ExperimentTracker) -> None:
         """Test tracker initialization."""
         assert len(experiment_tracker.experiments) == 0
 
-    def test_create_experiment(
-        self, experiment_tracker: ExperimentTracker
-    ) -> None:
+    def test_create_experiment(self, experiment_tracker: ExperimentTracker) -> None:
         """Test creating experiment."""
         exp = experiment_tracker.create_experiment("test")
 
         assert exp.config.name == "test"
         assert "test" in experiment_tracker.experiments
 
-    def test_get_experiment(
-        self, experiment_tracker: ExperimentTracker
-    ) -> None:
+    def test_get_experiment(self, experiment_tracker: ExperimentTracker) -> None:
         """Test getting experiment."""
         experiment_tracker.create_experiment("test1")
         experiment_tracker.create_experiment("test2")
@@ -249,9 +242,7 @@ class TestExperimentTracker:
         assert experiment_tracker.get_experiment("test1") is not None
         assert experiment_tracker.get_experiment("nonexistent") is None
 
-    def test_list_experiments(
-        self, experiment_tracker: ExperimentTracker
-    ) -> None:
+    def test_list_experiments(self, experiment_tracker: ExperimentTracker) -> None:
         """Test listing experiments."""
         experiment_tracker.create_experiment("exp1")
         experiment_tracker.create_experiment("exp2")
@@ -260,9 +251,7 @@ class TestExperimentTracker:
         assert "exp1" in names
         assert "exp2" in names
 
-    def test_iter_runs(
-        self, experiment_tracker: ExperimentTracker
-    ) -> None:
+    def test_iter_runs(self, experiment_tracker: ExperimentTracker) -> None:
         """Test iterating runs."""
         exp1 = experiment_tracker.create_experiment("exp1")
         exp1.start_run()

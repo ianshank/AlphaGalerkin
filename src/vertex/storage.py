@@ -270,6 +270,7 @@ class GCSCheckpointManager:
         if self._client is None:
             try:
                 from google.cloud import storage
+
                 self._client = storage.Client()
             except ImportError as e:
                 raise ImportError(
@@ -683,11 +684,13 @@ class GCSCheckpointManager:
         """Update best checkpoint if metric improved."""
         is_better = False
 
-        if self._best_value is None:
-            is_better = True
-        elif self._best_mode == "min" and metric_value < self._best_value:
-            is_better = True
-        elif self._best_mode == "max" and metric_value > self._best_value:
+        if (
+            self._best_value is None
+            or self._best_mode == "min"
+            and metric_value < self._best_value
+            or self._best_mode == "max"
+            and metric_value > self._best_value
+        ):
             is_better = True
 
         if is_better:
@@ -713,7 +716,7 @@ class GCSCheckpointManager:
         checkpoints = self.list_checkpoints()
 
         if len(checkpoints) > self.max_checkpoints:
-            to_delete = checkpoints[:-self.max_checkpoints]
+            to_delete = checkpoints[: -self.max_checkpoints]
             for ckpt in to_delete:
                 try:
                     self.delete(ckpt.step)
@@ -777,6 +780,7 @@ class GCSDataSource:
         """Get or create GCS client."""
         if self._client is None:
             from google.cloud import storage
+
             self._client = storage.Client()
         return self._client
 

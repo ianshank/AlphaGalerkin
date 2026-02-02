@@ -245,11 +245,14 @@ class TestTrainerPhysicsCreation:
     @pytest.fixture
     def mock_pde_imports(self) -> None:
         """Mock PDE module imports."""
-        with patch.dict("sys.modules", {
-            "src.pde": MagicMock(),
-            "src.pde.operators": MagicMock(),
-            "src.pde.config": MagicMock(),
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "src.pde": MagicMock(),
+                "src.pde.operators": MagicMock(),
+                "src.pde.config": MagicMock(),
+            },
+        ):
             yield
 
     def test_physics_loss_disabled_by_default(self) -> None:

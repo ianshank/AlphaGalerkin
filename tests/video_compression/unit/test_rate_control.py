@@ -9,27 +9,23 @@ Tests the complete MCTS-based rate controller including:
 from __future__ import annotations
 
 import math
-from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 from torch import Tensor
 
 from src.video_compression.config import MCTSRateControlConfig, RateControlMode
+from src.video_compression.mcts.networks import (
+    DynamicsNetwork,
+    PredictionNetwork,
+    RepresentationNetwork,
+)
 from src.video_compression.mcts.rate_control import (
+    GOPPlanner,
     MCTSNode,
     MCTSRateController,
     RateControlDecision,
-    GOPPlanner,
 )
-from src.video_compression.mcts.networks import (
-    RepresentationNetwork,
-    DynamicsNetwork,
-    PredictionNetwork,
-    PredictionOutput,
-    PolicyOutput,
-)
-
 
 # --------------------------------------------------------------------------
 # Fixtures
@@ -71,9 +67,7 @@ def dynamics_net() -> DynamicsNetwork:
 @pytest.fixture
 def prediction_net() -> PredictionNetwork:
     """Create prediction network for testing."""
-    return PredictionNetwork(
-        state_dim=256, num_actions=52, support_size=51, hidden_dim=256
-    )
+    return PredictionNetwork(state_dim=256, num_actions=52, support_size=51, hidden_dim=256)
 
 
 @pytest.fixture
@@ -169,9 +163,7 @@ class TestMCTSNode:
         assert score > 1.9  # Should be close to 2.0
         assert score < 2.5
 
-    def test_ucb_score_with_explicit_parent_visits(
-        self, sample_state: Tensor
-    ) -> None:
+    def test_ucb_score_with_explicit_parent_visits(self, sample_state: Tensor) -> None:
         """Test UCB score with explicit parent visit count parameter."""
         node = MCTSNode(state=sample_state, prior=0.2)
         node.visit_count = 5
@@ -207,9 +199,7 @@ class TestMCTSNode:
 class TestMCTSRateController:
     """Tests for MCTSRateController QP selection."""
 
-    def test_initialization(
-        self, rate_controller: MCTSRateController
-    ) -> None:
+    def test_initialization(self, rate_controller: MCTSRateController) -> None:
         """Test rate controller initializes correctly."""
         assert rate_controller.frames_encoded == 0
         assert rate_controller.gop_position == 0
@@ -239,9 +229,7 @@ class TestMCTSRateController:
         expected = (2000.0 * 1000) / 30.0
         assert controller.target_bits_per_frame == pytest.approx(expected)
 
-    def test_compute_target_bits_vbr(
-        self, rate_controller: MCTSRateController
-    ) -> None:
+    def test_compute_target_bits_vbr(self, rate_controller: MCTSRateController) -> None:
         """Test target bits is infinite for VBR mode."""
         assert rate_controller.target_bits_per_frame == float("inf")
 
@@ -271,7 +259,9 @@ class TestMCTSRateController:
         rate_controller.select_qp(sample_latent, frame_type="I")
 
         assert rate_controller.frames_encoded == initial_frames + 1
-        assert rate_controller.gop_position == (initial_gop_pos + 1) % rate_controller.config.gop_size
+        assert (
+            rate_controller.gop_position == (initial_gop_pos + 1) % rate_controller.config.gop_size
+        )
 
     def test_select_qp_gop_position_wraps(
         self,
@@ -298,9 +288,7 @@ class TestMCTSRateController:
 
         assert bits_low_qp > bits_high_qp
 
-    def test_estimate_quality_decreases_with_qp(
-        self, rate_controller: MCTSRateController
-    ) -> None:
+    def test_estimate_quality_decreases_with_qp(self, rate_controller: MCTSRateController) -> None:
         """Test that estimated quality decreases as QP increases."""
         quality_low_qp = rate_controller._estimate_quality(qp=10)
         quality_high_qp = rate_controller._estimate_quality(qp=40)
@@ -339,7 +327,7 @@ class TestMCTSRateController:
             assert len(node.children) == qp_range
             assert all(
                 rate_controller.config.qp_min <= action <= rate_controller.config.qp_max
-                for action in node.children.keys()
+                for action in node.children
             )
 
     def test_select_child_returns_best_ucb(
@@ -379,9 +367,7 @@ class TestMCTSRateController:
             prediction = prediction_net(sample_state)
             rate_controller._expand_node(root, prediction)
 
-            original_priors = {
-                action: child.prior for action, child in root.children.items()
-            }
+            original_priors = {action: child.prior for action, child in root.children.items()}
 
             rate_controller._add_exploration_noise(root)
 
@@ -474,17 +460,13 @@ class TestGOPPlanner:
         assert len(decisions) == gop_size
         assert all(isinstance(d, RateControlDecision) for d in decisions)
 
-    def test_get_frame_types_i_frame_first(
-        self, gop_planner: GOPPlanner
-    ) -> None:
+    def test_get_frame_types_i_frame_first(self, gop_planner: GOPPlanner) -> None:
         """Test that first frame is always I-frame."""
         frame_types = gop_planner._get_frame_types(gop_size=4)
 
         assert frame_types[0] == "I"
 
-    def test_get_frame_types_structure(
-        self, gop_planner: GOPPlanner
-    ) -> None:
+    def test_get_frame_types_structure(self, gop_planner: GOPPlanner) -> None:
         """Test frame type pattern follows config."""
         gop_planner.config.use_b_frames = True
         gop_planner.config.b_frame_count = 2
@@ -497,9 +479,7 @@ class TestGOPPlanner:
         # Pattern should follow B-frame configuration
         assert all(ft in ("I", "P", "B") for ft in frame_types)
 
-    def test_get_frame_types_no_b_frames(
-        self, gop_planner: GOPPlanner
-    ) -> None:
+    def test_get_frame_types_no_b_frames(self, gop_planner: GOPPlanner) -> None:
         """Test frame types without B-frames."""
         gop_planner.config.use_b_frames = False
 

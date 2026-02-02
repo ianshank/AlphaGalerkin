@@ -6,10 +6,7 @@ and mock NCCL backend to validate gradient synchronization and coordination.
 
 from __future__ import annotations
 
-import multiprocessing as mp
 import os
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

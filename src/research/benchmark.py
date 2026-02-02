@@ -130,6 +130,7 @@ class Benchmark:
         torch_available = False
         try:
             import torch
+
             torch_available = True
             device = "cuda" if torch.cuda.is_available() and self.config.use_gpu else "cpu"
         except ImportError:
@@ -139,6 +140,7 @@ class Benchmark:
         gc.collect()
         if torch_available and device == "cuda":
             import torch
+
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
 
@@ -148,6 +150,7 @@ class Benchmark:
         # Sync if CUDA
         if torch_available and device == "cuda" and self.config.sync_cuda:
             import torch
+
             torch.cuda.synchronize()
 
         # Timed iterations
@@ -156,6 +159,7 @@ class Benchmark:
         for _ in range(self.config.n_iterations):
             if torch_available and device == "cuda" and self.config.sync_cuda:
                 import torch
+
                 torch.cuda.synchronize()
 
             start = time.perf_counter()
@@ -163,6 +167,7 @@ class Benchmark:
 
             if torch_available and device == "cuda" and self.config.sync_cuda:
                 import torch
+
                 torch.cuda.synchronize()
 
             elapsed = (time.perf_counter() - start) * 1000  # ms
@@ -175,11 +180,13 @@ class Benchmark:
         allocated_memory = 0.0
         if torch_available and device == "cuda" and self.config.measure_memory:
             import torch
+
             peak_memory = torch.cuda.max_memory_allocated() / 1024 / 1024
             allocated_memory = torch.cuda.memory_allocated() / 1024 / 1024
 
         # Compute statistics
         import statistics
+
         mean_time = statistics.mean(times)
         std_time = statistics.stdev(times) if len(times) > 1 else 0.0
 
@@ -278,10 +285,7 @@ class Benchmark:
         times = [r.mean_time_ms for r in results]
 
         # Filter out invalid values (must be positive for log)
-        valid_pairs = [
-            (n, t) for n, t in zip(n_values, times)
-            if n > 0 and t > 0
-        ]
+        valid_pairs = [(n, t) for n, t in zip(n_values, times, strict=False) if n > 0 and t > 0]
         if len(valid_pairs) < 2:
             self._logger.warning(
                 "insufficient_valid_data_for_scaling",
@@ -290,7 +294,7 @@ class Benchmark:
             )
             return 0.0, 0.0
 
-        n_values_valid, times_valid = zip(*valid_pairs)
+        n_values_valid, times_valid = zip(*valid_pairs, strict=False)
 
         # Log-log fit
         log_n = [math.log(n) for n in n_values_valid]
@@ -300,7 +304,7 @@ class Benchmark:
         n = len(log_n)
         sum_x = sum(log_n)
         sum_y = sum(log_t)
-        sum_xy = sum(x * y for x, y in zip(log_n, log_t))
+        sum_xy = sum(x * y for x, y in zip(log_n, log_t, strict=False))
         sum_xx = sum(x * x for x in log_n)
 
         # Check for division by zero
@@ -318,7 +322,7 @@ class Benchmark:
         mean_y = sum_y / n
         ss_tot = sum((y - mean_y) ** 2 for y in log_t)
         intercept = (sum_y - slope * sum_x) / n
-        ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(log_n, log_t))
+        ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(log_n, log_t, strict=False))
         r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
         return slope, r_squared

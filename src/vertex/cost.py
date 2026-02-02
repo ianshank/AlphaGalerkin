@@ -54,7 +54,6 @@ MACHINE_HOURLY_RATES: dict[VertexMachineType, float] = {
     VertexMachineType.N1_STANDARD_32: 1.52,
     VertexMachineType.N1_STANDARD_64: 3.04,
     VertexMachineType.N1_STANDARD_96: 4.56,
-
     # High-memory machines
     VertexMachineType.N1_HIGHMEM_2: 0.12,
     VertexMachineType.N1_HIGHMEM_4: 0.24,
@@ -63,7 +62,6 @@ MACHINE_HOURLY_RATES: dict[VertexMachineType, float] = {
     VertexMachineType.N1_HIGHMEM_32: 1.90,
     VertexMachineType.N1_HIGHMEM_64: 3.80,
     VertexMachineType.N1_HIGHMEM_96: 5.69,
-
     # A2 machines (includes A100 GPU)
     VertexMachineType.A2_HIGHGPU_1G: 3.67,
     VertexMachineType.A2_HIGHGPU_2G: 7.35,
@@ -74,10 +72,8 @@ MACHINE_HOURLY_RATES: dict[VertexMachineType, float] = {
     VertexMachineType.A2_ULTRAGPU_2G: 10.00,
     VertexMachineType.A2_ULTRAGPU_4G: 20.00,
     VertexMachineType.A2_ULTRAGPU_8G: 40.00,
-
     # A3 machines (H100)
     VertexMachineType.A3_HIGHGPU_8G: 101.22,
-
     # G2 machines (L4)
     VertexMachineType.G2_STANDARD_4: 0.84,
     VertexMachineType.G2_STANDARD_8: 1.17,
@@ -175,12 +171,7 @@ class CostBreakdown:
     @property
     def total_cost(self) -> float:
         """Calculate total cost."""
-        return (
-            self.compute_cost +
-            self.accelerator_cost +
-            self.network_cost +
-            self.storage_cost
-        )
+        return self.compute_cost + self.accelerator_cost + self.network_cost + self.storage_cost
 
     def to_dict(self) -> dict[str, float]:
         """Convert to dictionary."""
@@ -446,11 +437,7 @@ def get_hourly_rate(
     machine_type_value = machine_type.value if machine_type else ""
     has_integrated_gpu = machine_type_value.startswith(("a2-", "a3-", "g2-"))
 
-    if (
-        not has_integrated_gpu
-        and accelerator_type is not None
-        and accelerator_count > 0
-    ):
+    if not has_integrated_gpu and accelerator_type is not None and accelerator_count > 0:
         accel_rate = ACCELERATOR_HOURLY_RATES.get(accelerator_type, 0.0) * accelerator_count
 
     total = machine_rate + accel_rate

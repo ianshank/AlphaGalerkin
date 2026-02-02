@@ -42,9 +42,7 @@ def create_synthetic_input(
         Random input tensor.
 
     """
-    return torch.randn(
-        batch_size, input_channels, board_size, board_size, device=device
-    )
+    return torch.randn(batch_size, input_channels, board_size, board_size, device=device)
 
 
 def verify_forward_pass(
@@ -88,7 +86,7 @@ def verify_forward_pass(
         results["inference_time_ms"] = inference_time * 1000
 
         # Verify output shapes
-        expected_policy_size = board_size ** 2 + 1
+        expected_policy_size = board_size**2 + 1
         if output.policy_logits.shape != (batch_size, expected_policy_size):
             results["errors"].append(
                 f"Policy shape mismatch: expected ({batch_size}, {expected_policy_size}), "
@@ -97,8 +95,7 @@ def verify_forward_pass(
 
         if output.value.shape != (batch_size, 1):
             results["errors"].append(
-                f"Value shape mismatch: expected ({batch_size}, 1), "
-                f"got {output.value.shape}"
+                f"Value shape mismatch: expected ({batch_size}, 1), got {output.value.shape}"
             )
 
         # Verify value range
@@ -122,13 +119,17 @@ def verify_forward_pass(
 
         # Verify policy can be softmaxed
         policy_probs = torch.softmax(output.policy_logits, dim=-1)
-        if not torch.allclose(policy_probs.sum(dim=-1), torch.ones(batch_size, device=device), atol=1e-4):
+        if not torch.allclose(
+            policy_probs.sum(dim=-1), torch.ones(batch_size, device=device), atol=1e-4
+        ):
             results["errors"].append("Policy probabilities don't sum to 1")
 
         results["passed"] = len(results["errors"]) == 0
 
         # Store some output statistics
-        results["policy_entropy"] = -(policy_probs * torch.log(policy_probs + 1e-10)).sum(dim=-1).mean().item()
+        results["policy_entropy"] = (
+            -(policy_probs * torch.log(policy_probs + 1e-10)).sum(dim=-1).mean().item()
+        )
         results["value_mean"] = output.value.mean().item()
         results["value_std"] = output.value.std().item()
 
@@ -185,9 +186,7 @@ def verify_lbb_stability(
             # Check stability threshold
             threshold = model.config.lbb_beta_threshold
             if lbb_min < threshold:
-                results["errors"].append(
-                    f"LBB constant below threshold: {lbb_min} < {threshold}"
-                )
+                results["errors"].append(f"LBB constant below threshold: {lbb_min} < {threshold}")
 
             if lbb_min <= 0:
                 results["errors"].append(f"LBB constant non-positive: {lbb_min}")
@@ -268,9 +267,7 @@ def verify_semantic_validity(
         value_std = out_different.value.std().item()
         if value_std < 0.01:
             results["warnings"] = results.get("warnings", [])
-            results["warnings"].append(
-                f"Value may be too constant: std={value_std:.4f}"
-            )
+            results["warnings"].append(f"Value may be too constant: std={value_std:.4f}")
 
         results["value_std"] = value_std
 

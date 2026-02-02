@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import pytest
 import torch
-from torch import Tensor
 
 from src.video_compression.config import EntropyConfig, EntropyModelType
 from src.video_compression.models.hyperprior import (
@@ -19,8 +18,8 @@ from src.video_compression.models.hyperprior import (
     FactorizedPrior,
     GaussianConditional,
     HyperAnalysis,
-    HyperSynthesis,
     HyperpriorEntropyModel,
+    HyperSynthesis,
     create_entropy_model,
 )
 

@@ -257,9 +257,17 @@ def main() -> None:
                 # Use entropy-coded bitstream data (not raw tensor)
                 # This is the actual compressed representation
                 latent_bytes = output.bitstream.data
-                # Store bitstream metadata for decoding
-                # TODO: Add hyperprior z encoding when available
+
+                # Capture hyperprior bitstream data for proper scale reconstruction during decoding
+                # The encoder now properly encodes z_symbols through the entropy coder
                 z_bytes = b""
+                if output.z_bitstream is not None:
+                    z_bytes = output.z_bitstream.data
+                    logger.debug(
+                        "hyperprior_encoded",
+                        frame_idx=i,
+                        z_bytes_len=len(z_bytes),
+                    )
 
                 # Create frame header
                 frame_header = FrameHeader(

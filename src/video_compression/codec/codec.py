@@ -45,6 +45,8 @@ class CodecOutput(NamedTuple):
     reconstructed: Tensor
     rate: float  # Bits
     distortion: float  # MSE
+    z_bitstream: EncodedBitstream | None = None  # Hyperprior bitstream
+    scales: Tensor | None = None  # Scale parameters for decoding
 
 
 @dataclass
@@ -370,10 +372,26 @@ class VideoCodec(nn.Module):
 
             # Compress with entropy coder
             compressed = self.entropy_model.compress(y_scaled)
+
+            # Encode main latent symbols with Gaussian conditional (using scales)
             bitstream = self.entropy_coder.encode(
                 compressed["y_symbols"],
                 compressed["scales"],
             )
+
+            # Encode hyperprior symbols with factorized prior (no scales)
+            # This enables proper reconstruction of scales during decoding
+            z_bitstream: EncodedBitstream | None = None
+            if "z_symbols" in compressed and compressed["z_symbols"] is not None:
+                z_bitstream = self.entropy_coder.encode(
+                    compressed["z_symbols"],
+                    scales=None,  # Factorized prior uses uniform CDF
+                )
+                logger.debug(
+                    "Encoded hyperprior: %d bytes for frame %d",
+                    len(z_bitstream.data),
+                    frame_info.index,
+                )
 
             # Decode for reconstruction
             if frame_info.frame_type == FrameType.I:
@@ -401,8 +419,10 @@ class VideoCodec(nn.Module):
                     frame_info.frame_type.value,
                 )
 
-            # Compute metrics
-            rate = len(bitstream.data) * 8  # Bits
+            # Compute metrics (include hyperprior bits in total rate)
+            rate = len(bitstream.data) * 8  # Main latent bits
+            if z_bitstream is not None:
+                rate += len(z_bitstream.data) * 8  # Hyperprior bits
             distortion = torch.mean((x - x_hat) ** 2).item()
 
             # Track statistics
@@ -416,26 +436,30 @@ class VideoCodec(nn.Module):
                 reconstructed=x_hat,
                 rate=rate,
                 distortion=distortion,
+                z_bitstream=z_bitstream,
+                scales=compressed["scales"],
             )
 
     def decode_frame(
         self,
         bitstream: EncodedBitstream,
         frame_info: FrameInfo,
-        scales: Tensor,
+        scales: Tensor | None = None,
         latent_shape: tuple[int, int] | None = None,
         qp: int | None = None,
         validate_refs: bool = True,
+        z_bitstream: EncodedBitstream | None = None,
     ) -> Float[Tensor, "1 3 height width"]:
         """Decode a single frame.
 
         Args:
             bitstream: Encoded bitstream.
             frame_info: Frame metadata.
-            scales: Scale parameters for entropy decoding.
+            scales: Scale parameters for entropy decoding (optional if z_bitstream provided).
             latent_shape: Optional (H, W) for latent reshape.
             qp: QP used during encoding (for inverse scaling).
             validate_refs: Whether to validate reference availability.
+            z_bitstream: Optional hyperprior bitstream for reconstructing scales.
 
         Returns:
             Decoded frame (1, 3, H, W) in [0, 1].
@@ -448,16 +472,65 @@ class VideoCodec(nn.Module):
             self._validate_reference(frame_info, strict=True)
 
         with torch.no_grad():
-            # Decode symbols
-            symbols = self.entropy_coder.decode(bitstream, scales)
-
-            # Reshape to latent dimensions
+            # Determine latent shape
             if latent_shape is not None:
                 h, w = latent_shape
             else:
-                # Estimate from scales
-                h = w = int((symbols.numel() // self.config.encoder.latent_channels) ** 0.5)
+                # Estimate from bitstream
+                h = w = int(
+                    (bitstream.num_symbols // self.config.encoder.latent_channels) ** 0.5
+                )
 
+            # Reconstruct scales from hyperprior if z_bitstream provided
+            if z_bitstream is not None and hasattr(self.entropy_model, 'hyper_synthesis'):
+                # Decode z symbols (uniform/factorized prior)
+                z_symbols = self.entropy_coder.decode(z_bitstream, scales=None)
+
+                # Compute z shape (hyper-analysis typically downsamples by 4x from latent)
+                # This depends on hyper_analysis architecture (n_layers with stride 2)
+                hyper_layers = getattr(self.config.entropy, 'hyper_layers', 3)
+                z_downsample = 2 ** (hyper_layers - 1)  # Last layer has stride 1
+                z_h = max(1, h // z_downsample)
+                z_w = max(1, w // z_downsample)
+
+                # Reshape z to proper dimensions
+                z_hat = z_symbols.float().reshape(
+                    1, self.config.entropy.hyper_channels, z_h, z_w
+                )
+
+                # Reconstruct scales using hyper-synthesis network
+                scales = self.entropy_model.hyper_synthesis(z_hat)
+
+                # Resize scales to match latent dimensions if needed
+                if scales.shape[-2:] != (h, w):
+                    scales = torch.nn.functional.interpolate(
+                        scales,
+                        size=(h, w),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+
+                logger.debug(
+                    "Reconstructed scales from hyperprior for frame %d (z_shape=%s, scales_shape=%s)",
+                    frame_info.index,
+                    z_hat.shape,
+                    scales.shape,
+                )
+            elif scales is None:
+                # Fallback to uniform scales if no hyperprior available
+                logger.warning(
+                    "No scales or z_bitstream provided for frame %d, using uniform scales",
+                    frame_info.index,
+                )
+                scales = torch.ones(
+                    1, self.config.encoder.latent_channels, h, w,
+                    device=next(self.parameters()).device,
+                )
+
+            # Decode symbols
+            symbols = self.entropy_coder.decode(bitstream, scales)
+
+            # Reshape to latent dimensions (h, w already determined above)
             y_hat = symbols.float().reshape(
                 1, self.config.encoder.latent_channels, h, w
             )

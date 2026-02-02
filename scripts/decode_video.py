@@ -416,25 +416,47 @@ def main() -> int:
                     num_symbols=header.latent_channels * latent_h * latent_w,
                 )
 
-                # WARNING: Using uniform scales as placeholder
-                # TODO: Properly decode hyperprior z_data to get accurate scales
-                # The encoder should store z_data in frame.z_data, which needs to be
-                # decoded through the hyper-synthesis network to reconstruct scales.
-                # Using torch.ones produces incorrect decoding - this is a known limitation.
-                logger.warning(
-                    "using_placeholder_scales",
-                    message="Hyperprior scales not available - using uniform scales",
-                    frame_idx=frame.header.frame_idx,
-                )
-                scales = torch.ones(1, header.latent_channels, latent_h, latent_w, device=device)
+                # Reconstruct hyperprior bitstream from z_data if available
+                # This enables proper scale reconstruction during decoding
+                z_bitstream = None
+                if frame.z_data and len(frame.z_data) > 0:
+                    # Compute z shape based on hyperprior architecture
+                    # HyperAnalysis typically downsamples by 4x (2 conv layers with stride 2)
+                    hyper_layers = getattr(codec.config.entropy, 'hyper_layers', 3)
+                    z_downsample = 2 ** (hyper_layers - 1)
+                    z_h = max(1, latent_h // z_downsample)
+                    z_w = max(1, latent_w // z_downsample)
+                    hyper_channels = getattr(codec.config.entropy, 'hyper_channels', 128)
 
-                # Decode frame
+                    z_bitstream = EncodedBitstream(
+                        data=frame.z_data,
+                        shape=(1, hyper_channels, z_h, z_w),
+                        min_val=-128,
+                        max_val=127,
+                        num_symbols=hyper_channels * z_h * z_w,
+                    )
+                    logger.debug(
+                        "hyperprior_available",
+                        frame_idx=frame.header.frame_idx,
+                        z_bytes_len=len(frame.z_data),
+                        z_shape=(z_h, z_w),
+                    )
+                else:
+                    # Log warning only once per video if no hyperprior data
+                    if frame.header.frame_idx == 0:
+                        logger.warning(
+                            "no_hyperprior_data",
+                            message="No hyperprior data in bitstream - using fallback uniform scales",
+                        )
+
+                # Decode frame using new API with z_bitstream for proper scale reconstruction
                 decoded = codec.decode_frame(
                     bitstream=bitstream,
                     frame_info=frame_info,
-                    scales=scales,
+                    scales=None,  # Let decoder reconstruct from z_bitstream
                     latent_shape=(latent_h, latent_w),
                     qp=frame.header.qp,
+                    z_bitstream=z_bitstream,
                 )
 
                 # Crop to original dimensions if padding was applied

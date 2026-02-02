@@ -7,9 +7,9 @@ Key Components:
     - GameInterface: Abstract base class for all games
     - GameState: Generic game state representation
     - GameRegistry: Registry for game implementations
-    - GoGame: Go-specific implementation
-    - ChessGame: Chess implementation (stub)
-    - ShogiGame: Shogi implementation (stub)
+    - GoGame: Go game implementation (full Chinese rules, superko)
+    - ChessGame: Chess implementation (full rules, castling, en passant, promotions)
+    - ShogiGame: Shogi implementation (stub - not yet implemented)
 
 Usage:
     from src.games import GameRegistry, GoGame
@@ -31,6 +31,7 @@ Usage:
 try:
     # Import game implementations to trigger registration
     from src.games import go  # noqa: F401
+    from src.games import chess  # noqa: F401
     from src.games.interface import GameInterface, GamePhase
     from src.games.registry import GameRegistry, register_game
     from src.games.state import GameState

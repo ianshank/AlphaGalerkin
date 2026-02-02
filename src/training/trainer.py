@@ -34,6 +34,11 @@ from src.training.loss_balancing import (
     LossBalancingConfig,
     create_loss_balancer,
 )
+from src.training.physics_loss import (
+    PhysicsInformedLoss,
+    PhysicsLossConfig,
+    PhysicsLossOutput,
+)
 from src.training.replay_buffer import create_replay_buffer
 from src.training.self_play import SelfPlayWorker
 from src.training.stability import (
@@ -71,10 +76,15 @@ class TrainingMetrics:
     policy_weight: float = 1.0
     value_weight: float = 1.0
     lbb_weight: float = 1.0
+    # Physics-informed loss metrics (optional)
+    physics_loss: float = 0.0
+    physics_residual_loss: float = 0.0
+    physics_boundary_loss: float = 0.0
+    physics_weight: float = 0.0
 
     def to_dict(self) -> dict[str, float | int]:
         """Convert to dictionary."""
-        return {
+        result = {
             "step": self.step,
             "total_loss": self.total_loss,
             "policy_loss": self.policy_loss,
@@ -90,6 +100,13 @@ class TrainingMetrics:
             "value_weight": self.value_weight,
             "lbb_weight": self.lbb_weight,
         }
+        # Only include physics metrics if physics training is enabled
+        if self.physics_weight > 0:
+            result["physics_loss"] = self.physics_loss
+            result["physics_residual_loss"] = self.physics_residual_loss
+            result["physics_boundary_loss"] = self.physics_boundary_loss
+            result["physics_weight"] = self.physics_weight
+        return result
 
 
 class Trainer:
@@ -179,6 +196,25 @@ class Trainer:
             policy_weight=self.training_config.policy_loss_weight,
             value_weight=self.training_config.value_loss_weight,
         )
+
+        # Physics-informed loss (optional)
+        self.physics_loss_fn: PhysicsInformedLoss | None = None
+        self.use_physics_loss = getattr(self.training_config, "physics_informed", False)
+        self.physics_loss_weight = getattr(
+            self.training_config, "physics_loss_weight", 0.1
+        )
+        if self.use_physics_loss:
+            self.physics_loss_fn = self._create_physics_loss()
+            logger.info(
+                "physics_loss_enabled",
+                weight=self.physics_loss_weight,
+                n_collocation=getattr(
+                    self.training_config, "physics_n_collocation_points", 1000
+                ),
+                n_boundary=getattr(
+                    self.training_config, "physics_n_boundary_points", 200
+                ),
+            )
 
         # Loss balancer for adaptive weighting
         self.loss_balancer = self._create_loss_balancer()
@@ -316,6 +352,67 @@ class Trainer:
 
         return main_scheduler
 
+    def _create_physics_loss(self) -> PhysicsInformedLoss | None:
+        """Create physics-informed loss from config.
+
+        Returns:
+            Configured physics loss or None if PDE operator unavailable.
+
+        """
+        # Try to import and create a default PDE operator
+        try:
+            from src.pde.config import PDEConfig, PDEType
+            from src.pde.operators import PoissonOperator
+
+            # Create Poisson operator as default (can be overridden via config)
+            pde_config = PDEConfig(
+                name="training_pde",
+                pde_type=PDEType.POISSON,
+            )
+            pde_operator = PoissonOperator(pde_config)
+
+            # Create physics loss config from training config
+            physics_config = PhysicsLossConfig(
+                name="training_physics_loss",
+                residual_weight=getattr(
+                    self.training_config, "physics_residual_weight", 1.0
+                ),
+                boundary_weight=getattr(
+                    self.training_config, "physics_boundary_weight", 10.0
+                ),
+                initial_weight=getattr(
+                    self.training_config, "physics_initial_weight", 10.0
+                ),
+                conservation_weight=getattr(
+                    self.training_config, "physics_conservation_weight", 1.0
+                ),
+                n_collocation_points=getattr(
+                    self.training_config, "physics_n_collocation_points", 1000
+                ),
+                n_boundary_points=getattr(
+                    self.training_config, "physics_n_boundary_points", 200
+                ),
+                use_adaptive_weights=getattr(
+                    self.training_config, "physics_use_adaptive_weights", True
+                ),
+            )
+
+            return PhysicsInformedLoss(pde_operator, physics_config)
+
+        except ImportError as e:
+            logger.warning(
+                "physics_loss_unavailable",
+                reason="PDE module not available",
+                error=str(e),
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                "physics_loss_creation_failed",
+                error=str(e),
+            )
+            return None
+
     def _create_loss_balancer(self) -> LossBalancer:
         """Create loss balancer from config.
 
@@ -345,17 +442,23 @@ class Trainer:
             warmup_steps=self.training_config.loss_balancing_warmup,
         )
 
+        # Include physics loss in balancing if enabled
+        loss_names = ["policy", "value", "lbb"]
+        if self.use_physics_loss and self.physics_loss_fn is not None:
+            loss_names.append("physics")
+
         logger.info(
             "loss_balancer_created",
             strategy=strategy.value,
             beta=config.beta,
             tau=config.tau,
             warmup_steps=config.warmup_steps,
+            loss_names=loss_names,
         )
 
         return create_loss_balancer(
             config=config,
-            loss_names=["policy", "value", "lbb"],
+            loss_names=loss_names,
             model=self.model,
         )
 
@@ -530,14 +633,14 @@ class Trainer:
 
     def _training_step(
         self, batch: TrainingBatch
-    ) -> tuple[LossOutput, float | None, float, dict[str, float]]:
+    ) -> tuple[LossOutput, float | None, float, dict[str, float], PhysicsLossOutput | None]:
         """Execute single training step with adaptive loss balancing.
 
         Args:
             batch: Training batch.
 
         Returns:
-            Tuple of (loss output, LBB constant, gradient norm, loss weights).
+            Tuple of (loss output, LBB constant, gradient norm, loss weights, physics output).
 
         """
         self.optimizer.zero_grad()
@@ -581,6 +684,23 @@ class Trainer:
             "value": value_loss,
             "lbb": lbb_loss,
         }
+
+        # Compute physics loss if enabled
+        physics_output: PhysicsLossOutput | None = None
+        if self.use_physics_loss and self.physics_loss_fn is not None:
+            try:
+                # Use the raw model for physics loss (not DDP wrapped)
+                physics_output = self.physics_loss_fn(self._raw_model)
+                losses["physics"] = physics_output.total * self.physics_loss_weight
+            except Exception as e:
+                logger.warning(
+                    "physics_loss_computation_failed",
+                    error=str(e),
+                    step=self.global_step,
+                )
+                # Fallback to zero physics loss
+                losses["physics"] = torch.tensor(0.0, device=self.device)
+
         loss_terms = self.loss_balancer.compute_weighted_loss(losses)
         total_loss = loss_terms.weighted_sum
         weights = loss_terms.weights
@@ -632,7 +752,7 @@ class Trainer:
                 ratio=f"{grad_norm_float / clip_threshold:.2f}",
             )
 
-        return loss_output, lbb_constant, grad_norm_float, weights
+        return loss_output, lbb_constant, grad_norm_float, weights, physics_output
 
     def train(
         self,
@@ -698,9 +818,21 @@ class Trainer:
 
             # Sample batch and train
             batch = self._sample_batch()
-            loss_output, lbb_constant, grad_norm, loss_weights = self._training_step(batch)
+            loss_output, lbb_constant, grad_norm, loss_weights, physics_output = (
+                self._training_step(batch)
+            )
 
             step_time = (time.time() - step_start) * 1000
+
+            # Extract physics metrics if available
+            physics_loss = 0.0
+            physics_residual_loss = 0.0
+            physics_boundary_loss = 0.0
+            physics_weight = loss_weights.get("physics", 0.0)
+            if physics_output is not None:
+                physics_loss = physics_output.total.item()
+                physics_residual_loss = physics_output.residual.item()
+                physics_boundary_loss = physics_output.boundary.item()
 
             # Record metrics
             metrics = TrainingMetrics(
@@ -718,6 +850,10 @@ class Trainer:
                 policy_weight=loss_weights.get("policy", 1.0),
                 value_weight=loss_weights.get("value", 1.0),
                 lbb_weight=loss_weights.get("lbb", 1.0),
+                physics_loss=physics_loss,
+                physics_residual_loss=physics_residual_loss,
+                physics_boundary_loss=physics_boundary_loss,
+                physics_weight=physics_weight,
             )
             self._metrics_history.append(metrics)
 
@@ -727,18 +863,21 @@ class Trainer:
 
             # Console logging
             if step % log_interval == 0:
-                logger.info(
-                    "training_step",
-                    step=step,
-                    loss=f"{loss_output.total.item():.4f}",
-                    policy_loss=f"{loss_output.policy.item():.4f}",
-                    value_loss=f"{loss_output.value.item():.4f}",
-                    lbb_loss=f"{loss_output.lbb.item():.4f}",
-                    lr=f"{metrics.learning_rate:.2e}",
-                    grad_norm=f"{grad_norm:.4f}",
-                    buffer_size=len(self.buffer),
-                    step_time_ms=f"{step_time:.1f}",
-                )
+                log_kwargs: dict[str, Any] = {
+                    "step": step,
+                    "loss": f"{loss_output.total.item():.4f}",
+                    "policy_loss": f"{loss_output.policy.item():.4f}",
+                    "value_loss": f"{loss_output.value.item():.4f}",
+                    "lbb_loss": f"{loss_output.lbb.item():.4f}",
+                    "lr": f"{metrics.learning_rate:.2e}",
+                    "grad_norm": f"{grad_norm:.4f}",
+                    "buffer_size": len(self.buffer),
+                    "step_time_ms": f"{step_time:.1f}",
+                }
+                # Add physics loss to log if enabled
+                if self.use_physics_loss and physics_output is not None:
+                    log_kwargs["physics_loss"] = f"{physics_loss:.4f}"
+                logger.info("training_step", **log_kwargs)
 
             # Periodic evaluation
             if eval_interval and step > 0 and step % eval_interval == 0:

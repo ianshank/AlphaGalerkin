@@ -1,0 +1,106 @@
+# Dockerfile.trainer - GPU training container for AlphaGalerkin
+#
+# Features:
+# - NVIDIA PyTorch base with CUDA support
+# - Full training dependencies
+# - W&B integration
+# - GCS support for checkpoints
+# - Multi-node distributed training support
+#
+# Build:
+#   docker build -f docker/Dockerfile.trainer -t alphagalerkin/trainer:latest .
+#
+# Run:
+#   docker run --gpus all \
+#     -v /path/to/checkpoints:/app/checkpoints \
+#     -e WANDB_API_KEY=$WANDB_API_KEY \
+#     alphagalerkin/trainer:latest
+
+# syntax=docker/dockerfile:1.6
+
+# =============================================================================
+# Build arguments
+# =============================================================================
+ARG PYTORCH_IMAGE=nvcr.io/nvidia/pytorch
+ARG PYTORCH_TAG=24.01-py3
+ARG BASE_IMAGE=${PYTORCH_IMAGE}:${PYTORCH_TAG}
+
+# =============================================================================
+# Stage 1: Builder
+# =============================================================================
+FROM ${BASE_IMAGE} AS builder
+
+# Install additional build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Copy requirements first for caching
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Install Vertex AI dependencies
+COPY requirements-vertex.txt /tmp/requirements-vertex.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-vertex.txt || true
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM ${BASE_IMAGE} AS runtime
+
+# Labels
+LABEL org.opencontainers.image.title="AlphaGalerkin Trainer"
+LABEL org.opencontainers.image.description="GPU training container for AlphaGalerkin"
+LABEL org.opencontainers.image.vendor="AlphaGalerkin Team"
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Create non-root user (optional - some GPU operations need root)
+ARG CREATE_USER=true
+RUN if [ "$CREATE_USER" = "true" ]; then \
+    groupadd -r -g 1000 alphagalerkin && \
+    useradd -r -u 1000 -g alphagalerkin -m -s /bin/bash alphagalerkin; \
+    fi
+
+# Set working directory
+WORKDIR /app
+
+# Copy source code
+COPY --chown=1000:1000 . .
+
+# Install package
+RUN pip install --no-cache-dir -e ".[vertex]" || pip install --no-cache-dir -e .
+
+# Create runtime directories
+RUN mkdir -p /app/checkpoints /app/outputs /app/logs /tmp/alphagalerkin_cache && \
+    chmod -R 777 /app/checkpoints /app/outputs /app/logs /tmp/alphagalerkin_cache
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=0 \
+    # CUDA settings
+    CUDA_DEVICE_ORDER=PCI_BUS_ID \
+    # Torch settings
+    TORCH_HOME=/tmp/torch_cache \
+    # NCCL settings for distributed training
+    NCCL_DEBUG=WARN \
+    NCCL_IB_DISABLE=0 \
+    # Default training config
+    HYDRA_FULL_ERROR=1
+
+# Health check for CUDA availability
+HEALTHCHECK --interval=60s --timeout=30s --start-period=10s --retries=3 \
+    CMD python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'; print(f'CUDA OK: {torch.cuda.device_count()} GPUs')" || exit 1
+
+# Entrypoint script for flexibility
+COPY docker/scripts/train-entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["python", "-m", "scripts.train"]

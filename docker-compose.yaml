@@ -1,0 +1,252 @@
+# docker-compose.yaml - Default AlphaGalerkin container orchestration
+#
+# Usage:
+#   docker compose up                    # Start all services
+#   docker compose up inference          # Start inference only
+#   docker compose run validator /checkpoints/model.pt  # Validate checkpoint
+#
+# For production, use: docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up
+
+version: "3.9"
+
+# =============================================================================
+# Shared configurations
+# =============================================================================
+
+x-security-defaults: &security-defaults
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+
+x-resource-limits: &resource-limits
+  deploy:
+    resources:
+      limits:
+        memory: 8G
+        cpus: "4"
+      reservations:
+        memory: 2G
+        cpus: "1"
+
+x-logging: &logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+# =============================================================================
+# Services
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Checkpoint Validator (sandboxed)
+  # ---------------------------------------------------------------------------
+  validator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.validator
+    image: alphagalerkin/validator:${TAG:-latest}
+    <<: [*security-defaults, *logging]
+    network_mode: "none"  # Complete network isolation
+    cap_drop:
+      - ALL
+    volumes:
+      - type: bind
+        source: ${CHECKPOINT_DIR:-./checkpoints}
+        target: /checkpoints
+        read_only: true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1"
+        reservations:
+          memory: 256M
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+    # Usage: docker compose run validator /checkpoints/model.pt
+
+  # ---------------------------------------------------------------------------
+  # Inference Service
+  # ---------------------------------------------------------------------------
+  inference:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.inference
+      args:
+        PYTHON_VERSION: ${PYTHON_VERSION:-3.11}
+        PYTORCH_VERSION: ${PYTORCH_VERSION:-2.2.0}
+    image: alphagalerkin/inference:${TAG:-latest}
+    <<: [*security-defaults, *resource-limits, *logging]
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+    volumes:
+      - type: bind
+        source: ${MODEL_DIR:-./models}
+        target: /models
+        read_only: true
+    environment:
+      - MODEL_DIR=/models
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    tmpfs:
+      - /app/tmp:size=1G,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-c", "import torch; import src.safety; print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # API Server (Gradio)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.inference
+    image: alphagalerkin/api:${TAG:-latest}
+    <<: [*security-defaults, *resource-limits, *logging]
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE  # Allow binding to ports < 1024 if needed
+    networks:
+      - internal
+      - ingress
+    ports:
+      - "${API_HOST:-127.0.0.1}:${API_PORT:-7860}:7860"
+    volumes:
+      - type: bind
+        source: ${MODEL_DIR:-./models}
+        target: /models
+        read_only: true
+    environment:
+      - MODEL_DIR=/models
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+    depends_on:
+      inference:
+        condition: service_healthy
+    tmpfs:
+      - /app/tmp:size=500M,mode=1777
+    command: ["src.deployment.gradio_app"]
+
+  # ---------------------------------------------------------------------------
+  # Trainer (GPU)
+  # ---------------------------------------------------------------------------
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.trainer
+      args:
+        PYTORCH_TAG: ${PYTORCH_TAG:-24.01-py3}
+    image: alphagalerkin/trainer:${TAG:-latest}
+    <<: *logging
+    runtime: nvidia
+    networks:
+      - egress
+    volumes:
+      - type: bind
+        source: ${CHECKPOINT_DIR:-./checkpoints}
+        target: /app/checkpoints
+      - type: bind
+        source: ${OUTPUT_DIR:-./outputs}
+        target: /app/outputs
+      - type: bind
+        source: ./config
+        target: /app/config
+        read_only: true
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - WANDB_PROJECT=${WANDB_PROJECT:-alphagalerkin}
+      - WANDB_MODE=${WANDB_MODE:-disabled}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - HYDRA_FULL_ERROR=1
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
+    profiles:
+      - training
+
+  # ---------------------------------------------------------------------------
+  # Distributed Trainer
+  # ---------------------------------------------------------------------------
+  trainer-distributed:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.trainer
+    image: alphagalerkin/trainer:${TAG:-latest}
+    <<: *logging
+    runtime: nvidia
+    networks:
+      - internal
+      - egress
+    volumes:
+      - type: bind
+        source: ${CHECKPOINT_DIR:-./checkpoints}
+        target: /app/checkpoints
+      - type: bind
+        source: ${OUTPUT_DIR:-./outputs}
+        target: /app/outputs
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - WANDB_PROJECT=${WANDB_PROJECT:-alphagalerkin}
+      - WANDB_MODE=${WANDB_MODE:-disabled}
+      - MASTER_ADDR=trainer-distributed
+      - MASTER_PORT=29500
+      - WORLD_SIZE=${WORLD_SIZE:-1}
+      - NCCL_DEBUG=${NCCL_DEBUG:-WARN}
+    deploy:
+      replicas: ${WORLD_SIZE:-1}
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles:
+      - distributed
+
+# =============================================================================
+# Networks
+# =============================================================================
+
+networks:
+  # Internal network for service-to-service communication
+  internal:
+    driver: bridge
+    internal: true  # No external access
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+  # Egress network for training (GCS, W&B)
+  egress:
+    driver: bridge
+
+  # Ingress network for API server
+  ingress:
+    driver: bridge
+
+# =============================================================================
+# Volumes
+# =============================================================================
+
+volumes:
+  checkpoints:
+    driver: local
+  outputs:
+    driver: local
+  models:
+    driver: local

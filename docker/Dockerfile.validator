@@ -1,0 +1,96 @@
+# Dockerfile.validator - Sandboxed checkpoint validation container
+#
+# SECURITY CRITICAL: This container validates untrusted checkpoints
+#
+# Security features:
+# - Alpine base for minimal attack surface
+# - CPU-only PyTorch (no GPU attack surface)
+# - No network access (enforced at runtime)
+# - Absolute minimal dependencies
+# - Non-root execution
+# - Read-only filesystem
+#
+# Build:
+#   docker build -f docker/Dockerfile.validator -t alphagalerkin/validator:latest .
+#
+# Run (MUST use these security flags):
+#   docker run --rm \
+#     --network none \
+#     --read-only \
+#     --cap-drop=ALL \
+#     --security-opt=no-new-privileges:true \
+#     --memory=1g \
+#     --cpus=1 \
+#     -v /path/to/checkpoint.pt:/checkpoint.pt:ro \
+#     alphagalerkin/validator:latest /checkpoint.pt
+
+# syntax=docker/dockerfile:1.6
+
+# =============================================================================
+# Build arguments
+# =============================================================================
+ARG PYTHON_VERSION=3.11
+ARG ALPINE_VERSION=3.19
+
+# =============================================================================
+# Single stage - keep it minimal
+# =============================================================================
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION}
+
+# Labels
+LABEL org.opencontainers.image.title="AlphaGalerkin Checkpoint Validator"
+LABEL org.opencontainers.image.description="Sandboxed checkpoint validation for untrusted files"
+LABEL org.opencontainers.image.vendor="AlphaGalerkin Team"
+LABEL org.opencontainers.image.readonly="true"
+LABEL security.network="none"
+LABEL security.capabilities="none"
+
+# Install minimal runtime dependencies
+RUN apk add --no-cache \
+    libstdc++ \
+    libffi \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup -g 1000 validator && \
+    adduser -u 1000 -G validator -s /bin/false -D validator
+
+# Install Python dependencies (minimal)
+RUN pip install --no-cache-dir \
+    torch==2.2.0+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
+    pydantic>=2.0.0 \
+    structlog>=23.0.0
+
+# Optional: SafeTensors for conversion
+RUN pip install --no-cache-dir safetensors>=0.4.0 || true
+
+# Copy only validation code
+WORKDIR /app
+COPY --chown=validator:validator src/safety/ src/safety/
+COPY --chown=validator:validator src/templates/config.py src/templates/
+COPY --chown=validator:validator src/templates/logging.py src/templates/
+COPY --chown=validator:validator src/templates/__init__.py src/templates/
+COPY --chown=validator:validator src/__init__.py src/
+
+# Create CLI entrypoint
+COPY --chown=validator:validator docker/scripts/validate-checkpoint.py /app/validate.py
+RUN chmod +x /app/validate.py
+
+# Create tmp directory for any temporary files
+RUN mkdir -p /tmp/validator && \
+    chown validator:validator /tmp/validator
+
+# Environment
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    TMPDIR=/tmp/validator
+
+# Switch to non-root user
+USER validator
+
+# Entrypoint
+ENTRYPOINT ["python", "/app/validate.py"]
+CMD ["--help"]

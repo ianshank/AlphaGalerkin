@@ -1,0 +1,136 @@
+# Dockerfile.inference - Hardened inference container for AlphaGalerkin
+#
+# Security features:
+# - Multi-stage build to minimize attack surface
+# - Non-root user execution
+# - Read-only filesystem compatible
+# - No network syscalls in default seccomp profile
+# - Minimal dependencies (inference-only)
+#
+# Build:
+#   docker build -f docker/Dockerfile.inference -t alphagalerkin/inference:latest .
+#
+# Run (with security):
+#   docker run --rm \
+#     --read-only \
+#     --cap-drop=ALL \
+#     --security-opt=no-new-privileges:true \
+#     -v /path/to/models:/models:ro \
+#     alphagalerkin/inference:latest
+
+# syntax=docker/dockerfile:1.6
+
+# =============================================================================
+# Build arguments - no hardcoded versions
+# =============================================================================
+ARG PYTHON_VERSION=3.11
+ARG PYTORCH_VERSION=2.2.0
+ARG BASE_IMAGE=python:${PYTHON_VERSION}-slim
+
+# =============================================================================
+# Stage 1: Builder - compile dependencies
+# =============================================================================
+FROM ${BASE_IMAGE} AS builder
+
+# Build arguments available in this stage
+ARG PYTORCH_VERSION
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment for isolation
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and install build tools
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install PyTorch CPU (smaller footprint for inference)
+# Using CPU version reduces image size significantly
+RUN pip install --no-cache-dir \
+    torch==${PYTORCH_VERSION}+cpu \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Copy and install inference requirements
+COPY requirements-inference.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Copy source and install package (inference-only)
+WORKDIR /build
+COPY pyproject.toml setup.py* ./
+COPY src/ src/
+COPY config/ config/
+
+# Install package without dev dependencies
+RUN pip install --no-cache-dir -e .
+
+# =============================================================================
+# Stage 2: Runtime - minimal inference image
+# =============================================================================
+FROM ${BASE_IMAGE} AS runtime
+
+# Labels for container metadata
+LABEL org.opencontainers.image.title="AlphaGalerkin Inference"
+LABEL org.opencontainers.image.description="Hardened inference container for AlphaGalerkin neural networks"
+LABEL org.opencontainers.image.vendor="AlphaGalerkin Team"
+LABEL org.opencontainers.image.source="https://github.com/alphagalerkin/alphagalerkin"
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.readonly="true"
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && rm -rf /var/cache/apt/archives/*
+
+# Create non-root user for security
+RUN groupadd -r -g 1000 alphagalerkin && \
+    useradd -r -u 1000 -g alphagalerkin -s /bin/false alphagalerkin
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy only inference-necessary code
+WORKDIR /app
+COPY --chown=alphagalerkin:alphagalerkin src/modeling/ src/modeling/
+COPY --chown=alphagalerkin:alphagalerkin src/mcts/ src/mcts/
+COPY --chown=alphagalerkin:alphagalerkin src/games/ src/games/
+COPY --chown=alphagalerkin:alphagalerkin src/safety/ src/safety/
+COPY --chown=alphagalerkin:alphagalerkin src/deployment/ src/deployment/
+COPY --chown=alphagalerkin:alphagalerkin src/templates/ src/templates/
+COPY --chown=alphagalerkin:alphagalerkin src/__init__.py src/
+COPY --chown=alphagalerkin:alphagalerkin config/ config/
+
+# Create directories for runtime (will be tmpfs in production)
+RUN mkdir -p /app/tmp /models && \
+    chown -R alphagalerkin:alphagalerkin /app /models
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    # Disable telemetry
+    WANDB_MODE=disabled \
+    # Torch optimizations
+    OMP_NUM_THREADS=4 \
+    MKL_NUM_THREADS=4 \
+    # Model directory (configurable at runtime)
+    MODEL_DIR=/models \
+    # Temp directory (should be tmpfs)
+    TMPDIR=/app/tmp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import torch; import src.safety; print('healthy')" || exit 1
+
+# Switch to non-root user
+USER alphagalerkin
+
+# Default command - can be overridden
+ENTRYPOINT ["python", "-m"]
+CMD ["src.deployment.serve", "--model-dir", "/models"]

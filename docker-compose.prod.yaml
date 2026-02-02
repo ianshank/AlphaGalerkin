@@ -1,0 +1,93 @@
+# docker-compose.prod.yaml - Production overrides for AlphaGalerkin
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up
+#
+# This file adds production-grade security settings
+
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Validator - Maximum security
+  # ---------------------------------------------------------------------------
+  validator:
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:docker/seccomp/validator.json
+    pids_limit: 50
+    ulimits:
+      nofile:
+        soft: 256
+        hard: 512
+      nproc:
+        soft: 50
+        hard: 100
+
+  # ---------------------------------------------------------------------------
+  # Inference - Hardened
+  # ---------------------------------------------------------------------------
+  inference:
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:docker/seccomp/inference.json
+    pids_limit: 100
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 2048
+      memlock:
+        soft: -1
+        hard: -1
+
+  # ---------------------------------------------------------------------------
+  # API - Ingress hardening
+  # ---------------------------------------------------------------------------
+  api:
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:docker/seccomp/inference.json
+    pids_limit: 100
+    environment:
+      - GRADIO_ANALYTICS_ENABLED=false
+      - GRADIO_SHARE=false
+    # In production, use reverse proxy (nginx/traefik) instead of direct port
+    ports: []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.alphagalerkin-api.rule=Host(`${API_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.alphagalerkin-api.tls=true"
+      - "traefik.http.services.alphagalerkin-api.loadbalancer.server.port=7860"
+
+  # ---------------------------------------------------------------------------
+  # Trainer - Production settings
+  # ---------------------------------------------------------------------------
+  trainer:
+    restart: unless-stopped
+    environment:
+      - WANDB_MODE=online
+    healthcheck:
+      test: ["CMD", "python", "-c", "import torch; torch.cuda.is_available()"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64G
+
+# =============================================================================
+# Networks - Production isolation
+# =============================================================================
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+
+  egress:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "true"

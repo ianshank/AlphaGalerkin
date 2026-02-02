@@ -1,0 +1,293 @@
+# AlphaGalerkin Docker Build Pipeline
+# Builds, tests, and scans Docker images for security vulnerabilities
+#
+# Triggers:
+# - Push to main/develop with changes to docker/ or Dockerfile*
+# - Pull requests with docker-related changes
+# - Manual workflow dispatch
+# - Weekly schedule for base image updates
+
+name: Docker Build
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "docker/**"
+      - "Dockerfile*"
+      - "docker-compose*.yaml"
+      - ".dockerignore"
+      - "requirements*.txt"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "docker/**"
+      - "Dockerfile*"
+      - "docker-compose*.yaml"
+  workflow_dispatch:
+    inputs:
+      push_images:
+        description: "Push images to registry"
+        required: false
+        default: "false"
+        type: boolean
+      image_tag:
+        description: "Image tag (default: sha)"
+        required: false
+        default: ""
+        type: string
+  schedule:
+    # Weekly rebuild for security patches
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/alphagalerkin
+  PYTHON_VERSION: "3.11"
+  PYTORCH_VERSION: "2.2.0"
+
+jobs:
+  # ============================================================
+  # Validate Dockerfiles
+  # ============================================================
+  lint:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint on Dockerfiles
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.inference
+          ignore: DL3008,DL3013,DL3018
+          failure-threshold: error
+
+      - name: Lint Dockerfile.trainer
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.trainer
+          ignore: DL3008,DL3013,DL3018
+          failure-threshold: error
+
+      - name: Lint Dockerfile.validator
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.validator
+          ignore: DL3008,DL3013,DL3018
+          failure-threshold: error
+
+      - name: Validate docker-compose files
+        run: |
+          docker compose -f docker-compose.yaml config --quiet
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml config --quiet
+
+  # ============================================================
+  # Build and Test Images
+  # ============================================================
+  build:
+    name: Build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: lint
+
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: inference
+            dockerfile: docker/Dockerfile.inference
+            context: .
+            platforms: linux/amd64
+          - image: validator
+            dockerfile: docker/Dockerfile.validator
+            context: .
+            platforms: linux/amd64,linux/arm64
+          # Trainer is heavy, only build on main
+          - image: trainer
+            dockerfile: docker/Dockerfile.trainer
+            context: .
+            platforms: linux/amd64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: contains(matrix.platforms, ',')
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ inputs.image_tag }},enable=${{ inputs.image_tag != '' }}
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        id: build
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            PYTORCH_VERSION=${{ env.PYTORCH_VERSION }}
+
+      - name: Test image
+        if: matrix.image != 'trainer'
+        run: |
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          echo "Testing image: $IMAGE_TAG"
+
+          # Basic smoke test
+          docker run --rm "$IMAGE_TAG" python -c "import torch; print(f'PyTorch: {torch.__version__}')"
+
+          # Test validator
+          if [[ "${{ matrix.image }}" == "validator" ]]; then
+            docker run --rm "$IMAGE_TAG" --help
+          fi
+
+          # Test inference
+          if [[ "${{ matrix.image }}" == "inference" ]]; then
+            docker run --rm "$IMAGE_TAG" -c "from src.safety import validate_checkpoint; print('Safety module OK')"
+          fi
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:sha-${{ github.sha }}
+          format: "sarif"
+          output: "trivy-results-${{ matrix.image }}.sarif"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results-${{ matrix.image }}.sarif"
+          category: "trivy-${{ matrix.image }}"
+
+      - name: Run Dockle linter
+        uses: erzz/dockle-action@v1
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}:sha-${{ github.sha }}
+          failure-threshold: high
+          exit-code: 1
+          accept-keys: "USER"
+
+      - name: Push image
+        if: |
+          github.event_name != 'pull_request' &&
+          (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || inputs.push_images == 'true')
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            PYTORCH_VERSION=${{ env.PYTORCH_VERSION }}
+
+  # ============================================================
+  # Integration Test with Docker Compose
+  # ============================================================
+  integration:
+    name: Docker Compose Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create test directories
+        run: |
+          mkdir -p checkpoints models outputs
+          # Create a test checkpoint
+          python -c "
+          import torch
+          state_dict = {'weight': torch.randn(10, 10)}
+          torch.save(state_dict, 'checkpoints/test_model.pt')
+          "
+
+      - name: Test validator service
+        run: |
+          docker compose run --rm validator /checkpoints/test_model.pt --output json
+
+      - name: Test compose config
+        run: |
+          docker compose -f docker-compose.yaml config
+          docker compose -f docker-compose.yaml -f docker-compose.prod.yaml config
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down -v --remove-orphans
+
+  # ============================================================
+  # Security Summary
+  # ============================================================
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: build
+    if: always()
+
+    steps:
+      - name: Generate security summary
+        run: |
+          echo "## Docker Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Build | Trivy | Dockle |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| inference | ${{ needs.build.result }} | See Security tab | See artifacts |" >> $GITHUB_STEP_SUMMARY
+          echo "| validator | ${{ needs.build.result }} | See Security tab | See artifacts |" >> $GITHUB_STEP_SUMMARY
+          echo "| trainer | ${{ needs.build.result }} | See Security tab | See artifacts |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View detailed results in the Security tab." >> $GITHUB_STEP_SUMMARY

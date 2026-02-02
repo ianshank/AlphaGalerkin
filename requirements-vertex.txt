@@ -1,0 +1,7 @@
+# requirements-vertex.txt - Google Cloud Vertex AI dependencies
+#
+# Used for cloud-based training on Vertex AI
+
+google-cloud-aiplatform>=1.36.0
+google-cloud-storage>=2.10.0
+google-auth>=2.0.0

@@ -1,0 +1,15 @@
+# requirements-inference.txt - Minimal dependencies for inference
+#
+# This file contains only the packages needed for model inference,
+# excluding training-specific dependencies to minimize attack surface.
+
+# Core dependencies
+einops>=0.7.0
+pydantic>=2.0.0
+structlog>=23.0.0
+numpy>=1.24.0
+
+# Note: torch is installed separately in Dockerfile to control CPU/GPU version
+
+# Optional: SafeTensors for secure model loading
+safetensors>=0.4.0

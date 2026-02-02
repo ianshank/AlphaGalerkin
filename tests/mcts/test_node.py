@@ -495,6 +495,7 @@ class TestPruneExcept:
         original_child = expanded_node.children[1]
         result = expanded_node.prune_except(1)
 
+        assert result is not None
         assert result.parent is None
 
     def test_prune_except_clears_parent_children(self, expanded_node: MCTSNode):

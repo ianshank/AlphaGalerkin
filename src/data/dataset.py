@@ -6,8 +6,8 @@ Supports variable board sizes through padding and masking.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch.utils.data import Dataset, IterableDataset, Sampler
@@ -28,7 +28,7 @@ class ReplayDataset(Dataset):
     def __init__(
         self,
         buffer: ReplayBuffer,
-        transform: callable | None = None,
+        transform: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize dataset.
 
@@ -81,7 +81,7 @@ class StreamingReplayDataset(IterableDataset):
         self,
         buffer: ReplayBuffer,
         batch_size: int = 32,
-        transform: callable | None = None,
+        transform: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize streaming dataset.
 
@@ -197,7 +197,7 @@ class ExperienceListDataset(Dataset):
     def __init__(
         self,
         experiences: list[Experience],
-        transform: callable | None = None,
+        transform: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize dataset.
 
@@ -254,7 +254,7 @@ class AugmentedExperience:
         self.use_reflections = use_reflections
 
         # Build transformation list
-        self.transforms: list[callable] = [lambda x: x]  # Identity
+        self.transforms: list[Callable[..., Any]] = [lambda x: x]  # Identity
 
         if use_rotations:
             self.transforms.extend(

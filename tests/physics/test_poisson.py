@@ -40,7 +40,7 @@ def solver_iterative() -> PoissonSolver:
 
 
 @pytest.fixture
-def sample_charges() -> numpy.ndarray:
+def sample_charges():
     """Create sample charge distribution."""
     return generate_random_charges(grid_size=8, seed=42)
 
@@ -112,14 +112,14 @@ class TestPoissonSolverInit:
 class TestPoissonSolverSolve:
     """Tests for PoissonSolver.solve method."""
 
-    def test_solve_2d_input(self, solver: PoissonSolver, sample_charges: numpy.ndarray):
+    def test_solve_2d_input(self, solver: PoissonSolver, sample_charges):
         """Test solving with 2D charge array."""
         potential = solver.solve(sample_charges)
 
         assert potential.shape == sample_charges.shape
         assert potential.dtype == numpy.float32
 
-    def test_solve_1d_input(self, solver: PoissonSolver, sample_charges: numpy.ndarray):
+    def test_solve_1d_input(self, solver: PoissonSolver, sample_charges):
         """Test solving with flattened charge array."""
         charges_flat = sample_charges.flatten()
         potential = solver.solve(charges_flat)
@@ -127,7 +127,7 @@ class TestPoissonSolverSolve:
         assert potential.shape == charges_flat.shape
         assert potential.dtype == numpy.float32
 
-    def test_solve_spectral_vs_iterative(self, sample_charges: numpy.ndarray):
+    def test_solve_spectral_vs_iterative(self, sample_charges):
         """Test spectral and iterative methods give similar results."""
         solver_spectral = PoissonSolver(use_spectral=True, resolution=8)
         solver_iterative = PoissonSolver(use_spectral=False, resolution=8)
@@ -136,9 +136,7 @@ class TestPoissonSolverSolve:
         pot_iterative = solver_iterative.solve(sample_charges)
 
         # Results should be similar (not exact due to method differences)
-        correlation = numpy.corrcoef(pot_spectral.flatten(), pot_iterative.flatten())[
-            0, 1
-        ]
+        correlation = numpy.corrcoef(pot_spectral.flatten(), pot_iterative.flatten())[0, 1]
         assert correlation > 0.9
 
     def test_solve_zero_charges(self, solver: PoissonSolver):
@@ -149,16 +147,14 @@ class TestPoissonSolverSolve:
         # Zero charges should give zero potential
         assert numpy.allclose(potential, 0.0, atol=1e-6)
 
-    def test_solve_deterministic(
-        self, solver: PoissonSolver, sample_charges: numpy.ndarray
-    ):
+    def test_solve_deterministic(self, solver: PoissonSolver, sample_charges):
         """Test solver is deterministic."""
         pot1 = solver.solve(sample_charges)
         pot2 = solver.solve(sample_charges)
 
         assert numpy.allclose(pot1, pot2)
 
-    def test_solve_linearity(self, solver: PoissonSolver, sample_charges: numpy.ndarray):
+    def test_solve_linearity(self, solver: PoissonSolver, sample_charges):
         """Test Poisson solver is linear."""
         # Laplacian is a linear operator, so 2*charges -> 2*potential
         pot1 = solver.solve(sample_charges)
@@ -241,9 +237,7 @@ class TestGenerateRandomCharges:
 
     def test_point_charges(self):
         """Test sparse point charge generation."""
-        charges = generate_random_charges(
-            grid_size=16, n_charges=3, smooth=False, seed=42
-        )
+        charges = generate_random_charges(grid_size=16, n_charges=3, smooth=False, seed=42)
 
         # With 3 charges and no smoothing, should have few non-zero values
         non_zero_count = numpy.count_nonzero(charges)

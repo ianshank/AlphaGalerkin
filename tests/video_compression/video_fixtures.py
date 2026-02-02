@@ -108,6 +108,7 @@ def short_clip_factory(
 
         Returns:
             Path to the extracted clip.
+
         """
         num_frames = num_frames or video_test_config.default_clip_frames
         resolution = resolution or video_test_config.default_clip_resolution
@@ -151,7 +152,9 @@ def short_clip_factory(
             cap.release()
             writer.release()
 
-        logger.debug(f"Created clip: {output_path} ({frames_written} frames, {target_w}x{target_h})")
+        logger.debug(
+            f"Created clip: {output_path} ({frames_written} frames, {target_w}x{target_h})"
+        )
         return output_path
 
     return _create_clip
@@ -213,6 +216,7 @@ def synthetic_video_factory(tmp_path: Path):
 
         Returns:
             Path to created video.
+
         """
         if output_name is None:
             output_name = f"synthetic_{pattern}_{height}x{width}_{num_frames}f{extension}"
@@ -249,7 +253,7 @@ def synthetic_video_factory(tmp_path: Path):
                     for y in range(0, height, block_size):
                         for x in range(0, width, block_size):
                             if ((y // block_size) + (x // block_size) + i) % 2 == 0:
-                                frame[y:y+block_size, x:x+block_size] = 255
+                                frame[y : y + block_size, x : x + block_size] = 255
                 else:
                     raise ValueError(f"Unknown pattern: {pattern}")
 
@@ -280,11 +284,13 @@ def dummy_codec_checkpoint(tmp_path: Path):
     Returns path to a minimal valid checkpoint file.
     """
     import sys
+
     sys.path.insert(0, str(Path(__file__).parents[2]))
 
     import torch
-    from src.video_compression.config import CodecConfig
+
     from src.video_compression.codec.codec import create_codec
+    from src.video_compression.config import CodecConfig
 
     config = CodecConfig(name="test_codec")
     codec = create_codec(config)
@@ -312,6 +318,7 @@ def auto_cleanup_cuda():
     yield
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     except ImportError:

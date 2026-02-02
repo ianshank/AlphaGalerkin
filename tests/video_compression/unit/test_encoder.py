@@ -5,9 +5,9 @@ import torch
 
 from src.video_compression.config import EncoderConfig
 from src.video_compression.models.encoder import (
+    GDN,
     Encoder,
     EncoderBlock,
-    GDN,
     FNetGalerkinBlock,
     GalerkinEncoderAttention,
 )

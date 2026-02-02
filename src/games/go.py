@@ -396,7 +396,7 @@ class GoGame(GameInterface):
 
         # Separate pass move probability
         pass_prob = policy_np[-1] if len(policy_np) > board_size * board_size else 0
-        board_policy = policy_np[:board_size * board_size].reshape(board_size, board_size)
+        board_policy = policy_np[: board_size * board_size].reshape(board_size, board_size)
 
         board = state.board
 
@@ -420,10 +420,12 @@ class GoGame(GameInterface):
                 )
 
                 # Reconstruct policy vector
-                new_policy = np.concatenate([
-                    transformed_policy.flatten(),
-                    [pass_prob],
-                ])
+                new_policy = np.concatenate(
+                    [
+                        transformed_policy.flatten(),
+                        [pass_prob],
+                    ]
+                )
 
                 if is_tensor:
                     new_policy = torch.from_numpy(new_policy)

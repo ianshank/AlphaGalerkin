@@ -124,7 +124,7 @@ class VariableSizeCollator:
             max_size = max(max_size, self.max_board_size)
 
         # Max actions = max_size^2 + 1 (pass)
-        max_actions = max_size ** 2 + 1
+        max_actions = max_size**2 + 1
 
         # Initialize tensors
         board_states = torch.full(
@@ -147,7 +147,7 @@ class VariableSizeCollator:
             # Copy policy (remap to padded action space)
             # Original: [0..size^2-1, pass=size^2]
             # Padded: [0..max_size^2-1, pass=max_size^2]
-            n_positions = size ** 2
+            n_positions = size**2
 
             # Copy position policies
             for row in range(size):
@@ -157,7 +157,7 @@ class VariableSizeCollator:
                     target_policies[i, new_idx] = exp.target_policy[orig_idx]
 
             # Copy pass move probability
-            target_policies[i, max_size ** 2] = exp.target_policy[n_positions]
+            target_policies[i, max_size**2] = exp.target_policy[n_positions]
 
             # Set value
             target_values[i, 0] = exp.target_value
@@ -168,7 +168,7 @@ class VariableSizeCollator:
                 for col in range(size):
                     new_idx = row * max_size + col
                     action_mask[i, new_idx] = True
-            action_mask[i, max_size ** 2] = True  # Pass always valid
+            action_mask[i, max_size**2] = True  # Pass always valid
 
         return TrainingBatch(
             board_states=board_states,
@@ -213,7 +213,7 @@ class SameSizeCollator:
                 )
 
         batch_size = len(experiences)
-        n_actions = board_size ** 2 + 1
+        n_actions = board_size**2 + 1
 
         # Stack tensors directly
         board_states = torch.stack([exp.board_state for exp in experiences])

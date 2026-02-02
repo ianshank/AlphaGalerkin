@@ -56,9 +56,7 @@ class TestResultCollector:
         assert collector.output_dir == temp_output_dir
         assert collector.run_id is not None
 
-    def test_collect_result(
-        self, temp_output_dir: Path, sample_result: ScenarioResult
-    ) -> None:
+    def test_collect_result(self, temp_output_dir: Path, sample_result: ScenarioResult) -> None:
         """Test collecting a result."""
         collector = ResultCollector(output_dir=temp_output_dir)
         collector.collect(sample_result)
@@ -66,9 +64,7 @@ class TestResultCollector:
         assert len(collector.results) == 1
         assert collector.results[0].scenario_name == "test_scenario"
 
-    def test_result_persisted(
-        self, temp_output_dir: Path, sample_result: ScenarioResult
-    ) -> None:
+    def test_result_persisted(self, temp_output_dir: Path, sample_result: ScenarioResult) -> None:
         """Test that result is persisted to JSON."""
         collector = ResultCollector(output_dir=temp_output_dir)
         collector.collect(sample_result)
@@ -91,9 +87,7 @@ class TestResultCollector:
 class TestSummaryGeneration:
     """Tests for summary generation."""
 
-    def test_save_summary(
-        self, temp_output_dir: Path, sample_result: ScenarioResult
-    ) -> None:
+    def test_save_summary(self, temp_output_dir: Path, sample_result: ScenarioResult) -> None:
         """Test saving summary."""
         collector = ResultCollector(output_dir=temp_output_dir)
         collector.collect(sample_result)
@@ -103,9 +97,7 @@ class TestSummaryGeneration:
         assert filepath.exists()
         assert filepath.suffix == ".json"
 
-    def test_summary_content(
-        self, temp_output_dir: Path, sample_result: ScenarioResult
-    ) -> None:
+    def test_summary_content(self, temp_output_dir: Path, sample_result: ScenarioResult) -> None:
         """Test summary content."""
         collector = ResultCollector(output_dir=temp_output_dir)
         collector.collect(sample_result)
@@ -167,9 +159,7 @@ class TestSummaryGeneration:
 class TestResultLoading:
     """Tests for loading saved results."""
 
-    def test_load_results(
-        self, temp_output_dir: Path, sample_result: ScenarioResult
-    ) -> None:
+    def test_load_results(self, temp_output_dir: Path, sample_result: ScenarioResult) -> None:
         """Test loading results from disk."""
         # Save results
         collector1 = ResultCollector(output_dir=temp_output_dir, run_id="test_run")
@@ -288,9 +278,7 @@ class TestRunComparison:
         assert comparison["scenarios_compared"] == 2
 
         # Find the new scenario comparison
-        new_comp = next(
-            c for c in comparison["comparisons"] if c["scenario"] == "new_scenario"
-        )
+        new_comp = next(c for c in comparison["comparisons"] if c["scenario"] == "new_scenario")
         assert new_comp["only_in"] == "b"
 
 

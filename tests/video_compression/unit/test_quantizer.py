@@ -1,13 +1,12 @@
 """Tests for video compression quantizers."""
 
-import pytest
 import torch
 
-from src.video_compression.config import QuantizerConfig, QuantizationMode
+from src.video_compression.config import QuantizationMode, QuantizerConfig
 from src.video_compression.models.quantizer import (
     NoiseQuantizer,
-    STEQuantizer,
     SoftQuantizer,
+    STEQuantizer,
     create_quantizer,
 )
 

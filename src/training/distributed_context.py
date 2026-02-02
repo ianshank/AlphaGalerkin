@@ -7,9 +7,9 @@ handles both single-GPU and multi-GPU scenarios.
 from __future__ import annotations
 
 import os
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ContextManager
+from typing import TYPE_CHECKING, Any
 
 import structlog
 import torch
@@ -206,7 +206,7 @@ class DistributedContext:
             return model.module
         return model
 
-    def no_sync(self, model: torch.nn.Module) -> ContextManager[None]:
+    def no_sync(self, model: torch.nn.Module) -> AbstractContextManager[None]:
         """Get no_sync context for gradient accumulation.
 
         Args:

@@ -229,7 +229,7 @@ class TestFullTrainingPipeline:
                     output = model(x)
 
                     # Check output shapes
-                    expected_actions = board_size ** 2 + 1
+                    expected_actions = board_size**2 + 1
                     assert output.policy_logits.shape == (batch_size, expected_actions)
                     assert output.value.shape == (batch_size, 1)
 

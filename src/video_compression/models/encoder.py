@@ -46,6 +46,7 @@ class GDN(nn.Module):
             inverse: If True, compute inverse GDN (IGDN).
             gamma_init: Initial value for gamma parameters.
             epsilon: Small constant for numerical stability.
+
         """
         super().__init__()
         self.channels = channels
@@ -64,13 +65,12 @@ class GDN(nn.Module):
 
         Returns:
             Normalized tensor (B, C, H, W).
+
         """
         # Compute norm: beta + gamma * x^2
-        x_sq = x ** 2
+        x_sq = x**2
         # Sum over channels: (B, C, H, W) -> (B, C, H, W)
-        norm = self.beta.view(1, -1, 1, 1) + torch.einsum(
-            "cd,bdhw->bchw", self.gamma, x_sq
-        )
+        norm = self.beta.view(1, -1, 1, 1) + torch.einsum("cd,bdhw->bchw", self.gamma, x_sq)
         norm = torch.sqrt(norm + self.epsilon)
 
         if self.inverse:
@@ -109,6 +109,7 @@ class FNetGalerkinBlock(nn.Module):
             fnet_ratio: Weight of FNet path vs Galerkin path.
             dropout: Dropout rate.
             normalize_features: Normalize Q/K in Galerkin attention.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -153,6 +154,7 @@ class FNetGalerkinBlock(nn.Module):
 
         Returns:
             Output tensor (B, H*W, D).
+
         """
         # FNet path: FFT mixing (no learnable parameters)
         x_norm = self.norm_fft(x)
@@ -189,6 +191,7 @@ class FNetGalerkinBlock(nn.Module):
 
         Returns:
             Mixed tensor (B, H*W, D).
+
         """
         batch, n, d = x.shape
 
@@ -231,6 +234,7 @@ class GalerkinEncoderAttention(nn.Module):
             d_key: Key/value dimension per head.
             dropout: Dropout rate.
             normalize_features: Normalize K and V (Galerkin convention).
+
         """
         super().__init__()
         self.d_model = d_model
@@ -267,6 +271,7 @@ class GalerkinEncoderAttention(nn.Module):
 
         Returns:
             Output tensor (B, N, D).
+
         """
         batch, n, _ = x.shape
 
@@ -322,6 +327,7 @@ class DownsampleBlock(nn.Module):
             out_channels: Output channels.
             kernel_size: Convolution kernel size.
             stride: Downsampling stride.
+
         """
         super().__init__()
         padding = kernel_size // 2
@@ -346,6 +352,7 @@ class DownsampleBlock(nn.Module):
 
         Returns:
             Downsampled tensor.
+
         """
         return self.gdn(self.conv(x))
 
@@ -381,29 +388,30 @@ class EncoderBlock(nn.Module):
             fnet_ratio: FNet to Galerkin ratio.
             dropout: Dropout rate.
             downsample_stride: Spatial downsampling factor.
+
         """
         super().__init__()
 
         # Spatial downsampling
-        self.downsample = DownsampleBlock(
-            in_channels, out_channels, stride=downsample_stride
-        )
+        self.downsample = DownsampleBlock(in_channels, out_channels, stride=downsample_stride)
 
         # Channel to model dimension projection
         self.channel_proj = nn.Linear(out_channels, d_model)
         self.channel_proj_back = nn.Linear(d_model, out_channels)
 
         # FNet-Galerkin attention layers
-        self.attention_layers = nn.ModuleList([
-            FNetGalerkinBlock(
-                d_model=d_model,
-                n_heads=n_heads,
-                d_ffn=d_ffn,
-                fnet_ratio=fnet_ratio,
-                dropout=dropout,
-            )
-            for _ in range(n_attention_layers)
-        ])
+        self.attention_layers = nn.ModuleList(
+            [
+                FNetGalerkinBlock(
+                    d_model=d_model,
+                    n_heads=n_heads,
+                    d_ffn=d_ffn,
+                    fnet_ratio=fnet_ratio,
+                    dropout=dropout,
+                )
+                for _ in range(n_attention_layers)
+            ]
+        )
 
     def forward(
         self,
@@ -416,6 +424,7 @@ class EncoderBlock(nn.Module):
 
         Returns:
             Output tensor (B, C', H', W').
+
         """
         # Spatial downsampling
         x = self.downsample(x)
@@ -459,13 +468,14 @@ class Encoder(nn.Module):
 
         Args:
             config: Encoder configuration.
+
         """
         super().__init__()
         self.config = config
 
         # Calculate intermediate channels based on downsample factor
         n_downsamples = int(math.log2(config.downsample_factor))
-        channel_mult = [2 ** i for i in range(n_downsamples + 1)]
+        channel_mult = [2**i for i in range(n_downsamples + 1)]
         base_channels = config.latent_channels // channel_mult[-1]
 
         # Initial convolution (no downsampling)
@@ -527,14 +537,14 @@ class Encoder(nn.Module):
 
         Raises:
             ValueError: If input dimensions not divisible by downsample factor.
+
         """
         _, _, h, w = x.shape
         ds = self.config.downsample_factor
 
         if h % ds != 0 or w % ds != 0:
             raise ValueError(
-                f"Input dimensions ({h}, {w}) must be divisible by "
-                f"downsample factor ({ds})"
+                f"Input dimensions ({h}, {w}) must be divisible by downsample factor ({ds})"
             )
 
         # Initial conv

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator
 
 import torch
 from pydantic import BaseModel, Field
@@ -95,6 +95,7 @@ class ImageDataset(Dataset):
             root: Root directory containing images.
             config: Dataset configuration.
             transform: Optional transform to apply.
+
         """
         self.root = Path(root)
         self.config = config or DatasetConfig(root_dir=str(root))
@@ -127,6 +128,7 @@ class ImageDataset(Dataset):
 
         Returns:
             Image tensor (C, H, W) in [0, 1].
+
         """
         path = self.files[idx]
 
@@ -155,10 +157,11 @@ class ImageDataset(Dataset):
 
         Returns:
             Image tensor (C, H, W) in [0, 1].
+
         """
         try:
-            from PIL import Image
             import numpy as np
+            from PIL import Image
 
             img = Image.open(path).convert("RGB")
             img_np = np.array(img).astype(np.float32) / 255.0
@@ -178,6 +181,7 @@ class ImageDataset(Dataset):
 
         Returns:
             Cropped tensor.
+
         """
         _, h, w = img.shape
 
@@ -222,6 +226,7 @@ class VideoDataset(Dataset):
             root: Root directory containing videos.
             config: Dataset configuration.
             transform: Optional transform to apply per-frame.
+
         """
         self.root = Path(root)
         self.config = config or DatasetConfig(root_dir=str(root))
@@ -235,10 +240,7 @@ class VideoDataset(Dataset):
         # Build clip index
         self._clips = self._build_clip_index()
 
-        logger.info(
-            f"Found {len(self.files)} videos, "
-            f"{len(self._clips)} clips in {root}"
-        )
+        logger.info(f"Found {len(self.files)} videos, {len(self._clips)} clips in {root}")
 
     def _find_videos(self) -> list[Path]:
         """Find all video files in root directory."""
@@ -277,6 +279,7 @@ class VideoDataset(Dataset):
 
         Returns:
             Number of frames.
+
         """
         try:
             import cv2
@@ -305,6 +308,7 @@ class VideoDataset(Dataset):
 
         Returns:
             VideoClip with frames and metadata.
+
         """
         vid_idx, start_frame = self._clips[idx]
         path = self.files[vid_idx]
@@ -353,6 +357,7 @@ class VideoDataset(Dataset):
 
         Returns:
             Tuple of (frames tensor, frame indices).
+
         """
         try:
             import cv2
@@ -398,6 +403,7 @@ class VideoDataset(Dataset):
 
         Returns:
             Frame rate.
+
         """
         try:
             import cv2
@@ -419,6 +425,7 @@ class VideoDataset(Dataset):
 
         Returns:
             Cropped tensor.
+
         """
         t, c, h, w = frames.shape
 
@@ -463,6 +470,7 @@ class VariableResolutionBatchSampler:
             batch_size: Batch size.
             resolution_buckets: Resolution bucket boundaries.
             shuffle: Shuffle within buckets.
+
         """
         self.dataset = dataset
         self.batch_size = batch_size
@@ -490,7 +498,7 @@ class VariableResolutionBatchSampler:
         """Yield batches of indices."""
         all_batches = []
 
-        for bucket, indices in self._bucket_indices.items():
+        for _bucket, indices in self._bucket_indices.items():
             if not indices:
                 continue
 

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-
-from src.prototyping.config import PrototypeConfig, PresetType
 from src.prototyping.builder import (
     ModelBuilder,
     PrototypeModel,
     create_model_builder,
 )
+from src.prototyping.config import PresetType, PrototypeConfig
 
 
 class TestPrototypeModel:
@@ -99,6 +98,7 @@ class TestModelBuilder:
 
     def test_register_component(self, model_builder: ModelBuilder) -> None:
         """Test registering custom component."""
+
         def custom_factory(config: PrototypeConfig) -> dict[str, Any]:
             return {"type": "custom", "config": config}
 
@@ -117,6 +117,7 @@ class TestModelBuilder:
 
     def test_custom_model_factory(self) -> None:
         """Test with custom model factory."""
+
         class CustomModel:
             def __init__(self, config: PrototypeConfig) -> None:
                 self.d_model = config.d_model
@@ -146,6 +147,7 @@ class TestCreateModelBuilder:
 
     def test_create_with_factory(self) -> None:
         """Test creating with custom factory."""
+
         def factory(config: PrototypeConfig) -> str:
             return "custom"
 

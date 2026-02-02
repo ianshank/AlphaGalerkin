@@ -65,9 +65,7 @@ class TestPlotPoissonSamples:
             potential: np.ndarray
 
         samples = [
-            MockSample(
-                grid_size=9, charges=np.random.randn(81), potential=np.random.randn(81)
-            ),
+            MockSample(grid_size=9, charges=np.random.randn(81), potential=np.random.randn(81)),
             MockSample(
                 grid_size=13,
                 charges=np.random.randn(169),
@@ -107,9 +105,9 @@ class TestPlotGoBoard:
 
     def test_valid_board(self) -> None:
         """Test plotting a valid board."""
-        from notebooks.utils.visualization import plot_go_board
-
         import matplotlib.pyplot as plt
+
+        from notebooks.utils.visualization import plot_go_board
 
         fig, ax = plt.subplots()
         board = torch.zeros(1, 17, 9, 9)
@@ -123,9 +121,9 @@ class TestPlotGoBoard:
 
     def test_empty_board(self) -> None:
         """Test plotting an empty board."""
-        from notebooks.utils.visualization import plot_go_board
-
         import matplotlib.pyplot as plt
+
+        from notebooks.utils.visualization import plot_go_board
 
         fig, ax = plt.subplots()
         board = torch.zeros(1, 17, 9, 9)
@@ -141,9 +139,9 @@ class TestPlotPolicyHeatmap:
 
     def test_valid_policy(self) -> None:
         """Test plotting with valid policy logits."""
-        from notebooks.utils.visualization import plot_policy_heatmap
-
         import matplotlib.pyplot as plt
+
+        from notebooks.utils.visualization import plot_policy_heatmap
 
         fig, ax = plt.subplots()
         policy_logits = torch.randn(1, 82)  # 9x9 board + pass
@@ -155,10 +153,10 @@ class TestPlotPolicyHeatmap:
 
     def test_returns_axes_image(self) -> None:
         """Test that function returns AxesImage for colorbar attachment."""
-        from notebooks.utils.visualization import plot_policy_heatmap
-
         import matplotlib.pyplot as plt
         from matplotlib.image import AxesImage
+
+        from notebooks.utils.visualization import plot_policy_heatmap
 
         fig, ax = plt.subplots()
         policy_logits = torch.randn(1, 82)
@@ -170,9 +168,9 @@ class TestPlotPolicyHeatmap:
 
     def test_shape_mismatch_logs_warning(self) -> None:
         """Test that shape mismatch logs warning but continues."""
-        from notebooks.utils.visualization import plot_policy_heatmap
-
         import matplotlib.pyplot as plt
+
+        from notebooks.utils.visualization import plot_policy_heatmap
 
         fig, ax = plt.subplots()
         # Wrong size: 25 + 1 = 26, but passing board_size=9 expects 82

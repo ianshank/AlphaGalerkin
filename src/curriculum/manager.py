@@ -233,7 +233,9 @@ class CurriculumManager:
                 version=self._model_zoo.get_latest_version() or 0,
                 metrics={
                     f"curriculum_stage_{stage.config.name}_win_rate": stage.metrics.win_rate,
-                    f"curriculum_stage_{stage.config.name}_games": float(stage.metrics.games_played),
+                    f"curriculum_stage_{stage.config.name}_games": float(
+                        stage.metrics.games_played
+                    ),
                 },
             )
 

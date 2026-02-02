@@ -91,13 +91,15 @@ class TestBenchmarkSuite:
         suite = BenchmarkSuite()
 
         for n, ft, st in [(81, 1.0, 2.0), (169, 2.0, 8.0), (361, 4.0, 32.0)]:
-            suite.add_result(BenchmarkResult(
-                sequence_length=n,
-                board_size=int(n ** 0.5),
-                fnet_time_ms=ft,
-                softmax_time_ms=st,
-                speedup=st / ft,
-            ))
+            suite.add_result(
+                BenchmarkResult(
+                    sequence_length=n,
+                    board_size=int(n**0.5),
+                    fnet_time_ms=ft,
+                    softmax_time_ms=st,
+                    speedup=st / ft,
+                )
+            )
 
         assert len(suite.results) == 3
         assert suite.sequence_lengths == [81, 169, 361]
@@ -107,13 +109,15 @@ class TestBenchmarkSuite:
     def test_to_table(self) -> None:
         """Test table formatting."""
         suite = BenchmarkSuite()
-        suite.add_result(BenchmarkResult(
-            sequence_length=81,
-            board_size=9,
-            fnet_time_ms=1.5,
-            softmax_time_ms=3.0,
-            speedup=2.0,
-        ))
+        suite.add_result(
+            BenchmarkResult(
+                sequence_length=81,
+                board_size=9,
+                fnet_time_ms=1.5,
+                softmax_time_ms=3.0,
+                speedup=2.0,
+            )
+        )
 
         table = suite.to_table()
         assert "81" in table

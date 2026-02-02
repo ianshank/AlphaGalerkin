@@ -126,8 +126,7 @@ class TestGalerkinProjection:
         # Test 2: Verify direction preservation via cosine similarity
         # For a linear operator with positive scalar, directions should be preserved
         cos_sim = torch.nn.functional.cosine_similarity(
-            out_ax.flatten().unsqueeze(0),
-            out_x.flatten().unsqueeze(0)
+            out_ax.flatten().unsqueeze(0), out_x.flatten().unsqueeze(0)
         ).item()
 
         # Directions should be correlated (same sign for positive alpha)
@@ -161,9 +160,7 @@ class TestGalerkinProjection:
         # LBB constant should be positive
         assert (lbb > 0).all()
 
-    def test_lbb_constant_batch_invariant(
-        self, projection: GalerkinProjection
-    ) -> None:
+    def test_lbb_constant_batch_invariant(self, projection: GalerkinProjection) -> None:
         """Test that LBB computation handles batches correctly."""
         x = torch.randn(8, 81, 64)
 

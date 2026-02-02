@@ -6,21 +6,20 @@ import tempfile
 from pathlib import Path
 
 import pytest
-import torch
 
+from src.video_compression.codec.gop_manager import FrameType
 from src.video_compression.utils.bitstream import (
-    BitstreamHeader,
-    BitstreamWriter,
-    BitstreamReader,
-    FrameHeader,
-    EncodedFrame,
-    save_bitstream,
-    load_bitstream,
-    MAGIC_BYTES,
     FORMAT_VERSION,
+    MAGIC_BYTES,
+    BitstreamHeader,
+    BitstreamReader,
+    BitstreamWriter,
+    EncodedFrame,
+    FrameHeader,
+    load_bitstream,
+    save_bitstream,
 )
 from src.video_compression.utils.padding import PaddingInfo
-from src.video_compression.codec.gop_manager import FrameType
 
 
 class TestBitstreamHeader:

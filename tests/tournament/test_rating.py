@@ -160,39 +160,29 @@ class TestRatingSystem:
         elo2 = rating_system.get_elo_rating("p1")
         assert elo is elo2
 
-    def test_expected_score_equal_ratings(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_expected_score_equal_ratings(self, rating_system: RatingSystem) -> None:
         """Test expected score with equal ratings."""
         expected = rating_system.expected_score(1500.0, 1500.0)
         assert expected == 0.5
 
-    def test_expected_score_higher_rated(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_expected_score_higher_rated(self, rating_system: RatingSystem) -> None:
         """Test expected score when higher rated."""
         expected = rating_system.expected_score(1700.0, 1500.0)
         assert expected > 0.5
         assert expected < 1.0
 
-    def test_expected_score_lower_rated(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_expected_score_lower_rated(self, rating_system: RatingSystem) -> None:
         """Test expected score when lower rated."""
         expected = rating_system.expected_score(1300.0, 1500.0)
         assert expected < 0.5
         assert expected > 0.0
 
-    def test_get_k_factor_new_player(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_get_k_factor_new_player(self, rating_system: RatingSystem) -> None:
         """Test K-factor for new player."""
         k = rating_system.get_k_factor("new_player")
         assert k == 40.0  # New player K-factor
 
-    def test_get_k_factor_established_player(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_get_k_factor_established_player(self, rating_system: RatingSystem) -> None:
         """Test K-factor for established player."""
         elo = rating_system.get_elo_rating("established")
         elo.games_played = 50  # More than 30 games
@@ -200,9 +190,7 @@ class TestRatingSystem:
         k = rating_system.get_k_factor("established")
         assert k == 32.0  # Standard K-factor
 
-    def test_get_k_factor_high_rated(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_get_k_factor_high_rated(self, rating_system: RatingSystem) -> None:
         """Test K-factor for high-rated player."""
         elo = rating_system.get_elo_rating("master")
         elo.rating = 2500.0
@@ -213,9 +201,7 @@ class TestRatingSystem:
 
     def test_calculate_change_win(self, rating_system: RatingSystem) -> None:
         """Test calculating rating change for win."""
-        p1_change, p2_change = rating_system.calculate_change(
-            "p1", "p2", result=1.0
-        )
+        p1_change, p2_change = rating_system.calculate_change("p1", "p2", result=1.0)
 
         assert p1_change > 0  # Winner gains
         assert p2_change < 0  # Loser loses
@@ -223,18 +209,14 @@ class TestRatingSystem:
 
     def test_calculate_change_loss(self, rating_system: RatingSystem) -> None:
         """Test calculating rating change for loss."""
-        p1_change, p2_change = rating_system.calculate_change(
-            "p1", "p2", result=0.0
-        )
+        p1_change, p2_change = rating_system.calculate_change("p1", "p2", result=0.0)
 
         assert p1_change < 0  # Loser loses
         assert p2_change > 0  # Winner gains
 
     def test_calculate_change_draw(self, rating_system: RatingSystem) -> None:
         """Test calculating rating change for draw."""
-        p1_change, p2_change = rating_system.calculate_change(
-            "p1", "p2", result=0.5
-        )
+        p1_change, p2_change = rating_system.calculate_change("p1", "p2", result=0.5)
 
         # Equal ratings means small or zero change on draw
         assert abs(p1_change) < 5
@@ -255,9 +237,7 @@ class TestRatingSystem:
         assert rating_system.get_rating("p1") > initial_p1
         assert rating_system.get_rating("p2") < initial_p2
 
-    def test_record_game_updates_history(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_record_game_updates_history(self, rating_system: RatingSystem) -> None:
         """Test that recording game updates history."""
         rating_system.record_game("p1", "p2", 1.0)
 
@@ -294,9 +274,7 @@ class TestRatingSystem:
         assert leaderboard[0][0] == "p3"  # Highest
         assert leaderboard[0][1] == 2000.0
 
-    def test_simulate_match_outcome(
-        self, rating_system: RatingSystem
-    ) -> None:
+    def test_simulate_match_outcome(self, rating_system: RatingSystem) -> None:
         """Test match outcome simulation."""
         rating_system.set_rating("p1", 1800.0)
         rating_system.set_rating("p2", 1400.0)

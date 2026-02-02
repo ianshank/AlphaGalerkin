@@ -154,8 +154,7 @@ class BaseRegistry(Generic[T]):
         if item is None:
             available = self.list_items()
             raise KeyError(
-                f"'{name}' not registered in {self._registry_name}. "
-                f"Available: {available}"
+                f"'{name}' not registered in {self._registry_name}. Available: {available}"
             )
         return item
 
@@ -302,9 +301,7 @@ def create_registry(
         def decorator(cls: type[T]) -> type[T]:
             # Validate inheritance
             if not issubclass(cls, base_class):
-                raise TypeError(
-                    f"Class {cls.__name__} must inherit from {base_class.__name__}"
-                )
+                raise TypeError(f"Class {cls.__name__} must inherit from {base_class.__name__}")
 
             # Register the class
             registry_cls().register(item_name, cls)

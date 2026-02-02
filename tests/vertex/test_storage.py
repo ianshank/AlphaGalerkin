@@ -152,7 +152,9 @@ class TestGCSCheckpointManager:
 
     def test_initialization(self, temp_cache_dir: Path) -> None:
         """Test manager initialization."""
-        with patch("src.vertex.storage.GCSCheckpointManager.client", new_callable=lambda: MagicMock()):
+        with patch(
+            "src.vertex.storage.GCSCheckpointManager.client", new_callable=lambda: MagicMock()
+        ):
             manager = GCSCheckpointManager(
                 bucket_name="test-bucket",
                 checkpoint_prefix="checkpoints",
@@ -166,7 +168,9 @@ class TestGCSCheckpointManager:
 
     def test_prefix_normalization(self, temp_cache_dir: Path) -> None:
         """Test checkpoint prefix is normalized."""
-        with patch("src.vertex.storage.GCSCheckpointManager.client", new_callable=lambda: MagicMock()):
+        with patch(
+            "src.vertex.storage.GCSCheckpointManager.client", new_callable=lambda: MagicMock()
+        ):
             manager = GCSCheckpointManager(
                 bucket_name="bucket",
                 checkpoint_prefix="path/to/checkpoints",
@@ -181,7 +185,9 @@ class TestGCSCheckpointManager:
             checkpoint_prefix="config-checkpoints/",
             max_checkpoints=10,
         )
-        with patch("src.vertex.storage.GCSCheckpointManager.client", new_callable=lambda: MagicMock()):
+        with patch(
+            "src.vertex.storage.GCSCheckpointManager.client", new_callable=lambda: MagicMock()
+        ):
             manager = GCSCheckpointManager.from_config(config)
             assert manager.bucket_name == "config-bucket"
             assert manager.checkpoint_prefix == "config-checkpoints/"

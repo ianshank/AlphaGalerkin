@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from src.research.validator import (
     TransferMetrics,
     TransferResult,
@@ -24,16 +23,28 @@ class TestTransferMetrics:
     def test_passed_threshold(self) -> None:
         """Test passed threshold logic."""
         passing = TransferMetrics(
-            target_size=19, source_size=9, n_samples=100,
-            mse=0.01, mae=0.05, rmse=0.1, max_error=0.2,
-            threshold=0.05, passed=True,
+            target_size=19,
+            source_size=9,
+            n_samples=100,
+            mse=0.01,
+            mae=0.05,
+            rmse=0.1,
+            max_error=0.2,
+            threshold=0.05,
+            passed=True,
         )
         assert passing.passed
 
         failing = TransferMetrics(
-            target_size=19, source_size=9, n_samples=100,
-            mse=0.1, mae=0.15, rmse=0.3, max_error=0.5,
-            threshold=0.05, passed=False,
+            target_size=19,
+            source_size=9,
+            n_samples=100,
+            mse=0.1,
+            mae=0.15,
+            rmse=0.3,
+            max_error=0.5,
+            threshold=0.05,
+            passed=False,
         )
         assert not failing.passed
 
@@ -89,16 +100,12 @@ class TestTransferResult:
 class TestTransferValidator:
     """Tests for TransferValidator."""
 
-    def test_initialization(
-        self, transfer_validator: TransferValidator
-    ) -> None:
+    def test_initialization(self, transfer_validator: TransferValidator) -> None:
         """Test validator initialization."""
         assert transfer_validator.config.source_size == 9
         assert len(transfer_validator.results) == 0
 
-    def test_validate(
-        self, transfer_validator: TransferValidator
-    ) -> None:
+    def test_validate(self, transfer_validator: TransferValidator) -> None:
         """Test validate method."""
 
         class MockModel:
@@ -132,9 +139,7 @@ class TestTransferValidator:
         assert len(result.target_metrics) == 2
         assert len(transfer_validator.results) == 1
 
-    def test_validate_failing(
-        self, transfer_validator: TransferValidator
-    ) -> None:
+    def test_validate_failing(self, transfer_validator: TransferValidator) -> None:
         """Test validate with failing metrics."""
 
         class MockModel:
@@ -162,9 +167,7 @@ class TestTransferValidator:
         assert not result.passed
         assert not result.all_passed
 
-    def test_get_best_result(
-        self, transfer_validator: TransferValidator
-    ) -> None:
+    def test_get_best_result(self, transfer_validator: TransferValidator) -> None:
         """Test getting best result."""
         # Add some results
         result1 = TransferResult(
@@ -175,9 +178,15 @@ class TestTransferValidator:
         )
         result1.target_metrics = {
             13: TransferMetrics(
-                target_size=13, source_size=9, n_samples=100,
-                mse=0.02, mae=0.05, rmse=0.1, max_error=0.2,
-                threshold=0.05, passed=True,
+                target_size=13,
+                source_size=9,
+                n_samples=100,
+                mse=0.02,
+                mae=0.05,
+                rmse=0.1,
+                max_error=0.2,
+                threshold=0.05,
+                passed=True,
             )
         }
 
@@ -189,9 +198,15 @@ class TestTransferValidator:
         )
         result2.target_metrics = {
             13: TransferMetrics(
-                target_size=13, source_size=9, n_samples=100,
-                mse=0.01, mae=0.03, rmse=0.07, max_error=0.15,
-                threshold=0.05, passed=True,
+                target_size=13,
+                source_size=9,
+                n_samples=100,
+                mse=0.01,
+                mae=0.03,
+                rmse=0.07,
+                max_error=0.15,
+                threshold=0.05,
+                passed=True,
             )
         }
 
@@ -201,9 +216,7 @@ class TestTransferValidator:
         assert best is not None
         assert best.result_id == "r2"
 
-    def test_compare_results(
-        self, transfer_validator: TransferValidator
-    ) -> None:
+    def test_compare_results(self, transfer_validator: TransferValidator) -> None:
         """Test comparing results."""
         result1 = TransferResult(
             result_id="r1",
@@ -212,9 +225,15 @@ class TestTransferValidator:
         )
         result1.target_metrics = {
             13: TransferMetrics(
-                target_size=13, source_size=9, n_samples=100,
-                mse=0.02, mae=0.05, rmse=0.1, max_error=0.2,
-                threshold=0.05, passed=True,
+                target_size=13,
+                source_size=9,
+                n_samples=100,
+                mse=0.02,
+                mae=0.05,
+                rmse=0.1,
+                max_error=0.2,
+                threshold=0.05,
+                passed=True,
             )
         }
 
@@ -225,9 +244,15 @@ class TestTransferValidator:
         )
         result2.target_metrics = {
             13: TransferMetrics(
-                target_size=13, source_size=9, n_samples=100,
-                mse=0.01, mae=0.03, rmse=0.07, max_error=0.15,
-                threshold=0.05, passed=True,
+                target_size=13,
+                source_size=9,
+                n_samples=100,
+                mse=0.01,
+                mae=0.03,
+                rmse=0.07,
+                max_error=0.15,
+                threshold=0.05,
+                passed=True,
             )
         }
 

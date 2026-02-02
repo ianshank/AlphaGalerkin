@@ -186,6 +186,6 @@ class TestGridCoordinates:
         """Property: Grid coordinates work for any board size."""
         coords = create_grid_coordinates(board_size)
 
-        assert coords.shape == (1, board_size ** 2, 2)
+        assert coords.shape == (1, board_size**2, 2)
         assert coords.min() >= 0.0
         assert coords.max() <= 1.0

@@ -86,6 +86,17 @@ training:
   plateau_factor: 0.5
   plateau_min_lr: 1e-6
 
+  # Physics-informed loss configuration (PDE-aware training)
+  physics_informed: false  # Enable physics-informed training
+  physics_loss_weight: 0.1  # Overall weight for physics loss term
+  physics_residual_weight: 1.0  # PDE residual minimization weight
+  physics_boundary_weight: 10.0  # Boundary condition enforcement weight
+  physics_initial_weight: 10.0  # Initial condition enforcement weight
+  physics_conservation_weight: 1.0  # Conservation law weight
+  physics_n_collocation_points: 1000  # Interior points for residual
+  physics_n_boundary_points: 200  # Boundary points per face
+  physics_use_adaptive_weights: true  # Use ReLoBRaLo for physics terms
+
 # Weights & Biases configuration
 wandb:
   enabled: true

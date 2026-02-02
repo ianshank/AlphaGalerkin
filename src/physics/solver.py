@@ -122,13 +122,11 @@ def generate_random_field(
         positions = rng.integers(0, grid_size, size=(n_sources, 2))
         magnitudes = rng.normal(0, source_std, size=n_sources)
 
-        for (i, j), mag in zip(positions, magnitudes):
+        for (i, j), mag in zip(positions, magnitudes, strict=False):
             field[i, j] += mag
     else:
         # Continuous random field
-        field = rng.normal(0, source_std, size=(grid_size, grid_size)).astype(
-            np.float32
-        )
+        field = rng.normal(0, source_std, size=(grid_size, grid_size)).astype(np.float32)
 
     if smooth:
         # Apply Gaussian smoothing

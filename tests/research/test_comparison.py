@@ -36,9 +36,7 @@ class TestModelMetrics:
         assert "mse_max" in model_metrics.aggregate_metrics
 
         # Mean of 0.01 and 0.02
-        assert model_metrics.aggregate_metrics["mse_mean"] == pytest.approx(
-            0.015, rel=0.01
-        )
+        assert model_metrics.aggregate_metrics["mse_mean"] == pytest.approx(0.015, rel=0.01)
 
     def test_to_dict(self, model_metrics: ModelMetrics) -> None:
         """Test serialization to dict."""
@@ -94,16 +92,12 @@ class TestComparisonResult:
 class TestModelComparison:
     """Tests for ModelComparison."""
 
-    def test_initialization(
-        self, model_comparison: ModelComparison
-    ) -> None:
+    def test_initialization(self, model_comparison: ModelComparison) -> None:
         """Test comparison initialization."""
         assert model_comparison.config.n_bootstrap == 1000
         assert len(model_comparison.results) == 0
 
-    def test_compare(
-        self, model_comparison: ModelComparison
-    ) -> None:
+    def test_compare(self, model_comparison: ModelComparison) -> None:
         """Test compare method."""
 
         class MockModel:
@@ -139,15 +133,14 @@ class TestModelComparison:
         assert len(model_comparison.results) == 1
 
     def test_get_summary_table(
-        self, model_comparison: ModelComparison,
+        self,
+        model_comparison: ModelComparison,
         comparison_result: ComparisonResult,
     ) -> None:
         """Test getting summary table."""
         model_comparison._results.append(comparison_result)
 
-        table = model_comparison.get_summary_table(
-            metrics=["mse", "mae"]
-        )
+        table = model_comparison.get_summary_table(metrics=["mse", "mae"])
 
         assert len(table) == 2
         assert any(r["model"] == "model_a" for r in table)

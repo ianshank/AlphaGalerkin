@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from src.analysis.patterns import (
     Pattern,
     PatternLibrary,
@@ -140,9 +139,7 @@ class TestPatternMatch:
 class TestPatternLibrary:
     """Tests for PatternLibrary."""
 
-    def test_initialization(
-        self, pattern_library: PatternLibrary
-    ) -> None:
+    def test_initialization(self, pattern_library: PatternLibrary) -> None:
         """Test library initialization."""
         assert len(pattern_library) == 0
 
@@ -236,11 +233,13 @@ class TestPatternLibrary:
         pattern_library: PatternLibrary,
     ) -> None:
         """Test listing pattern types."""
-        pattern_library.add_pattern(Pattern(
-            name="p1",
-            pattern_type=PatternType.SHAPE,
-            stones={(0, 0): "B"},
-        ))
+        pattern_library.add_pattern(
+            Pattern(
+                name="p1",
+                pattern_type=PatternType.SHAPE,
+                stones={(0, 0): "B"},
+            )
+        )
 
         types = pattern_library.list_types()
         assert PatternType.SHAPE in types
@@ -250,12 +249,14 @@ class TestPatternLibrary:
         pattern_library: PatternLibrary,
     ) -> None:
         """Test listing all tags."""
-        pattern_library.add_pattern(Pattern(
-            name="p1",
-            pattern_type=PatternType.SHAPE,
-            stones={(0, 0): "B"},
-            tags=["tag1", "tag2"],
-        ))
+        pattern_library.add_pattern(
+            Pattern(
+                name="p1",
+                pattern_type=PatternType.SHAPE,
+                stones={(0, 0): "B"},
+                tags=["tag1", "tag2"],
+            )
+        )
 
         tags = pattern_library.list_tags()
         assert "tag1" in tags
@@ -295,9 +296,7 @@ class TestPatternLibrary:
 class TestPatternMatcher:
     """Tests for PatternMatcher."""
 
-    def test_initialization(
-        self, pattern_matcher: PatternMatcher
-    ) -> None:
+    def test_initialization(self, pattern_matcher: PatternMatcher) -> None:
         """Test matcher initialization."""
         assert pattern_matcher.library is not None
 

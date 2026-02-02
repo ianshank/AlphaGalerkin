@@ -55,6 +55,7 @@ class RDCurve:
 
         Args:
             point: RD point to add.
+
         """
         self.points.append(point)
         # Keep sorted by rate
@@ -82,6 +83,7 @@ class RDCurve:
 
         Returns:
             True if curve is monotonic.
+
         """
         psnrs = self.psnrs
         if len(psnrs) < 2:
@@ -101,6 +103,7 @@ class RDCurve:
 
         Returns:
             Interpolated quality value.
+
         """
         rates = self.rates
         qualities = self.psnrs if metric == "psnr" else self.ssims
@@ -134,6 +137,7 @@ def compute_bd_rate(
 
     Returns:
         BD-rate as percentage (e.g., -5.0 means 5% bitrate savings).
+
     """
     # Get rates and qualities
     anchor_rates = anchor.rates
@@ -143,15 +147,9 @@ def compute_bd_rate(
 
     # Need at least 4 points for cubic interpolation
     if len(anchor_rates) < 4 or len(test_rates) < 4:
-        return _bd_rate_linear(
-            anchor_rates, anchor_qualities,
-            test_rates, test_qualities
-        )
+        return _bd_rate_linear(anchor_rates, anchor_qualities, test_rates, test_qualities)
 
-    return _bd_rate_cubic(
-        anchor_rates, anchor_qualities,
-        test_rates, test_qualities
-    )
+    return _bd_rate_cubic(anchor_rates, anchor_qualities, test_rates, test_qualities)
 
 
 def _bd_rate_linear(
@@ -170,6 +168,7 @@ def _bd_rate_linear(
 
     Returns:
         BD-rate percentage.
+
     """
     # Find overlapping quality range
     min_quality = max(anchor_qualities.min(), test_qualities.min())
@@ -183,12 +182,8 @@ def _bd_rate_linear(
     quality_samples = np.linspace(min_quality, max_quality, num_samples)
 
     # Interpolate rates at each quality level
-    anchor_rates_interp = np.interp(
-        quality_samples, anchor_qualities, anchor_rates
-    )
-    test_rates_interp = np.interp(
-        quality_samples, test_qualities, test_rates
-    )
+    anchor_rates_interp = np.interp(quality_samples, anchor_qualities, anchor_rates)
+    test_rates_interp = np.interp(quality_samples, test_qualities, test_rates)
 
     # Compute average rate difference (in log domain)
     log_anchor = np.log10(anchor_rates_interp + 1e-10)
@@ -197,7 +192,7 @@ def _bd_rate_linear(
     avg_log_diff = np.mean(log_test - log_anchor)
 
     # Convert to percentage
-    bd_rate = (10 ** avg_log_diff - 1) * 100
+    bd_rate = (10**avg_log_diff - 1) * 100
 
     return float(bd_rate)
 
@@ -221,6 +216,7 @@ def _bd_rate_cubic(
 
     Returns:
         BD-rate percentage.
+
     """
     # Work in log-rate domain
     log_anchor_rates = np.log10(anchor_rates + 1e-10)
@@ -262,12 +258,8 @@ def _bd_rate_cubic(
     quality_samples = np.linspace(min_quality, max_quality, num_samples)
 
     # Find log_rate for each quality by inverse interpolation
-    anchor_log_rates_interp = np.interp(
-        quality_samples, anchor_qualities, log_anchor_rates
-    )
-    test_log_rates_interp = np.interp(
-        quality_samples, test_qualities, log_test_rates
-    )
+    anchor_log_rates_interp = np.interp(quality_samples, anchor_qualities, log_anchor_rates)
+    test_log_rates_interp = np.interp(quality_samples, test_qualities, log_test_rates)
 
     # Integrate using trapezoidal rule
     dq = (max_quality - min_quality) / (num_samples - 1)
@@ -278,7 +270,7 @@ def _bd_rate_cubic(
     avg_log_diff = (test_area - anchor_area) / (max_quality - min_quality)
 
     # Convert to percentage
-    bd_rate = (10 ** avg_log_diff - 1) * 100
+    bd_rate = (10**avg_log_diff - 1) * 100
 
     return float(bd_rate)
 
@@ -300,6 +292,7 @@ def compute_bd_psnr(
 
     Returns:
         BD-PSNR in dB.
+
     """
     anchor_rates = anchor.rates
     anchor_psnrs = anchor.psnrs

@@ -45,9 +45,7 @@ class TestMetricType:
 class TestExperimentConfig:
     """Tests for ExperimentConfig."""
 
-    def test_default_values(
-        self, default_experiment_config: ExperimentConfig
-    ) -> None:
+    def test_default_values(self, default_experiment_config: ExperimentConfig) -> None:
         """Test default configuration values."""
         assert default_experiment_config.name == "test_experiment"
         assert default_experiment_config.experiment_type == ExperimentType.CUSTOM
@@ -72,9 +70,7 @@ class TestExperimentConfig:
         with pytest.raises(ValidationError):
             ExperimentConfig(name="test", n_runs=101)
 
-    def test_compute_hash(
-        self, default_experiment_config: ExperimentConfig
-    ) -> None:
+    def test_compute_hash(self, default_experiment_config: ExperimentConfig) -> None:
         """Test configuration hash computation."""
         hash1 = default_experiment_config.compute_hash()
         assert isinstance(hash1, str)
@@ -92,9 +88,7 @@ class TestExperimentConfig:
 class TestBenchmarkConfig:
     """Tests for BenchmarkConfig."""
 
-    def test_default_values(
-        self, default_benchmark_config: BenchmarkConfig
-    ) -> None:
+    def test_default_values(self, default_benchmark_config: BenchmarkConfig) -> None:
         """Test default configuration values."""
         assert default_benchmark_config.name == "test_benchmark"
         assert default_benchmark_config.batch_size == 32
@@ -118,9 +112,7 @@ class TestBenchmarkConfig:
 class TestTransferConfig:
     """Tests for TransferConfig."""
 
-    def test_default_values(
-        self, default_transfer_config: TransferConfig
-    ) -> None:
+    def test_default_values(self, default_transfer_config: TransferConfig) -> None:
         """Test default configuration values."""
         assert default_transfer_config.source_size == 9
         assert 9 in default_transfer_config.target_sizes
@@ -151,9 +143,7 @@ class TestTransferConfig:
 class TestComparisonConfig:
     """Tests for ComparisonConfig."""
 
-    def test_default_values(
-        self, default_comparison_config: ComparisonConfig
-    ) -> None:
+    def test_default_values(self, default_comparison_config: ComparisonConfig) -> None:
         """Test default configuration values."""
         assert default_comparison_config.n_bootstrap == 1000
         assert default_comparison_config.alpha == 0.05

@@ -62,9 +62,7 @@ class StabilityScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._scenario_logger = ScenarioLogger(
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),
@@ -104,28 +102,20 @@ class StabilityScenario(BaseScenario):
             self.record_metric(f"lbb_init_mean_{res}x{res}", float(np.mean(lbb_values)))
             self.record_metric(f"lbb_init_min_{res}x{res}", float(np.min(lbb_values)))
 
-        self.record_metric(
-            "lbb_training_mean", float(np.mean(training_results["lbb_values"]))
-        )
-        self.record_metric(
-            "lbb_training_min", float(np.min(training_results["lbb_values"]))
-        )
+        self.record_metric("lbb_training_mean", float(np.mean(training_results["lbb_values"])))
+        self.record_metric("lbb_training_min", float(np.min(training_results["lbb_values"])))
         self.record_metric("lbb_violations", training_results["n_violations"])
 
         # Evaluate thresholds
         init_violations = sum(
-            1 for values in init_results.values()
-            for v in values
-            if v < self.config.lbb_threshold
+            1 for values in init_results.values() for v in values if v < self.config.lbb_threshold
         )
 
         training_violations = training_results["n_violations"]
 
         threshold_results = {
             "init_stability": init_violations == 0,
-            "training_stability": (
-                training_violations <= self.config.max_lbb_violations
-            ),
+            "training_stability": (training_violations <= self.config.max_lbb_violations),
         }
 
         all_passed = all(threshold_results.values())

@@ -147,9 +147,7 @@ class FNetEvaluator:
             return []
 
         # Stack states into batch tensor
-        batch_tensor = torch.stack([
-            torch.from_numpy(s) for s in states
-        ]).to(self.device)
+        batch_tensor = torch.stack([torch.from_numpy(s) for s in states]).to(self.device)
 
         # Forward pass
         if self.use_fast_path and hasattr(self.model, "forward_fast"):
@@ -165,10 +163,12 @@ class FNetEvaluator:
         results = []
         for i, legal_actions in enumerate(legal_actions_batch):
             policy = self._process_policy(policy_logits[i], legal_actions)
-            results.append(EvaluationResult(
-                policy=policy,
-                value=float(values[i]),
-            ))
+            results.append(
+                EvaluationResult(
+                    policy=policy,
+                    value=float(values[i]),
+                )
+            )
 
         return results
 
@@ -258,7 +258,4 @@ class RandomEvaluator:
             List of random evaluations.
 
         """
-        return [
-            self.evaluate(s, la)
-            for s, la in zip(states, legal_actions_batch)
-        ]
+        return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]

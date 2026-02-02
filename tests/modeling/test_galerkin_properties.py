@@ -10,7 +10,8 @@ import pytest
 # Skip entire module if torch not available
 torch = pytest.importorskip("torch")
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from src.modeling.galerkin_operator import Galerkin2d, GalerkinOperatorBlock
 

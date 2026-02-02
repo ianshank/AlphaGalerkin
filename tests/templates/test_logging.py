@@ -149,10 +149,9 @@ class TestBaseModuleLogger:
         """Test timed context manager logs on exception."""
         logger = BaseModuleLogger("test")
 
-        with pytest.raises(ValueError):
-            with logger.timed("failing_operation") as timing:
-                time.sleep(0.01)
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), logger.timed("failing_operation") as timing:
+            time.sleep(0.01)
+            raise ValueError("Test error")
 
         # Timing should still be recorded
         assert "duration_seconds" in timing
@@ -213,7 +212,7 @@ class TestLogTimingDecorator:
 
         @log_timing()
         def documented_function():
-            """This is a docstring."""
+            """Documented test function with a docstring."""
             pass
 
         assert documented_function.__name__ == "documented_function"
@@ -315,10 +314,9 @@ class TestDebugContext:
 
     def test_exception_handling(self) -> None:
         """Test that exceptions are handled properly."""
-        with pytest.raises(ValueError):
-            with DebugContext("failing_op") as ctx:
-                ctx.checkpoint("before_error")
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), DebugContext("failing_op") as ctx:
+            ctx.checkpoint("before_error")
+            raise ValueError("Test error")
 
         # Checkpoints should be preserved
         assert len(ctx.checkpoints) == 1

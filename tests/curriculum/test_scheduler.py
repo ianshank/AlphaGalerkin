@@ -15,9 +15,7 @@ from src.curriculum.stage import StageStatus
 class TestCurriculumScheduler:
     """Tests for CurriculumScheduler class."""
 
-    def test_initial_state(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_initial_state(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test initial scheduler state."""
         assert curriculum_scheduler.current_board_size == 9
         assert curriculum_scheduler.current_stage_name == "stage_9x9"
@@ -31,15 +29,11 @@ class TestCurriculumScheduler:
         # Should be in warmup since config has warmup_games_per_stage=2
         assert stage.status in (StageStatus.WARMUP, StageStatus.ACTIVE)
 
-    def test_total_stages(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_total_stages(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test total stages property."""
         assert curriculum_scheduler.total_stages == 2
 
-    def test_is_final_stage(
-        self, three_stage_config: CurriculumConfig
-    ) -> None:
+    def test_is_final_stage(self, three_stage_config: CurriculumConfig) -> None:
         """Test final stage detection."""
         scheduler = CurriculumScheduler(three_stage_config)
         scheduler.start()
@@ -50,16 +44,12 @@ class TestCurriculumScheduler:
         scheduler.skip_to_stage("advanced")
         assert scheduler.is_final_stage
 
-    def test_progress_percentage(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_progress_percentage(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test progress percentage calculation."""
         curriculum_scheduler.start()
         assert curriculum_scheduler.progress_percentage == 0.0
 
-    def test_record_game_during_warmup(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_record_game_during_warmup(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test recording games during warmup."""
         curriculum_scheduler.start()
 
@@ -69,9 +59,7 @@ class TestCurriculumScheduler:
             curriculum_scheduler.record_game(won=True)
             assert stage.warmup_games_remaining < 2
 
-    def test_record_game_triggers_evaluation(
-        self, two_stage_config: CurriculumConfig
-    ) -> None:
+    def test_record_game_triggers_evaluation(self, two_stage_config: CurriculumConfig) -> None:
         """Test that evaluation is triggered at interval."""
         scheduler = CurriculumScheduler(two_stage_config)
         scheduler.start()
@@ -87,21 +75,15 @@ class TestCurriculumScheduler:
         # This should trigger evaluation
         scheduler.record_game(won=True)
 
-    def test_record_training_step(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_record_training_step(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test recording training steps."""
         curriculum_scheduler.start()
-        curriculum_scheduler.record_training_step(
-            total_loss=0.5, policy_loss=0.3, value_loss=0.2
-        )
+        curriculum_scheduler.record_training_step(total_loss=0.5, policy_loss=0.3, value_loss=0.2)
 
         assert curriculum_scheduler._total_steps == 1
         assert curriculum_scheduler.current_stage.metrics.training_steps == 1
 
-    def test_stage_progression(
-        self, two_stage_config: CurriculumConfig
-    ) -> None:
+    def test_stage_progression(self, two_stage_config: CurriculumConfig) -> None:
         """Test stage progression when criteria met."""
         # Use shorter intervals for testing
         scheduler = CurriculumScheduler(two_stage_config)
@@ -115,9 +97,7 @@ class TestCurriculumScheduler:
         # Should have advanced to second stage
         assert scheduler.current_stage_name in ("stage_9x9", "stage_13x13")
 
-    def test_force_advance(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_force_advance(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test forced advancement."""
         curriculum_scheduler.start()
 
@@ -125,9 +105,7 @@ class TestCurriculumScheduler:
         curriculum_scheduler.force_advance()
         assert curriculum_scheduler.current_stage_name == "stage_13x13"
 
-    def test_force_advance_at_final_stage(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_force_advance_at_final_stage(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test forced advancement at final stage."""
         curriculum_scheduler.start()
         curriculum_scheduler.force_advance()  # Go to final
@@ -136,9 +114,7 @@ class TestCurriculumScheduler:
         result = curriculum_scheduler.force_advance()
         assert not result  # Can't advance further
 
-    def test_skip_to_stage(
-        self, three_stage_config: CurriculumConfig
-    ) -> None:
+    def test_skip_to_stage(self, three_stage_config: CurriculumConfig) -> None:
         """Test skipping to specific stage."""
         scheduler = CurriculumScheduler(three_stage_config)
         scheduler.start()
@@ -149,18 +125,14 @@ class TestCurriculumScheduler:
         assert scheduler.current_stage_name == "advanced"
         assert scheduler.current_board_size == 19
 
-    def test_skip_to_nonexistent_stage(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_skip_to_nonexistent_stage(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test skipping to nonexistent stage."""
         curriculum_scheduler.start()
 
         result = curriculum_scheduler.skip_to_stage("nonexistent")
         assert not result
 
-    def test_get_training_params(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_get_training_params(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test getting training parameters."""
         curriculum_scheduler.start()
 
@@ -175,9 +147,7 @@ class TestCurriculumScheduler:
         assert "board_size" in params
         assert params["board_size"] == 9
 
-    def test_callbacks_on_stage_start(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_callbacks_on_stage_start(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test stage start callbacks."""
         started_stages = []
 
@@ -189,9 +159,7 @@ class TestCurriculumScheduler:
 
         assert "stage_9x9" in started_stages
 
-    def test_callbacks_on_stage_complete(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_callbacks_on_stage_complete(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test stage complete callbacks."""
         completed_stages = []
 
@@ -204,9 +172,7 @@ class TestCurriculumScheduler:
 
         assert "stage_9x9" in completed_stages
 
-    def test_save_and_load_state(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_save_and_load_state(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test state persistence."""
         curriculum_scheduler.start()
 
@@ -232,7 +198,8 @@ class TestCurriculumScheduler:
         path.unlink()
 
     def test_load_state_config_mismatch(
-        self, two_stage_config: CurriculumConfig,
+        self,
+        two_stage_config: CurriculumConfig,
         three_stage_config: CurriculumConfig,
     ) -> None:
         """Test loading state with mismatched config."""
@@ -254,9 +221,7 @@ class TestCurriculumScheduler:
         # Cleanup
         path.unlink()
 
-    def test_get_summary(
-        self, curriculum_scheduler: CurriculumScheduler
-    ) -> None:
+    def test_get_summary(self, curriculum_scheduler: CurriculumScheduler) -> None:
         """Test getting curriculum summary."""
         curriculum_scheduler.start()
 
@@ -271,9 +236,7 @@ class TestCurriculumScheduler:
 class TestRegressionHandling:
     """Tests for curriculum regression handling."""
 
-    def test_regression_disabled_by_default(
-        self, two_stage_config: CurriculumConfig
-    ) -> None:
+    def test_regression_disabled_by_default(self, two_stage_config: CurriculumConfig) -> None:
         """Test regression is disabled by default."""
         assert not two_stage_config.allow_regression
 

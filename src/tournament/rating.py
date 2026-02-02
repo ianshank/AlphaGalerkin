@@ -45,9 +45,7 @@ class RatingChange:
     result: float
     expected: float
     k_factor: float
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -173,9 +171,7 @@ class RatingSystem:
 
         """
         if player_id not in self._ratings:
-            self._ratings[player_id] = EloRating(
-                rating=self.config.initial_rating
-            )
+            self._ratings[player_id] = EloRating(rating=self.config.initial_rating)
         return self._ratings[player_id]
 
     def expected_score(
@@ -299,12 +295,8 @@ class RatingSystem:
         )
 
         # Apply changes with bounds
-        new_player_rating = self._clamp_rating(
-            old_player_rating + player_change
-        )
-        new_opponent_rating = self._clamp_rating(
-            old_opponent_rating + opponent_change
-        )
+        new_player_rating = self._clamp_rating(old_player_rating + player_change)
+        new_opponent_rating = self._clamp_rating(old_opponent_rating + opponent_change)
 
         # Create change records
         player_record = RatingChange(
@@ -399,10 +391,7 @@ class RatingSystem:
             key=lambda x: x[1].rating,
             reverse=True,
         )
-        return [
-            (player_id, elo.rating)
-            for player_id, elo in sorted_players[:top_n]
-        ]
+        return [(player_id, elo.rating) for player_id, elo in sorted_players[:top_n]]
 
     def simulate_match_outcome(
         self,
@@ -454,10 +443,7 @@ class RatingSystem:
         """
         return {
             "config": self.config.model_dump(),
-            "ratings": {
-                player_id: elo.to_dict()
-                for player_id, elo in self._ratings.items()
-            },
+            "ratings": {player_id: elo.to_dict() for player_id, elo in self._ratings.items()},
         }
 
 

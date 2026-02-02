@@ -205,6 +205,51 @@ class TrainingConfig(BaseModel):
     )
     plateau_min_lr: float = Field(default=1e-6, gt=0.0, description="Minimum learning rate")
 
+    # Physics-informed loss configuration
+    physics_informed: bool = Field(
+        default=False,
+        description="Enable physics-informed loss during training",
+    )
+    physics_loss_weight: float = Field(
+        default=0.1,
+        ge=0.0,
+        description="Overall weight for physics loss relative to policy/value/lbb",
+    )
+    physics_residual_weight: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="Weight for PDE residual loss",
+    )
+    physics_boundary_weight: float = Field(
+        default=10.0,
+        ge=0.0,
+        description="Weight for boundary condition loss",
+    )
+    physics_initial_weight: float = Field(
+        default=10.0,
+        ge=0.0,
+        description="Weight for initial condition loss",
+    )
+    physics_conservation_weight: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="Weight for conservation law loss",
+    )
+    physics_n_collocation_points: int = Field(
+        default=1000,
+        ge=10,
+        description="Number of collocation points for PDE residual",
+    )
+    physics_n_boundary_points: int = Field(
+        default=200,
+        ge=10,
+        description="Number of boundary points for BC enforcement",
+    )
+    physics_use_adaptive_weights: bool = Field(
+        default=True,
+        description="Use adaptive weighting for physics loss components",
+    )
+
 
 class DistributedConfig(BaseModel):
     """Configuration for distributed training.

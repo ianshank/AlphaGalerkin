@@ -223,6 +223,7 @@ class VertexLauncher:
 
         try:
             from google.cloud import aiplatform
+
             aiplatform.init(
                 project=self.config.project_id,
                 location=self.config.region.value,
@@ -442,9 +443,7 @@ class VertexLauncher:
                 return status
 
             if timeout is not None and (time.time() - start_time) > timeout:
-                raise TimeoutError(
-                    f"Job {job_id} did not complete within {timeout} seconds"
-                )
+                raise TimeoutError(f"Job {job_id} did not complete within {timeout} seconds")
 
             logger.debug(
                 "waiting_for_job",
@@ -517,10 +516,7 @@ class VertexLauncher:
     ) -> list[dict[str, Any]]:
         """Build worker pool specifications."""
         # Convert env vars to list format
-        env_list = [
-            {"name": k, "value": v}
-            for k, v in environment_variables.items()
-        ]
+        env_list = [{"name": k, "value": v} for k, v in environment_variables.items()]
 
         container_spec = {
             "image_uri": container_uri,
@@ -553,8 +549,9 @@ class VertexLauncher:
                 f"https://console.cloud.google.com/vertex-ai/training/"
                 f"{job_id}/cpu?project={self.config.project_id}&region={location}"
             )
-        return f"https://console.cloud.google.com/vertex-ai/training?project={self.config.project_id}"
-
+        return (
+            f"https://console.cloud.google.com/vertex-ai/training?project={self.config.project_id}"
+        )
 
     def validate_auth(self) -> ValidationResult:
         """Validate GCP credentials without launching a job.

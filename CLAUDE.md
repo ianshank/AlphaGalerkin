@@ -61,6 +61,9 @@ Monitors LBB condition during training:
 ## Milestones
 - [2026-01-26]: **Zero-Shot Transfer Validated** - Physics PoC achieved MSE 0.000209 on 19x19 (trained on 9x9)
 - [2026-01-26]: **Training Pipeline Operational** - End-to-end GPU training with MCTS self-play working
+- [2026-02-01]: **CI/CD Pipeline Added** - GitHub Actions workflow with lint, type check, tests, coverage
+- [2026-02-01]: **Video Compression Hyperprior Fixed** - Proper z_bitstream encoding/decoding for entropy model
+- [2026-02-01]: **Chess Game Implementation** - Full Chess rules with AlphaZero-style encoding (119 planes)
 
 ## Next-Phase Infrastructure (v2.0)
 
@@ -82,6 +85,8 @@ Monitors LBB condition during training:
 - [2026-01-26]: Game registry with decorator-based registration.
 - [2026-01-26]: Go implementation with full rules (Chinese scoring, superko).
 - [2026-01-26]: 8-fold symmetry support for data augmentation.
+- [2026-02-01]: Chess implementation with full rules (castling, en passant, promotion).
+- [2026-02-01]: Chess uses 119-plane AlphaZero encoding with horizontal symmetry.
 
 ### Advanced MCTS (src/mcts/)
 - [2026-01-26]: Gumbel AlphaZero implementation with sequential halving.

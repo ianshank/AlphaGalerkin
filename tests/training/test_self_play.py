@@ -45,13 +45,17 @@ class TestGameRecord:
         import numpy as np
 
         board_size = 9
-        n_actions = board_size ** 2 + 1
+        n_actions = board_size**2 + 1
 
         record = GameRecord(
             board_size=board_size,
-            states=[np.random.randn(17, board_size, board_size).astype(np.float32) for _ in range(10)],
-            policies=[np.random.dirichlet(np.ones(n_actions)).astype(np.float32) for _ in range(10)],
-            actions=[i for i in range(10)],
+            states=[
+                np.random.randn(17, board_size, board_size).astype(np.float32) for _ in range(10)
+            ],
+            policies=[
+                np.random.dirichlet(np.ones(n_actions)).astype(np.float32) for _ in range(10)
+            ],
+            actions=list(range(10)),
             outcome=1.0,  # Black wins
         )
 

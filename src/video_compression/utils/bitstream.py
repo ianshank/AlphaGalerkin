@@ -19,14 +19,15 @@ from __future__ import annotations
 import json
 import logging
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.video_compression.utils.padding import PaddingInfo
 from src.video_compression.codec.gop_manager import FrameType
+from src.video_compression.utils.padding import PaddingInfo
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ class FrameHeader:
 
         Returns:
             Tuple of (FrameHeader, bytes consumed).
+
         """
         # Unpack fixed fields
         fixed_size = struct.calcsize("<IcIHii")
@@ -185,6 +187,7 @@ class BitstreamWriter:
         Args:
             path: Output file path.
             header: Video header metadata.
+
         """
         self.path = Path(path)
         self.header = header
@@ -233,6 +236,7 @@ class BitstreamWriter:
 
         Args:
             frame: Encoded frame data.
+
         """
         if not self._file:
             raise RuntimeError("File not open")
@@ -275,8 +279,7 @@ class BitstreamWriter:
         # Would need to re-write entire header for that
 
         logger.info(
-            f"Finalized bitstream: {self._frames_written} frames, "
-            f"{self._total_bits} bits total"
+            f"Finalized bitstream: {self._frames_written} frames, {self._total_bits} bits total"
         )
 
 
@@ -295,6 +298,7 @@ class BitstreamReader:
 
         Args:
             path: Input file path.
+
         """
         self.path = Path(path)
         self._file: BinaryIO | None = None
@@ -334,9 +338,7 @@ class BitstreamReader:
         # Check version
         (version,) = struct.unpack("<H", self._file.read(2))
         if version > FORMAT_VERSION:
-            raise ValueError(
-                f"Unsupported format version {version} (max: {FORMAT_VERSION})"
-            )
+            raise ValueError(f"Unsupported format version {version} (max: {FORMAT_VERSION})")
 
         # Read header JSON
         (header_len,) = struct.unpack("<I", self._file.read(4))
@@ -347,8 +349,7 @@ class BitstreamReader:
         (self._frame_count,) = struct.unpack("<I", self._file.read(4))
 
         logger.debug(
-            f"Read header: {self._header.width}x{self._header.height}, "
-            f"{self._frame_count} frames"
+            f"Read header: {self._header.width}x{self._header.height}, {self._frame_count} frames"
         )
 
     def __iter__(self) -> Iterator[EncodedFrame]:
@@ -369,6 +370,7 @@ class BitstreamReader:
 
         Returns:
             EncodedFrame with header and data.
+
         """
         if not self._file:
             raise RuntimeError("File not open")
@@ -408,6 +410,7 @@ class BitstreamReader:
 
         Returns:
             EncodedFrame at index.
+
         """
         # Reset to start of frames
         # This is inefficient - a real implementation would use an index
@@ -436,6 +439,7 @@ def save_bitstream(
 
     Returns:
         Total bytes written.
+
     """
     with BitstreamWriter(path, header) as writer:
         for frame in frames:
@@ -452,6 +456,7 @@ def load_bitstream(path: Path | str) -> tuple[BitstreamHeader, list[EncodedFrame
 
     Returns:
         Tuple of (header, list of frames).
+
     """
     with BitstreamReader(path) as reader:
         header = reader.header

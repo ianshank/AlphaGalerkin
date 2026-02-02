@@ -291,9 +291,7 @@ class TestCreateExecutableClass:
         class MyConfig(BaseModuleConfig):
             pass
 
-        MyExecutable = create_executable_class(
-            "MyExecutable", MyConfig, module_name="my_module"
-        )
+        MyExecutable = create_executable_class("MyExecutable", MyConfig, module_name="my_module")
 
         assert MyExecutable._logger_class._module_name == "my_module"
 

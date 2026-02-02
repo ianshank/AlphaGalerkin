@@ -1,0 +1,133 @@
+# AlphaGalerkin Pre-commit Configuration
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+# Update hooks: pre-commit autoupdate
+
+default_language_version:
+  python: python3.11
+
+# Define shared settings
+default_stages: [pre-commit]
+
+repos:
+  # =============================================================
+  # General file quality
+  # =============================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]  # Allow custom tags for Hydra configs
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: check-ast
+
+  # =============================================================
+  # Python code formatting with Ruff
+  # =============================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      # Run the Ruff linter (replaces flake8, isort, etc.)
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      # Run the Ruff formatter (replaces black)
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # =============================================================
+  # Type checking with MyPy (optional, can be slow)
+  # =============================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        args:
+          - --strict
+          - --ignore-missing-imports
+          - --no-error-summary
+        additional_dependencies:
+          - torch
+          - pydantic
+          - numpy
+          - types-PyYAML
+        # Only check staged files to keep it fast
+        pass_filenames: true
+        # Skip in CI (handled by dedicated job)
+        stages: [manual]
+
+  # =============================================================
+  # Security checks
+  # =============================================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.7
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, -r, src/]
+        additional_dependencies: ["bandit[toml]"]
+        # Skip in pre-commit, run in CI only
+        stages: [manual]
+
+  # =============================================================
+  # Commit message validation
+  # =============================================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.14.1
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # =============================================================
+  # Jupyter notebook cleanup
+  # =============================================================
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.7.1
+    hooks:
+      - id: nbstripout
+        args: [--keep-output]  # Keep output for reproducibility
+
+  # =============================================================
+  # YAML/Hydra config validation
+  # =============================================================
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.34.0
+    hooks:
+      - id: yamllint
+        args: [-c, .yamllint.yaml]
+        # Only if .yamllint.yaml exists
+        files: \.ya?ml$
+
+  # =============================================================
+  # Documentation
+  # =============================================================
+  - repo: https://github.com/PyCQA/doc8
+    rev: v1.1.1
+    hooks:
+      - id: doc8
+        args: [--max-line-length=100]
+        files: \.rst$
+
+# =============================================================
+# CI-only configuration
+# =============================================================
+ci:
+  autofix_prs: true
+  autofix_commit_msg: "style: auto-fix by pre-commit hooks"
+  autoupdate_schedule: monthly
+  autoupdate_commit_msg: "chore: update pre-commit hooks"
+  skip:
+    - mypy  # Too slow for pre-commit.ci
+    - bandit  # Security checks in dedicated CI job

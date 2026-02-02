@@ -187,7 +187,7 @@ class SimpleSoftmaxAttention(nn.Module):
         v = self.v_proj(x).view(batch, seq, self.n_heads, self.head_dim).transpose(1, 2)
 
         # Attention (O(N²) operation)
-        scale = self.head_dim ** -0.5
+        scale = self.head_dim**-0.5
         attn = torch.matmul(q, k.transpose(-2, -1)) * scale
         attn = torch.softmax(attn, dim=-1)
         out = torch.matmul(attn, v)
@@ -273,7 +273,9 @@ class BenchmarkDemo:
 
         """
         x = torch.randn(
-            batch_size, seq_length, self.config.d_model,
+            batch_size,
+            seq_length,
+            self.config.d_model,
             device=self.device,
         )
 
@@ -358,14 +360,18 @@ class BenchmarkDemo:
 
             # Benchmark FNet
             fnet_time, fnet_memory = self._benchmark_single(
-                fnet, batch_size, seq_length,
+                fnet,
+                batch_size,
+                seq_length,
                 self.config.n_warmup_runs,
                 self.config.n_benchmark_runs,
             )
 
             # Benchmark Softmax
             softmax_time, softmax_memory = self._benchmark_single(
-                softmax, batch_size, seq_length,
+                softmax,
+                batch_size,
+                seq_length,
                 self.config.n_warmup_runs,
                 self.config.n_benchmark_runs,
             )
@@ -433,9 +439,9 @@ class BenchmarkDemo:
         # Create summary
         summary = f"""
 Benchmark Results ({self.device.upper()})
-{'=' * 50}
+{"=" * 50}
 {suite.to_table()}
-{'=' * 50}
+{"=" * 50}
 
 Configuration:
 - Model dimension: {self.config.d_model}
@@ -466,7 +472,7 @@ compared to Softmax attention's O(N²), enabling faster MCTS rollouts.
         # Theoretical complexity curves (normalized)
         n_values = np.array(suite.sequence_lengths)
         n_log_n = n_values * np.log2(n_values)
-        n_squared = n_values ** 2
+        n_squared = n_values**2
 
         # Normalize theoretical curves to match measured
         scale_fnet = suite.fnet_times[-1] / n_log_n[-1]
@@ -488,22 +494,38 @@ compared to Softmax attention's O(N²), enabling faster MCTS rollouts.
 
         # Measured data
         ax1.plot(
-            n_values, suite.fnet_times,
-            "o-", label="FNet (measured)", color="#2ecc71", linewidth=2,
+            n_values,
+            suite.fnet_times,
+            "o-",
+            label="FNet (measured)",
+            color="#2ecc71",
+            linewidth=2,
         )
         ax1.plot(
-            n_values, suite.softmax_times,
-            "s-", label="Softmax (measured)", color="#e74c3c", linewidth=2,
+            n_values,
+            suite.softmax_times,
+            "s-",
+            label="Softmax (measured)",
+            color="#e74c3c",
+            linewidth=2,
         )
 
         # Theoretical curves (dashed)
         ax1.plot(
-            n_values, theoretical_fnet,
-            "--", label="O(N log N) theory", color="#27ae60", alpha=0.5,
+            n_values,
+            theoretical_fnet,
+            "--",
+            label="O(N log N) theory",
+            color="#27ae60",
+            alpha=0.5,
         )
         ax1.plot(
-            n_values, theoretical_softmax,
-            "--", label="O(N²) theory", color="#c0392b", alpha=0.5,
+            n_values,
+            theoretical_softmax,
+            "--",
+            label="O(N²) theory",
+            color="#c0392b",
+            alpha=0.5,
         )
 
         ax1.set_xlabel("Sequence Length (N)", fontsize=10)

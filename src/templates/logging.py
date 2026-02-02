@@ -89,12 +89,14 @@ def configure_module_logging(
         processors.insert(0, structlog.processors.TimeStamper(fmt="iso"))
 
     if include_caller:
-        processors.append(structlog.processors.CallsiteParameterAdder(
-            [
-                structlog.processors.CallsiteParameter.FILENAME,
-                structlog.processors.CallsiteParameter.LINENO,
-            ]
-        ))
+        processors.append(
+            structlog.processors.CallsiteParameterAdder(
+                [
+                    structlog.processors.CallsiteParameter.FILENAME,
+                    structlog.processors.CallsiteParameter.LINENO,
+                ]
+            )
+        )
 
     # Add renderer based on format
     if json_format:

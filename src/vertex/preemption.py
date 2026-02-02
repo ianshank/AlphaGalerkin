@@ -338,10 +338,7 @@ class PreemptionMonitor:
 
         # Check for Vertex AI preemption marker
         # Vertex AI may set environment variables or files
-        if os.environ.get("VERTEX_PREEMPTION") == "true":
-            return True
-
-        return False
+        return os.environ.get("VERTEX_PREEMPTION") == "true"
 
     @property
     def is_preempted(self) -> bool:

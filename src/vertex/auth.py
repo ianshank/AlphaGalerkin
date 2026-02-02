@@ -308,8 +308,7 @@ def run_gcloud_command(
                 return_code=-1,
                 stdout="",
                 stderr=(
-                    "gcloud CLI not found. Install from "
-                    "https://cloud.google.com/sdk/docs/install"
+                    "gcloud CLI not found. Install from https://cloud.google.com/sdk/docs/install"
                 ),
                 command=args,
             )
@@ -401,9 +400,7 @@ class ValidationResult:
 class AuthenticationError(Exception):
     """Raised when GCP authentication fails."""
 
-    def __init__(
-        self, message: str, validation_result: ValidationResult | None = None
-    ) -> None:
+    def __init__(self, message: str, validation_result: ValidationResult | None = None) -> None:
         """Initialize authentication error.
 
         Args:

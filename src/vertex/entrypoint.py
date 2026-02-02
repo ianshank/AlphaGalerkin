@@ -66,14 +66,16 @@ def init_wandb_for_vertex(
     # Build W&B config from environment and training config
     wandb_config = training_config.get("wandb", {}).copy()
     default_project = wandb_config.get("project", "alphagalerkin")
-    wandb_config.update({
-        "enabled": True,
-        "project": os_module.environ.get("WANDB_PROJECT", default_project),
-        "entity": os_module.environ.get("WANDB_ENTITY", wandb_config.get("entity")),
-        "name": os_module.environ.get("WANDB_RUN_NAME", wandb_config.get("name")),
-        "mode": mode,
-        "tags": wandb_config.get("tags", []) + ["vertex-ai"],
-    })
+    wandb_config.update(
+        {
+            "enabled": True,
+            "project": os_module.environ.get("WANDB_PROJECT", default_project),
+            "entity": os_module.environ.get("WANDB_ENTITY", wandb_config.get("entity")),
+            "name": os_module.environ.get("WANDB_RUN_NAME", wandb_config.get("name")),
+            "mode": mode,
+            "tags": wandb_config.get("tags", []) + ["vertex-ai"],
+        }
+    )
 
     try:
         from src.training.wandb_logger import create_wandb_logger
@@ -297,12 +299,14 @@ def run_training(
         # Run training loop
         train_results = trainer.train()
 
-        results.update({
-            "status": "completed",
-            "final_step": train_results.get("step", 0),
-            "final_loss": train_results.get("loss", 0.0),
-            "metrics": train_results.get("metrics", {}),
-        })
+        results.update(
+            {
+                "status": "completed",
+                "final_step": train_results.get("step", 0),
+                "final_loss": train_results.get("loss", 0.0),
+                "metrics": train_results.get("metrics", {}),
+            }
+        )
 
     except ImportError as e:
         # VertexTrainer not available - fall back to basic training
@@ -324,11 +328,13 @@ def run_training(
                 trainer.load_checkpoint(resume_path)
 
             train_results = trainer.train()
-            results.update({
-                "status": "completed",
-                "final_step": getattr(train_results, "step", 0),
-                "final_loss": getattr(train_results, "loss", 0.0),
-            })
+            results.update(
+                {
+                    "status": "completed",
+                    "final_step": getattr(train_results, "step", 0),
+                    "final_loss": getattr(train_results, "loss", 0.0),
+                }
+            )
 
         except Exception as inner_e:
             logger.error("training_fallback_failed", error=str(inner_e))
@@ -427,6 +433,7 @@ def main() -> int:
             logger.error("vertex_config_error", error=str(e))
             # Create minimal config for local testing
             from src.vertex.config import VertexStorageConfig
+
             vertex_config = VertexTrainingConfig(
                 project_id="local-test",
                 staging_bucket="gs://local-test",

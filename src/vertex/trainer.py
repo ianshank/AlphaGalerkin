@@ -51,6 +51,7 @@ def _get_dist() -> Any:
 
     return dist
 
+
 logger = structlog.get_logger(__name__)
 
 
@@ -211,6 +212,7 @@ class VertexTrainer:
         # Wrap with DDP if distributed
         if self._distributed_ctx.world_size > 1:
             from torch.nn.parallel import DistributedDataParallel as DDP
+
             self.model = DDP(
                 self.model,
                 device_ids=[self._distributed_ctx.local_rank],
@@ -293,8 +295,10 @@ class VertexTrainer:
                     self._log_metrics(metrics)
 
                 # Checkpoint based on preemption handler recommendation
-                if (self._preemption_handler.should_save_checkpoint(self._current_step)
-                        and self._distributed_ctx.is_main_process()):
+                if (
+                    self._preemption_handler.should_save_checkpoint(self._current_step)
+                    and self._distributed_ctx.is_main_process()
+                ):
                     self._save_checkpoint(metrics)
 
         except Exception as e:

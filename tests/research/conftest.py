@@ -6,6 +6,8 @@ import tempfile
 
 import pytest
 
+from src.research.benchmark import Benchmark, BenchmarkResult
+from src.research.comparison import ComparisonResult, ModelComparison, ModelMetrics
 from src.research.config import (
     BenchmarkConfig,
     ComparisonConfig,
@@ -13,10 +15,8 @@ from src.research.config import (
     TransferConfig,
 )
 from src.research.experiment import Experiment, ExperimentRun, ExperimentTracker
-from src.research.benchmark import Benchmark, BenchmarkResult
-from src.research.validator import TransferMetrics, TransferResult, TransferValidator
-from src.research.comparison import ComparisonResult, ModelComparison, ModelMetrics
 from src.research.reporter import Reporter
+from src.research.validator import TransferMetrics, TransferResult, TransferValidator
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def experiment_tracker() -> ExperimentTracker:
 @pytest.fixture
 def research_benchmark(default_benchmark_config: BenchmarkConfig) -> Benchmark:
     """Create a research benchmark instance.
-    
+
     Named 'research_benchmark' to avoid conflict with pytest-benchmark's
     built-in 'benchmark' fixture.
     """

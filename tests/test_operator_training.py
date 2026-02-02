@@ -10,12 +10,12 @@ Tests:
 import pytest
 import torch
 
-from src.modeling.fno_layer import SpectralConv2d, FNOBlock, FNO2d
-from src.modeling.operator import NeuralOperator
-from src.training.losses import L2RelativeLoss, H1Loss, get_loss
-from src.training.operator_trainer import OperatorTrainer, TrainingConfig
 from src.data.physics_dataset import PhysicsDataset
+from src.modeling.fno_layer import FNO2d, FNOBlock, SpectralConv2d
+from src.modeling.operator import NeuralOperator
 from src.physics.darcy import DarcyFlowSolver
+from src.training.losses import H1Loss, L2RelativeLoss, get_loss
+from src.training.operator_trainer import OperatorTrainer, TrainingConfig
 
 
 class TestSpectralConv2d:
@@ -31,7 +31,7 @@ class TestSpectralConv2d:
     def test_different_resolutions(self) -> None:
         """Test layer works at multiple resolutions."""
         layer = SpectralConv2d(in_channels=32, out_channels=32, modes1=8, modes2=8)
-        
+
         for res in [16, 32, 64]:
             x = torch.randn(2, 32, res, res)
             y = layer(x)
@@ -77,7 +77,7 @@ class TestFNO2d:
     def test_resolution_independence(self) -> None:
         """Test model works at different resolutions."""
         model = FNO2d(in_channels=1, out_channels=1, width=32, modes1=8, modes2=8, n_layers=2)
-        
+
         for res in [16, 32, 64]:
             x = torch.randn(2, 1, res, res)
             y = model(x)
@@ -117,7 +117,7 @@ class TestLosses:
         loss_fn = L2RelativeLoss()
         pred = torch.randn(4, 1, 16, 16)
         target = torch.randn(4, 1, 16, 16)
-        
+
         loss = loss_fn(pred, target)
         assert loss.shape == ()
         assert loss.item() >= 0
@@ -126,7 +126,7 @@ class TestLosses:
         """Test L2 relative is zero for identical tensors."""
         loss_fn = L2RelativeLoss()
         x = torch.randn(4, 1, 16, 16)
-        
+
         loss = loss_fn(x, x)
         assert loss.item() < 1e-6
 
@@ -135,7 +135,7 @@ class TestLosses:
         loss_fn = H1Loss(lambda_grad=0.1)
         pred = torch.randn(4, 1, 16, 16)
         target = torch.randn(4, 1, 16, 16)
-        
+
         loss = loss_fn(pred, target)
         assert loss.shape == ()
         assert loss.item() >= 0
@@ -145,7 +145,6 @@ class TestLosses:
         l2_loss = get_loss("l2_relative")
         h1_loss = get_loss("h1", lambda_grad=0.2)
 
-        
         assert isinstance(l2_loss, L2RelativeLoss)
         assert isinstance(h1_loss, H1Loss)
 
@@ -182,7 +181,7 @@ class TestOperatorTrainer:
         """Test trainer initializes correctly."""
         config = TrainingConfig(epochs=1, device="cpu")
         trainer = OperatorTrainer(small_model, config)
-        
+
         assert trainer.model is not None
         assert trainer.optimizer is not None
         assert trainer.current_epoch == 0
@@ -194,13 +193,13 @@ class TestOperatorTrainer:
     ) -> None:
         """Test single epoch runs without error."""
         from torch.utils.data import DataLoader
-        
+
         config = TrainingConfig(epochs=1, batch_size=8, device="cpu")
         trainer = OperatorTrainer(small_model, config)
-        
+
         train_loader = DataLoader(small_dataset, batch_size=8)
         loss = trainer.train_epoch(train_loader)
-        
+
         assert isinstance(loss, float)
         assert loss >= 0
 
@@ -211,13 +210,13 @@ class TestOperatorTrainer:
     ) -> None:
         """Test validation runs without error."""
         from torch.utils.data import DataLoader
-        
+
         config = TrainingConfig(device="cpu")
         trainer = OperatorTrainer(small_model, config)
-        
+
         val_loader = DataLoader(small_dataset, batch_size=8)
         loss = trainer.validate(val_loader)
-        
+
         assert isinstance(loss, float)
         assert loss >= 0
 
@@ -229,7 +228,7 @@ class TestOperatorTrainer:
     ) -> None:
         """Test full training loop for 2 epochs."""
         from torch.utils.data import DataLoader
-        
+
         config = TrainingConfig(
             epochs=2,
             batch_size=8,
@@ -238,10 +237,10 @@ class TestOperatorTrainer:
             checkpoint_dir=tmp_path,
         )
         trainer = OperatorTrainer(small_model, config)
-        
+
         loader = DataLoader(small_dataset, batch_size=8)
         history = trainer.fit(loader, loader)
-        
+
         assert len(history["train_loss"]) == 2
         assert len(history["val_loss"]) == 2
 
@@ -252,12 +251,12 @@ class TestResolutionTransfer:
     def test_train_low_infer_high(self) -> None:
         """Test training on 16x16, inference on 64x64."""
         model = NeuralOperator(in_channels=1, out_channels=1, width=32, modes=8, n_layers=2)
-        
+
         # "Train" at 16x16
         x_train = torch.randn(4, 1, 16, 16)
         y_train = model(x_train)
         assert y_train.shape == (4, 1, 16, 16)
-        
+
         # Infer at 64x64 without retraining
         x_test = torch.randn(2, 1, 64, 64)
         y_test = model(x_test)
@@ -266,7 +265,7 @@ class TestResolutionTransfer:
     def test_multiple_resolutions(self) -> None:
         """Test inference at multiple resolutions."""
         model = NeuralOperator(in_channels=1, out_channels=1, width=32, modes=8, n_layers=2)
-        
+
         for res in [16, 32, 64, 128]:
             x = torch.randn(2, 1, res, res)
             y = model(x)

@@ -8,9 +8,9 @@ import pytest
 
 from src.prototyping.builder import PrototypeModel
 from src.prototyping.evaluator import (
-    QuickEvaluator,
     EvalResult,
     MetricResult,
+    QuickEvaluator,
     create_quick_evaluator,
 )
 
@@ -81,6 +81,7 @@ class TestQuickEvaluator:
 
     def test_evaluate_basic(self, quick_evaluator: QuickEvaluator) -> None:
         """Test basic evaluation."""
+
         class MockModel:
             pass
 
@@ -108,6 +109,7 @@ class TestQuickEvaluator:
         prototype_model: PrototypeModel,
     ) -> None:
         """Test evaluation with PrototypeModel."""
+
         def predict_fn(m: Any, inp: Any) -> float:
             return 0.0
 
@@ -123,6 +125,7 @@ class TestQuickEvaluator:
 
     def test_register_metric(self, quick_evaluator: QuickEvaluator) -> None:
         """Test registering custom metric."""
+
         def custom_metric(preds: list[float], targets: list[float]) -> float:
             return sum(abs(p - t) ** 3 for p, t in zip(preds, targets)) / len(preds)
 
@@ -166,6 +169,7 @@ class TestQuickEvaluator:
 
     def test_clear(self, quick_evaluator: QuickEvaluator) -> None:
         """Test clearing results."""
+
         def predict_fn(m: Any, inp: Any) -> float:
             return 0.0
 
@@ -200,7 +204,7 @@ class TestQuickEvaluator:
 
         # Test accuracy
         acc = evaluator._compute_accuracy([0, 1, 1], [0, 1, 0])
-        assert acc == pytest.approx(2/3)
+        assert acc == pytest.approx(2 / 3)
 
         # Test R2
         r2 = evaluator._compute_r2([1, 2, 3], [1, 2, 3])

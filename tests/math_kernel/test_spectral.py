@@ -63,9 +63,7 @@ class TestSpectralFilter:
         x = torch.zeros(1, 1, 16, 16)
         for i in range(16):
             for j in range(16):
-                x[0, 0, i, j] = math.sin(2 * math.pi * i / 8) * math.sin(
-                    2 * math.pi * j / 8
-                )
+                x[0, 0, i, j] = math.sin(2 * math.pi * i / 8) * math.sin(2 * math.pi * j / 8)
 
         filtered_gauss = filter_gaussian(x)
         filtered_butter = filter_butterworth(x)
@@ -113,8 +111,8 @@ class TestResolutionAdapter:
         adapted = adapter.adapt_features(features, 9, 19)
 
         # Energy (sum of squares) should be similar (with scaling)
-        original_energy = (features ** 2).sum()
-        adapted_energy = (adapted ** 2).sum()
+        original_energy = (features**2).sum()
+        adapted_energy = (adapted**2).sum()
 
         # Energy ratio should be close to area ratio
         # Due to normalization in adapter, energies should be comparable
@@ -132,9 +130,7 @@ class TestResolutionAdapter:
         roundtrip = adapter.adapt_features(upsampled, 19, 9)
 
         # Should be similar to original (some loss due to filtering)
-        correlation = torch.corrcoef(
-            torch.stack([features.flatten(), roundtrip.flatten()])
-        )[0, 1]
+        correlation = torch.corrcoef(torch.stack([features.flatten(), roundtrip.flatten()]))[0, 1]
 
         # High correlation indicates good reconstruction
         assert correlation > 0.5
@@ -145,4 +141,4 @@ class TestResolutionAdapter:
 
         for target_size in [5, 9, 13, 19, 25]:
             adapted = adapter.adapt_features(base_features, 9, target_size)
-            assert adapted.shape == (1, target_size ** 2, 32)
+            assert adapted.shape == (1, target_size**2, 32)

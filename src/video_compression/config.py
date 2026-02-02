@@ -123,9 +123,7 @@ class EncoderConfig(BaseModuleConfig):
         import math
 
         if not math.log2(self.downsample_factor).is_integer():
-            raise ValueError(
-                f"downsample_factor ({self.downsample_factor}) must be a power of 2"
-            )
+            raise ValueError(f"downsample_factor ({self.downsample_factor}) must be a power of 2")
         return self
 
 
@@ -488,9 +486,7 @@ class MCTSRateControlConfig(BaseModuleConfig):
     def validate_qp_range(self) -> MCTSRateControlConfig:
         """Ensure QP min <= max."""
         if self.qp_min > self.qp_max:
-            raise ValueError(
-                f"qp_min ({self.qp_min}) must be <= qp_max ({self.qp_max})"
-            )
+            raise ValueError(f"qp_min ({self.qp_min}) must be <= qp_max ({self.qp_max})")
         return self
 
 

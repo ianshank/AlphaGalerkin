@@ -161,7 +161,9 @@ class SelfPlayWorker:
         # Update stats
         self._stats.games_completed += n_games
         self._stats.experiences_generated += len(experiences)
-        self._stats.average_time_per_game_ms = sum(game_times) / len(game_times) if game_times else 0
+        self._stats.average_time_per_game_ms = (
+            sum(game_times) / len(game_times) if game_times else 0
+        )
 
         self._logger.debug(
             "batch_generated",
@@ -435,7 +437,7 @@ class SelfPlayCoordinator:
 
         # Combine experiences
         all_experiences: list[Experience] = []
-        for i, (tensor, size) in enumerate(zip(gathered, sizes)):
+        for _i, (tensor, size) in enumerate(zip(gathered, sizes, strict=False)):
             data = bytes(tensor[: size.item()].tolist())
             experiences = pickle.loads(data)
             all_experiences.extend(experiences)

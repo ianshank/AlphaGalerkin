@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
-
-from src.prototyping.config import QuickTrainConfig
 from src.prototyping.builder import PrototypeModel
+from src.prototyping.config import QuickTrainConfig
 from src.prototyping.trainer import (
     QuickTrainer,
     TrainResult,
@@ -51,6 +51,7 @@ class TestQuickTrainer:
 
     def test_train_basic(self, quick_trainer: QuickTrainer) -> None:
         """Test basic training."""
+
         # Mock model
         class MockModel:
             pass
@@ -83,6 +84,7 @@ class TestQuickTrainer:
         prototype_model: PrototypeModel,
     ) -> None:
         """Test training with PrototypeModel."""
+
         def train_fn(m: Any, batch: Any) -> float:
             return 0.1
 
@@ -184,6 +186,7 @@ class TestQuickTrainer:
 
     def test_clear(self, quick_trainer: QuickTrainer) -> None:
         """Test clearing results."""
+
         def train_fn(m: Any, batch: Any) -> float:
             return 0.1
 

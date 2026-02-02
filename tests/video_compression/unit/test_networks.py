@@ -15,15 +15,14 @@ import torch
 from torch import Tensor
 
 from src.video_compression.mcts.networks import (
-    RepresentationNetwork,
     DynamicsNetwork,
     PolicyNetwork,
-    ValueNetwork,
-    PredictionNetwork,
     PolicyOutput,
+    PredictionNetwork,
     PredictionOutput,
+    RepresentationNetwork,
+    ValueNetwork,
 )
-
 
 # --------------------------------------------------------------------------
 # Fixtures
@@ -101,17 +100,13 @@ class TestRepresentationNetwork:
 
         assert output.shape == (batch_size, state_dim)
 
-    def test_output_dtype(
-        self, network: RepresentationNetwork, sample_latent: Tensor
-    ) -> None:
+    def test_output_dtype(self, network: RepresentationNetwork, sample_latent: Tensor) -> None:
         """Test output has correct dtype."""
         output = network(sample_latent)
 
         assert output.dtype == torch.float32
 
-    def test_gradient_flow(
-        self, network: RepresentationNetwork, sample_latent: Tensor
-    ) -> None:
+    def test_gradient_flow(self, network: RepresentationNetwork, sample_latent: Tensor) -> None:
         """Test gradients flow through network."""
         sample_latent.requires_grad = True
         output = network(sample_latent)
@@ -121,13 +116,9 @@ class TestRepresentationNetwork:
         assert sample_latent.grad is not None
         assert not torch.isnan(sample_latent.grad).any()
 
-    def test_variable_spatial_size(
-        self, latent_channels: int, state_dim: int
-    ) -> None:
+    def test_variable_spatial_size(self, latent_channels: int, state_dim: int) -> None:
         """Test network handles variable spatial sizes."""
-        network = RepresentationNetwork(
-            latent_channels=latent_channels, state_dim=state_dim
-        )
+        network = RepresentationNetwork(latent_channels=latent_channels, state_dim=state_dim)
 
         for size in [8, 16, 32]:
             latent = torch.randn(1, latent_channels, size, size)
@@ -206,9 +197,7 @@ class TestDynamicsNetwork:
         assert sample_state.grad is not None
         assert not torch.isnan(sample_state.grad).any()
 
-    def test_action_embedding(
-        self, network: DynamicsNetwork, sample_state: Tensor
-    ) -> None:
+    def test_action_embedding(self, network: DynamicsNetwork, sample_state: Tensor) -> None:
         """Test action embedding dimension matches state."""
         assert network.action_embed.embedding_dim == network.state_dim
 
@@ -230,9 +219,7 @@ class TestPolicyNetwork:
             hidden_dim=256,
         )
 
-    def test_output_type(
-        self, network: PolicyNetwork, sample_state: Tensor
-    ) -> None:
+    def test_output_type(self, network: PolicyNetwork, sample_state: Tensor) -> None:
         """Test output is PolicyOutput."""
         output = network(sample_state)
 
@@ -253,26 +240,20 @@ class TestPolicyNetwork:
         assert output.logits.shape == (batch_size, num_actions)
         assert output.probs.shape == (batch_size, num_actions)
 
-    def test_probs_sum_to_one(
-        self, network: PolicyNetwork, sample_state: Tensor
-    ) -> None:
+    def test_probs_sum_to_one(self, network: PolicyNetwork, sample_state: Tensor) -> None:
         """Test probabilities sum to 1."""
         output = network(sample_state)
 
         prob_sums = output.probs.sum(dim=-1)
         assert torch.allclose(prob_sums, torch.ones_like(prob_sums), atol=1e-5)
 
-    def test_probs_non_negative(
-        self, network: PolicyNetwork, sample_state: Tensor
-    ) -> None:
+    def test_probs_non_negative(self, network: PolicyNetwork, sample_state: Tensor) -> None:
         """Test probabilities are non-negative."""
         output = network(sample_state)
 
         assert (output.probs >= 0).all()
 
-    def test_temperature_effect(
-        self, network: PolicyNetwork, sample_state: Tensor
-    ) -> None:
+    def test_temperature_effect(self, network: PolicyNetwork, sample_state: Tensor) -> None:
         """Test temperature affects distribution sharpness."""
         output_low_temp = network(sample_state[:1], temperature=0.1)
         output_high_temp = network(sample_state[:1], temperature=10.0)
@@ -335,18 +316,14 @@ class TestValueNetwork:
 
         assert dist.shape == (batch_size, support_size)
 
-    def test_distribution_sums_to_one(
-        self, network: ValueNetwork, sample_state: Tensor
-    ) -> None:
+    def test_distribution_sums_to_one(self, network: ValueNetwork, sample_state: Tensor) -> None:
         """Test distribution sums to 1."""
         dist = network.get_distribution(sample_state)
 
         dist_sums = dist.sum(dim=-1)
         assert torch.allclose(dist_sums, torch.ones_like(dist_sums), atol=1e-5)
 
-    def test_gradient_flow(
-        self, network: ValueNetwork, sample_state: Tensor
-    ) -> None:
+    def test_gradient_flow(self, network: ValueNetwork, sample_state: Tensor) -> None:
         """Test gradients flow through network."""
         sample_state.requires_grad = True
 
@@ -366,9 +343,7 @@ class TestPredictionNetwork:
     """Tests for combined PredictionNetwork."""
 
     @pytest.fixture
-    def network(
-        self, state_dim: int, num_actions: int, support_size: int
-    ) -> PredictionNetwork:
+    def network(self, state_dim: int, num_actions: int, support_size: int) -> PredictionNetwork:
         """Create prediction network."""
         return PredictionNetwork(
             state_dim=state_dim,
@@ -377,9 +352,7 @@ class TestPredictionNetwork:
             hidden_dim=256,
         )
 
-    def test_output_type(
-        self, network: PredictionNetwork, sample_state: Tensor
-    ) -> None:
+    def test_output_type(self, network: PredictionNetwork, sample_state: Tensor) -> None:
         """Test output is PredictionOutput."""
         output = network(sample_state)
 
@@ -411,9 +384,7 @@ class TestPredictionNetwork:
         prob_sums = output.policy.probs.sum(dim=-1)
         assert torch.allclose(prob_sums, torch.ones_like(prob_sums), atol=1e-5)
 
-    def test_shared_trunk(
-        self, network: PredictionNetwork, sample_state: Tensor
-    ) -> None:
+    def test_shared_trunk(self, network: PredictionNetwork, sample_state: Tensor) -> None:
         """Test that network uses shared trunk efficiently."""
         # Both policy and value come from same forward pass
         output = network(sample_state)
@@ -443,9 +414,7 @@ class TestPredictionNetwork:
         output_high_temp = network(sample_state[:1], temperature=10.0)
 
         # Policy should differ
-        assert not torch.allclose(
-            output_low_temp.policy.probs, output_high_temp.policy.probs
-        )
+        assert not torch.allclose(output_low_temp.policy.probs, output_high_temp.policy.probs)
 
     def test_eval_mode_deterministic(
         self, network: PredictionNetwork, sample_state: Tensor
@@ -476,12 +445,8 @@ class TestNetworksPipeline:
         num_actions: int,
     ) -> None:
         """Test complete pipeline: latent -> state -> prediction."""
-        repr_net = RepresentationNetwork(
-            latent_channels=latent_channels, state_dim=state_dim
-        )
-        pred_net = PredictionNetwork(
-            state_dim=state_dim, num_actions=num_actions
-        )
+        repr_net = RepresentationNetwork(latent_channels=latent_channels, state_dim=state_dim)
+        pred_net = PredictionNetwork(state_dim=state_dim, num_actions=num_actions)
 
         # Encode latent to state
         state = repr_net(sample_latent)
@@ -500,13 +465,9 @@ class TestNetworksPipeline:
         num_actions: int,
     ) -> None:
         """Test state transition pipeline."""
-        repr_net = RepresentationNetwork(
-            latent_channels=latent_channels, state_dim=state_dim
-        )
+        repr_net = RepresentationNetwork(latent_channels=latent_channels, state_dim=state_dim)
         dyn_net = DynamicsNetwork(state_dim=state_dim, num_actions=num_actions)
-        pred_net = PredictionNetwork(
-            state_dim=state_dim, num_actions=num_actions
-        )
+        pred_net = PredictionNetwork(state_dim=state_dim, num_actions=num_actions)
 
         # Initial state
         state = repr_net(sample_latent)
@@ -525,13 +486,9 @@ class TestNetworksPipeline:
         self, latent_channels: int, state_dim: int, num_actions: int
     ) -> None:
         """Test all networks have trainable parameters."""
-        repr_net = RepresentationNetwork(
-            latent_channels=latent_channels, state_dim=state_dim
-        )
+        repr_net = RepresentationNetwork(latent_channels=latent_channels, state_dim=state_dim)
         dyn_net = DynamicsNetwork(state_dim=state_dim, num_actions=num_actions)
-        pred_net = PredictionNetwork(
-            state_dim=state_dim, num_actions=num_actions
-        )
+        pred_net = PredictionNetwork(state_dim=state_dim, num_actions=num_actions)
 
         for net in [repr_net, dyn_net, pred_net]:
             params = list(net.parameters())

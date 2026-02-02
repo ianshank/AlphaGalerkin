@@ -106,6 +106,7 @@ def compute_padding(
 
     Returns:
         PaddingInfo with computed padding values.
+
     """
     # Compute padded dimensions
     padded_height = ((height + align_to - 1) // align_to) * align_to
@@ -156,6 +157,7 @@ def pad_to_multiple(
 
     Returns:
         Tuple of (padded tensor, padding info).
+
     """
     _, _, height, width = x.shape
 
@@ -201,6 +203,7 @@ def crop_to_original(
 
     Returns:
         Cropped tensor with original dimensions.
+
     """
     _, _, h, w = x.shape
 
@@ -212,8 +215,12 @@ def crop_to_original(
         )
 
     # No cropping needed
-    if (pad_info.pad_top == 0 and pad_info.pad_bottom == 0 and
-            pad_info.pad_left == 0 and pad_info.pad_right == 0):
+    if (
+        pad_info.pad_top == 0
+        and pad_info.pad_bottom == 0
+        and pad_info.pad_left == 0
+        and pad_info.pad_right == 0
+    ):
         return x
 
     # Compute crop bounds
@@ -224,9 +231,7 @@ def crop_to_original(
 
     x_cropped = x[:, :, top:bottom, left:right]
 
-    logger.debug(
-        f"Cropped {h}x{w} -> {pad_info.original_height}x{pad_info.original_width}"
-    )
+    logger.debug(f"Cropped {h}x{w} -> {pad_info.original_height}x{pad_info.original_width}")
 
     return x_cropped
 
@@ -243,6 +248,7 @@ class PadToMultiple(nn.Module):
 
         Args:
             config: Padding configuration. Uses defaults if None.
+
         """
         super().__init__()
         self.config = config or PaddingConfig()
@@ -264,6 +270,7 @@ class PadToMultiple(nn.Module):
 
         Returns:
             Padded tensor.
+
         """
         x_padded, self._last_padding_info = pad_to_multiple(
             x,
@@ -287,12 +294,11 @@ class PadToMultiple(nn.Module):
 
         Returns:
             Cropped tensor.
+
         """
         info = pad_info or self._last_padding_info
         if info is None:
-            raise ValueError(
-                "No padding info available. Call forward() first or provide pad_info."
-            )
+            raise ValueError("No padding info available. Call forward() first or provide pad_info.")
         return crop_to_original(x, info)
 
 
@@ -313,6 +319,7 @@ class DynamicPadding(nn.Module):
         Args:
             downsample_factor: Encoder downsample factor.
             mode: Padding mode.
+
         """
         super().__init__()
         self.config = PaddingConfig(
@@ -332,6 +339,7 @@ class DynamicPadding(nn.Module):
 
         Returns:
             Tuple of (padded frame, padding info).
+
         """
         x_padded = self.padder(x)
         return x_padded, self.padder.last_padding_info
@@ -349,5 +357,6 @@ class DynamicPadding(nn.Module):
 
         Returns:
             Original-sized frame.
+
         """
         return self.padder.inverse(x, pad_info)

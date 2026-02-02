@@ -9,8 +9,8 @@ A resolution-independent neural video codec combining:
 
 from src.video_compression.config import (
     CodecConfig,
-    EncoderConfig,
     DecoderConfig,
+    EncoderConfig,
     EntropyConfig,
     MCTSRateControlConfig,
     QuantizerConfig,

@@ -54,18 +54,18 @@ def generate_colab_notebook(
         "\n",
         "# 1. Clone Repository\n",
         "if 'google.colab' in sys.modules:\n",
-        "    repo_name = \"AlphaGalerkin\"\n",
-        "    repo_url = \"https://github.com/ianshank/AlphaGalerkin.git\"\n",
+        '    repo_name = "AlphaGalerkin"\n',
+        '    repo_url = "https://github.com/ianshank/AlphaGalerkin.git"\n',
         "    \n",
         "    if not Path(repo_name).exists():\n",
-        "        print(f\"Cloning {repo_name}...\")\n",
+        '        print(f"Cloning {repo_name}...")\n',
         "        !git clone {repo_url}\n",
         "    else:\n",
-        "        print(f\"{repo_name} already exists. Pulling latest changes...\")\n",
+        '        print(f"{repo_name} already exists. Pulling latest changes...")\n',
         "        !cd {repo_name} && git pull\n",
         "    \n",
         "    # 2. Install Dependencies\n",
-        "    print(\"Installing dependencies...\")\n",
+        '    print("Installing dependencies...")\n',
         "    !pip install -q einops jaxtyping pydantic hydra-core structlog wandb scipy\n",
         "    \n",
         "    # 3. Setup Path and Working Directory\n",
@@ -73,14 +73,14 @@ def generate_colab_notebook(
         "    \n",
         "    # Change dir to repo root so relative paths work\n",
         "    os.chdir(project_root)\n",
-        "    print(f\"Working directory changed to: {os.getcwd()}\")\n",
+        '    print(f"Working directory changed to: {os.getcwd()}")\n',
         "    \n",
         "    # Ensure src is in python path\n",
         "    if str(project_root) not in sys.path:\n",
         "        sys.path.insert(0, str(project_root))\n",
-        "        print(f\"Added {project_root} to sys.path\")\n",
+        '        print(f"Added {project_root} to sys.path")\n',
         "else:\n",
-        "    print(\"Not running in Colab. Skipping setup.\")",
+        '    print("Not running in Colab. Skipping setup.")',
     ]
 
     setup_cell = {
@@ -128,15 +128,16 @@ def _update_colab_badge(cells: list[dict[str, Any]], filename: str, repo_name: s
         return
 
     # Update title if present
-    if source[0].startswith("# AlphaGalerkin"):
-        if "(Colab Version)" not in source[0]:
-            source[0] = source[0].strip() + " (Colab Version)\n"
+    if source[0].startswith("# AlphaGalerkin") and "(Colab Version)" not in source[0]:
+        source[0] = source[0].strip() + " (Colab Version)\n"
 
     # Define the badge line
+    colab_base = "https://colab.research.google.com"
+    github_path = f"github/ianshank/{repo_name}/blob/main/notebooks/{filename}"
+    badge_url = f"{colab_base}/assets/colab-badge.svg"
     badge_html = (
-        f'\n<a href="https://colab.research.google.com/github/ianshank/{repo_name}/blob/main/notebooks/{filename}" '
-        f'target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" '
-        f'alt="Open In Colab"/></a>\n'
+        f'\n<a href="{colab_base}/{github_path}" target="_parent">'
+        f'<img src="{badge_url}" alt="Open In Colab"/></a>\n'
     )
 
     # Check if badge already exists

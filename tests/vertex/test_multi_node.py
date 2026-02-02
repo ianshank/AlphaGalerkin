@@ -40,12 +40,18 @@ class TestDistributedContext:
     def test_is_main_process(self) -> None:
         """Test main process detection."""
         ctx_main = DistributedContext(
-            world_size=4, rank=0, local_rank=0,
-            master_addr="localhost", master_port=29500,
+            world_size=4,
+            rank=0,
+            local_rank=0,
+            master_addr="localhost",
+            master_port=29500,
         )
         ctx_worker = DistributedContext(
-            world_size=4, rank=2, local_rank=0,
-            master_addr="localhost", master_port=29500,
+            world_size=4,
+            rank=2,
+            local_rank=0,
+            master_addr="localhost",
+            master_port=29500,
         )
         assert ctx_main.is_main_process() is True
         assert ctx_worker.is_main_process() is False
@@ -53,12 +59,18 @@ class TestDistributedContext:
     def test_is_local_main(self) -> None:
         """Test local main process detection."""
         ctx_local_main = DistributedContext(
-            world_size=4, rank=2, local_rank=0,
-            master_addr="localhost", master_port=29500,
+            world_size=4,
+            rank=2,
+            local_rank=0,
+            master_addr="localhost",
+            master_port=29500,
         )
         ctx_local_worker = DistributedContext(
-            world_size=4, rank=3, local_rank=1,
-            master_addr="localhost", master_port=29500,
+            world_size=4,
+            rank=3,
+            local_rank=1,
+            master_addr="localhost",
+            master_port=29500,
         )
         assert ctx_local_main.is_local_main() is True
         assert ctx_local_worker.is_local_main() is False
@@ -111,8 +123,16 @@ class TestVertexDistributedSetup:
     def cleanup_env(self) -> None:
         """Clean up environment variables after each test."""
         yield
-        for key in ["RANK", "WORLD_SIZE", "LOCAL_RANK", "LOCAL_WORLD_SIZE",
-                    "MASTER_ADDR", "MASTER_PORT", "CLUSTER_SPEC", "TF_CONFIG"]:
+        for key in [
+            "RANK",
+            "WORLD_SIZE",
+            "LOCAL_RANK",
+            "LOCAL_WORLD_SIZE",
+            "MASTER_ADDR",
+            "MASTER_PORT",
+            "CLUSTER_SPEC",
+            "TF_CONFIG",
+        ]:
             os.environ.pop(key, None)
         for key in NCCL_DEFAULTS:
             os.environ.pop(key, None)

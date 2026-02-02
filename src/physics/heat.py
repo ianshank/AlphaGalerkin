@@ -103,7 +103,7 @@ class HeatSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
             grid_size=resolution,
             n_sources=None,  # Continuous field often strictly better for heat
             smooth=True,
-            seed=seed
+            seed=seed,
         )
 
         # Solve
@@ -116,8 +116,5 @@ class HeatSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
             output_field=u_final.flatten().astype(np.float32),
             coords=coords,
             grid_size=resolution,
-            metadata={
-                "alpha": self.alpha,
-                "total_time": self.total_time
-            }
+            metadata={"alpha": self.alpha, "total_time": self.total_time},
         )

@@ -5,15 +5,15 @@ from __future__ import annotations
 import pytest
 
 from notebooks.utils.config import (
-    DemoConfig,
-    ModelConfig,
     BenchmarkConfig,
-    VisualizationConfig,
-    PhysicsConfig,
+    DemoConfig,
     GoBoardConfig,
+    ModelConfig,
+    PhysicsConfig,
+    VisualizationConfig,
     create_demo_config,
-    get_default_board_sizes,
     get_board_labels,
+    get_default_board_sizes,
 )
 
 

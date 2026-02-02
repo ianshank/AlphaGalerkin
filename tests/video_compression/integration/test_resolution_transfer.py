@@ -13,23 +13,22 @@ import math
 
 import pytest
 import torch
-from torch import Tensor
 
-from src.video_compression.config import (
-    CodecConfig,
-    EncoderConfig,
-    DecoderConfig,
-    EntropyConfig,
-    QuantizerConfig,
-    MCTSRateControlConfig,
-    QuantizationMode,
-)
 from src.video_compression.codec.codec import (
     VideoCodec,
     create_codec,
 )
 from src.video_compression.codec.gop_manager import FrameInfo, FrameType
-from src.video_compression.utils.padding import pad_to_multiple, crop_to_original
+from src.video_compression.config import (
+    CodecConfig,
+    DecoderConfig,
+    EncoderConfig,
+    EntropyConfig,
+    MCTSRateControlConfig,
+    QuantizationMode,
+    QuantizerConfig,
+)
+from src.video_compression.utils.padding import crop_to_original, pad_to_multiple
 
 
 class TestResolutionTransfer:
@@ -83,12 +82,12 @@ class TestResolutionTransfer:
     @pytest.mark.parametrize(
         "height,width",
         [
-            (64, 64),    # Small square
+            (64, 64),  # Small square
             (128, 128),  # Medium square
-            (96, 128),   # 3:4 aspect
-            (128, 96),   # 4:3 aspect
-            (64, 256),   # Wide
-            (256, 64),   # Tall
+            (96, 128),  # 3:4 aspect
+            (128, 96),  # 4:3 aspect
+            (64, 256),  # Wide
+            (256, 64),  # Tall
             (120, 160),  # Non-aligned
         ],
     )
@@ -239,7 +238,7 @@ class TestVariableResolutionVideo:
 
         # Sequence with resolution change at GOP boundary
         resolutions = [
-            (64, 64),   # GOP 0
+            (64, 64),  # GOP 0
             (64, 64),
             (64, 64),
             (64, 64),
@@ -437,9 +436,9 @@ class TestResolutionEdgeCases:
 
         # Extreme aspect ratios
         aspect_ratios = [
-            (32, 256),   # 1:8 wide
-            (256, 32),   # 8:1 tall
-            (16, 128),   # 1:8 very wide
+            (32, 256),  # 1:8 wide
+            (256, 32),  # 8:1 tall
+            (16, 128),  # 1:8 very wide
         ]
 
         for height, width in aspect_ratios:

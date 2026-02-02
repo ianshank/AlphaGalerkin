@@ -31,10 +31,10 @@ import torch
 
 from src.safety.config import ConverterConfig, ValidationConfig
 from src.safety.validator import CheckpointValidator, ValidationResult
-from src.templates.logging import create_logger_class
+from src.templates.logging import BaseModuleLogger, create_logger_class
 
-# Create module-specific logger
-SafetyLogger = create_logger_class("Safety")
+# Create module-specific logger class
+_SafetyLoggerClass = create_logger_class("Safety")
 
 
 # Optional SafeTensors import
@@ -46,9 +46,11 @@ except ImportError:
     SAFETENSORS_AVAILABLE = False
 
     def load_file(*args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:
+        """Stub for safetensors.load_file when not installed."""
         raise ImportError("safetensors not installed. Run: pip install safetensors")
 
     def save_file(*args: Any, **kwargs: Any) -> None:
+        """Stub for safetensors.save_file when not installed."""
         raise ImportError("safetensors not installed. Run: pip install safetensors")
 
 
@@ -199,7 +201,7 @@ class SafeTensorsConverter:
         self,
         config: ConverterConfig | None = None,
         validation_config: ValidationConfig | None = None,
-        logger: SafetyLogger | None = None,
+        logger: BaseModuleLogger | None = None,
     ) -> None:
         """Initialize converter with configuration.
 
@@ -211,7 +213,7 @@ class SafeTensorsConverter:
         """
         self.config = config or ConverterConfig(name="default")
         self.validation_config = validation_config
-        self.logger = logger or SafetyLogger(
+        self.logger = logger or _SafetyLoggerClass(
             "converter",
             config_name=self.config.name,
         )
@@ -341,9 +343,7 @@ class SafeTensorsConverter:
         if self.config.verify_roundtrip:
             try:
                 loaded = load_file(dest, device="cpu")
-                roundtrip_verified = self._verify_roundtrip(
-                    state_dict, loaded
-                )
+                roundtrip_verified = self._verify_roundtrip(state_dict, loaded)
                 if not roundtrip_verified:
                     errors.append("Roundtrip verification failed")
                     self.logger.error("roundtrip_verification_failed")
@@ -498,10 +498,10 @@ def load_safetensors(
     if not path.exists():
         raise FileNotFoundError(f"SafeTensors file not found: {path}")
 
-    logger = SafetyLogger("loader")
+    logger = _SafetyLoggerClass("loader")
     logger.debug("loading_safetensors", path=str(path), device=device)
 
-    state_dict = load_file(path, device=device)
+    state_dict: dict[str, torch.Tensor] = load_file(path, device=device)
 
     logger.debug(
         "loaded_safetensors",

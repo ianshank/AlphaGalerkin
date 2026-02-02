@@ -18,7 +18,6 @@ Example:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 
@@ -135,10 +134,7 @@ class AllowlistConfig(BaseModuleConfig):
 
         """
         all_paths = (
-            self.torch_modules
-            + self.numpy_modules
-            + self.stdlib_modules
-            + self.custom_allowlist
+            self.torch_modules + self.numpy_modules + self.stdlib_modules + self.custom_allowlist
         )
 
         result: set[tuple[str, str]] = set()

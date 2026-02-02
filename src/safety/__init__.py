@@ -30,19 +30,19 @@ Example:
 """
 
 from src.safety.config import (
+    AllowlistConfig,
     ValidationConfig,
     ValidationLevel,
-    AllowlistConfig,
-)
-from src.safety.validator import (
-    CheckpointValidator,
-    ValidationResult,
-    validate_checkpoint,
 )
 from src.safety.converter import (
     SafeTensorsConverter,
     convert_to_safetensors,
     load_safetensors,
+)
+from src.safety.validator import (
+    CheckpointValidator,
+    ValidationResult,
+    validate_checkpoint,
 )
 
 __all__ = [

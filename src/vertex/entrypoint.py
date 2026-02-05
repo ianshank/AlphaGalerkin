@@ -251,6 +251,7 @@ def run_training(
     ctx: DistributedContext,
     checkpoint_manager: GCSCheckpointManager,
     resume_path: str | None = None,
+    trainer_ref: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the training loop.
 
@@ -260,6 +261,9 @@ def run_training(
         ctx: Distributed context.
         checkpoint_manager: GCS checkpoint manager.
         resume_path: Optional checkpoint path to resume from.
+        trainer_ref: Mutable dict to expose trainer for emergency checkpointing.
+            If provided, the active trainer instance is stored at key ``"trainer"``
+            so the shutdown handler can save state on preemption.
 
     Returns:
         Training results dictionary.
@@ -290,6 +294,10 @@ def run_training(
             world_size=ctx.world_size,
             local_rank=ctx.local_rank,
         )
+
+        # Expose trainer for emergency checkpoint handler
+        if trainer_ref is not None:
+            trainer_ref["trainer"] = trainer
 
         # Resume from checkpoint if specified
         if resume_path:
@@ -323,6 +331,10 @@ def run_training(
 
             training_cfg = TrainingConfig(**config.get("training", {}))
             trainer = AlphaGalerkinTrainer(config=training_cfg)
+
+            # Expose fallback trainer for emergency checkpoint handler
+            if trainer_ref is not None:
+                trainer_ref["trainer"] = trainer
 
             if resume_path:
                 trainer.load_checkpoint(resume_path)
@@ -447,10 +459,63 @@ def main() -> int:
             local_cache_dir=Path(args.checkpoint_dir),
         )
 
-        # Setup shutdown handler
+        # Setup shutdown handler with real emergency checkpoint logic.
+        # The trainer reference is set after run_training creates it;
+        # we use a mutable container so the closure captures updates.
+        _trainer_ref: dict[str, Any] = {}
+
         def emergency_checkpoint() -> None:
-            # Placeholder - actual implementation would save current state
-            pass
+            """Save current training state on preemption signal.
+
+            Captures the active trainer (if any) and persists model weights,
+            optimizer state, and step counter to the GCS checkpoint manager.
+            This prevents loss of training progress when Vertex AI preempts
+            spot instances.
+            """
+            trainer = _trainer_ref.get("trainer")
+            if trainer is None:
+                logger.warning(
+                    "emergency_checkpoint_skipped",
+                    reason="no active trainer",
+                )
+                return
+
+            step = getattr(trainer, "global_step", 0)
+            logger.info("emergency_checkpoint_saving", step=step)
+
+            try:
+                # Extract model and optimizer from trainer
+                model = getattr(trainer, "model", None) or getattr(trainer, "_raw_model", None)
+                optimizer = getattr(trainer, "optimizer", None)
+                scheduler = getattr(trainer, "scheduler", None)
+
+                if model is None:
+                    logger.error(
+                        "emergency_checkpoint_failed",
+                        reason="no model found on trainer",
+                    )
+                    return
+
+                # Save via GCS checkpoint manager
+                gcs_path = checkpoint_manager.save(
+                    step=step,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=scheduler,
+                    metrics={"emergency": 1.0, "step": float(step)},
+                    extra={"preempted": True},
+                )
+                logger.info(
+                    "emergency_checkpoint_saved_to_gcs",
+                    gcs_path=gcs_path,
+                    step=step,
+                )
+            except Exception as save_err:
+                logger.error(
+                    "emergency_checkpoint_save_failed",
+                    error=str(save_err),
+                    step=step,
+                )
 
         # Note: Handler registers signal handlers in __init__ and must stay in scope
         _shutdown_handler = GracefulShutdownHandler(
@@ -465,6 +530,7 @@ def main() -> int:
                 ctx=ctx,
                 checkpoint_manager=checkpoint_manager,
                 resume_path=args.resume,
+                trainer_ref=_trainer_ref,
             )
         finally:
             # Cleanup W&B

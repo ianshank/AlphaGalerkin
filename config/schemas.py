@@ -173,6 +173,14 @@ class TrainingConfig(BaseModel):
 
     # Curriculum learning
     curriculum_enabled: bool = Field(default=False, description="Enable board size curriculum")
+    curriculum_schedule: dict[int, list[int]] | None = Field(
+        default=None,
+        description=(
+            "Board-size curriculum schedule mapping step -> board_sizes. "
+            "Example: {0: [9], 10000: [9, 13], 50000: [9, 13, 19]}. "
+            "When None, uses default schedule from BoardSizeCurriculum."
+        ),
+    )
 
     # Evaluation enhancements
     eval_vs_checkpoints: bool = Field(

@@ -571,9 +571,9 @@ class GTPEngine:
         """
         # Determine expected player from GTP color
         if color.lower() in ("b", "black"):
-            pass
+            expected_player = SimpleGoGame.BLACK
         else:
-            pass
+            expected_player = SimpleGoGame.WHITE
 
         # Validate that game state matches expected player
         if self.game.current_player != expected_player:

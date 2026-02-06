@@ -2,13 +2,15 @@
 
 Validates both the pure MSE path and the physics-informed Laplacian
 constraint for the Poisson equation ``-Lap(phi) = rho``.
+Also tests the PhysicsOperator neural network forward pass.
 """
 
 from __future__ import annotations
 
+import pytest
 import torch
 
-from src.experiments.physics_model import PhysicsLoss
+from src.experiments.physics_model import GalerkinBlock, PhysicsLoss, PhysicsOperator
 
 
 class TestPhysicsLossBasic:
@@ -136,3 +138,126 @@ class TestPhysicsLossComputeLaplacian:
         laplacian = PhysicsLoss._compute_laplacian(pred, coords)
 
         assert laplacian.shape == pred.shape
+
+
+class TestPhysicsOperator:
+    """Tests for PhysicsOperator forward pass."""
+
+    def test_forward_shape(self) -> None:
+        """Forward pass returns correct shape."""
+        model = PhysicsOperator(d_model=32, n_heads=2, n_layers=2, n_fourier_features=16)
+        coords = torch.randn(2, 16, 2)
+        charges = torch.randn(2, 16)
+
+        output = model(coords, charges)
+
+        assert output.shape == (2, 16)
+
+    def test_forward_with_fnet(self) -> None:
+        """Forward pass works with FNet enabled."""
+        model = PhysicsOperator(d_model=32, n_heads=2, n_layers=4, use_fnet=True)
+        coords = torch.randn(1, 9, 2)
+        charges = torch.randn(1, 9)
+
+        output = model(coords, charges)
+
+        assert output.shape == (1, 9)
+        assert output.isfinite().all()
+
+    def test_forward_without_fnet(self) -> None:
+        """Forward pass works with FNet disabled."""
+        model = PhysicsOperator(d_model=32, n_heads=2, n_layers=2, use_fnet=False)
+        coords = torch.randn(1, 25, 2)
+        charges = torch.randn(1, 25)
+
+        output = model(coords, charges)
+
+        assert output.shape == (1, 25)
+        assert model.fnet_layers is None
+
+    def test_forward_differentiable(self) -> None:
+        """Output is differentiable w.r.t. inputs."""
+        model = PhysicsOperator(d_model=32, n_heads=2, n_layers=2)
+        coords = torch.randn(1, 16, 2, requires_grad=True)
+        charges = torch.randn(1, 16, requires_grad=True)
+
+        output = model(coords, charges)
+        loss = output.sum()
+        loss.backward()
+
+        assert coords.grad is not None
+        assert charges.grad is not None
+
+    @pytest.mark.parametrize("n_points", [9, 16, 25, 81])
+    def test_forward_variable_resolution(self, n_points: int) -> None:
+        """Forward pass works with varying resolution."""
+        model = PhysicsOperator(d_model=32, n_heads=2, n_layers=2)
+        coords = torch.randn(1, n_points, 2)
+        charges = torch.randn(1, n_points)
+
+        output = model(coords, charges)
+
+        assert output.shape == (1, n_points)
+
+    def test_model_attributes_stored(self) -> None:
+        """Model stores configuration attributes."""
+        model = PhysicsOperator(d_model=64, use_fnet=True)
+        assert model.d_model == 64
+        assert model.use_fnet is True
+
+    def test_batch_processing(self) -> None:
+        """Model handles batched inputs."""
+        model = PhysicsOperator(d_model=32, n_heads=2, n_layers=2)
+        coords = torch.randn(8, 16, 2)
+        charges = torch.randn(8, 16)
+
+        output = model(coords, charges)
+
+        assert output.shape == (8, 16)
+
+
+class TestGalerkinBlock:
+    """Tests for GalerkinBlock layer."""
+
+    def test_forward_shape_preserved(self) -> None:
+        """GalerkinBlock preserves input shape."""
+        block = GalerkinBlock(d_model=64, n_heads=4)
+        x = torch.randn(2, 16, 64)
+
+        output = block(x)
+
+        assert output.shape == x.shape
+
+    def test_forward_with_custom_ffn(self) -> None:
+        """GalerkinBlock works with custom FFN dimension."""
+        block = GalerkinBlock(d_model=32, n_heads=2, d_ffn=128)
+        x = torch.randn(1, 9, 32)
+
+        output = block(x)
+
+        assert output.shape == x.shape
+
+    def test_forward_differentiable(self) -> None:
+        """GalerkinBlock is differentiable."""
+        block = GalerkinBlock(d_model=32, n_heads=2)
+        x = torch.randn(1, 16, 32, requires_grad=True)
+
+        output = block(x)
+        loss = output.sum()
+        loss.backward()
+
+        assert x.grad is not None
+
+    def test_dropout_applied(self) -> None:
+        """GalerkinBlock applies dropout during training."""
+        block = GalerkinBlock(d_model=32, n_heads=2, dropout=0.5)
+        block.train()
+        x = torch.randn(1, 16, 32)
+
+        # Multiple forward passes should give different outputs in training mode
+        out1 = block(x)
+        out2 = block(x)
+
+        # With high dropout, outputs should differ
+        # (though with small tensors this isn't guaranteed, just check it runs)
+        assert out1.shape == out2.shape

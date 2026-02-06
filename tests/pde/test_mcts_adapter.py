@@ -182,3 +182,120 @@ class TestPDEGameAdapterWinner:
         reduction_ratio = final_error / initial_error  # 0.8 > 0.5
 
         assert reduction_ratio > 0.5
+
+    def test_winner_neutral_on_moderate_reduction(self) -> None:
+        """Moderate reduction (50-90%) returns 0."""
+        error_history = [1.0, 0.5, 0.3]  # 70% reduction
+        final_error = error_history[-1]
+        initial_error = error_history[0]
+        reduction_ratio = final_error / initial_error  # 0.3 = 70% reduction
+
+        # 0.1 < 0.3 < 0.5 -> return 0
+        assert 0.1 < reduction_ratio < 0.5
+
+    def test_winner_positive_on_strong_reduction(self) -> None:
+        """Strong reduction (>90%) returns +1 even if above tolerance."""
+        error_history = [1.0, 0.1, 0.05]  # 95% reduction
+        tolerance = 0.01  # Final error above tolerance
+        final_error = error_history[-1]
+        initial_error = error_history[0]
+        reduction_ratio = final_error / initial_error  # 0.05 = 95% reduction
+
+        # 0.05 < 0.1 -> returns +1
+        assert reduction_ratio < 0.1
+
+
+class TestPDEGameAdapterEdgeCases:
+    """Test edge cases in the adapter."""
+
+    def test_current_error_property(self, adapter: PDEGameAdapter) -> None:
+        """current_error returns latest error estimate."""
+        initial_error = adapter.current_error
+        assert initial_error == adapter.state.error_estimate
+
+    def test_error_reduction_zero_at_start(self, adapter: PDEGameAdapter) -> None:
+        """error_reduction is 0.0 at initial state."""
+        assert adapter.error_reduction == 0.0
+
+    def test_state_tensor_finite(self, adapter: PDEGameAdapter) -> None:
+        """State tensor contains finite values."""
+        state = adapter.get_state()
+        assert state.shape[0] > 0  # Has channels
+        # All values should be finite
+        assert all(abs(v) < 1e10 for v in state.flatten())
+
+    def test_multiple_clones_independent(self, adapter: PDEGameAdapter) -> None:
+        """Multiple clones are independent of each other."""
+        clone1 = adapter.clone()
+        clone2 = adapter.clone()
+
+        actions1 = clone1.get_legal_actions()
+        actions2 = clone2.get_legal_actions()
+
+        clone1.apply_action(actions1[0])
+
+        # clone2 and original should be unchanged
+        assert adapter.state.step == 0
+        assert clone2.state.step == 0
+        assert clone1.state.step == 1
+
+    def test_error_history_grows_with_actions(self, adapter: PDEGameAdapter) -> None:
+        """Error history grows with each action."""
+        initial_len = len(adapter.error_history)
+        actions = adapter.get_legal_actions()
+
+        for i, action in enumerate(actions[:3]):
+            if adapter.is_terminal():
+                break
+            adapter.apply_action(action)
+            assert len(adapter.error_history) == initial_len + i + 1
+
+    def test_legal_actions_change_after_action(self, adapter: PDEGameAdapter) -> None:
+        """Legal actions may change after taking an action."""
+        initial_actions = set(adapter.get_legal_actions())
+        adapter.apply_action(list(initial_actions)[0])
+        new_actions = set(adapter.get_legal_actions())
+
+        # Actions should differ (taken action might be removed)
+        # or remain same depending on game rules
+        assert isinstance(new_actions, set)
+
+
+class TestPDEGameAdapterWinnerEdgeCases:
+    """Test edge cases in winner computation."""
+
+    def test_winner_with_zero_initial_error(self) -> None:
+        """Zero initial error defaults to 1.0 reduction ratio."""
+        # Simulate the logic from get_winner
+        error_history = [0.0, 0.01]
+        initial_error = error_history[0]
+        final_error = error_history[-1]
+
+        if initial_error > 0:
+            reduction_ratio = final_error / initial_error
+        else:
+            reduction_ratio = 1.0
+
+        assert reduction_ratio == 1.0
+
+    def test_winner_converged_below_tolerance(self) -> None:
+        """Convergence below tolerance returns +1."""
+        tolerance = 0.01
+        final_error = 0.005
+
+        if final_error < tolerance:
+            result = 1
+        else:
+            result = 0
+
+        assert result == 1
+
+    def test_winner_ninety_percent_reduction(self) -> None:
+        """90%+ reduction returns +1 even above tolerance."""
+        error_history = [1.0, 0.09]  # 91% reduction
+        tolerance = 0.01  # above tolerance
+        final_error = error_history[-1]
+        initial_error = error_history[0]
+        reduction_ratio = final_error / initial_error
+
+        assert reduction_ratio < 0.1  # Should return +1

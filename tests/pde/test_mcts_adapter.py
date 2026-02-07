@@ -73,10 +73,8 @@ class TestPDEGameAdapterProtocol:
 
     def test_apply_action_mutates_state(self, adapter: PDEGameAdapter) -> None:
         """apply_action() changes the internal state."""
-        state_before = adapter.get_state().copy()
         actions = adapter.get_legal_actions()
         adapter.apply_action(actions[0])
-        state_after = adapter.get_state()
         # State should change after an action
         assert adapter.state.step == 1
 
@@ -196,7 +194,6 @@ class TestPDEGameAdapterWinner:
     def test_winner_positive_on_strong_reduction(self) -> None:
         """Strong reduction (>90%) returns +1 even if above tolerance."""
         error_history = [1.0, 0.1, 0.05]  # 95% reduction
-        tolerance = 0.01  # Final error above tolerance
         final_error = error_history[-1]
         initial_error = error_history[0]
         reduction_ratio = final_error / initial_error  # 0.05 = 95% reduction
@@ -230,8 +227,6 @@ class TestPDEGameAdapterEdgeCases:
         clone2 = adapter.clone()
 
         actions1 = clone1.get_legal_actions()
-        actions2 = clone2.get_legal_actions()
-
         clone1.apply_action(actions1[0])
 
         # clone2 and original should be unchanged
@@ -293,7 +288,6 @@ class TestPDEGameAdapterWinnerEdgeCases:
     def test_winner_ninety_percent_reduction(self) -> None:
         """90%+ reduction returns +1 even above tolerance."""
         error_history = [1.0, 0.09]  # 91% reduction
-        tolerance = 0.01  # above tolerance
         final_error = error_history[-1]
         initial_error = error_history[0]
         reduction_ratio = final_error / initial_error

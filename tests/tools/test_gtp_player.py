@@ -46,9 +46,7 @@ class TestGTPCoordinateConversions:
             (18, 18, 19, "T1"),  # 19x19 bottom-right
         ],
     )
-    def test_coord_to_gtp(
-        self, row: int, col: int, board_size: int, expected: str
-    ) -> None:
+    def test_coord_to_gtp(self, row: int, col: int, board_size: int, expected: str) -> None:
         """Test internal coordinates to GTP format."""
         result = coord_to_gtp(row, col, board_size)
         assert result == expected
@@ -94,9 +92,7 @@ class TestGTPCoordinateConversions:
             ("PASS", 9, 81),  # Pass uppercase
         ],
     )
-    def test_gtp_to_action(
-        self, gtp_move: str, board_size: int, expected_action: int
-    ) -> None:
+    def test_gtp_to_action(self, gtp_move: str, board_size: int, expected_action: int) -> None:
         """Test GTP move string to action index."""
         result = gtp_to_action(gtp_move, board_size)
         assert result == expected_action

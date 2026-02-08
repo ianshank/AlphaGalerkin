@@ -64,6 +64,10 @@ Monitors LBB condition during training:
 - [2026-02-01]: **CI/CD Pipeline Added** - GitHub Actions workflow with lint, type check, tests, coverage
 - [2026-02-01]: **Video Compression Hyperprior Fixed** - Proper z_bitstream encoding/decoding for entropy model
 - [2026-02-01]: **Chess Game Implementation** - Full Chess rules with AlphaZero-style encoding (119 planes)
+- [2026-02-04]: **P0 Critical Fixes** - Emergency checkpoint, GTP player assignment, parallel self-play
+- [2026-02-04]: **PDE-MCTS Integration** - PDEGameAdapter bridges PDE games to MCTS search engine
+- [2026-02-04]: **Physics Loss Wired** - Laplacian regularization via autodiff in PhysicsLoss
+- [2026-02-04]: **Curriculum Config Schema** - curriculum_schedule field on TrainingConfig with transition logging
 
 ## Next-Phase Infrastructure (v2.0)
 
@@ -129,6 +133,7 @@ Monitors LBB condition during training:
 - [2026-01-27]: Mesh refinement game for adaptive h/p-refinement strategies.
 - [2026-01-27]: PDEOperatorRegistry with decorator-based registration.
 - [2026-01-27]: Comprehensive test suite for all PDE components.
+- [2026-02-04]: PDEGameAdapter bridging PDE games to MCTS GameInterface protocol.
 
 ## Adaptive Loss Balancing (src/training/loss_balancing.py)
 - [2026-01-27]: ReLoBRaLo (Relative Loss Balancing with Random Lookback) for physics-informed training.
@@ -571,6 +576,7 @@ src/
     game.py           - Abstract PDEGame base class
     operators.py      - PDE operator definitions (Poisson, Burgers, etc.)
     registry.py       - PDE operator registration
+    mcts_adapter.py   - Adapter bridging PDE games to MCTS GameInterface
     games/            - Concrete PDE game implementations
       basis_selection.py  - Galerkin basis selection game
       mesh_refinement.py  - Adaptive mesh refinement game

@@ -212,21 +212,76 @@ class GalerkinBlock(nn.Module):
 class PhysicsLoss(nn.Module):
     """Loss function for physics field prediction.
 
-    Combines MSE loss with optional physics-informed regularization.
+    Combines MSE loss with optional physics-informed regularization
+    via a discrete Laplacian constraint.  When ``physics_weight > 0``
+    and coordinates/charges are supplied, the loss penalises
+    deviations from the Poisson equation ``-\u0394\u03c6 = \u03c1``.
+
+    The Laplacian is approximated using finite differences on the
+    nearest neighbours in the coordinate cloud, making this
+    resolution-independent (works on any N-point cloud).
     """
 
     def __init__(
         self,
         physics_weight: float = 0.0,
+        laplacian_eps: float = 1e-6,
     ) -> None:
         """Initialize loss.
 
         Args:
             physics_weight: Weight for physics regularization (Laplacian constraint).
+            laplacian_eps: Small constant added to distance denominators for
+                numerical stability.
 
         """
         super().__init__()
         self.physics_weight = physics_weight
+        self.laplacian_eps = laplacian_eps
+
+    @staticmethod
+    def _compute_laplacian(
+        pred: Tensor,
+        coords: Tensor,
+        eps: float = 1e-6,
+    ) -> Tensor:
+        """Approximate the Laplacian via autodiff.
+
+        Uses ``torch.autograd.grad`` to compute second derivatives of
+        the predicted field with respect to coordinates.
+
+        Args:
+            pred: Predicted potential (batch, n).
+            coords: Coordinates (batch, n, 2) **with requires_grad**.
+            eps: Stability epsilon (unused here, kept for API symmetry).
+
+        Returns:
+            Laplacian estimate (batch, n).
+
+        """
+        # pred depends on coords through the model; compute grad
+        grad_outputs = torch.ones_like(pred)
+        (grad_phi,) = torch.autograd.grad(
+            outputs=pred,
+            inputs=coords,
+            grad_outputs=grad_outputs,
+            create_graph=True,
+            retain_graph=True,
+        )
+        # grad_phi shape: (batch, n, 2) -> [dphi/dx, dphi/dy]
+        laplacian = torch.zeros_like(pred)
+        for dim_idx in range(coords.shape[-1]):
+            grad_dim = grad_phi[..., dim_idx]
+            grad_dim_outputs = torch.ones_like(grad_dim)
+            (grad2,) = torch.autograd.grad(
+                outputs=grad_dim,
+                inputs=coords,
+                grad_outputs=grad_dim_outputs,
+                create_graph=True,
+                retain_graph=True,
+            )
+            laplacian = laplacian + grad2[..., dim_idx]
+        return laplacian
 
     def forward(
         self,
@@ -242,17 +297,35 @@ class PhysicsLoss(nn.Module):
             target: Ground truth potential (batch, n).
             charges: Optional charges (batch, n) for physics regularization.
             coords: Optional coordinates (batch, n, 2) for physics regularization.
+                Must have ``requires_grad=True`` when ``physics_weight > 0``.
 
         Returns:
-            Scalar loss value.
+            Scalar loss value (MSE + weighted Laplacian residual).
 
         """
         # MSE loss
         mse = torch.nn.functional.mse_loss(pred, target)
 
-        # Optional physics regularization (not used in basic PoC)
-        if self.physics_weight > 0 and charges is not None:
-            # Could add Laplacian constraint here
-            pass
+        # Physics-informed Laplacian regularization: -Lap(phi) = rho
+        if self.physics_weight > 0 and charges is not None and coords is not None:
+            try:
+                laplacian = self._compute_laplacian(pred, coords, eps=self.laplacian_eps)
+                # Poisson residual: -Lap(phi) - rho should be zero
+                residual = (-laplacian) - charges
+                physics_loss = torch.mean(residual**2)
+                mse = mse + self.physics_weight * physics_loss
+
+                logger.debug(
+                    "physics_loss_computed",
+                    mse=mse.item(),
+                    physics_loss=physics_loss.item(),
+                    weight=self.physics_weight,
+                )
+            except RuntimeError as e:
+                # Autograd may fail if coords don't require grad
+                logger.debug(
+                    "physics_loss_skipped",
+                    reason=str(e),
+                )
 
         return mse

@@ -780,6 +780,24 @@ class Trainer:
         for step in range(start_step, start_step + n_steps):
             step_start = time.time()
 
+            # Log curriculum stage transitions
+            if self.curriculum is not None and self.curriculum.is_transition_step(step):
+                stage = self.curriculum.get_current_stage(step)
+                logger.info(
+                    "curriculum_stage_transition",
+                    step=step,
+                    board_sizes=stage.board_sizes,
+                    weights=stage.size_weights,
+                )
+                if self.wandb_logger is not None:
+                    self.wandb_logger.log_metrics(
+                        {
+                            "curriculum/n_board_sizes": len(stage.board_sizes),
+                            "curriculum/max_board_size": max(stage.board_sizes),
+                        },
+                        step=step,
+                    )
+
             # Periodically add more games (at half the checkpoint interval)
             self_play_interval = max(checkpoint_interval // 2, 1)
             if step > 0 and step % self_play_interval == 0:

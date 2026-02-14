@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 import structlog
 
-from src.alphagalerkin.core.constants import DEFAULT_SEED
+from src.alphagalerkin.core.constants import DEFAULT_SEED, EPSILON
 
 logger = structlog.get_logger("planning.plasma")
 
@@ -478,7 +478,7 @@ class StellaratorOptimizer:
         # Normalize by complexity cost
         complexity_cost = max(
             1.0 + self._complexity_weight * new_state.coil_complexity,
-            1e-8,
+            EPSILON,
         )
 
         return improvement / complexity_cost
@@ -867,8 +867,8 @@ class PlasmaModelSelector:
 
         # Cost factor: higher cost reduces reward
         cost_factor = max(
-            sum(r.cost_per_step for r in new_state.regions) / max(self._budget, 1e-8),
-            1e-8,
+            sum(r.cost_per_step for r in new_state.regions) / max(self._budget, EPSILON),
+            EPSILON,
         )
 
         return improvement / cost_factor

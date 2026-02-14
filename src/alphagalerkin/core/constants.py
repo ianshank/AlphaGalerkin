@@ -40,26 +40,6 @@ unstable and a ``StabilityViolationError`` is raised.
 EPSILON: Final[float] = 1e-8
 """General-purpose numerical epsilon for avoiding division by zero."""
 
-MAX_FLOAT: Final[float] = 1e30
-"""Sentinel large float used for initial min-finding and log-sum-exp guards."""
-
-
-# -----------------------------------------------------------------------
-# Reward defaults
-# -----------------------------------------------------------------------
-
-DEFAULT_REWARD_WEIGHTS: Final[dict[str, float]] = {
-    "accuracy": 1.0,
-    "efficiency": 0.5,
-    "stability": 0.3,
-}
-"""Default multi-objective reward weights.
-
-- **accuracy**: Weight for error-reduction reward.
-- **efficiency**: Weight for DOF-efficiency reward.
-- **stability**: Weight for maintaining numerical stability.
-"""
-
 
 # -----------------------------------------------------------------------
 # MCTS defaults

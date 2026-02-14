@@ -25,6 +25,7 @@ import src.alphagalerkin.physics.wave as wave  # noqa: F401
 from src.alphagalerkin.physics.base import (
     BoundaryCondition,
     ManufacturedSolution,
+    PhysicsModuleBase,
     SolveResult,
 )
 from src.alphagalerkin.physics.manufactured import (
@@ -41,6 +42,7 @@ __all__ = [
     # Base types
     "BoundaryCondition",
     "ManufacturedSolution",
+    "PhysicsModuleBase",
     "SolveResult",
     # Manufactured solution catalog
     "MMS_CATALOG",

@@ -184,4 +184,4 @@ class GraphEncoder(nn.Module):
         if needs_batch:
             h = h.squeeze(0)
 
-        return h  # type: ignore[no-any-return]
+        return h

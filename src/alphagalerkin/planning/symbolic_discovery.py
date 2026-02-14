@@ -126,7 +126,7 @@ class ExpressionNode:
             op = _UNARY_OPS.get(self.value)
             if op is None:
                 raise ValueError(f"Unknown unary op: {self.value}")
-            return op(child_val)  # type: ignore[no-any-return]
+            return op(child_val)
 
         if self.symbol_type == SymbolType.BINARY_OP:
             left = self.children[0].evaluate(variables)
@@ -134,7 +134,7 @@ class ExpressionNode:
             op = _BINARY_OPS.get(self.value)
             if op is None:
                 raise ValueError(f"Unknown binary op: {self.value}")
-            return op(left, right)  # type: ignore[no-any-return]
+            return op(left, right)
 
         raise ValueError(f"Unknown symbol type: {self.symbol_type}")
 

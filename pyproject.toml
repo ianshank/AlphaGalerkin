@@ -42,6 +42,7 @@ dev = [
     "hypothesis>=6.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    "types-PyYAML>=2024.1.1.20240311",
 ]
 vertex = [
     "google-cloud-aiplatform>=1.36.0",
@@ -144,7 +145,7 @@ ignore_missing_imports = true
 module = "src.*"
 # Disable misc errors for torch.nn.Module and pydantic.BaseModel subclassing
 # Disable name-defined for jaxtyping dimension names
-disable_error_code = ["misc", "name-defined"]
+disable_error_code = ["misc", "name-defined", "untyped-decorator"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"

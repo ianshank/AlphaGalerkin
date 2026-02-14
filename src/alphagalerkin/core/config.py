@@ -1012,7 +1012,7 @@ class AlphaGalerkinConfig(_Base):
             raw = _deep_merge(raw, env_ovr)
 
         try:
-            config = cls.model_validate(raw)
+            config: AlphaGalerkinConfig = cls.model_validate(raw)
         except Exception as exc:
             raise ConfigValidationError(
                 f"Configuration validation failed: {exc}",
@@ -1046,7 +1046,7 @@ class AlphaGalerkinConfig(_Base):
             data = _deep_merge(data, env_ovr)
 
         try:
-            config = cls.model_validate(data)
+            config: AlphaGalerkinConfig = cls.model_validate(data)
         except Exception as exc:
             raise ConfigValidationError(
                 f"Configuration validation failed: {exc}",

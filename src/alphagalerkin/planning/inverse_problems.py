@@ -471,7 +471,7 @@ class InverseProblemSolver:
         """
         measured = [s for s in state.sensors if s.measurement is not None]
         if not measured:
-            return state.parameter_estimate.copy()  # type: ignore[no-any-return]
+            return state.parameter_estimate.copy()
 
         # Compute weighted shift from measurements
         n_params = len(state.parameter_estimate)
@@ -497,7 +497,7 @@ class InverseProblemSolver:
                     posterior[d] = np.clip(posterior[d], lo, hi)
             new_estimate = posterior
 
-        return new_estimate  # type: ignore[no-any-return]
+        return new_estimate
 
     def _sample_candidate_location(
         self,
@@ -516,7 +516,7 @@ class InverseProblemSolver:
             candidates[:, d] = self._rng.uniform(lo, hi, size=n_candidates)
 
         if not state.sensors:
-            return candidates[0]  # type: ignore[no-any-return]
+            return candidates[0]
 
         existing = np.array([s.location for s in state.sensors])
         best_idx = 0
@@ -528,4 +528,4 @@ class InverseProblemSolver:
                 best_min_dist = min_dist
                 best_idx = i
 
-        return candidates[best_idx]  # type: ignore[no-any-return]
+        return candidates[best_idx]

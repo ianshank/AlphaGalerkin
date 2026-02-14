@@ -16,6 +16,7 @@ from src.alphagalerkin.core.types import PDEType
 from src.alphagalerkin.physics.base import (
     BoundaryCondition,
     ManufacturedSolution,
+    PhysicsModuleBase,
     SolveResult,
 )
 from src.alphagalerkin.physics.registry import register_physics
@@ -74,7 +75,7 @@ def _strain_rate_magnitude(
     """
     # |S| = sqrt(2 * S_ij * S_ij)
     s_sq = np.einsum("nij,nij->n", strain_rate, strain_rate)
-    return np.sqrt(2.0 * s_sq)  # type: ignore[no-any-return]
+    return np.sqrt(2.0 * s_sq)
 
 
 class SmagorinskyModel:
@@ -102,7 +103,7 @@ class SmagorinskyModel:
     def compute_viscosity(
         self,
         strain_rate: np.ndarray,
-        rotation_rate: np.ndarray,
+        _rotation_rate: np.ndarray,
     ) -> np.ndarray:
         """Compute eddy viscosity: nu_t = (C_s * delta)^2 * |S|."""
         s_mag = _strain_rate_magnitude(strain_rate)
@@ -151,7 +152,7 @@ class DynamicSmagorinskyModel:
     def compute_viscosity(
         self,
         strain_rate: np.ndarray,
-        rotation_rate: np.ndarray,
+        _rotation_rate: np.ndarray,
     ) -> np.ndarray:
         """Compute eddy viscosity with dynamic C_s.
 
@@ -172,7 +173,7 @@ class DynamicSmagorinskyModel:
             self._c_s_max**2,
         )
 
-        return c_s_sq * self._delta**2 * s_mag  # type: ignore[no-any-return]
+        return c_s_sq * self._delta**2 * s_mag
 
     def to_closure(self) -> SGSClosureModel:
         """Convert to SGSClosureModel dataclass."""
@@ -243,9 +244,7 @@ class WALEModel:
         numerator = s_d_sq**1.5
         denominator = s_ij_sq**2.5 + s_d_sq**1.25 + eps
 
-        return (self._c_w * self._delta) ** 2 * (  # type: ignore[no-any-return]
-            numerator / denominator
-        )
+        return (self._c_w * self._delta) ** 2 * (numerator / denominator)
 
     def to_closure(self) -> SGSClosureModel:
         """Convert to SGSClosureModel dataclass."""
@@ -264,7 +263,7 @@ class NoModel:
     def compute_viscosity(
         self,
         strain_rate: np.ndarray,
-        rotation_rate: np.ndarray,
+        _rotation_rate: np.ndarray,
     ) -> np.ndarray:
         """Return zero eddy viscosity (DNS)."""
         n = strain_rate.shape[0]
@@ -341,7 +340,7 @@ def list_closures() -> list[str]:
 
 
 @register_physics("navier_stokes_2d")
-class NavierStokesModule:
+class NavierStokesModule(PhysicsModuleBase):
     """2D Navier-Stokes with SGS closure model library.
 
     Solves a simplified 2D lid-driven cavity (Stokes approximation)
@@ -482,23 +481,6 @@ class NavierStokesModule:
             expected_convergence_order=2.0,
             name="stokes_cavity",
         )
-
-    def reward_function(
-        self,
-        state: Any,
-        action: Any,
-        next_state: Any,
-    ) -> float:
-        """Reward based on residual reduction and DOF efficiency."""
-        return 0.0  # Placeholder
-
-    def state_features(self, _discretization: Any) -> Any:
-        """Per-element features for the GNN encoder."""
-        return None  # Placeholder
-
-    def action_validators(self) -> list[Any]:
-        """Navier-Stokes-specific action validators."""
-        return []
 
     def default_config(self) -> dict[str, Any]:
         """Default parameters for Navier-Stokes problems."""

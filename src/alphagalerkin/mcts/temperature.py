@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import EPSILON
 from src.alphagalerkin.core.types import TemperatureScheduleType
 
 logger = structlog.get_logger("mcts.temperature")
@@ -144,7 +145,7 @@ class TemperatureSchedule:
             [float(visit_counts[a]) for a in actions],
         )
 
-        if temperature < 1e-8:
+        if temperature < EPSILON:
             # Deterministic argmax
             best_idx = int(np.argmax(counts))
             return actions[best_idx]

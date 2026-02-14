@@ -8,10 +8,12 @@ import numpy as np
 import structlog
 import torch
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("seeding")
 
 
-def seed_everything(seed: int = 42) -> None:
+def seed_everything(seed: int = DEFAULT_SEED) -> None:
     """Set random seeds for reproducibility across all frameworks."""
     random.seed(seed)
     np.random.seed(seed)

@@ -131,11 +131,11 @@ class TestRewardFunction:
     """Tests for the reward_function placeholder."""
 
     def test_returns_zero(self, poisson: PoissonModule) -> None:
-        result = poisson.reward_function(state=None, action=None, next_state=None)
+        result = poisson.reward_function(None, None, None)
         assert result == 0.0
 
     def test_returns_float(self, poisson: PoissonModule) -> None:
-        result = poisson.reward_function(state="s", action="a", next_state="s2")
+        result = poisson.reward_function("s", "a", "s2")
         assert isinstance(result, float)
 
 

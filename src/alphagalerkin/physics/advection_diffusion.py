@@ -14,6 +14,7 @@ from src.alphagalerkin.core.types import PDEType
 from src.alphagalerkin.physics.base import (
     BoundaryCondition,
     ManufacturedSolution,
+    PhysicsModuleBase,
     SolveResult,
 )
 from src.alphagalerkin.physics.registry import register_physics
@@ -26,7 +27,7 @@ _DEFAULT_VELOCITY: tuple[float, float] = (1.0, 0.0)
 
 
 @register_physics("advdiff_2d")
-class AdvectionDiffusionModule:
+class AdvectionDiffusionModule(PhysicsModuleBase):
     """Steady-state advection-diffusion: -D*laplacian(u) + v.grad(u) = f.
 
     On [0,1]^2 with homogeneous Dirichlet BCs.
@@ -115,23 +116,6 @@ class AdvectionDiffusionModule:
             expected_convergence_order=2.0,
             name="advdiff_sinsin",
         )
-
-    def reward_function(
-        self,
-        state: Any,
-        action: Any,
-        next_state: Any,
-    ) -> float:
-        """Reward based on residual reduction and DOF efficiency."""
-        return 0.0  # Placeholder
-
-    def state_features(self, _discretization: Any) -> Any:
-        """Per-element features for the GNN encoder."""
-        return None  # Placeholder
-
-    def action_validators(self) -> list[Any]:
-        """Advection-diffusion-specific action validators."""
-        return []
 
     def default_config(self) -> dict[str, Any]:
         """Default parameters for advection-diffusion problems."""

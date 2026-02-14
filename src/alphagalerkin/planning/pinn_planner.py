@@ -19,7 +19,7 @@ from typing import Any
 import numpy as np
 import structlog
 
-from src.alphagalerkin.core.constants import DEFAULT_SEED
+from src.alphagalerkin.core.constants import DEFAULT_SEED, EPSILON
 
 logger = structlog.get_logger("planning.pinn")
 
@@ -405,7 +405,7 @@ class PINNPlanner:
         # Cost factor: more points cost more, L-BFGS is more expensive
         point_cost = new_state.num_collocation / self._max_collocation
         optimizer_cost = 2.0 if new_state.optimizer_type == "lbfgs" else 1.0
-        cost_factor = max(point_cost * optimizer_cost, 1e-8)
+        cost_factor = max(point_cost * optimizer_cost, EPSILON)
 
         return residual_delta / cost_factor
 

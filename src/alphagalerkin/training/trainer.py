@@ -56,7 +56,7 @@ class Trainer:
         self._device = resolve_device(config.device)
 
         # Neural network
-        self._network = AlphaGalerkinNetwork(
+        self._network: AlphaGalerkinNetwork = AlphaGalerkinNetwork(
             config.network,
         ).to(self._device)
 

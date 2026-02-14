@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import structlog
 
-from src.alphagalerkin.core.types import PDEType  # noqa: F401
+from src.alphagalerkin.core.types import PDEType
 
 logger = structlog.get_logger("physics.base")
 
@@ -57,3 +57,32 @@ class BoundaryCondition:
     bc_type: str  # "dirichlet", "neumann", "robin"
     value: Callable[[np.ndarray], np.ndarray] | float
     region: str = "all"  # "all", "left", "right", "top", "bottom"
+
+
+class PhysicsModuleBase:
+    """Base class providing default placeholder implementations for physics modules.
+
+    Subclasses must set ``name`` and ``pde_type`` class attributes,
+    and should override ``manufactured_solution()`` and ``boundary_conditions()``
+    for each specific PDE.
+    """
+
+    name: str = "unnamed"
+    pde_type: PDEType = PDEType.ELLIPTIC
+
+    def reward_function(
+        self,
+        _state: Any,
+        _action: Any,
+        _next_state: Any,
+    ) -> float:
+        """Reward based on residual reduction and DOF efficiency."""
+        return 0.0  # Placeholder for RL integration
+
+    def state_features(self, _discretization: Any) -> Any:
+        """Per-element features for the GNN encoder."""
+        return None  # Placeholder for GNN integration
+
+    def action_validators(self) -> list[Any]:
+        """PDE-specific action validators (override in subclasses)."""
+        return []

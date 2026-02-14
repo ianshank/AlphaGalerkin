@@ -14,6 +14,7 @@ from src.alphagalerkin.core.types import PDEType
 from src.alphagalerkin.physics.base import (
     BoundaryCondition,
     ManufacturedSolution,
+    PhysicsModuleBase,
     SolveResult,
 )
 from src.alphagalerkin.physics.registry import register_physics
@@ -22,7 +23,7 @@ logger = structlog.get_logger("physics.heat")
 
 
 @register_physics("heat_2d")
-class HeatModule:
+class HeatModule(PhysicsModuleBase):
     """Steady-state heat equation: -nabla^2 u = f with Dirichlet BCs.
 
     Manufactured solution: u_exact = sin(pi*x)*cos(pi*y)
@@ -86,23 +87,6 @@ class HeatModule:
             expected_convergence_order=2.0,
             name="heat_sincos",
         )
-
-    def reward_function(
-        self,
-        state: Any,
-        action: Any,
-        next_state: Any,
-    ) -> float:
-        """Reward based on residual reduction and DOF efficiency."""
-        return 0.0  # Placeholder
-
-    def state_features(self, _discretization: Any) -> Any:
-        """Per-element features for the GNN encoder."""
-        return None  # Placeholder
-
-    def action_validators(self) -> list[Any]:
-        """Heat-specific action validators."""
-        return []
 
     def default_config(self) -> dict[str, Any]:
         """Default parameters for heat equation problems."""

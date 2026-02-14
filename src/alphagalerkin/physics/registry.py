@@ -75,11 +75,6 @@ class PhysicsRegistry:
         """Clear cached instances (useful for testing)."""
         self._instances.clear()
 
-    def clear_all(self) -> None:
-        """Clear everything (useful for testing)."""
-        self._plugins.clear()
-        self._instances.clear()
-
 
 # Global registry instance
 _registry = PhysicsRegistry()

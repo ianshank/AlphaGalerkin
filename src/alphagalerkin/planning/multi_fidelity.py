@@ -462,7 +462,7 @@ class MultiFidelityManager:
             candidates[:, d] = self._rng.uniform(lo, hi, size=n_candidates)
 
         if not state.evaluated_points:
-            return candidates[0]  # type: ignore[no-any-return]
+            return candidates[0]
 
         existing = np.array([pt.parameters for pt in state.evaluated_points])
         best_idx = 0
@@ -474,4 +474,4 @@ class MultiFidelityManager:
                 best_min_dist = min_dist
                 best_idx = i
 
-        return candidates[best_idx]  # type: ignore[no-any-return]
+        return candidates[best_idx]

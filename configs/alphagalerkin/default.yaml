@@ -1,0 +1,163 @@
+# AlphaGalerkin default configuration
+# All values match Pydantic defaults in alphagalerkin.core.config
+
+experiment_name: alphagalerkin
+seed: 42
+device: cpu
+
+# ---------------------------------------------------------------
+# Monte Carlo Tree Search
+# ---------------------------------------------------------------
+mcts:
+  num_simulations: 800
+  max_tree_depth: 200
+  c_puct: 2.5
+  selection_policy: puct
+  backup_strategy: mean
+  dirichlet_alpha: 0.3
+  dirichlet_epsilon: 0.25
+  noise_at_root_only: true
+  action_topk: 50
+  virtual_loss: 1.0
+  value_delta_cutoff: 0.01
+
+  temperature_schedule:
+    schedule_type: step
+    initial_temp: 1.0
+    final_temp: 0.1
+    step_threshold: 30
+    decay_rate: 0.97
+
+# ---------------------------------------------------------------
+# Neural network architecture
+# ---------------------------------------------------------------
+network:
+  node_feature_dim: 32
+  global_feature_dim: 16
+
+  gnn:
+    architecture: gat
+    hidden_dim: 128
+    num_layers: 6
+    num_heads: 8
+    dropout: 0.0
+    residual: true
+    normalization: layer
+    edge_feature_dim: 8
+
+  policy_head:
+    hidden_dim: 128
+    num_layers: 2
+    dropout: 0.0
+
+  value_head:
+    hidden_dim: 128
+    num_layers: 2
+    pooling: attention
+    dropout: 0.0
+
+# ---------------------------------------------------------------
+# Training loop
+# ---------------------------------------------------------------
+training:
+  seed: 42
+  batch_size: 256
+  total_steps: 100000
+  self_play_games_per_step: 25
+  policy_loss_weight: 1.0
+  value_loss_weight: 1.0
+  lbb_loss_weight: 0.01
+  num_workers: 4
+  mixed_precision: false
+  compile_model: false
+
+  optimizer:
+    name: adamw
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    betas: [0.9, 0.999]
+    momentum: 0.9
+    gradient_clip_norm: 1.0
+
+  scheduler:
+    name: cosine
+    warmup_steps: 1000
+    min_lr: 0.000001
+    step_size: 10000
+    gamma: 0.1
+    patience: 10
+
+  replay:
+    capacity: 500000
+    prioritized: true
+    priority_alpha: 0.6
+    priority_beta_start: 0.4
+    priority_beta_end: 1.0
+    min_size_to_train: 1000
+
+  curriculum:
+    enabled: false
+    stages: []
+    advance_threshold: 0.8
+    evaluation_window: 100
+
+# ---------------------------------------------------------------
+# Discretization environment
+# ---------------------------------------------------------------
+environment:
+  max_dof: 50000
+  max_steps: 200
+  error_tolerance: 0.0001
+  formulation: continuous
+  initial_mesh_resolution: 4
+  initial_polynomial_order: 1
+  max_polynomial_order: 10
+  min_element_size: 0.0001
+  default_basis_family: lagrange
+  normalize_rewards: true
+
+  reward_weights:
+    accuracy: 1.0
+    efficiency: 0.5
+    stability: 0.3
+
+# ---------------------------------------------------------------
+# PDE / physics problem
+# ---------------------------------------------------------------
+physics:
+  pde_type: elliptic
+  domain_dim: 2
+  domain_bounds:
+    - [0.0, 1.0]
+    - [0.0, 1.0]
+  boundary_conditions:
+    type: dirichlet
+    value: 0.0
+  source_term: "sin(pi*x)*sin(pi*y)"
+  diffusion_coefficient: 1.0
+  manufactured_solution: null
+
+# ---------------------------------------------------------------
+# Logging and metrics
+# ---------------------------------------------------------------
+logging:
+  level: INFO
+  log_dir: logs
+  log_to_file: true
+  log_to_console: true
+  metrics_backend: none
+  wandb_project: alphagalerkin
+  wandb_entity: null
+  log_interval_steps: 100
+
+# ---------------------------------------------------------------
+# Checkpoint management
+# ---------------------------------------------------------------
+checkpoint:
+  checkpoint_dir: checkpoints
+  save_interval_steps: 5000
+  keep_last_n: 5
+  save_best: true
+  best_metric: value_loss
+  best_metric_mode: min
+  resume_from: null

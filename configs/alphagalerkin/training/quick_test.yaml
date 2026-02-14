@@ -1,0 +1,50 @@
+# Quick test configuration for smoke tests
+device: cpu
+
+mcts:
+  num_simulations: 5
+  max_tree_depth: 3
+  action_topk: 3
+
+network:
+  node_feature_dim: 8
+  global_feature_dim: 4
+
+  gnn:
+    num_layers: 2
+    hidden_dim: 32
+    num_heads: 2
+
+  policy_head:
+    hidden_dim: 32
+    num_layers: 1
+
+  value_head:
+    hidden_dim: 32
+    num_layers: 1
+
+training:
+  batch_size: 4
+  total_steps: 2
+  self_play_games_per_step: 2
+  seed: 42
+  num_workers: 0
+
+  replay:
+    capacity: 1000
+    min_size_to_train: 10
+
+environment:
+  max_steps: 5
+  max_dof: 500
+
+physics:
+  pde_type: elliptic
+
+logging:
+  level: DEBUG
+  log_to_file: false
+
+checkpoint:
+  checkpoint_dir: /tmp/alphagalerkin_test_ckpts
+  keep_last_n: 2

@@ -15,12 +15,14 @@ exposes a ``from_yaml`` classmethod that handles the three-way merge.
 
 Section reference (system prompt): Section 9 -- Configuration.
 """
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
 from typing import Any, Literal
 
+import structlog
 import yaml
 from pydantic import (
     BaseModel,
@@ -64,9 +66,12 @@ from src.alphagalerkin.core.types import (
     TemperatureScheduleType,
 )
 
+logger = structlog.get_logger("core.config")
+
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
 
 def _deep_merge(
     base: dict[str, Any],
@@ -82,11 +87,7 @@ def _deep_merge(
     """
     merged: dict[str, Any] = dict(base)
     for key, value in override.items():
-        if (
-            key in merged
-            and isinstance(merged[key], dict)
-            and isinstance(value, dict)
-        ):
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
             merged[key] = _deep_merge(merged[key], value)
         else:
             merged[key] = value
@@ -110,17 +111,19 @@ def _env_overrides(prefix: str = "AG_") -> dict[str, Any]:
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
-        parts = key[len(prefix):].lower().split("__")
+        parts = key[len(prefix) :].lower().split("__")
         node = overrides
         for part in parts[:-1]:
             node = node.setdefault(part, {})
         node[parts[-1]] = value
+        logger.debug("config.env_override_applied", key=key, value=value)
     return overrides
 
 
 # -------------------------------------------------------------------
 # Base config
 # -------------------------------------------------------------------
+
 
 class _Base(BaseModel):
     """Shared Pydantic v2 model config for every sub-config."""
@@ -137,6 +140,7 @@ class _Base(BaseModel):
 # -------------------------------------------------------------------
 # MCTS
 # -------------------------------------------------------------------
+
 
 class TemperatureSchedule(_Base):
     """Temperature annealing schedule for MCTS action sampling.
@@ -162,10 +166,7 @@ class TemperatureSchedule(_Base):
     step_threshold: int = Field(
         default=30,
         ge=0,
-        description=(
-            "Step at which STEP schedule transitions to "
-            "final_temp."
-        ),
+        description=("Step at which STEP schedule transitions to final_temp."),
     )
     decay_rate: float = Field(
         default=0.97,
@@ -178,8 +179,7 @@ class TemperatureSchedule(_Base):
     def _validate_temps(self) -> Self:
         if self.initial_temp < self.final_temp:
             raise ValueError(
-                f"initial_temp ({self.initial_temp}) must be "
-                f">= final_temp ({self.final_temp})"
+                f"initial_temp ({self.initial_temp}) must be >= final_temp ({self.final_temp})"
             )
         return self
 
@@ -242,16 +242,14 @@ class MCTSConfig(_Base):
     value_delta_cutoff: float = Field(
         default=0.01,
         ge=0.0,
-        description=(
-            "Early-stop simulations when root value "
-            "delta < cutoff."
-        ),
+        description=("Early-stop simulations when root value delta < cutoff."),
     )
 
 
 # -------------------------------------------------------------------
 # Network
 # -------------------------------------------------------------------
+
 
 class GNNConfig(_Base):
     """Graph neural network (mesh encoder) configuration."""
@@ -292,9 +290,7 @@ class GNNConfig(_Base):
     edge_feature_dim: int = Field(
         default=8,
         ge=0,
-        description=(
-            "Edge feature dimension (0 = no edge features)."
-        ),
+        description=("Edge feature dimension (0 = no edge features)."),
     )
     activation: str = Field(
         default="gelu",
@@ -303,10 +299,7 @@ class GNNConfig(_Base):
     num_mp_layers: int = Field(
         default=3,
         ge=1,
-        description=(
-            "Number of message-passing layers "
-            "(for graph_mp mode)."
-        ),
+        description=("Number of message-passing layers (for graph_mp mode)."),
     )
 
 
@@ -396,10 +389,7 @@ class NetworkConfig(_Base):
     global_feature_dim: int = Field(
         default=16,
         ge=0,
-        description=(
-            "Global (state-level) feature dimension "
-            "(0 = no global features)."
-        ),
+        description=("Global (state-level) feature dimension (0 = no global features)."),
     )
 
 
@@ -407,11 +397,15 @@ class NetworkConfig(_Base):
 # Training
 # -------------------------------------------------------------------
 
+
 class OptimizerConfig(_Base):
     """Optimizer hyper-parameters."""
 
     name: Literal[
-        "adam", "adamw", "sgd", "rmsprop",
+        "adam",
+        "adamw",
+        "sgd",
+        "rmsprop",
     ] = Field(
         default="adamw",
         description="Optimizer algorithm.",
@@ -635,6 +629,7 @@ class TrainingConfig(_Base):
 # Environment
 # -------------------------------------------------------------------
 
+
 class EnvironmentConfig(_Base):
     """Discretization environment (MDP) configuration.
 
@@ -697,8 +692,7 @@ class EnvironmentConfig(_Base):
         default=1e-4,
         gt=0.0,
         description=(
-            "Minimum element diameter; h-refine is blocked "
-            "when a child would be smaller."
+            "Minimum element diameter; h-refine is blocked when a child would be smaller."
         ),
     )
     default_basis_family: str = Field(
@@ -734,6 +728,7 @@ class EnvironmentConfig(_Base):
 # Physics
 # -------------------------------------------------------------------
 
+
 class PhysicsConfig(_Base):
     """PDE / physics problem specification.
 
@@ -753,9 +748,7 @@ class PhysicsConfig(_Base):
     )
     domain_bounds: list[tuple[float, float]] = Field(
         default_factory=lambda: [(0.0, 1.0), (0.0, 1.0)],
-        description=(
-            "Domain bounding box as (min, max) per dimension."
-        ),
+        description=("Domain bounding box as (min, max) per dimension."),
     )
     boundary_conditions: dict[str, Any] = Field(
         default_factory=lambda: {
@@ -775,10 +768,7 @@ class PhysicsConfig(_Base):
     )
     manufactured_solution: str | None = Field(
         default=None,
-        description=(
-            "Optional manufactured-solution expression for "
-            "error computation."
-        ),
+        description=("Optional manufactured-solution expression for error computation."),
     )
 
     @model_validator(mode="after")
@@ -791,10 +781,7 @@ class PhysicsConfig(_Base):
             )
         for i, (lo, hi) in enumerate(self.domain_bounds):
             if lo >= hi:
-                raise ValueError(
-                    f"domain_bounds[{i}]: "
-                    f"min ({lo}) >= max ({hi})"
-                )
+                raise ValueError(f"domain_bounds[{i}]: min ({lo}) >= max ({hi})")
         return self
 
 
@@ -802,11 +789,16 @@ class PhysicsConfig(_Base):
 # Logging
 # -------------------------------------------------------------------
 
+
 class LoggingConfig(_Base):
     """Structured logging and metric tracking configuration."""
 
     level: Literal[
-        "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL",
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
     ] = Field(
         default="INFO",
         description="Root log level.",
@@ -824,7 +816,9 @@ class LoggingConfig(_Base):
         description="Write logs to stderr.",
     )
     metrics_backend: Literal[
-        "wandb", "tensorboard", "none",
+        "wandb",
+        "tensorboard",
+        "none",
     ] = Field(
         default="none",
         description="Experiment-tracking backend.",
@@ -847,6 +841,7 @@ class LoggingConfig(_Base):
 # -------------------------------------------------------------------
 # Checkpoint
 # -------------------------------------------------------------------
+
 
 class CheckpointConfig(_Base):
     """Checkpoint saving / loading configuration."""
@@ -879,16 +874,14 @@ class CheckpointConfig(_Base):
     )
     resume_from: str | None = Field(
         default=None,
-        description=(
-            "Path to checkpoint to resume from. "
-            "None = start fresh."
-        ),
+        description=("Path to checkpoint to resume from. None = start fresh."),
     )
 
 
 # -------------------------------------------------------------------
 # Root configuration
 # -------------------------------------------------------------------
+
 
 class AlphaGalerkinConfig(_Base):
     """Root configuration for the AlphaGalerkin framework.
@@ -910,9 +903,7 @@ class AlphaGalerkinConfig(_Base):
     )
     seed: int = Field(
         default=DEFAULT_SEED,
-        description=(
-            "Global random seed (propagated to sub-configs)."
-        ),
+        description=("Global random seed (propagated to sub-configs)."),
     )
     device: str = Field(
         default="cpu",
@@ -954,7 +945,9 @@ class AlphaGalerkinConfig(_Base):
         """Push the root seed into the training sub-config."""
         if self.training.seed == DEFAULT_SEED:
             object.__setattr__(
-                self.training, "seed", self.seed,
+                self.training,
+                "seed",
+                self.seed,
             )
         return self
 
@@ -1004,9 +997,7 @@ class AlphaGalerkinConfig(_Base):
 
         try:
             with filepath.open("r") as fh:
-                raw: dict[str, Any] = (
-                    yaml.safe_load(fh) or {}
-                )
+                raw: dict[str, Any] = yaml.safe_load(fh) or {}
         except yaml.YAMLError as exc:
             raise ConfigError(
                 f"Failed to parse YAML: {exc}",
@@ -1021,12 +1012,14 @@ class AlphaGalerkinConfig(_Base):
             raw = _deep_merge(raw, env_ovr)
 
         try:
-            return cls.model_validate(raw)
+            config = cls.model_validate(raw)
         except Exception as exc:
             raise ConfigValidationError(
                 f"Configuration validation failed: {exc}",
                 path=str(filepath),
             ) from exc
+        logger.info("config.loaded_from_yaml", path=str(filepath))
+        return config
 
     @classmethod
     def from_dict(
@@ -1053,8 +1046,10 @@ class AlphaGalerkinConfig(_Base):
             data = _deep_merge(data, env_ovr)
 
         try:
-            return cls.model_validate(data)
+            config = cls.model_validate(data)
         except Exception as exc:
             raise ConfigValidationError(
                 f"Configuration validation failed: {exc}",
             ) from exc
+        logger.info("config.loaded_from_dict")
+        return config

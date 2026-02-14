@@ -1,4 +1,5 @@
 """Tests for structured logging utilities (utils/logging.py)."""
+
 from __future__ import annotations
 
 import time

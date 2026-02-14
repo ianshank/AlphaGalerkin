@@ -15,6 +15,7 @@ For each protocol, we verify:
 - A stub class missing a required method does NOT satisfy the protocol.
 - Properties (name, pde_type, node_feature_dim, etc.) are checked correctly.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -229,7 +230,11 @@ class NonConformingPhysicsModuleMissingProperty:
         return None
 
     def reward_function(
-        self, prev_state: Any, action: Any, next_state: Any, solve_result: Any,
+        self,
+        prev_state: Any,
+        action: Any,
+        next_state: Any,
+        solve_result: Any,
     ) -> dict[str, float]:
         return {}
 

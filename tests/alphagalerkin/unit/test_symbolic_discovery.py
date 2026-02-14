@@ -1,4 +1,5 @@
 """Tests for the Symbolic Equation Discovery framework."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -15,6 +16,7 @@ from src.alphagalerkin.planning.symbolic_discovery import (
 # ------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------
+
 
 @pytest.fixture()
 def x_data() -> dict[str, np.ndarray]:
@@ -38,11 +40,13 @@ def discovery() -> SymbolicDiscovery:
 # ExpressionNode tests
 # ------------------------------------------------------------------
 
+
 class TestExpressionEvaluateVariable:
     """Variable nodes return the corresponding input array."""
 
     def test_expression_evaluate_variable(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         node = ExpressionNode(
             symbol_type=SymbolType.VARIABLE,
@@ -56,7 +60,8 @@ class TestExpressionEvaluateConstant:
     """Constant nodes return a filled array."""
 
     def test_expression_evaluate_constant(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         node = ExpressionNode(
             symbol_type=SymbolType.CONSTANT,
@@ -68,7 +73,8 @@ class TestExpressionEvaluateConstant:
         np.testing.assert_allclose(result, expected)
 
     def test_constant_none_defaults_to_one(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         node = ExpressionNode(
             symbol_type=SymbolType.CONSTANT,
@@ -84,18 +90,22 @@ class TestExpressionEvaluateBinaryOp:
     """Binary operator nodes combine two children."""
 
     def test_expression_evaluate_binary_op(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         # Build: x + 2
         left = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         right = ExpressionNode(
-            symbol_type=SymbolType.CONSTANT, value="2",
+            symbol_type=SymbolType.CONSTANT,
+            value="2",
             numeric_value=2.0,
         )
         node = ExpressionNode(
-            symbol_type=SymbolType.BINARY_OP, value="+",
+            symbol_type=SymbolType.BINARY_OP,
+            value="+",
             children=[left, right],
         )
         result = node.evaluate(x_data)
@@ -103,17 +113,21 @@ class TestExpressionEvaluateBinaryOp:
         np.testing.assert_allclose(result, expected)
 
     def test_multiplication(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         # Build: x * x
         left = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         right = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         node = ExpressionNode(
-            symbol_type=SymbolType.BINARY_OP, value="*",
+            symbol_type=SymbolType.BINARY_OP,
+            value="*",
             children=[left, right],
         )
         result = node.evaluate(x_data)
@@ -121,18 +135,22 @@ class TestExpressionEvaluateBinaryOp:
         np.testing.assert_allclose(result, expected)
 
     def test_safe_division(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         # Build: x / 0 -- should not produce Inf/NaN
         left = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         right = ExpressionNode(
-            symbol_type=SymbolType.CONSTANT, value="0",
+            symbol_type=SymbolType.CONSTANT,
+            value="0",
             numeric_value=0.0,
         )
         node = ExpressionNode(
-            symbol_type=SymbolType.BINARY_OP, value="/",
+            symbol_type=SymbolType.BINARY_OP,
+            value="/",
             children=[left, right],
         )
         result = node.evaluate(x_data)
@@ -144,14 +162,17 @@ class TestExpressionEvaluateUnaryOp:
     """Unary operator nodes transform a single child."""
 
     def test_expression_evaluate_unary_op(
-        self, x_data: dict[str, np.ndarray],
+        self,
+        x_data: dict[str, np.ndarray],
     ) -> None:
         # Build: sin(x)
         child = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         node = ExpressionNode(
-            symbol_type=SymbolType.UNARY_OP, value="sin",
+            symbol_type=SymbolType.UNARY_OP,
+            value="sin",
             children=[child],
         )
         result = node.evaluate(x_data)
@@ -162,10 +183,12 @@ class TestExpressionEvaluateUnaryOp:
         # exp should clip large values to avoid overflow
         data = {"x": np.array([100.0, -100.0, 0.0])}
         child = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         node = ExpressionNode(
-            symbol_type=SymbolType.UNARY_OP, value="exp",
+            symbol_type=SymbolType.UNARY_OP,
+            value="exp",
             children=[child],
         )
         result = node.evaluate(data)
@@ -178,18 +201,22 @@ class TestExpressionToString:
     def test_expression_to_string(self) -> None:
         # Build: sin((x + 2))
         x_node = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         two_node = ExpressionNode(
-            symbol_type=SymbolType.CONSTANT, value="2",
+            symbol_type=SymbolType.CONSTANT,
+            value="2",
             numeric_value=2.0,
         )
         add_node = ExpressionNode(
-            symbol_type=SymbolType.BINARY_OP, value="+",
+            symbol_type=SymbolType.BINARY_OP,
+            value="+",
             children=[x_node, two_node],
         )
         sin_node = ExpressionNode(
-            symbol_type=SymbolType.UNARY_OP, value="sin",
+            symbol_type=SymbolType.UNARY_OP,
+            value="sin",
             children=[add_node],
         )
         s = sin_node.to_string()
@@ -199,13 +226,15 @@ class TestExpressionToString:
 
     def test_variable_to_string(self) -> None:
         node = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         assert node.to_string() == "x"
 
     def test_constant_to_string(self) -> None:
         node = ExpressionNode(
-            symbol_type=SymbolType.CONSTANT, value="3.14",
+            symbol_type=SymbolType.CONSTANT,
+            value="3.14",
             numeric_value=3.14,
         )
         s = node.to_string()
@@ -213,7 +242,8 @@ class TestExpressionToString:
 
     def test_integer_constant_to_string(self) -> None:
         node = ExpressionNode(
-            symbol_type=SymbolType.CONSTANT, value="2",
+            symbol_type=SymbolType.CONSTANT,
+            value="2",
             numeric_value=2.0,
         )
         assert node.to_string() == "2"
@@ -225,24 +255,28 @@ class TestExpressionComplexity:
     def test_expression_complexity(self) -> None:
         # Leaf: complexity 1
         leaf = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         assert leaf.complexity() == 1
 
         # Unary: 1 + child
         unary = ExpressionNode(
-            symbol_type=SymbolType.UNARY_OP, value="sin",
+            symbol_type=SymbolType.UNARY_OP,
+            value="sin",
             children=[leaf.clone()],
         )
         assert unary.complexity() == 2
 
         # Binary: 1 + left + right
         right = ExpressionNode(
-            symbol_type=SymbolType.CONSTANT, value="1",
+            symbol_type=SymbolType.CONSTANT,
+            value="1",
             numeric_value=1.0,
         )
         binary = ExpressionNode(
-            symbol_type=SymbolType.BINARY_OP, value="+",
+            symbol_type=SymbolType.BINARY_OP,
+            value="+",
             children=[unary.clone(), right.clone()],
         )
         assert binary.complexity() == 4  # + -> sin -> x, 1
@@ -250,14 +284,17 @@ class TestExpressionComplexity:
     def test_deep_tree_complexity(self) -> None:
         # Build: sin(cos(x))
         x = ExpressionNode(
-            symbol_type=SymbolType.VARIABLE, value="x",
+            symbol_type=SymbolType.VARIABLE,
+            value="x",
         )
         cos_x = ExpressionNode(
-            symbol_type=SymbolType.UNARY_OP, value="cos",
+            symbol_type=SymbolType.UNARY_OP,
+            value="cos",
             children=[x],
         )
         sin_cos_x = ExpressionNode(
-            symbol_type=SymbolType.UNARY_OP, value="sin",
+            symbol_type=SymbolType.UNARY_OP,
+            value="sin",
             children=[cos_x],
         )
         assert sin_cos_x.complexity() == 3
@@ -267,11 +304,13 @@ class TestExpressionComplexity:
 # SymbolicDiscovery tests
 # ------------------------------------------------------------------
 
+
 class TestSymbolicValidActions:
     """SymbolicDiscovery.get_valid_actions returns correct actions."""
 
     def test_symbolic_valid_actions(
-        self, discovery: SymbolicDiscovery,
+        self,
+        discovery: SymbolicDiscovery,
     ) -> None:
         # Empty state: only leaf actions (variables + constants)
         empty_state = SymbolicState(max_complexity=20)
@@ -285,11 +324,13 @@ class TestSymbolicValidActions:
         assert SymbolicActionType.ADD_UNARY_OP not in action_types
 
     def test_valid_actions_with_expression(
-        self, discovery: SymbolicDiscovery,
+        self,
+        discovery: SymbolicDiscovery,
     ) -> None:
         state = SymbolicState(
             expression=ExpressionNode(
-                symbol_type=SymbolType.VARIABLE, value="x",
+                symbol_type=SymbolType.VARIABLE,
+                value="x",
             ),
             max_complexity=20,
         )
@@ -301,12 +342,14 @@ class TestSymbolicValidActions:
         assert SymbolicActionType.NO_OP in action_types
 
     def test_no_actions_at_max_complexity(
-        self, discovery: SymbolicDiscovery,
+        self,
+        discovery: SymbolicDiscovery,
     ) -> None:
         # Expression already at max complexity => only NO_OP
         state = SymbolicState(
             expression=ExpressionNode(
-                symbol_type=SymbolType.VARIABLE, value="x",
+                symbol_type=SymbolType.VARIABLE,
+                value="x",
             ),
             max_complexity=1,  # Already at limit
         )
@@ -347,10 +390,7 @@ class TestSymbolicDiscoverSimple:
         mse = float(np.mean((predicted - target) ** 2))
 
         # We expect a reasonable fit -- MSE < 1.0 for y=2x
-        assert mse < 1.0, (
-            f"MSE {mse:.4f} too high for y=2*x; "
-            f"best expression: {best.to_string()}"
-        )
+        assert mse < 1.0, f"MSE {mse:.4f} too high for y=2*x; best expression: {best.to_string()}"
 
     def test_discover_constant(self) -> None:
         """Discover y = 1 from constant data."""

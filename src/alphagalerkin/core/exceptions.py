@@ -22,6 +22,7 @@ AlphaGalerkinError
       +-- CheckpointError
            +-- CheckpointVersionMismatchError
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -29,6 +30,7 @@ from typing import Any
 # -----------------------------------------------------------------------
 # Base
 # -----------------------------------------------------------------------
+
 
 class AlphaGalerkinError(Exception):
     """Root exception for the AlphaGalerkin framework.
@@ -58,9 +60,7 @@ class AlphaGalerkinError(Exception):
     def __repr__(self) -> str:
         cls = type(self).__name__
         if self.context:
-            ctx = ", ".join(
-                f"{k}={v!r}" for k, v in self.context.items()
-            )
+            ctx = ", ".join(f"{k}={v!r}" for k, v in self.context.items())
             return f"{cls}({self.args[0]!r}, context={{{ctx}}})"
         return f"{cls}({self.args[0]!r})"
 
@@ -68,6 +68,7 @@ class AlphaGalerkinError(Exception):
 # -----------------------------------------------------------------------
 # Configuration errors
 # -----------------------------------------------------------------------
+
 
 class ConfigError(AlphaGalerkinError):
     """Raised when configuration loading or parsing fails.
@@ -131,6 +132,7 @@ class ConfigValidationError(ConfigError):
 # -----------------------------------------------------------------------
 # MCTS errors
 # -----------------------------------------------------------------------
+
 
 class MCTSError(AlphaGalerkinError):
     """Base exception for Monte Carlo Tree Search failures."""
@@ -197,6 +199,7 @@ class NoValidActionsError(MCTSError):
 # -----------------------------------------------------------------------
 # Discretization / environment errors
 # -----------------------------------------------------------------------
+
 
 class DiscretizationError(AlphaGalerkinError):
     """Base for environment-level discretization failures.
@@ -300,6 +303,7 @@ class MeshIntegrityError(DiscretizationError):
 # Physics / solver errors
 # -----------------------------------------------------------------------
 
+
 class PhysicsError(AlphaGalerkinError):
     """Base exception for physics module failures."""
 
@@ -377,6 +381,7 @@ class StabilityViolationError(PhysicsError):
 # -----------------------------------------------------------------------
 # Training errors
 # -----------------------------------------------------------------------
+
 
 class TrainingError(AlphaGalerkinError):
     """Base exception for training pipeline failures."""

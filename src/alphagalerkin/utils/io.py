@@ -1,4 +1,5 @@
 """I/O utilities for configuration and checkpoints."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,10 +37,7 @@ def resolve_device(device: str) -> str:
     if device == "auto":
         if torch.cuda.is_available():
             return "cuda"
-        if (
-            hasattr(torch.backends, "mps")
-            and torch.backends.mps.is_available()
-        ):
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             return "mps"
         return "cpu"
     return device

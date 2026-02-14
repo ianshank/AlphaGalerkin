@@ -1,4 +1,5 @@
 """Combined dual-head model for MCTS guidance."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -118,10 +119,11 @@ class AlphaGalerkinNetwork(nn.Module):
         guard = StabilityGuard()
 
         for layer in self.backbone.layers:
-            if hasattr(layer, 'attention') and hasattr(layer.attention, 'compute_lbb_diagnostic'):
+            if hasattr(layer, "attention") and hasattr(layer.attention, "compute_lbb_diagnostic"):
                 # Get KTV matrix for stability check
                 attn = layer.attention
-                assert isinstance(attn, GalerkinLinearAttention)
+                if not isinstance(attn, GalerkinLinearAttention):
+                    raise TypeError(f"Expected GalerkinLinearAttention, got {type(attn).__name__}")
                 x = self.feature_norm(features)
                 x = self.encoder(x)
                 needs_batch = x.dim() == 2
@@ -131,10 +133,16 @@ class AlphaGalerkinNetwork(nn.Module):
                 n_heads = attn.num_heads
                 k_dim = attn.key_dim
                 k = attn.k_proj(x).view(
-                    batch, seq_len, n_heads, k_dim,
+                    batch,
+                    seq_len,
+                    n_heads,
+                    k_dim,
                 )
                 v = attn.v_proj(x).view(
-                    batch, seq_len, n_heads, k_dim,
+                    batch,
+                    seq_len,
+                    n_heads,
+                    k_dim,
                 )
                 k = k.permute(0, 2, 1, 3)
                 v = v.permute(0, 2, 1, 3)
@@ -168,7 +176,9 @@ class AlphaGalerkinNetwork(nn.Module):
         """Load model weights."""
         model = cls(config)
         state_dict = torch.load(
-            path, map_location="cpu", weights_only=True,
+            path,
+            map_location="cpu",
+            weights_only=True,
         )
         model.load_state_dict(state_dict)
         logger.info("nn.model.loaded", path=str(path))

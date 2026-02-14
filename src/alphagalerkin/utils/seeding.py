@@ -1,4 +1,5 @@
 """Reproducible RNG management."""
+
 from __future__ import annotations
 
 import random

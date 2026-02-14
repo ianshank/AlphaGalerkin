@@ -12,6 +12,7 @@ Available modules (via the physics registry):
 - ``advdiff_2d``: Advection-diffusion equation.
 - ``navier_stokes_2d``: Incompressible Navier-Stokes with SGS closures.
 """
+
 from __future__ import annotations
 
 # Import modules to trigger registration via decorators.

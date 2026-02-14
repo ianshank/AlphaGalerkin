@@ -1,4 +1,5 @@
 """MCTS tree manager: orchestrates search."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -57,9 +58,7 @@ class TreeManager:
         self,
         config: MCTSConfig,
         eval_fn: EvalFn,
-        valid_actions_fn: Callable[
-            [DiscretizationState], list[Action]
-        ],
+        valid_actions_fn: Callable[[DiscretizationState], list[Action]],
     ) -> None:
         self._config = config
         self._eval_fn = eval_fn
@@ -70,14 +69,10 @@ class TreeManager:
             epsilon=config.dirichlet_epsilon,
         )
         self._temperature = TemperatureSchedule(
-            schedule_type=(
-                config.temperature_schedule.schedule_type
-            ),
+            schedule_type=(config.temperature_schedule.schedule_type),
             initial=config.temperature_schedule.initial_temp,
             final=config.temperature_schedule.final_temp,
-            decay_steps=(
-                config.temperature_schedule.step_threshold
-            ),
+            decay_steps=(config.temperature_schedule.step_threshold),
         )
         self._selection_fn = get_selection_fn(
             config.selection_policy,
@@ -136,11 +131,7 @@ class TreeManager:
             if not leaf.is_terminal and leaf.is_leaf:
                 leaf_value = self._expand_and_evaluate(leaf)
             else:
-                leaf_value = (
-                    leaf.mean_value
-                    if leaf.visit_count > 0
-                    else 0.0
-                )
+                leaf_value = leaf.mean_value if leaf.visit_count > 0 else 0.0
 
             backup(
                 leaf,
@@ -150,13 +141,11 @@ class TreeManager:
 
         # Build policy from visit counts
         visit_counts: dict[Action, int] = {
-            action: child.visit_count
-            for action, child in root.children.items()
+            action: child.visit_count for action, child in root.children.items()
         }
         total_visits = sum(visit_counts.values())
         policy: dict[Action, float] = {
-            action: count / max(1, total_visits)
-            for action, count in visit_counts.items()
+            action: count / max(1, total_visits) for action, count in visit_counts.items()
         }
 
         # Select with temperature
@@ -164,7 +153,9 @@ class TreeManager:
         selected = cast(
             "Action",
             self._temperature.select_action_with_temperature(
-                visit_counts, temperature, self._rng,
+                visit_counts,
+                temperature,
+                self._rng,
             ),
         )
 
@@ -190,10 +181,7 @@ class TreeManager:
         """Traverse the tree to a leaf via selection policy."""
         current = node
         depth = 0
-        while (
-            not current.is_leaf
-            and depth < self._config.max_tree_depth
-        ):
+        while not current.is_leaf and depth < self._config.max_tree_depth:
             current = self._select_child(current)
             depth += 1
         return current
@@ -257,14 +245,13 @@ class TreeManager:
         n_valid = len(valid)
         for a in topk:
             filtered[a] = priors.get(
-                a, 1.0 / max(1, n_valid),
+                a,
+                1.0 / max(1, n_valid),
             )
 
         total = sum(filtered.values())
         if total > 0:
-            filtered = {
-                a: p / total for a, p in filtered.items()
-            }
+            filtered = {a: p / total for a, p in filtered.items()}
         return filtered
 
     @staticmethod
@@ -274,11 +261,7 @@ class TreeManager:
         """Create a NO_OP action for *state*."""
         from src.alphagalerkin.env.actions import Action as _Act
 
-        eid = (
-            state.mesh.element_ids[0]
-            if state.mesh.element_ids
-            else ElementID("e0")
-        )
+        eid = state.mesh.element_ids[0] if state.mesh.element_ids else ElementID("e0")
         return _Act(
             element_id=eid,
             action_type=ActionType.NO_OP,

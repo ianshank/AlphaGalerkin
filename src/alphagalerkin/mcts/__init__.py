@@ -14,6 +14,7 @@ for exploring discretization action spaces.  Key components:
 - Interoperability protocols: :class:`MCTSSearchable`,
   :class:`MCTSEvaluable`, :class:`GameInterface`.
 """
+
 from __future__ import annotations
 
 from src.alphagalerkin.mcts.action_masking import ActionMasker

@@ -1,4 +1,5 @@
 """Navier-Stokes equation physics module with SGS closure model library."""
+
 from __future__ import annotations
 
 import time
@@ -30,6 +31,7 @@ _DEFAULT_LID_VELOCITY: float = 1.0
 # SGS Closure Model Protocol
 # -------------------------------------------------------------------
 
+
 @dataclass
 class SGSClosureModel:
     """Sub-grid-scale closure model for LES of Navier-Stokes.
@@ -47,14 +49,13 @@ class SGSClosureModel:
     """
 
     name: str
-    compute_viscosity: Callable[
-        [np.ndarray, np.ndarray], np.ndarray
-    ]
+    compute_viscosity: Callable[[np.ndarray, np.ndarray], np.ndarray]
 
 
 # -------------------------------------------------------------------
 # Closure model implementations
 # -------------------------------------------------------------------
+
 
 def _strain_rate_magnitude(
     strain_rate: np.ndarray,
@@ -91,7 +92,9 @@ class SmagorinskyModel:
     """
 
     def __init__(
-        self, c_s: float = 0.17, delta: float = 1.0,
+        self,
+        c_s: float = 0.17,
+        delta: float = 1.0,
     ) -> None:
         self._c_s = c_s
         self._delta = delta
@@ -162,9 +165,7 @@ class DynamicSmagorinskyModel:
         # Using local approximation with clipping
         s_mean = np.mean(s_mag) if s_mag.size > 0 else 1.0
         s_mean = max(s_mean, 1e-12)
-        c_s_sq = s_mag / (
-            self._test_filter_ratio**2 * s_mean
-        )
+        c_s_sq = s_mag / (self._test_filter_ratio**2 * s_mean)
         c_s_sq = np.clip(
             c_s_sq,
             self._c_s_min**2,
@@ -199,7 +200,9 @@ class WALEModel:
     """
 
     def __init__(
-        self, c_w: float = 0.325, delta: float = 1.0,
+        self,
+        c_w: float = 0.325,
+        delta: float = 1.0,
     ) -> None:
         self._c_w = c_w
         self._delta = delta
@@ -230,17 +233,15 @@ class WALEModel:
 
         # Compute invariants
         s_ij_sq = np.einsum(
-            "nij,nij->n", strain_rate, strain_rate,
+            "nij,nij->n",
+            strain_rate,
+            strain_rate,
         )
         s_d_sq = np.einsum("nij,nij->n", s_d, s_d)
 
         eps = 1e-12
         numerator = s_d_sq**1.5
-        denominator = (
-            s_ij_sq**2.5
-            + s_d_sq**1.25
-            + eps
-        )
+        denominator = s_ij_sq**2.5 + s_d_sq**1.25 + eps
 
         return (self._c_w * self._delta) ** 2 * (  # type: ignore[no-any-return]
             numerator / denominator
@@ -290,7 +291,8 @@ _CLOSURE_MODELS: dict[str, type] = {
 
 
 def select_closure(
-    name: str, **kwargs: Any,
+    name: str,
+    **kwargs: Any,
 ) -> SGSClosureModel:
     """Select an SGS closure model by name.
 
@@ -314,10 +316,7 @@ def select_closure(
     """
     if name not in _CLOSURE_MODELS:
         available = ", ".join(sorted(_CLOSURE_MODELS.keys()))
-        msg = (
-            f"Unknown SGS closure model '{name}'."
-            f" Available: {available}"
-        )
+        msg = f"Unknown SGS closure model '{name}'. Available: {available}"
         raise KeyError(msg)
 
     model_cls = _CLOSURE_MODELS[name]
@@ -327,6 +326,7 @@ def select_closure(
         closure_model=name,
     )
     from typing import cast
+
     return cast(SGSClosureModel, model.to_closure())
 
 
@@ -338,6 +338,7 @@ def list_closures() -> list[str]:
 # -------------------------------------------------------------------
 # Navier-Stokes Module
 # -------------------------------------------------------------------
+
 
 @register_physics("navier_stokes_2d")
 class NavierStokesModule:
@@ -384,7 +385,9 @@ class NavierStokesModule:
         return self._closure
 
     def set_closure(
-        self, name: str, **kwargs: Any,
+        self,
+        name: str,
+        **kwargs: Any,
     ) -> None:
         """Set the active SGS closure model.
 
@@ -424,13 +427,19 @@ class NavierStokesModule:
         """
         return [
             BoundaryCondition(
-                bc_type="dirichlet", value=0.0, region="bottom",
+                bc_type="dirichlet",
+                value=0.0,
+                region="bottom",
             ),
             BoundaryCondition(
-                bc_type="dirichlet", value=0.0, region="left",
+                bc_type="dirichlet",
+                value=0.0,
+                region="left",
             ),
             BoundaryCondition(
-                bc_type="dirichlet", value=0.0, region="right",
+                bc_type="dirichlet",
+                value=0.0,
+                region="right",
             ),
             BoundaryCondition(
                 bc_type="dirichlet",
@@ -454,25 +463,14 @@ class NavierStokesModule:
         def exact(points: np.ndarray) -> np.ndarray:
             """Return u-velocity component (primary field)."""
             x, y = points[:, 0], points[:, 1]
-            return (
-                np.sin(np.pi * x) ** 2
-                * 2.0
-                * np.pi
-                * np.sin(np.pi * y)
-                * np.cos(np.pi * y)
-            )
+            return np.sin(np.pi * x) ** 2 * 2.0 * np.pi * np.sin(np.pi * y) * np.cos(np.pi * y)
 
         def forcing(points: np.ndarray) -> np.ndarray:
             """Forcing for u-momentum (Stokes: -nu*laplacian(u) = f_u)."""
             x, y = points[:, 0], points[:, 1]
             # Approximate forcing from manufactured solution
             # f = nu * pi^2 * sin(pi*x) * sin(pi*y) (simplified)
-            return (
-                nu
-                * np.pi**2
-                * np.sin(np.pi * x)
-                * np.sin(np.pi * y)
-            )
+            return nu * np.pi**2 * np.sin(np.pi * x) * np.sin(np.pi * y)
 
         def boundary(points: np.ndarray) -> np.ndarray:
             return np.zeros(len(points))
@@ -494,7 +492,7 @@ class NavierStokesModule:
         """Reward based on residual reduction and DOF efficiency."""
         return 0.0  # Placeholder
 
-    def state_features(self, discretization: Any) -> Any:
+    def state_features(self, _discretization: Any) -> Any:
         """Per-element features for the GNN encoder."""
         return None  # Placeholder
 
@@ -588,10 +586,6 @@ class NavierStokesModule:
             solve_time_ms=elapsed_ms,
             converged=True,
             metadata={
-                "closure_model": (
-                    self._closure.name
-                    if self._closure is not None
-                    else "none"
-                ),
+                "closure_model": (self._closure.name if self._closure is not None else "none"),
             },
         )

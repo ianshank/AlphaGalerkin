@@ -13,6 +13,7 @@ State: current parameter estimate + uncertainty + sensor network.
 Actions: place/remove sensors, take measurements, refine estimate.
 Reward: information gain (uncertainty reduction) per measurement cost.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -127,9 +128,7 @@ class InverseProblemState:
                 )
                 for s in self.sensors
             ],
-            uncertainty=(
-                self.uncertainty.copy() if self.uncertainty is not None else None
-            ),
+            uncertainty=(self.uncertainty.copy() if self.uncertainty is not None else None),
             total_information_gain=self.total_information_gain,
             measurement_budget=self.measurement_budget,
             measurements_taken=self.measurements_taken,
@@ -215,7 +214,7 @@ class InverseProblemSolver:
     def plan_next_action(
         self,
         state: InverseProblemState,
-        forward_model: Callable[..., Any] | None = None,
+        _forward_model: Callable[..., Any] | None = None,
     ) -> InverseAction:
         """Plan next measurement/sensing action.
 
@@ -288,9 +287,11 @@ class InverseProblemSolver:
         # Remove a sensor (if at least one exists)
         if len(state.sensors) > 0:
             # Select the sensor with highest noise (least informative)
-            worst_idx = int(np.argmax(
-                [s.noise_level for s in state.sensors],
-            ))
+            worst_idx = int(
+                np.argmax(
+                    [s.noise_level for s in state.sensors],
+                )
+            )
             actions.append(
                 InverseAction(
                     action_type=InverseActionType.REMOVE_SENSOR,
@@ -299,9 +300,7 @@ class InverseProblemSolver:
             )
 
         # Take measurement (if unmeasured sensors exist and budget allows)
-        unmeasured = [
-            i for i, s in enumerate(state.sensors) if s.measurement is None
-        ]
+        unmeasured = [i for i, s in enumerate(state.sensors) if s.measurement is None]
         if unmeasured and has_budget:
             actions.append(
                 InverseAction(
@@ -391,9 +390,7 @@ class InverseProblemSolver:
                 new_state.uncertainty = np.ones(n_params)
 
             # Reduce uncertainty based on number of measurements
-            measured = [
-                s for s in new_state.sensors if s.measurement is not None
-            ]
+            measured = [s for s in new_state.sensors if s.measurement is not None]
             if measured:
                 # Each measurement reduces uncertainty proportionally
                 reduction = 1.0 / (1.0 + len(measured))
@@ -442,18 +439,16 @@ class InverseProblemSolver:
         if action.location is not None and state.sensors:
             min_dist = float("inf")
             for sensor in state.sensors:
-                dist = float(np.linalg.norm(
-                    action.location - sensor.location,
-                ))
+                dist = float(
+                    np.linalg.norm(
+                        action.location - sensor.location,
+                    )
+                )
                 min_dist = min(min_dist, dist)
             # Normalise by domain diameter
-            diameter = np.sqrt(sum(
-                (hi - lo) ** 2 for lo, hi in self._bounds
-            ))
+            diameter = np.sqrt(sum((hi - lo) ** 2 for lo, hi in self._bounds))
             if diameter > 0:
-                exploration_bonus = (
-                    1.0 + self._exploration_weight * min_dist / diameter
-                )
+                exploration_bonus = 1.0 + self._exploration_weight * min_dist / diameter
 
         # Uncertainty-aware bonus: higher gain when uncertainty is high
         uncertainty_bonus = 1.0
@@ -486,7 +481,7 @@ class InverseProblemSolver:
         weighted_sum = np.zeros(n_params)
 
         for sensor in measured:
-            weight = 1.0 / max(sensor.noise_level ** 2, 1e-10)
+            weight = 1.0 / max(sensor.noise_level**2, 1e-10)
             total_weight += weight
             # Each measurement nudges the estimate (simplified)
             weighted_sum += weight * sensor.measurement * np.ones(n_params)  # type: ignore[operator]
@@ -494,9 +489,7 @@ class InverseProblemSolver:
         if total_weight > 0:
             # Blend current estimate with measurement-derived estimate
             prior_weight = 1.0
-            posterior = (
-                prior_weight * new_estimate + weighted_sum
-            ) / (prior_weight + total_weight)
+            posterior = (prior_weight * new_estimate + weighted_sum) / (prior_weight + total_weight)
             # Clip to bounds
             for d in range(n_params):
                 if d < len(state.parameter_bounds):

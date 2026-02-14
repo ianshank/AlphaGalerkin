@@ -1,4 +1,5 @@
 """Tests for reward computation."""
+
 from __future__ import annotations
 
 from src.alphagalerkin.env.rewards import RewardComposer
@@ -10,23 +11,27 @@ class TestRewardComposer:
     def test_default_weights(self) -> None:
         composer = RewardComposer()
         reward = composer.compute(
-            accuracy=1.0, efficiency=1.0, stability=1.0,
+            accuracy=1.0,
+            efficiency=1.0,
+            stability=1.0,
         )
         assert reward > 0
 
     def test_custom_weights(self) -> None:
-        composer = RewardComposer(
-            {"accuracy": 2.0, "efficiency": 0.0, "stability": 0.0}
-        )
+        composer = RewardComposer({"accuracy": 2.0, "efficiency": 0.0, "stability": 0.0})
         reward = composer.compute(
-            accuracy=1.0, efficiency=1.0, stability=1.0,
+            accuracy=1.0,
+            efficiency=1.0,
+            stability=1.0,
         )
         assert abs(reward - 2.0) < 1e-10
 
     def test_zero_components_give_zero_reward(self) -> None:
         composer = RewardComposer()
         reward = composer.compute(
-            accuracy=0.0, efficiency=0.0, stability=0.0,
+            accuracy=0.0,
+            efficiency=0.0,
+            stability=0.0,
         )
         assert abs(reward) < 1e-10
 
@@ -39,7 +44,8 @@ class TestRewardComposer:
         """A component not in the weight map gets weight 0."""
         composer = RewardComposer({"accuracy": 1.0})
         reward = composer.compute(
-            accuracy=0.0, custom_metric=5.0,
+            accuracy=0.0,
+            custom_metric=5.0,
         )
         # custom_metric is not in weights -> weight 0
         assert abs(reward) < 1e-10
@@ -53,10 +59,12 @@ class TestAccuracyReward:
     ) -> None:
         composer = RewardComposer()
         r1 = composer.accuracy_reward(
-            0.5, prev_residual=1.0,
+            0.5,
+            prev_residual=1.0,
         )
         r2 = composer.accuracy_reward(
-            0.1, prev_residual=1.0,
+            0.1,
+            prev_residual=1.0,
         )
         assert r2 > r1
 
@@ -64,7 +72,8 @@ class TestAccuracyReward:
         """If residual increases, reward should be 0."""
         composer = RewardComposer()
         reward = composer.accuracy_reward(
-            2.0, prev_residual=1.0,
+            2.0,
+            prev_residual=1.0,
         )
         assert reward >= 0.0
 
@@ -76,7 +85,8 @@ class TestAccuracyReward:
     def test_accuracy_reward_zero_residual(self) -> None:
         composer = RewardComposer()
         reward = composer.accuracy_reward(
-            0.0, prev_residual=1.0,
+            0.0,
+            prev_residual=1.0,
         )
         assert abs(reward - 1.0) < 1e-10
 

@@ -1,4 +1,5 @@
 """Policy evaluation on held-out problems."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -176,7 +177,8 @@ class PolicyEvaluator:
                 self._config.environment.max_steps,
             ):
                 action_c, _ = current_tree.search(
-                    cur_state_live, step=step_idx,
+                    cur_state_live,
+                    step=step_idx,
                 )
                 cur_actions.append(action_c)
                 result_c = cur_env.step(action_c)
@@ -198,7 +200,8 @@ class PolicyEvaluator:
                 self._config.environment.max_steps,
             ):
                 action_b, _ = baseline_tree.search(
-                    base_state_live, step=step_idx,
+                    base_state_live,
+                    step=step_idx,
                 )
                 base_actions.append(action_b)
                 result_b = base_env.step(action_b)
@@ -233,24 +236,15 @@ class PolicyEvaluator:
                 steps=shared_len,
             )
 
-        wins = sum(
-            1
-            for c, b in zip(current_rewards, baseline_rewards, strict=True)
-            if c > b
-        )
-        reward_diffs = [
-            c - b
-            for c, b in zip(current_rewards, baseline_rewards, strict=True)
-        ]
+        wins = sum(1 for c, b in zip(current_rewards, baseline_rewards, strict=True) if c > b)
+        reward_diffs = [c - b for c, b in zip(current_rewards, baseline_rewards, strict=True)]
         total_agree = sum(agreement_counts)
         total_step_sum = sum(total_steps)
 
         metrics = {
             "h2h/win_rate": wins / max(1, num_episodes),
             "h2h/avg_reward_diff": float(np.mean(reward_diffs)),
-            "h2h/policy_agreement": (
-                total_agree / max(1, total_step_sum)
-            ),
+            "h2h/policy_agreement": (total_agree / max(1, total_step_sum)),
         }
 
         logger.info("evaluation.head_to_head.complete", **metrics)

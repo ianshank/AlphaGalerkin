@@ -1,4 +1,5 @@
 """CLI entry point for AlphaGalerkin."""
+
 from __future__ import annotations
 
 import sys
@@ -88,16 +89,9 @@ def train(
     )
 
     if dry_run:
-        click.echo(
-            f"Config validated successfully. "
-            f"PDE type: {config.physics.pde_type}"
-        )
-        click.echo(
-            f"MCTS simulations: {config.mcts.num_simulations}"
-        )
-        click.echo(
-            f"Training steps: {config.training.total_steps}"
-        )
+        click.echo(f"Config validated successfully. PDE type: {config.physics.pde_type}")
+        click.echo(f"MCTS simulations: {config.mcts.num_simulations}")
+        click.echo(f"Training steps: {config.training.total_steps}")
         return
 
     # Import and run trainer
@@ -110,11 +104,7 @@ def train(
     for i in range(config.training.total_steps):
         _metrics = trainer.train_iteration(i)
 
-        if (
-            (i + 1)
-            % config.checkpoint.save_interval_steps
-            == 0
-        ):
+        if (i + 1) % config.checkpoint.save_interval_steps == 0:
             trainer.save_checkpoint(i)
 
     click.echo("Training complete.")
@@ -134,13 +124,9 @@ def validate_config(config_path: str) -> None:
             Path(config_path),
         )
         click.echo(f"Configuration valid: {config_path}")
-        click.echo(
-            f"  PDE type: {config.physics.pde_type}"
-        )
+        click.echo(f"  PDE type: {config.physics.pde_type}")
         click.echo(f"  Device: {config.device}")
-        click.echo(
-            f"  MCTS sims: {config.mcts.num_simulations}"
-        )
+        click.echo(f"  MCTS sims: {config.mcts.num_simulations}")
     except Exception as e:
         click.echo(f"Configuration invalid: {e}", err=True)
         sys.exit(1)

@@ -1,4 +1,5 @@
 """Tests for replay buffer."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -25,7 +26,8 @@ class TestReplayBuffer:
 
     def test_add_and_size(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=2,
+            capacity=1000,
+            min_size_to_train=2,
         )
         buf = ReplayBuffer(config)
         assert buf.size == 0
@@ -34,7 +36,8 @@ class TestReplayBuffer:
 
     def test_is_ready_respects_min_size(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=3,
+            capacity=1000,
+            min_size_to_train=3,
         )
         buf = ReplayBuffer(config)
         for i in range(2):
@@ -45,7 +48,8 @@ class TestReplayBuffer:
 
     def test_sample_returns_correct_size(self) -> None:
         config = ReplayConfig(
-            capacity=10000, min_size_to_train=5,
+            capacity=10000,
+            min_size_to_train=5,
         )
         buf = ReplayBuffer(config)
         for i in range(10):
@@ -55,7 +59,8 @@ class TestReplayBuffer:
 
     def test_capacity_limit_respected(self) -> None:
         config = ReplayConfig(
-            capacity=5000, min_size_to_train=1,
+            capacity=5000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         for i in range(6000):
@@ -64,7 +69,8 @@ class TestReplayBuffer:
 
     def test_sample_before_ready_raises(self) -> None:
         config = ReplayConfig(
-            capacity=10000, min_size_to_train=5000,
+            capacity=10000,
+            min_size_to_train=5000,
         )
         buf = ReplayBuffer(config)
         buf.add(_make_experience())
@@ -73,7 +79,8 @@ class TestReplayBuffer:
 
     def test_add_batch(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         batch = [_make_experience(float(i)) for i in range(5)]
@@ -82,7 +89,8 @@ class TestReplayBuffer:
 
     def test_clear_empties_buffer(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         for _ in range(10):
@@ -93,7 +101,8 @@ class TestReplayBuffer:
 
     def test_get_state_and_load_state(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         for i in range(5):
@@ -109,7 +118,8 @@ class TestReplayBuffer:
 
     def test_update_priorities(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         for _ in range(5):
@@ -119,7 +129,8 @@ class TestReplayBuffer:
 
     def test_sample_clamps_to_buffer_size(self) -> None:
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         for _ in range(3):

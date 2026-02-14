@@ -25,7 +25,7 @@ from src.alphagalerkin.core.types import ActionType, BasisSpec, ElementID
 from src.alphagalerkin.env.actions import GLOBAL_ACTION_TYPES, Action
 from src.alphagalerkin.env.mesh_graph import MeshGraph
 
-logger = structlog.get_logger("state")
+logger = structlog.get_logger("env.state")
 
 
 @dataclass
@@ -519,6 +519,9 @@ class DiscretizationState:
                 0.0,  # residual placeholder
                 0.0,  # solution norm placeholder
             ]
-            assert len(feat) == n_features
+            if len(feat) != n_features:
+                raise ValueError(
+                    f"Expected {n_features} features, got {len(feat)}"
+                )
             features.append(feat)
         return torch.tensor(features, dtype=torch.float32)

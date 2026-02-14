@@ -1,4 +1,5 @@
 """Tests for curriculum learning."""
+
 from __future__ import annotations
 
 from src.alphagalerkin.core.config import CurriculumConfig

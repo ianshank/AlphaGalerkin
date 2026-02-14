@@ -1,4 +1,5 @@
 """Tests for the numerical relativity AMR planning framework."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -326,13 +327,12 @@ class TestNRAddLevel:
         # New level should be centred at the specified location
         new_level = new_state.refinement_levels[-1]
         np.testing.assert_array_almost_equal(
-            new_level.center, np.array([-5.0, 0.0, 0.0]),
+            new_level.center,
+            np.array([-5.0, 0.0, 0.0]),
         )
 
         # New level should have finer resolution than existing finest
-        finest_existing = min(
-            rl.resolution for rl in sample_state.refinement_levels
-        )
+        finest_existing = min(rl.resolution for rl in sample_state.refinement_levels)
         assert new_level.resolution <= finest_existing
 
         # Original is unmodified
@@ -356,9 +356,7 @@ class TestNRManagerPlansAction:
         assert isinstance(action.action_type, NRActionType)
 
         # The returned action must be among the valid set
-        valid_types = {
-            a.action_type for a in manager.get_valid_actions(sample_state)
-        }
+        valid_types = {a.action_type for a in manager.get_valid_actions(sample_state)}
         assert action.action_type in valid_types
 
     def test_nr_manager_plans_without_constraint_fn(

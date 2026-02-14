@@ -1,4 +1,5 @@
 """Tests for PDE-aware curriculum learning."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -118,7 +119,8 @@ class TestSourceTermGeneration:
         """Without singularity, value at origin is well-behaved."""
         manager = PDECurriculumManager(progression="gradual")
         difficulty = PDEDifficultyConfig(
-            singularity_strength=0.0, source_frequency=1.0,
+            singularity_strength=0.0,
+            source_frequency=1.0,
         )
         source = manager.generate_source_term(difficulty)
 

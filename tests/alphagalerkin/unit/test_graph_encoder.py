@@ -1,4 +1,5 @@
 """Tests for the graph-based message-passing encoder."""
+
 from __future__ import annotations
 
 import torch
@@ -138,7 +139,9 @@ class TestGraphEncoderAdjacencyEffect:
 
         # They should differ since messages flow differently.
         assert not torch.allclose(
-            out_disconnected, out_connected, atol=1e-6,
+            out_disconnected,
+            out_connected,
+            atol=1e-6,
         ), "Outputs should differ with different adjacency structures"
 
     def test_zero_adjacency_no_messages(self) -> None:
@@ -293,8 +296,14 @@ class TestModelWithGraphEncoder:
 
         batch, num_elements = 2, 4
         features = torch.randn(batch, num_elements, 8)
-        adj = torch.eye(num_elements).unsqueeze(0).expand(
-            batch, -1, -1,
+        adj = (
+            torch.eye(num_elements)
+            .unsqueeze(0)
+            .expand(
+                batch,
+                -1,
+                -1,
+            )
         )
 
         policy, value = model(features, adjacency=adj)
@@ -332,6 +341,4 @@ class TestModelWithGraphEncoder:
 
         # Check that graph encoder parameters received gradients.
         for name, param in model.graph_encoder.named_parameters():
-            assert param.grad is not None, (
-                f"No gradient for graph_encoder.{name}"
-            )
+            assert param.grad is not None, f"No gradient for graph_encoder.{name}"

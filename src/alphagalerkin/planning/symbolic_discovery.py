@@ -10,6 +10,7 @@ The search operates over ``ExpressionNode`` trees composed of
 variables, constants, binary operators (+, -, *, /), and unary
 operators (sin, cos, exp, log, sqrt, neg, abs).
 """
+
 from __future__ import annotations
 
 import math
@@ -29,6 +30,7 @@ logger = structlog.get_logger("planning.symbolic")
 # ======================================================================
 # Expression tree nodes
 # ======================================================================
+
 
 class SymbolType(str, Enum):
     """Types of symbols in expression trees."""
@@ -62,7 +64,8 @@ _BINARY_OPS: dict[str, Callable[..., Any]] = {
     "-": np.subtract,
     "*": np.multiply,
     "/": lambda a, b: np.divide(
-        a, np.where(np.abs(b) < 1e-10, 1e-10, b),
+        a,
+        np.where(np.abs(b) < 1e-10, 1e-10, b),
     ),
 }
 
@@ -113,9 +116,7 @@ class ExpressionNode:
             return variables[self.value]
 
         if self.symbol_type == SymbolType.CONSTANT:
-            val = (
-                self.numeric_value if self.numeric_value is not None else 1.0
-            )
+            val = self.numeric_value if self.numeric_value is not None else 1.0
             # Use the shape of any available variable
             ref = next(iter(variables.values()))
             return np.full_like(ref, val, dtype=float)
@@ -150,9 +151,7 @@ class ExpressionNode:
             return self.value
 
         if self.symbol_type == SymbolType.CONSTANT:
-            val = (
-                self.numeric_value if self.numeric_value is not None else 1.0
-            )
+            val = self.numeric_value if self.numeric_value is not None else 1.0
             # Display integers without decimals
             if val == int(val):
                 return str(int(val))
@@ -193,6 +192,7 @@ class ExpressionNode:
 # ======================================================================
 # Symbolic search state and actions
 # ======================================================================
+
 
 class SymbolicActionType(str, Enum):
     """Actions for building expression trees."""
@@ -240,14 +240,8 @@ class SymbolicState:
     def clone(self) -> SymbolicState:
         """Return a deep, independent copy of this state."""
         return SymbolicState(
-            expression=(
-                self.expression.clone() if self.expression is not None
-                else None
-            ),
-            target_data=(
-                self.target_data.copy() if self.target_data is not None
-                else None
-            ),
+            expression=(self.expression.clone() if self.expression is not None else None),
+            target_data=(self.target_data.copy() if self.target_data is not None else None),
             input_data=(
                 {k: v.copy() for k, v in self.input_data.items()}
                 if self.input_data is not None
@@ -278,6 +272,7 @@ class SymbolicAction:
 # ======================================================================
 # Symbolic discovery engine
 # ======================================================================
+
 
 class SymbolicDiscovery:
     """Discovers symbolic equations from data using MCTS-style search.
@@ -382,7 +377,9 @@ class SymbolicDiscovery:
 
                 if state.expression is not None:
                     fitness = self._compute_fitness(
-                        state.expression, input_data, target_data,
+                        state.expression,
+                        input_data,
+                        target_data,
                     )
                     if fitness < best_fitness:
                         best_fitness = fitness
@@ -390,25 +387,19 @@ class SymbolicDiscovery:
 
                     # Update UCB statistics
                     key = self._action_key(action)
-                    self._action_visits[key] = (
-                        self._action_visits.get(key, 0) + 1
-                    )
+                    self._action_visits[key] = self._action_visits.get(key, 0) + 1
                     # Reward = inverse fitness (lower MSE = higher reward)
                     reward = 1.0 / (1.0 + fitness)
                     prev = self._action_rewards.get(key, 0.0)
                     n = self._action_visits[key]
-                    self._action_rewards[key] = (
-                        prev + (reward - prev) / n
-                    )
+                    self._action_rewards[key] = prev + (reward - prev) / n
 
             if iteration % max(1, num_iterations // 5) == 0:
                 logger.debug(
                     "symbolic_discovery.progress",
                     iteration=iteration,
                     best_fitness=best_fitness,
-                    best_expr=(
-                        best_expr.to_string() if best_expr else None
-                    ),
+                    best_expr=(best_expr.to_string() if best_expr else None),
                 )
 
         if best_expr is None:
@@ -439,9 +430,7 @@ class SymbolicDiscovery:
         complexity limit.
         """
         actions: list[SymbolicAction] = []
-        current_complexity = (
-            state.expression.complexity() if state.expression else 0
-        )
+        current_complexity = state.expression.complexity() if state.expression else 0
 
         if state.expression is None:
             # Must start with a leaf node
@@ -491,9 +480,7 @@ class SymbolicDiscovery:
                     )
 
             # No-op to terminate building
-            actions.append(
-                SymbolicAction(action_type=SymbolicActionType.NO_OP)
-            )
+            actions.append(SymbolicAction(action_type=SymbolicActionType.NO_OP))
 
         return actions
 
@@ -616,6 +603,7 @@ class SymbolicDiscovery:
             mse = float(np.mean((predicted - target_data) ** 2))
             return mse
         except Exception:
+            logger.debug("symbolic.evaluation_failed", exc_info=True)
             return float("inf")
 
     # ------------------------------------------------------------------
@@ -643,9 +631,7 @@ class SymbolicDiscovery:
                 return action
 
             avg_reward = self._action_rewards.get(key, 0.0)
-            ucb = avg_reward + self._exploration_weight * math.sqrt(
-                math.log(total_visits) / n
-            )
+            ucb = avg_reward + self._exploration_weight * math.sqrt(math.log(total_visits) / n)
             if ucb > best_ucb:
                 best_ucb = ucb
                 best_action = action

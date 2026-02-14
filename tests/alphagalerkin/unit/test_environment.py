@@ -1,4 +1,5 @@
 """Tests for discretization environment."""
+
 from __future__ import annotations
 
 import pytest
@@ -17,7 +18,8 @@ class TestDiscretizationEnvironment:
 
     def test_reset_returns_valid_state(self) -> None:
         config = EnvironmentConfig(
-            max_steps=10, max_dof=500,
+            max_steps=10,
+            max_dof=500,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -33,7 +35,8 @@ class TestDiscretizationEnvironment:
 
     def test_step_returns_step_result(self) -> None:
         config = EnvironmentConfig(
-            max_steps=10, max_dof=50000,
+            max_steps=10,
+            max_dof=50000,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -48,7 +51,8 @@ class TestDiscretizationEnvironment:
 
     def test_step_limit_terminates(self) -> None:
         config = EnvironmentConfig(
-            max_steps=2, max_dof=50000,
+            max_steps=2,
+            max_dof=50000,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -68,7 +72,8 @@ class TestDiscretizationEnvironment:
 
     def test_info_contains_diagnostics(self) -> None:
         config = EnvironmentConfig(
-            max_steps=10, max_dof=50000,
+            max_steps=10,
+            max_dof=50000,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -93,7 +98,8 @@ class TestDiscretizationEnvironment:
 
     def test_h_refine_action_in_environment(self) -> None:
         config = EnvironmentConfig(
-            max_steps=10, max_dof=50000,
+            max_steps=10,
+            max_dof=50000,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -101,13 +107,12 @@ class TestDiscretizationEnvironment:
         eid = state.mesh.element_ids[0]
         action = Action(eid, ActionType.H_REFINE, {})
         result = env.step(action)
-        assert (
-            result.state.mesh.num_elements > initial_count
-        )
+        assert result.state.mesh.num_elements > initial_count
 
     def test_dof_budget_exceeded_terminates(self) -> None:
         config = EnvironmentConfig(
-            max_steps=100, max_dof=10,
+            max_steps=100,
+            max_dof=10,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -128,7 +133,8 @@ class TestDiscretizationEnvironment:
         )
         config = EnvironmentConfig(max_steps=10)
         env = DiscretizationEnvironment(
-            config, initial_mesh=mesh,
+            config,
+            initial_mesh=mesh,
         )
         state = env.reset()
         assert state.mesh.num_elements == 4

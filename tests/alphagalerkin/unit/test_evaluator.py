@@ -3,6 +3,7 @@
 Focuses on evaluate_from_checkpoint and edge cases not covered by
 test_head_to_head.py.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -110,9 +111,7 @@ class TestEvaluate:
         result = evaluator.evaluate(eval_fn=fn, num_episodes=2)
 
         for key, value in result.items():
-            assert isinstance(value, float), (
-                f"{key} should be float but is {type(value)}"
-            )
+            assert isinstance(value, float), f"{key} should be float but is {type(value)}"
 
     def test_evaluate_length_within_max_steps(self) -> None:
         max_steps = 5
@@ -265,9 +264,7 @@ class TestEvaluateFromCheckpoint:
         )
 
         mock_network.eval.assert_called_once()
-        mock_network.load_state_dict.assert_called_once_with(
-            {"dummy": "weights"}
-        )
+        mock_network.load_state_dict.assert_called_once_with({"dummy": "weights"})
 
     @patch("src.alphagalerkin.evaluation.evaluator.PolicyEvaluator.evaluate")
     @patch("src.alphagalerkin.nn.model.AlphaGalerkinNetwork")

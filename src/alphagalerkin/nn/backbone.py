@@ -7,6 +7,7 @@ Supports three modes:
 
 The mode is selected via the GNN architecture config field.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -196,16 +197,18 @@ class ElementBackbone(nn.Module):
         super().__init__()
         self.architecture = architecture
         self.hidden_dim = hidden_dim
-        self.layers = nn.ModuleList([
-            _build_block(
-                mode=architecture,
-                hidden_dim=hidden_dim,
-                num_heads=num_heads,
-                dropout=dropout,
-                activation=activation,
-            )
-            for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [
+                _build_block(
+                    mode=architecture,
+                    hidden_dim=hidden_dim,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    activation=activation,
+                )
+                for _ in range(num_layers)
+            ]
+        )
 
         logger.info(
             "backbone.init",

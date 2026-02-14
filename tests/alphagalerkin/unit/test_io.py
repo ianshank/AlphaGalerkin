@@ -1,4 +1,5 @@
 """Tests for I/O utilities (utils/io.py)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,7 +22,8 @@ class TestLoadYaml:
         assert data["nested"]["a"] == 1
 
     def test_returns_empty_dict_for_empty_file(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         yaml_file = tmp_path / "empty.yaml"
         yaml_file.write_text("")

@@ -1,4 +1,5 @@
 """Self-play episode generation via MCTS."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -34,6 +35,7 @@ EvalFn = Callable[
 # -------------------------------------------------------------------
 # Episode container
 # -------------------------------------------------------------------
+
 
 @dataclass
 class Episode:
@@ -94,16 +96,17 @@ class Episode:
         outcome = self.total_reward / max(1, self.length)
 
         for state, policy in zip(
-            self.states, self.policies, strict=True,
+            self.states,
+            self.policies,
+            strict=True,
         ):
             # Convert policy to numpy array of probabilities
             policy_array = np.array(
-                list(policy.values()), dtype=np.float32,
+                list(policy.values()),
+                dtype=np.float32,
             )
             exp = Experience(
-                state_features=(
-                    state.to_feature_tensor().numpy()
-                ),
+                state_features=(state.to_feature_tensor().numpy()),
                 policy_target=policy_array,
                 value_target=outcome,
                 iteration=iteration,
@@ -116,6 +119,7 @@ class Episode:
 # -------------------------------------------------------------------
 # Self-play engine
 # -------------------------------------------------------------------
+
 
 class SelfPlayEngine:
     """Generates self-play episodes using MCTS.
@@ -151,18 +155,10 @@ class SelfPlayEngine:
             epsilon=config.mcts.dirichlet_epsilon,
         )
         self._temperature = TemperatureSchedule(
-            schedule_type=(
-                config.mcts.temperature_schedule.schedule_type
-            ),
-            initial=(
-                config.mcts.temperature_schedule.initial_temp
-            ),
-            final=(
-                config.mcts.temperature_schedule.final_temp
-            ),
-            decay_steps=(
-                config.mcts.temperature_schedule.step_threshold
-            ),
+            schedule_type=(config.mcts.temperature_schedule.schedule_type),
+            initial=(config.mcts.temperature_schedule.initial_temp),
+            final=(config.mcts.temperature_schedule.final_temp),
+            decay_steps=(config.mcts.temperature_schedule.step_threshold),
         )
 
         # Default evaluation function (uniform policy, 0 value)
@@ -265,6 +261,7 @@ class SelfPlayEngine:
                     ActionType,
                     ElementID,
                 )
+
                 noop = Action(
                     element_id=ElementID("e0"),
                     action_type=ActionType.NO_OP,
@@ -275,7 +272,8 @@ class SelfPlayEngine:
 
         # Apply Dirichlet noise at the root
         noised_priors: dict[Action, float] = cast(
-            dict[Action, float], self._noise.apply(priors),
+            dict[Action, float],
+            self._noise.apply(priors),
         )
         root.expand(noised_priors)
 
@@ -285,10 +283,7 @@ class SelfPlayEngine:
             node = root
             # Selection
             depth = 0
-            while (
-                not node.is_leaf
-                and depth < self._mcts_config.max_tree_depth
-            ):
+            while not node.is_leaf and depth < self._mcts_config.max_tree_depth:
                 node = node.select_best_child(
                     self._mcts_config.c_puct,
                 )
@@ -315,26 +310,17 @@ class SelfPlayEngine:
 
         # Build visit-count policy
         visit_policy: dict[Action, float] = {}
-        total_visits = sum(
-            c.visit_count for c in root.children.values()
-        )
+        total_visits = sum(c.visit_count for c in root.children.values())
         if total_visits > 0:
             for act, child in root.children.items():
-                visit_policy[act] = (
-                    child.visit_count / total_visits
-                )
+                visit_policy[act] = child.visit_count / total_visits
         else:
             for act in root.children:
-                visit_policy[act] = (
-                    1.0 / len(root.children)
-                )
+                visit_policy[act] = 1.0 / len(root.children)
 
         # Temperature-scaled action selection
         temperature = self._temperature.get_temperature(step)
-        visit_counts = {
-            act: child.visit_count
-            for act, child in root.children.items()
-        }
+        visit_counts = {act: child.visit_count for act, child in root.children.items()}
         selected = self._temperature.select_action_with_temperature(
             visit_counts,
             temperature,

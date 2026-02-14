@@ -8,6 +8,7 @@ Provides:
 - cprofile_section: Context manager that runs ``cProfile`` over a
   block and writes the stats to a file.
 """
+
 from __future__ import annotations
 
 import cProfile
@@ -34,6 +35,7 @@ logger = structlog.get_logger("profiling")
 # ------------------------------------------------------------------ #
 #  PerformanceTracker                                                 #
 # ------------------------------------------------------------------ #
+
 
 @dataclass
 class _SectionStats:
@@ -108,11 +110,7 @@ class PerformanceTracker:
         """
         result: dict[str, dict[str, float]] = {}
         for name, stats in self._sections.items():
-            mean = (
-                stats.total_time / stats.call_count
-                if stats.call_count > 0
-                else 0.0
-            )
+            mean = stats.total_time / stats.call_count if stats.call_count > 0 else 0.0
             result[name] = {
                 "total_time": round(stats.total_time, 6),
                 "call_count": float(stats.call_count),
@@ -143,6 +141,7 @@ def get_global_tracker() -> PerformanceTracker:
 # ------------------------------------------------------------------ #
 #  profile_function decorator                                         #
 # ------------------------------------------------------------------ #
+
 
 def profile_function(
     func: Callable[..., Any] | None = None,
@@ -193,6 +192,7 @@ def profile_function(
 # ------------------------------------------------------------------ #
 #  cprofile_section context manager                                   #
 # ------------------------------------------------------------------ #
+
 
 @contextmanager
 def cprofile_section(

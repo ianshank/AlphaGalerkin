@@ -1,4 +1,5 @@
 """Online feature normalization for input features."""
+
 from __future__ import annotations
 
 import structlog
@@ -31,10 +32,12 @@ class RunningNorm(nn.Module):
         self.eps = eps
 
         self.register_buffer(
-            "running_mean", torch.zeros(num_features),
+            "running_mean",
+            torch.zeros(num_features),
         )
         self.register_buffer(
-            "running_var", torch.ones(num_features),
+            "running_var",
+            torch.ones(num_features),
         )
         self.register_buffer(
             "num_batches_tracked",
@@ -54,14 +57,8 @@ class RunningNorm(nn.Module):
             batch_mean = flat.mean(dim=0)
             batch_var = flat.var(dim=0, unbiased=False)
 
-            self.running_mean = (
-                (1 - self.momentum) * self.running_mean
-                + self.momentum * batch_mean
-            )
-            self.running_var = (
-                (1 - self.momentum) * self.running_var
-                + self.momentum * batch_var
-            )
+            self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * batch_mean
+            self.running_var = (1 - self.momentum) * self.running_var + self.momentum * batch_var
             self.num_batches_tracked = self.num_batches_tracked + 1
 
         result: torch.Tensor = (x - self.running_mean) / torch.sqrt(

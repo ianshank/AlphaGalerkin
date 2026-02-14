@@ -1,4 +1,5 @@
 """Tests for temperature scheduling."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -24,7 +25,9 @@ class TestTemperatureSchedule:
     def test_step_schedule_before_threshold(self) -> None:
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.STEP,
-            initial=1.0, final=0.1, decay_steps=30,
+            initial=1.0,
+            final=0.1,
+            decay_steps=30,
         )
         assert sched.get_temperature(0) == 1.0
         assert sched.get_temperature(29) == 1.0
@@ -32,7 +35,9 @@ class TestTemperatureSchedule:
     def test_step_schedule_after_threshold(self) -> None:
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.STEP,
-            initial=1.0, final=0.1, decay_steps=30,
+            initial=1.0,
+            final=0.1,
+            decay_steps=30,
         )
         assert sched.get_temperature(30) == 0.1
         assert sched.get_temperature(100) == 0.1
@@ -40,7 +45,9 @@ class TestTemperatureSchedule:
     def test_linear_schedule_decreases(self) -> None:
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.LINEAR,
-            initial=1.0, final=0.01, decay_steps=100,
+            initial=1.0,
+            final=0.01,
+            decay_steps=100,
         )
         t0 = sched.get_temperature(0)
         t50 = sched.get_temperature(50)
@@ -51,7 +58,9 @@ class TestTemperatureSchedule:
         """Linear schedule starts at initial and ends at final."""
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.LINEAR,
-            initial=1.0, final=0.1, decay_steps=100,
+            initial=1.0,
+            final=0.1,
+            decay_steps=100,
         )
         assert sched.get_temperature(0) == pytest.approx(1.0, rel=1e-5)
         assert sched.get_temperature(100) == pytest.approx(0.1, rel=1e-5)
@@ -60,7 +69,9 @@ class TestTemperatureSchedule:
         """Linear schedule monotonically decreases."""
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.LINEAR,
-            initial=1.0, final=0.1, decay_steps=50,
+            initial=1.0,
+            final=0.1,
+            decay_steps=50,
         )
         temps = [sched.get_temperature(s) for s in range(51)]
         for i in range(len(temps) - 1):
@@ -69,7 +80,9 @@ class TestTemperatureSchedule:
     def test_exponential_schedule_decreases(self) -> None:
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.EXPONENTIAL,
-            initial=1.0, final=0.01, decay_steps=100,
+            initial=1.0,
+            final=0.01,
+            decay_steps=100,
         )
         t0 = sched.get_temperature(0)
         t50 = sched.get_temperature(50)
@@ -79,7 +92,9 @@ class TestTemperatureSchedule:
         """Exponential schedule reaches final at decay_steps."""
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.EXPONENTIAL,
-            initial=1.0, final=0.01, decay_steps=100,
+            initial=1.0,
+            final=0.01,
+            decay_steps=100,
         )
         assert sched.get_temperature(0) == pytest.approx(1.0, rel=1e-3)
         assert sched.get_temperature(100) == pytest.approx(0.01, rel=1e-3)
@@ -103,7 +118,9 @@ class TestTemperatureSchedule:
         """Properties expose schedule parameters."""
         sched = TemperatureSchedule(
             schedule_type=TemperatureScheduleType.LINEAR,
-            initial=1.0, final=0.1, decay_steps=30,
+            initial=1.0,
+            final=0.1,
+            decay_steps=30,
         )
         assert sched.schedule_type == TemperatureScheduleType.LINEAR
         assert sched.initial == 1.0
@@ -133,8 +150,7 @@ class TestTemperatureSchedule:
         a2 = Action(element_id=ElementID("e1"), action_type=ActionType.P_REFINE)
         visit_counts = {a1: 1000, a2: 1}
         selections = [
-            sched.select_action_with_temperature(visit_counts, 0.01, rng)
-            for _ in range(20)
+            sched.select_action_with_temperature(visit_counts, 0.01, rng) for _ in range(20)
         ]
         # Most selections should be a1
         assert selections.count(a1) > 15
@@ -143,7 +159,5 @@ class TestTemperatureSchedule:
         """Near-zero temperature selects the most visited action."""
         sched = TemperatureSchedule()
         visit_counts = {"a": 100, "b": 10, "c": 1}
-        action = sched.select_action_with_temperature(
-            visit_counts, temperature=1e-10
-        )
+        action = sched.select_action_with_temperature(visit_counts, temperature=1e-10)
         assert action == "a"

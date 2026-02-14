@@ -7,6 +7,7 @@ where n is the sequence length (Monte Carlo normalization).
 This avoids the softmax of standard attention, giving O(N)
 complexity instead of O(N^2).
 """
+
 from __future__ import annotations
 
 import structlog

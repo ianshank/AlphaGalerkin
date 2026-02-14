@@ -8,6 +8,7 @@ Covers:
 - _default_eval_fn returns uniform policy with zero value
 - play_episode produces a valid Episode (mocked env and _search)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -27,6 +28,7 @@ from src.alphagalerkin.training.self_play import (
 # -------------------------------------------------------------------
 # Helpers
 # -------------------------------------------------------------------
+
 
 def _make_action(
     eid: str = "e0",
@@ -65,6 +67,7 @@ def _make_policy(
 # -------------------------------------------------------------------
 # Episode dataclass tests
 # -------------------------------------------------------------------
+
 
 class TestEpisode:
     """Tests for the Episode dataclass."""
@@ -311,7 +314,8 @@ class TestSelfPlayEngineCreation:
         action1 = _make_action("e0")
         action2 = _make_action("e1")
         mock_masker_cls.return_value.valid_actions.return_value = [
-            action1, action2,
+            action1,
+            action2,
         ]
 
         priors, value = engine._default_eval_fn(state)
@@ -519,7 +523,7 @@ class TestSelfPlayEnginePlayEpisode:
         for i in range(3):
             r = MagicMock()
             r.reward = float(i)
-            r.done = (i == 2)
+            r.done = i == 2
             r.state = _make_mock_state()
             results.append(r)
         mock_env.step.side_effect = results
@@ -660,7 +664,8 @@ class TestSelfPlayEngineSearch:
 
         # Masker returns valid actions
         mock_masker_cls.return_value.valid_actions.return_value = [
-            action_a, action_b,
+            action_a,
+            action_b,
         ]
 
         state = MagicMock()

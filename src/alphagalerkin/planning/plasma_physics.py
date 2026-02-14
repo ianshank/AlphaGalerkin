@@ -13,6 +13,7 @@ This module applies look-ahead planning to:
 3. **Anticipatory plasma control**: Planning ahead through possible
    evolution trajectories for real-time ELM suppression.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -262,14 +263,16 @@ class StellaratorOptimizer:
                 if physics_fn is not None:
                     metrics = physics_fn(new_state)
                     new_state.mhd_stability_metric = metrics.get(
-                        "mhd_stability", new_state.mhd_stability_metric,
+                        "mhd_stability",
+                        new_state.mhd_stability_metric,
                     )
                     new_state.neoclassical_transport = metrics.get(
                         "neoclassical_transport",
                         new_state.neoclassical_transport,
                     )
                     new_state.fast_particle_loss = metrics.get(
-                        "fast_particle_loss", new_state.fast_particle_loss,
+                        "fast_particle_loss",
+                        new_state.fast_particle_loss,
                     )
                 reward = self._compute_reward(state, new_state)
                 total_reward += reward
@@ -390,15 +393,16 @@ class StellaratorOptimizer:
             idx = action.coil_index
             if 0 <= idx < len(new_state.coils):
                 step_size = action.params.get(
-                    "step_size", self._position_step,
+                    "step_size",
+                    self._position_step,
                 )
                 # Perturb a random control point
                 coil = new_state.coils[idx]
-                pt_idx = int(
-                    self._rng.integers(0, len(coil.control_points))
-                )
+                pt_idx = int(self._rng.integers(0, len(coil.control_points)))
                 perturbation = self._rng.normal(
-                    0, step_size, size=coil.control_points.shape[1],
+                    0,
+                    step_size,
+                    size=coil.control_points.shape[1],
                 )
                 coil.control_points[pt_idx] += perturbation
 
@@ -420,7 +424,8 @@ class StellaratorOptimizer:
                 new_state.coils.pop(idx)
                 # Complexity decreases with coil count
                 new_state.coil_complexity = max(
-                    0.0, new_state.coil_complexity - 1.0,
+                    0.0,
+                    new_state.coil_complexity - 1.0,
                 )
 
         elif action.action_type == CoilActionType.ADJUST_WINDING:
@@ -428,7 +433,8 @@ class StellaratorOptimizer:
             if 0 <= idx < len(new_state.coils):
                 delta = action.params.get("delta", 1)
                 new_state.coils[idx].winding_number = max(
-                    1, new_state.coils[idx].winding_number + delta,
+                    1,
+                    new_state.coils[idx].winding_number + delta,
                 )
 
         # NO_OP: do nothing
@@ -791,10 +797,12 @@ class PlasmaModelSelector:
             idx = action.region_index
             if 0 <= idx < len(new_state.regions):
                 old_cost = self._model_costs.get(
-                    new_state.regions[idx].model.value, 1.0,
+                    new_state.regions[idx].model.value,
+                    1.0,
                 )
                 new_cost = self._model_costs.get(
-                    action.target_model.value, 1.0,
+                    action.target_model.value,
+                    1.0,
                 )
                 new_state.regions[idx].model = action.target_model
                 new_state.regions[idx].cost_per_step = new_cost
@@ -818,7 +826,7 @@ class PlasmaModelSelector:
                     accuracy=region.accuracy,
                     cost_per_step=region.cost_per_step,
                 )
-                new_state.regions[idx:idx + 1] = [left, right]
+                new_state.regions[idx : idx + 1] = [left, right]
 
         elif action.action_type == ModelSelectionActionType.MERGE_REGIONS:
             idx = action.region_index
@@ -831,7 +839,7 @@ class PlasmaModelSelector:
                     accuracy=max(r1.accuracy, r2.accuracy),
                     cost_per_step=r1.cost_per_step,
                 )
-                new_state.regions[idx:idx + 2] = [merged]
+                new_state.regions[idx : idx + 2] = [merged]
 
         # NO_OP: do nothing
 
@@ -859,8 +867,7 @@ class PlasmaModelSelector:
 
         # Cost factor: higher cost reduces reward
         cost_factor = max(
-            sum(r.cost_per_step for r in new_state.regions)
-            / max(self._budget, 1e-8),
+            sum(r.cost_per_step for r in new_state.regions) / max(self._budget, 1e-8),
             1e-8,
         )
 

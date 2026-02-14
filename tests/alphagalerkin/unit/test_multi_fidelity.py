@@ -1,4 +1,5 @@
 """Tests for the Multi-Fidelity Simulation Manager."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -16,6 +17,7 @@ from src.alphagalerkin.planning.multi_fidelity import (
 # ------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------
+
 
 @pytest.fixture()
 def parameter_bounds() -> list[tuple[float, float]]:
@@ -46,6 +48,7 @@ def initial_state(
 # ------------------------------------------------------------------
 # Tests
 # ------------------------------------------------------------------
+
 
 class TestMultiFidelityStateBudget:
     """MultiFidelityState budget tracking."""
@@ -195,10 +198,7 @@ class TestMultiFidelityPlanEvaluation:
         assert isinstance(action.action_type, FidelityActionType)
 
         # Must be within the valid set
-        valid_types = {
-            a.action_type
-            for a in manager.get_valid_actions(initial_state)
-        }
+        valid_types = {a.action_type for a in manager.get_valid_actions(initial_state)}
         assert action.action_type in valid_types
 
     def test_plan_with_exhausted_budget(

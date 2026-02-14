@@ -1,4 +1,5 @@
 """Tests for profiling utilities (utils/profiling.py)."""
+
 from __future__ import annotations
 
 import time
@@ -70,11 +71,10 @@ class TestPerformanceTrackerTrack:
             pass
 
         report = tracker.report()
-        expected_mean = (
-            report["op"]["total_time"] / report["op"]["call_count"]
-        )
+        expected_mean = report["op"]["total_time"] / report["op"]["call_count"]
         assert report["op"]["mean_time"] == pytest.approx(
-            expected_mean, abs=1e-5,
+            expected_mean,
+            abs=1e-5,
         )
 
 

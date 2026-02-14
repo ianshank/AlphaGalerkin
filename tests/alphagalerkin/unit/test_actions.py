@@ -1,4 +1,5 @@
 """Tests for action definitions (src/alphagalerkin/env/actions.py)."""
+
 from __future__ import annotations
 
 import pytest
@@ -208,9 +209,7 @@ class TestValidateHCoarsen:
         state = _make_state()
         eid = state.mesh.element_ids[0]
         # H-refine to create children at level 1
-        new_state = state.apply_action(
-            Action(element_id=eid, action_type=ActionType.H_REFINE)
-        )
+        new_state = state.apply_action(Action(element_id=eid, action_type=ActionType.H_REFINE))
         # Find a child element (level > 0)
         child_eid = None
         for cid in new_state.mesh.element_ids:

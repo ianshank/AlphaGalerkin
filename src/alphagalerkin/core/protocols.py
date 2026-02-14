@@ -20,6 +20,7 @@ ActionValidator
 PhysicsModule
     Full PDE-problem specification used by the environment.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 # -------------------------------------------------------------------
 # MCTS protocols
 # -------------------------------------------------------------------
+
 
 @runtime_checkable
 class SelectionStrategy(Protocol):
@@ -139,6 +141,7 @@ class BackupStrategyProtocol(Protocol):
 # Action validation
 # -------------------------------------------------------------------
 
+
 @runtime_checkable
 class ActionValidator(Protocol):
     """Protocol for checking whether an action is legal.
@@ -174,6 +177,7 @@ class ActionValidator(Protocol):
 # -------------------------------------------------------------------
 # Physics module
 # -------------------------------------------------------------------
+
 
 @runtime_checkable
 class PhysicsModule(Protocol):
@@ -338,6 +342,7 @@ class PhysicsModule(Protocol):
 # Solver protocol
 # -------------------------------------------------------------------
 
+
 @runtime_checkable
 class Solver(Protocol):
     """Protocol for a linear / nonlinear system solver.
@@ -373,6 +378,7 @@ class Solver(Protocol):
 # -------------------------------------------------------------------
 # Feature extractor
 # -------------------------------------------------------------------
+
 
 @runtime_checkable
 class FeatureExtractor(Protocol):

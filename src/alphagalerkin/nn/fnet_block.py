@@ -7,6 +7,7 @@ purely through the Fourier transform.
 Reference: Lee-Thorp et al., "FNet: Mixing Tokens with Fourier
 Transforms" (2021).
 """
+
 from __future__ import annotations
 
 import structlog

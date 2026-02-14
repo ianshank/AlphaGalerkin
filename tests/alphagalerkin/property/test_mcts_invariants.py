@@ -1,4 +1,5 @@
 """Property-based tests for MCTS invariants."""
+
 from __future__ import annotations
 
 from hypothesis import HealthCheck, given, settings
@@ -58,10 +59,12 @@ class TestMCTSInvariants:
 
     @given(
         cpuct=st.floats(
-            min_value=0.1, max_value=10.0,
+            min_value=0.1,
+            max_value=10.0,
         ),
         parent_visits=st.integers(
-            min_value=1, max_value=10000,
+            min_value=1,
+            max_value=10000,
         ),
     )
     @settings(

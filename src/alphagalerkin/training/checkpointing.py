@@ -8,6 +8,7 @@ Implements checkpoint save/load with:
 
 Section reference (system prompt): Section 14.1 -- Checkpointing.
 """
+
 from __future__ import annotations
 
 import re
@@ -107,6 +108,7 @@ _BEST_FILENAME = "best_model.pt"
 # CheckpointManager
 # -------------------------------------------------------------------
 
+
 class CheckpointManager:
     """Manages saving, loading, and rotating checkpoints.
 
@@ -168,9 +170,7 @@ class CheckpointManager:
         }
 
         if replay_buffer_state is not None:
-            payload["replay_buffer_state"] = (
-                replay_buffer_state
-            )
+            payload["replay_buffer_state"] = replay_buffer_state
         if training_metrics is not None:
             payload["training_metrics"] = training_metrics
         if extra is not None:
@@ -288,10 +288,7 @@ class CheckpointManager:
         if path is None:
             path = self._latest_checkpoint()
             if path is None:
-                msg = (
-                    f"No checkpoints found in "
-                    f"{self._dir}"
-                )
+                msg = f"No checkpoints found in {self._dir}"
                 raise FileNotFoundError(msg)
 
         checkpoint: dict[str, Any] = torch.load(

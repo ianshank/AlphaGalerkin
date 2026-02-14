@@ -1,4 +1,5 @@
 """Tests for invariant checkers (env/invariants.py)."""
+
 from __future__ import annotations
 
 import pytest

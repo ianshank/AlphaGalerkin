@@ -1,4 +1,5 @@
 """Property-based tests for state invariants."""
+
 from __future__ import annotations
 
 from hypothesis import HealthCheck, given, settings
@@ -16,25 +17,25 @@ class TestStateInvariants:
     """Hypothesis-driven invariant checks for state transitions."""
 
     def test_h_refine_increases_element_count(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         eid = initial_state.mesh.element_ids[0]
         action = Action(eid, ActionType.H_REFINE, {})
         new_state = initial_state.apply_action(action)
-        assert (
-            new_state.mesh.num_elements
-            > initial_state.mesh.num_elements
-        )
+        assert new_state.mesh.num_elements > initial_state.mesh.num_elements
 
     def test_clone_produces_independent_copy(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         cloned = initial_state.clone()
         assert cloned is not initial_state
         assert cloned.mesh is not initial_state.mesh
 
     def test_state_valid_after_multiple_refinements(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         state = initial_state
         for _ in range(3):
@@ -109,7 +110,8 @@ class TestStateInvariants:
             prev_dof = state.dof_count
 
     def test_validate_after_mixed_refinements(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         """State should remain valid after mixed h/p actions."""
         state = initial_state
@@ -142,7 +144,8 @@ class TestStateInvariants:
         suppress_health_check=_SUPPRESS,
     )
     def test_from_mesh_with_varying_poly_order(
-        self, poly_order: int,
+        self,
+        poly_order: int,
     ) -> None:
         """from_mesh with any valid poly order should produce a valid state."""
         mesh = MeshGraph.create_uniform_quad(
@@ -150,7 +153,8 @@ class TestStateInvariants:
             num_elements=(2, 2),
         )
         state = DiscretizationState.from_mesh(
-            mesh, initial_polynomial_order=poly_order,
+            mesh,
+            initial_polynomial_order=poly_order,
         )
         assert state.validate()
         assert state.dof_count > 0

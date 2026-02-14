@@ -1,4 +1,5 @@
 """Tests for Galerkin linear attention."""
+
 from __future__ import annotations
 
 import pytest

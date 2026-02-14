@@ -1,4 +1,5 @@
 """Burgers equation physics module: 1D viscous Burgers (steady-state)."""
+
 from __future__ import annotations
 
 import time
@@ -66,7 +67,9 @@ class BurgersModule:
         """Homogeneous Dirichlet BCs on both endpoints."""
         return [
             BoundaryCondition(
-                bc_type="dirichlet", value=0.0, region="all",
+                bc_type="dirichlet",
+                value=0.0,
+                region="all",
             ),
         ]
 
@@ -105,7 +108,7 @@ class BurgersModule:
         """Reward based on residual reduction and DOF efficiency."""
         return 0.0  # Placeholder
 
-    def state_features(self, discretization: Any) -> Any:
+    def state_features(self, _discretization: Any) -> Any:
         """Per-element features for the GNN encoder."""
         return None  # Placeholder
 

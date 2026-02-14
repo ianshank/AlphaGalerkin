@@ -1,4 +1,5 @@
 """Plugin registry for physics modules."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -39,30 +40,28 @@ class PhysicsRegistry:
     def register(self, name: str, cls_to_register: type) -> None:
         """Register a physics module class."""
         if name in self._plugins:
-            msg = (
-                f"'{name}' already registered in physics registry"
-            )
+            msg = f"'{name}' already registered in physics registry"
             raise ValueError(msg)
         self._plugins[name] = cls_to_register
         logger.info("physics.registry.registered", name=name)
 
     def register_decorator(
-        self, name: str,
+        self,
+        name: str,
     ) -> Callable[[type[T]], type[T]]:
         """Decorator for registering physics modules."""
+
         def decorator(cls: type[T]) -> type[T]:
             self.register(name, cls)
             return cls
+
         return decorator
 
     def get(self, name: str, **kwargs: Any) -> Any:
         """Get or create a physics module instance."""
         if name not in self._plugins:
             available = ", ".join(sorted(self._plugins.keys()))
-            msg = (
-                f"'{name}' not registered in physics registry."
-                f" Available: {available}"
-            )
+            msg = f"'{name}' not registered in physics registry. Available: {available}"
             raise KeyError(msg)
         if name not in self._instances:
             self._instances[name] = self._plugins[name](**kwargs)

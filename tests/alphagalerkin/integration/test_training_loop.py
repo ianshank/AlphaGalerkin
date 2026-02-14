@@ -3,6 +3,7 @@
 This test verifies that the replay buffer, curriculum manager,
 and environment can work together in a simulated training loop.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -48,7 +49,8 @@ class TestTrainingLoop:
     def test_episode_to_replay_buffer(self) -> None:
         """Experiences from a self-play episode should be storable in the replay buffer."""
         env_config = EnvironmentConfig(
-            max_steps=3, max_dof=50000,
+            max_steps=3,
+            max_dof=50000,
         )
         mcts_config = MCTSConfig(
             num_simulations=3,
@@ -56,7 +58,8 @@ class TestTrainingLoop:
             action_topk=2,
         )
         replay_config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
 
         masker = ActionMasker(env_config)
@@ -74,16 +77,14 @@ class TestTrainingLoop:
         step = 0
         while not done:
             action, policy = tree.search(
-                state, step=step,
+                state,
+                step=step,
             )
             result = env.step(action)
 
             # Store experience
             features = state.to_feature_tensor().numpy()
-            policy_dict = {
-                str(a.action_type.value): p
-                for a, p in policy.items()
-            }
+            policy_dict = {str(a.action_type.value): p for a, p in policy.items()}
             exp = Experience(
                 state_features=features.mean(axis=0),
                 policy_target=policy_dict,
@@ -101,7 +102,8 @@ class TestTrainingLoop:
     def test_multiple_episodes_fill_buffer(self) -> None:
         """Multiple episodes should accumulate experiences."""
         env_config = EnvironmentConfig(
-            max_steps=2, max_dof=50000,
+            max_steps=2,
+            max_dof=50000,
         )
         mcts_config = MCTSConfig(
             num_simulations=2,
@@ -109,7 +111,8 @@ class TestTrainingLoop:
             action_topk=2,
         )
         replay_config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
 
         masker = ActionMasker(env_config)
@@ -127,14 +130,11 @@ class TestTrainingLoop:
             step = 0
             while not done:
                 action, policy = tree.search(
-                    state, step=step,
+                    state,
+                    step=step,
                 )
                 result = env.step(action)
-                features = (
-                    state.to_feature_tensor()
-                    .numpy()
-                    .mean(axis=0)
-                )
+                features = state.to_feature_tensor().numpy().mean(axis=0)
                 exp = Experience(
                     state_features=features,
                     policy_target={},
@@ -180,7 +180,8 @@ class TestTrainingLoop:
     ) -> None:
         """Buffer state should survive serialization."""
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=1,
+            capacity=1000,
+            min_size_to_train=1,
         )
         buf = ReplayBuffer(config)
         for i in range(10):
@@ -202,7 +203,8 @@ class TestTrainingLoop:
     def test_sample_from_filled_buffer(self) -> None:
         """Sampling from a filled buffer should return valid experiences."""
         config = ReplayConfig(
-            capacity=1000, min_size_to_train=5,
+            capacity=1000,
+            min_size_to_train=5,
         )
         buf = ReplayBuffer(config)
         for i in range(20):

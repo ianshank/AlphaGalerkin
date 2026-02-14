@@ -1,4 +1,5 @@
 """Tests for the inverse problem solving framework."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -113,7 +114,8 @@ class TestSensorConfigDataclass:
 
     def test_sensor_config_dataclass(self, sample_sensor: SensorConfig) -> None:
         np.testing.assert_array_equal(
-            sample_sensor.location, np.array([0.5, 0.5]),
+            sample_sensor.location,
+            np.array([0.5, 0.5]),
         )
         assert sample_sensor.noise_level == 0.01
         assert sample_sensor.measurement_type == "pointwise"
@@ -147,7 +149,8 @@ class TestInverseStateClone:
 
         # Values must match
         np.testing.assert_array_equal(
-            cloned.parameter_estimate, sample_state.parameter_estimate,
+            cloned.parameter_estimate,
+            sample_state.parameter_estimate,
         )
         assert len(cloned.sensors) == len(sample_state.sensors)
         assert cloned.measurement_budget == sample_state.measurement_budget
@@ -313,7 +316,8 @@ class TestInversePlaceSensor:
         assert len(new_state.sensors) == len(sample_state.sensors) + 1
         assert new_state.step == sample_state.step + 1
         np.testing.assert_array_equal(
-            new_state.sensors[-1].location, location,
+            new_state.sensors[-1].location,
+            location,
         )
         # Original state unmodified
         assert len(sample_state.sensors) == 2
@@ -332,7 +336,9 @@ class TestInverseTakeMeasurement:
             params={"sensor_index": 0},
         )
         new_state = solver.apply_action(
-            sample_state, action, measurement_value=1.23,
+            sample_state,
+            action,
+            measurement_value=1.23,
         )
 
         assert new_state.sensors[0].measurement == pytest.approx(1.23)
@@ -421,9 +427,7 @@ class TestInverseSolverPlansAction:
         assert isinstance(action.action_type, InverseActionType)
 
         # The returned action must be among the valid set
-        valid_types = {
-            a.action_type for a in solver.get_valid_actions(sample_state)
-        }
+        valid_types = {a.action_type for a in solver.get_valid_actions(sample_state)}
         assert action.action_type in valid_types
 
 
@@ -441,7 +445,8 @@ class TestInverseInformationGainPositive:
             location=np.array([0.5, 0.5]),
         )
         gain_place = solver._compute_information_gain(
-            sample_state, action_place,
+            sample_state,
+            action_place,
         )
         assert gain_place > 0.0
 
@@ -451,7 +456,8 @@ class TestInverseInformationGainPositive:
             params={"sensor_index": 0},
         )
         gain_measure = solver._compute_information_gain(
-            sample_state, action_measure,
+            sample_state,
+            action_measure,
         )
         assert gain_measure > 0.0
 
@@ -518,7 +524,9 @@ class TestInverseSolverReducesUncertainty:
             params={"sensor_index": 1},
         )
         state = solver.apply_action(
-            state, measure_action2, measurement_value=2.0,
+            state,
+            measure_action2,
+            measurement_value=2.0,
         )
 
         update_action2 = InverseAction(

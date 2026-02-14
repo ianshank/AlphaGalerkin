@@ -1,4 +1,5 @@
 """Tests for the Poisson physics module (src/alphagalerkin/physics/poisson.py)."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -63,34 +64,26 @@ class TestBoundaryConditions:
 class TestManufacturedSolution:
     """Tests for the manufactured solution u = sin(pi*x)*sin(pi*y)."""
 
-    def test_returns_manufactured_solution(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_returns_manufactured_solution(self, poisson: PoissonModule) -> None:
         mms = poisson.manufactured_solution()
         assert mms.name == "poisson_sinsin"
         assert mms.expected_convergence_order == 2.0
 
-    def test_exact_solution_at_origin(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_exact_solution_at_origin(self, poisson: PoissonModule) -> None:
         """u(0, 0) = sin(0)*sin(0) = 0."""
         mms = poisson.manufactured_solution()
         points = np.array([[0.0, 0.0]])
         result = mms.exact_solution(points)
         assert result[0] == pytest.approx(0.0, abs=1e-15)
 
-    def test_exact_solution_at_center(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_exact_solution_at_center(self, poisson: PoissonModule) -> None:
         """u(0.5, 0.5) = sin(pi/2)*sin(pi/2) = 1."""
         mms = poisson.manufactured_solution()
         points = np.array([[0.5, 0.5]])
         result = mms.exact_solution(points)
         assert result[0] == pytest.approx(1.0, abs=1e-14)
 
-    def test_exact_solution_at_boundary(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_exact_solution_at_boundary(self, poisson: PoissonModule) -> None:
         """u(1, y) = sin(pi)*sin(pi*y) = 0 for any y."""
         mms = poisson.manufactured_solution()
         points = np.array([[1.0, 0.3], [0.0, 0.7]])
@@ -112,18 +105,14 @@ class TestManufacturedSolution:
         result = mms.forcing(points)
         assert result[0] == pytest.approx(0.0, abs=1e-14)
 
-    def test_boundary_data_returns_zeros(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_boundary_data_returns_zeros(self, poisson: PoissonModule) -> None:
         """Boundary data should be all zeros."""
         mms = poisson.manufactured_solution()
         points = np.array([[0.0, 0.0], [1.0, 0.5], [0.5, 1.0]])
         result = mms.boundary_data(points)
         np.testing.assert_array_equal(result, np.zeros(3))
 
-    def test_exact_and_forcing_batch(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_exact_and_forcing_batch(self, poisson: PoissonModule) -> None:
         """Batch of points should have correct shapes."""
         mms = poisson.manufactured_solution()
         points = np.random.rand(20, 2)
@@ -142,15 +131,11 @@ class TestRewardFunction:
     """Tests for the reward_function placeholder."""
 
     def test_returns_zero(self, poisson: PoissonModule) -> None:
-        result = poisson.reward_function(
-            state=None, action=None, next_state=None
-        )
+        result = poisson.reward_function(state=None, action=None, next_state=None)
         assert result == 0.0
 
     def test_returns_float(self, poisson: PoissonModule) -> None:
-        result = poisson.reward_function(
-            state="s", action="a", next_state="s2"
-        )
+        result = poisson.reward_function(state="s", action="a", next_state="s2")
         assert isinstance(result, float)
 
 
@@ -163,7 +148,7 @@ class TestStateFeatures:
     """Tests for the state_features placeholder."""
 
     def test_returns_none(self, poisson: PoissonModule) -> None:
-        result = poisson.state_features(discretization=None)
+        result = poisson.state_features(None)
         assert result is None
 
 
@@ -206,9 +191,7 @@ class TestDefaultConfig:
         config = poisson.default_config()
         assert config["domain"]["type"] == "rectangle"
 
-    def test_domain_bounds_are_unit_square(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_domain_bounds_are_unit_square(self, poisson: PoissonModule) -> None:
         config = poisson.default_config()
         assert config["domain"]["bounds"] == [
             [0.0, 1.0],
@@ -236,17 +219,13 @@ class TestSolveOnGrid:
         result = poisson.solve_on_grid(n=10)
         assert result.residual_norm < 1e-8
 
-    def test_solve_shape_matches_dof(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_solve_shape_matches_dof(self, poisson: PoissonModule) -> None:
         """Solution length should be n^2."""
         for n in [5, 8, 10]:
             result = poisson.solve_on_grid(n=n)
             assert len(result.solution) == n * n
 
-    def test_convergence_finer_grid_smaller_error(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_convergence_finer_grid_smaller_error(self, poisson: PoissonModule) -> None:
         """Finer grid should give a smaller error vs exact solution."""
         errors = []
         for n in [5, 10, 20]:
@@ -256,29 +235,21 @@ class TestSolveOnGrid:
             x_grid = np.linspace(h, 1.0 - h, n)
             y_grid = np.linspace(h, 1.0 - h, n)
             grid_x, grid_y = np.meshgrid(x_grid, y_grid)
-            points = np.column_stack(
-                [grid_x.ravel(), grid_y.ravel()]
-            )
+            points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
             mms = poisson.manufactured_solution()
             exact = mms.exact_solution(points)
-            error = float(
-                np.sqrt(np.mean((result.solution - exact) ** 2))
-            )
+            error = float(np.sqrt(np.mean((result.solution - exact) ** 2)))
             errors.append(error)
 
         # Each refinement should reduce the error
         assert errors[1] < errors[0]
         assert errors[2] < errors[1]
 
-    def test_residual_norm_is_float(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_residual_norm_is_float(self, poisson: PoissonModule) -> None:
         result = poisson.solve_on_grid(n=5)
         assert isinstance(result.residual_norm, float)
 
-    def test_condition_number_is_one(
-        self, poisson: PoissonModule
-    ) -> None:
+    def test_condition_number_is_one(self, poisson: PoissonModule) -> None:
         """Condition number is set to 1.0 (skipped computation)."""
         result = poisson.solve_on_grid(n=5)
         assert result.condition_number == 1.0

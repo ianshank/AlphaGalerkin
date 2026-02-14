@@ -8,6 +8,7 @@ The goal is to maximise information gain per unit computational cost
 within a fixed budget, treating fidelity selection as a sequential
 decision problem amenable to look-ahead planning.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -199,7 +200,7 @@ class MultiFidelityManager:
     def plan_next_evaluation(
         self,
         state: MultiFidelityState,
-        objective_fn: Callable[..., Any] | None = None,
+        _objective_fn: Callable[..., Any] | None = None,
     ) -> FidelityAction:
         """Plan the next evaluation using uncertainty-guided selection.
 
@@ -278,10 +279,7 @@ class MultiFidelityManager:
             )
 
         # Surrogate operations
-        if (
-            remaining >= self._costs["update_surrogate"]
-            and len(state.evaluated_points) >= 3
-        ):
+        if remaining >= self._costs["update_surrogate"] and len(state.evaluated_points) >= 3:
             actions.append(
                 FidelityAction(
                     action_type=FidelityActionType.UPDATE_SURROGATE,
@@ -419,20 +417,17 @@ class MultiFidelityManager:
 
         # Exploration bonus: distance to nearest evaluated point
         exploration_bonus = 1.0
-        if (
-            action.target_parameters is not None
-            and state.evaluated_points
-        ):
+        if action.target_parameters is not None and state.evaluated_points:
             min_dist = float("inf")
             for pt in state.evaluated_points:
-                dist = float(np.linalg.norm(
-                    action.target_parameters - pt.parameters,
-                ))
+                dist = float(
+                    np.linalg.norm(
+                        action.target_parameters - pt.parameters,
+                    )
+                )
                 min_dist = min(min_dist, dist)
             # Normalise by domain diameter
-            diameter = np.sqrt(sum(
-                (hi - lo) ** 2 for lo, hi in self._bounds
-            ))
+            diameter = np.sqrt(sum((hi - lo) ** 2 for lo, hi in self._bounds))
             if diameter > 0:
                 exploration_bonus = 1.0 + min_dist / diameter
 

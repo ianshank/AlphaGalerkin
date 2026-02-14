@@ -5,6 +5,7 @@ dummy evaluation function, tree manager -- and verifies that
 the MCTS tree search produces a valid action and policy for
 the discretization environment.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -47,7 +48,8 @@ class TestSelfPlayEpisode:
             action_topk=3,
         )
         env_config = EnvironmentConfig(
-            max_steps=5, max_dof=50000,
+            max_steps=5,
+            max_dof=50000,
         )
         masker = ActionMasker(env_config)
         tree = TreeManager(
@@ -72,7 +74,8 @@ class TestSelfPlayEpisode:
             action_topk=2,
         )
         env_config = EnvironmentConfig(
-            max_steps=3, max_dof=50000,
+            max_steps=3,
+            max_dof=50000,
         )
         masker = ActionMasker(env_config)
         tree = TreeManager(
@@ -115,7 +118,8 @@ class TestSelfPlayEpisode:
             action_topk=2,
         )
         env_config = EnvironmentConfig(
-            max_steps=2, max_dof=50000,
+            max_steps=2,
+            max_dof=50000,
         )
         masker = ActionMasker(env_config)
         tree = TreeManager(
@@ -146,7 +150,8 @@ class TestSelfPlayEpisode:
             action_topk=2,
         )
         env_config = EnvironmentConfig(
-            max_steps=3, max_dof=50000,
+            max_steps=3,
+            max_dof=50000,
         )
         masker = ActionMasker(env_config)
         tree = TreeManager(
@@ -158,18 +163,14 @@ class TestSelfPlayEpisode:
         env = DiscretizationEnvironment(env_config)
         state = env.reset()
 
-        experiences: list[
-            tuple[DiscretizationState, dict, float]
-        ] = []
+        experiences: list[tuple[DiscretizationState, dict, float]] = []
         done = False
         step = 0
 
         while not done:
             action, policy = tree.search(state, step=step)
             result = env.step(action)
-            experiences.append(
-                (state, policy, result.reward)
-            )
+            experiences.append((state, policy, result.reward))
             state = result.state
             done = result.done
             step += 1

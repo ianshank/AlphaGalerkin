@@ -12,6 +12,7 @@ documented "rules of thumb" for AMR tagging criteria.
 Additionally, gauge choice (lapse function, shift vector) is modeled
 as a decision with long-term consequences.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -96,7 +97,7 @@ class RefinementLevel:
     level: int
     center: np.ndarray  # (dim,) centre coordinates
     extent: np.ndarray  # (dim,) half-widths
-    resolution: float   # Grid spacing at this level
+    resolution: float  # Grid spacing at this level
 
     @property
     def volume(self) -> float:
@@ -144,7 +145,7 @@ class NRMeshState:
 
     dimension: int = 3
     domain_extent: float = 1000.0  # Total domain half-width in M
-    base_resolution: float = 8.0   # Coarsest grid spacing in M
+    base_resolution: float = 8.0  # Coarsest grid spacing in M
     refinement_levels: list[RefinementLevel] = field(default_factory=list)
     lapse_gauge: GaugeCondition = GaugeCondition.BONA_MASSO
     shift_gauge: GaugeCondition = GaugeCondition.GAMMA_DRIVER
@@ -172,12 +173,10 @@ class NRMeshState:
         """
         # Base grid contribution
         base_points_per_dim = 2.0 * self.domain_extent / self.base_resolution
-        base_total = int(base_points_per_dim ** self.dimension)
+        base_total = int(base_points_per_dim**self.dimension)
 
         # Sum over refinement levels
-        level_total = sum(
-            rl.estimated_points for rl in self.refinement_levels
-        )
+        level_total = sum(rl.estimated_points for rl in self.refinement_levels)
         return base_total + level_total
 
     def clone(self) -> NRMeshState:
@@ -326,9 +325,7 @@ class NRMeshManager:
                 if constraint_fn is not None:
                     new_state.constraint_violation = constraint_fn(new_state)
                 else:
-                    new_state.constraint_violation = (
-                        self._estimate_constraint(new_state)
-                    )
+                    new_state.constraint_violation = self._estimate_constraint(new_state)
                 reward = self._compute_reward(state, new_state)
                 total_reward += reward
 
@@ -467,16 +464,15 @@ class NRMeshManager:
             # Find the target level and create a child refinement
             for rl in new_state.refinement_levels:
                 if rl.level == target_level:
-                    child_resolution = (
-                        rl.resolution / self._refinement_ratio
-                    )
+                    child_resolution = rl.resolution / self._refinement_ratio
                     child_extent = rl.extent / self._refinement_ratio
                     new_level = RefinementLevel(
                         level=rl.level + 1,
                         center=rl.center.copy(),
                         extent=child_extent,
                         resolution=max(
-                            child_resolution, state.min_resolution,
+                            child_resolution,
+                            state.min_resolution,
                         ),
                     )
                     new_state.refinement_levels.append(new_level)
@@ -485,8 +481,7 @@ class NRMeshManager:
         elif action.action_type == NRActionType.COARSEN_REGION:
             target_level = action.params.get("target_level", 0)
             new_state.refinement_levels = [
-                rl for rl in new_state.refinement_levels
-                if rl.level != target_level
+                rl for rl in new_state.refinement_levels if rl.level != target_level
             ]
 
         elif action.action_type == NRActionType.SET_GAUGE_LAPSE:
@@ -509,20 +504,17 @@ class NRMeshManager:
 
         elif action.action_type == NRActionType.ADD_REFINEMENT_LEVEL:
             center_list = action.params.get(
-                "center", [0.0] * state.dimension,
+                "center",
+                [0.0] * state.dimension,
             )
             center = np.array(center_list, dtype=float)
 
             # Determine resolution for the new level
             if new_state.refinement_levels:
-                finest = min(
-                    rl.resolution for rl in new_state.refinement_levels
-                )
+                finest = min(rl.resolution for rl in new_state.refinement_levels)
                 new_resolution = finest / self._refinement_ratio
             else:
-                new_resolution = (
-                    state.base_resolution / self._refinement_ratio
-                )
+                new_resolution = state.base_resolution / self._refinement_ratio
             new_resolution = max(new_resolution, state.min_resolution)
 
             # Default extent scales with resolution
@@ -557,19 +549,14 @@ class NRMeshManager:
         violation decreased without excessive computational overhead.
         """
         # Constraint improvement (positive = good)
-        constraint_delta = (
-            old_state.constraint_violation - new_state.constraint_violation
-        )
+        constraint_delta = old_state.constraint_violation - new_state.constraint_violation
 
         # Computational cost ratio
         old_points = max(old_state.total_grid_points, 1)
         new_points = max(new_state.total_grid_points, 1)
         cost_ratio = (new_points - old_points) / old_points
 
-        return (
-            self._constraint_weight * constraint_delta
-            - self._cost_weight * cost_ratio
-        )
+        return self._constraint_weight * constraint_delta - self._cost_weight * cost_ratio
 
     def _needs_refinement_near_puncture(self, state: NRMeshState) -> bool:
         """Check if puncture locations need finer resolution.
@@ -611,6 +598,6 @@ class NRMeshManager:
                 if inside:
                     finest_covering = min(finest_covering, rl.resolution)
             # Violation scales with resolution^2 (second-order convergence)
-            total_violation += finest_covering ** 2
+            total_violation += finest_covering**2
 
         return total_violation / len(state.puncture_locations)

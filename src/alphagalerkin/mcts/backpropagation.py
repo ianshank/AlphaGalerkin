@@ -1,4 +1,5 @@
 """Backup strategies for MCTS value propagation."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -17,7 +18,7 @@ def backup(
     node: MCTSNode,
     value: float,
     strategy: BackupStrategy = BackupStrategy.MEAN,
-    mixed_weight: float = 0.5,
+    _mixed_weight: float = 0.5,
 ) -> None:
     """Backpropagate *value* from a leaf to the root.
 

@@ -1,4 +1,5 @@
 """Tests for Fourier positional encoding."""
+
 from __future__ import annotations
 
 import torch
@@ -43,7 +44,9 @@ class TestFourierPositionalEncoding:
     def test_learnable_frequencies(self) -> None:
         """Learnable mode has B as a parameter."""
         enc = FourierPositionalEncoding(
-            coord_dim=2, num_frequencies=8, learnable=True,
+            coord_dim=2,
+            num_frequencies=8,
+            learnable=True,
         )
         param_names = [n for n, _ in enc.named_parameters()]
         assert "B" in param_names
@@ -51,7 +54,9 @@ class TestFourierPositionalEncoding:
     def test_fixed_frequencies_no_gradient(self) -> None:
         """Fixed mode has B as buffer (no gradient)."""
         enc = FourierPositionalEncoding(
-            coord_dim=2, num_frequencies=8, learnable=False,
+            coord_dim=2,
+            num_frequencies=8,
+            learnable=False,
         )
         param_names = [n for n, _ in enc.named_parameters()]
         assert "B" not in param_names
@@ -82,7 +87,9 @@ class TestFourierPositionalEncoding:
     def test_learnable_gradients_flow(self) -> None:
         """Gradients flow to learnable frequency matrix B."""
         enc = FourierPositionalEncoding(
-            coord_dim=2, num_frequencies=16, learnable=True,
+            coord_dim=2,
+            num_frequencies=16,
+            learnable=True,
         )
         coords = torch.randn(4, 10, 2)
         out = enc(coords)

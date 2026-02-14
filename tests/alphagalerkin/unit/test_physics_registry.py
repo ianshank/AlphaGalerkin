@@ -1,4 +1,5 @@
 """Tests for physics registry."""
+
 from __future__ import annotations
 
 import pytest
@@ -59,9 +60,8 @@ class TestPhysicsRegistry:
     def test_register_duplicate_name_raises(self) -> None:
         registry = PhysicsRegistry()
         if "poisson_2d" in registry.list_modules():
-            with pytest.raises(
-                ValueError, match="already registered"
-            ):
+            with pytest.raises(ValueError, match="already registered"):
                 registry.register(
-                    "poisson_2d", type("Dummy", (), {}),
+                    "poisson_2d",
+                    type("Dummy", (), {}),
                 )

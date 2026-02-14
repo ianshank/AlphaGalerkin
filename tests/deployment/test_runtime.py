@@ -109,9 +109,7 @@ class TestRuntimeConfigIntegration:
 
     def test_cpu_only_config(self):
         """Test CPU-only configuration."""
-        config = RuntimeConfig(
-            execution_providers=[ExecutionProvider.CPU]
-        )
+        config = RuntimeConfig(execution_providers=[ExecutionProvider.CPU])
 
         assert len(config.execution_providers) == 1
         assert config.execution_providers[0] == ExecutionProvider.CPU

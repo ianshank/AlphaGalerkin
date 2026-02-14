@@ -23,6 +23,7 @@ Enums:
 Dataclasses:
     BasisSpec: Specification for a single basis function on an element.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ ElementID = NewType("ElementID", str)
 # ---------------------------------------------------------------------------
 # Enums -- all (str, Enum) for Pydantic v2 serialization
 # ---------------------------------------------------------------------------
+
 
 class ActionType(str, Enum):
     """Available discretization actions in the MCTS action space.
@@ -176,6 +178,7 @@ class Formulation(str, Enum):
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True, slots=True)
 class BasisSpec:

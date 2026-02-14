@@ -1,4 +1,5 @@
 """Action masking for invalid discretization actions."""
+
 from __future__ import annotations
 
 import structlog
@@ -51,11 +52,7 @@ class ActionMasker:
         actions: list[Action] = []
 
         # NO_OP is always valid
-        noop_eid = (
-            state.mesh.element_ids[0]
-            if state.mesh.element_ids
-            else ElementID("e0")
-        )
+        noop_eid = state.mesh.element_ids[0] if state.mesh.element_ids else ElementID("e0")
         actions.append(
             Action(
                 element_id=noop_eid,
@@ -71,8 +68,7 @@ class ActionMasker:
             child_size = elem.size / 2.0
             if (
                 state.dof_count < self._config.max_dof
-                and child_size
-                > self._config.min_element_size
+                and child_size > self._config.min_element_size
             ):
                 actions.append(
                     Action(
@@ -84,10 +80,8 @@ class ActionMasker:
             # P-refine: check DOF budget and max poly order
             if (
                 basis is not None
-                and basis.polynomial_order
-                < self._config.max_polynomial_order
-                and state.dof_count
-                < self._config.max_dof
+                and basis.polynomial_order < self._config.max_polynomial_order
+                and state.dof_count < self._config.max_dof
             ):
                 actions.append(
                     Action(
@@ -106,10 +100,7 @@ class ActionMasker:
                 )
 
             # P-coarsen: only if polynomial order > 1
-            if (
-                basis is not None
-                and basis.polynomial_order > 1
-            ):
+            if basis is not None and basis.polynomial_order > 1:
                 actions.append(
                     Action(
                         element_id=eid,
@@ -120,11 +111,7 @@ class ActionMasker:
         # ---- Global actions (mesh-wide) ----------------------------
         # Global actions use a sentinel element_id; they are
         # validated by Action.validate which checks mesh is non-empty.
-        global_eid = (
-            state.mesh.element_ids[0]
-            if state.mesh.element_ids
-            else ElementID("e0")
-        )
+        global_eid = state.mesh.element_ids[0] if state.mesh.element_ids else ElementID("e0")
 
         # REFINE_ALL_BOUNDARY: always available when mesh is
         # non-empty (boundary detection happens at apply time)
@@ -146,10 +133,7 @@ class ActionMasker:
             )
 
         # UNIFORM_P_REFINE: available when under DOF budget
-        if (
-            state.mesh.num_elements > 0
-            and state.dof_count < self._config.max_dof
-        ):
+        if state.mesh.num_elements > 0 and state.dof_count < self._config.max_dof:
             actions.append(
                 Action(
                     element_id=global_eid,

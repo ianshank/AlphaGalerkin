@@ -1,4 +1,5 @@
 """Shared test fixtures for AlphaGalerkin tests."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -45,17 +46,6 @@ def default_config() -> AlphaGalerkinConfig:
 
 
 @pytest.fixture
-def fast_mcts_config() -> MCTSConfig:
-    """Small MCTS config for fast tests."""
-    return MCTSConfig(
-        num_simulations=3,
-        max_tree_depth=3,
-        action_topk=2,
-        c_puct=1.0,
-    )
-
-
-@pytest.fixture
 def quad_mesh_2x2() -> MeshGraph:
     """A 2x2 uniform quadrilateral mesh on the unit square."""
     return MeshGraph.create_uniform_quad(
@@ -74,34 +64,12 @@ def tri_mesh_small() -> MeshGraph:
 
 
 @pytest.fixture
-def single_element_mesh() -> MeshGraph:
-    """A 1x1 mesh with a single quadrilateral element."""
-    return MeshGraph.create_uniform_quad(
-        bounds=((0.0, 1.0), (0.0, 1.0)),
-        num_elements=(1, 1),
-    )
-
-
-@pytest.fixture
 def initial_state(quad_mesh_2x2: MeshGraph) -> DiscretizationState:
     """Initial discretization state on a 2x2 quad mesh, p=1."""
     return DiscretizationState.from_mesh(
         mesh=quad_mesh_2x2,
         initial_polynomial_order=1,
     )
-
-
-@pytest.fixture
-def refined_state(
-    initial_state: DiscretizationState,
-) -> DiscretizationState:
-    """State after one h-refinement on the first element."""
-    action = Action(
-        element_id=initial_state.mesh.element_ids[0],
-        action_type=ActionType.H_REFINE,
-        params={},
-    )
-    return initial_state.apply_action(action)
 
 
 @pytest.fixture

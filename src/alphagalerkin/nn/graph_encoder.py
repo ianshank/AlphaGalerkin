@@ -7,6 +7,7 @@ Classes:
     MessagePassingLayer: Single message-passing layer using adjacency.
     GraphEncoder: Multi-layer graph encoder with residual connections.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -141,10 +142,9 @@ class GraphEncoder(nn.Module):
             nn.GELU(),
             nn.LayerNorm(hidden_dim),
         )
-        self.mp_layers = nn.ModuleList([
-            MessagePassingLayer(hidden_dim, dropout)
-            for _ in range(num_mp_layers)
-        ])
+        self.mp_layers = nn.ModuleList(
+            [MessagePassingLayer(hidden_dim, dropout) for _ in range(num_mp_layers)]
+        )
 
         logger.info(
             "graph_encoder.init",

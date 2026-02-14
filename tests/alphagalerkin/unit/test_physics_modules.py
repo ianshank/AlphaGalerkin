@@ -1,4 +1,5 @@
 """Tests for physics modules: heat, burgers, wave, advdiff, navier-stokes."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -28,6 +29,7 @@ from src.alphagalerkin.physics.wave import WaveModule
 # Helpers
 # -------------------------------------------------------------------
 
+
 def _assert_valid_solve_result(result: SolveResult) -> None:
     """Assert a SolveResult has valid structure."""
     assert isinstance(result, SolveResult)
@@ -42,6 +44,7 @@ def _assert_valid_solve_result(result: SolveResult) -> None:
 # -------------------------------------------------------------------
 # Heat Module Tests
 # -------------------------------------------------------------------
+
 
 class TestHeatModule:
     """Tests for the HeatModule (heat_2d)."""
@@ -62,11 +65,13 @@ class TestHeatModule:
         mms = module.manufactured_solution()
 
         # Test at a few interior points
-        points = np.array([
-            [0.25, 0.25],
-            [0.5, 0.5],
-            [0.75, 0.3],
-        ])
+        points = np.array(
+            [
+                [0.25, 0.25],
+                [0.5, 0.5],
+                [0.75, 0.3],
+            ]
+        )
 
         exact = mms.exact_solution(points)
         forcing = mms.forcing(points)
@@ -78,11 +83,7 @@ class TestHeatModule:
 
         # Verify forcing = 2*pi^2 * sin(pi*x)*cos(pi*y)
         for i, (x, y) in enumerate(points):
-            expected = (
-                2.0 * np.pi**2
-                * np.sin(np.pi * x)
-                * np.cos(np.pi * y)
-            )
+            expected = 2.0 * np.pi**2 * np.sin(np.pi * x) * np.cos(np.pi * y)
             assert abs(forcing[i] - expected) < 1e-10
 
     def test_heat_boundary_conditions(self) -> None:
@@ -102,6 +103,7 @@ class TestHeatModule:
 # -------------------------------------------------------------------
 # Burgers Module Tests
 # -------------------------------------------------------------------
+
 
 class TestBurgersModule:
     """Tests for the BurgersModule (burgers_1d)."""
@@ -153,6 +155,7 @@ class TestBurgersModule:
 # Wave Module Tests
 # -------------------------------------------------------------------
 
+
 class TestWaveModule:
     """Tests for the WaveModule (wave_1d)."""
 
@@ -203,6 +206,7 @@ class TestWaveModule:
 # Advection-Diffusion Module Tests
 # -------------------------------------------------------------------
 
+
 class TestAdvectionDiffusionModule:
     """Tests for the AdvectionDiffusionModule (advdiff_2d)."""
 
@@ -241,6 +245,7 @@ class TestAdvectionDiffusionModule:
 # Navier-Stokes Module Tests
 # -------------------------------------------------------------------
 
+
 class TestNavierStokesModule:
     """Tests for the NavierStokesModule (navier_stokes_2d)."""
 
@@ -277,11 +282,13 @@ class TestNavierStokesModule:
 # SGS Closure Model Tests
 # -------------------------------------------------------------------
 
+
 class TestSGSClosureModels:
     """Tests for SGS closure model implementations."""
 
     def _make_strain_rotation(
-        self, n: int = 10,
+        self,
+        n: int = 10,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Create sample strain rate and rotation rate tensors."""
         rng = np.random.default_rng(42)
@@ -373,7 +380,9 @@ class TestSGSModelSelection:
     def test_select_closure_with_kwargs(self) -> None:
         """Can pass kwargs to closure model constructors."""
         closure = select_closure(
-            "smagorinsky", c_s=0.2, delta=0.05,
+            "smagorinsky",
+            c_s=0.2,
+            delta=0.05,
         )
         assert closure.name == "smagorinsky"
 
@@ -381,6 +390,7 @@ class TestSGSModelSelection:
 # -------------------------------------------------------------------
 # Physics Registry Integration Tests
 # -------------------------------------------------------------------
+
 
 class TestPhysicsRegistryAll:
     """Verify all physics modules register correctly."""
@@ -411,41 +421,34 @@ class TestPhysicsRegistryAll:
         registry = PhysicsRegistry()
         for name in registry.list_modules():
             module = registry.get(name)
-            assert hasattr(module, "solve_on_grid"), (
-                f"{name} missing solve_on_grid"
-            )
+            assert hasattr(module, "solve_on_grid"), f"{name} missing solve_on_grid"
 
     def test_all_modules_have_manufactured_solution(self) -> None:
         """All modules should have a manufactured_solution method."""
         registry = PhysicsRegistry()
         for name in registry.list_modules():
             module = registry.get(name)
-            assert hasattr(module, "manufactured_solution"), (
-                f"{name} missing manufactured_solution"
-            )
+            assert hasattr(module, "manufactured_solution"), f"{name} missing manufactured_solution"
 
     def test_all_modules_have_weak_form(self) -> None:
         """All modules should have a weak_form method."""
         registry = PhysicsRegistry()
         for name in registry.list_modules():
             module = registry.get(name)
-            assert hasattr(module, "weak_form"), (
-                f"{name} missing weak_form"
-            )
+            assert hasattr(module, "weak_form"), f"{name} missing weak_form"
 
     def test_all_modules_have_boundary_conditions(self) -> None:
         """All modules should have a boundary_conditions method."""
         registry = PhysicsRegistry()
         for name in registry.list_modules():
             module = registry.get(name)
-            assert hasattr(module, "boundary_conditions"), (
-                f"{name} missing boundary_conditions"
-            )
+            assert hasattr(module, "boundary_conditions"), f"{name} missing boundary_conditions"
 
 
 # -------------------------------------------------------------------
 # Environment Fallback Residual Tests
 # -------------------------------------------------------------------
+
 
 class TestEnvFallbackResidual:
     """Verify the environment computes dof-based residual without physics."""
@@ -460,7 +463,8 @@ class TestEnvFallbackResidual:
         )
 
         config = EnvironmentConfig(
-            max_steps=10, max_dof=50000,
+            max_steps=10,
+            max_dof=50000,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()
@@ -486,7 +490,8 @@ class TestEnvFallbackResidual:
         )
 
         config = EnvironmentConfig(
-            max_steps=10, max_dof=50000,
+            max_steps=10,
+            max_dof=50000,
         )
         env = DiscretizationEnvironment(config)
         state = env.reset()

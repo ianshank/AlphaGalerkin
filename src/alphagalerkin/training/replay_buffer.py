@@ -1,4 +1,5 @@
 """Prioritized experience replay buffer with staleness weighting."""
+
 from __future__ import annotations
 
 import random
@@ -84,9 +85,7 @@ class ReplayBuffer:
         New experiences receive the current maximum priority
         to ensure they are sampled at least once.
         """
-        max_priority = (
-            max(self._priorities) if self._priorities else 1.0
-        )
+        max_priority = max(self._priorities) if self._priorities else 1.0
         experience.priority = max_priority
         self._buffer.append(experience)
         self._priorities.append(max_priority)
@@ -131,18 +130,12 @@ class ReplayBuffer:
 
         """
         if not self.is_ready:
-            msg = (
-                f"Buffer not ready: {self.size} < "
-                f"{self._config.min_size_to_train}"
-            )
+            msg = f"Buffer not ready: {self.size} < {self._config.min_size_to_train}"
             raise RuntimeError(msg)
 
         actual_batch = min(batch_size, self.size)
 
-        if (
-            self._config.prioritized
-            and self._config.priority_alpha > 0
-        ):
+        if self._config.prioritized and self._config.priority_alpha > 0:
             return self._prioritized_sample(actual_batch)
         return self._uniform_sample(actual_batch)
 
@@ -167,7 +160,7 @@ class ReplayBuffer:
         priorities = np.array(
             self._priorities[: self.size],
         )
-        probs = priorities ** alpha
+        probs = priorities**alpha
         total = probs.sum()
         if total == 0:
             probs = np.ones_like(probs) / len(probs)

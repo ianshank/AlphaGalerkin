@@ -12,6 +12,7 @@ Covers:
 - Checkpoint filename pattern matching (ignores non-matching files)
 - CheckpointConfig validation (preserved from original tests)
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -153,7 +154,9 @@ class TestCheckpointManagerInit:
     """Tests for CheckpointManager.__init__."""
 
     def test_creates_checkpoint_directory(
-        self, min_config: CheckpointConfig, ckpt_dir: Path,
+        self,
+        min_config: CheckpointConfig,
+        ckpt_dir: Path,
     ) -> None:
         """__init__ should create the checkpoint dir if it doesn't exist."""
         assert not ckpt_dir.exists()
@@ -161,7 +164,9 @@ class TestCheckpointManagerInit:
         assert ckpt_dir.is_dir()
 
     def test_existing_directory_ok(
-        self, min_config: CheckpointConfig, ckpt_dir: Path,
+        self,
+        min_config: CheckpointConfig,
+        ckpt_dir: Path,
     ) -> None:
         """__init__ should not raise if the dir already exists."""
         ckpt_dir.mkdir(parents=True)
@@ -294,7 +299,8 @@ class TestBestModelTracking:
     """Tests for save_best and _is_improvement."""
 
     def test_first_save_always_improvement_min_mode(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         path = mgr.save_best(
@@ -306,7 +312,8 @@ class TestBestModelTracking:
         assert path.name == _BEST_FILENAME
 
     def test_first_save_always_improvement_max_mode(
-        self, max_config: CheckpointConfig,
+        self,
+        max_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(max_config)
         path = mgr.save_best(
@@ -319,12 +326,12 @@ class TestBestModelTracking:
     @pytest.mark.parametrize(
         ("mode", "first", "second", "should_save"),
         [
-            ("min", 1.0, 0.5, True),   # lower is better -> improvement
-            ("min", 0.5, 1.0, False),   # higher is worse -> no save
-            ("min", 0.5, 0.5, False),   # equal -> no improvement
-            ("max", 0.5, 1.0, True),    # higher is better -> improvement
-            ("max", 1.0, 0.5, False),   # lower is worse -> no save
-            ("max", 1.0, 1.0, False),   # equal -> no improvement
+            ("min", 1.0, 0.5, True),  # lower is better -> improvement
+            ("min", 0.5, 1.0, False),  # higher is worse -> no save
+            ("min", 0.5, 0.5, False),  # equal -> no improvement
+            ("max", 0.5, 1.0, True),  # higher is better -> improvement
+            ("max", 1.0, 0.5, False),  # lower is worse -> no save
+            ("max", 1.0, 1.0, False),  # equal -> no improvement
         ],
     )
     def test_improvement_detection(
@@ -345,7 +352,9 @@ class TestBestModelTracking:
         mgr.save_best(metric_value=first, network_state={"w": 1}, iteration=1)
         # Second save depends on improvement
         result = mgr.save_best(
-            metric_value=second, network_state={"w": 2}, iteration=2,
+            metric_value=second,
+            network_state={"w": 2},
+            iteration=2,
         )
         if should_save:
             assert result is not None
@@ -353,7 +362,8 @@ class TestBestModelTracking:
             assert result is None
 
     def test_save_best_disabled(
-        self, no_best_config: CheckpointConfig,
+        self,
+        no_best_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(no_best_config)
         result = mgr.save_best(
@@ -364,7 +374,8 @@ class TestBestModelTracking:
         assert result is None
 
     def test_best_model_contains_metric_info(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         path = mgr.save_best(
@@ -380,7 +391,8 @@ class TestBestModelTracking:
         assert loaded["version"] == CURRENT_VERSION
 
     def test_best_model_overwrites_previous(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         mgr.save_best(metric_value=1.0, network_state={"v": 1}, iteration=1)
@@ -391,14 +403,17 @@ class TestBestModelTracking:
         assert loaded["iteration"] == 2
 
     def test_successive_improvements_min(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         values = [1.0, 0.8, 0.9, 0.6, 0.7]
         saved_iterations = []
         for i, v in enumerate(values):
             result = mgr.save_best(
-                metric_value=v, network_state={"v": i}, iteration=i,
+                metric_value=v,
+                network_state={"v": i},
+                iteration=i,
             )
             if result is not None:
                 saved_iterations.append(i)
@@ -415,13 +430,15 @@ class TestIsImprovement:
     """Direct tests of _is_improvement."""
 
     def test_first_value_always_improvement(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         assert mgr._is_improvement(999.0) is True
 
     def test_min_mode_lower_is_better(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         mgr._best_metric_value = 1.0
@@ -430,7 +447,8 @@ class TestIsImprovement:
         assert mgr._is_improvement(1.0) is False  # equal is not improvement
 
     def test_max_mode_higher_is_better(
-        self, max_config: CheckpointConfig,
+        self,
+        max_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(max_config)
         mgr._best_metric_value = 0.5
@@ -478,7 +496,8 @@ class TestCheckpointRotation:
         assert len(manager.list_checkpoints()) == 2
 
     def test_best_model_not_deleted_by_rotation(
-        self, ckpt_dir: Path,
+        self,
+        ckpt_dir: Path,
     ) -> None:
         """The best_model.pt should survive rotation."""
         config = CheckpointConfig(
@@ -521,13 +540,15 @@ class TestLatestCheckpoint:
     """Tests for _latest_checkpoint."""
 
     def test_empty_directory(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         assert mgr._latest_checkpoint() is None
 
     def test_returns_highest_iteration(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         mgr.save(iteration=10, network_state={}, optimizer_state={})
@@ -538,7 +559,9 @@ class TestLatestCheckpoint:
         assert latest.name == "checkpoint_00000020.pt"
 
     def test_ignores_non_checkpoint_files(
-        self, ckpt_dir: Path, min_config: CheckpointConfig,
+        self,
+        ckpt_dir: Path,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         # Create non-matching files
@@ -549,7 +572,8 @@ class TestLatestCheckpoint:
         assert mgr._latest_checkpoint() is None
 
     def test_load_without_path_uses_latest(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         mgr.save(iteration=1, network_state={"v": 1}, optimizer_state={})
@@ -567,13 +591,15 @@ class TestListCheckpoints:
     """Tests for list_checkpoints."""
 
     def test_empty_directory(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         assert mgr.list_checkpoints() == []
 
     def test_sorted_by_iteration(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         # Save in non-sequential order. keep_last_n=3 means all 3 are kept.
@@ -589,7 +615,8 @@ class TestListCheckpoints:
         ]
 
     def test_ignores_best_model(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         mgr.save(iteration=1, network_state={}, optimizer_state={})
@@ -599,7 +626,9 @@ class TestListCheckpoints:
         assert _BEST_FILENAME not in names
 
     def test_ignores_unrelated_files(
-        self, ckpt_dir: Path, min_config: CheckpointConfig,
+        self,
+        ckpt_dir: Path,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         mgr.save(iteration=1, network_state={}, optimizer_state={})
@@ -617,7 +646,8 @@ class TestLoadEdgeCases:
     """Edge cases for the load method."""
 
     def test_load_empty_dir_raises(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         with pytest.raises(FileNotFoundError, match="No checkpoints found"):
@@ -638,7 +668,8 @@ class TestLoadEdgeCases:
         assert loaded["iteration"] == 5
 
     def test_load_best_model_by_path(
-        self, min_config: CheckpointConfig,
+        self,
+        min_config: CheckpointConfig,
     ) -> None:
         mgr = CheckpointManager(min_config)
         best_path = mgr.save_best(
@@ -694,7 +725,8 @@ class TestMigrations:
 
         with patch.dict(MIGRATIONS, {0: migrate_v0_to_v1, 1: migrate_v1_to_v2}):
             with patch(
-                "src.alphagalerkin.training.checkpointing.CURRENT_VERSION", 2,
+                "src.alphagalerkin.training.checkpointing.CURRENT_VERSION",
+                2,
             ):
                 ckpt: dict[str, Any] = {"version": 0, "data": "old"}
                 result = _apply_migrations(ckpt)
@@ -805,13 +837,16 @@ class TestEndToEnd:
         best_path = ckpt_dir / _BEST_FILENAME
         assert best_path.exists()
         best_loaded = torch.load(
-            best_path, map_location="cpu", weights_only=False,
+            best_path,
+            map_location="cpu",
+            weights_only=False,
         )
         assert best_loaded["best_metric_value"] == pytest.approx(0.2)
         assert best_loaded["iteration"] == 4
 
     def test_multiple_managers_same_directory(
-        self, ckpt_dir: Path,
+        self,
+        ckpt_dir: Path,
     ) -> None:
         """Simulate resume: a second manager sees earlier checkpoints."""
         config = CheckpointConfig(

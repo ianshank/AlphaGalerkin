@@ -1,4 +1,5 @@
 """Temperature schedule for action selection."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -32,9 +33,7 @@ class TemperatureSchedule:
 
     def __init__(
         self,
-        schedule_type: TemperatureScheduleType = (
-            TemperatureScheduleType.LINEAR
-        ),
+        schedule_type: TemperatureScheduleType = (TemperatureScheduleType.LINEAR),
         initial: float = 1.0,
         final: float = 0.1,
         decay_steps: int = 30,
@@ -98,14 +97,11 @@ class TemperatureSchedule:
         progress = step / max(1, self._decay_steps)
 
         if self._type == TemperatureScheduleType.LINEAR:
-            return (
-                self._initial
-                + (self._final - self._initial) * progress
-            )
+            return self._initial + (self._final - self._initial) * progress
 
         if self._type == TemperatureScheduleType.EXPONENTIAL:
             ratio = self._final / max(self._initial, 1e-10)
-            return float(self._initial * (ratio ** progress))
+            return float(self._initial * (ratio**progress))
 
         if self._type == TemperatureScheduleType.STEP:
             return self._initial

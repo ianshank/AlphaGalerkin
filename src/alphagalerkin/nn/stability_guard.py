@@ -4,6 +4,7 @@ Monitors the singular values of the Key-to-Value projection
 during training and provides a regularization loss term to
 maintain numerical stability.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -78,15 +79,13 @@ class StabilityGuard(nn.Module):
         self._last_diagnostics = {
             "sigma_min": float(sigma_min.item()),
             "sigma_max": float(sigma_max.item()),
-            "condition_number": float(
-                (sigma_max / sigma_min.clamp(min=1e-10)).item()
-            ),
+            "condition_number": float((sigma_max / sigma_min.clamp(min=1e-10)).item()),
             "num_singular_values": int(singular_values.numel()),
         }
 
         # Penalty: penalize when sigma_min drops below beta
         violation = torch.clamp(self.beta - sigma_min, min=0.0)
-        loss = self.penalty_weight * violation ** 2
+        loss = self.penalty_weight * violation**2
 
         if float(sigma_min.item()) < self.beta:
             logger.warning(

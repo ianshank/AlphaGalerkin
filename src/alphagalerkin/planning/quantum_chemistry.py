@@ -12,6 +12,7 @@ problems:
    matrix product state calculations. Optimal ordering captures
    nearest-neighbor entanglement and is NP-hard in general.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -29,6 +30,7 @@ logger = structlog.get_logger("planning.quantum_chem")
 # ======================================================================
 # Active Space Selection
 # ======================================================================
+
 
 class ActiveSpaceActionType(str, Enum):
     """Actions for active space selection."""
@@ -323,9 +325,7 @@ class ActiveSpaceSelector:
                     )
 
         # NO_OP is always valid
-        actions.append(
-            ActiveSpaceAction(action_type=ActiveSpaceActionType.NO_OP)
-        )
+        actions.append(ActiveSpaceAction(action_type=ActiveSpaceActionType.NO_OP))
 
         return actions
 
@@ -411,15 +411,13 @@ class ActiveSpaceSelector:
                     if other_idx in active_set and other_idx > idx:
                         mutual_info_score += mi_val
 
-        return (
-            self._entropy_weight * entropy_score
-            + self._energy_weight * mutual_info_score
-        )
+        return self._entropy_weight * entropy_score + self._energy_weight * mutual_info_score
 
 
 # ======================================================================
 # DMRG Orbital Ordering
 # ======================================================================
+
 
 class OrderingActionType(str, Enum):
     """Actions for DMRG orbital ordering."""
@@ -678,9 +676,7 @@ class DMRGOrderingOptimizer:
                 )
 
         # NO_OP is always valid
-        actions.append(
-            OrderingAction(action_type=OrderingActionType.NO_OP)
-        )
+        actions.append(OrderingAction(action_type=OrderingActionType.NO_OP))
 
         return actions
 

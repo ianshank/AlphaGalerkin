@@ -1,4 +1,5 @@
 """Tests for neural network module."""
+
 from __future__ import annotations
 
 import torch
@@ -18,7 +19,8 @@ class TestMeshEncoder:
 
     def test_output_shape(self) -> None:
         encoder = MeshEncoder(
-            input_features=8, hidden_dim=32,
+            input_features=8,
+            hidden_dim=32,
         )
         x = torch.randn(2, 4, 8)
         out = encoder(x)
@@ -26,7 +28,8 @@ class TestMeshEncoder:
 
     def test_unbatched_input(self) -> None:
         encoder = MeshEncoder(
-            input_features=8, hidden_dim=32,
+            input_features=8,
+            hidden_dim=32,
         )
         x = torch.randn(4, 8)
         out = encoder(x)
@@ -38,7 +41,9 @@ class TestTransformerBlock:
 
     def test_output_shape_batched(self) -> None:
         block = TransformerBlock(
-            hidden_dim=32, num_heads=4, dropout=0.0,
+            hidden_dim=32,
+            num_heads=4,
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
         out = block(x)
@@ -46,7 +51,9 @@ class TestTransformerBlock:
 
     def test_output_shape_unbatched(self) -> None:
         block = TransformerBlock(
-            hidden_dim=32, num_heads=4, dropout=0.0,
+            hidden_dim=32,
+            num_heads=4,
+            dropout=0.0,
         )
         x = torch.randn(4, 32)
         out = block(x)
@@ -55,7 +62,9 @@ class TestTransformerBlock:
     def test_residual_connection(self) -> None:
         """Output should differ from input (non-trivial)."""
         block = TransformerBlock(
-            hidden_dim=32, num_heads=4, dropout=0.0,
+            hidden_dim=32,
+            num_heads=4,
+            dropout=0.0,
         )
         block.eval()
         x = torch.randn(1, 4, 32)
@@ -68,7 +77,9 @@ class TestElementBackbone:
 
     def test_output_shape(self) -> None:
         backbone = ElementBackbone(
-            hidden_dim=32, num_layers=2, num_heads=4,
+            hidden_dim=32,
+            num_layers=2,
+            num_heads=4,
             dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
@@ -77,7 +88,9 @@ class TestElementBackbone:
 
     def test_multiple_layers_applied(self) -> None:
         backbone = ElementBackbone(
-            hidden_dim=32, num_layers=3, num_heads=4,
+            hidden_dim=32,
+            num_layers=3,
+            num_heads=4,
             dropout=0.0,
         )
         assert len(backbone.layers) == 3
@@ -88,8 +101,10 @@ class TestPolicyHead:
 
     def test_output_shape(self) -> None:
         head = PolicyHead(
-            hidden_dim=32, num_actions=7,
-            hidden_dims=[16], dropout=0.0,
+            hidden_dim=32,
+            num_actions=7,
+            hidden_dims=[16],
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
         out = head(x)
@@ -98,8 +113,10 @@ class TestPolicyHead:
     def test_output_is_log_prob(self) -> None:
         """Output should be log probabilities (all <= 0)."""
         head = PolicyHead(
-            hidden_dim=32, num_actions=7,
-            hidden_dims=[16], dropout=0.0,
+            hidden_dim=32,
+            num_actions=7,
+            hidden_dims=[16],
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
         out = head(x)
@@ -107,13 +124,18 @@ class TestPolicyHead:
 
     def test_action_mask_zeros_out_invalid(self) -> None:
         head = PolicyHead(
-            hidden_dim=32, num_actions=3,
-            hidden_dims=[16], dropout=0.0,
+            hidden_dim=32,
+            num_actions=3,
+            hidden_dims=[16],
+            dropout=0.0,
         )
         x = torch.randn(1, 2, 32)
-        mask = torch.tensor([
-            [[1, 0, 0], [0, 0, 1]],
-        ], dtype=torch.float32)
+        mask = torch.tensor(
+            [
+                [[1, 0, 0], [0, 0, 1]],
+            ],
+            dtype=torch.float32,
+        )
         out = head(x, action_mask=mask)
         # Masked positions should be -inf
         assert out[0, 0, 1] == float("-inf")
@@ -127,8 +149,10 @@ class TestValueHead:
 
     def test_output_shape_batched(self) -> None:
         head = ValueHead(
-            hidden_dim=32, hidden_dims=[16],
-            pooling="mean", dropout=0.0,
+            hidden_dim=32,
+            hidden_dims=[16],
+            pooling="mean",
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
         out = head(x)
@@ -137,8 +161,10 @@ class TestValueHead:
     def test_output_bounded(self) -> None:
         """Value head applies tanh -> output in [-1, 1]."""
         head = ValueHead(
-            hidden_dim=32, hidden_dims=[16],
-            pooling="mean", dropout=0.0,
+            hidden_dim=32,
+            hidden_dims=[16],
+            pooling="mean",
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32) * 100
         out = head(x)
@@ -147,8 +173,10 @@ class TestValueHead:
 
     def test_attention_pooling(self) -> None:
         head = ValueHead(
-            hidden_dim=32, hidden_dims=[16],
-            pooling="attention", dropout=0.0,
+            hidden_dim=32,
+            hidden_dims=[16],
+            pooling="attention",
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
         out = head(x)
@@ -156,8 +184,10 @@ class TestValueHead:
 
     def test_max_pooling(self) -> None:
         head = ValueHead(
-            hidden_dim=32, hidden_dims=[16],
-            pooling="max", dropout=0.0,
+            hidden_dim=32,
+            hidden_dims=[16],
+            pooling="max",
+            dropout=0.0,
         )
         x = torch.randn(2, 4, 32)
         out = head(x)
@@ -165,8 +195,10 @@ class TestValueHead:
 
     def test_unbatched_input(self) -> None:
         head = ValueHead(
-            hidden_dim=32, hidden_dims=[16],
-            pooling="mean", dropout=0.0,
+            hidden_dim=32,
+            hidden_dims=[16],
+            pooling="mean",
+            dropout=0.0,
         )
         x = torch.randn(4, 32)
         out = head(x)

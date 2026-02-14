@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor
 from torch.utils.data import Dataset
 
@@ -45,8 +45,7 @@ class DatasetConfig(BaseModel):
     num_workers: int = Field(default=4, ge=0, description="Data loading workers")
     prefetch_factor: int = Field(default=2, ge=1, description="Prefetch batches per worker")
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @dataclass

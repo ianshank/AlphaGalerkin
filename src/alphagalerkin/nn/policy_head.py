@@ -1,4 +1,5 @@
 """Policy head: per-element action distribution."""
+
 from __future__ import annotations
 
 import structlog
@@ -31,12 +32,14 @@ class PolicyHead(nn.Module):
 
         layers: list[nn.Module] = []
         in_dim = hidden_dim
-        for h_dim in (hidden_dims or [128, 64]):
-            layers.extend([
-                nn.Linear(in_dim, h_dim),
-                nn.GELU(),
-                nn.Dropout(dropout),
-            ])
+        for h_dim in hidden_dims or [128, 64]:
+            layers.extend(
+                [
+                    nn.Linear(in_dim, h_dim),
+                    nn.GELU(),
+                    nn.Dropout(dropout),
+                ]
+            )
             in_dim = h_dim
         layers.append(nn.Linear(in_dim, num_actions))
 
@@ -65,7 +68,8 @@ class PolicyHead(nn.Module):
 
         if action_mask is not None:
             logits = logits.masked_fill(
-                action_mask == 0, float("-inf"),
+                action_mask == 0,
+                float("-inf"),
             )
 
         # Flatten and apply log_softmax over all element-action pairs

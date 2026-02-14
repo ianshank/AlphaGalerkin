@@ -11,6 +11,7 @@ implementation that accepts :class:`GameInterface`, bridging the
 gap between the ``alphagalerkin.mcts`` (discretization-specific)
 and ``src.mcts`` (general-purpose) backends.
 """
+
 from __future__ import annotations
 
 import structlog

@@ -1,4 +1,5 @@
 """Tests for the CLI entry point (src/alphagalerkin/cli.py)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -168,8 +169,10 @@ class TestTrainDryRun:
             [
                 "train",
                 "--dry-run",
-                "--pde-type", "parabolic",
-                "--override", "training.batch_size=32",
+                "--pde-type",
+                "parabolic",
+                "--override",
+                "training.batch_size=32",
             ],
         )
 
@@ -201,7 +204,8 @@ class TestTrainDryRun:
             [
                 "train",
                 "--dry-run",
-                "--override", "training.mixed_precision=true",
+                "--override",
+                "training.mixed_precision=true",
             ],
         )
 

@@ -6,6 +6,7 @@ Provides:
 - log_context: Temporary context via structlog.contextvars.
 - log_duration: Context manager that times a block and logs duration.
 """
+
 from __future__ import annotations
 
 import time

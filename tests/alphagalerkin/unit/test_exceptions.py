@@ -1,4 +1,5 @@
 """Tests for the exception hierarchy (core/exceptions.py)."""
+
 from __future__ import annotations
 
 import pytest
@@ -95,7 +96,9 @@ class TestConfigError:
 
     def test_context_merged(self) -> None:
         err = ConfigError(
-            "x", path="/a.yaml", context={"extra": True},
+            "x",
+            path="/a.yaml",
+            context={"extra": True},
         )
 
         assert err.context["path"] == "/a.yaml"
@@ -115,7 +118,9 @@ class TestConfigValidationError:
 
     def test_field_and_value(self) -> None:
         err = ConfigValidationError(
-            "invalid", field="mcts.c_puct", value=-1.0,
+            "invalid",
+            field="mcts.c_puct",
+            value=-1.0,
         )
 
         assert err.field == "mcts.c_puct"
@@ -158,7 +163,9 @@ class TestTreeDepthExceededError:
 
     def test_depth_and_max(self) -> None:
         err = TreeDepthExceededError(
-            "too deep", depth=150, max_depth=100,
+            "too deep",
+            depth=150,
+            max_depth=100,
         )
 
         assert err.depth == 150
@@ -201,12 +208,14 @@ class TestInvariantViolationError:
 
     def test_inherits(self) -> None:
         assert issubclass(
-            InvariantViolationError, DiscretizationError,
+            InvariantViolationError,
+            DiscretizationError,
         )
 
     def test_invariant_field(self) -> None:
         err = InvariantViolationError(
-            "broken", invariant="positive_jacobian",
+            "broken",
+            invariant="positive_jacobian",
         )
 
         assert err.invariant == "positive_jacobian"
@@ -223,7 +232,8 @@ class TestDOFBudgetExceededError:
 
     def test_inherits(self) -> None:
         assert issubclass(
-            DOFBudgetExceededError, DiscretizationError,
+            DOFBudgetExceededError,
+            DiscretizationError,
         )
 
     def test_dof_fields(self) -> None:
@@ -253,7 +263,8 @@ class TestMeshIntegrityError:
 
     def test_element_id(self) -> None:
         err = MeshIntegrityError(
-            "dangling", element_id="e42",
+            "dangling",
+            element_id="e42",
         )
 
         assert err.element_id == "e42"
@@ -279,7 +290,9 @@ class TestSolverDivergenceError:
 
     def test_iteration_and_residual(self) -> None:
         err = SolverDivergenceError(
-            "diverged", iteration=50, residual=1e10,
+            "diverged",
+            iteration=50,
+            residual=1e10,
         )
 
         assert err.iteration == 50
@@ -335,7 +348,8 @@ class TestCheckpointError:
 
     def test_checkpoint_path(self) -> None:
         err = CheckpointError(
-            "corrupt", checkpoint_path="/ckpt/step_100.pt",
+            "corrupt",
+            checkpoint_path="/ckpt/step_100.pt",
         )
 
         assert err.checkpoint_path == "/ckpt/step_100.pt"
@@ -352,7 +366,8 @@ class TestCheckpointVersionMismatchError:
 
     def test_inherits(self) -> None:
         assert issubclass(
-            CheckpointVersionMismatchError, CheckpointError,
+            CheckpointVersionMismatchError,
+            CheckpointError,
         )
 
     def test_all_fields(self) -> None:
@@ -430,6 +445,5 @@ class TestExceptionHierarchy:
 
         for exc_cls in exception_classes:
             assert issubclass(exc_cls, AlphaGalerkinError), (
-                f"{exc_cls.__name__} is not a subclass of "
-                "AlphaGalerkinError"
+                f"{exc_cls.__name__} is not a subclass of AlphaGalerkinError"
             )

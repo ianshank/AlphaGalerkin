@@ -1,4 +1,5 @@
 """Tests for MCTS protocol and game adapter."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -26,6 +27,7 @@ from src.alphagalerkin.mcts.tree import TreeManager
 # Helpers
 # -------------------------------------------------------------------
 
+
 def _make_config(**overrides: Any) -> AlphaGalerkinConfig:
     """Create a minimal AlphaGalerkinConfig for testing."""
     env_kwargs: dict[str, Any] = {
@@ -48,6 +50,7 @@ def _make_config(**overrides: Any) -> AlphaGalerkinConfig:
 
 def _make_eval_fn() -> Callable:
     """Create a dummy evaluation function for TreeManager."""
+
     def eval_fn(
         state: DiscretizationState,
     ) -> tuple[dict[Action, float], float]:
@@ -56,6 +59,7 @@ def _make_eval_fn() -> Callable:
         n = len(valid)
         priors = dict.fromkeys(valid, 1.0 / n)
         return priors, 0.5
+
     return eval_fn
 
 
@@ -68,6 +72,7 @@ def _make_valid_actions_fn() -> Callable:
 # -------------------------------------------------------------------
 # Protocol satisfaction tests
 # -------------------------------------------------------------------
+
 
 class TestTreeManagerSatisfiesProtocol:
     """Verify TreeManager satisfies the MCTSSearchable protocol."""

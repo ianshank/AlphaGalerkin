@@ -1,4 +1,5 @@
 """Tests for MCTS node."""
+
 from __future__ import annotations
 
 import pytest
@@ -12,7 +13,8 @@ class TestMCTSNode:
     """Core MCTSNode behaviour."""
 
     def test_new_node_has_zero_visits(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         assert node.visit_count == 0
@@ -20,30 +22,32 @@ class TestMCTSNode:
         assert node.is_leaf
 
     def test_ucb_score_unexpanded_is_infinite(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         score = node.ucb_score(cpuct=1.4, parent_visits=10)
         assert score == float("inf")
 
     def test_ucb_score_increases_with_prior(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node_low = MCTSNode(
-            state=initial_state, prior=0.1,
+            state=initial_state,
+            prior=0.1,
         )
         node_high = MCTSNode(
-            state=initial_state, prior=0.9,
+            state=initial_state,
+            prior=0.9,
         )
         node_low.backup(0.5)
         node_high.backup(0.5)
-        assert (
-            node_high.ucb_score(1.4, 10)
-            > node_low.ucb_score(1.4, 10)
-        )
+        assert node_high.ucb_score(1.4, 10) > node_low.ucb_score(1.4, 10)
 
     def test_backup_increments_visit_count(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         node.backup(0.7)
@@ -52,7 +56,8 @@ class TestMCTSNode:
         assert node.visit_count == 2
 
     def test_backup_accumulates_value(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         node.backup(0.6)
@@ -65,10 +70,7 @@ class TestMCTSNode:
         valid_actions: list[Action],
     ) -> None:
         node = MCTSNode(state=initial_state, prior=1.0)
-        priors = {
-            a: 1.0 / len(valid_actions)
-            for a in valid_actions
-        }
+        priors = {a: 1.0 / len(valid_actions) for a in valid_actions}
         node.expand(priors)
         assert len(node.children) == len(valid_actions)
         assert not node.is_leaf
@@ -138,7 +140,8 @@ class TestMCTSNodeEdgeCases:
     """Edge-case tests for MCTSNode."""
 
     def test_backup_negative_value(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         node.backup(-0.5)
@@ -146,7 +149,8 @@ class TestMCTSNodeEdgeCases:
         assert abs(node.mean_value - (-0.5)) < 1e-10
 
     def test_expand_empty_priors_raises(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=1.0)
         with pytest.raises(ValueError, match="at least one"):
@@ -164,20 +168,23 @@ class TestMCTSNodeEdgeCases:
             node.expand(priors)
 
     def test_select_best_child_no_children_raises(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=1.0)
         with pytest.raises(RuntimeError, match="No children"):
             node.select_best_child(cpuct=1.4)
 
     def test_mean_value_zero_when_unvisited(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         assert node.mean_value == 0.0
 
     def test_is_terminal_setter(
-        self, initial_state: DiscretizationState,
+        self,
+        initial_state: DiscretizationState,
     ) -> None:
         node = MCTSNode(state=initial_state, prior=0.5)
         assert not node.is_terminal

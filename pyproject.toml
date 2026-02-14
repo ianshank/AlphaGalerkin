@@ -31,6 +31,7 @@ dependencies = [
     "structlog>=23.0.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
+    "typing_extensions>=4.0.0",
     "wandb>=0.16.0",
 ]
 
@@ -67,11 +68,11 @@ ignore = [
     "D105",   # Missing docstring in magic method
     "D106",   # Missing docstring in public nested class
     "D107",   # Missing docstring in __init__
+    "D203",   # Incompatible with D211 (no-blank-line-before-class)
+    "D213",   # Incompatible with D212 (multi-line-summary-first-line)
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
-    "ANN101", # (removed rule)
-    "ANN102", # (removed rule)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)
@@ -169,4 +170,7 @@ markers = [
     "e2e: end-to-end integration tests",
     "gpu_required: tests requiring GPU",
     "onnx_required: tests requiring ONNX",
+    "video: video compression tests",
+    "requires_video: tests requiring real video files",
+    "integration: integration tests",
 ]

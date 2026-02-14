@@ -33,6 +33,7 @@ This package provides eight MCTS-style planning frameworks:
   numerical relativity simulations (binary black hole mergers, etc.),
   including gauge condition selection and GW extraction placement.
 """
+
 from __future__ import annotations
 
 from src.alphagalerkin.planning.inverse_problems import (

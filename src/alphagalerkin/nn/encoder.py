@@ -1,4 +1,5 @@
 """Mesh graph encoder - converts discretization state to tensor features."""
+
 from __future__ import annotations
 
 import structlog

@@ -14,6 +14,7 @@ The "opponent" in AlphaGalerkin is the PDE itself, and this module
 implements the progressive generation of harder test cases for
 curriculum learning.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -238,10 +239,7 @@ class PDECurriculumManager:
         else:
             if progression not in DIFFICULTY_PROGRESSIONS:
                 available = ", ".join(sorted(DIFFICULTY_PROGRESSIONS))
-                msg = (
-                    f"Unknown progression {progression!r}. "
-                    f"Available: {available}"
-                )
+                msg = f"Unknown progression {progression!r}. Available: {available}"
                 raise ValueError(msg)
             self._stages = list(DIFFICULTY_PROGRESSIONS[progression])
 
@@ -323,9 +321,7 @@ class PDECurriculumManager:
         def source(points: np.ndarray) -> np.ndarray:
             x = points[:, 0]
             y = points[:, 1]
-            result = np.sin(freq * np.pi * x) * np.sin(
-                freq * np.pi * y
-            )
+            result = np.sin(freq * np.pi * x) * np.sin(freq * np.pi * y)
             if sing_strength > 0:
                 r = np.sqrt(x**2 + y**2) + 1e-10
                 result = result + sing_strength / r

@@ -1,4 +1,5 @@
 """Main training loop orchestrator."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -78,19 +79,11 @@ class Trainer:
         self._pde_curriculum: PDECurriculumManager | None = None
         if config.training.curriculum.enabled:
             stages = config.training.curriculum.stages
-            if stages and any(
-                "source_frequency" in s for s in stages
-            ):
+            if stages and any("source_frequency" in s for s in stages):
                 self._pde_curriculum = PDECurriculumManager(
-                    custom_stages=[
-                        PDEDifficultyConfig(**s) for s in stages
-                    ],
-                    advance_threshold=(
-                        config.training.curriculum.advance_threshold
-                    ),
-                    evaluation_window=(
-                        config.training.curriculum.evaluation_window
-                    ),
+                    custom_stages=[PDEDifficultyConfig(**s) for s in stages],
+                    advance_threshold=(config.training.curriculum.advance_threshold),
+                    evaluation_window=(config.training.curriculum.evaluation_window),
                 )
                 logger.info(
                     "trainer.pde_curriculum_enabled",
@@ -222,9 +215,7 @@ class Trainer:
         with log_context(iteration=iteration):
             # --- Phase 1: Self-play ---
             episodes = []
-            n_episodes = (
-                self._config.training.self_play_games_per_step
-            )
+            n_episodes = self._config.training.self_play_games_per_step
             for _ in range(n_episodes):
                 episode = self._self_play.play_episode()
                 episodes.append(episode)
@@ -243,10 +234,12 @@ class Trainer:
             )
 
             self._metrics.record(
-                "self_play/avg_length", avg_length,
+                "self_play/avg_length",
+                avg_length,
             )
             self._metrics.record(
-                "self_play/avg_reward", avg_reward,
+                "self_play/avg_reward",
+                avg_reward,
             )
 
             # --- Phase 2: Network update ---
@@ -258,7 +251,8 @@ class Trainer:
                 loss = self._train_step(batch)
                 total_loss += loss
                 self._metrics.record(
-                    "training/loss", loss,
+                    "training/loss",
+                    loss,
                 )
 
             # --- Phase 3: Curriculum ---
@@ -320,10 +314,9 @@ class Trainer:
         self._optimizer.zero_grad()
 
         # Stack features into a batch tensor
-        features = torch.stack([
-            torch.from_numpy(exp.state_features)
-            for exp in batch
-        ]).to(self._device)
+        features = torch.stack([torch.from_numpy(exp.state_features) for exp in batch]).to(
+            self._device
+        )
 
         if features.dim() == 2:
             features = features.unsqueeze(0)
@@ -340,15 +333,15 @@ class Trainer:
         if values.dim() > 1:
             values = values.squeeze(-1)
         value_loss = nn.functional.mse_loss(
-            values, value_targets,
+            values,
+            value_targets,
         )
 
         # --- Policy loss (cross-entropy) ---
         # Build target policy tensor from experiences
-        policy_targets = torch.stack([
-            torch.from_numpy(exp.policy_target)
-            for exp in batch
-        ]).to(self._device)
+        policy_targets = torch.stack([torch.from_numpy(exp.policy_target) for exp in batch]).to(
+            self._device
+        )
 
         # Flatten spatial dims to match policy_logits shape
         flat_logits = policy_logits.view(policy_logits.shape[0], -1)
@@ -370,9 +363,7 @@ class Trainer:
         loss.backward()
 
         # Gradient clipping
-        grad_clip = (
-            self._config.training.optimizer.gradient_clip_norm
-        )
+        grad_clip = self._config.training.optimizer.gradient_clip_norm
         nn.utils.clip_grad_norm_(
             self._network.parameters(),
             grad_clip,
@@ -413,12 +404,8 @@ class Trainer:
             iteration=iteration,
             network_state=self._network.state_dict(),
             optimizer_state=self._optimizer.state_dict(),
-            replay_buffer_state=(
-                self._replay_buffer.get_state()
-            ),
-            training_metrics=(
-                self._metrics.get_full_history()
-            ),
+            replay_buffer_state=(self._replay_buffer.get_state()),
+            training_metrics=(self._metrics.get_full_history()),
         )
 
     def load_checkpoint(self, path: Path) -> None:

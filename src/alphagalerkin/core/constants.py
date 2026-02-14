@@ -12,6 +12,7 @@ Import example::
         MIN_SINGULAR_VALUE,
     )
 """
+
 from __future__ import annotations
 
 from typing import Final

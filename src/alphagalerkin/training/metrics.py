@@ -1,4 +1,5 @@
 """Training metric collectors (Observer pattern)."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -25,9 +26,7 @@ class MetricCollector:
     """
 
     def __init__(self) -> None:
-        self._metrics: dict[str, list[float]] = (
-            defaultdict(list)
-        )
+        self._metrics: dict[str, list[float]] = defaultdict(list)
         self._iteration_metrics: dict[str, float] = {}
 
     # ---------------------------------------------------------------

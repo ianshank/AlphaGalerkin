@@ -1,4 +1,5 @@
 """Tests for the Neural Operator Architecture Search framework."""
+
 from __future__ import annotations
 
 import pytest
@@ -147,7 +148,8 @@ class TestArchitectureStateClone:
     """ArchitectureState.clone produces an independent copy."""
 
     def test_architecture_state_clone(
-        self, sample_state: ArchitectureState,
+        self,
+        sample_state: ArchitectureState,
     ) -> None:
         cloned = sample_state.clone()
 
@@ -169,7 +171,8 @@ class TestArchitectureStateClone:
         assert cloned.step == sample_state.step
 
     def test_clone_mutation_independence(
-        self, sample_state: ArchitectureState,
+        self,
+        sample_state: ArchitectureState,
     ) -> None:
         cloned = sample_state.clone()
         cloned.validation_error = 0.001
@@ -183,7 +186,8 @@ class TestArchitectureStateTotalParams:
     """ArchitectureState.total_params sums all layer estimates."""
 
     def test_architecture_state_total_params(
-        self, sample_state: ArchitectureState,
+        self,
+        sample_state: ArchitectureState,
     ) -> None:
         total = sample_state.total_params
         expected = sum(l.param_count_estimate for l in sample_state.layers)
@@ -195,7 +199,8 @@ class TestArchitectureStateDepth:
     """ArchitectureState.depth returns the layer count."""
 
     def test_architecture_state_depth(
-        self, sample_state: ArchitectureState,
+        self,
+        sample_state: ArchitectureState,
     ) -> None:
         assert sample_state.depth == 3
 
@@ -244,10 +249,7 @@ class TestNASValidActions:
         nas: NeuralOperatorNAS,
     ) -> None:
         """ADD_LAYER is excluded when at max layer count."""
-        layers = [
-            LayerSpec(block_type=OperatorBlockType.MLP_LAYER)
-            for _ in range(10)
-        ]
+        layers = [LayerSpec(block_type=OperatorBlockType.MLP_LAYER) for _ in range(10)]
         state = ArchitectureState(
             layers=layers,
             max_layers=10,

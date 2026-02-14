@@ -1,4 +1,5 @@
 """Progressive difficulty scheduling for training."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -46,10 +47,7 @@ class CurriculumManager:
         """Whether the curriculum has reached the last stage."""
         if not self._config.stages:
             return True
-        return (
-            self._current_stage_idx
-            >= len(self._config.stages) - 1
-        )
+        return self._current_stage_idx >= len(self._config.stages) - 1
 
     @property
     def num_stages(self) -> int:
@@ -89,10 +87,7 @@ class CurriculumManager:
         recent = self._win_rate_history[-window:]
         avg_win_rate = sum(recent) / len(recent)
 
-        if (
-            avg_win_rate >= self._config.advance_threshold
-            and not self.is_at_final_stage
-        ):
+        if avg_win_rate >= self._config.advance_threshold and not self.is_at_final_stage:
             old_stage = self._current_stage_idx
             self._current_stage_idx += 1
             logger.info(
@@ -116,10 +111,7 @@ class CurriculumManager:
         Returns an empty dict when curriculum is disabled or
         when no stages are defined.
         """
-        if (
-            not self._config.enabled
-            or not self._config.stages
-        ):
+        if not self._config.enabled or not self._config.stages:
             return {}
 
         idx = min(

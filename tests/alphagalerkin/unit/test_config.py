@@ -1,4 +1,5 @@
 """Tests for configuration system."""
+
 from __future__ import annotations
 
 import pytest
@@ -32,41 +33,33 @@ class TestAlphaGalerkinConfig:
         assert config.device == "cuda:0"
 
     def test_config_serialization_roundtrip(
-        self, default_config: AlphaGalerkinConfig,
+        self,
+        default_config: AlphaGalerkinConfig,
     ) -> None:
         """JSON serialization then deserialization preserves values."""
         json_str = default_config.model_dump_json()
         restored = AlphaGalerkinConfig.model_validate_json(json_str)
-        assert (
-            restored.mcts.num_simulations
-            == default_config.mcts.num_simulations
-        )
+        assert restored.mcts.num_simulations == default_config.mcts.num_simulations
         assert restored.device == default_config.device
 
     def test_from_yaml_missing_file_raises(self, tmp_path) -> None:
         with pytest.raises(ConfigError):
-            AlphaGalerkinConfig.from_yaml(
-                tmp_path / "nonexistent.yaml"
-            )
+            AlphaGalerkinConfig.from_yaml(tmp_path / "nonexistent.yaml")
 
     def test_from_yaml_loads_values(self, tmp_path) -> None:
         config_file = tmp_path / "config.yaml"
-        config_file.write_text(
-            "mcts:\n  num_simulations: 100\n"
-        )
+        config_file.write_text("mcts:\n  num_simulations: 100\n")
         config = AlphaGalerkinConfig.from_yaml(config_file)
         assert config.mcts.num_simulations == 100
 
     def test_env_var_override(
-        self, tmp_path, monkeypatch,
+        self,
+        tmp_path,
+        monkeypatch,
     ) -> None:
         config_file = tmp_path / "config.yaml"
-        config_file.write_text(
-            "mcts:\n  num_simulations: 100\n"
-        )
-        monkeypatch.setenv(
-            "AG_MCTS__NUM_SIMULATIONS", "1600"
-        )
+        config_file.write_text("mcts:\n  num_simulations: 100\n")
+        monkeypatch.setenv("AG_MCTS__NUM_SIMULATIONS", "1600")
         config = AlphaGalerkinConfig.from_yaml(config_file)
         assert config.mcts.num_simulations == 1600
 
@@ -102,7 +95,9 @@ class TestMCTSConfig:
         ],
     )
     def test_rejects_invalid_values(
-        self, field: str, value: float,
+        self,
+        field: str,
+        value: float,
     ) -> None:
         with pytest.raises(ValueError):
             MCTSConfig(**{field: value})

@@ -1,4 +1,5 @@
 """Advection-diffusion equation physics module on [0,1]^2 (steady-state)."""
+
 from __future__ import annotations
 
 import time
@@ -77,7 +78,9 @@ class AdvectionDiffusionModule:
         """Homogeneous Dirichlet BCs on all boundaries."""
         return [
             BoundaryCondition(
-                bc_type="dirichlet", value=0.0, region="all",
+                bc_type="dirichlet",
+                value=0.0,
+                region="all",
             ),
         ]
 
@@ -96,26 +99,10 @@ class AdvectionDiffusionModule:
         def forcing(points: np.ndarray) -> np.ndarray:
             x, y = points[:, 0], points[:, 1]
             # -D*laplacian(u) term
-            diffusion = (
-                2.0
-                * d
-                * np.pi**2
-                * np.sin(np.pi * x)
-                * np.sin(np.pi * y)
-            )
+            diffusion = 2.0 * d * np.pi**2 * np.sin(np.pi * x) * np.sin(np.pi * y)
             # v.grad(u) term
-            advection_x = (
-                vx
-                * np.pi
-                * np.cos(np.pi * x)
-                * np.sin(np.pi * y)
-            )
-            advection_y = (
-                vy
-                * np.pi
-                * np.sin(np.pi * x)
-                * np.cos(np.pi * y)
-            )
+            advection_x = vx * np.pi * np.cos(np.pi * x) * np.sin(np.pi * y)
+            advection_y = vy * np.pi * np.sin(np.pi * x) * np.cos(np.pi * y)
             return diffusion + advection_x + advection_y
 
         def boundary(points: np.ndarray) -> np.ndarray:
@@ -138,7 +125,7 @@ class AdvectionDiffusionModule:
         """Reward based on residual reduction and DOF efficiency."""
         return 0.0  # Placeholder
 
-    def state_features(self, discretization: Any) -> Any:
+    def state_features(self, _discretization: Any) -> Any:
         """Per-element features for the GNN encoder."""
         return None  # Placeholder
 

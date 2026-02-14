@@ -1,4 +1,5 @@
 """Tests for MCTS selection strategies."""
+
 from __future__ import annotations
 
 import math
@@ -25,7 +26,8 @@ def _make_node(
 ) -> MCTSNode:
     """Helper to create a node with specific stats."""
     mesh = MeshGraph.create_uniform_quad(
-        bounds=((0.0, 1.0), (0.0, 1.0)), num_elements=(2, 2),
+        bounds=((0.0, 1.0), (0.0, 1.0)),
+        num_elements=(2, 2),
     )
     state = DiscretizationState.from_mesh(mesh)
     node = MCTSNode(state=state, prior=prior)

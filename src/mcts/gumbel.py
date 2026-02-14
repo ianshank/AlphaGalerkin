@@ -405,11 +405,13 @@ class GumbelMCTS:
         # Select best action
         best_action = max(
             actions,
-            key=lambda a: root.children[a].gumbel
-            + np.log(root.children[a].prior + 1e-8)
-            + root.children[a].compute_completed_q(
-                self.config.c_visit,
-                self.config.c_scale,
+            key=lambda a: (
+                root.children[a].gumbel
+                + np.log(root.children[a].prior + 1e-8)
+                + root.children[a].compute_completed_q(
+                    self.config.c_visit,
+                    self.config.c_scale,
+                )
             ),
         )
 

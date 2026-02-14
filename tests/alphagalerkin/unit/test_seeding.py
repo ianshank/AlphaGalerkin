@@ -1,4 +1,5 @@
 """Tests for seeding utilities (utils/seeding.py)."""
+
 from __future__ import annotations
 
 import random

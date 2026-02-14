@@ -4,6 +4,7 @@ Encodes continuous coordinates using random Fourier features,
 enabling the network to handle arbitrary mesh resolutions
 without retraining.
 """
+
 from __future__ import annotations
 
 import math
@@ -80,8 +81,11 @@ class FourierPositionalEncoding(nn.Module):
         projected = 2.0 * math.pi * projected
 
         # Concatenate: [original_coords, sin(projected), cos(projected)]
-        return torch.cat([
-            coords,
-            torch.sin(projected),
-            torch.cos(projected),
-        ], dim=-1)
+        return torch.cat(
+            [
+                coords,
+                torch.sin(projected),
+                torch.cos(projected),
+            ],
+            dim=-1,
+        )

@@ -1,4 +1,5 @@
 """Tests for quantum chemistry active space selection and DMRG ordering."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -19,6 +20,7 @@ from src.alphagalerkin.planning.quantum_chemistry import (
 # ------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------
+
 
 def _make_orbitals(n: int = 10) -> list[OrbitalInfo]:
     """Create a list of test orbitals with synthetic entropies."""
@@ -111,6 +113,7 @@ def dmrg_optimizer() -> DMRGOrderingOptimizer:
 # Active Space Selection Tests
 # ------------------------------------------------------------------
 
+
 class TestOrbitalInfoDataclass:
     """OrbitalInfo stores orbital data correctly."""
 
@@ -143,7 +146,8 @@ class TestActiveSpaceStateClone:
     """ActiveSpaceState.clone produces an independent copy."""
 
     def test_active_space_state_clone(
-        self, active_space_state: ActiveSpaceState,
+        self,
+        active_space_state: ActiveSpaceState,
     ) -> None:
         cloned = active_space_state.clone()
 
@@ -161,7 +165,8 @@ class TestActiveSpaceStateClone:
 
         # Orbital data must match
         for orig, clone in zip(
-            active_space_state.all_orbitals, cloned.all_orbitals,
+            active_space_state.all_orbitals,
+            cloned.all_orbitals,
         ):
             assert clone.index == orig.index
             assert clone.energy == orig.energy
@@ -169,7 +174,8 @@ class TestActiveSpaceStateClone:
             assert clone.mutual_info == orig.mutual_info
 
     def test_clone_mutation_independence(
-        self, active_space_state: ActiveSpaceState,
+        self,
+        active_space_state: ActiveSpaceState,
     ) -> None:
         cloned = active_space_state.clone()
         cloned.active_indices.append(99)
@@ -349,6 +355,7 @@ class TestActiveSpaceScoreEntropy:
 # DMRG Orbital Ordering Tests
 # ------------------------------------------------------------------
 
+
 class TestDMRGStateClone:
     """DMRGOrderingState.clone produces an independent copy."""
 
@@ -363,12 +370,14 @@ class TestDMRGStateClone:
         # Values must match
         assert cloned.ordering == dmrg_state.ordering
         np.testing.assert_array_equal(
-            cloned.entanglement_matrix, dmrg_state.entanglement_matrix,
+            cloned.entanglement_matrix,
+            dmrg_state.entanglement_matrix,
         )
         assert cloned.step == dmrg_state.step
 
     def test_clone_mutation_independence(
-        self, dmrg_state: DMRGOrderingState,
+        self,
+        dmrg_state: DMRGOrderingState,
     ) -> None:
         cloned = dmrg_state.clone()
         cloned.ordering[0] = 99
@@ -382,7 +391,8 @@ class TestDMRGLinearEntropy:
     """DMRGOrderingState.linear_entropy computes cross-cut entanglement."""
 
     def test_dmrg_linear_entropy(
-        self, entanglement_matrix: np.ndarray,
+        self,
+        entanglement_matrix: np.ndarray,
     ) -> None:
         # With orbitals [0,1,2,3,4,5], compute expected entropy
         state = DMRGOrderingState(
@@ -400,7 +410,8 @@ class TestDMRGLinearEntropy:
         assert state.linear_entropy == 0.0
 
     def test_ordering_affects_entropy(
-        self, entanglement_matrix: np.ndarray,
+        self,
+        entanglement_matrix: np.ndarray,
     ) -> None:
         """Different orderings produce different entropies."""
         state_a = DMRGOrderingState(

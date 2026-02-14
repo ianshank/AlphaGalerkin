@@ -1,4 +1,5 @@
 """MCTS node for discretization search tree."""
+
 from __future__ import annotations
 
 import math
@@ -97,7 +98,6 @@ class MCTSNode:
             return 0.0
         return self._total_value / self._visit_count
 
-
     @property
     def max_value(self) -> float:
         """Maximum backed-up value seen at this node."""
@@ -132,12 +132,7 @@ class MCTSNode:
             return float("inf")
 
         exploitation = self.mean_value
-        exploration = (
-            cpuct
-            * self._prior
-            * math.sqrt(parent_visits)
-            / (1 + self._visit_count)
-        )
+        exploration = cpuct * self._prior * math.sqrt(parent_visits) / (1 + self._visit_count)
         return exploitation + exploration
 
     # ---------------------------------------------------------------
@@ -159,10 +154,7 @@ class MCTSNode:
 
         """
         if not action_priors:
-            msg = (
-                "Cannot expand with empty priors: "
-                "at least one action required"
-            )
+            msg = "Cannot expand with empty priors: at least one action required"
             raise ValueError(msg)
 
         if self._children:

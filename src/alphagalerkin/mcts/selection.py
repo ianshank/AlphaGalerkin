@@ -10,6 +10,7 @@ Registry
 to callables with signature
 ``(child, cpuct, parent_visits) -> float``.
 """
+
 from __future__ import annotations
 
 import math
@@ -29,6 +30,7 @@ logger = structlog.get_logger("mcts.selection")
 # -------------------------------------------------------------------
 # Strategy implementations
 # -------------------------------------------------------------------
+
 
 def puct_score(
     child: MCTSNode,
@@ -55,12 +57,7 @@ def puct_score(
         return float("inf")
 
     exploitation = child.mean_value
-    exploration = (
-        cpuct
-        * child.prior
-        * math.sqrt(parent_visits)
-        / (1 + child.visit_count)
-    )
+    exploration = cpuct * child.prior * math.sqrt(parent_visits) / (1 + child.visit_count)
     return exploitation + exploration
 
 
@@ -89,9 +86,7 @@ def ucb1_score(
         return float("inf")
 
     exploitation = child.mean_value
-    exploration = cpuct * math.sqrt(
-        math.log(max(1, parent_visits)) / child.visit_count
-    )
+    exploration = cpuct * math.sqrt(math.log(max(1, parent_visits)) / child.visit_count)
     return exploitation + exploration
 
 
@@ -158,8 +153,5 @@ def get_selection_fn(policy: SelectionPolicy) -> SelectionFn:
         return SELECTION_STRATEGIES[policy]
     except KeyError:
         available = ", ".join(p.value for p in SELECTION_STRATEGIES)
-        msg = (
-            f"Unknown selection policy {policy.value!r}. "
-            f"Available: {available}"
-        )
+        msg = f"Unknown selection policy {policy.value!r}. Available: {available}"
         raise KeyError(msg) from None

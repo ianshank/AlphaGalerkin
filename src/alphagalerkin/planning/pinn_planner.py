@@ -8,6 +8,7 @@ State: current collocation points, loss weights, optimizer choice.
 Actions: modify collocation, adjust weights, switch optimizer.
 Reward: reduction in PDE residual normalized by computational cost.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -263,10 +264,12 @@ class PINNPlanner:
             actions.append(
                 PINNAction(
                     action_type=PINNActionType.REMOVE_COLLOCATION,
-                    params={"count": min(
-                        self._collocation_batch,
-                        state.num_collocation - self._min_collocation,
-                    )},
+                    params={
+                        "count": min(
+                            self._collocation_batch,
+                            state.num_collocation - self._min_collocation,
+                        )
+                    },
                 )
             )
 
@@ -330,7 +333,8 @@ class PINNPlanner:
             count = action.params.get("count", self._collocation_batch)
             new_points = self._sample_domain_points(count)
             new_state.collocation_points = np.concatenate(
-                [new_state.collocation_points, new_points], axis=0,
+                [new_state.collocation_points, new_points],
+                axis=0,
             )
 
         elif action.action_type == PINNActionType.REMOVE_COLLOCATION:
@@ -346,9 +350,7 @@ class PINNPlanner:
                     size=len(new_state.collocation_points) - count,
                     replace=False,
                 )
-                new_state.collocation_points = (
-                    new_state.collocation_points[indices]
-                )
+                new_state.collocation_points = new_state.collocation_points[indices]
 
         elif action.action_type == PINNActionType.INCREASE_PHYSICS_WEIGHT:
             new_state.physics_weight = min(
@@ -379,9 +381,7 @@ class PINNPlanner:
             if target is not None:
                 new_state.optimizer_type = target
             else:
-                new_state.optimizer_type = (
-                    "lbfgs" if state.optimizer_type == "adam" else "adam"
-                )
+                new_state.optimizer_type = "lbfgs" if state.optimizer_type == "adam" else "adam"
 
         # NO_OP: do nothing
 

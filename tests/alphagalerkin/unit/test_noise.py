@@ -1,4 +1,5 @@
 """Tests for Dirichlet noise injection."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -15,8 +16,7 @@ class TestDirichletNoise:
     def _make_priors(self) -> dict[Action, float]:
         """Create test prior distribution."""
         actions = [
-            Action(element_id=ElementID(f"e{i}"), action_type=ActionType.NO_OP)
-            for i in range(5)
+            Action(element_id=ElementID(f"e{i}"), action_type=ActionType.NO_OP) for i in range(5)
         ]
         return dict.fromkeys(actions, 0.2)
 

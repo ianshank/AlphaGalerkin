@@ -16,6 +16,7 @@ the MCTS backend.
 All protocols use :func:`typing.runtime_checkable` so that
 ``isinstance()`` checks work at runtime.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, TypeVar, runtime_checkable

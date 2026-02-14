@@ -1,4 +1,5 @@
 """Tests for manufactured solutions (physics/manufactured.py)."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -80,12 +81,7 @@ class TestPoissonSinSin:
         pts = _interior_points(50)
 
         f = mms.forcing(pts)
-        expected = (
-            2.0
-            * np.pi ** 2
-            * np.sin(np.pi * pts[:, 0])
-            * np.sin(np.pi * pts[:, 1])
-        )
+        expected = 2.0 * np.pi**2 * np.sin(np.pi * pts[:, 0]) * np.sin(np.pi * pts[:, 1])
 
         np.testing.assert_allclose(f, expected, rtol=1e-12)
 

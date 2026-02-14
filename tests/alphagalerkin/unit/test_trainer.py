@@ -10,6 +10,7 @@ Covers:
 - save_checkpoint delegates to checkpoint manager
 - load_checkpoint loads state dicts
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -53,6 +54,7 @@ def _make_mock_network() -> MagicMock:
 # -------------------------------------------------------------------
 # Trainer creation tests
 # -------------------------------------------------------------------
+
 
 class TestTrainerCreation:
     """Tests for Trainer __init__ and properties."""
@@ -178,6 +180,7 @@ class TestTrainerCreation:
 # Optimizer creation tests
 # -------------------------------------------------------------------
 
+
 class TestCreateOptimizer:
     """Tests for Trainer._create_optimizer for each optimizer type."""
 
@@ -227,6 +230,7 @@ class TestCreateOptimizer:
 # -------------------------------------------------------------------
 # Scheduler creation tests
 # -------------------------------------------------------------------
+
 
 class TestCreateScheduler:
     """Tests for Trainer._create_scheduler for each scheduler type."""
@@ -290,6 +294,7 @@ class TestCreateScheduler:
 # train_iteration tests
 # -------------------------------------------------------------------
 
+
 class TestTrainIteration:
     """Tests for Trainer.train_iteration three-phase loop."""
 
@@ -324,9 +329,7 @@ class TestTrainIteration:
             mock_episode = MagicMock()
             mock_episode.length = 5
             mock_episode.total_reward = 2.5
-            mock_episode.to_experiences.return_value = [
-                _make_experience() for _ in range(5)
-            ]
+            mock_episode.to_experiences.return_value = [_make_experience() for _ in range(5)]
             mock_sp.play_episode.return_value = mock_episode
 
             # Setup replay buffer mock
@@ -383,24 +386,25 @@ class TestTrainIteration:
 
     def test_train_iteration_trains_when_buffer_ready(self) -> None:
         """Phase 2: network is trained when buffer is ready."""
-        trainer, _, mock_replay, _, mock_net, mock_metrics, _ = (
-            self._make_trainer()
-        )
+        trainer, _, mock_replay, _, mock_net, mock_metrics, _ = self._make_trainer()
         mock_replay.is_ready = True
-        mock_replay.sample.return_value = [
-            _make_experience() for _ in range(4)
-        ]
+        mock_replay.sample.return_value = [_make_experience() for _ in range(4)]
 
         batch_size = 4
         policy_logits = torch.randn(
-            batch_size, 4, requires_grad=True,
+            batch_size,
+            4,
+            requires_grad=True,
         )
         values = torch.randn(
-            batch_size, 1, requires_grad=True,
+            batch_size,
+            1,
+            requires_grad=True,
         )
         mock_net.return_value = (policy_logits, values)
         mock_net.compute_lbb_loss.return_value = torch.tensor(
-            0.01, requires_grad=True,
+            0.01,
+            requires_grad=True,
         )
 
         # Mock optimizer so backward() + step() work seamlessly
@@ -427,6 +431,7 @@ class TestTrainIteration:
 # -------------------------------------------------------------------
 # _train_step tests
 # -------------------------------------------------------------------
+
 
 class TestTrainStep:
     """Tests for Trainer._train_step gradient computation."""
@@ -486,14 +491,19 @@ class TestTrainStep:
     ) -> None:
         """Configure mock network to return proper tensors."""
         policy_logits = torch.randn(
-            batch_size, n_policy, requires_grad=True,
+            batch_size,
+            n_policy,
+            requires_grad=True,
         )
         values = torch.randn(
-            batch_size, 1, requires_grad=True,
+            batch_size,
+            1,
+            requires_grad=True,
         )
         mock_net.return_value = (policy_logits, values)
         mock_net.compute_lbb_loss.return_value = torch.tensor(
-            0.01, requires_grad=True,
+            0.01,
+            requires_grad=True,
         )
 
     def test_train_step_returns_float_loss(self) -> None:
@@ -533,18 +543,13 @@ class TestTrainStep:
         trainer._optimizer.step.assert_called()
 
     def test_train_step_records_individual_losses(self) -> None:
-        trainer, mock_net, mock_metrics = (
-            self._make_trainer_for_train_step()
-        )
+        trainer, mock_net, mock_metrics = self._make_trainer_for_train_step()
         batch = self._make_batch()
         self._setup_forward_pass(mock_net)
 
         trainer._train_step(batch)
 
-        recorded_names = [
-            call.args[0]
-            for call in mock_metrics.record.call_args_list
-        ]
+        recorded_names = [call.args[0] for call in mock_metrics.record.call_args_list]
         assert "training/policy_loss" in recorded_names
         assert "training/value_loss" in recorded_names
         assert "training/lbb_loss" in recorded_names
@@ -573,6 +578,7 @@ class TestTrainStep:
 # -------------------------------------------------------------------
 # Checkpoint tests
 # -------------------------------------------------------------------
+
 
 class TestCheckpointing:
     """Tests for save_checkpoint and load_checkpoint."""
@@ -612,9 +618,7 @@ class TestCheckpointing:
             )
 
     def test_save_checkpoint_delegates_to_manager(self) -> None:
-        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = self._make_trainer_with_mocks()
 
         mock_ckpt.save.return_value = Path("/tmp/checkpoint.pt")
         mock_net.state_dict.return_value = {"weights": "data"}
@@ -628,9 +632,7 @@ class TestCheckpointing:
         assert call_kwargs.kwargs["iteration"] == 10
 
     def test_save_checkpoint_returns_path(self) -> None:
-        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = self._make_trainer_with_mocks()
 
         expected_path = Path("/tmp/checkpoint_10.pt")
         mock_ckpt.save.return_value = expected_path
@@ -642,9 +644,7 @@ class TestCheckpointing:
         assert result == expected_path
 
     def test_save_checkpoint_includes_network_state(self) -> None:
-        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = self._make_trainer_with_mocks()
 
         mock_ckpt.save.return_value = Path("/tmp/ckpt.pt")
         net_state = {"layer.weight": torch.zeros(2)}
@@ -658,9 +658,7 @@ class TestCheckpointing:
         assert call_kwargs["network_state"] is net_state
 
     def test_save_checkpoint_includes_optimizer_state(self) -> None:
-        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, mock_net, mock_replay, mock_metrics = self._make_trainer_with_mocks()
 
         mock_ckpt.save.return_value = Path("/tmp/ckpt.pt")
         mock_net.state_dict.return_value = {}
@@ -676,9 +674,7 @@ class TestCheckpointing:
         assert call_kwargs["optimizer_state"] is opt_state
 
     def test_load_checkpoint_restores_network_state(self) -> None:
-        trainer, mock_ckpt, mock_net, mock_replay, _ = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, mock_net, mock_replay, _ = self._make_trainer_with_mocks()
 
         checkpoint_data = {
             "network_state_dict": {"layer.weight": torch.zeros(2)},
@@ -701,9 +697,7 @@ class TestCheckpointing:
         )
 
     def test_load_checkpoint_restores_optimizer_state(self) -> None:
-        trainer, mock_ckpt, _, _, _ = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, _, _, _ = self._make_trainer_with_mocks()
 
         opt_state = {"param_groups": []}
         checkpoint_data = {
@@ -721,9 +715,7 @@ class TestCheckpointing:
         )
 
     def test_load_checkpoint_restores_replay_buffer(self) -> None:
-        trainer, mock_ckpt, _, mock_replay, _ = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, _, mock_replay, _ = self._make_trainer_with_mocks()
 
         buffer_state = {
             "experiences": [1, 2, 3],
@@ -743,9 +735,7 @@ class TestCheckpointing:
 
     def test_load_checkpoint_without_replay_state(self) -> None:
         """Loading without replay_buffer_state should not error."""
-        trainer, mock_ckpt, _, mock_replay, _ = (
-            self._make_trainer_with_mocks()
-        )
+        trainer, mock_ckpt, _, mock_replay, _ = self._make_trainer_with_mocks()
 
         checkpoint_data = {
             "network_state_dict": {},
@@ -762,6 +752,7 @@ class TestCheckpointing:
 # -------------------------------------------------------------------
 # Scheduler stepping in _train_step
 # -------------------------------------------------------------------
+
 
 class TestSchedulerIntegration:
     """Verify that _train_step steps the LR scheduler."""
@@ -797,7 +788,8 @@ class TestSchedulerIntegration:
             values = torch.randn(2, 1, requires_grad=True)
             mock_net.return_value = (policy_logits, values)
             mock_net.compute_lbb_loss.return_value = torch.tensor(
-                0.01, requires_grad=True,
+                0.01,
+                requires_grad=True,
             )
 
             trainer._train_step(batch)
@@ -834,7 +826,8 @@ class TestSchedulerIntegration:
             values = torch.randn(2, 1, requires_grad=True)
             mock_net.return_value = (policy_logits, values)
             mock_net.compute_lbb_loss.return_value = torch.tensor(
-                0.01, requires_grad=True,
+                0.01,
+                requires_grad=True,
             )
 
             # Should not raise even though scheduler is None

@@ -1,4 +1,5 @@
 """Tests for the PINN-as-Planning framework."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -14,6 +15,7 @@ from src.alphagalerkin.planning.pinn_planner import (
 # ------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------
+
 
 @pytest.fixture()
 def sample_state() -> PINNTrainingState:
@@ -49,6 +51,7 @@ def planner() -> PINNPlanner:
 # Tests
 # ------------------------------------------------------------------
 
+
 class TestPINNStateClone:
     """PINNTrainingState.clone produces an independent copy."""
 
@@ -63,14 +66,16 @@ class TestPINNStateClone:
 
         # Values must match
         np.testing.assert_array_equal(
-            cloned.collocation_points, sample_state.collocation_points,
+            cloned.collocation_points,
+            sample_state.collocation_points,
         )
         assert cloned.physics_weight == sample_state.physics_weight
         assert cloned.optimizer_type == sample_state.optimizer_type
         assert cloned.step == sample_state.step
 
     def test_clone_mutation_independence(
-        self, sample_state: PINNTrainingState,
+        self,
+        sample_state: PINNTrainingState,
     ) -> None:
         cloned = sample_state.clone()
         cloned.physics_weight = 999.0
@@ -223,9 +228,7 @@ class TestPINNPlannerPlan:
         assert isinstance(action.action_type, PINNActionType)
 
         # The returned action must be among the valid set
-        valid_types = {
-            a.action_type for a in planner.get_valid_actions(sample_state)
-        }
+        valid_types = {a.action_type for a in planner.get_valid_actions(sample_state)}
         assert action.action_type in valid_types
 
 

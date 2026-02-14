@@ -9,6 +9,7 @@ MCTS searches operator decomposition strategies for multi-physics
 problems, deciding how to compose neural operators for coupled
 subproblems with learned coupling.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -532,7 +533,8 @@ class NeuralOperatorNAS:
 
         if action.action_type == NASActionType.ADD_LAYER:
             block_type_str = action.params.get(
-                "block_type", OperatorBlockType.MLP_LAYER.value,
+                "block_type",
+                OperatorBlockType.MLP_LAYER.value,
             )
             block_type = OperatorBlockType(block_type_str)
             new_layer = LayerSpec(block_type=block_type)
@@ -557,7 +559,8 @@ class NeuralOperatorNAS:
             idx = action.layer_index
             if 0 <= idx < len(new_state.layers):
                 block_type_str = action.params.get(
-                    "block_type", OperatorBlockType.MLP_LAYER.value,
+                    "block_type",
+                    OperatorBlockType.MLP_LAYER.value,
                 )
                 new_state.layers[idx].block_type = OperatorBlockType(
                     block_type_str,
@@ -582,18 +585,13 @@ class NeuralOperatorNAS:
         elif action.action_type == NASActionType.ADD_SKIP_CONNECTION:
             idx = action.layer_index
             target = action.params.get("target_index", -1)
-            if (
-                0 <= idx < len(new_state.layers)
-                and 0 <= target < len(new_state.layers)
-            ):
+            if 0 <= idx < len(new_state.layers) and 0 <= target < len(new_state.layers):
                 new_state.layers[target].skip_to = idx
 
         elif action.action_type == NASActionType.TOGGLE_RESIDUAL:
             idx = action.layer_index
             if 0 <= idx < len(new_state.layers):
-                new_state.layers[idx].has_residual = (
-                    not new_state.layers[idx].has_residual
-                )
+                new_state.layers[idx].has_residual = not new_state.layers[idx].has_residual
 
         # NO_OP: do nothing
 
@@ -613,10 +611,7 @@ class NeuralOperatorNAS:
         diversity is used.
         """
         if state.validation_error < float("inf"):
-            return (
-                -state.validation_error
-                - self._complexity_penalty * state.total_params
-            )
+            return -state.validation_error - self._complexity_penalty * state.total_params
 
         # Heuristic: prefer diverse architectures with moderate depth
         block_types = {l.block_type for l in state.layers}

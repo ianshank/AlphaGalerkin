@@ -1,4 +1,5 @@
 """Tests for the plasma physics and stellarator optimization module."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -130,7 +131,8 @@ class TestCoilGeometryClone:
 
         # Values must match
         np.testing.assert_array_equal(
-            cloned.control_points, sample_coil.control_points,
+            cloned.control_points,
+            sample_coil.control_points,
         )
         assert cloned.current == sample_coil.current
         assert cloned.winding_number == sample_coil.winding_number
@@ -146,7 +148,8 @@ class TestStellaratorStateClone:
     """StellaratorState.clone produces an independent copy."""
 
     def test_stellarator_state_clone(
-        self, sample_stellarator_state: StellaratorState,
+        self,
+        sample_stellarator_state: StellaratorState,
     ) -> None:
         cloned = sample_stellarator_state.clone()
 
@@ -157,12 +160,15 @@ class TestStellaratorStateClone:
 
         # Each coil must be independently copied
         for orig, copy in zip(
-            sample_stellarator_state.coils, cloned.coils, strict=True,
+            sample_stellarator_state.coils,
+            cloned.coils,
+            strict=True,
         ):
             assert copy is not orig
             assert copy.control_points is not orig.control_points
             np.testing.assert_array_equal(
-                copy.control_points, orig.control_points,
+                copy.control_points,
+                orig.control_points,
             )
 
         # Scalar values must match
@@ -180,7 +186,8 @@ class TestStellaratorTotalObjective:
     """StellaratorState.total_objective computes weighted sum."""
 
     def test_stellarator_total_objective(
-        self, sample_stellarator_state: StellaratorState,
+        self,
+        sample_stellarator_state: StellaratorState,
     ) -> None:
         # With finite metrics: 0.5 + 0.3 + 0.2 + 3.0 = 4.0
         total = sample_stellarator_state.total_objective
@@ -230,10 +237,7 @@ class TestStellaratorValidActions:
     ) -> None:
         """ADD_COIL is excluded when at max coil count."""
         rng = np.random.default_rng(1)
-        coils = [
-            CoilGeometry(control_points=rng.normal(0, 1, size=(5, 3)))
-            for _ in range(10)
-        ]
+        coils = [CoilGeometry(control_points=rng.normal(0, 1, size=(5, 3))) for _ in range(10)]
         state = StellaratorState(coils=coils, max_coils=10)
         actions = optimizer.get_valid_actions(state)
         action_types = {a.action_type for a in actions}
@@ -339,10 +343,7 @@ class TestStellaratorOptimizerPlans:
         assert isinstance(action.action_type, CoilActionType)
 
         # The returned action must be among the valid set
-        valid_types = {
-            a.action_type
-            for a in optimizer.get_valid_actions(sample_stellarator_state)
-        }
+        valid_types = {a.action_type for a in optimizer.get_valid_actions(sample_stellarator_state)}
         assert action.action_type in valid_types
 
     def test_stellarator_optimizer_plans_with_physics_fn(
@@ -351,6 +352,7 @@ class TestStellaratorOptimizerPlans:
         sample_stellarator_state: StellaratorState,
     ) -> None:
         """plan_next_action works with a user-supplied physics function."""
+
         def physics_fn(state: StellaratorState) -> dict[str, float]:
             return {
                 "mhd_stability": 0.1,
@@ -359,7 +361,8 @@ class TestStellaratorOptimizerPlans:
             }
 
         action = optimizer.plan_next_action(
-            sample_stellarator_state, physics_fn=physics_fn,
+            sample_stellarator_state,
+            physics_fn=physics_fn,
         )
         assert isinstance(action, CoilAction)
         assert isinstance(action.action_type, CoilActionType)
@@ -396,7 +399,8 @@ class TestPlasmaModelStateClone:
     """PlasmaModelState.clone produces an independent copy."""
 
     def test_plasma_model_state_clone(
-        self, sample_plasma_state: PlasmaModelState,
+        self,
+        sample_plasma_state: PlasmaModelState,
     ) -> None:
         cloned = sample_plasma_state.clone()
 
@@ -407,7 +411,9 @@ class TestPlasmaModelStateClone:
 
         # Each region must be independently copied
         for orig, copy in zip(
-            sample_plasma_state.regions, cloned.regions, strict=True,
+            sample_plasma_state.regions,
+            cloned.regions,
+            strict=True,
         ):
             assert copy is not orig
             assert copy.bounds == orig.bounds
@@ -536,9 +542,7 @@ class TestModelCostsDict:
         costs = PlasmaModelSelector.DEFAULT_MODEL_COSTS
         # Must contain all model types
         for model_type in PlasmaModelType:
-            assert model_type.value in costs, (
-                f"Missing cost for model type: {model_type.value}"
-            )
+            assert model_type.value in costs, f"Missing cost for model type: {model_type.value}"
 
         # Kinetic must be the most expensive
         assert costs["kinetic"] > costs["gyrokinetic"]

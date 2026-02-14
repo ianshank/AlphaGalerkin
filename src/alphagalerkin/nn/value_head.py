@@ -1,4 +1,5 @@
 """Value head: global quality estimate."""
+
 from __future__ import annotations
 
 import structlog
@@ -29,16 +30,18 @@ class ValueHead(nn.Module):
 
         layers: list[nn.Module] = []
         in_dim = hidden_dim
-        for h_dim in (hidden_dims or [128, 64]):
+        for h_dim in hidden_dims or [128, 64]:
             if h_dim == 1:
                 # Final output layer
                 layers.append(nn.Linear(in_dim, 1))
                 break
-            layers.extend([
-                nn.Linear(in_dim, h_dim),
-                nn.GELU(),
-                nn.Dropout(dropout),
-            ])
+            layers.extend(
+                [
+                    nn.Linear(in_dim, h_dim),
+                    nn.GELU(),
+                    nn.Dropout(dropout),
+                ]
+            )
             in_dim = h_dim
         else:
             layers.append(nn.Linear(in_dim, 1))
@@ -63,7 +66,8 @@ class ValueHead(nn.Module):
         # Pooling
         if self.pooling == "attention":
             weights = torch.softmax(
-                self.attention_weights(x), dim=1,
+                self.attention_weights(x),
+                dim=1,
             )  # (batch, N, 1)
             pooled = (weights * x).sum(dim=1)  # (batch, hidden)
         elif self.pooling == "max":

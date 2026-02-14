@@ -1,4 +1,5 @@
 """Poisson equation physics module: -nabla^2 u = f on [0,1]^2."""
+
 from __future__ import annotations
 
 import time
@@ -49,7 +50,9 @@ class PoissonModule:
         """Homogeneous Dirichlet BCs on all boundaries."""
         return [
             BoundaryCondition(
-                bc_type="dirichlet", value=0.0, region="all",
+                bc_type="dirichlet",
+                value=0.0,
+                region="all",
             ),
         ]
 
@@ -58,18 +61,14 @@ class PoissonModule:
         config: Any = None,
     ) -> ManufacturedSolution:
         """MMS: u = sin(pi*x)*sin(pi*y)."""
+
         def exact(points: np.ndarray) -> np.ndarray:
             x, y = points[:, 0], points[:, 1]
             return np.sin(np.pi * x) * np.sin(np.pi * y)
 
         def forcing(points: np.ndarray) -> np.ndarray:
             x, y = points[:, 0], points[:, 1]
-            return (
-                2.0
-                * np.pi**2
-                * np.sin(np.pi * x)
-                * np.sin(np.pi * y)
-            )
+            return 2.0 * np.pi**2 * np.sin(np.pi * x) * np.sin(np.pi * y)
 
         def boundary(points: np.ndarray) -> np.ndarray:
             return np.zeros(len(points))
@@ -91,7 +90,7 @@ class PoissonModule:
         """Reward based on residual reduction and DOF efficiency."""
         return 0.0  # Placeholder
 
-    def state_features(self, discretization: Any) -> Any:
+    def state_features(self, _discretization: Any) -> Any:
         """Per-element features for the GNN encoder."""
         return None  # Placeholder
 

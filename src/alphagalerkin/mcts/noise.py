@@ -1,4 +1,5 @@
 """Dirichlet noise injection for exploration."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -90,10 +91,7 @@ class DirichletNoise:
 
         result: dict[Any, float] = {}
         for i, action in enumerate(actions):
-            result[action] = (
-                (1 - self._epsilon) * priors[action]
-                + self._epsilon * noise[i]
-            )
+            result[action] = (1 - self._epsilon) * priors[action] + self._epsilon * noise[i]
 
         logger.debug(
             "mcts.noise.applied",

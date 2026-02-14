@@ -1,4 +1,5 @@
 """Tests for MetricCollector (training/metrics.py)."""
+
 from __future__ import annotations
 
 import pytest

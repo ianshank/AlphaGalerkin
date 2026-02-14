@@ -23,6 +23,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.plasma")
 
 
@@ -195,6 +197,7 @@ class StellaratorOptimizer:
         complexity_weight: float = 0.3,
         current_step: float = 0.01,
         position_step: float = 0.01,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._max_coils = max_coils
         self._num_simulations = num_simulations
@@ -203,7 +206,7 @@ class StellaratorOptimizer:
         self._complexity_weight = complexity_weight
         self._current_step = current_step
         self._position_step = position_step
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "stellarator_optimizer.init",
@@ -638,11 +641,12 @@ class PlasmaModelSelector:
         num_simulations: int = 50,
         budget: float = 100.0,
         model_costs: dict[str, float] | None = None,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._num_simulations = num_simulations
         self._budget = budget
         self._model_costs = model_costs or dict(self.DEFAULT_MODEL_COSTS)
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "plasma_model_selector.init",

@@ -22,6 +22,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.numerical_relativity")
 
 
@@ -259,6 +261,7 @@ class NRMeshManager:
         cost_weight: float = 0.5,
         extraction_step: float = 50.0,
         puncture_threshold: float = 1.0,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._max_levels = max_levels
         self._min_resolution = min_resolution
@@ -268,7 +271,7 @@ class NRMeshManager:
         self._cost_weight = cost_weight
         self._extraction_step = extraction_step
         self._puncture_threshold = puncture_threshold
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "nr_mesh_manager.init",

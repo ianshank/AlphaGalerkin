@@ -18,6 +18,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.multi_fidelity")
 
 
@@ -169,6 +171,7 @@ class MultiFidelityManager:
         parameter_bounds: list[tuple[float, float]],
         cost_ratios: dict[str, float] | None = None,
         budget: float = 100.0,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._bounds = parameter_bounds
         self._costs = cost_ratios or {
@@ -180,7 +183,7 @@ class MultiFidelityManager:
         }
         self._budget = budget
         self._dim = len(parameter_bounds)
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "multi_fidelity.init",

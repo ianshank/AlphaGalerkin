@@ -23,6 +23,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.inverse")
 
 
@@ -188,6 +190,7 @@ class InverseProblemSolver:
         num_simulations: int = 50,
         noise_level: float = 0.01,
         exploration_weight: float = 1.0,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._bounds = domain_bounds
         self._max_sensors = max_sensors
@@ -195,7 +198,7 @@ class InverseProblemSolver:
         self._noise_level = noise_level
         self._exploration_weight = exploration_weight
         self._dim = len(domain_bounds)
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "inverse_solver.init",

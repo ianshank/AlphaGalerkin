@@ -21,6 +21,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.symbolic")
 
 
@@ -309,6 +311,7 @@ class SymbolicDiscovery:
         binary_ops: list[str] | None = None,
         unary_ops: list[str] | None = None,
         exploration_weight: float = 1.0,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._variables = variables
         self._max_complexity = max_complexity
@@ -316,7 +319,7 @@ class SymbolicDiscovery:
         self._binary_ops = binary_ops or ["+", "-", "*", "/"]
         self._unary_ops = unary_ops or ["sin", "cos", "exp", "sqrt"]
         self._exploration_weight = exploration_weight
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         # Action statistics for UCB
         self._action_visits: dict[str, int] = {}

@@ -21,6 +21,8 @@ from enum import Enum
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.quantum_chem")
 
 
@@ -167,13 +169,14 @@ class ActiveSpaceSelector:
         entropy_weight: float = 1.0,
         energy_weight: float = 1.0,
         max_steps: int = 50,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._max_active = max_active
         self._num_simulations = num_simulations
         self._entropy_weight = entropy_weight
         self._energy_weight = energy_weight
         self._max_steps = max_steps
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "active_space_selector.init",
@@ -529,10 +532,11 @@ class DMRGOrderingOptimizer:
         self,
         num_simulations: int = 100,
         max_segment_length: int = 5,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._num_simulations = num_simulations
         self._max_segment_length = max_segment_length
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "dmrg_ordering_optimizer.init",

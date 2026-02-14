@@ -18,6 +18,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.pinn")
 
 
@@ -162,6 +164,7 @@ class PINNPlanner:
         min_weight: float = 0.01,
         max_weight: float = 100.0,
         collocation_batch: int = 20,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._bounds = domain_bounds
         self._max_collocation = max_collocation
@@ -172,7 +175,7 @@ class PINNPlanner:
         self._max_weight = max_weight
         self._collocation_batch = collocation_batch
         self._dim = len(domain_bounds)
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "pinn_planner.init",

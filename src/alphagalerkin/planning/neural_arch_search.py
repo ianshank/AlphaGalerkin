@@ -19,6 +19,8 @@ from typing import Any
 import numpy as np
 import structlog
 
+from src.alphagalerkin.core.constants import DEFAULT_SEED
+
 logger = structlog.get_logger("planning.nas")
 
 
@@ -276,6 +278,7 @@ class NeuralOperatorNAS:
         width_step: int = 16,
         mode_step: int = 4,
         complexity_penalty: float = 1e-6,
+        seed: int = DEFAULT_SEED,
     ) -> None:
         self._max_layers = max_layers
         self._max_width = max_width
@@ -284,7 +287,7 @@ class NeuralOperatorNAS:
         self._width_step = width_step
         self._mode_step = mode_step
         self._complexity_penalty = complexity_penalty
-        self._rng = np.random.default_rng(42)
+        self._rng = np.random.default_rng(seed)
 
         logger.info(
             "neural_operator_nas.init",

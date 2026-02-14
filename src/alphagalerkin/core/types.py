@@ -69,6 +69,15 @@ class ActionType(str, Enum):
     NO_OP = "no_op"
     """Do nothing -- always a valid action."""
 
+    REFINE_ALL_BOUNDARY = "refine_all_boundary"
+    """H-refine every boundary element (fewer than max neighbours)."""
+
+    COARSEN_ALL_INTERIOR = "coarsen_all_interior"
+    """P-coarsen every interior element (those with max neighbours)."""
+
+    UNIFORM_P_REFINE = "uniform_p_refine"
+    """Increment polynomial order on ALL elements."""
+
 
 class PDEType(str, Enum):
     """Classification of a PDE by its mathematical character.
@@ -111,6 +120,7 @@ class GNNArchitecture(str, Enum):
     CUSTOM = "custom"
     GALERKIN = "galerkin"
     FNET = "fnet"
+    GRAPH_MP = "graph_mp"
 
 
 class SelectionPolicy(str, Enum):

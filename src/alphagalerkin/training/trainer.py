@@ -14,6 +14,10 @@ from src.alphagalerkin.nn.model import AlphaGalerkinNetwork
 from src.alphagalerkin.training.checkpointing import CheckpointManager
 from src.alphagalerkin.training.curriculum import CurriculumManager
 from src.alphagalerkin.training.metrics import MetricCollector
+from src.alphagalerkin.training.pde_curriculum import (
+    PDECurriculumManager,
+    PDEDifficultyConfig,
+)
 from src.alphagalerkin.training.replay_buffer import Experience, ReplayBuffer
 from src.alphagalerkin.training.self_play import SelfPlayEngine
 from src.alphagalerkin.utils.io import resolve_device
@@ -68,6 +72,31 @@ class Trainer:
         self._curriculum = CurriculumManager(
             config.training.curriculum,
         )
+
+        # Check if any curriculum stage has PDE difficulty settings.
+        # If so, create a PDECurriculumManager alongside the base one.
+        self._pde_curriculum: PDECurriculumManager | None = None
+        if config.training.curriculum.enabled:
+            stages = config.training.curriculum.stages
+            if stages and any(
+                "source_frequency" in s for s in stages
+            ):
+                self._pde_curriculum = PDECurriculumManager(
+                    custom_stages=[
+                        PDEDifficultyConfig(**s) for s in stages
+                    ],
+                    advance_threshold=(
+                        config.training.curriculum.advance_threshold
+                    ),
+                    evaluation_window=(
+                        config.training.curriculum.evaluation_window
+                    ),
+                )
+                logger.info(
+                    "trainer.pde_curriculum_enabled",
+                    num_stages=self._pde_curriculum.num_stages,
+                )
+
         self._checkpoint_mgr = CheckpointManager(
             config.checkpoint,
         )
@@ -235,6 +264,8 @@ class Trainer:
             # --- Phase 3: Curriculum ---
             if episodes:
                 self._curriculum.update(avg_reward)
+                if self._pde_curriculum is not None:
+                    self._pde_curriculum.update(avg_reward)
 
             # --- Checkpoint ---
             save_interval = self._config.checkpoint.save_interval_steps
@@ -250,6 +281,10 @@ class Trainer:
             metrics["curriculum_stage"] = float(
                 self._curriculum.current_stage_index,
             )
+            if self._pde_curriculum is not None:
+                metrics["pde_curriculum_stage"] = float(
+                    self._pde_curriculum.current_stage_index,
+                )
 
             logger.info(
                 "training.iteration.complete",

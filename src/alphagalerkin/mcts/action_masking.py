@@ -117,6 +117,46 @@ class ActionMasker:
                     ),
                 )
 
+        # ---- Global actions (mesh-wide) ----------------------------
+        # Global actions use a sentinel element_id; they are
+        # validated by Action.validate which checks mesh is non-empty.
+        global_eid = (
+            state.mesh.element_ids[0]
+            if state.mesh.element_ids
+            else ElementID("e0")
+        )
+
+        # REFINE_ALL_BOUNDARY: always available when mesh is
+        # non-empty (boundary detection happens at apply time)
+        if state.mesh.num_elements > 0:
+            actions.append(
+                Action(
+                    element_id=global_eid,
+                    action_type=ActionType.REFINE_ALL_BOUNDARY,
+                ),
+            )
+
+        # COARSEN_ALL_INTERIOR: available when mesh is non-empty
+        if state.mesh.num_elements > 0:
+            actions.append(
+                Action(
+                    element_id=global_eid,
+                    action_type=ActionType.COARSEN_ALL_INTERIOR,
+                ),
+            )
+
+        # UNIFORM_P_REFINE: available when under DOF budget
+        if (
+            state.mesh.num_elements > 0
+            and state.dof_count < self._config.max_dof
+        ):
+            actions.append(
+                Action(
+                    element_id=global_eid,
+                    action_type=ActionType.UNIFORM_P_REFINE,
+                ),
+            )
+
         logger.debug(
             "mcts.masking.valid_actions",
             n_valid=len(actions),

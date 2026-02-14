@@ -300,6 +300,14 @@ class GNNConfig(_Base):
         default="gelu",
         description="Activation function (gelu or relu).",
     )
+    num_mp_layers: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Number of message-passing layers "
+            "(for graph_mp mode)."
+        ),
+    )
 
 
 class PolicyHeadConfig(_Base):

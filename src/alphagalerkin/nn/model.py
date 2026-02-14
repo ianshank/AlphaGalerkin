@@ -8,10 +8,12 @@ import torch
 import torch.nn as nn
 
 from src.alphagalerkin.core.config import NetworkConfig
+from src.alphagalerkin.core.types import GNNArchitecture
 from src.alphagalerkin.nn.backbone import ElementBackbone
 from src.alphagalerkin.nn.encoder import MeshEncoder
 from src.alphagalerkin.nn.feature_norm import RunningNorm
 from src.alphagalerkin.nn.galerkin_attention import GalerkinLinearAttention
+from src.alphagalerkin.nn.graph_encoder import GraphEncoder
 from src.alphagalerkin.nn.policy_head import PolicyHead
 from src.alphagalerkin.nn.value_head import ValueHead
 
@@ -37,6 +39,17 @@ class AlphaGalerkinNetwork(nn.Module):
             input_features=config.input_features,
             hidden_dim=config.gnn.hidden_dim,
         )
+
+        # Optionally build a graph-based encoder for GRAPH_MP mode.
+        self.graph_encoder: GraphEncoder | None = None
+        if config.gnn.architecture == GNNArchitecture.GRAPH_MP:
+            self.graph_encoder = GraphEncoder(
+                input_features=config.input_features,
+                hidden_dim=config.gnn.hidden_dim,
+                num_mp_layers=config.gnn.num_mp_layers,
+                dropout=config.gnn.dropout,
+            )
+
         self.backbone = ElementBackbone(
             hidden_dim=config.gnn.hidden_dim,
             num_layers=config.gnn.num_layers,
@@ -61,6 +74,7 @@ class AlphaGalerkinNetwork(nn.Module):
         self,
         features: torch.Tensor,
         action_mask: torch.Tensor | None = None,
+        adjacency: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass.
 
@@ -69,6 +83,10 @@ class AlphaGalerkinNetwork(nn.Module):
                 shape (batch, num_elements, input_features).
             action_mask: Optional action mask,
                 shape (batch, num_elements, num_actions).
+            adjacency: Optional adjacency matrix,
+                shape (batch, num_elements, num_elements).
+                Used when ``graph_encoder`` is active (GRAPH_MP
+                architecture).  Ignored otherwise.
 
         Returns:
             Tuple of (policy_log_probs, value):
@@ -78,7 +96,10 @@ class AlphaGalerkinNetwork(nn.Module):
 
         """
         x = self.feature_norm(features)
-        x = self.encoder(x)
+        if adjacency is not None and self.graph_encoder is not None:
+            x = self.graph_encoder(x, adjacency)
+        else:
+            x = self.encoder(x)
         x = self.backbone(x)
 
         policy = self.policy_head(x, action_mask)

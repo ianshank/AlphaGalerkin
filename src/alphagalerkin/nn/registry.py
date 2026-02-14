@@ -11,7 +11,7 @@ logger = structlog.get_logger("nn.registry")
 _ARCHITECTURE_REGISTRY: dict[str, Callable[..., Any]] = {}
 
 
-def register_architecture(name: str) -> Callable:
+def register_architecture(name: str) -> Callable[[type], type]:
     """Decorator to register a backbone architecture."""
     def decorator(cls: type) -> type:
         if name in _ARCHITECTURE_REGISTRY:

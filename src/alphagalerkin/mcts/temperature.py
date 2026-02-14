@@ -1,6 +1,8 @@
 """Temperature schedule for action selection."""
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import structlog
 
@@ -103,7 +105,7 @@ class TemperatureSchedule:
 
         if self._type == TemperatureScheduleType.EXPONENTIAL:
             ratio = self._final / max(self._initial, 1e-10)
-            return self._initial * (ratio ** progress)
+            return float(self._initial * (ratio ** progress))
 
         if self._type == TemperatureScheduleType.STEP:
             return self._initial
@@ -119,7 +121,7 @@ class TemperatureSchedule:
 
     def select_action_with_temperature(
         self,
-        visit_counts: dict,
+        visit_counts: dict[Any, Any],
         temperature: float,
         rng: np.random.Generator | None = None,
     ) -> object:

@@ -37,7 +37,8 @@ class FNetMixing(nn.Module):
         """
         # Use rfft for efficiency (real input), then take real part
         # FFT along sequence dimension (dim=-2)
-        return torch.fft.fft(x, dim=-2).real
+        result: torch.Tensor = torch.fft.fft(x, dim=-2).real
+        return result
 
 
 class FNetBlock(nn.Module):

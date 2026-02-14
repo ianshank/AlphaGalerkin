@@ -132,7 +132,8 @@ class GalerkinLinearAttention(nn.Module):
         if needs_batch:
             output = output.squeeze(0)
 
-        return output
+        result: torch.Tensor = output
+        return result
 
     def compute_lbb_diagnostic(self, x: torch.Tensor) -> dict[str, float]:
         """Compute LBB stability diagnostics.

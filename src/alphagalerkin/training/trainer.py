@@ -14,7 +14,7 @@ from src.alphagalerkin.nn.model import AlphaGalerkinNetwork
 from src.alphagalerkin.training.checkpointing import CheckpointManager
 from src.alphagalerkin.training.curriculum import CurriculumManager
 from src.alphagalerkin.training.metrics import MetricCollector
-from src.alphagalerkin.training.replay_buffer import ReplayBuffer
+from src.alphagalerkin.training.replay_buffer import Experience, ReplayBuffer
 from src.alphagalerkin.training.self_play import SelfPlayEngine
 from src.alphagalerkin.utils.io import resolve_device
 from src.alphagalerkin.utils.logging import log_context
@@ -262,7 +262,7 @@ class Trainer:
     # Single gradient step
     # ---------------------------------------------------------------
 
-    def _train_step(self, batch: list) -> float:
+    def _train_step(self, batch: list[Experience]) -> float:
         """Execute one gradient step on *batch*.
 
         Computes the combined loss:

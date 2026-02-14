@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import structlog
@@ -162,7 +162,7 @@ class PolicyEvaluator:
             """Wrap network inference as EvalFn."""
             with torch.no_grad():
                 policy, value = network.predict(state)
-            return policy, value
+            return cast(dict[Any, float], policy), float(value)
 
         return self.evaluate(
             eval_fn=eval_fn,

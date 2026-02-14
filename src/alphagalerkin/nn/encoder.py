@@ -46,4 +46,5 @@ class MeshEncoder(nn.Module):
             last dim = hidden_dim.
 
         """
-        return self.encoder(x)
+        result: torch.Tensor = self.encoder(x)
+        return result

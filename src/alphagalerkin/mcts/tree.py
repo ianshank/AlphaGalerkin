@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import structlog
@@ -121,8 +121,9 @@ class TreeManager:
         filtered = self._filter_priors(priors, valid)
 
         if self._config.noise_at_root_only:
-            filtered = self._noise.apply(
-                filtered, self._rng,
+            filtered = cast(
+                dict["Action", float],
+                self._noise.apply(filtered, self._rng),
             )
 
         root.expand(filtered)
@@ -160,8 +161,11 @@ class TreeManager:
 
         # Select with temperature
         temperature = self._temperature.get_temperature(step)
-        selected = self._temperature.select_action_with_temperature(
-            visit_counts, temperature, self._rng,
+        selected = cast(
+            "Action",
+            self._temperature.select_action_with_temperature(
+                visit_counts, temperature, self._rng,
+            ),
         )
 
         logger.info(

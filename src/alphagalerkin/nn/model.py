@@ -11,6 +11,7 @@ from src.alphagalerkin.core.config import NetworkConfig
 from src.alphagalerkin.nn.backbone import ElementBackbone
 from src.alphagalerkin.nn.encoder import MeshEncoder
 from src.alphagalerkin.nn.feature_norm import RunningNorm
+from src.alphagalerkin.nn.galerkin_attention import GalerkinLinearAttention
 from src.alphagalerkin.nn.policy_head import PolicyHead
 from src.alphagalerkin.nn.value_head import ValueHead
 
@@ -98,18 +99,20 @@ class AlphaGalerkinNetwork(nn.Module):
         for layer in self.backbone.layers:
             if hasattr(layer, 'attention') and hasattr(layer.attention, 'compute_lbb_diagnostic'):
                 # Get KTV matrix for stability check
+                attn = layer.attention
+                assert isinstance(attn, GalerkinLinearAttention)
                 x = self.feature_norm(features)
                 x = self.encoder(x)
                 needs_batch = x.dim() == 2
                 if needs_batch:
                     x = x.unsqueeze(0)
                 batch, seq_len, _ = x.shape
-                n_heads = layer.attention.num_heads
-                k_dim = layer.attention.key_dim
-                k = layer.attention.k_proj(x).view(
+                n_heads = attn.num_heads
+                k_dim = attn.key_dim
+                k = attn.k_proj(x).view(
                     batch, seq_len, n_heads, k_dim,
                 )
-                v = layer.attention.v_proj(x).view(
+                v = attn.v_proj(x).view(
                     batch, seq_len, n_heads, k_dim,
                 )
                 k = k.permute(0, 2, 1, 3)

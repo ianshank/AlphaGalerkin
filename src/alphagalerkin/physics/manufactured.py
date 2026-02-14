@@ -41,11 +41,13 @@ def poisson_polynomial() -> ManufacturedSolution:
     """
     def exact(points: np.ndarray) -> np.ndarray:
         x, y = points[:, 0], points[:, 1]
-        return x * (1 - x) * y * (1 - y)
+        result: np.ndarray = x * (1 - x) * y * (1 - y)
+        return result
 
     def forcing(points: np.ndarray) -> np.ndarray:
         x, y = points[:, 0], points[:, 1]
-        return 2.0 * (x * (1 - x) + y * (1 - y))
+        result: np.ndarray = 2.0 * (x * (1 - x) + y * (1 - y))
+        return result
 
     def boundary(points: np.ndarray) -> np.ndarray:
         return np.zeros(len(points))

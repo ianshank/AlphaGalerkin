@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Literal
 
 import yaml
 from pydantic import (
@@ -28,6 +28,7 @@ from pydantic import (
     Field,
     model_validator,
 )
+from typing_extensions import Self
 
 from src.alphagalerkin.core.constants import (
     DEFAULT_BATCH_SIZE,

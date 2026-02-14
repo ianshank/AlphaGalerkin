@@ -15,6 +15,10 @@ class RunningNorm(nn.Module):
     During eval, uses stored statistics.
     """
 
+    running_mean: torch.Tensor
+    running_var: torch.Tensor
+    num_batches_tracked: torch.Tensor
+
     def __init__(
         self,
         num_features: int,
@@ -50,16 +54,17 @@ class RunningNorm(nn.Module):
             batch_mean = flat.mean(dim=0)
             batch_var = flat.var(dim=0, unbiased=False)
 
-            self.running_mean = (  # type: ignore[assignment]
+            self.running_mean = (
                 (1 - self.momentum) * self.running_mean
                 + self.momentum * batch_mean
             )
-            self.running_var = (  # type: ignore[assignment]
+            self.running_var = (
                 (1 - self.momentum) * self.running_var
                 + self.momentum * batch_var
             )
-            self.num_batches_tracked += 1  # type: ignore[assignment]
+            self.num_batches_tracked = self.num_batches_tracked + 1
 
-        return (x - self.running_mean) / torch.sqrt(
+        result: torch.Tensor = (x - self.running_mean) / torch.sqrt(
             self.running_var + self.eps,
         )
+        return result

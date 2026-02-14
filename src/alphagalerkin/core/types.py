@@ -109,6 +109,8 @@ class GNNArchitecture(str, Enum):
     GCN = "gcn"
     GRAPHSAGE = "graphsage"
     CUSTOM = "custom"
+    GALERKIN = "galerkin"
+    FNET = "fnet"
 
 
 class SelectionPolicy(str, Enum):

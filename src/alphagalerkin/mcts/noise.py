@@ -1,6 +1,8 @@
 """Dirichlet noise injection for exploration."""
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import structlog
 
@@ -61,9 +63,9 @@ class DirichletNoise:
 
     def apply(
         self,
-        priors: dict,
+        priors: dict[Any, float],
         rng: np.random.Generator | None = None,
-    ) -> dict:
+    ) -> dict[Any, float]:
         """Mix Dirichlet noise into prior probabilities.
 
         Args:
@@ -86,7 +88,7 @@ class DirichletNoise:
             [self._alpha] * len(actions),
         )
 
-        result: dict = {}
+        result: dict[Any, float] = {}
         for i, action in enumerate(actions):
             result[action] = (
                 (1 - self._epsilon) * priors[action]

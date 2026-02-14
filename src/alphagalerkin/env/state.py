@@ -107,7 +107,15 @@ class DiscretizationState:
             )
             for eid in mesh.element_ids
         }
-        return cls(mesh=mesh, basis_assignments=basis)
+        state = cls(mesh=mesh, basis_assignments=basis)
+        logger.debug(
+            "state.created",
+            num_elements=mesh.num_elements,
+            polynomial_order=initial_polynomial_order,
+            basis_family=basis_family,
+            dof_count=state.dof_count,
+        )
+        return state
 
     # -- state transitions -------------------------------------------
 
@@ -120,6 +128,13 @@ class DiscretizationState:
         """
         new_state = self.clone()
         new_state.step += 1
+
+        logger.debug(
+            "state.apply_action",
+            action_type=action.action_type.value,
+            element=str(action.element_id),
+            step=new_state.step,
+        )
 
         if action.action_type == ActionType.NO_OP:
             return new_state

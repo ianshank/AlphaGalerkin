@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import cast
 
+import numpy as np
 import structlog
 
 from src.alphagalerkin.core.config import (
@@ -94,16 +96,15 @@ class Episode:
         for state, policy in zip(
             self.states, self.policies, strict=True,
         ):
-            # Serialize Action keys to strings
-            policy_dict: dict[str, float] = {
-                f"{a.element_id}_{a.action_type.value}": p
-                for a, p in policy.items()
-            }
+            # Convert policy to numpy array of probabilities
+            policy_array = np.array(
+                list(policy.values()), dtype=np.float32,
+            )
             exp = Experience(
                 state_features=(
                     state.to_feature_tensor().numpy()
                 ),
-                policy_target=policy_dict,
+                policy_target=policy_array,
                 value_target=outcome,
                 iteration=iteration,
             )
@@ -273,7 +274,9 @@ class SelfPlayEngine:
             priors = dict.fromkeys(valid, uniform)
 
         # Apply Dirichlet noise at the root
-        noised_priors = self._noise.apply(priors)
+        noised_priors: dict[Action, float] = cast(
+            dict[Action, float], self._noise.apply(priors),
+        )
         root.expand(noised_priors)
 
         # Simulations
@@ -332,10 +335,12 @@ class SelfPlayEngine:
             act: child.visit_count
             for act, child in root.children.items()
         }
-        action = self._temperature.select_action_with_temperature(
+        selected = self._temperature.select_action_with_temperature(
             visit_counts,
             temperature,
         )
+        # select_action_with_temperature returns the dict key (Action)
+        action = cast(Action, selected)
 
         return action, visit_policy
 

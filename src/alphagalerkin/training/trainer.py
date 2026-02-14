@@ -58,6 +58,9 @@ class Trainer:
         # Optimizer
         self._optimizer = self._create_optimizer()
 
+        # LR scheduler
+        self._scheduler = self._create_scheduler()
+
         # Components
         self._replay_buffer = ReplayBuffer(
             config.training.replay,
@@ -122,6 +125,41 @@ class Trainer:
             weight_decay=opt_config.weight_decay,
             momentum=opt_config.momentum,
         )
+
+    # ---------------------------------------------------------------
+    # Scheduler creation
+    # ---------------------------------------------------------------
+
+    def _create_scheduler(self) -> optim.lr_scheduler.LRScheduler | None:
+        """Create LR scheduler from config."""
+        sched_config = self._config.training.scheduler
+        if sched_config.name == "none":
+            return None
+        if sched_config.name == "cosine":
+            return optim.lr_scheduler.CosineAnnealingLR(
+                self._optimizer,
+                T_max=self._config.training.total_steps,
+                eta_min=sched_config.min_lr,
+            )
+        if sched_config.name == "step":
+            return optim.lr_scheduler.StepLR(
+                self._optimizer,
+                step_size=sched_config.step_size,
+                gamma=sched_config.gamma,
+            )
+        if sched_config.name == "exponential":
+            return optim.lr_scheduler.ExponentialLR(
+                self._optimizer,
+                gamma=sched_config.gamma,
+            )
+        if sched_config.name == "reduce_on_plateau":
+            return optim.lr_scheduler.ReduceLROnPlateau(
+                self._optimizer,
+                patience=sched_config.patience,
+                factor=sched_config.gamma,
+                min_lr=sched_config.min_lr,
+            )
+        return None
 
     # ---------------------------------------------------------------
     # Training iteration
@@ -198,6 +236,11 @@ class Trainer:
             if episodes:
                 self._curriculum.update(avg_reward)
 
+            # --- Checkpoint ---
+            save_interval = self._config.checkpoint.save_interval_steps
+            if save_interval > 0 and (iteration + 1) % save_interval == 0:
+                self.save_checkpoint(iteration)
+
             # --- Summary ---
             metrics = self._metrics.get_iteration_summary()
             metrics["total_loss"] = total_loss
@@ -222,11 +265,15 @@ class Trainer:
     def _train_step(self, batch: list) -> float:
         """Execute one gradient step on *batch*.
 
+        Computes the combined loss:
+            L = w_policy * CE(policy, target)
+              + w_value  * MSE(value, target)
+              + w_lbb    * LBB_regularization
+
         Parameters
         ----------
         batch:
-            List of ``Experience`` objects sampled from the
-            replay buffer.
+            List of ``Experience`` objects.
 
         Returns
         -------
@@ -243,14 +290,13 @@ class Trainer:
             for exp in batch
         ]).to(self._device)
 
-        # Ensure 3-D input: (batch, num_elements, features)
         if features.dim() == 2:
             features = features.unsqueeze(0)
 
         # Forward pass
         policy_logits, values = self._network(features)
 
-        # Value loss (MSE)
+        # --- Value loss (MSE) ---
         value_targets = torch.tensor(
             [exp.value_target for exp in batch],
             dtype=torch.float32,
@@ -262,10 +308,28 @@ class Trainer:
             values, value_targets,
         )
 
-        # Weighted total loss
+        # --- Policy loss (cross-entropy) ---
+        # Build target policy tensor from experiences
+        policy_targets = torch.stack([
+            torch.from_numpy(exp.policy_target)
+            for exp in batch
+        ]).to(self._device)
+
+        # Flatten spatial dims to match policy_logits shape
+        flat_logits = policy_logits.view(policy_logits.shape[0], -1)
+        flat_targets = policy_targets.view(policy_targets.shape[0], -1)
+
+        # Cross-entropy: -sum(target * log_prob)
+        policy_loss = -(flat_targets * flat_logits).sum(dim=-1).mean()
+
+        # --- LBB regularization loss ---
+        lbb_loss = self._network.compute_lbb_loss(features)
+
+        # --- Combined loss ---
         loss = (
-            self._config.training.value_loss_weight
-            * value_loss
+            self._config.training.policy_loss_weight * policy_loss
+            + self._config.training.value_loss_weight * value_loss
+            + self._config.training.lbb_loss_weight * lbb_loss
         )
 
         loss.backward()
@@ -280,6 +344,15 @@ class Trainer:
         )
 
         self._optimizer.step()
+
+        # Step LR scheduler if present
+        if self._scheduler is not None:
+            self._scheduler.step()
+
+        # Record individual losses
+        self._metrics.record("training/policy_loss", float(policy_loss.item()))
+        self._metrics.record("training/value_loss", float(value_loss.item()))
+        self._metrics.record("training/lbb_loss", float(lbb_loss.item()))
 
         return float(loss.item())
 

@@ -145,9 +145,9 @@ class PolicyEvaluator:
         )
 
         # Build network and load state dict
-        from src.alphagalerkin.nn.network import build_network
+        from src.alphagalerkin.nn.model import AlphaGalerkinNetwork
 
-        network = build_network(self._config.network)
+        network = AlphaGalerkinNetwork(self._config.network)
         network.load_state_dict(
             checkpoint["model_state_dict"],
         )

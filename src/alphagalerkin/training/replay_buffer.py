@@ -32,7 +32,7 @@ class Experience:
     """
 
     state_features: np.ndarray
-    policy_target: dict[str, float]
+    policy_target: np.ndarray
     value_target: float
     iteration: int = 0
     priority: float = 1.0

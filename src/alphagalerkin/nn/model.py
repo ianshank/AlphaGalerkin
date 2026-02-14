@@ -42,6 +42,7 @@ class AlphaGalerkinNetwork(nn.Module):
             num_heads=config.gnn.attention_heads,
             dropout=config.gnn.dropout,
             activation=config.gnn.activation,
+            architecture=config.gnn.architecture.value,
         )
         self.policy_head = PolicyHead(
             hidden_dim=config.gnn.hidden_dim,
@@ -83,6 +84,41 @@ class AlphaGalerkinNetwork(nn.Module):
         value = self.value_head(x)
 
         return policy, value
+
+    def compute_lbb_loss(self, features: torch.Tensor) -> torch.Tensor:
+        """Compute LBB regularization from Galerkin attention layers.
+
+        Returns zero tensor if backbone doesn't use Galerkin attention.
+        """
+        from src.alphagalerkin.nn.stability_guard import StabilityGuard
+
+        lbb_loss = torch.tensor(0.0, device=features.device)
+        guard = StabilityGuard()
+
+        for layer in self.backbone.layers:
+            if hasattr(layer, 'attention') and hasattr(layer.attention, 'compute_lbb_diagnostic'):
+                # Get KTV matrix for stability check
+                x = self.feature_norm(features)
+                x = self.encoder(x)
+                needs_batch = x.dim() == 2
+                if needs_batch:
+                    x = x.unsqueeze(0)
+                batch, seq_len, _ = x.shape
+                n_heads = layer.attention.num_heads
+                k_dim = layer.attention.key_dim
+                k = layer.attention.k_proj(x).view(
+                    batch, seq_len, n_heads, k_dim,
+                )
+                v = layer.attention.v_proj(x).view(
+                    batch, seq_len, n_heads, k_dim,
+                )
+                k = k.permute(0, 2, 1, 3)
+                v = v.permute(0, 2, 1, 3)
+                ktv = torch.matmul(k.transpose(-2, -1), v) / seq_len
+                lbb_loss = lbb_loss + guard(ktv)
+                break  # Only need first layer for regularization
+
+        return lbb_loss
 
     def predict(
         self,

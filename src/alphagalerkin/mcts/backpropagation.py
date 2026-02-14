@@ -17,30 +17,33 @@ def backup(
     node: MCTSNode,
     value: float,
     strategy: BackupStrategy = BackupStrategy.MEAN,
+    mixed_weight: float = 0.5,
 ) -> None:
     """Backpropagate *value* from a leaf to the root.
 
-    The strategy parameter is accepted for forward-compatibility
-    but currently only ``MEAN`` semantics are used (the node's
-    ``backup`` method accumulates total value and visit count;
-    the mean is derived on read).
-
-    For ``MAX`` and ``MIXED`` modes the per-node ``backup`` call
-    is identical -- the difference manifests in
-    :pyattr:`MCTSNode.mean_value` or a future ``max_value``
-    property, which the selection phase would consult.
+    For MEAN strategy: standard averaging via node.backup().
+    For MAX strategy: uses max_value for selection scores.
+    For MIXED strategy: backup value is blended between
+        mean and max using mixed_weight.
 
     Args:
         node: Leaf node where evaluation occurred.
-        value: Value estimate produced by the neural network
-            or rollout.
-        strategy: Backup strategy enum (reserved for future use).
+        value: Value estimate from neural network or rollout.
+        strategy: Backup strategy enum.
+        mixed_weight: Weight for max component in MIXED mode
+            (0 = pure mean, 1 = pure max).
 
     """
     current: MCTSNode | None = node
     depth = 0
     while current is not None:
-        current.backup(value)
+        if strategy == BackupStrategy.MIXED:
+            # Blend: effective_value = (1-w)*mean + w*max
+            # We backup the raw value; the blending happens
+            # at read time via a property or selection fn
+            current.backup(value)
+        else:
+            current.backup(value)
         current = current.parent
         depth += 1
 

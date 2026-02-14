@@ -35,6 +35,7 @@ class MCTSNode:
         self._visit_count: int = 0
         self._total_value: float = 0.0
         self._is_terminal: bool = False
+        self._max_value: float = float("-inf")
 
     # ---------------------------------------------------------------
     # Read-only properties
@@ -95,6 +96,12 @@ class MCTSNode:
         if self._visit_count == 0:
             return 0.0
         return self._total_value / self._visit_count
+
+
+    @property
+    def max_value(self) -> float:
+        """Maximum backed-up value seen at this node."""
+        return self._max_value if self.visit_count > 0 else 0.0
 
     # ---------------------------------------------------------------
     # UCB scoring
@@ -176,6 +183,7 @@ class MCTSNode:
         """Record one visit and accumulate *value*."""
         self._visit_count += 1
         self._total_value += value
+        self._max_value = max(self._max_value, value)
 
     def select_best_child(self, cpuct: float) -> MCTSNode:
         """Select the child with the highest UCB score.

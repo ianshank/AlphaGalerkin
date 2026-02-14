@@ -269,10 +269,10 @@ class GNNConfig(_Base):
         ge=1,
         description="Number of message-passing layers.",
     )
-    num_heads: int = Field(
+    attention_heads: int = Field(
         default=DEFAULT_NUM_ATTENTION_HEADS,
         ge=1,
-        description="Attention heads (GAT only).",
+        description="Attention heads per layer.",
     )
     dropout: float = Field(
         default=0.0,
@@ -295,6 +295,10 @@ class GNNConfig(_Base):
             "Edge feature dimension (0 = no edge features)."
         ),
     )
+    activation: str = Field(
+        default="gelu",
+        description="Activation function (gelu or relu).",
+    )
 
 
 class PolicyHeadConfig(_Base):
@@ -304,6 +308,10 @@ class PolicyHeadConfig(_Base):
         default=DEFAULT_HIDDEN_DIM,
         ge=8,
         description="Hidden dimension of the MLP.",
+    )
+    hidden_dims: list[int] = Field(
+        default_factory=lambda: [128, 64],
+        description="Hidden layer dimensions for the MLP.",
     )
     num_layers: int = Field(
         default=2,
@@ -325,6 +333,10 @@ class ValueHeadConfig(_Base):
         default=DEFAULT_HIDDEN_DIM,
         ge=8,
         description="Hidden dimension of the MLP.",
+    )
+    hidden_dims: list[int] = Field(
+        default_factory=lambda: [128, 64],
+        description="Hidden layer dimensions for the MLP.",
     )
     num_layers: int = Field(
         default=2,
@@ -361,6 +373,11 @@ class NetworkConfig(_Base):
     value_head: ValueHeadConfig = Field(
         default_factory=ValueHeadConfig,
         description="Value head config.",
+    )
+    input_features: int = Field(
+        default=8,
+        ge=1,
+        description="Number of per-element input features.",
     )
     node_feature_dim: int = Field(
         default=32,

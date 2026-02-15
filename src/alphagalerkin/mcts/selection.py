@@ -17,14 +17,10 @@ import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-import structlog
-
 from src.alphagalerkin.core.types import SelectionPolicy
 
 if TYPE_CHECKING:
     from src.alphagalerkin.mcts.node import MCTSNode
-
-logger = structlog.get_logger("mcts.selection")
 
 
 # -------------------------------------------------------------------

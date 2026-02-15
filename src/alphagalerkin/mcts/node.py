@@ -5,13 +5,9 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-import structlog
-
 if TYPE_CHECKING:
     from src.alphagalerkin.env.actions import Action
     from src.alphagalerkin.env.state import DiscretizationState
-
-logger = structlog.get_logger("mcts.node")
 
 
 class MCTSNode:

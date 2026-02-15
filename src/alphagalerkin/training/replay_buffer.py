@@ -8,11 +8,9 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-import structlog
 
 from src.alphagalerkin.core.config import ReplayConfig
-
-logger = structlog.get_logger("training.replay")
+from src.alphagalerkin.core.constants import MIN_PRIORITY
 
 
 @dataclass
@@ -196,7 +194,7 @@ class ReplayBuffer:
         """
         for idx, priority in zip(indices, priorities, strict=True):
             if 0 <= idx < len(self._priorities):
-                self._priorities[idx] = max(priority, 1e-6)
+                self._priorities[idx] = max(priority, MIN_PRIORITY)
 
     # ---------------------------------------------------------------
     # Lifecycle

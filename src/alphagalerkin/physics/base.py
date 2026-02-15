@@ -7,11 +7,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-import structlog
 
 from src.alphagalerkin.core.types import PDEType
-
-logger = structlog.get_logger("physics.base")
 
 
 @dataclass

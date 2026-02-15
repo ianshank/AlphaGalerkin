@@ -14,6 +14,8 @@ import structlog
 import torch
 import torch.nn as nn
 
+from src.alphagalerkin.core.constants import DIVISION_GUARD
+
 logger = structlog.get_logger("nn.galerkin_attention")
 
 
@@ -169,7 +171,7 @@ class GalerkinLinearAttention(nn.Module):
 
         sigma_min = float(singular_values.min().item())
         sigma_max = float(singular_values.max().item())
-        condition = sigma_max / max(sigma_min, 1e-10)
+        condition = sigma_max / max(sigma_min, DIVISION_GUARD)
 
         return {
             "sigma_min": sigma_min,

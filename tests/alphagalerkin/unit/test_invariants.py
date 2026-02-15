@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import PropertyMock, patch
+
 import pytest
 
 from src.alphagalerkin.core.exceptions import InvariantViolationError
@@ -105,6 +107,27 @@ class TestCheckAllInvariants:
             polynomial_order=1,
         )
         assert not check_no_orphan_basis(state)
+
+    def test_raises_on_orphan_basis_via_check_all(self) -> None:
+        """check_all_invariants catches orphan basis assignments."""
+        state = _default_state()
+        fake_eid = ElementID("orphan_elem")
+        state.basis_assignments[fake_eid] = BasisSpec(
+            polynomial_order=1,
+        )
+
+        # dof_count iterates basis_assignments and crashes on unknown
+        # elements, so we mock it to let invariant checks proceed.
+        with (
+            patch.object(
+                type(state),
+                "dof_count",
+                new_callable=PropertyMock,
+                return_value=10,
+            ),
+            pytest.raises(InvariantViolationError, match="Orphan"),
+        ):
+            check_all_invariants(state)
 
     def test_first_failure_wins(self) -> None:
         """check_all_invariants raises on the first failing check."""

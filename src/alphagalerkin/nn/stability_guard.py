@@ -11,7 +11,7 @@ import structlog
 import torch
 import torch.nn as nn
 
-from src.alphagalerkin.core.constants import MIN_SINGULAR_VALUE
+from src.alphagalerkin.core.constants import DIVISION_GUARD, MIN_SINGULAR_VALUE
 
 logger = structlog.get_logger("nn.stability_guard")
 
@@ -79,7 +79,7 @@ class StabilityGuard(nn.Module):
         self._last_diagnostics = {
             "sigma_min": float(sigma_min.item()),
             "sigma_max": float(sigma_max.item()),
-            "condition_number": float((sigma_max / sigma_min.clamp(min=1e-10)).item()),
+            "condition_number": float((sigma_max / sigma_min.clamp(min=DIVISION_GUARD)).item()),
             "num_singular_values": int(singular_values.numel()),
         }
 

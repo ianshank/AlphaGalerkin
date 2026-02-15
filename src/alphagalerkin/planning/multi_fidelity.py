@@ -200,7 +200,7 @@ class MultiFidelityManager:
     def plan_next_evaluation(
         self,
         state: MultiFidelityState,
-        _objective_fn: Callable[..., Any] | None = None,
+        objective_fn: Callable[..., Any] | None = None,  # noqa: ARG002
     ) -> FidelityAction:
         """Plan the next evaluation using uncertainty-guided selection.
 

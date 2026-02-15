@@ -5,12 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import structlog
 
-from src.alphagalerkin.core.constants import EPSILON
+from src.alphagalerkin.core.constants import DIVISION_GUARD, EPSILON
 from src.alphagalerkin.core.types import TemperatureScheduleType
-
-logger = structlog.get_logger("mcts.temperature")
 
 
 class TemperatureSchedule:
@@ -101,7 +98,7 @@ class TemperatureSchedule:
             return self._initial + (self._final - self._initial) * progress
 
         if self._type == TemperatureScheduleType.EXPONENTIAL:
-            ratio = self._final / max(self._initial, 1e-10)
+            ratio = self._final / max(self._initial, DIVISION_GUARD)
             return float(self._initial * (ratio**progress))
 
         if self._type == TemperatureScheduleType.STEP:

@@ -128,6 +128,7 @@ def validate_config(config_path: str) -> None:
         click.echo(f"  Device: {config.device}")
         click.echo(f"  MCTS sims: {config.mcts.num_simulations}")
     except Exception as e:
+        logger.error("cli.validate_config.failed", error=str(e), exc_info=True)
         click.echo(f"Configuration invalid: {e}", err=True)
         sys.exit(1)
 
@@ -159,23 +160,27 @@ def evaluate(
     num_episodes: int,
 ) -> None:
     """Evaluate a trained policy on test problems."""
-    config = AlphaGalerkinConfig.from_yaml(
-        Path(config_path),
-    )
+    try:
+        config = AlphaGalerkinConfig.from_yaml(
+            Path(config_path),
+        )
 
-    from src.alphagalerkin.evaluation.evaluator import (
-        PolicyEvaluator,
-    )
+        from src.alphagalerkin.evaluation.evaluator import (
+            PolicyEvaluator,
+        )
 
-    evaluator = PolicyEvaluator(config)
-    metrics = evaluator.evaluate_from_checkpoint(
-        checkpoint_path=Path(checkpoint_path),
-        num_episodes=num_episodes,
-    )
+        evaluator = PolicyEvaluator(config)
+        metrics = evaluator.evaluate_from_checkpoint(
+            checkpoint_path=Path(checkpoint_path),
+            num_episodes=num_episodes,
+        )
 
-    click.echo("Evaluation results:")
-    for key, value in sorted(metrics.items()):
-        click.echo(f"  {key}: {value:.6f}")
+        click.echo("Evaluation results:")
+        for key, value in sorted(metrics.items()):
+            click.echo(f"  {key}: {value:.6f}")
+    except Exception as e:
+        logger.error("cli.evaluate.failed", error=str(e), exc_info=True)
+        raise
 
 
 def _parse_value(value: str) -> Any:

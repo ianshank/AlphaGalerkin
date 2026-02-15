@@ -13,7 +13,7 @@ from src.alphagalerkin.env.environment import DiscretizationEnvironment
 from src.alphagalerkin.mcts.action_masking import ActionMasker
 from src.alphagalerkin.mcts.tree import EvalFn, TreeManager
 
-logger = structlog.get_logger("evaluation")
+logger = structlog.get_logger("evaluation.evaluator")
 
 
 class PolicyEvaluator:

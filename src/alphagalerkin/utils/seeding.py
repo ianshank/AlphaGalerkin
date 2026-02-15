@@ -10,7 +10,7 @@ import torch
 
 from src.alphagalerkin.core.constants import DEFAULT_SEED
 
-logger = structlog.get_logger("seeding")
+logger = structlog.get_logger("utils.seeding")
 
 
 def seed_everything(seed: int = DEFAULT_SEED) -> None:

@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 import structlog
 
-from src.alphagalerkin.core.constants import DEFAULT_SEED
+from src.alphagalerkin.core.constants import DEFAULT_SEED, DIVISION_GUARD
 
 logger = structlog.get_logger("planning.symbolic")
 
@@ -53,7 +53,7 @@ _UNARY_OPS: dict[str, Callable[..., Any]] = {
     "sin": np.sin,
     "cos": np.cos,
     "exp": lambda x: np.exp(np.clip(x, -10, 10)),
-    "log": lambda x: np.log(np.abs(x) + 1e-10),
+    "log": lambda x: np.log(np.abs(x) + DIVISION_GUARD),
     "sqrt": lambda x: np.sqrt(np.abs(x)),
     "neg": np.negative,
     "abs": np.abs,
@@ -65,7 +65,7 @@ _BINARY_OPS: dict[str, Callable[..., Any]] = {
     "*": np.multiply,
     "/": lambda a, b: np.divide(
         a,
-        np.where(np.abs(b) < 1e-10, 1e-10, b),
+        np.where(np.abs(b) < DIVISION_GUARD, DIVISION_GUARD, b),
     ),
 }
 

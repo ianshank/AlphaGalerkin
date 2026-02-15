@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import structlog
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-logger = structlog.get_logger("nn.policy_head")
+from src.alphagalerkin.core.types import ActionType
 
-# Default number of action types (from ActionType enum)
-DEFAULT_NUM_ACTIONS = 7
+# Derived from the ActionType enum so it stays in sync automatically.
+DEFAULT_NUM_ACTIONS = len(ActionType)
 
 
 class PolicyHead(nn.Module):

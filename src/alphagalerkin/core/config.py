@@ -28,6 +28,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationError,
     model_validator,
 )
 from typing_extensions import Self
@@ -1013,7 +1014,7 @@ class AlphaGalerkinConfig(_Base):
 
         try:
             config: AlphaGalerkinConfig = cls.model_validate(raw)
-        except Exception as exc:
+        except ValidationError as exc:
             raise ConfigValidationError(
                 f"Configuration validation failed: {exc}",
                 path=str(filepath),
@@ -1047,7 +1048,7 @@ class AlphaGalerkinConfig(_Base):
 
         try:
             config: AlphaGalerkinConfig = cls.model_validate(data)
-        except Exception as exc:
+        except ValidationError as exc:
             raise ConfigValidationError(
                 f"Configuration validation failed: {exc}",
             ) from exc

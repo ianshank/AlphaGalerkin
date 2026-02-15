@@ -8,7 +8,7 @@ from typing import Any
 import structlog
 import yaml
 
-logger = structlog.get_logger("io")
+logger = structlog.get_logger("utils.io")
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

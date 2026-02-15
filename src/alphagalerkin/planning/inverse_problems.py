@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 import structlog
 
-from src.alphagalerkin.core.constants import DEFAULT_SEED
+from src.alphagalerkin.core.constants import DEFAULT_SEED, DIVISION_GUARD
 
 logger = structlog.get_logger("planning.inverse")
 
@@ -214,7 +214,7 @@ class InverseProblemSolver:
     def plan_next_action(
         self,
         state: InverseProblemState,
-        _forward_model: Callable[..., Any] | None = None,
+        forward_model: Callable[..., Any] | None = None,  # noqa: ARG002
     ) -> InverseAction:
         """Plan next measurement/sensing action.
 
@@ -380,7 +380,7 @@ class InverseProblemSolver:
                 new_state.measurements_taken += 1
                 # Update information gain based on noise level
                 sensor = new_state.sensors[idx]
-                info_gain = 1.0 / max(sensor.noise_level, 1e-10)
+                info_gain = 1.0 / max(sensor.noise_level, DIVISION_GUARD)
                 new_state.total_information_gain += info_gain
 
         elif action.action_type == InverseActionType.UPDATE_PRIOR:
@@ -481,7 +481,7 @@ class InverseProblemSolver:
         weighted_sum = np.zeros(n_params)
 
         for sensor in measured:
-            weight = 1.0 / max(sensor.noise_level**2, 1e-10)
+            weight = 1.0 / max(sensor.noise_level**2, DIVISION_GUARD)
             total_weight += weight
             # Each measurement nudges the estimate (simplified)
             weighted_sum += weight * sensor.measurement * np.ones(n_params)  # type: ignore[operator]

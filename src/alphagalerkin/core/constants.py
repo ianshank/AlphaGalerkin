@@ -40,6 +40,12 @@ unstable and a ``StabilityViolationError`` is raised.
 EPSILON: Final[float] = 1e-8
 """General-purpose numerical epsilon for avoiding division by zero."""
 
+DIVISION_GUARD: Final[float] = 1e-10
+"""Tight numerical guard for safe division in condition-number calculations."""
+
+MIN_PRIORITY: Final[float] = 1e-6
+"""Minimum experience-replay priority to prevent zero-probability sampling."""
+
 
 # -----------------------------------------------------------------------
 # MCTS defaults

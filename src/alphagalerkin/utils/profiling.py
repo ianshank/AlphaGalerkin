@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     P = ParamSpec("P")
     R = TypeVar("R")
 
-logger = structlog.get_logger("profiling")
+logger = structlog.get_logger("utils.profiling")
 
 
 # ------------------------------------------------------------------ #

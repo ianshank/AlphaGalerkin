@@ -4,10 +4,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-import structlog
-
-logger = structlog.get_logger("training.metrics")
-
 
 class MetricCollector:
     """Collects and aggregates training metrics.

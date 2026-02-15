@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import structlog
 import torch
 import torch.nn as nn
-
-logger = structlog.get_logger("nn.feature_norm")
 
 
 class RunningNorm(nn.Module):

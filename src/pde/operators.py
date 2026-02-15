@@ -419,9 +419,13 @@ class PoissonOperator(PDEOperator):
         compute_derivatives: bool = True,
     ) -> PDEResidual:
         """Compute Poisson residual: R = -∇²u - f."""
-        derivatives = self.compute_derivatives(u, coords)
+        if compute_derivatives:
+            derivatives = self.compute_derivatives(u, coords)
+            laplacian = derivatives.get("laplacian", torch.zeros_like(u))
+        else:
+            derivatives = {}
+            laplacian = torch.zeros_like(u)
 
-        laplacian = derivatives.get("laplacian", torch.zeros_like(u))
         source = self.source_term(coords)
 
         if isinstance(source, np.ndarray):
@@ -437,7 +441,7 @@ class PoissonOperator(PDEOperator):
             values=residual_values,
             l2_norm=l2_norm,
             max_norm=max_norm,
-            derivatives=derivatives if compute_derivatives else {},
+            derivatives=derivatives,
         )
 
     def source_term(
@@ -549,7 +553,10 @@ class BurgersOperator(PDEOperator):
         time: float | None = None,
     ) -> PDEResidual:
         """Compute Burgers residual: R = u_t + u·∇u - ν∇²u."""
-        derivatives = self.compute_derivatives(u, coords)
+        if compute_derivatives:
+            derivatives = self.compute_derivatives(u, coords)
+        else:
+            derivatives = {}
 
         laplacian = derivatives.get("laplacian", torch.zeros_like(u))
 
@@ -569,7 +576,7 @@ class BurgersOperator(PDEOperator):
             values=residual_values,
             l2_norm=l2_norm,
             max_norm=max_norm,
-            derivatives=derivatives if compute_derivatives else {},
+            derivatives=derivatives,
         )
 
     def source_term(
@@ -659,7 +666,10 @@ class AdvectionDiffusionOperator(PDEOperator):
         compute_derivatives: bool = True,
     ) -> PDEResidual:
         """Compute advection-diffusion residual: R = a·∇u - ν∇²u - f."""
-        derivatives = self.compute_derivatives(u, coords)
+        if compute_derivatives:
+            derivatives = self.compute_derivatives(u, coords)
+        else:
+            derivatives = {}
 
         laplacian = derivatives.get("laplacian", torch.zeros_like(u))
         source = self.source_term(coords)
@@ -684,7 +694,7 @@ class AdvectionDiffusionOperator(PDEOperator):
             values=residual_values,
             l2_norm=l2_norm,
             max_norm=max_norm,
-            derivatives=derivatives if compute_derivatives else {},
+            derivatives=derivatives,
         )
 
     def source_term(
@@ -793,7 +803,10 @@ class HeatOperator(PDEOperator):
         compute_derivatives: bool = True,
     ) -> PDEResidual:
         """Compute heat equation residual (steady state): R = -κ∇²u - f."""
-        derivatives = self.compute_derivatives(u, coords)
+        if compute_derivatives:
+            derivatives = self.compute_derivatives(u, coords)
+        else:
+            derivatives = {}
 
         laplacian = derivatives.get("laplacian", torch.zeros_like(u))
         source = self.source_term(coords)
@@ -811,7 +824,7 @@ class HeatOperator(PDEOperator):
             values=residual_values,
             l2_norm=l2_norm,
             max_norm=max_norm,
-            derivatives=derivatives if compute_derivatives else {},
+            derivatives=derivatives,
         )
 
     def source_term(

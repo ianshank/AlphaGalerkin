@@ -602,8 +602,12 @@ class SymbolicDiscovery:
                 return float("inf")
             mse = float(np.mean((predicted - target_data) ** 2))
             return mse
-        except Exception:
-            logger.debug("symbolic.evaluation_failed", exc_info=True)
+        except (ValueError, ArithmeticError, OverflowError) as exc:
+            logger.debug(
+                "symbolic.evaluation_failed",
+                error=type(exc).__name__,
+                exc_info=True,
+            )
             return float("inf")
 
     # ------------------------------------------------------------------

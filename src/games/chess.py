@@ -910,7 +910,13 @@ class ChessGame(GameInterface):
 
         """
         if not self.is_terminal(state):
-            return GameResult(winner=None, reason="game_ongoing")
+            return GameResult(
+                winner=None,
+                score_black=0.0,
+                score_white=0.0,
+                reason="game_ongoing",
+                move_count=state.move_number,
+            )
 
         legal_moves = self.get_legal_actions(state)
         player = state.current_player
@@ -921,20 +927,29 @@ class ChessGame(GameInterface):
                 # Checkmate - opponent wins
                 return GameResult(
                     winner=-player,
+                    score_black=0.0 if player == BLACK else 1.0,
+                    score_white=0.0 if player == WHITE else 1.0,
                     reason="checkmate",
-                    scores={
-                        WHITE: 0.0 if player == WHITE else 1.0,
-                        BLACK: 0.0 if player == BLACK else 1.0,
-                    },
+                    move_count=state.move_number,
                 )
             else:
                 # Stalemate
-                return GameResult(winner=None, reason="stalemate", scores={WHITE: 0.5, BLACK: 0.5})
+                return GameResult(
+                    winner=None,
+                    score_black=0.5,
+                    score_white=0.5,
+                    reason="stalemate",
+                    move_count=state.move_number,
+                )
 
         # 50-move rule
         if state.metadata.get("halfmove_clock", 0) >= 100:
             return GameResult(
-                winner=None, reason="fifty_move_rule", scores={WHITE: 0.5, BLACK: 0.5}
+                winner=None,
+                score_black=0.5,
+                score_white=0.5,
+                reason="fifty_move_rule",
+                move_count=state.move_number,
             )
 
         # Threefold repetition
@@ -943,16 +958,30 @@ class ChessGame(GameInterface):
             current_pos = pos_history[-1]
             if pos_history.count(current_pos) >= 3:
                 return GameResult(
-                    winner=None, reason="threefold_repetition", scores={WHITE: 0.5, BLACK: 0.5}
+                    winner=None,
+                    score_black=0.5,
+                    score_white=0.5,
+                    reason="threefold_repetition",
+                    move_count=state.move_number,
                 )
 
         # Insufficient material
         if self._is_insufficient_material(state):
             return GameResult(
-                winner=None, reason="insufficient_material", scores={WHITE: 0.5, BLACK: 0.5}
+                winner=None,
+                score_black=0.5,
+                score_white=0.5,
+                reason="insufficient_material",
+                move_count=state.move_number,
             )
 
-        return GameResult(winner=None, reason="unknown")
+        return GameResult(
+            winner=None,
+            score_black=0.0,
+            score_white=0.0,
+            reason="unknown",
+            move_count=state.move_number,
+        )
 
     def get_winner(self, state: GameState) -> int | None:
         """Get winner from terminal state.

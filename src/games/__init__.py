@@ -9,7 +9,8 @@ Key Components:
     - GameRegistry: Registry for game implementations
     - GoGame: Go game implementation (full Chinese rules, superko)
     - ChessGame: Chess implementation (full rules, castling, en passant, promotions)
-    - ShogiGame: Shogi implementation (stub - not yet implemented)
+    - OthelloGame: Othello implementation (variable board sizes, disc flipping)
+    - HexGame: Hex implementation (variable board sizes, connection game)
 
 Usage:
     from src.games import GameRegistry, GoGame
@@ -33,6 +34,8 @@ try:
     from src.games import (
         chess,  # noqa: F401
         go,  # noqa: F401
+        hex,  # noqa: F401
+        othello,  # noqa: F401
     )
     from src.games.interface import GameInterface, GamePhase
     from src.games.registry import GameRegistry, register_game

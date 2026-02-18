@@ -42,6 +42,10 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+pettingzoo = [
+    "pettingzoo>=1.24.0",
+    "gymnasium>=0.28.0",
+]
 vertex = [
     "google-cloud-aiplatform>=1.36.0",
     "google-cloud-storage>=2.10.0",
@@ -136,6 +140,8 @@ module = [
     "torchvision.*",
     "numpy.*",
     "pytest.*",
+    "pettingzoo.*",
+    "gymnasium.*",
 ]
 ignore_missing_imports = true
 

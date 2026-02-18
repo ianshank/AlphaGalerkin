@@ -68,6 +68,25 @@ Monitors LBB condition during training:
 - [2026-02-04]: **PDE-MCTS Integration** - PDEGameAdapter bridges PDE games to MCTS search engine
 - [2026-02-04]: **Physics Loss Wired** - Laplacian regularization via autodiff in PhysicsLoss
 - [2026-02-04]: **Curriculum Config Schema** - curriculum_schedule field on TrainingConfig with transition logging
+- [2026-02-18]: **PettingZoo Integration** - Generic AEC wrapper, Go/Othello/Hex environments for MARL benchmarking
+- [2026-02-18]: **Othello Game Implementation** - Full Othello rules with variable board sizes (4-16) for cross-resolution transfer
+- [2026-02-18]: **Hex Game Implementation** - Full Hex rules with Union-Find connectivity, variable board sizes (3-19)
+
+## PettingZoo Integration (src/pettingzoo/)
+- [2026-02-18]: Generic AEC wrapper adapting any GameInterface to PettingZoo AEC API.
+- [2026-02-18]: Pydantic-validated PettingZooConfig for rewards, agent naming, truncation.
+- [2026-02-18]: Environment factories: go_env(), othello_env(), hex_env() with variable board sizes.
+- [2026-02-18]: Action masking, configurable illegal-move handling, ANSI rendering.
+- [2026-02-18]: Structured logging via structlog for debugging and monitoring.
+- [2026-02-18]: Full test suite: 173 tests covering wrapper, environments, and cross-resolution transfer.
+
+## Multi-Game Additions (src/games/)
+- [2026-02-18]: OthelloGame with variable board sizes (4×4 to 16×16, even only).
+- [2026-02-18]: Disc flipping in all 8 directions, pass-when-no-moves, disc-count scoring.
+- [2026-02-18]: Resolution independence demo: train 6×6 → evaluate 8×8, 10×10, 12×12.
+- [2026-02-18]: HexGame with variable board sizes (3×3 to 19×19).
+- [2026-02-18]: Union-Find for O(α(n)) win detection, hex adjacency (6 neighbors).
+- [2026-02-18]: No draws possible (Hex is determined). Purest resolution independence test.
 
 ## Next-Phase Infrastructure (v2.0)
 
@@ -369,6 +388,52 @@ python -c "from src.games import GameRegistry; print(GameRegistry().list_games()
 pytest tests/games/ -v
 ```
 
+## PettingZoo Commands
+```bash
+# Install PettingZoo dependencies
+pip install 'alphagalerkin[pettingzoo]'
+
+# Run a Go game via PettingZoo AEC API
+python -c "
+from src.pettingzoo import go_env
+import numpy as np
+env = go_env(board_size=9)
+env.reset(seed=42)
+for agent in env.agent_iter():
+    obs, reward, term, trunc, info = env.last()
+    if term or trunc:
+        break
+    mask = obs['action_mask']
+    action = int(np.random.choice(np.where(mask)[0]))
+    env.step(action)
+env.close()
+"
+
+# Run Othello at different resolutions
+python -c "
+from src.pettingzoo import othello_env
+for size in [6, 8, 10, 12]:
+    env = othello_env(board_size=size)
+    env.reset()
+    obs = env.observe('player_0')
+    print(f'{size}x{size}: obs={obs[\"observation\"].shape}, actions={obs[\"action_mask\"].shape}')
+"
+
+# Run Hex game
+python -c "
+from src.pettingzoo import hex_env
+env = hex_env(board_size=7, render_mode='ansi')
+env.reset()
+print(env.render())
+"
+
+# PettingZoo integration tests
+pytest tests/pettingzoo/ -v
+
+# All game + PettingZoo tests
+pytest tests/games/ tests/pettingzoo/ -v
+```
+
 ## Module Development Template Commands
 ```bash
 # Run template tests
@@ -571,6 +636,13 @@ src/
     registry.py       - Game registration and discovery
     state.py          - Generic game state representation
     go.py             - Go game implementation
+    chess.py          - Chess game implementation
+    othello.py        - Othello game implementation (variable board sizes)
+    hex.py            - Hex game implementation (variable board sizes, Union-Find)
+  pettingzoo/   - PettingZoo MARL integration
+    config.py         - Pydantic PettingZooConfig
+    wrapper.py        - Generic GameInterface → AEC adapter
+    environments.py   - Factory functions: go_env, othello_env, hex_env
   pde/          - PDE Game Framework
     config.py         - Pydantic PDE configuration schemas
     game.py           - Abstract PDEGame base class
@@ -639,6 +711,12 @@ tests/
     test_config.py    - Export/quantization config tests
   games/        - Multi-game tests
     test_go.py        - Go implementation tests
+    test_chess.py     - Chess implementation tests
+    test_othello.py   - Othello implementation tests
+    test_hex.py       - Hex implementation tests
+  pettingzoo/   - PettingZoo integration tests
+    test_wrapper.py       - Generic AEC wrapper tests
+    test_environments.py  - Environment factory and cross-resolution tests
   pde/          - PDE framework tests
     test_config.py    - PDE configuration validation tests
     test_operators.py - PDE operator tests

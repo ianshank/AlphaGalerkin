@@ -1,0 +1,288 @@
+# Auto-Fix Lint Failures with Claude Code
+#
+# This workflow is triggered when the lint job in CI fails on a PR.
+# It uses Claude Code to automatically fix ruff lint and formatting issues,
+# then commits the fixes back to the PR branch.
+#
+# Flow:
+#   1. CI lint job fails → sets output `lint_failed=true`
+#   2. This workflow is triggered via `workflow_run` on CI completion
+#   3. Claude Code agent runs `ruff check --fix` and `ruff format`
+#   4. If changes were made, commits and pushes to the PR branch
+
+name: Auto-Fix Lint
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  auto-fix:
+    name: Auto-Fix Ruff Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only run when CI failed AND it was triggered by a pull request
+    if: >
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Get PR details from triggering workflow
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Get the head branch and SHA from the workflow run
+            const run = context.payload.workflow_run;
+            const headBranch = run.head_branch;
+            const headSha = run.head_sha;
+            const headRepo = run.head_repository.full_name;
+
+            // Find the associated PR
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${headRepo.split('/')[0]}:${headBranch}`,
+              state: 'open',
+            });
+
+            if (prs.length === 0) {
+              core.setOutput('skip', 'true');
+              core.info('No open PR found for this workflow run');
+              return;
+            }
+
+            const pr = prs[0];
+            core.setOutput('skip', 'false');
+            core.setOutput('pr_number', pr.number.toString());
+            core.setOutput('pr_branch', headBranch);
+            core.setOutput('pr_sha', headSha);
+            core.setOutput('base_branch', pr.base.ref);
+            core.info(`Found PR #${pr.number} on branch ${headBranch}`);
+
+      - name: Check if lint was the failure cause
+        if: steps.pr-info.outputs.skip != 'true'
+        id: check-lint
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Get jobs from the failed workflow run
+            const { data: jobs } = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+            });
+
+            const lintJob = jobs.jobs.find(j => j.name === 'Lint & Type Check');
+            if (!lintJob) {
+              core.setOutput('lint_failed', 'false');
+              core.info('Lint job not found in workflow run');
+              return;
+            }
+
+            const failed = lintJob.conclusion === 'failure';
+            core.setOutput('lint_failed', failed.toString());
+            core.info(`Lint job conclusion: ${lintJob.conclusion}`);
+
+      - name: Checkout PR branch
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr-info.outputs.pr_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install ruff
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        run: pip install ruff
+
+      - name: Capture lint errors before fix
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        id: lint-errors
+        continue-on-error: true
+        run: |
+          echo "## Ruff Check Errors" > /tmp/lint-errors.txt
+          echo '```' >> /tmp/lint-errors.txt
+          ruff check src/ 2>&1 | tee -a /tmp/lint-errors.txt || true
+          echo '```' >> /tmp/lint-errors.txt
+          echo "" >> /tmp/lint-errors.txt
+          echo "## Ruff Format Errors" >> /tmp/lint-errors.txt
+          echo '```' >> /tmp/lint-errors.txt
+          ruff format src/ --check --diff 2>&1 | tee -a /tmp/lint-errors.txt || true
+          echo '```' >> /tmp/lint-errors.txt
+
+      - name: Run ruff auto-fix
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        run: |
+          echo "::group::Running ruff check --fix"
+          ruff check src/ --fix || true
+          echo "::endgroup::"
+
+          echo "::group::Running ruff format"
+          ruff format src/
+          echo "::endgroup::"
+
+      - name: Check for changes
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No auto-fixable changes detected"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Auto-fixable changes detected:"
+            git diff --stat
+          fi
+
+      - name: Verify fixes pass lint
+        if: >
+          steps.changes.outputs.has_changes == 'true'
+        id: verify
+        run: |
+          echo "::group::Verifying ruff check passes"
+          if ruff check src/ --output-format=github; then
+            echo "lint_clean=true" >> "$GITHUB_OUTPUT"
+            echo "Ruff check passes after fix"
+          else
+            echo "lint_clean=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Some lint issues remain after auto-fix"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Verifying ruff format passes"
+          if ruff format src/ --check; then
+            echo "format_clean=true" >> "$GITHUB_OUTPUT"
+            echo "Ruff format passes after fix"
+          else
+            echo "format_clean=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Some format issues remain after auto-fix"
+          fi
+          echo "::endgroup::"
+
+      - name: Commit and push fixes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A src/
+          git commit -m "style: auto-fix ruff lint and formatting issues
+
+          Auto-fix applied by CI workflow after lint failure.
+          Fixes applied:
+          - ruff check --fix (auto-fixable lint rules)
+          - ruff format (code formatting)
+
+          Triggered by: workflow_run on CI failure"
+          git push origin ${{ steps.pr-info.outputs.pr_branch }}
+
+      - name: Use Claude Code for remaining issues
+        if: >
+          steps.changes.outputs.has_changes == 'true' &&
+          steps.verify.outputs.lint_clean == 'false'
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            The ruff auto-fix resolved some lint issues but others remain.
+            Please fix the remaining ruff lint violations in the `src/` directory.
+
+            Run `ruff check src/` to see the remaining issues, then fix each one.
+            After fixing, verify with `ruff check src/` and `ruff format src/ --check`.
+
+            Only modify files under `src/`. Do not change tests or configuration.
+            Commit with message: "fix: resolve remaining ruff lint violations"
+          allowed_tools: "Bash,Read,Edit,Write,Glob,Grep"
+          timeout_minutes: 8
+
+      - name: Use Claude Code for unfixable issues
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true' &&
+          steps.changes.outputs.has_changes == 'false'
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            The ruff linter found violations that `ruff check --fix` could not
+            auto-fix. Please manually fix all ruff lint and formatting issues
+            in the `src/` directory.
+
+            Steps:
+            1. Run `ruff check src/` to see all violations
+            2. Fix each violation in the source code
+            3. Run `ruff format src/` to fix formatting
+            4. Verify with `ruff check src/` and `ruff format src/ --check`
+            5. Commit with message: "fix: resolve ruff lint violations"
+            6. Push to the current branch
+
+            Only modify files under `src/`. Do not change tests or configuration.
+          allowed_tools: "Bash,Read,Edit,Write,Glob,Grep"
+          timeout_minutes: 8
+
+      - name: Comment on PR with results
+        if: >
+          steps.pr-info.outputs.skip != 'true' &&
+          steps.check-lint.outputs.lint_failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.pr-info.outputs.pr_number }}');
+            const hasChanges = '${{ steps.changes.outputs.has_changes }}' === 'true';
+            const lintClean = '${{ steps.verify.outputs.lint_clean }}' === 'true';
+            const formatClean = '${{ steps.verify.outputs.format_clean }}' === 'true';
+
+            let body = '## 🔧 Auto-Fix Lint Results\n\n';
+
+            if (hasChanges && lintClean && formatClean) {
+              body += '✅ **All ruff lint and formatting issues were auto-fixed.**\n\n';
+              body += 'A commit has been pushed to this branch with the fixes. ';
+              body += 'CI will re-run automatically.\n';
+            } else if (hasChanges) {
+              body += '⚠️ **Some issues were auto-fixed, but others require manual attention.**\n\n';
+              body += 'Claude Code was invoked to fix the remaining issues. ';
+              body += 'Check the workflow run for details.\n';
+              if (!lintClean) body += '- ❌ Lint issues remain after auto-fix\n';
+              if (!formatClean) body += '- ❌ Format issues remain after auto-fix\n';
+            } else {
+              body += '⚠️ **No auto-fixable issues found.** All violations require manual fixes.\n\n';
+              body += 'Claude Code was invoked to fix these issues. ';
+              body += 'Check the workflow run for details.\n';
+            }
+
+            body += '\n---\n*Auto-fix triggered by CI lint failure*';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body,
+            });

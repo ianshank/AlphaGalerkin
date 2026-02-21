@@ -44,9 +44,12 @@ WHITE = -1  # White connects left-right
 
 # Hex has 6 neighbors (hexagonal adjacency on a rhombus grid)
 _HEX_NEIGHBORS = [
-    (-1, 0), (-1, 1),
-    (0, -1),          (0, 1),
-    (1, -1), (1, 0),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
 ]
 
 # Number of planes in neural network encoding
@@ -306,9 +309,7 @@ class HexGame(GameInterface):
         board = state.board.copy()
 
         if board[row, col] != EMPTY:
-            raise ValueError(
-                f"Illegal move: position ({row}, {col}) is occupied"
-            )
+            raise ValueError(f"Illegal move: position ({row}, {col}) is occupied")
 
         board[row, col] = player
 

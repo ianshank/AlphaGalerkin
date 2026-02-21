@@ -1162,7 +1162,10 @@ class ChessGame(GameInterface):
 
         if promotion:
             _promo_char: dict[Piece, str] = {
-                Piece.QUEEN: "q", Piece.ROOK: "r", Piece.BISHOP: "b", Piece.KNIGHT: "n",
+                Piece.QUEEN: "q",
+                Piece.ROOK: "r",
+                Piece.BISHOP: "b",
+                Piece.KNIGHT: "n",
             }
             move_str += _promo_char[Piece(promotion)]
 

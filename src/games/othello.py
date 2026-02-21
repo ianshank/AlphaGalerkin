@@ -39,9 +39,14 @@ WHITE = -1
 
 # Direction vectors for disc flipping (8 directions)
 _DIRECTIONS = [
-    (-1, -1), (-1, 0), (-1, 1),
-    (0, -1),           (0, 1),
-    (1, -1),  (1, 0),  (1, 1),
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
 ]
 
 # Number of planes in neural network encoding
@@ -235,9 +240,7 @@ class OthelloGame(GameInterface):
         board = state.board.copy()
 
         if board[row, col] != EMPTY:
-            raise ValueError(
-                f"Illegal move: position ({row}, {col}) is occupied"
-            )
+            raise ValueError(f"Illegal move: position ({row}, {col}) is occupied")
 
         # Place disc
         board[row, col] = player
@@ -245,9 +248,7 @@ class OthelloGame(GameInterface):
         # Flip discs in all directions
         flipped = self._flip_discs(board, row, col, player)
         if not flipped:
-            raise ValueError(
-                f"Illegal move: ({row}, {col}) flips no opponent discs"
-            )
+            raise ValueError(f"Illegal move: ({row}, {col}) flips no opponent discs")
 
         return state.with_move(
             action=action,
@@ -376,9 +377,7 @@ class OthelloGame(GameInterface):
             is_tensor = False
 
         pass_prob = policy_np[-1]
-        board_policy = policy_np[: board_size * board_size].reshape(
-            board_size, board_size
-        )
+        board_policy = policy_np[: board_size * board_size].reshape(board_size, board_size)
         board = state.board
 
         for rotation in range(4):
@@ -398,9 +397,7 @@ class OthelloGame(GameInterface):
                     metadata=state.metadata.copy(),
                 )
 
-                new_policy = np.concatenate(
-                    [transformed_policy.flatten(), [pass_prob]]
-                )
+                new_policy = np.concatenate([transformed_policy.flatten(), [pass_prob]])
 
                 if is_tensor:
                     new_policy = torch.from_numpy(new_policy)

@@ -77,9 +77,7 @@ class AlphaGalerkinAECEnv(AECEnv):
         self._board_size = self.config.board_size or game.default_board_size
 
         # Agent setup (2-player games)
-        self.possible_agents = [
-            self.config.agent_name(i) for i in range(game.n_players)
-        ]
+        self.possible_agents = [self.config.agent_name(i) for i in range(game.n_players)]
         self._agent_to_player = {
             self.possible_agents[0]: _PLAYER_1,
             self.possible_agents[1]: _PLAYER_2,
@@ -113,8 +111,7 @@ class AlphaGalerkinAECEnv(AECEnv):
         }
 
         self.action_spaces = {
-            agent: spaces.Discrete(self._action_space_size)
-            for agent in self.possible_agents
+            agent: spaces.Discrete(self._action_space_size) for agent in self.possible_agents
         }
 
         # Internal state (initialized in reset)
@@ -418,19 +415,14 @@ class AlphaGalerkinAECEnv(AECEnv):
         lines = []
 
         # Column labels
-        col_labels = "  " + " ".join(
-            chr(ord("A") + i) for i in range(size)
-        )
+        col_labels = "  " + " ".join(chr(ord("A") + i) for i in range(size))
         lines.append(col_labels)
 
         # Board rows
         piece_map = {0: ".", 1: "X", -1: "O"}
         for row in range(size):
             row_label = f"{size - row:2d}"
-            cells = " ".join(
-                piece_map.get(int(board[row, col]), "?")
-                for col in range(size)
-            )
+            cells = " ".join(piece_map.get(int(board[row, col]), "?") for col in range(size))
             lines.append(f"{row_label} {cells}")
 
         # Game info

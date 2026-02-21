@@ -116,7 +116,7 @@ class GameState:
             Board dimension.
 
         """
-        return self.board.shape[-1]
+        return int(self.board.shape[-1])
 
     @property
     def last_move(self) -> int | None:

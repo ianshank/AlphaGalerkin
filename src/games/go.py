@@ -254,7 +254,7 @@ class GoGame(GameInterface):
             True if game is over.
 
         """
-        return state.metadata.get("consecutive_passes", 0) >= 2
+        return bool(state.metadata.get("consecutive_passes", 0) >= 2)
 
     def get_result(self, state: GameState) -> GameResult:
         """Get game result from terminal state.

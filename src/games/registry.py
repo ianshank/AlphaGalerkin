@@ -217,7 +217,7 @@ def register_game(name: str) -> Callable[[type], type]:
 
     def decorator(cls: type) -> type:
         GameRegistry().register(name, cls)
-        cls.name = name  # Set name on class
+        cls.name = name  # type: ignore[attr-defined]  # Set name on class
         return cls
 
     return decorator

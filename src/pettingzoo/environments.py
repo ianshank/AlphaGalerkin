@@ -54,7 +54,7 @@ def go_env(
         board_size=board_size,
         render_mode=render_mode,
         agent_prefix="player",
-        **config_kwargs,  # type: ignore[arg-type]
+        **config_kwargs,
     )
     return AlphaGalerkinAECEnv(game=game, config=config)
 
@@ -80,7 +80,7 @@ def othello_env(
         board_size=board_size,
         render_mode=render_mode,
         agent_prefix="player",
-        **config_kwargs,  # type: ignore[arg-type]
+        **config_kwargs,
     )
     return AlphaGalerkinAECEnv(game=game, config=config)
 
@@ -106,6 +106,6 @@ def hex_env(
         board_size=board_size,
         render_mode=render_mode,
         agent_prefix="player",
-        **config_kwargs,  # type: ignore[arg-type]
+        **config_kwargs,
     )
     return AlphaGalerkinAECEnv(game=game, config=config)

@@ -609,7 +609,8 @@ class ChessGame(GameInterface):
                 dir_idx = 2
 
             # Piece type index: knight=0, bishop=1, rook=2
-            piece_idx = {Piece.KNIGHT: 0, Piece.BISHOP: 1, Piece.ROOK: 2}[promotion]
+            _underpromo_idx: dict[Piece, int] = {Piece.KNIGHT: 0, Piece.BISHOP: 1, Piece.ROOK: 2}
+            piece_idx = _underpromo_idx[Piece(promotion)]
             move_type = 64 + piece_idx * 3 + dir_idx
             return from_square * NUM_MOVE_TYPES + move_type
 
@@ -821,7 +822,7 @@ class ChessGame(GameInterface):
     def _hash_position(
         self,
         board: np.ndarray,
-        castling: dict,
+        castling: dict[str, bool],
         ep_square: tuple[int, int] | None,
     ) -> str:
         """Create a hash for position comparison (threefold repetition)."""
@@ -910,7 +911,13 @@ class ChessGame(GameInterface):
 
         """
         if not self.is_terminal(state):
-            return GameResult(winner=None, reason="game_ongoing")
+            return GameResult(
+                winner=None,
+                score_black=0.0,
+                score_white=0.0,
+                reason="game_ongoing",
+                move_count=state.move_number,
+            )
 
         legal_moves = self.get_legal_actions(state)
         player = state.current_player
@@ -921,20 +928,29 @@ class ChessGame(GameInterface):
                 # Checkmate - opponent wins
                 return GameResult(
                     winner=-player,
+                    score_black=0.0 if player == BLACK else 1.0,
+                    score_white=0.0 if player == WHITE else 1.0,
                     reason="checkmate",
-                    scores={
-                        WHITE: 0.0 if player == WHITE else 1.0,
-                        BLACK: 0.0 if player == BLACK else 1.0,
-                    },
+                    move_count=state.move_number,
                 )
             else:
                 # Stalemate
-                return GameResult(winner=None, reason="stalemate", scores={WHITE: 0.5, BLACK: 0.5})
+                return GameResult(
+                    winner=None,
+                    score_black=0.5,
+                    score_white=0.5,
+                    reason="stalemate",
+                    move_count=state.move_number,
+                )
 
         # 50-move rule
         if state.metadata.get("halfmove_clock", 0) >= 100:
             return GameResult(
-                winner=None, reason="fifty_move_rule", scores={WHITE: 0.5, BLACK: 0.5}
+                winner=None,
+                score_black=0.5,
+                score_white=0.5,
+                reason="fifty_move_rule",
+                move_count=state.move_number,
             )
 
         # Threefold repetition
@@ -943,16 +959,30 @@ class ChessGame(GameInterface):
             current_pos = pos_history[-1]
             if pos_history.count(current_pos) >= 3:
                 return GameResult(
-                    winner=None, reason="threefold_repetition", scores={WHITE: 0.5, BLACK: 0.5}
+                    winner=None,
+                    score_black=0.5,
+                    score_white=0.5,
+                    reason="threefold_repetition",
+                    move_count=state.move_number,
                 )
 
         # Insufficient material
         if self._is_insufficient_material(state):
             return GameResult(
-                winner=None, reason="insufficient_material", scores={WHITE: 0.5, BLACK: 0.5}
+                winner=None,
+                score_black=0.5,
+                score_white=0.5,
+                reason="insufficient_material",
+                move_count=state.move_number,
             )
 
-        return GameResult(winner=None, reason="unknown")
+        return GameResult(
+            winner=None,
+            score_black=0.0,
+            score_white=0.0,
+            reason="unknown",
+            move_count=state.move_number,
+        )
 
     def get_winner(self, state: GameState) -> int | None:
         """Get winner from terminal state.
@@ -1107,12 +1137,12 @@ class ChessGame(GameInterface):
 
         return flipped
 
-    def action_to_string(self, action: int, state: GameState | None = None) -> str:
+    def action_to_string(self, action: int, board_size: int | None = None) -> str:
         """Convert action to algebraic notation.
 
         Args:
             action: Action index.
-            state: Optional state for disambiguation.
+            board_size: Ignored for Chess (always 8×8).
 
         Returns:
             Move in algebraic notation (e.g., "e2e4", "e1g1" for castling).
@@ -1128,24 +1158,29 @@ class ChessGame(GameInterface):
         move_str = from_sq + to_sq
 
         if promotion:
-            promo_char = {Piece.QUEEN: "q", Piece.ROOK: "r", Piece.BISHOP: "b", Piece.KNIGHT: "n"}
-            move_str += promo_char[promotion]
+            _promo_char: dict[Piece, str] = {
+                Piece.QUEEN: "q", Piece.ROOK: "r", Piece.BISHOP: "b", Piece.KNIGHT: "n",
+            }
+            move_str += _promo_char[Piece(promotion)]
 
         return move_str
 
-    def string_to_action(self, move_str: str, state: GameState) -> int | None:
-        """Convert algebraic notation to action.
+    def string_to_action(self, move_str: str, board_size: int | None = None) -> int:
+        """Convert algebraic notation to action index.
+
+        Parses algebraic move notation and encodes it as an action index.
+        Does not validate legality — use get_legal_actions() for that.
 
         Args:
             move_str: Move in algebraic notation (e.g., "e2e4").
-            state: Current state for validation.
+            board_size: Ignored for Chess (always 8×8).
 
         Returns:
-            Action index or None if invalid.
+            Action index, or -1 if notation is invalid.
 
         """
         if len(move_str) < 4:
-            return None
+            return -1
 
         files = "abcdefgh"
         ranks = "87654321"
@@ -1156,7 +1191,7 @@ class ChessGame(GameInterface):
             to_col = files.index(move_str[2])
             to_row = ranks.index(move_str[3])
         except ValueError:
-            return None
+            return -1
 
         promotion = None
         if len(move_str) >= 5:
@@ -1166,8 +1201,7 @@ class ChessGame(GameInterface):
         move = (to_row, to_col, promotion)
         action = self._encode_move(from_row, from_col, move)
 
-        # Validate action is legal
-        if action is not None and action in self.get_legal_actions(state):
+        if action is not None:
             return action
 
-        return None
+        return -1

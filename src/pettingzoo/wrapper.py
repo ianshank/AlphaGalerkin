@@ -14,15 +14,14 @@ Design Principles:
 
 from __future__ import annotations
 
-import functools
 from typing import Any
 
 import numpy as np
 import structlog
 from gymnasium import spaces
-from pettingzoo import AECEnv
 from pettingzoo.utils.agent_selector import AgentSelector
 
+from pettingzoo import AECEnv
 from src.games.interface import GameInterface
 from src.games.state import GameState
 from src.pettingzoo.config import PettingZooConfig
@@ -34,7 +33,7 @@ _PLAYER_1 = 1
 _PLAYER_2 = -1
 
 
-class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
+class AlphaGalerkinAECEnv(AECEnv):
     """PettingZoo AEC environment wrapping any AlphaGalerkin GameInterface.
 
     This wrapper translates between the GameInterface contract (immutable
@@ -141,7 +140,7 @@ class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
         # For games where action_space_size depends on board_size (Go, Othello, Hex),
         # we need to set the internal board size first
         if hasattr(self.game, "_board_size"):
-            self.game._board_size = self._board_size  # type: ignore[attr-defined]
+            setattr(self.game, "_board_size", self._board_size)
         return self.game.action_space_size
 
     def _compute_observation_shape(self) -> tuple[int, int, int]:
@@ -157,8 +156,7 @@ class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
         # PettingZoo convention: (H, W, C)
         return (h, w, channels)
 
-    @functools.lru_cache(maxsize=None)
-    def observation_space(self, agent: str) -> spaces.Space:  # type: ignore[override]
+    def observation_space(self, agent: str) -> spaces.Space:
         """Get observation space for an agent.
 
         Args:
@@ -170,8 +168,7 @@ class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
         """
         return self.observation_spaces[agent]
 
-    @functools.lru_cache(maxsize=None)
-    def action_space(self, agent: str) -> spaces.Space:  # type: ignore[override]
+    def action_space(self, agent: str) -> spaces.Space:
         """Get action space for an agent.
 
         Args:
@@ -206,10 +203,10 @@ class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
 
         self._state = self.game.initial_state(board_size)
         self.agents = list(self.possible_agents)
-        self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
-        self.rewards = {agent: 0.0 for agent in self.agents}
-        self.terminations = {agent: False for agent in self.agents}
-        self.truncations = {agent: False for agent in self.agents}
+        self._cumulative_rewards = dict.fromkeys(self.agents, 0.0)
+        self.rewards = dict.fromkeys(self.agents, 0.0)
+        self.terminations = dict.fromkeys(self.agents, False)
+        self.truncations = dict.fromkeys(self.agents, False)
         self.infos: dict[str, dict[str, Any]] = {agent: {} for agent in self.agents}
         self._step_count = 0
 
@@ -274,7 +271,7 @@ class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
             return
 
         # Reset per-step rewards
-        self.rewards = {a: 0.0 for a in self.agents}
+        self.rewards = dict.fromkeys(self.agents, 0.0)
 
         # Handle None action (agent is done)
         if action is None:
@@ -345,6 +342,9 @@ class AlphaGalerkinAECEnv(AECEnv):  # type: ignore[misc]
 
     def _handle_terminal(self) -> None:
         """Assign rewards when the game reaches a terminal state."""
+        if self._state is None:
+            return
+
         winner = self.game.get_winner(self._state)
 
         if winner is None:

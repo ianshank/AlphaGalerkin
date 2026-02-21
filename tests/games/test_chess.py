@@ -117,6 +117,16 @@ class TestChessProperties:
         """Test state channels for neural network."""
         assert game.state_channels == 119
 
+    def test_n_players(self, game: ChessGame) -> None:
+        """Test number of players."""
+        assert game.n_players == 2
+
+    def test_board_size_fixed(self, game: ChessGame) -> None:
+        """Test Chess board size is always 8."""
+        assert game.min_board_size == BOARD_SIZE
+        assert game.max_board_size == BOARD_SIZE
+        assert game.default_board_size == BOARD_SIZE
+
 
 class TestChessLegalMoves:
     """Tests for legal move generation."""
@@ -169,9 +179,9 @@ class TestChessApplyAction:
 
         # Find e2-e4 move
         legal = game.get_legal_actions(state)
-        e2e4 = game.string_to_action("e2e4", state)
+        e2e4 = game.string_to_action("e2e4")
 
-        assert e2e4 is not None
+        assert e2e4 >= 0
         assert e2e4 in legal
 
         # Apply move
@@ -192,8 +202,8 @@ class TestChessApplyAction:
         state = game.initial_state()
 
         # Find Nf3 move
-        nf3 = game.string_to_action("g1f3", state)
-        assert nf3 is not None
+        nf3 = game.string_to_action("g1f3")
+        assert nf3 >= 0
 
         new_state = game.apply_action(state, nf3)
 
@@ -244,8 +254,8 @@ class TestChessCastling:
         )
 
         # Find king move
-        ke2 = game.string_to_action("e1e2", state)
-        if ke2 and ke2 in game.get_legal_actions(state):
+        ke2 = game.string_to_action("e1e2")
+        if ke2 >= 0 and ke2 in game.get_legal_actions(state):
             new_state = game.apply_action(state, ke2)
             assert new_state.metadata["castling_rights"]["K"] is False
             assert new_state.metadata["castling_rights"]["Q"] is False
@@ -264,8 +274,8 @@ class TestChessEnPassant:
         state = game.initial_state()
 
         # e2-e4
-        e2e4 = game.string_to_action("e2e4", state)
-        assert e2e4 is not None
+        e2e4 = game.string_to_action("e2e4")
+        assert e2e4 >= 0
 
         new_state = game.apply_action(state, e2e4)
         assert new_state.metadata["en_passant_square"] == (5, 4)  # e3
@@ -275,12 +285,12 @@ class TestChessEnPassant:
         state = game.initial_state()
 
         # e2-e4
-        e2e4 = game.string_to_action("e2e4", state)
+        e2e4 = game.string_to_action("e2e4")
         state = game.apply_action(state, e2e4)
 
         # Black plays e7-e6 (not double push)
-        e7e6 = game.string_to_action("e7e6", state)
-        if e7e6:
+        e7e6 = game.string_to_action("e7e6")
+        if e7e6 >= 0 and e7e6 in game.get_legal_actions(state):
             state = game.apply_action(state, e7e6)
             assert state.metadata["en_passant_square"] is None
 
@@ -339,6 +349,9 @@ class TestChessTermination:
         result = game.get_result(state)
         assert result.winner is None
         assert result.reason == "insufficient_material"
+        assert result.score_black == 0.5
+        assert result.score_white == 0.5
+        assert result.move_count == 0
 
 
 class TestChessTensorEncoding:
@@ -424,7 +437,7 @@ class TestChessMoveNotation:
 
         # All legal actions should produce valid strings
         for action in legal:
-            move_str = game.action_to_string(action, state)
+            move_str = game.action_to_string(action)
             assert len(move_str) >= 4
             assert move_str[0] in "abcdefgh"
             assert move_str[1] in "12345678"
@@ -436,9 +449,9 @@ class TestChessMoveNotation:
         # Test some standard opening moves
         moves = ["e2e4", "d2d4", "g1f3", "b1c3"]
         for move_str in moves:
-            action = game.string_to_action(move_str, state)
-            if action is not None:  # Move is legal
-                recovered = game.action_to_string(action, state)
+            action = game.string_to_action(move_str)
+            if action >= 0:  # Valid notation
+                recovered = game.action_to_string(action)
                 assert recovered == move_str
 
 
@@ -457,6 +470,9 @@ class TestChessGameResult:
 
         assert result.winner is None
         assert result.reason == "game_ongoing"
+        assert result.score_black == 0.0
+        assert result.score_white == 0.0
+        assert result.move_count == 0
 
     def test_get_winner_ongoing(self, game: ChessGame) -> None:
         """Test get_winner for ongoing game."""
@@ -514,22 +530,65 @@ class TestChessEdgeCases:
         return ChessGame()
 
     def test_invalid_move_notation(self, game: ChessGame) -> None:
-        """Test invalid move notation returns None."""
-        state = game.initial_state()
-
-        assert game.string_to_action("", state) is None
-        assert game.string_to_action("xxx", state) is None
-        assert game.string_to_action("z1z2", state) is None
-
-    def test_illegal_move_notation(self, game: ChessGame) -> None:
-        """Test illegal move notation returns None."""
-        state = game.initial_state()
-
-        # e1e8 is not legal from starting position
-        assert game.string_to_action("e1e8", state) is None
+        """Test invalid move notation returns -1."""
+        assert game.string_to_action("") == -1
+        assert game.string_to_action("xxx") == -1
+        assert game.string_to_action("z1z2") == -1
 
     def test_board_size_fixed(self, game: ChessGame) -> None:
         """Test that board size is always 8x8."""
         # Board size parameter is ignored for chess
         state = game.initial_state(board_size=10)
         assert state.board.shape == (8, 8)
+
+    def test_validate_action(self, game: ChessGame) -> None:
+        """Test action validation."""
+        state = game.initial_state()
+
+        # Valid legal action
+        legal = game.get_legal_actions(state)
+        assert game.validate_action(state, legal[0]) is True
+
+        # Out of bounds
+        assert game.validate_action(state, -1) is False
+        assert game.validate_action(state, ACTION_SPACE_SIZE) is False
+
+    def test_game_phase(self, game: ChessGame) -> None:
+        """Test game phase detection."""
+        from src.games.interface import GamePhase
+
+        state = game.initial_state()
+        phase = game.get_phase(state)
+        assert phase == GamePhase.OPENING
+
+    def test_clone(self, game: ChessGame) -> None:
+        """Test game clone creates independent instance."""
+        cloned = game.clone()
+        assert isinstance(cloned, ChessGame)
+        assert cloned is not game
+
+    def test_repr(self, game: ChessGame) -> None:
+        """Test string representation."""
+        assert "chess" in repr(game).lower()
+
+    def test_observation_shape(self, game: ChessGame) -> None:
+        """Test observation shape for NN."""
+        shape = game.get_observation_shape()
+        assert shape == (119, 8, 8)
+
+    def test_canonical_form(self, game: ChessGame) -> None:
+        """Test canonical form returns state from current player perspective."""
+        state = game.initial_state()
+        canonical = game.get_canonical_form(state)
+        # White to play - should be unchanged
+        assert canonical.current_player == WHITE
+
+    def test_immutable_state(self, game: ChessGame) -> None:
+        """Test that apply_action doesn't modify original state."""
+        state = game.initial_state()
+        original_board = state.board.copy()
+
+        action = game.get_legal_actions(state)[0]
+        game.apply_action(state, action)
+
+        assert np.array_equal(state.board, original_board)

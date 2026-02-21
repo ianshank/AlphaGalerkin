@@ -29,7 +29,6 @@ from src.games.interface import GameInterface
 from src.games.registry import GameRegistry, get_game, list_available_games, register_game
 from src.games.state import ActionMask, GameState
 
-
 # ---------------------------------------------------------------------------
 # Helpers: minimal concrete GameInterface for testing
 # ---------------------------------------------------------------------------

@@ -26,7 +26,6 @@ from src.games.sgf.node import SGFGameTree, SGFMove, SGFNode
 from src.games.sgf.parser import SGFParseError, SGFParser
 from src.games.sgf.writer import SGFWriter, write_game_tree
 
-
 # =============================================================================
 # Shared test data
 # =============================================================================
@@ -401,7 +400,9 @@ class TestSGFParserCoverage:
     def test_parse_file_with_encoding(self) -> None:
         """Test parse_file with explicit encoding (lines 116-122)."""
         parser = SGFParser()
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sgf", delete=False, encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".sgf", delete=False, encoding="utf-8",
+        ) as f:
             f.write(FULL_GAME_SGF)
             f.flush()
             tmp_path = f.name

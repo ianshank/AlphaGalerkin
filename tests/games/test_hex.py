@@ -14,7 +14,7 @@ import torch
 from src.games.hex import BLACK, EMPTY, WHITE, HexGame, _UnionFind
 from src.games.interface import GamePhase, GameResult
 from src.games.registry import GameRegistry
-from src.games.state import ActionMask, GameState
+from src.games.state import ActionMask
 
 
 class TestUnionFind:

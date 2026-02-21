@@ -16,15 +16,12 @@ Covers:
 
 from __future__ import annotations
 
-from abc import ABC
-
 import numpy as np
 import pytest
 import torch
 
 from src.games.interface import GameConfig, GameInterface, GamePhase, GameResult
 from src.games.state import ActionMask, GameState
-
 
 # ---------------------------------------------------------------------------
 # Minimal concrete subclass to test abstract method NotImplementedError stubs
@@ -83,7 +80,7 @@ class _StubGame(GameInterface):
 
 
 class TestAbstractMethodNotImplemented:
-    """Tests that abstract methods raise NotImplementedError (lines 84,95,118,131,144,161,174,187,200,213,233)."""
+    """Tests that abstract methods raise NotImplementedError."""
 
     @pytest.fixture
     def stub(self) -> _StubGame:

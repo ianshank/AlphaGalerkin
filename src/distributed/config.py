@@ -12,6 +12,7 @@ Design Principles:
 
 from __future__ import annotations
 
+import math
 import os
 from enum import Enum
 from typing import Any, Literal
@@ -59,6 +60,20 @@ class DistributedInfraConfig(BaseModel):
     enabled: bool = Field(
         default=False,
         description="Enable distributed training",
+    )
+    launcher: LauncherConfig | None = Field(
+        default=None,
+        description="Launcher configuration for distributed training",
+    )
+    learning_rate_scaling: Literal["none", "linear", "sqrt"] = Field(
+        default="none",
+        description="How to scale learning rate with world size",
+    )
+    gradient_compression_bits: int = Field(
+        default=32,
+        ge=1,
+        le=32,
+        description="Number of bits for gradient compression",
     )
     world_size: int = Field(
         default=1,
@@ -203,6 +218,57 @@ class DistributedInfraConfig(BaseModel):
         """
         return per_gpu_batch_size * self.world_size * self.gradient_accumulation_steps
 
+    def should_sync_at_step(self, step: int) -> bool:
+        """Check if gradients should be synchronized at this step.
+
+        Args:
+            step: Current training step (1-indexed).
+
+        Returns:
+            True if gradients should be synced at this step.
+
+        """
+        return step % self.gradient_accumulation_steps == 0
+
+    def should_save_checkpoint(self, rank: int) -> bool:
+        """Check if this rank should save a checkpoint.
+
+        Args:
+            rank: Process rank.
+
+        Returns:
+            True if this rank should save checkpoints.
+
+        """
+        if self.checkpoint_strategy == "all_ranks":
+            return True
+        return rank == 0
+
+    def requires_barrier_before_checkpoint(self) -> bool:
+        """Check if a barrier is needed before checkpointing.
+
+        Returns:
+            True if a barrier synchronization is needed.
+
+        """
+        return self.enabled and self.world_size > 1
+
+    def scale_learning_rate(self, base_lr: float) -> float:
+        """Scale learning rate based on world size and scaling strategy.
+
+        Args:
+            base_lr: Base learning rate.
+
+        Returns:
+            Scaled learning rate.
+
+        """
+        if self.learning_rate_scaling == "linear":
+            return base_lr * self.world_size
+        if self.learning_rate_scaling == "sqrt":
+            return base_lr * math.sqrt(self.world_size)
+        return base_lr
+
 
 class LauncherConfig(BaseModel):
     """Configuration for distributed training launcher.
@@ -324,6 +390,18 @@ class LauncherConfig(BaseModel):
         """
         return global_rank % self.nproc_per_node
 
+    def get_node_rank(self, global_rank: int) -> int:
+        """Get node rank from global rank.
+
+        Args:
+            global_rank: Global process rank.
+
+        Returns:
+            Node rank (0-indexed).
+
+        """
+        return global_rank // self.nproc_per_node
+
 
 class SelfPlayDistributedConfig(BaseModel):
     """Configuration for distributed self-play generation.
@@ -345,6 +423,11 @@ class SelfPlayDistributedConfig(BaseModel):
     )
 
     # Worker configuration
+    num_workers: int = Field(
+        default=2,
+        ge=1,
+        description="Total number of self-play workers",
+    )
     workers_per_node: int = Field(
         default=2,
         ge=1,
@@ -354,6 +437,11 @@ class SelfPlayDistributedConfig(BaseModel):
         default=50,
         ge=1,
         description="Games generated per worker per iteration",
+    )
+    batch_size: int = Field(
+        default=32,
+        ge=1,
+        description="Batch size for self-play",
     )
 
     # Experience sharing
@@ -398,6 +486,25 @@ class SelfPlayDistributedConfig(BaseModel):
         description="Batch size for worker inference",
     )
 
+    @property
+    def total_games(self) -> int:
+        """Total games across all workers."""
+        return self.num_workers * self.games_per_worker
+
+    def get_games_for_worker(self, worker_id: int) -> tuple[int, int]:
+        """Get game index range for a specific worker.
+
+        Args:
+            worker_id: Worker ID (0-indexed).
+
+        Returns:
+            Tuple of (start_index, end_index) for this worker's games.
+
+        """
+        start = worker_id * self.games_per_worker
+        end = start + self.games_per_worker
+        return (start, end)
+
 
 def create_distributed_config(
     world_size: int = 1,
@@ -416,25 +523,43 @@ def create_distributed_config(
 
     """
     backend_enum = DistributedBackend(backend)
+
+    # Derive world_size from launcher if provided and not explicitly set
+    launcher = kwargs.get("launcher")
+    if launcher is not None and world_size == 1:
+        world_size = launcher.get_world_size()
+
+    # Allow caller to override enabled; default to world_size > 1
+    if "enabled" not in kwargs:
+        kwargs["enabled"] = world_size > 1
+
     return DistributedInfraConfig(
-        enabled=world_size > 1,
         world_size=world_size,
         backend=backend_enum,
         **kwargs,
     )
 
 
-def from_environment() -> tuple[int, int, int]:
-    """Extract distributed info from environment variables.
+def from_environment() -> DistributedInfraConfig | None:
+    """Create distributed config from environment variables.
 
     Returns:
-        Tuple of (rank, local_rank, world_size).
+        DistributedInfraConfig if distributed env is detected, None otherwise.
 
     """
-    rank = int(os.environ.get("RANK", 0))
-    local_rank = int(os.environ.get("LOCAL_RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
-    return rank, local_rank, world_size
+    if world_size <= 1 and "RANK" not in os.environ:
+        return None
+    backend_str = os.environ.get("DISTRIBUTED_BACKEND", "nccl")
+    try:
+        backend = DistributedBackend(backend_str)
+    except ValueError:
+        backend = DistributedBackend.GLOO
+    return DistributedInfraConfig(
+        enabled=world_size > 1,
+        world_size=world_size,
+        backend=backend,
+    )
 
 
 # Backward-compatible alias for tests and external usage

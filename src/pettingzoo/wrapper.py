@@ -140,7 +140,7 @@ class AlphaGalerkinAECEnv(AECEnv):
         # For games where action_space_size depends on board_size (Go, Othello, Hex),
         # we need to set the internal board size first
         if hasattr(self.game, "_board_size"):
-            setattr(self.game, "_board_size", self._board_size)
+            self.game._board_size = self._board_size
         return self.game.action_space_size
 
     def _compute_observation_shape(self) -> tuple[int, int, int]:

@@ -15,12 +15,15 @@ Features:
 from __future__ import annotations
 
 import numpy as np
+import structlog
 import torch
 from torch import Tensor
 
 from src.games.interface import GameInterface, GamePhase, GameResult
 from src.games.registry import register_game
 from src.games.state import ActionMask, GameState
+
+logger = structlog.get_logger(__name__)
 
 # Constants
 EMPTY = 0

@@ -30,12 +30,15 @@ from enum import IntEnum
 from typing import ClassVar
 
 import numpy as np
+import structlog
 import torch
 from torch import Tensor
 
 from src.games.interface import GameInterface, GameResult
 from src.games.registry import register_game
 from src.games.state import ActionMask, GameState
+
+logger = structlog.get_logger(__name__)
 
 
 # Piece encodings

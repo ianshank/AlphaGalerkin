@@ -61,10 +61,7 @@ def _create_backend(config: BackendConfig) -> BackendInterface:
         try:
             from src.backend.torch_backend import TorchBackend
         except ImportError as e:
-            msg = (
-                "PyTorch is required for the 'torch' backend. "
-                "Install it with: pip install torch"
-            )
+            msg = "PyTorch is required for the 'torch' backend. Install it with: pip install torch"
             raise ImportError(msg) from e
         return TorchBackend(config)
 
@@ -174,9 +171,7 @@ def set_default_backend(backend: BackendInterface | BackendConfig | str) -> None
 
     """
     global _default_backend
-    if isinstance(backend, str):
-        _default_backend = get_backend(backend)
-    elif isinstance(backend, BackendConfig):
+    if isinstance(backend, (str, BackendConfig)):
         _default_backend = get_backend(backend)
     else:
         _default_backend = backend

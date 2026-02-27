@@ -12,6 +12,8 @@ from typing import Any, Protocol, runtime_checkable
 
 from src.backend.types import Array, BackendType, DTypeLike, Precision, Shape, ShapeLike
 
+__all__ = ["BackendInterface"]
+
 
 @runtime_checkable
 class BackendInterface(Protocol):
@@ -61,14 +63,21 @@ class BackendInterface(Protocol):
         ...
 
     def arange(
-        self, start: float, stop: float | None = None, step: float = 1.0,
+        self,
+        start: float,
+        stop: float | None = None,
+        step: float = 1.0,
         dtype: DTypeLike | None = None,
     ) -> Array:
         """Create a 1-D tensor with evenly spaced values."""
         ...
 
     def linspace(
-        self, start: float, stop: float, num: int, dtype: DTypeLike | None = None,
+        self,
+        start: float,
+        stop: float,
+        num: int,
+        dtype: DTypeLike | None = None,
     ) -> Array:
         """Create a 1-D tensor with linearly spaced values."""
         ...
@@ -134,7 +143,10 @@ class BackendInterface(Protocol):
         ...
 
     def pad(
-        self, x: Array, pad_width: list[tuple[int, int]], value: float = 0.0,
+        self,
+        x: Array,
+        pad_width: list[tuple[int, int]],
+        value: float = 0.0,
     ) -> Array:
         """Pad a tensor with a constant value.
 
@@ -142,6 +154,7 @@ class BackendInterface(Protocol):
             x: Input tensor.
             pad_width: List of (before, after) pad widths per dimension.
             value: Padding value.
+
         """
         ...
 
@@ -165,13 +178,15 @@ class BackendInterface(Protocol):
         """Einstein summation."""
         ...
 
-    def sum(self, x: Array, axis: int | tuple[int, ...] | None = None,
-            keepdims: bool = False) -> Array:
+    def sum(
+        self, x: Array, axis: int | tuple[int, ...] | None = None, keepdims: bool = False
+    ) -> Array:
         """Sum along axis."""
         ...
 
-    def mean(self, x: Array, axis: int | tuple[int, ...] | None = None,
-             keepdims: bool = False) -> Array:
+    def mean(
+        self, x: Array, axis: int | tuple[int, ...] | None = None, keepdims: bool = False
+    ) -> Array:
         """Mean along axis."""
         ...
 
@@ -207,8 +222,7 @@ class BackendInterface(Protocol):
         """Element-wise sine."""
         ...
 
-    def clamp(self, x: Array, min_val: float | None = None,
-              max_val: float | None = None) -> Array:
+    def clamp(self, x: Array, min_val: float | None = None, max_val: float | None = None) -> Array:
         """Clamp values to a range."""
         ...
 
@@ -284,8 +298,12 @@ class BackendInterface(Protocol):
         """Compute singular values of a matrix."""
         ...
 
-    def norm(self, x: Array, ord: int | float | str | None = None,
-             axis: int | tuple[int, ...] | None = None) -> Array:
+    def norm(
+        self,
+        x: Array,
+        ord: int | float | str | None = None,
+        axis: int | tuple[int, ...] | None = None,
+    ) -> Array:
         """Compute tensor norm."""
         ...
 
@@ -294,7 +312,9 @@ class BackendInterface(Protocol):
     # ----------------------------------------------------------------
 
     def grad(
-        self, fn: Callable[..., Array], argnums: int | tuple[int, ...] = 0,
+        self,
+        fn: Callable[..., Array],
+        argnums: int | tuple[int, ...] = 0,
         has_aux: bool = False,
     ) -> Callable[..., Any]:
         """Return a function that computes gradients.
@@ -305,7 +325,9 @@ class BackendInterface(Protocol):
         ...
 
     def value_and_grad(
-        self, fn: Callable[..., Array], argnums: int | tuple[int, ...] = 0,
+        self,
+        fn: Callable[..., Array],
+        argnums: int | tuple[int, ...] = 0,
         has_aux: bool = False,
     ) -> Callable[..., tuple[Any, ...]]:
         """Return a function that computes both value and gradients."""

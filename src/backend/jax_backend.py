@@ -14,7 +14,6 @@ JAX-specific design notes:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -22,11 +21,14 @@ import jax
 import jax.nn as jnn
 import jax.numpy as jnp
 import numpy as np
+import structlog
 
 from src.backend.config import BackendConfig
 from src.backend.types import Array, BackendType, DTypeLike, Precision, Shape, ShapeLike
 
-logger = logging.getLogger(__name__)
+__all__ = ["JaxBackend"]
+
+logger = structlog.get_logger(__name__)
 
 
 class JaxBackend:
@@ -38,6 +40,7 @@ class JaxBackend:
 
     Args:
         config: Backend configuration with JAX-specific settings.
+
     """
 
     def __init__(self, config: BackendConfig) -> None:
@@ -227,6 +230,7 @@ class JaxBackend:
             x: Input tensor.
             pad_width: List of (before, after) pad widths per dimension.
             value: Padding value.
+
         """
         return jnp.pad(x, pad_width, mode="constant", constant_values=value)
 
@@ -405,7 +409,7 @@ class JaxBackend:
         Wraps ``jax.grad`` with the specified argument indices and
         auxiliary-output flag.
         """
-        return jax.grad(fn, argnums=argnums, has_aux=has_aux)
+        return jax.grad(fn, argnums=argnums, has_aux=has_aux)  # type: ignore[no-any-return]
 
     def value_and_grad(
         self,
@@ -414,7 +418,7 @@ class JaxBackend:
         has_aux: bool = False,
     ) -> Callable[..., tuple[Any, ...]]:
         """Return a function that computes both value and gradients."""
-        return jax.value_and_grad(fn, argnums=argnums, has_aux=has_aux)
+        return jax.value_and_grad(fn, argnums=argnums, has_aux=has_aux)  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Device management

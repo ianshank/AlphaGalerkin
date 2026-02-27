@@ -137,7 +137,9 @@ class TestGradientHealth:
     def test_healthy_grads(self):
         grads = {
             "layer1": torch.randn(3, 4),
-            "layer2": torch.randn(5,),
+            "layer2": torch.randn(
+                5,
+            ),
         }
         report = check_gradient_health(grads)
         assert report["healthy"] is True
@@ -149,7 +151,9 @@ class TestGradientHealth:
     def test_nan_grads(self):
         grads = {
             "layer1": torch.tensor([float("nan"), 1.0]),
-            "layer2": torch.randn(5,),
+            "layer2": torch.randn(
+                5,
+            ),
         }
         report = check_gradient_health(grads)
         assert report["healthy"] is False

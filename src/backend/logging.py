@@ -23,10 +23,13 @@ Example:
 
 from __future__ import annotations
 
+import contextlib
 import time
 from typing import Any
 
 from src.backend.types import Array
+
+__all__ = ["BackendLogger", "create_backend_logger"]
 from src.templates.logging import BaseModuleLogger
 
 
@@ -142,7 +145,7 @@ class BackendLogger(BaseModuleLogger):
 
         """
         # Collect input shapes where available.
-        input_shapes = []
+        input_shapes: list[tuple[Any, ...] | None] = []
         for arg in args:
             try:
                 input_shapes.append(tuple(arg.shape))
@@ -201,26 +204,20 @@ def create_backend_logger(
         try:
             backend_type = str(config.backend.value)
         except AttributeError:
-            try:
+            with contextlib.suppress(AttributeError):
                 backend_type = str(config.backend)
-            except AttributeError:
-                pass
 
         try:
             device = str(config.device.value)
         except AttributeError:
-            try:
+            with contextlib.suppress(AttributeError):
                 device = str(config.device)
-            except AttributeError:
-                pass
 
         try:
             precision = str(config.precision.value)
         except AttributeError:
-            try:
+            with contextlib.suppress(AttributeError):
                 precision = str(config.precision)
-            except AttributeError:
-                pass
 
     return BackendLogger(
         component=component,

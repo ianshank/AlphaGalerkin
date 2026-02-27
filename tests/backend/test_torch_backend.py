@@ -39,7 +39,7 @@ class TestTorchGrad:
         """grad(f)(x) should compute df/dx for f(x) = sum(x^2)."""
 
         def f(x):
-            return (x ** 2).sum()
+            return (x**2).sum()
 
         x = tb.tensor([3.0, 4.0])
         grad_fn = tb.grad(f)
@@ -48,10 +48,10 @@ class TestTorchGrad:
         torch.testing.assert_close(g, expected)
 
     def test_grad_with_aux(self, tb) -> None:
-        """grad with has_aux=True should return (grads, aux)."""
+        """Grad with has_aux=True should return (grads, aux)."""
 
         def f(x):
-            loss = (x ** 2).sum()
+            loss = (x**2).sum()
             aux = {"intermediate": x.mean()}
             return loss, aux
 
@@ -63,19 +63,19 @@ class TestTorchGrad:
         assert "intermediate" in aux
 
     def test_grad_does_not_mutate_input(self, tb) -> None:
-        """grad should not modify the original tensor."""
+        """Grad should not modify the original tensor."""
         x = tb.tensor([1.0, 2.0])
         original = x.clone()
 
         def f(t):
-            return (t ** 2).sum()
+            return (t**2).sum()
 
         grad_fn = tb.grad(f)
         grad_fn(x)
         torch.testing.assert_close(x, original)
 
     def test_grad_multiarg(self, tb) -> None:
-        """grad with argnums tuple should return multiple gradients."""
+        """Grad with argnums tuple should return multiple gradients."""
 
         def f(x, y):
             return (x * y).sum()
@@ -101,7 +101,7 @@ class TestTorchValueAndGrad:
         """value_and_grad should return (value, grads)."""
 
         def f(x):
-            return (x ** 2).sum()
+            return (x**2).sum()
 
         x = tb.tensor([3.0, 4.0])
         vag_fn = tb.value_and_grad(f)
@@ -114,7 +114,7 @@ class TestTorchValueAndGrad:
         """value_and_grad with has_aux should return ((value, aux), grads)."""
 
         def f(x):
-            loss = (x ** 2).sum()
+            loss = (x**2).sum()
             return loss, {"tag": "test"}
 
         x = tb.tensor([3.0, 4.0])

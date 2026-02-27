@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 import numpy.testing as npt
-import pytest
 
 from src.backend.types import BackendType, Precision
-
 
 # ------------------------------------------------------------------
 # Tensor creation
@@ -442,9 +440,7 @@ class TestActivations:
         ls = backend.log_softmax(x, axis=-1)
         s = backend.softmax(x, axis=-1)
         expected = backend.log(s)
-        npt.assert_allclose(
-            backend.to_numpy(ls), backend.to_numpy(expected), atol=1e-5
-        )
+        npt.assert_allclose(backend.to_numpy(ls), backend.to_numpy(expected), atol=1e-5)
 
     def test_relu_positive(self, backend) -> None:
         x = backend.tensor([1.0, 2.0, 3.0])

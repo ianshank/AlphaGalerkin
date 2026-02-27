@@ -19,18 +19,20 @@ PyTorch-specific design notes:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+import structlog
 import torch
 import torch.nn.functional as F
 
 from src.backend.config import BackendConfig
 from src.backend.types import Array, BackendType, DTypeLike, Precision, Shape, ShapeLike
 
-logger = logging.getLogger(__name__)
+__all__ = ["TorchBackend"]
+
+logger = structlog.get_logger(__name__)
 
 
 class TorchBackend:
@@ -43,6 +45,7 @@ class TorchBackend:
 
     Args:
         config: Backend configuration with PyTorch-specific settings.
+
     """
 
     def __init__(self, config: BackendConfig) -> None:
@@ -122,13 +125,17 @@ class TorchBackend:
     def zeros(self, shape: ShapeLike, dtype: DTypeLike | None = None) -> Array:
         """Create a tensor of zeros."""
         return torch.zeros(
-            *shape, dtype=self._resolve_dtype(dtype), device=self._default_device,
+            *shape,
+            dtype=self._resolve_dtype(dtype),
+            device=self._default_device,
         )
 
     def ones(self, shape: ShapeLike, dtype: DTypeLike | None = None) -> Array:
         """Create a tensor of ones."""
         return torch.ones(
-            *shape, dtype=self._resolve_dtype(dtype), device=self._default_device,
+            *shape,
+            dtype=self._resolve_dtype(dtype),
+            device=self._default_device,
         )
 
     def full(
@@ -220,7 +227,8 @@ class TorchBackend:
     def tensor(self, data: Any, dtype: DTypeLike | None = None) -> Array:
         """Create a PyTorch tensor from data (list, tuple, numpy array, etc.)."""
         return torch.as_tensor(
-            data, dtype=self._resolve_dtype(dtype),
+            data,
+            dtype=self._resolve_dtype(dtype),
         ).to(device=self._default_device)
 
     # ------------------------------------------------------------------
@@ -311,6 +319,7 @@ class TorchBackend:
             pad_width: List of (before, after) pad widths per dimension,
                        ordered from the first to the last dimension.
             value: Padding value.
+
         """
         # Reverse the dimension order and flatten to match torch convention.
         torch_pad: list[int] = []
@@ -531,6 +540,7 @@ class TorchBackend:
         Returns:
             A callable with the same signature as *fn* that returns
             gradients instead of the function value.
+
         """
         indices = (argnums,) if isinstance(argnums, int) else tuple(argnums)
 
@@ -595,6 +605,7 @@ class TorchBackend:
         Returns:
             A callable with the same signature as *fn* that returns
             ``(value, grads)``.
+
         """
         indices = (argnums,) if isinstance(argnums, int) else tuple(argnums)
 

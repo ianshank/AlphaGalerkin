@@ -18,6 +18,8 @@ Example:
 
 from __future__ import annotations
 
+__all__ = ["KeyManager"]
+
 from typing import Any
 
 
@@ -130,7 +132,7 @@ def _get_jax_random() -> Any:
 
     """
     try:
-        import jax.random  # noqa: WPS433 (nested import is intentional)
+        import jax.random
 
         return jax.random
     except ImportError:

@@ -315,10 +315,10 @@ if HAS_JAX:
                 b_matrix = self.variable(
                     "constants",
                     "b_matrix",
-                    lambda: jax.random.normal(
-                        self.make_rng("params"), (2, self.n_features)
-                    )
-                    * self.scale,
+                    lambda: (
+                        jax.random.normal(self.make_rng("params"), (2, self.n_features))
+                        * self.scale
+                    ),
                 ).value
 
             # Project coordinates onto frequency basis
@@ -329,9 +329,7 @@ if HAS_JAX:
             projection = 2 * jnp.pi * projection
 
             # Concatenate cos and sin features
-            features = jnp.concatenate(
-                [jnp.cos(projection), jnp.sin(projection)], axis=-1
-            )
+            features = jnp.concatenate([jnp.cos(projection), jnp.sin(projection)], axis=-1)
 
             return features
 

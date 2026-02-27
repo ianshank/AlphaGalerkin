@@ -7,8 +7,19 @@ hard-coding tensor types.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import Enum
-from typing import Any, Sequence, Union
+from typing import Any
+
+__all__ = [
+    "Array",
+    "Shape",
+    "ShapeLike",
+    "DTypeLike",
+    "Precision",
+    "DeviceType",
+    "BackendType",
+]
 
 # Array is the universal tensor type - can be torch.Tensor or jax.Array
 # We use Any to avoid importing either framework at module load time
@@ -16,7 +27,7 @@ Array = Any
 
 # Shape types
 Shape = tuple[int, ...]
-ShapeLike = Union[Sequence[int], Shape]
+ShapeLike = Sequence[int] | Shape
 
 # DType mapping - unified precision specification
 DTypeLike = Any  # torch.dtype or jnp.dtype

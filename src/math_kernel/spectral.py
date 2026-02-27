@@ -403,7 +403,7 @@ if HAS_JAX:
             fy_grid, fx_grid = jnp.meshgrid(fy, fx, indexing="ij")
 
             # Normalized frequency magnitude
-            freq_magnitude = jnp.sqrt(fy_grid ** 2 + fx_grid ** 2)
+            freq_magnitude = jnp.sqrt(fy_grid**2 + fx_grid**2)
 
             # Apply filter based on type
             cutoff = cutoff_ratio * 0.5  # Scale to Nyquist
@@ -413,12 +413,10 @@ if HAS_JAX:
 
             if _ft == "gaussian":
                 sigma = cutoff / 2.0
-                filter_mask = jnp.exp(-(freq_magnitude ** 2) / (2 * sigma ** 2 + 1e-8))
+                filter_mask = jnp.exp(-(freq_magnitude**2) / (2 * sigma**2 + 1e-8))
             elif _ft == "butterworth":
                 order = 4
-                filter_mask = 1.0 / (
-                    1.0 + (freq_magnitude / (cutoff + 1e-8)) ** (2 * order)
-                )
+                filter_mask = 1.0 / (1.0 + (freq_magnitude / (cutoff + 1e-8)) ** (2 * order))
             elif _ft == "ideal":
                 filter_mask = (freq_magnitude <= cutoff).astype(jnp.float32)
             else:
@@ -478,9 +476,7 @@ if HAS_JAX:
                 return features
 
             # Reshape to 2D spatial format: (batch, d, h, w)
-            features_2d = features.reshape(
-                batch, source_size, source_size, d
-            ).transpose(0, 3, 1, 2)
+            features_2d = features.reshape(batch, source_size, source_size, d).transpose(0, 3, 1, 2)
 
             # Spectral interpolation
             features_freq = jnp.fft.rfft2(features_2d)
@@ -512,9 +508,7 @@ if HAS_JAX:
                 )
 
             # Inverse FFT to target resolution
-            features_target = jnp.fft.irfft2(
-                out_freq, s=(target_size, target_size)
-            )
+            features_target = jnp.fft.irfft2(out_freq, s=(target_size, target_size))
 
             # Apply anti-aliasing filter if upsampling
             if target_size > source_size:
@@ -527,12 +521,9 @@ if HAS_JAX:
                 )
                 features_freq_target = jnp.fft.rfft2(features_target)
                 features_freq_target = (
-                    features_freq_target
-                    * filter_mask[jnp.newaxis, jnp.newaxis, ...]
+                    features_freq_target * filter_mask[jnp.newaxis, jnp.newaxis, ...]
                 )
-                features_target = jnp.fft.irfft2(
-                    features_freq_target, s=(target_size, target_size)
-                )
+                features_target = jnp.fft.irfft2(features_freq_target, s=(target_size, target_size))
 
             # Reshape back to sequence format: (batch, d, h, w) -> (batch, h*w, d)
             features_out = features_target.transpose(0, 2, 3, 1).reshape(

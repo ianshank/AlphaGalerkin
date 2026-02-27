@@ -207,9 +207,7 @@ class TestPetrovGalerkinProjectionEquivalence:
         torch_pg = create_petrov_galerkin_projection(
             d_model, d_trial, d_test, d_value, backend="torch"
         )
-        jax_pg = create_petrov_galerkin_projection(
-            d_model, d_trial, d_test, d_value, backend="jax"
-        )
+        jax_pg = create_petrov_galerkin_projection(d_model, d_trial, d_test, d_value, backend="jax")
 
         np_rng = np.random.default_rng(42)
         data = np_rng.standard_normal((batch, n, d_model)).astype(np.float32)
@@ -244,9 +242,7 @@ class TestSpectralFilterEquivalence:
         torch_filt = create_spectral_filter(
             cutoff_ratio=0.5, filter_type=filter_type, backend="torch"
         )
-        jax_filt = create_spectral_filter(
-            cutoff_ratio=0.5, filter_type=filter_type, backend="jax"
-        )
+        jax_filt = create_spectral_filter(cutoff_ratio=0.5, filter_type=filter_type, backend="jax")
 
         np_rng = np.random.default_rng(42)
         data = np_rng.standard_normal((batch, channels, h, w)).astype(np.float32)
@@ -270,9 +266,7 @@ class TestSpectralFilterEquivalence:
         torch_filt = create_spectral_filter(
             cutoff_ratio=0.5, filter_type=filter_type, backend="torch"
         )
-        jax_filt = create_spectral_filter(
-            cutoff_ratio=0.5, filter_type=filter_type, backend="jax"
-        )
+        jax_filt = create_spectral_filter(cutoff_ratio=0.5, filter_type=filter_type, backend="jax")
 
         np_rng = np.random.default_rng(42)
         data = np_rng.standard_normal((batch, channels, h, w)).astype(np.float32)
@@ -403,7 +397,5 @@ class TestFactoryFunctions:
         from src.math_kernel.spectral import SpectralFilter, create_spectral_filter
 
         assert isinstance(create_monte_carlo_integral(backend="torch"), MonteCarloIntegral)
-        assert isinstance(
-            create_galerkin_projection(16, 8, 8, backend="torch"), GalerkinProjection
-        )
+        assert isinstance(create_galerkin_projection(16, 8, 8, backend="torch"), GalerkinProjection)
         assert isinstance(create_spectral_filter(backend="torch"), SpectralFilter)

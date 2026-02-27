@@ -9,10 +9,10 @@ Backward compatibility: all original imports continue to work unchanged.
 """
 
 from src.math_kernel.basis import (
+    HAS_JAX,
     BasisFunction,
     ChebyshevBasis,
     FourierBasis,
-    HAS_JAX,
     create_chebyshev_basis,
     create_fourier_basis,
     create_grid_coordinates,

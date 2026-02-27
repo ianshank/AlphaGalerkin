@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from src.backend.config import BackendConfig
 from src.backend.types import BackendType, DeviceType, Precision
 
-
 # ------------------------------------------------------------------
 # Default values
 # ------------------------------------------------------------------

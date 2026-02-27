@@ -73,8 +73,6 @@ class MonteCarloIntegral(nn.Module):
             Integrated values.
 
         """
-        values.shape[1]
-
         if weights is None:
             # Uniform weights for Monte Carlo
             return values.mean(dim=1)
@@ -383,9 +381,9 @@ if HAS_JAX:
 
             """
             # Projections for Q, K, V
-            q = fnn.Dense(self.d_key, name="to_query")(x)    # (batch, n, d_key)
-            k = fnn.Dense(self.d_key, name="to_key")(x)      # (batch, n, d_key)
-            v = fnn.Dense(self.d_value, name="to_value")(x)   # (batch, n, d_value)
+            q = fnn.Dense(self.d_key, name="to_query")(x)  # (batch, n, d_key)
+            k = fnn.Dense(self.d_key, name="to_key")(x)  # (batch, n, d_key)
+            v = fnn.Dense(self.d_value, name="to_value")(x)  # (batch, n, d_value)
 
             n = x.shape[1]
 
@@ -474,8 +472,7 @@ if HAS_JAX:
             """
             if self.d_trial < self.d_test:
                 raise ValueError(
-                    f"LBB violation: d_trial ({self.d_trial}) must be "
-                    f">= d_test ({self.d_test})"
+                    f"LBB violation: d_trial ({self.d_trial}) must be >= d_test ({self.d_test})"
                 )
 
         @fnn.compact
@@ -490,9 +487,9 @@ if HAS_JAX:
 
             """
             # Projections
-            q = fnn.Dense(self.d_test, name="to_query")(x)    # (batch, n, d_test)
-            k = fnn.Dense(self.d_trial, name="to_key")(x)     # (batch, n, d_trial)
-            v = fnn.Dense(self.d_value, name="to_value")(x)   # (batch, n, d_value)
+            q = fnn.Dense(self.d_test, name="to_query")(x)  # (batch, n, d_test)
+            k = fnn.Dense(self.d_trial, name="to_key")(x)  # (batch, n, d_trial)
+            v = fnn.Dense(self.d_value, name="to_value")(x)  # (batch, n, d_value)
 
             n = x.shape[1]
 

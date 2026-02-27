@@ -17,9 +17,18 @@ Example:
 
 from __future__ import annotations
 
+import contextlib
 import math
 from typing import Any
 
+__all__ = [
+    "assert_shape",
+    "assert_dtype",
+    "assert_no_nans",
+    "assert_finite",
+    "log_tensor_stats",
+    "check_gradient_health",
+]
 
 # ------------------------------------------------------------------
 # Shape / dtype assertions
@@ -56,9 +65,7 @@ def assert_shape(
         )
         raise ValueError(msg)
 
-    for dim_idx, (actual, expected) in enumerate(
-        zip(actual_shape, expected_shape)
-    ):
+    for dim_idx, (actual, expected) in enumerate(zip(actual_shape, expected_shape, strict=True)):
         if expected == -1:
             continue
         if actual != expected:
@@ -86,7 +93,7 @@ def _normalize_dtype_str(dtype: Any) -> str:
 
     # Handle numpy type classes like "<class 'numpy.float64'>"
     if s.startswith("<class '") and s.endswith("'>"):
-        s = s[len("<class '"):-len("'>")]
+        s = s[len("<class '") : -len("'>")]
         # Strip module prefix: "numpy.float64" -> "float64"
         if "." in s:
             s = s.rsplit(".", 1)[-1]
@@ -94,7 +101,7 @@ def _normalize_dtype_str(dtype: Any) -> str:
     # Strip framework prefixes: "torch.float32" -> "float32"
     for prefix in ("torch.", "jnp.", "jax.numpy."):
         if s.startswith(prefix):
-            s = s[len(prefix):]
+            s = s[len(prefix) :]
             break
 
     return s
@@ -125,10 +132,7 @@ def assert_dtype(
 
     if actual_str != expected_str:
         label = f" '{name}'" if name else ""
-        msg = (
-            f"Tensor{label} has dtype {actual_str}, "
-            f"expected {expected_str}"
-        )
+        msg = f"Tensor{label} has dtype {actual_str}, expected {expected_str}"
         raise ValueError(msg)
 
 
@@ -175,7 +179,7 @@ def _call_isnan(array: Any) -> Any:
 
     # Try numpy (numpy arrays don't have .isnan() but numpy.isnan works).
     try:
-        import numpy as _np  # noqa: WPS433
+        import numpy as _np
 
         if isinstance(array, _np.ndarray):
             return _np.isnan(array)
@@ -184,14 +188,14 @@ def _call_isnan(array: Any) -> Any:
 
     # Try jnp.isnan via the array's module.
     try:
-        import jax.numpy as jnp  # noqa: WPS433
+        import jax.numpy as jnp
 
         return jnp.isnan(array)
     except ImportError:
         pass
 
     try:
-        import torch  # noqa: WPS433
+        import torch
 
         return torch.isnan(array)
     except ImportError:
@@ -208,7 +212,7 @@ def _call_isinf(array: Any) -> Any:
 
     # Try numpy.
     try:
-        import numpy as _np  # noqa: WPS433
+        import numpy as _np
 
         if isinstance(array, _np.ndarray):
             return _np.isinf(array)
@@ -216,14 +220,14 @@ def _call_isinf(array: Any) -> Any:
         pass
 
     try:
-        import jax.numpy as jnp  # noqa: WPS433
+        import jax.numpy as jnp
 
         return jnp.isinf(array)
     except ImportError:
         pass
 
     try:
-        import torch  # noqa: WPS433
+        import torch
 
         return torch.isinf(array)
     except ImportError:
@@ -247,10 +251,8 @@ def assert_no_nans(array: Any, name: str = "") -> None:
     if _has_nans(array):
         label = f" '{name}'" if name else ""
         shape_str = ""
-        try:
+        with contextlib.suppress(AttributeError, TypeError):
             shape_str = f" (shape={tuple(array.shape)})"
-        except (AttributeError, TypeError):
-            pass
         msg = f"Tensor{label}{shape_str} contains NaN values"
         raise ValueError(msg)
 
@@ -268,10 +270,8 @@ def assert_finite(array: Any, name: str = "") -> None:
     """
     label = f" '{name}'" if name else ""
     shape_str = ""
-    try:
+    with contextlib.suppress(AttributeError, TypeError):
         shape_str = f" (shape={tuple(array.shape)})"
-    except (AttributeError, TypeError):
-        pass
 
     if _has_nans(array):
         msg = f"Tensor{label}{shape_str} contains NaN values"
@@ -375,7 +375,7 @@ def _flatten_grads(grads: Any) -> list[tuple[str, Any]]:
 
     # Try JAX pytree flattening.
     try:
-        import jax.tree_util  # noqa: WPS433
+        import jax.tree_util
 
         leaves = jax.tree_util.tree_leaves(grads)
         if len(leaves) > 1 or (len(leaves) == 1 and leaves[0] is not grads):
@@ -395,7 +395,7 @@ def _compute_norm(array: Any) -> float:
     """
     # Try numpy first (most common in testing, always available).
     try:
-        import numpy as _np  # noqa: WPS433
+        import numpy as _np
 
         if isinstance(array, _np.ndarray):
             return float(_np.linalg.norm(array.ravel()))
@@ -404,7 +404,7 @@ def _compute_norm(array: Any) -> float:
 
     try:
         # PyTorch: torch.linalg.norm
-        import torch  # noqa: WPS433
+        import torch
 
         if isinstance(array, torch.Tensor):
             return float(torch.linalg.norm(array.float()))
@@ -412,7 +412,7 @@ def _compute_norm(array: Any) -> float:
         pass
 
     try:
-        import jax.numpy as jnp  # noqa: WPS433
+        import jax.numpy as jnp
 
         return float(jnp.linalg.norm(array))
     except ImportError:
@@ -492,10 +492,7 @@ def check_gradient_health(
 
         # Per-parameter explosion check
         if max_norm is not None and norm > max_norm:
-            issue = (
-                f"Gradient '{param_name}' norm {norm:.4f} "
-                f"exceeds max_norm {max_norm:.4f}"
-            )
+            issue = f"Gradient '{param_name}' norm {norm:.4f} exceeds max_norm {max_norm:.4f}"
             issues.append(issue)
             if logger is not None:
                 logger.warning(

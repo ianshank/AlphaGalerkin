@@ -13,6 +13,14 @@ except ImportError:
     HAS_TORCH = False
     torch = None  # type: ignore[assignment]
 
+# Optional JAX import - not all tests need it
+try:
+    import jax  # noqa: F401
+
+    HAS_JAX = True
+except ImportError:
+    HAS_JAX = False
+
 # Configure matplotlib for headless testing
 try:
     import matplotlib
@@ -31,6 +39,10 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "video: video compression tests")
     config.addinivalue_line("markers", "requires_video: tests requiring real video files")
     config.addinivalue_line("markers", "integration: integration tests")
+    config.addinivalue_line("markers", "jax: JAX-specific tests")
+    config.addinivalue_line(
+        "markers", "cross_backend: cross-backend equivalence tests"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -46,3 +58,40 @@ def device():
     if not HAS_TORCH:
         pytest.skip("torch not available")
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+@pytest.fixture
+def torch_backend():
+    """Get the PyTorch backend for testing."""
+    if not HAS_TORCH:
+        pytest.skip("torch not available")
+    from src.backend import get_backend
+
+    return get_backend("torch")
+
+
+@pytest.fixture
+def jax_backend():
+    """Get the JAX backend for testing."""
+    if not HAS_JAX:
+        pytest.skip("jax not available")
+    from src.backend import get_backend
+
+    return get_backend("jax")
+
+
+@pytest.fixture(params=["torch", "jax"])
+def backend(request):
+    """Parametrized fixture providing both backends.
+
+    Tests using this fixture will run once per available backend.
+    Backends that are not installed will be skipped.
+    """
+    backend_name = request.param
+    if backend_name == "torch" and not HAS_TORCH:
+        pytest.skip("torch not available")
+    if backend_name == "jax" and not HAS_JAX:
+        pytest.skip("jax not available")
+    from src.backend import get_backend
+
+    return get_backend(backend_name)

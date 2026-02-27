@@ -42,6 +42,20 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+jax = [
+    "jax[cpu]>=0.4.20",
+    "flax>=0.8.0",
+    "optax>=0.2.0",
+    "orbax-checkpoint>=0.5.0",
+    "chex>=0.1.85",
+]
+jax-gpu = [
+    "jax[cuda12]>=0.4.20",
+    "flax>=0.8.0",
+    "optax>=0.2.0",
+    "orbax-checkpoint>=0.5.0",
+    "chex>=0.1.85",
+]
 vertex = [
     "google-cloud-aiplatform>=1.36.0",
     "google-cloud-storage>=2.10.0",
@@ -136,6 +150,11 @@ module = [
     "torchvision.*",
     "numpy.*",
     "pytest.*",
+    "jax.*",
+    "flax.*",
+    "optax.*",
+    "orbax.*",
+    "chex.*",
 ]
 ignore_missing_imports = true
 
@@ -169,4 +188,6 @@ markers = [
     "e2e: end-to-end integration tests",
     "gpu_required: tests requiring GPU",
     "onnx_required: tests requiring ONNX",
+    "jax: JAX-specific tests",
+    "cross_backend: cross-backend equivalence tests",
 ]

@@ -90,10 +90,12 @@ class DistortionLoss(nn.Module):
         if self.metric == "mse":
             distortion = mse
         elif self.metric == "ms_ssim":
+            assert ms_ssim_loss is not None, "MS-SSIM loss required for ms_ssim metric"
             distortion = ms_ssim_loss
         else:  # mixed
             # Combined loss: balance MSE and MS-SSIM
             # MS-SSIM is scale-invariant, MSE is not
+            assert ms_ssim_loss is not None, "MS-SSIM loss required for mixed metric"
             distortion = self.ms_ssim_weight * ms_ssim_loss + (1 - self.ms_ssim_weight) * mse
 
         return distortion, mse, ms_ssim_loss
@@ -202,10 +204,9 @@ class CompressionLoss(nn.Module):
 
         self.rd_loss = RDLoss(lambda_rd, distortion_metric, ms_ssim_weight)
 
-        if use_perceptual:
-            self.perceptual_loss = PerceptualLoss()
-        else:
-            self.perceptual_loss = None
+        self.perceptual_loss: PerceptualLoss | None = (
+            PerceptualLoss() if use_perceptual else None
+        )
 
     def forward(
         self,

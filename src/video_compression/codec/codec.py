@@ -245,11 +245,21 @@ class VideoCodec(nn.Module):
 
         # For P-frames, use forward reference
         if frame_info.frame_type == FrameType.P:
+            if frame_info.forward_ref is None:
+                return None
             return self.gop_manager.reference_buffer.get_latent(frame_info.forward_ref)
 
         # For B-frames, use both references (combine)
-        fwd_latent = self.gop_manager.reference_buffer.get_latent(frame_info.forward_ref)
-        bwd_latent = self.gop_manager.reference_buffer.get_latent(frame_info.backward_ref)
+        fwd_latent = (
+            self.gop_manager.reference_buffer.get_latent(frame_info.forward_ref)
+            if frame_info.forward_ref is not None
+            else None
+        )
+        bwd_latent = (
+            self.gop_manager.reference_buffer.get_latent(frame_info.backward_ref)
+            if frame_info.backward_ref is not None
+            else None
+        )
 
         if fwd_latent is None:
             return bwd_latent
@@ -754,7 +764,7 @@ class VideoCodec(nn.Module):
             "psnr": 10 * torch.log10(1.0 / (distortion.mean() + 1e-10)),
         }
 
-    @torch.no_grad()
+    @torch.no_grad()  # type: ignore[untyped-decorator]
     def get_rate_distortion_point(
         self,
         x: Float[Tensor, "batch 3 height width"],

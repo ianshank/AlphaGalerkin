@@ -9,6 +9,7 @@ Architecture:
 
 from __future__ import annotations
 
+import logging
 import math
 
 import torch
@@ -21,6 +22,8 @@ from src.video_compression.models.encoder import (
     GDN,
     FNetGalerkinBlock,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class UpsampleBlock(nn.Module):
@@ -294,6 +297,11 @@ class TemporalDecoder(nn.Module):
         super().__init__()
         self.base_decoder = Decoder(config)
 
+        # Projection layers: latent_channels <-> d_model
+        # Mirrors DecoderBlock.channel_proj pattern (line 114)
+        self.latent_to_model = nn.Linear(config.latent_channels, config.d_model)
+        self.model_to_latent = nn.Linear(config.d_model, config.latent_channels)
+
         # Temporal cross-attention
         self.temporal_attention = nn.ModuleList(
             [
@@ -325,16 +333,27 @@ class TemporalDecoder(nn.Module):
         """
         if reference is not None:
             batch, channels, h, w = x.shape
+            logger.debug(
+                "TemporalDecoder: x=%s, ref=%s, latent_ch=%d, d_model=%d",
+                x.shape, reference.shape, channels, self.latent_to_model.in_features,
+            )
 
-            # Reshape for attention
+            # Reshape for attention: (B, C, H, W) -> (B, H*W, C)
             x_seq = rearrange(x, "b c h w -> b (h w) c")
             ref_seq = rearrange(reference, "b c h w -> b (h w) c")
 
-            # Apply temporal attention
+            # Project latent_channels -> d_model
+            x_seq = self.latent_to_model(x_seq)
+            ref_seq = self.latent_to_model(ref_seq)
+
+            # Apply temporal attention (operates in d_model space)
             for attn in self.temporal_attention:
                 x_seq = attn(x_seq, ref_seq, h, w)
 
-            # Reshape back
+            # Project d_model -> latent_channels
+            x_seq = self.model_to_latent(x_seq)
+
+            # Reshape back: (B, H*W, C) -> (B, C, H, W)
             x = rearrange(x_seq, "b (h w) c -> b c h w", h=h, w=w)
             x = self.norm(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 

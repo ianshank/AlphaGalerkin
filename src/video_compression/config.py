@@ -117,7 +117,7 @@ class EncoderConfig(BaseModuleConfig):
         description="Spatial downsampling factor",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_downsample(self) -> EncoderConfig:
         """Ensure downsample factor is a power of 2."""
         import math
@@ -482,7 +482,7 @@ class MCTSRateControlConfig(BaseModuleConfig):
         description="Slope for quality estimation model",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_qp_range(self) -> MCTSRateControlConfig:
         """Ensure QP min <= max."""
         if self.qp_min > self.qp_max:
@@ -562,7 +562,7 @@ class TrainingConfig(TrainableModuleConfig):
         description="Minimum acceptable VMAF",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_resolution_range(self) -> TrainingConfig:
         """Ensure resolution range is valid."""
         if self.min_resolution > self.max_resolution:
@@ -601,7 +601,7 @@ class CodecConfig(BaseModuleConfig):
         description="Training configuration",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_channel_consistency(self) -> CodecConfig:
         """Ensure encoder/decoder channel compatibility."""
         if self.encoder.latent_channels != self.decoder.latent_channels:

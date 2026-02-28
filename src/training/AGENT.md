@@ -54,10 +54,11 @@ CombinedAlphaGalerkinPhysicsLoss
 ### 6. Atomic Checkpoint Management
 `CheckpointManager` writes to temp files first, then renames — preventing corruption from interrupted saves. Supports best model tracking, rotation, and version compatibility.
 
-### 7. Template Method (Trainer Lifecycle)
+### 7. Training Loop (Trainer Lifecycle)
 ```
-setup() → [self_play → sample → train_step → evaluate → checkpoint] × N → cleanup()
+__init__() → train() { _fill_buffer → [_training_step → _run_evaluation → save_checkpoint] × N }
 ```
+Setup is performed in `__init__()` and at the beginning of `train()`. There is no explicit `setup()`/`cleanup()` API.
 
 ## Skills Required
 
@@ -111,13 +112,14 @@ python -m scripts.train --config-name=train_fast
 | File | Purpose | Key Classes |
 |------|---------|-------------|
 | `loss.py` | Core training loss | `AlphaGalerkinLoss`, `LossOutput`, `EntropyRegularizer` |
-| `loss_balancing.py` | 5 adaptive strategies | `ReLoBRaLo`, `GradNorm`, `UncertaintyWeighting`, `SoftAdapt`, `StaticWeighting` |
-| `physics_loss.py` | Physics-informed loss | `ResidualLoss`, `BoundaryLoss`, `PhysicsInformedLoss`, `CombinedAlphaGalerkinPhysicsLoss` |
+| `loss_balancing.py` | 5 adaptive strategies | `LossBalancer` (ABC), `BalancingStrategy`, `LossBalancingConfig`, `LossTerms`, `ReLoBRaLo`, `GradNorm`, `UncertaintyWeighting`, `SoftAdapt`, `StaticWeighting` |
+| `losses.py` | Foundational loss functions | `L2RelativeLoss`, `H1Loss`, `MSELoss`, `get_loss()` |
+| `physics_loss.py` | Physics-informed loss | `PhysicsLossConfig`, `PhysicsLossOutput`, `ResidualLoss`, `BoundaryLoss`, `InitialConditionLoss`, `ConservationLoss`, `PhysicsInformedLoss`, `CombinedAlphaGalerkinPhysicsLoss` |
 | `replay_buffer.py` | Experience storage | `UniformReplayBuffer`, `PrioritizedReplayBuffer`, `SumTree`, `Experience` |
 | `checkpoint.py` | State persistence | `CheckpointManager`, `CheckpointState` |
-| `self_play.py` | Game generation | `SelfPlayWorker`, `GameRecord` |
+| `self_play.py` | Game generation | `SelfPlayWorker`, `ParallelSelfPlayWorker`, `GameRecord` |
 | `evaluation.py` | Model assessment | `Evaluator`, `EvaluationResult` |
-| `stability.py` | Training monitoring | `EarlyStopping`, `PlateauDetector`, `TrainingStabilityMonitor` |
+| `stability.py` | Training monitoring | `EarlyStopping`, `PlateauDetector`, `GradientMonitor`, `TrainingStabilityMonitor` |
 | `curriculum.py` | Board size scheduling | `BoardSizeCurriculum`, `CurriculumStage` |
 | `trainer.py` | Main training loop | `Trainer`, `TrainingMetrics` |
 | `operator_trainer.py` | Neural operator training | `OperatorTrainer`, `TrainingConfig` |
@@ -127,8 +129,8 @@ python -m scripts.train --config-name=train_fast
 
 ## Dependencies
 
-**Internal**: `src.modeling` (model), `src.mcts` (search), `src.games` (game interface), `src.math_kernel` (LBB), `src.data` (datasets/collation)
-**External**: `torch`, `torch.distributed`, `torch.amp`, `pydantic`, `structlog`, `wandb` (optional), `numpy`
+**Internal**: `src.modeling` (model), `src.mcts` (search/evaluator), `src.data` (datasets/collation), `src.templates.config` (BaseModuleConfig), `src.tools` (SimpleGoGame for self-play/eval), `src.pde` (PDEConfig/operators for trainer), `config.schemas` (type hints)
+**External**: `torch`, `torch.distributed`, `torch.amp`, `jaxtyping`, `pydantic`, `structlog`, `wandb` (optional), `numpy`
 
 ## Conventions & Constraints
 

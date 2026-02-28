@@ -15,9 +15,9 @@ This module implements the neural network backbone for AlphaGalerkin — a resol
 ### 1. Module Composition (Builder)
 The main model (`AlphaGalerkinModel`) composes layers in a pipeline:
 ```
-Input → ContinuousEmbedding → [GalerkinBlock × N] → [SoftmaxBlock × M] → PolicyHead + ValueHead
+Input → ContinuousEmbedding → [GalerkinBlock + FNetBlock] × N → [SoftmaxBlock × M] → PolicyHead + ValueHead
 ```
-Each block is an independent `nn.Module` composed from smaller primitives.
+GalerkinBlocks and FNetBlocks are interleaved in the strategy body. Each block is an independent `nn.Module` composed from smaller primitives. Supporting classes: `GalerkinBlock`, `SoftmaxBlock`, `ScaleNorm`, `ModelOutput` (NamedTuple), `DenseHead` (physics regression).
 
 ### 2. Strategy Pattern (Attention Selection)
 - `GalerkinAttention`: O(N) linear attention for strategy body (global influence)
@@ -41,7 +41,7 @@ Each block is an independent `nn.Module` composed from smaller primitives.
 - **Attention mechanisms**: Galerkin (linear), Softmax (quadratic), PUCT selection
 - **Fourier analysis**: FFT/iFFT, spectral convolution, frequency domain filtering
 - **Numerical linear algebra**: SVD for LBB monitoring, condition numbers
-- **einops**: All tensor reshaping uses `rearrange()` and `einsum()` — never raw `.view()`/`.reshape()`
+- **einops**: Preferred for tensor reshaping via `rearrange()` and `einsum()` in core attention/embedding code. Some operator layers (`fno_layer.py`, `galerkin_operator.py`) use raw `.view()`/`.permute()` for performance
 - **jaxtyping**: Tensor shape annotations like `Float[Tensor, "batch n d"]`
 
 ## Sub-Agents
@@ -72,11 +72,11 @@ ruff check src/modeling/
 
 | File | Purpose | Key Classes |
 |------|---------|-------------|
-| `model.py` | Main AlphaGalerkin model | `AlphaGalerkinModel`, `AlphaGalerkinFast`, `PolicyHead`, `ValueHead` |
+| `model.py` | Main AlphaGalerkin model | `AlphaGalerkinModel`, `AlphaGalerkinFast`, `PolicyHead`, `ValueHead`, `GalerkinBlock`, `SoftmaxBlock`, `ModelOutput`, `DenseHead`, `ScaleNorm` |
 | `attention.py` | Attention mechanisms | `GalerkinAttention`, `SoftmaxAttention`, `HybridAttention` |
-| `fnet.py` | FFT-based mixing | `FNetMixing`, `FNetBlock`, `FNetStack`, `GalerkinFNetHybrid` |
+| `fnet.py` | FFT-based mixing | `FNetMixing`, `FNetBlock`, `FNetStack`, `GalerkinFNetHybrid`, `FNetMixingLayer` |
 | `embeddings.py` | Position encoding | `FourierFeatures`, `ContinuousEmbedding`, `StoneEmbedding` |
-| `multiscale_fourier.py` | Multi-scale Fourier features | `MultiScaleFourierFeatures`, `AdaptiveFourierFeatures`, `ProgressiveFourierFeatures` |
+| `multiscale_fourier.py` | Multi-scale Fourier features | `MultiScaleFourierFeatures`, `AdaptiveFourierFeatures`, `ProgressiveFourierFeatures`, `FourierFeaturesConfig`, `PositionalEncoding`, `SpatialPositionalEncoding` |
 | `stability.py` | LBB monitoring | `StabilityGuard`, `StableGalerkinInitializer` |
 | `fno_layer.py` | Fourier Neural Operator | `SpectralConv2d`, `FNOBlock`, `FNO2d` |
 | `galerkin_operator.py` | Galerkin neural operator | `GalerkinOperatorBlock`, `Galerkin2d`, `GalerkinOperatorConfig` |
@@ -84,7 +84,7 @@ ruff check src/modeling/
 
 ## Dependencies
 
-**Internal**: `src.templates.config` (BaseModuleConfig), `src.math_kernel` (basis functions)
+**Internal**: `src.templates.config` (BaseModuleConfig), `src.math_kernel` (basis functions, spectral filtering), `config.schemas` (OperatorConfig)
 **External**: `torch`, `einops`, `jaxtyping`, `pydantic`, `structlog`, `numpy`
 
 ## Conventions & Constraints
@@ -92,6 +92,6 @@ ruff check src/modeling/
 1. **Resolution Independence**: Never hardcode spatial dimensions. Use `create_grid_coordinates()` for normalized [0,1]^2 grids.
 2. **Galerkin Normalization**: Always `1/n` (Monte Carlo), never `1/sqrt(d)` (softmax scaling).
 3. **LBB Condition**: `dim(Key) >= dim(Query)` must hold for all Galerkin layers.
-4. **einops Required**: All tensor reshaping via `rearrange()`. No raw `.view()`, `.reshape()`, or `.permute()`.
+4. **einops Preferred**: Use `rearrange()` for tensor reshaping in new code. Operator layers (`fno_layer.py`, `galerkin_operator.py`) use raw `.view()`/`.permute()` for performance — this is acceptable.
 5. **Fast Path**: `AlphaGalerkinFast` uses FNet-only blocks for MCTS rollout speed. Keep this path updated when changing the main model.
 6. **Learnable Parameters**: Use `nn.Parameter()` for trainable, `register_buffer()` for non-trainable persistent state (e.g., frequency matrices).

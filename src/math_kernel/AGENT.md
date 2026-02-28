@@ -13,7 +13,7 @@ This module implements the mathematical foundations of AlphaGalerkin: basis func
 ## Design Patterns
 
 ### 1. Protocol-Based Abstraction
-`BasisFunction` defines a Protocol interface that `FourierBasis` and `ChebyshevBasis` implement. This enables duck-typing for basis function evaluation.
+`BasisFunction` defines a Protocol interface for basis function evaluation. `FourierBasis` and `ChebyshevBasis` follow the same structural pattern but use simplified `evaluate(coords)` signatures. The Protocol serves as documentation of the intended contract.
 
 ### 2. nn.Module as Mathematical Operator
 All classes inherit from `nn.Module`, enabling:
@@ -22,8 +22,8 @@ All classes inherit from `nn.Module`, enabling:
 - Composability with neural network layers
 
 ### 3. Functional Composition
-- `GalerkinProjection` composes query/key/value projections with Monte Carlo integration
-- `ResolutionAdapter` composes spectral filtering with interpolation
+- `GalerkinProjection` performs query/key/value projections with inline `1/n` Monte Carlo normalization (creates a `MonteCarloIntegral` instance but integrates directly for efficiency)
+- `ResolutionAdapter` composes spectral filtering with interpolation via an internal `SpectralFilter`
 - Each component is independently testable
 
 ### 4. Property-Based Testing (Fredholm)
@@ -64,14 +64,14 @@ mypy src/math_kernel/ --strict
 
 | File | Purpose | Key Classes |
 |------|---------|-------------|
-| `basis.py` | Orthogonal basis functions on [0,1]^2 | `FourierBasis`, `ChebyshevBasis`, `create_grid_coordinates()` |
+| `basis.py` | Orthogonal basis functions on [0,1]^2 | `BasisFunction` (Protocol), `FourierBasis`, `ChebyshevBasis`, `create_grid_coordinates()` |
 | `integral.py` | Monte Carlo integration and Galerkin projection | `MonteCarloIntegral`, `GalerkinProjection`, `PetrovGalerkinProjection` |
 | `spectral.py` | Spectral filtering and resolution adaptation | `SpectralFilter`, `ResolutionAdapter` |
 
 ## Dependencies
 
 **Internal**: None (foundational module — no internal dependencies)
-**External**: `torch`, `einops`, `jaxtyping`, `numpy`
+**External**: `torch`, `einops`, `jaxtyping`
 
 ## Conventions & Constraints
 

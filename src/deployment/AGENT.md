@@ -22,7 +22,7 @@ This module handles the full deployment pipeline: exporting PyTorch models to ON
 `ModelQuantizer` dispatches to different quantization backends:
 - **dynamic**: No calibration data, post-training weight quantization
 - **static**: Requires calibration dataset for activation quantization
-- **QAT**: Quantization-aware training (pre-applied during training)
+- **QAT**: Defined in `QuantizationMode` enum but **not yet implemented** in `ModelQuantizer.quantize()` (raises `ValueError`)
 
 ### 3. Adapter Pattern (Calibration Data Reader)
 `CalibrationDataReader` adapts PyTorch datasets to ONNX Runtime's calibration interface. Implements `set_range()`, `rewind()`, and yields numpy arrays.
@@ -107,7 +107,7 @@ python -m src.deployment.validate \
 2. **Validation Required**: Never deploy without running `ModelValidator.validate()` to compare against PyTorch outputs.
 3. **Provider Fallback**: `ONNXRuntime` tries providers in order (e.g., CUDA → CPU). Configure provider list based on deployment target.
 4. **Opset Version**: Default opset 17. Increase only if newer operators are needed.
-5. **Metadata Embedding**: `ONNXExporter` embeds model version and config hash in ONNX model metadata for traceability.
+5. **Metadata Embedding**: `ONNXExporter` embeds `model_name`, `model_version`, `export_method`, and `opset_version` in ONNX model metadata for traceability.
 6. **Context Manager**: Always use `ONNXRuntime` as a context manager (`with ONNXRuntime(...) as rt:`) for proper resource cleanup.
 7. **Quantization Calibration**: Static quantization requires representative calibration data. Use training data distribution.
 

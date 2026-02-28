@@ -33,7 +33,6 @@ The abstract base class provides default implementations for common operations w
 ### 4. Value Objects
 - `ActionMask`: Efficient boolean mask for legal actions
 - `GameResult`: Terminal state information (winner, scores, reason)
-- `EvaluationResult`: Policy + value from neural evaluation
 
 ### 5. Singleton Registry (Thread-Safe)
 `GameRegistry` uses double-check locking with `_instance` and `_lock` for thread-safe singleton creation.
@@ -80,20 +79,24 @@ python -c "from src.games import GameRegistry; print(GameRegistry().list_games()
 | `registry.py` | Thread-safe game registry | `GameRegistry`, `@register_game()` |
 | `state.py` | Generic game state | `GameState`, `ActionMask` |
 | `go.py` | Full Go implementation | `GoGame` (17-plane encoding, 8-fold symmetry) |
-| `chess.py` | Full Chess implementation | `ChessGame` (119-plane encoding, horizontal symmetry) |
-| `sgf/` | SGF format support | `SGFParser`, `SGFWriter`, `SGFConverter` |
+| `chess.py` | Full Chess implementation | `ChessGame`, `Piece` (IntEnum) (119-plane encoding, horizontal symmetry) |
+| `sgf/parser.py` | SGF parsing | `SGFParser`, `SGFParseError` |
+| `sgf/writer.py` | SGF writing | `SGFWriter` |
+| `sgf/converter.py` | SGF conversion | `SGFConverter` |
+| `sgf/node.py` | SGF data structures | `SGFNode`, `SGFGameTree`, `SGFMove` |
+| `sgf/config.py` | SGF configuration | `SGFConfig`, `SGFFileFormat`, `SGFGameType` |
 
 ## Dependencies
 
-**Internal**: `src.templates.registry` (registry infrastructure)
-**External**: `numpy`, `torch`, `pydantic`, `structlog`
+**Internal**: `src.templates.config` (BaseModuleConfig, used by `sgf/config.py`)
+**External**: `numpy`, `torch`, `structlog`, `pydantic` (SGF submodule only)
 
 ## Conventions & Constraints
 
 1. **Register via Decorator**: Every new game must use `@register_game("name")` — never manual registration.
 2. **Immutable State Flow**: `apply_action()` returns a new `GameState` (or mutates a copy). MCTS requires independent branches.
 3. **Action Space Consistency**: `action_space_size` is fixed per game type. Actions are integers in `[0, action_space_size)`.
-4. **Tensor Encoding**: `to_tensor()` returns `(channels, height, width)` numpy arrays. Channel count matches `state_channels` property.
+4. **Tensor Encoding**: `to_tensor()` returns `(channels, height, width)` `torch.Tensor`. Channel count matches `state_channels` property.
 5. **Symmetry Contract**: `get_symmetries(state, policy)` returns list of `(transformed_state, transformed_policy)` tuples. Must include the identity transformation.
 6. **Board Size Flexibility**: Go supports 5-25 board sizes. Chess is fixed at 8x8. New games must declare supported sizes.
 
@@ -110,8 +113,8 @@ python -c "from src.games import GameRegistry; print(GameRegistry().list_games()
 ### Go (17 planes, variable board size)
 | Planes | Content |
 |--------|---------|
-| 0-7 | Black stone history (8 timesteps) |
-| 8-15 | White stone history (8 timesteps) |
+| 0-7 | Current player's stone history (8 timesteps, relative to side to move) |
+| 8-15 | Opponent's stone history (8 timesteps, relative to side to move) |
 | 16 | Current player (all 1s or all 0s) |
 
 ### Chess (119 planes, 8x8 board)

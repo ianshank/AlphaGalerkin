@@ -77,9 +77,9 @@ pytest tests/pde/test_mcts_adapter.py -v
 
 | File | Purpose | Key Classes |
 |------|---------|-------------|
-| `config.py` | Pydantic configuration | `PDEConfig`, `PDEGameConfig`, `BasisSelectionConfig`, `MeshRefinementConfig`, `PDEType` |
+| `config.py` | Pydantic configuration | `PDEConfig`, `PDEGameConfig`, `BasisSelectionConfig`, `MeshRefinementConfig`, `PDEType`, `BoundaryCondition`, `RefinementStrategy`, `ActionSpace` |
 | `game.py` | Abstract PDE game interface | `PDEGame`, `PDEState`, `PDEResult`, `GamePhase` |
-| `operators.py` | PDE operator definitions | `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator` |
+| `operators.py` | PDE operator definitions | `PDEOperator` (ABC), `PDEResidual`, `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator` |
 | `registry.py` | PDE operator registration | `PDEOperatorRegistry`, `@register_pde_operator()` |
 | `mcts_adapter.py` | PDE-to-MCTS bridge | `PDEGameAdapter` |
 | `games/basis_selection.py` | Galerkin basis selection game | `BasisSelectionGame`, `BasisFunction` |
@@ -87,8 +87,8 @@ pytest tests/pde/test_mcts_adapter.py -v
 
 ## Dependencies
 
-**Internal**: `src.templates.registry` (registry infrastructure), `src.games.interface` (GameInterface protocol for adapter)
-**External**: `torch`, `numpy`, `scipy` (interpolation in mesh refinement), `pydantic`, `structlog`
+**Internal**: `src.templates.registry` (registry infrastructure). Note: `mcts_adapter.py` satisfies the `GameInterface` protocol via duck typing without importing it.
+**External**: `torch`, `numpy`, `scipy` (interpolation in mesh refinement), `jaxtyping`, `pydantic`, `structlog`
 
 ## Conventions & Constraints
 
@@ -96,7 +96,7 @@ pytest tests/pde/test_mcts_adapter.py -v
 2. **Normalized Domain**: All PDE games operate on [0,1]^d (configurable via `domain_min`, `domain_max`).
 3. **Reward Formula**: `reward = error_reduction - cost_per_dof + terminal_bonus_if_converged`. All coefficients are in config.
 4. **Winner Mapping**: In `PDEGameAdapter`, error reduction maps to: +1 (>90% reduction or converged), 0 (50-90%), -1 (<50%).
-5. **Basis Types**: Supported: `fourier`, `polynomial`, `rbf`, `wavelet`. Fourier is default.
+5. **Basis Types**: Implemented: `fourier`, `polynomial`, `rbf`. Fourier is default. (`wavelet` is defined in config but has no implementation yet.)
 6. **Mesh Refinement**: h-refinement subdivides into 2^dim children. p-refinement increases polynomial degree. DOFs per element = (p+1)^dim.
 7. **State Tensor Encoding**: Channel 0 = current solution, Channel 1 = PDE residual, Channel 2 = error indicator. Additional channels are game-specific.
 

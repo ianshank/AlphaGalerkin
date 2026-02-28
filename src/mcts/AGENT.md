@@ -24,10 +24,10 @@ The `MCTS` class accepts an evaluator dependency that implements the evaluation 
 - `expand()` creates child nodes from policy priors
 - `backup()` propagates values up to root
 
-### 3. Template Method (Search Variants)
-- `MCTS`: Standard PUCT search
-- `BatchMCTS`: Extends MCTS with batched leaf evaluation
-- `GumbelMCTS`: Alternative search with sequential halving
+### 3. Inheritance + Independent Variant (Search Variants)
+- `MCTS`: Standard PUCT search (base class)
+- `BatchMCTS(MCTS)`: Extends MCTS with batched leaf evaluation (inherits from MCTS)
+- `GumbelMCTS`: Independent Gumbel AlphaZero implementation with its own API — does **not** inherit from MCTS
 
 ### 4. Value Object (EvaluationResult)
 `EvaluationResult` is a `NamedTuple` containing policy and value — immutable and lightweight.
@@ -71,13 +71,13 @@ pytest tests/mcts/test_evaluator.py -v
 | File | Purpose | Key Classes |
 |------|---------|-------------|
 | `node.py` | Tree node with UCB, expansion, backup | `MCTSNode` |
-| `search.py` | PUCT search and batch evaluation | `MCTS`, `BatchMCTS` |
-| `gumbel.py` | Gumbel AlphaZero with sequential halving | `GumbelMCTS`, `GumbelMCTSConfig` |
-| `evaluator.py` | Neural and random leaf evaluators | `FNetEvaluator`, `RandomEvaluator`, `EvaluationResult` |
+| `search.py` | PUCT search and batch evaluation | `MCTS`, `BatchMCTS`, `GameInterface` (local Protocol) |
+| `gumbel.py` | Gumbel AlphaZero with sequential halving | `GumbelMCTS`, `GumbelMCTSConfig`, `GumbelNode`, `GumbelSearchResult` |
+| `evaluator.py` | Neural and random leaf evaluators | `Evaluator` (Protocol), `FNetEvaluator`, `RandomEvaluator`, `EvaluationResult` |
 
 ## Dependencies
 
-**Internal**: `src.modeling` (for `FNetEvaluator`), `src.games.interface` (GameInterface protocol)
+**Internal**: `src.modeling` (for `FNetEvaluator`), `src.games.interface` and `src.games.state` (used by `gumbel.py` only; `search.py` defines its own local `GameInterface` Protocol)
 **External**: `torch`, `numpy`, `pydantic`, `structlog`
 
 ## Conventions & Constraints

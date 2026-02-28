@@ -14,9 +14,9 @@ This module provides complete Vertex AI integration for cloud-based training: GC
 
 ### 1. Strategy Pattern (Authentication)
 `GCPAuthenticator` supports three auth methods:
-- **ADC** (Application Default Credentials): Via google-auth library
-- **SERVICE_ACCOUNT**: JSON key file validation
-- **GCLOUD**: CLI-based with `gcloud auth login`
+- **APPLICATION_DEFAULT**: Application Default Credentials via google-auth library
+- **SERVICE_ACCOUNT_KEY**: JSON key file validation
+- **GCLOUD_CLI**: CLI-based with `gcloud auth login`
 
 Cross-platform: Windows PowerShell uses `cmd /c` wrapper to bypass PSSecurityException.
 
@@ -25,7 +25,7 @@ Cross-platform: Windows PowerShell uses `cmd /c` wrapper to bypass PSSecurityExc
 - Atomic writes (temp file → rename)
 - Local caching for fast resume
 - Retry with exponential backoff
-- Best model tracking (`best.pt` symlink)
+- Best model tracking (`best.pt` via file copy)
 - Lazy GCS client initialization
 
 ### 3. Observer Pattern (Preemption)
@@ -45,7 +45,7 @@ VertexTrainer
 ```
 
 ### 6. Factory Pattern (Environment Detection)
-`VertexDistributedSetup.setup_distributed_training()` auto-detects the runtime environment:
+`setup_distributed_training()` (standalone module-level function in `multi_node.py`) auto-detects the runtime environment:
 1. PyTorch env vars (RANK, WORLD_SIZE) — standard torchrun
 2. CLUSTER_SPEC JSON — Vertex AI native
 3. TF_CONFIG JSON — Cloud ML Engine format
@@ -111,14 +111,15 @@ python -m scripts.vertex_jobs logs JOB_ID --project my-project
 | `auth.py` | GCP authentication | `GCPAuthenticator`, `AuthMethod`, `PlatformInfo`, `ValidationResult` |
 | `storage.py` | GCS checkpoint management | `GCSCheckpointManager`, `GCSCheckpointMetadata`, `GCSDataSource` |
 | `launcher.py` | Job submission | `VertexLauncher`, `VertexLaunchResult`, `JobStatus`, `JobState` |
-| `multi_node.py` | Distributed setup | `VertexDistributedSetup`, `DistributedContext` |
+| `multi_node.py` | Distributed setup | `VertexDistributedSetup`, `DistributedContext`, `setup_distributed_training()` |
 | `preemption.py` | Spot instance safety | `PreemptionHandler`, `PreemptionMonitor`, `PreemptionEvent` |
 | `cost.py` | Cost tracking | `CostTracker`, `CostEstimate`, `CostBreakdown` |
 | `trainer.py` | Vertex-aware trainer | `VertexTrainer`, `VertexTrainingResult` |
+| `entrypoint.py` | Training job entrypoint | `GracefulShutdownHandler`, `main()`, `run_training()` |
 
 ## Dependencies
 
-**Internal**: `src.training` (base trainer), `src.distributed` (DDP setup)
+**Internal**: `src.training` (base trainer). Note: `src.distributed` is NOT imported — Vertex has its own distributed setup in `multi_node.py`.
 **External**: `google-cloud-aiplatform`, `google-cloud-storage`, `google-auth`, `torch`, `pydantic`, `structlog`
 
 ## Conventions & Constraints
@@ -142,7 +143,7 @@ python -m scripts.vertex_jobs logs JOB_ID --project my-project
      → Returns job_name, console_url
 4. Monitor: VertexLauncher.get_job_status(job_name)
 5. Inside Job:
-     a. VertexDistributedSetup.setup_distributed_training()
+     a. setup_distributed_training()  # standalone function in multi_node.py
      b. VertexTrainer.setup() → GCS, preemption, cost tracking
      c. VertexTrainer.train() → training loop
         - On preemption signal: emergency checkpoint to GCS

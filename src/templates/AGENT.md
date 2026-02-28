@@ -15,9 +15,9 @@ This module provides reusable infrastructure patterns used across all AlphaGaler
 ### 1. Template Method (BaseExecutable)
 `BaseExecutable.run()` wraps `execute()` with lifecycle management:
 ```
-run() → validate_config() → execute() → _create_result()
+run() → execute() → _create_result() (on error)
 ```
-Subclasses only implement `execute()`. Error handling, timing, and result creation are automatic.
+Subclasses only implement `execute()`. Error handling and timing are automatic. `validate_config()` exists as a separate callable method but is not invoked by `run()`.
 
 ### 2. Generic Singleton Registry
 ```python
@@ -60,7 +60,7 @@ BaseModuleConfig
 
 - **Python metaclasses & generics**: Thread-safe singletons, generic type parameters
 - **Pydantic v2**: Model validators, Field constraints, serialization, model_config
-- **Threading**: `RLock`, double-check locking, thread-safe initialization
+- **Threading**: `Lock` (not `RLock`), double-check locking, thread-safe initialization
 - **structlog**: Processor pipelines, context binding, output formatting
 - **Typer/Rich**: CLI app construction, progress bars, formatted output
 - **Abstract base classes**: ABC, Protocol, generic constraints
@@ -101,15 +101,15 @@ pytest tests/templates/test_base.py -v
 ## Dependencies
 
 **Internal**: None (foundational module — depended upon by all others)
-**External**: `pydantic`, `structlog`, `typer` (optional), `rich` (optional), `yaml`, `hashlib`
+**External**: `pydantic`, `structlog`, `typer`, `rich`, `yaml`, `hashlib`
 
 ## Conventions & Constraints
 
 1. **No Module-Specific Logic**: Templates must remain generic. Never import from `src.modeling`, `src.games`, etc.
-2. **Thread Safety Required**: All registries use `RLock`. Never access `_items` dict without locking.
+2. **Thread Safety Required**: All registries use `threading.Lock()`. Never access `_items` dict without locking.
 3. **Deterministic Hashing**: `compute_hash()` must exclude volatile fields (timestamps, run IDs). Same config = same hash always.
 4. **Backward Compatibility**: Changes to `BaseModuleConfig` affect every module. Test thoroughly.
-5. **Optional Dependencies**: `typer` and `rich` are optional. CLI code must gracefully degrade without them.
+5. **CLI Dependencies**: `typer` and `rich` are imported unconditionally by `cli.py`. They are required when using CLI utilities.
 6. **Test Coverage**: This module has 107 tests. All must pass before merging.
 
 ## Usage Guide

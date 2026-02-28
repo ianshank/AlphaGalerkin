@@ -24,9 +24,9 @@ Auto-registration via decorator. No central registration file. Thread-safe singl
 ### 2. Template Method (Scenario Lifecycle)
 `BaseScenario.run()` provides the lifecycle skeleton:
 ```
-setup() → execute() → _evaluate_thresholds() → _create_result() → teardown()
+setup() → execute() → teardown()
 ```
-Subclasses only implement `execute()`. Setup/teardown are optional overrides.
+Subclasses implement `execute()` which returns a `ScenarioResult` directly. Helper methods `_evaluate_thresholds()` and `_create_result()` are available for subclasses to call from within `execute()` but are not part of the base `run()` skeleton. Setup/teardown are optional overrides.
 
 ### 3. Strategy Pattern (Execution Mode)
 `ScenarioRunner` supports sequential and parallel (ThreadPoolExecutor) execution strategies, switchable via config.
@@ -98,14 +98,14 @@ python -m src.poc.cli compare run_a run_b
 | `scenarios/transfer.py` | Zero-shot transfer | `TransferScenario` |
 | `scenarios/complexity.py` | O(N) complexity | `ComplexityScenario` |
 | `scenarios/stability.py` | LBB stability | `StabilityScenario` |
-| `tuning/config.py` | Tuning configuration | `TuningConfig` |
-| `tuning/sampler.py` | Parameter sampling | `TPESampler`, grid/random samplers |
+| `tuning/config.py` | Tuning configuration | `TuningConfig`, `SearchSpace` |
+| `tuning/sampler.py` | Parameter sampling | `BaseSampler` (ABC), `RandomSampler`, `GridSampler`, `TPESampler` |
 | `tuning/tuner.py` | Tuning orchestrator | `HyperparameterTuner`, `TuningResult`, `TrialResult` |
-| `statistics/significance.py` | Statistical analysis | `StatisticalAnalyzer`, `ComparisonResult`, `EffectSizeResult` |
+| `statistics/significance.py` | Statistical analysis | `SignificanceTest`, `StatisticalAnalyzer`, `ComparisonResult`, `EffectSizeResult` |
 
 ## Dependencies
 
-**Internal**: `src.modeling` (model under test), `src.training` (trainer), `src.math_kernel` (operators), `src.templates` (config, registry, logging)
+**Internal**: `src.modeling` (attention/FNet for complexity scenario), `src.math_kernel` (GalerkinProjection for stability scenario), `src.physics.poisson` (data for transfer scenario), `src.experiments.physics_model` (PhysicsOperator for transfer scenario). Note: `src.training` and `src.templates` are NOT imported — the PoC module implements its own config, registry, and logging independently.
 **External**: `pydantic`, `structlog`, `numpy`, `scipy` (statistical tests), `torch`, `yaml`
 
 ## Conventions & Constraints
@@ -116,7 +116,7 @@ python -m src.poc.cli compare run_a run_b
 4. **Metric Thresholds**: Define pass/fail via `MetricThreshold(metric, operator, value)`. Evaluated automatically.
 5. **Tier System**: `ScenarioTier` classifies runtime: UNIT (~seconds), FUNCTIONAL (~minutes), INTEGRATION (~hours).
 6. **Retry Logic**: Runner supports exponential backoff retries with fresh scenario instances per attempt.
-7. **Structured Logging**: Use `ScenarioLogger` with bound context, not raw `structlog`.
+7. **Structured Logging**: `ScenarioLogger` is available for scenario implementations. Note: core framework files (`runner.py`, `results.py`, `registry.py`, `cli.py`) use raw `structlog.get_logger()` directly.
 
 ## Execution Flow
 
@@ -126,9 +126,7 @@ CLI (python -m src.poc.cli run --scenario transfer)
        └→ ScenarioRegistry.get("transfer")
             └→ TransferScenario(config)
                  ├→ setup()           # Initialize model, data
-                 ├→ execute()         # Train, evaluate, record metrics
-                 ├→ _evaluate_thresholds()  # Check MSE < threshold
-                 ├→ _create_result()  # Build ScenarioResult
+                 ├→ execute()         # Train, evaluate, build ScenarioResult
                  └→ teardown()        # Cleanup
        └→ ResultCollector.collect(result)
             └→ Save JSON to output_dir/results/{run_id}/

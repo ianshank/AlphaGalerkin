@@ -20,9 +20,9 @@ This module enables multi-node distributed training via PyTorch DDP with NCCL ba
 
 ### 2. Strategy Pattern (Gradient Compression)
 `GradientSynchronizer` supports pluggable gradient compression:
-- Bucketed all-reduce for communication efficiency
+- All-reduce with full gradient flattening (buckets are initialized but currently unused in the sync path)
 - Top-k sparsification for bandwidth reduction
-- Configurable accumulation steps
+- Configurable accumulation steps via `GradientAccumulator`
 
 ### 3. Repository Pattern (Model Zoo)
 `ModelZoo` manages checkpoint versioning with metadata:
@@ -39,7 +39,7 @@ This module enables multi-node distributed training via PyTorch DDP with NCCL ba
 
 ### 5. Factory Pattern
 - `create_distributed_config()`: Create from kwargs
-- `DistributedInfraConfig.from_environment()`: Auto-detect from env vars
+- `from_environment()`: Standalone module-level function returning `(rank, local_rank, world_size)` tuple from env vars
 
 ### 6. Configuration as Code (Pydantic)
 Three config classes with 50+ validated fields:
@@ -95,7 +95,7 @@ torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \
 
 ## Dependencies
 
-**Internal**: `src.training` (Trainer, loss, checkpoints), `src.mcts` (search), `src.games` (game interface)
+**Internal**: `src.training` (self_play, loss), `src.modeling` (model), `src.data` (collate), `config.schemas` (AlphaGalerkinConfig, MCTSConfig)
 **External**: `torch`, `torch.distributed`, `torch.nn.parallel`, `pydantic`, `structlog`
 
 ## Conventions & Constraints

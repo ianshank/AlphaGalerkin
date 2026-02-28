@@ -18,7 +18,7 @@ This is the largest module in the codebase (~10,400 lines, 31 files). It impleme
 VideoCodec
   ├── Encoder (analysis transform)
   ├── Decoder (synthesis transform)
-  ├── ScaleHyperprior (entropy model)
+  ├── HyperpriorEntropyModel (entropy model)
   ├── Quantizer (differentiable)
   ├── EntropyCoder (range coding)
   ├── GOPManager (frame scheduling)
@@ -114,22 +114,29 @@ python scripts/encode_video.py input.mp4 output.agk --qp 32
 | `config.py` | All configuration schemas | `CodecConfig`, `EncoderConfig`, `DecoderConfig`, `QuantizerConfig`, `EntropyConfig`, `MCTSRateControlConfig` |
 | `models/encoder.py` | Analysis transform | `Encoder`, `FNetGalerkinBlock`, `GalerkinEncoderAttention`, `GDN`, `DownsampleBlock` |
 | `models/decoder.py` | Synthesis transform | `Decoder`, `TemporalDecoder`, `UpsampleBlock`, `DecoderBlock` |
-| `models/hyperprior.py` | Entropy model | `ScaleHyperprior`, `FactorizedPrior`, `GaussianConditional`, `EntropyOutput` |
+| `models/hyperprior.py` | Entropy model | `HyperpriorEntropyModel`, `FactorizedPrior`, `GaussianConditional`, `EntropyOutput` |
 | `models/quantizer.py` | Differentiable quantization | `NoiseQuantizer`, `STEQuantizer`, `SoftQuantizer` |
 | `codec/codec.py` | Complete pipeline | `VideoCodec` |
 | `codec/entropy_coder.py` | Lossless coding | `EntropyCoder`, `RangeEncoder`, `RangeDecoder`, `EncodedBitstream` |
 | `codec/gop_manager.py` | Frame scheduling | `GOPManager`, `ReferenceBuffer`, `FrameInfo`, `FrameType` |
 | `mcts/rate_control.py` | MCTS QP planner | `MCTSRateController`, `GOPPlanner`, `MCTSNode` |
 | `mcts/networks.py` | MuZero-style networks | `RepresentationNetwork`, `DynamicsNetwork`, `PredictionNetwork` |
-| `training/loss.py` | R-D loss functions | `CompressedImageLoss`, `DistortionLoss`, `LossOutput` |
+| `training/loss.py` | R-D loss functions | `CompressionLoss`, `DistortionLoss`, `LossOutput` |
 | `metrics/quality.py` | Quality metrics | `PSNR`, `SSIM`, `MSSSIM`, `PerceptualLoss` |
-| `metrics/rd_curves.py` | Codec comparison | `BDRate` |
+| `metrics/rd_curves.py` | Codec comparison | `RDPoint`, `RDCurve`, `compute_bd_rate()`, `compute_bd_psnr()` |
 | `utils/bitstream.py` | File format (.agk) | `BitstreamReader`, `BitstreamWriter`, `BitstreamHeader` |
+| `utils/padding.py` | Resolution padding | `PaddingMode`, `PaddingConfig`, `PaddingInfo`, `PadToMultiple`, `DynamicPadding` |
+| `utils/logging.py` | Codec-specific logging | `CodecLogContext`, `EncodingMetrics`, `EncoderLogger`, `DecoderLogger` |
+| `data/dataset.py` | Data loading | `ImageDataset`, `VideoDataset`, `VideoClip`, `VariableResolutionBatchSampler` |
+| `data/transforms.py` | Data augmentation | `RandomCrop`, `CenterCrop`, `RandomFlip`, `ColorJitter`, `Normalize`, `CompressionTransforms` |
+| `data/synthetic.py` | Synthetic test data | `SyntheticVideoGenerator`, `SyntheticVideoConfig`, `SyntheticPattern` |
+| `demo/runner.py` | Demo/eval runner | `CompressionDemoRunner`, `DemoResult`, `FrameResult` |
+| `demo/config.py` | Demo configuration | `DemoConfig` |
 
 ## Dependencies
 
-**Internal**: `src.modeling` (Galerkin attention reuse), `src.mcts` (MCTS concepts)
-**External**: `torch`, `torch.fft`, `numpy`, `pydantic`, `structlog`
+**Internal**: `src.templates.config` (BaseModuleConfig, TrainableModuleConfig). Note: `src.modeling` and `src.mcts` are NOT imported — Galerkin attention and MCTS rate control are re-implemented locally within this module.
+**External**: `torch`, `torch.fft`, `numpy`, `scipy`, `pydantic`, `structlog`
 
 ## Conventions & Constraints
 

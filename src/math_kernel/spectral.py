@@ -35,6 +35,14 @@ try:
 except ImportError:
     HAS_JAX = False
 
+__all__ = [
+    "SpectralFilter",
+    "ResolutionAdapter",
+    "create_spectral_filter",
+    "create_resolution_adapter",
+    "HAS_JAX",
+]
+
 
 # ===================================================================
 # PyTorch implementations (unchanged for backward compatibility)
@@ -152,7 +160,7 @@ class SpectralFilter(nn.Module):
         # Inverse FFT
         x_filtered = torch.fft.irfft2(x_freq_filtered, s=(height, width))
 
-        return x_filtered
+        return x_filtered  # type: ignore[no-any-return]
 
 
 class ResolutionAdapter(nn.Module):
@@ -258,7 +266,7 @@ class ResolutionAdapter(nn.Module):
         scale_factor = target_size / source_size
         features_out = features_out * scale_factor
 
-        return features_out
+        return features_out  # type: ignore[no-any-return]
 
     def _apply_adaptive_filter(
         self,
@@ -284,7 +292,7 @@ class ResolutionAdapter(nn.Module):
         # Restore original cutoff
         self.spectral_filter.cutoff_ratio.data.copy_(original_cutoff)
 
-        return result
+        return result  # type: ignore[no-any-return]
 
     def forward(
         self,
@@ -328,7 +336,7 @@ if HAS_JAX:
         filter_type: str = "gaussian"
         learnable: bool = False
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(
             self,
             x: Any,
@@ -447,7 +455,7 @@ if HAS_JAX:
         filter_cutoff: float = 0.5
         filter_type: str = "gaussian"
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(
             self,
             features: Any,

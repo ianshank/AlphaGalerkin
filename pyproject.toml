@@ -84,8 +84,6 @@ ignore = [
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
-    "ANN101", # (removed rule)
-    "ANN102", # (removed rule)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)
@@ -155,6 +153,10 @@ module = [
     "optax.*",
     "orbax.*",
     "chex.*",
+    "yaml",
+    "yaml.*",
+    "typer",
+    "typer.*",
 ]
 ignore_missing_imports = true
 

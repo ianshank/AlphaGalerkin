@@ -566,10 +566,7 @@ class TorchBackend:
                 create_graph=False,
             )
 
-            if isinstance(argnums, int):
-                result_grads = grads[0]
-            else:
-                result_grads = grads
+            result_grads: Any = grads[0] if isinstance(argnums, int) else grads
 
             if has_aux:
                 return result_grads, aux
@@ -631,10 +628,7 @@ class TorchBackend:
                 create_graph=False,
             )
 
-            if isinstance(argnums, int):
-                result_grads = grads[0]
-            else:
-                result_grads = grads
+            result_grads: Any = grads[0] if isinstance(argnums, int) else grads
 
             if has_aux:
                 return (loss, aux), result_grads

@@ -35,6 +35,16 @@ try:
 except ImportError:
     HAS_JAX = False
 
+__all__ = [
+    "BasisFunction",
+    "FourierBasis",
+    "ChebyshevBasis",
+    "create_grid_coordinates",
+    "create_fourier_basis",
+    "create_chebyshev_basis",
+    "HAS_JAX",
+]
+
 
 class BasisFunction(Protocol):
     """Protocol for basis function implementations."""
@@ -293,7 +303,7 @@ if HAS_JAX:
         scale: float = 1.0
         learnable: bool = False
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(self, coords: Any) -> Any:
             """Evaluate Fourier features at given coordinates.
 
@@ -378,7 +388,7 @@ if HAS_JAX:
 
             return jnp.stack(polynomials, axis=-1)
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(self, coords: Any) -> Any:
             """Evaluate 2D Chebyshev features at given coordinates.
 

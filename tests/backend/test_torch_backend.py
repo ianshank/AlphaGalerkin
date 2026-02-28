@@ -156,6 +156,16 @@ class TestTorchDevice:
 class TestCuDNNConfig:
     """Test that cuDNN settings from BackendConfig propagate."""
 
+    @pytest.fixture(autouse=True)
+    def _restore_cudnn_state(self):
+        """Save and restore cuDNN global state around each test."""
+        orig_benchmark = torch.backends.cudnn.benchmark
+        orig_deterministic = torch.backends.cudnn.deterministic
+        yield
+        torch.backends.cudnn.benchmark = orig_benchmark
+        torch.backends.cudnn.deterministic = orig_deterministic
+        torch.use_deterministic_algorithms(False)
+
     def test_cudnn_benchmark_default(self) -> None:
         """Default config should enable cuDNN benchmark mode."""
         from src.backend.config import BackendConfig
@@ -188,10 +198,6 @@ class TestCuDNNConfig:
 
         TorchBackend(config)
         assert torch.backends.cudnn.deterministic is True
-
-        # Restore non-deterministic mode for other tests
-        torch.backends.cudnn.deterministic = False
-        torch.use_deterministic_algorithms(False)
 
 
 # ------------------------------------------------------------------

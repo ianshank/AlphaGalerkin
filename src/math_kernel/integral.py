@@ -36,6 +36,16 @@ try:
 except ImportError:
     HAS_JAX = False
 
+__all__ = [
+    "MonteCarloIntegral",
+    "GalerkinProjection",
+    "PetrovGalerkinProjection",
+    "create_monte_carlo_integral",
+    "create_galerkin_projection",
+    "create_petrov_galerkin_projection",
+    "HAS_JAX",
+]
+
 
 # ===================================================================
 # PyTorch implementations (unchanged for backward compatibility)
@@ -171,7 +181,7 @@ class GalerkinProjection(nn.Module):
         # Project back to model dimension
         output = self.to_output(output)
 
-        return output
+        return output  # type: ignore[no-any-return]
 
     def forward(
         self,
@@ -208,7 +218,7 @@ class GalerkinProjection(nn.Module):
         singular_values = torch.linalg.svdvals(gram)
 
         # Return minimum singular value (LBB constant)
-        return singular_values.min(dim=-1).values
+        return singular_values.min(dim=-1).values  # type: ignore[no-any-return]
 
 
 class PetrovGalerkinProjection(nn.Module):
@@ -289,7 +299,7 @@ class PetrovGalerkinProjection(nn.Module):
         # Reconstruct: Q * Context
         output = einsum(q, context, "b n q, b q v -> b n v")
 
-        return self.to_output(output)
+        return self.to_output(output)  # type: ignore[no-any-return]
 
     def forward(
         self,
@@ -320,7 +330,7 @@ if HAS_JAX:
         It is a pure-function module with no trainable parameters.
         """
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(
             self,
             values: Any,
@@ -369,7 +379,7 @@ if HAS_JAX:
         d_key: int
         d_value: int
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(self, x: Any) -> Any:
             """Apply Galerkin projection (linear attention).
 
@@ -475,7 +485,7 @@ if HAS_JAX:
                     f"LBB violation: d_trial ({self.d_trial}) must be >= d_test ({self.d_test})"
                 )
 
-        @fnn.compact
+        @fnn.compact  # type: ignore[untyped-decorator]
         def __call__(self, x: Any) -> Any:
             """Apply Petrov-Galerkin projection.
 

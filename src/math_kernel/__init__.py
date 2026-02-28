@@ -59,17 +59,17 @@ __all__ = [
 
 # Conditionally export JAX classes when JAX/Flax are installed
 if HAS_JAX:
-    from src.math_kernel.basis import (  # type: ignore[attr-defined]
+    from src.math_kernel.basis import (
         JaxChebyshevBasis,
         JaxFourierBasis,
         create_grid_coordinates_jax,
     )
-    from src.math_kernel.integral import (  # type: ignore[attr-defined]
+    from src.math_kernel.integral import (
         JaxGalerkinProjection,
         JaxMonteCarloIntegral,
         JaxPetrovGalerkinProjection,
     )
-    from src.math_kernel.spectral import (  # type: ignore[attr-defined]
+    from src.math_kernel.spectral import (
         JaxResolutionAdapter,
         JaxSpectralFilter,
     )

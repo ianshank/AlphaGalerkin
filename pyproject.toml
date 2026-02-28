@@ -42,6 +42,20 @@ dev = [
     "mypy>=1.0.0",
     "ruff>=0.1.0",
 ]
+jax = [
+    "jax[cpu]>=0.4.20",
+    "flax>=0.8.0",
+    "optax>=0.2.0",
+    "orbax-checkpoint>=0.5.0",
+    "chex>=0.1.85",
+]
+jax-gpu = [
+    "jax[cuda12]>=0.4.20",
+    "flax>=0.8.0",
+    "optax>=0.2.0",
+    "orbax-checkpoint>=0.5.0",
+    "chex>=0.1.85",
+]
 vertex = [
     "google-cloud-aiplatform>=1.36.0",
     "google-cloud-storage>=2.10.0",
@@ -67,11 +81,11 @@ ignore = [
     "D105",   # Missing docstring in magic method
     "D106",   # Missing docstring in public nested class
     "D107",   # Missing docstring in __init__
+    "D203",   # Incompatible with D211 (no-blank-line-before-class)
+    "D213",   # Incompatible with D212 (multi-line-summary-first-line)
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
-    "ANN101", # (removed rule)
-    "ANN102", # (removed rule)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)
@@ -114,6 +128,12 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [[tool.mypy.overrides]]
 module = [
@@ -136,6 +156,17 @@ module = [
     "torchvision.*",
     "numpy.*",
     "pytest.*",
+    "jax.*",
+    "flax.*",
+    "optax.*",
+    "orbax.*",
+    "chex.*",
+    "yaml",
+    "yaml.*",
+    "typer",
+    "typer.*",
+    "rich",
+    "rich.*",
 ]
 ignore_missing_imports = true
 
@@ -169,4 +200,8 @@ markers = [
     "e2e: end-to-end integration tests",
     "gpu_required: tests requiring GPU",
     "onnx_required: tests requiring ONNX",
+    "jax: JAX-specific tests",
+    "cross_backend: cross-backend equivalence tests",
+    "video: video compression tests",
+    "integration: integration tests",
 ]

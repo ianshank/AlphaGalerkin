@@ -127,7 +127,7 @@ class TournamentScheduler:
 
         # Add bye player if odd number
         if n % 2 == 1:
-            player_list.append(None)  # type: ignore
+            player_list.append(None)  # type: ignore[arg-type]
             n += 1
 
         pairings = []

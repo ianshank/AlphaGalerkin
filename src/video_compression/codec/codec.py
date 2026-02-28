@@ -6,12 +6,12 @@ into a unified encoding/decoding pipeline.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
+import structlog
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
@@ -35,7 +35,7 @@ from src.video_compression.models.hyperprior import (
 )
 from src.video_compression.models.quantizer import create_quantizer
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class CodecOutput(NamedTuple):
@@ -595,7 +595,7 @@ class VideoCodec(nn.Module):
         self.eval()
         self.gop_manager.reset()
 
-        logger.info("Starting video decoding: %d frames", num_frames)
+        logger.info("video_decoding_started", num_frames=num_frames)
 
         for frame_idx, (bitstream, frame_info, scales) in enumerate(bitstreams):
             if frame_idx >= num_frames:
@@ -609,18 +609,18 @@ class VideoCodec(nn.Module):
                     validate_refs=True,
                 )
             except ReferenceFrameError as e:
-                logger.error("Decode failed at frame %d: %s", frame_idx, str(e))
+                logger.error("decode_failed", frame_idx=frame_idx, error=str(e))
                 raise
 
             if callback is not None:
                 callback(frame_idx, x_hat)
 
             if (frame_idx + 1) % 10 == 0 or frame_idx == num_frames - 1:
-                logger.info("Decoded frame %d/%d", frame_idx + 1, num_frames)
+                logger.info("frame_decoded", frame=frame_idx + 1, total=num_frames)
 
             yield x_hat
 
-        logger.info("Video decoding complete: %d frames", num_frames)
+        logger.info("video_decoding_complete", num_frames=num_frames)
 
     def encode_video(
         self,
@@ -643,7 +643,7 @@ class VideoCodec(nn.Module):
         self.gop_manager.reset()
         self._reset_stats()
 
-        logger.info("Starting video encoding: %d frames", num_frames)
+        logger.info("video_encoding_started", num_frames=num_frames)
 
         # If MCTS GOP planning is enabled, pre-plan GOPs
 
@@ -655,7 +655,7 @@ class VideoCodec(nn.Module):
             if self.gop_planner is not None and frame_idx % self.config.mcts.gop_size == 0:
                 gop_start = frame_idx
                 # Collect GOP frames for planning (would need buffering in practice)
-                logger.debug("Planning GOP starting at frame %d", gop_start)
+                logger.debug("gop_planning_started", gop_start=gop_start)
 
             frame_info = self.gop_manager.get_frame_info(frame_idx)
 
@@ -705,7 +705,7 @@ class VideoCodec(nn.Module):
 
             yield output
 
-        logger.info("Video encoding complete: %d frames", num_frames)
+        logger.info("video_encoding_complete", num_frames=num_frames)
 
     def _reset_stats(self) -> None:
         """Reset encoding statistics."""
@@ -847,7 +847,7 @@ def load_codec(
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    logger.info("Loading codec from %s", checkpoint_path)
+    logger.info("codec_loading", checkpoint_path=str(checkpoint_path))
 
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
@@ -872,6 +872,6 @@ def load_codec(
     codec.to(device)
     codec.eval()
 
-    logger.info("Loaded codec with %d parameters", sum(p.numel() for p in codec.parameters()))
+    logger.info("codec_loaded", num_parameters=sum(p.numel() for p in codec.parameters()))
 
     return codec

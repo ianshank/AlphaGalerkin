@@ -100,7 +100,7 @@ def log_function_call(
                 logger.error("call_failed", **log_data)
                 raise
 
-        return wrapper  # type: ignore
+        return wrapper  # type: ignore[return-value]
 
     return decorator
 

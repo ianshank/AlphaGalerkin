@@ -35,7 +35,7 @@ try:
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
-    wandb = None  # type: ignore[assignment]
+    wandb = None
 
 from src.experiments.physics_model import PhysicsLoss, PhysicsOperator
 from src.physics.poisson import PoissonDataset

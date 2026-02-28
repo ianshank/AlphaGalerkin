@@ -11,16 +11,16 @@ Design principles:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import Enum
 
+import structlog
 import torch.nn.functional as F
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor, nn
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PaddingMode(str, Enum):

@@ -8,18 +8,18 @@ Provides reusable dataset implementations for:
 
 from __future__ import annotations
 
-import logging
 import random
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import structlog
 import torch
 from pydantic import BaseModel, Field
 from torch import Tensor
 from torch.utils.data import Dataset
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class DatasetConfig(BaseModel):

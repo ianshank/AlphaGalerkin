@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor
 from torch.utils.data import Dataset
 
@@ -45,8 +45,7 @@ class DatasetConfig(BaseModel):
     num_workers: int = Field(default=4, ge=0, description="Data loading workers")
     prefetch_factor: int = Field(default=2, ge=1, description="Prefetch batches per worker")
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @dataclass
@@ -61,17 +60,17 @@ class VideoClip:
     @property
     def num_frames(self) -> int:
         """Number of frames in clip."""
-        return self.frames.shape[0]
+        return int(self.frames.shape[0])
 
     @property
     def height(self) -> int:
         """Frame height."""
-        return self.frames.shape[2]
+        return int(self.frames.shape[2])
 
     @property
     def width(self) -> int:
         """Frame width."""
-        return self.frames.shape[3]
+        return int(self.frames.shape[3])
 
 
 class ImageDataset(Dataset):
@@ -102,7 +101,7 @@ class ImageDataset(Dataset):
         self.transform = transform
 
         # Find all images
-        self.files = self._find_images()
+        self.files: list[Path] = self._find_images()
         if not self.files:
             raise ValueError(f"No images found in {root}")
 
@@ -110,7 +109,7 @@ class ImageDataset(Dataset):
 
     def _find_images(self) -> list[Path]:
         """Find all image files in root directory."""
-        files = []
+        files: list[Path] = []
         for ext in self.EXTENSIONS:
             files.extend(self.root.glob(f"**/*{ext}"))
             files.extend(self.root.glob(f"**/*{ext.upper()}"))
@@ -233,7 +232,7 @@ class VideoDataset(Dataset):
         self.transform = transform
 
         # Find all videos
-        self.files = self._find_videos()
+        self.files: list[Path] = self._find_videos()
         if not self.files:
             raise ValueError(f"No videos found in {root}")
 
@@ -244,7 +243,7 @@ class VideoDataset(Dataset):
 
     def _find_videos(self) -> list[Path]:
         """Find all video files in root directory."""
-        files = []
+        files: list[Path] = []
         for ext in self.EXTENSIONS:
             files.extend(self.root.glob(f"**/*{ext}"))
             files.extend(self.root.glob(f"**/*{ext.upper()}"))

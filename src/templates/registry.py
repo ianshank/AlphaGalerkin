@@ -30,7 +30,7 @@ Example:
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any, Generic, TypeVar
 
 import structlog
@@ -232,7 +232,7 @@ class BaseRegistry(Generic[T]):
         """Check if name is registered."""
         return self.is_registered(name)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Iterate over registered names."""
         return iter(self.list_items())
 

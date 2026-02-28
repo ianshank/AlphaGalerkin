@@ -232,7 +232,7 @@ class SoftQuantizer(Quantizer):
         with torch.no_grad():
             self.temperature.mul_(factor)
             self.temperature.clamp_(min=self.min_temperature)
-        return self.temperature.item()
+        return float(self.temperature.item())
 
 
 def create_quantizer(config: QuantizerConfig) -> Quantizer:

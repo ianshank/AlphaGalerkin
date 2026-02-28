@@ -203,7 +203,9 @@ class BaseModuleConfig(BaseModel):
                 return [convert(item) for item in obj]
             return obj
 
-        return convert(data)  # type: ignore[no-any-return]
+        result = convert(data)
+        assert isinstance(result, dict)
+        return result
 
     def with_overrides(self, **overrides: Any) -> BaseModuleConfig:
         """Create a new config with specified overrides.

@@ -224,6 +224,7 @@ def compute_ms_ssim(
             ssim_last = ssim_val
 
     # Combine scales
+    assert ssim_last is not None, "ssim_last should be set for at least 1 scale"
     ms_ssim = ssim_last ** weights[-1]
     for i, cs in enumerate(cs_products):
         ms_ssim = ms_ssim * (cs ** weights[i])
@@ -413,6 +414,7 @@ class PerceptualLoss(nn.Module):
             vgg.eval()
             self._vgg = vgg
 
+        assert self._vgg is not None, "VGG model failed to initialize"
         return self._vgg.to(device)
 
     def forward(

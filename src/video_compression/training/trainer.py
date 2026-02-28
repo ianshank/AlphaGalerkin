@@ -174,7 +174,7 @@ class VideoCompressionTrainer:
             lr=self.optimizer.param_groups[0]["lr"],
         )
 
-    @torch.no_grad()
+    @torch.no_grad()  # type: ignore[untyped-decorator]
     def eval_step(
         self,
         batch: torch.Tensor,

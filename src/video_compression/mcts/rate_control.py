@@ -217,6 +217,8 @@ class MCTSRateController:
             # Selection: traverse to leaf
             while node.is_expanded():
                 action, child = self._select_child(node)
+                if child is None:
+                    break
                 node = child
                 search_path.append(node)
 
@@ -390,7 +392,7 @@ class MCTSRateController:
         # Simple exponential model
         base_bits = latent.numel() * 8  # Maximum bits
         qp_factor = math.exp(-qp / 10)  # Higher QP = fewer bits
-        return base_bits * qp_factor * self.config.bit_estimation_slope  # Scale factor
+        return float(base_bits * qp_factor * self.config.bit_estimation_slope)
 
     def _estimate_quality(self, qp: int) -> float:
         """Estimate quality (PSNR) for given QP.
@@ -467,7 +469,7 @@ class GOPPlanner:
         for _i, (latent, frame_type) in enumerate(zip(frame_latents, frame_types, strict=False)):
             # Adjust target based on remaining budget
             weight = type_weights[frame_type]
-            target_bits * weight / total_weight
+            _frame_target_bits = target_bits * weight / total_weight
 
             # Get decision from MCTS
             decision = self.rate_controller.select_qp(latent, frame_type)

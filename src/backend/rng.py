@@ -18,9 +18,9 @@ Example:
 
 from __future__ import annotations
 
-__all__ = ["KeyManager"]
-
 from typing import Any
+
+__all__ = ["KeyManager"]
 
 
 class KeyManager:

@@ -263,7 +263,7 @@ def log_timing(
                 return result
             finally:
                 duration = time.perf_counter() - start_time
-                logger.debug(  # type: ignore[union-attr]
+                logger.debug(
                     "function_timing",
                     function=func.__name__,
                     duration_seconds=duration,
@@ -309,12 +309,12 @@ def log_call(
                 call_info["args"] = str(args)[:200]  # Truncate for safety
                 call_info["kwargs"] = str(kwargs)[:200]
 
-            logger.debug("function_call", **call_info)  # type: ignore[union-attr]
+            logger.debug("function_call", **call_info)
 
             result = func(*args, **kwargs)
 
             if log_result:
-                logger.debug(  # type: ignore[union-attr]
+                logger.debug(
                     "function_result",
                     function=func.__name__,
                     result=str(result)[:200],

@@ -155,7 +155,7 @@ def scenario(
 
     def decorator(cls: type[T]) -> type[T]:
         ScenarioRegistry().register(name, cls)
-        cls._scenario_name = name  # type: ignore[attr-defined]
+        cls._scenario_name = name
         return cls
 
     return decorator

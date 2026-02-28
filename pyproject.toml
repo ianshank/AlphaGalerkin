@@ -159,6 +159,8 @@ module = [
     "yaml.*",
     "typer",
     "typer.*",
+    "rich",
+    "rich.*",
 ]
 ignore_missing_imports = true
 
@@ -194,4 +196,5 @@ markers = [
     "onnx_required: tests requiring ONNX",
     "jax: JAX-specific tests",
     "cross_backend: cross-backend equivalence tests",
+    "video: video compression tests",
 ]

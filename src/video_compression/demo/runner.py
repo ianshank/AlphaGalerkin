@@ -23,12 +23,13 @@ import logging
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch import Tensor
 
 from src.video_compression.codec.codec import VideoCodec, create_codec
-from src.video_compression.codec.gop_manager import FrameType
+from src.video_compression.codec.gop_manager import FrameInfo, FrameType
 from src.video_compression.config import (
     CodecConfig,
     DecoderConfig,
@@ -56,6 +57,9 @@ from src.video_compression.utils.bitstream import (
 from src.video_compression.utils.padding import pad_to_multiple
 
 logger = logging.getLogger(__name__)
+
+# Sentinel for QP when frame_info.qp is None
+_DEFAULT_QP = 32
 
 
 # ---------------------------------------------------------------------------
@@ -122,9 +126,9 @@ class DemoResult:
     resolution_results: list[ResolutionResult] = field(default_factory=list)
     total_time_s: float = 0.0
     device: str = "cpu"
-    config_summary: dict | None = None
+    config_summary: dict[str, Any] | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         return {
             "lambda_results": [asdict(r) for r in self.lambda_results],
@@ -311,7 +315,7 @@ class CompressionDemoRunner:
             num_frames=num_frames,
         )
 
-        total_bits = 0
+        total_bits = 0.0
         total_psnr = 0.0
         total_ssim = 0.0
         encoded_frames: list[EncodedFrame] = []
@@ -349,9 +353,6 @@ class CompressionDemoRunner:
                     frame_info.frame_type.value,
                     e,
                 )
-                # Force I-frame on failure
-                from src.video_compression.codec.gop_manager import FrameInfo
-
                 i_frame_info = FrameInfo(
                     index=i,
                     gop_index=0,
@@ -360,7 +361,7 @@ class CompressionDemoRunner:
                     encode_order=i,
                     forward_ref=None,
                     backward_ref=None,
-                    qp=32,
+                    qp=_DEFAULT_QP,
                 )
                 output = codec.encode_frame(frame_padded, i_frame_info)
 
@@ -402,13 +403,23 @@ class CompressionDemoRunner:
                 if output.z_bitstream is not None:
                     z_bytes = output.z_bitstream.data
 
+                fwd_ref = (
+                    frame_info.forward_ref
+                    if frame_info.forward_ref is not None
+                    else -1
+                )
+                bwd_ref = (
+                    frame_info.backward_ref
+                    if frame_info.backward_ref is not None
+                    else -1
+                )
                 frame_header = FrameHeader(
                     frame_idx=i,
                     frame_type=frame_info.frame_type,
                     data_length=len(latent_bytes),
-                    qp=frame_info.qp,
-                    forward_ref_idx=frame_info.forward_ref if frame_info.forward_ref is not None else -1,
-                    backward_ref_idx=frame_info.backward_ref if frame_info.backward_ref is not None else -1,
+                    qp=frame_info.qp if frame_info.qp is not None else _DEFAULT_QP,
+                    forward_ref_idx=fwd_ref,
+                    backward_ref_idx=bwd_ref,
                 )
                 encoded_frames.append(
                     EncodedFrame(
@@ -452,7 +463,7 @@ class CompressionDemoRunner:
                 width=width,
                 height=height,
                 num_frames=num_frames,
-                frame_rate=30.0,
+                frame_rate=self.config.frame_rate,
                 gop_size=min(num_frames, 8),
                 downsample_factor=ds_factor,
                 latent_channels=self.config.latent_channels,

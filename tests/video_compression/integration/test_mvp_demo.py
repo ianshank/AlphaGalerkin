@@ -14,13 +14,11 @@ import json
 from pathlib import Path
 
 import pytest
-import torch
 
 from src.video_compression.data.synthetic import SyntheticPattern, create_test_sequence
 from src.video_compression.demo.config import DemoConfig
 from src.video_compression.demo.runner import CompressionDemoRunner, DemoResult
 from src.video_compression.utils.bitstream import load_bitstream
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

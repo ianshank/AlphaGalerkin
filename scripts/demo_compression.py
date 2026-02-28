@@ -77,7 +77,10 @@ Examples:
         "--patterns",
         type=str,
         default="gradient,waves",
-        help="Comma-separated patterns: gradient,motion,checkerboard,waves,noise (default: gradient,waves)",
+        help=(
+            "Comma-separated patterns: gradient,motion,"
+            "checkerboard,waves,noise (default: gradient,waves)"
+        ),
     )
 
     # R-D sweep
@@ -255,7 +258,7 @@ def print_summary(result: DemoResult) -> None:
     # Bitstream files
     bs_files = [lr.bitstream_path for lr in result.lambda_results if lr.bitstream_path]
     if bs_files:
-        print(f"\nBitstream files written:")
+        print("\nBitstream files written:")
         for f in bs_files:
             print(f"  {f}")
 

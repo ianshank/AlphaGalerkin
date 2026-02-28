@@ -129,6 +129,12 @@ class DemoConfig(BaseModel):
         default=True,
         description="Write .agk bitstream files to output_dir",
     )
+    frame_rate: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=240.0,
+        description="Frame rate (fps) for bitstream header metadata",
+    )
     verbose: bool = Field(
         default=False,
         description="Enable verbose logging",
@@ -136,7 +142,7 @@ class DemoConfig(BaseModel):
 
     # ── Validators ────────────────────────────────────────────────────
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_architecture(self) -> DemoConfig:
         """Validate codec architecture constraints."""
         # Downsample factor must be power of 2

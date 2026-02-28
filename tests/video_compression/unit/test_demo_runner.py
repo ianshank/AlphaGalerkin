@@ -12,11 +12,9 @@ Validates:
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
-import torch
 from pydantic import ValidationError
 
 from src.video_compression.data.synthetic import SyntheticPattern, create_test_sequence
@@ -28,7 +26,6 @@ from src.video_compression.demo.runner import (
     LambdaResult,
     ResolutionResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Small config fixture for fast tests

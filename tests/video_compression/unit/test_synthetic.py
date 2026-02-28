@@ -21,7 +21,6 @@ from src.video_compression.data.synthetic import (
     create_test_sequence,
 )
 
-
 # ---------------------------------------------------------------------------
 # SyntheticVideoConfig Tests
 # ---------------------------------------------------------------------------

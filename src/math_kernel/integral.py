@@ -181,7 +181,7 @@ class GalerkinProjection(nn.Module):
         # Project back to model dimension
         output = self.to_output(output)
 
-        return output  # type: ignore[no-any-return]
+        return output
 
     def forward(
         self,
@@ -218,7 +218,7 @@ class GalerkinProjection(nn.Module):
         singular_values = torch.linalg.svdvals(gram)
 
         # Return minimum singular value (LBB constant)
-        return singular_values.min(dim=-1).values  # type: ignore[no-any-return]
+        return singular_values.min(dim=-1).values
 
 
 class PetrovGalerkinProjection(nn.Module):
@@ -299,7 +299,7 @@ class PetrovGalerkinProjection(nn.Module):
         # Reconstruct: Q * Context
         output = einsum(q, context, "b n q, b q v -> b n v")
 
-        return self.to_output(output)  # type: ignore[no-any-return]
+        return self.to_output(output)
 
     def forward(
         self,

@@ -71,10 +71,10 @@ class TorchBackend:
         torch.manual_seed(config.rng_seed)
 
         logger.info(
-            "TorchBackend initialized: device=%s, precision=%s, seed=%d",
-            self._default_device,
-            config.precision.value,
-            config.rng_seed,
+            "backend_initialized",
+            device=self._default_device,
+            precision=config.precision.value,
+            seed=config.rng_seed,
         )
 
     # ------------------------------------------------------------------

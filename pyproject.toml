@@ -81,6 +81,8 @@ ignore = [
     "D105",   # Missing docstring in magic method
     "D106",   # Missing docstring in public nested class
     "D107",   # Missing docstring in __init__
+    "D203",   # Incompatible with D211 (no-blank-line-before-class)
+    "D213",   # Incompatible with D212 (multi-line-summary-first-line)
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)

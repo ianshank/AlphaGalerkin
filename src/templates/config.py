@@ -284,7 +284,7 @@ class TrainableModuleConfig(BaseModuleConfig):
         description="Use automatic mixed precision",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_intervals(self) -> TrainableModuleConfig:
         """Ensure intervals don't exceed total steps."""
         if self.warmup_steps >= self.total_steps:
@@ -319,7 +319,7 @@ class BoardSizeConfig(BaseModel):
         description="Specific board sizes to use",
     )
 
-    @field_validator("sizes")
+    @field_validator("sizes")  # type: ignore[untyped-decorator]
     @classmethod
     def validate_sizes(cls, v: list[int]) -> list[int]:
         """Validate and normalize board sizes."""
@@ -330,7 +330,7 @@ class BoardSizeConfig(BaseModel):
                 raise ValueError(f"Board size {size} must be between 3 and 25")
         return sorted(set(v))
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_size_range(self) -> BoardSizeConfig:
         """Ensure sizes are within min/max range."""
         for size in self.sizes:
@@ -344,7 +344,7 @@ T = TypeVar("T", bound=BaseModuleConfig)
 
 def create_config_class(
     name: str,
-    base: type[T] = BaseModuleConfig,  # type: ignore[assignment]
+    base: type[T] = BaseModuleConfig,
     **field_definitions: tuple[type, Any],
 ) -> type[T]:
     """Factory function to create configuration classes dynamically.

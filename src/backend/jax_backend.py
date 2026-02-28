@@ -63,10 +63,10 @@ class JaxBackend:
         self._rng_key: jax.Array = jax.random.PRNGKey(config.rng_seed)
 
         logger.info(
-            "JaxBackend initialized: device=%s, precision=%s, seed=%d",
-            self.get_default_device(),
-            config.precision.value,
-            config.rng_seed,
+            "backend_initialized",
+            device=self.get_default_device(),
+            precision=config.precision.value,
+            seed=config.rng_seed,
         )
 
     # ------------------------------------------------------------------

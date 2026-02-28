@@ -28,9 +28,9 @@ import time
 from typing import Any
 
 from src.backend.types import Array
+from src.templates.logging import BaseModuleLogger
 
 __all__ = ["BackendLogger", "create_backend_logger"]
-from src.templates.logging import BaseModuleLogger
 
 
 class BackendLogger(BaseModuleLogger):

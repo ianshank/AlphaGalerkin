@@ -81,7 +81,7 @@ class BackendConfig(BaseModuleConfig):
         description="Enable deterministic mode for torch (slower)",
     )
 
-    @model_validator(mode="after")
+    @model_validator(mode="after")  # type: ignore[untyped-decorator]
     def validate_jax_platform(self) -> BackendConfig:
         """Validate JAX platform if specified."""
         valid_platforms = {"cpu", "gpu", "tpu", None}

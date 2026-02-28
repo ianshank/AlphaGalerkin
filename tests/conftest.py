@@ -40,9 +40,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "requires_video: tests requiring real video files")
     config.addinivalue_line("markers", "integration: integration tests")
     config.addinivalue_line("markers", "jax: JAX-specific tests")
-    config.addinivalue_line(
-        "markers", "cross_backend: cross-backend equivalence tests"
-    )
+    config.addinivalue_line("markers", "cross_backend: cross-backend equivalence tests")
 
 
 @pytest.fixture(autouse=True)

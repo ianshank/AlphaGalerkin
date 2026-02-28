@@ -218,9 +218,7 @@ class TestBoardSizeBatchSampler:
 
     def test_batches_have_same_board_size(self, sample_experiences: list[Experience]):
         """Test each batch contains experiences of same board size."""
-        sampler = BoardSizeBatchSampler(
-            sample_experiences, batch_size=4, shuffle=False
-        )
+        sampler = BoardSizeBatchSampler(sample_experiences, batch_size=4, shuffle=False)
 
         for batch_indices in sampler:
             board_sizes = [sample_experiences[i].board_size for i in batch_indices]
@@ -229,9 +227,7 @@ class TestBoardSizeBatchSampler:
     def test_batch_size_respected(self, sample_experiences: list[Experience]):
         """Test batches respect batch_size limit."""
         batch_size = 4
-        sampler = BoardSizeBatchSampler(
-            sample_experiences, batch_size=batch_size, drop_last=True
-        )
+        sampler = BoardSizeBatchSampler(sample_experiences, batch_size=batch_size, drop_last=True)
 
         for batch_indices in sampler:
             assert len(batch_indices) == batch_size
@@ -239,9 +235,7 @@ class TestBoardSizeBatchSampler:
     def test_drop_last_removes_incomplete(self, sample_experiences: list[Experience]):
         """Test drop_last removes incomplete batches."""
         batch_size = 7  # Won't evenly divide
-        sampler = BoardSizeBatchSampler(
-            sample_experiences, batch_size=batch_size, drop_last=True
-        )
+        sampler = BoardSizeBatchSampler(sample_experiences, batch_size=batch_size, drop_last=True)
 
         for batch_indices in sampler:
             assert len(batch_indices) == batch_size
@@ -249,24 +243,16 @@ class TestBoardSizeBatchSampler:
     def test_no_drop_last_includes_incomplete(self, sample_experiences: list[Experience]):
         """Test without drop_last, incomplete batches are included."""
         batch_size = 7
-        sampler = BoardSizeBatchSampler(
-            sample_experiences, batch_size=batch_size, drop_last=False
-        )
+        sampler = BoardSizeBatchSampler(sample_experiences, batch_size=batch_size, drop_last=False)
 
         batch_sizes = [len(batch) for batch in sampler]
         # Should have some batches smaller than batch_size
-        assert any(s < batch_size for s in batch_sizes) or all(
-            s == batch_size for s in batch_sizes
-        )
+        assert any(s < batch_size for s in batch_sizes) or all(s == batch_size for s in batch_sizes)
 
     def test_shuffle_changes_order(self, sample_experiences: list[Experience]):
         """Test shuffle randomizes batch order."""
-        sampler1 = BoardSizeBatchSampler(
-            sample_experiences, batch_size=4, shuffle=True
-        )
-        sampler2 = BoardSizeBatchSampler(
-            sample_experiences, batch_size=4, shuffle=True
-        )
+        sampler1 = BoardSizeBatchSampler(sample_experiences, batch_size=4, shuffle=True)
+        sampler2 = BoardSizeBatchSampler(sample_experiences, batch_size=4, shuffle=True)
 
         # Get batches from both (may be different order due to shuffle)
         batches1 = list(sampler1)
@@ -277,12 +263,8 @@ class TestBoardSizeBatchSampler:
 
     def test_no_shuffle_is_deterministic(self, same_size_experiences: list[Experience]):
         """Test no shuffle gives deterministic order."""
-        sampler1 = BoardSizeBatchSampler(
-            same_size_experiences, batch_size=3, shuffle=False
-        )
-        sampler2 = BoardSizeBatchSampler(
-            same_size_experiences, batch_size=3, shuffle=False
-        )
+        sampler1 = BoardSizeBatchSampler(same_size_experiences, batch_size=3, shuffle=False)
+        sampler2 = BoardSizeBatchSampler(same_size_experiences, batch_size=3, shuffle=False)
 
         batches1 = list(sampler1)
         batches2 = list(sampler2)
@@ -291,9 +273,7 @@ class TestBoardSizeBatchSampler:
 
     def test_len_returns_correct_count(self, sample_experiences: list[Experience]):
         """Test __len__ returns correct batch count."""
-        sampler = BoardSizeBatchSampler(
-            sample_experiences, batch_size=4, drop_last=False
-        )
+        sampler = BoardSizeBatchSampler(sample_experiences, batch_size=4, drop_last=False)
 
         expected_len = len(sampler)
         actual_batches = list(sampler)

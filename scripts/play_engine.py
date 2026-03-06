@@ -170,7 +170,7 @@ def main() -> None:
     device = resolve_device(args.device)
     logger.info("loading_model", path=str(args.model), device=str(device))
 
-    checkpoint = torch.load(args.model, map_location=device)
+    checkpoint = torch.load(args.model, map_location=device, weights_only=False)
     model_config = checkpoint.get("config", {})
     if isinstance(model_config, dict):
         from config.schemas import AlphaGalerkinConfig

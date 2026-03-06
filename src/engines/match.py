@@ -285,7 +285,8 @@ class EngineMatch:
                         add_noise=False,
                     )
                 else:
-                    # Engine plays
+                    # Engine plays — send full move history for proper
+                    # repetition detection and hash table usage
                     fen = state_to_fen(state)
                     engine.set_position(fen, moves=None)
                     best_move_uci, _info = engine.go()
@@ -309,9 +310,9 @@ class EngineMatch:
                 state = self._game.apply_action(state, action)
                 record.move_count += 1
 
-                # Advance MCTS tree if model's turn
-                if is_model_turn:
-                    mcts.advance(action)
+                # Advance MCTS tree on every move (model + engine)
+                # to properly prune the search tree and reuse subtrees
+                mcts.advance(action)
 
         # Determine result
         game_result = self._game.get_result(state)

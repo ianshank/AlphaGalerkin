@@ -27,6 +27,7 @@ Usage:
 
 from __future__ import annotations
 
+from src.engines.adapter import EngineEvaluator
 from src.engines.config import (
     EloConfig,
     EngineConfig,
@@ -35,7 +36,16 @@ from src.engines.config import (
     UCIConfig,
 )
 from src.engines.elo import EloCalculator, EloEstimate
-from src.engines.protocol import BaseEngine, EngineInfo, EngineProtocol
+from src.engines.match import EngineMatch, GameRecord, MatchResult
+from src.engines.protocol import (
+    BaseEngine,
+    EngineCrashError,
+    EngineError,
+    EngineInfo,
+    EngineProtocol,
+    EngineStartupError,
+    EngineTimeoutError,
+)
 from src.engines.registry import EngineRegistry, create_engine
 from src.engines.uci import UCIEngine
 
@@ -44,11 +54,19 @@ __all__ = [
     "EloCalculator",
     "EloConfig",
     "EloEstimate",
+    "EngineCrashError",
     "EngineConfig",
+    "EngineError",
+    "EngineEvaluator",
     "EngineInfo",
+    "EngineMatch",
     "EngineProtocol",
     "EngineRegistry",
+    "EngineStartupError",
+    "EngineTimeoutError",
+    "GameRecord",
     "MatchConfig",
+    "MatchResult",
     "TimeControl",
     "UCIConfig",
     "UCIEngine",

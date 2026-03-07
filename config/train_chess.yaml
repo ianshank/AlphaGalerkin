@@ -89,6 +89,12 @@ training:
   plateau_factor: 0.5
   plateau_min_lr: 0.000001
 
+  # Engine evaluation (Stockfish benchmark)
+  engine_eval_enabled: false     # Set true when stockfish is available
+  # engine_eval_path: /path/to/stockfish  # Uncomment and set path
+  engine_eval_depth: 5           # Plies search depth
+  engine_eval_games: 4           # Games per evaluation
+
 # W&B logging
 wandb:
   enabled: true

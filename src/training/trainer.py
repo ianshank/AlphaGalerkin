@@ -1022,6 +1022,20 @@ class Trainer:
         if self.elo_tracker is not None:
             self._run_checkpoint_tournament(step, n_games)
 
+        # Engine evaluation (Stockfish benchmark)
+        engine_eval_enabled = getattr(
+            self.training_config, "engine_eval_enabled", False
+        )
+        engine_eval_path = getattr(
+            self.training_config, "engine_eval_path", None
+        )
+        if (
+            engine_eval_enabled
+            and engine_eval_path is not None
+            and self.evaluator.game is not None
+        ):
+            self._run_engine_evaluation(step)
+
         # Measure policy agreement
         policy_agreement = self.evaluator.measure_policy_agreement(
             n_positions=100,
@@ -1115,6 +1129,91 @@ class Trainer:
                     opponent_path=str(opponent_path),
                     error=str(e),
                 )
+
+    def _run_engine_evaluation(self, step: int) -> None:
+        """Run evaluation against external UCI engine (e.g., Stockfish).
+
+        Creates engine and match configs from training config values,
+        plays games, and logs Elo metrics to W&B.
+
+        Args:
+            step: Current training step.
+
+        """
+        engine_path = getattr(self.training_config, "engine_eval_path", None)
+        if engine_path is None:
+            return
+
+        from pathlib import Path
+
+        from src.engines.config import MatchConfig, UCIConfig
+
+        depth = getattr(self.training_config, "engine_eval_depth", 5)
+        n_games = getattr(self.training_config, "engine_eval_games", 4)
+        movetime = getattr(self.training_config, "engine_eval_movetime_ms", None)
+
+        try:
+            engine_config = UCIConfig(
+                name="stockfish_eval",
+                engine_path=Path(engine_path),
+                depth_limit=depth if movetime is None else None,
+                movetime_ms=movetime,
+            )
+            match_config = MatchConfig(
+                name="engine_eval_match",
+                n_games=n_games,
+            )
+
+            logger.info(
+                "engine_evaluation_starting",
+                step=step,
+                engine_path=engine_path,
+                depth=depth,
+                n_games=n_games,
+            )
+
+            result = self.evaluator.evaluate_vs_engine(
+                engine_config=engine_config,
+                match_config=match_config,
+            )
+
+            # Log Elo metrics to W&B
+            elo_metrics: dict[str, float | int] = {
+                "eval/engine/win_rate": result.win_rate,
+                "eval/engine/wins": result.wins,
+                "eval/engine/losses": result.losses,
+                "eval/engine/draws": result.draws,
+                "eval/engine/n_games": result.n_games,
+                "eval/engine/avg_game_length": result.avg_game_length,
+            }
+
+            # Extract Elo estimate from metadata if available
+            if "elo_difference" in result.metadata:
+                elo_metrics["eval/engine/elo_diff"] = result.metadata[
+                    "elo_difference"
+                ]
+            if "los" in result.metadata:
+                elo_metrics["eval/engine/los"] = result.metadata["los"]
+
+            if self.wandb_logger is not None:
+                self.wandb_logger.log_metrics(
+                    elo_metrics,  # type: ignore[arg-type]
+                    step=step,
+                )
+
+            logger.info(
+                "engine_evaluation_completed",
+                step=step,
+                win_rate=f"{result.win_rate:.2%}",
+                elo_diff=result.metadata.get("elo_difference", "N/A"),
+            )
+
+        except Exception as e:
+            logger.warning(
+                "engine_evaluation_failed",
+                step=step,
+                error=str(e),
+            )
 
     def _extract_step_from_checkpoint(self, checkpoint_path: Path) -> int:
         """Extract training step from checkpoint filename.

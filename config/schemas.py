@@ -272,6 +272,32 @@ class TrainingConfig(BaseModel):
         description="Use adaptive weighting for physics loss components",
     )
 
+    # Engine evaluation (Stockfish) configuration
+    engine_eval_enabled: bool = Field(
+        default=False,
+        description="Enable periodic evaluation against external UCI engine",
+    )
+    engine_eval_path: str | None = Field(
+        default=None,
+        description="Path to UCI engine binary (e.g., stockfish)",
+    )
+    engine_eval_depth: int = Field(
+        default=5,
+        ge=1,
+        le=30,
+        description="Engine search depth limit in plies",
+    )
+    engine_eval_games: int = Field(
+        default=4,
+        ge=1,
+        description="Number of games per engine evaluation",
+    )
+    engine_eval_movetime_ms: int | None = Field(
+        default=None,
+        ge=100,
+        description="Engine move time limit in ms (alternative to depth)",
+    )
+
 
 class DistributedConfig(BaseModel):
     """Configuration for distributed training.

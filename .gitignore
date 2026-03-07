@@ -87,8 +87,13 @@ wandb/
 *.dist-info/
 nul
 
+# Chess engine binaries and output
+stockfish*
+*.pgn
+
 # Hydra outputs
 hydra_outputs/
+multirun/
 
 # Claude Code
 .claude/

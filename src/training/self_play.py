@@ -24,6 +24,7 @@ from src.training.replay_buffer import Experience
 
 if TYPE_CHECKING:
     from config.schemas import MCTSConfig
+    from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
@@ -102,6 +103,7 @@ class SelfPlayWorker:
         board_sizes: list[int] | None = None,
         use_batch_mcts: bool = False,
         temperature_schedule: dict[int, float] | None = None,
+        game: GameInterface | None = None,
     ) -> None:
         """Initialize self-play worker.
 
@@ -112,11 +114,15 @@ class SelfPlayWorker:
             board_sizes: Board sizes to play on (sampled uniformly).
             use_batch_mcts: Whether to use batch MCTS.
             temperature_schedule: Move number -> temperature mapping.
+            game: Optional GameInterface for non-Go games (e.g. chess).
+                  When provided, uses StatefulGameWrapper for MCTS.
+                  When None, falls back to SimpleGoGame.
 
         """
         self.model = model
         self.device = torch.device(device)
         self.board_sizes = board_sizes or [9, 13, 19]
+        self.game = game
 
         # Default temperature schedule: high exploration early, low late
         self.temperature_schedule = temperature_schedule or {
@@ -133,7 +139,7 @@ class SelfPlayWorker:
         )
 
         # MCTS configuration
-        self._mcts_kwargs = {}
+        self._mcts_kwargs: dict[str, int | float] = {}
         if mcts_config is not None:
             self._mcts_kwargs = {
                 "n_simulations": mcts_config.n_simulations,
@@ -155,8 +161,8 @@ class SelfPlayWorker:
     def _create_mcts(self) -> MCTS:
         """Create MCTS instance."""
         if self.use_batch_mcts:
-            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)
-        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)
+            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
+        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
 
     def _get_temperature(self, move_number: int) -> float:
         """Get temperature for given move number.
@@ -186,7 +192,7 @@ class SelfPlayWorker:
         """Play a complete self-play game.
 
         Args:
-            board_size: Board size (random if None).
+            board_size: Board size (random if None, ignored for chess).
             max_moves: Maximum moves before termination.
             add_noise: Whether to add Dirichlet noise at root.
 
@@ -194,6 +200,106 @@ class SelfPlayWorker:
             GameRecord with complete game trajectory.
 
         """
+        if self.game is not None:
+            return self._play_game_generic(max_moves, add_noise)
+        return self._play_game_go(board_size, max_moves, add_noise)
+
+    def _play_game_generic(
+        self,
+        max_moves: int = 500,
+        add_noise: bool = True,
+    ) -> GameRecord:
+        """Play a self-play game using a GameInterface (chess, etc.).
+
+        Uses StatefulGameWrapper to bridge the stateless GameInterface
+        to the MCTS protocol.
+        """
+        from src.games.wrapper import StatefulGameWrapper
+
+        assert self.game is not None
+        game = self.game
+        state = game.initial_state()
+        board_size = state.board.shape[0] if state.board.ndim >= 2 else 8
+        n_actions = game.action_space_size
+        mcts = self._create_mcts()
+
+        record = GameRecord(
+            board_size=board_size,
+            metadata={"game_id": self._games_played, "game_type": "generic"},
+        )
+
+        move_number = 0
+        while not game.is_terminal(state) and move_number < max_moves:
+            # Get tensor representation as numpy
+            state_tensor = game.to_tensor(state).cpu().numpy()
+
+            # Wrap for MCTS
+            game_wrapper = StatefulGameWrapper(game, state)
+            policy_dist = mcts.search(game_wrapper, add_noise=add_noise and move_number == 0)
+
+            # Convert visit distribution to full policy vector
+            policy = np.zeros(n_actions, dtype=np.float32)
+            for action, prob in policy_dist.items():
+                policy[action] = prob
+
+            # Store state and policy
+            record.states.append(state_tensor)
+            record.policies.append(policy)
+
+            # Select action with temperature
+            temperature = self._get_temperature(move_number)
+            if temperature == 0:
+                action = max(policy_dist.keys(), key=lambda a: policy_dist[a])
+            else:
+                actions = list(policy_dist.keys())
+                probs = np.array([policy_dist[a] for a in actions])
+                probs = probs ** (1.0 / temperature)
+                probs = probs / probs.sum()
+                action = int(np.random.choice(actions, p=probs))
+
+            record.actions.append(action)
+
+            # Apply action
+            state = game.apply_action(state, action)
+
+            # Advance MCTS tree
+            mcts.advance(action)
+            move_number += 1
+
+        # Determine outcome
+        winner = game.get_winner(state)
+        if winner is not None:
+            record.outcome = float(winner)
+        else:
+            record.outcome = 0.0
+
+        # Update statistics
+        self._games_played += 1
+        self._total_moves += move_number
+        if record.outcome > 0:
+            self._outcomes["black"] += 1
+        elif record.outcome < 0:
+            self._outcomes["white"] += 1
+        else:
+            self._outcomes["draw"] += 1
+
+        logger.debug(
+            "game_completed",
+            board_size=board_size,
+            moves=move_number,
+            outcome=record.outcome,
+            game_type="generic",
+        )
+
+        return record
+
+    def _play_game_go(
+        self,
+        board_size: int | None = None,
+        max_moves: int = 500,
+        add_noise: bool = True,
+    ) -> GameRecord:
+        """Play a self-play game using SimpleGoGame (original Go path)."""
         # Select board size
         if board_size is None:
             board_size = random.choice(self.board_sizes)
@@ -516,10 +622,8 @@ class ParallelSelfPlayWorker:
             per_worker=per_worker,
         )
 
-        # Ensure model is on CPU and in shared memory for subprocess access
         self.model.cpu()
-        self.model.share_memory()
-        self.model.eval()
+        self.model.train(False)
 
         worker_args = [
             (self.model, count, board_size, self.worker_kwargs, worker_id)
@@ -528,6 +632,13 @@ class ParallelSelfPlayWorker:
 
         try:
             import torch.multiprocessing as mp
+
+            # Ensure model is in shared memory for subprocess access.
+            # Placed inside the try block so that platforms that do not
+            # support POSIX shared memory (e.g. Windows without /dev/shm)
+            # fall back to sequential generation rather than raising before
+            # the except handler.
+            self.model.share_memory()
 
             ctx = mp.get_context("spawn")
             with ctx.Pool(processes=n_workers) as pool:

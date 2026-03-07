@@ -77,6 +77,20 @@ class OperatorConfig(BaseModel):
     # Input channels (stone colors + move history + etc.)
     input_channels: int = Field(default=17, description="Number of input feature planes")
 
+    # Game-specific configuration
+    game_type: Literal["go", "chess"] = Field(
+        default="go",
+        description="Game type: 'go' for position-based policy, 'chess' for action-space policy",
+    )
+    action_space_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the action space for dense policy head. "
+            "None = position-based head (Go: board_size^2+1). "
+            "Set to 4672 for chess."
+        ),
+    )
+
     @field_validator("d_key")
     @classmethod
     def key_dim_constraint(cls, v: int, info: object) -> int:

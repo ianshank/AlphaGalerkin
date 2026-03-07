@@ -333,9 +333,11 @@ jobs:
           pytest tests/games/test_chess.py tests/games/test_chess_exhaustive.py \
             tests/games/test_wrapper.py tests/modeling/test_chess_model.py \
             tests/training/test_chess_self_play.py \
-            --cov=src/games/chess --cov=src/games/wrapper --cov=src/modeling/model \
-            --cov=src/training/self_play --cov=src/data/collate \
+            tests/training/test_trainer_chess.py \
+            tests/security/test_chess_security.py \
+            --cov=src/games/chess --cov=src/games/wrapper \
             --cov-report=term-missing \
+            --cov-fail-under=80 \
             --tb=short \
             -v
 

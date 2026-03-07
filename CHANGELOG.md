@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `tests/games/test_wrapper.py` — StatefulGameWrapper unit tests (10 tests)
   - `tests/modeling/test_chess_model.py` — ActionPolicyHead and chess model tests (12 tests)
   - `tests/training/test_chess_self_play.py` — Chess self-play integration tests (7 tests)
+  - `tests/games/test_chess_exhaustive.py` — Exhaustive encode/decode roundtrip + edge cases (20 tests)
+  - `tests/training/test_trainer_chess.py` — Checkpoint save/load/resume, engine eval, config tests (11 tests)
+  - `tests/security/test_chess_security.py` — Invalid actions, OOB states, corrupted data (15 tests)
+  - `tests/e2e/test_chess_training_e2e.py` — E2E training smoke tests (3 tests)
+
+- **Stockfish Benchmark Evaluation**
+  - Engine eval config fields in `TrainingConfig` (path, depth, games, movetime)
+  - `Trainer._run_engine_evaluation()` with W&B Elo metric logging
+  - Engine eval section in `config/train_chess.yaml`
+
+- **CI/CD Chess Pipeline**
+  - Stage 8: Chess Pipeline Tests in `.github/workflows/ci.yml`
+  - Coverage gate `--cov-fail-under=80` for `chess.py` (97%) and `wrapper.py` (100%)
+  - CI Success gate requires chess tests
 
 ### Changed
 

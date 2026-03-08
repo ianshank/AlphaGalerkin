@@ -77,6 +77,20 @@ class OperatorConfig(BaseModel):
     # Input channels (stone colors + move history + etc.)
     input_channels: int = Field(default=17, description="Number of input feature planes")
 
+    # Game-specific configuration
+    game_type: Literal["go", "chess"] = Field(
+        default="go",
+        description="Game type: 'go' for position-based policy, 'chess' for action-space policy",
+    )
+    action_space_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the action space for dense policy head. "
+            "None = position-based head (Go: board_size^2+1). "
+            "Set to 4672 for chess."
+        ),
+    )
+
     @field_validator("d_key")
     @classmethod
     def key_dim_constraint(cls, v: int, info: object) -> int:
@@ -256,6 +270,32 @@ class TrainingConfig(BaseModel):
     physics_use_adaptive_weights: bool = Field(
         default=True,
         description="Use adaptive weighting for physics loss components",
+    )
+
+    # Engine evaluation (Stockfish) configuration
+    engine_eval_enabled: bool = Field(
+        default=False,
+        description="Enable periodic evaluation against external UCI engine",
+    )
+    engine_eval_path: str | None = Field(
+        default=None,
+        description="Path to UCI engine binary (e.g., stockfish)",
+    )
+    engine_eval_depth: int = Field(
+        default=5,
+        ge=1,
+        le=30,
+        description="Engine search depth limit in plies",
+    )
+    engine_eval_games: int = Field(
+        default=4,
+        ge=1,
+        description="Number of games per engine evaluation",
+    )
+    engine_eval_movetime_ms: int | None = Field(
+        default=None,
+        ge=100,
+        description="Engine move time limit in ms (alternative to depth)",
     )
 
 

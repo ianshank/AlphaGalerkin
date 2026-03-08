@@ -32,6 +32,7 @@ try:
     # Import game implementations to trigger registration
     from src.games import (
         chess,  # noqa: F401
+        fen,  # noqa: F401
         go,  # noqa: F401
     )
     from src.games.interface import GameInterface, GamePhase

@@ -4,6 +4,7 @@ This document provides a comprehensive C4 architecture model for the AlphaGalerk
 The C4 model consists of four levels: System Context, Containers, Components, and Code.
 
 The system supports two primary use cases:
+
 1. **Go AI**: Resolution-independent game playing with zero-shot transfer between board sizes
 2. **PDE Solving**: AlphaZero-style MCTS for adaptive basis selection and mesh refinement
 
@@ -255,8 +256,57 @@ C4Component
 | **Replay Buffer** | Experience storage and sampling | Uniform and prioritized replay |
 | **Loss Function** | Multi-objective optimization | Policy CE + Value MSE + LBB term |
 | **Checkpoint Manager** | Model persistence with best tracking | File I/O with rotation policy |
-| **Model Evaluator** | Performance metrics | Win rate, policy agreement |
+| **Model Evaluator** | Performance metrics | Win rate, policy agreement, engine Elo |
 | **Optimizer** | Weight updates | Adam with warmup and decay |
+
+---
+
+## Level 3: Component Diagram — Chess Engine Integration
+
+This diagram shows the chess engine evaluation subsystem added for Stockfish benchmarking.
+
+```mermaid
+C4Component
+    title Component Diagram - Chess Engine Integration
+
+    Container_Boundary(engine_subsystem, "Engine Integration Subsystem") {
+        Component(uci_adapter, "UCI Adapter", "Python Module", "Universal Chess Interface protocol driver for Stockfish/Leela")
+        
+        Component(engine_match, "EngineMatch", "Python Class", "Orchestrates N-game matches: color alternation, time control, PGN output")
+        
+        Component(elo_calculator, "EloCalculator", "Python Class", "Bayesian Elo estimation with confidence intervals and LOS")
+        
+        Component(uci_config, "UCIConfig", "Pydantic Model", "Engine path, depth, nodes, movetime, hash, threads")
+        
+        Component(match_config, "MatchConfig", "Pydantic Model", "N games, time control, max moves, opening FEN")
+    }
+
+    Component_Ext(evaluator, "Evaluator", "evaluate_vs_engine()")
+    Component_Ext(trainer, "Trainer", "_run_engine_evaluation()")
+    Component_Ext(wandb, "W&B Logger", "eval/engine/* metrics")
+    Component_Ext(chess_game, "ChessGame", "119-channel state, 4672 actions")
+
+    Rel(trainer, evaluator, "Calls at eval_interval")
+    Rel(evaluator, engine_match, "Creates match")
+    Rel(engine_match, uci_adapter, "Sends UCI commands")
+    Rel(engine_match, elo_calculator, "Computes Elo from results")
+    Rel(engine_match, chess_game, "Uses for game state")
+    Rel(engine_match, uci_config, "Configured by")
+    Rel(engine_match, match_config, "Configured by")
+    Rel(trainer, wandb, "Logs elo_diff, win_rate, LOS")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Engine Integration Components
+
+| Component | Responsibility | Key Interfaces |
+|-----------|----------------|----------------|
+| **UCI Adapter** | Stockfish/engine protocol communication | `send_command()`, `parse_bestmove()` |
+| **EngineMatch** | Match orchestration with color alternation | `play_match() → MatchResult` |
+| **EloCalculator** | Bayesian Elo from W/L/D counts | `estimate_elo_difference() → EloEstimate` |
+| **UCIConfig** | Engine binary path and search limits | Pydantic validated, depth/nodes/movetime |
+| **MatchConfig** | Match format settings | N games, time control, PGN output |
 
 ---
 
@@ -659,6 +709,7 @@ classDiagram
 ### Key Implementation Details
 
 **Galerkin Attention Algorithm:**
+
 ```python
 # Step 1: Project to Query, Key, Value spaces
 Q = query_proj(x)    # (batch, n, d_head)
@@ -679,6 +730,7 @@ if training:
 ```
 
 **Complexity Analysis:**
+
 - Standard Attention: O(N² × d)
 - Galerkin Attention: O(N × d²)
 - For typical Go: N=361, d=32 → **10x speedup**
@@ -1137,26 +1189,31 @@ numpy >= 1.24.0         # Numerical computing
 ## Architecture Principles
 
 ### 1. Resolution Independence
+
 - **Continuous Domain**: Treat board as Ω = [0,1]² rather than discrete grid
 - **Fourier Encoding**: Position-independent frequency representation
 - **Spectral Methods**: Proper anti-aliasing and frequency filtering
 
 ### 2. Mathematical Rigor
+
 - **Galerkin Projection**: Well-founded operator approximation theory
 - **LBB Stability**: Monitored inf-sup condition ensures convergence
 - **Fredholm Operators**: Integral equation formulation for influence
 
 ### 3. Performance Optimization
+
 - **O(N) Attention**: Linear complexity via Petrov-Galerkin projection
 - **FFT Mixing**: O(N log N) spectral mixing for fast rollouts
 - **CUDA Acceleration**: Full GPU utilization for training and inference
 
 ### 4. Testability
+
 - **Property-Based Tests**: Mathematical properties verified with Hypothesis
 - **PoC Framework**: Reproducible validation of core claims
 - **Modular Design**: Independent testing of components
 
 ### 5. Configurability
+
 - **Hydra Integration**: Hierarchical configuration management
 - **Pydantic Schemas**: Runtime validation of parameters
 - **Environment Variables**: Deployment-specific overrides
@@ -1166,54 +1223,63 @@ numpy >= 1.24.0         # Numerical computing
 ## Key Architectural Decisions
 
 ### Decision 1: Galerkin vs Standard Attention
+
 - **Context**: Need O(N) complexity for large board sizes
 - **Decision**: Use Petrov-Galerkin projection instead of softmax
 - **Rationale**: Reduces complexity from O(N²d) to O(Nd²)
 - **Trade-offs**: Requires careful normalization (1/n, not 1/√d)
 
 ### Decision 2: Hybrid Architecture (Galerkin + Softmax)
+
 - **Context**: Balance global strategy and local tactics
 - **Decision**: Galerkin layers for strategy, softmax for tactics
 - **Rationale**: Galerkin captures long-range influence, softmax preserves injectivity for life/death
 - **Trade-offs**: More complex than uniform architecture
 
 ### Decision 3: FNet for Fast Rollouts
+
 - **Context**: MCTS requires thousands of neural evaluations
 - **Decision**: FFT-based mixing as alternative to attention
 - **Rationale**: 5× speedup for leaf evaluation
 - **Trade-offs**: Slightly lower accuracy vs full attention
 
 ### Decision 4: PoC Framework for Validation
+
 - **Context**: Need reproducible validation of mathematical claims
 - **Decision**: Config-driven scenario framework
 - **Rationale**: Ensures claims are testable and reproducible
 - **Trade-offs**: Additional infrastructure complexity
 
 ### Decision 5: Pydantic for Configuration
+
 - **Context**: Complex hyperparameter space with mathematical constraints
 - **Decision**: Pydantic schemas with validators
 - **Rationale**: Runtime validation, type safety, IDE support
 - **Trade-offs**: More verbose than plain dicts
 
 ### Decision 6: PDE Solving as Sequential Decision-Making
+
 - **Context**: Adaptive basis selection and mesh refinement require intelligent choices
 - **Decision**: Model PDE solving as a game with MCTS search
 - **Rationale**: Leverages AlphaZero infrastructure, learns optimal refinement strategies
 - **Trade-offs**: Training overhead, requires careful reward design
 
 ### Decision 7: ReLoBRaLo for Multi-Objective Loss Balancing
+
 - **Context**: Physics-informed losses have vastly different scales (residual vs boundary)
 - **Decision**: Use Relative Loss Balancing with Random Lookback
 - **Rationale**: Stable training, handles scale differences, minimal hyperparameters
 - **Trade-offs**: Randomness in lookback, warmup period needed
 
 ### Decision 8: Multi-Scale Fourier Features for Spectral Bias
+
 - **Context**: Neural networks learn low frequencies first (spectral bias)
 - **Decision**: Parallel Fourier feature banks at multiple scales
 - **Rationale**: Captures both fine and coarse solution features from start
 - **Trade-offs**: Increased feature dimension, more parameters
 
 ### Decision 9: Autodiff for PDE Residuals
+
 - **Context**: Need derivatives for PDE residual computation
 - **Decision**: Use PyTorch autograd for all derivative computations
 - **Rationale**: Exact gradients, GPU-accelerated, composable with neural networks

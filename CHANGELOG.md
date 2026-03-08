@@ -5,6 +5,48 @@ All notable changes to AlphaGalerkin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Chess Self-Play Training Pipeline** (AlphaZero methodology)
+  - `ActionPolicyHead` for dense 4672-action policy output (`src/modeling/model.py`)
+  - `StatefulGameWrapper` bridging stateless `GameInterface` to MCTS (`src/games/wrapper.py`)
+  - Chess training CLI (`scripts/train_chess.py`) with Hydra config (`config/train_chess.yaml`)
+  - `game_type` and `action_space_size` fields in `OperatorConfig` (`config/schemas.py`)
+  - PRD and ADR documentation (`docs/prd/prd-chess-self-play.md`, `docs/architecture/ADR-chess-self-play.md`)
+
+- **Chess Training Tests**
+  - `tests/games/test_wrapper.py` — StatefulGameWrapper unit tests (10 tests)
+  - `tests/modeling/test_chess_model.py` — ActionPolicyHead and chess model tests (12 tests)
+  - `tests/training/test_chess_self_play.py` — Chess self-play integration tests (7 tests)
+  - `tests/games/test_chess_exhaustive.py` — Exhaustive encode/decode roundtrip + edge cases (20 tests)
+  - `tests/training/test_trainer_chess.py` — Checkpoint save/load/resume, engine eval, config tests (11 tests)
+  - `tests/security/test_chess_security.py` — Invalid actions, OOB states, corrupted data (15 tests)
+  - `tests/e2e/test_chess_training_e2e.py` — E2E training smoke tests (3 tests)
+
+- **Stockfish Benchmark Evaluation**
+  - Engine eval config fields in `TrainingConfig` (path, depth, games, movetime)
+  - `Trainer._run_engine_evaluation()` with W&B Elo metric logging
+  - Engine eval section in `config/train_chess.yaml`
+
+- **CI/CD Chess Pipeline**
+  - Stage 8: Chess Pipeline Tests in `.github/workflows/ci.yml`
+  - Coverage gate `--cov-fail-under=80` for `chess.py` (97%) and `wrapper.py` (100%)
+  - CI Success gate requires chess tests
+
+### Changed
+
+- **Game-agnostic self-play**: `SelfPlayWorker` now accepts optional `GameInterface` parameter
+- **Game-agnostic trainer**: `Trainer.__init__()` accepts `game` parameter, forwarded to worker
+- **Game-agnostic collator**: `VariableSizeCollator` and `SameSizeCollator` derive action mask size from `target_policy` tensor instead of hardcoded `board_size²+1`
+- `AlphaGalerkinModel` and `AlphaGalerkinFast` auto-select policy head by `action_space_size`
+
+### Fixed
+
+- **Underpromotion encode/decode mismatch** (`src/games/chess.py`): `_decode_move` used `[-1, 0, 1]` but `_encode_move` used `straight=0, left=1, right=2` — straight promotion from column 0 decoded as `to_col=-1`. Fixed to `[0, -1, 1]`.
+- **Collator action mask size** (`src/data/collate.py`): Both collators hardcoded `n_actions = board_size²+1` causing tensor size mismatch with chess's 4672-action policy. Fixed to detect per-experience policy encoding.
+
 ## [0.2.0] - 2026-01-26
 
 ### Milestones Achieved

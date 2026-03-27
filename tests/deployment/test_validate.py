@@ -351,7 +351,7 @@ class TestValidate:
             value_output=pt_value.numpy(),
         )
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validator.validate(
                 dummy_model,
                 dummy_onnx_path,
@@ -381,7 +381,7 @@ class TestValidate:
             value_output=wrong_value,
         )
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validator.validate(
                 dummy_model,
                 dummy_onnx_path,
@@ -410,7 +410,7 @@ class TestValidate:
             value_output=pt_value.numpy(),
         )
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validator.validate(
                 dummy_model,
                 dummy_onnx_path,
@@ -438,7 +438,7 @@ class TestValidate:
             inference_time_ms=2.0,
         )
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validator.validate(
                 dummy_model,
                 dummy_onnx_path,
@@ -469,7 +469,7 @@ class TestValidate:
             value_output=pt_value.numpy(),
         )
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validator.validate(
                 dummy_model,
                 dummy_onnx_path,
@@ -491,7 +491,7 @@ class TestValidate:
         mock_runtime = MagicMock()
         mock_runtime.run.side_effect = RuntimeError("ONNX inference failed")
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validator.validate(
                 dummy_model,
                 dummy_onnx_path,
@@ -718,7 +718,7 @@ class TestCompareQuantized:
         mock_quantized = make_mock_runtime()
 
         with patch(
-            "src.deployment.validate.ONNXRuntime",
+            "src.deployment.runtime.ONNXRuntime",
             side_effect=[mock_original, mock_quantized],
         ):
             results = validator.compare_quantized(
@@ -776,7 +776,7 @@ class TestCompareQuantized:
         mock_quantized.run.return_value = mock_quantized_result
 
         with patch(
-            "src.deployment.validate.ONNXRuntime",
+            "src.deployment.runtime.ONNXRuntime",
             side_effect=[mock_original, mock_quantized],
         ):
             results = validator.compare_quantized(
@@ -817,7 +817,7 @@ class TestValidateExportConvenience:
         mock_result.inference_time_ms = 1.0
         mock_runtime.run.return_value = mock_result
 
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validate_export(
                 dummy_model,
                 dummy_onnx_path,
@@ -844,7 +844,7 @@ class TestValidateExportConvenience:
         mock_runtime.run.return_value = mock_result
 
         # With a very large tolerance, differences should be acceptable
-        with patch("src.deployment.validate.ONNXRuntime", return_value=mock_runtime):
+        with patch("src.deployment.runtime.ONNXRuntime", return_value=mock_runtime):
             result = validate_export(
                 dummy_model,
                 dummy_onnx_path,

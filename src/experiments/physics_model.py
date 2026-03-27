@@ -272,6 +272,10 @@ class PhysicsLoss(nn.Module):
         laplacian = torch.zeros_like(pred)
         for dim_idx in range(coords.shape[-1]):
             grad_dim = grad_phi[..., dim_idx]
+            if grad_dim.grad_fn is None:
+                # First derivative is constant (e.g. linear function),
+                # so second derivative is zero — skip.
+                continue
             grad_dim_outputs = torch.ones_like(grad_dim)
             (grad2,) = torch.autograd.grad(
                 outputs=grad_dim,

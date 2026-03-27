@@ -65,23 +65,24 @@ class TestDistributedEnvironment:
 
     def test_environment_detection_not_distributed(self) -> None:
         """Test environment detection when not in distributed mode."""
-        # Clean environment
         env_vars = ["WORLD_SIZE", "RANK", "LOCAL_RANK", "MASTER_ADDR", "MASTER_PORT"]
         clean_env = {k: v for k, v in os.environ.items() if k not in env_vars}
 
         with patch.dict(os.environ, clean_env, clear=True):
             from src.distributed.config import from_environment
 
-            config = from_environment()
-            # Should return disabled config or raise if not in distributed env
-            assert config is None or config.enabled is False
+            rank, local_rank, world_size = from_environment()
+            # Without env vars, defaults to single process
+            assert world_size == 1
+            assert rank == 0
+            assert local_rank == 0
 
     def test_environment_detection_with_vars(self) -> None:
         """Test environment detection with distributed env vars."""
         env_vars = {
             "WORLD_SIZE": "4",
-            "RANK": "0",
-            "LOCAL_RANK": "0",
+            "RANK": "2",
+            "LOCAL_RANK": "1",
             "MASTER_ADDR": "localhost",
             "MASTER_PORT": "29500",
         }
@@ -89,9 +90,10 @@ class TestDistributedEnvironment:
         with patch.dict(os.environ, env_vars):
             from src.distributed.config import from_environment
 
-            config = from_environment()
-            if config is not None:
-                assert config.world_size == 4
+            rank, local_rank, world_size = from_environment()
+            assert world_size == 4
+            assert rank == 2
+            assert local_rank == 1
 
 
 class TestGradientSynchronization:

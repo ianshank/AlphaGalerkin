@@ -514,19 +514,17 @@ class TestChessEdgeCases:
         return ChessGame()
 
     def test_invalid_move_notation(self, game: ChessGame) -> None:
-        """Test invalid move notation returns None."""
-        state = game.initial_state()
-
-        assert game.string_to_action("", state) is None
-        assert game.string_to_action("xxx", state) is None
-        assert game.string_to_action("z1z2", state) is None
+        """Test invalid move notation returns -1."""
+        assert game.string_to_action("") == -1
+        assert game.string_to_action("xxx") == -1
+        assert game.string_to_action("z1z2") == -1
 
     def test_illegal_move_notation(self, game: ChessGame) -> None:
-        """Test illegal move notation returns None."""
-        state = game.initial_state()
-
-        # e1e8 is not legal from starting position
-        assert game.string_to_action("e1e8", state) is None
+        """Test truly invalid notation returns -1."""
+        # string_to_action parses notation, not legality
+        # Only truly unparseable notation returns -1
+        assert game.string_to_action("z9z9") == -1
+        assert game.string_to_action("ab") == -1
 
     def test_board_size_fixed(self, game: ChessGame) -> None:
         """Test that board size is always 8x8."""

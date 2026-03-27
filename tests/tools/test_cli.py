@@ -31,7 +31,7 @@ class TestCLIArgumentParsing:
                 "src.tools.verify_invariance.run_verification",
                 return_value=True,
             ) as mock_verify,
-            patch("sys.exit"),
+            patch("sys.exit") as mock_exit,
         ):
             main()
             mock_verify.assert_called_once_with(

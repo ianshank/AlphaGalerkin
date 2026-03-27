@@ -61,8 +61,14 @@ def small_config() -> TransferScenarioConfig:
 
 
 def _import_transfer_scenario() -> type[BaseScenario]:
-    """Import TransferScenario, triggering registration."""
+    """Import TransferScenario, ensuring registration."""
     from src.poc.scenarios.transfer import TransferScenario
+
+    # Re-register if registry was cleared (import caching prevents
+    # decorator re-execution on subsequent imports).
+    registry = ScenarioRegistry()
+    if registry.get("transfer") is None:
+        registry.register("transfer", TransferScenario)
 
     return TransferScenario
 

@@ -77,9 +77,10 @@ def _make_mock_process(
     stderr: str = "",
 ) -> MagicMock:
     """Build a mock subprocess.Popen that behaves like a completed process."""
-    proc = MagicMock(spec=subprocess.Popen)
+    proc = MagicMock()
     proc.communicate.return_value = (stdout, stderr)
     proc.returncode = returncode
+    proc.wait.return_value = returncode
     return proc
 
 

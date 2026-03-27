@@ -12,6 +12,7 @@ Design Principles:
 
 from __future__ import annotations
 
+import math
 import os
 from enum import Enum
 from typing import Any, Literal
@@ -68,6 +69,12 @@ class DistributedInfraConfig(BaseModel):
     backend: DistributedBackend = Field(
         default=DistributedBackend.NCCL,
         description="Distributed backend (nccl for GPU, gloo for CPU/GPU)",
+    )
+
+    # Launcher configuration (optional, set via create_distributed_config)
+    launcher: LauncherConfig | None = Field(
+        default=None,
+        description="Launcher configuration for multi-node training",
     )
 
     # Process group settings
@@ -139,6 +146,24 @@ class DistributedInfraConfig(BaseModel):
         description="Only rank 0 saves model checkpoints",
     )
 
+    # Gradient compression
+    gradient_compression: bool = Field(
+        default=False,
+        description="Enable gradient compression for communication",
+    )
+    gradient_compression_bits: int = Field(
+        default=32,
+        ge=1,
+        le=32,
+        description="Bit width for gradient compression",
+    )
+
+    # Learning rate scaling
+    learning_rate_scaling: Literal["none", "linear", "sqrt"] = Field(
+        default="linear",
+        description="How to scale LR with world size (none, linear, sqrt)",
+    )
+
     # Performance tuning
     prefetch_factor: int = Field(
         default=2,
@@ -202,6 +227,57 @@ class DistributedInfraConfig(BaseModel):
 
         """
         return per_gpu_batch_size * self.world_size * self.gradient_accumulation_steps
+
+    def should_sync_at_step(self, step: int) -> bool:
+        """Check if gradients should be synchronized at this step.
+
+        Args:
+            step: Current training step (1-indexed).
+
+        Returns:
+            True if sync should happen at this step.
+
+        """
+        return step % self.gradient_accumulation_steps == 0
+
+    def should_save_checkpoint(self, rank: int) -> bool:
+        """Check if this rank should save a checkpoint.
+
+        Args:
+            rank: Current process rank.
+
+        Returns:
+            True if this rank should save checkpoints.
+
+        """
+        if self.checkpoint_strategy == "all_ranks":
+            return True
+        return rank == 0
+
+    def requires_barrier_before_checkpoint(self) -> bool:
+        """Check if a distributed barrier is needed before checkpointing.
+
+        Returns:
+            True if barrier is required (always True for distributed).
+
+        """
+        return self.enabled and self.world_size > 1
+
+    def scale_learning_rate(self, base_lr: float) -> float:
+        """Scale learning rate based on world size and scaling strategy.
+
+        Args:
+            base_lr: Base learning rate for single GPU.
+
+        Returns:
+            Scaled learning rate.
+
+        """
+        if self.learning_rate_scaling == "linear":
+            return base_lr * self.world_size
+        if self.learning_rate_scaling == "sqrt":
+            return base_lr * math.sqrt(self.world_size)
+        return base_lr
 
 
 class LauncherConfig(BaseModel):
@@ -324,6 +400,18 @@ class LauncherConfig(BaseModel):
         """
         return global_rank % self.nproc_per_node
 
+    def get_node_rank(self, global_rank: int) -> int:
+        """Get node rank from global rank.
+
+        Args:
+            global_rank: Global process rank.
+
+        Returns:
+            Node index the process belongs to.
+
+        """
+        return global_rank // self.nproc_per_node
+
 
 class SelfPlayDistributedConfig(BaseModel):
     """Configuration for distributed self-play generation.
@@ -350,10 +438,20 @@ class SelfPlayDistributedConfig(BaseModel):
         ge=1,
         description="Number of self-play workers per node",
     )
+    num_workers: int = Field(
+        default=1,
+        ge=1,
+        description="Total number of self-play workers across all nodes",
+    )
     games_per_worker: int = Field(
         default=50,
         ge=1,
         description="Games generated per worker per iteration",
+    )
+    batch_size: int = Field(
+        default=32,
+        ge=1,
+        description="Batch size for self-play inference",
     )
 
     # Experience sharing
@@ -398,6 +496,25 @@ class SelfPlayDistributedConfig(BaseModel):
         description="Batch size for worker inference",
     )
 
+    @property
+    def total_games(self) -> int:
+        """Total games generated across all workers per iteration."""
+        return self.num_workers * self.games_per_worker
+
+    def get_games_for_worker(self, worker_id: int) -> tuple[int, int]:
+        """Get the game index range for a given worker.
+
+        Args:
+            worker_id: Zero-indexed worker identifier.
+
+        Returns:
+            Tuple of (start_index, end_index) for this worker's games.
+
+        """
+        start = worker_id * self.games_per_worker
+        end = start + self.games_per_worker
+        return (start, end)
+
 
 def create_distributed_config(
     world_size: int = 1,
@@ -416,8 +533,17 @@ def create_distributed_config(
 
     """
     backend_enum = DistributedBackend(backend)
+    enabled = kwargs.pop("enabled", world_size > 1)
+
+    # If launcher provided, derive world_size from it
+    launcher = kwargs.get("launcher")
+    if launcher is not None and world_size == 1:
+        world_size = launcher.get_world_size()
+        if not enabled:
+            enabled = world_size > 1
+
     return DistributedInfraConfig(
-        enabled=world_size > 1,
+        enabled=enabled,
         world_size=world_size,
         backend=backend_enum,
         **kwargs,

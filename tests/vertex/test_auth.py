@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import subprocess
@@ -11,6 +12,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
+
+
+def _has_google_auth() -> bool:
+    """Check if google.auth is importable."""
+    try:
+        importlib.import_module("google.auth")
+        return True
+    except ImportError:
+        return False
 
 from src.vertex.auth import (
     AuthConfig,
@@ -241,7 +251,9 @@ class TestGCPAuthenticator:
     def authenticator(self) -> GCPAuthenticator:
         """Create authenticator for testing."""
         config = AuthConfig(auth_method=AuthMethod.GCLOUD_CLI)
-        return GCPAuthenticator(config)
+        with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
+            auth = GCPAuthenticator(config)
+        return auth
 
     def test_validate_gcloud_success(self, authenticator: GCPAuthenticator) -> None:
         """Test successful gcloud validation."""
@@ -346,6 +358,9 @@ class TestGCPAuthenticator:
         assert result.is_valid is False
         assert result.error_code == "INVALID_KEY"
 
+    @pytest.mark.skipif(
+        not _has_google_auth(), reason="google.auth not installed"
+    )
     def test_validate_adc_success(self) -> None:
         """Test ADC validation success."""
         config = AuthConfig(auth_method=AuthMethod.APPLICATION_DEFAULT)
@@ -362,6 +377,9 @@ class TestGCPAuthenticator:
             result = auth.validate_credentials()
             assert result.is_valid is True
 
+    @pytest.mark.skipif(
+        not _has_google_auth(), reason="google.auth not installed"
+    )
     def test_validate_adc_not_found(self) -> None:
         """Test ADC validation when no credentials found."""
         config = AuthConfig(auth_method=AuthMethod.APPLICATION_DEFAULT)

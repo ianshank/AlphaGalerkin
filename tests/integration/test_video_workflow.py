@@ -5,6 +5,8 @@ from unittest.mock import patch
 import pytest
 import torch
 
+cv2 = pytest.importorskip("cv2", reason="cv2 not installed")
+
 # Ensure src is in pythonpath
 sys.path.append(str(Path(__file__).parents[2]))
 

@@ -119,14 +119,19 @@ class TestTrainingBatch:
         moved = sample_batch.to(torch.device("cpu"))
         assert moved is not sample_batch
 
+    @pytest.mark.skipif(
+        not torch.cuda.is_available(), reason="CUDA required for pin_memory"
+    )
     def test_pin_memory(self, sample_batch: TrainingBatch):
         """Test pin_memory returns new batch with pinned tensors."""
-        # This test may not pin memory on systems without CUDA
         pinned = sample_batch.pin_memory()
         assert isinstance(pinned, TrainingBatch)
         # Verify shape is preserved
         assert pinned.board_states.shape == sample_batch.board_states.shape
 
+    @pytest.mark.skipif(
+        not torch.cuda.is_available(), reason="CUDA required for pin_memory"
+    )
     def test_pin_memory_returns_new_batch(self, sample_batch: TrainingBatch):
         """Test pin_memory returns a new instance."""
         pinned = sample_batch.pin_memory()

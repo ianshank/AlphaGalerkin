@@ -125,12 +125,15 @@ class TestReplayDataset:
         from torch.utils.data import DataLoader
 
         dataset = ReplayDataset(filled_buffer)
-        # Use num_workers=0 to avoid issues with mock buffer
-        loader = DataLoader(dataset, batch_size=1, num_workers=0)
+        # Use collate_fn=list since Experience is a dataclass
+        loader = DataLoader(
+            dataset, batch_size=1, num_workers=0, collate_fn=list,
+        )
 
         batch = next(iter(loader))
-        # DataLoader returns batched experiences
+        # DataLoader returns list of experiences
         assert batch is not None
+        assert len(batch) == 1
 
 
 # --- StreamingReplayDataset Tests ---
@@ -336,7 +339,9 @@ class TestExperienceListDataset:
         from torch.utils.data import DataLoader
 
         dataset = ExperienceListDataset(sample_experiences)
-        loader = DataLoader(dataset, batch_size=4, shuffle=False)
+        loader = DataLoader(
+            dataset, batch_size=4, shuffle=False, collate_fn=list,
+        )
 
         batches = list(loader)
         assert len(batches) > 0
@@ -491,7 +496,9 @@ class TestDatasetIntegration:
         sampler = BoardSizeBatchSampler(sample_experiences, batch_size=4)
 
         # Can create DataLoader with this combination
-        loader = DataLoader(dataset, batch_sampler=sampler)
+        loader = DataLoader(
+            dataset, batch_sampler=sampler, collate_fn=list,
+        )
         batches = list(loader)
         assert len(batches) > 0
 

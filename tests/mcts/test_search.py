@@ -282,11 +282,12 @@ class TestMCTSTreeManagement:
         mcts.search(mock_game)
         original_root = mcts._root
         best_action = original_root.get_best_action()
+        expected_child = original_root.children[best_action]
 
         mcts.advance(best_action)
 
         # New root should be the old child
-        assert mcts._root is original_root.children.get(best_action)
+        assert mcts._root is expected_child
 
     def test_advance_nonexistent_action(
         self,

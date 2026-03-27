@@ -163,7 +163,8 @@ class TestDarcyFlowSolverSolve:
         # Pressure from Darcy flow with positive forcing and Dirichlet BCs
         # should be non-negative in the interior
         interior = pressure[1:-1, 1:-1]
-        assert numpy.all(interior >= -1e-6), "Interior pressure should be non-negative for positive forcing"
+        msg = "Interior pressure should be non-negative for positive forcing"
+        assert numpy.all(interior >= -1e-6), msg
 
     def test_solution_smoothness(self, solver: DarcyFlowSolver, permeability_field):
         """Test solution is smooth (small gradient relative to magnitude)."""

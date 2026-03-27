@@ -525,7 +525,8 @@ class TestSymmetries:
         symmetries = game.get_symmetries(state, policy)
 
         for _sym_state, sym_policy in symmetries:
-            total = float(np.sum(sym_policy) if isinstance(sym_policy, np.ndarray) else sym_policy.sum())
+            is_np = isinstance(sym_policy, np.ndarray)
+            total = float(np.sum(sym_policy) if is_np else sym_policy.sum())
             assert abs(total - 1.0) < 1e-5
 
     def test_symmetry_states_are_gamestate(self, game: GameInterface) -> None:
@@ -679,11 +680,11 @@ class TestRepr:
     """Tests for string representation."""
 
     def test_repr_contains_class_name(self, game: GameInterface) -> None:
-        """repr includes the class name."""
+        """Repr includes the class name."""
         r = repr(game)
         assert type(game).__name__ in r
 
     def test_repr_contains_game_name(self, game: GameInterface) -> None:
-        """repr includes the game name."""
+        """Repr includes the game name."""
         r = repr(game)
         assert game.name in r

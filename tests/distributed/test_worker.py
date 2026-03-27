@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import random
-import threading
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -19,7 +18,6 @@ from src.distributed.worker import (
     SelfPlayWorker,
     WorkerStats,
 )
-
 
 # ---------------------------------------------------------------------------
 # Stubs and helpers
@@ -492,7 +490,7 @@ class TestSelfPlayCoordinatorShutdown:
         selfplay_config: SelfPlayDistributedConfig,
         board_sizes: list[int],
     ) -> None:
-        """shutdown sets the stop event on all workers."""
+        """Shutdown sets the stop event on all workers."""
         coord = SelfPlayCoordinator(
             model=fake_model,
             mcts_config=mcts_config,

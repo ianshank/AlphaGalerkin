@@ -22,9 +22,8 @@ def pde_config() -> PDEConfig:
     return PDEConfig(
         name="test_poisson",
         pde_type=PDEType.POISSON,
-        domain_min=0.0,
-        domain_max=1.0,
-        n_collocation=25,
+        domain_min=[0.0, 0.0],
+        domain_max=[1.0, 1.0],
     )
 
 

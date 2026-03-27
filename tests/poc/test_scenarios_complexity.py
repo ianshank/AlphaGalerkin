@@ -15,15 +15,12 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-import torch
 
 from src.poc.config import (
     ComplexityScenarioConfig,
-    ScenarioResult,
     ScenarioStatus,
 )
 from src.poc.registry import BaseScenario, ScenarioRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

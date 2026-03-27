@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,7 +15,6 @@ from src.distributed.launcher import (
     LaunchResult,
     create_launcher,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -319,7 +317,7 @@ class TestSlurmLaunch:
         slurm_launcher_config: LauncherConfig,
         script_path: Path,
     ) -> None:
-        """sbatch failure is propagated."""
+        """Sbatch failure is propagated."""
         mock_popen.return_value = _make_mock_process(
             returncode=1,
             stderr="sbatch: error: Batch job submission failed",

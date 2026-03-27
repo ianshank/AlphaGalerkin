@@ -10,20 +10,15 @@ Validates:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
-import torch
 
 from src.poc.config import (
-    ScenarioResult,
     ScenarioStatus,
     StabilityScenarioConfig,
 )
 from src.poc.registry import BaseScenario, ScenarioRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

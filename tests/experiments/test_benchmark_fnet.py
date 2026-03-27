@@ -7,9 +7,6 @@ and analyze_scaling regression fitting.
 
 from __future__ import annotations
 
-import math
-
-import numpy as np
 import pytest
 import torch
 
@@ -21,7 +18,6 @@ from src.experiments.benchmark_fnet import (
     analyze_scaling,
     benchmark_layer,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

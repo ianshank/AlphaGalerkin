@@ -8,7 +8,6 @@ orchestration function ``run_verification``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,12 +16,11 @@ from torch import nn
 
 from src.tools.verify_invariance import (
     create_synthetic_input,
+    run_verification,
     verify_forward_pass,
     verify_lbb_stability,
     verify_semantic_validity,
-    run_verification,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -31,6 +29,7 @@ from src.tools.verify_invariance import (
 @dataclass
 class _MockOutput:
     """Minimal mock for model output."""
+
     policy_logits: torch.Tensor
     value: torch.Tensor
     lbb_constant: torch.Tensor | None = None

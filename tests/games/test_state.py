@@ -17,7 +17,6 @@ import pytest
 
 from src.games.state import ActionMask, GameState, create_empty_state
 
-
 # --- Fixtures ---
 
 

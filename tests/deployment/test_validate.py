@@ -521,6 +521,7 @@ class TestValidateShapes:
             inputs: List of dicts with 'name' and 'dims' keys.
                 Each dim is either an int (fixed) or a str (dynamic).
             outputs: Same format as inputs.
+
         """
         mock_model = MagicMock()
         mock_graph = MagicMock()
@@ -694,15 +695,15 @@ class TestCompareQuantized:
         quantized_path.write_bytes(b"\x00" * 512)
 
         rng = np.random.default_rng(SEED)
+        shape = (1, DEFAULT_CHANNELS, DEFAULT_BOARD_SIZE, DEFAULT_BOARD_SIZE)
         test_inputs = [
-            rng.standard_normal((1, DEFAULT_CHANNELS, DEFAULT_BOARD_SIZE, DEFAULT_BOARD_SIZE)).astype(
-                np.float32
-            )
+            rng.standard_normal(shape).astype(np.float32)
             for _ in range(3)
         ]
 
         # Mock both runtimes to return similar outputs
-        policy = rng.standard_normal((1, DEFAULT_BOARD_SIZE * DEFAULT_BOARD_SIZE)).astype(np.float32)
+        board_sq = DEFAULT_BOARD_SIZE * DEFAULT_BOARD_SIZE
+        policy = rng.standard_normal((1, board_sq)).astype(np.float32)
         value = np.array([0.5], dtype=np.float32)
 
         def make_mock_runtime() -> MagicMock:
@@ -752,10 +753,9 @@ class TestCompareQuantized:
         quantized_path.write_bytes(b"\x00" * 512)
 
         rng = np.random.default_rng(SEED)
+        shape = (1, DEFAULT_CHANNELS, DEFAULT_BOARD_SIZE, DEFAULT_BOARD_SIZE)
         test_inputs = [
-            rng.standard_normal((1, DEFAULT_CHANNELS, DEFAULT_BOARD_SIZE, DEFAULT_BOARD_SIZE)).astype(
-                np.float32
-            )
+            rng.standard_normal(shape).astype(np.float32)
         ]
 
         original_policy = np.zeros((1, DEFAULT_BOARD_SIZE * DEFAULT_BOARD_SIZE), dtype=np.float32)

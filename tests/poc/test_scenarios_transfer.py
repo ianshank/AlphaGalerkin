@@ -10,21 +10,17 @@ Validates:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 import torch
 from torch import nn
 
 from src.poc.config import (
-    ScenarioResult,
     ScenarioStatus,
     TransferScenarioConfig,
 )
 from src.poc.registry import BaseScenario, ScenarioRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -51,8 +47,8 @@ def small_config() -> TransferScenarioConfig:
         train_resolution=5,
         eval_resolutions=[5, 9],
         primary_eval_resolution=9,
-        n_train_samples=4,
-        n_eval_samples=2,
+        n_train_samples=100,
+        n_eval_samples=10,
         n_epochs=1,
         batch_size=2,
         d_model=16,

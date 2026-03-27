@@ -6,8 +6,6 @@ evaluate returns a proper metrics dict, and W&B / heavy ops are mocked.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 import torch
@@ -18,7 +16,6 @@ from src.experiments.train_physics import (
     evaluate,
     train_epoch,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -240,7 +237,7 @@ class TestEvaluate:
         tiny_eval_dataset,
         tiny_config: TrainingConfig,
     ) -> None:
-        """evaluate returns dict with mse, mae, rmse keys."""
+        """Evaluate returns dict with mse, mae, rmse keys."""
         device = torch.device("cpu")
         tiny_model.to(device)
         loss_fn = PhysicsLoss()

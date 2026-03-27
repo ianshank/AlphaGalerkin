@@ -10,20 +10,17 @@ Validates:
 
 from __future__ import annotations
 
-import random
 from typing import Any
 
 import pytest
 
 from src.poc.tuning.config import SearchSpace, TuningConfig
 from src.poc.tuning.sampler import (
-    BaseSampler,
     GridSampler,
     RandomSampler,
     TPESampler,
     create_sampler,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -354,7 +351,7 @@ class TestCreateSampler:
         assert isinstance(sampler, TPESampler)
 
     def test_unknown_falls_back_to_random(self) -> None:
-        """cmaes sampler should fall back to RandomSampler."""
+        """Cmaes sampler should fall back to RandomSampler."""
         config = TuningConfig(sampler="cmaes", seed=SEED)
         sampler = create_sampler(config)
         assert isinstance(sampler, RandomSampler)

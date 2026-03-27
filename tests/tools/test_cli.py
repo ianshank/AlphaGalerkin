@@ -6,7 +6,7 @@ error handling for the AlphaGalerkin CLI.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -31,7 +31,6 @@ class TestCLIArgumentParsing:
             patch("sys.exit") as mock_exit,
         ):
             # Import fresh to pick up lazy import
-            from importlib import reload
 
             import src.tools.cli as cli_mod
 

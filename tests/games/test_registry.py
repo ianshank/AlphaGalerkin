@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import threading
 from typing import TYPE_CHECKING
-from unittest.mock import patch
 
 import numpy as np
 import pytest

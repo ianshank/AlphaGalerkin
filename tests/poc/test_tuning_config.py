@@ -10,7 +10,6 @@ Validates:
 from __future__ import annotations
 
 import random
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -20,7 +19,6 @@ from src.poc.tuning.config import (
     TuningConfig,
     create_search_space_from_dict,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -211,7 +209,7 @@ class TestSearchSpaceSampling:
             assert isinstance(value, int)
 
     def test_default_value_field(self) -> None:
-        """default field should be stored but not affect sampling."""
+        """Default field should be stored but not affect sampling."""
         space = SearchSpace(type="float", low=0.0, high=1.0, default=0.5)
         assert space.default == 0.5
         # sample_random does not use default

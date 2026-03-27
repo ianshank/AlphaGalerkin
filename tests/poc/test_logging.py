@@ -11,11 +11,9 @@ Validates:
 from __future__ import annotations
 
 import time
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-import structlog
 
 from src.poc.logging import (
     DebugContext,
@@ -25,7 +23,6 @@ from src.poc.logging import (
     log_call,
     log_timing,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -158,7 +155,7 @@ class TestScenarioLoggerTimed:
         assert timing["duration_seconds"] > 0
 
     def test_timed_on_exception(self, scenario_logger: ScenarioLogger) -> None:
-        """duration should still be recorded when body raises."""
+        """Duration should still be recorded when body raises."""
         timing: dict[str, float] = {}
         with pytest.raises(RuntimeError):
             with scenario_logger.timed("failing") as timing:

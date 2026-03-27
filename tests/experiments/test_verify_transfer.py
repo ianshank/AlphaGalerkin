@@ -6,9 +6,6 @@ verify_resolution_independence, and various board sizes.
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 import torch
@@ -22,7 +19,6 @@ from src.experiments.verify_transfer import (
     evaluate_transfer,
     verify_resolution_independence,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -98,10 +94,10 @@ class TestTransferResult:
 
     def test_equality(self) -> None:
         """Two TransferResults with same fields are equal."""
-        kwargs = dict(
-            train_size=9, eval_size=13, mse=0.02, mae=0.01,
-            rmse=0.14, max_error=0.5, n_samples=50, passed=True,
-        )
+        kwargs = {
+            "train_size": 9, "eval_size": 13, "mse": 0.02, "mae": 0.01,
+            "rmse": 0.14, "max_error": 0.5, "n_samples": 50, "passed": True,
+        }
         assert TransferResult(**kwargs) == TransferResult(**kwargs)
 
 
@@ -178,7 +174,7 @@ class TestEvaluateTransfer:
     def test_passed_respects_threshold(
         self, tiny_model: PhysicsOperator, threshold: float
     ) -> None:
-        """passed field is consistent with mse vs threshold."""
+        """Passed field is consistent with mse vs threshold."""
         result = evaluate_transfer(
             model=tiny_model,
             train_size=5,
@@ -277,14 +273,14 @@ class TestVerifyResolutionIndependence:
 
     def test_deterministic_with_same_seed(self, tiny_model: PhysicsOperator) -> None:
         """Same seed produces identical results."""
-        kwargs = dict(
-            model=tiny_model,
-            device=torch.device("cpu"),
-            resolutions=[5, 9],
-            n_samples=3,
-            n_charges=2,
-            seed=12345,
-        )
+        kwargs = {
+            "model": tiny_model,
+            "device": torch.device("cpu"),
+            "resolutions": [5, 9],
+            "n_samples": 3,
+            "n_charges": 2,
+            "seed": 12345,
+        }
         with torch.no_grad():
             r1 = verify_resolution_independence(**kwargs)
             r2 = verify_resolution_independence(**kwargs)
@@ -308,7 +304,7 @@ class TestModuleConstants:
 
     def test_default_eval_sizes_sorted(self) -> None:
         """Default eval sizes are in ascending order."""
-        assert DEFAULT_EVAL_SIZES == sorted(DEFAULT_EVAL_SIZES)
+        assert sorted(DEFAULT_EVAL_SIZES) == DEFAULT_EVAL_SIZES
 
     def test_default_resolution_sizes_include_standard(self) -> None:
         """Default resolution test sizes include 9 and 19 (Go boards)."""

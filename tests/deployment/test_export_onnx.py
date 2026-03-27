@@ -7,8 +7,7 @@ mocking heavy ONNX/torch operations to ensure deterministic, fast tests.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import structlog
@@ -198,16 +197,11 @@ class TestGetModelInfo:
         model_path = tmp_path / "model.onnx"
         model_path.touch()
 
-        with patch.dict("sys.modules", {"onnx": MagicMock()}):
-            with patch("src.deployment.export_onnx.importlib.import_module", side_effect=ImportError):
-                pass
+        mock_onnx = MagicMock()
+        mock_onnx.load.return_value = mock_model
 
-            import importlib
-            mock_onnx = MagicMock()
-            mock_onnx.load.return_value = mock_model
-
-            with patch.dict("sys.modules", {"onnx": mock_onnx}):
-                info = exporter.get_model_info(model_path)
+        with patch.dict("sys.modules", {"onnx": mock_onnx}):
+            info = exporter.get_model_info(model_path)
 
         expected_keys = {
             "inputs",
@@ -308,17 +302,16 @@ class TestExport:
         output_path = tmp_path / "model_dynamo.onnx"
 
         with (
-            patch(
-                "torch.onnx.dynamo_export",
-                side_effect=AttributeError("not available"),
-            ),
             patch("torch.onnx.export") as mock_trace_export,
             patch.object(exp, "_add_metadata"),
         ):
-            output_path.touch()
-            exp.export(dummy_model, sample_input, output_path)
-            # Should have fallen back to trace
-            mock_trace_export.assert_called_once()
+            # Mock dynamo_export to raise, forcing fallback to trace
+            mock_dynamo = MagicMock(side_effect=AttributeError("not available"))
+            with patch.object(torch.onnx, "dynamo_export", mock_dynamo, create=True):
+                output_path.touch()
+                exp.export(dummy_model, sample_input, output_path)
+                # Should have fallen back to trace
+                mock_trace_export.assert_called_once()
 
     def test_export_creates_parent_dirs(
         self,

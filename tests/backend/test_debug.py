@@ -184,3 +184,168 @@ class TestGradientHealth:
         report = check_gradient_health(grads)
         expected_norm = (3.0) ** 0.5
         assert abs(report["total_norm"] - expected_norm) < 1e-4
+
+    def test_grads_as_list(self):
+        grads = [torch.randn(3), torch.randn(4)]
+        report = check_gradient_health(grads)
+        assert report["num_params"] == 2
+        assert report["healthy"] is True
+
+    def test_grads_as_single_tensor(self):
+        report = check_gradient_health(torch.randn(5))
+        assert report["num_params"] == 1
+        assert report["healthy"] is True
+
+    def test_grads_with_none_values(self):
+        grads = {"layer1": torch.randn(3), "layer2": None}
+        report = check_gradient_health(grads)
+        assert report["healthy"] is True
+
+    def test_gradient_health_with_logger(self):
+        import structlog
+
+        log = structlog.get_logger("test")
+        grads = {"layer1": torch.randn(3, 4)}
+        report = check_gradient_health(grads, logger=log)
+        assert report["healthy"] is True
+
+    def test_gradient_health_unhealthy_with_logger(self):
+        import structlog
+
+        log = structlog.get_logger("test")
+        grads = {"layer1": torch.tensor([float("nan")])}
+        report = check_gradient_health(grads, logger=log)
+        assert report["healthy"] is False
+
+    def test_gradient_explosion_with_logger(self):
+        import structlog
+
+        log = structlog.get_logger("test")
+        grads = {"layer1": torch.ones(100) * 100}
+        report = check_gradient_health(grads, logger=log, max_norm=1.0)
+        assert report["healthy"] is False
+
+    def test_empty_grads(self):
+        report = check_gradient_health({})
+        assert report["healthy"] is True
+        assert report["num_params"] == 0
+
+
+class TestAssertDtypeExtended:
+    """Extended dtype assertion tests."""
+
+    def test_matching_dtype_extended(self):
+        x = torch.randn(3)
+        assert_dtype(x, torch.float32)
+
+    def test_mismatching_dtype_extended(self):
+        x = torch.randn(3)
+        with pytest.raises(ValueError, match="dtype"):
+            assert_dtype(x, torch.float64)
+
+    def test_matching_string_dtype(self):
+        x = torch.randn(3)
+        assert_dtype(x, "float32")
+
+    def test_named_tensor_dtype(self):
+        x = torch.randn(3).to(torch.float64)
+        with pytest.raises(ValueError, match="my_tensor"):
+            assert_dtype(x, torch.float32, name="my_tensor")
+
+
+class TestNormalizeDtypeStr:
+    """Test _normalize_dtype_str helper."""
+
+    def test_torch_dtype(self):
+        from src.backend.debug import _normalize_dtype_str
+
+        result = _normalize_dtype_str(torch.float32)
+        assert result == "float32"
+
+    def test_string_dtype(self):
+        from src.backend.debug import _normalize_dtype_str
+
+        result = _normalize_dtype_str("float32")
+        assert result == "float32"
+
+    def test_torch_prefixed_string(self):
+        from src.backend.debug import _normalize_dtype_str
+
+        result = _normalize_dtype_str("torch.float32")
+        assert result == "float32"
+
+    def test_numpy_dtype(self):
+        import numpy as np
+
+        from src.backend.debug import _normalize_dtype_str
+
+        result = _normalize_dtype_str(np.dtype("float32"))
+        assert result == "float32"
+
+    def test_numpy_class(self):
+        import numpy as np
+
+        from src.backend.debug import _normalize_dtype_str
+
+        result = _normalize_dtype_str(np.float64)
+        assert "float64" in result
+
+
+class TestWithNumpy:
+    """Test debug utilities with numpy arrays."""
+
+    def test_assert_shape_numpy(self):
+        import numpy as np
+
+        x = np.ones((3, 4))
+        assert_shape(x, (3, 4))
+
+    def test_assert_no_nans_numpy(self):
+        import numpy as np
+
+        x = np.ones((3,))
+        assert_no_nans(x)
+
+    def test_assert_no_nans_numpy_with_nan(self):
+        import numpy as np
+
+        x = np.array([1.0, float("nan")])
+        with pytest.raises(ValueError, match="NaN"):
+            assert_no_nans(x)
+
+    def test_assert_finite_numpy(self):
+        import numpy as np
+
+        x = np.ones((3,))
+        assert_finite(x)
+
+    def test_assert_finite_numpy_with_inf(self):
+        import numpy as np
+
+        x = np.array([1.0, float("inf")])
+        with pytest.raises(ValueError, match="Inf"):
+            assert_finite(x)
+
+    def test_log_tensor_stats_numpy(self):
+        import numpy as np
+        import structlog
+
+        log = structlog.get_logger("test")
+        x = np.array([1.0, 2.0, 3.0])
+        stats = log_tensor_stats(log, "numpy_tensor", x)
+        assert stats["shape"] == (3,)
+        assert abs(stats["mean"] - 2.0) < 1e-5
+
+    def test_check_gradient_health_numpy(self):
+        import numpy as np
+
+        grads = {"layer1": np.ones(5)}
+        report = check_gradient_health(grads)
+        assert report["healthy"] is True
+
+    def test_log_tensor_stats_scalar(self):
+        import structlog
+
+        log = structlog.get_logger("test")
+        stats = log_tensor_stats(log, "scalar", 42)
+        assert stats["shape"] == "unknown"

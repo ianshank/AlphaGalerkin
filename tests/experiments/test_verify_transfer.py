@@ -310,3 +310,122 @@ class TestModuleConstants:
         """Default resolution test sizes include 9 and 19 (Go boards)."""
         assert 9 in DEFAULT_RESOLUTION_TEST_SIZES
         assert 19 in DEFAULT_RESOLUTION_TEST_SIZES
+
+
+# ---------------------------------------------------------------------------
+# Tests: run_verification (mocked model loading)
+# ---------------------------------------------------------------------------
+
+
+class TestRunVerification:
+    """Tests for run_verification with mocked model loading."""
+
+    def test_run_verification_with_model_path(
+        self, tiny_model: PhysicsOperator, tmp_path
+    ) -> None:
+        """run_verification returns summary dict when model exists."""
+        from src.experiments.verify_transfer import run_verification
+
+        # Save model to tmp path
+        model_path = tmp_path / "model.pt"
+        torch.save(
+            {
+                "model_state_dict": tiny_model.state_dict(),
+                "config": {
+                    "d_model": 32,
+                    "n_heads": 2,
+                    "n_layers": 2,
+                    "n_fourier_features": 16,
+                    "fourier_scale": 10.0,
+                    "use_fnet": False,
+                },
+            },
+            model_path,
+        )
+
+        with torch.no_grad():
+            summary = run_verification(
+                model_path=model_path,
+                train_size=5,
+                eval_sizes=[5],
+                n_samples=4,
+                threshold=100.0,
+                output_dir=tmp_path / "output",
+            )
+
+        assert "all_passed" in summary
+        assert "results" in summary
+        assert len(summary["results"]) == 1
+
+    def test_run_verification_saves_json(
+        self, tiny_model: PhysicsOperator, tmp_path
+    ) -> None:
+        """run_verification saves results JSON when output_dir given."""
+        from src.experiments.verify_transfer import run_verification
+
+        model_path = tmp_path / "model.pt"
+        torch.save(
+            {
+                "model_state_dict": tiny_model.state_dict(),
+                "config": {
+                    "d_model": 32,
+                    "n_heads": 2,
+                    "n_layers": 2,
+                    "n_fourier_features": 16,
+                    "fourier_scale": 10.0,
+                    "use_fnet": False,
+                },
+            },
+            model_path,
+        )
+
+        output_dir = tmp_path / "verification_output"
+        with torch.no_grad():
+            run_verification(
+                model_path=model_path,
+                train_size=5,
+                eval_sizes=[5],
+                n_samples=4,
+                threshold=100.0,
+                output_dir=output_dir,
+            )
+
+        import json
+
+        json_path = output_dir / "transfer_verification.json"
+        assert json_path.exists()
+        with open(json_path) as f:
+            data = json.load(f)
+        assert "all_passed" in data
+
+
+# ---------------------------------------------------------------------------
+# Tests: main() argument parsing
+# ---------------------------------------------------------------------------
+
+
+class TestMainArgParsing:
+    """Tests for main() entry point."""
+
+    def test_main_parses_args(self) -> None:
+        """main() parses args and calls run_verification."""
+        from unittest.mock import patch
+
+        from src.experiments.verify_transfer import main
+
+        with patch(
+            "sys.argv",
+            [
+                "verify_transfer",
+                "--model-path", "/nonexistent/model.pt",
+                "--eval-sizes", "5",
+                "--n-samples", "4",
+            ],
+        ), patch(
+            "src.experiments.verify_transfer.run_verification",
+            return_value={"all_passed": True},
+        ) as mock_verify, patch(
+            "sys.exit",
+        ):
+            main()
+            mock_verify.assert_called_once()

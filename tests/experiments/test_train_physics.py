@@ -343,3 +343,138 @@ class TestWandbIntegration:
         """W&B run name defaults to None."""
         config = TrainingConfig()
         assert config.wandb_name is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: train() full pipeline (tiny, fast)
+# ---------------------------------------------------------------------------
+
+
+class TestTrainPipeline:
+    """Tests for the full train() pipeline with tiny config."""
+
+    def test_train_returns_results_dict(
+        self, tmp_path, tiny_config: TrainingConfig
+    ) -> None:
+        """train() returns a results dict with expected keys."""
+        from src.experiments.train_physics import train
+
+        tiny_config.output_dir = str(tmp_path / "output")
+        tiny_config.n_epochs = 2
+        tiny_config.eval_interval = 1
+        tiny_config.log_interval = 1
+
+        results = train(tiny_config)
+
+        assert isinstance(results, dict)
+        assert "final_metrics" in results
+        assert "best_transfer_mse" in results
+        assert "training_time_seconds" in results
+        assert "success" in results
+        assert isinstance(results["success"], bool)
+
+    def test_train_saves_checkpoint(
+        self, tmp_path, tiny_config: TrainingConfig
+    ) -> None:
+        """train() saves best model checkpoint."""
+        from src.experiments.train_physics import train
+
+        tiny_config.output_dir = str(tmp_path / "output")
+        tiny_config.n_epochs = 2
+        tiny_config.eval_interval = 1
+
+        train(tiny_config)
+
+        best_path = tmp_path / "output" / "best_model.pt"
+        assert best_path.exists()
+
+    def test_train_saves_log(
+        self, tmp_path, tiny_config: TrainingConfig
+    ) -> None:
+        """train() saves training_log.json."""
+        import json
+
+        from src.experiments.train_physics import train
+
+        tiny_config.output_dir = str(tmp_path / "output")
+        tiny_config.n_epochs = 2
+        tiny_config.eval_interval = 1
+
+        train(tiny_config)
+
+        log_path = tmp_path / "output" / "training_log.json"
+        assert log_path.exists()
+        with open(log_path) as f:
+            log_data = json.load(f)
+        assert "history" in log_data
+        assert "final_metrics" in log_data
+
+    def test_train_history_populated(
+        self, tmp_path, tiny_config: TrainingConfig
+    ) -> None:
+        """History lists grow during training."""
+        from src.experiments.train_physics import train
+
+        tiny_config.output_dir = str(tmp_path / "output")
+        tiny_config.n_epochs = 3
+        tiny_config.eval_interval = 1
+
+        results = train(tiny_config)
+
+        history = results["history"]
+        assert len(history["train_loss"]) == 3
+        assert len(history["eval_mse_same_res"]) == 3
+        assert len(history["eval_mse_transfer"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests: main() argument parsing
+# ---------------------------------------------------------------------------
+
+
+class TestMainArgParsing:
+    """Tests for the main() entry point argument parsing."""
+
+    def test_main_default_args(self) -> None:
+        """main() parses default arguments and calls train."""
+        from unittest.mock import patch
+
+        from src.experiments.train_physics import main
+
+        with patch(
+            "sys.argv", ["train_physics"]
+        ), patch(
+            "src.experiments.train_physics.train", return_value={}
+        ) as mock_train:
+            main()
+            mock_train.assert_called_once()
+            config = mock_train.call_args[0][0]
+            assert config.train_grid_size == 9
+            assert config.eval_grid_size == 19
+
+    def test_main_custom_args(self) -> None:
+        """main() forwards custom CLI args to TrainingConfig."""
+        from unittest.mock import patch
+
+        from src.experiments.train_physics import main
+
+        with patch(
+            "sys.argv",
+            [
+                "train_physics",
+                "--train-size", "5",
+                "--eval-size", "7",
+                "--n-epochs", "2",
+                "--d-model", "32",
+                "--seed", "99",
+            ],
+        ), patch(
+            "src.experiments.train_physics.train", return_value={}
+        ) as mock_train:
+            main()
+            config = mock_train.call_args[0][0]
+            assert config.train_grid_size == 5
+            assert config.eval_grid_size == 7
+            assert config.n_epochs == 2
+            assert config.d_model == 32
+            assert config.seed == 99

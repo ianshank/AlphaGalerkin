@@ -16,8 +16,8 @@ import pytest
 import torch
 from torch import Tensor
 
-# Re-export fixtures from video_fixtures for test discovery
-pytest_plugins = ["tests.video_compression.video_fixtures"]
+# Import fixtures from video_fixtures for test discovery
+from tests.video_compression.video_fixtures import *  # noqa: F401, F403
 
 # --------------------------------------------------------------------------
 # Core Fixtures

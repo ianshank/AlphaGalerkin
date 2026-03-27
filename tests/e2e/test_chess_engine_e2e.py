@@ -17,13 +17,12 @@ import numpy as np
 import pytest
 
 from src.engines.adapter import EngineEvaluator
-from src.engines.config import EloConfig, MatchConfig, UCIConfig
+from src.engines.config import EloConfig, UCIConfig
 from src.engines.elo import EloCalculator
-from src.engines.match import EngineMatch, GameRecord, MatchResult
+from src.engines.match import GameRecord, MatchResult
 from src.engines.uci import UCIEngine
 from src.games.chess import ChessGame
 from src.games.fen import STARTING_FEN, FENError, fen_to_state, state_to_fen
-from src.games.state import GameState
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,8 +57,7 @@ class MultiMoveEngine:
     def _line_iter(self):  # noqa: ANN202
         """Yield startup lines then search lines on demand."""
         # Startup handshake
-        for line in self._responses:
-            yield line
+        yield from self._responses
 
         # After startup, every time we're asked to search
         while True:
@@ -381,7 +379,7 @@ class TestGameSimulation:
         assert len(move_history) > 0
 
     def test_engine_move_translation_roundtrip(self) -> None:
-        """action → UCI string → action roundtrip for all opening moves."""
+        """Action → UCI string → action roundtrip for all opening moves."""
         game = ChessGame()
         state = game.initial_state()
         legal = game.get_legal_actions(state)

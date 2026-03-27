@@ -160,8 +160,8 @@ class TestResidualLoss:
     def test_forward_mean(self, poisson_operator: PoissonOperator) -> None:
         torch.manual_seed(SEED)
         loss_fn = ResidualLoss(poisson_operator, reduction="mean")
-        u = torch.rand(1, N_POINTS)
-        coords = torch.rand(1, N_POINTS, DIM)
+        coords = torch.rand(1, N_POINTS, DIM, requires_grad=True)
+        u = torch.sin(coords[..., 0]) * torch.sin(coords[..., 1])
         result = loss_fn(u, coords)
         assert result.shape == ()
         assert result.item() >= 0.0
@@ -169,16 +169,16 @@ class TestResidualLoss:
     def test_forward_sum(self, poisson_operator: PoissonOperator) -> None:
         torch.manual_seed(SEED)
         loss_fn = ResidualLoss(poisson_operator, reduction="sum")
-        u = torch.rand(1, N_POINTS)
-        coords = torch.rand(1, N_POINTS, DIM)
+        coords = torch.rand(1, N_POINTS, DIM, requires_grad=True)
+        u = torch.sin(coords[..., 0]) * torch.sin(coords[..., 1])
         result = loss_fn(u, coords)
         assert result.item() >= 0.0
 
     def test_forward_none(self, poisson_operator: PoissonOperator) -> None:
         torch.manual_seed(SEED)
         loss_fn = ResidualLoss(poisson_operator, reduction="none")
-        u = torch.rand(1, N_POINTS)
-        coords = torch.rand(1, N_POINTS, DIM)
+        coords = torch.rand(1, N_POINTS, DIM, requires_grad=True)
+        u = torch.sin(coords[..., 0]) * torch.sin(coords[..., 1])
         result = loss_fn(u, coords)
         # With "none" reduction, result should not be a scalar
         assert result.numel() >= 1
@@ -186,8 +186,8 @@ class TestResidualLoss:
     def test_forward_batched(self, poisson_operator: PoissonOperator) -> None:
         torch.manual_seed(SEED)
         loss_fn = ResidualLoss(poisson_operator, reduction="mean")
-        u = torch.rand(BATCH_SIZE, N_POINTS)
-        coords = torch.rand(BATCH_SIZE, N_POINTS, DIM)
+        coords = torch.rand(BATCH_SIZE, N_POINTS, DIM, requires_grad=True)
+        u = torch.sin(coords[..., 0]) * torch.sin(coords[..., 1])
         result = loss_fn(u, coords)
         assert result.shape == ()
 

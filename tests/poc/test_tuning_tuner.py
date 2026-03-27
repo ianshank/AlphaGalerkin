@@ -46,13 +46,24 @@ def clean_registry() -> None:
 # ---------------------------------------------------------------------------
 
 
+class _TunerTestConfig(BaseScenarioConfig):
+    """Config that accepts d_model for tuning tests."""
+
+    model_config = {"extra": "allow"}
+
+    name: str = "tuner_test"
+    description: str = "tuner test scenario"
+    d_model: int = 64
+
+
 def _dummy_scenario_cls():
     """Return a simple scenario class for tuning."""
 
     @scenario("tuner_test")
     class TunerTestScenario(BaseScenario):
+        config_class = _TunerTestConfig
+
         def execute(self) -> ScenarioResult:
-            # Use d_model from config as a proxy metric
             d = getattr(self.config, "d_model", 64)
             self.record_metric("mse", 1.0 / d)
             return self._create_result(ScenarioStatus.PASSED)

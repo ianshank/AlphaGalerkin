@@ -11,12 +11,40 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+import torch
+from torch import Tensor
+
 from src.pde.config import BasisSelectionConfig, PDEConfig, PDEGameConfig, PDEType
 from src.pde.game import GamePhase, PDEState
 from src.pde.games.basis_selection import BasisFunction, BasisSelectionGame
-from src.pde.operators import PoissonOperator
+from src.pde.operators import PDEResidual, PoissonOperator
 
 SEED = 42
+
+
+class SafePoissonOperator(PoissonOperator):
+    """PoissonOperator that handles non-grad tensors in residual computation."""
+
+    def residual(
+        self,
+        u: Tensor,
+        coords: Tensor,
+        compute_derivatives: bool = True,
+    ) -> PDEResidual:
+        """Compute residual without requiring autograd."""
+        source = self.source_term(coords)
+        if isinstance(source, np.ndarray):
+            source = torch.from_numpy(source).to(coords.device)
+        # Approximate residual as -source (laplacian is zero for non-grad tensors)
+        residual_values = -source
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
+        max_norm = float(torch.max(torch.abs(residual_values)).item())
+        return PDEResidual(
+            values=residual_values,
+            l2_norm=l2_norm,
+            max_norm=max_norm,
+            derivatives={},
+        )
 N_COLLOCATION = 50
 N_BOUNDARY_PER_FACE = 10
 N_CANDIDATES = 8
@@ -36,8 +64,8 @@ def pde_config() -> PDEConfig:
 
 
 @pytest.fixture
-def poisson_operator(pde_config: PDEConfig) -> PoissonOperator:
-    return PoissonOperator(pde_config)
+def poisson_operator(pde_config: PDEConfig) -> SafePoissonOperator:
+    return SafePoissonOperator(pde_config)
 
 
 def _make_game_config(

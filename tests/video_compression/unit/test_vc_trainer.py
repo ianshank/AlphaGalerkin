@@ -36,8 +36,11 @@ class _FakeCodec(nn.Module):
         self.conv = nn.Conv2d(3, 3, 1)  # Needs parameters
 
     def forward(self, x: torch.Tensor):
-        # Return (reconstructed, rate, distortion)
-        return x, torch.tensor(0.5), torch.tensor(0.01)
+        # Return (reconstructed, rate, distortion) - must have grad_fn
+        out = self.conv(x)
+        rate = out.mean() * 0.0 + 0.5
+        distortion = out.mean() * 0.0 + 0.01
+        return out, rate, distortion
 
 
 def _fake_training_config():

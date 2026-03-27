@@ -141,7 +141,7 @@ class TestGracefulShutdownHandler:
 
 
 class TestRunTraining:
-    @patch("src.vertex.entrypoint.VertexTrainer")
+    @patch("src.vertex.trainer.VertexTrainer")
     def test_run_training_success(self, mock_trainer_cls: MagicMock) -> None:
         mock_trainer = MagicMock()
         mock_trainer.train.return_value = {
@@ -170,7 +170,7 @@ class TestRunTraining:
 
         assert result["status"] == "completed"
 
-    @patch("src.vertex.entrypoint.VertexTrainer")
+    @patch("src.vertex.trainer.VertexTrainer")
     def test_run_training_with_resume(self, mock_trainer_cls: MagicMock) -> None:
         mock_trainer = MagicMock()
         mock_trainer.train.return_value = {"step": 50, "loss": 0.02}
@@ -196,7 +196,7 @@ class TestRunTraining:
 
         mock_trainer.load_checkpoint.assert_called_once()
 
-    @patch("src.vertex.entrypoint.VertexTrainer")
+    @patch("src.vertex.trainer.VertexTrainer")
     def test_trainer_ref_set(self, mock_trainer_cls: MagicMock) -> None:
         mock_trainer = MagicMock()
         mock_trainer.train.return_value = {"step": 1}

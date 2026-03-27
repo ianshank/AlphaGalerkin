@@ -43,13 +43,49 @@ def tmp_dir(tmp_path: Path) -> Path:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_scenario(name: str, status: ScenarioStatus = ScenarioStatus.PASSED):
-    """Register and return a trivial scenario class."""
+def _make_scenario(name: str, passed: bool = True):
+    """Register and return a trivial scenario class with default config."""
+    from datetime import datetime
+
+    # Create a config class that provides default name/description
+    config_cls = type(
+        f"Config_{name}",
+        (BaseScenarioConfig,),
+        {
+            "__annotations__": {
+                "name": str,
+                "description": str,
+            },
+            "name": name,
+            "description": f"Auto-generated for {name}",
+            "model_config": {"extra": "forbid"},
+        },
+    )
+
+    status = ScenarioStatus.PASSED if passed else ScenarioStatus.FAILED
 
     @scenario(name)
     class _Scenario(BaseScenario):
+        config_class = config_cls
+
         def execute(self) -> ScenarioResult:
-            return self._create_result(status)
+            import sys
+            import torch
+            from datetime import datetime as dt
+
+            end = dt.now()
+            assert self._start_time is not None
+            dur = (end - self._start_time).total_seconds()
+            return ScenarioResult(
+                scenario_name=self.name,
+                config_hash=self.config.compute_hash(),
+                status=status,
+                passed=passed,
+                metrics={},
+                start_time=self._start_time,
+                end_time=end,
+                duration_seconds=dur,
+            )
 
     return _Scenario
 
@@ -114,15 +150,18 @@ class TestRunAll:
         assert results == []
 
     def test_run_all_sequential_fail_fast(self, tmp_dir: Path) -> None:
-        _make_scenario("pass_first")
-        _make_scenario("fail_second", ScenarioStatus.FAILED)
-        _make_scenario("never_run")
+        _make_scenario("aaa_pass_first")
+        _make_scenario("bbb_fail_second", passed=False)
+        _make_scenario("ccc_never_run")
 
         runner = ScenarioRunner(output_dir=tmp_dir, fail_fast=True)
         results = runner.run_all()
 
-        # Should stop after the failing scenario
-        assert any(not r.passed for r in results)
+        # At least one should have failed, triggering fail_fast
+        failed = [r for r in results if not r.passed]
+        assert len(failed) >= 1
+        # Should have stopped - max 2 results (pass + fail), not 3
+        assert len(results) <= 2
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +210,7 @@ class TestRunFromConfig:
         assert len(results) == 0
 
     def test_fail_fast_in_config_run(self, tmp_dir: Path) -> None:
-        _make_scenario("complexity", ScenarioStatus.FAILED)
+        _make_scenario("complexity", passed=False)
 
         config_content = {
             "scenarios": [

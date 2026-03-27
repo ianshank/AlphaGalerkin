@@ -413,7 +413,7 @@ class BasisSelectionGame(PDEGame):
             new_state.phase = GamePhase.CONVERGED
         elif new_state.budget_remaining <= 0:
             new_state.phase = GamePhase.BUDGET_EXHAUSTED
-        elif new_state.error_estimate > 0.1:
+        elif new_state.error_estimate > getattr(self.config, "explore_error_threshold", 0.1):
             new_state.phase = GamePhase.EXPLORING
         else:
             new_state.phase = GamePhase.REFINING

@@ -44,6 +44,16 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+def _get_float_attr(obj: object, name: str, default: float | None) -> float | None:
+    """Safely extract a float attribute, ignoring mock objects."""
+    val = getattr(obj, name, None)
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    return default
+
+
 class PDEGameAdapter:
     """Adapter that wraps a ``PDEGame`` for use with ``MCTS.search()``.
 
@@ -158,7 +168,19 @@ class PDEGameAdapter:
         final_error = self.error_history[-1]
 
         # Tolerance from config (with reasonable fallback)
-        tolerance = getattr(self.pde_game.config, "tolerance", 0.01)
+        _default_tolerance = 0.01
+        _default_good_reduction = 0.1
+        _default_poor_reduction = 0.5
+        config = self.pde_game.config
+        tolerance = _get_float_attr(config, "error_tolerance", None)
+        if tolerance is None:
+            tolerance = _get_float_attr(config, "tolerance", _default_tolerance)
+        good_reduction = _get_float_attr(
+            config, "good_reduction_threshold", _default_good_reduction
+        )
+        poor_reduction = _get_float_attr(
+            config, "poor_reduction_threshold", _default_poor_reduction
+        )
 
         if final_error < tolerance:
             return 1  # Converged successfully
@@ -169,11 +191,11 @@ class PDEGameAdapter:
         else:
             reduction_ratio = 1.0
 
-        if reduction_ratio < 0.1:
-            # Reduced error by 90%+ even if not below tolerance
+        if reduction_ratio < good_reduction:
+            # Significant error reduction even if not below tolerance
             return 1
-        elif reduction_ratio > 0.5:
-            # Less than 50% reduction — poor outcome
+        elif reduction_ratio > poor_reduction:
+            # Poor reduction — bad outcome
             return -1
         else:
             return 0

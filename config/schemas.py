@@ -151,6 +151,22 @@ class TrainingConfig(BaseModel):
     # Loss weights
     policy_loss_weight: float = Field(default=1.0, description="Weight for policy loss")
     value_loss_weight: float = Field(default=1.0, description="Weight for value loss")
+    lbb_loss_weight: float = Field(default=0.01, description="Weight for LBB regularization")
+    lbb_eps: float = Field(
+        default=1e-8, gt=0.0, description="Numerical stability constant for LBB loss"
+    )
+    lbb_target: float = Field(default=0.1, gt=0.0, description="Target minimum for LBB constant")
+    lbb_log_penalty_weight: float = Field(
+        default=0.1, ge=0.0, description="Weight for log barrier penalty in LBB loss"
+    )
+
+    # Elo win rate thresholds
+    elo_win_threshold: float = Field(
+        default=0.55, gt=0.5, le=1.0, description="Win rate above which counts as a win for Elo"
+    )
+    elo_loss_threshold: float = Field(
+        default=0.45, ge=0.0, lt=0.5, description="Win rate below which counts as a loss for Elo"
+    )
 
     # Checkpointing
     checkpoint_interval: int = Field(default=1000, description="Steps between checkpoints")
@@ -183,6 +199,9 @@ class TrainingConfig(BaseModel):
     per_alpha: float = Field(default=0.6, ge=0.0, le=1.0, description="Priority exponent for PER")
     per_beta: float = Field(
         default=0.4, ge=0.0, le=1.0, description="Importance sampling start for PER"
+    )
+    per_beta_increment: float = Field(
+        default=0.001, ge=0.0, description="Beta increment per sample call for PER"
     )
 
     # Curriculum learning

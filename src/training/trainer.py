@@ -234,6 +234,7 @@ class Trainer:
             prioritized=self.use_prioritized_replay,
             alpha=getattr(self.training_config, "per_alpha", 0.6),
             beta=getattr(self.training_config, "per_beta", 0.4),
+            beta_increment=getattr(self.training_config, "per_beta_increment", 0.001),
         )
 
         # Board size curriculum (optional)
@@ -1095,9 +1096,11 @@ class Trainer:
                 opponent_step = self._extract_step_from_checkpoint(opponent_path)
 
                 # Determine score: 1.0=win, 0.5=draw, 0.0=loss
-                if result.win_rate > 0.55:
+                win_threshold = getattr(self.training_config, "elo_win_threshold", 0.55)
+                loss_threshold = getattr(self.training_config, "elo_loss_threshold", 0.45)
+                if result.win_rate > win_threshold:
                     score = 1.0
-                elif result.win_rate < 0.45:
+                elif result.win_rate < loss_threshold:
                     score = 0.0
                 else:
                     score = 0.5

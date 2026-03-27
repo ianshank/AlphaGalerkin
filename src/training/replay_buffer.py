@@ -435,6 +435,7 @@ def create_replay_buffer(
     prioritized: bool = False,
     alpha: float = 0.6,
     beta: float = 0.4,
+    beta_increment: float = 0.001,
 ) -> UniformReplayBuffer | PrioritizedReplayBuffer:
     """Factory function to create replay buffer.
 
@@ -443,11 +444,14 @@ def create_replay_buffer(
         prioritized: Whether to use prioritized replay.
         alpha: Priority exponent (for prioritized).
         beta: Importance sampling exponent (for prioritized).
+        beta_increment: Beta increment per sample call (for prioritized).
 
     Returns:
         Configured replay buffer.
 
     """
     if prioritized:
-        return PrioritizedReplayBuffer(capacity, alpha=alpha, beta=beta)
+        return PrioritizedReplayBuffer(
+            capacity, alpha=alpha, beta=beta, beta_increment=beta_increment,
+        )
     return UniformReplayBuffer(capacity)

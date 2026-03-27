@@ -429,6 +429,27 @@ class PDEGameConfig(BaseModuleConfig):
         description="Bonus for reaching tolerance",
     )
 
+    # MCTS adapter convergence thresholds
+    good_reduction_threshold: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description="Reduction ratio below which outcome is success (e.g. 0.1 = 90%+ reduction)",
+    )
+    poor_reduction_threshold: float = Field(
+        default=0.5,
+        gt=0.0,
+        lt=1.0,
+        description="Reduction ratio above which outcome is failure (less than 50% reduction)",
+    )
+
+    # Basis selection phase threshold
+    explore_error_threshold: float = Field(
+        default=0.1,
+        gt=0.0,
+        description="Error threshold above which the game is in EXPLORING phase",
+    )
+
     # Success metrics
     success_metrics: list[MetricDefinition] = Field(
         default_factory=lambda: [

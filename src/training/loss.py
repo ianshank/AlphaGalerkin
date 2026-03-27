@@ -59,6 +59,7 @@ class AlphaGalerkinLoss(nn.Module):
         lbb_weight: float = 0.01,
         lbb_eps: float = 1e-8,
         lbb_target: float = 0.1,
+        log_penalty_weight: float = 0.1,
         label_smoothing: float = 0.0,
     ) -> None:
         """Initialize loss function.
@@ -69,6 +70,7 @@ class AlphaGalerkinLoss(nn.Module):
             lbb_weight: Weight for LBB regularization.
             lbb_eps: Small constant for numerical stability in LBB loss.
             lbb_target: Target minimum for LBB constant (soft constraint).
+            log_penalty_weight: Weight for log barrier penalty in LBB loss.
             label_smoothing: Label smoothing for policy cross-entropy.
 
         """
@@ -78,6 +80,7 @@ class AlphaGalerkinLoss(nn.Module):
         self.lbb_weight = lbb_weight
         self.lbb_eps = lbb_eps
         self.lbb_target = lbb_target
+        self.log_penalty_weight = log_penalty_weight
         self.label_smoothing = label_smoothing
 
         # Track running statistics for logging
@@ -101,6 +104,9 @@ class AlphaGalerkinLoss(nn.Module):
             policy_weight=config.policy_loss_weight,
             value_weight=config.value_loss_weight,
             lbb_weight=getattr(config, "lbb_loss_weight", 0.01),
+            lbb_eps=getattr(config, "lbb_eps", 1e-8),
+            lbb_target=getattr(config, "lbb_target", 0.1),
+            log_penalty_weight=getattr(config, "lbb_log_penalty_weight", 0.1),
             label_smoothing=getattr(config, "label_smoothing", 0.0),
         )
 
@@ -196,7 +202,7 @@ class AlphaGalerkinLoss(nn.Module):
         log_penalty = (-torch.log(lbb_clamped)).mean()
 
         # Combined loss (threshold penalty is primary, log barrier is secondary)
-        loss = threshold_penalty + 0.1 * log_penalty
+        loss = threshold_penalty + self.log_penalty_weight * log_penalty
 
         return loss
 

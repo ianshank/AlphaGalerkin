@@ -903,7 +903,7 @@ class ChessGame(GameInterface):
             and Piece.BISHOP in black_pieces
         ):
             # Could check if bishops are same color, but simplified
-            pass
+            return True
 
         return False
 

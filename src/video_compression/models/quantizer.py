@@ -40,7 +40,7 @@ class Quantizer(nn.Module, ABC):
             Quantized tensor.
 
         """
-        pass
+        return x
 
     def encode(
         self,

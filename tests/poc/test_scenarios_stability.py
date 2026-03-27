@@ -52,8 +52,8 @@ def small_config() -> StabilityScenarioConfig:
         d_key=16,
         d_value=16,
         batch_size=1,
-        n_forward_passes=2,
-        n_training_steps=5,
+        n_forward_passes=10,
+        n_training_steps=100,
         lbb_threshold=1e-6,
         max_lbb_violations=0,
         learning_rate=1e-3,
@@ -62,8 +62,16 @@ def small_config() -> StabilityScenarioConfig:
 
 
 def _import_stability_scenario() -> type[BaseScenario]:
-    """Import StabilityScenario, triggering registration."""
+    """Import StabilityScenario and ensure it is registered.
+
+    The @scenario decorator only fires on first import. If the registry
+    was cleared (e.g. by autouse fixture), we must re-register manually.
+    """
     from src.poc.scenarios.stability import StabilityScenario
+
+    registry = ScenarioRegistry()
+    if registry.get("stability") is None:
+        registry.register("stability", StabilityScenario)
 
     return StabilityScenario
 
@@ -93,7 +101,7 @@ class TestStabilityScenarioInit:
         cls = _import_stability_scenario()
         instance = cls(config=small_config)
         assert instance.config.resolutions == [3, 5, 7]
-        assert instance.config.n_training_steps == 5
+        assert instance.config.n_training_steps == 100
 
 
 # ---------------------------------------------------------------------------

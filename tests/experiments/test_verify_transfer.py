@@ -220,14 +220,15 @@ class TestVerifyResolutionIndependence:
         self, tiny_model: PhysicsOperator
     ) -> None:
         """Result dict contains consistency error metrics."""
-        result = verify_resolution_independence(
-            model=tiny_model,
-            device=torch.device("cpu"),
-            resolutions=[5, 9],
-            n_samples=3,
-            n_charges=2,
-            seed=0,
-        )
+        with torch.no_grad():
+            result = verify_resolution_independence(
+                model=tiny_model,
+                device=torch.device("cpu"),
+                resolutions=[5, 9],
+                n_samples=3,
+                n_charges=2,
+                seed=0,
+            )
         assert "mean_consistency_error" in result
         assert "std_consistency_error" in result
         assert "max_consistency_error" in result
@@ -235,40 +236,43 @@ class TestVerifyResolutionIndependence:
 
     def test_errors_are_non_negative(self, tiny_model: PhysicsOperator) -> None:
         """Consistency errors are non-negative."""
-        result = verify_resolution_independence(
-            model=tiny_model,
-            device=torch.device("cpu"),
-            resolutions=[5, 7],
-            n_samples=3,
-            n_charges=2,
-            seed=0,
-        )
+        with torch.no_grad():
+            result = verify_resolution_independence(
+                model=tiny_model,
+                device=torch.device("cpu"),
+                resolutions=[5, 7],
+                n_samples=3,
+                n_charges=2,
+                seed=0,
+            )
         assert result["mean_consistency_error"] >= 0
         assert result["max_consistency_error"] >= 0
 
     def test_resolutions_recorded(self, tiny_model: PhysicsOperator) -> None:
         """Tested resolutions are recorded in the result."""
         resolutions = [5, 9, 13]
-        result = verify_resolution_independence(
-            model=tiny_model,
-            device=torch.device("cpu"),
-            resolutions=resolutions,
-            n_samples=2,
-            n_charges=2,
-            seed=0,
-        )
+        with torch.no_grad():
+            result = verify_resolution_independence(
+                model=tiny_model,
+                device=torch.device("cpu"),
+                resolutions=resolutions,
+                n_samples=2,
+                n_charges=2,
+                seed=0,
+            )
         assert result["resolutions_tested"] == resolutions
 
     def test_default_resolutions_used(self, tiny_model: PhysicsOperator) -> None:
         """When resolutions=None, default list is used."""
-        result = verify_resolution_independence(
-            model=tiny_model,
-            device=torch.device("cpu"),
-            resolutions=None,
-            n_samples=2,
-            n_charges=2,
-            seed=0,
-        )
+        with torch.no_grad():
+            result = verify_resolution_independence(
+                model=tiny_model,
+                device=torch.device("cpu"),
+                resolutions=None,
+                n_samples=2,
+                n_charges=2,
+                seed=0,
+            )
         assert result["resolutions_tested"] == DEFAULT_RESOLUTION_TEST_SIZES
 
     def test_deterministic_with_same_seed(self, tiny_model: PhysicsOperator) -> None:
@@ -281,8 +285,9 @@ class TestVerifyResolutionIndependence:
             n_charges=2,
             seed=12345,
         )
-        r1 = verify_resolution_independence(**kwargs)
-        r2 = verify_resolution_independence(**kwargs)
+        with torch.no_grad():
+            r1 = verify_resolution_independence(**kwargs)
+            r2 = verify_resolution_independence(**kwargs)
         assert r1["mean_consistency_error"] == pytest.approx(
             r2["mean_consistency_error"]
         )

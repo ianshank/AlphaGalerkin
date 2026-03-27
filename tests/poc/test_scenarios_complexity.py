@@ -51,18 +51,26 @@ def small_config() -> ComplexityScenarioConfig:
         d_model=16,
         n_heads=2,
         batch_size=1,
-        n_warmup=0,
-        n_iterations=2,
+        n_warmup=1,
+        n_iterations=10,
         fnet_scaling_exponent_max=2.0,
         softmax_scaling_exponent_min=1.0,
-        min_speedup_factor=1.0,
+        min_speedup_factor=1.01,
         seed=SEED,
     )
 
 
 def _import_complexity_scenario() -> type[BaseScenario]:
-    """Import ComplexityScenario, triggering registration."""
+    """Import ComplexityScenario and ensure it is registered.
+
+    The @scenario decorator only fires on first import. If the registry
+    was cleared (e.g. by autouse fixture), we must re-register manually.
+    """
     from src.poc.scenarios.complexity import ComplexityScenario
+
+    registry = ScenarioRegistry()
+    if registry.get("complexity") is None:
+        registry.register("complexity", ComplexityScenario)
 
     return ComplexityScenario
 
@@ -92,7 +100,7 @@ class TestComplexityScenarioInit:
         cls = _import_complexity_scenario()
         instance = cls(config=small_config)
         assert instance.config.grid_sizes == [3, 5, 7, 9]
-        assert instance.config.n_iterations == 2
+        assert instance.config.n_iterations == 10
 
 
 # ---------------------------------------------------------------------------
@@ -241,11 +249,11 @@ class TestComplexityScenarioExecute:
             d_model=16,
             n_heads=2,
             batch_size=1,
-            n_warmup=0,
-            n_iterations=2,
+            n_warmup=1,
+            n_iterations=10,
             fnet_scaling_exponent_max=1.0,  # very strict
             softmax_scaling_exponent_min=1.0,
-            min_speedup_factor=0.1,
+            min_speedup_factor=1.01,
             seed=SEED,
         )
         cls = _import_complexity_scenario()

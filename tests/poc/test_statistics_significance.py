@@ -143,7 +143,7 @@ class TestTTest:
         baseline, treatment = identical_samples
         result = t_test_analyzer.compare_runs(baseline, treatment)
         assert result.p_value > 0.05
-        assert result.is_significant is False
+        assert not result.is_significant
 
     def test_different_distributions_significant(
         self,
@@ -154,7 +154,7 @@ class TestTTest:
         baseline, treatment = different_samples
         result = t_test_analyzer.compare_runs(baseline, treatment)
         assert result.p_value < 0.01
-        assert result.is_significant is True
+        assert result.is_significant
 
     def test_result_structure(
         self,
@@ -215,7 +215,7 @@ class TestMannWhitney:
         baseline, treatment = different_samples
         result = mann_whitney_analyzer.compare_runs(baseline, treatment)
         assert result.p_value < 0.01
-        assert result.is_significant is True
+        assert result.is_significant
 
     def test_result_type(
         self,
@@ -244,7 +244,7 @@ class TestBootstrapTest:
         baseline, treatment = different_samples
         result = bootstrap_analyzer.compare_runs(baseline, treatment)
         assert result.p_value < 0.05
-        assert result.is_significant is True
+        assert result.is_significant
 
     def test_confidence_interval_contains_diff(
         self,

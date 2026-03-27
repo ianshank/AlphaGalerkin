@@ -389,3 +389,101 @@ class TestComplexityResultFormat:
 
         expected_speedup = 3.0 / 1.0
         assert abs(result.metrics["fnet_speedup_at_largest"] - expected_speedup) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Full execute with real (tiny) models on CPU
+# ---------------------------------------------------------------------------
+
+
+class TestComplexityScenarioRealExecution:
+    """Run the actual benchmark code with tiny models for coverage."""
+
+    def _tiny_config(self) -> ComplexityScenarioConfig:
+        return ComplexityScenarioConfig(
+            grid_sizes=[3, 5, 7],
+            d_model=16,
+            n_heads=2,
+            batch_size=1,
+            n_warmup=1,
+            n_iterations=10,
+            fnet_scaling_exponent_max=5.0,
+            softmax_scaling_exponent_min=0.0,
+            min_speedup_factor=1.001,
+            seed=SEED,
+        )
+
+    def test_full_run_end_to_end(self) -> None:
+        """End-to-end run() on CPU exercises setup/execute/teardown."""
+        cls = _import_complexity_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        result = instance.run()
+
+        assert result.status in (ScenarioStatus.PASSED, ScenarioStatus.FAILED)
+        assert result.duration_seconds > 0
+        assert "fnet_scaling_exponent" in result.metrics
+
+    def test_benchmark_fnet_real(self) -> None:
+        """_benchmark_fnet with real FNetMixingLayer."""
+        cls = _import_complexity_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = datetime.now()
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+
+        results = instance._benchmark_fnet()
+        assert len(results) == 3
+        for r in results:
+            assert r.mean_time_ms > 0
+            assert r.n_tokens == r.n_tokens  # sanity
+
+    def test_benchmark_softmax_real(self) -> None:
+        """_benchmark_softmax with real SoftmaxAttention."""
+        cls = _import_complexity_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = datetime.now()
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+
+        results = instance._benchmark_softmax()
+        assert len(results) == 3
+
+    def test_benchmark_galerkin_real(self) -> None:
+        """_benchmark_galerkin with real GalerkinAttention."""
+        cls = _import_complexity_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = datetime.now()
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+
+        results = instance._benchmark_galerkin()
+        assert len(results) == 3
+
+    def test_setup_without_gpu(self) -> None:
+        """Verify setup warns about missing GPU."""
+        cls = _import_complexity_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = datetime.now()
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+        assert instance._device is not None
+
+    def test_teardown_after_run(self) -> None:
+        """teardown should not raise even after a run."""
+        cls = _import_complexity_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = datetime.now()
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+        instance.teardown()

@@ -337,3 +337,90 @@ class TestStabilityResultFormat:
 
         assert "init_stability" in result.threshold_results
         assert "training_stability" in result.threshold_results
+
+
+# ---------------------------------------------------------------------------
+# Full execute with real (tiny) models on CPU
+# ---------------------------------------------------------------------------
+
+
+class TestStabilityRealExecution:
+    """Run actual stability code paths with tiny models for coverage."""
+
+    def _tiny_config(self) -> StabilityScenarioConfig:
+        return StabilityScenarioConfig(
+            resolutions=[3, 5],
+            d_model=16,
+            d_key=16,
+            d_value=16,
+            batch_size=2,
+            n_forward_passes=10,
+            n_training_steps=100,
+            lbb_threshold=1e-6,
+            max_lbb_violations=5,
+            learning_rate=1e-3,
+            seed=SEED,
+        )
+
+    def test_full_run_end_to_end(self) -> None:
+        """End-to-end run() with real GalerkinProjection."""
+        cls = _import_stability_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        result = instance.run()
+
+        assert result.status in (ScenarioStatus.PASSED, ScenarioStatus.FAILED)
+        assert result.duration_seconds > 0
+        assert "lbb_training_mean" in result.metrics
+        assert "lbb_violations" in result.metrics
+
+    def test_init_stability_real(self) -> None:
+        """_test_initialization_stability with real projection."""
+        cls = _import_stability_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = None
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+
+        results = instance._test_initialization_stability()
+        assert len(results) == 2  # two resolutions
+        for res, values in results.items():
+            assert len(values) > 0
+            assert all(isinstance(v, float) for v in values)
+
+    def test_training_stability_real(self) -> None:
+        """_test_training_stability with real optimizer steps."""
+        cls = _import_stability_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = None
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+
+        results = instance._test_training_stability()
+        assert "lbb_values" in results
+        assert len(results["lbb_values"]) == config.n_training_steps
+        assert isinstance(results["n_violations"], int)
+
+    def test_empty_resolutions_raises(self) -> None:
+        """Empty resolutions list should raise ValueError in execute."""
+        cls = _import_stability_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance._start_time = None
+        instance._metrics = {}
+        instance._artifacts = {}
+        instance.setup()
+        # Force empty resolutions
+        object.__setattr__(instance.config, "resolutions", [])
+        with pytest.raises(ValueError, match="resolutions"):
+            instance.execute()
+
+    def test_teardown_no_error(self) -> None:
+        cls = _import_stability_scenario()
+        config = self._tiny_config()
+        instance = cls(config=config)
+        instance.teardown()  # Should not raise

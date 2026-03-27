@@ -27,18 +27,13 @@ class TestCLIArgumentParsing:
         """Verify subcommand uses default values when not overridden."""
         with (
             patch("sys.argv", ["alphagalerkin", "verify"]),
-            patch("src.tools.cli.run_verification", return_value=True) as mock_verify,
-            patch("sys.exit") as mock_exit,
+            patch(
+                "src.tools.verify_invariance.run_verification",
+                return_value=True,
+            ) as mock_verify,
+            patch("sys.exit"),
         ):
-            # Import fresh to pick up lazy import
-
-            import src.tools.cli as cli_mod
-
-            with patch.object(cli_mod, "__name__", "src.tools.cli"):
-                with patch(
-                    "src.tools.verify_invariance.run_verification", return_value=True
-                ) as mock_verify:
-                    main()
+            main()
             mock_verify.assert_called_once_with(
                 train_size=9,
                 infer_size=19,

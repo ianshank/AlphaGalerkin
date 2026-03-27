@@ -11,9 +11,7 @@ Targets uncovered lines in src/poc/runner.py:
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -45,8 +43,6 @@ def tmp_dir(tmp_path: Path) -> Path:
 
 def _make_scenario(name: str, passed: bool = True):
     """Register and return a trivial scenario class with default config."""
-    from datetime import datetime
-
     # Create a config class that provides default name/description
     config_cls = type(
         f"Config_{name}",
@@ -69,8 +65,6 @@ def _make_scenario(name: str, passed: bool = True):
         config_class = config_cls
 
         def execute(self) -> ScenarioResult:
-            import sys
-            import torch
             from datetime import datetime as dt
 
             end = dt.now()

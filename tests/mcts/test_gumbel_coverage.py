@@ -9,7 +9,7 @@ Tests cover uncovered paths in src/mcts/gumbel.py:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -31,12 +31,14 @@ ACTION_SPACE = 10
 @dataclass
 class FakeGameState:
     """Minimal game state for testing."""
+
     current_player: int = 1
     board: list[int] = field(default_factory=lambda: [0] * ACTION_SPACE)
 
 
 class FakeActionMask:
     """Minimal action mask."""
+
     def __init__(self, size: int):
         self.mask = np.ones(size, dtype=bool)
         self.num_legal = size
@@ -44,6 +46,7 @@ class FakeActionMask:
 
 class FakeGameResult:
     """Minimal game result."""
+
     def __init__(self, winner: int):
         self.winner = winner
 

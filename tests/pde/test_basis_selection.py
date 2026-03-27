@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 import torch
 from torch import Tensor
 
@@ -269,7 +268,8 @@ class TestBasisSelectionGame:
         assert result.final_error >= 0
         assert result.final_dof == 1
         assert result.n_steps == 1
-        assert result.termination_reason in ("converged", "max_basis", "budget_exhausted", "max_steps")
+        valid_reasons = ("converged", "max_basis", "budget_exhausted", "max_steps")
+        assert result.termination_reason in valid_reasons
 
     def test_valid_actions_shrink(self, game: BasisSelectionGame) -> None:
         state = game.get_initial_state()
@@ -281,7 +281,9 @@ class TestBasisSelectionGame:
 class TestBasisSelectionPolynomial:
     """Tests with polynomial basis type."""
 
-    def test_polynomial_game(self, pde_config: PDEConfig, poisson_operator: PoissonOperator) -> None:
+    def test_polynomial_game(
+        self, pde_config: PDEConfig, poisson_operator: PoissonOperator,
+    ) -> None:
         config = _make_game_config(pde_config, basis_type="polynomial")
         game = BasisSelectionGame(poisson_operator, config)
         state = game.get_initial_state()

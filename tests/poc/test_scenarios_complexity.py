@@ -478,7 +478,7 @@ class TestComplexityScenarioRealExecution:
         assert instance._device is not None
 
     def test_teardown_after_run(self) -> None:
-        """teardown should not raise even after a run."""
+        """Teardown should not raise even after a run."""
         cls = _import_complexity_scenario()
         config = self._tiny_config()
         instance = cls(config=config)

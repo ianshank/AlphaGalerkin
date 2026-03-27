@@ -14,12 +14,10 @@ Targets uncovered lines in src/vertex/entrypoint.py:
 from __future__ import annotations
 
 import signal
-import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 import yaml
 
 from src.vertex.entrypoint import (
@@ -31,7 +29,6 @@ from src.vertex.entrypoint import (
     setup_logging,
 )
 from src.vertex.multi_node import DistributedContext
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -6,9 +6,6 @@ Uses lightweight mocks to avoid complex PDE setup dependencies.
 
 from __future__ import annotations
 
-import copy
-from dataclasses import dataclass, field
-from typing import Any
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -17,7 +14,6 @@ import torch
 
 from src.pde.game import GamePhase, PDEState
 from src.pde.mcts_adapter import PDEGameAdapter
-
 
 # ---------------------------------------------------------------------------
 # Lightweight stub for PDEGame

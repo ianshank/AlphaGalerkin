@@ -8,13 +8,12 @@ Tests cover:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import numpy as np
 import pytest
 import torch
 
-from src.training.evaluation import EvaluationResult, Evaluator, quick_evaluate
+from src.training.evaluation import EvaluationResult, Evaluator
 
 SEED = 42
 

@@ -12,8 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src.tools.colab import generate_colab_notebook, _update_colab_badge
-
+from src.tools.colab import _update_colab_badge, generate_colab_notebook
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -103,7 +102,10 @@ class TestGenerateColabNotebook:
         with open(target) as f:
             nb = json.load(f)
         # Should have exactly one setup cell (replaced, not duplicated)
-        setup_cells = [c for c in nb["cells"] if c.get("metadata", {}).get("id") == "colab-setup-cell"]
+        setup_cells = [
+            c for c in nb["cells"]
+            if c.get("metadata", {}).get("id") == "colab-setup-cell"
+        ]
         assert len(setup_cells) == 1
 
     def test_no_markdown_cells(self, tmp_path: Path) -> None:

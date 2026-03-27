@@ -9,8 +9,6 @@ Tests cover uncovered paths in src/math_kernel/basis.py:
 
 from __future__ import annotations
 
-import math
-
 import pytest
 import torch
 

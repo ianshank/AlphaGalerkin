@@ -13,11 +13,7 @@ Targets uncovered lines in src/poc/tuning/tuner.py:
 from __future__ import annotations
 
 import json
-import tempfile
-from datetime import datetime
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 

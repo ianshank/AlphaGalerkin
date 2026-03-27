@@ -10,9 +10,8 @@ Targets uncovered lines in src/video_compression/training/trainer.py:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 import torch
 import torch.nn as nn
 
@@ -21,7 +20,6 @@ from src.video_compression.training.trainer import (
     TrainingState,
     VideoCompressionTrainer,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock objects

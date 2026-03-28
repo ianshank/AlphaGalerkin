@@ -58,9 +58,7 @@ class TestMessageBus:
     def test_receive_drains_queue(self, bus: MessageBus) -> None:
         bus.subscribe("agent_1")
         bus.publish(
-            AgentMessage(
-                sender="s", receiver="agent_1", message_type=MessageType.STATE_UPDATE
-            )
+            AgentMessage(sender="s", receiver="agent_1", message_type=MessageType.STATE_UPDATE)
         )
         assert len(bus.receive("agent_1")) == 1
         assert len(bus.receive("agent_1")) == 0
@@ -70,21 +68,15 @@ class TestMessageBus:
 
     def test_unsubscribed_publish_dropped(self, bus: MessageBus) -> None:
         bus.publish(
-            AgentMessage(
-                sender="s", receiver="nonexistent", message_type=MessageType.STATE_UPDATE
-            )
+            AgentMessage(sender="s", receiver="nonexistent", message_type=MessageType.STATE_UPDATE)
         )
         # No error, message silently dropped
 
     def test_multiple_subscribers(self, bus: MessageBus) -> None:
         bus.subscribe("a")
         bus.subscribe("b")
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
-        bus.publish(
-            AgentMessage(sender="s", receiver="b", message_type=MessageType.BOUNDARY_DATA)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
+        bus.publish(AgentMessage(sender="s", receiver="b", message_type=MessageType.BOUNDARY_DATA))
         assert len(bus.receive("a")) == 1
         assert len(bus.receive("b")) == 1
 
@@ -92,9 +84,7 @@ class TestMessageBus:
         bus.subscribe("a")
         bus.subscribe("b")
         bus.subscribe("sender")
-        msg = AgentMessage(
-            sender="sender", receiver="*", message_type=MessageType.STATE_UPDATE
-        )
+        msg = AgentMessage(sender="sender", receiver="*", message_type=MessageType.STATE_UPDATE)
         bus.broadcast(msg)
         assert len(bus.receive("a")) == 1
         assert len(bus.receive("b")) == 1
@@ -102,12 +92,8 @@ class TestMessageBus:
 
     def test_message_type_filtering(self, bus: MessageBus) -> None:
         bus.subscribe("a")
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.BOUNDARY_DATA)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.BOUNDARY_DATA))
         state_msgs = bus.receive("a", MessageType.STATE_UPDATE)
         assert len(state_msgs) == 1
         assert state_msgs[0].message_type == MessageType.STATE_UPDATE
@@ -138,21 +124,15 @@ class TestMessageBus:
     def test_peek(self, bus: MessageBus) -> None:
         bus.subscribe("a")
         assert bus.peek("a") == 0
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
         assert bus.peek("a") == 1
         assert bus.peek("nonexistent") == 0
 
     def test_clear_specific(self, bus: MessageBus) -> None:
         bus.subscribe("a")
         bus.subscribe("b")
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
-        bus.publish(
-            AgentMessage(sender="s", receiver="b", message_type=MessageType.STATE_UPDATE)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
+        bus.publish(AgentMessage(sender="s", receiver="b", message_type=MessageType.STATE_UPDATE))
         bus.clear("a")
         assert bus.peek("a") == 0
         assert bus.peek("b") == 1
@@ -160,12 +140,8 @@ class TestMessageBus:
     def test_clear_all(self, bus: MessageBus) -> None:
         bus.subscribe("a")
         bus.subscribe("b")
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
-        bus.publish(
-            AgentMessage(sender="s", receiver="b", message_type=MessageType.STATE_UPDATE)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
+        bus.publish(AgentMessage(sender="s", receiver="b", message_type=MessageType.STATE_UPDATE))
         bus.clear()
         assert bus.peek("a") == 0
         assert bus.peek("b") == 0
@@ -174,9 +150,7 @@ class TestMessageBus:
         bus.subscribe("a")
         bus.unsubscribe("a")
         assert "a" not in bus.subscribers
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
         assert bus.receive("a") == []
 
     def test_subscribers_list(self, bus: MessageBus) -> None:
@@ -204,8 +178,7 @@ class TestMessageBus:
                 errors.append(e)
 
         threads = [
-            threading.Thread(target=publish_messages, args=(f"sender_{j}",))
-            for j in range(5)
+            threading.Thread(target=publish_messages, args=(f"sender_{j}",)) for j in range(5)
         ]
         for t in threads:
             t.start()
@@ -220,9 +193,7 @@ class TestMessageBus:
         config = MessageBusConfig(name="logged", buffer_size=10, enable_logging=True)
         bus = MessageBus(config)
         bus.subscribe("a")
-        bus.publish(
-            AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE)
-        )
+        bus.publish(AgentMessage(sender="s", receiver="a", message_type=MessageType.STATE_UPDATE))
         # Should not raise
         assert bus.peek("a") == 1
 
@@ -248,7 +219,9 @@ class TestMessageBus:
         bus.subscribe("a")
         bus.subscribe("b")
         msg = AgentMessage(
-            sender="sender", receiver="*", message_type=MessageType.STATE_UPDATE,
+            sender="sender",
+            receiver="*",
+            message_type=MessageType.STATE_UPDATE,
         )
         bus.broadcast(msg)
         assert bus.peek("a") == 1
@@ -259,6 +232,8 @@ class TestMessageBus:
         config = MessageBusConfig(name="empty", buffer_size=10, enable_logging=True)
         bus = MessageBus(config)
         msg = AgentMessage(
-            sender="sender", receiver="*", message_type=MessageType.STATE_UPDATE,
+            sender="sender",
+            receiver="*",
+            message_type=MessageType.STATE_UPDATE,
         )
         bus.broadcast(msg)  # No error

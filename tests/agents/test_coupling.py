@@ -36,9 +36,7 @@ class TestCouplingAgent:
         assert coupling_agent.coupling_config.coupling_type == CouplingType.DIRICHLET_NEUMANN
         assert coupling_agent.coupling_config.relaxation_factor == 0.5
 
-    def test_exchange_boundary_data_first_iteration(
-        self, coupling_agent: CouplingAgent
-    ) -> None:
+    def test_exchange_boundary_data_first_iteration(self, coupling_agent: CouplingAgent) -> None:
         solver_data = {
             "solver_a": np.array([1.0, 2.0, 3.0], dtype=np.float32),
             "solver_b": np.array([4.0, 5.0, 6.0], dtype=np.float32),
@@ -201,15 +199,11 @@ class TestCouplingAgent:
 
         data = {"s": np.array([1.0, 2.0], dtype=np.float32)}
         agent.exchange_boundary_data(data)
-        result = agent.exchange_boundary_data(
-            {"s": np.array([3.0, 4.0], dtype=np.float32)}
-        )
+        result = agent.exchange_boundary_data({"s": np.array([3.0, 4.0], dtype=np.float32)})
         # All types use relaxation, just verify no crash
         assert result["s"].shape == (2,)
 
-    def test_interface_residual_computation(
-        self, coupling_agent: CouplingAgent
-    ) -> None:
+    def test_interface_residual_computation(self, coupling_agent: CouplingAgent) -> None:
         solver_data = {
             "a": np.array([1.0, 2.0], dtype=np.float32),
         }

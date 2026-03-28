@@ -188,13 +188,7 @@ class BaseAgent(ABC):
                 self._state = self.step()
                 self._state.metrics = self.get_metrics()
 
-            if (
-                self._state.error_history
-                and self._state.error_history[-1] < self.config.error_tolerance
-            ) or self._state.step >= step_limit or self._state.budget_remaining <= 0:
-                self._state.status = ExecutionStatus.COMPLETED
-            else:
-                self._state.status = ExecutionStatus.COMPLETED
+            self._state.status = ExecutionStatus.COMPLETED
 
         except Exception as e:
             self._state.status = ExecutionStatus.FAILED

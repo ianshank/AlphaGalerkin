@@ -64,17 +64,13 @@ class TestDecompositionAgent:
         assert subproblems[0].name == "poisson_test"
         assert subproblems[1].name == "heat_test"
 
-    def test_operator_splitting_budget_fractions(
-        self, decomp_agent: DecompositionAgent
-    ) -> None:
+    def test_operator_splitting_budget_fractions(self, decomp_agent: DecompositionAgent) -> None:
         decomp_agent.setup()
         subproblems = decomp_agent.decompose()
         total_budget = sum(s.budget_fraction for s in subproblems)
         assert total_budget == pytest.approx(1.0)
 
-    def test_operator_splitting_coupling_neighbors(
-        self, decomp_agent: DecompositionAgent
-    ) -> None:
+    def test_operator_splitting_coupling_neighbors(self, decomp_agent: DecompositionAgent) -> None:
         decomp_agent.setup()
         subproblems = decomp_agent.decompose()
         assert "heat_test" in subproblems[0].coupling_neighbors

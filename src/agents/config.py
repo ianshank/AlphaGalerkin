@@ -97,6 +97,18 @@ class AgentConfig(BaseModuleConfig):
         gt=0.0,
         description="Total computational budget (normalized)",
     )
+    stall_threshold: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Steps without improvement before declaring stall",
+    )
+    stall_tolerance: float = Field(
+        default=1e-6,
+        gt=0.0,
+        lt=1.0,
+        description="Relative error change below which a solver is considered stalled",
+    )
 
 
 class SolverAgentConfig(AgentConfig):
@@ -248,6 +260,12 @@ class CouplingConfig(AgentConfig):
         le=100,
         description="Number of consecutive steps below tolerance for convergence",
     )
+    budget_per_step: float = Field(
+        default=0.01,
+        gt=0.0,
+        le=1.0,
+        description="Budget consumed per coupling step",
+    )
 
 
 class CollocationConfig(BaseModuleConfig):
@@ -297,21 +315,21 @@ class CollocationConfig(BaseModuleConfig):
         le=5.0,
         description="Exponent p for importance weighting |residual|^p",
     )
+    perturbation_fraction: float = Field(
+        default=0.05,
+        gt=0.0,
+        le=0.5,
+        description="Perturbation scale as fraction of domain extent",
+    )
 
     @model_validator(mode="after")
     def validate_point_bounds(self) -> Self:
         """Ensure min_points <= n_points <= max_points."""
         if self.min_points > self.n_points:
-            msg = (
-                f"min_points ({self.min_points}) must be <= "
-                f"n_points ({self.n_points})"
-            )
+            msg = f"min_points ({self.min_points}) must be <= n_points ({self.n_points})"
             raise ValueError(msg)
         if self.n_points > self.max_points:
-            msg = (
-                f"n_points ({self.n_points}) must be <= "
-                f"max_points ({self.max_points})"
-            )
+            msg = f"n_points ({self.n_points}) must be <= max_points ({self.max_points})"
             raise ValueError(msg)
         return self
 
@@ -416,10 +434,7 @@ class MultiPhysicsConfig(BaseModuleConfig):
         if self.budget_allocation:
             total = sum(self.budget_allocation.values())
             if abs(total - 1.0) > 1e-6:
-                msg = (
-                    f"budget_allocation values must sum to 1.0, "
-                    f"got {total:.6f}"
-                )
+                msg = f"budget_allocation values must sum to 1.0, got {total:.6f}"
                 raise ValueError(msg)
             physics_names = {p.name for p in self.physics}
             for name in self.budget_allocation:

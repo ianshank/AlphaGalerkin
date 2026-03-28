@@ -91,9 +91,7 @@ class AgentOrchestrator(BaseExecutable["OrchestratorConfig"]):
             }
 
             for name, solver in meta.solver_agents.items():
-                artifacts[f"solver_{name}_error_history"] = list(
-                    solver.state.error_history
-                )
+                artifacts[f"solver_{name}_error_history"] = list(solver.state.error_history)
 
             return self._create_result(
                 status=ExecutionStatus.COMPLETED,

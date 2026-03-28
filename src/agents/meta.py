@@ -75,7 +75,8 @@ class MetaAgent(BaseAgent):
             run_id=self._agent_id,
         )
         self._stall_counters: dict[str, int] = {}
-        self._stall_threshold: int = 5
+        self._stall_threshold: int = config.decomposition.stall_threshold
+        self._stall_tolerance: float = config.decomposition.stall_tolerance
 
     @property
     def solver_agents(self) -> dict[str, SolverAgent]:
@@ -175,12 +176,17 @@ class MetaAgent(BaseAgent):
                 solver.step()
                 new_error = solver.current_error
 
-                if prev_error > 0 and abs(prev_error - new_error) / prev_error < 1e-6:
+                if (
+                    prev_error > 0
+                    and abs(prev_error - new_error) / prev_error < self._stall_tolerance
+                ):
                     self._stall_counters[name] = self._stall_counters.get(name, 0) + 1
                 else:
                     self._stall_counters[name] = 0
                     self._meta_logger.debug(
-                        "stall_counter_reset", solver=name, error=new_error,
+                        "stall_counter_reset",
+                        solver=name,
+                        error=new_error,
                     )
 
                 if self._stall_counters.get(name, 0) >= self._stall_threshold:
@@ -244,9 +250,7 @@ class MetaAgent(BaseAgent):
         if not self._solver_agents:
             return True
 
-        all_solvers_done = all(
-            solver.is_terminal for solver in self._solver_agents.values()
-        )
+        all_solvers_done = all(solver.is_terminal for solver in self._solver_agents.values())
 
         coupling_done = True
         if self._coupling_agent is not None:
@@ -267,9 +271,7 @@ class MetaAgent(BaseAgent):
         """Aggregate metrics from all sub-agents."""
         metrics: dict[str, float] = {
             "global_step": float(self._state.step),
-            "n_active_solvers": sum(
-                1.0 for s in self._solver_agents.values() if not s.is_terminal
-            ),
+            "n_active_solvers": sum(1.0 for s in self._solver_agents.values() if not s.is_terminal),
             "n_total_solvers": float(len(self._solver_agents)),
             "total_budget_used": self._state.budget_used,
         }

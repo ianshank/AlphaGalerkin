@@ -57,7 +57,9 @@ class TestRun:
     def _make_config_file(self) -> str:
         """Create a temporary YAML config file."""
         with tempfile.NamedTemporaryFile(
-            suffix=".yaml", mode="w", delete=False,
+            suffix=".yaml",
+            mode="w",
+            delete=False,
         ) as f:
             f.write("name: test\n")
             return f.name
@@ -95,7 +97,8 @@ class TestRun:
                     "sys.modules",
                     {
                         "src.agents.config": __import__(
-                            "src.agents.config", fromlist=["OrchestratorConfig"],
+                            "src.agents.config",
+                            fromlist=["OrchestratorConfig"],
                         ),
                         "src.agents.orchestrator": MagicMock(
                             AgentOrchestrator=MagicMock(
@@ -128,7 +131,8 @@ class TestRun:
                 "sys.modules",
                 {
                     "src.agents.config": __import__(
-                        "src.agents.config", fromlist=["OrchestratorConfig"],
+                        "src.agents.config",
+                        fromlist=["OrchestratorConfig"],
                     ),
                     "src.agents.orchestrator": MagicMock(
                         AgentOrchestrator=MagicMock(

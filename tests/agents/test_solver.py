@@ -42,8 +42,7 @@ class TestSolverAgent:
         assert solver.state.step == 0
 
     def test_setup_creates_adapter_and_mcts(self, solver: SolverAgent) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter_inst = MagicMock()
             mock_adapter_inst.current_error = 1.0
             mock_adapter_cls.return_value = mock_adapter_inst
@@ -86,8 +85,7 @@ class TestSolverAgent:
         assert temp == pytest.approx(0.1, abs=0.01)
 
     def test_step_with_mocked_mcts(self, solver: SolverAgent) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 0.8
             mock_adapter.is_terminal.return_value = False
@@ -114,8 +112,7 @@ class TestSolverAgent:
         solver: SolverAgent,
         message_bus: MessageBus,
     ) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 0.5
             mock_adapter.is_terminal.return_value = False
@@ -135,8 +132,7 @@ class TestSolverAgent:
             # (which isn't subscribed). This validates no crash occurs.
 
     def test_metrics(self, solver: SolverAgent) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 0.5
             mock_adapter.is_terminal.return_value = False
@@ -159,8 +155,7 @@ class TestSolverAgent:
             assert "budget_used" in metrics
 
     def test_reset(self, solver: SolverAgent) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 1.0
             mock_adapter_cls.return_value = mock_adapter
@@ -175,8 +170,7 @@ class TestSolverAgent:
             assert solver.state.budget_used == 0.0
 
     def test_terminal_on_adapter_terminal(self, solver: SolverAgent) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 0.001
             mock_adapter.is_terminal.return_value = True
@@ -189,8 +183,7 @@ class TestSolverAgent:
 
     def test_reset_calls_mcts_reset(self, solver: SolverAgent) -> None:
         """Verify reset() calls MCTS.reset() when available."""
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 1.0
             mock_adapter_cls.return_value = mock_adapter
@@ -205,8 +198,7 @@ class TestSolverAgent:
             mock_mcts.reset.assert_called_once()
 
     def test_budget_tracking(self, solver: SolverAgent) -> None:
-        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
-             patch(_MCTS_PATH) as mock_mcts_cls:
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:
             mock_adapter = MagicMock()
             mock_adapter.current_error = 0.9
             mock_adapter.is_terminal.return_value = False

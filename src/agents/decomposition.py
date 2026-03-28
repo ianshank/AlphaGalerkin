@@ -215,11 +215,11 @@ class DecompositionAgent(BaseAgent):
             sub_min = list(d_min)
             sub_max = list(d_max)
 
-            sub_min[split_axis] = d_min[split_axis] + i * strip_width - (
-                overlap if i > 0 else 0.0
-            )
-            sub_max[split_axis] = d_min[split_axis] + (i + 1) * strip_width + (
-                overlap if i < n_subdomains - 1 else 0.0
+            sub_min[split_axis] = d_min[split_axis] + i * strip_width - (overlap if i > 0 else 0.0)
+            sub_max[split_axis] = (
+                d_min[split_axis]
+                + (i + 1) * strip_width
+                + (overlap if i < n_subdomains - 1 else 0.0)
             )
 
             sub_min[split_axis] = max(sub_min[split_axis], d_min[split_axis])
@@ -302,9 +302,7 @@ class DecompositionAgent(BaseAgent):
             # Adjust advection_coeff to match reduced dimensions
             adv_coeff = list(pde_config.advection_coeff)
             reduced_adv = (
-                [adv_coeff[d] for d in kept_dims]
-                if len(adv_coeff) >= dim
-                else adv_coeff[:new_dim]
+                [adv_coeff[d] for d in kept_dims] if len(adv_coeff) >= dim else adv_coeff[:new_dim]
             )
 
             sub_pde = pde_config.with_overrides(

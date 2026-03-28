@@ -47,9 +47,7 @@ class TestBaseAgent:
         assert len(agent.agent_id) > 0
 
     def test_explicit_id(self, sample_agent_config: AgentConfig) -> None:
-        agent = ConcreteTestAgent(
-            config=sample_agent_config, agent_id="explicit_id"
-        )
+        agent = ConcreteTestAgent(config=sample_agent_config, agent_id="explicit_id")
         assert agent.agent_id == "explicit_id"
 
     def test_unique_ids(self, sample_agent_config: AgentConfig) -> None:
@@ -65,9 +63,7 @@ class TestBaseAgent:
     def test_is_active_before_run(self, concrete_agent: ConcreteTestAgent) -> None:
         assert not concrete_agent.is_active
 
-    def test_is_terminal_initially_false(
-        self, concrete_agent: ConcreteTestAgent
-    ) -> None:
+    def test_is_terminal_initially_false(self, concrete_agent: ConcreteTestAgent) -> None:
         assert not concrete_agent.is_terminal
 
     def test_step_increments(self, concrete_agent: ConcreteTestAgent) -> None:
@@ -116,9 +112,7 @@ class TestBaseAgent:
 
     def test_run_lifecycle(self, sample_agent_config: AgentConfig) -> None:
         agent = ConcreteTestAgent(
-            config=sample_agent_config.with_overrides(
-                max_steps=10, error_tolerance=0.001
-            ),
+            config=sample_agent_config.with_overrides(max_steps=10, error_tolerance=0.001),
             steps_to_terminal=10,
             error_per_step=0.5,
         )
@@ -195,15 +189,11 @@ class TestBaseAgent:
         assert concrete_agent.state.budget_used == pytest.approx(0.3)
         assert concrete_agent.state.budget_remaining == pytest.approx(0.7)
 
-    def test_update_budget_clamps_to_zero(
-        self, concrete_agent: ConcreteTestAgent
-    ) -> None:
+    def test_update_budget_clamps_to_zero(self, concrete_agent: ConcreteTestAgent) -> None:
         concrete_agent.update_budget(2.0)
         assert concrete_agent.state.budget_remaining == 0.0
 
-    def test_status_completed_on_successful_run(
-        self, sample_agent_config: AgentConfig
-    ) -> None:
+    def test_status_completed_on_successful_run(self, sample_agent_config: AgentConfig) -> None:
         agent = ConcreteTestAgent(
             config=sample_agent_config.with_overrides(max_steps=3),
         )

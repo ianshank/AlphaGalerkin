@@ -126,9 +126,7 @@ class SolverAgent(BaseAgent):
         if cfg.temperature_decay_steps <= 0:
             return cfg.temperature_end
         progress = min(1.0, self._state.step / cfg.temperature_decay_steps)
-        return cfg.temperature_start + progress * (
-            cfg.temperature_end - cfg.temperature_start
-        )
+        return cfg.temperature_start + progress * (cfg.temperature_end - cfg.temperature_start)
 
     def step(self) -> AgentState:
         """Execute one MCTS search + action step.
@@ -146,7 +144,7 @@ class SolverAgent(BaseAgent):
 
         temperature = self._compute_temperature()
 
-        _policy = self._mcts.search(self._adapter)
+        self._mcts.search(self._adapter)
         action = self._mcts.get_action(self._adapter, temperature=temperature)
         self._adapter.apply_action(action)
         self._mcts.advance(action)

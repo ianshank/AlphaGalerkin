@@ -99,8 +99,7 @@ class TestAgentRegistry:
                 errors.append(e)
 
         threads = [
-            threading.Thread(target=register_in_thread, args=(f"thread_{i}",))
-            for i in range(10)
+            threading.Thread(target=register_in_thread, args=(f"thread_{i}",)) for i in range(10)
         ]
         for t in threads:
             t.start()

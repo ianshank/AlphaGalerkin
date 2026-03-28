@@ -64,8 +64,10 @@ class TestMetaAgent:
             evaluator_factory=lambda game: mock_evaluator,
         )
 
-        with patch("src.pde.mcts_adapter.PDEGameAdapter") as mock_adapter_cls, \
-             patch("src.mcts.search.MCTS") as mock_mcts_cls:
+        with (
+            patch("src.pde.mcts_adapter.PDEGameAdapter") as mock_adapter_cls,
+            patch("src.mcts.search.MCTS") as mock_mcts_cls,
+        ):
             mock_adapter = MagicMock()
             mock_adapter.current_error = 1.0
             mock_adapter_cls.return_value = mock_adapter

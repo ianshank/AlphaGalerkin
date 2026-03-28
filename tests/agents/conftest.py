@@ -257,9 +257,9 @@ def mock_pde_game(mock_pde_state: MagicMock) -> MagicMock:
                         numpy=MagicMock(
                             return_value=MagicMock(
                                 astype=MagicMock(
-                                    return_value=np.random.default_rng(42).random(
-                                        (4, 5, 5)
-                                    ).astype(np.float32)
+                                    return_value=np.random.default_rng(42)
+                                    .random((4, 5, 5))
+                                    .astype(np.float32)
                                 )
                             )
                         )

@@ -103,18 +103,14 @@ class CouplingAgent(BaseAgent):
 
         if solver_data:
             updated_bcs = self.exchange_boundary_data(solver_data)
-            interface_residual = self._compute_interface_residual(
-                solver_data, updated_bcs
-            )
+            interface_residual = self._compute_interface_residual(solver_data, updated_bcs)
             self._residual_history.append(interface_residual)
             self._state.error_history.append(interface_residual)
         else:
             self._residual_history.append(float("inf"))
 
         self._state.step += 1
-        self.update_budget(self.coupling_config.budget_per_step
-                          if hasattr(self.coupling_config, "budget_per_step")
-                          else 0.001)
+        self.update_budget(self.coupling_config.budget_per_step)
 
         is_converged = self.is_converged()
         if is_converged or self._state.step >= self.coupling_config.max_iterations:

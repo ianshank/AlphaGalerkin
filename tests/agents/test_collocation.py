@@ -54,9 +54,7 @@ class TestUniformAllocator:
         assert np.all(points[:, 1] >= -2.0)
         assert np.all(points[:, 1] <= 4.0)
 
-    def test_deterministic_with_seed(
-        self, sample_collocation_config: CollocationConfig
-    ) -> None:
+    def test_deterministic_with_seed(self, sample_collocation_config: CollocationConfig) -> None:
         allocator = UniformAllocator(sample_collocation_config)
         p1 = allocator.allocate([0.0], [1.0], dim=1, seed=42)
         p2 = allocator.allocate([0.0], [1.0], dim=1, seed=42)
@@ -76,12 +74,8 @@ class TestUniformAllocator:
 class TestAdaptiveAllocator:
     """Tests for AdaptiveAllocator."""
 
-    def test_fallback_to_uniform(
-        self, sample_collocation_config: CollocationConfig
-    ) -> None:
-        config = sample_collocation_config.with_overrides(
-            strategy=CollocationStrategy.ADAPTIVE
-        )
+    def test_fallback_to_uniform(self, sample_collocation_config: CollocationConfig) -> None:
+        config = sample_collocation_config.with_overrides(strategy=CollocationStrategy.ADAPTIVE)
         allocator = AdaptiveAllocator(config)
         points = allocator.allocate([0.0, 0.0], [1.0, 1.0], dim=2, seed=42)
         assert points.shape == (100, 2)
@@ -100,8 +94,12 @@ class TestAdaptiveAllocator:
         residuals[0] = 100.0  # One very high residual at coords[0]
 
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert points.shape == (200, 2)
 
@@ -116,8 +114,12 @@ class TestAdaptiveAllocator:
         coords = np.random.default_rng(42).random((20, 2)).astype(np.float32)
         residuals = np.zeros(20, dtype=np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert points.shape == (50, 2)
 
@@ -127,8 +129,12 @@ class TestAdaptiveAllocator:
         coords = np.random.default_rng(42).random((30, 2)).astype(np.float32)
         residuals = np.random.default_rng(42).random(30).astype(np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert np.all(points >= 0.0)
         assert np.all(points <= 1.0)
@@ -143,8 +149,12 @@ class TestImportanceWeightedAllocator:
         coords = np.random.default_rng(42).random((30, 2)).astype(np.float32)
         residuals = np.random.default_rng(42).random(30).astype(np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert points.shape == (50, 2)
 
@@ -164,8 +174,12 @@ class TestErrorGuidedAllocator:
         coords = np.random.default_rng(42).random((30, 2)).astype(np.float32)
         residuals = np.random.default_rng(42).random(30).astype(np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert points.shape[0] == 50
         assert points.shape[1] == 2
@@ -176,8 +190,12 @@ class TestErrorGuidedAllocator:
         coords = np.random.default_rng(42).random((50, 2)).astype(np.float32)
         residuals = np.random.default_rng(42).random(50).astype(np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert np.all(points >= 0.0)
         assert np.all(points <= 1.0)
@@ -199,8 +217,12 @@ class TestImportanceWeightedZeroResiduals:
         coords = np.random.default_rng(42).random((30, 2)).astype(np.float32)
         residuals = np.zeros(30, dtype=np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert points.shape == (50, 2)
         assert np.all(points >= 0.0)
@@ -213,30 +235,42 @@ class TestErrorGuidedEdgeCases:
     def test_empty_high_error_region(self) -> None:
         """When all residuals are below threshold, fall back to uniform."""
         config = CollocationConfig(
-            name="eg_edge", n_points=30, adaptation_rate=0.01,
+            name="eg_edge",
+            n_points=30,
+            adaptation_rate=0.01,
         )
         allocator = ErrorGuidedAllocator(config)
         coords = np.random.default_rng(42).random((50, 2)).astype(np.float32)
         # Very uniform residuals so threshold leaves nothing
         residuals = np.full(50, 0.001, dtype=np.float32)
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert points.shape[0] == 30
 
     def test_perturbation_stays_in_bounds(self) -> None:
         """Verify perturbed points are clamped within domain bounds."""
         config = CollocationConfig(
-            name="eg_bounds", n_points=100, adaptation_rate=0.9,
+            name="eg_bounds",
+            n_points=100,
+            adaptation_rate=0.9,
         )
         allocator = ErrorGuidedAllocator(config)
         # Put high-error coordinates near domain boundary
         coords = np.ones((20, 2), dtype=np.float32) * 0.99
         residuals = np.ones(20, dtype=np.float32) * 10.0
         points = allocator.allocate(
-            [0.0, 0.0], [1.0, 1.0], dim=2,
-            residuals=residuals, coords=coords, seed=42,
+            [0.0, 0.0],
+            [1.0, 1.0],
+            dim=2,
+            residuals=residuals,
+            coords=coords,
+            seed=42,
         )
         assert np.all(points >= 0.0)
         assert np.all(points <= 1.0)

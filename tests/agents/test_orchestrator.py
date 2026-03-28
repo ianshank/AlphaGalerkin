@@ -38,9 +38,7 @@ class TestAgentOrchestrator:
         assert "total_steps" in result.metrics
         assert "error_history" in result.artifacts
 
-    def test_execute_with_run_wrapper(
-        self, simple_config: OrchestratorConfig
-    ) -> None:
+    def test_execute_with_run_wrapper(self, simple_config: OrchestratorConfig) -> None:
         orch = AgentOrchestrator(simple_config)
         result = orch.run()
         assert result.status == ExecutionStatus.COMPLETED
@@ -101,8 +99,10 @@ class TestAgentOrchestrator:
             evaluator_factory=lambda game: mock_evaluator,
         )
 
-        with patch("src.pde.mcts_adapter.PDEGameAdapter") as mock_adapter_cls, \
-             patch("src.mcts.search.MCTS") as mock_mcts_cls:
+        with (
+            patch("src.pde.mcts_adapter.PDEGameAdapter") as mock_adapter_cls,
+            patch("src.mcts.search.MCTS") as mock_mcts_cls,
+        ):
             mock_adapter = MagicMock()
             mock_adapter.current_error = 0.001
             mock_adapter.is_terminal.return_value = True

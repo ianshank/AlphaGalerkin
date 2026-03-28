@@ -87,8 +87,7 @@ def info(
     if cls is None:
         available = registry.list_items()
         typer.echo(
-            f"Agent type '{agent_type}' not found. "
-            f"Available: {', '.join(sorted(available))}"
+            f"Agent type '{agent_type}' not found. Available: {', '.join(sorted(available))}"
         )
         raise typer.Exit(code=1)
 

@@ -110,7 +110,8 @@ class CollocationAllocator(ABC):
 
 
 CollocationRegistry, register_collocation = create_registry(
-    "Collocation", CollocationAllocator,
+    "Collocation",
+    CollocationAllocator,
 )
 
 
@@ -158,46 +159,39 @@ class AdaptiveAllocator(CollocationAllocator):
         rng = np.random.default_rng(seed)
 
         if residuals is None or coords is None:
-            return UniformAllocator(self.config).allocate(
-                domain_min, domain_max, dim, seed=seed
-            )
+            return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
         abs_residuals = np.abs(residuals).astype(np.float64)
         total = abs_residuals.sum()
         if total < 1e-12:
-            return UniformAllocator(self.config).allocate(
-                domain_min, domain_max, dim, seed=seed
-            )
+            return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
         weights = abs_residuals / total
 
         n_adaptive = int(self.config.n_points * self.config.adaptation_rate)
         n_uniform = self.config.n_points - n_adaptive
 
-        adaptive_indices = rng.choice(
-            len(coords), size=n_adaptive, replace=True, p=weights
+        adaptive_indices = rng.choice(len(coords), size=n_adaptive, replace=True, p=weights)
+        perturbation_scale = (
+            np.array(
+                [domain_max[d] - domain_min[d] for d in range(dim)],
+                dtype=np.float32,
+            )
+            * self.config.perturbation_fraction
         )
-        perturbation_scale = np.array(
-            [domain_max[d] - domain_min[d] for d in range(dim)],
-            dtype=np.float32,
-        ) * 0.05
         adaptive_points = coords[adaptive_indices].copy()
-        adaptive_points += rng.normal(
-            0, perturbation_scale, size=adaptive_points.shape
-        ).astype(np.float32)
+        adaptive_points += rng.normal(0, perturbation_scale, size=adaptive_points.shape).astype(
+            np.float32
+        )
 
         for d in range(dim):
-            adaptive_points[:, d] = np.clip(
-                adaptive_points[:, d], domain_min[d], domain_max[d]
-            )
+            adaptive_points[:, d] = np.clip(adaptive_points[:, d], domain_min[d], domain_max[d])
 
         uniform_points = UniformAllocator(self.config).allocate(
             domain_min, domain_max, dim, seed=seed
         )[:n_uniform]
 
-        return np.concatenate([adaptive_points, uniform_points], axis=0).astype(
-            np.float32
-        )
+        return np.concatenate([adaptive_points, uniform_points], axis=0).astype(np.float32)
 
 
 @register_collocation("importance_weighted")
@@ -217,21 +211,15 @@ class ImportanceWeightedAllocator(CollocationAllocator):
         rng = np.random.default_rng(seed)
 
         if residuals is None or coords is None:
-            return UniformAllocator(self.config).allocate(
-                domain_min, domain_max, dim, seed=seed
-            )
+            return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
         importance = np.abs(residuals).astype(np.float64) ** self.config.importance_exponent
         total = importance.sum()
         if total < 1e-12:
-            return UniformAllocator(self.config).allocate(
-                domain_min, domain_max, dim, seed=seed
-            )
+            return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
         weights = importance / total
-        indices = rng.choice(
-            len(coords), size=self.config.n_points, replace=True, p=weights
-        )
+        indices = rng.choice(len(coords), size=self.config.n_points, replace=True, p=weights)
         return coords[indices].copy().astype(np.float32)
 
 
@@ -256,9 +244,7 @@ class ErrorGuidedAllocator(CollocationAllocator):
         rng = np.random.default_rng(seed)
 
         if residuals is None or coords is None:
-            return UniformAllocator(self.config).allocate(
-                domain_min, domain_max, dim, seed=seed
-            )
+            return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
         abs_res = np.abs(residuals)
         threshold = np.percentile(abs_res, 100.0 * (1.0 - self.config.adaptation_rate))
@@ -266,37 +252,34 @@ class ErrorGuidedAllocator(CollocationAllocator):
         high_error_coords = coords[high_error_mask]
 
         if len(high_error_coords) == 0:
-            return UniformAllocator(self.config).allocate(
-                domain_min, domain_max, dim, seed=seed
-            )
+            return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
         n_refined = min(self.config.n_points, len(high_error_coords) * 4)
         n_uniform = self.config.n_points - n_refined
 
         indices = rng.choice(len(high_error_coords), size=n_refined, replace=True)
-        perturbation_scale = np.array(
-            [domain_max[d] - domain_min[d] for d in range(dim)],
-            dtype=np.float32,
-        ) * 0.02
+        perturbation_scale = (
+            np.array(
+                [domain_max[d] - domain_min[d] for d in range(dim)],
+                dtype=np.float32,
+            )
+            * self.config.perturbation_fraction
+        )
         refined_points = high_error_coords[indices].copy()
-        refined_points += rng.normal(
-            0, perturbation_scale, size=refined_points.shape
-        ).astype(np.float32)
+        refined_points += rng.normal(0, perturbation_scale, size=refined_points.shape).astype(
+            np.float32
+        )
 
         for d in range(dim):
-            refined_points[:, d] = np.clip(
-                refined_points[:, d], domain_min[d], domain_max[d]
-            )
+            refined_points[:, d] = np.clip(refined_points[:, d], domain_min[d], domain_max[d])
 
         if n_uniform > 0:
             uniform_points = UniformAllocator(self.config).allocate(
                 domain_min, domain_max, dim, seed=seed
             )[:n_uniform]
-            return np.concatenate([refined_points, uniform_points], axis=0).astype(
-                np.float32
-            )
+            return np.concatenate([refined_points, uniform_points], axis=0).astype(np.float32)
 
-        return refined_points[:self.config.n_points].astype(np.float32)
+        return refined_points[: self.config.n_points].astype(np.float32)
 
 
 def create_collocation_allocator(config: CollocationConfig) -> CollocationAllocator:

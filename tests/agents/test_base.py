@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.agents.base import AgentState, BaseAgent
-from src.agents.config import AgentConfig, AgentType, MessageType
+from src.agents.base import AgentState
+from src.agents.config import AgentConfig, MessageType
 from src.agents.message import MessageBus
 from src.templates.base import ExecutionStatus
 from tests.agents.conftest import ConcreteTestAgent
@@ -209,3 +209,17 @@ class TestBaseAgent:
         )
         result = agent.run()
         assert result.status == ExecutionStatus.COMPLETED
+
+    def test_run_handles_exception(self, sample_agent_config: AgentConfig) -> None:
+        """Verify run() sets FAILED status and re-raises on exception."""
+
+        class FailingAgent(ConcreteTestAgent):
+            def step(self) -> AgentState:
+                raise RuntimeError("step failed")
+
+        agent = FailingAgent(
+            config=sample_agent_config.with_overrides(max_steps=10),
+        )
+        with pytest.raises(RuntimeError, match="step failed"):
+            agent.run()
+        assert agent.state.status == ExecutionStatus.FAILED

@@ -7,17 +7,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.agents.config import (
-    DecompositionConfig,
-    DecompositionStrategy,
     MultiPhysicsConfig,
     OrchestratorConfig,
-    SolverAgentConfig,
 )
-from src.agents.decomposition import SubproblemSpec
 from src.agents.message import MessageBus
 from src.agents.meta import MetaAgent
 from src.pde.config import PDEConfig, PDEType
-from src.templates.base import ExecutionStatus
 
 
 class TestMetaAgent:
@@ -221,6 +216,51 @@ class TestMetaAgent:
         mock_solver.reset.assert_called_once()
         assert meta.state.step == 0
         assert meta._stall_counters["sub"] == 0
+
+    def test_stall_counter_resets_on_progress(self) -> None:
+        """Verify stall counter resets to 0 when error improves."""
+        from src.agents.base import AgentState
+
+        orch = OrchestratorConfig(
+            name="stall_test",
+            multi_physics=MultiPhysicsConfig(
+                name="stall_mp",
+                physics=[
+                    PDEConfig(name="p", pde_type=PDEType.POISSON),
+                ],
+            ),
+        )
+        meta = MetaAgent(config=orch)
+        meta.setup()
+
+        # Create a mock solver that shows real progress (error decreases)
+        mock_solver = MagicMock()
+        mock_solver.is_terminal = False
+        mock_solver.state = AgentState(
+            agent_id="solver_0",
+            error_history=[1.0, 0.5],
+            budget_used=0.1,
+        )
+
+        # current_error changes: 1.0 (before step()) → 0.5 (after step())
+        error_values = [1.0, 0.5]
+        call_count = {"n": 0}
+
+        def get_error() -> float:
+            idx = min(call_count["n"], len(error_values) - 1)
+            call_count["n"] += 1
+            return error_values[idx]
+
+        type(mock_solver).current_error = property(lambda self: get_error())
+
+        meta._solver_agents = {"solver_0": mock_solver}
+        meta._stall_counters = {"solver_0": 3}  # Was previously stalled
+        meta._coupling_agent = None  # No coupling for this test
+
+        meta.step()
+
+        # Stall counter should be reset since error changed significantly
+        assert meta._stall_counters["solver_0"] == 0
 
     def test_single_physics_no_coupling(self) -> None:
         """Single physics should work without coupling agent."""

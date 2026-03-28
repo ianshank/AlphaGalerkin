@@ -110,7 +110,7 @@ class CollocationAllocator(ABC):
 
 
 CollocationRegistry, register_collocation = create_registry(
-    "Collocation", CollocationAllocator
+    "Collocation", CollocationAllocator,
 )
 
 

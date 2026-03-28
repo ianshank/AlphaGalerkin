@@ -225,3 +225,40 @@ class TestMessageBus:
         )
         # Should not raise
         assert bus.peek("a") == 1
+
+    def test_unsubscribe_with_logging(self) -> None:
+        """Unsubscribe with enable_logging=True triggers log."""
+        config = MessageBusConfig(name="logged", buffer_size=10, enable_logging=True)
+        bus = MessageBus(config)
+        bus.subscribe("a")
+        bus.unsubscribe("a")
+        # No error, agent removed
+        assert "a" not in bus.subscribers
+
+    def test_unsubscribe_unknown_agent(self) -> None:
+        """Unsubscribing an agent that was never subscribed does not raise."""
+        config = MessageBusConfig(name="safe", buffer_size=10, enable_logging=True)
+        bus = MessageBus(config)
+        bus.unsubscribe("never_existed")  # Should not raise
+
+    def test_broadcast_with_logging(self) -> None:
+        """Broadcast with enable_logging=True triggers log."""
+        config = MessageBusConfig(name="logged", buffer_size=10, enable_logging=True)
+        bus = MessageBus(config)
+        bus.subscribe("a")
+        bus.subscribe("b")
+        msg = AgentMessage(
+            sender="sender", receiver="*", message_type=MessageType.STATE_UPDATE,
+        )
+        bus.broadcast(msg)
+        assert bus.peek("a") == 1
+        assert bus.peek("b") == 1
+
+    def test_broadcast_no_subscribers(self) -> None:
+        """Broadcast with no subscribers does not raise."""
+        config = MessageBusConfig(name="empty", buffer_size=10, enable_logging=True)
+        bus = MessageBus(config)
+        msg = AgentMessage(
+            sender="sender", receiver="*", message_type=MessageType.STATE_UPDATE,
+        )
+        bus.broadcast(msg)  # No error

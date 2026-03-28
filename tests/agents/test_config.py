@@ -390,3 +390,67 @@ class TestOrchestratorConfig:
         h1 = sample_orchestrator_config.compute_hash()
         h2 = sample_orchestrator_config.compute_hash()
         assert h1 == h2
+
+
+class TestMultiPhysicsCouplingValidation:
+    """Tests for MultiPhysicsConfig coupling reference validation."""
+
+    def test_invalid_coupling_physics_a(self) -> None:
+        """Coupling pair referencing unknown physics_a raises ValueError."""
+        pde = PDEConfig(
+            name="real_physics",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+        )
+        with pytest.raises(ValidationError, match="unknown physics.*fake_a"):
+            MultiPhysicsConfig(
+                name="bad",
+                physics=[pde],
+                coupling_pairs=[
+                    CouplingPairConfig(
+                        name="bad_pair",
+                        physics_a="fake_a",
+                        physics_b="real_physics",
+                    ),
+                ],
+            )
+
+    def test_invalid_coupling_physics_b(self) -> None:
+        """Coupling pair referencing unknown physics_b raises ValueError."""
+        pde = PDEConfig(
+            name="real_physics",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+        )
+        with pytest.raises(ValidationError, match="unknown physics.*fake_b"):
+            MultiPhysicsConfig(
+                name="bad",
+                physics=[pde],
+                coupling_pairs=[
+                    CouplingPairConfig(
+                        name="bad_pair",
+                        physics_a="real_physics",
+                        physics_b="fake_b",
+                    ),
+                ],
+            )
+
+    def test_budget_allocation_invalid_physics(self) -> None:
+        """Budget allocation referencing unknown physics raises ValueError."""
+        pde = PDEConfig(
+            name="real_physics",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+        )
+        with pytest.raises(ValidationError, match="unknown physics.*fake"):
+            MultiPhysicsConfig(
+                name="bad",
+                physics=[pde],
+                budget_allocation={"fake": 1.0},
+            )

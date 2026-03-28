@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from numpy.typing import NDArray
 
 from src.agents.base import AgentState, BaseAgent
-from src.agents.collocation import CollocationRegistry
 from src.agents.config import (
     AgentConfig,
     AgentType,
@@ -21,7 +19,6 @@ from src.agents.config import (
     DecompositionConfig,
     DecompositionStrategy,
     MessageBusConfig,
-    MessageType,
     MultiPhysicsConfig,
     OrchestratorConfig,
     SolverAgentConfig,
@@ -29,8 +26,6 @@ from src.agents.config import (
 from src.agents.message import MessageBus
 from src.agents.registry import AgentRegistry
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
-from src.templates.base import ExecutionStatus
-
 
 # ------------------------------------------------------------------ #
 # Registry cleanup                                                     #

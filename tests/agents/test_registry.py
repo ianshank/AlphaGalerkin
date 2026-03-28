@@ -7,7 +7,6 @@ import threading
 import pytest
 
 from src.agents.base import AgentState, BaseAgent
-from src.agents.config import AgentConfig, AgentType
 from src.agents.registry import AgentRegistry, get_agent, list_agents, register_agent
 
 
@@ -133,3 +132,41 @@ class TestAgentRegistry:
 
         with pytest.raises(TypeError):
             register_agent("bad")(NotAnAgent)  # type: ignore[arg-type]
+
+
+class TestBuiltinAgentRegistration:
+    """Tests for _register_builtin_agents."""
+
+    def test_registers_all_builtins(self) -> None:
+        """Verify all four builtin agents get registered."""
+        from src.agents.registry import _register_builtin_agents
+
+        _register_builtin_agents()
+        registry = AgentRegistry()
+        assert registry.is_registered("solver")
+        assert registry.is_registered("decomposition")
+        assert registry.is_registered("coupling")
+        assert registry.is_registered("meta")
+
+    def test_idempotent(self) -> None:
+        """Calling _register_builtin_agents twice doesn't error."""
+        from src.agents.registry import _register_builtin_agents
+
+        _register_builtin_agents()
+        _register_builtin_agents()  # Should not raise
+        assert AgentRegistry().is_registered("solver")
+
+    def test_registered_classes_are_correct(self) -> None:
+        """Verify registered classes are the correct agent types."""
+        from src.agents.coupling import CouplingAgent
+        from src.agents.decomposition import DecompositionAgent
+        from src.agents.meta import MetaAgent
+        from src.agents.registry import _register_builtin_agents
+        from src.agents.solver import SolverAgent
+
+        _register_builtin_agents()
+        registry = AgentRegistry()
+        assert registry.get("solver") is SolverAgent
+        assert registry.get("decomposition") is DecompositionAgent
+        assert registry.get("coupling") is CouplingAgent
+        assert registry.get("meta") is MetaAgent

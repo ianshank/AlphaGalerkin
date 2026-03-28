@@ -286,6 +286,13 @@ class DecompositionAgent(BaseAgent):
                     kept_dims.append(d)
 
             new_dim = len(reduced_min)
+            self._decomp_logger.info(
+                "dimension_analysis",
+                physics=pde_config.name,
+                original_dim=dim,
+                kept_dims=kept_dims,
+                new_dim=new_dim,
+            )
             if new_dim == 0:
                 reduced_min = d_min[:1]
                 reduced_max = d_max[:1]

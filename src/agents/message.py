@@ -115,7 +115,14 @@ class MessageBus:
         """
         with self._lock:
             if message.receiver in self._queues:
-                self._queues[message.receiver].append(message)
+                queue = self._queues[message.receiver]
+                if len(queue) == queue.maxlen:
+                    self._logger.debug(
+                        "buffer_overflow",
+                        agent_id=message.receiver,
+                        dropped=1,
+                    )
+                queue.append(message)
                 if self.config.enable_logging:
                     self._logger.debug(
                         "message_published",

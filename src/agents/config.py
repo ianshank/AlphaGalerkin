@@ -17,7 +17,7 @@ Example:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -164,7 +164,7 @@ class SolverAgentConfig(AgentConfig):
     )
 
     @model_validator(mode="after")
-    def validate_temperature_schedule(self) -> SolverAgentConfig:
+    def validate_temperature_schedule(self) -> Self:
         """Ensure temperature_start >= temperature_end."""
         if self.temperature_start < self.temperature_end:
             msg = (
@@ -299,7 +299,7 @@ class CollocationConfig(BaseModuleConfig):
     )
 
     @model_validator(mode="after")
-    def validate_point_bounds(self) -> CollocationConfig:
+    def validate_point_bounds(self) -> Self:
         """Ensure min_points <= n_points <= max_points."""
         if self.min_points > self.n_points:
             msg = (
@@ -392,7 +392,7 @@ class MultiPhysicsConfig(BaseModuleConfig):
     )
 
     @model_validator(mode="after")
-    def validate_coupling_references(self) -> MultiPhysicsConfig:
+    def validate_coupling_references(self) -> Self:
         """Ensure coupling pairs reference valid physics names."""
         physics_names = {p.name for p in self.physics}
         for pair in self.coupling_pairs:
@@ -411,7 +411,7 @@ class MultiPhysicsConfig(BaseModuleConfig):
         return self
 
     @model_validator(mode="after")
-    def validate_budget_allocation(self) -> MultiPhysicsConfig:
+    def validate_budget_allocation(self) -> Self:
         """Ensure budget allocation sums to 1.0 if provided."""
         if self.budget_allocation:
             total = sum(self.budget_allocation.values())

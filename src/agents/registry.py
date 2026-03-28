@@ -20,7 +20,7 @@ from __future__ import annotations
 from src.agents.base import BaseAgent
 from src.templates.registry import create_registry
 
-AgentRegistry, register_agent = create_registry("Agent", BaseAgent)
+AgentRegistry, register_agent = create_registry("Agent", BaseAgent)  # type: ignore[type-abstract]
 
 
 def get_agent(name: str) -> type[BaseAgent]:

@@ -189,6 +189,59 @@ class TestErrorGuidedAllocator:
         assert points.shape == (30, 1)
 
 
+class TestImportanceWeightedZeroResiduals:
+    """Tests for importance-weighted allocator with zero residuals."""
+
+    def test_zero_residuals_falls_back_to_uniform(self) -> None:
+        """All-zero residuals should fall back to uniform allocation."""
+        config = CollocationConfig(name="iw_zero", n_points=50)
+        allocator = ImportanceWeightedAllocator(config)
+        coords = np.random.default_rng(42).random((30, 2)).astype(np.float32)
+        residuals = np.zeros(30, dtype=np.float32)
+        points = allocator.allocate(
+            [0.0, 0.0], [1.0, 1.0], dim=2,
+            residuals=residuals, coords=coords, seed=42,
+        )
+        assert points.shape == (50, 2)
+        assert np.all(points >= 0.0)
+        assert np.all(points <= 1.0)
+
+
+class TestErrorGuidedEdgeCases:
+    """Edge case tests for ErrorGuidedAllocator."""
+
+    def test_empty_high_error_region(self) -> None:
+        """When all residuals are below threshold, fall back to uniform."""
+        config = CollocationConfig(
+            name="eg_edge", n_points=30, adaptation_rate=0.01,
+        )
+        allocator = ErrorGuidedAllocator(config)
+        coords = np.random.default_rng(42).random((50, 2)).astype(np.float32)
+        # Very uniform residuals so threshold leaves nothing
+        residuals = np.full(50, 0.001, dtype=np.float32)
+        points = allocator.allocate(
+            [0.0, 0.0], [1.0, 1.0], dim=2,
+            residuals=residuals, coords=coords, seed=42,
+        )
+        assert points.shape[0] == 30
+
+    def test_perturbation_stays_in_bounds(self) -> None:
+        """Verify perturbed points are clamped within domain bounds."""
+        config = CollocationConfig(
+            name="eg_bounds", n_points=100, adaptation_rate=0.9,
+        )
+        allocator = ErrorGuidedAllocator(config)
+        # Put high-error coordinates near domain boundary
+        coords = np.ones((20, 2), dtype=np.float32) * 0.99
+        residuals = np.ones(20, dtype=np.float32) * 10.0
+        points = allocator.allocate(
+            [0.0, 0.0], [1.0, 1.0], dim=2,
+            residuals=residuals, coords=coords, seed=42,
+        )
+        assert np.all(points >= 0.0)
+        assert np.all(points <= 1.0)
+
+
 class TestReallocate:
     """Tests for reallocate convenience method."""
 

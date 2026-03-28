@@ -179,6 +179,9 @@ class MetaAgent(BaseAgent):
                     self._stall_counters[name] = self._stall_counters.get(name, 0) + 1
                 else:
                     self._stall_counters[name] = 0
+                    self._meta_logger.debug(
+                        "stall_counter_reset", solver=name, error=new_error,
+                    )
 
                 if self._stall_counters.get(name, 0) >= self._stall_threshold:
                     self._handle_stalled_solver(name)

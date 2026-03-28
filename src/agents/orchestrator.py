@@ -45,7 +45,7 @@ class AgentOrchestrator(BaseExecutable["OrchestratorConfig"]):
     """
 
     _executable_name = "agent_orchestrator"
-    _logger_class = OrchestratorLogger  # type: ignore[assignment]
+    _logger_class = OrchestratorLogger
 
     def __init__(
         self,

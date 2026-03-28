@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
-from src.agents.config import MessageType, SolverAgentConfig
+from src.agents.config import SolverAgentConfig
 from src.agents.message import MessageBus
 from src.agents.solver import SolverAgent
 from src.templates.base import ExecutionStatus
@@ -187,6 +186,23 @@ class TestSolverAgent:
             solver.setup()
             state = solver.step()
             assert state.status == ExecutionStatus.COMPLETED
+
+    def test_reset_calls_mcts_reset(self, solver: SolverAgent) -> None:
+        """Verify reset() calls MCTS.reset() when available."""
+        with patch(_ADAPTER_PATH) as mock_adapter_cls, \
+             patch(_MCTS_PATH) as mock_mcts_cls:
+            mock_adapter = MagicMock()
+            mock_adapter.current_error = 1.0
+            mock_adapter_cls.return_value = mock_adapter
+
+            mock_mcts = MagicMock()
+            mock_mcts.reset = MagicMock()  # Ensure reset exists
+            mock_mcts_cls.return_value = mock_mcts
+
+            solver.setup()
+            solver.reset()
+
+            mock_mcts.reset.assert_called_once()
 
     def test_budget_tracking(self, solver: SolverAgent) -> None:
         with patch(_ADAPTER_PATH) as mock_adapter_cls, \

@@ -224,3 +224,74 @@ class TestDecompositionAgent:
         agent.setup()
         subproblems = agent.decompose()
         assert len(subproblems) >= 1
+
+
+class TestDecompositionEdgeCases:
+    """Edge case tests for DecompositionAgent."""
+
+    def test_domain_decomposition_empty_physics_internal(self) -> None:
+        """Domain decomposition with empty physics returns empty list.
+
+        Uses object.__setattr__ to bypass pydantic validate_assignment.
+        """
+        pde = PDEConfig(
+            name="placeholder",
+            pde_type=PDEType.POISSON,
+        )
+        mp_config = MultiPhysicsConfig(name="test", physics=[pde])
+        config = DecompositionConfig(
+            name="test",
+            strategy=DecompositionStrategy.DOMAIN_DECOMPOSITION,
+        )
+        agent = DecompositionAgent(config, mp_config)
+        agent.setup()
+        # Bypass pydantic validation to test the guard clause
+        object.__setattr__(agent._multi_physics, "physics", [])
+        subproblems = agent.decompose()
+        assert subproblems == []
+
+    def test_dimensional_reduction_all_equal_extents(self) -> None:
+        """When all dimensions have equal extents, all are kept."""
+        pde = PDEConfig(
+            name="cube",
+            pde_type=PDEType.POISSON,
+            domain_dim=3,
+            domain_min=[0.0, 0.0, 0.0],
+            domain_max=[1.0, 1.0, 1.0],
+            advection_coeff=[0.0, 0.0, 0.0],
+        )
+        mp_config = MultiPhysicsConfig(name="cube_mp", physics=[pde])
+        config = DecompositionConfig(
+            name="test",
+            strategy=DecompositionStrategy.DIMENSIONAL_REDUCTION,
+        )
+        agent = DecompositionAgent(config, mp_config)
+        agent.setup()
+        subproblems = agent.decompose()
+        assert len(subproblems) >= 1
+        # All 3 dims have equal extents, so all should be kept (3D → 3D)
+        for sp in subproblems:
+            assert len(sp.subdomain_min) == 3
+
+    def test_dimensional_reduction_thin_domain(self) -> None:
+        """A very thin domain drops the thin dimension."""
+        pde = PDEConfig(
+            name="thin",
+            pde_type=PDEType.POISSON,
+            domain_dim=3,
+            domain_min=[0.0, 0.0, 0.0],
+            domain_max=[10.0, 10.0, 0.001],
+            advection_coeff=[0.0, 0.0, 0.0],
+        )
+        mp_config = MultiPhysicsConfig(name="thin_mp", physics=[pde])
+        config = DecompositionConfig(
+            name="test",
+            strategy=DecompositionStrategy.DIMENSIONAL_REDUCTION,
+        )
+        agent = DecompositionAgent(config, mp_config)
+        agent.setup()
+        subproblems = agent.decompose()
+        assert len(subproblems) >= 1
+        # The z dimension is thin (0.001 / 10.0 = 0.0001 < 0.1), should be dropped
+        for sp in subproblems:
+            assert len(sp.subdomain_min) == 2

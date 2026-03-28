@@ -27,8 +27,10 @@ if TYPE_CHECKING:
     from src.agents.config import SolverAgentConfig
     from src.agents.message import MessageBus
     from src.mcts.evaluator import Evaluator
+    from src.mcts.search import MCTS
     from src.pde.game import PDEGame
     from src.pde.mcts_adapter import PDEGameAdapter
+    from src.templates.base import ExecutionStatus
 
 SolverLogger = create_logger_class("SolverAgent")
 
@@ -61,7 +63,7 @@ class SolverAgent(BaseAgent):
         self._pde_game = pde_game
         self._evaluator = evaluator
         self._adapter: PDEGameAdapter | None = None
-        self._mcts: object | None = None  # MCTS instance, typed loosely to avoid import
+        self._mcts: MCTS | None = None
         self._solver_logger = SolverLogger(
             component="solver",
             run_id=self._agent_id,
@@ -176,8 +178,8 @@ class SolverAgent(BaseAgent):
 
         return self._state
 
-    def _terminal_status(self) -> str:
-        """Determine terminal status string."""
+    def _terminal_status(self) -> ExecutionStatus:
+        """Determine terminal status."""
         from src.templates.base import ExecutionStatus
 
         return ExecutionStatus.COMPLETED

@@ -219,3 +219,23 @@ class TestCouplingAgent:
         residual = coupling_agent._compute_interface_residual(solver_data, updated)
         expected = float(np.sqrt(np.mean(np.array([0.1, 0.1]) ** 2)))
         assert residual == pytest.approx(expected, abs=1e-5)
+
+    def test_shape_mismatch_skips_blending(self) -> None:
+        """When old and new boundary data have different shapes, skip blending."""
+        config = CouplingConfig(
+            name="shape_test",
+            coupling_type=CouplingType.ROBIN_ROBIN,
+            relaxation_factor=0.5,
+        )
+        agent = CouplingAgent(config)
+        agent.setup()
+
+        # First exchange — sets _previous_bcs with shape (2,)
+        data1 = {"s": np.array([1.0, 2.0], dtype=np.float32)}
+        agent.exchange_boundary_data(data1)
+
+        # Second exchange — different shape (3,)
+        data2 = {"s": np.array([1.0, 2.0, 3.0], dtype=np.float32)}
+        result = agent.exchange_boundary_data(data2)
+        # Should use new data directly (no blending due to shape mismatch)
+        np.testing.assert_array_equal(result["s"], data2["s"])

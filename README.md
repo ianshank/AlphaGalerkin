@@ -502,27 +502,36 @@ config = OperatorConfig(
 
 ## Testing
 
-The project has **400+** tests across unit, integration, E2E, and security categories.
+The project has **5 300+** tests across unit, integration, E2E, and security categories, with **85 % branch coverage**.
 
 ### Run All Tests
 
 ```bash
-# Full test suite
-pytest tests/ -v
+# Full test suite (excludes slow/GPU/E2E)
+pytest tests/ -q -m "not slow and not e2e and not gpu_required"
+# → 5322 passed, 154 skipped, 0 failed
+
+# With branch coverage report
+pytest tests/ -q -m "not slow and not e2e and not gpu_required" \
+  --cov=src --cov-branch --cov-report=term
+# → TOTAL  85%
 
 # Chess pipeline (78 tests with coverage gate)
 pytest tests/games/test_chess*.py tests/training/test_*chess*.py \
   tests/security/test_chess_security.py tests/e2e/test_chess*.py \
   --cov=src/games/chess --cov-fail-under=80 -v
 
-# Engine integration tests
-pytest tests/engines/ -v
-
 # Math kernel tests (property-based)
 pytest tests/math_kernel/ -v
 
-# Training tests
+# Training tests (includes 46 new branch-coverage tests)
 pytest tests/training/ -v
+
+# PDE framework tests
+pytest tests/pde/ -v
+
+# Distributed training tests
+pytest tests/distributed/ -v
 ```
 
 ### Verify Resolution Invariance
@@ -551,7 +560,7 @@ python -m src.poc.cli list
 ### Code Quality
 
 ```bash
-# Linting
+# Linting (all checks pass)
 ruff check src/
 
 # Type checking

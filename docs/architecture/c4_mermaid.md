@@ -1285,6 +1285,17 @@ numpy >= 1.24.0         # Numerical computing
 - **Rationale**: Exact gradients, GPU-accelerated, composable with neural networks
 - **Trade-offs**: Memory overhead for computation graph, requires careful batching
 
+### Decision 10: All Constants Live in Pydantic Config (v0.3.0)
+
+- **Context**: Hard-coded values (LBB epsilon, Elo thresholds, PDE reduction
+  ratios) made experiments non-reproducible and tests fragile
+- **Decision**: Every tunable constant is a Pydantic field with a default equal
+  to the previously hard-coded value
+- **Rationale**: Full reproducibility via config serialisation, zero behavioural
+  change for existing callers, IDE auto-complete for all parameters
+- **Trade-offs**: Slightly more verbose config schemas; mitigated by
+  `_get_float_attr()` for safe extraction from partially-mocked objects
+
 ---
 
 ## Future Architecture Enhancements
@@ -1306,38 +1317,71 @@ numpy >= 1.24.0         # Numerical computing
    - Adaptive and progressive variants
    - Spatial positional encoding for 2D grids
 
-### Planned Improvements
+### Implemented (v0.3.0) — CI/CD Stabilisation & Config-Driven Architecture
 
-1. **Distributed Training**
-   - Multi-node self-play generation
-   - Gradient aggregation via NCCL
-   - Model zoo for curriculum learning
+4. **PDEGameAdapter** ✓
+   - Bridges `PDEGame` to the generic `MCTS.GameInterface` protocol
+   - Maps error-reduction ratio to `{-1, 0, +1}` reward signal
+   - Safe config-attribute extraction via `_get_float_attr()` helper
+   - Exposes `reset()`, `current_error`, `error_reduction` helpers
+
+5. **Distributed Training Config Completion** ✓
+   - `DistributedInfraConfig`: gradient compression, LR scaling, launcher field,
+     `should_sync_at_step()`, `should_save_checkpoint()`,
+     `requires_barrier_before_checkpoint()`, `scale_learning_rate()`,
+     `get_node_rank()`
+   - `SelfPlayDistributedConfig`: `num_workers`, `batch_size`, `total_games`
+     property, `get_games_for_worker()`
+   - `create_distributed_config()`: accepts `enabled` override; derives
+     `world_size` from `LauncherConfig`
+
+6. **Zero Hardcoded Values** ✓
+   - LBB parameters (`lbb_eps`, `lbb_target`, `lbb_log_penalty_weight`) in
+     `TrainingConfig`
+   - Elo thresholds (`elo_win_threshold`, `elo_loss_threshold`) in
+     `TrainingConfig`
+   - PER beta increment (`per_beta_increment`) in `TrainingConfig`
+   - PDE convergence thresholds (`good_reduction_threshold`,
+     `poor_reduction_threshold`, `explore_error_threshold`) in `PDEGameConfig`
+   - All defaults match previous hard-coded values (fully backwards-compatible)
+
+7. **85 % Branch Coverage** ✓
+   - 46 new trainer branch tests (`tests/training/test_trainer_branches.py`)
+   - CUDA / google.auth / cv2 / omegaconf environment guards across test suite
+   - 5 322 tests passing, 154 environment-skipped, 0 failures
+
+### Remaining Planned Improvements
+
+1. **PDE End-to-End Integration**
+   - Full self-play loop driven by `PDEGameAdapter`
+   - Curriculum: start with Poisson, progress to Burgers / Navier-Stokes
+   - Benchmarks vs classical adaptive FEM solvers
 
 2. **ONNX Export**
    - Convert PyTorch models to ONNX
    - Deploy on edge devices (Raspberry Pi, Jetson)
    - Quantization for int8 inference
 
-3. **Multi-Game Support**
-   - Abstract game interface
-   - Support for Chess, Shogi, etc.
-   - Shared continuous operator core
-
-4. **Advanced MCTS**
-   - Gumbel AlphaZero search
+3. **Advanced MCTS**
+   - Gumbel AlphaZero search with sequential halving
    - Value-based exploration
    - Policy improvement operators
 
-5. **Enhanced PoC Framework**
+4. **Enhanced PoC Framework**
    - Automated hyperparameter tuning
    - Statistical significance testing
    - Comparative visualizations
 
-6. **PDE Extensions**
+5. **PDE Extensions**
    - 3D domain support
    - Time-stepping for unsteady problems
    - Multi-physics coupling
    - Uncertainty quantification
+
+6. **Distributed Validation**
+   - Integration tests for multi-node DDP training
+   - SLURM job array support
+   - Distributed self-play with NCCL gradient sync
 
 ---
 

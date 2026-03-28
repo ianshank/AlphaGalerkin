@@ -102,8 +102,60 @@ multirun/
 Test_Video_Materals/
 validation_outputs/
 
+# ML model artifacts
+*.safetensors
+*.onnx
+*.onnx.data
+*.tflite
+*.mlmodel
+*.gguf
+*.bin
+*.ot
+*.engine
+
+# Exported ONNX & deployment artefacts
+deployment/exports/
+onnx_exports/
+
+# Benchmark / profiling outputs
+benchmark_results/
+profiling_results/
+*.prof
+*.trace
+
+# Vertex AI / GCS outputs
+vertex_outputs/
+vertex_jobs/
+gs_cache/
+
+# Distributed training artifacts
+dist_checkpoints/
+rank_*/
+node_*/
+
+# PDE solver outputs
+pde_outputs/
+mesh_outputs/
+basis_outputs/
+
+# Compression codec outputs
+bitstreams/
+encoded_videos/
+decoded_videos/
+*.agk
+
+# Experiment tracking (not W&B dir, already tracked above)
+mlruns/
+.neptune/
+.aim/
+lightning_logs/
+
 # Credentials and secrets
 *.json
 !package.json
 !tsconfig.json
 notebooks/utils/*.json
+
+# Temporary test artifacts
+tmp_test_*/
+test_outputs/

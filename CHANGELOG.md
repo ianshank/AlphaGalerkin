@@ -5,6 +5,105 @@ All notable changes to AlphaGalerkin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-27
+
+### Summary
+
+This release focuses on CI/CD stabilisation, dead-code removal, eliminating
+all hard-coded magic numbers, and lifting branch coverage to 85 %.  It also
+closes the gap between the distributed-training configuration and the tests
+that exercise it, and introduces the `PDEGameAdapter` that bridges PDE games
+to the generic MCTS engine.
+
+### Added
+
+- **PDEGameAdapter** (`src/pde/mcts_adapter.py`) — bridges `PDEGame` to the
+  `MCTS.GameInterface` protocol; maps error reduction to `{-1, 0, +1}` reward;
+  exposes `reset()`, `current_error`, and `error_reduction` helpers
+- **`_get_float_attr()` helper** — safe float extraction from Pydantic configs
+  or mock objects (prevents silent `float(MagicMock()) == 1.0` bugs)
+- **Trainer branch tests** (`tests/training/test_trainer_branches.py`) — 46
+  new targeted tests for previously uncovered branches in `trainer.py`
+- **Configurable LBB parameters** (`config/schemas.py`):
+  `lbb_eps`, `lbb_target`, `lbb_log_penalty_weight`
+- **Configurable Elo thresholds** (`config/schemas.py`):
+  `elo_win_threshold` (0.55), `elo_loss_threshold` (0.45)
+- **Configurable PER beta increment** (`config/schemas.py`):
+  `per_beta_increment` (0.001)
+- **Configurable PDE thresholds** (`src/pde/config.py`):
+  `good_reduction_threshold` (0.1), `poor_reduction_threshold` (0.5),
+  `explore_error_threshold` (0.1)
+- **`DistributedInfraConfig` extensions** (`src/distributed/config.py`):
+  `gradient_compression`, `learning_rate_scaling`, `launcher` field,
+  `should_sync_at_step()`, `should_save_checkpoint()`,
+  `requires_barrier_before_checkpoint()`, `scale_learning_rate()`,
+  `get_node_rank()`
+- **`SelfPlayDistributedConfig` extensions**: `num_workers`, `batch_size`,
+  `total_games` property, `get_games_for_worker()`
+- **`create_distributed_config()` improvements**: accepts `enabled` override
+  kwarg; derives `world_size` from launcher when provided
+
+### Changed
+
+- **`AlphaGalerkinLoss`** (`src/training/loss.py`) — `log_penalty_weight`
+  parameter wired from config; `lbb_eps`/`lbb_target` sourced from config
+- **`Trainer`** (`src/training/trainer.py`) — Elo win/loss thresholds sourced
+  from config (`elo_win_threshold`, `elo_loss_threshold`)
+- **`create_replay_buffer()`** (`src/training/replay_buffer.py`) — threads
+  `beta_increment` through from config instead of hard-coding
+- **`BasisSelectionGame`** (`src/pde/games/basis_selection.py`) — uses
+  `config.explore_error_threshold` instead of the literal `0.1`
+- **`.gitignore`** — extended with ML artefact patterns: `*.safetensors`,
+  `*.onnx`, `*.agk`, `vertex_outputs/`, `benchmark_results/`,
+  distributed-training artefacts, and temporary test output directories
+
+### Fixed
+
+- **`PoissonOperator.residual()`** (and three sibling operators) in
+  `src/pde/operators.py` — unconditionally called `compute_derivatives()`
+  even when the flag was `False`, raising `RuntimeError` on tensors without
+  `grad_fn`
+- **`PhysicsLoss._compute_laplacian()`** (`src/experiments/physics_model.py`)
+  — for linear functions the first-order gradient is constant (no `grad_fn`);
+  the second `autograd.grad` call is now skipped correctly
+- **Chess insufficient-material check** (`src/games/chess.py:906`) — replaced
+  bare `pass` stub with `return True`
+- **Quantizer forward pass** (`src/video_compression/models/quantizer.py:43`)
+  — replaced empty `pass` stub with `return x`
+- **`tests/tools/test_cli.py`** — `patch("sys.exit")` missing `as mock_exit`
+  causing `NameError`
+- **`tests/mcts/test_node.py`**, **`test_search.py`** — tree pruning tests
+  captured child reference before `prune_except`/`advance`, preventing dangling-reference failures
+- **`tests/games/test_chess.py`** — `test_illegal_move_notation` used notation
+  that is legal (`e1e8`); changed to genuinely invalid strings (`z9z9`, `ab`)
+- **`tests/data/test_dataset.py`** — `DataLoader` collation for `Experience`
+  dataclass now passes `collate_fn=list`
+- **`tests/data/test_collate.py`** — added `@pytest.mark.skipif(not cuda)`
+  decorators; removed duplicate `import torch`
+- **`tests/distributed/test_launcher.py`** — removed `spec=subprocess.Popen`
+  from mock that failed when `Popen` was itself patched
+- **`tests/distributed/test_multiprocess.py`** — updated assertions to match
+  `from_environment()` returning `tuple[int, int, int]` instead of a config object
+- **`tests/training/test_self_play.py`** — added CUDA skip decorators; fixed
+  multiprocessing fallback test to trigger `RuntimeError` via `share_memory`
+- **`tests/training/test_extended_config.py`** — wrapped omegaconf import in
+  `try/except` to gracefully skip when antlr4 version is incompatible
+- **`tests/vertex/test_auth.py`** — fixed gcloud path mocking at construction
+  time; skips when `google.auth` is unavailable
+- **`tests/integration/test_video_workflow.py`** — skips gracefully when `cv2`
+  is not installed
+- **`tests/poc/test_scenarios_transfer.py`** — registry isolated per-test via
+  `autouse` fixture to prevent ordering-dependent failures
+
+### Coverage
+
+- **85 % branch coverage** (up from ~75 %) — measured with `--cov-branch`
+- **5 322 tests passing**, 154 skipped (environment-dependent: CUDA,
+  `google.auth`, `cv2`, `omegaconf`/antlr4)
+- **0 CI failures**
+
+---
+
 ## [Unreleased]
 
 ### Added

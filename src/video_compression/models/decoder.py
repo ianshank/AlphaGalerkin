@@ -335,7 +335,10 @@ class TemporalDecoder(nn.Module):
             batch, channels, h, w = x.shape
             logger.debug(
                 "TemporalDecoder: x=%s, ref=%s, latent_ch=%d, d_model=%d",
-                x.shape, reference.shape, channels, self.latent_to_model.in_features,
+                x.shape,
+                reference.shape,
+                channels,
+                self.latent_to_model.in_features,
             )
 
             # Reshape for attention: (B, C, H, W) -> (B, H*W, C)

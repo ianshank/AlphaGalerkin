@@ -75,7 +75,6 @@ class AgentOrchestrator(BaseExecutable["OrchestratorConfig"]):
                 evaluator_factory=self._evaluator_factory,
             )
 
-            meta.setup()
             final_state = meta.run(
                 max_steps=self.config.decomposition.max_steps,
             )
@@ -94,7 +93,7 @@ class AgentOrchestrator(BaseExecutable["OrchestratorConfig"]):
                 artifacts[f"solver_{name}_error_history"] = list(solver.state.error_history)
 
             return self._create_result(
-                status=ExecutionStatus.COMPLETED,
+                status=final_state.status,
                 metrics=metrics,
                 artifacts=artifacts,
             )

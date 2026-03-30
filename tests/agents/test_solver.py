@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agents.config import SolverAgentConfig
+from src.agents.config import MessageType, SolverAgentConfig
 from src.agents.message import MessageBus
 from src.agents.solver import SolverAgent
 from src.templates.base import ExecutionStatus
@@ -128,8 +128,10 @@ class TestSolverAgent:
             solver.setup()
             solver.step()
 
-            # Message sent to "*" via publish, so it lands in "*" queue
-            # (which isn't subscribed). This validates no crash occurs.
+            # Broadcast message should reach subscribed agents
+            msgs = message_bus.receive("broadcast_target")
+            assert len(msgs) >= 1
+            assert msgs[0].message_type == MessageType.STATE_UPDATE
 
     def test_metrics(self, solver: SolverAgent) -> None:
         with patch(_ADAPTER_PATH) as mock_adapter_cls, patch(_MCTS_PATH) as mock_mcts_cls:

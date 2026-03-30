@@ -167,8 +167,11 @@ class TestCouplingAgent:
         agent.setup()
         agent._residual_history = [0.1]  # Below tolerance
         agent.step()  # Will check convergence
-        # After step, residual_history has [0.1, inf] due to no messages
-        # But the convergence check sees the new inf and doesn't converge
+        # After step, residual_history has [0.1, inf] due to no messages.
+        # The convergence check sees the new inf, so the agent should
+        # NOT be converged — verify this behaviour is stable.
+        assert not agent.is_converged()
+        assert agent.state.step == 1
 
     def test_reset(self, coupling_agent: CouplingAgent) -> None:
         coupling_agent.step()

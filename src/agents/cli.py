@@ -129,7 +129,9 @@ def run(
         title="Agent Orchestration Result",
         status=result.status.value,
         details={
-            "duration": f"{result.duration_seconds:.2f}s" if result.duration_seconds else "N/A",
+            "duration": f"{result.duration_seconds:.2f}s"
+            if result.duration_seconds is not None
+            else "N/A",
             "total_steps": str(result.metrics.get("total_steps", 0)),
             "budget_used": f"{result.metrics.get('budget_used', 0):.4f}",
         },

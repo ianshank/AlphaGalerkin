@@ -130,11 +130,11 @@ class UniformAllocator(CollocationAllocator):
     ) -> NDArray[np.float32]:
         """Generate uniformly spaced points via random sampling."""
         rng = np.random.default_rng(seed)
-        points = np.empty((self.config.n_points, dim), dtype=np.float32)
-        for d in range(dim):
-            points[:, d] = rng.uniform(
-                domain_min[d], domain_max[d], size=self.config.n_points
-            ).astype(np.float32)
+        points = rng.uniform(
+            low=domain_min,
+            high=domain_max,
+            size=(self.config.n_points, dim),
+        ).astype(np.float32)
         return points
 
 
@@ -254,7 +254,10 @@ class ErrorGuidedAllocator(CollocationAllocator):
         if len(high_error_coords) == 0:
             return UniformAllocator(self.config).allocate(domain_min, domain_max, dim, seed=seed)
 
-        n_refined = min(self.config.n_points, len(high_error_coords) * 4)
+        n_refined = min(
+            self.config.n_points,
+            len(high_error_coords) * self.config.refined_oversampling_factor,
+        )
         n_uniform = self.config.n_points - n_refined
 
         indices = rng.choice(len(high_error_coords), size=n_refined, replace=True)

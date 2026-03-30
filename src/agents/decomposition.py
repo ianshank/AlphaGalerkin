@@ -128,6 +128,9 @@ class DecompositionAgent(BaseAgent):
     def decompose(self) -> list[SubproblemSpec]:
         """Decompose the multi-physics problem into subproblems.
 
+        Also updates ``self._subproblems`` so the ``subproblems``
+        property is always in sync.
+
         Returns:
             List of subproblem specifications.
 
@@ -135,14 +138,17 @@ class DecompositionAgent(BaseAgent):
         strategy = self.decomp_config.strategy
 
         if strategy == DecompositionStrategy.OPERATOR_SPLITTING:
-            return self._operator_splitting()
+            result = self._operator_splitting()
         elif strategy == DecompositionStrategy.DOMAIN_DECOMPOSITION:
-            return self._domain_decomposition()
+            result = self._domain_decomposition()
         elif strategy == DecompositionStrategy.DIMENSIONAL_REDUCTION:
-            return self._dimensional_reduction()
+            result = self._dimensional_reduction()
         else:
             msg = f"Unknown decomposition strategy: {strategy}"
             raise ValueError(msg)
+
+        self._subproblems = result
+        return result
 
     def _operator_splitting(self) -> list[SubproblemSpec]:
         """Split coupled PDEs into sequential single-PDE solves.
@@ -197,11 +203,11 @@ class DecompositionAgent(BaseAgent):
         d_min = pde_config.domain_min
         d_max = pde_config.domain_max
 
-        n_subdomains = min(
-            self.decomp_config.max_subproblems,
-            len(self._multi_physics.physics)
-            if len(self._multi_physics.physics) > 1
-            else self.decomp_config.max_subproblems,
+        n_physics = len(self._multi_physics.physics)
+        n_subdomains = (
+            min(self.decomp_config.max_subproblems, n_physics)
+            if n_physics > 1
+            else self.decomp_config.max_subproblems
         )
         n_subdomains = max(2, n_subdomains)
 
@@ -280,7 +286,7 @@ class DecompositionAgent(BaseAgent):
             kept_dims: list[int] = []
             for d in range(dim):
                 ratio = extents[d] / max_extent if max_extent > 0 else 1.0
-                if ratio > 0.1 or dim <= 1:
+                if ratio > self.decomp_config.dimensional_reduction_threshold or dim <= 1:
                     reduced_min.append(d_min[d])
                     reduced_max.append(d_max[d])
                     kept_dims.append(d)
@@ -301,9 +307,12 @@ class DecompositionAgent(BaseAgent):
 
             # Adjust advection_coeff to match reduced dimensions
             adv_coeff = list(pde_config.advection_coeff)
-            reduced_adv = (
-                [adv_coeff[d] for d in kept_dims] if len(adv_coeff) >= dim else adv_coeff[:new_dim]
-            )
+            if len(adv_coeff) >= dim:
+                reduced_adv = [adv_coeff[d] for d in kept_dims]
+            elif len(adv_coeff) >= new_dim:
+                reduced_adv = adv_coeff[:new_dim]
+            else:
+                reduced_adv = adv_coeff + [0.0] * (new_dim - len(adv_coeff))
 
             sub_pde = pde_config.with_overrides(
                 name=f"{pde_config.name}_reduced",

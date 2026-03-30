@@ -61,7 +61,7 @@ class TestAgentOrchestrator:
 
         with patch("src.agents.orchestrator.MetaAgent") as mock_meta_cls:
             mock_meta = MagicMock()
-            mock_meta.setup.side_effect = RuntimeError("Test error")
+            mock_meta.run.side_effect = RuntimeError("Test error")
             mock_meta_cls.return_value = mock_meta
 
             result = orch.execute()

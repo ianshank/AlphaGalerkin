@@ -132,21 +132,15 @@ class BaseAgent(ABC):
         - Error below tolerance (with at least one error recorded)
 
         """
-        if self._state.status in (
-            ExecutionStatus.COMPLETED,
-            ExecutionStatus.FAILED,
-        ):
-            return True
-        if self._state.budget_remaining <= 0:
-            return True
-        if self._state.step >= self.config.max_steps:
-            return True
-        if (
-            self._state.error_history
-            and self._state.error_history[-1] < self.config.error_tolerance
-        ):
-            return True
-        return False
+        return (
+            self._state.status in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED)
+            or self._state.budget_remaining <= 0
+            or self._state.step >= self.config.max_steps
+            or (
+                bool(self._state.error_history)
+                and self._state.error_history[-1] < self.config.error_tolerance
+            )
+        )
 
     @abstractmethod
     def setup(self) -> None:
@@ -188,7 +182,11 @@ class BaseAgent(ABC):
                 self._state = self.step()
                 self._state.metrics = self.get_metrics()
 
-            self._state.status = ExecutionStatus.COMPLETED
+            if self._state.status not in (
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+            ):
+                self._state.status = ExecutionStatus.COMPLETED
 
         except Exception as e:
             self._state.status = ExecutionStatus.FAILED
@@ -241,7 +239,10 @@ class BaseAgent(ABC):
             message_type=msg_type,
             payload=payload or {},
         )
-        self._message_bus.publish(message)
+        if receiver == "*":
+            self._message_bus.broadcast(message)
+        else:
+            self._message_bus.publish(message)
 
     def receive_messages(
         self,

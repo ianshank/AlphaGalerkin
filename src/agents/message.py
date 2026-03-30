@@ -24,6 +24,7 @@ Example:
 
 from __future__ import annotations
 
+import copy
 import threading
 import time
 import uuid
@@ -107,21 +108,28 @@ class MessageBus:
     def publish(self, message: AgentMessage) -> None:
         """Send a message to a specific agent.
 
-        If the receiver is not subscribed, the message is silently dropped.
+        If the receiver is ``"*"``, the message is broadcast to all
+        subscribed agents except the sender.  Otherwise, if the receiver
+        is not subscribed, the message is silently dropped.
 
         Args:
             message: The message to deliver.
 
         """
+        if message.receiver == "*":
+            self.broadcast(message)
+            return
+
         with self._lock:
             if message.receiver in self._queues:
                 queue = self._queues[message.receiver]
                 if len(queue) == queue.maxlen:
-                    self._logger.debug(
-                        "buffer_overflow",
-                        agent_id=message.receiver,
-                        dropped=1,
-                    )
+                    if self.config.enable_logging:
+                        self._logger.debug(
+                            "buffer_overflow",
+                            agent_id=message.receiver,
+                            dropped=1,
+                        )
                 queue.append(message)
                 if self.config.enable_logging:
                     self._logger.debug(
@@ -141,7 +149,7 @@ class MessageBus:
         with self._lock:
             for agent_id, queue in self._queues.items():
                 if agent_id != message.sender:
-                    queue.append(message)
+                    queue.append(copy.copy(message))
             if self.config.enable_logging:
                 self._logger.debug(
                     "message_broadcast",

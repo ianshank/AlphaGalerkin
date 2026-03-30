@@ -157,6 +157,13 @@ class MetaAgent(BaseAgent):
             solver.setup()
             self._solver_agents[spec.name] = solver
             self._stall_counters[spec.name] = 0
+        else:
+            self._meta_logger.warning(
+                "solver_creation_skipped",
+                subproblem=spec.name,
+                has_game_factory=self._game_factory is not None,
+                has_evaluator_factory=self._evaluator_factory is not None,
+            )
 
     def step(self) -> AgentState:
         """Execute one orchestration step.
@@ -246,8 +253,24 @@ class MetaAgent(BaseAgent):
         )
 
     def _check_global_convergence(self) -> bool:
-        """Check if all solvers have converged or terminated."""
+        """Check if all solvers have converged or terminated.
+
+        Respects ``MultiPhysicsConfig.global_tolerance`` and
+        ``max_schwarz_iterations`` in addition to per-solver
+        terminal status and coupling convergence.
+        """
         if not self._solver_agents:
+            return True
+
+        mp_config = self._orch_config.multi_physics
+
+        # Enforce outer-iteration cap
+        if self._state.step >= mp_config.max_schwarz_iterations:
+            self._meta_logger.info(
+                "max_schwarz_iterations_reached",
+                step=self._state.step,
+                limit=mp_config.max_schwarz_iterations,
+            )
             return True
 
         all_solvers_done = all(solver.is_terminal for solver in self._solver_agents.values())
@@ -255,6 +278,12 @@ class MetaAgent(BaseAgent):
         coupling_done = True
         if self._coupling_agent is not None:
             coupling_done = self._coupling_agent.is_converged()
+
+        # Check global error against tolerance
+        if self._state.error_history:
+            global_error = self._state.error_history[-1]
+            if global_error < mp_config.global_tolerance:
+                return True
 
         return all_solvers_done and coupling_done
 

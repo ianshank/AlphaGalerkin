@@ -17,9 +17,10 @@ Example:
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal, Self
+from typing import Literal
 
 from pydantic import Field, model_validator
+from typing_extensions import Self
 
 from src.pde.config import PDEConfig
 from src.templates.config import BaseModuleConfig
@@ -219,6 +220,12 @@ class DecompositionConfig(AgentConfig):
         le=2,
         description="Splitting order (1=Lie-Trotter, 2=Strang)",
     )
+    dimensional_reduction_threshold: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description="Ratio below which a thin dimension is dropped during dimensional reduction",
+    )
 
 
 class CouplingConfig(AgentConfig):
@@ -320,6 +327,12 @@ class CollocationConfig(BaseModuleConfig):
         gt=0.0,
         le=0.5,
         description="Perturbation scale as fraction of domain extent",
+    )
+    refined_oversampling_factor: int = Field(
+        default=4,
+        ge=1,
+        le=32,
+        description="Multiplier for refined points around high-error regions",
     )
 
     @model_validator(mode="after")

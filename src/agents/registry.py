@@ -76,3 +76,7 @@ def _register_builtin_agents() -> None:
         from src.agents.meta import MetaAgent
 
         register_agent("meta")(MetaAgent)
+
+
+# Auto-register builtin agents on import
+_register_builtin_agents()

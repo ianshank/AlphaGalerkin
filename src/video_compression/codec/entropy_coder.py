@@ -50,10 +50,7 @@ class RangeEncoder:
 
         """
         if cdf_precision >= precision:
-            raise ValueError(
-                f"cdf_precision ({cdf_precision}) must be < "
-                f"precision ({precision})"
-            )
+            raise ValueError(f"cdf_precision ({cdf_precision}) must be < precision ({precision})")
         self.precision = precision
         self.cdf_precision = cdf_precision
         self.max_range = 1 << precision
@@ -83,8 +80,7 @@ class RangeEncoder:
         if range_size == 0:
             # Safety: force renormalize if range collapsed
             logger.debug(
-                "Range collapse detected (range=%d, total=%d), "
-                "forcing renormalization",
+                "Range collapse detected (range=%d, total=%d), forcing renormalization",
                 self.range,
                 cdf_total,
             )
@@ -105,9 +101,7 @@ class RangeEncoder:
     def _renormalize(self) -> None:
         """Emit bytes while range is below threshold."""
         while self.range < (self.max_range >> 8):
-            self.buffer.append(
-                (self.low >> (self.precision - 8)) & 0xFF
-            )
+            self.buffer.append((self.low >> (self.precision - 8)) & 0xFF)
             self.low = (self.low << 8) & (self.max_range - 1)
             self.range <<= 8
 
@@ -159,9 +153,7 @@ class RangeEncoder:
 
         """
         for _ in range(4):
-            self.buffer.append(
-                (self.low >> (self.precision - 8)) & 0xFF
-            )
+            self.buffer.append((self.low >> (self.precision - 8)) & 0xFF)
             self.low = (self.low << 8) & (self.max_range - 1)
 
         return bytes(self.buffer)
@@ -221,9 +213,7 @@ class RangeDecoder:
     def _renormalize(self) -> None:
         """Read bytes while range is below threshold."""
         while self.range < (self.max_range >> 8):
-            self.code = (
-                (self.code << 8) | self._read_byte()
-            ) & (self.max_range - 1)
+            self.code = ((self.code << 8) | self._read_byte()) & (self.max_range - 1)
             self.low = (self.low << 8) & (self.max_range - 1)
             self.range <<= 8
 
@@ -250,9 +240,7 @@ class RangeDecoder:
 
         # Find symbol via scaled value lookup
         scaled_value = (self.code - self.low) // range_size
-        symbol = int(
-            np.searchsorted(cdf[:-1], scaled_value, side="right") - 1
-        )
+        symbol = int(np.searchsorted(cdf[:-1], scaled_value, side="right") - 1)
         symbol = max(0, min(len(cdf) - 2, symbol))
 
         # Update range
@@ -326,8 +314,7 @@ class EntropyCoder:
             # Use that as a hint but ensure range > cdf
             range_precision = max(precision, cdf_precision + 4)
             logger.debug(
-                "EntropyCoder: legacy precision=%d mapped to "
-                "range_precision=%d, cdf_precision=%d",
+                "EntropyCoder: legacy precision=%d mapped to range_precision=%d, cdf_precision=%d",
                 precision,
                 range_precision,
                 cdf_precision,
@@ -445,14 +432,10 @@ class EntropyCoder:
         num_bins = max_val - min_val + 1
 
         # Create bin edges
-        edges = torch.arange(
-            min_val - 0.5, max_val + 1.5, device=scales.device
-        )
+        edges = torch.arange(min_val - 0.5, max_val + 1.5, device=scales.device)
 
         # Compute CDFs
-        cdfs = torch.zeros(
-            num_symbols, num_bins + 1, device=scales.device
-        )
+        cdfs = torch.zeros(num_symbols, num_bins + 1, device=scales.device)
 
         for i in range(num_bins + 1):
             z = edges[i] / scales

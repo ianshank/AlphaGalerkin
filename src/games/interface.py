@@ -282,17 +282,26 @@ class GameInterface(ABC):
 
         return f"{col_letter}{board_size - row}"
 
-    def string_to_action(self, move_str: str, board_size: int | None = None) -> int:
+    def string_to_action(
+        self,
+        move_str: str,
+        state_or_board_size: GameState | int | None = None,
+    ) -> int | None:
         """Convert human-readable move to action index.
 
         Args:
             move_str: Move string (e.g., "D4", "pass").
-            board_size: Board size for coordinate conversion.
+            state_or_board_size: A ``GameState`` for legality validation,
+                or an int board size for coordinate conversion.
 
         Returns:
-            Action index.
+            Action index, or ``None`` if the notation is invalid or the
+            move is illegal.
 
         """
+        board_size: int | None = (
+            state_or_board_size if isinstance(state_or_board_size, int) else None
+        )
         board_size = board_size or self.default_board_size
 
         if move_str.lower() == "pass":

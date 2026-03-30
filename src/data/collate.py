@@ -127,14 +127,13 @@ class VariableSizeCollator:
         # vs fixed action space encoding (chess: 4672 regardless of board_size).
         # Check per-experience: position-based if policy_size == board_size^2 + 1
         per_exp_position_based = [
-            exp.target_policy.size(0) == exp.board_size ** 2 + 1
-            for exp in experiences
+            exp.target_policy.size(0) == exp.board_size**2 + 1 for exp in experiences
         ]
         needs_remapping = any(per_exp_position_based)
 
         if needs_remapping:
             # Go-style: padded action space = max_size^2 + 1
-            max_actions = max_size ** 2 + 1
+            max_actions = max_size**2 + 1
         else:
             # Fixed action space (chess): use actual policy size
             max_actions = max(exp.target_policy.size(0) for exp in experiences)
@@ -160,21 +159,21 @@ class VariableSizeCollator:
 
             if per_exp_position_based[i]:
                 # Go: remap position-based policy to padded coordinate space
-                n_positions = size ** 2
+                n_positions = size**2
                 for row in range(size):
                     for col in range(size):
                         orig_idx = row * size + col
                         new_idx = row * max_size + col
                         target_policies[i, new_idx] = exp.target_policy[orig_idx]
                 # Copy pass move probability
-                target_policies[i, max_size ** 2] = exp.target_policy[n_positions]
+                target_policies[i, max_size**2] = exp.target_policy[n_positions]
 
                 # Set action mask for Go
                 for row in range(size):
                     for col in range(size):
                         new_idx = row * max_size + col
                         action_mask[i, new_idx] = True
-                action_mask[i, max_size ** 2] = True  # Pass always valid
+                action_mask[i, max_size**2] = True  # Pass always valid
             else:
                 # Fixed action space (chess): copy directly
                 target_policies[i, :policy_size] = exp.target_policy

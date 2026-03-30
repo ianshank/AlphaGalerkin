@@ -173,8 +173,7 @@ class CompressionDemoRunner:
         torch.manual_seed(config.seed)
 
         logger.info(
-            "CompressionDemoRunner initialized: device=%s, patterns=%s, "
-            "lambdas=%s, resolutions=%s",
+            "CompressionDemoRunner initialized: device=%s, patterns=%s, lambdas=%s, resolutions=%s",
             self.device,
             [p.value for p in config.patterns],
             config.lambda_values,
@@ -347,8 +346,7 @@ class CompressionDemoRunner:
                 output = codec.encode_frame(frame_padded, frame_info)
             except Exception as e:
                 logger.warning(
-                    "Encode failed for frame %d (type=%s): %s. "
-                    "Forcing I-frame.",
+                    "Encode failed for frame %d (type=%s): %s. Forcing I-frame.",
                     i,
                     frame_info.frame_type.value,
                     e,
@@ -403,16 +401,8 @@ class CompressionDemoRunner:
                 if output.z_bitstream is not None:
                     z_bytes = output.z_bitstream.data
 
-                fwd_ref = (
-                    frame_info.forward_ref
-                    if frame_info.forward_ref is not None
-                    else -1
-                )
-                bwd_ref = (
-                    frame_info.backward_ref
-                    if frame_info.backward_ref is not None
-                    else -1
-                )
+                fwd_ref = frame_info.forward_ref if frame_info.forward_ref is not None else -1
+                bwd_ref = frame_info.backward_ref if frame_info.backward_ref is not None else -1
                 frame_header = FrameHeader(
                     frame_idx=i,
                     frame_type=frame_info.frame_type,
@@ -445,9 +435,7 @@ class CompressionDemoRunner:
         result.avg_bpp = total_bits / (num_frames * pixels_per_frame)
         result.avg_psnr_db = total_psnr / num_frames
         result.avg_ssim = total_ssim / num_frames
-        result.total_encode_time_ms = sum(
-            fr.encode_time_ms for fr in result.frame_results
-        )
+        result.total_encode_time_ms = sum(fr.encode_time_ms for fr in result.frame_results)
 
         # Write bitstream if requested
         if write_bitstream and encoded_frames:
@@ -481,8 +469,7 @@ class CompressionDemoRunner:
             try:
                 loaded_header, loaded_frames = load_bitstream(bitstream_path)
                 assert loaded_header.num_frames == num_frames, (
-                    f"Frame count mismatch: wrote {num_frames}, "
-                    f"read {loaded_header.num_frames}"
+                    f"Frame count mismatch: wrote {num_frames}, read {loaded_header.num_frames}"
                 )
                 assert len(loaded_frames) == len(encoded_frames), (
                     f"Encoded frame count mismatch: wrote {len(encoded_frames)}, "

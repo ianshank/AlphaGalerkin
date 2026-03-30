@@ -1023,17 +1023,9 @@ class Trainer:
             self._run_checkpoint_tournament(step, n_games)
 
         # Engine evaluation (Stockfish benchmark)
-        engine_eval_enabled = getattr(
-            self.training_config, "engine_eval_enabled", False
-        )
-        engine_eval_path = getattr(
-            self.training_config, "engine_eval_path", None
-        )
-        if (
-            engine_eval_enabled
-            and engine_eval_path is not None
-            and self.evaluator.game is not None
-        ):
+        engine_eval_enabled = getattr(self.training_config, "engine_eval_enabled", False)
+        engine_eval_path = getattr(self.training_config, "engine_eval_path", None)
+        if engine_eval_enabled and engine_eval_path is not None and self.evaluator.game is not None:
             self._run_engine_evaluation(step)
 
         # Measure policy agreement
@@ -1189,9 +1181,7 @@ class Trainer:
 
             # Extract Elo estimate from metadata if available
             if "elo_difference" in result.metadata:
-                elo_metrics["eval/engine/elo_diff"] = result.metadata[
-                    "elo_difference"
-                ]
+                elo_metrics["eval/engine/elo_diff"] = result.metadata["elo_difference"]
             if "los" in result.metadata:
                 elo_metrics["eval/engine/los"] = result.metadata["los"]
 

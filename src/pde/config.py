@@ -19,6 +19,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from src.pde.geometry import GeometryConfig, GeometryType
 from src.templates.config import BaseModuleConfig, MetricDefinition, ThresholdOperator
 
 
@@ -87,6 +88,12 @@ class PDEConfig(BaseModuleConfig):
     domain_max: list[float] = Field(
         default_factory=lambda: [1.0, 1.0],
         description="Maximum domain coordinates",
+    )
+
+    # Geometry specification (for non-rectangular domains)
+    geometry: GeometryConfig = Field(
+        default_factory=GeometryConfig,
+        description="Domain geometry configuration for non-rectangular domains",
     )
 
     # Boundary conditions

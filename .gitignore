@@ -107,3 +107,4 @@ validation_outputs/
 !package.json
 !tsconfig.json
 notebooks/utils/*.json
+uv.lock

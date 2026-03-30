@@ -207,8 +207,8 @@ class TestSoftmaxAttentionProperties:
 
         out_no_mask = softmax_attn(x, mask=None)
 
-        # Causal mask
-        mask = torch.tril(torch.ones(2, 8, 8))
+        # Causal mask -- shape (batch, 1, n, n) to broadcast over heads
+        mask = torch.tril(torch.ones(2, 1, 8, 8))
         out_masked = softmax_attn(x, mask=mask)
 
         # Outputs should differ when mask is applied

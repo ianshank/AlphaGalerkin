@@ -291,12 +291,18 @@ class PDEBenchmarkRunner:
             self._log.warning("unknown_pde_type", pde_type=pde_type_str)
             pde_enum = PDEType.POISSON
 
+        # advection_coeff must match domain_dim (zero for non-advection PDEs)
+        advection_coeff = params.get("advection_coeff", [0.0] * dim)
+        if len(advection_coeff) != dim:
+            advection_coeff = [0.0] * dim
+
         pde_config = PDEConfig(
             name=bench_cfg["name"],
             pde_type=pde_enum,
             domain_dim=dim,
             domain_min=list(domain_min),
             domain_max=list(domain_max),
+            advection_coeff=advection_coeff,
         )
 
         # Try to get from registry

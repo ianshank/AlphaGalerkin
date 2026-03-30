@@ -1,0 +1,63 @@
+# Navy SBIR Topic N252-088: Advanced AI/ML-based Intelligent Agent for FEM
+# "AI/ML toolkits that automate finite element meshing, creating nodes and elements,
+#  predict potential accuracy impact, optimize models for improved accuracy and fidelity."
+#
+# This config demonstrates AlphaGalerkin's capabilities on problems
+# relevant to Navy structural analysis (aerospace structures).
+
+proposal:
+  solicitation: "N252-088"
+  agency: "Navy (NAVAIR)"
+  phase: "Phase I"
+  title: "MCTS-Guided Adaptive Mesh Refinement for Finite Element Analysis"
+  naics_code: "541715"
+  funding_range: "$150K-$250K"
+  duration_months: 6
+
+benchmark_suite:
+  # Problem 1: L-shaped domain (structural stress concentration)
+  - name: poisson_lshaped_stress
+    pde_type: poisson
+    description: "Stress concentration at re-entrant corner (analogous to structural joints)"
+    geometry:
+      type: l_shaped
+      scale: 1.0
+    target_error: 1.0e-6
+    max_dof: [100, 500, 1000, 5000, 10000]
+    baselines: ["uniform_fem", "dorfler_amr", "zienkiewicz_zhu"]
+
+  # Problem 2: Navier-Stokes for aerodynamic loads
+  - name: ns_cylinder_aero
+    pde_type: navier_stokes
+    description: "Vortex shedding past cylinder (aerodynamic load prediction)"
+    reynolds_numbers: [100, 200, 500]
+    geometry:
+      type: cylinder_flow
+      x_range: [0.0, 2.2]
+      y_range: [0.0, 0.41]
+      cylinder_center: [0.2, 0.2]
+      cylinder_radius: 0.05
+    target_error: 1.0e-3
+    baselines: ["fno", "physicsnemo_surrogate", "uniform_fem"]
+
+  # Problem 3: Burgers shock (material response)
+  - name: burgers_shock_wave
+    pde_type: burgers
+    description: "Shock wave propagation (impact/blast loading analogy)"
+    viscosity_values: [0.01, 0.001, 0.0001]
+    domain:
+      dim: 1
+      min: [0.0]
+      max: [1.0]
+    target_error: 1.0e-4
+    baselines: ["cole_hopf_exact", "uniform_fdm", "pinn"]
+
+evaluation_metrics:
+  - name: "error_vs_dof"
+    description: "Solution error as function of degrees of freedom"
+  - name: "error_vs_walltime"
+    description: "Solution error as function of wall-clock time"
+  - name: "convergence_rate"
+    description: "Asymptotic convergence rate under h-refinement"
+  - name: "adaptivity_efficiency"
+    description: "Ratio of MCTS-guided DOF to uniform DOF at equal accuracy"

@@ -1,0 +1,40 @@
+# AFWERX Open Topic Phase I: Dual-use CFD for UAV Design
+# $75K over 3 months - lowest barrier SBIR entry point
+# Frame for hypersonic vehicle / UAV design optimization
+#
+# Bridges AlphaGalerkin PDE capabilities to S500 swarm UAV project
+
+proposal:
+  solicitation: "AFWERX Open Topic 26.1"
+  agency: "Air Force (AFWERX)"
+  phase: "Phase I"
+  title: "AI-Guided Adaptive CFD for Rapid UAV Aerodynamic Design"
+  naics_code: "541715"
+  funding_range: "$75K"
+  duration_months: 3
+
+benchmark_suite:
+  # Problem 1: External aerodynamics (UAV fuselage)
+  - name: ns_uav_aero
+    pde_type: navier_stokes
+    description: "2D flow past UAV cross-section at various angles of attack"
+    reynolds_numbers: [100, 500, 1000]
+    angles_of_attack_deg: [0, 5, 10, 15]
+    target_error: 1.0e-3
+    baselines: ["openfoam_reference", "physicsnemo_surrogate"]
+
+  # Problem 2: Thermal management
+  - name: heat_battery_thermal
+    pde_type: heat
+    description: "Battery thermal management for UAV power systems"
+    diffusivity_values: [0.1, 1.0, 10.0]
+    target_error: 1.0e-4
+    baselines: ["comsol_reference", "uniform_fem"]
+
+evaluation_metrics:
+  - name: "design_space_coverage"
+    description: "Number of design points evaluated per hour"
+  - name: "accuracy_vs_fidelity"
+    description: "Trade-off between speed and accuracy"
+  - name: "transfer_efficiency"
+    description: "Zero-shot transfer from coarse to fine meshes"

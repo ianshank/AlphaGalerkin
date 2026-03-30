@@ -504,6 +504,19 @@ class AlphaGalerkinModel(nn.Module):
         """Set the training resolution."""
         self._training_resolution = value
 
+    def set_training_resolution(self, resolution: int) -> None:
+        """Set the training resolution explicitly.
+
+        Should be called by the trainer during initialization rather than
+        relying on auto-detection in forward(), which is not thread-safe
+        under DDP.
+
+        Args:
+            resolution: Board size used during training.
+
+        """
+        self._training_resolution = resolution
+
     def forward(
         self,
         x: Float[Tensor, "batch channels height width"],
@@ -521,10 +534,6 @@ class AlphaGalerkinModel(nn.Module):
         """
         batch, channels, height, width = x.shape
         board_size = height  # Assume square board
-
-        # Update training resolution on first forward pass
-        if self._training_resolution is None and self.training:
-            self._training_resolution = board_size
 
         # Create continuous coordinates
         coords = create_grid_coordinates(board_size, batch, x.device)

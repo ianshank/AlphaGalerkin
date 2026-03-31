@@ -273,14 +273,16 @@ class PhysicsLoss(nn.Module):
         for dim_idx in range(coords.shape[-1]):
             grad_dim = grad_phi[..., dim_idx]
             grad_dim_outputs = torch.ones_like(grad_dim)
-            (grad2,) = torch.autograd.grad(
+            grad2_result = torch.autograd.grad(
                 outputs=grad_dim,
                 inputs=coords,
                 grad_outputs=grad_dim_outputs,
                 create_graph=True,
                 retain_graph=True,
-            )
-            laplacian = laplacian + grad2[..., dim_idx]
+                allow_unused=True,
+            )[0]
+            if grad2_result is not None:
+                laplacian = laplacian + grad2_result[..., dim_idx]
         return laplacian
 
     def forward(

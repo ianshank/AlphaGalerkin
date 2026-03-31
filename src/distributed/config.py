@@ -16,7 +16,7 @@ import os
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class DistributedBackend(str, Enum):
@@ -119,6 +119,28 @@ class DistributedInfraConfig(BaseModel):
         description="Use gradient tensor as bucket view (memory optimization)",
     )
 
+    # Gradient compression precision
+    gradient_compression_bits: int = Field(
+        default=8,
+        ge=1,
+        le=32,
+        description="Bit precision for gradient compression",
+    )
+
+    # Learning rate scaling strategy
+    learning_rate_scaling: Literal["linear", "sqrt", "none"] = Field(
+        default="none",
+        description=(
+            "How to scale LR with world_size: linear=lr*ws, sqrt=lr*sqrt(ws), none=no scaling"
+        ),
+    )
+
+    # Launcher config reference
+    launcher: LauncherConfig | None = Field(
+        default=None,
+        description="Launcher configuration for deriving world_size etc.",
+    )
+
     # Mixed precision distributed
     use_amp: bool = Field(
         default=True,
@@ -202,6 +224,67 @@ class DistributedInfraConfig(BaseModel):
 
         """
         return per_gpu_batch_size * self.world_size * self.gradient_accumulation_steps
+
+    def should_sync_at_step(self, step: int) -> bool:
+        """Return True if gradients should be synced at this step.
+
+        Args:
+            step: Current training step (1-indexed).
+
+        Returns:
+            True if step is a multiple of gradient_accumulation_steps.
+
+        """
+        return step % self.gradient_accumulation_steps == 0
+
+    def should_save_checkpoint(self, rank: int) -> bool:
+        """Return True if this rank should save a checkpoint.
+
+        Args:
+            rank: Current process rank.
+
+        Returns:
+            True if rank 0 (when save_on_rank_0_only) or always True.
+
+        """
+        if self.save_on_rank_0_only:
+            return rank == 0
+        return True
+
+    def requires_barrier_before_checkpoint(self) -> bool:
+        """Return True if all ranks must sync before checkpointing.
+
+        Returns:
+            True when distributed training is enabled.
+
+        """
+        return self.enabled
+
+    def scale_learning_rate(self, base_lr: float) -> float:
+        """Scale learning rate based on world_size.
+
+        Args:
+            base_lr: Base learning rate for single-process training.
+
+        Returns:
+            Scaled learning rate.
+
+        """
+        import math
+
+        if self.learning_rate_scaling == "linear":
+            return base_lr * self.world_size
+        if self.learning_rate_scaling == "sqrt":
+            return base_lr * math.sqrt(self.world_size)
+        return base_lr
+
+    @model_validator(mode="after")
+    def sync_world_size_from_launcher(self) -> DistributedInfraConfig:
+        """Derive world_size from launcher if provided and world_size is default."""
+        if self.launcher is not None and self.world_size == 1:
+            # Derive world_size from launcher topology
+            self.world_size = self.launcher.get_world_size()
+        return self
 
 
 class LauncherConfig(BaseModel):
@@ -324,6 +407,18 @@ class LauncherConfig(BaseModel):
         """
         return global_rank % self.nproc_per_node
 
+    def get_node_rank(self, global_rank: int) -> int:
+        """Get node rank from global rank.
+
+        Args:
+            global_rank: Global process rank.
+
+        Returns:
+            Node rank (which node this process is on).
+
+        """
+        return global_rank // self.nproc_per_node
+
 
 class SelfPlayDistributedConfig(BaseModel):
     """Configuration for distributed self-play generation.
@@ -332,7 +427,7 @@ class SelfPlayDistributedConfig(BaseModel):
     efficient experience sharing.
 
     Attributes:
-        workers_per_node: Number of self-play workers per node.
+        num_workers: Number of self-play workers per node.
         games_per_worker: Games each worker generates per iteration.
         experience_sharing: How experiences are shared across nodes.
         buffer_sync_interval: Steps between buffer synchronization.
@@ -342,12 +437,14 @@ class SelfPlayDistributedConfig(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         validate_assignment=True,
+        populate_by_name=True,
     )
 
     # Worker configuration
-    workers_per_node: int = Field(
+    num_workers: int = Field(
         default=2,
         ge=1,
+        validation_alias=AliasChoices("num_workers", "workers_per_node"),
         description="Number of self-play workers per node",
     )
     games_per_worker: int = Field(
@@ -392,40 +489,95 @@ class SelfPlayDistributedConfig(BaseModel):
         default=True,
         description="Run self-play workers on CPU (GPU for training only)",
     )
-    inference_batch_size: int = Field(
+    batch_size: int = Field(
         default=32,
         ge=1,
+        validation_alias=AliasChoices("batch_size", "inference_batch_size"),
         description="Batch size for worker inference",
     )
+
+    @property
+    def workers_per_node(self) -> int:
+        """Backward-compatible alias for num_workers."""
+        return self.num_workers
+
+    @property
+    def inference_batch_size(self) -> int:
+        """Backward-compatible alias for batch_size."""
+        return self.batch_size
+
+    @property
+    def total_games(self) -> int:
+        """Total games across all workers per iteration.
+
+        Returns:
+            num_workers * games_per_worker.
+
+        """
+        return self.num_workers * self.games_per_worker
+
+    def get_games_for_worker(self, worker_id: int) -> tuple[int, int]:
+        """Get game range for a specific worker.
+
+        Args:
+            worker_id: Worker index (0-indexed, < num_workers).
+
+        Returns:
+            Tuple (start, end) representing range(start, end).
+
+        """
+        start = worker_id * self.games_per_worker
+        end = start + self.games_per_worker
+        return start, end
 
 
 def create_distributed_config(
     world_size: int = 1,
     backend: str = "nccl",
+    enabled: bool | None = None,
+    launcher: LauncherConfig | None = None,
     **kwargs: Any,
 ) -> DistributedInfraConfig:
     """Factory function to create distributed config.
 
     Args:
-        world_size: Number of processes.
+        world_size: Number of processes (ignored when launcher provided).
         backend: Communication backend.
-        **kwargs: Additional configuration options.
+        enabled: Override whether distributed is enabled. If None, derived
+            from world_size (enabled when > 1).
+        launcher: Optional launcher config; world_size is derived from it.
+        **kwargs: Additional configuration options passed to DistributedInfraConfig.
 
     Returns:
         Configured DistributedInfraConfig instance.
 
     """
     backend_enum = DistributedBackend(backend)
+
+    # Derive world_size from launcher if provided
+    effective_world_size = world_size
+    if launcher is not None:
+        effective_world_size = launcher.get_world_size()
+
+    # Derive enabled flag
+    if enabled is None:
+        effective_enabled = effective_world_size > 1
+    else:
+        effective_enabled = enabled
+
     return DistributedInfraConfig(
-        enabled=world_size > 1,
-        world_size=world_size,
+        enabled=effective_enabled,
+        world_size=effective_world_size,
         backend=backend_enum,
+        launcher=launcher,
         **kwargs,
     )
 
 
-def from_environment() -> tuple[int, int, int]:
-    """Extract distributed info from environment variables.
+def _get_env_rank_info() -> tuple[int, int, int]:
+    """Extract rank info from environment variables.
+
+    Internal helper for backward-compatible usage by trainer and worker.
 
     Returns:
         Tuple of (rank, local_rank, world_size).
@@ -436,6 +588,26 @@ def from_environment() -> tuple[int, int, int]:
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     return rank, local_rank, world_size
 
+
+def from_environment() -> DistributedInfraConfig | None:
+    """Build distributed config from environment variables.
+
+    Returns:
+        DistributedInfraConfig if running in distributed mode
+        (WORLD_SIZE > 1), or None if single-process.
+
+    """
+    rank, local_rank, world_size = _get_env_rank_info()
+    if world_size <= 1:
+        return None
+    return DistributedInfraConfig(
+        enabled=True,
+        world_size=world_size,
+    )
+
+
+# Rebuild DistributedInfraConfig to resolve forward references to LauncherConfig
+DistributedInfraConfig.model_rebuild()
 
 # Backward-compatible alias for tests and external usage
 # DistributedInfraConfig is the full-featured class; this alias maintains API compatibility

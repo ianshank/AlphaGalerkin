@@ -278,6 +278,7 @@ class TestParallelSelfPlayWorker:
         )
         assert not worker._use_parallel()
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA")
     def test_sequential_fallback_cuda_device(
         self,
         small_model: AlphaGalerkinModel,
@@ -291,6 +292,7 @@ class TestParallelSelfPlayWorker:
         )
         assert not worker._use_parallel()
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA")
     def test_sequential_fallback_cuda_torch_device(
         self,
         small_model: AlphaGalerkinModel,

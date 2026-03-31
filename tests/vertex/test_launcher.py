@@ -21,15 +21,6 @@ from src.vertex.launcher import (
     create_launcher,
 )
 
-# Check if aiplatform SDK is available for mocking
-try:
-    from google.cloud import aiplatform  # noqa: F401
-
-    HAS_AIPLATFORM = True
-except ImportError:
-    HAS_AIPLATFORM = False
-
-
 class TestJobState:
     """Tests for JobState enum."""
 
@@ -213,6 +204,14 @@ class TestVertexLauncher:
 
         assert result.job_name == "test-job"
         mock_job.submit.assert_called_once()
+
+        # Verify CustomJob constructor was called with correct arguments
+        mock_aiplatform.CustomJob.assert_called_once()
+        call_kwargs = mock_aiplatform.CustomJob.call_args
+        assert call_kwargs.kwargs.get("display_name") == "test-job"
+        worker_pool_specs = call_kwargs.kwargs.get("worker_pool_specs")
+        assert isinstance(worker_pool_specs, list)
+        assert len(worker_pool_specs) > 0
 
     def test_get_job_status(
         self,

@@ -22,6 +22,7 @@ scipy = pytest.importorskip("scipy", reason="scipy required for FDM solver")
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def minimal_config_yaml(tmp_path: Path) -> Path:
     """Minimal YAML config with one benchmark and the FDM baseline."""
@@ -95,6 +96,7 @@ def empty_baselines_config(tmp_path: Path) -> Path:
 # PDEBenchmarkResult
 # ---------------------------------------------------------------------------
 
+
 class TestPDEBenchmarkResult:
     def test_to_dict_basic(self):
         r = PDEBenchmarkResult(
@@ -137,8 +139,7 @@ class TestPDEBenchmarkResult:
 
     def test_metadata_defaults_empty(self):
         r = PDEBenchmarkResult(
-            benchmark_name="b", method_name="m",
-            n_dof=1, l2_error=0.0, wall_time_seconds=0.0
+            benchmark_name="b", method_name="m", n_dof=1, l2_error=0.0, wall_time_seconds=0.0
         )
         assert r.metadata == {}
 
@@ -146,6 +147,7 @@ class TestPDEBenchmarkResult:
 # ---------------------------------------------------------------------------
 # PDEBenchmarkRunner.__init__
 # ---------------------------------------------------------------------------
+
 
 class TestPDEBenchmarkRunnerInit:
     def test_loads_config(self, minimal_config_yaml: Path):
@@ -170,6 +172,7 @@ class TestPDEBenchmarkRunnerInit:
 # ---------------------------------------------------------------------------
 # run_benchmark
 # ---------------------------------------------------------------------------
+
 
 class TestRunBenchmark:
     def test_run_benchmark_returns_results(self, minimal_config_yaml: Path):
@@ -214,6 +217,7 @@ class TestRunBenchmark:
 # run_all
 # ---------------------------------------------------------------------------
 
+
 class TestRunAll:
     def test_run_all_returns_list(self, minimal_config_yaml: Path):
         runner = PDEBenchmarkRunner(minimal_config_yaml)
@@ -239,6 +243,7 @@ class TestRunAll:
 # ---------------------------------------------------------------------------
 # generate_report
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateReport:
     def test_generates_json(self, minimal_config_yaml: Path, tmp_path: Path):
@@ -294,12 +299,12 @@ class TestGenerateReport:
 # _attach_convergence_rates
 # ---------------------------------------------------------------------------
 
+
 class TestAttachConvergenceRates:
     def test_single_result_no_rate(self):
         results = [
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=10, l2_error=0.1, wall_time_seconds=0.0
+                benchmark_name="b", method_name="m", n_dof=10, l2_error=0.1, wall_time_seconds=0.0
             )
         ]
         updated = PDEBenchmarkRunner._attach_convergence_rates(results)
@@ -309,12 +314,10 @@ class TestAttachConvergenceRates:
         """With two levels, the finer result should get a convergence rate."""
         results = [
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=16, l2_error=0.1, wall_time_seconds=0.0
+                benchmark_name="b", method_name="m", n_dof=16, l2_error=0.1, wall_time_seconds=0.0
             ),
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=64, l2_error=0.025, wall_time_seconds=0.0
+                benchmark_name="b", method_name="m", n_dof=64, l2_error=0.025, wall_time_seconds=0.0
             ),
         ]
         updated = PDEBenchmarkRunner._attach_convergence_rates(results)
@@ -330,12 +333,10 @@ class TestAttachConvergenceRates:
         """Zero error should not produce a log-log rate."""
         results = [
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=10, l2_error=0.0, wall_time_seconds=0.0
+                benchmark_name="b", method_name="m", n_dof=10, l2_error=0.0, wall_time_seconds=0.0
             ),
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=20, l2_error=0.0, wall_time_seconds=0.0
+                benchmark_name="b", method_name="m", n_dof=20, l2_error=0.0, wall_time_seconds=0.0
             ),
         ]
         updated = PDEBenchmarkRunner._attach_convergence_rates(results)
@@ -345,12 +346,18 @@ class TestAttachConvergenceRates:
     def test_nan_l2_error_no_rate(self):
         results = [
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=10, l2_error=float("nan"), wall_time_seconds=0.0
+                benchmark_name="b",
+                method_name="m",
+                n_dof=10,
+                l2_error=float("nan"),
+                wall_time_seconds=0.0,
             ),
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="m",
-                n_dof=20, l2_error=float("nan"), wall_time_seconds=0.0
+                benchmark_name="b",
+                method_name="m",
+                n_dof=20,
+                l2_error=float("nan"),
+                wall_time_seconds=0.0,
             ),
         ]
         updated = PDEBenchmarkRunner._attach_convergence_rates(results)
@@ -360,20 +367,28 @@ class TestAttachConvergenceRates:
         """Results from different methods should not interfere."""
         results = [
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="fdm",
-                n_dof=16, l2_error=0.1, wall_time_seconds=0.0
+                benchmark_name="b", method_name="fdm", n_dof=16, l2_error=0.1, wall_time_seconds=0.0
             ),
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="fdm",
-                n_dof=64, l2_error=0.025, wall_time_seconds=0.0
+                benchmark_name="b",
+                method_name="fdm",
+                n_dof=64,
+                l2_error=0.025,
+                wall_time_seconds=0.0,
             ),
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="amr",
-                n_dof=16, l2_error=0.05, wall_time_seconds=0.0
+                benchmark_name="b",
+                method_name="amr",
+                n_dof=16,
+                l2_error=0.05,
+                wall_time_seconds=0.0,
             ),
             PDEBenchmarkResult(
-                benchmark_name="b", method_name="amr",
-                n_dof=64, l2_error=0.01, wall_time_seconds=0.0
+                benchmark_name="b",
+                method_name="amr",
+                n_dof=64,
+                l2_error=0.01,
+                wall_time_seconds=0.0,
             ),
         ]
         updated = PDEBenchmarkRunner._attach_convergence_rates(results)
@@ -389,6 +404,7 @@ class TestAttachConvergenceRates:
 # ---------------------------------------------------------------------------
 # _normalise_solver_name (static helper)
 # ---------------------------------------------------------------------------
+
 
 class TestNormaliseSolverName:
     @pytest.mark.parametrize(
@@ -410,6 +426,7 @@ class TestNormaliseSolverName:
 # ---------------------------------------------------------------------------
 # _create_operator
 # ---------------------------------------------------------------------------
+
 
 class TestCreateOperator:
     def test_creates_poisson_operator(self, minimal_config_yaml: Path):

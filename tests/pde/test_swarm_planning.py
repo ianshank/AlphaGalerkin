@@ -119,25 +119,19 @@ class TestSwarmPlanningGameInit:
         assert game.action_space_size == 7
         assert game.action_space_size == N_ACTIONS_PER_AGENT
 
-    def test_initial_state_shape(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_initial_state_shape(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         assert initial_state.positions.shape == (3, 3)  # n_agents=3, 3D
         assert initial_state.velocities.shape == (3, 3)
 
     def test_initial_velocities_zero(self, initial_state: SwarmState) -> None:
-        np.testing.assert_array_equal(
-            initial_state.velocities, np.zeros((3, 3))
-        )
+        np.testing.assert_array_equal(initial_state.velocities, np.zeros((3, 3)))
 
     def test_initial_step_zero(self, initial_state: SwarmState) -> None:
         assert initial_state.step == 0
         assert initial_state.current_agent == 0
         assert not initial_state.is_terminal
 
-    def test_initial_obstacles(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_initial_obstacles(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         assert initial_state.obstacles.shape == (2, 4)  # n_obstacles=2
 
     def test_initial_coverage_map(self, initial_state: SwarmState) -> None:
@@ -174,9 +168,7 @@ class TestSwarmPlanningGameInit:
 class TestSwarmPlanningActions:
     """Tests for action application."""
 
-    def test_legal_actions(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_legal_actions(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         actions = game.get_legal_actions(initial_state)
         assert actions == list(range(7))
 
@@ -187,26 +179,18 @@ class TestSwarmPlanningActions:
         terminal.is_terminal = True
         assert game.get_legal_actions(terminal) == []
 
-    def test_apply_forward_action(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_apply_forward_action(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         # Action 4 = forward (+x)
         new_state = game.apply_action(initial_state, 4)
         # Agent 0 should have moved in +x direction
         assert new_state.positions[0][0] >= initial_state.positions[0][0]
         # Velocity should be set
-        assert new_state.velocities[0][0] == pytest.approx(
-            game.config.max_velocity
-        )
+        assert new_state.velocities[0][0] == pytest.approx(game.config.max_velocity)
 
-    def test_apply_hover_action(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_apply_hover_action(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         # Action 6 = hover
         new_state = game.apply_action(initial_state, 6)
-        np.testing.assert_array_almost_equal(
-            new_state.positions[0], initial_state.positions[0]
-        )
+        np.testing.assert_array_almost_equal(new_state.positions[0], initial_state.positions[0])
 
     def test_round_robin_agent_control(
         self, game: SwarmPlanningGame, initial_state: SwarmState
@@ -287,9 +271,7 @@ class TestSwarmPlanningTerminalAndReward:
         assert game.is_terminal(state)
         assert state.is_terminal
 
-    def test_reward_is_float(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_reward_is_float(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         reward = game.compute_reward(initial_state)
         assert isinstance(reward, float)
 
@@ -368,9 +350,7 @@ class TestSwarmPlanningPDEMethods:
         graph = game.compute_communication_graph(initial_state)
         assert not np.any(np.diag(graph))
 
-    def test_coverage_in_range(
-        self, game: SwarmPlanningGame, initial_state: SwarmState
-    ) -> None:
+    def test_coverage_in_range(self, game: SwarmPlanningGame, initial_state: SwarmState) -> None:
         coverage = game.compute_coverage(initial_state)
         assert 0.0 <= coverage <= 1.0
 
@@ -400,9 +380,7 @@ class TestSwarmPlanningUtilities:
         assert "invalid" in game.action_to_string(99)
 
     @pytest.mark.parametrize("action_idx", range(N_ACTIONS_PER_AGENT))
-    def test_all_action_names_valid(
-        self, game: SwarmPlanningGame, action_idx: int
-    ) -> None:
+    def test_all_action_names_valid(self, game: SwarmPlanningGame, action_idx: int) -> None:
         name = game.action_to_string(action_idx)
         assert name in ACTION_NAMES
 

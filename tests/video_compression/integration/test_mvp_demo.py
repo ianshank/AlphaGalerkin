@@ -126,9 +126,7 @@ class TestBitstreamRoundTripDemo:
             height=32,
             width=32,
         )
-        result = runner.run_single_lambda(
-            frames, 0.01, "test", write_bitstream=True
-        )
+        result = runner.run_single_lambda(frames, 0.01, "test", write_bitstream=True)
 
         assert result.bitstream_path is not None
         bitstream_path = Path(result.bitstream_path)
@@ -149,9 +147,7 @@ class TestBitstreamRoundTripDemo:
             height=32,
             width=32,
         )
-        result = runner.run_single_lambda(
-            frames, 0.01, "test", write_bitstream=True
-        )
+        result = runner.run_single_lambda(frames, 0.01, "test", write_bitstream=True)
 
         assert result.bitstream_path is not None
         _, loaded_frames = load_bitstream(result.bitstream_path)
@@ -166,9 +162,7 @@ class TestBitstreamRoundTripDemo:
             height=32,
             width=32,
         )
-        result = runner.run_single_lambda(
-            frames, 0.01, "test", write_bitstream=True
-        )
+        result = runner.run_single_lambda(frames, 0.01, "test", write_bitstream=True)
         assert result.bitstream_size_bytes > 0
 
 
@@ -202,9 +196,7 @@ class TestResolutionIndependenceDemo:
         )
 
         runner = CompressionDemoRunner(config)
-        results = runner.run_resolution_test(
-            SyntheticPattern.GRADIENT, 0.01
-        )
+        results = runner.run_resolution_test(SyntheticPattern.GRADIENT, 0.01)
         assert len(results) == 2
         assert results[0].height == 32
         assert results[1].height == 64
@@ -231,9 +223,7 @@ class TestResolutionIndependenceDemo:
         )
 
         runner = CompressionDemoRunner(config)
-        results = runner.run_resolution_test(
-            SyntheticPattern.WAVES, 0.01
-        )
+        results = runner.run_resolution_test(SyntheticPattern.WAVES, 0.01)
         for res in results:
             assert res.avg_psnr_db > 0, f"PSNR should be positive at {res.height}x{res.width}"
             assert 0 <= res.avg_ssim <= 1, f"SSIM out of range at {res.height}x{res.width}"

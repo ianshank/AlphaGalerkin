@@ -141,9 +141,7 @@ class TestPoissonOperatorProperties:
         )
 
         source = operator.source_term(coords)
-        expected = (
-            2 * (np.pi ** 2) * np.sin(np.pi * coords[:, 0]) * np.sin(np.pi * coords[:, 1])
-        )
+        expected = 2 * (np.pi**2) * np.sin(np.pi * coords[:, 0]) * np.sin(np.pi * coords[:, 1])
 
         np.testing.assert_allclose(source, expected, rtol=1e-5)
 
@@ -298,9 +296,7 @@ class TestBurgersOperatorProperties:
 
         residual = operator.residual(u, coords)
 
-        assert np.isfinite(residual.l2_norm), (
-            f"Residual must be finite for viscosity={viscosity}"
-        )
+        assert np.isfinite(residual.l2_norm), f"Residual must be finite for viscosity={viscosity}"
 
     def test_initial_condition_sinusoidal(self, burgers_config: PDEConfig) -> None:
         """Initial condition should be sin(2*pi*x) at t=0."""

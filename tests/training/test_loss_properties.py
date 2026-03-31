@@ -22,6 +22,7 @@ from src.training.loss import AlphaGalerkinLoss, EntropyRegularizer
 # Hypothesis strategies
 # ---------------------------------------------------------------------------
 
+
 def valid_logits(batch_max: int = 8, actions_max: int = 50) -> st.SearchStrategy:
     """Strategy for policy logits tensors."""
     return st.tuples(
@@ -109,8 +110,7 @@ class TestPolicyLossProperties:
 
         expected = math.log(n_actions)
         assert policy_loss.item() == pytest.approx(expected, abs=1e-4), (
-            f"Uniform CE should be log({n_actions})={expected:.4f}, "
-            f"got {policy_loss.item():.4f}"
+            f"Uniform CE should be log({n_actions})={expected:.4f}, got {policy_loss.item():.4f}"
         )
 
     def test_value_loss_zero_when_exact(self) -> None:
@@ -232,9 +232,9 @@ class TestLabelSmoothing:
         assert result_sm.policy.isfinite(), "Smoothed policy loss must be finite"
         # The two should differ (label smoothing changes the target)
         if data["policy_logits"].shape[-1] > 2:
-            assert result_no.policy.item() != pytest.approx(
-                result_sm.policy.item(), abs=1e-6
-            ), "Smoothed loss should differ from unsmoothed loss"
+            assert result_no.policy.item() != pytest.approx(result_sm.policy.item(), abs=1e-6), (
+                "Smoothed loss should differ from unsmoothed loss"
+            )
 
 
 class TestDeterminism:

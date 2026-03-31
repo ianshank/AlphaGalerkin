@@ -176,6 +176,7 @@ def get_project(args: argparse.Namespace) -> str:
 
     # Try to get from gcloud config
     import subprocess
+
     try:
         result = subprocess.run(
             ["gcloud", "config", "get", "project"],
@@ -437,7 +438,9 @@ def cmd_logs(args: argparse.Namespace) -> int:
     print(f"    --project={project}")
     print()
     print("Or view in Cloud Console:")
-    print(f"  https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{args.job_id}%22?project={project}")
+    print(
+        f"  https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{args.job_id}%22?project={project}"
+    )
 
     return 0
 

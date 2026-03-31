@@ -178,13 +178,9 @@ class TestCompressionDemoRunner:
         assert len(result.frame_results) == 2
         assert result.total_bits > 0
 
-    def test_single_lambda_result_structure(
-        self, runner: CompressionDemoRunner
-    ) -> None:
+    def test_single_lambda_result_structure(self, runner: CompressionDemoRunner) -> None:
         """Result should have all expected fields populated."""
-        frames = create_test_sequence(
-            num_frames=2, height=32, width=32, seed=42
-        )
+        frames = create_test_sequence(num_frames=2, height=32, width=32, seed=42)
         result = runner.run_single_lambda(frames, 0.01, "test")
 
         # Check frame results
@@ -230,9 +226,7 @@ class TestCompressionDemoRunner:
         """Bitstream should be written when configured."""
         runner = CompressionDemoRunner(small_config)
         frames = create_test_sequence(num_frames=2, height=32, width=32)
-        result = runner.run_single_lambda(
-            frames, 0.01, "test", write_bitstream=True
-        )
+        result = runner.run_single_lambda(frames, 0.01, "test", write_bitstream=True)
         assert result.bitstream_path is not None
         assert result.bitstream_size_bytes > 0
         assert Path(result.bitstream_path).exists()

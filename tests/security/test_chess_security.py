@@ -180,6 +180,7 @@ class TestInvalidFEN:
         """Empty FEN should raise or handle gracefully."""
         try:
             from src.games.fen import fen_to_state
+
             state = fen_to_state("")
             # If it accepts, state should still be valid-ish
         except (ValueError, IndexError, KeyError):
@@ -189,6 +190,7 @@ class TestInvalidFEN:
         """Random garbage FEN should not crash."""
         try:
             from src.games.fen import fen_to_state
+
             state = fen_to_state("not/a/valid/fen string")
         except (ValueError, IndexError, KeyError):
             pass  # Expected

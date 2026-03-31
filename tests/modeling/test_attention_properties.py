@@ -68,9 +68,7 @@ class TestGalerkinAttentionProperties:
         seq_len=st.integers(min_value=4, max_value=64),
     )
     @settings(max_examples=20)
-    def test_output_shape_matches_input(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_output_shape_matches_input(self, batch_size: int, seq_len: int) -> None:
         """Output tensor must have the same shape as input."""
         attn = _make_galerkin()
         torch.manual_seed(batch_size * 100 + seq_len)
@@ -87,9 +85,7 @@ class TestGalerkinAttentionProperties:
         seq_len=st.integers(min_value=4, max_value=64),
     )
     @settings(max_examples=20)
-    def test_lbb_constant_is_positive(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_lbb_constant_is_positive(self, batch_size: int, seq_len: int) -> None:
         """LBB constant (min singular value) must be positive."""
         attn = _make_galerkin()
         torch.manual_seed(batch_size * 100 + seq_len)
@@ -130,9 +126,7 @@ class TestGalerkinAttentionProperties:
         assert torch.isfinite(x.grad).all(), "Gradients must be finite with LBB"
 
     @pytest.mark.parametrize("seq_len", [9, 25, 81, 169])
-    def test_resolution_independence(
-        self, seq_len: int, galerkin_attn: GalerkinAttention
-    ) -> None:
+    def test_resolution_independence(self, seq_len: int, galerkin_attn: GalerkinAttention) -> None:
         """Galerkin attention must work with arbitrary sequence lengths.
 
         This is the key property enabling zero-shot transfer between
@@ -172,9 +166,7 @@ class TestSoftmaxAttentionProperties:
         seq_len=st.integers(min_value=4, max_value=64),
     )
     @settings(max_examples=20)
-    def test_output_shape_matches_input(
-        self, batch_size: int, seq_len: int
-    ) -> None:
+    def test_output_shape_matches_input(self, batch_size: int, seq_len: int) -> None:
         """Output tensor must have the same shape as input."""
         attn = _make_softmax()
         torch.manual_seed(batch_size * 100 + seq_len)
@@ -249,9 +241,7 @@ class TestHybridAttentionProperties:
         assert hybrid_attn.gate.grad is not None, "Gate must receive gradients"
         assert torch.isfinite(hybrid_attn.gate.grad).all()
 
-    def test_output_between_galerkin_and_softmax(
-        self, hybrid_attn: HybridAttention
-    ) -> None:
+    def test_output_between_galerkin_and_softmax(self, hybrid_attn: HybridAttention) -> None:
         """Hybrid output should be a convex combination of Galerkin and Softmax.
 
         The hybrid output is: gate * galerkin + (1-gate) * softmax.
@@ -284,27 +274,21 @@ class TestAttentionNumericalStability:
         x = torch.randn(2, 16, 32) * 100.0
         output = galerkin_attn(x)
 
-        assert torch.isfinite(output).all(), (
-            "Output must be finite with large inputs"
-        )
+        assert torch.isfinite(output).all(), "Output must be finite with large inputs"
 
     def test_galerkin_with_small_inputs(self, galerkin_attn: GalerkinAttention) -> None:
         """Galerkin attention should handle very small input magnitudes."""
         x = torch.randn(2, 16, 32) * 1e-6
         output = galerkin_attn(x)
 
-        assert torch.isfinite(output).all(), (
-            "Output must be finite with very small inputs"
-        )
+        assert torch.isfinite(output).all(), "Output must be finite with very small inputs"
 
     def test_softmax_with_large_inputs(self, softmax_attn: SoftmaxAttention) -> None:
         """Softmax attention should handle large input magnitudes."""
         x = torch.randn(2, 16, 32) * 100.0
         output = softmax_attn(x)
 
-        assert torch.isfinite(output).all(), (
-            "Softmax output must be finite with large inputs"
-        )
+        assert torch.isfinite(output).all(), "Softmax output must be finite with large inputs"
 
     @pytest.mark.slow
     def test_galerkin_with_long_sequence(self) -> None:

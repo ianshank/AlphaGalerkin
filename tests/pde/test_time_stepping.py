@@ -30,6 +30,7 @@ from src.pde.time_stepping import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_config(**kwargs: object) -> TimeSteppingConfig:
     """Create a TimeSteppingConfig with sensible defaults, overridable."""
     defaults: dict[str, object] = {
@@ -47,21 +48,26 @@ def _make_config(**kwargs: object) -> TimeSteppingConfig:
 
 def _constant_rhs(c: float = 0.0):
     """Return RHS function du/dt = c (constant)."""
+
     def rhs(u: torch.Tensor, t: float) -> torch.Tensor:
         return torch.full_like(u, c)
+
     return rhs
 
 
 def _linear_rhs(lam: float = -1.0):
     """Return RHS function du/dt = lam * u (exponential decay)."""
+
     def rhs(u: torch.Tensor, t: float) -> torch.Tensor:
         return lam * u
+
     return rhs
 
 
 # ---------------------------------------------------------------------------
 # TimeSteppingConfig validation
 # ---------------------------------------------------------------------------
+
 
 class TestTimeSteppingConfig:
     def test_defaults(self):
@@ -118,6 +124,7 @@ class TestTimeSteppingConfig:
 # ForwardEuler
 # ---------------------------------------------------------------------------
 
+
 class TestForwardEuler:
     def _make_euler(self, **cfg_kwargs: object) -> ForwardEuler:
         return ForwardEuler(_make_config(method=TimeSteppingMethod.FORWARD_EULER, **cfg_kwargs))
@@ -154,7 +161,10 @@ class TestForwardEuler:
     def test_integrate_returns_snapshots(self):
         cfg = _make_config(
             method=TimeSteppingMethod.FORWARD_EULER,
-            dt=0.01, t_start=0.0, t_end=0.05, save_interval=2
+            dt=0.01,
+            t_start=0.0,
+            t_end=0.05,
+            save_interval=2,
         )
         stepper = ForwardEuler(cfg)
         snaps = stepper.integrate(torch.tensor([1.0]), _constant_rhs(0.0))
@@ -167,7 +177,10 @@ class TestForwardEuler:
         """With du/dt = 0, solution stays at u0."""
         cfg = _make_config(
             method=TimeSteppingMethod.FORWARD_EULER,
-            dt=0.01, t_start=0.0, t_end=0.1, save_interval=100
+            dt=0.01,
+            t_start=0.0,
+            t_end=0.1,
+            save_interval=100,
         )
         stepper = ForwardEuler(cfg)
         u0 = torch.tensor([3.14, -2.72])
@@ -178,7 +191,10 @@ class TestForwardEuler:
     def test_integrate_does_not_mutate_initial(self):
         cfg = _make_config(
             method=TimeSteppingMethod.FORWARD_EULER,
-            dt=0.01, t_start=0.0, t_end=0.05, save_interval=5
+            dt=0.01,
+            t_start=0.0,
+            t_end=0.05,
+            save_interval=5,
         )
         stepper = ForwardEuler(cfg)
         u0 = torch.tensor([1.0, 2.0])
@@ -190,8 +206,11 @@ class TestForwardEuler:
         """max_steps prevents infinite loops."""
         cfg = _make_config(
             method=TimeSteppingMethod.FORWARD_EULER,
-            dt=1e-6, t_start=0.0, t_end=1.0,
-            max_steps=10, save_interval=1
+            dt=1e-6,
+            t_start=0.0,
+            t_end=1.0,
+            max_steps=10,
+            save_interval=1,
         )
         stepper = ForwardEuler(cfg)
         snaps = stepper.integrate(torch.tensor([1.0]), _constant_rhs(0.0))
@@ -202,6 +221,7 @@ class TestForwardEuler:
 # ---------------------------------------------------------------------------
 # RK4
 # ---------------------------------------------------------------------------
+
 
 class TestRK4:
     def _make_rk4(self, **cfg_kwargs: object) -> RK4:
@@ -228,7 +248,10 @@ class TestRK4:
         dt = 0.01
         cfg = _make_config(
             method=TimeSteppingMethod.RK4,
-            dt=dt, t_start=0.0, t_end=T, save_interval=int(T / dt) + 1
+            dt=dt,
+            t_start=0.0,
+            t_end=T,
+            save_interval=int(T / dt) + 1,
         )
         stepper = RK4(cfg)
         snaps = stepper.integrate(torch.tensor([1.0]), _linear_rhs(-1.0))
@@ -244,12 +267,10 @@ class TestRK4:
         exact = math.exp(-T)
 
         cfg_e = _make_config(
-            method=TimeSteppingMethod.FORWARD_EULER,
-            dt=dt, t_start=0.0, t_end=T, save_interval=1000
+            method=TimeSteppingMethod.FORWARD_EULER, dt=dt, t_start=0.0, t_end=T, save_interval=1000
         )
         cfg_rk4 = _make_config(
-            method=TimeSteppingMethod.RK4,
-            dt=dt, t_start=0.0, t_end=T, save_interval=1000
+            method=TimeSteppingMethod.RK4, dt=dt, t_start=0.0, t_end=T, save_interval=1000
         )
         euler = ForwardEuler(cfg_e)
         rk4 = RK4(cfg_rk4)
@@ -264,8 +285,7 @@ class TestRK4:
 
     def test_integrate_final_time_exact(self):
         cfg = _make_config(
-            method=TimeSteppingMethod.RK4,
-            dt=0.01, t_start=0.0, t_end=0.1, save_interval=100
+            method=TimeSteppingMethod.RK4, dt=0.01, t_start=0.0, t_end=0.1, save_interval=100
         )
         stepper = RK4(cfg)
         snaps = stepper.integrate(torch.tensor([2.0]), _constant_rhs(0.0))
@@ -276,6 +296,7 @@ class TestRK4:
 # ---------------------------------------------------------------------------
 # CrankNicolson
 # ---------------------------------------------------------------------------
+
 
 class TestCrankNicolson:
     def _make_cn(self, **cfg_kwargs: object) -> CrankNicolson:
@@ -308,7 +329,10 @@ class TestCrankNicolson:
         dt = 0.05
         cfg = _make_config(
             method=TimeSteppingMethod.CRANK_NICOLSON,
-            dt=dt, t_start=0.0, t_end=T, save_interval=1000
+            dt=dt,
+            t_start=0.0,
+            t_end=T,
+            save_interval=1000,
         )
         stepper = CrankNicolson(cfg)
         snaps = stepper.integrate(torch.tensor([1.0]), _linear_rhs(-1.0))
@@ -319,6 +343,7 @@ class TestCrankNicolson:
     def test_not_converged_warning(self, caplog: pytest.LogCaptureFixture):
         """Non-convergence warning is emitted when max_iterations is tiny."""
         import logging
+
         cfg = _make_config(method=TimeSteppingMethod.CRANK_NICOLSON, dt=0.5)
         stepper = CrankNicolson(cfg, max_iterations=1, tolerance=1e-20)
         with caplog.at_level(logging.WARNING, logger="src.pde.time_stepping"):
@@ -347,6 +372,7 @@ class TestCrankNicolson:
 # create_time_stepper factory
 # ---------------------------------------------------------------------------
 
+
 class TestCreateTimeStepper:
     @pytest.mark.parametrize(
         "method, expected_cls",
@@ -373,6 +399,7 @@ class TestCreateTimeStepper:
 # Property-based tests via hypothesis
 # ---------------------------------------------------------------------------
 
+
 class TestTimeSteppingProperties:
     @given(
         dt=st.floats(min_value=1e-4, max_value=0.5, allow_nan=False, allow_infinity=False),
@@ -380,9 +407,7 @@ class TestTimeSteppingProperties:
         t_val=st.floats(min_value=0.0, max_value=5.0, allow_nan=False, allow_infinity=False),
     )
     @settings(max_examples=50, deadline=5000)
-    def test_forward_euler_time_advances_by_dt(
-        self, dt: float, u_val: float, t_val: float
-    ):
+    def test_forward_euler_time_advances_by_dt(self, dt: float, u_val: float, t_val: float):
         cfg = _make_config(method=TimeSteppingMethod.FORWARD_EULER, dt=dt)
         stepper = ForwardEuler(cfg)
         _, t_new = stepper.step(torch.tensor([u_val]), t_val, _constant_rhs(0.0))
@@ -394,9 +419,7 @@ class TestTimeSteppingProperties:
         t_val=st.floats(min_value=0.0, max_value=5.0, allow_nan=False, allow_infinity=False),
     )
     @settings(max_examples=50, deadline=5000)
-    def test_rk4_time_advances_by_dt(
-        self, dt: float, u_val: float, t_val: float
-    ):
+    def test_rk4_time_advances_by_dt(self, dt: float, u_val: float, t_val: float):
         cfg = _make_config(method=TimeSteppingMethod.RK4, dt=dt)
         stepper = RK4(cfg)
         _, t_new = stepper.step(torch.tensor([u_val]), t_val, _constant_rhs(0.0))

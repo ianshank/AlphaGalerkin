@@ -81,7 +81,8 @@ def parse_args() -> argparse.Namespace:
         help="Device for encoding (default: auto)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -151,8 +152,6 @@ def get_video_fps(path: Path) -> float:
         return 30.0
 
 
-
-
 def serialize_latent(latent: torch.Tensor) -> bytes:
     """Serialize a latent tensor to bytes for bitstream embedding.
 
@@ -212,11 +211,7 @@ def main() -> None:
             logger.info("loading_model", path=str(args.model))
             try:
                 checkpoint = torch.load(args.model, map_location=device, weights_only=False)
-                ckpt_keys = (
-                    str(list(checkpoint.keys()))
-                    if isinstance(checkpoint, dict)
-                    else "N/A"
-                )
+                ckpt_keys = str(list(checkpoint.keys())) if isinstance(checkpoint, dict) else "N/A"
                 logger.info(
                     "checkpoint_debug",
                     type=str(type(checkpoint)),

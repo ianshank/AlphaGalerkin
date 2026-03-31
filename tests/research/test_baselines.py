@@ -34,6 +34,7 @@ scipy = pytest.importorskip("scipy", reason="scipy required for FDM/AMR tests")
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_poisson_1d(n_grid: int = 50) -> PoissonOperator:
     """1D Poisson operator on [0, 1]."""
     cfg = PDEConfig(
@@ -63,6 +64,7 @@ def _make_poisson_2d() -> PoissonOperator:
 # ---------------------------------------------------------------------------
 # SolverResult
 # ---------------------------------------------------------------------------
+
 
 class TestSolverResult:
     def test_to_dict_basic(self):
@@ -117,6 +119,7 @@ class TestSolverResult:
 # SolverConfig
 # ---------------------------------------------------------------------------
 
+
 class TestSolverConfig:
     def test_defaults(self):
         cfg = SolverConfig()
@@ -126,6 +129,7 @@ class TestSolverConfig:
 
     def test_extra_fields_forbidden(self):
         from pydantic import ValidationError
+
         with pytest.raises(ValidationError):
             SolverConfig(unknown_field=42)  # type: ignore[call-arg]
 
@@ -133,6 +137,7 @@ class TestSolverConfig:
 # ---------------------------------------------------------------------------
 # UniformFDMSolver
 # ---------------------------------------------------------------------------
+
 
 class TestUniformFDMSolver:
     def test_solve_1d_returns_result(self):
@@ -179,6 +184,7 @@ class TestUniformFDMSolver:
     def test_dim3_raises_not_implemented(self):
         from src.pde.config import PDEConfig, PDEType
         from src.pde.operators import HeatOperator
+
         cfg3d = PDEConfig(
             name="heat_3d",
             pde_type=PDEType.HEAT,
@@ -203,6 +209,7 @@ class TestUniformFDMSolver:
 # ---------------------------------------------------------------------------
 # DorflerAMRSolver
 # ---------------------------------------------------------------------------
+
 
 class TestDorflerAMRSolver:
     def test_default_construction(self):
@@ -266,13 +273,12 @@ class TestDorflerAMRSolver:
 # SimplePINNSolver
 # ---------------------------------------------------------------------------
 
+
 class TestSimplePINNSolver:
     """Smoke tests only - full training is too slow for a test suite."""
 
     def test_construction(self):
-        solver = SimplePINNSolver(
-            hidden_dim=16, n_layers=2, n_epochs=1, learning_rate=1e-3
-        )
+        solver = SimplePINNSolver(hidden_dim=16, n_layers=2, n_epochs=1, learning_rate=1e-3)
         assert solver.hidden_dim == 16
         assert solver.n_layers == 2
         assert solver.n_epochs == 1
@@ -280,8 +286,7 @@ class TestSimplePINNSolver:
     def test_solve_smoke(self):
         """Single epoch to verify it runs end-to-end without crashing."""
         solver = SimplePINNSolver(
-            hidden_dim=8, n_layers=2, n_epochs=1,
-            n_collocation=20, learning_rate=1e-3
+            hidden_dim=8, n_layers=2, n_epochs=1, n_collocation=20, learning_rate=1e-3
         )
         op = _make_poisson_1d()
         result = solver.solve(op, n_dof=20)
@@ -292,6 +297,7 @@ class TestSimplePINNSolver:
     def test_build_network_architecture(self):
         """Network should have correct layers."""
         import torch.nn
+
         solver = SimplePINNSolver(hidden_dim=32, n_layers=3)
         net = solver._build_network(input_dim=1)
         assert isinstance(net, torch.nn.Sequential)
@@ -306,6 +312,7 @@ class TestSimplePINNSolver:
 # ---------------------------------------------------------------------------
 # Registry functions
 # ---------------------------------------------------------------------------
+
 
 class TestRegistry:
     def test_list_solvers_returns_list(self):

@@ -421,6 +421,7 @@ class TestChessMultipleGames:
     def test_play_random_game_to_completion(self, game: ChessGame) -> None:
         """Play a random game up to 500 moves and verify no crashes."""
         import random
+
         random.seed(42)
         state = game.initial_state()
         for _ in range(500):
@@ -438,6 +439,7 @@ class TestChessMultipleGames:
     def test_three_random_games(self, game: ChessGame) -> None:
         """Play 3 random games ensuring no crashes."""
         import random
+
         for seed in [1, 2, 3]:
             random.seed(seed)
             state = game.initial_state()

@@ -171,7 +171,7 @@ class TestLossNumericalStability:
         target_policy = torch.softmax(
             torch.randn(batch_size, n_actions, dtype=torch.float16), dim=-1
         )
-        target_value = (torch.rand(batch_size, 1, dtype=torch.float16) * 2 - 1)
+        target_value = torch.rand(batch_size, 1, dtype=torch.float16) * 2 - 1
 
         result = loss_fn(policy_logits, value, target_policy, target_value)
 
@@ -181,9 +181,7 @@ class TestLossNumericalStability:
 
     @pytest.mark.parametrize("batch_size", [1, 2, 16])
     @pytest.mark.parametrize("n_actions", [2, 10, 362])
-    def test_various_shapes_produce_finite_loss(
-        self, batch_size: int, n_actions: int
-    ) -> None:
+    def test_various_shapes_produce_finite_loss(self, batch_size: int, n_actions: int) -> None:
         """Loss must be finite across a wide range of tensor shapes."""
         torch.manual_seed(batch_size * 1000 + n_actions)
         loss_fn = AlphaGalerkinLoss()

@@ -90,6 +90,7 @@ def main() -> int:
 
     Returns:
         Exit code (0 for success, 1 for failure).
+
     """
     args = parse_args()
 

@@ -16,6 +16,7 @@ Examples:
 
     # Resume training
     python -m scripts.train +resume=checkpoints/alphagalerkin/checkpoint_00010000.pt
+
 """
 
 from __future__ import annotations
@@ -27,15 +28,15 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import hydra
-import structlog
-import torch
-from omegaconf import DictConfig, OmegaConf
+import hydra  # noqa: E402
+import structlog  # noqa: E402
+import torch  # noqa: E402
+from omegaconf import DictConfig, OmegaConf  # noqa: E402
 
-from config.schemas import AlphaGalerkinConfig
-from src.modeling.model import AlphaGalerkinModel
-from src.training.trainer import create_trainer
-from src.training.wandb_logger import create_wandb_logger
+from config.schemas import AlphaGalerkinConfig  # noqa: E402
+from src.modeling.model import AlphaGalerkinModel  # noqa: E402
+from src.training.trainer import create_trainer  # noqa: E402
+from src.training.wandb_logger import create_wandb_logger  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -61,6 +62,7 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
 
     import logging
+
     logging.basicConfig(
         format="%(message)s",
         level=getattr(logging, log_level),
@@ -75,6 +77,7 @@ def create_config_from_dict(cfg_dict: dict) -> AlphaGalerkinConfig:
 
     Returns:
         Validated AlphaGalerkinConfig.
+
     """
     # Handle nested configs
     return AlphaGalerkinConfig(**cfg_dict)
@@ -86,6 +89,7 @@ def main(cfg: DictConfig) -> None:
 
     Args:
         cfg: Hydra configuration.
+
     """
     # Convert to dict for Pydantic
     cfg_dict = OmegaConf.to_container(cfg, resolve=True)

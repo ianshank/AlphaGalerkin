@@ -21,6 +21,7 @@ from src.training.base_trainer import BaseTrainer, BaseTrainerConfig, StepResult
 # Helpers: concrete minimal trainer for testing
 # ---------------------------------------------------------------------------
 
+
 class MinimalConfig(BaseTrainerConfig):
     """Minimal config for unit tests."""
 
@@ -77,6 +78,7 @@ def _make_trainer(
 # BaseTrainerConfig
 # ---------------------------------------------------------------------------
 
+
 class TestBaseTrainerConfig:
     def test_defaults(self):
         cfg = BaseTrainerConfig(name="test")
@@ -113,6 +115,7 @@ class TestBaseTrainerConfig:
 # StepResult
 # ---------------------------------------------------------------------------
 
+
 class TestStepResult:
     def test_to_dict_basic(self):
         result = StepResult(loss=0.5)
@@ -142,6 +145,7 @@ class TestStepResult:
 # ---------------------------------------------------------------------------
 # BaseTrainer initialization
 # ---------------------------------------------------------------------------
+
 
 class TestBaseTrainerInit:
     def test_device_auto_selects_cpu(self, tmp_path: Path):
@@ -173,6 +177,7 @@ class TestBaseTrainerInit:
 
     def test_optimizer_is_adamw(self, tmp_path: Path):
         from torch.optim import AdamW
+
         trainer = _make_trainer(tmp_path)
         assert isinstance(trainer.optimizer, AdamW)
 
@@ -188,26 +193,23 @@ class TestBaseTrainerInit:
 # Scheduler setup
 # ---------------------------------------------------------------------------
 
+
 class TestSchedulerSetup:
     @pytest.mark.parametrize("sched", ["cosine", "linear", "none"])
     def test_scheduler_types(self, tmp_path: Path, sched: str):
-        trainer = _make_trainer(
-            tmp_path, lr_scheduler=sched, warmup_steps=0, total_steps=100
-        )
+        trainer = _make_trainer(tmp_path, lr_scheduler=sched, warmup_steps=0, total_steps=100)
         assert trainer.scheduler is not None
 
     def test_warmup_creates_sequential(self, tmp_path: Path):
         from torch.optim.lr_scheduler import SequentialLR
-        trainer = _make_trainer(
-            tmp_path, lr_scheduler="cosine", warmup_steps=100, total_steps=1000
-        )
+
+        trainer = _make_trainer(tmp_path, lr_scheduler="cosine", warmup_steps=100, total_steps=1000)
         assert isinstance(trainer.scheduler, SequentialLR)
 
     def test_no_warmup_single_scheduler(self, tmp_path: Path):
         from torch.optim.lr_scheduler import CosineAnnealingLR
-        trainer = _make_trainer(
-            tmp_path, lr_scheduler="cosine", warmup_steps=0, total_steps=100
-        )
+
+        trainer = _make_trainer(tmp_path, lr_scheduler="cosine", warmup_steps=0, total_steps=100)
         assert isinstance(trainer.scheduler, CosineAnnealingLR)
 
     def test_unknown_scheduler_falls_back(self, tmp_path: Path):
@@ -221,6 +223,7 @@ class TestSchedulerSetup:
 # ---------------------------------------------------------------------------
 # Training step
 # ---------------------------------------------------------------------------
+
 
 class TestTrainingStep:
     def test_step_returns_step_result(self, tmp_path: Path):
@@ -240,6 +243,7 @@ class TestTrainingStep:
         result = trainer.step()
         assert result.loss >= 0.0
         import math
+
         assert math.isfinite(result.loss)
 
     def test_step_grad_norm_finite(self, tmp_path: Path):
@@ -273,6 +277,7 @@ class TestTrainingStep:
 # get_current_lr / set_training
 # ---------------------------------------------------------------------------
 
+
 class TestUtilities:
     def test_get_current_lr(self, tmp_path: Path):
         lr = 2e-3
@@ -292,6 +297,7 @@ class TestUtilities:
 # ---------------------------------------------------------------------------
 # Checkpoint save / load
 # ---------------------------------------------------------------------------
+
 
 class TestCheckpointing:
     def test_save_creates_file(self, tmp_path: Path):

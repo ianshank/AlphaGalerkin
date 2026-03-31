@@ -29,6 +29,7 @@ from src.pde.geometry import (
 # GeometryConfig
 # ---------------------------------------------------------------------------
 
+
 class TestGeometryConfig:
     def test_defaults(self):
         cfg = GeometryConfig()
@@ -66,6 +67,7 @@ class TestGeometryConfig:
 # create_geometry factory
 # ---------------------------------------------------------------------------
 
+
 class TestCreateGeometry:
     def test_rectangular(self):
         cfg = GeometryConfig(geometry_type=GeometryType.RECTANGULAR)
@@ -90,8 +92,7 @@ class TestCreateGeometry:
 
     def test_rectangular_inherits_config_bounds(self):
         cfg = GeometryConfig(
-            geometry_type=GeometryType.RECTANGULAR,
-            x_min=-2.0, x_max=3.0, y_min=-1.0, y_max=5.0
+            geometry_type=GeometryType.RECTANGULAR, x_min=-2.0, x_max=3.0, y_min=-1.0, y_max=5.0
         )
         geom = create_geometry(cfg)
         assert isinstance(geom, RectangularDomain)
@@ -108,6 +109,7 @@ class TestCreateGeometry:
 # ---------------------------------------------------------------------------
 # RectangularDomain
 # ---------------------------------------------------------------------------
+
 
 class TestRectangularDomain:
     @pytest.fixture()
@@ -179,9 +181,7 @@ class TestRectangularDomain:
         assert pts.device.type == "cpu"
 
     @pytest.mark.parametrize("n", [1, 10, 100, 500])
-    def test_sample_interior_various_sizes(
-        self, unit_square: RectangularDomain, n: int
-    ):
+    def test_sample_interior_various_sizes(self, unit_square: RectangularDomain, n: int):
         pts = unit_square.sample_interior(n)
         assert pts.shape == (n, 2)
 
@@ -189,6 +189,7 @@ class TestRectangularDomain:
 # ---------------------------------------------------------------------------
 # LShapedDomain
 # ---------------------------------------------------------------------------
+
 
 class TestLShapedDomain:
     @pytest.fixture()
@@ -297,13 +298,13 @@ class TestLShapedDomain:
 # CylinderFlowDomain
 # ---------------------------------------------------------------------------
 
+
 class TestCylinderFlowDomain:
     @pytest.fixture()
     def dfg_domain(self) -> CylinderFlowDomain:
         """Standard DFG benchmark domain."""
         return CylinderFlowDomain(
-            x_min=0.0, x_max=2.2, y_min=0.0, y_max=0.41,
-            cx=0.2, cy=0.2, radius=0.05
+            x_min=0.0, x_max=2.2, y_min=0.0, y_max=0.41, cx=0.2, cy=0.2, radius=0.05
         )
 
     def test_dim(self, dfg_domain: CylinderFlowDomain):
@@ -353,7 +354,7 @@ class TestCylinderFlowDomain:
     def test_sample_interior_outside_cylinder(self, dfg_domain: CylinderFlowDomain):
         pts = dfg_domain.sample_interior(500)
         cx, cy, r = dfg_domain.cx, dfg_domain.cy, dfg_domain.radius
-        dist = torch.sqrt((pts[:, 0] - cx)**2 + (pts[:, 1] - cy)**2)
+        dist = torch.sqrt((pts[:, 0] - cx) ** 2 + (pts[:, 1] - cy) ** 2)
         assert (dist > r - 1e-6).all()
 
     def test_sample_boundary_returns_tensor(self, dfg_domain: CylinderFlowDomain):
@@ -363,8 +364,7 @@ class TestCylinderFlowDomain:
 
     def test_custom_cylinder(self):
         geom = CylinderFlowDomain(
-            x_min=0.0, x_max=1.0, y_min=0.0, y_max=1.0,
-            cx=0.5, cy=0.5, radius=0.1
+            x_min=0.0, x_max=1.0, y_min=0.0, y_max=1.0, cx=0.5, cy=0.5, radius=0.1
         )
         # Center is inside cylinder
         pts = torch.tensor([[0.5, 0.5]])
@@ -377,6 +377,7 @@ class TestCylinderFlowDomain:
 # ---------------------------------------------------------------------------
 # Property-based tests (hypothesis)
 # ---------------------------------------------------------------------------
+
 
 class TestGeometryProperties:
     @given(

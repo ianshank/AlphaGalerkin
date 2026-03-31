@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+# Re-export video compression fixtures for test discovery
+pytest_plugins = ["tests.video_compression.video_fixtures"]
+
 # Optional torch import - not all tests need it
 try:
     import torch

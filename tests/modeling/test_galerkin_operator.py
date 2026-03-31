@@ -219,9 +219,12 @@ class TestGalerkin2d:
         for resolution in [8, 12, 16, 20, 24]:
             x = torch.randn(batch, 1, resolution, resolution)
             y = model(x)
-            assert y.shape == (batch, 1, resolution, resolution), (
-                f"Failed at resolution {resolution}"
-            )
+            assert y.shape == (
+                batch,
+                1,
+                resolution,
+                resolution,
+            ), f"Failed at resolution {resolution}"
 
     def test_non_square_resolution(self, model: Galerkin2d) -> None:
         """Test model works with non-square inputs."""
@@ -341,18 +344,18 @@ class TestGalerkin2d:
 
         # Test with no prior forward pass - should return zero on correct device
         reg_loss = model.get_lbb_regularization()
-        assert devices_equal(reg_loss.device, device), (
-            f"LBB reg should be on model device, expected {device}, got {reg_loss.device}"
-        )
+        assert devices_equal(
+            reg_loss.device, device
+        ), f"LBB reg should be on model device, expected {device}, got {reg_loss.device}"
         assert reg_loss.item() == 0.0
 
         # Test after forward pass with return_lbb=True
         x = torch.randn(2, 1, 16, 16, device=device)
         _ = model(x, return_lbb=True)
         reg_loss = model.get_lbb_regularization()
-        assert devices_equal(reg_loss.device, device), (
-            f"LBB reg should be on model device, expected {device}, got {reg_loss.device}"
-        )
+        assert devices_equal(
+            reg_loss.device, device
+        ), f"LBB reg should be on model device, expected {device}, got {reg_loss.device}"
 
 
 class TestNeuralOperatorGalerkinBackend:

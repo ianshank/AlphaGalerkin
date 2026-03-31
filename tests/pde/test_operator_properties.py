@@ -98,9 +98,9 @@ class TestPoissonOperatorProperties:
         residual = operator.residual(u, coords)
 
         # Residual should be near zero for the exact solution
-        assert residual.l2_norm == pytest.approx(0.0, abs=0.5), (
-            f"Residual L2 norm should be ~0 for exact solution, got {residual.l2_norm}"
-        )
+        assert residual.l2_norm == pytest.approx(
+            0.0, abs=0.5
+        ), f"Residual L2 norm should be ~0 for exact solution, got {residual.l2_norm}"
 
     @given(n_points=st.integers(min_value=10, max_value=200))
     @settings(max_examples=20)
@@ -323,9 +323,9 @@ class TestBurgersOperatorProperties:
 
         # Profile 0.5*(1 - tanh(10*(x-0.5))) is strictly decreasing in x
         for i in range(len(boundary) - 1):
-            assert boundary[i] >= boundary[i + 1] - 1e-6, (
-                f"Boundary profile should be non-increasing at x={x_vals[i]:.2f}"
-            )
+            assert (
+                boundary[i] >= boundary[i + 1] - 1e-6
+            ), f"Boundary profile should be non-increasing at x={x_vals[i]:.2f}"
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +405,7 @@ class TestCrossOperatorProperties:
         n_requested = 100
         points = operator.generate_collocation_points(n_requested, method=method, seed=42)
 
-        assert points.shape[0] <= n_requested + 10, (
-            f"Got {points.shape[0]} points, requested {n_requested}"
-        )
+        assert (
+            points.shape[0] <= n_requested + 10
+        ), f"Got {points.shape[0]} points, requested {n_requested}"
         assert points.shape[0] > 0, "Must generate at least one point"

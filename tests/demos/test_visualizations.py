@@ -13,6 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+pytest.importorskip("matplotlib")
+
 from src.demos.config import ColorScheme, VisualizationConfig
 from src.demos.visualizations import (
     AttentionVisualizer,

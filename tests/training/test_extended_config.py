@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omegaconf import OmegaConf
+
+OmegaConf = pytest.importorskip("omegaconf").OmegaConf
 
 from config.schemas import (
     AlphaGalerkinConfig,

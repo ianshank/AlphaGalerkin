@@ -14,6 +14,8 @@ import numpy as np
 import pytest
 import torch
 
+pytest.importorskip("matplotlib")
+
 from src.demos.architecture_demo import ArchitectureDemo
 from src.demos.config import ArchitectureDemoConfig, VisualizationConfig
 

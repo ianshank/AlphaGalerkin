@@ -468,9 +468,9 @@ class CompressionDemoRunner:
             # Verify bitstream roundtrip: read back
             try:
                 loaded_header, loaded_frames = load_bitstream(bitstream_path)
-                assert (
-                    loaded_header.num_frames == num_frames
-                ), f"Frame count mismatch: wrote {num_frames}, read {loaded_header.num_frames}"
+                assert loaded_header.num_frames == num_frames, (
+                    f"Frame count mismatch: wrote {num_frames}, read {loaded_header.num_frames}"
+                )
                 assert len(loaded_frames) == len(encoded_frames), (
                     f"Encoded frame count mismatch: wrote {len(encoded_frames)}, "
                     f"read {len(loaded_frames)}"

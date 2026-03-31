@@ -12,6 +12,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+pytest.importorskip("matplotlib")
+
 from src.demos.config import PhysicsDemoConfig
 from src.demos.physics_demo import PhysicsDemo, TransferResult
 

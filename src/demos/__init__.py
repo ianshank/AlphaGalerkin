@@ -33,23 +33,30 @@ from src.demos.config import (
     VisualizationConfig,
 )
 
-# Visualization utilities - require matplotlib
-from src.demos.visualizations import (
-    AttentionVisualizer,
-    BoardVisualizer,
-    ChartVisualizer,
-    FieldVisualizer,
-    PlotResult,
-    figure_to_image,
-    get_colormap,
-)
-
 logger = structlog.get_logger(__name__)
 
+_VISUALIZATION_NAMES = frozenset(
+    {
+        "AttentionVisualizer",
+        "BoardVisualizer",
+        "ChartVisualizer",
+        "FieldVisualizer",
+        "PlotResult",
+        "figure_to_image",
+        "get_colormap",
+    }
+)
 
-# Lazy imports for demo modules that require torch
+
+# Lazy imports for demo modules that require torch or matplotlib
 def __getattr__(name: str) -> Any:  # noqa: ANN401
     """Lazy import for heavy demo modules."""
+    if name in _VISUALIZATION_NAMES:
+        logger.debug("lazy_import_visualizations", requested_name=name)
+        from src.demos import visualizations as _viz
+
+        return getattr(_viz, name)
+
     if name in ("PhysicsDemo", "TransferResult", "create_physics_demo_tab"):
         logger.debug("lazy_import_physics_demo", requested_name=name)
         from src.demos.physics_demo import (

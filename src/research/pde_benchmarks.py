@@ -215,12 +215,8 @@ class PDEBenchmarkRunner:
 
         for bname, bresults in benchmarks.items():
             lines.append(f"\n## {bname}\n")
-            lines.append(
-                "| Method | DOF | L2 Error | Wall Time (s) | Conv. Rate |"
-            )
-            lines.append(
-                "|--------|-----|----------|---------------|------------|"
-            )
+            lines.append("| Method | DOF | L2 Error | Wall Time (s) | Conv. Rate |")
+            lines.append("|--------|-----|----------|---------------|------------|")
 
             # Sort by method then DOF
             bresults.sort(key=lambda r: (r.method_name, r.n_dof))

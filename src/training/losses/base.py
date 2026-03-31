@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from jaxtyping import Float
-from torch import Tensor, nn
+from torch import Tensor
 
 from src.templates.registry import create_typed_registry
 

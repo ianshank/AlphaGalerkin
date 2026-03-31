@@ -298,14 +298,12 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.optimizer.zero_grad()
 
         if self.use_amp and self.scaler is not None:
-            with torch.amp.autocast("cuda"):  # type: ignore[attr-defined]
+            with torch.amp.autocast("cuda"):
                 loss, metrics = self.compute_loss(batch)
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
             grad_norm = float(
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.config.gradient_clip
-                )
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
             )
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -313,9 +311,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             loss, metrics = self.compute_loss(batch)
             loss.backward()
             grad_norm = float(
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.config.gradient_clip
-                )
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
             )
             self.optimizer.step()
 
@@ -368,9 +364,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
 
         if scheduler_type == "none" or total_steps <= 0:
             # Constant LR - use ConstantLR (factor=1 = no change)
-            return torch.optim.lr_scheduler.ConstantLR(
-                self.optimizer, factor=1.0, total_iters=0
-            )
+            return torch.optim.lr_scheduler.ConstantLR(self.optimizer, factor=1.0, total_iters=0)
 
         main_steps = max(1, total_steps - warmup_steps)
 

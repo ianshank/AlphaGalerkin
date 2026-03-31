@@ -25,7 +25,6 @@ from src.pde.geometry import (
     create_geometry,
 )
 
-
 # ---------------------------------------------------------------------------
 # GeometryConfig
 # ---------------------------------------------------------------------------
@@ -242,7 +241,7 @@ class TestLShapedDomain:
         assert unit_l.contains_point(pts).all()
 
     def test_is_boundary_bottom_edge(self, unit_l: LShapedDomain):
-        """y = -1, x in [-1, 0] is the bottom boundary segment."""
+        """Y = -1, x in [-1, 0] is the bottom boundary segment."""
         pts = torch.tensor([[-0.5, -1.0], [-0.8, -1.0]])
         bnd = unit_l.is_boundary(pts)
         assert bnd.all()

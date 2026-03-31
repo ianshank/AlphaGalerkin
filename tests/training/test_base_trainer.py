@@ -17,7 +17,6 @@ from torch import Tensor, nn
 
 from src.training.base_trainer import BaseTrainer, BaseTrainerConfig, StepResult
 
-
 # ---------------------------------------------------------------------------
 # Helpers: concrete minimal trainer for testing
 # ---------------------------------------------------------------------------
@@ -267,7 +266,7 @@ class TestTrainingStep:
         trainer = _make_trainer(tmp_path, gradient_clip=0.1)
         for _ in range(3):
             result = trainer.step()
-            assert not (result.loss != result.loss)  # not NaN
+            assert result.loss == result.loss  # not NaN
 
 
 # ---------------------------------------------------------------------------

@@ -16,18 +16,18 @@ from typing import Any
 
 from torch import nn
 
+# -- AlphaGalerkin losses ----------------------------------------------------
+from src.training.losses.alphagalerkin import (  # noqa: F401
+    AlphaGalerkinLoss,
+    EntropyRegularizer,
+)
+
 # -- base types --------------------------------------------------------------
 from src.training.losses.base import (  # noqa: F401
     BaseLoss,
     LossOutput,
     LossRegistry,
     register_loss,
-)
-
-# -- AlphaGalerkin losses ----------------------------------------------------
-from src.training.losses.alphagalerkin import (  # noqa: F401
-    AlphaGalerkinLoss,
-    EntropyRegularizer,
 )
 
 # -- Operator learning losses ------------------------------------------------

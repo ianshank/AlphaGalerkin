@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
@@ -80,7 +80,9 @@ class TestPoissonOperatorProperties:
     """Property tests for Poisson operator."""
 
     def test_exact_solution_residual_near_zero(self, poisson_config: PDEConfig) -> None:
-        """For the manufactured exact solution u=sin(pi*x)*sin(pi*y),
+        """Verify manufactured exact solution residual is near zero.
+
+        For the manufactured exact solution u=sin(pi*x)*sin(pi*y),
         the PDE residual -nabla^2 u - f should be approximately zero.
         """
         operator = PoissonOperator(poisson_config)

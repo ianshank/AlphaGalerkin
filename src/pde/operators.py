@@ -665,7 +665,7 @@ class BurgersOperator(PDEOperator):
             for n in range(1, n_terms + 1):
                 # Bessel function coefficients approximated numerically
                 # For u0 = sin(2*pi*x), use direct Fourier series of exp transform
-                decay = np.exp(-(n * np.pi) ** 2 * nu * t)
+                decay = np.exp(-((n * np.pi) ** 2) * nu * t)
                 phi = phi + decay * torch.cos(n * np.pi * x)
                 dphi = dphi - n * np.pi * decay * torch.sin(n * np.pi * x)
 
@@ -678,7 +678,7 @@ class BurgersOperator(PDEOperator):
             dphi = np.zeros_like(x)
 
             for n in range(1, n_terms + 1):
-                decay = np.exp(-(n * np.pi) ** 2 * nu * t)
+                decay = np.exp(-((n * np.pi) ** 2) * nu * t)
                 phi = phi + decay * np.cos(n * np.pi * x)
                 dphi = dphi - n * np.pi * decay * np.sin(n * np.pi * x)
 
@@ -996,9 +996,7 @@ class NavierStokesOperator(PDEOperator):
             self.reynolds_number = reynolds_number
         else:
             self.viscosity = config.diffusion_coeff
-            self.reynolds_number = (
-                1.0 / self.viscosity if self.viscosity > 0 else float("inf")
-            )
+            self.reynolds_number = 1.0 / self.viscosity if self.viscosity > 0 else float("inf")
 
     def residual(
         self,
@@ -1027,13 +1025,19 @@ class NavierStokesOperator(PDEOperator):
         derivatives: dict[str, Tensor] = {}
 
         grad_ux = torch.autograd.grad(
-            ux, coords, grad_outputs=torch.ones_like(ux),
-            create_graph=True, allow_unused=True,
+            ux,
+            coords,
+            grad_outputs=torch.ones_like(ux),
+            create_graph=True,
+            allow_unused=True,
         )[0]
 
         grad_uy = torch.autograd.grad(
-            uy, coords, grad_outputs=torch.ones_like(uy),
-            create_graph=True, allow_unused=True,
+            uy,
+            coords,
+            grad_outputs=torch.ones_like(uy),
+            create_graph=True,
+            allow_unused=True,
         )[0]
 
         if grad_ux is not None and grad_uy is not None:
@@ -1049,14 +1053,18 @@ class NavierStokesOperator(PDEOperator):
             derivatives["continuity"] = dux_dx + duy_dy
 
             d2ux_dx2 = torch.autograd.grad(
-                dux_dx.unsqueeze(-1), coords,
+                dux_dx.unsqueeze(-1),
+                coords,
                 grad_outputs=torch.ones(coords.shape[0], 1, device=coords.device),
-                create_graph=True, allow_unused=True,
+                create_graph=True,
+                allow_unused=True,
             )[0]
             d2ux_dy2 = torch.autograd.grad(
-                dux_dy.unsqueeze(-1), coords,
+                dux_dy.unsqueeze(-1),
+                coords,
                 grad_outputs=torch.ones(coords.shape[0], 1, device=coords.device),
-                create_graph=True, allow_unused=True,
+                create_graph=True,
+                allow_unused=True,
             )[0]
 
             laplacian_ux = torch.zeros_like(dux_dx)
@@ -1162,7 +1170,7 @@ class NavierStokesOperator(PDEOperator):
 
 
 class LShapedPoissonOperator(PDEOperator):
-    """Poisson equation on L-shaped domain.
+    r"""Poisson equation on L-shaped domain.
 
     Solves -Delta u = f on the L-shaped domain [-1,1]^2 \\ [0,1]x[-1,0]
     with Dirichlet boundary conditions.
@@ -1210,9 +1218,7 @@ class LShapedPoissonOperator(PDEOperator):
             self.geometry = LShapedDomain(scale=config.geometry.scale)
 
         self._scale = (
-            config.geometry.scale
-            if config.geometry.geometry_type == GeometryType.L_SHAPED
-            else 1.0
+            config.geometry.scale if config.geometry.geometry_type == GeometryType.L_SHAPED else 1.0
         )
 
         logger.info(
@@ -1316,9 +1322,7 @@ class LShapedPoissonOperator(PDEOperator):
 
         # Default: f = 0 (the singular benchmark is harmonic)
         if isinstance(coords, Tensor):
-            return torch.zeros(
-                coords.shape[0], dtype=coords.dtype, device=coords.device
-            )
+            return torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
         return np.zeros(coords.shape[0], dtype=np.float32)
 
     def boundary_value(

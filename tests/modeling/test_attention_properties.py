@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 import torch
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from src.modeling.attention import GalerkinAttention, HybridAttention, SoftmaxAttention

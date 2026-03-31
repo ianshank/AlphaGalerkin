@@ -17,15 +17,14 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from src.pde.time_stepping import (
+    RK4,
     CrankNicolson,
     ForwardEuler,
-    RK4,
+    TimeStepper,
     TimeSteppingConfig,
     TimeSteppingMethod,
-    TimeStepper,
     create_time_stepper,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -224,7 +223,7 @@ class TestRK4:
         assert u_new.shape == u0.shape
 
     def test_exponential_decay_accuracy(self):
-        """u' = -u, u(0)=1 => u(T) = exp(-T).  RK4 is 4th-order accurate."""
+        """U' = -u, u(0)=1 => u(T) = exp(-T).  RK4 is 4th-order accurate."""
         T = 1.0
         dt = 0.01
         cfg = _make_config(
@@ -409,7 +408,7 @@ class TestTimeSteppingProperties:
     )
     @settings(max_examples=30, deadline=10000)
     def test_forward_euler_linear_rhs(self, n: int, c: float):
-        """u' = c => u(dt) = u0 + c*dt (independent of n)."""
+        """U' = c => u(dt) = u0 + c*dt (independent of n)."""
         dt = 0.01
         cfg = _make_config(method=TimeSteppingMethod.FORWARD_EULER, dt=dt)
         stepper = ForwardEuler(cfg)

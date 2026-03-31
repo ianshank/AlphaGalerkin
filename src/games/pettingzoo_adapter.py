@@ -22,7 +22,7 @@ try:
     HAS_PETTINGZOO = True
 except ImportError:
     HAS_PETTINGZOO = False
-    ParallelEnv = object  # type: ignore[assignment, misc]
+    ParallelEnv = object  # type: ignore[assignment,misc]
 
 import structlog
 
@@ -109,12 +109,12 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         """
         self.agents = list(self.possible_agents)
         self._state = self.game.initial_state(self._board_size)
-        self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
-        self._terminations = {agent: False for agent in self.agents}
-        self._truncations = {agent: False for agent in self.agents}
+        self._cumulative_rewards = dict.fromkeys(self.agents, 0.0)
+        self._terminations = dict.fromkeys(self.agents, False)
+        self._truncations = dict.fromkeys(self.agents, False)
 
         obs = self._get_observations()
-        infos = {agent: {} for agent in self.agents}
+        infos: dict[str, dict[str, Any]] = {agent: {} for agent in self.agents}
 
         logger.debug("environment_reset", n_agents=len(self.agents))
 
@@ -146,7 +146,7 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         if self._state is None:
             raise RuntimeError("Must call reset() before step()")
 
-        rewards: dict[str, float] = {agent: 0.0 for agent in self.agents}
+        rewards: dict[str, float] = dict.fromkeys(self.agents, 0.0)
         infos: dict[str, dict[str, Any]] = {agent: {} for agent in self.agents}
 
         # Apply actions sequentially (GameInterface is turn-based)
@@ -182,14 +182,11 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         observations = self._get_observations()
 
         # Remove terminated agents
-        self.agents = [
-            a for a in self.agents
-            if not self._terminations.get(a, False)
-        ]
+        self.agents = [a for a in self.agents if not self._terminations.get(a, False)]
 
         return observations, rewards, self._terminations, self._truncations, infos
 
-    def observation_space(self, agent: str) -> spaces.Box:  # type: ignore[name-defined]
+    def observation_space(self, agent: str) -> Any:
         """Get observation space for an agent.
 
         Args:
@@ -202,7 +199,7 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         shape = self.game.get_observation_shape(self._board_size)
         return spaces.Box(low=-1.0, high=1.0, shape=shape, dtype=np.float32)
 
-    def action_space(self, agent: str) -> spaces.Discrete:  # type: ignore[name-defined]
+    def action_space(self, agent: str) -> Any:
         """Get action space for an agent.
 
         Args:
@@ -231,7 +228,4 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
 
     def __repr__(self) -> str:
         """String representation."""
-        return (
-            f"PettingZooAdapter(game={self.game.name}, "
-            f"n_agents={self.n_agents})"
-        )
+        return f"PettingZooAdapter(game={self.game.name}, n_agents={self.n_agents})"

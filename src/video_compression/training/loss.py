@@ -204,9 +204,7 @@ class CompressionLoss(nn.Module):
 
         self.rd_loss = RDLoss(lambda_rd, distortion_metric, ms_ssim_weight)
 
-        self.perceptual_loss: PerceptualLoss | None = (
-            PerceptualLoss() if use_perceptual else None
-        )
+        self.perceptual_loss: PerceptualLoss | None = PerceptualLoss() if use_perceptual else None
 
     def forward(
         self,

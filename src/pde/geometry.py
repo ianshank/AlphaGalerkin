@@ -102,9 +102,7 @@ class DomainGeometry(ABC):
         ...
 
     @abstractmethod
-    def sample_interior(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_interior(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample random points from the domain interior.
 
         Args:
@@ -118,9 +116,7 @@ class DomainGeometry(ABC):
         ...
 
     @abstractmethod
-    def sample_boundary(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_boundary(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample random points from the domain boundary.
 
         Args:
@@ -188,12 +184,7 @@ class RectangularDomain(DomainGeometry):
     def contains_point(self, points: Tensor) -> Tensor:
         """Check if points lie inside the rectangle."""
         x, y = points[:, 0], points[:, 1]
-        return (
-            (x >= self.x_min)
-            & (x <= self.x_max)
-            & (y >= self.y_min)
-            & (y <= self.y_max)
-        )
+        return (x >= self.x_min) & (x <= self.x_max) & (y >= self.y_min) & (y <= self.y_max)
 
     def is_boundary(self, points: Tensor, tol: float = 1e-6) -> Tensor:
         """Check if points are on the rectangular boundary."""
@@ -208,17 +199,13 @@ class RectangularDomain(DomainGeometry):
         on_edge = on_x_min | on_x_max | on_y_min | on_y_max
         return inside & on_edge
 
-    def sample_interior(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_interior(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample uniform random points from the rectangle interior."""
         x = torch.rand(n_points, device=device) * (self.x_max - self.x_min) + self.x_min
         y = torch.rand(n_points, device=device) * (self.y_max - self.y_min) + self.y_min
         return torch.stack([x, y], dim=-1)
 
-    def sample_boundary(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_boundary(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample points on the rectangular boundary, proportional to edge length."""
         w = self.x_max - self.x_min
         h = self.y_max - self.y_min
@@ -235,27 +222,19 @@ class RectangularDomain(DomainGeometry):
 
         # Bottom edge: y = y_min
         t = torch.rand(n_bottom, device=device)
-        segments.append(
-            torch.stack([self.x_min + t * w, torch.full_like(t, self.y_min)], dim=-1)
-        )
+        segments.append(torch.stack([self.x_min + t * w, torch.full_like(t, self.y_min)], dim=-1))
 
         # Top edge: y = y_max
         t = torch.rand(n_top, device=device)
-        segments.append(
-            torch.stack([self.x_min + t * w, torch.full_like(t, self.y_max)], dim=-1)
-        )
+        segments.append(torch.stack([self.x_min + t * w, torch.full_like(t, self.y_max)], dim=-1))
 
         # Left edge: x = x_min
         t = torch.rand(n_left, device=device)
-        segments.append(
-            torch.stack([torch.full_like(t, self.x_min), self.y_min + t * h], dim=-1)
-        )
+        segments.append(torch.stack([torch.full_like(t, self.x_min), self.y_min + t * h], dim=-1))
 
         # Right edge: x = x_max
         t = torch.rand(n_right, device=device)
-        segments.append(
-            torch.stack([torch.full_like(t, self.x_max), self.y_min + t * h], dim=-1)
-        )
+        segments.append(torch.stack([torch.full_like(t, self.x_max), self.y_min + t * h], dim=-1))
 
         return torch.cat(segments, dim=0)[:n_points]
 
@@ -341,9 +320,7 @@ class LShapedDomain(DomainGeometry):
 
         return seg1 | seg2 | seg3 | seg4 | seg5 | seg6
 
-    def sample_interior(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_interior(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample interior points via rejection sampling from bounding box.
 
         The acceptance rate is 3/4 (L-area / square-area), so we oversample
@@ -375,9 +352,7 @@ class LShapedDomain(DomainGeometry):
 
         return torch.cat(collected, dim=0)
 
-    def sample_boundary(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_boundary(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample boundary points proportionally to segment length.
 
         The 6 boundary segments have the following lengths (scale=1):
@@ -405,39 +380,27 @@ class LShapedDomain(DomainGeometry):
 
         # Segment 1: bottom y=-s, x in [-s, 0]
         t = torch.rand(counts[0], device=device)
-        segments.append(
-            torch.stack([-s + t * s, torch.full_like(t, -s)], dim=-1)
-        )
+        segments.append(torch.stack([-s + t * s, torch.full_like(t, -s)], dim=-1))
 
         # Segment 2: left x=-s, y in [-s, s]
         t = torch.rand(counts[1], device=device)
-        segments.append(
-            torch.stack([torch.full_like(t, -s), -s + t * 2 * s], dim=-1)
-        )
+        segments.append(torch.stack([torch.full_like(t, -s), -s + t * 2 * s], dim=-1))
 
         # Segment 3: top y=s, x in [-s, s]
         t = torch.rand(counts[2], device=device)
-        segments.append(
-            torch.stack([-s + t * 2 * s, torch.full_like(t, s)], dim=-1)
-        )
+        segments.append(torch.stack([-s + t * 2 * s, torch.full_like(t, s)], dim=-1))
 
         # Segment 4: right x=s, y in [0, s]
         t = torch.rand(counts[3], device=device)
-        segments.append(
-            torch.stack([torch.full_like(t, s), t * s], dim=-1)
-        )
+        segments.append(torch.stack([torch.full_like(t, s), t * s], dim=-1))
 
         # Segment 5: reentrant horizontal y=0, x in [0, s]
         t = torch.rand(counts[4], device=device)
-        segments.append(
-            torch.stack([t * s, torch.full_like(t, 0.0)], dim=-1)
-        )
+        segments.append(torch.stack([t * s, torch.full_like(t, 0.0)], dim=-1))
 
         # Segment 6: reentrant vertical x=0, y in [-s, 0]
         t = torch.rand(counts[5], device=device)
-        segments.append(
-            torch.stack([torch.full_like(t, 0.0), -s + t * s], dim=-1)
-        )
+        segments.append(torch.stack([torch.full_like(t, 0.0), -s + t * s], dim=-1))
 
         return torch.cat(segments, dim=0)[:n_points]
 
@@ -482,7 +445,7 @@ class CylinderFlowDomain(DomainGeometry):
     def area(self) -> float:
         """Area of the channel minus the cylinder."""
         rect = (self.x_max - self.x_min) * (self.y_max - self.y_min)
-        circle = np.pi * self.radius**2
+        circle = float(np.pi) * self.radius**2
         return rect - circle
 
     def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
@@ -496,12 +459,7 @@ class CylinderFlowDomain(DomainGeometry):
     def contains_point(self, points: Tensor) -> Tensor:
         """Check if points are inside channel and outside cylinder."""
         x, y = points[:, 0], points[:, 1]
-        in_rect = (
-            (x >= self.x_min)
-            & (x <= self.x_max)
-            & (y >= self.y_min)
-            & (y <= self.y_max)
-        )
+        in_rect = (x >= self.x_min) & (x <= self.x_max) & (y >= self.y_min) & (y <= self.y_max)
         dist = self._dist_to_cylinder(x, y)
         outside_cyl = dist > self.radius
         return in_rect & outside_cyl
@@ -531,9 +489,7 @@ class CylinderFlowDomain(DomainGeometry):
 
         return (on_channel & in_rect) | on_cylinder
 
-    def sample_interior(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_interior(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample interior points via rejection sampling."""
         w = self.x_max - self.x_min
         h = self.y_max - self.y_min
@@ -562,9 +518,7 @@ class CylinderFlowDomain(DomainGeometry):
 
         return torch.cat(collected, dim=0)
 
-    def sample_boundary(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_boundary(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample boundary points from channel walls and cylinder surface."""
         w = self.x_max - self.x_min
         h = self.y_max - self.y_min
@@ -586,35 +540,19 @@ class CylinderFlowDomain(DomainGeometry):
 
         # Bottom
         t = torch.rand(n_bottom, device=device)
-        segments.append(
-            torch.stack(
-                [self.x_min + t * w, torch.full_like(t, self.y_min)], dim=-1
-            )
-        )
+        segments.append(torch.stack([self.x_min + t * w, torch.full_like(t, self.y_min)], dim=-1))
 
         # Top
         t = torch.rand(n_top, device=device)
-        segments.append(
-            torch.stack(
-                [self.x_min + t * w, torch.full_like(t, self.y_max)], dim=-1
-            )
-        )
+        segments.append(torch.stack([self.x_min + t * w, torch.full_like(t, self.y_max)], dim=-1))
 
         # Left
         t = torch.rand(n_left, device=device)
-        segments.append(
-            torch.stack(
-                [torch.full_like(t, self.x_min), self.y_min + t * h], dim=-1
-            )
-        )
+        segments.append(torch.stack([torch.full_like(t, self.x_min), self.y_min + t * h], dim=-1))
 
         # Right
         t = torch.rand(n_right, device=device)
-        segments.append(
-            torch.stack(
-                [torch.full_like(t, self.x_max), self.y_min + t * h], dim=-1
-            )
-        )
+        segments.append(torch.stack([torch.full_like(t, self.x_max), self.y_min + t * h], dim=-1))
 
         # Cylinder surface
         theta = torch.rand(n_cyl, device=device) * 2 * np.pi

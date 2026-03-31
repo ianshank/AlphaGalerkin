@@ -147,9 +147,7 @@ class DemoConfig(BaseModel):
         """Validate codec architecture constraints."""
         # Downsample factor must be power of 2
         if not math.log2(self.downsample_factor).is_integer():
-            raise ValueError(
-                f"downsample_factor ({self.downsample_factor}) must be a power of 2"
-            )
+            raise ValueError(f"downsample_factor ({self.downsample_factor}) must be a power of 2")
         # d_model must be divisible by n_heads
         if self.d_model % self.n_heads != 0:
             raise ValueError(

@@ -146,9 +146,7 @@ class UniformFDMSolver(BaseSolver):
         elif operator.dim == 2:
             solution, grid = self._solve_2d(operator, n_dof, sparse, spsolve)
         else:
-            raise NotImplementedError(
-                f"UniformFDMSolver does not support dim={operator.dim}"
-            )
+            raise NotImplementedError(f"UniformFDMSolver does not support dim={operator.dim}")
 
         wall_time = time.perf_counter() - t0
         l2_err = self._compute_l2_error(solution, grid, operator)
@@ -196,12 +194,8 @@ class UniformFDMSolver(BaseSolver):
         rhs = (h**2) * f
 
         # Boundary conditions
-        bc_left = operator.boundary_value(
-            np.array([[operator.domain_min[0]]], dtype=np.float32)
-        )
-        bc_right = operator.boundary_value(
-            np.array([[operator.domain_max[0]]], dtype=np.float32)
-        )
+        bc_left = operator.boundary_value(np.array([[operator.domain_min[0]]], dtype=np.float32))
+        bc_right = operator.boundary_value(np.array([[operator.domain_max[0]]], dtype=np.float32))
         bc_left_val = float(np.asarray(bc_left).flat[0])
         bc_right_val = float(np.asarray(bc_right).flat[0])
         rhs[0] += bc_left_val
@@ -351,6 +345,7 @@ class DorflerAMRSolver(BaseSolver):
             dtype=np.float64,
         )
 
+        step = 0
         for step in range(self.max_refinements):
             # Solve on current grid
             u, _ = self._solve_on_grid(x, operator, sparse, spsolve)
@@ -390,7 +385,7 @@ class DorflerAMRSolver(BaseSolver):
             l2_error=l2_err,
             metadata={
                 "marking_fraction": self.marking_fraction,
-                "n_refinements": step + 1 if step is not None else 0,  # type: ignore[possibly-undefined]
+                "n_refinements": step + 1,
             },
         )
 
@@ -405,8 +400,8 @@ class DorflerAMRSolver(BaseSolver):
         """Solve 1D Poisson on a (possibly non-uniform) grid."""
         n = len(x)
         interior = x[1:-1]
-        h_left = np.diff(x[:-1])   # h_{i-1}
-        h_right = np.diff(x[1:])   # h_i
+        h_left = np.diff(x[:-1])  # h_{i-1}
+        h_right = np.diff(x[1:])  # h_i
 
         # Variable-coefficient FD stencil on non-uniform grid
         a_left = 2.0 / (h_left * (h_left + h_right))
@@ -429,14 +424,10 @@ class DorflerAMRSolver(BaseSolver):
         f = np.asarray(operator.source_term(coords), dtype=np.float64).flatten()
 
         bc_l = float(
-            np.asarray(
-                operator.boundary_value(np.array([[x[0]]], dtype=np.float32))
-            ).flat[0]
+            np.asarray(operator.boundary_value(np.array([[x[0]]], dtype=np.float32))).flat[0]
         )
         bc_r = float(
-            np.asarray(
-                operator.boundary_value(np.array([[x[-1]]], dtype=np.float32))
-            ).flat[0]
+            np.asarray(operator.boundary_value(np.array([[x[-1]]], dtype=np.float32))).flat[0]
         )
 
         rhs = f.copy()
@@ -623,9 +614,7 @@ class SimplePINNSolver(BaseSolver):
     def _compute_laplacian(u: torch.Tensor, coords: torch.Tensor, dim: int) -> torch.Tensor:
         """Compute Laplacian of u w.r.t. coords using autograd."""
         grad_outputs = torch.ones_like(u)
-        grad_u = torch.autograd.grad(
-            u, coords, grad_outputs=grad_outputs, create_graph=True
-        )[0]
+        grad_u = torch.autograd.grad(u, coords, grad_outputs=grad_outputs, create_graph=True)[0]
 
         laplacian = torch.zeros_like(u)
         for d in range(dim):

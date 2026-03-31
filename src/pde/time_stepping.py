@@ -297,7 +297,7 @@ def create_time_stepper(config: TimeSteppingConfig) -> TimeStepper:
         ValueError: If unknown method specified.
 
     """
-    method_map = {
+    method_map: dict[TimeSteppingMethod, type[TimeStepper]] = {
         TimeSteppingMethod.FORWARD_EULER: ForwardEuler,
         TimeSteppingMethod.RK4: RK4,
         TimeSteppingMethod.CRANK_NICOLSON: CrankNicolson,

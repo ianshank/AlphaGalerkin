@@ -476,9 +476,7 @@ class AlphaGalerkinModel(nn.Module):
         # Output heads — select policy head by game type
         self.policy_head: PolicyHead | ActionPolicyHead
         if config.action_space_size is not None:
-            self.policy_head = ActionPolicyHead(
-                config.d_model, config.action_space_size
-            )
+            self.policy_head = ActionPolicyHead(config.d_model, config.action_space_size)
         else:
             self.policy_head = PolicyHead(config.d_model)
         self.value_head = ValueHead(config.d_model)
@@ -671,9 +669,7 @@ class AlphaGalerkinFast(nn.Module):
 
         self.policy_head: PolicyHead | ActionPolicyHead
         if config.action_space_size is not None:
-            self.policy_head = ActionPolicyHead(
-                config.d_model, config.action_space_size
-            )
+            self.policy_head = ActionPolicyHead(config.d_model, config.action_space_size)
         else:
             self.policy_head = PolicyHead(config.d_model)
         self.value_head = ValueHead(config.d_model)

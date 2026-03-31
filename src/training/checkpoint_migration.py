@@ -52,9 +52,11 @@ def register_migration(from_version: str, to_version: str) -> Callable[[Migratio
             return data
 
     """
+
     def decorator(fn: MigrationFn) -> MigrationFn:
         _MIGRATIONS[(from_version, to_version)] = fn
         return fn
+
     return decorator
 
 
@@ -85,7 +87,8 @@ def get_migration_path(from_version: str, target_version: str) -> list[tuple[str
     while _parse_version(current) < _parse_version(target_version):
         # Find all migrations from current version
         candidates = [
-            (f, t) for (f, t) in _MIGRATIONS
+            (f, t)
+            for (f, t) in _MIGRATIONS
             if f == current and _parse_version(t) <= _parse_version(target_version)
         ]
 
@@ -157,6 +160,7 @@ def migrate_checkpoint(
 # ============================================================
 # Built-in Migrations
 # ============================================================
+
 
 @register_migration("0.0.0", "1.0.0")
 def _migrate_0_0_to_1_0(data: dict[str, Any]) -> dict[str, Any]:

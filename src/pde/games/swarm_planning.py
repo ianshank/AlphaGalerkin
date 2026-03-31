@@ -29,18 +29,19 @@ logger = structlog.get_logger(__name__)
 # --- Action definitions ---
 # 7 discrete velocity changes per agent (sequential agent control)
 ACTION_NAMES: list[str] = [
-    "up",       # +z
-    "down",     # -z
-    "left",     # -y
-    "right",    # +y
+    "up",  # +z
+    "down",  # -z
+    "left",  # -y
+    "right",  # +y
     "forward",  # +x
     "backward",  # -x
-    "hover",    # zero velocity
+    "hover",  # zero velocity
 ]
 N_ACTIONS_PER_AGENT: int = len(ACTION_NAMES)
 
 
 # --- Configuration ---
+
 
 class SwarmPlanningConfig(BaseModuleConfig):
     """Configuration for swarm planning game."""
@@ -103,6 +104,7 @@ class SwarmPlanningConfig(BaseModuleConfig):
 
 # --- State ---
 
+
 @dataclass
 class SwarmState:
     """State of the swarm at a given time step."""
@@ -138,6 +140,7 @@ class SwarmState:
 
 # --- Game ---
 
+
 class SwarmPlanningGame:
     """MCTS-guided swarm planning game.
 
@@ -166,12 +169,12 @@ class SwarmPlanningGame:
         v = config.max_velocity
         self._velocity_deltas = np.array(
             [
-                [0.0, 0.0, v],    # up
-                [0.0, 0.0, -v],   # down
-                [0.0, -v, 0.0],   # left
-                [0.0, v, 0.0],    # right
-                [v, 0.0, 0.0],    # forward
-                [-v, 0.0, 0.0],   # backward
+                [0.0, 0.0, v],  # up
+                [0.0, 0.0, -v],  # down
+                [0.0, -v, 0.0],  # left
+                [0.0, v, 0.0],  # right
+                [v, 0.0, 0.0],  # forward
+                [-v, 0.0, 0.0],  # backward
                 [0.0, 0.0, 0.0],  # hover
             ],
             dtype=np.float64,
@@ -438,7 +441,7 @@ class SwarmPlanningGame:
             # Avoid division by zero; use obstacle radius as minimum distance
             effective_dists = np.maximum(dists - obs_radii, 0.1)
 
-            potentials[i] = float(np.sum(strength / (effective_dists ** decay)))
+            potentials[i] = float(np.sum(strength / (effective_dists**decay)))
 
         return potentials
 
@@ -486,8 +489,8 @@ class SwarmPlanningGame:
         if total_cells == 0:
             return 0.0
 
-        covered = float(np.sum(state.coverage_map > 0))
-        return covered / total_cells
+        covered: float = float(np.sum(state.coverage_map > 0))
+        return covered / float(total_cells)
 
     # --- Internal helpers ---
 
@@ -516,8 +519,8 @@ class SwarmPlanningGame:
         for agent_pos in state.positions:
             dx = gx - agent_pos[0]
             dy = gy - agent_pos[1]
-            dist_sq = dx ** 2 + dy ** 2
-            within = dist_sq <= sensor_range ** 2
+            dist_sq = dx**2 + dy**2
+            within = dist_sq <= sensor_range**2
             state.coverage_map[within] = 1.0
 
     def _count_collisions(self, state: SwarmState) -> int:

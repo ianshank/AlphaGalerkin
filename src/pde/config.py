@@ -19,7 +19,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
-from src.pde.geometry import GeometryConfig, GeometryType
+from src.pde.geometry import GeometryConfig
 from src.templates.config import BaseModuleConfig, MetricDefinition, ThresholdOperator
 
 

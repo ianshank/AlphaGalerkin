@@ -99,6 +99,12 @@ class BaseTrainerConfig(BaseModuleConfig):
         ge=0,
         description="Number of linear warmup steps.",
     )
+    warmup_start_factor: float = Field(
+        default=1e-6,
+        gt=0.0,
+        le=1.0,
+        description="Starting LR factor for warmup (lr * factor at step 0).",
+    )
     total_steps: int = Field(
         default=100_000,
         ge=1,
@@ -396,7 +402,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         if warmup_steps > 0:
             warmup_sched = LinearLR(
                 self.optimizer,
-                start_factor=1e-6,
+                start_factor=self.config.warmup_start_factor,
                 end_factor=1.0,
                 total_iters=warmup_steps,
             )

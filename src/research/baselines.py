@@ -509,6 +509,7 @@ class SimplePINNSolver(BaseSolver):
         n_epochs: int = 2000,
         learning_rate: float = 1e-3,
         n_collocation: int = 1000,
+        bc_loss_weight: float = 10.0,
         config: SolverConfig | None = None,
     ) -> None:
         self.hidden_dim = hidden_dim
@@ -516,6 +517,7 @@ class SimplePINNSolver(BaseSolver):
         self.n_epochs = n_epochs
         self.learning_rate = learning_rate
         self.n_collocation = n_collocation
+        self.bc_loss_weight = bc_loss_weight
         self.config = config or SolverConfig()
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
@@ -561,7 +563,7 @@ class SimplePINNSolver(BaseSolver):
                 bc_vals = torch.tensor(bc_vals, dtype=torch.float32, device=device)
             loss_bc = torch.mean((u_bc - bc_vals) ** 2)
 
-            loss = loss_pde + 10.0 * loss_bc
+            loss = loss_pde + self.bc_loss_weight * loss_bc
             loss.backward()
             optimizer.step()
 

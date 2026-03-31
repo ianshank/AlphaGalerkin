@@ -271,10 +271,6 @@ class LShapedDomain(DomainGeometry):
         """Return bounding box of the L-shape."""
         return (-self._s, -self._s), (self._s, self._s)
 
-    def _in_removed_quadrant(self, x: Tensor, y: Tensor) -> Tensor:
-        """Check if (x, y) falls in the removed bottom-right quadrant."""
-        return (x > 0) & (y < 0)
-
     def contains_point(self, points: Tensor) -> Tensor:
         """Check if points are inside the L-shaped domain.
 

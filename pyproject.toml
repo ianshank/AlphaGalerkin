@@ -203,6 +203,15 @@ module = [
 ]
 disable_error_code = ["no-untyped-call"]
 
+# Flax JAX modules using @nn.compact decorator which is untyped in flax stubs
+[[tool.mypy.overrides]]
+module = [
+    "src.math_kernel.spectral",
+    "src.math_kernel.integral",
+    "src.math_kernel.basis",
+]
+disallow_untyped_decorators = false
+
 # Modules with numpy ndarray/Tensor interop that have structural assignment issues
 [[tool.mypy.overrides]]
 module = [

@@ -121,12 +121,12 @@ class TestCodecOutputWithHyperprior:
 
         # Verify CodecOutput has z_bitstream
         assert hasattr(output, "z_bitstream"), "CodecOutput should have z_bitstream field"
-        assert output.z_bitstream is not None, (
-            "z_bitstream should be populated for hyperprior model"
-        )
-        assert isinstance(output.z_bitstream, EncodedBitstream), (
-            "z_bitstream should be EncodedBitstream"
-        )
+        assert (
+            output.z_bitstream is not None
+        ), "z_bitstream should be populated for hyperprior model"
+        assert isinstance(
+            output.z_bitstream, EncodedBitstream
+        ), "z_bitstream should be EncodedBitstream"
 
     def test_codec_output_has_scales(
         self,
@@ -197,9 +197,9 @@ class TestCodecOutputWithHyperprior:
         z_bits = len(output.z_bitstream.data) * 8 if output.z_bitstream else 0
         expected_rate = y_bits + z_bits
 
-        assert output.rate == expected_rate, (
-            f"Rate {output.rate} should equal y_bits({y_bits}) + z_bits({z_bits})"
-        )
+        assert (
+            output.rate == expected_rate
+        ), f"Rate {output.rate} should equal y_bits({y_bits}) + z_bits({z_bits})"
 
 
 class TestDecodeWithHyperprior:
@@ -551,9 +551,12 @@ class TestHyperpriorShapeConsistency:
         # So downsampling is 4x
         expected_h = 16 // 4
         expected_w = 16 // 4
-        assert z.shape == (1, 64, expected_h, expected_w), (
-            f"Expected shape (1, 64, {expected_h}, {expected_w}), got {z.shape}"
-        )
+        assert z.shape == (
+            1,
+            64,
+            expected_h,
+            expected_w,
+        ), f"Expected shape (1, 64, {expected_h}, {expected_w}), got {z.shape}"
 
     def test_hyper_synthesis_upsamples(self, hyper_synthesis: HyperSynthesis) -> None:
         """Test that hyper_synthesis upsamples spatial dimensions."""
@@ -566,9 +569,12 @@ class TestHyperpriorShapeConsistency:
         # So upsampling is 4x
         expected_h = 4 * 4
         expected_w = 4 * 4
-        assert scales.shape == (1, 64, expected_h, expected_w), (
-            f"Expected shape (1, 64, {expected_h}, {expected_w}), got {scales.shape}"
-        )
+        assert scales.shape == (
+            1,
+            64,
+            expected_h,
+            expected_w,
+        ), f"Expected shape (1, 64, {expected_h}, {expected_w}), got {scales.shape}"
 
     def test_analysis_synthesis_roundtrip_shape(
         self,
@@ -583,9 +589,9 @@ class TestHyperpriorShapeConsistency:
         scales = hyper_synthesis(z)
 
         # Output should match input spatial dimensions
-        assert scales.shape[-2:] == y.shape[-2:], (
-            f"Spatial dims should match: input {y.shape[-2:]}, output {scales.shape[-2:]}"
-        )
+        assert (
+            scales.shape[-2:] == y.shape[-2:]
+        ), f"Spatial dims should match: input {y.shape[-2:]}, output {scales.shape[-2:]}"
 
 
 class TestMultipleFrameHyperprior:

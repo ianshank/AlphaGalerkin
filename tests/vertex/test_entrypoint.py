@@ -145,7 +145,7 @@ class TestRunTrainingTrainerRef:
 
     @patch("src.vertex.entrypoint.VertexTrainer", autospec=False)
     @patch("src.vertex.entrypoint.VertexTrainer", create=True)
-    def test_trainer_ref_populated(self) -> None:
+    def test_trainer_ref_populated(self, mock_vt_create: MagicMock, mock_vt: MagicMock) -> None:
         """run_training populates trainer_ref with the trainer instance."""
         # This test validates the contract: trainer_ref["trainer"] is set.
         # We test the logic by inspecting the code path.

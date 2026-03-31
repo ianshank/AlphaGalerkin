@@ -272,15 +272,25 @@ class PhysicsLoss(nn.Module):
         laplacian = torch.zeros_like(pred)
         for dim_idx in range(coords.shape[-1]):
             grad_dim = grad_phi[..., dim_idx]
+            # For linear functions the first derivative is constant (no grad_fn).
+            # In that case the second derivative is zero — nothing to add.
+            if grad_dim.grad_fn is None and not grad_dim.requires_grad:
+                continue
             grad_dim_outputs = torch.ones_like(grad_dim)
-            (grad2,) = torch.autograd.grad(
-                outputs=grad_dim,
-                inputs=coords,
-                grad_outputs=grad_dim_outputs,
-                create_graph=True,
-                retain_graph=True,
-            )
-            laplacian = laplacian + grad2[..., dim_idx]
+            try:
+                grad2_result = torch.autograd.grad(
+                    outputs=grad_dim,
+                    inputs=coords,
+                    grad_outputs=grad_dim_outputs,
+                    create_graph=True,
+                    retain_graph=True,
+                    allow_unused=True,
+                )[0]
+            except RuntimeError:
+                # Second derivative is zero (e.g., linear function in this dim)
+                grad2_result = None
+            if grad2_result is not None:
+                laplacian = laplacian + grad2_result[..., dim_idx]
         return laplacian
 
     def forward(

@@ -22,6 +22,8 @@ from src.pde.operators import (
     AdvectionDiffusionOperator,
     BurgersOperator,
     HeatOperator,
+    LShapedPoissonOperator,
+    NavierStokesOperator,
     PDEOperator,
     PoissonOperator,
 )
@@ -50,6 +52,12 @@ def _register_builtin_operators() -> None:
 
     if not registry.is_registered("heat"):
         register_pde_operator("heat")(HeatOperator)
+
+    if not registry.is_registered("navier_stokes"):
+        register_pde_operator("navier_stokes")(NavierStokesOperator)
+
+    if not registry.is_registered("poisson_lshaped"):
+        register_pde_operator("poisson_lshaped")(LShapedPoissonOperator)
 
 
 # Register built-in operators on import

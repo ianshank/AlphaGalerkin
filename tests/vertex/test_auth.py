@@ -348,6 +348,7 @@ class TestGCPAuthenticator:
 
     def test_validate_adc_success(self) -> None:
         """Test ADC validation success."""
+        pytest.importorskip("google.auth")
         config = AuthConfig(auth_method=AuthMethod.APPLICATION_DEFAULT)
         auth = GCPAuthenticator(config)
 
@@ -364,6 +365,7 @@ class TestGCPAuthenticator:
 
     def test_validate_adc_not_found(self) -> None:
         """Test ADC validation when no credentials found."""
+        google_auth = pytest.importorskip("google.auth")
         config = AuthConfig(auth_method=AuthMethod.APPLICATION_DEFAULT)
         auth = GCPAuthenticator(config)
 

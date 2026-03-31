@@ -1,0 +1,122 @@
+# DARPA Direct-to-Phase-II: MCTS-Guided Computational Physics
+# Bypasses Phase I; requires 10-page feasibility report + 20-page technical proposal.
+# AlphaGalerkin TRL 3-4 qualifies for D2P2 with existing benchmark results.
+#
+# Target: Next DSO/STO BAA involving AI-accelerated simulation or
+# computational physics (e.g., HR0011SB20254-07 "reduced-order models" precedent).
+
+proposal:
+  solicitation: "DARPA-PA-026-XX-D2P2"  # Update with actual BAA number
+  agency: "DARPA (STO/DSO)"
+  phase: "Direct-to-Phase-II"
+  title: "AlphaGalerkin: MCTS-Guided Adaptive Mesh Refinement for Real-Time Computational Physics"
+  naics_code: "541715"
+  funding_range: "$750K-$1.5M"
+  duration_months: 24
+  pi_effort_percent: 51
+
+submission_format:
+  feasibility_report_pages: 10
+  technical_volume_pages: 20
+  cost_volume_pages: 5
+  additional_attachments:
+    - "Letters of support from potential transition partners"
+    - "Benchmark results demonstrating Phase I-equivalent feasibility"
+
+# Feasibility evidence (Phase I-equivalent results already achieved)
+feasibility_evidence:
+  - claim: "Zero-shot resolution transfer"
+    result: "MSE 0.000209 on 19x19 (trained on 9x9, 240x better than threshold)"
+    evidence_type: "benchmark"
+    config_ref: "config/proposals/nsf_sbir.yaml"
+
+  - claim: "MCTS-guided mesh refinement operational"
+    result: "End-to-end MCTS adapter bridging PDE games to search engine"
+    evidence_type: "working_code"
+    key_files:
+      - "src/pde/mcts_adapter.py"
+      - "src/pde/games/mesh_refinement.py"
+      - "src/mcts/search.py"
+
+  - claim: "Classical baseline comparison framework"
+    result: "FDM, Dorfler AMR, PINN baselines with convergence rate computation"
+    evidence_type: "benchmark_infrastructure"
+    config_ref: "config/benchmarks/sbir_suite.yaml"
+
+  - claim: "LBB stability guarantees"
+    result: "Inf-sup condition monitoring with log-barrier regularization"
+    evidence_type: "mathematical_proof"
+    key_files:
+      - "src/modeling/stability.py"
+      - "src/training/losses/alphagalerkin.py"
+
+benchmark_suite:
+  # Reuse Navy N252-088 problems (structural relevance)
+  - name: poisson_lshaped_singularity
+    pde_type: poisson
+    description: "L-shaped domain with r^(2/3) singularity — AMR benchmark"
+    geometry:
+      type: l_shaped
+      scale: 1.0
+    refinement_levels: [100, 500, 1000, 5000, 10000]
+    baselines: ["uniform_fdm", "dorfler_amr", "pinn"]
+
+  - name: navier_stokes_taylor_green
+    pde_type: navier_stokes
+    description: "Taylor-Green vortex — exact analytical solution benchmark"
+    reynolds_numbers: [100, 200, 500]
+    geometry:
+      type: cylinder_flow
+    refinement_levels: [100, 400, 1600]
+    baselines: ["uniform_fdm", "pinn"]
+
+  - name: burgers_shock_capture
+    pde_type: burgers
+    description: "Viscous shock with Cole-Hopf exact solution"
+    viscosity_values: [0.01, 0.001, 0.0001]
+    domain:
+      dim: 1
+      min: [0.0]
+      max: [1.0]
+    refinement_levels: [50, 100, 500, 1000]
+    baselines: ["uniform_fdm", "dorfler_amr", "pinn"]
+
+  # Scaling study (from DOE ASCR framing)
+  - name: scaling_study
+    pde_type: poisson
+    description: "Strong scaling: fixed problem, increasing DOF"
+    domain:
+      dim: 2
+      min: [0.0, 0.0]
+      max: [1.0, 1.0]
+    refinement_levels: [100, 400, 1600, 6400, 25600]
+    baselines: ["uniform_fdm"]
+
+evaluation_metrics:
+  - name: "error_vs_dof"
+    description: "Solution error as function of degrees of freedom"
+  - name: "error_vs_walltime"
+    description: "Solution error as function of wall-clock time"
+  - name: "convergence_rate"
+    description: "Asymptotic convergence rate under refinement"
+  - name: "adaptivity_efficiency"
+    description: "Ratio of MCTS-guided DOF to uniform DOF at equal accuracy"
+  - name: "planning_depth_impact"
+    description: "Effect of MCTS simulation count on refinement quality"
+
+phase_ii_objectives:
+  - "Demonstrate 10x DOF reduction vs uniform mesh at equal accuracy on 3D problems"
+  - "Integrate with PETSc/MFEM for DoD-standard solver libraries"
+  - "Achieve real-time (sub-second) mesh adaptation for 2D problems"
+  - "Validate on DoD-relevant geometry: wing cross-section, hull form"
+  - "Develop ONNX-exportable policy network for edge deployment"
+
+transition_plan:
+  phase_iii_targets:
+    - "NAVAIR structural analysis pipeline"
+    - "AFRL hypersonic vehicle design tool"
+    - "DOE exascale simulation pre-processor"
+  commercialization:
+    - "SaaS platform for automated mesh optimization"
+    - "Plugin for ANSYS/COMSOL/Abaqus"
+    - "Open-source community edition (core framework)"

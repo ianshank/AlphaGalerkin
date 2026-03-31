@@ -344,7 +344,7 @@ class PositionEvaluator:
             key=lambda x: x[1],
             reverse=True,
         )
-        best_moves = [(m, p) for m, p in sorted_moves[: self.config.max_variations + 1]]
+        best_moves = list(sorted_moves[: self.config.max_variations + 1])
 
         return EvaluationResult(
             win_rate=win_rate,

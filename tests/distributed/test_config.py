@@ -131,25 +131,24 @@ class TestFactoryFunctions:
         assert config.backend == DistributedBackend.GLOO
 
     def test_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test environment variable extraction."""
+        """Test environment variable extraction returns config for distributed."""
         monkeypatch.setenv("RANK", "2")
         monkeypatch.setenv("LOCAL_RANK", "0")
         monkeypatch.setenv("WORLD_SIZE", "8")
 
-        rank, local_rank, world_size = from_environment()
+        config = from_environment()
 
-        assert rank == 2
-        assert local_rank == 0
-        assert world_size == 8
+        assert config is not None
+        assert config.enabled is True
+        assert config.world_size == 8
 
     def test_from_environment_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test default values when env vars not set."""
+        """Test default values when env vars not set (non-distributed)."""
         monkeypatch.delenv("RANK", raising=False)
         monkeypatch.delenv("LOCAL_RANK", raising=False)
         monkeypatch.delenv("WORLD_SIZE", raising=False)
 
-        rank, local_rank, world_size = from_environment()
+        config = from_environment()
 
-        assert rank == 0
-        assert local_rank == 0
-        assert world_size == 1
+        # Single-process returns None
+        assert config is None

@@ -28,6 +28,12 @@ from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
 from src.tools.gtp import SimpleGoGame
+from src.endgame import EndgameDetector
+
+# Demo modules from PR #20
+from src.demos.physics_demo import create_physics_demo_tab
+from src.demos.benchmark_demo import create_benchmark_demo_tab
+from src.demos.architecture_demo import create_architecture_demo_tab
 
 # Configure structured logging
 structlog.configure(
@@ -49,8 +55,58 @@ SPACE_CONFIG = get_default_space_config()
 MODEL_PATH = Path("checkpoint.pt")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+# HuggingFace Space ID for runtime checkpoint download
+HF_SPACE_ID = "ianshank/alphagalerkin-demo"
+
 # Initialize renderer with coordinate labels enabled
 RENDERER = BoardRenderer(SPACE_CONFIG.render)
+
+# Initialize endgame detector for proper game termination
+ENDGAME_DETECTOR = EndgameDetector(SPACE_CONFIG.endgame)
+
+
+def _ensure_checkpoint(path: Path) -> Path:
+    """Ensure checkpoint file exists, downloading from Hub if needed.
+
+    HuggingFace Spaces may skip LFS smudge during builds. This function
+    downloads the checkpoint at runtime if it's missing or is just a pointer.
+
+    Args:
+        path: Expected local path to checkpoint.
+
+    Returns:
+        Path to the actual checkpoint file.
+
+    """
+    # Check if file exists and is a real checkpoint (not LFS pointer)
+    if path.exists():
+        size = path.stat().st_size
+        # LFS pointer files are typically < 200 bytes
+        if size > 1000:
+            logger.info("checkpoint_found_local", path=str(path), size=size)
+            return path
+        else:
+            logger.warning(
+                "checkpoint_appears_to_be_lfs_pointer",
+                path=str(path),
+                size=size,
+            )
+
+    # Download from HuggingFace Hub
+    try:
+        from huggingface_hub import hf_hub_download
+
+        logger.info("downloading_checkpoint_from_hub", repo_id=HF_SPACE_ID)
+        downloaded_path = hf_hub_download(
+            repo_id=HF_SPACE_ID,
+            filename="checkpoint.pt",
+            repo_type="space",
+        )
+        logger.info("checkpoint_downloaded", path=downloaded_path)
+        return Path(downloaded_path)
+    except Exception as e:
+        logger.warning("checkpoint_download_failed", error=str(e))
+        return path
 
 
 def load_model(path: Path) -> AlphaGalerkinModel | None:
@@ -63,9 +119,13 @@ def load_model(path: Path) -> AlphaGalerkinModel | None:
         Loaded model or None if loading fails.
 
     """
+    # Ensure checkpoint exists (download from Hub if needed)
+    path = _ensure_checkpoint(path)
+
     if not path.exists():
         logger.warning("checkpoint_not_found", path=str(path))
         return None
+
 
     try:
         checkpoint = torch.load(path, map_location=DEVICE, weights_only=False)
@@ -224,8 +284,22 @@ def update_game(
     mcts = MCTS(evaluator=EVALUATOR, **GAME_MANAGER.mcts_kwargs)
     action = mcts.get_action(game, temperature=0.0, add_noise=False)
 
+    # Check if we should override MCTS action to pass (endgame detection)
+    human_just_passed = move == "PASS"
+    if human_just_passed and ENDGAME_DETECTOR.should_override_to_pass(
+        game, action, human_just_passed
+    ):
+        original_action = action
+        action = ENDGAME_DETECTOR.get_pass_action(board_size)
+        logger.info(
+            "endgame_override_applied",
+            original_action=original_action,
+            new_action=action,
+        )
+
     last_move_idx = None
-    if action == board_size * board_size:  # Pass
+    pass_action = board_size * board_size
+    if action == pass_action:
         game.play_pass()
         history.append("PASS")
         ai_move_str = "Pass"
@@ -236,6 +310,7 @@ def update_game(
         history.append((ai_r, ai_c))
         ai_move_str = GAME_MANAGER.format_move(ai_r, ai_c, board_size)
         last_move_idx = action
+
 
     session.move_history = history
 
@@ -736,7 +811,20 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
                 ],
             )
 
-        # ===== TAB 3: About =====
+        # ===== TAB 3: Physics Demo (PR #20) =====
+        # Note: Physics demo does not use the Go model - it generates ground truth
+        # using the Poisson solver. A separate physics model would be needed for
+        # neural operator predictions.
+        create_physics_demo_tab(model=None, device=DEVICE)
+
+        # ===== TAB 4: Benchmark Demo (PR #20) =====
+        create_benchmark_demo_tab()
+
+        # ===== TAB 5: Architecture Demo (PR #20) =====
+        create_architecture_demo_tab(model=MODEL, device=DEVICE)
+
+
+        # ===== TAB 6: About =====
         with gr.TabItem("About"):
             gr.Markdown(
                 """

@@ -129,9 +129,7 @@ class TestEngineEvaluator:
         # All zeros policy, value from engine score
         assert np.sum(result.policy) == pytest.approx(0.0)
 
-    def test_set_state_updates_state(
-        self, adapter: EngineEvaluator, chess_game: ChessGame
-    ) -> None:
+    def test_set_state_updates_state(self, adapter: EngineEvaluator, chess_game: ChessGame) -> None:
         """Calling set_state multiple times should update the state."""
         state1 = chess_game.initial_state()
         adapter.set_state(state1)
@@ -143,9 +141,7 @@ class TestEngineEvaluator:
         adapter.set_state(state2)
         assert adapter._current_state is state2
 
-    def test_go_kwargs_from_config_depth(
-        self, chess_game: ChessGame
-    ) -> None:
+    def test_go_kwargs_from_config_depth(self, chess_game: ChessGame) -> None:
         """Config depth_limit should be passed as depth kwarg to engine.go()."""
         engine = MagicMock()
         engine.go.return_value = ("e2e4", {"depth": 15, "score_cp": 0})
@@ -165,9 +161,7 @@ class TestEngineEvaluator:
 
         engine.go.assert_called_once_with(depth=15)
 
-    def test_go_kwargs_from_config_nodes(
-        self, chess_game: ChessGame
-    ) -> None:
+    def test_go_kwargs_from_config_nodes(self, chess_game: ChessGame) -> None:
         """Config nodes_limit should be passed as nodes kwarg."""
         engine = MagicMock()
         engine.go.return_value = ("e2e4", {"depth": 10, "score_cp": 0})
@@ -187,9 +181,7 @@ class TestEngineEvaluator:
 
         engine.go.assert_called_once_with(nodes=100000)
 
-    def test_go_kwargs_from_config_movetime(
-        self, chess_game: ChessGame
-    ) -> None:
+    def test_go_kwargs_from_config_movetime(self, chess_game: ChessGame) -> None:
         """Config movetime_ms should be passed as movetime kwarg."""
         engine = MagicMock()
         engine.go.return_value = ("e2e4", {"depth": 10, "score_cp": 0})

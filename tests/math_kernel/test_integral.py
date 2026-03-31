@@ -119,9 +119,9 @@ class TestGalerkinProjection:
         # This accounts for learned projection effects
         min_expected = alpha * 0.1  # 10% of linear scaling
         max_expected = alpha * 10.0  # 1000% of linear scaling
-        assert min_expected < norm_ratio < max_expected, (
-            f"Norm ratio {norm_ratio:.2f} outside bounds [{min_expected:.2f}, {max_expected:.2f}]"
-        )
+        assert (
+            min_expected < norm_ratio < max_expected
+        ), f"Norm ratio {norm_ratio:.2f} outside bounds [{min_expected:.2f}, {max_expected:.2f}]"
 
         # Test 2: Verify direction preservation via cosine similarity
         # For a linear operator with positive scalar, directions should be preserved

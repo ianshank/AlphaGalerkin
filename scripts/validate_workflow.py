@@ -130,15 +130,20 @@ def main() -> int:
     # 3. Encode
     logger.info("step_1_encoding")
     try:
-        run_command([
-            sys.executable,
-            "scripts/encode_video.py",
-            str(args.input),
-            str(bitstream_file),
-            "--qp", str(args.qp),
-            "--model", str(checkpoint_file),
-            "--device", "cuda",
-        ])
+        run_command(
+            [
+                sys.executable,
+                "scripts/encode_video.py",
+                str(args.input),
+                str(bitstream_file),
+                "--qp",
+                str(args.qp),
+                "--model",
+                str(checkpoint_file),
+                "--device",
+                "cuda",
+            ]
+        )
     except subprocess.CalledProcessError:
         logger.error("encoding_failed")
         return 1
@@ -152,16 +157,24 @@ def main() -> int:
     # 4. Decode
     logger.info("step_2_decoding")
     try:
-        run_command([
-            sys.executable,
-            "scripts/decode_video.py",
-            "--input", str(bitstream_file),
-            "--output", str(decoded_file),
-            "--checkpoint", str(checkpoint_file),
-            "--device", "cuda",
-            "--quality-report", str(report_file),
-            "--reference-video", str(args.input),  # enable metric computation
-        ])
+        run_command(
+            [
+                sys.executable,
+                "scripts/decode_video.py",
+                "--input",
+                str(bitstream_file),
+                "--output",
+                str(decoded_file),
+                "--checkpoint",
+                str(checkpoint_file),
+                "--device",
+                "cuda",
+                "--quality-report",
+                str(report_file),
+                "--reference-video",
+                str(args.input),  # enable metric computation
+            ]
+        )
     except subprocess.CalledProcessError:
         logger.error("decoding_failed")
         return 1
@@ -184,6 +197,7 @@ def main() -> int:
     # 5. Check Metrics (if available)
     if report_file.exists():
         import json
+
         with open(report_file) as f:
             metrics = json.load(f)
 

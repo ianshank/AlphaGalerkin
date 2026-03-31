@@ -125,6 +125,37 @@ class BoardRenderConfig(BaseModel):
     )
 
 
+class EndgameConfig(BaseModel):
+    """Configuration for endgame detection.
+
+    Controls when the AI should automatically pass to end the game
+    when the human player passes in an endgame situation.
+
+    Attributes:
+        fill_threshold: Board fill ratio above which AI should pass if human passed.
+        enable_auto_pass: Whether to enable automatic AI pass in endgame.
+        pass_on_consecutive: Always pass if human just passed and game.passes >= 1.
+
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    fill_threshold: float = Field(
+        default=0.90,
+        ge=0.5,
+        le=1.0,
+        description="Board fill ratio triggering auto-pass",
+    )
+    enable_auto_pass: bool = Field(
+        default=True,
+        description="Enable automatic AI pass in endgame",
+    )
+    pass_on_consecutive: bool = Field(
+        default=True,
+        description="Always pass if game already has a pass pending",
+    )
+
+
 class SpaceConfig(BaseModel):
     """Root configuration for HuggingFace Space.
 
@@ -169,6 +200,10 @@ class SpaceConfig(BaseModel):
         ge=0.0,
         le=15.0,
         description="Default komi for unsupported board sizes",
+    )
+    endgame: EndgameConfig = Field(
+        default_factory=EndgameConfig,
+        description="Endgame detection configuration",
     )
 
     @field_validator("supported_sizes")

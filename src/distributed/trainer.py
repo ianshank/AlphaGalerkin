@@ -29,7 +29,7 @@ from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 
-from src.distributed.config import DistributedInfraConfig, from_environment
+from src.distributed.config import DistributedInfraConfig, _get_env_rank_info
 from src.distributed.gradient_sync import GradientAccumulator, GradientSynchronizer
 
 if TYPE_CHECKING:
@@ -121,7 +121,7 @@ class DistributedTrainer:
         self.loss_fn = loss_fn
 
         # Get distributed info from environment
-        self.rank, self.local_rank, self.world_size = from_environment()
+        self.rank, self.local_rank, self.world_size = _get_env_rank_info()
         self._is_main_process = self.rank == 0
 
         # Device setup

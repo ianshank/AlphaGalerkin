@@ -1,0 +1,112 @@
+# SBIR Benchmark Suite
+# Comprehensive benchmark configuration for SBIR proposal demonstrations.
+# Runs all 3 core benchmark problems with classical baselines.
+
+suite_name: "sbir_benchmarks"
+description: "AlphaGalerkin SBIR readiness benchmark suite"
+output_dir: "outputs/sbir_benchmarks"
+
+benchmarks:
+  # Benchmark 1: L-shaped Poisson (AMR demonstration)
+  - name: "poisson_lshaped"
+    pde_type: "poisson"
+    geometry: "l_shaped"
+    description: "Poisson equation on L-shaped domain with reentrant corner singularity"
+    exact_solution: "r^(2/3) * sin(2*theta/3)"
+    domain:
+      geometry_type: "l_shaped"
+      scale: 1.0
+    parameters:
+      diffusion_coeff: 1.0
+    refinement_levels: [4, 8, 16, 32, 64, 128]
+    target_error: 1.0e-6
+    metrics:
+      - "l2_error"
+      - "h1_error"
+      - "convergence_rate"
+      - "dof_count"
+      - "wall_time_seconds"
+
+  # Benchmark 2: Burgers shock (nonlinear PDE)
+  - name: "burgers_shock"
+    pde_type: "burgers"
+    geometry: "rectangular"
+    description: "Viscous Burgers equation with shock formation"
+    exact_solution: "cole_hopf_transform"
+    domain:
+      dim: 1
+      min: [0.0]
+      max: [1.0]
+    parameters:
+      viscosity: [0.01, 0.005, 0.001]
+      shock_position: 0.5
+    time_stepping:
+      method: "rk4"
+      dt: 0.001
+      t_final: 0.5
+    target_error: 1.0e-4
+    metrics:
+      - "l2_error"
+      - "shock_resolution"
+      - "convergence_rate"
+      - "wall_time_seconds"
+
+  # Benchmark 3: Navier-Stokes Taylor-Green vortex
+  - name: "navier_stokes_taylor_green"
+    pde_type: "navier_stokes"
+    geometry: "rectangular"
+    description: "Taylor-Green vortex decay (2D incompressible NS)"
+    exact_solution: "taylor_green_analytical"
+    domain:
+      dim: 2
+      min: [0.0, 0.0]
+      max: [6.283185307, 6.283185307]  # [0, 2*pi]^2
+    parameters:
+      reynolds_number: [100, 200, 500]
+    time_stepping:
+      method: "rk4"
+      dt: 0.01
+      t_final: 1.0
+    target_error: 1.0e-3
+    metrics:
+      - "velocity_l2_error"
+      - "pressure_l2_error"
+      - "continuity_residual"
+      - "energy_dissipation_rate"
+      - "wall_time_seconds"
+
+baselines:
+  # Classical FEM baselines
+  - name: "uniform_fem"
+    description: "Uniform mesh finite elements (no adaptivity)"
+    type: "classical"
+
+  - name: "dorfler_amr"
+    description: "Dorfler marking adaptive mesh refinement"
+    type: "classical"
+    marking_fraction: 0.3
+
+  - name: "zienkiewicz_zhu"
+    description: "Zienkiewicz-Zhu error estimator with AMR"
+    type: "classical"
+
+  # ML baselines
+  - name: "pinn"
+    description: "Physics-Informed Neural Network"
+    type: "ml"
+
+  - name: "fno"
+    description: "Fourier Neural Operator"
+    type: "ml"
+
+  - name: "physicsnemo_surrogate"
+    description: "NVIDIA PhysicsNeMo surrogate model"
+    type: "ml"
+
+reporting:
+  formats: ["json", "latex", "markdown"]
+  figures:
+    - "error_vs_dof"
+    - "error_vs_walltime"
+    - "convergence_rates"
+    - "method_comparison_table"

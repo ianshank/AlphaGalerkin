@@ -167,7 +167,7 @@ def _with_retry(
                     error=str(e),
                 )
 
-    raise last_exception  # type: ignore[misc]
+    raise last_exception
 
 
 class GCSCheckpointManager:

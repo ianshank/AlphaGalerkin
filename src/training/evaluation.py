@@ -4,6 +4,7 @@ Provides metrics for assessing model quality:
 - Win rate against baseline (random) player
 - Win rate against previous model version
 - Win rate against checkpoint
+- Win rate against external engines (e.g., Stockfish via UCI)
 - Policy agreement with MCTS
 - Value prediction accuracy
 - Multi-resolution evaluation
@@ -26,6 +27,8 @@ from src.tools.gtp import SimpleGoGame
 
 if TYPE_CHECKING:
     from config.schemas import MCTSConfig
+    from src.engines.config import MatchConfig, UCIConfig
+    from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
@@ -75,6 +78,7 @@ class Evaluator:
         mcts_config: MCTSConfig | None = None,
         device: torch.device | str = "cpu",
         board_sizes: list[int] | None = None,
+        game: GameInterface | None = None,
     ) -> None:
         """Initialize evaluator.
 
@@ -83,11 +87,14 @@ class Evaluator:
             mcts_config: MCTS configuration.
             device: Evaluation device.
             board_sizes: Board sizes to evaluate on.
+            game: Game interface instance (e.g., ChessGame). When None,
+                falls back to Go via SimpleGoGame for backwards compat.
 
         """
         self.model = model
         self.device = torch.device(device)
         self.board_sizes = board_sizes or [9, 13, 19]
+        self.game = game
 
         # MCTS configuration
         self._mcts_kwargs = {}
@@ -133,7 +140,7 @@ class Evaluator:
             size = board_size or random.choice(self.board_sizes)
 
             # Create players
-            n_actions = size**2 + 1
+            n_actions = self.game.action_space_size if self.game is not None else size**2 + 1
             random_evaluator = RandomEvaluator(n_actions)
 
             # Alternate colors
@@ -369,6 +376,9 @@ class Evaluator:
     ) -> tuple[float, int]:
         """Play a single game between two evaluators.
 
+        When self.game is set (GameInterface), uses the game-agnostic path.
+        Otherwise falls back to the legacy SimpleGoGame path for Go.
+
         Args:
             board_size: Board size.
             black_evaluator: Evaluator for black player.
@@ -380,6 +390,92 @@ class Evaluator:
             Outcome: 1.0 = black wins, -1.0 = white wins, 0.0 = draw.
 
         """
+        if self.game is not None:
+            return self._play_game_generic(
+                black_evaluator=black_evaluator,
+                white_evaluator=white_evaluator,
+                max_moves=max_moves,
+            )
+        return self._play_game_go(
+            board_size=board_size,
+            black_evaluator=black_evaluator,
+            white_evaluator=white_evaluator,
+            max_moves=max_moves,
+        )
+
+    def _play_game_generic(
+        self,
+        black_evaluator: Any,
+        white_evaluator: Any,
+        max_moves: int = 500,
+    ) -> tuple[float, int]:
+        """Play a game using the GameInterface abstraction.
+
+        Supports any game (Chess, Go, etc.) via the GameInterface protocol.
+
+        Args:
+            black_evaluator: Evaluator for the first player (player 1).
+            white_evaluator: Evaluator for the second player (player -1).
+            max_moves: Maximum moves before draw.
+
+        Returns:
+            Tuple of (outcome, num_moves).
+
+        """
+        assert self.game is not None  # noqa: S101
+
+        state = self.game.initial_state()
+
+        p1_mcts = MCTS(evaluator=black_evaluator, **self._mcts_kwargs)
+        p2_mcts = MCTS(evaluator=white_evaluator, **self._mcts_kwargs)
+
+        move_count = 0
+
+        while not self.game.is_terminal(state) and move_count < max_moves:
+            is_player1 = state.current_player == 1
+            mcts = p1_mcts if is_player1 else p2_mcts
+
+            action = mcts.get_action(
+                self.game,
+                state,
+                temperature=0.0,
+                add_noise=False,
+            )
+
+            state = self.game.apply_action(state, action)
+
+            p1_mcts.advance(action)
+            p2_mcts.advance(action)
+
+            move_count += 1
+
+        if self.game.is_terminal(state):
+            game_result = self.game.get_result(state)
+            return float(game_result.winner), move_count
+
+        return 0.0, move_count
+
+    def _play_game_go(
+        self,
+        board_size: int,
+        black_evaluator: Any,
+        white_evaluator: Any,
+        max_moves: int = 500,
+    ) -> tuple[float, int]:
+        """Legacy Go-specific game play using SimpleGoGame.
+
+        Kept for backwards compatibility when no GameInterface is set.
+
+        Args:
+            board_size: Board size.
+            black_evaluator: Evaluator for black player.
+            white_evaluator: Evaluator for white player.
+            max_moves: Maximum moves before draw.
+
+        Returns:
+            Tuple of (outcome, num_moves).
+
+        """
         game = SimpleGoGame(board_size)
 
         black_mcts = MCTS(evaluator=black_evaluator, **self._mcts_kwargs)
@@ -388,18 +484,15 @@ class Evaluator:
         move_count = 0
 
         while not game.is_terminal() and move_count < max_moves:
-            # Select MCTS based on current player
             is_black = game.current_player == SimpleGoGame.BLACK
             mcts = black_mcts if is_black else white_mcts
 
-            # Get action
             action = mcts.get_action(
                 game,
-                temperature=0.0,  # Deterministic play
+                temperature=0.0,
                 add_noise=False,
             )
 
-            # Apply action
             if action == board_size**2:
                 game.play_pass()
             else:
@@ -408,22 +501,95 @@ class Evaluator:
                 if not game.play(row, col):
                     game.play_pass()
 
-            # Advance MCTS trees
             black_mcts.advance(action)
             white_mcts.advance(action)
 
             move_count += 1
 
-        # Determine outcome
         if game.is_terminal():
             winner = game.get_winner()
-            # Winner from black's perspective
             if game.current_player == SimpleGoGame.BLACK:
                 return -float(winner), move_count
             return float(winner), move_count
 
-        # Max moves reached - score as draw
         return 0.0, move_count
+
+    def evaluate_vs_engine(
+        self,
+        engine_config: UCIConfig,
+        match_config: MatchConfig,
+        mcts_config_dict: dict[str, Any] | None = None,
+    ) -> EvaluationResult:
+        """Evaluate model against an external UCI engine.
+
+        Requires self.game to be set (e.g., ChessGame).
+
+        Args:
+            engine_config: UCI engine configuration.
+            match_config: Match settings (n_games, time control, etc.).
+            mcts_config_dict: Optional MCTS kwargs override.
+
+        Returns:
+            Evaluation results with Elo estimate in metadata.
+
+        Raises:
+            ValueError: If self.game is not set.
+
+        """
+        if self.game is None:
+            raise ValueError(
+                "evaluate_vs_engine requires a GameInterface. Pass game= to Evaluator.__init__()."
+            )
+
+        from src.engines.match import EngineMatch
+
+        self.model.eval()
+
+        match = EngineMatch(
+            model=self.model,
+            engine_config=engine_config,
+            match_config=match_config,
+            game=self.game,
+            mcts_config=mcts_config_dict or self._mcts_kwargs,
+            device=self.device,
+        )
+
+        match_result = match.play_match()
+
+        metadata: dict[str, Any] = {"opponent": "engine"}
+        if match_result.elo_estimate is not None:
+            metadata["elo_difference"] = match_result.elo_estimate.elo_difference
+            metadata["elo_ci"] = match_result.elo_estimate.confidence_interval
+            metadata["los"] = match_result.elo_estimate.likelihood_of_superiority
+
+        avg_length = (
+            sum(g.move_count for g in match_result.games) / match_result.total_games
+            if match_result.total_games > 0
+            else 0.0
+        )
+
+        result = EvaluationResult(
+            win_rate=match_result.win_rate,
+            n_games=match_result.total_games,
+            wins=match_result.wins,
+            losses=match_result.losses,
+            draws=match_result.draws,
+            avg_game_length=avg_length,
+            metadata=metadata,
+        )
+
+        logger.info(
+            "evaluation_vs_engine_complete",
+            win_rate=f"{match_result.win_rate:.2%}",
+            n_games=match_result.total_games,
+            elo_diff=(
+                f"{match_result.elo_estimate.elo_difference:.0f}"
+                if match_result.elo_estimate
+                else "N/A"
+            ),
+        )
+
+        return result
 
     def measure_policy_agreement(
         self,

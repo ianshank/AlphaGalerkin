@@ -77,6 +77,20 @@ class OperatorConfig(BaseModel):
     # Input channels (stone colors + move history + etc.)
     input_channels: int = Field(default=17, description="Number of input feature planes")
 
+    # Game-specific configuration
+    game_type: Literal["go", "chess"] = Field(
+        default="go",
+        description="Game type: 'go' for position-based policy, 'chess' for action-space policy",
+    )
+    action_space_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the action space for dense policy head. "
+            "None = position-based head (Go: board_size^2+1). "
+            "Set to 4672 for chess."
+        ),
+    )
+
     @field_validator("d_key")
     @classmethod
     def key_dim_constraint(cls, v: int, info: object) -> int:
@@ -94,12 +108,12 @@ class MCTSConfig(BaseModel):
     """Configuration for Monte Carlo Tree Search."""
 
     # Search parameters
-    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move")
-    c_puct: float = Field(default=1.5, description="PUCT exploration constant")
+    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.")
+    c_puct: float = Field(default=1.5, description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.")
 
     # Dirichlet noise for root exploration
-    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise alpha")
-    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing coefficient")
+    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.")
+    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.")
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")
@@ -137,6 +151,45 @@ class TrainingConfig(BaseModel):
     # Loss weights
     policy_loss_weight: float = Field(default=1.0, description="Weight for policy loss")
     value_loss_weight: float = Field(default=1.0, description="Weight for value loss")
+    lbb_loss_weight: float = Field(
+        default=0.01,
+        ge=0.0,
+        description=(
+            "Weight for LBB regularization loss. Controls penalty for violating "
+            "the inf-sup (LBB) stability condition in Galerkin attention. "
+            "Default 0.01 follows Babuška-Brezzi theory: small but non-zero "
+            "to preserve stability without dominating policy/value learning."
+        ),
+    )
+    lbb_target: float = Field(
+        default=0.1,
+        gt=0.0,
+        description=(
+            "Target minimum for the LBB constant (minimum singular value of K→V projection). "
+            "Values below this threshold incur quadratic penalty. "
+            "Default 0.1 ensures numerical stability in Galerkin attention."
+        ),
+    )
+    lbb_eps: float = Field(
+        default=1e-8,
+        gt=0.0,
+        description="Small constant for numerical stability in LBB log-barrier loss.",
+    )
+    log_barrier_weight: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "Weight for the log-barrier term in LBB loss. "
+            "Provides smooth penalty encouraging larger LBB constants. "
+            "Combined loss = threshold_penalty + log_barrier_weight * (-log(lbb_constant))."
+        ),
+    )
+    label_smoothing: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Label smoothing for policy cross-entropy loss. 0.0 = no smoothing.",
+    )
 
     # Checkpointing
     checkpoint_interval: int = Field(default=1000, description="Steps between checkpoints")
@@ -173,6 +226,14 @@ class TrainingConfig(BaseModel):
 
     # Curriculum learning
     curriculum_enabled: bool = Field(default=False, description="Enable board size curriculum")
+    curriculum_schedule: dict[int, list[int]] | None = Field(
+        default=None,
+        description=(
+            "Board-size curriculum schedule mapping step -> board_sizes. "
+            "Example: {0: [9], 10000: [9, 13], 50000: [9, 13, 19]}. "
+            "When None, uses default schedule from BoardSizeCurriculum."
+        ),
+    )
 
     # Evaluation enhancements
     eval_vs_checkpoints: bool = Field(
@@ -248,6 +309,32 @@ class TrainingConfig(BaseModel):
     physics_use_adaptive_weights: bool = Field(
         default=True,
         description="Use adaptive weighting for physics loss components",
+    )
+
+    # Engine evaluation (Stockfish) configuration
+    engine_eval_enabled: bool = Field(
+        default=False,
+        description="Enable periodic evaluation against external UCI engine",
+    )
+    engine_eval_path: str | None = Field(
+        default=None,
+        description="Path to UCI engine binary (e.g., stockfish)",
+    )
+    engine_eval_depth: int = Field(
+        default=5,
+        ge=1,
+        le=30,
+        description="Engine search depth limit in plies",
+    )
+    engine_eval_games: int = Field(
+        default=4,
+        ge=1,
+        description="Number of games per engine evaluation",
+    )
+    engine_eval_movetime_ms: int | None = Field(
+        default=None,
+        ge=100,
+        description="Engine move time limit in ms (alternative to depth)",
     )
 
 

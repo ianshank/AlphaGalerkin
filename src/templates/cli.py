@@ -89,7 +89,7 @@ def create_cli_app(
             console.print(f"{name} version {version}")
             raise typer.Exit()
 
-    @app.callback()
+    @app.callback()  # type: ignore[untyped-decorator]
     def main(
         version: bool = typer.Option(
             False,
@@ -322,7 +322,7 @@ def confirm_action(
         True if confirmed, False otherwise.
 
     """
-    return typer.confirm(message, default=default)
+    return bool(typer.confirm(message, default=default))
 
 
 def handle_keyboard_interrupt(func: F) -> F:

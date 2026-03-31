@@ -9,11 +9,14 @@ The entropy coder must be lossless:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
 import torch
 from torch import Tensor
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,18 +33,26 @@ class EncodedBitstream:
 class RangeEncoder:
     """Range encoder for entropy coding.
 
-    Implements asymmetric numeral systems (ANS) style range coding
-    for efficient compression of symbols with learned distributions.
+    Uses 32-bit precision for the range state and a separate CDF
+    precision (default 12 bits) to ensure cdf_total << max_range,
+    preventing range collapse to zero during encoding.
     """
 
-    def __init__(self, precision: int = 16) -> None:
+    def __init__(self, precision: int = 32, cdf_precision: int = 12) -> None:
         """Initialize range encoder.
 
         Args:
-            precision: Precision bits for probability representation.
+            precision: Precision bits for range state (must be >= 16).
+            cdf_precision: Precision bits for CDF values. Must be
+                strictly less than ``precision`` to guarantee
+                ``range_size = range // cdf_total >= 1`` after
+                renormalization.
 
         """
+        if cdf_precision >= precision:
+            raise ValueError(f"cdf_precision ({cdf_precision}) must be < precision ({precision})")
         self.precision = precision
+        self.cdf_precision = cdf_precision
         self.max_range = 1 << precision
 
         # State
@@ -65,14 +76,32 @@ class RangeEncoder:
             cdf_total: Total CDF range.
 
         """
-        # Update range
         range_size = self.range // cdf_total
+        if range_size == 0:
+            # Safety: force renormalize if range collapsed
+            logger.debug(
+                "Range collapse detected (range=%d, total=%d), forcing renormalization",
+                self.range,
+                cdf_total,
+            )
+            self._renormalize()
+            range_size = self.range // cdf_total
+            if range_size == 0:
+                range_size = 1
+
         self.low += range_size * cdf_low
         self.range = range_size * (cdf_high - cdf_low)
 
-        # Renormalize
+        # Guard: ensure range is always positive
+        if self.range <= 0:
+            self.range = 1
+
+        self._renormalize()
+
+    def _renormalize(self) -> None:
+        """Emit bytes while range is below threshold."""
         while self.range < (self.max_range >> 8):
-            self.buffer.append(self.low >> (self.precision - 8))
+            self.buffer.append((self.low >> (self.precision - 8)) & 0xFF)
             self.low = (self.low << 8) & (self.max_range - 1)
             self.range <<= 8
 
@@ -98,7 +127,6 @@ class RangeEncoder:
         self.range = self.max_range
         self.buffer = []
 
-        # Encode each symbol
         for i, sym in enumerate(symbols_np):
             cdf = cdfs_np[i] if cdfs_np.ndim > 1 else cdfs_np
             sym = int(sym) + len(cdf) // 2  # Offset for signed symbols
@@ -112,8 +140,8 @@ class RangeEncoder:
             )
 
         # Flush remaining bits
-        self.buffer.append(self.low >> (self.precision - 8))
-        self.buffer.append((self.low >> (self.precision - 16)) & 0xFF)
+        for shift in range(self.precision - 8, -1, -8):
+            self.buffer.append((self.low >> shift) & 0xFF)
 
         return bytes(self.buffer)
 
@@ -124,9 +152,8 @@ class RangeEncoder:
             Encoded bytes.
 
         """
-        # Flush remaining state
         for _ in range(4):
-            self.buffer.append(self.low >> (self.precision - 8))
+            self.buffer.append((self.low >> (self.precision - 8)) & 0xFF)
             self.low = (self.low << 8) & (self.max_range - 1)
 
         return bytes(self.buffer)
@@ -136,16 +163,19 @@ class RangeDecoder:
     """Range decoder for entropy coding.
 
     Decodes symbols from bitstream using learned CDFs.
+    Must use the same precision and cdf_precision as the encoder.
     """
 
-    def __init__(self, precision: int = 16) -> None:
+    def __init__(self, precision: int = 32, cdf_precision: int = 12) -> None:
         """Initialize range decoder.
 
         Args:
-            precision: Precision bits for probability representation.
+            precision: Precision bits for range state (must match encoder).
+            cdf_precision: Precision bits for CDF values (must match encoder).
 
         """
         self.precision = precision
+        self.cdf_precision = cdf_precision
         self.max_range = 1 << precision
 
         # State
@@ -167,7 +197,7 @@ class RangeDecoder:
         self.low = 0
         self.range = self.max_range
 
-        # Read initial code
+        # Read initial code (precision // 8 bytes)
         self.code = 0
         for _ in range(self.precision // 8):
             self.code = (self.code << 8) | self._read_byte()
@@ -180,9 +210,16 @@ class RangeDecoder:
             return byte
         return 0
 
+    def _renormalize(self) -> None:
+        """Read bytes while range is below threshold."""
+        while self.range < (self.max_range >> 8):
+            self.code = ((self.code << 8) | self._read_byte()) & (self.max_range - 1)
+            self.low = (self.low << 8) & (self.max_range - 1)
+            self.range <<= 8
+
     def decode_symbol(
         self,
-        cdf: np.ndarray,
+        cdf: np.ndarray[np.int32, np.dtype[np.int32]],
     ) -> int:
         """Decode a single symbol.
 
@@ -195,21 +232,24 @@ class RangeDecoder:
         """
         cdf_total = int(cdf[-1])
         range_size = self.range // cdf_total
+        if range_size == 0:
+            self._renormalize()
+            range_size = self.range // cdf_total
+            if range_size == 0:
+                range_size = 1
 
-        # Find symbol
+        # Find symbol via scaled value lookup
         scaled_value = (self.code - self.low) // range_size
-        symbol = np.searchsorted(cdf[:-1], scaled_value, side="right") - 1
-        symbol = max(0, symbol)
+        symbol = int(np.searchsorted(cdf[:-1], scaled_value, side="right") - 1)
+        symbol = max(0, min(len(cdf) - 2, symbol))
 
         # Update range
         self.low += range_size * int(cdf[symbol])
         self.range = range_size * (int(cdf[symbol + 1]) - int(cdf[symbol]))
+        if self.range <= 0:
+            self.range = 1
 
-        # Renormalize
-        while self.range < (self.max_range >> 8):
-            self.code = ((self.code << 8) | self._read_byte()) & (self.max_range - 1)
-            self.low = (self.low << 8) & (self.max_range - 1)
-            self.range <<= 8
+        self._renormalize()
 
         # Return signed symbol
         return symbol - len(cdf) // 2
@@ -217,8 +257,8 @@ class RangeDecoder:
     def decode_symbols(
         self,
         num_symbols: int,
-        cdfs: np.ndarray,
-    ) -> np.ndarray:
+        cdfs: np.ndarray[np.int32, np.dtype[np.int32]],
+    ) -> np.ndarray[np.int32, np.dtype[np.int32]]:
         """Decode multiple symbols.
 
         Args:
@@ -242,18 +282,47 @@ class EntropyCoder:
     """High-level entropy coder combining encoder and decoder.
 
     Provides a simple interface for encoding/decoding symbol tensors.
+
+    The *range_precision* controls the encoder/decoder integer range
+    (32 bits by default).  The *cdf_precision* controls how finely
+    probability distributions are quantised (12 bits by default).
+    ``cdf_precision`` must be strictly less than ``range_precision``
+    so that ``range // cdf_total >= 1`` is always satisfied after
+    renormalization.
     """
 
-    def __init__(self, precision: int = 16) -> None:
+    def __init__(
+        self,
+        range_precision: int = 32,
+        cdf_precision: int = 12,
+        *,
+        precision: int | None = None,
+    ) -> None:
         """Initialize entropy coder.
 
         Args:
-            precision: Precision bits for probability representation.
+            range_precision: Precision bits for range state.
+            cdf_precision: Precision bits for CDF quantization.
+                Must be < range_precision.
+            precision: **Deprecated** — backwards-compatible alias
+                for ``range_precision``.  Ignored when
+                ``range_precision`` is explicitly provided.
 
         """
-        self.precision = precision
-        self.encoder = RangeEncoder(precision)
-        self.decoder = RangeDecoder(precision)
+        if precision is not None:
+            # Backwards compatibility: old callers pass precision=16
+            # Use that as a hint but ensure range > cdf
+            range_precision = max(precision, cdf_precision + 4)
+            logger.debug(
+                "EntropyCoder: legacy precision=%d mapped to range_precision=%d, cdf_precision=%d",
+                precision,
+                range_precision,
+                cdf_precision,
+            )
+        self.range_precision = range_precision
+        self.cdf_precision = cdf_precision
+        self.encoder = RangeEncoder(range_precision, cdf_precision)
+        self.decoder = RangeDecoder(range_precision, cdf_precision)
 
     def encode(
         self,
@@ -343,6 +412,10 @@ class EntropyCoder:
     ) -> Tensor:
         """Build Gaussian CDFs for given scales.
 
+        CDFs are quantized to ``cdf_precision`` bits so that the
+        total CDF value is at most ``(1 << cdf_precision) - 1``,
+        keeping it well below the encoder's range precision.
+
         Args:
             scales: Scale (std dev) parameters.
             min_val: Minimum symbol value.
@@ -365,15 +438,14 @@ class EntropyCoder:
         cdfs = torch.zeros(num_symbols, num_bins + 1, device=scales.device)
 
         for i in range(num_bins + 1):
-            # Standard normal CDF
             z = edges[i] / scales
             cdfs[:, i] = 0.5 * (1 + torch.erf(z / math.sqrt(2)))
 
-        # Scale to precision
-        cdfs = (cdfs * ((1 << self.precision) - 1)).to(torch.int32)
-        cdfs = cdfs.clamp(min=0)
+        # Scale to cdf_precision (NOT range_precision)
+        cdf_max = (1 << self.cdf_precision) - 1
+        cdfs = (cdfs * cdf_max).to(torch.int32).clamp(min=0)
 
-        # Ensure monotonicity
+        # Ensure strict monotonicity
         for i in range(1, num_bins + 1):
             cdfs[:, i] = torch.maximum(cdfs[:, i], cdfs[:, i - 1] + 1)
 
@@ -397,9 +469,13 @@ class EntropyCoder:
 
         """
         num_bins = max_val - min_val + 1
-        step = (1 << self.precision) // num_bins
+        cdf_max = (1 << self.cdf_precision) - 1
+        step = cdf_max // num_bins
+
+        # Ensure step >= 1 for monotonicity
+        step = max(step, 1)
 
         cdf = torch.arange(0, num_bins + 1) * step
-        cdf[-1] = (1 << self.precision) - 1
+        cdf[-1] = cdf_max
 
         return cdf.to(torch.int32)

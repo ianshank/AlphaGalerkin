@@ -191,7 +191,7 @@ def synthetic_video_factory(tmp_path: Path):
         def test_something(synthetic_video_factory):
             video_path = synthetic_video_factory(height=64, width=64, num_frames=10)
     """
-    import cv2
+    cv2 = pytest.importorskip("cv2", reason="OpenCV required for video fixtures")
     import numpy as np
 
     def _create_synthetic(

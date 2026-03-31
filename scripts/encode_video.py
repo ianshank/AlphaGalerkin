@@ -14,18 +14,18 @@ from pathlib import Path
 
 import torch
 
-from src.video_compression.config import CodecConfig
-from src.video_compression.codec.codec import create_codec
-from src.video_compression.utils.bitstream import (
-    BitstreamHeader,
-    FrameHeader,
-    EncodedFrame,
-    save_bitstream,
-)
 from src.templates.logging import (
+    DebugContext,
     configure_module_logging,
     create_logger_class,
-    DebugContext,
+)
+from src.video_compression.codec.codec import create_codec
+from src.video_compression.config import CodecConfig
+from src.video_compression.utils.bitstream import (
+    BitstreamHeader,
+    EncodedFrame,
+    FrameHeader,
+    save_bitstream,
 )
 
 # Configure logging
@@ -81,7 +81,8 @@ def parse_args() -> argparse.Namespace:
         help="Device for encoding (default: auto)",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -97,6 +98,7 @@ def load_video_frames(path: Path) -> torch.Tensor:
 
     Returns:
         Tensor of shape (T, 3, H, W) in [0, 1].
+
     """
     try:
         import cv2
@@ -137,6 +139,7 @@ def get_video_fps(path: Path) -> float:
 
     Returns:
         Frame rate (fps), defaults to 30.0 if unavailable.
+
     """
     try:
         import cv2
@@ -149,6 +152,21 @@ def get_video_fps(path: Path) -> float:
         return 30.0
 
 
+def serialize_latent(latent: torch.Tensor) -> bytes:
+    """Serialize a latent tensor to bytes for bitstream embedding.
+
+    Args:
+        latent: Latent tensor to serialize.
+
+    Returns:
+        Serialized bytes.
+
+    """
+    import io
+
+    buffer = io.BytesIO()
+    torch.save(latent, buffer)
+    return buffer.getvalue()
 
 
 def main() -> None:
@@ -193,7 +211,12 @@ def main() -> None:
             logger.info("loading_model", path=str(args.model))
             try:
                 checkpoint = torch.load(args.model, map_location=device, weights_only=False)
-                logger.info("checkpoint_debug", type=str(type(checkpoint)), keys=str(list(checkpoint.keys())) if isinstance(checkpoint, dict) else "N/A")
+                ckpt_keys = str(list(checkpoint.keys())) if isinstance(checkpoint, dict) else "N/A"
+                logger.info(
+                    "checkpoint_debug",
+                    type=str(type(checkpoint)),
+                    keys=ckpt_keys,
+                )
                 if "model_state_dict" in checkpoint:
                     state_dict = checkpoint["model_state_dict"]
                 elif "model_state" in checkpoint:
@@ -250,7 +273,11 @@ def main() -> None:
                 output = codec.encode_frame(frame_tensor, frame_info)
                 total_bits += output.rate
 
-                distortion_tensor = torch.tensor(output.distortion) if not isinstance(output.distortion, torch.Tensor) else output.distortion
+                distortion_tensor = (
+                    output.distortion
+                    if isinstance(output.distortion, torch.Tensor)
+                    else torch.tensor(output.distortion)
+                )
                 psnr = 10 * torch.log10(1.0 / (distortion_tensor + 1e-10)).item()
                 total_psnr += psnr
 

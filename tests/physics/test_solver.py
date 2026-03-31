@@ -265,9 +265,7 @@ class TestEdgeCases:
     def test_many_sources_small_grid(self):
         """Test more sources than grid cells."""
         # Multiple sources can land on same cell
-        field = generate_random_field(
-            grid_size=3, n_sources=20, smooth=False, seed=42
-        )
+        field = generate_random_field(grid_size=3, n_sources=20, smooth=False, seed=42)
         assert field.shape == (3, 3)
 
     def test_zero_sources(self):

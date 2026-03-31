@@ -222,10 +222,6 @@ def _bd_rate_cubic(
     log_anchor_rates = np.log10(anchor_rates + 1e-10)
     log_test_rates = np.log10(test_rates + 1e-10)
 
-    # Fit cubic polynomials: quality = f(log_rate)
-    np.polyfit(log_anchor_rates, anchor_qualities, 3)
-    np.polyfit(log_test_rates, test_qualities, 3)
-
     # Find overlapping quality range
     min_quality = max(anchor_qualities.min(), test_qualities.min())
     max_quality = min(anchor_qualities.max(), test_qualities.max())
@@ -233,26 +229,7 @@ def _bd_rate_cubic(
     if min_quality >= max_quality:
         return 0.0
 
-    # Integrate area under each curve
-    # For polynomial p(x), integral = sum(coef[i] * x^(n-i+1) / (n-i+1))
-    def integrate_poly(poly_coeffs: np.ndarray, a: float, b: float) -> float:
-        """Integrate polynomial from a to b."""
-        # Integrate: p(x) -> P(x) where P'(x) = p(x)
-        n = len(poly_coeffs)
-        integral_coeffs = np.zeros(n + 1)
-        for i, c in enumerate(poly_coeffs):
-            integral_coeffs[i] = c / (n - i)
-        integral_coeffs[-1] = 0  # Constant of integration
-
-        # Evaluate at bounds
-        P_b = np.polyval(integral_coeffs, b)
-        P_a = np.polyval(integral_coeffs, a)
-
-        return P_b - P_a
-
-    # We need to integrate rate w.r.t. quality
-    # Since we have quality = f(log_rate), we need to invert
-    # This is complex, so we use numerical integration instead
+    # Numerical integration via inverse interpolation
 
     num_samples = 100
     quality_samples = np.linspace(min_quality, max_quality, num_samples)

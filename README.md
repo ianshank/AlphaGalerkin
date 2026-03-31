@@ -1,6 +1,6 @@
 # AlphaGalerkin
 
-**Resolution-Independent Go AI using Continuous Operator Learning**
+**Resolution-Independent Game AI using Continuous Operator Learning**
 
 AlphaGalerkin is a novel approach to Go AI that replaces traditional Convolutional Neural Networks (CNNs) with Continuous Operator Learning, enabling zero-shot transfer between different board sizes and accelerating Monte Carlo Tree Search through FFT-based mixing.
 
@@ -234,6 +234,36 @@ mcts = MCTS(
 # Run search
 action_probs = mcts.search(game_state)
 best_move = mcts.get_action(game_state, temperature=0)
+```
+
+### Chess Self-Play Training
+
+```bash
+# Train chess model (AlphaZero methodology)
+python -m scripts.train_chess training.total_steps=1000 mcts.n_simulations=100
+
+# Enable Stockfish benchmark evaluation
+python -m scripts.train_chess \
+  training.engine_eval_enabled=true \
+  training.engine_eval_path=/path/to/stockfish \
+  training.engine_eval_depth=5
+```
+
+```python
+from config.schemas import OperatorConfig
+from src.modeling.model import AlphaGalerkinModel
+
+# Chess model: 119-channel input, 4672-action policy
+config = OperatorConfig(
+    d_model=256,
+    n_heads=8,
+    n_galerkin_layers=6,
+    n_softmax_layers=2,
+    input_channels=119,
+    game_type="chess",
+    action_space_size=4672,
+)
+model = AlphaGalerkinModel(config)
 ```
 
 ---
@@ -472,25 +502,27 @@ config = OperatorConfig(
 
 ## Testing
 
-The project has **404 tests** across unit, integration, and E2E categories.
+The project has **400+** tests across unit, integration, E2E, and security categories.
 
 ### Run All Tests
 
 ```bash
-# Full test suite (404 tests)
+# Full test suite
 pytest tests/ -v
+
+# Chess pipeline (78 tests with coverage gate)
+pytest tests/games/test_chess*.py tests/training/test_*chess*.py \
+  tests/security/test_chess_security.py tests/e2e/test_chess*.py \
+  --cov=src/games/chess --cov-fail-under=80 -v
+
+# Engine integration tests
+pytest tests/engines/ -v
 
 # Math kernel tests (property-based)
 pytest tests/math_kernel/ -v
 
 # Training tests
 pytest tests/training/ -v
-
-# Integration tests
-pytest tests/integration/ -v
-
-# PoC framework tests
-pytest tests/poc/ -v
 ```
 
 ### Verify Resolution Invariance
@@ -603,28 +635,108 @@ AlphaGalerkin/
 │   │   ├── embeddings.py  # Continuous embedding
 │   │   ├── fnet.py        # FFT mixing blocks
 │   │   ├── stability.py   # LBB stability guard
-│   │   └── model.py       # Full model
+│   │   ├── model.py       # Full model + ChessPolicyHead
+│   │   └── multiscale_fourier.py  # Multi-scale Fourier features
+│   ├── games/             # Game implementations
+│   │   ├── chess.py       # Chess (119ch, 4672 actions)
+│   │   ├── go.py          # Go (resolution-independent)
+│   │   ├── wrapper.py     # StatefulGameWrapper
+│   │   ├── interface.py   # GameInterface protocol
+│   │   └── pettingzoo_adapter.py  # PettingZoo multi-agent adapter
+│   ├── pde/               # PDE Game Framework
+│   │   ├── operators.py   # Poisson, Burgers, NavierStokes, Heat, L-shaped
+│   │   ├── geometry.py    # Rectangular, L-shaped, CylinderFlow domains
+│   │   ├── time_stepping.py  # ForwardEuler, RK4, CrankNicolson
+│   │   ├── config.py      # Pydantic PDE configuration schemas
+│   │   ├── game.py        # Abstract PDEGame base class
+│   │   ├── registry.py    # PDE operator registry
+│   │   ├── mcts_adapter.py  # PDE-to-MCTS bridge
+│   │   └── games/
+│   │       ├── basis_selection.py   # Galerkin basis selection
+│   │       ├── mesh_refinement.py   # Adaptive mesh refinement
+│   │       └── swarm_planning.py    # Multi-agent swarm control
+│   ├── research/          # SBIR benchmarking infrastructure
+│   │   ├── baselines.py   # FDM, Dorfler AMR, PINN solvers
+│   │   └── pde_benchmarks.py  # PDEBenchmarkRunner + reports
+│   ├── training/          # Training pipeline
+│   │   ├── trainer.py     # Main loop + engine eval
+│   │   ├── base_trainer.py  # Shared BaseTrainer ABC
+│   │   ├── losses/        # Unified loss package (LossRegistry)
+│   │   │   ├── alphagalerkin.py  # Policy CE + Value MSE + LBB
+│   │   │   ├── operator.py      # L2Relative, H1, MSE
+│   │   │   └── physics.py       # Residual + boundary + conservation
+│   │   ├── checkpoint.py         # CheckpointManager
+│   │   ├── checkpoint_migration.py  # Version-aware migration
+│   │   ├── loss_balancing.py     # ReLoBRaLo, GradNorm, etc.
+│   │   ├── self_play.py          # Game-agnostic self-play
+│   │   └── evaluation.py         # Evaluator + engine eval
+│   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
-│   │   ├── basis.py       # Fourier/Chebyshev basis
-│   │   ├── integral.py    # Galerkin projections
-│   │   └── spectral.py    # Spectral filtering
 │   ├── mcts/              # Monte Carlo Tree Search
-│   │   ├── node.py        # Tree nodes
-│   │   ├── evaluator.py   # Neural evaluators
-│   │   └── search.py      # MCTS algorithm
-│   └── tools/             # Utilities
-│       ├── gtp.py         # GTP interface
-│       ├── verify_invariance.py
-│       └── cli.py         # Command line
-├── tests/
-│   ├── math_kernel/       # Property-based math tests
-│   └── integration/       # End-to-end tests
+│   └── tools/             # Utilities (GTP, CLI)
+├── tests/                 # 3000+ tests, 85% coverage gate
+│   ├── pde/               # PDE operators, geometry, time-stepping, swarm
+│   ├── research/          # Baselines, benchmarks
+│   ├── training/          # Trainer, loss properties, numerical stability
+│   ├── modeling/          # Attention properties, Fourier features
+│   ├── games/             # Chess, Go, PettingZoo adapter
+│   ├── engines/           # UCI, match, Elo tests
+│   ├── security/          # Security tests
+│   └── e2e/               # End-to-end smoke tests
 ├── config/
-│   └── schemas.py         # Pydantic configurations
+│   ├── schemas.py         # Pydantic configs
+│   ├── proposals/         # SBIR benchmark configs (Navy, DOE, NSF, AFWERX)
+│   └── benchmarks/        # sbir_suite.yaml
 ├── docs/
-│   └── architecture/      # C4 diagrams
+│   ├── architecture/      # C4 diagrams (Mermaid)
+│   └── proposals/         # SBIR templates, IP strategy
 └── pyproject.toml
 ```
+
+---
+
+## SBIR Positioning
+
+AlphaGalerkin addresses a **verified novelty gap**: no published papers combine MCTS with Galerkin methods for PDE solving or mesh refinement.
+
+| Solicitation | Focus | TRL |
+|---|---|---|
+| **Navy N252-088** | FEM mesh optimization for naval structures | 3-4 |
+| **DOE ASCR C59-01** | Exascale PDE solver with multi-step look-ahead | 3-4 |
+| **NSF SBIR** | Foundational computational science innovation | 3 |
+| **AFWERX Open** | UAV CFD dual-use applications | 3-4 |
+
+Run benchmarks:
+```bash
+python -c "
+from src.research.pde_benchmarks import PDEBenchmarkRunner
+runner = PDEBenchmarkRunner('config/benchmarks/sbir_suite.yaml')
+results = runner.run_all()
+runner.generate_report(results, Path('outputs/sbir_benchmarks'))
+"
+```
+
+---
+
+## Next Steps
+
+### Near-Term (v0.4)
+- [ ] Demo script (`src/demos/sbir_demo.py`) with end-to-end benchmark visualization
+- [ ] Multi-field PDE support (extending ModelOutput for vector fields)
+- [ ] Migrate existing trainers (Trainer, OperatorTrainer) to BaseTrainer inheritance
+- [ ] Upper bounds on core dependencies in pyproject.toml
+
+### Medium-Term (v0.5)
+- [ ] 3D domain geometry support (tetrahedral meshes)
+- [ ] Distributed benchmark runner (multi-node SBIR suite)
+- [ ] Uncertainty quantification for PDE solutions
+- [ ] PettingZoo training loop for swarm games
+
+### Long-Term (v1.0)
+- [ ] SBIR Phase I proposal submission with benchmark results
+- [ ] Production ONNX deployment pipeline
+- [ ] Multi-physics coupling (fluid-structure interaction)
+- [ ] Publication: "MCTS-Guided Galerkin Methods for Adaptive PDE Solving"
 
 ---
 

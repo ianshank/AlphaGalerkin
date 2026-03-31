@@ -16,10 +16,9 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from src.video_compression.config import CodecConfig, TrainingConfig
 from src.video_compression.codec.codec import create_codec
+from src.video_compression.config import CodecConfig, TrainingConfig
 from src.video_compression.training.trainer import VideoCompressionTrainer
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +42,7 @@ class ImageDataset(Dataset[torch.Tensor]):
             root: Root directory containing images.
             patch_size: Size of random crops for training.
             extensions: Valid image extensions.
+
         """
         self.root = Path(root)
         self.patch_size = patch_size
@@ -67,6 +67,7 @@ class ImageDataset(Dataset[torch.Tensor]):
 
         Returns:
             Image tensor (3, H, W) in [0, 1].
+
         """
         try:
             from PIL import Image
@@ -74,9 +75,7 @@ class ImageDataset(Dataset[torch.Tensor]):
             raise ImportError("PIL not installed. Install with: pip install pillow")
 
         pil_img = Image.open(self.files[idx]).convert("RGB")
-        img: torch.Tensor = torch.from_numpy(
-            __import__("numpy").array(pil_img)
-        ).float() / 255.0
+        img: torch.Tensor = torch.from_numpy(__import__("numpy").array(pil_img)).float() / 255.0
         img = img.permute(2, 0, 1)  # HWC to CHW
 
         # Random crop
@@ -84,10 +83,11 @@ class ImageDataset(Dataset[torch.Tensor]):
         if h >= self.patch_size and w >= self.patch_size:
             top = int(torch.randint(0, h - self.patch_size + 1, (1,)).item())
             left = int(torch.randint(0, w - self.patch_size + 1, (1,)).item())
-            img = img[:, top:top + self.patch_size, left:left + self.patch_size]
+            img = img[:, top : top + self.patch_size, left : left + self.patch_size]
         else:
             # Resize if too small
             import torch.nn.functional as F
+
             img = F.interpolate(
                 img.unsqueeze(0),
                 size=(self.patch_size, self.patch_size),
@@ -164,7 +164,8 @@ def parse_args() -> argparse.Namespace:
         help="Enable Weights & Biases logging",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -236,8 +237,7 @@ def main() -> None:
 
     def infinite_loader() -> Generator[torch.Tensor, None, None]:
         while True:
-            for batch in train_loader:
-                yield batch
+            yield from train_loader
 
     trainer.train(infinite_loader())
 

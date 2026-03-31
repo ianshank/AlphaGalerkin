@@ -10,11 +10,11 @@ Provides a complete training loop with:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import structlog
 import torch
 from torch import nn
 from torch.cuda.amp import GradScaler, autocast
@@ -25,7 +25,7 @@ from src.video_compression.codec.codec import VideoCodec
 from src.video_compression.config import TrainingConfig
 from src.video_compression.training.loss import CompressionLoss
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -174,7 +174,7 @@ class VideoCompressionTrainer:
             lr=self.optimizer.param_groups[0]["lr"],
         )
 
-    @torch.no_grad()
+    @torch.no_grad()  # type: ignore[untyped-decorator]
     def eval_step(
         self,
         batch: torch.Tensor,

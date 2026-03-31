@@ -17,19 +17,20 @@ File format (.agk):
 from __future__ import annotations
 
 import json
-import logging
 import struct
+import types
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.video_compression.codec.gop_manager import FrameType
 from src.video_compression.utils.padding import PaddingInfo
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Format constants
 MAGIC_BYTES = b"AGK\x00"  # AlphaGalerkin Codec
@@ -202,7 +203,12 @@ class BitstreamWriter:
         self._write_header()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
         """Close file and finalize."""
         if self._file:
             self._finalize()
@@ -319,7 +325,12 @@ class BitstreamReader:
         self._read_header()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
         """Close file."""
         if self._file:
             self._file.close()
@@ -414,6 +425,8 @@ class BitstreamReader:
         """
         # Reset to start of frames
         # This is inefficient - a real implementation would use an index
+        if self._file is None:
+            raise RuntimeError("File not open")
         self._file.seek(0)
         self._read_header()
         self._frames_read = 0

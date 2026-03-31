@@ -425,13 +425,13 @@ def log_call(
                 call_info["args"] = args_str
                 call_info["kwargs"] = kwargs_str
 
-            logger.debug("function_call", **call_info)  # type: ignore[union-attr]
+            logger.debug("function_call", **call_info)
 
             result = func(*args, **kwargs)
 
             if log_result:
                 result_str = str(result)[:max_str_length]
-                logger.debug(  # type: ignore[union-attr]
+                logger.debug(
                     "function_result",
                     function=func.__name__,
                     result=result_str,
@@ -571,7 +571,7 @@ class DebugContext:
 
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
-                return torch.cuda.memory_allocated()
+                return int(torch.cuda.memory_allocated())
         except ImportError:
             pass
         return 0

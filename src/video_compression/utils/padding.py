@@ -11,16 +11,16 @@ Design principles:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import Enum
 
+import structlog
 import torch.nn.functional as F
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor, nn
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PaddingMode(str, Enum):
@@ -71,7 +71,7 @@ class PaddingInfo:
     pad_left: int
     pad_right: int
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, int]:
         """Convert to dictionary for serialization."""
         return {
             "original_height": self.original_height,
@@ -85,7 +85,7 @@ class PaddingInfo:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> PaddingInfo:
+    def from_dict(cls, data: dict[str, int]) -> PaddingInfo:
         """Create from dictionary."""
         return cls(**data)
 
@@ -342,7 +342,10 @@ class DynamicPadding(nn.Module):
 
         """
         x_padded = self.padder(x)
-        return x_padded, self.padder.last_padding_info
+        pad_info = self.padder.last_padding_info
+        if pad_info is None:
+            raise RuntimeError("Padding info not available after padding")
+        return x_padded, pad_info
 
     def unpad(
         self,

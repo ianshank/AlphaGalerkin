@@ -1,0 +1,120 @@
+# Chess self-play training configuration
+# Use with: python -m scripts.train_chess --config-name=train_chess
+#
+# AlphaZero-style pure self-play for chess:
+# - 119-channel input (AlphaZero encoding)
+# - 4672-action dense policy head
+# - Dirichlet alpha 0.3 (chess-specific)
+# - Stockfish benchmark evaluation (not training)
+
+defaults:
+  - train
+  - _self_
+
+# Model configuration - chess-specific
+operator:
+  input_channels: 119       # AlphaZero chess: 12 pieces × 8 history + 7 aux
+  d_model: 256
+  d_key: 64
+  d_value: 64
+  d_ffn: 512                # Smaller for single-GPU speed
+  n_heads: 8
+  n_galerkin_layers: 6
+  n_softmax_layers: 2
+  n_fourier_features: 128
+  fourier_scale: 1.0
+  use_fnet_mixing: true
+  fnet_dropout: 0.1
+  game_type: chess
+  action_space_size: 4672   # Chess action encoding
+
+# MCTS configuration - chess-specific
+mcts:
+  n_simulations: 400        # Balance speed vs play quality
+  c_puct: 2.5               # AlphaZero chess value
+  dirichlet_alpha: 0.3      # Chess-specific (Go uses 0.03)
+  dirichlet_epsilon: 0.25   # Root noise fraction
+  temperature: 1.0
+  temperature_drop_move: 30  # Switch to greedy at move 30
+  batch_size: 8
+  virtual_loss: 3.0
+
+# Training configuration
+training:
+  # Optimization
+  learning_rate: 0.01       # AlphaZero start LR
+  weight_decay: 0.0001
+  batch_size: 128           # Scale for single GPU
+  gradient_clip: 1.0
+
+  # Learning rate schedule (AlphaZero: step decay)
+  lr_scheduler: cosine
+  warmup_steps: 100
+  total_steps: 10000        # Adjust based on available compute
+
+  # Self-play
+  n_self_play_games: 10     # Games per training iteration (single GPU)
+  replay_buffer_size: 50000
+
+  # Checkpointing
+  checkpoint_interval: 500
+  use_amp: true
+
+  # Evaluation
+  eval_interval: 250
+  eval_games: 5
+
+  # Loss balancing
+  loss_balancing_strategy: relobralo
+  loss_balancing_beta: 0.99
+  loss_balancing_tau: 1.0
+  loss_balancing_warmup: 50
+
+  # Prioritized replay off (AlphaZero didn't use it)
+  use_prioritized_replay: false
+
+  # No board-size curriculum for chess (always 8×8)
+  curriculum_enabled: false
+
+  # Evaluation enhancements
+  eval_vs_checkpoints: true
+  elo_k_factor: 32.0
+  n_tournament_opponents: 2
+  multi_resolution_eval: false  # Chess is fixed 8×8
+
+  # Training stability
+  early_stopping_enabled: false
+  plateau_detection_enabled: true
+  plateau_patience: 20
+  plateau_factor: 0.5
+  plateau_min_lr: 0.000001
+
+  # Engine evaluation (Stockfish benchmark)
+  engine_eval_enabled: false     # Set true when stockfish is available
+  # engine_eval_path: /path/to/stockfish  # Uncomment and set path
+  engine_eval_depth: 5           # Plies search depth
+  engine_eval_games: 4           # Games per evaluation
+
+# W&B logging
+wandb:
+  enabled: true
+  project: alphagalerkin
+  mode: online
+  tags:
+    - chess
+    - self-play
+    - alphazero
+  log_model: true
+  log_code: true
+  log_interval: 10
+
+# Runtime settings
+device: auto
+log_interval: 25
+
+# Chess is always 8×8
+board_sizes:
+  - 8
+
+experiment_name: alphagalerkin_chess
+log_level: INFO

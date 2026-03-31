@@ -4,6 +4,7 @@ This document provides a comprehensive C4 architecture model for the AlphaGalerk
 The C4 model consists of four levels: System Context, Containers, Components, and Code.
 
 The system supports two primary use cases:
+
 1. **Go AI**: Resolution-independent game playing with zero-shot transfer between board sizes
 2. **PDE Solving**: AlphaZero-style MCTS for adaptive basis selection and mesh refinement
 
@@ -79,6 +80,12 @@ C4Container
 
         Container(data_layer, "Data Layer", "PyTorch Dataset", "Board state preprocessing, variable-size batching, physics data generation")
 
+        Container(research, "Research & Benchmarking", "Python/SciPy", "SBIR baselines (FDM, AMR, PINN), benchmark runner, convergence reports")
+
+        Container(geometry, "Domain Geometry & Time-Stepping", "Python/PyTorch", "Rectangular, L-shaped, cylinder domains; Forward Euler, RK4, Crank-Nicolson")
+
+        Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -128,6 +135,9 @@ C4Container
 | **Math Kernel** | Mathematical foundations and operators | NumPy, SciPy, FFT, multi-scale Fourier |
 | **PoC Framework** | Validates mathematical claims through experiments | Pydantic, structlog |
 | **Data Layer** | Data loading and preprocessing | PyTorch Dataset, padding/masking |
+| **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
+| **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
+| **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
 
 ---
 
@@ -255,8 +265,57 @@ C4Component
 | **Replay Buffer** | Experience storage and sampling | Uniform and prioritized replay |
 | **Loss Function** | Multi-objective optimization | Policy CE + Value MSE + LBB term |
 | **Checkpoint Manager** | Model persistence with best tracking | File I/O with rotation policy |
-| **Model Evaluator** | Performance metrics | Win rate, policy agreement |
+| **Model Evaluator** | Performance metrics | Win rate, policy agreement, engine Elo |
 | **Optimizer** | Weight updates | Adam with warmup and decay |
+
+---
+
+## Level 3: Component Diagram — Chess Engine Integration
+
+This diagram shows the chess engine evaluation subsystem added for Stockfish benchmarking.
+
+```mermaid
+C4Component
+    title Component Diagram - Chess Engine Integration
+
+    Container_Boundary(engine_subsystem, "Engine Integration Subsystem") {
+        Component(uci_adapter, "UCI Adapter", "Python Module", "Universal Chess Interface protocol driver for Stockfish/Leela")
+        
+        Component(engine_match, "EngineMatch", "Python Class", "Orchestrates N-game matches: color alternation, time control, PGN output")
+        
+        Component(elo_calculator, "EloCalculator", "Python Class", "Bayesian Elo estimation with confidence intervals and LOS")
+        
+        Component(uci_config, "UCIConfig", "Pydantic Model", "Engine path, depth, nodes, movetime, hash, threads")
+        
+        Component(match_config, "MatchConfig", "Pydantic Model", "N games, time control, max moves, opening FEN")
+    }
+
+    Component_Ext(evaluator, "Evaluator", "evaluate_vs_engine()")
+    Component_Ext(trainer, "Trainer", "_run_engine_evaluation()")
+    Component_Ext(wandb, "W&B Logger", "eval/engine/* metrics")
+    Component_Ext(chess_game, "ChessGame", "119-channel state, 4672 actions")
+
+    Rel(trainer, evaluator, "Calls at eval_interval")
+    Rel(evaluator, engine_match, "Creates match")
+    Rel(engine_match, uci_adapter, "Sends UCI commands")
+    Rel(engine_match, elo_calculator, "Computes Elo from results")
+    Rel(engine_match, chess_game, "Uses for game state")
+    Rel(engine_match, uci_config, "Configured by")
+    Rel(engine_match, match_config, "Configured by")
+    Rel(trainer, wandb, "Logs elo_diff, win_rate, LOS")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Engine Integration Components
+
+| Component | Responsibility | Key Interfaces |
+|-----------|----------------|----------------|
+| **UCI Adapter** | Stockfish/engine protocol communication | `send_command()`, `parse_bestmove()` |
+| **EngineMatch** | Match orchestration with color alternation | `play_match() → MatchResult` |
+| **EloCalculator** | Bayesian Elo from W/L/D counts | `estimate_elo_difference() → EloEstimate` |
+| **UCIConfig** | Engine binary path and search limits | Pydantic validated, depth/nodes/movetime |
+| **MatchConfig** | Match format settings | N games, time control, PGN output |
 
 ---
 
@@ -659,6 +718,7 @@ classDiagram
 ### Key Implementation Details
 
 **Galerkin Attention Algorithm:**
+
 ```python
 # Step 1: Project to Query, Key, Value spaces
 Q = query_proj(x)    # (batch, n, d_head)
@@ -679,6 +739,7 @@ if training:
 ```
 
 **Complexity Analysis:**
+
 - Standard Attention: O(N² × d)
 - Galerkin Attention: O(N × d²)
 - For typical Go: N=361, d=32 → **10x speedup**
@@ -1137,26 +1198,31 @@ numpy >= 1.24.0         # Numerical computing
 ## Architecture Principles
 
 ### 1. Resolution Independence
+
 - **Continuous Domain**: Treat board as Ω = [0,1]² rather than discrete grid
 - **Fourier Encoding**: Position-independent frequency representation
 - **Spectral Methods**: Proper anti-aliasing and frequency filtering
 
 ### 2. Mathematical Rigor
+
 - **Galerkin Projection**: Well-founded operator approximation theory
 - **LBB Stability**: Monitored inf-sup condition ensures convergence
 - **Fredholm Operators**: Integral equation formulation for influence
 
 ### 3. Performance Optimization
+
 - **O(N) Attention**: Linear complexity via Petrov-Galerkin projection
 - **FFT Mixing**: O(N log N) spectral mixing for fast rollouts
 - **CUDA Acceleration**: Full GPU utilization for training and inference
 
 ### 4. Testability
+
 - **Property-Based Tests**: Mathematical properties verified with Hypothesis
 - **PoC Framework**: Reproducible validation of core claims
 - **Modular Design**: Independent testing of components
 
 ### 5. Configurability
+
 - **Hydra Integration**: Hierarchical configuration management
 - **Pydantic Schemas**: Runtime validation of parameters
 - **Environment Variables**: Deployment-specific overrides
@@ -1166,54 +1232,63 @@ numpy >= 1.24.0         # Numerical computing
 ## Key Architectural Decisions
 
 ### Decision 1: Galerkin vs Standard Attention
+
 - **Context**: Need O(N) complexity for large board sizes
 - **Decision**: Use Petrov-Galerkin projection instead of softmax
 - **Rationale**: Reduces complexity from O(N²d) to O(Nd²)
 - **Trade-offs**: Requires careful normalization (1/n, not 1/√d)
 
 ### Decision 2: Hybrid Architecture (Galerkin + Softmax)
+
 - **Context**: Balance global strategy and local tactics
 - **Decision**: Galerkin layers for strategy, softmax for tactics
 - **Rationale**: Galerkin captures long-range influence, softmax preserves injectivity for life/death
 - **Trade-offs**: More complex than uniform architecture
 
 ### Decision 3: FNet for Fast Rollouts
+
 - **Context**: MCTS requires thousands of neural evaluations
 - **Decision**: FFT-based mixing as alternative to attention
 - **Rationale**: 5× speedup for leaf evaluation
 - **Trade-offs**: Slightly lower accuracy vs full attention
 
 ### Decision 4: PoC Framework for Validation
+
 - **Context**: Need reproducible validation of mathematical claims
 - **Decision**: Config-driven scenario framework
 - **Rationale**: Ensures claims are testable and reproducible
 - **Trade-offs**: Additional infrastructure complexity
 
 ### Decision 5: Pydantic for Configuration
+
 - **Context**: Complex hyperparameter space with mathematical constraints
 - **Decision**: Pydantic schemas with validators
 - **Rationale**: Runtime validation, type safety, IDE support
 - **Trade-offs**: More verbose than plain dicts
 
 ### Decision 6: PDE Solving as Sequential Decision-Making
+
 - **Context**: Adaptive basis selection and mesh refinement require intelligent choices
 - **Decision**: Model PDE solving as a game with MCTS search
 - **Rationale**: Leverages AlphaZero infrastructure, learns optimal refinement strategies
 - **Trade-offs**: Training overhead, requires careful reward design
 
 ### Decision 7: ReLoBRaLo for Multi-Objective Loss Balancing
+
 - **Context**: Physics-informed losses have vastly different scales (residual vs boundary)
 - **Decision**: Use Relative Loss Balancing with Random Lookback
 - **Rationale**: Stable training, handles scale differences, minimal hyperparameters
 - **Trade-offs**: Randomness in lookback, warmup period needed
 
 ### Decision 8: Multi-Scale Fourier Features for Spectral Bias
+
 - **Context**: Neural networks learn low frequencies first (spectral bias)
 - **Decision**: Parallel Fourier feature banks at multiple scales
 - **Rationale**: Captures both fine and coarse solution features from start
 - **Trade-offs**: Increased feature dimension, more parameters
 
 ### Decision 9: Autodiff for PDE Residuals
+
 - **Context**: Need derivatives for PDE residual computation
 - **Decision**: Use PyTorch autograd for all derivative computations
 - **Rationale**: Exact gradients, GPU-accelerated, composable with neural networks
@@ -1269,9 +1344,157 @@ numpy >= 1.24.0         # Numerical computing
 
 6. **PDE Extensions**
    - 3D domain support
-   - Time-stepping for unsteady problems
    - Multi-physics coupling
    - Uncertainty quantification
+
+---
+
+## Level 3: Component Diagram - SBIR Research Infrastructure
+
+This diagram shows the benchmarking and baseline comparison components for SBIR proposals.
+
+```mermaid
+C4Component
+    title Component Diagram - SBIR Research Infrastructure
+
+    Container_Boundary(research, "Research & Benchmarking") {
+        Component(benchmark_runner, "PDEBenchmarkRunner", "Python Class", "Runs AlphaGalerkin vs baselines on benchmark suites, generates JSON/Markdown reports")
+
+        Component(fdm_solver, "UniformFDMSolver", "BaseSolver", "2nd-order finite differences on uniform grid via scipy.sparse")
+
+        Component(amr_solver, "DorflerAMRSolver", "BaseSolver", "Dorfler bulk-chasing adaptive mesh refinement on 1D grids")
+
+        Component(pinn_solver, "SimplePINNSolver", "BaseSolver", "Physics-Informed Neural Network baseline with autograd Laplacian")
+
+        Component(solver_registry, "SOLVER_REGISTRY", "Dict Registry", "Maps solver names to classes: get_solver(), list_solvers()")
+
+        Component(benchmark_config, "Benchmark Configs", "YAML", "sbir_suite.yaml, navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml")
+    }
+
+    Component_Ext(pde_operators, "PDE Operators", "Provides exact solutions, residuals")
+    Component_Ext(alphagalerkin, "AlphaGalerkin Engine", "MCTS-guided solver under comparison")
+
+    Rel(benchmark_runner, fdm_solver, "Runs baseline")
+    Rel(benchmark_runner, amr_solver, "Runs baseline")
+    Rel(benchmark_runner, pinn_solver, "Runs baseline")
+    Rel(benchmark_runner, solver_registry, "Discovers solvers")
+    Rel(benchmark_runner, benchmark_config, "Loads config")
+
+    Rel(fdm_solver, pde_operators, "Uses source_term, boundary_value")
+    Rel(amr_solver, pde_operators, "Uses source_term, exact_solution")
+    Rel(pinn_solver, pde_operators, "Uses residual via autograd")
+
+    Rel(benchmark_runner, alphagalerkin, "Compares against baselines")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### SBIR Research Components
+
+| Component | Responsibility | Key Interface |
+|-----------|----------------|---------------|
+| **PDEBenchmarkRunner** | Load YAML config, run all solver x problem combos, compute convergence rates | `run_all()`, `generate_report()` |
+| **UniformFDMSolver** | Reference FDM solution on 1D/2D uniform grids | `solve(operator, n_dof)` |
+| **DorflerAMRSolver** | Adaptive refinement with residual error indicators | `solve(operator, n_dof)` |
+| **SimplePINNSolver** | PINN baseline with configurable MLP + autograd | `solve(operator, n_dof)` |
+| **SOLVER_REGISTRY** | Plugin system for baseline solvers | `get_solver(name)`, `list_solvers()` |
+
+---
+
+## Level 3: Component Diagram - Domain Geometry & Time-Stepping
+
+This diagram shows the domain geometry and time-integration components.
+
+```mermaid
+C4Component
+    title Component Diagram - Domain Geometry & Time-Stepping
+
+    Container_Boundary(geometry_time, "Domain Geometry & Time-Stepping") {
+        Component(domain_abc, "DomainGeometry", "Abstract Base Class", "contains_point, is_boundary, sample_interior, sample_boundary, bounding_box")
+
+        Component(rect_domain, "RectangularDomain", "DomainGeometry", "Standard [x_min, x_max] x [y_min, y_max] domain")
+
+        Component(lshaped_domain, "LShapedDomain", "DomainGeometry", "[-1,1]^2 minus [0,1]x[-1,0], reentrant corner singularity")
+
+        Component(cylinder_domain, "CylinderFlowDomain", "DomainGeometry", "DFG benchmark: rectangle with circular obstacle, rejection sampling")
+
+        Component(geom_config, "GeometryConfig", "Pydantic", "geometry_type enum, scale, cylinder params, create_geometry() factory")
+
+        Component(time_euler, "ForwardEuler", "TimeStepper", "1st-order explicit Euler method")
+
+        Component(time_rk4, "RK4", "TimeStepper", "4th-order Runge-Kutta with 4 stages")
+
+        Component(time_cn, "CrankNicolson", "TimeStepper", "2nd-order implicit with fixed-point iteration")
+
+        Component(time_config, "TimeSteppingConfig", "Pydantic", "method enum, dt, t_start/t_end, adaptive_dt, create_time_stepper() factory")
+    }
+
+    Component_Ext(pde_operators, "PDE Operators", "NavierStokes, Burgers, Heat (time-dependent)")
+    Component_Ext(mesh_game, "MeshRefinementGame", "Uses geometry for adaptive refinement")
+
+    Rel(rect_domain, domain_abc, "Implements")
+    Rel(lshaped_domain, domain_abc, "Implements")
+    Rel(cylinder_domain, domain_abc, "Implements")
+
+    Rel(time_euler, time_config, "Created by factory")
+    Rel(time_rk4, time_config, "Created by factory")
+    Rel(time_cn, time_config, "Created by factory")
+
+    Rel(pde_operators, time_rk4, "Integrates in time")
+    Rel(mesh_game, domain_abc, "Samples collocation points")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Domain & Time-Stepping Components
+
+| Component | Responsibility | Key Feature |
+|-----------|----------------|-------------|
+| **RectangularDomain** | Standard box domains | Proportional boundary sampling per edge |
+| **LShapedDomain** | AMR benchmark domain | Rejection sampling (75% acceptance), 6-segment boundary |
+| **CylinderFlowDomain** | DFG CFD benchmark | Cylinder exclusion zone, combined wall + surface sampling |
+| **ForwardEuler** | Explicit 1st-order | Simple, O(dt) error |
+| **RK4** | Explicit 4th-order | O(dt^4) error, 4 function evaluations per step |
+| **CrankNicolson** | Implicit 2nd-order | A-stable, fixed-point iteration with convergence warning |
+
+---
+
+## Level 3: Component Diagram - Swarm Planning Game
+
+This diagram shows the multi-agent swarm planning game for DARPA/AFWERX positioning.
+
+```mermaid
+C4Component
+    title Component Diagram - Swarm Planning Game
+
+    Container_Boundary(swarm, "Swarm Planning (S500)") {
+        Component(swarm_game, "SwarmPlanningGame", "PDEGame", "Multi-agent swarm control as sequential decision-making with MCTS")
+
+        Component(swarm_state, "SwarmState", "Dataclass", "Agent positions, velocities, coverage map, communication graph, obstacles")
+
+        Component(swarm_config, "SwarmPlanningConfig", "Pydantic", "n_agents, communication_range, collision_radius, domain_size, reward weights")
+
+        Component(potential_field, "Potential Field", "Algorithm", "Inverse-distance obstacle avoidance via Laplace equation connection")
+
+        Component(coverage_map, "Coverage Map", "NumPy Array", "Binary grid tracking explored regions, sensor radius coverage")
+
+        Component(comm_graph, "Communication Graph", "Adjacency Matrix", "Agent connectivity based on communication_range threshold")
+    }
+
+    Component_Ext(mcts_engine, "MCTS Engine", "Searches 7-action space per agent (round-robin)")
+    Component_Ext(pettingzoo, "PettingZoo Adapter", "Optional multi-agent RL interface")
+
+    Rel(swarm_game, swarm_state, "Manages state transitions")
+    Rel(swarm_game, swarm_config, "Configured by")
+    Rel(swarm_game, potential_field, "Computes obstacle avoidance")
+    Rel(swarm_game, coverage_map, "Updates explored regions")
+    Rel(swarm_game, comm_graph, "Computes connectivity")
+
+    Rel(mcts_engine, swarm_game, "Selects agent actions")
+    Rel(pettingzoo, swarm_game, "Wraps as ParallelEnv")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
 
 ---
 
@@ -1298,9 +1521,9 @@ numpy >= 1.24.0         # Numerical computing
 
 ## Document Metadata
 
-- **Version**: 2.0.0
+- **Version**: 3.0.0
 - **Created**: 2026-01-26
-- **Updated**: 2026-01-28
+- **Updated**: 2026-03-31
 - **Format**: Mermaid C4 Diagrams
 - **Status**: Complete
 - **Audience**: Developers, Researchers, Computational Scientists, Technical Stakeholders

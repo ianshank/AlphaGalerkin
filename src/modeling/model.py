@@ -61,6 +61,8 @@ class GalerkinBlock(nn.Module):
         self.attention = GalerkinAttention(d_model, n_heads, dropout=dropout)
 
         # Normalization
+        self.norm1: nn.LayerNorm | ScaleNorm
+        self.norm2: nn.LayerNorm | ScaleNorm
         if norm_type == "layernorm":
             self.norm1 = nn.LayerNorm(d_model)
             self.norm2 = nn.LayerNorm(d_model)
@@ -194,11 +196,12 @@ class ScaleNorm(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """Apply scale normalization."""
         norm = x.norm(dim=-1, keepdim=True)
-        return x / (norm + self.eps) * self.scale
+        result: Tensor = x / (norm + self.eps) * self.scale
+        return result
 
 
 class PolicyHead(nn.Module):
-    """Policy head for move prediction."""
+    """Policy head for move prediction (position-based, Go)."""
 
     def __init__(
         self,
@@ -250,6 +253,56 @@ class PolicyHead(nn.Module):
         return logits
 
 
+class ActionPolicyHead(nn.Module):
+    """Dense policy head for action-space games (e.g. Chess).
+
+    Unlike the position-based PolicyHead which outputs one logit per board
+    position, this head projects global features to a fixed-size action
+    space via dense layers.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        action_space_size: int,
+        d_hidden: int | None = None,
+    ) -> None:
+        """Initialize action policy head.
+
+        Args:
+            d_model: Input dimension.
+            action_space_size: Number of possible actions.
+            d_hidden: Hidden dimension.
+
+        """
+        super().__init__()
+        d_hidden = d_hidden or d_model * 2
+
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_hidden),
+            nn.GELU(),
+            nn.Linear(d_hidden, action_space_size),
+        )
+
+    def forward(
+        self,
+        x: Float[Tensor, "batch n d"],
+    ) -> Float[Tensor, "batch action_space_size"]:
+        """Compute action policy logits.
+
+        Args:
+            x: Input features (batch, n, d_model).
+
+        Returns:
+            Dense action logits (batch, action_space_size).
+
+        """
+        # Global average pooling over spatial positions
+        global_features = x.mean(dim=1)  # (batch, d)
+        logits: Tensor = self.net(global_features)
+        return logits
+
+
 class ValueHead(nn.Module):
     """Value head for position evaluation."""
 
@@ -294,7 +347,7 @@ class ValueHead(nn.Module):
         global_features = x.mean(dim=1)  # (batch, d)
 
         # Value prediction
-        value = self.net(global_features)
+        value: Tensor = self.net(global_features)
 
         return value
 
@@ -342,7 +395,8 @@ class DenseHead(nn.Module):
             Output field (batch, n, output_channels).
 
         """
-        return self.net(x)
+        result: Tensor = self.net(x)
+        return result
 
 
 class AlphaGalerkinModel(nn.Module):
@@ -391,6 +445,7 @@ class AlphaGalerkinModel(nn.Module):
         )
 
         # FNet mixing layers (for speed)
+        self.fnet_layers: nn.ModuleList | None
         if config.use_fnet_mixing:
             self.fnet_layers = nn.ModuleList(
                 [
@@ -418,8 +473,12 @@ class AlphaGalerkinModel(nn.Module):
             ]
         )
 
-        # Output heads
-        self.policy_head = PolicyHead(config.d_model)
+        # Output heads — select policy head by game type
+        self.policy_head: PolicyHead | ActionPolicyHead
+        if config.action_space_size is not None:
+            self.policy_head = ActionPolicyHead(config.d_model, config.action_space_size)
+        else:
+            self.policy_head = PolicyHead(config.d_model)
         self.value_head = ValueHead(config.d_model)
 
         # Stability monitoring
@@ -443,6 +502,19 @@ class AlphaGalerkinModel(nn.Module):
         """Set the training resolution."""
         self._training_resolution = value
 
+    def set_training_resolution(self, resolution: int) -> None:
+        """Set the training resolution explicitly.
+
+        Should be called by the trainer during initialization rather than
+        relying on auto-detection in forward(), which is not thread-safe
+        under DDP.
+
+        Args:
+            resolution: Board size used during training.
+
+        """
+        self._training_resolution = resolution
+
     def forward(
         self,
         x: Float[Tensor, "batch channels height width"],
@@ -460,10 +532,6 @@ class AlphaGalerkinModel(nn.Module):
         """
         batch, channels, height, width = x.shape
         board_size = height  # Assume square board
-
-        # Update training resolution on first forward pass
-        if self._training_resolution is None and self.training:
-            self._training_resolution = board_size
 
         # Create continuous coordinates
         coords = create_grid_coordinates(board_size, batch, x.device)
@@ -599,7 +667,11 @@ class AlphaGalerkinFast(nn.Module):
             dropout=config.fnet_dropout,
         )
 
-        self.policy_head = PolicyHead(config.d_model)
+        self.policy_head: PolicyHead | ActionPolicyHead
+        if config.action_space_size is not None:
+            self.policy_head = ActionPolicyHead(config.d_model, config.action_space_size)
+        else:
+            self.policy_head = PolicyHead(config.d_model)
         self.value_head = ValueHead(config.d_model)
 
     def forward(

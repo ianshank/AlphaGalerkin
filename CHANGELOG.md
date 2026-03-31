@@ -5,6 +5,128 @@ All notable changes to AlphaGalerkin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **SBIR Readiness Infrastructure** (Navy N252-088, DOE ASCR, NSF, AFWERX)
+  - `config/proposals/navy_n252_088.yaml`, `nsf_sbir.yaml` — SBIR-specific benchmark configs
+  - `config/benchmarks/sbir_suite.yaml` — 3-problem benchmark suite (L-shaped Poisson, Burgers shock, NS Taylor-Green)
+  - `src/research/baselines.py` — Classical PDE solver baselines: UniformFDMSolver, DorflerAMRSolver, SimplePINNSolver
+  - `src/research/pde_benchmarks.py` — PDEBenchmarkRunner with JSON/Markdown report generation and convergence rate computation
+  - `docs/proposals/templates/sbir_phase1.md` — Reusable SBIR Phase I proposal template
+  - `docs/proposals/IP_STRATEGY.md` — 3 provisional patent claims, trade secret boundaries, publication plan
+
+- **Advanced PDE Operators**
+  - `NavierStokesOperator` — Taylor-Green vortex benchmark with analytical solution, configurable Re
+  - `BurgersOperator` enhanced — Cole-Hopf exact solution, configurable shock params, convergence rate method
+  - `LShapedPoissonOperator` — r^(2/3)*sin(2theta/3) singularity for AMR benchmarking
+
+- **Domain Geometry Abstractions** (`src/pde/geometry.py`)
+  - `RectangularDomain`, `LShapedDomain`, `CylinderFlowDomain` (DFG benchmark)
+  - Rejection sampling for non-convex domains, proportional boundary sampling
+  - `GeometryConfig` Pydantic schema and `create_geometry()` factory
+
+- **Time-Stepping Module** (`src/pde/time_stepping.py`)
+  - `ForwardEuler`, `RK4`, `CrankNicolson` (fixed-point iteration) with factory pattern
+  - `TimeSteppingConfig` Pydantic schema, `integrate()` with snapshot saving
+
+- **S500 Swarm Planning Game** (`src/pde/games/swarm_planning.py`)
+  - `SwarmPlanningGame` with round-robin multi-agent control (7 actions per agent)
+  - Potential field obstacle avoidance (Laplace equation connection), coverage rewards
+  - `SwarmPlanningConfig` — fully Pydantic-validated with no hardcoded values
+
+- **PettingZoo Adapter** (`src/games/pettingzoo_adapter.py`)
+  - `PettingZooAdapter` wrapping `GameInterface` as PettingZoo `ParallelEnv`
+  - Optional dependency with graceful degradation (`HAS_PETTINGZOO` flag)
+
+- **Unified Loss Package** (`src/training/losses/`)
+  - `LossRegistry` with decorator-based registration (`"alphagalerkin"`, `"l2_relative"`, `"h1"`, `"mse"`)
+  - `get_loss()` factory function for config-driven loss instantiation
+  - Backwards-compatible thin wrappers in `src/training/loss.py` and `src/training/physics_loss.py`
+
+- **BaseTrainer Consolidation** (`src/training/base_trainer.py`)
+  - Abstract `BaseTrainer[ConfigT]` with shared AMP, gradient clipping, LR scheduling, checkpoint save/load
+  - `BaseTrainerConfig` Pydantic schema covering all shared hyperparameters
+  - `StepResult` dataclass for structured step output
+
+- **Checkpoint Migration System** (`src/training/checkpoint_migration.py`)
+  - Version-aware migration with `@register_migration` decorator
+  - Migration path: `0.0.0 -> 1.0.0 -> 1.1.0` (LBB config fields added)
+
+- **Property-Based and Numerical Stability Tests**
+  - `tests/training/test_loss_properties.py` — hypothesis tests: non-negativity, CE = log(n), gradient flow
+  - `tests/training/test_numerical_stability.py` — extreme values, near-zero denominators, NaN propagation
+  - `tests/pde/test_operator_properties.py` — PDE operator invariants, linearity, collocation in domain
+  - `tests/modeling/test_attention_properties.py` — Galerkin attention shape, LBB positivity, resolution independence
+
+- **Comprehensive Coverage Tests** (218 new tests)
+  - `tests/pde/test_geometry.py` — 65 tests for domain geometries
+  - `tests/pde/test_time_stepping.py` — 37 tests for time-stepping methods
+  - `tests/research/test_baselines.py` — 39 tests for classical solver baselines
+  - `tests/research/test_pde_benchmarks.py` — 38 tests for benchmark runner
+  - `tests/training/test_base_trainer.py` — 39 tests for BaseTrainer
+  - `tests/pde/test_swarm_planning.py` — 50 tests for swarm planning game
+  - `tests/games/test_pettingzoo_adapter.py` — 11 tests for PettingZoo adapter
+
+### Changed
+
+- **CI/CD Hardening** (`.github/workflows/ci.yml`)
+  - MyPy strict enforcement (`continue-on-error: false`)
+  - Coverage gates raised: 75% -> 85% overall, 80% -> 85% per-module (pde, modeling, training)
+  - Added `research` module coverage gate at 85%
+  - Added nightly schedule (`cron: '0 4 * * *'`) and performance benchmark job on main merges
+
+- **Config-Driven LBB Loss** (`config/schemas.py`)
+  - Surfaced `lbb_loss_weight`, `lbb_target`, `lbb_eps`, `log_barrier_weight` as Pydantic fields
+  - Added mathematical documentation (Babuska-Brezzi motivation) in field descriptions
+
+- **Race Condition Fix** (`src/modeling/model.py`)
+  - Removed `_training_resolution` mutation from `forward()` (DDP-unsafe)
+  - Added explicit `set_training_resolution()` public method
+
+### Fixed
+
+- `advection_coeff` dimension mismatch in `PDEBenchmarkRunner._create_operator()` — was hardcoded `[0.0, 0.0]` for any dim
+
+- **Chess Self-Play Training Pipeline** (AlphaZero methodology)
+  - `ActionPolicyHead` for dense 4672-action policy output (`src/modeling/model.py`)
+  - `StatefulGameWrapper` bridging stateless `GameInterface` to MCTS (`src/games/wrapper.py`)
+  - Chess training CLI (`scripts/train_chess.py`) with Hydra config (`config/train_chess.yaml`)
+  - `game_type` and `action_space_size` fields in `OperatorConfig` (`config/schemas.py`)
+  - PRD and ADR documentation (`docs/prd/prd-chess-self-play.md`, `docs/architecture/ADR-chess-self-play.md`)
+
+- **Chess Training Tests**
+  - `tests/games/test_wrapper.py` — StatefulGameWrapper unit tests (10 tests)
+  - `tests/modeling/test_chess_model.py` — ActionPolicyHead and chess model tests (12 tests)
+  - `tests/training/test_chess_self_play.py` — Chess self-play integration tests (7 tests)
+  - `tests/games/test_chess_exhaustive.py` — Exhaustive encode/decode roundtrip + edge cases (20 tests)
+  - `tests/training/test_trainer_chess.py` — Checkpoint save/load/resume, engine eval, config tests (11 tests)
+  - `tests/security/test_chess_security.py` — Invalid actions, OOB states, corrupted data (15 tests)
+  - `tests/e2e/test_chess_training_e2e.py` — E2E training smoke tests (3 tests)
+
+- **Stockfish Benchmark Evaluation**
+  - Engine eval config fields in `TrainingConfig` (path, depth, games, movetime)
+  - `Trainer._run_engine_evaluation()` with W&B Elo metric logging
+  - Engine eval section in `config/train_chess.yaml`
+
+- **CI/CD Chess Pipeline**
+  - Stage 8: Chess Pipeline Tests in `.github/workflows/ci.yml`
+  - Coverage gate `--cov-fail-under=80` for `chess.py` (97%) and `wrapper.py` (100%)
+  - CI Success gate requires chess tests
+
+### Changed
+
+- **Game-agnostic self-play**: `SelfPlayWorker` now accepts optional `GameInterface` parameter
+- **Game-agnostic trainer**: `Trainer.__init__()` accepts `game` parameter, forwarded to worker
+- **Game-agnostic collator**: `VariableSizeCollator` and `SameSizeCollator` derive action mask size from `target_policy` tensor instead of hardcoded `board_size²+1`
+- `AlphaGalerkinModel` and `AlphaGalerkinFast` auto-select policy head by `action_space_size`
+
+### Fixed
+
+- **Underpromotion encode/decode mismatch** (`src/games/chess.py`): `_decode_move` used `[-1, 0, 1]` but `_encode_move` used `straight=0, left=1, right=2` — straight promotion from column 0 decoded as `to_col=-1`. Fixed to `[0, -1, 1]`.
+- **Collator action mask size** (`src/data/collate.py`): Both collators hardcoded `n_actions = board_size²+1` causing tensor size mismatch with chess's 4672-action policy. Fixed to detect per-experience policy encoding.
+
 ## [0.2.0] - 2026-01-26
 
 ### Milestones Achieved

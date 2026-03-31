@@ -452,9 +452,7 @@ class TestMCTSIntegration:
         """Test tree is reused across moves."""
         # First move
         mcts.search(mock_game, add_noise=False)
-        first_visits = sum(
-            child.visit_count for child in mcts._root.children.values()
-        )
+        first_visits = sum(child.visit_count for child in mcts._root.children.values())
 
         # Get best action and advance
         action = mcts.get_action(mock_game, temperature=0, add_noise=False)

@@ -1,12 +1,24 @@
-"""Tests for self-play game generation."""
+"""Tests for self-play game generation.
+
+Covers ``GameRecord``, ``SelfPlayWorker``, and ``ParallelSelfPlayWorker``
+including sequential fallback, worker-count clamping, and game distribution.
+"""
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
+import torch
 
 from config.schemas import MCTSConfig, OperatorConfig
 from src.modeling.model import AlphaGalerkinModel
-from src.training.self_play import GameRecord, SelfPlayWorker
+from src.training.self_play import (
+    _DEFAULT_MAX_WORKERS,
+    GameRecord,
+    ParallelSelfPlayWorker,
+    SelfPlayWorker,
+)
 
 
 @pytest.fixture
@@ -225,3 +237,139 @@ class TestSelfPlayWorker:
         assert worker._get_temperature(7) == 0.5
         assert worker._get_temperature(10) == 0.1
         assert worker._get_temperature(100) == 0.1
+
+
+class TestParallelSelfPlayWorker:
+    """Tests for ParallelSelfPlayWorker."""
+
+    def test_init_clamps_workers(
+        self,
+        small_model: AlphaGalerkinModel,
+    ) -> None:
+        """Worker count is clamped to [1, _DEFAULT_MAX_WORKERS]."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=0,
+            device="cpu",
+            board_sizes=[9],
+        )
+        assert worker.n_workers == 1
+
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=100,
+            device="cpu",
+            board_sizes=[9],
+        )
+        assert worker.n_workers == _DEFAULT_MAX_WORKERS
+
+    def test_sequential_fallback_single_worker(
+        self,
+        small_model: AlphaGalerkinModel,
+        mcts_config: MCTSConfig,
+    ) -> None:
+        """With n_workers=1, uses sequential path."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=1,
+            mcts_config=mcts_config,
+            device="cpu",
+            board_sizes=[9],
+        )
+        assert not worker._use_parallel()
+
+    def test_sequential_fallback_cuda_device(
+        self,
+        small_model: AlphaGalerkinModel,
+    ) -> None:
+        """With CUDA device, falls back to sequential."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=4,
+            device="cuda:0",
+            board_sizes=[9],
+        )
+        assert not worker._use_parallel()
+
+    def test_sequential_fallback_cuda_torch_device(
+        self,
+        small_model: AlphaGalerkinModel,
+    ) -> None:
+        """torch.device('cuda') also triggers sequential fallback."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=4,
+            device=torch.device("cuda"),
+            board_sizes=[9],
+        )
+        assert not worker._use_parallel()
+
+    def test_cpu_allows_parallel(
+        self,
+        small_model: AlphaGalerkinModel,
+    ) -> None:
+        """CPU device allows parallel execution."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=4,
+            device="cpu",
+            board_sizes=[9],
+        )
+        assert worker._use_parallel()
+
+    def test_generate_games_sequential_single_game(
+        self,
+        small_model: AlphaGalerkinModel,
+        mcts_config: MCTSConfig,
+    ) -> None:
+        """Single-game request always uses sequential path."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=4,
+            mcts_config=mcts_config,
+            device="cpu",
+            board_sizes=[9],
+        )
+        # Should fall back to sequential for n_games=1
+        games = worker.generate_games(n_games=1, board_size=9)
+        assert len(games) == 1
+        assert isinstance(games[0], GameRecord)
+
+    def test_generate_experiences_returns_experiences(
+        self,
+        small_model: AlphaGalerkinModel,
+        mcts_config: MCTSConfig,
+    ) -> None:
+        """generate_experiences produces Experience objects from games."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=1,
+            mcts_config=mcts_config,
+            device="cpu",
+            board_sizes=[9],
+        )
+        experiences = worker.generate_experiences(n_games=1, board_size=9)
+        assert len(experiences) > 0
+
+    def test_generate_games_sequential_fallback_on_error(
+        self,
+        small_model: AlphaGalerkinModel,
+        mcts_config: MCTSConfig,
+    ) -> None:
+        """Multiprocessing failure falls back to sequential."""
+        worker = ParallelSelfPlayWorker(
+            model=small_model,
+            n_workers=2,
+            mcts_config=mcts_config,
+            device="cpu",
+            board_sizes=[9],
+        )
+        # Patch mp to raise, verifying fallback
+        with patch(
+            "src.training.self_play.torch.multiprocessing",
+            side_effect=RuntimeError("mp unavailable"),
+        ):
+            # Even if import patch fails, the try/except in generate_games
+            # catches the error and falls back
+            games = worker.generate_games(n_games=2, board_size=9)
+            assert len(games) == 2

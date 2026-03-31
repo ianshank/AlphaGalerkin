@@ -13,11 +13,11 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 import torch
-from torch.amp import GradScaler, autocast
+from torch.cuda.amp import GradScaler, autocast
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, LRScheduler
 
@@ -52,6 +52,7 @@ from src.training.wandb_logger import WandbLogger
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
+    from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
@@ -124,6 +125,7 @@ class Trainer:
         checkpoint_dir: Path | str | None = None,
         wandb_logger: WandbLogger | None = None,
         distributed_context: DistributedContext | None = None,
+        game: GameInterface | None = None,
     ) -> None:
         """Initialize trainer.
 
@@ -134,6 +136,8 @@ class Trainer:
             checkpoint_dir: Directory for checkpoints.
             wandb_logger: Optional W&B logger for experiment tracking.
             distributed_context: Optional distributed context (auto-detected if None).
+            game: Optional GameInterface for non-Go games (e.g. chess).
+                  When provided, self-play uses this game instead of SimpleGoGame.
 
         """
         self.config = config
@@ -221,7 +225,7 @@ class Trainer:
 
         # Mixed precision
         self.use_amp = self.training_config.use_amp and self.device.type == "cuda"
-        self.scaler = GradScaler("cuda") if self.use_amp else None
+        self.scaler = GradScaler() if self.use_amp else None
 
         # Replay buffer (prioritized or uniform based on config)
         self.use_prioritized_replay = getattr(self.training_config, "use_prioritized_replay", False)
@@ -245,6 +249,7 @@ class Trainer:
             mcts_config=self.mcts_config,
             device=self.device,
             board_sizes=config.board_sizes,
+            game=game,
         )
 
         # Collator for batching
@@ -309,6 +314,7 @@ class Trainer:
         warmup_steps = self.training_config.warmup_steps
         total_steps = self.training_config.total_steps
 
+        main_scheduler: LRScheduler
         if scheduler_type == "cosine":
             # Cosine annealing after warmup
             main_scheduler = CosineAnnealingLR(
@@ -467,7 +473,7 @@ class Trainer:
         if schedule is None:
             schedule = default_schedule
 
-        curriculum = BoardSizeCurriculum.from_config(schedule)
+        curriculum = BoardSizeCurriculum.from_config(cast(dict[str, Any], schedule))
 
         logger.info(
             "curriculum_created",
@@ -611,7 +617,11 @@ class Trainer:
             Collated training batch.
 
         """
-        experiences = self.buffer.sample(self.training_config.batch_size)
+        sample_result = self.buffer.sample(self.training_config.batch_size)
+        # UniformReplayBuffer returns list[Experience]; PrioritizedReplayBuffer returns tuple
+        experiences: list[Any] = (
+            sample_result[0] if isinstance(sample_result, tuple) else sample_result
+        )
         batch = self.collator(experiences)
         return batch.to(self.device)
 
@@ -631,7 +641,7 @@ class Trainer:
 
         # Forward pass with optional mixed precision
         if self.use_amp:
-            with autocast(device_type=self.device.type):
+            with autocast():
                 output = self.model(batch.board_states, return_lbb=True)
                 # Compute individual losses
                 policy_loss = self.loss_fn.compute_policy_loss(
@@ -708,7 +718,7 @@ class Trainer:
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
-            total_loss.backward()
+            total_loss.backward()  # type: ignore[no-untyped-call]
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
                 self.training_config.gradient_clip,
@@ -780,6 +790,24 @@ class Trainer:
         for step in range(start_step, start_step + n_steps):
             step_start = time.time()
 
+            # Log curriculum stage transitions
+            if self.curriculum is not None and self.curriculum.is_transition_step(step):
+                stage = self.curriculum.get_current_stage(step)
+                logger.info(
+                    "curriculum_stage_transition",
+                    step=step,
+                    board_sizes=stage.board_sizes,
+                    weights=stage.size_weights,
+                )
+                if self.wandb_logger is not None:
+                    self.wandb_logger.log_metrics(
+                        {
+                            "curriculum/n_board_sizes": len(stage.board_sizes),
+                            "curriculum/max_board_size": max(stage.board_sizes),
+                        },
+                        step=step,
+                    )
+
             # Periodically add more games (at half the checkpoint interval)
             self_play_interval = max(checkpoint_interval // 2, 1)
             if step > 0 and step % self_play_interval == 0:
@@ -822,7 +850,7 @@ class Trainer:
                 value_loss=loss_output.value.item(),
                 lbb_loss=loss_output.lbb.item(),
                 lbb_constant=lbb_constant or 0.0,
-                learning_rate=self.scheduler.get_last_lr()[0],
+                learning_rate=float(self.scheduler.get_last_lr()[0]),
                 gradient_norm=grad_norm,
                 buffer_size=len(self.buffer),
                 games_generated=self.total_games_generated,
@@ -902,7 +930,7 @@ class Trainer:
                 checkpoint_path = self.save_checkpoint(metrics=metrics.to_dict())
 
                 # Log checkpoint as W&B artifact
-                if self.wandb_logger is not None:
+                if self.wandb_logger is not None and checkpoint_path is not None:
                     self.wandb_logger.log_model_artifact(
                         checkpoint_path=checkpoint_path,
                         name=f"checkpoint-{step}",
@@ -938,12 +966,13 @@ class Trainer:
             )
 
             # Log final checkpoint as best model artifact
-            self.wandb_logger.log_model_artifact(
-                checkpoint_path=final_checkpoint_path,
-                name="model-final",
-                metadata=final_metrics.to_dict(),
-                aliases=["final"],
-            )
+            if final_checkpoint_path is not None:
+                self.wandb_logger.log_model_artifact(
+                    checkpoint_path=final_checkpoint_path,
+                    name="model-final",
+                    metadata=final_metrics.to_dict(),
+                    aliases=["final"],
+                )
 
     def _run_evaluation(self, step: int) -> float:
         """Run evaluation and log results.
@@ -992,6 +1021,12 @@ class Trainer:
         # Checkpoint tournament evaluation (Elo tracking)
         if self.elo_tracker is not None:
             self._run_checkpoint_tournament(step, n_games)
+
+        # Engine evaluation (Stockfish benchmark)
+        engine_eval_enabled = getattr(self.training_config, "engine_eval_enabled", False)
+        engine_eval_path = getattr(self.training_config, "engine_eval_path", None)
+        if engine_eval_enabled and engine_eval_path is not None and self.evaluator.game is not None:
+            self._run_engine_evaluation(step)
 
         # Measure policy agreement
         policy_agreement = self.evaluator.measure_policy_agreement(
@@ -1086,6 +1121,89 @@ class Trainer:
                     opponent_path=str(opponent_path),
                     error=str(e),
                 )
+
+    def _run_engine_evaluation(self, step: int) -> None:
+        """Run evaluation against external UCI engine (e.g., Stockfish).
+
+        Creates engine and match configs from training config values,
+        plays games, and logs Elo metrics to W&B.
+
+        Args:
+            step: Current training step.
+
+        """
+        engine_path = getattr(self.training_config, "engine_eval_path", None)
+        if engine_path is None:
+            return
+
+        from pathlib import Path
+
+        from src.engines.config import MatchConfig, UCIConfig
+
+        depth = getattr(self.training_config, "engine_eval_depth", 5)
+        n_games = getattr(self.training_config, "engine_eval_games", 4)
+        movetime = getattr(self.training_config, "engine_eval_movetime_ms", None)
+
+        try:
+            engine_config = UCIConfig(
+                name="stockfish_eval",
+                engine_path=Path(engine_path),
+                depth_limit=depth if movetime is None else None,
+                movetime_ms=movetime,
+            )
+            match_config = MatchConfig(
+                name="engine_eval_match",
+                n_games=n_games,
+            )
+
+            logger.info(
+                "engine_evaluation_starting",
+                step=step,
+                engine_path=engine_path,
+                depth=depth,
+                n_games=n_games,
+            )
+
+            result = self.evaluator.evaluate_vs_engine(
+                engine_config=engine_config,
+                match_config=match_config,
+            )
+
+            # Log Elo metrics to W&B
+            elo_metrics: dict[str, float | int] = {
+                "eval/engine/win_rate": result.win_rate,
+                "eval/engine/wins": result.wins,
+                "eval/engine/losses": result.losses,
+                "eval/engine/draws": result.draws,
+                "eval/engine/n_games": result.n_games,
+                "eval/engine/avg_game_length": result.avg_game_length,
+            }
+
+            # Extract Elo estimate from metadata if available
+            if "elo_difference" in result.metadata:
+                elo_metrics["eval/engine/elo_diff"] = result.metadata["elo_difference"]
+            if "los" in result.metadata:
+                elo_metrics["eval/engine/los"] = result.metadata["los"]
+
+            if self.wandb_logger is not None:
+                self.wandb_logger.log_metrics(
+                    elo_metrics,  # type: ignore[arg-type]
+                    step=step,
+                )
+
+            logger.info(
+                "engine_evaluation_completed",
+                step=step,
+                win_rate=f"{result.win_rate:.2%}",
+                elo_diff=result.metadata.get("elo_difference", "N/A"),
+            )
+
+        except Exception as e:
+            logger.warning(
+                "engine_evaluation_failed",
+                step=step,
+                error=str(e),
+            )
 
     def _extract_step_from_checkpoint(self, checkpoint_path: Path) -> int:
         """Extract training step from checkpoint filename.
@@ -1191,7 +1309,7 @@ class Trainer:
             Current learning rate.
 
         """
-        return self.scheduler.get_last_lr()[0]
+        return float(self.scheduler.get_last_lr()[0])
 
 
 def create_trainer(

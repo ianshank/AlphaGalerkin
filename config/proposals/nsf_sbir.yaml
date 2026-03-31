@@ -1,0 +1,43 @@
+# NSF SBIR Project Pitch: Foundational Computational Science
+# Frame under Mathematical and Physical Sciences directorate
+# Precedent: NSF Award #2335626 "Generative Physics-Informed AI for Computational Physics"
+
+proposal:
+  solicitation: "NSF SBIR Project Pitch (Rolling)"
+  agency: "NSF"
+  phase: "Phase I"
+  title: "Resolution-Independent Neural Operators with Provable Convergence Guarantees"
+  naics_code: "541715"
+  funding_range: "$305K"
+  duration_months: 12
+
+benchmark_suite:
+  # Problem 1: Zero-shot transfer (core innovation)
+  - name: transfer_validation
+    description: "Train on 9x9, evaluate on 9/13/19/25/37 - zero-shot transfer"
+    train_sizes: [9]
+    eval_sizes: [9, 13, 19, 25, 37]
+    success_criterion: "MSE < 0.05 on all unseen sizes"
+    current_result: "MSE = 0.000209 on 19x19 (240x better than threshold)"
+
+  # Problem 2: Spectral bias comparison
+  - name: spectral_bias_comparison
+    description: "Multi-scale problem where FNO fails due to spectral bias"
+    pde_type: poisson
+    source_frequencies: [1, 5, 10, 50]
+    baselines: ["fno", "deeponet", "pinn", "galerkin_attention"]
+
+  # Problem 3: LBB stability analysis
+  - name: lbb_stability_monitoring
+    description: "Demonstrate provable stability via LBB constant tracking"
+    training_steps: 100000
+    monitor_interval: 100
+    metrics: ["lbb_constant_min", "lbb_constant_mean", "singular_value_spectrum"]
+
+evaluation_metrics:
+  - name: "zero_shot_transfer_mse"
+    description: "MSE on unseen resolutions without retraining"
+  - name: "spectral_bias_robustness"
+    description: "Error under multi-scale source terms"
+  - name: "stability_guarantee"
+    description: "LBB constant remains above threshold throughout training"

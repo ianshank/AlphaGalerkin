@@ -337,7 +337,7 @@ class TestChessTermination:
         assert game.is_terminal(state)
 
         result = game.get_result(state)
-        assert result.winner is None
+        assert result.winner == 0  # Draw
         assert result.reason == "insufficient_material"
 
 

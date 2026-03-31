@@ -236,7 +236,7 @@ class TransferScenario(BaseScenario):
         # Create dataloader with custom collate function
         # The default collator fails on PoissonSample dataclass
         dataloader = DataLoader(
-            dataset,  # type: ignore[arg-type]
+            dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
             num_workers=0,

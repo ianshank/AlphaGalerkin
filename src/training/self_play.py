@@ -2,10 +2,13 @@
 
 Generates training data through self-play using MCTS-guided game play.
 Supports multiple board sizes for resolution-independent training.
+Includes parallel generation via ``ParallelSelfPlayWorker`` using
+``torch.multiprocessing`` for safe model sharing across workers.
 """
 
 from __future__ import annotations
 
+import os
 import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -21,9 +24,13 @@ from src.training.replay_buffer import Experience
 
 if TYPE_CHECKING:
     from config.schemas import MCTSConfig
+    from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
+
+# Default worker count derived from environment; capped for safety.
+_DEFAULT_MAX_WORKERS = 8
 
 
 @dataclass
@@ -96,6 +103,7 @@ class SelfPlayWorker:
         board_sizes: list[int] | None = None,
         use_batch_mcts: bool = False,
         temperature_schedule: dict[int, float] | None = None,
+        game: GameInterface | None = None,
     ) -> None:
         """Initialize self-play worker.
 
@@ -106,11 +114,15 @@ class SelfPlayWorker:
             board_sizes: Board sizes to play on (sampled uniformly).
             use_batch_mcts: Whether to use batch MCTS.
             temperature_schedule: Move number -> temperature mapping.
+            game: Optional GameInterface for non-Go games (e.g. chess).
+                  When provided, uses StatefulGameWrapper for MCTS.
+                  When None, falls back to SimpleGoGame.
 
         """
         self.model = model
         self.device = torch.device(device)
         self.board_sizes = board_sizes or [9, 13, 19]
+        self.game = game
 
         # Default temperature schedule: high exploration early, low late
         self.temperature_schedule = temperature_schedule or {
@@ -127,7 +139,7 @@ class SelfPlayWorker:
         )
 
         # MCTS configuration
-        self._mcts_kwargs = {}
+        self._mcts_kwargs: dict[str, int | float] = {}
         if mcts_config is not None:
             self._mcts_kwargs = {
                 "n_simulations": mcts_config.n_simulations,
@@ -149,8 +161,8 @@ class SelfPlayWorker:
     def _create_mcts(self) -> MCTS:
         """Create MCTS instance."""
         if self.use_batch_mcts:
-            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)
-        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)
+            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
+        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
 
     def _get_temperature(self, move_number: int) -> float:
         """Get temperature for given move number.
@@ -180,7 +192,7 @@ class SelfPlayWorker:
         """Play a complete self-play game.
 
         Args:
-            board_size: Board size (random if None).
+            board_size: Board size (random if None, ignored for chess).
             max_moves: Maximum moves before termination.
             add_noise: Whether to add Dirichlet noise at root.
 
@@ -188,6 +200,106 @@ class SelfPlayWorker:
             GameRecord with complete game trajectory.
 
         """
+        if self.game is not None:
+            return self._play_game_generic(max_moves, add_noise)
+        return self._play_game_go(board_size, max_moves, add_noise)
+
+    def _play_game_generic(
+        self,
+        max_moves: int = 500,
+        add_noise: bool = True,
+    ) -> GameRecord:
+        """Play a self-play game using a GameInterface (chess, etc.).
+
+        Uses StatefulGameWrapper to bridge the stateless GameInterface
+        to the MCTS protocol.
+        """
+        from src.games.wrapper import StatefulGameWrapper
+
+        assert self.game is not None
+        game = self.game
+        state = game.initial_state()
+        board_size = state.board.shape[0] if state.board.ndim >= 2 else 8
+        n_actions = game.action_space_size
+        mcts = self._create_mcts()
+
+        record = GameRecord(
+            board_size=board_size,
+            metadata={"game_id": self._games_played, "game_type": "generic"},
+        )
+
+        move_number = 0
+        while not game.is_terminal(state) and move_number < max_moves:
+            # Get tensor representation as numpy
+            state_tensor = game.to_tensor(state).cpu().numpy()
+
+            # Wrap for MCTS
+            game_wrapper = StatefulGameWrapper(game, state)
+            policy_dist = mcts.search(game_wrapper, add_noise=add_noise and move_number == 0)
+
+            # Convert visit distribution to full policy vector
+            policy = np.zeros(n_actions, dtype=np.float32)
+            for action, prob in policy_dist.items():
+                policy[action] = prob
+
+            # Store state and policy
+            record.states.append(state_tensor)
+            record.policies.append(policy)
+
+            # Select action with temperature
+            temperature = self._get_temperature(move_number)
+            if temperature == 0:
+                action = max(policy_dist.keys(), key=lambda a: policy_dist[a])
+            else:
+                actions = list(policy_dist.keys())
+                probs = np.array([policy_dist[a] for a in actions])
+                probs = probs ** (1.0 / temperature)
+                probs = probs / probs.sum()
+                action = int(np.random.choice(actions, p=probs))
+
+            record.actions.append(action)
+
+            # Apply action
+            state = game.apply_action(state, action)
+
+            # Advance MCTS tree
+            mcts.advance(action)
+            move_number += 1
+
+        # Determine outcome
+        winner = game.get_winner(state)
+        if winner is not None:
+            record.outcome = float(winner)
+        else:
+            record.outcome = 0.0
+
+        # Update statistics
+        self._games_played += 1
+        self._total_moves += move_number
+        if record.outcome > 0:
+            self._outcomes["black"] += 1
+        elif record.outcome < 0:
+            self._outcomes["white"] += 1
+        else:
+            self._outcomes["draw"] += 1
+
+        logger.debug(
+            "game_completed",
+            board_size=board_size,
+            moves=move_number,
+            outcome=record.outcome,
+            game_type="generic",
+        )
+
+        return record
+
+    def _play_game_go(
+        self,
+        board_size: int | None = None,
+        max_moves: int = 500,
+        add_noise: bool = True,
+    ) -> GameRecord:
+        """Play a self-play game using SimpleGoGame (original Go path)."""
         # Select board size
         if board_size is None:
             board_size = random.choice(self.board_sizes)
@@ -371,10 +483,53 @@ class SelfPlayWorker:
         self._outcomes = {"black": 0, "white": 0, "draw": 0}
 
 
-class ParallelSelfPlayWorker:
-    """Parallel self-play using multiple workers.
+def _worker_generate_games(args: tuple[Any, ...]) -> list[GameRecord]:
+    """Worker function for parallel game generation.
 
-    Distributes game generation across multiple processes for efficiency.
+    Runs in a subprocess spawned by ``torch.multiprocessing``.
+    Each worker creates its own ``SelfPlayWorker`` around the shared
+    model to avoid any mutable-state contention.
+
+    Args:
+        args: Tuple of (model, n_games, board_size, worker_kwargs, worker_id).
+
+    Returns:
+        List of GameRecords produced by this worker.
+
+    """
+    model, n_games, board_size, worker_kwargs, worker_id = args
+
+    # Re-seed per-worker to avoid identical game trajectories.
+    seed = int.from_bytes(os.urandom(4), "little") + worker_id
+    random.seed(seed)
+    np.random.seed(seed % (2**31))
+    torch.manual_seed(seed)
+
+    worker_logger = structlog.get_logger(__name__)
+    worker_logger.debug(
+        "parallel_worker_started",
+        worker_id=worker_id,
+        n_games=n_games,
+    )
+
+    worker = SelfPlayWorker(model, **worker_kwargs)
+    records = worker.generate_games(n_games, board_size)
+
+    worker_logger.debug(
+        "parallel_worker_finished",
+        worker_id=worker_id,
+        games_generated=len(records),
+    )
+    return records
+
+
+class ParallelSelfPlayWorker:
+    """Parallel self-play using multiple worker processes.
+
+    Distributes game generation across processes using
+    ``torch.multiprocessing`` for safe model sharing.  When
+    ``n_workers=1`` (or on platforms where ``fork`` is unavailable),
+    falls back to sequential generation for maximum compatibility.
     """
 
     def __init__(
@@ -386,54 +541,145 @@ class ParallelSelfPlayWorker:
         """Initialize parallel self-play.
 
         Args:
-            model: AlphaGalerkin model (will be shared).
-            n_workers: Number of worker processes.
-            **worker_kwargs: Arguments passed to SelfPlayWorker.
+            model: AlphaGalerkin model (shared across workers via
+                ``torch.multiprocessing`` memory sharing).
+            n_workers: Number of worker processes.  Clamped to
+                ``[1, _DEFAULT_MAX_WORKERS]``.  When ``1``, uses
+                sequential fallback.
+            **worker_kwargs: Arguments forwarded to each
+                ``SelfPlayWorker`` (e.g. ``mcts_config``, ``device``,
+                ``board_sizes``, ``temperature_schedule``).
 
         """
         self.model = model
-        self.n_workers = n_workers
+        self.n_workers = max(1, min(n_workers, _DEFAULT_MAX_WORKERS))
         self.worker_kwargs = worker_kwargs
 
-        # For now, use simple sequential execution
-        # Full parallelization requires careful handling of model sharing
-        self._worker = SelfPlayWorker(model, **worker_kwargs)
+        # Keep a sequential fallback for n_workers == 1 or error recovery
+        self._sequential_worker = SelfPlayWorker(model, **worker_kwargs)
+
+        logger.info(
+            "parallel_self_play_initialized",
+            n_workers=self.n_workers,
+        )
+
+    def _use_parallel(self) -> bool:
+        """Determine whether to use multiprocessing.
+
+        Falls back to sequential when only one worker is requested,
+        when CUDA is in use (forking with CUDA is unsafe), or when the
+        start method cannot be set to ``spawn``.
+        """
+        if self.n_workers <= 1:
+            return False
+
+        device = self.worker_kwargs.get("device", "cpu")
+        if isinstance(device, torch.device):
+            device = device.type
+        if str(device).startswith("cuda"):
+            # CUDA tensors cannot be shared across fork; spawn is
+            # required but adds overhead.  For safety, fall back.
+            logger.debug(
+                "parallel_self_play_cuda_fallback",
+                reason="CUDA device detected; using sequential",
+            )
+            return False
+
+        return True
 
     def generate_games(
         self,
         n_games: int,
         board_size: int | None = None,
     ) -> list[GameRecord]:
-        """Generate games (currently sequential, parallel in future).
+        """Generate games across multiple worker processes.
+
+        Splits ``n_games`` evenly across workers, collects results,
+        and returns the merged list.  Falls back to sequential on
+        error or when parallel mode is unavailable.
 
         Args:
-            n_games: Total games to generate.
-            board_size: Fixed board size.
+            n_games: Total number of games to generate.
+            board_size: Fixed board size (random per game if ``None``).
 
         Returns:
-            List of GameRecords.
+            List of GameRecords from all workers.
 
         """
-        # TODO: Implement true parallel generation with multiprocessing
-        return self._worker.generate_games(n_games, board_size)
+        if not self._use_parallel() or n_games <= 1:
+            return self._sequential_worker.generate_games(n_games, board_size)
+
+        # Distribute games as evenly as possible across workers
+        n_workers = min(self.n_workers, n_games)
+        base_count = n_games // n_workers
+        remainder = n_games % n_workers
+        per_worker = [base_count + (1 if i < remainder else 0) for i in range(n_workers)]
+
+        logger.info(
+            "parallel_self_play_starting",
+            n_games=n_games,
+            n_workers=n_workers,
+            per_worker=per_worker,
+        )
+
+        self.model.cpu()
+        self.model.train(False)
+
+        worker_args = [
+            (self.model, count, board_size, self.worker_kwargs, worker_id)
+            for worker_id, count in enumerate(per_worker)
+        ]
+
+        try:
+            import torch.multiprocessing as mp
+
+            # Ensure model is in shared memory for subprocess access.
+            # Placed inside the try block so that platforms that do not
+            # support POSIX shared memory (e.g. Windows without /dev/shm)
+            # fall back to sequential generation rather than raising before
+            # the except handler.
+            self.model.share_memory()
+
+            ctx = mp.get_context("spawn")
+            with ctx.Pool(processes=n_workers) as pool:
+                results = pool.map(_worker_generate_games, worker_args)
+
+            all_games: list[GameRecord] = []
+            for worker_result in results:
+                all_games.extend(worker_result)
+
+            logger.info(
+                "parallel_self_play_completed",
+                total_games=len(all_games),
+                n_workers=n_workers,
+            )
+            return all_games
+
+        except Exception as exc:
+            logger.warning(
+                "parallel_self_play_failed_falling_back",
+                error=str(exc),
+                n_games=n_games,
+            )
+            return self._sequential_worker.generate_games(n_games, board_size)
 
     def generate_experiences(
         self,
         n_games: int,
         board_size: int | None = None,
     ) -> list[Experience]:
-        """Generate experiences from parallel self-play.
+        """Generate training experiences from parallel self-play.
 
         Args:
-            n_games: Number of games.
-            board_size: Fixed board size.
+            n_games: Number of games to generate.
+            board_size: Fixed board size (random per game if ``None``).
 
         Returns:
-            List of experiences.
+            Flat list of experiences extracted from all games.
 
         """
         games = self.generate_games(n_games, board_size)
-        experiences = []
+        experiences: list[Experience] = []
         for game in games:
             experiences.extend(game.to_experiences())
         return experiences

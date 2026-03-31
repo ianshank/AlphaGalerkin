@@ -32,6 +32,7 @@ try:
     # Import game implementations to trigger registration
     from src.games import (
         chess,  # noqa: F401
+        fen,  # noqa: F401
         go,  # noqa: F401
     )
     from src.games.interface import GameInterface, GamePhase
@@ -41,11 +42,11 @@ try:
     _HAS_TORCH = True
 except ImportError:
     # Torch not available - provide stubs
-    GameInterface = None  # type: ignore[assignment, misc]
-    GamePhase = None  # type: ignore[assignment, misc]
-    GameRegistry = None  # type: ignore[assignment, misc]
-    GameState = None  # type: ignore[assignment, misc]
-    register_game = None  # type: ignore[assignment]
+    GameInterface = None
+    GamePhase = None
+    GameRegistry = None
+    GameState = None
+    register_game = None
     _HAS_TORCH = False
 
 __all__ = [

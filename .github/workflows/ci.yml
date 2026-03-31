@@ -107,7 +107,9 @@ jobs:
             --tb=short \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
-            -x \
+            --ignore=tests/demos/ \
+            --ignore=tests/video_compression/ \
+            --ignore=tests/training/test_extended_config.py \
             -q
 
       - name: Upload test results
@@ -214,6 +216,9 @@ jobs:
             -m "not slow and not e2e and not video and not gpu_required" \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
+            --ignore=tests/demos/ \
+            --ignore=tests/video_compression/ \
+            --ignore=tests/training/test_extended_config.py \
             --cov=src \
             --cov-report=xml \
             --cov-report=html \

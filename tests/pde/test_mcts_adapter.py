@@ -22,9 +22,9 @@ def pde_config() -> PDEConfig:
     return PDEConfig(
         name="test_poisson",
         pde_type=PDEType.POISSON,
-        domain_min=0.0,
-        domain_max=1.0,
-        n_collocation=25,
+        domain_dim=2,
+        domain_min=[0.0, 0.0],
+        domain_max=[1.0, 1.0],
     )
 
 
@@ -36,11 +36,12 @@ def game_config(pde_config: PDEConfig) -> PDEGameConfig:
         pde_config=pde_config,
         game_mode="basis_selection",
         max_steps=10,
-        tolerance=0.01,
-        budget=1e4,
-        basis_selection=BasisSelectionConfig(
-            max_basis_size=8,
-            candidate_types=["fourier"],
+        error_tolerance=0.01,
+        computational_budget=1e4,
+        basis_config=BasisSelectionConfig(
+            name="test_basis_selection",
+            max_basis_functions=8,
+            basis_type="fourier",
             max_frequency=3,
         ),
     )

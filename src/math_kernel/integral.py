@@ -432,10 +432,12 @@ if HAS_JAX:
                 Minimum singular value for each batch element, shape ``(batch,)``.
 
             """
-            # Apply the key projection using stored parameters
-            k = fnn.Dense(self.d_key, name="to_key").apply(
-                {"params": variables["params"]["to_key"]}, x
-            )
+            # Apply the key projection using stored parameters directly
+            # (avoid creating a child Dense module outside a Flax scope)
+            key_params = variables["params"]["to_key"]
+            k = x @ key_params["kernel"]
+            if "bias" in key_params:
+                k = k + key_params["bias"]
             n = x.shape[1]
 
             # Compute K^T K / n (Gram matrix)

@@ -74,7 +74,7 @@ class TestStatefulGameWrapperLegalActions:
         """Test that legal actions are integers."""
         actions = wrapper.get_legal_actions()
         for action in actions:
-            assert isinstance(action, (int, np.integer))
+            assert isinstance(action, int | np.integer)
 
     def test_initial_position_has_20_legal_moves(self, wrapper: StatefulGameWrapper) -> None:
         """Test that initial chess position has 20 legal moves."""

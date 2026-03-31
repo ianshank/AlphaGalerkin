@@ -19,10 +19,9 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-import numpy as np
 import structlog
 import torch
-from pydantic import BaseModel, Field
+from pydantic import Field
 from torch import Tensor
 
 from src.templates.config import BaseModuleConfig
@@ -264,7 +263,7 @@ class CrankNicolson(TimeStepper):
         # Initial guess: forward Euler
         u_new = u + self.dt * f_n
 
-        for iteration in range(self.max_iterations):
+        for _iteration in range(self.max_iterations):
             f_new = rhs_fn(u_new, t_new)
             u_next = u + 0.5 * self.dt * (f_n + f_new)
 

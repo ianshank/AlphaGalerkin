@@ -240,9 +240,7 @@ class UniformFDMSolver(BaseSolver):
         XX, YY = np.meshgrid(xi, yi, indexing="ij")
         coords_flat = np.stack([XX.ravel(), YY.ravel()], axis=-1).astype(np.float32)
 
-        N = n * n  # interior unknowns
-
-        # 5-point Laplacian stencil
+        # 5-point Laplacian stencil (n*n interior unknowns)
         I_n = sparse.eye(n, format="csc")
         T = sparse.diags(
             [np.full(n - 1, -1.0), np.full(n, 4.0), np.full(n - 1, -1.0)],

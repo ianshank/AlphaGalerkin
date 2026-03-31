@@ -13,18 +13,16 @@ from __future__ import annotations
 
 import json
 import math
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import structlog
 import yaml
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.registry import get_pde_operator, list_pde_operators
-from src.research.baselines import BaseSolver, SolverResult, get_solver, list_solvers
+from src.research.baselines import BaseSolver, get_solver, list_solvers
 
 logger = structlog.get_logger(__name__)
 
@@ -351,10 +349,10 @@ class PDEBenchmarkRunner:
         if not solvers:
             self._log.warning("no_baselines_available_using_defaults")
             # Provide defaults so the runner still works
-            try:
+            import contextlib
+
+            with contextlib.suppress(Exception):
                 solvers.append(get_solver("uniform_fdm"))
-            except Exception:
-                pass
 
         return solvers
 
@@ -385,7 +383,7 @@ class PDEBenchmarkRunner:
             key = (r.benchmark_name, r.method_name)
             groups.setdefault(key, []).append(r)
 
-        for key, group in groups.items():
+        for _key, group in groups.items():
             group.sort(key=lambda r: r.n_dof)
             for i in range(1, len(group)):
                 prev, cur = group[i - 1], group[i]

@@ -635,40 +635,108 @@ AlphaGalerkin/
 │   │   ├── embeddings.py  # Continuous embedding
 │   │   ├── fnet.py        # FFT mixing blocks
 │   │   ├── stability.py   # LBB stability guard
-│   │   └── model.py       # Full model + ChessPolicyHead
+│   │   ├── model.py       # Full model + ChessPolicyHead
+│   │   └── multiscale_fourier.py  # Multi-scale Fourier features
 │   ├── games/             # Game implementations
 │   │   ├── chess.py       # Chess (119ch, 4672 actions)
 │   │   ├── go.py          # Go (resolution-independent)
 │   │   ├── wrapper.py     # StatefulGameWrapper
-│   │   └── interface.py   # GameInterface protocol
-│   ├── engines/           # External engine integration
-│   │   ├── uci.py         # UCI protocol driver
-│   │   ├── match.py       # EngineMatch orchestration
-│   │   ├── elo.py         # EloCalculator + confidence
-│   │   └── config.py      # UCIConfig, MatchConfig
+│   │   ├── interface.py   # GameInterface protocol
+│   │   └── pettingzoo_adapter.py  # PettingZoo multi-agent adapter
+│   ├── pde/               # PDE Game Framework
+│   │   ├── operators.py   # Poisson, Burgers, NavierStokes, Heat, L-shaped
+│   │   ├── geometry.py    # Rectangular, L-shaped, CylinderFlow domains
+│   │   ├── time_stepping.py  # ForwardEuler, RK4, CrankNicolson
+│   │   ├── config.py      # Pydantic PDE configuration schemas
+│   │   ├── game.py        # Abstract PDEGame base class
+│   │   ├── registry.py    # PDE operator registry
+│   │   ├── mcts_adapter.py  # PDE-to-MCTS bridge
+│   │   └── games/
+│   │       ├── basis_selection.py   # Galerkin basis selection
+│   │       ├── mesh_refinement.py   # Adaptive mesh refinement
+│   │       └── swarm_planning.py    # Multi-agent swarm control
+│   ├── research/          # SBIR benchmarking infrastructure
+│   │   ├── baselines.py   # FDM, Dorfler AMR, PINN solvers
+│   │   └── pde_benchmarks.py  # PDEBenchmarkRunner + reports
 │   ├── training/          # Training pipeline
 │   │   ├── trainer.py     # Main loop + engine eval
-│   │   ├── self_play.py   # Game-agnostic self-play
-│   │   ├── evaluation.py  # Evaluator + engine eval
-│   │   └── checkpoint.py  # CheckpointManager
+│   │   ├── base_trainer.py  # Shared BaseTrainer ABC
+│   │   ├── losses/        # Unified loss package (LossRegistry)
+│   │   │   ├── alphagalerkin.py  # Policy CE + Value MSE + LBB
+│   │   │   ├── operator.py      # L2Relative, H1, MSE
+│   │   │   └── physics.py       # Residual + boundary + conservation
+│   │   ├── checkpoint.py         # CheckpointManager
+│   │   ├── checkpoint_migration.py  # Version-aware migration
+│   │   ├── loss_balancing.py     # ReLoBRaLo, GradNorm, etc.
+│   │   ├── self_play.py          # Game-agnostic self-play
+│   │   └── evaluation.py         # Evaluator + engine eval
+│   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
 │   └── tools/             # Utilities (GTP, CLI)
-├── tests/
-│   ├── games/             # Chess, Go, wrapper tests
+├── tests/                 # 3000+ tests, 85% coverage gate
+│   ├── pde/               # PDE operators, geometry, time-stepping, swarm
+│   ├── research/          # Baselines, benchmarks
+│   ├── training/          # Trainer, loss properties, numerical stability
+│   ├── modeling/          # Attention properties, Fourier features
+│   ├── games/             # Chess, Go, PettingZoo adapter
 │   ├── engines/           # UCI, match, Elo tests
-│   ├── training/          # Trainer, self-play tests
 │   ├── security/          # Security tests
 │   └── e2e/               # End-to-end smoke tests
 ├── config/
 │   ├── schemas.py         # Pydantic configs
-│   └── train_chess.yaml   # Chess training config
-├── scripts/
-│   └── train_chess.py     # Chess training CLI
+│   ├── proposals/         # SBIR benchmark configs (Navy, DOE, NSF, AFWERX)
+│   └── benchmarks/        # sbir_suite.yaml
 ├── docs/
-│   └── architecture/      # C4 diagrams
+│   ├── architecture/      # C4 diagrams (Mermaid)
+│   └── proposals/         # SBIR templates, IP strategy
 └── pyproject.toml
 ```
+
+---
+
+## SBIR Positioning
+
+AlphaGalerkin addresses a **verified novelty gap**: no published papers combine MCTS with Galerkin methods for PDE solving or mesh refinement.
+
+| Solicitation | Focus | TRL |
+|---|---|---|
+| **Navy N252-088** | FEM mesh optimization for naval structures | 3-4 |
+| **DOE ASCR C59-01** | Exascale PDE solver with multi-step look-ahead | 3-4 |
+| **NSF SBIR** | Foundational computational science innovation | 3 |
+| **AFWERX Open** | UAV CFD dual-use applications | 3-4 |
+
+Run benchmarks:
+```bash
+python -c "
+from src.research.pde_benchmarks import PDEBenchmarkRunner
+runner = PDEBenchmarkRunner('config/benchmarks/sbir_suite.yaml')
+results = runner.run_all()
+runner.generate_report(results, Path('outputs/sbir_benchmarks'))
+"
+```
+
+---
+
+## Next Steps
+
+### Near-Term (v0.4)
+- [ ] Demo script (`src/demos/sbir_demo.py`) with end-to-end benchmark visualization
+- [ ] Multi-field PDE support (extending ModelOutput for vector fields)
+- [ ] Migrate existing trainers (Trainer, OperatorTrainer) to BaseTrainer inheritance
+- [ ] Upper bounds on core dependencies in pyproject.toml
+
+### Medium-Term (v0.5)
+- [ ] 3D domain geometry support (tetrahedral meshes)
+- [ ] Distributed benchmark runner (multi-node SBIR suite)
+- [ ] Uncertainty quantification for PDE solutions
+- [ ] PettingZoo training loop for swarm games
+
+### Long-Term (v1.0)
+- [ ] SBIR Phase I proposal submission with benchmark results
+- [ ] Production ONNX deployment pipeline
+- [ ] Multi-physics coupling (fluid-structure interaction)
+- [ ] Publication: "MCTS-Guided Galerkin Methods for Adaptive PDE Solving"
 
 ---
 

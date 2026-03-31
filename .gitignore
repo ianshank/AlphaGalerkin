@@ -108,3 +108,11 @@ validation_outputs/
 !tsconfig.json
 notebooks/utils/*.json
 uv.lock
+
+# SBIR / proposal outputs
+outputs/sbir_benchmarks/
+outputs/proposals/
+
+# Benchmark artifacts
+*.benchmark
+*.profile

@@ -40,7 +40,7 @@ from typing import Any, Generic, TypeVar
 
 import structlog
 import torch
-from pydantic import BaseModel, Field
+from pydantic import Field
 from torch import Tensor
 from torch.cuda.amp import GradScaler
 from torch.nn import Module

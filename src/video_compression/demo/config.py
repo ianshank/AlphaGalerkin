@@ -142,7 +142,7 @@ class DemoConfig(BaseModel):
 
     # ── Validators ────────────────────────────────────────────────────
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def validate_architecture(self) -> DemoConfig:
         """Validate codec architecture constraints."""
         # Downsample factor must be power of 2

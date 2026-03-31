@@ -100,7 +100,6 @@ def get_loss(name: str, **kwargs: Any) -> nn.Module:
 
     if loss_cls is not None:
         return loss_cls(**kwargs)
-
     # Backwards-compat aliases (the old losses.py used these exact keys)
     _aliases: dict[str, str] = {
         "l2": "l2_relative",
@@ -111,6 +110,5 @@ def get_loss(name: str, **kwargs: Any) -> nn.Module:
         loss_cls = registry.get(alias_target)
         if loss_cls is not None:
             return loss_cls(**kwargs)
-
     available = registry.list_items()
     raise ValueError(f"Unknown loss: {name!r}. Available: {available}")

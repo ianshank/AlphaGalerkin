@@ -49,6 +49,9 @@ class StabilityGuard(nn.Module):
         self.log_interval = log_interval
 
         # Tracking
+        self.step_counter: Tensor
+        self.min_beta_seen: Tensor
+        self.max_beta_seen: Tensor
         self.register_buffer("step_counter", torch.tensor(0))
         self.register_buffer("min_beta_seen", torch.tensor(float("inf")))
         self.register_buffer("max_beta_seen", torch.tensor(0.0))
@@ -134,7 +137,7 @@ class StabilityGuard(nn.Module):
             beta = self.compute_lbb_constant(keys)
 
         # Check threshold
-        is_stable = (beta > self.beta_threshold).all().item()
+        is_stable: bool = bool((beta > self.beta_threshold).all().item())
 
         # Update tracking
         self.step_counter += 1
@@ -310,9 +313,9 @@ class StableGalerkinInitializer:
             # Get keys from module
             with torch.no_grad():
                 if hasattr(module, "to_k"):
-                    keys = module.to_k(sample_input)
+                    keys = module.to_k(sample_input)  # type: ignore[operator]
                 elif hasattr(module, "to_key"):
-                    keys = module.to_key(sample_input)
+                    keys = module.to_key(sample_input)  # type: ignore[operator]
                 else:
                     raise ValueError("Module must have 'to_k' or 'to_key' attribute")
 
@@ -352,13 +355,13 @@ class StableGalerkinInitializer:
         """
         # Add small perturbation to increase singular values
         if hasattr(module, "to_k"):
-            weight = module.to_k.weight
+            weight = module.to_k.weight  # type: ignore[union-attr]
         elif hasattr(module, "to_key"):
-            weight = module.to_key.weight
+            weight = module.to_key.weight  # type: ignore[union-attr]
         else:
             return
 
         # Scale up slightly to increase singular values
         scale_factor = (self.beta_target / (current_beta.min() + 1e-8)).sqrt()
         scale_factor = torch.clamp(scale_factor, 1.0, 2.0)
-        weight.data.mul_(scale_factor.item())
+        weight.data.mul_(scale_factor.item())  # type: ignore[operator]

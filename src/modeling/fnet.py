@@ -92,7 +92,6 @@ class FNetMixing(nn.Module):
             x_mixed = x_mixed[:, :n, :]
 
         return x_mixed
-
     def _mix_2d(
         self,
         x: Float[Tensor, "batch n d"],
@@ -127,7 +126,6 @@ class FNetMixing(nn.Module):
         x_out = rearrange(x_mixed, "b d h w -> b (h w) d")
 
         return x_out
-
 
 class FNetBlock(nn.Module):
     """FNet Transformer block with FFT mixing.
@@ -315,7 +313,6 @@ class GalerkinFNetHybrid(nn.Module):
         output = (1 - ratio) * galerkin_out + ratio * fnet_out
 
         return self.norm(output)
-
 
 # Alias for backward compatibility with PoC scenarios
 class FNetMixingLayer(nn.Module):

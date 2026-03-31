@@ -159,12 +159,12 @@ class ContinuousEmbedding(nn.Module):
         # Create or resize position embedding
         if self._position_embedding is None or self._position_embedding_size != n_positions:
             # Create new embedding
-            self._position_embedding = nn.Parameter(
+            self._position_embedding = nn.Parameter(  # type: ignore[assignment]
                 torch.randn(1, n_positions, self.d_model) * 0.02
             ).to(device)
             self._position_embedding_size = n_positions
 
-        return self._position_embedding
+        return self._position_embedding  # type: ignore[return-value]
 
     def forward(
         self,

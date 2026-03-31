@@ -22,7 +22,7 @@ try:
     HAS_PETTINGZOO = True
 except ImportError:
     HAS_PETTINGZOO = False
-    ParallelEnv = object  # type: ignore[assignment,misc]
+    ParallelEnv = object
 
 import structlog
 
@@ -32,7 +32,7 @@ from src.games.state import GameState
 logger = structlog.get_logger(__name__)
 
 
-class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ignore[misc]
+class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):
     """Wraps AlphaGalerkin GameInterface as a PettingZoo ParallelEnv.
 
     Each agent takes an action simultaneously. The adapter maps between

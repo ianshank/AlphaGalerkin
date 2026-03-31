@@ -89,7 +89,7 @@ def create_cli_app(
             console.print(f"{name} version {version}")
             raise typer.Exit()
 
-    @app.callback()  # type: ignore[untyped-decorator]
+    @app.callback()
     def main(
         version: bool = typer.Option(
             False,

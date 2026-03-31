@@ -1187,7 +1187,7 @@ class Trainer:
 
             if self.wandb_logger is not None:
                 self.wandb_logger.log_metrics(
-                    elo_metrics,  # type: ignore[arg-type]
+                    elo_metrics,
                     step=step,
                 )
 

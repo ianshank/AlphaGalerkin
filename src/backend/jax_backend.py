@@ -409,7 +409,7 @@ class JaxBackend:
         Wraps ``jax.grad`` with the specified argument indices and
         auxiliary-output flag.
         """
-        return jax.grad(fn, argnums=argnums, has_aux=has_aux)  # type: ignore[no-any-return]
+        return jax.grad(fn, argnums=argnums, has_aux=has_aux)
 
     def value_and_grad(
         self,
@@ -418,7 +418,7 @@ class JaxBackend:
         has_aux: bool = False,
     ) -> Callable[..., tuple[Any, ...]]:
         """Return a function that computes both value and gradients."""
-        return jax.value_and_grad(fn, argnums=argnums, has_aux=has_aux)  # type: ignore[no-any-return]
+        return jax.value_and_grad(fn, argnums=argnums, has_aux=has_aux)
 
     # ------------------------------------------------------------------
     # Device management

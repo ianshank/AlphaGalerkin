@@ -764,7 +764,7 @@ class VideoCodec(nn.Module):
             "psnr": 10 * torch.log10(1.0 / (distortion.mean() + 1e-10)),
         }
 
-    @torch.no_grad()  # type: ignore[untyped-decorator]
+    @torch.no_grad()
     def get_rate_distortion_point(
         self,
         x: Float[Tensor, "batch 3 height width"],

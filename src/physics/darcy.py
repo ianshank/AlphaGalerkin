@@ -80,7 +80,7 @@ class DarcyFlowSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         b = np.full(N, self.forcing * h * h)
 
         # Helper to get index
-        def idx(i, j):
+        def idx(i: int, j: int) -> int:
             return i * n + j
 
         for i in range(n):

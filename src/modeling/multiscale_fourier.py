@@ -153,7 +153,7 @@ class MultiScaleFourierFeatures(nn.Module):
             for i, scale in enumerate(scales):
                 B = torch.randn(input_dim, n_features) * scale
                 self.register_buffer(f"B_{i}", B)
-            self.frequency_matrices = None
+            self.frequency_matrices = None  # type: ignore[assignment]
 
     @property
     def output_dim(self) -> int:
@@ -376,7 +376,7 @@ class AdaptiveFourierFeatures(nn.Module):
             bank_features.append(features)
 
         # Stack: (N, n_banks, 2*n_features)
-        bank_features = torch.stack(bank_features, dim=1)
+        stacked_features: torch.Tensor = torch.stack(bank_features, dim=1)
 
         if self.use_attention:
             # Compute attention weights
@@ -384,10 +384,10 @@ class AdaptiveFourierFeatures(nn.Module):
             attention = attention.unsqueeze(-1)  # (N, n_banks, 1)
 
             # Weighted sum across banks
-            combined = (bank_features * attention).sum(dim=1)  # (N, 2*n_features)
+            combined = (stacked_features * attention).sum(dim=1)  # (N, 2*n_features)
         else:
             # Simple average
-            combined = bank_features.mean(dim=1)
+            combined = stacked_features.mean(dim=1)
 
         # Project and combine with raw coordinates
         combined = self.output_proj(combined)
@@ -455,7 +455,7 @@ class ProgressiveFourierFeatures(nn.Module):
         else:
             for i, scale in enumerate(scales):
                 self.register_buffer(f"B_{i}", torch.randn(input_dim, n_features) * scale)
-            self.frequency_matrices = None
+            self.frequency_matrices = None  # type: ignore[assignment]
 
         # Progress tracking (0 = only lowest freq, 1 = all frequencies)
         self.register_buffer("_progress", torch.tensor(1.0))
@@ -479,6 +479,7 @@ class ProgressiveFourierFeatures(nn.Module):
     @property
     def progress(self) -> float:
         """Current training progress."""
+        assert isinstance(self._progress, torch.Tensor)
         return self._progress.item()
 
     def set_progress(self, progress: float) -> None:
@@ -490,6 +491,8 @@ class ProgressiveFourierFeatures(nn.Module):
 
         """
         progress = max(0.0, min(1.0, progress))
+        assert isinstance(self._progress, torch.Tensor)
+        assert isinstance(self._gate_weights, torch.Tensor)
         self._progress.fill_(progress)
 
         # Get device and dtype from existing buffer to ensure consistency
@@ -542,6 +545,7 @@ class ProgressiveFourierFeatures(nn.Module):
 
         features = [x_flat]  # Start with raw coordinates
 
+        assert isinstance(self._gate_weights, torch.Tensor)
         for i in range(self.n_scales):
             if self.frequency_matrices is not None:
                 B = self.frequency_matrices[i]
@@ -620,6 +624,7 @@ class PositionalEncoding(nn.Module):
         """
         if x.size(-1) != self.d_model:
             raise ValueError(f"Expected d_model={self.d_model}, got {x.size(-1)}")
+        assert isinstance(self.pe, torch.Tensor)
         return x + self.pe[:, : x.size(1)]
 
 
@@ -688,6 +693,8 @@ class SpatialPositionalEncoding(nn.Module):
         _, _, h, w = x.shape
 
         # Get encodings for this size
+        assert isinstance(self.pe_x, torch.Tensor)
+        assert isinstance(self.pe_y, torch.Tensor)
         pe_x = self.pe_x[:w].unsqueeze(0)  # (1, w, d/2)
         pe_y = self.pe_y[:h].unsqueeze(1)  # (h, 1, d/2)
 

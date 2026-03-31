@@ -304,7 +304,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.optimizer.zero_grad()
 
         if self.use_amp and self.scaler is not None:
-            with torch.amp.autocast("cuda"):
+            with torch.amp.autocast("cuda"):  # type: ignore[attr-defined]
                 loss, metrics = self.compute_loss(batch)
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
@@ -315,7 +315,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             self.scaler.update()
         else:
             loss, metrics = self.compute_loss(batch)
-            loss.backward()
+            loss.backward()  # type: ignore[no-untyped-call]
             grad_norm = float(
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
             )

@@ -377,7 +377,7 @@ class GumbelMCTS:
 
                     if child.state is None:
                         # First visit - expand
-                        child.state = self.game.apply_action(root.state, action)
+                        child.state = self.game.apply_action(root.state, action)  # type: ignore[arg-type]
 
                     # Run simulation
                     value = self._simulate(child)
@@ -428,14 +428,14 @@ class GumbelMCTS:
 
         """
         if node.is_terminal:
-            return node._terminal_value
+            return node._terminal_value  # type: ignore[return-value]
 
         # Check for terminal state
-        if self.game.is_terminal(node.state):
-            winner = self.game.get_winner(node.state)
+        if self.game.is_terminal(node.state):  # type: ignore[arg-type]
+            winner = self.game.get_winner(node.state)  # type: ignore[arg-type]
             if winner is None:
                 value = 0.0
-            elif winner == node.state.current_player:
+            elif winner == node.state.current_player:  # type: ignore[union-attr]
                 value = 1.0
             else:
                 value = -1.0
@@ -443,7 +443,7 @@ class GumbelMCTS:
             return value
 
         # Evaluate with neural network
-        _, value = self._evaluate(node.state)
+        _, value = self._evaluate(node.state)  # type: ignore[arg-type]
 
         return value
 
@@ -466,9 +466,9 @@ class GumbelMCTS:
             tensor = self.game.to_tensor(state).unsqueeze(0).to(self.device)
             output = self.model(tensor)
 
-            policy = torch.softmax(output.policy_logits, dim=-1)
-            policy = policy[0].cpu().numpy()
-            value = output.value[0].item()
+            policy_tensor = torch.softmax(output.policy_logits, dim=-1)
+            policy: np.ndarray = policy_tensor[0].cpu().numpy()
+            value: float = output.value[0].item()
 
         return policy, value
 

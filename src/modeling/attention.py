@@ -130,9 +130,7 @@ class GalerkinAttention(nn.Module):
             lbb = self._compute_lbb_constant(k)
             self._last_lbb_constant = lbb
             return output, lbb
-
         return output
-
     def _compute_lbb_constant(
         self,
         k: Float[Tensor, "batch heads n d_key"],
@@ -159,7 +157,6 @@ class GalerkinAttention(nn.Module):
 
         # Return minimum singular value
         return singular_values.min(dim=-1).values
-
 
 class SoftmaxAttention(nn.Module):
     """Standard scaled dot-product attention for tactical precision.
@@ -251,7 +248,6 @@ class SoftmaxAttention(nn.Module):
         output = self.to_out(output)
 
         return output
-
 
 class HybridAttention(nn.Module):
     """Hybrid attention combining Galerkin (global) and Softmax (local).

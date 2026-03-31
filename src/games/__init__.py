@@ -42,11 +42,11 @@ try:
     _HAS_TORCH = True
 except ImportError:
     # Torch not available - provide stubs
-    GameInterface = None
-    GamePhase = None
-    GameRegistry = None
-    GameState = None
-    register_game = None
+    GameInterface = None  # type: ignore[assignment]
+    GamePhase = None  # type: ignore[assignment]
+    GameRegistry = None  # type: ignore[assignment]
+    GameState = None  # type: ignore[assignment]
+    register_game = None  # type: ignore[assignment]
     _HAS_TORCH = False
 
 __all__ = [

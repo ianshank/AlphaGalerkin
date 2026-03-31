@@ -168,7 +168,7 @@ class ComplexityScenario(BaseScenario):
         assert self._start_time is not None
         duration = (end_time - self._start_time).total_seconds()
 
-        return ScenarioResult(
+        return ScenarioResult(  # type: ignore[call-arg]
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),
             status=status,
@@ -182,7 +182,7 @@ class ComplexityScenario(BaseScenario):
             device=str(self._device),
             python_version=sys.version,
             torch_version=torch.__version__,
-            # Custom fields
+            # Custom fields (allowed by extra="allow" in model_config)
             fnet_exponent=fnet_exponent,
             softmax_exponent=softmax_exponent,
             galerkin_exponent=galerkin_exponent,

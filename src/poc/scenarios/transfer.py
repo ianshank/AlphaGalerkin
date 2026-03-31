@@ -183,7 +183,7 @@ class TransferScenario(BaseScenario):
         assert self._start_time is not None
         duration = (end_time - self._start_time).total_seconds()
 
-        return ScenarioResult(
+        return ScenarioResult(  # type: ignore[call-arg]
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),
             status=status,
@@ -197,7 +197,7 @@ class TransferScenario(BaseScenario):
             device=str(self._device),
             python_version=sys.version,
             torch_version=torch.__version__,
-            # Custom fields
+            # Custom fields (allowed by extra="allow" in model_config)
             primary_resolution=primary_res,
             primary_mse=primary_mse,
             primary_passed=primary_passed,

@@ -27,7 +27,7 @@ from src.distributed.config import SelfPlayDistributedConfig, _get_env_rank_info
 if TYPE_CHECKING:
     from config.schemas import MCTSConfig
     from src.modeling.model import AlphaGalerkinModel
-    from src.training.self_play import Experience
+    from src.training.replay_buffer import Experience
 
 logger = structlog.get_logger(__name__)
 

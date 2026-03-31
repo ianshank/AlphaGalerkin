@@ -130,7 +130,7 @@ class SyntheticVideoConfig(BaseModel):
         description="Amount of temporal change between frames",
     )
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def validate_checkerboard_size(self) -> SyntheticVideoConfig:
         """Ensure checkerboard size doesn't exceed frame dimensions."""
         if self.checkerboard_size > min(self.height, self.width):

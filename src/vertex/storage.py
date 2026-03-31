@@ -899,7 +899,7 @@ class GCSDataSource:
         # For now, just load the full shard
         # A true streaming implementation would require a different format
         data = self.load_shard(shard_name)
-        if isinstance(data, list | tuple):
+        if isinstance(data, (list, tuple)):
             yield from data
         else:
             yield data

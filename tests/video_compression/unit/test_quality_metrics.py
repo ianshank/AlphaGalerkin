@@ -116,7 +116,7 @@ class TestPSNR:
         noisy = noisy.clamp(0, 1)
 
         psnr = compute_psnr(batch, noisy)
-        assert isinstance(psnr, float | torch.Tensor)
+        assert isinstance(psnr, (float, torch.Tensor))
 
 
 # ============================================================================

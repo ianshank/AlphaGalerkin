@@ -289,10 +289,11 @@ def update_game(
     if human_just_passed and ENDGAME_DETECTOR.should_override_to_pass(
         game, action, human_just_passed
     ):
+        original_action = action
         action = ENDGAME_DETECTOR.get_pass_action(board_size)
         logger.info(
             "endgame_override_applied",
-            original_action=mcts.get_action(game, temperature=0.0, add_noise=False),
+            original_action=original_action,
             new_action=action,
         )
 

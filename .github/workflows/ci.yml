@@ -368,7 +368,8 @@ jobs:
             tests/training/test_chess_self_play.py \
             tests/training/test_trainer_chess.py \
             tests/security/test_chess_security.py \
-            --cov=src/games/chess.py --cov=src/games/interface.py --cov=src/games/registry.py \
+            --cov=src/games \
+            --cov-config=.github/chess-coveragerc \
             --cov-report=term-missing \
             --cov-fail-under=80 \
             --tb=short \

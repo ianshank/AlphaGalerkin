@@ -388,7 +388,7 @@ class WandbLogger:
 
         # Add metadata (filter to loggable types)
         for key, value in result.metadata.items():
-            if isinstance(value, int | float | str | bool):
+            if isinstance(value, (int, float, str, bool)):
                 log_dict[f"{prefix}/meta/{key}"] = value
 
         adjusted_step = self._apply_step_offset(step)

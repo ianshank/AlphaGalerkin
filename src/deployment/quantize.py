@@ -330,7 +330,7 @@ class ModelQuantizer:
             # Handle different dataset formats
             if isinstance(sample, dict):
                 data = sample.get("board_state", sample.get("input"))
-            elif isinstance(sample, tuple | list):
+            elif isinstance(sample, (tuple, list)):
                 data = sample[0]
             else:
                 data = sample

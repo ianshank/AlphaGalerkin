@@ -493,7 +493,8 @@ class TestDatasetIntegration:
         sampler = BoardSizeBatchSampler(sample_experiences, batch_size=4)
 
         # Can create DataLoader with this combination
-        loader = DataLoader(dataset, batch_sampler=sampler)
+        # collate_fn=list avoids default_collate which can't handle Experience dataclasses
+        loader = DataLoader(dataset, batch_sampler=sampler, collate_fn=list)
         batches = list(loader)
         assert len(batches) > 0
 

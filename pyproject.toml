@@ -265,7 +265,6 @@ module = [
     "src.video_compression.codec.codec",
     "src.video_compression.models.quantizer",
     "src.video_compression.utils.logging",
-    "src.modeling.stability",
     "src.distributed.trainer",
     "src.distributed.worker",
     "src.distributed.launcher",
@@ -279,7 +278,6 @@ module = [
     "src.demos.benchmark_demo",
     "src.demos.visualizations",
     "src.poc.scenarios.transfer",
-    "src.poc.tuning.sampler",
 ]
 disable_error_code = ["assignment", "arg-type", "return-value", "operator", "union-attr",
                       "index", "dict-item", "attr-defined", "var-annotated", "call-arg",

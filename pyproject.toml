@@ -299,3 +299,14 @@ markers = [
     "video: video compression tests",
     "integration: integration tests",
 ]
+
+[tool.coverage.run]
+# Omit modules whose tests are excluded from CI coverage runs.
+# video_compression tests are ignored via --ignore=tests/video_compression/
+# backend tests cause JAX crashes on Windows CI and are skipped
+# demos tests are ignored via --ignore=tests/demos/
+omit = [
+    "src/video_compression/*",
+    "src/backend/*",
+    "src/demos/*",
+]

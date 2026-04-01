@@ -130,11 +130,11 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         dict[str, bool],
         dict[str, dict[str, Any]],
     ]:
-        """Execute one step with simultaneous actions from all agents.
+        """Execute one step by applying each agent's action sequentially.
 
-        Applies the first agent's action to the game state (since
-        GameInterface is sequential). Other agents' actions are stored
-        for reference but the game advances one ply.
+        Iterates through agents in order; for each, validates and applies
+        the action to the game state. Stops early if the game reaches a
+        terminal state. Invalid actions receive a -1.0 penalty.
 
         Args:
             actions: Dict mapping agent IDs to action indices.

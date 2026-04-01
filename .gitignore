@@ -116,3 +116,48 @@ outputs/proposals/
 # Benchmark artifacts
 *.benchmark
 *.profile
+
+# ML model formats (do not commit large binary model files)
+*.safetensors
+*.onnx
+*.tflite
+*.h5
+*.hdf5
+*.ckpt
+
+# TensorBoard / experiment tracking
+runs/
+lightning_logs/
+mlruns/
+.aim/
+
+# Data directories (large datasets should not be committed)
+data/raw/
+data/processed/
+data/external/
+datasets/
+
+# HuggingFace cache
+.hf_cache/
+hub/
+
+# Environment variable files (beyond base .env)
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage / profiling artifacts
+*.lcov
+*.prof
+prof/
+
+# Configs with local overrides
+configs/local/
+config/local/

@@ -2,7 +2,12 @@
 
 **Resolution-Independent Game AI using Continuous Operator Learning**
 
-AlphaGalerkin is a novel approach to Go AI that replaces traditional Convolutional Neural Networks (CNNs) with Continuous Operator Learning, enabling zero-shot transfer between different board sizes and accelerating Monte Carlo Tree Search through FFT-based mixing.
+[![CI](https://github.com/ianshank/AlphaGalerkin/actions/workflows/ci.yml/badge.svg)](https://github.com/ianshank/AlphaGalerkin/actions/workflows/ci.yml)
+[![Coverage: 85%+](https://img.shields.io/badge/coverage-85%25%2B-brightgreen)](https://github.com/ianshank/AlphaGalerkin/actions)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0%2B-ee4c2c)](https://pytorch.org/)
+
+AlphaGalerkin is a multi-game AI framework combining Continuous Operator Learning with Monte Carlo Tree Search. It supports **Go** (resolution-independent, zero-shot board size transfer), **Chess** (AlphaZero-style self-play with Stockfish evaluation), and **PDE solving** (MCTS-guided Galerkin basis selection). The architecture replaces discrete CNNs with Galerkin attention, enabling zero-shot transfer between resolutions.
 
 ---
 
@@ -502,7 +507,7 @@ config = OperatorConfig(
 
 ## Testing
 
-The project has **400+** tests across unit, integration, E2E, and security categories.
+The project has **600+** tests across unit, integration, E2E, and security categories.
 
 ### Run All Tests
 
@@ -673,7 +678,13 @@ AlphaGalerkin/
 │   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
-│   └── tools/             # Utilities (GTP, CLI)
+│   ├── tools/             # Utilities (GTP, CLI)
+│   ├── agents/            # Multi-physics PDE agent orchestration
+│   ├── engines/           # UCI chess engine (Stockfish, Elo)
+│   ├── curriculum/        # Progressive training curriculum
+│   ├── tournament/        # Chess tournament & Elo system
+│   ├── demos/             # SBIR benchmark demo scripts
+│   └── research/          # Classical PDE baselines & benchmarks
 ├── tests/                 # 3000+ tests, 85% coverage gate
 │   ├── pde/               # PDE operators, geometry, time-stepping, swarm
 │   ├── research/          # Baselines, benchmarks
@@ -721,6 +732,9 @@ runner.generate_report(results, Path('outputs/sbir_benchmarks'))
 ## Next Steps
 
 ### Near-Term (v0.4)
+- [x] CI/CD pipeline with 85% coverage gates
+- [x] Chess self-play training (AlphaZero methodology)
+- [x] SBIR proposal configs (Navy, DOE, NSF, AFWERX)
 - [ ] Demo script (`src/demos/sbir_demo.py`) with end-to-end benchmark visualization
 - [ ] Multi-field PDE support (extending ModelOutput for vector fields)
 - [ ] Migrate existing trainers (Trainer, OperatorTrainer) to BaseTrainer inheritance

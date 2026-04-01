@@ -427,11 +427,16 @@ jobs:
             echo "FAIL: Lint & Type Check failed"
             exit 1
           fi
-          # test-fast and coverage may have pre-existing failures
-          # in unchanged files; require they at least ran (not skipped)
-          if [[ "${{ needs.test-fast.result }}" == "skipped" ]] || \
-             [[ "${{ needs.coverage.result }}" == "skipped" ]]; then
-            echo "FAIL: Required test stages were skipped"
+          # test-fast may have pre-existing failures in unchanged files;
+          # require it at least ran (not skipped).
+          if [[ "${{ needs.test-fast.result }}" == "skipped" ]]; then
+            echo "FAIL: Unit test stage was skipped"
             exit 1
           fi
-          echo "Core CI gates passed (lint=success, tests=ran)"
+          # Coverage gate is a hard threshold (--cov-fail-under=75);
+          # it must succeed, not just run.
+          if [[ "${{ needs.coverage.result }}" != "success" ]]; then
+            echo "FAIL: Coverage gate did not pass (result=${{ needs.coverage.result }})"
+            exit 1
+          fi
+          echo "Core CI gates passed (lint=success, tests=ran, coverage=success)"

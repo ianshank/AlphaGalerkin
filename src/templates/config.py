@@ -32,7 +32,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -344,11 +344,26 @@ class BoardSizeConfig(BaseModel):
 T = TypeVar("T", bound=BaseModuleConfig)
 
 
+@overload
 def create_config_class(
     name: str,
-    base: type[T] = BaseModuleConfig,  # type: ignore[assignment]
     **field_definitions: tuple[type, Any],
-) -> type[T]:
+) -> type[BaseModuleConfig]: ...
+
+
+@overload
+def create_config_class(
+    name: str,
+    base: type[T],
+    **field_definitions: tuple[type, Any],
+) -> type[T]: ...
+
+
+def create_config_class(
+    name: str,
+    base: type[BaseModuleConfig] = BaseModuleConfig,
+    **field_definitions: tuple[type, Any],
+) -> type[BaseModuleConfig]:
     """Factory function to create configuration classes dynamically.
 
     Args:

@@ -304,7 +304,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.optimizer.zero_grad()
 
         if self.use_amp and self.scaler is not None:
-            with torch.amp.autocast("cuda"):  # type: ignore[attr-defined]
+            with torch.cuda.amp.autocast():
                 loss, metrics = self.compute_loss(batch)
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)

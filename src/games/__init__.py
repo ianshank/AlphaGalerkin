@@ -27,6 +27,16 @@ Usage:
     new_state = game.apply_action(state, actions[0])
 """
 
+from typing import Any
+
+# Declared with explicit types so the except-branch assignment to None is valid.
+GameInterface: Any = None
+GamePhase: Any = None
+GameRegistry: Any = None
+GameState: Any = None
+register_game: Any = None
+_HAS_TORCH: bool = False
+
 # Optional torch-dependent imports
 try:
     # Import game implementations to trigger registration
@@ -41,13 +51,8 @@ try:
 
     _HAS_TORCH = True
 except ImportError:
-    # Torch not available - provide stubs
-    GameInterface = None  # type: ignore[assignment]
-    GamePhase = None  # type: ignore[assignment]
-    GameRegistry = None  # type: ignore[assignment]
-    GameState = None  # type: ignore[assignment]
-    register_game = None  # type: ignore[assignment]
-    _HAS_TORCH = False
+    # Torch not available - provide stubs; module-level defaults already set above
+    pass
 
 __all__ = [
     "GameInterface",

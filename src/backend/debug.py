@@ -370,7 +370,7 @@ def _flatten_grads(grads: Any) -> list[tuple[str, Any]]:
     if isinstance(grads, dict):
         return list(grads.items())
 
-    if isinstance(grads, (list, tuple)):
+    if isinstance(grads, list | tuple):
         return [(f"grad_{i}", g) for i, g in enumerate(grads)]
 
     # Try JAX pytree flattening.

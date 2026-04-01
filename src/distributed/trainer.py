@@ -23,7 +23,7 @@ import structlog
 import torch
 import torch.distributed as dist
 from torch import nn
-from torch.amp import GradScaler, autocast  # type: ignore[attr-defined]
+from torch.amp import GradScaler, autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import LRScheduler

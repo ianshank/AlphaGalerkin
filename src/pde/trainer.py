@@ -27,7 +27,7 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 import structlog
 from pydantic import Field, model_validator
@@ -310,9 +310,13 @@ class PDETrainer:
         )
 
         # Build game config
+        _basis_type = cast(
+            Literal["fourier", "polynomial", "rbf", "wavelet"],
+            config.basis_type,
+        )
         self._basis_config = BasisSelectionConfig(
             name=f"{config.name}_basis",
-            basis_type=config.basis_type,  # type: ignore[arg-type]
+            basis_type=_basis_type,
             max_basis_functions=config.max_basis_functions,
             max_frequency=config.max_frequency,
             n_collocation_points=config.n_collocation_points,

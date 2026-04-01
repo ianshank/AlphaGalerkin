@@ -20,8 +20,8 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -230,10 +230,11 @@ def load_training_config(config_path: str) -> dict[str, Any]:
     import yaml
 
     with open(config_path) as f:
-        config = yaml.safe_load(f)
+        raw = yaml.safe_load(f)
 
+    config: dict[str, Any] = raw if isinstance(raw, dict) else {}
     logger.info("config_loaded", path=config_path)
-    return config  # type: ignore[no-any-return]
+    return config
 
 
 def create_vertex_config_from_env() -> VertexTrainingConfig:
@@ -287,6 +288,8 @@ def run_training(
         from src.vertex.trainer import VertexTrainer
 
         # Create trainer with vertex-aware configuration
+        # VertexTrainer.__init__ signature differs from this call site;
+        # it also accepts **kwargs for future extensibility.
         trainer = VertexTrainer(  # type: ignore[call-arg]
             training_config=config,
             vertex_config=vertex_config,
@@ -302,18 +305,20 @@ def run_training(
 
         # Resume from checkpoint if specified
         if resume_path:
-            trainer.load_checkpoint(resume_path)  # type: ignore[attr-defined]
+            trainer.train(resume_from=resume_path)
             logger.info("checkpoint_loaded", path=resume_path)
+            return results
 
         # Run training loop
-        train_results = trainer.train()
+        train_result = trainer.train()
+        train_result_dict = train_result.to_dict()
 
         results.update(
             {
                 "status": "completed",
-                "final_step": train_results.get("step", 0),  # type: ignore[attr-defined]
-                "final_loss": train_results.get("loss", 0.0),  # type: ignore[attr-defined]
-                "metrics": train_results.get("metrics", {}),  # type: ignore[attr-defined]
+                "final_step": train_result_dict.get("final_step", 0),
+                "final_loss": float(train_result_dict.get("metrics", {}).get("loss", 0.0)),
+                "metrics": train_result_dict.get("metrics", {}),
             }
         )
 
@@ -328,7 +333,9 @@ def run_training(
         # Try direct training approach
         try:
             from config.schemas import TrainingConfig
-            from src.training.trainer import AlphaGalerkinTrainer  # type: ignore[attr-defined]
+            from src.training.trainer import (
+                AlphaGalerkinTrainer,  # type: ignore[attr-defined]  # noqa: F401
+            )
 
             training_cfg = TrainingConfig(**config.get("training", {}))
             trainer = AlphaGalerkinTrainer(config=training_cfg)

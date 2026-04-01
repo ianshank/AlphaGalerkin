@@ -33,7 +33,7 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import structlog
 import typer
@@ -163,7 +163,7 @@ def add_common_options(func: F) -> F:
 
         return func(*args, verbose=verbose, debug=debug, quiet=quiet, **kwargs)
 
-    return wrapper  # type: ignore[return-value]
+    return cast(F, wrapper)
 
 
 def load_config_file(
@@ -344,7 +344,7 @@ def handle_keyboard_interrupt(func: F) -> F:
             console.print("\n[yellow]Operation cancelled by user.[/yellow]")
             raise typer.Exit(130)
 
-    return wrapper  # type: ignore[return-value]
+    return cast(F, wrapper)
 
 
 def with_error_handling(func: F) -> F:
@@ -378,7 +378,7 @@ def with_error_handling(func: F) -> F:
 
             raise typer.Exit(1)
 
-    return wrapper  # type: ignore[return-value]
+    return cast(F, wrapper)
 
 
 # Common CLI argument types

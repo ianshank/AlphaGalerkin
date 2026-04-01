@@ -377,7 +377,8 @@ class GumbelMCTS:
 
                     if child.state is None:
                         # First visit - expand
-                        child.state = self.game.apply_action(root.state, action)  # type: ignore[arg-type]
+                        assert root.state is not None
+                        child.state = self.game.apply_action(root.state, action)
 
                     # Run simulation
                     value = self._simulate(child)
@@ -428,14 +429,18 @@ class GumbelMCTS:
 
         """
         if node.is_terminal:
-            return node._terminal_value  # type: ignore[return-value]
+            assert node._terminal_value is not None
+            return node._terminal_value
+
+        if node.state is None:
+            return 0.0
 
         # Check for terminal state
-        if self.game.is_terminal(node.state):  # type: ignore[arg-type]
-            winner = self.game.get_winner(node.state)  # type: ignore[arg-type]
+        if self.game.is_terminal(node.state):
+            winner = self.game.get_winner(node.state)
             if winner is None:
                 value = 0.0
-            elif winner == node.state.current_player:  # type: ignore[union-attr]
+            elif winner == node.state.current_player:
                 value = 1.0
             else:
                 value = -1.0
@@ -443,7 +448,7 @@ class GumbelMCTS:
             return value
 
         # Evaluate with neural network
-        _, value = self._evaluate(node.state)  # type: ignore[arg-type]
+        _, value = self._evaluate(node.state)
 
         return value
 

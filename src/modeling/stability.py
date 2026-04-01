@@ -11,6 +11,8 @@ singular value of the Key-to-Value projection is bounded away from zero.
 
 from __future__ import annotations
 
+from typing import cast
+
 import structlog
 import torch
 from einops import einsum, rearrange
@@ -313,9 +315,9 @@ class StableGalerkinInitializer:
             # Get keys from module
             with torch.no_grad():
                 if hasattr(module, "to_k"):
-                    keys = module.to_k(sample_input)  # type: ignore[operator]
+                    keys = cast(nn.Linear, module.to_k)(sample_input)
                 elif hasattr(module, "to_key"):
-                    keys = module.to_key(sample_input)  # type: ignore[operator]
+                    keys = cast(nn.Linear, module.to_key)(sample_input)
                 else:
                     raise ValueError("Module must have 'to_k' or 'to_key' attribute")
 
@@ -355,13 +357,13 @@ class StableGalerkinInitializer:
         """
         # Add small perturbation to increase singular values
         if hasattr(module, "to_k"):
-            weight = module.to_k.weight  # type: ignore[union-attr]
+            weight = cast(nn.Linear, module.to_k).weight
         elif hasattr(module, "to_key"):
-            weight = module.to_key.weight  # type: ignore[union-attr]
+            weight = cast(nn.Linear, module.to_key).weight
         else:
             return
 
         # Scale up slightly to increase singular values
         scale_factor = (self.beta_target / (current_beta.min() + 1e-8)).sqrt()
         scale_factor = torch.clamp(scale_factor, 1.0, 2.0)
-        weight.data.mul_(scale_factor.item())  # type: ignore[operator]
+        weight.data.mul_(scale_factor.item())

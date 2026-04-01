@@ -308,7 +308,7 @@ def create_registry(
 
             # Add registry name as class attribute via setattr to avoid attr-defined error
             # on arbitrary type[T] where T may not declare _registry_name.
-            setattr(cls, "_registry_name", item_name)
+            cls._registry_name = item_name
 
             return cls
 
@@ -343,7 +343,7 @@ def create_typed_registry(
     def register_decorator(item_name: str) -> Callable[[type], type]:
         def decorator(cls: type) -> type:
             registry_cls().register(item_name, cls)
-            setattr(cls, "_registry_name", item_name)
+            cls._registry_name = item_name
             return cls
 
         return decorator

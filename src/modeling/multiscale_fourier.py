@@ -145,6 +145,7 @@ class MultiScaleFourierFeatures(nn.Module):
 
         # Initialize frequency matrices for each scale
         # B ~ N(0, σ²) where σ is the scale
+        self.frequency_matrices: nn.ParameterList | None
         if learnable:
             self.frequency_matrices = nn.ParameterList(
                 [nn.Parameter(torch.randn(input_dim, n_features) * scale) for scale in scales]
@@ -153,7 +154,7 @@ class MultiScaleFourierFeatures(nn.Module):
             for i, scale in enumerate(scales):
                 B = torch.randn(input_dim, n_features) * scale
                 self.register_buffer(f"B_{i}", B)
-            self.frequency_matrices = None  # type: ignore[assignment]
+            self.frequency_matrices = None
 
     @property
     def output_dim(self) -> int:
@@ -448,6 +449,7 @@ class ProgressiveFourierFeatures(nn.Module):
         self.gate_steepness = gate_steepness
 
         # Initialize frequency matrices
+        self.frequency_matrices: nn.ParameterList | None
         if learnable:
             self.frequency_matrices = nn.ParameterList(
                 [nn.Parameter(torch.randn(input_dim, n_features) * scale) for scale in scales]
@@ -455,7 +457,7 @@ class ProgressiveFourierFeatures(nn.Module):
         else:
             for i, scale in enumerate(scales):
                 self.register_buffer(f"B_{i}", torch.randn(input_dim, n_features) * scale)
-            self.frequency_matrices = None  # type: ignore[assignment]
+            self.frequency_matrices = None
 
         # Progress tracking (0 = only lowest freq, 1 = all frequencies)
         self.register_buffer("_progress", torch.tensor(1.0))

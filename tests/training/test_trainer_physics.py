@@ -5,7 +5,7 @@ Verifies that:
 - Trainer conditionally sets combined_physics_loss_fn from config
 - physics_loss_type="none" (default) leaves combined_physics_loss_fn as None
 - physics_loss_type="combined" instantiates CombinedAlphaGalerkinPhysicsLoss
-- Config validation rejects negative physics_weight values
+- Config validation rejects negative physics_weight values and unknown variants
 - The combined loss forward pass produces finite outputs
 - 10 training steps with physics_loss_type="combined" complete without error
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import torch
@@ -59,7 +60,7 @@ def small_model(op_config: OperatorConfig) -> AlphaGalerkinModel:
 
 def _make_config(
     op_config: OperatorConfig,
-    physics_loss_type: str = "none",
+    physics_loss_type: Literal["none", "combined"] = "none",
     physics_weight: float = 0.01,
 ) -> AlphaGalerkinConfig:
     """Helper to build a minimal AlphaGalerkinConfig."""
@@ -85,7 +86,7 @@ def _make_config(
             checkpoint_interval=100,
             use_amp=False,
             # Physics combined loss
-            physics_loss_type=physics_loss_type,  # type: ignore[arg-type]
+            physics_loss_type=physics_loss_type,
             physics_weight=physics_weight,
         ),
         experiment_name="test_physics",
@@ -115,11 +116,6 @@ class TestTrainingConfigPhysicsFields:
         """physics_loss_type='combined' is a valid value."""
         cfg = TrainingConfig(physics_loss_type="combined")
         assert cfg.physics_loss_type == "combined"
-
-    def test_physics_loss_type_residual_only(self) -> None:
-        """physics_loss_type='residual_only' is a valid value."""
-        cfg = TrainingConfig(physics_loss_type="residual_only")
-        assert cfg.physics_loss_type == "residual_only"
 
     def test_invalid_physics_loss_type_raises(self) -> None:
         """Invalid physics_loss_type should raise ValidationError."""
@@ -178,21 +174,6 @@ class TestTrainerCombinedPhysicsLoss:
             )
             assert trainer.combined_physics_loss_fn is not None
             assert isinstance(trainer.combined_physics_loss_fn, CombinedAlphaGalerkinPhysicsLoss)
-
-    def test_residual_only_type_creates_combined_loss(
-        self, small_model: AlphaGalerkinModel, op_config: OperatorConfig
-    ) -> None:
-        """With physics_loss_type='residual_only', combined_physics_loss_fn should also be set."""
-        config = _make_config(op_config, physics_loss_type="residual_only")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            trainer = Trainer(
-                model=small_model,
-                config=config,
-                device="cpu",
-                checkpoint_dir=Path(tmpdir),
-            )
-            # residual_only is != "none", so combined_physics_loss_fn must be non-None
-            assert trainer.combined_physics_loss_fn is not None
 
     def test_physics_weight_passed_to_combined_loss(
         self, small_model: AlphaGalerkinModel, op_config: OperatorConfig
@@ -322,7 +303,7 @@ class TestTrainerPhysicsTraining:
             trainer.train(n_steps=10, log_interval=5, checkpoint_interval=100)
             assert trainer.global_step == 10
 
-    def test_combined_vs_none_both_decrease_loss(
+    def test_combined_produces_finite_loss(
         self, op_config: OperatorConfig
     ) -> None:
         """Both 'combined' and 'none' physics_loss_type should produce finite losses."""

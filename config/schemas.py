@@ -312,13 +312,12 @@ class TrainingConfig(BaseModel):
     )
 
     # Combined physics loss variant selection
-    physics_loss_type: Literal["none", "combined", "residual_only"] = Field(
+    physics_loss_type: Literal["none", "combined"] = Field(
         default="none",
         description=(
             "Physics-informed loss variant. "
             "'none' disables combined physics loss (default, backwards-compatible). "
-            "'combined' uses CombinedAlphaGalerkinPhysicsLoss with policy/value/LBB + physics. "
-            "'residual_only' uses only the PDE residual term (lighter compute)."
+            "'combined' uses CombinedAlphaGalerkinPhysicsLoss with policy/value/LBB + physics."
         ),
     )
     physics_weight: float = Field(

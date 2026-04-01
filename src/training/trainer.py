@@ -205,11 +205,11 @@ class Trainer:
         # Combined physics loss (wraps policy/value/LBB + physics into one module)
         # Stored separately from loss_fn to preserve _training_step compatibility.
         self.combined_physics_loss_fn: CombinedAlphaGalerkinPhysicsLoss | None = None
-        _physics_loss_type = getattr(self.training_config, "physics_loss_type", "none")
+        _physics_loss_type = self.training_config.physics_loss_type
         if _physics_loss_type != "none":
             from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 
-            _physics_weight = getattr(self.training_config, "physics_weight", 0.01)
+            _physics_weight = self.training_config.physics_weight
             self.combined_physics_loss_fn = CombinedAlphaGalerkinPhysicsLoss(
                 physics_weight=_physics_weight,
             )
@@ -716,6 +716,26 @@ class Trainer:
         loss_terms = self.loss_balancer.compute_weighted_loss(losses)
         total_loss = loss_terms.weighted_sum
         weights = loss_terms.weights
+
+        # Add combined physics loss contribution if enabled
+        if self.combined_physics_loss_fn is not None:
+            try:
+                combined_physics_result = self.combined_physics_loss_fn(
+                    policy_logits=output.policy_logits,
+                    value=output.value,
+                    target_policy=batch.target_policies,
+                    target_value=batch.target_values,
+                )
+                physics_total = combined_physics_result.get(
+                    "total", torch.tensor(0.0, device=self.device)
+                )
+                total_loss = total_loss + self.training_config.physics_weight * physics_total
+            except Exception as e:
+                logger.warning(
+                    "combined_physics_loss_computation_failed",
+                    error=str(e),
+                    step=self.global_step,
+                )
 
         # Create LossOutput for compatibility
         loss_output = LossOutput(

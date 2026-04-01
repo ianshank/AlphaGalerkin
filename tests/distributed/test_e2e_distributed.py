@@ -187,7 +187,6 @@ def test_distributed_e2e_2_processes(tmp_path: pathlib.Path) -> None:
             args=(world_size, str(tmp_path), port, result_dict),
             nprocs=world_size,
             join=True,
-            start_method="spawn",
         )
     except RuntimeError as exc:
         pytest.skip(f"torch.multiprocessing.spawn not supported on this platform: {exc}")

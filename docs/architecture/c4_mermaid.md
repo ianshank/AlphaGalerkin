@@ -3,10 +3,13 @@
 This document provides a comprehensive C4 architecture model for the AlphaGalerkin system using Mermaid diagrams.
 The C4 model consists of four levels: System Context, Containers, Components, and Code.
 
-The system supports two primary use cases:
+The system supports three primary use cases:
 
-1. **Go AI**: Resolution-independent game playing with zero-shot transfer between board sizes
-2. **PDE Solving**: AlphaZero-style MCTS for adaptive basis selection and mesh refinement
+1. **Board Game AI**: Resolution-independent Go and Chess with zero-shot transfer between board sizes
+2. **PDE Solving**: MCTS-guided adaptive mesh refinement and Galerkin basis selection
+3. **SBIR Commercialization**: Benchmark infrastructure, proposal configs, IP strategy, and competitive positioning for $50B+ simulation market
+
+This architecture reflects v0.3.x including SBIR proposal infrastructure, classical solver baselines, domain geometry abstractions, time-stepping integration, and swarm planning.
 
 ---
 
@@ -86,6 +89,10 @@ C4Container
 
         Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
 
+        Container(sbir_infra, "SBIR Proposal Infrastructure", "Markdown/YAML", "SAM.gov guide, budget templates, submission timeline, program offices, IP strategy, competitive landscape, M&A analysis")
+
+        Container(deployment, "Deployment", "ONNX/PyTorch", "ONNX export, quantization, runtime inference wrapper for edge deployment")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -138,6 +145,8 @@ C4Container
 | **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
 | **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
+| **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
+| **Deployment** | Model export and edge inference | ONNX, quantization, runtime wrapper |
 
 ---
 
@@ -1495,6 +1504,65 @@ C4Component
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
+
+---
+
+## Level 3: Component Diagram - SBIR Proposal Infrastructure
+
+This diagram shows the proposal submission infrastructure supporting 5 target solicitations.
+
+```mermaid
+C4Component
+    title Component Diagram - SBIR Proposal Infrastructure
+
+    Container_Boundary(sbir, "SBIR Proposal Infrastructure") {
+        Component(sam_guide, "SAM Registration Guide", "Markdown", "Step-by-step SAM.gov checklist: EIN, UEI, CAGE, NAICS 541715/541511")
+
+        Component(timeline, "Submission Timeline", "Markdown", "Gantt-style calendar for 5 solicitations with prep windows and dependencies")
+
+        Component(program_offices, "Program Offices", "Markdown", "Tier 1/2 contacts: DARPA STO, DOE ASCR, NAVAIR, AFWERX, AFRL, ONR")
+
+        Component(budget_templates, "Budget Templates", "Markdown", "4 budget tables: DoD $250K, NSF $305K, AFWERX $75K, DARPA $1.5M")
+
+        Component(proposal_configs, "Solicitation Configs", "YAML", "navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml, afwerx_open.yaml, darpa_d2p2.yaml")
+
+        Component(ip_strategy, "IP Strategy", "Markdown", "3 provisional patent claims, trade secret inventory, publication plan, licensing strategy")
+
+        Component(competitive, "Competitive Landscape", "Markdown", "PhysicsX, BeyondMath, Pasteur Labs, Godela, PhysicsNeMo comparison matrix")
+
+        Component(valuation, "Valuation & M&A", "Markdown", "Stage-based valuation ($1M-$200M+), top 5 acquirers, revenue multiples")
+
+        Component(differentiation, "Differentiation Matrix", "Markdown", "AlphaGalerkin vs PINNs vs FNO vs AMR vs PhysicsNeMo across 10 criteria")
+
+        Component(sbir_demo, "SBIR Demo Script", "Python", "End-to-end benchmark runner with convergence plots and comparison reports")
+    }
+
+    Component_Ext(benchmark_runner, "PDEBenchmarkRunner", "Runs baselines and generates reports")
+    Component_Ext(baseline_solvers, "Baseline Solvers", "FDM, Dorfler AMR, PINN")
+
+    Rel(sbir_demo, benchmark_runner, "Executes benchmarks")
+    Rel(sbir_demo, baseline_solvers, "Compares against")
+    Rel(sbir_demo, proposal_configs, "Loads config")
+    Rel(timeline, proposal_configs, "References deadlines from")
+    Rel(budget_templates, proposal_configs, "Matches funding ranges")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### SBIR Infrastructure Components
+
+| Component | Content | Key Files |
+|-----------|---------|-----------|
+| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/proposals/SAM_REGISTRATION_GUIDE.md` |
+| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/proposals/SUBMISSION_TIMELINE.md` |
+| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/proposals/PROGRAM_OFFICES.md` |
+| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/proposals/BUDGET_TEMPLATES.md` |
+| **Solicitation Configs** | YAML configs with benchmark suites per solicitation | `config/proposals/*.yaml` |
+| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/proposals/IP_STRATEGY.md` |
+| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/proposals/COMPETITIVE_LANDSCAPE.md` |
+| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
+| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/proposals/DIFFERENTIATION_MATRIX.md` |
+| **SBIR Demo** | CLI script generating convergence plots + reports | `scripts/run_sbir_demo.py` |
 
 ---
 

@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
     from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
+    from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 
 logger = structlog.get_logger(__name__)
 
@@ -200,6 +201,23 @@ class Trainer:
             policy_weight=self.training_config.policy_loss_weight,
             value_weight=self.training_config.value_loss_weight,
         )
+
+        # Combined physics loss (wraps policy/value/LBB + physics into one module)
+        # Stored separately from loss_fn to preserve _training_step compatibility.
+        self.combined_physics_loss_fn: CombinedAlphaGalerkinPhysicsLoss | None = None
+        _physics_loss_type = getattr(self.training_config, "physics_loss_type", "none")
+        if _physics_loss_type != "none":
+            from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
+
+            _physics_weight = getattr(self.training_config, "physics_weight", 0.01)
+            self.combined_physics_loss_fn = CombinedAlphaGalerkinPhysicsLoss(
+                physics_weight=_physics_weight,
+            )
+            logger.info(
+                "combined_physics_loss_enabled",
+                physics_loss_type=_physics_loss_type,
+                physics_weight=_physics_weight,
+            )
 
         # Physics-informed loss (optional)
         self.physics_loss_fn: PhysicsInformedLoss | None = None

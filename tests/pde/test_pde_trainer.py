@@ -297,18 +297,17 @@ class TestErrorConvergenceTrend:
     def test_best_error_improves_with_more_episodes(self) -> None:
         """More episodes gives more chances to find a good basis sequence.
 
-        Run 1 vs 5 episodes: the 5-episode run should have a lower (or equal)
-        best_final_error.  This tests that multiple episodes are beneficial.
+        With a fixed seed, run 1 vs 5 episodes: episode 1 in both runs is
+        identical (same seed), so the 5-episode best_final_error is ≤ the
+        1-episode best_final_error by construction (min of superset).
         """
-        config_small = minimal_config(n_episodes=1, mcts_simulations=2)
-        config_large = minimal_config(n_episodes=5, mcts_simulations=2)
+        # Fixed seed ensures both trainers execute the same first episode;
+        # the 5-episode run's min(ep1..ep5) must be ≤ ep1 of the 1-episode run.
+        config_small = minimal_config(n_episodes=1, mcts_simulations=2, seed=0)
+        config_large = minimal_config(n_episodes=5, mcts_simulations=2, seed=0)
 
-        trainer_small = PDETrainer(config_small)
-        trainer_large = PDETrainer(config_large)
-
-        result_small = trainer_small.run()
-        result_large = trainer_large.run()
+        result_small = PDETrainer(config_small).run()
+        result_large = PDETrainer(config_large).run()
 
         # The 5-episode run had more chances; its best can only be <= 1-episode best
-        # (strictly, this is non-deterministic, so we allow equality)
         assert result_large.best_final_error <= result_small.best_final_error + 1e-6

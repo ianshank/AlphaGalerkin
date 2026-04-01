@@ -306,9 +306,9 @@ def create_registry(
             # Register the class
             registry_cls().register(item_name, cls)
 
-            # Add registry name as class attribute via setattr to avoid attr-defined error
-            # on arbitrary type[T] where T may not declare _registry_name.
-            cls._registry_name = item_name
+            # Use setattr rather than direct assignment: mypy cannot prove that an
+            # arbitrary type[T] has _registry_name, but setattr is safe at runtime.
+            setattr(cls, "_registry_name", item_name)  # noqa: B010
 
             return cls
 
@@ -343,7 +343,7 @@ def create_typed_registry(
     def register_decorator(item_name: str) -> Callable[[type], type]:
         def decorator(cls: type) -> type:
             registry_cls().register(item_name, cls)
-            cls._registry_name = item_name
+            setattr(cls, "_registry_name", item_name)  # noqa: B010
             return cls
 
         return decorator

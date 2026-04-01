@@ -16,6 +16,7 @@ Example:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from src.agents.message import MessageBus
@@ -25,6 +26,9 @@ from src.templates.logging import create_logger_class
 
 if TYPE_CHECKING:
     from src.agents.config import OrchestratorConfig
+    from src.agents.decomposition import SubproblemSpec
+    from src.mcts.evaluator import Evaluator
+    from src.pde.game import PDEGame
 
 OrchestratorLogger = create_logger_class("AgentOrchestrator")
 
@@ -51,8 +55,8 @@ class AgentOrchestrator(BaseExecutable["OrchestratorConfig"]):
         self,
         config: OrchestratorConfig,
         run_id: str | None = None,
-        game_factory: object | None = None,
-        evaluator_factory: object | None = None,
+        game_factory: Callable[[SubproblemSpec], PDEGame] | None = None,
+        evaluator_factory: Callable[[PDEGame], Evaluator] | None = None,
     ) -> None:
         super().__init__(config, run_id)
         self._game_factory = game_factory

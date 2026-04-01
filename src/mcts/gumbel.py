@@ -377,6 +377,7 @@ class GumbelMCTS:
 
                     if child.state is None:
                         # First visit - expand
+                        assert root.state is not None
                         child.state = self.game.apply_action(root.state, action)
 
                     # Run simulation
@@ -428,7 +429,11 @@ class GumbelMCTS:
 
         """
         if node.is_terminal:
+            assert node._terminal_value is not None
             return node._terminal_value
+
+        if node.state is None:
+            return 0.0
 
         # Check for terminal state
         if self.game.is_terminal(node.state):
@@ -466,9 +471,9 @@ class GumbelMCTS:
             tensor = self.game.to_tensor(state).unsqueeze(0).to(self.device)
             output = self.model(tensor)
 
-            policy = torch.softmax(output.policy_logits, dim=-1)
-            policy = policy[0].cpu().numpy()
-            value = output.value[0].item()
+            policy_tensor = torch.softmax(output.policy_logits, dim=-1)
+            policy: np.ndarray = policy_tensor[0].cpu().numpy()
+            value: float = output.value[0].item()
 
         return policy, value
 

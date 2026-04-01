@@ -135,7 +135,8 @@ class ContinuousEmbedding(nn.Module):
         # Optional learnable position embedding (for baseline comparison)
         if use_learnable_positions:
             # This will be dynamically created based on board size
-            self._position_embedding: nn.Parameter | None = None
+            # Typed as Tensor | None because .to(device) returns Tensor
+            self._position_embedding: Tensor | None = None
             self._position_embedding_size: int = 0
 
     def _get_position_embedding(
@@ -158,12 +159,15 @@ class ContinuousEmbedding(nn.Module):
 
         # Create or resize position embedding
         if self._position_embedding is None or self._position_embedding_size != n_positions:
-            # Create new embedding
-            self._position_embedding = nn.Parameter(
-                torch.randn(1, n_positions, self.d_model) * 0.02
-            ).to(device)
+            # Create new embedding on target device
+            param_data = torch.randn(1, n_positions, self.d_model, device=device) * 0.02
+            # Store as plain Tensor (nn.Parameter inherits from Tensor)
+            self._position_embedding = nn.Parameter(param_data)
             self._position_embedding_size = n_positions
+        else:
+            self._position_embedding = self._position_embedding.to(device)
 
+        assert self._position_embedding is not None
         return self._position_embedding
 
     def forward(

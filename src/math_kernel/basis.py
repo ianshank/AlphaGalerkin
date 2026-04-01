@@ -303,7 +303,7 @@ if HAS_JAX:
         scale: float = 1.0
         learnable: bool = False
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, coords: Any) -> Any:
             """Evaluate Fourier features at given coordinates.
 
@@ -388,7 +388,7 @@ if HAS_JAX:
 
             return jnp.stack(polynomials, axis=-1)
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, coords: Any) -> Any:
             """Evaluate 2D Chebyshev features at given coordinates.
 

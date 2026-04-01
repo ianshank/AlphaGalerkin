@@ -21,15 +21,6 @@ from src.vertex.launcher import (
     create_launcher,
 )
 
-# Check if aiplatform SDK is available for mocking
-try:
-    from google.cloud import aiplatform  # noqa: F401
-
-    HAS_AIPLATFORM = True
-except ImportError:
-    HAS_AIPLATFORM = False
-
-
 class TestJobState:
     """Tests for JobState enum."""
 
@@ -179,74 +170,158 @@ class TestVertexLauncher:
         assert "console.cloud.google.com" in url
         assert "test-project" in url
 
-    @pytest.mark.skip(reason="Requires SDK with proper namespace and auth mocking - run in CI")
     def test_launch_calls_aiplatform(
         self,
-        mock_custom_job: MagicMock,
         launcher: VertexLauncher,
     ) -> None:
         """Test launch calls AI Platform SDK correctly."""
-        # Mock the job
         mock_job = MagicMock()
         mock_job.display_name = "test-job"
-        mock_job.resource_name = "projects/test/locations/us/customJobs/123"
+        mock_job.resource_name = "projects/test/locations/us-central1/customJobs/123"
         mock_job.state = MagicMock()
         mock_job.state.name = "JOB_STATE_PENDING"
         mock_job.create_time = None
 
-        mock_custom_job.return_value = mock_job
+        mock_aiplatform = MagicMock()
+        mock_aiplatform.CustomJob.return_value = mock_job
 
-        # Mark as initialized to skip aiplatform.init
+        # Mark as initialized to skip aiplatform.init and auth validated to skip
+        # the GCP credential check (which would make real network calls).
         launcher._initialized = True
+        launcher._auth_validated = True
 
-        result = launcher.launch(
-            display_name="test-job",
-            container_uri="gcr.io/project/image:tag",
-            args=["--arg1", "value1"],
-        )
+        # Patch google.cloud.aiplatform in sys.modules so that
+        # `from google.cloud import aiplatform` inside the method gets our mock.
+        # Also patch the google.cloud package's attribute lookup.
+        import google.cloud as google_cloud_pkg
+        with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
+            with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
+                result = launcher.launch(
+                    display_name="test-job",
+                    container_uri="gcr.io/project/image:tag",
+                    args=["--arg1", "value1"],
+                )
 
         assert result.job_name == "test-job"
         mock_job.submit.assert_called_once()
 
-    @pytest.mark.skip(reason="Requires SDK with proper namespace - run in CI")
+        # Verify CustomJob constructor was called with correct arguments
+        mock_aiplatform.CustomJob.assert_called_once()
+        call_kwargs = mock_aiplatform.CustomJob.call_args
+        assert call_kwargs.kwargs.get("display_name") == "test-job"
+        worker_pool_specs = call_kwargs.kwargs.get("worker_pool_specs")
+        assert isinstance(worker_pool_specs, list)
+        assert len(worker_pool_specs) > 0
+
     def test_get_job_status(
         self,
         launcher: VertexLauncher,
     ) -> None:
         """Test getting job status."""
-        # This test is skipped - requires properly configured SDK
-        # mock_aiplatform.CustomJob.get would be used here when SDK available
-        pass
+        mock_job = MagicMock()
+        mock_job.resource_name = "projects/test/locations/us-central1/customJobs/456"
+        mock_job.state = MagicMock()
+        mock_job.state.name = "JOB_STATE_RUNNING"
+        mock_job.start_time = None
+        mock_job.end_time = None
+        mock_job.error = None
 
-    @pytest.mark.skip(reason="Requires SDK with proper namespace - run in CI")
+        mock_aiplatform = MagicMock()
+        mock_aiplatform.CustomJob.get.return_value = mock_job
+
+        launcher._initialized = True
+
+        import google.cloud as google_cloud_pkg
+        with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
+            with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
+                status = launcher.get_job_status(
+                    "projects/test/locations/us-central1/customJobs/456"
+                )
+
+        assert status.state == JobState.RUNNING
+        assert status.error_message is None
+        mock_aiplatform.CustomJob.get.assert_called_once_with(
+            "projects/test/locations/us-central1/customJobs/456"
+        )
+
     def test_cancel_job(
         self,
         launcher: VertexLauncher,
     ) -> None:
         """Test job cancellation."""
-        # This test is skipped - requires properly configured SDK
-        # mock_aiplatform.CustomJob.get would be used here when SDK available
-        pass
+        mock_job = MagicMock()
 
-    @pytest.mark.skip(reason="Requires SDK with proper namespace - run in CI")
+        mock_aiplatform = MagicMock()
+        mock_aiplatform.CustomJob.get.return_value = mock_job
+
+        launcher._initialized = True
+
+        import google.cloud as google_cloud_pkg
+        with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
+            with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
+                success = launcher.cancel_job(
+                    "projects/test/locations/us-central1/customJobs/789"
+                )
+
+        assert success is True
+        mock_job.cancel.assert_called_once()
+
     def test_cancel_job_failure(
         self,
         launcher: VertexLauncher,
     ) -> None:
         """Test job cancellation failure."""
-        # This test is skipped - requires properly configured SDK
-        # mock_aiplatform.CustomJob.get would be used here when SDK available
-        pass
+        mock_aiplatform = MagicMock()
+        mock_aiplatform.CustomJob.get.side_effect = Exception("Job not found")
 
-    @pytest.mark.skip(reason="Requires SDK with proper namespace - run in CI")
+        launcher._initialized = True
+
+        import google.cloud as google_cloud_pkg
+        with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
+            with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
+                success = launcher.cancel_job(
+                    "projects/test/locations/us-central1/customJobs/999"
+                )
+
+        assert success is False
+
     def test_list_jobs(
         self,
         launcher: VertexLauncher,
     ) -> None:
         """Test listing jobs."""
-        # This test is skipped - requires properly configured SDK
-        # mock_aiplatform.CustomJob.list would be used here when SDK available
-        pass
+        mock_job1 = MagicMock()
+        mock_job1.display_name = "job-1"
+        mock_job1.resource_name = "projects/test/locations/us-central1/customJobs/1"
+        mock_job1.state = MagicMock()
+        mock_job1.state.name = "JOB_STATE_SUCCEEDED"
+        mock_job1.create_time = None
+        mock_job1.labels = {"env": "test"}
+
+        mock_job2 = MagicMock()
+        mock_job2.display_name = "job-2"
+        mock_job2.resource_name = "projects/test/locations/us-central1/customJobs/2"
+        mock_job2.state = MagicMock()
+        mock_job2.state.name = "JOB_STATE_RUNNING"
+        mock_job2.create_time = None
+        mock_job2.labels = {}
+
+        mock_aiplatform = MagicMock()
+        mock_aiplatform.CustomJob.list.return_value = [mock_job1, mock_job2]
+
+        launcher._initialized = True
+
+        import google.cloud as google_cloud_pkg
+        with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
+            with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
+                results = launcher.list_jobs()
+
+        assert len(results) == 2
+        assert results[0].job_name == "job-1"
+        assert results[0].state == JobState.SUCCEEDED
+        assert results[1].job_name == "job-2"
+        assert results[1].state == JobState.RUNNING
+        mock_aiplatform.CustomJob.list.assert_called_once()
 
 
 class TestCreateLauncher:

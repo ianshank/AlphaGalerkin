@@ -66,10 +66,7 @@ jobs:
         run: ruff format src/ --check
 
       - name: Run MyPy type checking
-        # Informational until pydantic.mypy plugin compatibility is stabilized.
-        # Ruff check + format enforce code quality; mypy adds type-level feedback.
         run: mypy src/ --strict --ignore-missing-imports
-        continue-on-error: true
 
   # ============================================================
   # Stage 2: Unit Tests (Fast)
@@ -224,7 +221,7 @@ jobs:
             --cov-report=xml \
             --cov-report=html \
             --cov-report=term-missing \
-            --cov-fail-under=60 \
+            --cov-fail-under=75 \
             -q
 
       # Per-module coverage gates — set to measured baseline with margin.
@@ -430,11 +427,16 @@ jobs:
             echo "FAIL: Lint & Type Check failed"
             exit 1
           fi
-          # test-fast and coverage may have pre-existing failures
-          # in unchanged files; require they at least ran (not skipped)
-          if [[ "${{ needs.test-fast.result }}" == "skipped" ]] || \
-             [[ "${{ needs.coverage.result }}" == "skipped" ]]; then
-            echo "FAIL: Required test stages were skipped"
+          # test-fast may have pre-existing failures in unchanged files;
+          # require it at least ran (not skipped).
+          if [[ "${{ needs.test-fast.result }}" == "skipped" ]]; then
+            echo "FAIL: Unit test stage was skipped"
             exit 1
           fi
-          echo "Core CI gates passed (lint=success, tests=ran)"
+          # Coverage gate is a hard threshold (--cov-fail-under=75);
+          # it must succeed, not just run.
+          if [[ "${{ needs.coverage.result }}" != "success" ]]; then
+            echo "FAIL: Coverage gate did not pass (result=${{ needs.coverage.result }})"
+            exit 1
+          fi
+          echo "Core CI gates passed (lint=success, tests=ran, coverage=success)"

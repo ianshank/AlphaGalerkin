@@ -126,23 +126,25 @@ class StabilityScenario(BaseScenario):
         assert self._start_time is not None
         duration = (end_time - self._start_time).total_seconds()
 
-        return ScenarioResult(
-            scenario_name=self.name,
-            config_hash=self.config.compute_hash(),
-            status=status,
-            passed=all_passed,
-            metrics=dict(self._metrics),
-            threshold_results=threshold_results,
-            artifacts={k: str(v) for k, v in self._artifacts.items()},
-            start_time=self._start_time,
-            end_time=end_time,
-            duration_seconds=duration,
-            device=str(self._device),
-            python_version=sys.version,
-            torch_version=torch.__version__,
-            # Custom fields
-            init_violations=init_violations,
-            training_violations=training_violations,
+        return ScenarioResult.model_validate(
+            {
+                "scenario_name": self.name,
+                "config_hash": self.config.compute_hash(),
+                "status": status,
+                "passed": all_passed,
+                "metrics": dict(self._metrics),
+                "threshold_results": threshold_results,
+                "artifacts": {k: str(v) for k, v in self._artifacts.items()},
+                "start_time": self._start_time,
+                "end_time": end_time,
+                "duration_seconds": duration,
+                "device": str(self._device),
+                "python_version": sys.version,
+                "torch_version": torch.__version__,
+                # Custom fields (allowed by extra="allow" in model_config)
+                "init_violations": init_violations,
+                "training_violations": training_violations,
+            }
         )
 
     def _test_initialization_stability(self) -> dict[int, list[float]]:

@@ -171,7 +171,7 @@ def set_default_backend(backend: BackendInterface | BackendConfig | str) -> None
 
     """
     global _default_backend
-    if isinstance(backend, (str, BackendConfig)):
+    if isinstance(backend, str | BackendConfig):
         _default_backend = get_backend(backend)
     else:
         _default_backend = backend

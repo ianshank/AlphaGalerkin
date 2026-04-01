@@ -311,6 +311,24 @@ class TrainingConfig(BaseModel):
         description="Use adaptive weighting for physics loss components",
     )
 
+    # Combined physics loss variant selection
+    physics_loss_type: Literal["none", "combined"] = Field(
+        default="none",
+        description=(
+            "Physics-informed loss variant. "
+            "'none' disables combined physics loss (default, backwards-compatible). "
+            "'combined' uses CombinedAlphaGalerkinPhysicsLoss with policy/value/LBB + physics."
+        ),
+    )
+    physics_weight: float = Field(
+        default=0.01,
+        ge=0,
+        description=(
+            "Overall weight for the physics loss term in CombinedAlphaGalerkinPhysicsLoss. "
+            "Only active when physics_loss_type != 'none'."
+        ),
+    )
+
     # Engine evaluation (Stockfish) configuration
     engine_eval_enabled: bool = Field(
         default=False,

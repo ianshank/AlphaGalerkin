@@ -18,6 +18,7 @@ Example:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from src.agents.base import AgentState, BaseAgent
@@ -59,8 +60,8 @@ class MetaAgent(BaseAgent):
         config: OrchestratorConfig,
         message_bus: MessageBus | None = None,
         agent_id: str | None = None,
-        game_factory: object | None = None,
-        evaluator_factory: object | None = None,
+        game_factory: Callable[[SubproblemSpec], PDEGame] | None = None,
+        evaluator_factory: Callable[[PDEGame], Evaluator] | None = None,
     ) -> None:
         super().__init__(config.decomposition, message_bus, agent_id)
         self._orch_config = config
@@ -142,9 +143,9 @@ class MetaAgent(BaseAgent):
         evaluator: Evaluator | None = None
 
         if self._game_factory is not None:
-            pde_game = self._game_factory(spec)  # type: ignore[operator]
+            pde_game = self._game_factory(spec)
         if self._evaluator_factory is not None and pde_game is not None:
-            evaluator = self._evaluator_factory(pde_game)  # type: ignore[operator]
+            evaluator = self._evaluator_factory(pde_game)
 
         if pde_game is not None and evaluator is not None:
             solver = SolverAgent(

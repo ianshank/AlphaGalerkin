@@ -182,7 +182,6 @@ class GalerkinProjection(nn.Module):
         output = self.to_output(output)
 
         return output
-
     def forward(
         self,
         x: Float[Tensor, "batch n d"],
@@ -219,7 +218,6 @@ class GalerkinProjection(nn.Module):
 
         # Return minimum singular value (LBB constant)
         return singular_values.min(dim=-1).values
-
 
 class PetrovGalerkinProjection(nn.Module):
     """Petrov-Galerkin projection with different trial and test spaces.
@@ -300,7 +298,6 @@ class PetrovGalerkinProjection(nn.Module):
         output = einsum(q, context, "b n q, b q v -> b n v")
 
         return self.to_output(output)
-
     def forward(
         self,
         x: Float[Tensor, "batch n d"],
@@ -330,7 +327,7 @@ if HAS_JAX:
         It is a pure-function module with no trainable parameters.
         """
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(
             self,
             values: Any,
@@ -379,7 +376,7 @@ if HAS_JAX:
         d_key: int
         d_value: int
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, x: Any) -> Any:
             """Apply Galerkin projection (linear attention).
 
@@ -487,7 +484,7 @@ if HAS_JAX:
                     f"LBB violation: d_trial ({self.d_trial}) must be >= d_test ({self.d_test})"
                 )
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, x: Any) -> Any:
             """Apply Petrov-Galerkin projection.
 

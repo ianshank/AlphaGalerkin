@@ -139,7 +139,7 @@ class SelfPlayWorker:
         )
 
         # MCTS configuration
-        self._mcts_kwargs: dict[str, int | float] = {}
+        self._mcts_kwargs: dict[str, Any] = {}
         if mcts_config is not None:
             self._mcts_kwargs = {
                 "n_simulations": mcts_config.n_simulations,
@@ -161,8 +161,8 @@ class SelfPlayWorker:
     def _create_mcts(self) -> MCTS:
         """Create MCTS instance."""
         if self.use_batch_mcts:
-            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
-        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
+            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)
+        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)
 
     def _get_temperature(self, move_number: int) -> float:
         """Get temperature for given move number.

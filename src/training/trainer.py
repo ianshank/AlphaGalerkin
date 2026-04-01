@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
     from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
+    from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 
 logger = structlog.get_logger(__name__)
 
@@ -200,6 +201,23 @@ class Trainer:
             policy_weight=self.training_config.policy_loss_weight,
             value_weight=self.training_config.value_loss_weight,
         )
+
+        # Combined physics loss (wraps policy/value/LBB + physics into one module)
+        # Stored separately from loss_fn to preserve _training_step compatibility.
+        self.combined_physics_loss_fn: CombinedAlphaGalerkinPhysicsLoss | None = None
+        _physics_loss_type = self.training_config.physics_loss_type
+        if _physics_loss_type != "none":
+            from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
+
+            _physics_weight = self.training_config.physics_weight
+            self.combined_physics_loss_fn = CombinedAlphaGalerkinPhysicsLoss(
+                physics_weight=_physics_weight,
+            )
+            logger.info(
+                "combined_physics_loss_enabled",
+                physics_loss_type=_physics_loss_type,
+                physics_weight=_physics_weight,
+            )
 
         # Physics-informed loss (optional)
         self.physics_loss_fn: PhysicsInformedLoss | None = None
@@ -699,6 +717,26 @@ class Trainer:
         total_loss = loss_terms.weighted_sum
         weights = loss_terms.weights
 
+        # Add combined physics loss contribution if enabled
+        if self.combined_physics_loss_fn is not None:
+            try:
+                combined_physics_result = self.combined_physics_loss_fn(
+                    policy_logits=output.policy_logits,
+                    value=output.value,
+                    target_policy=batch.target_policies,
+                    target_value=batch.target_values,
+                )
+                physics_total = combined_physics_result.get(
+                    "total", torch.tensor(0.0, device=self.device)
+                )
+                total_loss = total_loss + self.training_config.physics_weight * physics_total
+            except Exception as e:
+                logger.warning(
+                    "combined_physics_loss_computation_failed",
+                    error=str(e),
+                    step=self.global_step,
+                )
+
         # Create LossOutput for compatibility
         loss_output = LossOutput(
             total=total_loss,
@@ -1187,7 +1225,7 @@ class Trainer:
 
             if self.wandb_logger is not None:
                 self.wandb_logger.log_metrics(
-                    elo_metrics,  # type: ignore[arg-type]
+                    elo_metrics,
                     step=step,
                 )
 

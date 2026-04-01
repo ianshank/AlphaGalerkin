@@ -108,12 +108,12 @@ class MCTSConfig(BaseModel):
     """Configuration for Monte Carlo Tree Search."""
 
     # Search parameters
-    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move")
-    c_puct: float = Field(default=1.5, description="PUCT exploration constant")
+    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.")
+    c_puct: float = Field(default=1.5, description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.")
 
     # Dirichlet noise for root exploration
-    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise alpha")
-    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing coefficient")
+    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.")
+    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.")
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")
@@ -151,6 +151,45 @@ class TrainingConfig(BaseModel):
     # Loss weights
     policy_loss_weight: float = Field(default=1.0, description="Weight for policy loss")
     value_loss_weight: float = Field(default=1.0, description="Weight for value loss")
+    lbb_loss_weight: float = Field(
+        default=0.01,
+        ge=0.0,
+        description=(
+            "Weight for LBB regularization loss. Controls penalty for violating "
+            "the inf-sup (LBB) stability condition in Galerkin attention. "
+            "Default 0.01 follows Babuška-Brezzi theory: small but non-zero "
+            "to preserve stability without dominating policy/value learning."
+        ),
+    )
+    lbb_target: float = Field(
+        default=0.1,
+        gt=0.0,
+        description=(
+            "Target minimum for the LBB constant (minimum singular value of K→V projection). "
+            "Values below this threshold incur quadratic penalty. "
+            "Default 0.1 ensures numerical stability in Galerkin attention."
+        ),
+    )
+    lbb_eps: float = Field(
+        default=1e-8,
+        gt=0.0,
+        description="Small constant for numerical stability in LBB log-barrier loss.",
+    )
+    log_barrier_weight: float = Field(
+        default=0.1,
+        ge=0.0,
+        description=(
+            "Weight for the log-barrier term in LBB loss. "
+            "Provides smooth penalty encouraging larger LBB constants. "
+            "Combined loss = threshold_penalty + log_barrier_weight * (-log(lbb_constant))."
+        ),
+    )
+    label_smoothing: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Label smoothing for policy cross-entropy loss. 0.0 = no smoothing.",
+    )
 
     # Checkpointing
     checkpoint_interval: int = Field(default=1000, description="Steps between checkpoints")

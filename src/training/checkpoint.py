@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 # Checkpoint format version for compatibility checking
-CHECKPOINT_VERSION = "1.0.0"
+CHECKPOINT_VERSION = "1.1.0"
 
 
 @dataclass
@@ -83,6 +83,11 @@ class CheckpointState:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CheckpointState:
         """Create from dictionary."""
+        # Migrate old checkpoint formats
+        from src.training.checkpoint_migration import migrate_checkpoint
+
+        data = migrate_checkpoint(data, CHECKPOINT_VERSION)
+
         return cls(
             step=data["step"],
             model_state_dict=data["model_state_dict"],

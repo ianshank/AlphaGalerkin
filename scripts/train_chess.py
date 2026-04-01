@@ -126,9 +126,7 @@ def main(cfg: DictConfig) -> None:
     device = cfg_dict.get("device", "auto")
 
     # Checkpoint directory
-    checkpoint_dir = (
-        Path(cfg_dict.get("checkpoint_dir", "checkpoints")) / config.experiment_name
-    )
+    checkpoint_dir = Path(cfg_dict.get("checkpoint_dir", "checkpoints")) / config.experiment_name
 
     # Resume path
     resume_from = cfg_dict.get("resume", None)

@@ -16,13 +16,12 @@ import numpy as np
 import pytest
 
 from src.games.chess import (
-    BOARD_SIZE,
-    ChessGame,
-    Piece,
-    WHITE,
+    ACTION_SPACE_SIZE,
     BLACK,
     NUM_MOVE_TYPES,
-    ACTION_SPACE_SIZE,
+    WHITE,
+    ChessGame,
+    Piece,
 )
 from src.games.state import GameState
 
@@ -67,7 +66,7 @@ class TestEncodeDecodeRoundtrip:
                             f"action={action} from=({fr},{fc}) to=({tr},{tc}) "
                             f"re_encoded={re_encoded}"
                         )
-        assert not errors, f"Roundtrip failures:\n" + "\n".join(errors[:10])
+        assert not errors, "Roundtrip failures:\n" + "\n".join(errors[:10])
 
     def test_all_knight_moves_roundtrip(self, game: ChessGame) -> None:
         """Verify all knight moves (indices 56-63) roundtrip correctly."""
@@ -88,7 +87,7 @@ class TestEncodeDecodeRoundtrip:
                             f"action={action} from=({fr},{fc}) to=({tr},{tc}) "
                             f"re_encoded={re_encoded}"
                         )
-        assert not errors, f"Roundtrip failures:\n" + "\n".join(errors[:10])
+        assert not errors, "Roundtrip failures:\n" + "\n".join(errors[:10])
 
     def test_all_underpromotions_roundtrip(self, game: ChessGame) -> None:
         """Verify all underpromotion moves (indices 64-72) roundtrip correctly.
@@ -116,7 +115,7 @@ class TestEncodeDecodeRoundtrip:
                             f"action={action} from=({fr},{fc}) to=({tr},{tc}) "
                             f"promo={promo} re_encoded={re_encoded}"
                         )
-        assert not errors, f"Roundtrip failures:\n" + "\n".join(errors[:10])
+        assert not errors, "Roundtrip failures:\n" + "\n".join(errors[:10])
 
     def test_column_0_straight_promo_no_negative_col(self, game: ChessGame) -> None:
         """Regression: straight promotion from col 0 must not yield to_col=-1."""
@@ -422,6 +421,7 @@ class TestChessMultipleGames:
     def test_play_random_game_to_completion(self, game: ChessGame) -> None:
         """Play a random game up to 500 moves and verify no crashes."""
         import random
+
         random.seed(42)
         state = game.initial_state()
         for _ in range(500):
@@ -439,6 +439,7 @@ class TestChessMultipleGames:
     def test_three_random_games(self, game: ChessGame) -> None:
         """Play 3 random games ensuring no crashes."""
         import random
+
         for seed in [1, 2, 3]:
             random.seed(seed)
             state = game.initial_state()

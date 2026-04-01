@@ -1,8 +1,13 @@
 # AlphaGalerkin
 
-**Resolution-Independent Game AI using Continuous Operator Learning**
+**Resolution-Independent AI for Games and PDE Solving using Continuous Operator Learning**
 
-AlphaGalerkin is a novel approach to Go AI that replaces traditional Convolutional Neural Networks (CNNs) with Continuous Operator Learning, enabling zero-shot transfer between different board sizes and accelerating Monte Carlo Tree Search through FFT-based mixing.
+AlphaGalerkin uses Galerkin Transformers and MCTS to solve two classes of problems without retraining across resolutions:
+
+1. **Board Games** (Go, Chess): Zero-shot transfer between board sizes (train 9x9, play 19x19)
+2. **PDE Solving**: MCTS-guided adaptive mesh refinement and basis selection for computational physics
+
+The core mathematical innovation — combining Monte Carlo Tree Search with Galerkin methods — has **no published precedent** (verified novelty gap), positioning AlphaGalerkin for SBIR funding and strategic acquisition in the $50B+ simulation M&A market.
 
 ---
 
@@ -28,25 +33,21 @@ AlphaGalerkin is a novel approach to Go AI that replaces traditional Convolution
 
 ### The Problem
 
-Traditional Go AI systems like AlphaGo/AlphaZero use discrete CNNs that are tied to a specific board size. A model trained on 19x19 cannot play on 9x9 without retraining. This creates several limitations:
+Both game AI and computational physics face a **resolution lock-in** problem:
 
-1. **No Transfer Learning**: Skills learned on smaller boards don't transfer to larger ones
-2. **Redundant Training**: Must train separate models for each board size
-3. **Fixed Resolution**: Cannot adapt to non-standard board sizes (13x13, 25x25, etc.)
+- **Game AI**: A model trained on 19x19 Go cannot play 9x9 without retraining. CNNs are tied to fixed grid sizes.
+- **PDE Solvers**: Mesh refinement is myopic (single-step error indicators). No multi-step planning exists for optimal mesh/basis selection.
+- **Industry**: The $50B simulation software market lacks AI-guided adaptive methods with mathematical convergence guarantees.
 
 ### Our Solution
 
-AlphaGalerkin treats the Go board as a **continuous domain** Ω = [0,1]² rather than a discrete grid. By using:
+AlphaGalerkin treats any problem domain as a **continuous space** Omega = [0,1]^d, then applies:
 
-- **Galerkin Transformers**: Approximate integral operators with O(N) complexity
-- **Fourier Positional Encoding**: Resolution-independent spatial representation
-- **Spectral Adaptation**: Zero-shot transfer via proper frequency filtering
-
-We achieve a model that:
-
-- Trains on 9x9, plays on 19x19 without modification
-- Learns "physics" of Go (influence, territory) rather than pixel patterns
-- Accelerates MCTS with FFT-based mixing (5x+ speedup)
+- **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection (not O(N^2) softmax)
+- **MCTS Planning**: Multi-step look-ahead for mesh refinement, basis selection, and move search
+- **LBB Stability**: Provable convergence via inf-sup condition monitoring during training
+- **Zero-Shot Transfer**: Train on 9x9, evaluate on 19x19 (MSE 0.000209, 240x better than threshold)
+- **FFT Mixing**: O(N log N) FNet blocks for fast MCTS rollouts (5x+ speedup)
 
 ---
 
@@ -138,7 +139,7 @@ See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for compr
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/AlphaGalerkin.git
+git clone https://github.com/ianshank/AlphaGalerkin.git
 cd AlphaGalerkin
 
 # Create virtual environment
@@ -502,7 +503,7 @@ config = OperatorConfig(
 
 ## Testing
 
-The project has **400+** tests across unit, integration, E2E, and security categories.
+The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.
 
 ### Run All Tests
 
@@ -635,40 +636,126 @@ AlphaGalerkin/
 │   │   ├── embeddings.py  # Continuous embedding
 │   │   ├── fnet.py        # FFT mixing blocks
 │   │   ├── stability.py   # LBB stability guard
-│   │   └── model.py       # Full model + ChessPolicyHead
+│   │   ├── model.py       # Full model + ChessPolicyHead
+│   │   └── multiscale_fourier.py  # Multi-scale Fourier features
 │   ├── games/             # Game implementations
 │   │   ├── chess.py       # Chess (119ch, 4672 actions)
 │   │   ├── go.py          # Go (resolution-independent)
 │   │   ├── wrapper.py     # StatefulGameWrapper
-│   │   └── interface.py   # GameInterface protocol
-│   ├── engines/           # External engine integration
-│   │   ├── uci.py         # UCI protocol driver
-│   │   ├── match.py       # EngineMatch orchestration
-│   │   ├── elo.py         # EloCalculator + confidence
-│   │   └── config.py      # UCIConfig, MatchConfig
+│   │   ├── interface.py   # GameInterface protocol
+│   │   └── pettingzoo_adapter.py  # PettingZoo multi-agent adapter
+│   ├── pde/               # PDE Game Framework
+│   │   ├── operators.py   # Poisson, Burgers, NavierStokes, Heat, L-shaped
+│   │   ├── geometry.py    # Rectangular, L-shaped, CylinderFlow domains
+│   │   ├── time_stepping.py  # ForwardEuler, RK4, CrankNicolson
+│   │   ├── config.py      # Pydantic PDE configuration schemas
+│   │   ├── game.py        # Abstract PDEGame base class
+│   │   ├── registry.py    # PDE operator registry
+│   │   ├── mcts_adapter.py  # PDE-to-MCTS bridge
+│   │   └── games/
+│   │       ├── basis_selection.py   # Galerkin basis selection
+│   │       ├── mesh_refinement.py   # Adaptive mesh refinement
+│   │       └── swarm_planning.py    # Multi-agent swarm control
+│   ├── research/          # SBIR benchmarking infrastructure
+│   │   ├── baselines.py   # FDM, Dorfler AMR, PINN solvers
+│   │   └── pde_benchmarks.py  # PDEBenchmarkRunner + reports
 │   ├── training/          # Training pipeline
 │   │   ├── trainer.py     # Main loop + engine eval
-│   │   ├── self_play.py   # Game-agnostic self-play
-│   │   ├── evaluation.py  # Evaluator + engine eval
-│   │   └── checkpoint.py  # CheckpointManager
+│   │   ├── base_trainer.py  # Shared BaseTrainer ABC
+│   │   ├── losses/        # Unified loss package (LossRegistry)
+│   │   │   ├── alphagalerkin.py  # Policy CE + Value MSE + LBB
+│   │   │   ├── operator.py      # L2Relative, H1, MSE
+│   │   │   └── physics.py       # Residual + boundary + conservation
+│   │   ├── checkpoint.py         # CheckpointManager
+│   │   ├── checkpoint_migration.py  # Version-aware migration
+│   │   ├── loss_balancing.py     # ReLoBRaLo, GradNorm, etc.
+│   │   ├── self_play.py          # Game-agnostic self-play
+│   │   └── evaluation.py         # Evaluator + engine eval
+│   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
 │   └── tools/             # Utilities (GTP, CLI)
-├── tests/
-│   ├── games/             # Chess, Go, wrapper tests
+├── tests/                 # 3000+ tests, 85% coverage gate
+│   ├── pde/               # PDE operators, geometry, time-stepping, swarm
+│   ├── research/          # Baselines, benchmarks
+│   ├── training/          # Trainer, loss properties, numerical stability
+│   ├── modeling/          # Attention properties, Fourier features
+│   ├── games/             # Chess, Go, PettingZoo adapter
 │   ├── engines/           # UCI, match, Elo tests
-│   ├── training/          # Trainer, self-play tests
 │   ├── security/          # Security tests
 │   └── e2e/               # End-to-end smoke tests
 ├── config/
 │   ├── schemas.py         # Pydantic configs
-│   └── train_chess.yaml   # Chess training config
+│   ├── proposals/         # SBIR configs (Navy, DOE, NSF, AFWERX, DARPA D2P2)
+│   └── benchmarks/        # sbir_suite.yaml
 ├── scripts/
-│   └── train_chess.py     # Chess training CLI
+│   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo
+│   ├── train.py           # Training CLI with Hydra
+│   ├── train_chess.py     # Chess training CLI
+│   └── train_compression.py  # Video compression training
 ├── docs/
-│   └── architecture/      # C4 diagrams
+│   ├── architecture/      # C4 diagrams (Mermaid)
+│   └── proposals/         # SBIR templates, IP strategy, budgets, competitive analysis
 └── pyproject.toml
 ```
+
+---
+
+## SBIR Positioning
+
+AlphaGalerkin addresses a **verified novelty gap**: no published papers combine MCTS with Galerkin methods for PDE solving or mesh refinement. The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
+
+| Solicitation | Agency | Phase | Funding | Config |
+|---|---|---|---|---|
+| **AFWERX Open 26.1** | USAF | I | $75K / 3mo | `config/proposals/afwerx_open.yaml` |
+| **NSF SBIR Pitch** | NSF | I | $305K / 12mo | `config/proposals/nsf_sbir.yaml` |
+| **Navy N252-088** | NAVAIR | I | $150-250K / 6mo | `config/proposals/navy_n252_088.yaml` |
+| **DOE ASCR C59-01** | DOE | I | $200-250K / 12mo | `config/proposals/doe_ascr_c59.yaml` |
+| **DARPA Direct-to-Phase-II** | DARPA STO | II | $750K-$1.5M / 24mo | `config/proposals/darpa_d2p2.yaml` |
+
+### Proposal Infrastructure
+- **Registration**: [SAM.gov Guide](docs/proposals/SAM_REGISTRATION_GUIDE.md) (UEI, CAGE, NAICS 541715)
+- **Timeline**: [Submission Calendar](docs/proposals/SUBMISSION_TIMELINE.md) with Gantt chart
+- **Contacts**: [Program Offices](docs/proposals/PROGRAM_OFFICES.md) (Tier 1 + Tier 2)
+- **Budgets**: [Budget Templates](docs/proposals/BUDGET_TEMPLATES.md) (DoD, NSF, AFWERX, DARPA)
+- **IP Protection**: [IP Strategy](docs/proposals/IP_STRATEGY.md) (3 provisional patents, trade secrets)
+- **Competitive Analysis**: [Landscape](docs/proposals/COMPETITIVE_LANDSCAPE.md) | [Differentiation](docs/proposals/DIFFERENTIATION_MATRIX.md)
+- **Valuation**: [Framework](docs/proposals/VALUATION_FRAMEWORK.md) | [M&A Landscape](docs/proposals/MA_LANDSCAPE.md)
+
+### Run SBIR Benchmarks
+```bash
+# End-to-end demo with convergence plots and comparison tables
+python -m scripts.run_sbir_demo --config config/benchmarks/sbir_suite.yaml
+
+# Custom output
+python -m scripts.run_sbir_demo --output-dir outputs/navy_demo --formats json latex markdown
+```
+
+---
+
+## Next Steps
+
+### Near-Term (v0.4)
+- [x] ~~SBIR demo script~~ (`scripts/run_sbir_demo.py` with convergence plots, LaTeX/Markdown reports)
+- [x] ~~BaseTrainer consolidation~~ (`src/training/base_trainer.py` with AMP, gradient clipping, LR scheduling)
+- [x] ~~SBIR proposal infrastructure~~ (SAM guide, budgets, timeline, program offices, IP strategy)
+- [ ] Multi-field PDE support (extending ModelOutput for vector fields)
+- [ ] Migrate Trainer and OperatorTrainer to BaseTrainer inheritance
+- [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals
+
+### Medium-Term (v0.5)
+- [ ] 3D tetrahedral domain geometry support
+- [ ] Distributed benchmark runner (multi-node SBIR suite)
+- [ ] Uncertainty quantification for PDE solutions
+- [ ] PettingZoo training loop for swarm games
+- [ ] Pitch deck generation automation
+
+### Long-Term (v1.0)
+- [ ] SBIR Phase I proposal submissions (AFWERX, NSF, Navy)
+- [ ] DARPA Direct-to-Phase-II package submission
+- [ ] Production ONNX deployment pipeline
+- [ ] Multi-physics coupling (fluid-structure interaction)
+- [ ] Publication: "MCTS-Guided Galerkin Methods for Adaptive PDE Solving" (NeurIPS ML4PhysicalSciences)
 
 ---
 
@@ -712,10 +799,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 If you use AlphaGalerkin in your research, please cite:
 
 ```bibtex
-@software{alphagalerkin2024,
-  title = {AlphaGalerkin: Resolution-Independent Go AI using Continuous Operator Learning},
-  year = {2024},
-  url = {https://github.com/yourusername/AlphaGalerkin}
+@software{alphagalerkin2026,
+  title = {AlphaGalerkin: Resolution-Independent AI for Games and PDE Solving via MCTS-Guided Galerkin Methods},
+  author = {Cruickshank, Ian},
+  year = {2026},
+  url = {https://github.com/ianshank/AlphaGalerkin}
 }
 ```
 

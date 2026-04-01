@@ -171,7 +171,7 @@ class TestSyntheticVideoGenerator:
             diff = (seq[t] - seq[t + 1]).abs().mean()
             # Frames should differ (not static)
             # Allow noise pattern to differ more
-            assert diff < 1.0, f"Frames {t} and {t+1} differ too much: {diff}"
+            assert diff < 1.0, f"Frames {t} and {t + 1} differ too much: {diff}"
 
     def test_default_three_channels(self) -> None:
         """Default config produces 3-channel float32 tensors."""

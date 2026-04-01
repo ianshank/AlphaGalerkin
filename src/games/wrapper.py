@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from src.games.interface import GameInterface
 
+
 class StatefulGameWrapper:
     """Wraps a stateless GameInterface and GameState to satisfy MCTS GameInterface."""
 
@@ -57,4 +58,5 @@ class StatefulGameWrapper:
         # The game interface is stateless and thread-safe.
         # The state objects are largely immutable and deepcopied on apply_action.
         import copy
+
         return StatefulGameWrapper(self.game, copy.deepcopy(self.state))

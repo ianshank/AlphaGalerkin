@@ -68,6 +68,26 @@ Monitors LBB condition during training:
 - [2026-02-04]: **PDE-MCTS Integration** - PDEGameAdapter bridges PDE games to MCTS search engine
 - [2026-02-04]: **Physics Loss Wired** - Laplacian regularization via autodiff in PhysicsLoss
 - [2026-02-04]: **Curriculum Config Schema** - curriculum_schedule field on TrainingConfig with transition logging
+- [2026-03-30]: **CI Hardening** - MyPy strict enforcement, coverage gates raised to 75%/80%, nightly schedule
+- [2026-03-30]: **Config-Driven LBB Loss** - Magic numbers surfaced as Pydantic fields with mathematical docs
+- [2026-03-30]: **Race Condition Fixed** - _training_resolution mutation removed from forward(), explicit setter added
+- [2026-03-30]: **Checkpoint Migration** - Version-aware migration system (0.0.0→1.0.0→1.1.0) with registry pattern
+- [2026-03-30]: **Loss Package Unification** - src/training/losses/ with registry, backwards-compatible imports
+- [2026-03-30]: **NavierStokesOperator** - Taylor-Green vortex benchmark with exact analytical solution
+- [2026-03-30]: **BurgersOperator Enhanced** - Cole-Hopf exact solution, configurable shock params, convergence rates
+- [2026-03-30]: **Domain Geometry Abstractions** - RectangularDomain, LShapedDomain, CylinderFlowDomain
+- [2026-03-30]: **L-Shaped Poisson Operator** - r^(2/3)*sin(2θ/3) singularity for AMR benchmarking
+- [2026-03-30]: **Time-Stepping Module** - Forward Euler, RK4, Crank-Nicolson with factory pattern
+- [2026-03-30]: **SBIR Proposal Infrastructure** - Navy N252-088, AFWERX, DOE ASCR, NSF configs + benchmark suite
+- [2026-03-30]: **IP Strategy Documented** - 3 provisional patent claims, publication plan, dual-licensing
+- [2026-03-30]: **Property-Based Tests** - Hypothesis tests for loss, PDE operators, attention mechanisms
+- [2026-03-30]: **Numerical Stability Tests** - Edge cases, extreme values, mixed precision, NaN propagation
+
+## SBIR Positioning
+- **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement
+- **Target Solicitations**: Navy N252-088, DOE ASCR C59-01, NSF SBIR, AFWERX Open Topic
+- **TRL Level**: 3-4 (advancing to 5-6 with benchmark demonstrations)
+- **Key Differentiators**: Multi-step look-ahead (vs myopic RL), provable convergence (vs PINNs/FNO), no training data needed
 
 ## Next-Phase Infrastructure (v2.0)
 

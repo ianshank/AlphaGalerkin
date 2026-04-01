@@ -10,11 +10,13 @@ import structlog
 
 try:
     import google.auth
+
     HAS_SDK = True
 except ImportError:
     HAS_SDK = False
 
 logger = structlog.get_logger(__name__)
+
 
 def check_dns(host: str) -> bool:
     """Check if host resolves in DNS."""
@@ -26,6 +28,7 @@ def check_dns(host: str) -> bool:
         logger.error("dns_resolution_failed", host=host, error=str(e))
         return False
 
+
 def check_tcp(host: str, port: int = 443) -> bool:
     """Check TCP connectivity to host:port."""
     try:
@@ -36,17 +39,21 @@ def check_tcp(host: str, port: int = 443) -> bool:
         logger.error("tcp_connection_failed", host=host, port=port, error=str(e))
         return False
 
+
 def check_ssl(host: str, port: int = 443) -> bool:
     """Check SSL/TLS handshake."""
     try:
         context = ssl.create_default_context()
-        with socket.create_connection((host, port), timeout=5) as sock:
-            with context.wrap_socket(sock, server_hostname=host) as ssock:
-                logger.info("ssl_handshake_ok", host=host, version=ssock.version())
-                return True
+        with (
+            socket.create_connection((host, port), timeout=5) as sock,
+            context.wrap_socket(sock, server_hostname=host) as ssock,
+        ):
+            logger.info("ssl_handshake_ok", host=host, version=ssock.version())
+            return True
     except Exception as e:
         logger.error("ssl_handshake_failed", host=host, error=str(e))
         return False
+
 
 def check_auth() -> bool:
     """Check Google Cloud credentials."""
@@ -73,6 +80,7 @@ def check_auth() -> bool:
         )
         return False
 
+
 def main() -> int:
     """Run all diagnostics."""
     print(f"\nVertex AI Diagnostic Tool - {datetime.now().isoformat()}")
@@ -81,7 +89,7 @@ def main() -> int:
     hosts = [
         "us-central1-aiplatform.googleapis.com",
         "oauth2.googleapis.com",
-        "storage.googleapis.com"
+        "storage.googleapis.com",
     ]
 
     results = {}
@@ -105,6 +113,7 @@ def main() -> int:
     else:
         print("DIAGNOSTIC FAILED: See errors above.")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

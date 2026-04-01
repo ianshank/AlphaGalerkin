@@ -157,8 +157,7 @@ class SyntheticVideoGenerator:
         """
         self.config = config
         logger.debug(
-            "SyntheticVideoGenerator initialized: pattern=%s, frames=%d, "
-            "resolution=%dx%d, seed=%d",
+            "SyntheticVideoGenerator initialized: pattern=%s, frames=%d, resolution=%dx%d, seed=%d",
             config.pattern.value,
             config.num_frames,
             config.height,
@@ -247,8 +246,7 @@ class SyntheticVideoGenerator:
             # Each channel gets a different gradient direction with temporal + seed shift
             angle = (ch / max(c.channels, 1)) * math.pi + t_offset + seed_offset
             gradient = (
-                torch.cos(torch.tensor(angle)) * x_coord
-                + torch.sin(torch.tensor(angle)) * y_coord
+                torch.cos(torch.tensor(angle)) * x_coord + torch.sin(torch.tensor(angle)) * y_coord
             )
             # Normalize to [0, 1]
             gradient = (gradient - gradient.min()) / (gradient.max() - gradient.min() + 1e-8)

@@ -19,9 +19,19 @@ from src.pde.config import (
     PDEGameConfig,
 )
 from src.pde.game import PDEGame, PDEResult, PDEState
+from src.pde.geometry import (
+    CylinderFlowDomain,
+    DomainGeometry,
+    GeometryConfig,
+    GeometryType,
+    LShapedDomain,
+    RectangularDomain,
+    create_geometry,
+)
 from src.pde.operators import (
     AdvectionDiffusionOperator,
     BurgersOperator,
+    LShapedPoissonOperator,
     PDEOperator,
     PoissonOperator,
 )
@@ -37,11 +47,20 @@ __all__ = [
     "PDEGame",
     "PDEState",
     "PDEResult",
+    # Geometry
+    "DomainGeometry",
+    "RectangularDomain",
+    "LShapedDomain",
+    "CylinderFlowDomain",
+    "GeometryConfig",
+    "GeometryType",
+    "create_geometry",
     # Operators
     "PDEOperator",
     "PoissonOperator",
     "BurgersOperator",
     "AdvectionDiffusionOperator",
+    "LShapedPoissonOperator",
     # Registry
     "PDEOperatorRegistry",
     "register_pde_operator",

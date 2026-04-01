@@ -178,8 +178,7 @@ def parse_patterns(patterns_str: str) -> list[SyntheticPattern]:
         name = name.strip().lower()
         if name not in valid_names:
             raise ValueError(
-                f"Invalid pattern '{name}'. "
-                f"Valid patterns: {', '.join(sorted(valid_names))}"
+                f"Invalid pattern '{name}'. Valid patterns: {', '.join(sorted(valid_names))}"
             )
         patterns.append(SyntheticPattern(name))
     return patterns

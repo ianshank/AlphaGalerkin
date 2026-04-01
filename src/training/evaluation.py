@@ -140,11 +140,7 @@ class Evaluator:
             size = board_size or random.choice(self.board_sizes)
 
             # Create players
-            n_actions = (
-                self.game.action_space_size
-                if self.game is not None
-                else size**2 + 1
-            )
+            n_actions = self.game.action_space_size if self.game is not None else size**2 + 1
             random_evaluator = RandomEvaluator(n_actions)
 
             # Alternate colors
@@ -542,8 +538,7 @@ class Evaluator:
         """
         if self.game is None:
             raise ValueError(
-                "evaluate_vs_engine requires a GameInterface. "
-                "Pass game= to Evaluator.__init__()."
+                "evaluate_vs_engine requires a GameInterface. Pass game= to Evaluator.__init__()."
             )
 
         from src.engines.match import EngineMatch

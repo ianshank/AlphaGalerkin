@@ -18,16 +18,16 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import torch
 from torch import Tensor
 
 from src.templates.logging import (
+    DebugContext,
     configure_module_logging,
     create_logger_class,
-    DebugContext,
 )
 
 # Configure logging
@@ -114,6 +114,7 @@ def get_device(device_str: str) -> str:
 
     Returns:
         Resolved device string.
+
     """
     if device_str == "auto":
         if torch.cuda.is_available():
@@ -145,6 +146,7 @@ def write_video_frames(
 
     Returns:
         Number of frames written.
+
     """
     try:
         import cv2
@@ -198,7 +200,7 @@ def write_video_frames(
             frame_count += 1
 
             if frame_count % 10 == 0:
-                 logger.debug("frames_written", count=frame_count)
+                logger.debug("frames_written", count=frame_count)
 
     finally:
         writer.release()
@@ -218,6 +220,7 @@ def compute_quality_metrics(
 
     Returns:
         Dictionary of quality metrics.
+
     """
     try:
         import cv2
@@ -288,6 +291,7 @@ def main() -> int:
 
     Returns:
         Exit code (0 for success).
+
     """
     args = parse_args()
 
@@ -347,10 +351,12 @@ def main() -> int:
             logger.warning("load_codec_failed", error=str(e), message="Retrying with manual load")
             # Fallback: manual loading for robustness
             try:
-                from src.video_compression.config import CodecConfig
                 from src.video_compression.codec.codec import create_codec
+                from src.video_compression.config import CodecConfig
 
-                checkpoint_data = torch.load(args.checkpoint, map_location=device, weights_only=False)
+                checkpoint_data = torch.load(
+                    args.checkpoint, map_location=device, weights_only=False
+                )
 
                 # Try to reconstruct config from checkpoint, fallback to default
                 if "config" in checkpoint_data and isinstance(checkpoint_data["config"], dict):
@@ -375,7 +381,6 @@ def main() -> int:
                 logger.error("codec_load_failed", error=str(fallback_error))
                 return 1
 
-
         ctx.checkpoint("codec_loaded")
 
         # Create output directory if needed
@@ -387,8 +392,8 @@ def main() -> int:
 
         def frame_generator() -> Iterator[Tensor]:
             """Generate decoded frames."""
-            from src.video_compression.codec.gop_manager import FrameInfo
             from src.video_compression.codec.entropy_coder import EncodedBitstream
+            from src.video_compression.codec.gop_manager import FrameInfo
 
             for frame in encoded_frames:
                 # Reconstruct FrameInfo from stored metadata in frame header
@@ -398,8 +403,14 @@ def main() -> int:
                     frame_type=frame.header.frame_type,
                     display_order=frame.header.frame_idx % codec.config.mcts.gop_size,
                     encode_order=frame.header.frame_idx % codec.config.mcts.gop_size,
-                    forward_ref=frame.header.forward_ref_idx if frame.header.forward_ref_idx >= 0 else None,
-                    backward_ref=frame.header.backward_ref_idx if frame.header.backward_ref_idx >= 0 else None,
+                    forward_ref=(
+                        frame.header.forward_ref_idx if frame.header.forward_ref_idx >= 0 else None
+                    ),
+                    backward_ref=(
+                        frame.header.backward_ref_idx
+                        if frame.header.backward_ref_idx >= 0
+                        else None
+                    ),
                 )
 
                 # Compute latent shape from header dimensions (needed for bitstream)
@@ -422,11 +433,11 @@ def main() -> int:
                 if frame.z_data and len(frame.z_data) > 0:
                     # Compute z shape based on hyperprior architecture
                     # HyperAnalysis typically downsamples by 4x (2 conv layers with stride 2)
-                    hyper_layers = getattr(codec.config.entropy, 'hyper_layers', 3)
+                    hyper_layers = getattr(codec.config.entropy, "hyper_layers", 3)
                     z_downsample = 2 ** (hyper_layers - 1)
                     z_h = max(1, latent_h // z_downsample)
                     z_w = max(1, latent_w // z_downsample)
-                    hyper_channels = getattr(codec.config.entropy, 'hyper_channels', 128)
+                    hyper_channels = getattr(codec.config.entropy, "hyper_channels", 128)
 
                     z_bitstream = EncodedBitstream(
                         data=frame.z_data,
@@ -446,7 +457,7 @@ def main() -> int:
                     if frame.header.frame_idx == 0:
                         logger.warning(
                             "no_hyperprior_data",
-                            message="No hyperprior data in bitstream - using fallback uniform scales",
+                            message="No hyperprior data - using fallback scales",
                         )
 
                 # Decode frame using new API with z_bitstream for proper scale reconstruction
@@ -462,6 +473,7 @@ def main() -> int:
                 # Crop to original dimensions if padding was applied
                 if frame.header.padding_info is not None:
                     from src.video_compression.utils.padding import crop_to_original
+
                     decoded = crop_to_original(decoded, frame.header.padding_info)
 
                 yield decoded

@@ -3,10 +3,13 @@
 This document provides a comprehensive C4 architecture model for the AlphaGalerkin system using Mermaid diagrams.
 The C4 model consists of four levels: System Context, Containers, Components, and Code.
 
-The system supports two primary use cases:
+The system supports three primary use cases:
 
-1. **Go AI**: Resolution-independent game playing with zero-shot transfer between board sizes
-2. **PDE Solving**: AlphaZero-style MCTS for adaptive basis selection and mesh refinement
+1. **Board Game AI**: Resolution-independent Go and Chess with zero-shot transfer between board sizes
+2. **PDE Solving**: MCTS-guided adaptive mesh refinement and Galerkin basis selection
+3. **SBIR Commercialization**: Benchmark infrastructure, proposal configs, IP strategy, and competitive positioning for $50B+ simulation market
+
+This architecture reflects v0.3.x including SBIR proposal infrastructure, classical solver baselines, domain geometry abstractions, time-stepping integration, and swarm planning.
 
 ---
 
@@ -80,6 +83,16 @@ C4Container
 
         Container(data_layer, "Data Layer", "PyTorch Dataset", "Board state preprocessing, variable-size batching, physics data generation")
 
+        Container(research, "Research & Benchmarking", "Python/SciPy", "SBIR baselines (FDM, AMR, PINN), benchmark runner, convergence reports")
+
+        Container(geometry, "Domain Geometry & Time-Stepping", "Python/PyTorch", "Rectangular, L-shaped, cylinder domains; Forward Euler, RK4, Crank-Nicolson")
+
+        Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
+
+        Container(sbir_infra, "SBIR Proposal Infrastructure", "Markdown/YAML", "SAM.gov guide, budget templates, submission timeline, program offices, IP strategy, competitive landscape, M&A analysis")
+
+        Container(deployment, "Deployment", "ONNX/PyTorch", "ONNX export, quantization, runtime inference wrapper for edge deployment")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -129,6 +142,11 @@ C4Container
 | **Math Kernel** | Mathematical foundations and operators | NumPy, SciPy, FFT, multi-scale Fourier |
 | **PoC Framework** | Validates mathematical claims through experiments | Pydantic, structlog |
 | **Data Layer** | Data loading and preprocessing | PyTorch Dataset, padding/masking |
+| **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
+| **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
+| **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
+| **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
+| **Deployment** | Model export and edge inference | ONNX, quantization, runtime wrapper |
 
 ---
 
@@ -1335,9 +1353,216 @@ numpy >= 1.24.0         # Numerical computing
 
 6. **PDE Extensions**
    - 3D domain support
-   - Time-stepping for unsteady problems
    - Multi-physics coupling
    - Uncertainty quantification
+
+---
+
+## Level 3: Component Diagram - SBIR Research Infrastructure
+
+This diagram shows the benchmarking and baseline comparison components for SBIR proposals.
+
+```mermaid
+C4Component
+    title Component Diagram - SBIR Research Infrastructure
+
+    Container_Boundary(research, "Research & Benchmarking") {
+        Component(benchmark_runner, "PDEBenchmarkRunner", "Python Class", "Runs AlphaGalerkin vs baselines on benchmark suites, generates JSON/Markdown reports")
+
+        Component(fdm_solver, "UniformFDMSolver", "BaseSolver", "2nd-order finite differences on uniform grid via scipy.sparse")
+
+        Component(amr_solver, "DorflerAMRSolver", "BaseSolver", "Dorfler bulk-chasing adaptive mesh refinement on 1D grids")
+
+        Component(pinn_solver, "SimplePINNSolver", "BaseSolver", "Physics-Informed Neural Network baseline with autograd Laplacian")
+
+        Component(solver_registry, "SOLVER_REGISTRY", "Dict Registry", "Maps solver names to classes: get_solver(), list_solvers()")
+
+        Component(benchmark_config, "Benchmark Configs", "YAML", "sbir_suite.yaml, navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml")
+    }
+
+    Component_Ext(pde_operators, "PDE Operators", "Provides exact solutions, residuals")
+    Component_Ext(alphagalerkin, "AlphaGalerkin Engine", "MCTS-guided solver under comparison")
+
+    Rel(benchmark_runner, fdm_solver, "Runs baseline")
+    Rel(benchmark_runner, amr_solver, "Runs baseline")
+    Rel(benchmark_runner, pinn_solver, "Runs baseline")
+    Rel(benchmark_runner, solver_registry, "Discovers solvers")
+    Rel(benchmark_runner, benchmark_config, "Loads config")
+
+    Rel(fdm_solver, pde_operators, "Uses source_term, boundary_value")
+    Rel(amr_solver, pde_operators, "Uses source_term, exact_solution")
+    Rel(pinn_solver, pde_operators, "Uses residual via autograd")
+
+    Rel(benchmark_runner, alphagalerkin, "Compares against baselines")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### SBIR Research Components
+
+| Component | Responsibility | Key Interface |
+|-----------|----------------|---------------|
+| **PDEBenchmarkRunner** | Load YAML config, run all solver x problem combos, compute convergence rates | `run_all()`, `generate_report()` |
+| **UniformFDMSolver** | Reference FDM solution on 1D/2D uniform grids | `solve(operator, n_dof)` |
+| **DorflerAMRSolver** | Adaptive refinement with residual error indicators | `solve(operator, n_dof)` |
+| **SimplePINNSolver** | PINN baseline with configurable MLP + autograd | `solve(operator, n_dof)` |
+| **SOLVER_REGISTRY** | Plugin system for baseline solvers | `get_solver(name)`, `list_solvers()` |
+
+---
+
+## Level 3: Component Diagram - Domain Geometry & Time-Stepping
+
+This diagram shows the domain geometry and time-integration components.
+
+```mermaid
+C4Component
+    title Component Diagram - Domain Geometry & Time-Stepping
+
+    Container_Boundary(geometry_time, "Domain Geometry & Time-Stepping") {
+        Component(domain_abc, "DomainGeometry", "Abstract Base Class", "contains_point, is_boundary, sample_interior, sample_boundary, bounding_box")
+
+        Component(rect_domain, "RectangularDomain", "DomainGeometry", "Standard [x_min, x_max] x [y_min, y_max] domain")
+
+        Component(lshaped_domain, "LShapedDomain", "DomainGeometry", "[-1,1]^2 minus [0,1]x[-1,0], reentrant corner singularity")
+
+        Component(cylinder_domain, "CylinderFlowDomain", "DomainGeometry", "DFG benchmark: rectangle with circular obstacle, rejection sampling")
+
+        Component(geom_config, "GeometryConfig", "Pydantic", "geometry_type enum, scale, cylinder params, create_geometry() factory")
+
+        Component(time_euler, "ForwardEuler", "TimeStepper", "1st-order explicit Euler method")
+
+        Component(time_rk4, "RK4", "TimeStepper", "4th-order Runge-Kutta with 4 stages")
+
+        Component(time_cn, "CrankNicolson", "TimeStepper", "2nd-order implicit with fixed-point iteration")
+
+        Component(time_config, "TimeSteppingConfig", "Pydantic", "method enum, dt, t_start/t_end, adaptive_dt, create_time_stepper() factory")
+    }
+
+    Component_Ext(pde_operators, "PDE Operators", "NavierStokes, Burgers, Heat (time-dependent)")
+    Component_Ext(mesh_game, "MeshRefinementGame", "Uses geometry for adaptive refinement")
+
+    Rel(rect_domain, domain_abc, "Implements")
+    Rel(lshaped_domain, domain_abc, "Implements")
+    Rel(cylinder_domain, domain_abc, "Implements")
+
+    Rel(time_euler, time_config, "Created by factory")
+    Rel(time_rk4, time_config, "Created by factory")
+    Rel(time_cn, time_config, "Created by factory")
+
+    Rel(pde_operators, time_rk4, "Integrates in time")
+    Rel(mesh_game, domain_abc, "Samples collocation points")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Domain & Time-Stepping Components
+
+| Component | Responsibility | Key Feature |
+|-----------|----------------|-------------|
+| **RectangularDomain** | Standard box domains | Proportional boundary sampling per edge |
+| **LShapedDomain** | AMR benchmark domain | Rejection sampling (75% acceptance), 6-segment boundary |
+| **CylinderFlowDomain** | DFG CFD benchmark | Cylinder exclusion zone, combined wall + surface sampling |
+| **ForwardEuler** | Explicit 1st-order | Simple, O(dt) error |
+| **RK4** | Explicit 4th-order | O(dt^4) error, 4 function evaluations per step |
+| **CrankNicolson** | Implicit 2nd-order | A-stable, fixed-point iteration with convergence warning |
+
+---
+
+## Level 3: Component Diagram - Swarm Planning Game
+
+This diagram shows the multi-agent swarm planning game for DARPA/AFWERX positioning.
+
+```mermaid
+C4Component
+    title Component Diagram - Swarm Planning Game
+
+    Container_Boundary(swarm, "Swarm Planning (S500)") {
+        Component(swarm_game, "SwarmPlanningGame", "PDEGame", "Multi-agent swarm control as sequential decision-making with MCTS")
+
+        Component(swarm_state, "SwarmState", "Dataclass", "Agent positions, velocities, coverage map, communication graph, obstacles")
+
+        Component(swarm_config, "SwarmPlanningConfig", "Pydantic", "n_agents, communication_range, collision_radius, domain_size, reward weights")
+
+        Component(potential_field, "Potential Field", "Algorithm", "Inverse-distance obstacle avoidance via Laplace equation connection")
+
+        Component(coverage_map, "Coverage Map", "NumPy Array", "Binary grid tracking explored regions, sensor radius coverage")
+
+        Component(comm_graph, "Communication Graph", "Adjacency Matrix", "Agent connectivity based on communication_range threshold")
+    }
+
+    Component_Ext(mcts_engine, "MCTS Engine", "Searches 7-action space per agent (round-robin)")
+    Component_Ext(pettingzoo, "PettingZoo Adapter", "Optional multi-agent RL interface")
+
+    Rel(swarm_game, swarm_state, "Manages state transitions")
+    Rel(swarm_game, swarm_config, "Configured by")
+    Rel(swarm_game, potential_field, "Computes obstacle avoidance")
+    Rel(swarm_game, coverage_map, "Updates explored regions")
+    Rel(swarm_game, comm_graph, "Computes connectivity")
+
+    Rel(mcts_engine, swarm_game, "Selects agent actions")
+    Rel(pettingzoo, swarm_game, "Wraps as ParallelEnv")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+---
+
+## Level 3: Component Diagram - SBIR Proposal Infrastructure
+
+This diagram shows the proposal submission infrastructure supporting 5 target solicitations.
+
+```mermaid
+C4Component
+    title Component Diagram - SBIR Proposal Infrastructure
+
+    Container_Boundary(sbir, "SBIR Proposal Infrastructure") {
+        Component(sam_guide, "SAM Registration Guide", "Markdown", "Step-by-step SAM.gov checklist: EIN, UEI, CAGE, NAICS 541715/541511")
+
+        Component(timeline, "Submission Timeline", "Markdown", "Gantt-style calendar for 5 solicitations with prep windows and dependencies")
+
+        Component(program_offices, "Program Offices", "Markdown", "Tier 1/2 contacts: DARPA STO, DOE ASCR, NAVAIR, AFWERX, AFRL, ONR")
+
+        Component(budget_templates, "Budget Templates", "Markdown", "4 budget tables: DoD $250K, NSF $305K, AFWERX $75K, DARPA $1.5M")
+
+        Component(proposal_configs, "Solicitation Configs", "YAML", "navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml, afwerx_open.yaml, darpa_d2p2.yaml")
+
+        Component(ip_strategy, "IP Strategy", "Markdown", "3 provisional patent claims, trade secret inventory, publication plan, licensing strategy")
+
+        Component(competitive, "Competitive Landscape", "Markdown", "PhysicsX, BeyondMath, Pasteur Labs, Godela, PhysicsNeMo comparison matrix")
+
+        Component(valuation, "Valuation & M&A", "Markdown", "Stage-based valuation ($1M-$200M+), top 5 acquirers, revenue multiples")
+
+        Component(differentiation, "Differentiation Matrix", "Markdown", "AlphaGalerkin vs PINNs vs FNO vs AMR vs PhysicsNeMo across 10 criteria")
+
+        Component(sbir_demo, "SBIR Demo Script", "Python", "End-to-end benchmark runner with convergence plots and comparison reports")
+    }
+
+    Component_Ext(benchmark_runner, "PDEBenchmarkRunner", "Runs baselines and generates reports")
+    Component_Ext(baseline_solvers, "Baseline Solvers", "FDM, Dorfler AMR, PINN")
+
+    Rel(sbir_demo, benchmark_runner, "Executes benchmarks")
+    Rel(sbir_demo, baseline_solvers, "Compares against")
+    Rel(sbir_demo, proposal_configs, "Loads config")
+    Rel(timeline, proposal_configs, "References deadlines from")
+    Rel(budget_templates, proposal_configs, "Matches funding ranges")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### SBIR Infrastructure Components
+
+| Component | Content | Key Files |
+|-----------|---------|-----------|
+| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/proposals/SAM_REGISTRATION_GUIDE.md` |
+| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/proposals/SUBMISSION_TIMELINE.md` |
+| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/proposals/PROGRAM_OFFICES.md` |
+| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/proposals/BUDGET_TEMPLATES.md` |
+| **Solicitation Configs** | YAML configs with benchmark suites per solicitation | `config/proposals/*.yaml` |
+| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/proposals/IP_STRATEGY.md` |
+| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/proposals/COMPETITIVE_LANDSCAPE.md` |
+| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
+| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/proposals/DIFFERENTIATION_MATRIX.md` |
+| **SBIR Demo** | CLI script generating convergence plots + reports | `scripts/run_sbir_demo.py` |
 
 ---
 
@@ -1364,9 +1589,9 @@ numpy >= 1.24.0         # Numerical computing
 
 ## Document Metadata
 
-- **Version**: 2.0.0
+- **Version**: 3.0.0
 - **Created**: 2026-01-26
-- **Updated**: 2026-01-28
+- **Updated**: 2026-03-31
 - **Format**: Mermaid C4 Diagrams
 - **Status**: Complete
 - **Audience**: Developers, Researchers, Computational Scientists, Technical Stakeholders

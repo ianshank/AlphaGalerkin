@@ -476,9 +476,7 @@ class AlphaGalerkinModel(nn.Module):
         # Output heads — select policy head by game type
         self.policy_head: PolicyHead | ActionPolicyHead
         if config.action_space_size is not None:
-            self.policy_head = ActionPolicyHead(
-                config.d_model, config.action_space_size
-            )
+            self.policy_head = ActionPolicyHead(config.d_model, config.action_space_size)
         else:
             self.policy_head = PolicyHead(config.d_model)
         self.value_head = ValueHead(config.d_model)
@@ -504,6 +502,19 @@ class AlphaGalerkinModel(nn.Module):
         """Set the training resolution."""
         self._training_resolution = value
 
+    def set_training_resolution(self, resolution: int) -> None:
+        """Set the training resolution explicitly.
+
+        Should be called by the trainer during initialization rather than
+        relying on auto-detection in forward(), which is not thread-safe
+        under DDP.
+
+        Args:
+            resolution: Board size used during training.
+
+        """
+        self._training_resolution = resolution
+
     def forward(
         self,
         x: Float[Tensor, "batch channels height width"],
@@ -521,10 +532,6 @@ class AlphaGalerkinModel(nn.Module):
         """
         batch, channels, height, width = x.shape
         board_size = height  # Assume square board
-
-        # Update training resolution on first forward pass
-        if self._training_resolution is None and self.training:
-            self._training_resolution = board_size
 
         # Create continuous coordinates
         coords = create_grid_coordinates(board_size, batch, x.device)
@@ -662,9 +669,7 @@ class AlphaGalerkinFast(nn.Module):
 
         self.policy_head: PolicyHead | ActionPolicyHead
         if config.action_space_size is not None:
-            self.policy_head = ActionPolicyHead(
-                config.d_model, config.action_space_size
-            )
+            self.policy_head = ActionPolicyHead(config.d_model, config.action_space_size)
         else:
             self.policy_head = PolicyHead(config.d_model)
         self.value_head = ValueHead(config.d_model)

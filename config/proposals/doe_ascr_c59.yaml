@@ -1,0 +1,48 @@
+# DOE ASCR Topic C59-01: Accelerating Deployment of Advanced Software Technologies
+# Frame as deploying novel AI-guided algorithms atop ASCR-funded libraries (PETSc, MFEM)
+#
+# Focus: Exascale PDE solvers with AI-guided mesh refinement
+
+proposal:
+  solicitation: "C59-01"
+  agency: "DOE (ASCR)"
+  phase: "Phase I"
+  title: "MCTS-Guided Galerkin Methods for Scalable Adaptive PDE Solving"
+  naics_code: "541715"
+  funding_range: "$200K-$250K"
+  duration_months: 12
+
+benchmark_suite:
+  # Problem 1: Poisson on L-shaped domain (convergence theory)
+  - name: poisson_lshaped_convergence
+    pde_type: poisson
+    description: "Singular solution convergence on L-shaped domain"
+    geometry:
+      type: l_shaped
+    refinement_levels: [1, 2, 3, 4, 5, 6, 7, 8]
+    target_convergence_rate: 0.666  # r^(2/3) singularity
+    baselines: ["dorfler_amr", "nvs_amr", "uniform_fem"]
+
+  # Problem 2: Advection-dominated flow (SUPG comparison)
+  - name: advdiff_boundary_layer
+    pde_type: advection_diffusion
+    description: "Advection-dominated problem with boundary layer"
+    peclet_numbers: [10, 100, 1000]
+    target_error: 1.0e-4
+    baselines: ["supg_fem", "uniform_fem", "pinn"]
+
+  # Problem 3: Scaling study
+  - name: poisson_scaling
+    pde_type: poisson
+    description: "Weak scaling study on increasing problem sizes"
+    problem_sizes: [1000, 10000, 100000, 1000000]
+    target_complexity: "O(N)"  # Galerkin attention complexity
+    baselines: ["direct_solver", "multigrid", "fno"]
+
+evaluation_metrics:
+  - name: "convergence_rate"
+    description: "Measured vs theoretical convergence rates"
+  - name: "scaling_efficiency"
+    description: "Wall time vs DOF scaling behavior"
+  - name: "integration_readiness"
+    description: "API compatibility with PETSc/MFEM data structures"

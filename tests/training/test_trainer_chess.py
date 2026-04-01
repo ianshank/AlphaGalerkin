@@ -75,9 +75,7 @@ def chess_game() -> ChessGame:
 class TestCheckpointSaveLoadResume:
     """Tests for checkpoint save/load lifecycle with chess model."""
 
-    def test_save_and_load_checkpoint(
-        self, chess_model: AlphaGalerkinModel
-    ) -> None:
+    def test_save_and_load_checkpoint(self, chess_model: AlphaGalerkinModel) -> None:
         """Verify model state is preserved after save → load."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             manager = CheckpointManager(
@@ -98,9 +96,7 @@ class TestCheckpointSaveLoadResume:
             assert state.metrics["loss"] == 5.0
             assert state.metrics["win_rate"] == 0.1
 
-    def test_checkpoint_restore_weights(
-        self, chess_op_config: OperatorConfig
-    ) -> None:
+    def test_checkpoint_restore_weights(self, chess_op_config: OperatorConfig) -> None:
         """Verify model weights match after save → restore."""
         model1 = AlphaGalerkinModel(chess_op_config)
         model2 = AlphaGalerkinModel(chess_op_config)
@@ -122,9 +118,7 @@ class TestCheckpointSaveLoadResume:
             param2 = next(model2.parameters()).data
             assert torch.allclose(param1, param2)
 
-    def test_checkpoint_resume_training(
-        self, chess_op_config: OperatorConfig
-    ) -> None:
+    def test_checkpoint_resume_training(self, chess_op_config: OperatorConfig) -> None:
         """Verify optimizer state persists across checkpoint save/load."""
         model = AlphaGalerkinModel(chess_op_config)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -147,14 +141,10 @@ class TestCheckpointSaveLoadResume:
             optimizer2 = torch.optim.Adam(model2.parameters(), lr=0.001)
 
             # Restore
-            step = manager.restore(
-                model=model2, optimizer=optimizer2
-            )
+            step = manager.restore(model=model2, optimizer=optimizer2)
             assert step == 10
 
-    def test_multiple_checkpoints_rotation(
-        self, chess_model: AlphaGalerkinModel
-    ) -> None:
+    def test_multiple_checkpoints_rotation(self, chess_model: AlphaGalerkinModel) -> None:
         """Verify oldest checkpoints are rotated out."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             manager = CheckpointManager(

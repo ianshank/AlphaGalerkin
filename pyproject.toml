@@ -219,7 +219,6 @@ module = [
     "src.pde.games.mesh_refinement",
     "src.pde.config",
     "src.pde.registry",
-    "src.pde.trainer",
     "src.agents.collocation",
     "src.agents.decomposition",
     "src.agents.meta",

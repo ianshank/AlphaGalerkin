@@ -50,12 +50,12 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Registry of known PDE types to their operator classes
-_PDE_TYPE_MAP: dict[str, str] = {
-    PDEType.POISSON: "PoissonOperator",
-    PDEType.BURGERS: "BurgersOperator",
-    PDEType.ADVECTION_DIFFUSION: "AdvectionDiffusionOperator",
-}
+# PDE types actually supported by _create_operator
+SUPPORTED_PDE_TYPES: frozenset[PDEType] = frozenset({
+    PDEType.POISSON,
+    PDEType.BURGERS,
+    PDEType.ADVECTION_DIFFUSION,
+})
 
 
 def _create_operator(pde_config: PDEConfig) -> PDEOperator:
@@ -85,7 +85,7 @@ def _create_operator(pde_config: PDEConfig) -> PDEOperator:
 
     raise ValueError(
         f"Unsupported pde_type: '{pde_config.pde_type}'. "
-        f"Supported types: {list(_PDE_TYPE_MAP.keys())}"
+        f"Supported types: {[t.value for t in SUPPORTED_PDE_TYPES]}"
     )
 
 
@@ -167,21 +167,33 @@ class PDETrainingConfig(BaseModuleConfig):
         gt=0.0,
         description="Per-episode computational budget (FLOPs)",
     )
-    seed: int | None = Field(
+    seed: int | None = Field(  # type: ignore[assignment]
         default=None,
         description="RNG seed for reproducibility (None = random)",
     )
 
     @model_validator(mode="after")
     def validate_pde_type(self) -> PDETrainingConfig:
-        """Validate that the pde_type is a known PDE."""
+        """Validate that the pde_type is one of the supported PDE types.
+
+        Only types actually handled by ``_create_operator`` are accepted so
+        that validation failure is caught at config creation time rather than
+        at runtime inside the training loop.
+        """
         try:
-            PDEType(self.pde_type)
+            pde_type = PDEType(self.pde_type)
         except ValueError:
-            valid = [t.value for t in PDEType]
+            supported = [t.value for t in SUPPORTED_PDE_TYPES]
             raise ValueError(
-                f"Unknown pde_type: '{self.pde_type}'. Valid options: {valid}"
+                f"Unknown pde_type: '{self.pde_type}'. "
+                f"Supported options: {supported}"
             ) from None
+        if pde_type not in SUPPORTED_PDE_TYPES:
+            supported = [t.value for t in SUPPORTED_PDE_TYPES]
+            raise ValueError(
+                f"Unsupported pde_type: '{self.pde_type}'. "
+                f"Supported options: {supported}"
+            )
         return self
 
 

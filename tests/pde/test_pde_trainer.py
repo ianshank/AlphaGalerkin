@@ -156,7 +156,7 @@ class TestPDETrainerInit:
 class TestPDETrainerRun:
     """Integration tests for PDETrainer.run()."""
 
-    @pytest.fixture(scope="class")
+    @pytest.fixture(scope="function")
     def run_result(self) -> PDETrainingResult:
         """Run 5 episodes once and share the result across tests."""
         config = minimal_config(n_episodes=5)

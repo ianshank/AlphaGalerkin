@@ -725,6 +725,9 @@ class Trainer:
                     value=output.value,
                     target_policy=batch.target_policies,
                     target_value=batch.target_values,
+                    lbb_constant=output.lbb_constant,
+                    action_mask=batch.action_mask.float() if batch.action_mask is not None else None,
+                    model=self._raw_model,
                 )
                 physics_total = combined_physics_result.get(
                     "total", torch.tensor(0.0, device=self.device)

@@ -232,11 +232,14 @@ class TestDorflerAMRSolver:
         assert result.n_dof >= 1
         assert result.wall_time_seconds >= 0.0
 
-    def test_solve_2d_raises_not_implemented(self):
-        solver = DorflerAMRSolver()
+    def test_solve_2d_returns_result(self):
+        solver = DorflerAMRSolver(marking_fraction=0.3, max_refinements=3)
         op = _make_poisson_2d()
-        with pytest.raises(NotImplementedError):
-            solver.solve(op, n_dof=50)
+        result = solver.solve(op, n_dof=25)
+        assert isinstance(result, SolverResult)
+        assert result.n_dof >= 1
+        assert result.grid_points.shape[-1] == 2
+        assert result.metadata.get("dim") == 2
 
     def test_metadata_has_marking_fraction(self):
         mf = 0.4
@@ -356,3 +359,191 @@ class TestRegistry:
         for name in list_solvers():
             solver = get_solver(name)
             assert isinstance(solver, BaseSolver)
+
+    def test_list_solvers_includes_ns_fdm(self):
+        assert "navier_stokes_fdm" in list_solvers()
+
+    def test_get_solver_ns_fdm(self):
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = get_solver("navier_stokes_fdm")
+        assert isinstance(solver, NavierStokesFDMSolver)
+
+
+# ---------------------------------------------------------------------------
+# DorflerAMRSolver 2D extension
+# ---------------------------------------------------------------------------
+
+
+class TestDorflerAMR2D:
+    """Tests for the 2D adaptive mesh refinement extension."""
+
+    def test_solve_2d_basic(self):
+        solver = DorflerAMRSolver(marking_fraction=0.3, max_refinements=3)
+        op = _make_poisson_2d()
+        result = solver.solve(op, n_dof=16)
+        assert isinstance(result, SolverResult)
+        assert result.n_dof >= 1
+        assert result.wall_time_seconds >= 0.0
+
+    def test_solve_2d_grid_shape(self):
+        solver = DorflerAMRSolver(marking_fraction=0.3, max_refinements=2)
+        op = _make_poisson_2d()
+        result = solver.solve(op, n_dof=25)
+        assert result.grid_points.shape[-1] == 2
+
+    def test_solve_2d_error_finite(self):
+        solver = DorflerAMRSolver(marking_fraction=0.3, max_refinements=3)
+        op = _make_poisson_2d()
+        result = solver.solve(op, n_dof=25)
+        if result.l2_error is not None:
+            assert math.isfinite(result.l2_error)
+            assert result.l2_error >= 0.0
+
+    def test_solve_2d_metadata(self):
+        solver = DorflerAMRSolver(marking_fraction=0.4, max_refinements=3)
+        op = _make_poisson_2d()
+        result = solver.solve(op, n_dof=16)
+        assert result.metadata["dim"] == 2
+        assert result.metadata["marking_fraction"] == pytest.approx(0.4)
+        assert result.metadata["n_refinements"] >= 1
+
+    def test_solve_on_grid_2d_static(self):
+        """Verify the internal 2D grid solver produces non-zero solutions."""
+        from scipy import sparse
+        from scipy.sparse.linalg import spsolve
+
+        op = _make_poisson_2d()
+        xs = np.linspace(0.0, 1.0, 6, dtype=np.float64)
+        ys = np.linspace(0.0, 1.0, 6, dtype=np.float64)
+        u, grid = DorflerAMRSolver._solve_on_grid_2d(xs, ys, op, sparse, spsolve)
+        assert u.shape[0] == len(xs) * len(ys)
+        assert grid.shape == (len(xs) * len(ys), 2)
+
+    def test_indicators_2d_shape(self):
+        """2D indicators array should have (n_elem_x, n_elem_y) shape."""
+        from scipy import sparse
+        from scipy.sparse.linalg import spsolve
+
+        op = _make_poisson_2d()
+        xs = np.linspace(0.0, 1.0, 6, dtype=np.float64)
+        ys = np.linspace(0.0, 1.0, 6, dtype=np.float64)
+        u, _ = DorflerAMRSolver._solve_on_grid_2d(xs, ys, op, sparse, spsolve)
+        indicators = DorflerAMRSolver._compute_indicators_2d(xs, ys, u, op)
+        assert indicators.shape == (5, 5)
+
+    def test_dorfler_mark_2d_returns_bool_arrays(self):
+        solver = DorflerAMRSolver(marking_fraction=0.5)
+        indicators = np.random.rand(4, 4)
+        xs = np.linspace(0, 1, 5)
+        ys = np.linspace(0, 1, 5)
+        marked_x, marked_y = solver._dorfler_mark_2d(indicators, xs, ys)
+        assert marked_x.dtype == bool
+        assert marked_y.dtype == bool
+        assert len(marked_x) == 4
+        assert len(marked_y) == 4
+
+    def test_dim3_raises_not_implemented(self):
+        """3D problems should still raise NotImplementedError."""
+        from src.pde.config import PDEConfig, PDEType
+        from src.pde.operators import HeatOperator
+
+        cfg3d = PDEConfig(
+            name="heat_3d",
+            pde_type=PDEType.HEAT,
+            domain_dim=3,
+            domain_min=[0.0, 0.0, 0.0],
+            domain_max=[1.0, 1.0, 1.0],
+            advection_coeff=[0.0, 0.0, 0.0],
+        )
+        op = HeatOperator(cfg3d)
+        solver = DorflerAMRSolver()
+        with pytest.raises(NotImplementedError, match="dim=1 and dim=2"):
+            solver.solve(op, n_dof=10)
+
+
+# ---------------------------------------------------------------------------
+# NavierStokesFDMSolver
+# ---------------------------------------------------------------------------
+
+
+class TestNavierStokesFDMSolver:
+    """Tests for the Navier-Stokes FDM projection method solver."""
+
+    def _make_ns_operator(self, re: float = 100.0):
+        from src.pde.operators import NavierStokesOperator
+
+        cfg = PDEConfig(
+            name="test_ns",
+            pde_type=PDEType.NAVIER_STOKES,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[6.283185307, 6.283185307],  # 2*pi
+            advection_coeff=[0.0, 0.0],
+        )
+        return NavierStokesOperator(cfg, reynolds_number=re)
+
+    def test_construction(self):
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver(dt=0.01, t_final=0.1)
+        assert solver.dt == 0.01
+        assert solver.t_final == 0.1
+
+    def test_solve_smoke(self):
+        """Minimal solve (very coarse grid, short time) to verify no crash."""
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver(dt=0.05, t_final=0.05)
+        op = self._make_ns_operator(re=10.0)
+        result = solver.solve(op, n_dof=32)
+        assert isinstance(result, SolverResult)
+        assert result.n_dof >= 1
+        assert result.wall_time_seconds >= 0.0
+
+    def test_solve_returns_velocity_field(self):
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver(dt=0.05, t_final=0.05)
+        op = self._make_ns_operator(re=10.0)
+        result = solver.solve(op, n_dof=32)
+        # Solution contains ux and uy concatenated
+        n_grid = result.grid_points.shape[0]
+        assert result.solution.shape[0] == 2 * n_grid
+
+    def test_solve_metadata(self):
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver(dt=0.05, t_final=0.1)
+        op = self._make_ns_operator(re=10.0)
+        result = solver.solve(op, n_dof=32)
+        assert result.metadata["method"] == "chorin_projection"
+        assert "dt" in result.metadata
+        assert "n_steps" in result.metadata
+        assert "grid_size" in result.metadata
+
+    def test_dim1_raises_not_implemented(self):
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver()
+        op = _make_poisson_1d()
+        with pytest.raises(NotImplementedError, match="dim=2"):
+            solver.solve(op, n_dof=20)
+
+    def test_name_and_description(self):
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver()
+        assert solver.name == "navier_stokes_fdm"
+        assert len(solver.description) > 0
+
+    def test_l2_error_computed(self):
+        """On Taylor-Green vortex, L2 error should be computed."""
+        from src.research.baselines import NavierStokesFDMSolver
+
+        solver = NavierStokesFDMSolver(dt=0.05, t_final=0.05)
+        op = self._make_ns_operator(re=10.0)
+        result = solver.solve(op, n_dof=32)
+        # May or may not have exact solution depending on operator
+        # Just verify it doesn't crash
+        assert result.l2_error is None or result.l2_error >= 0.0

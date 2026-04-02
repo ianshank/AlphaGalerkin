@@ -135,6 +135,7 @@ Key highlights of this release:
   - Stage 8: Chess Pipeline Tests in `.github/workflows/ci.yml`
   - Coverage gate `--cov-fail-under=80` for `chess.py` (97%) and `wrapper.py` (100%)
   - CI Success gate requires chess tests
+### Changed
 
 - **Game-agnostic self-play**: `SelfPlayWorker` now accepts optional `GameInterface` parameter
 - **Game-agnostic trainer**: `Trainer.__init__()` accepts `game` parameter, forwarded to worker

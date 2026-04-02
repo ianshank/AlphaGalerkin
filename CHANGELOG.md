@@ -141,6 +141,7 @@ Key highlights of this release:
 - **Game-agnostic trainer**: `Trainer.__init__()` accepts `game` parameter, forwarded to worker
 - **Game-agnostic collator**: `VariableSizeCollator` and `SameSizeCollator` derive action mask size from `target_policy` tensor instead of hardcoded `board_size²+1`
 - `AlphaGalerkinModel` and `AlphaGalerkinFast` auto-select policy head by `action_space_size`
+### Fixed
 
 - **Underpromotion encode/decode mismatch** (`src/games/chess.py`): `_decode_move` used `[-1, 0, 1]` but `_encode_move` used `straight=0, left=1, right=2` — straight promotion from column 0 decoded as `to_col=-1`. Fixed to `[0, -1, 1]`.
 - **Collator action mask size** (`src/data/collate.py`): Both collators hardcoded `n_actions = board_size²+1` causing tensor size mismatch with chess's 4672-action policy. Fixed to detect per-experience policy encoding.

@@ -86,6 +86,11 @@ C4Container
 
         Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
 
+        Container(agents, "Agent Orchestration", "Python/Pydantic", "Multi-physics PDE solving via specialized sub-agents (Orchestrator, Collocation, Decomposition, Coupling, Meta)")
+        Container(engines, "Chess Engine Integration", "Python/UCI", "Stockfish evaluation, Elo calculation, UCI protocol adapter, tournament management")
+        Container(curriculum, "Curriculum Learning", "Python", "Progressive difficulty scheduling and model zoo management for multi-game training")
+        Container(demos, "SBIR Demo Suite", "Python", "End-to-end benchmark demonstrations for Navy/DOE/NSF/AFWERX proposals")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -119,6 +124,13 @@ C4Container
 
     Rel(neural_operator, compute, "GPU execution")
 
+    Rel(cli, agents, "Orchestrates multi-physics solving")
+    Rel(agents, pde_framework, "Delegates PDE sub-problems")
+    Rel(agents, neural_operator, "Uses for solution evaluation")
+    Rel(training_pipeline, curriculum, "Stages training progression")
+    Rel(training_pipeline, engines, "Evaluates vs Stockfish")
+    Rel(cli, demos, "Generates SBIR benchmark reports")
+
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
@@ -138,6 +150,10 @@ C4Container
 | **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
 | **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
+| **Agent Orchestration** | Multi-physics PDE decomposition and coupling via specialized sub-agents | Python, Pydantic, structlog |
+| **Chess Engine Integration** | UCI protocol, Elo evaluation, tournament management | Python, Stockfish, UCI |
+| **Curriculum Learning** | Progressive board size and difficulty scheduling | Python, model zoo |
+| **SBIR Demo Suite** | End-to-end benchmark demos for government proposal validation | Python, Matplotlib, JSON |
 
 ---
 
@@ -1495,6 +1511,37 @@ C4Component
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
+
+---
+
+## Recent Architecture Changes (v0.3.0)
+
+### New Modules Added
+- **`src/agents/`** — Multi-physics agent orchestration (`OrchestratorAgent`, `CollocationAgent`, `DecompositionAgent`, `CouplingAgent`, `MetaAgent`)
+- **`src/engines/`** — UCI chess engine integration (`UCIAdapter`, `EloCalculator`, `EngineMatch`, `TournamentManager`)
+- **`src/curriculum/`** — Progressive training curriculum with model zoo integration
+- **`src/tournament/`** — Chess tournament management and Elo rating system
+- **`src/demos/`** — SBIR benchmark demonstration scripts
+- **`src/research/`** — Classical solver baselines (FDM, AMR, PINN) and `PDEBenchmarkRunner`
+- **`src/pde/geometry.py`** — Domain abstractions (Rectangular, L-shaped, Cylinder)
+- **`src/pde/time_stepping.py`** — Time integrators (ForwardEuler, RK4, CrankNicolson)
+- **`src/pde/games/swarm_planning.py`** — Multi-agent swarm with potential field avoidance
+- **`src/games/pettingzoo_adapter.py`** — PettingZoo `ParallelEnv` wrapper
+- **`src/training/base_trainer.py`** — Abstract `BaseTrainer[ConfigT]` with shared AMP/grad/LR
+- **`src/training/losses/`** — Unified `LossRegistry` with `get_loss()` factory
+
+### Key Architecture Decisions (v0.3.0)
+- Game-agnostic self-play: `SelfPlayWorker` accepts any `GameInterface` (Go, Chess, PDE)
+- Action mask derived from policy tensor size, not hardcoded `board_size²+1`
+- DDP-safe: `_training_resolution` mutation moved out of `forward()`
+- LBB fields exposed in config (Babuska-Brezzi condition): `lbb_loss_weight`, `lbb_target`, `lbb_eps`
+- Coverage gates: 85% overall + per-module, nightly CI schedule
+
+---
+
+*Last Updated: 2026-04-01*
+*Architecture Version: 3.0.0*
+*Corresponds to AlphaGalerkin v0.3.0*
 
 ---
 

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+> **Branch and PR cleanup** — removed 28 stale remote branches and 6 open stale PRs.
+
+## [0.3.0] - 2026-04-01
+
+### Summary
+
+Key highlights of this release:
+
+- **Chess Self-Play Training Pipeline** — AlphaZero methodology, 4672-action dense policy, 119-channel state encoding
+- **SBIR Readiness Infrastructure** — Navy N252-088, DOE ASCR, NSF SBIR, AFWERX proposal configs and benchmark suite
+- **Advanced PDE Operators** — NavierStokes (Taylor-Green), L-shaped Poisson (singularity), enhanced Burgers (Cole-Hopf)
+- **Domain Geometry & Time-Stepping module** — Rectangular, L-shaped, Cylinder domains; ForwardEuler, RK4, CrankNicolson
+- **Multi-Agent Swarm Planning** — PettingZoo `ParallelEnv` adapter, potential field obstacle avoidance
+- **Unified Loss Package & BaseTrainer consolidation** — `LossRegistry`, `get_loss()` factory, shared AMP/grad/LR in `BaseTrainer`
+- **CI/CD hardening** — 85% coverage gates, nightly schedule, Stage 8 chess pipeline
+- **218+ new tests** across PDE, research, training, and games modules
+
+---
+
 ### Added
 
 - **SBIR Readiness Infrastructure** (Navy N252-088, DOE ASCR, NSF, AFWERX)
@@ -114,14 +135,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Stage 8: Chess Pipeline Tests in `.github/workflows/ci.yml`
   - Coverage gate `--cov-fail-under=80` for `chess.py` (97%) and `wrapper.py` (100%)
   - CI Success gate requires chess tests
-
 ### Changed
 
 - **Game-agnostic self-play**: `SelfPlayWorker` now accepts optional `GameInterface` parameter
 - **Game-agnostic trainer**: `Trainer.__init__()` accepts `game` parameter, forwarded to worker
 - **Game-agnostic collator**: `VariableSizeCollator` and `SameSizeCollator` derive action mask size from `target_policy` tensor instead of hardcoded `board_size²+1`
 - `AlphaGalerkinModel` and `AlphaGalerkinFast` auto-select policy head by `action_space_size`
-
 ### Fixed
 
 - **Underpromotion encode/decode mismatch** (`src/games/chess.py`): `_decode_move` used `[-1, 0, 1]` but `_encode_move` used `straight=0, left=1, right=2` — straight promotion from column 0 decoded as `to_col=-1`. Fixed to `[0, -1, 1]`.

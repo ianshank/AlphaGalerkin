@@ -1,7 +1,7 @@
 # AlphaGalerkin Next Steps Plan
 
 > **Investigation Date:** 2026-02-01
-> **Status:** Active — Milestone 3 (Chess) ✅ Complete
+> **Status:** Active — Milestones 1, 2, 3 ✅ Complete
 > **Methodology:** Universal Dev Agent with Agentic Sub-Tasks
 
 ---
@@ -12,10 +12,9 @@ Based on comprehensive codebase exploration, AlphaGalerkin is a **mature v2.0 im
 
 | Gap Category | Severity | Modules Affected |
 |--------------|----------|------------------|
-| **No CI/CD Pipeline** | Critical | All |
-| **Incomplete Implementations** | High | Video Compression, Multi-Game, PDE |
+| ~~No CI/CD Pipeline~~ | ✅ Fixed | All |
+| ~~Video Compression Hyperprior~~ | ✅ Fixed | Video Compression |
 | **Integration Gaps** | Medium | PDE-Training, Curriculum Learning |
-| **Testing Gaps** | Medium | SGF, Experiments, CLI Tools |
 | **Documentation Gaps** | Low | Distributed, PDE, Edge Deployment |
 
 ---
@@ -35,11 +34,20 @@ CONSTRAINTS:
 
 ---
 
-## Milestone 1: CI/CD & Production Foundation
+## Milestone 1: CI/CD & Production Foundation ✅
 
 **Goal:** Establish automated quality gates and reproducible builds.
 **Duration:** 1-2 days
 **Subagents:** Planner, SQE, Orchestrator
+
+**Status:** ✅ **COMPLETED** (January 2026 → March 2026)
+
+### What Was Delivered
+- GitHub Actions CI workflow (`.github/workflows/ci.yml`) with 8 stages including chess pipeline
+- Coverage gates: 85% overall, 85% per-module (pde, modeling, training, research)
+- MyPy strict enforcement (`continue-on-error: false`)
+- Nightly schedule (`cron: '0 4 * * *'`) and performance benchmark job
+- Pre-commit hooks (`.pre-commit-config.yaml`) with ruff, mypy, trailing whitespace
 
 ### Epic 1.1: GitHub Actions CI Pipeline
 
@@ -95,11 +103,20 @@ CONSTRAINTS:
 
 ---
 
-## Milestone 2: Critical Bug Fixes
+## Milestone 2: Critical Bug Fixes ✅
 
 **Goal:** Fix incomplete implementations blocking production use.
 **Duration:** 2-3 days
 **Subagents:** Coder, SQE, Reviewer
+
+**Status:** ✅ **COMPLETED** (February 2026)
+
+### What Was Delivered
+- Video Compression Hyperprior: proper z_bitstream encoding/decoding for entropy model ✅
+- Collator action mask size: fixed tensor size mismatch for chess 4672-action policy ✅
+- Chess underpromotion encode/decode mismatch fixed ✅
+- MCTS tree advance bug fixed ✅
+- Race condition in `forward()` DDP mutation fixed ✅
 
 ### Epic 2.1: Video Compression Hyperprior
 
@@ -333,6 +350,77 @@ CONSTRAINTS:
 
 ---
 
+## Milestone 8: Agent Orchestration Framework ✅
+
+**Goal:** Multi-physics PDE solving with specialized sub-agents.
+**Status:** ✅ **COMPLETED** (March-April 2026)
+
+### What Was Delivered
+- `src/agents/` — Multi-physics PDE agent orchestration framework
+  - `OrchestratorAgent`, `CollocationAgent`, `DecompositionAgent`, `CouplingAgent`
+  - `MetaAgent` with message passing between agents
+  - Pydantic-validated `AgentConfig` schemas, `AgentRegistry`
+- `src/research/` — SBIR benchmarking infrastructure
+  - Classical solver baselines: FDM, Dorfler AMR, PINN
+  - `PDEBenchmarkRunner` with JSON/Markdown reports + convergence rates
+  - Comparison, reporter, and validator modules
+- `src/engines/` — UCI chess engine integration (Stockfish evaluation)
+- `src/tournament/` — Tournament management and Elo calculation
+- `src/curriculum/` — Curriculum learning infrastructure
+- SBIR proposal configs (Navy N252-088, DOE ASCR C59, NSF SBIR, AFWERX Open)
+
+### Remaining (Sprint 3-4)
+- [ ] Multi-field PDE coupling (fluid-structure interaction)
+- [ ] Uncertainty quantification for PDE solutions
+
+---
+
+## Milestone 9: Production Hardening (v0.4.0)
+
+**Goal:** Production-ready deployment and extended benchmarking.
+**Duration:** 3-4 weeks
+**Priority:** P1
+
+### Epic 9.1: SBIR Benchmark Demos
+
+**Story 9.1.1: End-to-End Demo Script**
+- **Task:** Create `src/demos/sbir_demo.py` with benchmark visualization
+- **Acceptance Criteria:**
+  - [ ] End-to-end demo runs in <5 minutes
+  - [ ] Compares AlphaGalerkin vs FDM, AMR, PINN baselines
+  - [ ] Generates HTML report with convergence plots
+
+**Story 9.1.2: Multi-Field PDE Support**
+- **Task:** Extend `ModelOutput` for vector field predictions
+- **Acceptance Criteria:**
+  - [ ] NavierStokes velocity+pressure output
+  - [ ] Fluid-structure interaction coupling
+
+### Epic 9.2: Deployment & Export
+
+**Story 9.2.1: ONNX Production Export**
+- **Task:** Complete ONNX export pipeline with dynamic shapes
+- **Acceptance Criteria:**
+  - [ ] Export works for Go (9x9, 13x13, 19x19) and Chess
+  - [ ] Quantized INT8 model passes accuracy threshold
+
+**Story 9.2.2: BaseTrainer Migration**
+- **Task:** Migrate `Trainer` and `OperatorTrainer` to `BaseTrainer` inheritance
+- **Acceptance Criteria:**
+  - [ ] DRY — shared AMP, grad clip, LR scheduling in base class
+  - [ ] All existing tests pass
+
+### Epic 9.3: PDE Training Loop
+
+**Story 9.3.1: PDE Self-Play via MCTS**
+- **Task:** Wire `BasisSelectionGame` + `MeshRefinementGame` to standard `Trainer`
+- **Acceptance Criteria:**
+  - [ ] Config flag `training.game=pde_basis` works end-to-end
+  - [ ] Error reduction logged per episode
+  - [ ] PettingZoo training loop for swarm games
+
+---
+
 ## Implementation Priority Matrix
 
 | Priority | Milestone | Estimated Effort | Dependencies |
@@ -381,6 +469,8 @@ These can be completed without blocking dependencies:
 | Test Coverage | Chess modules | ✅ 97% | >80% | `--cov-fail-under=80` |
 | Multi-Game | Games implemented | ✅ 2 (Go, Chess) | 2+ | Registry count |
 | Engine Eval | Stockfish integration | ✅ Yes | Yes | `_run_engine_evaluation()` |
+| Agent Framework | Agents implemented | ✅ 7 agents | 1+ | Agent count |
+| SBIR Benchmarks | Benchmark runner | ✅ Yes | Yes | PDEBenchmarkRunner |
 | Distributed | Multi-node validation | No | Yes | Integration test passes |
 | PDE | Training integration | No | Yes | Config option works |
 | Video Compression | Hyperprior complete | No | Yes | No TODO comments |
@@ -444,6 +534,6 @@ Orchestrator     → Integration, deployment, automation
 
 ---
 
-*Last Updated: 2026-03-07*
-*Version: 1.1.0*
+*Last Updated: 2026-04-01*
+*Version: 2.0.0*
 *Author: Claude Code Agent Investigation*

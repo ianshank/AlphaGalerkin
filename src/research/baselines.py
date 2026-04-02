@@ -71,6 +71,85 @@ class SolverConfig(BaseModel):
     tolerance: float = Field(default=1e-10, gt=0, description="Convergence tolerance")
 
 
+class FDMConfig(SolverConfig):
+    """Configuration for finite difference solvers."""
+
+    min_grid_points: int = Field(
+        default=3, ge=2,
+        description="Minimum grid points per dimension",
+    )
+
+
+class AMRConfig(SolverConfig):
+    """Configuration for adaptive mesh refinement solvers."""
+
+    marking_fraction: float = Field(
+        default=0.3, gt=0.0, lt=1.0,
+        description="Dorfler bulk-chasing marking fraction (theta)",
+    )
+    max_refinements: int = Field(
+        default=10, ge=1,
+        description="Maximum number of refinement iterations",
+    )
+    initial_dof_divisor: int = Field(
+        default=4, ge=1,
+        description="Divisor for initial DOF count (n_dof // divisor)",
+    )
+    max_initial_points_1d: int = Field(
+        default=8, ge=2,
+        description="Maximum initial grid points for 1D AMR",
+    )
+    min_initial_points: int = Field(
+        default=4, ge=2,
+        description="Minimum initial grid points (1D) or per-side (2D)",
+    )
+    initial_side_divisor_2d: int = Field(
+        default=2, ge=1,
+        description="Divisor for initial 2D side length (sqrt(n_dof) // divisor)",
+    )
+    min_initial_side_2d: int = Field(
+        default=3, ge=2,
+        description="Minimum initial side grid points for 2D AMR",
+    )
+
+
+class PINNConfig(SolverConfig):
+    """Configuration for PINN solver."""
+
+    hidden_dim: int = Field(default=64, ge=8, description="Hidden layer dimension")
+    n_layers: int = Field(default=3, ge=1, description="Number of hidden layers")
+    n_epochs: int = Field(default=2000, ge=1, description="Training epochs")
+    learning_rate: float = Field(default=1e-3, gt=0, description="Learning rate")
+    n_collocation: int = Field(default=1000, ge=10, description="Interior collocation points")
+    bc_loss_weight: float = Field(default=10.0, gt=0, description="Boundary condition loss weight")
+    n_boundary_points: int = Field(default=50, ge=4, description="Boundary points per epoch")
+    log_interval: int = Field(default=500, ge=1, description="Logging interval (epochs)")
+
+
+class NavierStokesConfig(SolverConfig):
+    """Configuration for Navier-Stokes FDM solver."""
+
+    dt: float = Field(default=0.01, gt=0, description="Time step size")
+    t_final: float = Field(default=1.0, gt=0, description="Final simulation time")
+    default_viscosity: float = Field(
+        default=0.01, gt=0,
+        description="Fallback viscosity if operator lacks viscosity attribute",
+    )
+    min_grid_points: int = Field(default=4, ge=2, description="Minimum grid points per side")
+    cfl_safety: float = Field(
+        default=0.25, gt=0, le=1.0,
+        description="CFL stability factor for diffusion (dt <= cfl_safety * h^2 / nu)",
+    )
+    viscosity_floor: float = Field(
+        default=1e-12, gt=0,
+        description="Minimum viscosity for CFL denominator to avoid division by zero",
+    )
+    log_fraction: int = Field(
+        default=10, ge=1,
+        description="Log every n_steps // log_fraction steps",
+    )
+
+
 class BaseSolver(ABC):
     """Protocol for classical PDE solvers.
 
@@ -124,8 +203,8 @@ class UniformFDMSolver(BaseSolver):
     name = "uniform_fdm"
     description = "Uniform-grid finite difference method"
 
-    def __init__(self, config: SolverConfig | None = None) -> None:
-        self.config = config or SolverConfig()
+    def __init__(self, config: FDMConfig | None = None) -> None:
+        self.config = config or FDMConfig()
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve using finite differences on a uniform grid."""
@@ -164,14 +243,14 @@ class UniformFDMSolver(BaseSolver):
     # ------------------------------------------------------------------
     # 1D solver
     # ------------------------------------------------------------------
-    @staticmethod
     def _solve_1d(
+        self,
         operator: PDEOperator,
         n_dof: int,
         sparse: Any,
         spsolve: Any,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        n = max(n_dof, 3)
+        n = max(n_dof, self.config.min_grid_points)
         x = np.linspace(
             float(operator.domain_min[0]),
             float(operator.domain_max[0]),
@@ -209,14 +288,14 @@ class UniformFDMSolver(BaseSolver):
     # ------------------------------------------------------------------
     # 2D solver
     # ------------------------------------------------------------------
-    @staticmethod
     def _solve_2d(
+        self,
         operator: PDEOperator,
         n_dof: int,
         sparse: Any,
         spsolve: Any,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        n = max(int(np.sqrt(n_dof)), 3)
+        n = max(int(np.sqrt(n_dof)), self.config.min_grid_points)
         xs = np.linspace(
             float(operator.domain_min[0]),
             float(operator.domain_max[0]),
@@ -304,15 +383,15 @@ class DorflerAMRSolver(BaseSolver):
 
     def __init__(
         self,
-        marking_fraction: float = 0.3,
-        max_refinements: int = 10,
-        config: SolverConfig | None = None,
+        marking_fraction: float | None = None,
+        max_refinements: int | None = None,
+        config: AMRConfig | None = None,
     ) -> None:
-        if not 0.0 < marking_fraction < 1.0:
-            raise ValueError(f"marking_fraction must be in (0,1), got {marking_fraction}")
-        self.marking_fraction = marking_fraction
-        self.max_refinements = max_refinements
-        self.config = config or SolverConfig()
+        self.config = config or AMRConfig()
+        self.marking_fraction = marking_fraction if marking_fraction is not None else self.config.marking_fraction
+        self.max_refinements = max_refinements if max_refinements is not None else self.config.max_refinements
+        if not 0.0 < self.marking_fraction < 1.0:
+            raise ValueError(f"marking_fraction must be in (0,1), got {self.marking_fraction}")
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve with adaptive refinement via Dorfler marking.
@@ -368,7 +447,10 @@ class DorflerAMRSolver(BaseSolver):
         log: Any,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64], int]:
         """Run 1D AMR loop. Returns (solution, grid, n_refinements)."""
-        n_start = max(min(n_dof // 4, 8), 4)
+        n_start = max(
+            min(n_dof // self.config.initial_dof_divisor, self.config.max_initial_points_1d),
+            self.config.min_initial_points,
+        )
         x = np.linspace(
             float(operator.domain_min[0]),
             float(operator.domain_max[0]),
@@ -404,7 +486,10 @@ class DorflerAMRSolver(BaseSolver):
         Returns (solution, grid, n_refinements).
         """
         # Start with coarse grid
-        n_side = max(int(np.sqrt(n_dof)) // 2, 3)
+        n_side = max(
+            int(np.sqrt(n_dof)) // self.config.initial_side_divisor_2d,
+            self.config.min_initial_side_2d,
+        )
         xs = np.linspace(float(operator.domain_min[0]), float(operator.domain_max[0]), n_side + 1, dtype=np.float64)
         ys = np.linspace(float(operator.domain_min[1]), float(operator.domain_max[1]), n_side + 1, dtype=np.float64)
 
@@ -752,21 +837,21 @@ class SimplePINNSolver(BaseSolver):
 
     def __init__(
         self,
-        hidden_dim: int = 64,
-        n_layers: int = 3,
-        n_epochs: int = 2000,
-        learning_rate: float = 1e-3,
-        n_collocation: int = 1000,
-        bc_loss_weight: float = 10.0,
-        config: SolverConfig | None = None,
+        hidden_dim: int | None = None,
+        n_layers: int | None = None,
+        n_epochs: int | None = None,
+        learning_rate: float | None = None,
+        n_collocation: int | None = None,
+        bc_loss_weight: float | None = None,
+        config: PINNConfig | None = None,
     ) -> None:
-        self.hidden_dim = hidden_dim
-        self.n_layers = n_layers
-        self.n_epochs = n_epochs
-        self.learning_rate = learning_rate
-        self.n_collocation = n_collocation
-        self.bc_loss_weight = bc_loss_weight
-        self.config = config or SolverConfig()
+        self.config = config or PINNConfig()
+        self.hidden_dim = hidden_dim if hidden_dim is not None else self.config.hidden_dim
+        self.n_layers = n_layers if n_layers is not None else self.config.n_layers
+        self.n_epochs = n_epochs if n_epochs is not None else self.config.n_epochs
+        self.learning_rate = learning_rate if learning_rate is not None else self.config.learning_rate
+        self.n_collocation = n_collocation if n_collocation is not None else self.config.n_collocation
+        self.bc_loss_weight = bc_loss_weight if bc_loss_weight is not None else self.config.bc_loss_weight
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve by training a PINN."""
@@ -803,7 +888,7 @@ class SimplePINNSolver(BaseSolver):
             loss_pde = torch.mean(pde_residual**2)
 
             # Boundary loss
-            bc_coords_np = operator.generate_boundary_points(50, seed=None)
+            bc_coords_np = operator.generate_boundary_points(self.config.n_boundary_points, seed=None)
             bc_coords = torch.tensor(bc_coords_np, dtype=torch.float32, device=device)
             u_bc = net(bc_coords).squeeze(-1)
             bc_vals = operator.boundary_value(bc_coords_np)
@@ -815,7 +900,7 @@ class SimplePINNSolver(BaseSolver):
             loss.backward()
             optimizer.step()
 
-            if epoch % 500 == 0:
+            if epoch % self.config.log_interval == 0:
                 log.debug(
                     "pinn_epoch",
                     epoch=epoch,
@@ -896,13 +981,13 @@ class NavierStokesFDMSolver(BaseSolver):
 
     def __init__(
         self,
-        dt: float = 0.01,
-        t_final: float = 1.0,
-        config: SolverConfig | None = None,
+        dt: float | None = None,
+        t_final: float | None = None,
+        config: NavierStokesConfig | None = None,
     ) -> None:
-        self.dt = dt
-        self.t_final = t_final
-        self.config = config or SolverConfig()
+        self.config = config or NavierStokesConfig()
+        self.dt = dt if dt is not None else self.config.dt
+        self.t_final = t_final if t_final is not None else self.config.t_final
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve 2D NS using Chorin projection method."""
@@ -922,10 +1007,10 @@ class NavierStokesFDMSolver(BaseSolver):
         t0 = time.perf_counter()
 
         # Extract viscosity from operator
-        viscosity = getattr(operator, "viscosity", 0.01)
+        viscosity = getattr(operator, "viscosity", self.config.default_viscosity)
 
         # Grid setup
-        n = max(int(np.sqrt(n_dof / 2)), 4)
+        n = max(int(np.sqrt(n_dof / 2)), self.config.min_grid_points)
         x_min, x_max = float(operator.domain_min[0]), float(operator.domain_max[0])
         y_min, y_max = float(operator.domain_min[1]), float(operator.domain_max[1])
         xs = np.linspace(x_min, x_max, n, dtype=np.float64)
@@ -948,7 +1033,7 @@ class NavierStokesFDMSolver(BaseSolver):
                 uy = ic[:, 1].reshape(n, n)
 
         # Time stepping via Chorin projection
-        dt = min(self.dt, 0.25 * h**2 / max(viscosity, 1e-12))
+        dt = min(self.dt, self.config.cfl_safety * h**2 / max(viscosity, self.config.viscosity_floor))
         n_steps = int(self.t_final / dt)
 
         # Build Laplacian for pressure Poisson solve (interior only)
@@ -1026,7 +1111,7 @@ class NavierStokesFDMSolver(BaseSolver):
                     ux[i, j] = ux_star[i, j] - dt * dp_dx
                     uy[i, j] = uy_star[i, j] - dt * dp_dy
 
-            if step_idx % max(n_steps // 10, 1) == 0:
+            if step_idx % max(n_steps // self.config.log_fraction, 1) == 0:
                 log.debug("ns_step", step=step_idx, max_ux=float(np.max(np.abs(ux))))
 
         wall_time = time.perf_counter() - t0

@@ -13,7 +13,7 @@ import torch
 from src.games.interface import GamePhase, GameResult
 from src.games.state import GameState
 from src.pde.config import PDEConfig, PDEGameConfig, PDEType
-from src.pde.game_interface import PDEGameInterface
+from src.pde.game_interface import PDEGameInterface, PDEGameInterfaceConfig
 from src.pde.games.basis_selection import BasisSelectionGame
 from src.pde.operators import PoissonOperator
 
@@ -240,3 +240,130 @@ class TestPDEGameRegistration:
         game = GameRegistry().get("pde_basis")
         assert game is not None
         assert game.action_space_size > 0
+
+    def test_get_pde_mesh_game(self):
+        """Should be able to instantiate pde_mesh from registry."""
+        import src.pde.register_games  # noqa: F401
+        from src.games.registry import GameRegistry
+
+        game = GameRegistry().get("pde_mesh")
+        assert game is not None
+        assert game.action_space_size > 0
+
+    def test_pde_basis_custom_pde_type(self):
+        """PDEBasisSelectionInterface should accept custom PDE type."""
+        from src.pde.register_games import PDEBasisSelectionInterface
+
+        game = PDEBasisSelectionInterface(pde_type=PDEType.POISSON)
+        assert game.action_space_size > 0
+
+    def test_pde_mesh_custom_pde_type(self):
+        """PDEMeshRefinementInterface should accept custom PDE type."""
+        from src.pde.register_games import PDEMeshRefinementInterface
+
+        game = PDEMeshRefinementInterface(pde_type=PDEType.POISSON)
+        assert game.action_space_size > 0
+
+
+# ---------------------------------------------------------------------------
+# Winner / Phase Logic
+# ---------------------------------------------------------------------------
+
+
+class TestWinnerAndPhaseLogic:
+    def test_get_winner_non_terminal(self, pde_interface: PDEGameInterface):
+        """Winner should be None or an int for non-terminal state."""
+        state = pde_interface.initial_state()
+        winner = pde_interface.get_winner(state)
+        # Non-terminal: could be None (ambiguous) or -1 (initial error high)
+        assert winner is None or isinstance(winner, int)
+
+    def test_get_winner_with_convergence(self, basis_game: BasisSelectionGame):
+        """Winner should be +1 when error < tolerance."""
+        config = PDEGameInterfaceConfig(default_tolerance=999.0)
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        state = interface.initial_state()
+        winner = interface.get_winner(state)
+        assert winner == 1  # Error < very large tolerance
+
+    def test_get_winner_failure(self, basis_game: BasisSelectionGame):
+        """Winner should be -1 when error reduction is insufficient."""
+        config = PDEGameInterfaceConfig(
+            default_tolerance=1e-20,
+            convergence_reduction=1e-15,
+            failure_reduction=0.0001,
+        )
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        state = interface.initial_state()
+        # Inject initial_error so ratio > failure_reduction
+        state.metadata["_initial_error"] = state.metadata["error_estimate"] * 0.9
+        winner = interface.get_winner(state)
+        assert winner == -1
+
+    def test_get_phase_opening(self, basis_game: BasisSelectionGame):
+        """Phase should be OPENING when error >> tolerance."""
+        config = PDEGameInterfaceConfig(
+            default_tolerance=1e-20,
+            phase_opening_multiplier=2.0,
+        )
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        state = interface.initial_state()
+        phase = interface.get_phase(state)
+        assert phase == GamePhase.OPENING
+
+    def test_get_phase_midgame(self, basis_game: BasisSelectionGame):
+        """Phase should be MIDGAME when tolerance < error < tolerance * multiplier."""
+        state_init = basis_game.get_initial_state()
+        error = state_init.error_estimate
+        # Set tolerance so: tolerance < error < tolerance * multiplier
+        config = PDEGameInterfaceConfig(
+            default_tolerance=error * 0.5,
+            phase_opening_multiplier=10.0,
+        )
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        state = interface.initial_state()
+        phase = interface.get_phase(state)
+        assert phase == GamePhase.MIDGAME
+
+    def test_get_phase_endgame(self, basis_game: BasisSelectionGame):
+        """Phase should be ENDGAME when error < tolerance."""
+        config = PDEGameInterfaceConfig(default_tolerance=999.0)
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        state = interface.initial_state()
+        phase = interface.get_phase(state)
+        assert phase == GamePhase.ENDGAME
+
+    def test_action_mask_with_torch_tensor(self, pde_interface: PDEGameInterface):
+        """Verify action mask works when underlying returns Tensor."""
+        state = pde_interface.initial_state()
+        mask = pde_interface.get_action_mask(state)
+        assert mask.mask.dtype == bool
+        assert any(mask.mask)
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+
+class TestPDEGameInterfaceConfig:
+    def test_default_config(self):
+        config = PDEGameInterfaceConfig()
+        assert config.default_tolerance == 0.01
+        assert config.phase_opening_multiplier == 10.0
+        assert config.convergence_reduction == 0.1
+        assert config.failure_reduction == 0.5
+
+    def test_custom_config(self):
+        config = PDEGameInterfaceConfig(
+            default_tolerance=0.05,
+            phase_opening_multiplier=5.0,
+            convergence_reduction=0.2,
+            failure_reduction=0.6,
+        )
+        assert config.default_tolerance == 0.05
+        assert config.phase_opening_multiplier == 5.0
+
+    def test_invalid_config_rejects_bad_values(self):
+        with pytest.raises(Exception):
+            PDEGameInterfaceConfig(default_tolerance=-1.0)

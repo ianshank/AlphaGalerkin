@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 import torch
+from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor
 
 from src.games.interface import GameInterface, GamePhase, GameResult
@@ -25,6 +26,29 @@ from src.games.state import ActionMask, GameState
 if TYPE_CHECKING:
     from src.pde.config import PDEConfig, PDEGameConfig
     from src.pde.game import PDEGame, PDEState
+
+
+class PDEGameInterfaceConfig(BaseModel):
+    """Configuration for PDE-to-GameInterface bridge thresholds."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_tolerance: float = Field(
+        default=0.01, gt=0,
+        description="Fallback tolerance if operator config lacks tolerance attribute",
+    )
+    phase_opening_multiplier: float = Field(
+        default=10.0, gt=1.0,
+        description="Error > tolerance * multiplier → OPENING phase",
+    )
+    convergence_reduction: float = Field(
+        default=0.1, gt=0.0, lt=1.0,
+        description="Error reduction ratio for +1 winner (e.g. 0.1 = 90%+ reduction)",
+    )
+    failure_reduction: float = Field(
+        default=0.5, gt=0.0, lt=1.0,
+        description="Error reduction ratio above which result is -1 (failure)",
+    )
 
 logger = structlog.get_logger(__name__)
 
@@ -53,16 +77,19 @@ class PDEGameInterface(GameInterface):
         self,
         pde_game: PDEGame,
         grid_size: int = 16,
+        interface_config: PDEGameInterfaceConfig | None = None,
     ) -> None:
         """Initialize PDE game interface.
 
         Args:
             pde_game: Concrete PDEGame instance (BasisSelectionGame, etc.).
             grid_size: Resolution for the tensor encoding grid.
+            interface_config: Threshold configuration for phase/winner logic.
 
         """
         self.pde_game = pde_game
         self.grid_size = grid_size
+        self.interface_config = interface_config or PDEGameInterfaceConfig()
         self._action_space_size = pde_game.action_space_size
         self._state_channels = pde_game.state_channels
 
@@ -164,8 +191,10 @@ class PDEGameInterface(GameInterface):
         if self.is_terminal(state):
             return GamePhase.TERMINAL
         pde_state = self._game_to_pde_state(state)
-        tolerance = getattr(self.pde_game.config, "tolerance", 0.01)
-        if pde_state.error_estimate > tolerance * 10:
+        tolerance = getattr(
+            self.pde_game.config, "tolerance", self.interface_config.default_tolerance,
+        )
+        if pde_state.error_estimate > tolerance * self.interface_config.phase_opening_multiplier:
             return GamePhase.OPENING
         elif pde_state.error_estimate > tolerance:
             return GamePhase.MIDGAME
@@ -218,15 +247,17 @@ class PDEGameInterface(GameInterface):
         -1: Budget exhausted with poor error
          0: Ambiguous / partial convergence
         """
-        tolerance = getattr(self.pde_game.config, "tolerance", 0.01)
+        tolerance = getattr(
+            self.pde_game.config, "tolerance", self.interface_config.default_tolerance,
+        )
 
         if pde_state.error_estimate < tolerance:
             return 1
 
         # Check error reduction from initial state
         initial_error = state.metadata.get("_initial_error", pde_state.error_estimate)
-        if initial_error > 0 and pde_state.error_estimate / initial_error < 0.1:
-            return 1  # 90%+ reduction
-        elif initial_error > 0 and pde_state.error_estimate / initial_error > 0.5:
-            return -1  # Less than 50% reduction
+        if initial_error > 0 and pde_state.error_estimate / initial_error < self.interface_config.convergence_reduction:
+            return 1  # Strong error reduction (default: 90%+)
+        elif initial_error > 0 and pde_state.error_estimate / initial_error > self.interface_config.failure_reduction:
+            return -1  # Weak error reduction (default: <50%)
         return 0

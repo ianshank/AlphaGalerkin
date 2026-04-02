@@ -22,7 +22,8 @@ from src.pde.config import PDEConfig, PDEGameConfig, PDEType
 from src.pde.game_interface import PDEGameInterface
 from src.pde.games.basis_selection import BasisSelectionGame
 from src.pde.games.mesh_refinement import MeshRefinementGame
-from src.pde.operators import PoissonOperator
+from src.pde.operators import PDEOperator
+from src.pde.registry import PDEOperatorRegistry
 
 logger = structlog.get_logger(__name__)
 
@@ -41,6 +42,17 @@ def _create_default_game_config(
     return PDEGameConfig(name=f"default_{game_mode}", pde_config=pde_config, game_mode=game_mode)
 
 
+def _create_operator(pde_type: PDEType, pde_config: PDEConfig) -> PDEOperator:
+    """Create a PDE operator from the registry by type.
+
+    Uses the PDEOperatorRegistry so new operator types are automatically
+    supported without modifying this file.
+    """
+    registry = PDEOperatorRegistry()
+    operator_cls = registry.get(pde_type.value)
+    return operator_cls(pde_config)
+
+
 @register_game("pde_basis")
 class PDEBasisSelectionInterface(PDEGameInterface):
     """PDE basis selection game registered as a GameInterface.
@@ -51,14 +63,19 @@ class PDEBasisSelectionInterface(PDEGameInterface):
     name = "pde_basis"
     description = "MCTS-guided Galerkin basis selection for PDE solving"
 
-    def __init__(self) -> None:
-        """Initialize with default Poisson basis selection game."""
-        pde_config = _create_default_pde_config()
-        game_config = _create_default_game_config("basis_selection")
-        operator = PoissonOperator(pde_config)
+    def __init__(self, pde_type: PDEType = PDEType.POISSON) -> None:
+        """Initialize with configurable PDE operator.
+
+        Args:
+            pde_type: Which PDE operator to use (defaults to Poisson).
+
+        """
+        pde_config = _create_default_pde_config(pde_type)
+        game_config = _create_default_game_config("basis_selection", pde_type)
+        operator = _create_operator(pde_type, pde_config)
         pde_game = BasisSelectionGame(operator, game_config)
         super().__init__(pde_game=pde_game)
-        logger.info("pde_basis_game_registered", pde_type="poisson")
+        logger.info("pde_basis_game_registered", pde_type=pde_type.value)
 
 
 @register_game("pde_mesh")
@@ -71,11 +88,16 @@ class PDEMeshRefinementInterface(PDEGameInterface):
     name = "pde_mesh"
     description = "MCTS-guided adaptive mesh refinement for PDE solving"
 
-    def __init__(self) -> None:
-        """Initialize with default Poisson mesh refinement game."""
-        pde_config = _create_default_pde_config()
-        game_config = _create_default_game_config("mesh_refinement")
-        operator = PoissonOperator(pde_config)
+    def __init__(self, pde_type: PDEType = PDEType.POISSON) -> None:
+        """Initialize with configurable PDE operator.
+
+        Args:
+            pde_type: Which PDE operator to use (defaults to Poisson).
+
+        """
+        pde_config = _create_default_pde_config(pde_type)
+        game_config = _create_default_game_config("mesh_refinement", pde_type)
+        operator = _create_operator(pde_type, pde_config)
         pde_game = MeshRefinementGame(operator, game_config)
         super().__init__(pde_game=pde_game)
-        logger.info("pde_mesh_game_registered", pde_type="poisson")
+        logger.info("pde_mesh_game_registered", pde_type=pde_type.value)

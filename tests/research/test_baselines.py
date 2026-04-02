@@ -17,8 +17,13 @@ import pytest
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import PoissonOperator
 from src.research.baselines import (
+    AMRConfig,
     BaseSolver,
     DorflerAMRSolver,
+    FDMConfig,
+    NavierStokesConfig,
+    NavierStokesFDMSolver,
+    PINNConfig,
     SimplePINNSolver,
     SolverConfig,
     SolverResult,
@@ -547,3 +552,112 @@ class TestNavierStokesFDMSolver:
         # May or may not have exact solution depending on operator
         # Just verify it doesn't crash
         assert result.l2_error is None or result.l2_error >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# Per-Solver Config Tests
+# ---------------------------------------------------------------------------
+
+
+class TestPerSolverConfigs:
+    """Validate that per-solver Pydantic configs surface all parameters."""
+
+    def test_fdm_config_defaults(self):
+        config = FDMConfig()
+        assert config.min_grid_points == 3
+        assert config.seed == 42
+        assert config.tolerance == 1e-10
+
+    def test_fdm_config_custom(self):
+        config = FDMConfig(min_grid_points=5, seed=123)
+        assert config.min_grid_points == 5
+        assert config.seed == 123
+
+    def test_fdm_config_validation(self):
+        with pytest.raises(Exception):
+            FDMConfig(min_grid_points=0)  # ge=2
+
+    def test_amr_config_defaults(self):
+        config = AMRConfig()
+        assert config.marking_fraction == 0.3
+        assert config.max_refinements == 10
+        assert config.initial_dof_divisor == 4
+        assert config.max_initial_points_1d == 8
+        assert config.min_initial_points == 4
+        assert config.initial_side_divisor_2d == 2
+        assert config.min_initial_side_2d == 3
+
+    def test_amr_config_custom(self):
+        config = AMRConfig(marking_fraction=0.5, max_refinements=20)
+        assert config.marking_fraction == 0.5
+        assert config.max_refinements == 20
+
+    def test_amr_config_validation(self):
+        with pytest.raises(Exception):
+            AMRConfig(marking_fraction=1.5)  # lt=1.0
+
+    def test_pinn_config_defaults(self):
+        config = PINNConfig()
+        assert config.hidden_dim == 64
+        assert config.n_layers == 3
+        assert config.n_epochs == 2000
+        assert config.learning_rate == 1e-3
+        assert config.n_collocation == 1000
+        assert config.bc_loss_weight == 10.0
+        assert config.n_boundary_points == 50
+        assert config.log_interval == 500
+
+    def test_pinn_config_custom(self):
+        config = PINNConfig(hidden_dim=128, n_epochs=100, log_interval=10)
+        assert config.hidden_dim == 128
+        assert config.n_epochs == 100
+        assert config.log_interval == 10
+
+    def test_ns_config_defaults(self):
+        config = NavierStokesConfig()
+        assert config.dt == 0.01
+        assert config.t_final == 1.0
+        assert config.default_viscosity == 0.01
+        assert config.min_grid_points == 4
+        assert config.cfl_safety == 0.25
+        assert config.viscosity_floor == 1e-12
+        assert config.log_fraction == 10
+
+    def test_ns_config_custom(self):
+        config = NavierStokesConfig(dt=0.005, t_final=2.0, cfl_safety=0.1)
+        assert config.dt == 0.005
+        assert config.t_final == 2.0
+        assert config.cfl_safety == 0.1
+
+    def test_ns_config_validation(self):
+        with pytest.raises(Exception):
+            NavierStokesConfig(cfl_safety=1.5)  # le=1.0
+
+    def test_solver_uses_fdm_config(self):
+        config = FDMConfig(min_grid_points=5)
+        solver = UniformFDMSolver(config=config)
+        assert solver.config.min_grid_points == 5
+
+    def test_solver_uses_amr_config(self):
+        config = AMRConfig(marking_fraction=0.4, max_refinements=5)
+        solver = DorflerAMRSolver(config=config)
+        assert solver.marking_fraction == 0.4
+        assert solver.max_refinements == 5
+
+    def test_amr_constructor_overrides_config(self):
+        """Constructor args should override config defaults."""
+        config = AMRConfig(marking_fraction=0.4)
+        solver = DorflerAMRSolver(marking_fraction=0.2, config=config)
+        assert solver.marking_fraction == 0.2  # Constructor wins
+
+    def test_solver_uses_pinn_config(self):
+        config = PINNConfig(hidden_dim=32, n_epochs=10)
+        solver = SimplePINNSolver(config=config)
+        assert solver.hidden_dim == 32
+        assert solver.n_epochs == 10
+
+    def test_solver_uses_ns_config(self):
+        config = NavierStokesConfig(dt=0.005, t_final=0.5)
+        solver = NavierStokesFDMSolver(config=config)
+        assert solver.dt == 0.005
+        assert solver.t_final == 0.5

@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_MAX_MOVES
 import structlog
 import torch
 
@@ -93,7 +95,7 @@ class Evaluator:
         """
         self.model = model
         self.device = torch.device(device)
-        self.board_sizes = board_sizes or [9, 13, 19]
+        self.board_sizes = board_sizes or list(DEFAULT_BOARD_SIZES)
         self.game = game
 
         # MCTS configuration
@@ -372,7 +374,7 @@ class Evaluator:
         board_size: int,
         black_evaluator: Any,
         white_evaluator: Any,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
     ) -> tuple[float, int]:
         """Play a single game between two evaluators.
 
@@ -407,7 +409,7 @@ class Evaluator:
         self,
         black_evaluator: Any,
         white_evaluator: Any,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
     ) -> tuple[float, int]:
         """Play a game using the GameInterface abstraction.
 
@@ -460,7 +462,7 @@ class Evaluator:
         board_size: int,
         black_evaluator: Any,
         white_evaluator: Any,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
     ) -> tuple[float, int]:
         """Legacy Go-specific game play using SimpleGoGame.
 

@@ -13,7 +13,6 @@ from src.training.losses.physics import (
     PhysicsLossConfig,
     PhysicsLossOutput,
     ResidualLoss,
-    _get_device_from_model,
 )
 
 __all__ = [
@@ -25,5 +24,4 @@ __all__ = [
     "PhysicsLossConfig",
     "PhysicsLossOutput",
     "ResidualLoss",
-    "_get_device_from_model",
 ]

@@ -13,6 +13,14 @@ from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 
+from src.constants import (
+    DEFAULT_DIRICHLET_ALPHA,
+    DEFAULT_DIRICHLET_EPSILON,
+    DEFAULT_MCTS_SIMULATIONS,
+    DEFAULT_PUCT_CONSTANT,
+    DEFAULT_VIRTUAL_LOSS,
+)
+
 from src.mcts.node import MCTSNode
 
 if TYPE_CHECKING:
@@ -59,11 +67,11 @@ class MCTS:
     def __init__(
         self,
         evaluator: Evaluator,
-        c_puct: float = 1.5,
-        n_simulations: int = 800,
-        dirichlet_alpha: float = 0.03,
-        dirichlet_epsilon: float = 0.25,
-        virtual_loss: float = 3.0,
+        c_puct: float = DEFAULT_PUCT_CONSTANT,
+        n_simulations: int = DEFAULT_MCTS_SIMULATIONS,
+        dirichlet_alpha: float = DEFAULT_DIRICHLET_ALPHA,
+        dirichlet_epsilon: float = DEFAULT_DIRICHLET_EPSILON,
+        virtual_loss: float = DEFAULT_VIRTUAL_LOSS,
     ) -> None:
         """Initialize MCTS.
 

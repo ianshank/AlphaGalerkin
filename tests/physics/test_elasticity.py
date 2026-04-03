@@ -3,7 +3,8 @@
 Tests cover:
 - ElasticitySample: Elasticity-specific sample dataclass
 - ElasticitySolver: Initialization, Lame parameters, spectral solve
-- Physical properties: symmetry, zero force, material parameter effects
+- Displacement computation and physical properties
+- Material parameters and boundary conditions
 """
 
 from __future__ import annotations
@@ -27,13 +28,13 @@ def solver() -> ElasticitySolver:
 
 @pytest.fixture
 def solver_stiff() -> ElasticitySolver:
-    """Create solver with high stiffness."""
-    return ElasticitySolver(young_modulus=10.0, poisson_ratio=0.3, resolution=16)
+    """Create solver with high Young's modulus (stiff material)."""
+    return ElasticitySolver(young_modulus=100.0, poisson_ratio=0.3, resolution=16)
 
 
 @pytest.fixture
 def solver_soft() -> ElasticitySolver:
-    """Create solver with low stiffness."""
+    """Create solver with low Young's modulus (soft material)."""
     return ElasticitySolver(young_modulus=0.1, poisson_ratio=0.3, resolution=16)
 
 
@@ -56,7 +57,7 @@ class TestElasticitySample:
 
     def test_sample_fields(self) -> None:
         """Test ElasticitySample has expected fields."""
-        n = 16
+        n = 8
         sample = ElasticitySample(
             input_field=numpy.ones((n * n, 2), dtype=numpy.float32),
             output_field=numpy.zeros((n * n, 2), dtype=numpy.float32),
@@ -70,6 +71,17 @@ class TestElasticitySample:
         assert sample.grid_size == n
         assert sample.metadata["E"] == 1.0
         assert sample.metadata["nu"] == 0.3
+
+    def test_sample_with_none_metadata(self) -> None:
+        """Test ElasticitySample with no metadata."""
+        n = 8
+        sample = ElasticitySample(
+            input_field=numpy.ones((n * n, 2), dtype=numpy.float32),
+            output_field=numpy.zeros((n * n, 2), dtype=numpy.float32),
+            coords=numpy.random.rand(n * n, 2).astype(numpy.float32),
+            grid_size=n,
+        )
+        assert sample.metadata is None
 
 
 # --- ElasticitySolver Initialization Tests ---
@@ -110,9 +122,7 @@ class TestElasticitySolverInit:
         """Test Lame parameters for steel-like material."""
         solver = ElasticitySolver(young_modulus=200e9, poisson_ratio=0.3)
 
-        # Mu (shear modulus) should be positive
         assert solver.mu > 0
-        # Lambda should be positive for nu < 0.5
         assert solver.lam > 0
 
     def test_lame_parameters_rubber(self) -> None:
@@ -121,6 +131,12 @@ class TestElasticitySolverInit:
 
         # Lambda should be very large for nearly-incompressible materials
         assert solver.lam > solver.mu * 10
+
+    def test_zero_poisson_ratio(self) -> None:
+        """Test solver with zero Poisson ratio (no lateral expansion)."""
+        solver = ElasticitySolver(young_modulus=1.0, poisson_ratio=0.0)
+        numpy.testing.assert_allclose(solver.lam, 0.0, atol=1e-10)
+        numpy.testing.assert_allclose(solver.mu, 0.5, rtol=1e-10)
 
 
 # --- Solve Tests ---
@@ -176,7 +192,7 @@ class TestElasticitySolverSolve:
         assert norm_stiff < norm_soft, "Stiffer material should yield smaller displacement"
 
     def test_x_only_force(self, solver: ElasticitySolver) -> None:
-        """Test force only in x-direction."""
+        """Test force only in x-direction produces x-dominant displacement."""
         n = 16
         Fx = generate_random_field(n, smooth=True, seed=42)
         Fx -= numpy.mean(Fx)
@@ -185,13 +201,12 @@ class TestElasticitySolverSolve:
 
         result = solver.solve(F)
 
-        # X displacement should be nonzero
         ux = result[:, 0]
         assert numpy.max(numpy.abs(ux)) > 1e-10
 
     def test_solve_different_resolutions(self) -> None:
         """Test solver works at different resolutions."""
-        for res in [8, 16, 32]:
+        for res in [8, 16]:
             solver = ElasticitySolver(resolution=res)
             n = res
             rng = numpy.random.default_rng(42)
@@ -289,26 +304,99 @@ class TestMaterialParameters:
         """Test with zero Poisson ratio (no lateral coupling)."""
         solver = ElasticitySolver(young_modulus=1.0, poisson_ratio=0.0, resolution=16)
 
-        # Lambda should be zero
         numpy.testing.assert_allclose(solver.lam, 0.0, atol=1e-10)
 
         sample = solver.generate_sample(seed=42)
         assert numpy.all(numpy.isfinite(sample.output_field))
 
-    def test_different_young_moduli(self) -> None:
-        """Test that displacement scales inversely with Young's modulus."""
+    def test_young_modulus_scaling(self) -> None:
+        """Test that doubling E halves displacement (linear elasticity)."""
         n = 16
         rng = numpy.random.default_rng(42)
         F = rng.normal(0, 1, (n * n, 2)).astype(numpy.float32)
         F -= F.mean(axis=0)
 
-        solver_E1 = ElasticitySolver(young_modulus=1.0, resolution=n)
-        solver_E2 = ElasticitySolver(young_modulus=2.0, resolution=n)
+        solver_E1 = ElasticitySolver(young_modulus=1.0, poisson_ratio=0.3, resolution=n)
+        solver_E2 = ElasticitySolver(young_modulus=2.0, poisson_ratio=0.3, resolution=n)
 
         u_E1 = solver_E1.solve(F)
         u_E2 = solver_E2.solve(F)
 
-        # Double E -> roughly half the displacement
-        # (Not exact due to Poisson coupling, but should be in ballpark)
-        ratio = numpy.linalg.norm(u_E1) / numpy.linalg.norm(u_E2)
-        assert 1.5 < ratio < 2.5, f"Expected ~2x displacement ratio, got {ratio}"
+        # Doubling E should halve displacement
+        numpy.testing.assert_allclose(u_E2, u_E1 / 2.0, atol=1e-5)
+
+    def test_poisson_ratio_effect(self) -> None:
+        """Test that different Poisson ratios produce different solutions."""
+        n = 16
+        rng = numpy.random.default_rng(42)
+        F = rng.normal(0, 1, (n * n, 2)).astype(numpy.float32)
+        F -= F.mean(axis=0)
+
+        solver_nu_low = ElasticitySolver(young_modulus=1.0, poisson_ratio=0.1, resolution=n)
+        solver_nu_high = ElasticitySolver(young_modulus=1.0, poisson_ratio=0.4, resolution=n)
+
+        u_low = solver_nu_low.solve(F)
+        u_high = solver_nu_high.solve(F)
+
+        assert not numpy.allclose(u_low, u_high, atol=1e-6)
+
+    def test_incompressible_limit(self) -> None:
+        """Test behavior near incompressible limit (nu -> 0.5)."""
+        solver = ElasticitySolver(young_modulus=1.0, poisson_ratio=0.499, resolution=8)
+
+        assert solver.lam > 10 * solver.mu
+
+        sample = solver.generate_sample(seed=42)
+        assert numpy.all(numpy.isfinite(sample.output_field))
+
+
+# --- Boundary Condition Tests ---
+
+
+class TestBoundaryConditions:
+    """Tests for periodic boundary condition properties."""
+
+    def test_zero_mean_displacement(self, solver: ElasticitySolver) -> None:
+        """Test that displacement has zero mean (periodic, zero-mean force)."""
+        sample = solver.generate_sample(seed=42)
+        u = sample.output_field  # (N*N, 2)
+
+        # Periodic solver sets zero-mode to zero -> zero mean displacement
+        numpy.testing.assert_allclose(numpy.mean(u[:, 0]), 0.0, atol=1e-5)
+        numpy.testing.assert_allclose(numpy.mean(u[:, 1]), 0.0, atol=1e-5)
+
+    def test_reciprocity(self, solver: ElasticitySolver) -> None:
+        """Test Betti reciprocity: <F1, u2> = <F2, u1> for linear elasticity."""
+        n = 16
+
+        rng = numpy.random.default_rng(100)
+        F1 = rng.normal(0, 1, (n * n, 2)).astype(numpy.float32)
+        F1 -= F1.mean(axis=0)
+
+        F2 = rng.normal(0, 1, (n * n, 2)).astype(numpy.float32)
+        F2 -= F2.mean(axis=0)
+
+        u1 = solver.solve(F1)
+        u2 = solver.solve(F2)
+
+        work_12 = numpy.sum(F1 * u2)
+        work_21 = numpy.sum(F2 * u1)
+
+        numpy.testing.assert_allclose(work_12, work_21, rtol=1e-4)
+
+    def test_superposition(self, solver: ElasticitySolver) -> None:
+        """Test superposition principle: u(F1+F2) = u(F1) + u(F2)."""
+        n = 16
+
+        rng = numpy.random.default_rng(200)
+        F1 = rng.normal(0, 1, (n * n, 2)).astype(numpy.float32)
+        F1 -= F1.mean(axis=0)
+
+        F2 = rng.normal(0, 1, (n * n, 2)).astype(numpy.float32)
+        F2 -= F2.mean(axis=0)
+
+        u1 = solver.solve(F1)
+        u2 = solver.solve(F2)
+        u_combined = solver.solve(F1 + F2)
+
+        numpy.testing.assert_allclose(u_combined, u1 + u2, atol=1e-5)

@@ -11,7 +11,6 @@ all game logic to the underlying PDEGame implementation.
 
 from __future__ import annotations
 
-import copy
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -24,7 +23,6 @@ from src.games.interface import GameInterface, GamePhase, GameResult
 from src.games.state import ActionMask, GameState
 
 if TYPE_CHECKING:
-    from src.pde.config import PDEConfig, PDEGameConfig
     from src.pde.game import PDEGame, PDEState
 
 
@@ -68,10 +66,6 @@ class PDEGameInterface(GameInterface):
 
     name = "pde_basis"
     description = "PDE basis selection via MCTS-guided Galerkin method"
-
-    min_board_size = 4
-    max_board_size = 64
-    default_board_size = 16
 
     def __init__(
         self,
@@ -140,10 +134,14 @@ class PDEGameInterface(GameInterface):
         """Apply PDE action and return new state."""
         pde_state = self._game_to_pde_state(state)
         new_pde_state = self.pde_game.apply_action(pde_state, action)
-        return self._pde_to_game_state(
+        new_state = self._pde_to_game_state(
             new_pde_state,
             prev_move_history=list(state.move_history) + [action],
         )
+        # Propagate initial error from parent state for winner computation
+        if "_initial_error" in state.metadata:
+            new_state.metadata["_initial_error"] = state.metadata["_initial_error"]
+        return new_state
 
     def is_terminal(self, state: GameState) -> bool:
         """Check if PDE game has terminated (converged or budget exhausted)."""
@@ -191,14 +189,22 @@ class PDEGameInterface(GameInterface):
         if self.is_terminal(state):
             return GamePhase.TERMINAL
         pde_state = self._game_to_pde_state(state)
-        tolerance = getattr(
-            self.pde_game.config, "tolerance", self.interface_config.default_tolerance,
-        )
+        tolerance = self._get_tolerance()
         if pde_state.error_estimate > tolerance * self.interface_config.phase_opening_multiplier:
             return GamePhase.OPENING
         elif pde_state.error_estimate > tolerance:
             return GamePhase.MIDGAME
         return GamePhase.ENDGAME
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_tolerance(self) -> float:
+        """Get convergence tolerance from PDE config, falling back to interface config."""
+        return float(
+            getattr(self.pde_game.config, "tolerance", self.interface_config.default_tolerance)
+        )
 
     # ------------------------------------------------------------------
     # State conversion helpers
@@ -217,16 +223,22 @@ class PDEGameInterface(GameInterface):
         tensor = self.pde_game.to_tensor(pde_state)
         board = tensor.detach().cpu().numpy()
 
+        metadata: dict[str, Any] = {
+            "_pde_state": pde_state,
+            "error_estimate": pde_state.error_estimate,
+            "step": pde_state.step,
+        }
+        # Preserve initial error from the first state for winner computation.
+        # If this is the first state (no move history), record the initial error.
+        if not prev_move_history:
+            metadata["_initial_error"] = pde_state.error_estimate
+
         return GameState(
             board=board,
             current_player=1,  # Single-player game
             move_number=pde_state.step,
             move_history=prev_move_history or [],
-            metadata={
-                "_pde_state": pde_state,
-                "error_estimate": pde_state.error_estimate,
-                "step": pde_state.step,
-            },
+            metadata=metadata,
         )
 
     @staticmethod
@@ -247,17 +259,19 @@ class PDEGameInterface(GameInterface):
         -1: Budget exhausted with poor error
          0: Ambiguous / partial convergence
         """
-        tolerance = getattr(
-            self.pde_game.config, "tolerance", self.interface_config.default_tolerance,
-        )
+        tolerance = self._get_tolerance()
 
         if pde_state.error_estimate < tolerance:
             return 1
 
         # Check error reduction from initial state
-        initial_error = state.metadata.get("_initial_error", pde_state.error_estimate)
-        if initial_error > 0 and pde_state.error_estimate / initial_error < self.interface_config.convergence_reduction:
-            return 1  # Strong error reduction (default: 90%+)
-        elif initial_error > 0 and pde_state.error_estimate / initial_error > self.interface_config.failure_reduction:
-            return -1  # Weak error reduction (default: <50%)
+        initial_error = state.metadata.get(
+            "_initial_error", pde_state.error_estimate,
+        )
+        if initial_error > 0:
+            ratio = pde_state.error_estimate / initial_error
+            if ratio < self.interface_config.convergence_reduction:
+                return 1  # Strong error reduction (default: 90%+)
+            if ratio > self.interface_config.failure_reduction:
+                return -1  # Weak error reduction (default: <50%)
         return 0

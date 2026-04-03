@@ -367,3 +367,74 @@ class TestPDEGameInterfaceConfig:
     def test_invalid_config_rejects_bad_values(self):
         with pytest.raises(Exception):
             PDEGameInterfaceConfig(default_tolerance=-1.0)
+
+
+# ---------------------------------------------------------------------------
+# _initial_error propagation & _get_tolerance
+# ---------------------------------------------------------------------------
+
+
+class TestInitialErrorPropagation:
+    """Verify _initial_error metadata is set on initial state and propagated."""
+
+    def test_initial_state_has_initial_error(self, pde_interface: PDEGameInterface):
+        """Initial state should have _initial_error in metadata."""
+        state = pde_interface.initial_state()
+        assert "_initial_error" in state.metadata
+        assert state.metadata["_initial_error"] == state.metadata["error_estimate"]
+
+    def test_apply_action_propagates_initial_error(
+        self, pde_interface: PDEGameInterface,
+    ):
+        """apply_action should carry _initial_error from parent state."""
+        state = pde_interface.initial_state()
+        initial_err = state.metadata["_initial_error"]
+
+        actions = pde_interface.get_legal_actions(state)
+        if actions:
+            new_state = pde_interface.apply_action(state, actions[0])
+            assert "_initial_error" in new_state.metadata
+            assert new_state.metadata["_initial_error"] == initial_err
+
+    def test_get_tolerance_uses_config(self, pde_interface: PDEGameInterface):
+        """_get_tolerance should return the config default_tolerance."""
+        tol = pde_interface._get_tolerance()
+        assert tol == pde_interface.interface_config.default_tolerance
+
+    def test_get_tolerance_uses_pde_config(self, basis_game: BasisSelectionGame):
+        """_get_tolerance should prefer PDE game config tolerance if present."""
+        config = PDEGameInterfaceConfig(default_tolerance=999.0)
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        tol = interface._get_tolerance()
+        # If basis_game.config has tolerance attr, it takes precedence
+        if hasattr(basis_game.config, "tolerance"):
+            assert tol == basis_game.config.tolerance
+        else:
+            assert tol == 999.0
+
+    def test_action_mask_numpy_path(self, basis_game: BasisSelectionGame):
+        """get_action_mask should handle numpy array masks."""
+        from unittest.mock import patch
+
+        interface = PDEGameInterface(pde_game=basis_game)
+        state = interface.initial_state()
+
+        # Patch get_action_mask to return numpy array instead of Tensor
+        pde_state = interface._game_to_pde_state(state)
+        original_mask = basis_game.get_action_mask(pde_state)
+        np_mask = np.asarray(original_mask)
+
+        with patch.object(basis_game, "get_action_mask", return_value=np_mask):
+            mask = interface.get_action_mask(state)
+            assert mask.mask.dtype == bool
+
+    def test_winner_zero_initial_error(self, basis_game: BasisSelectionGame):
+        """Winner computation handles zero initial_error gracefully."""
+        config = PDEGameInterfaceConfig(default_tolerance=1e-20)
+        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        state = interface.initial_state()
+        # Set initial error to 0 to trigger the initial_error > 0 guard
+        state.metadata["_initial_error"] = 0.0
+        winner = interface.get_winner(state)
+        # With zero initial error and error > tolerance, result is ambiguous
+        assert winner is None or isinstance(winner, int)

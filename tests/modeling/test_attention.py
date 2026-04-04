@@ -1,6 +1,5 @@
 """Tests for attention mechanisms (Galerkin and Softmax)."""
 
-import pytest
 import torch
 
 from src.modeling.attention import (

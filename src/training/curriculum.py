@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-
-from src.constants import DEFAULT_CURRICULUM_SCHEDULE
 from typing import Any
 
 import structlog
+
+from src.constants import DEFAULT_CURRICULUM_SCHEDULE
 
 logger = structlog.get_logger(__name__)
 

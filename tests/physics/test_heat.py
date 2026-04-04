@@ -13,8 +13,6 @@ import pytest
 numpy = pytest.importorskip("numpy")
 
 from src.physics.heat import HeatSample, HeatSolver
-from src.physics.solver import generate_random_field
-
 
 # --- Fixtures ---
 

@@ -16,7 +16,6 @@ numpy = pytest.importorskip("numpy")
 from src.physics.elasticity import ElasticitySample, ElasticitySolver
 from src.physics.solver import generate_random_field
 
-
 # --- Fixtures ---
 
 

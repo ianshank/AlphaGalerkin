@@ -17,7 +17,6 @@ from src.pde.game import GamePhase, PDEState
 from src.pde.games.mesh_refinement import Mesh, MeshElement, MeshRefinementGame
 from src.pde.operators import PoissonOperator
 
-
 # ---- Mesh tests ----
 
 

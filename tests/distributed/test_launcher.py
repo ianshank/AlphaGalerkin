@@ -9,7 +9,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -22,7 +21,6 @@ from src.distributed.launcher import (
     LaunchResult,
     create_launcher,
 )
-
 
 # --- LaunchResult Tests ---
 

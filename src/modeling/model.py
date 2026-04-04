@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+import structlog
 import torch
 from jaxtyping import Float
 from torch import Tensor, nn
@@ -23,6 +24,8 @@ from src.modeling.attention import GalerkinAttention, SoftmaxAttention
 from src.modeling.embeddings import ContinuousEmbedding
 from src.modeling.fnet import FNetBlock, FNetStack
 from src.modeling.stability import StabilityGuard
+
+logger = structlog.get_logger(__name__)
 
 
 class ModelOutput(NamedTuple):

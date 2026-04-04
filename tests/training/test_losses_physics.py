@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
+from src.pde.operators import PDEResidual
 from src.training.losses.physics import (
     BoundaryLoss,
     CombinedAlphaGalerkinPhysicsLoss,
@@ -20,8 +21,6 @@ from src.training.losses.physics import (
     ResidualLoss,
     _get_device_from_model,
 )
-from src.pde.operators import PDEResidual
-
 
 # ---------------------------------------------------------------------------
 # Helpers

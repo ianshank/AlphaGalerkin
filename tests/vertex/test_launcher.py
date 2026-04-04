@@ -21,6 +21,7 @@ from src.vertex.launcher import (
     create_launcher,
 )
 
+
 class TestJobState:
     """Tests for JobState enum."""
 

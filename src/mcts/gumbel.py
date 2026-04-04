@@ -25,7 +25,11 @@ import structlog
 import torch
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.constants import DEFAULT_DIRICHLET_ALPHA, DEFAULT_DIRICHLET_EPSILON, DEFAULT_MCTS_SIMULATIONS
+from src.constants import (
+    DEFAULT_DIRICHLET_ALPHA,
+    DEFAULT_DIRICHLET_EPSILON,
+    DEFAULT_MCTS_SIMULATIONS,
+)
 
 if TYPE_CHECKING:
     from src.games.interface import GameInterface
@@ -511,7 +515,7 @@ class GumbelMCTS:
 def create_gumbel_mcts(
     game: GameInterface,
     model: AlphaGalerkinModel,
-    n_simulations: int = 800,
+    n_simulations: int = DEFAULT_MCTS_SIMULATIONS,
     device: str | torch.device = "cpu",
     **kwargs: Any,
 ) -> GumbelMCTS:

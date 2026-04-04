@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import torch
 import pytest
+import torch
 
 from src.training.losses.alphagalerkin import AlphaGalerkinLoss, EntropyRegularizer
 from src.training.losses.base import LossOutput
-
 
 # ---------------------------------------------------------------------------
 # Helpers

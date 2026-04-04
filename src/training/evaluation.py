@@ -18,11 +18,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-
-from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_MAX_MOVES
 import structlog
 import torch
 
+from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_MAX_MOVES
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.tools.gtp import SimpleGoGame

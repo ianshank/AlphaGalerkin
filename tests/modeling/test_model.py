@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 import torch
 
 from config.schemas import OperatorConfig
@@ -19,7 +18,6 @@ from src.modeling.model import (
     ValueHead,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -30,23 +28,23 @@ def _small_config(**overrides: object) -> OperatorConfig:
 
     Defaults: d_model=16, n_heads=2, n_layers=1, input_channels=3.
     """
-    defaults = dict(
-        d_model=16,
-        d_key=8,
-        d_value=8,
-        d_ffn=32,
-        n_heads=2,
-        n_galerkin_layers=1,
-        n_softmax_layers=1,
-        n_fourier_features=8,
-        fourier_scale=1.0,
-        use_fnet_mixing=True,
-        fnet_dropout=0.0,
-        lbb_beta_threshold=1e-6,
-        norm_type="layernorm",
-        input_channels=3,
-        action_space_size=None,
-    )
+    defaults = {
+        "d_model": 16,
+        "d_key": 8,
+        "d_value": 8,
+        "d_ffn": 32,
+        "n_heads": 2,
+        "n_galerkin_layers": 1,
+        "n_softmax_layers": 1,
+        "n_fourier_features": 8,
+        "fourier_scale": 1.0,
+        "use_fnet_mixing": True,
+        "fnet_dropout": 0.0,
+        "lbb_beta_threshold": 1e-6,
+        "norm_type": "layernorm",
+        "input_channels": 3,
+        "action_space_size": None,
+    }
     defaults.update(overrides)
     return OperatorConfig(**defaults)  # type: ignore[arg-type]
 

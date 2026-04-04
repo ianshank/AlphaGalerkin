@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import math
 
+import structlog
 import torch
-
-from src.constants import ATTENTION_EPSILON
 from einops import einsum, rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
+
+from src.constants import ATTENTION_EPSILON
+
+logger = structlog.get_logger(__name__)
 
 
 class GalerkinAttention(nn.Module):

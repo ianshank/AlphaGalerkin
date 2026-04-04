@@ -16,7 +16,6 @@ scipy = pytest.importorskip("scipy")
 from src.physics.darcy import DarcyFlowSolver, DarcySample
 from src.physics.solver import generate_random_field
 
-
 # --- Fixtures ---
 
 
@@ -108,7 +107,9 @@ class TestDarcyFlowSolverInit:
 class TestDarcyFlowSolverSolve:
     """Tests for DarcyFlowSolver.solve."""
 
-    def test_solve_shape(self, solver: DarcyFlowSolver, uniform_permeability: numpy.ndarray) -> None:
+    def test_solve_shape(
+        self, solver: DarcyFlowSolver, uniform_permeability: numpy.ndarray
+    ) -> None:
         """Test output shape matches input."""
         result = solver.solve(uniform_permeability)
 

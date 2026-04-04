@@ -13,10 +13,9 @@ from typing import TYPE_CHECKING
 import structlog
 import torch
 from jaxtyping import Float
-
-from src.constants import DEFAULT_LBB_EPS, DEFAULT_LBB_TARGET, DEFAULT_LBB_WEIGHT
 from torch import Tensor, nn
 
+from src.constants import DEFAULT_LBB_EPS, DEFAULT_LBB_TARGET, DEFAULT_LBB_WEIGHT
 from src.training.losses.base import LossOutput, register_loss
 
 if TYPE_CHECKING:

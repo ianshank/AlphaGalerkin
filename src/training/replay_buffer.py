@@ -14,13 +14,18 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.constants import DEFAULT_PER_ALPHA, DEFAULT_PER_BETA, DEFAULT_PER_BETA_INCREMENT, NUMERIC_EPSILON
-
 import numpy as np
 import structlog
 import torch
 from jaxtyping import Float
 from torch import Tensor
+
+from src.constants import (
+    DEFAULT_PER_ALPHA,
+    DEFAULT_PER_BETA,
+    DEFAULT_PER_BETA_INCREMENT,
+    NUMERIC_EPSILON,
+)
 
 logger = structlog.get_logger(__name__)
 

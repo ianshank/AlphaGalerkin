@@ -11,7 +11,6 @@ from src.pde.operators import (
     HeatOperator,
     LShapedPoissonOperator,
     NavierStokesOperator,
-    PDEOperator,
     PoissonOperator,
 )
 from src.pde.registry import (

@@ -1,6 +1,5 @@
 """Tests for FNet mixing blocks."""
 
-import pytest
 import torch
 
 from src.modeling.fnet import (

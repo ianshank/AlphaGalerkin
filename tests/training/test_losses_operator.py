@@ -5,9 +5,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.training.losses.operator import H1Loss, L2RelativeLoss, MSELoss
 from src.training.losses import get_loss
-
+from src.training.losses.operator import H1Loss, L2RelativeLoss, MSELoss
 
 # ---------------------------------------------------------------------------
 # Constants

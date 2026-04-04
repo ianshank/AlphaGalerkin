@@ -20,7 +20,6 @@ from src.constants import (
     DEFAULT_PUCT_CONSTANT,
     DEFAULT_VIRTUAL_LOSS,
 )
-
 from src.mcts.node import MCTSNode
 
 if TYPE_CHECKING:

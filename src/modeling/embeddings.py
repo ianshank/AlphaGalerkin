@@ -7,12 +7,15 @@ This enables zero-shot transfer between different board sizes.
 
 from __future__ import annotations
 
+import structlog
 import torch
 from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 
 from src.math_kernel.basis import FourierBasis, create_grid_coordinates
+
+logger = structlog.get_logger(__name__)
 
 
 class FourierFeatures(nn.Module):

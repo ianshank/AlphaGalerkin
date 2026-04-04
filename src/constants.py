@@ -40,7 +40,7 @@ DEFAULT_VIRTUAL_LOSS: float = 3.0
 # Training defaults
 # ---------------------------------------------------------------------------
 DEFAULT_TEMPERATURE_SCHEDULE: dict[int, float] = {
-    0: 1.0,   # Moves 0-29: temperature 1.0
+    0: 1.0,  # Moves 0-29: temperature 1.0
     30: 0.5,  # Moves 30-59: temperature 0.5
     60: 0.1,  # Moves 60+: temperature 0.1
 }

@@ -25,6 +25,8 @@ import torch
 from pydantic import BaseModel, Field
 from torch import Tensor
 
+from src.constants import DEFAULT_BOUNDARY_TOLERANCE
+
 logger = structlog.get_logger(__name__)
 
 
@@ -88,7 +90,7 @@ class DomainGeometry(ABC):
         ...
 
     @abstractmethod
-    def is_boundary(self, points: Tensor, tol: float = 1e-6) -> Tensor:
+    def is_boundary(self, points: Tensor, tol: float = DEFAULT_BOUNDARY_TOLERANCE) -> Tensor:
         """Check if points are on the domain boundary.
 
         Args:
@@ -186,7 +188,7 @@ class RectangularDomain(DomainGeometry):
         x, y = points[:, 0], points[:, 1]
         return (x >= self.x_min) & (x <= self.x_max) & (y >= self.y_min) & (y <= self.y_max)
 
-    def is_boundary(self, points: Tensor, tol: float = 1e-6) -> Tensor:
+    def is_boundary(self, points: Tensor, tol: float = DEFAULT_BOUNDARY_TOLERANCE) -> Tensor:
         """Check if points are on the rectangular boundary."""
         x, y = points[:, 0], points[:, 1]
         inside = self.contains_point(points)
@@ -282,7 +284,7 @@ class LShapedDomain(DomainGeometry):
         in_removed = (x > 0) & (y < 0)
         return in_square & ~in_removed
 
-    def is_boundary(self, points: Tensor, tol: float = 1e-6) -> Tensor:
+    def is_boundary(self, points: Tensor, tol: float = DEFAULT_BOUNDARY_TOLERANCE) -> Tensor:
         """Check if points lie on the L-shaped domain boundary.
 
         The boundary consists of 6 segments:
@@ -460,7 +462,7 @@ class CylinderFlowDomain(DomainGeometry):
         outside_cyl = dist > self.radius
         return in_rect & outside_cyl
 
-    def is_boundary(self, points: Tensor, tol: float = 1e-6) -> Tensor:
+    def is_boundary(self, points: Tensor, tol: float = DEFAULT_BOUNDARY_TOLERANCE) -> Tensor:
         """Check if points are on channel walls or cylinder surface."""
         x, y = points[:, 0], points[:, 1]
 

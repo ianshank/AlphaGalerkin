@@ -25,6 +25,12 @@ import structlog
 import torch
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.constants import (
+    DEFAULT_DIRICHLET_ALPHA,
+    DEFAULT_DIRICHLET_EPSILON,
+    DEFAULT_MCTS_SIMULATIONS,
+)
+
 if TYPE_CHECKING:
     from src.games.interface import GameInterface
     from src.games.state import GameState
@@ -54,7 +60,7 @@ class GumbelMCTSConfig(BaseModel):
 
     # Core parameters
     n_simulations: int = Field(
-        default=800,
+        default=DEFAULT_MCTS_SIMULATIONS,
         ge=1,
         description="Total number of MCTS simulations",
     )
@@ -95,12 +101,12 @@ class GumbelMCTSConfig(BaseModel):
         description="Value discount factor",
     )
     root_dirichlet_alpha: float = Field(
-        default=0.03,
+        default=DEFAULT_DIRICHLET_ALPHA,
         gt=0,
         description="Dirichlet noise alpha for exploration",
     )
     root_exploration_fraction: float = Field(
-        default=0.25,
+        default=DEFAULT_DIRICHLET_EPSILON,
         ge=0,
         le=1,
         description="Fraction of root policy from Dirichlet noise",
@@ -509,7 +515,7 @@ class GumbelMCTS:
 def create_gumbel_mcts(
     game: GameInterface,
     model: AlphaGalerkinModel,
-    n_simulations: int = 800,
+    n_simulations: int = DEFAULT_MCTS_SIMULATIONS,
     device: str | torch.device = "cpu",
     **kwargs: Any,
 ) -> GumbelMCTS:

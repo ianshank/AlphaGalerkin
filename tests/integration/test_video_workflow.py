@@ -12,7 +12,6 @@ from scripts.decode_video import main as decode_main
 from scripts.encode_video import main as encode_main
 from src.video_compression.config import CodecConfig
 
-
 cv2 = pytest.importorskip("cv2", reason="opencv-python not installed")
 
 

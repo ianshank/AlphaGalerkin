@@ -21,6 +21,8 @@ import structlog
 import torch
 from torch import Tensor, nn
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 if TYPE_CHECKING:
     pass
 
@@ -428,7 +430,7 @@ def validate_export(
         ValidationResult with comparison metrics.
 
     """
-    board_sizes = board_sizes or [9, 13, 19]
+    board_sizes = board_sizes or list(DEFAULT_BOARD_SIZES)
     validator = create_validator(tolerance=tolerance)
     test_inputs = validator.generate_test_inputs(n_samples, board_sizes)
     return validator.validate(pytorch_model, onnx_path, test_inputs)

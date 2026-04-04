@@ -334,7 +334,7 @@ def run_training(
         try:
             from config.schemas import TrainingConfig
             from src.training.trainer import (
-                AlphaGalerkinTrainer,  # type: ignore[attr-defined]  # noqa: F401
+                AlphaGalerkinTrainer,  # type: ignore[attr-defined]
             )
 
             training_cfg = TrainingConfig(**config.get("training", {}))

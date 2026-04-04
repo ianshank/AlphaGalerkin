@@ -241,7 +241,8 @@ class TestGCPAuthenticator:
     def authenticator(self) -> GCPAuthenticator:
         """Create authenticator for testing."""
         config = AuthConfig(auth_method=AuthMethod.GCLOUD_CLI)
-        return GCPAuthenticator(config)
+        with patch("src.vertex.auth.find_gcloud_path", return_value=Path("/usr/bin/gcloud")):
+            return GCPAuthenticator(config)
 
     def test_validate_gcloud_success(self, authenticator: GCPAuthenticator) -> None:
         """Test successful gcloud validation."""

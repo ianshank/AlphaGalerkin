@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 import torch
 from jaxtyping import Float
 from numpy.typing import NDArray
@@ -24,6 +25,8 @@ from torch import Tensor
 
 from src.pde.config import BasisSelectionConfig, PDEGameConfig
 from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+
+logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator

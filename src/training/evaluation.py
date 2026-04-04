@@ -21,6 +21,7 @@ import numpy as np
 import structlog
 import torch
 
+from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_MAX_MOVES
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.tools.gtp import SimpleGoGame
@@ -93,7 +94,7 @@ class Evaluator:
         """
         self.model = model
         self.device = torch.device(device)
-        self.board_sizes = board_sizes or [9, 13, 19]
+        self.board_sizes = board_sizes or list(DEFAULT_BOARD_SIZES)
         self.game = game
 
         # MCTS configuration
@@ -372,7 +373,7 @@ class Evaluator:
         board_size: int,
         black_evaluator: Any,
         white_evaluator: Any,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
     ) -> tuple[float, int]:
         """Play a single game between two evaluators.
 
@@ -407,7 +408,7 @@ class Evaluator:
         self,
         black_evaluator: Any,
         white_evaluator: Any,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
     ) -> tuple[float, int]:
         """Play a game using the GameInterface abstraction.
 
@@ -460,7 +461,7 @@ class Evaluator:
         board_size: int,
         black_evaluator: Any,
         white_evaluator: Any,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
     ) -> tuple[float, int]:
         """Legacy Go-specific game play using SimpleGoGame.
 

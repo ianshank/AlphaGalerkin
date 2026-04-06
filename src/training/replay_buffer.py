@@ -20,6 +20,13 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from src.constants import (
+    DEFAULT_PER_ALPHA,
+    DEFAULT_PER_BETA,
+    DEFAULT_PER_BETA_INCREMENT,
+    NUMERIC_EPSILON,
+)
+
 logger = structlog.get_logger(__name__)
 
 
@@ -177,10 +184,10 @@ class PrioritizedReplayBuffer:
     def __init__(
         self,
         capacity: int,
-        alpha: float = 0.6,
-        beta: float = 0.4,
-        beta_increment: float = 0.001,
-        epsilon: float = 1e-6,
+        alpha: float = DEFAULT_PER_ALPHA,
+        beta: float = DEFAULT_PER_BETA,
+        beta_increment: float = DEFAULT_PER_BETA_INCREMENT,
+        epsilon: float = NUMERIC_EPSILON,
     ) -> None:
         """Initialize prioritized replay buffer.
 
@@ -433,8 +440,8 @@ ReplayBuffer = UniformReplayBuffer
 def create_replay_buffer(
     capacity: int,
     prioritized: bool = False,
-    alpha: float = 0.6,
-    beta: float = 0.4,
+    alpha: float = DEFAULT_PER_ALPHA,
+    beta: float = DEFAULT_PER_BETA,
 ) -> UniformReplayBuffer | PrioritizedReplayBuffer:
     """Factory function to create replay buffer.
 

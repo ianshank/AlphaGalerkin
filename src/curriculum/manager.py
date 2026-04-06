@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from src.constants import DEFAULT_MCTS_SIMULATIONS, WIN_RATE_ACCEPT_THRESHOLD
 from src.curriculum.config import CurriculumConfig, create_default_curriculum
 from src.curriculum.scheduler import CurriculumScheduler
 from src.curriculum.stage import CurriculumStage, StageStatus
@@ -267,7 +268,7 @@ class CurriculumManager:
         self,
         base_learning_rate: float = 1e-4,
         base_batch_size: int = 64,
-        base_mcts_simulations: int = 800,
+        base_mcts_simulations: int = DEFAULT_MCTS_SIMULATIONS,
     ) -> dict[str, Any]:
         """Get adjusted training parameters for current stage.
 
@@ -407,7 +408,7 @@ class CurriculumManager:
 def create_curriculum_manager(
     board_sizes: list[int] | None = None,
     name: str = "default",
-    win_rate_threshold: float = 0.55,
+    win_rate_threshold: float = WIN_RATE_ACCEPT_THRESHOLD,
     min_games_per_stage: int = 1000,
     model_zoo: ModelZoo | None = None,
     checkpoint_dir: Path | str | None = None,

@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from src.constants import CHECKPOINT_BEST
 from src.vertex.config import VertexStorageConfig
 
 if TYPE_CHECKING:
@@ -473,7 +474,7 @@ class GCSCheckpointManager:
             # Skip non-checkpoint files
             if not name.endswith(".pt") or "checkpoint_" not in name:
                 continue
-            if name.endswith("best.pt"):
+            if name.endswith(CHECKPOINT_BEST):
                 continue
 
             # Extract step from name
@@ -696,8 +697,8 @@ class GCSCheckpointManager:
         if is_better:
             self._best_value = metric_value
 
-            # Copy to best.pt locally
-            best_local = self.local_cache_dir / "best.pt"
+            # Copy to best checkpoint locally
+            best_local = self.local_cache_dir / CHECKPOINT_BEST
             shutil.copy2(local_path, best_local)
 
             # Upload to GCS

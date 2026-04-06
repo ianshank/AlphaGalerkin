@@ -15,6 +15,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from src.constants import DEFAULT_LBB_EPS, DEFAULT_LBB_TARGET, DEFAULT_LBB_WEIGHT
 from src.training.losses.base import LossOutput, register_loss
 
 if TYPE_CHECKING:
@@ -39,11 +40,11 @@ class AlphaGalerkinLoss(nn.Module):
         self,
         policy_weight: float = 1.0,
         value_weight: float = 1.0,
-        lbb_weight: float = 0.01,
-        lbb_eps: float = 1e-8,
-        lbb_target: float = 0.1,
+        lbb_weight: float = DEFAULT_LBB_WEIGHT,
+        lbb_eps: float = DEFAULT_LBB_EPS,
+        lbb_target: float = DEFAULT_LBB_TARGET,
         label_smoothing: float = 0.0,
-        log_barrier_weight: float = 0.1,
+        log_barrier_weight: float = DEFAULT_LBB_TARGET,
     ) -> None:
         """Initialize loss function.
 

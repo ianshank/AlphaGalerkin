@@ -21,6 +21,13 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, LRScheduler
 
+from src.constants import (
+    DEFAULT_CURRICULUM_SCHEDULE,
+    DEFAULT_PER_ALPHA,
+    DEFAULT_PER_BETA,
+    WIN_RATE_ACCEPT_THRESHOLD,
+    WIN_RATE_REJECT_THRESHOLD,
+)
 from src.data.collate import TrainingBatch, VariableSizeCollator
 from src.training.checkpoint import CheckpointManager
 from src.training.curriculum import BoardSizeCurriculum
@@ -250,8 +257,8 @@ class Trainer:
         self.buffer = create_replay_buffer(
             capacity=self.training_config.replay_buffer_size,
             prioritized=self.use_prioritized_replay,
-            alpha=self.training_config.per_alpha,
-            beta=self.training_config.per_beta,
+            alpha=getattr(self.training_config, "per_alpha", DEFAULT_PER_ALPHA),
+            beta=getattr(self.training_config, "per_beta", DEFAULT_PER_BETA),
         )
 
         # Board size curriculum (optional)
@@ -472,8 +479,11 @@ class Trainer:
             Configured curriculum or None if not enabled.
 
         """
-        # Get schedule from config (default provided by TrainingConfig schema)
-        schedule = self.training_config.curriculum_schedule
+        # Default curriculum schedule
+        default_schedule = dict(DEFAULT_CURRICULUM_SCHEDULE)
+
+        # Get schedule from config if available
+        schedule = getattr(self.training_config, "curriculum_schedule", None)
         if schedule is None:
             # Fallback to BoardSizeCurriculum's built-in default
             schedule = {0: [9], 10000: [9, 13], 50000: [9, 13, 19]}
@@ -1106,9 +1116,9 @@ class Trainer:
                 opponent_step = self._extract_step_from_checkpoint(opponent_path)
 
                 # Determine score: 1.0=win, 0.5=draw, 0.0=loss
-                if result.win_rate > 0.55:
+                if result.win_rate > WIN_RATE_ACCEPT_THRESHOLD:
                     score = 1.0
-                elif result.win_rate < 0.45:
+                elif result.win_rate < WIN_RATE_REJECT_THRESHOLD:
                     score = 0.0
                 else:
                     score = 0.5

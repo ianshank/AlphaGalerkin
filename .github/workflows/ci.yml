@@ -6,7 +6,7 @@
 # 2. Unit Tests (Fast) - Core functionality without slow/e2e tests
 # 3. Unit Tests (Slow) - Long-running tests
 # 4. Integration Tests - End-to-end workflow validation
-# 5. Coverage Report - Test coverage aggregation
+# 5. Coverage Report - Test coverage aggregation with 85% gate
 
 name: CI
 
@@ -28,10 +28,13 @@ env:
   PYTHON_VERSION: "3.11"
   PYTHONUNBUFFERED: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_WARN_SCRIPT_LOCATION: "1"
   # Disable W&B for CI to avoid API key requirements
   WANDB_MODE: disabled
   # Set matplotlib to non-interactive backend
   MPLBACKEND: Agg
+  # Reproducible builds
+  PYTHONHASHSEED: "0"
 
 jobs:
   # ============================================================
@@ -55,9 +58,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy
+          pip install ruff
+          # Pin mypy + pydantic for plugin compatibility
+          pip install "mypy>=1.10,<1.12" "pydantic>=2.7,<2.10"
           # Install minimal deps for type checking
-          pip install torch einops jaxtyping pydantic hydra-core structlog numpy scipy
+          pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
       - name: Run Ruff linting
         run: ruff check src/ --output-format=github
@@ -95,7 +100,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev]" || pip install -e ".[dev]"
           pip install matplotlib
 
       - name: Run fast unit tests
@@ -184,7 +189,7 @@ jobs:
             -q
 
   # ============================================================
-  # Stage 5: Coverage Report
+  # Stage 5: Coverage Report (85% global gate)
   # ============================================================
   coverage:
     name: Test Coverage
@@ -221,33 +226,48 @@ jobs:
             --cov-report=xml \
             --cov-report=html \
             --cov-report=term-missing \
-            --cov-fail-under=75 \
+            --cov-fail-under=85 \
             -q
 
-      # Per-module coverage gates — set to measured baseline with margin.
-      # New code targets 85%+; pre-existing modules have legacy gaps.
-      # Ratchet these upward as tests are added.
+      # Per-module coverage gates — ratcheted up as part of tech-debt reduction.
+      # Each gate ensures no single subsystem regresses below its threshold.
       - name: Per-module coverage gate (pde)
-        if: hashFiles('tests/pde/') != ''
+        if: always() && hashFiles('tests/pde/') != ''
         run: |
-          pytest tests/pde/ --cov=src/pde --cov-fail-under=55 -q --no-header
+          pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
 
       - name: Per-module coverage gate (modeling)
-        if: hashFiles('tests/modeling/') != ''
+        if: always() && hashFiles('tests/modeling/') != ''
         run: |
-          pytest tests/modeling/ --cov=src/modeling --cov-fail-under=80 -q --no-header
+          pytest tests/modeling/ --cov=src/modeling --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (training)
-        if: hashFiles('tests/training/') != ''
+        if: always() && hashFiles('tests/training/') != ''
         run: |
-          pytest tests/training/ --cov=src/training --cov-fail-under=70 -q --no-header
+          pytest tests/training/ --cov=src/training --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (research)
-        if: hashFiles('tests/research/') != ''
+        if: always() && hashFiles('tests/research/') != ''
         run: |
           pytest tests/research/ --cov=src/research --cov-fail-under=85 -q --no-header
 
+      - name: Per-module coverage gate (games)
+        if: always() && hashFiles('tests/games/') != ''
+        run: |
+          pytest tests/games/ --cov=src/games --cov-fail-under=80 -q --no-header
+
+      - name: Per-module coverage gate (distributed)
+        if: always() && hashFiles('tests/distributed/') != ''
+        run: |
+          pytest tests/distributed/ --cov=src/distributed --cov-fail-under=60 -q --no-header
+
+      - name: Per-module coverage gate (physics)
+        if: always() && hashFiles('tests/physics/') != ''
+        run: |
+          pytest tests/physics/ --cov=src/physics --cov-fail-under=75 -q --no-header
+
       - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
@@ -258,6 +278,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage report artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -368,7 +389,7 @@ jobs:
             --cov=src/games \
             --cov-config=.github/chess-coveragerc \
             --cov-report=term-missing \
-            --cov-fail-under=70 \
+            --cov-fail-under=80 \
             --tb=short \
             -v
 
@@ -422,21 +443,34 @@ jobs:
     steps:
       - name: Check required jobs passed
         run: |
-          # Required gates: lint must pass, tests must run
+          echo "=== CI Gate Results ==="
+          echo "  lint:      ${{ needs.lint.result }}"
+          echo "  test-fast: ${{ needs.test-fast.result }}"
+          echo "  coverage:  ${{ needs.coverage.result }}"
+          echo "======================="
+
+          # Required gates: lint must pass
           if [[ "${{ needs.lint.result }}" != "success" ]]; then
-            echo "FAIL: Lint & Type Check failed"
+            echo "FAIL: Lint & Type Check failed (result=${{ needs.lint.result }})"
             exit 1
           fi
-          # test-fast may have pre-existing failures in unchanged files;
-          # require it at least ran (not skipped).
+
+          # test-fast must at least run (not skipped)
           if [[ "${{ needs.test-fast.result }}" == "skipped" ]]; then
             echo "FAIL: Unit test stage was skipped"
             exit 1
           fi
-          # Coverage gate is a hard threshold (--cov-fail-under=75);
-          # it must succeed, not just run.
+
+          # test-fast must pass
+          if [[ "${{ needs.test-fast.result }}" != "success" ]]; then
+            echo "FAIL: Unit tests failed (result=${{ needs.test-fast.result }})"
+            exit 1
+          fi
+
+          # Coverage gate is a hard threshold (--cov-fail-under=85)
           if [[ "${{ needs.coverage.result }}" != "success" ]]; then
             echo "FAIL: Coverage gate did not pass (result=${{ needs.coverage.result }})"
             exit 1
           fi
-          echo "Core CI gates passed (lint=success, tests=ran, coverage=success)"
+
+          echo "All core CI gates passed"

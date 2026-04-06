@@ -17,6 +17,7 @@ import numpy as np
 import structlog
 import torch
 
+from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_TEMPERATURE_SCHEDULE
 from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS, BatchMCTS
 from src.tools.gtp import SimpleGoGame
@@ -121,15 +122,11 @@ class SelfPlayWorker:
         """
         self.model = model
         self.device = torch.device(device)
-        self.board_sizes = board_sizes or [9, 13, 19]
+        self.board_sizes = board_sizes or list(DEFAULT_BOARD_SIZES)
         self.game = game
 
         # Default temperature schedule: high exploration early, low late
-        self.temperature_schedule = temperature_schedule or {
-            0: 1.0,  # Moves 0-29: temperature 1.0
-            30: 0.5,  # Moves 30-59: temperature 0.5
-            60: 0.1,  # Moves 60+: temperature 0.1
-        }
+        self.temperature_schedule = temperature_schedule or dict(DEFAULT_TEMPERATURE_SCHEDULE)
 
         # Create evaluator
         self.evaluator = FNetEvaluator(

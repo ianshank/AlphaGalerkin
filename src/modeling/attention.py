@@ -12,10 +12,15 @@ from __future__ import annotations
 
 import math
 
+import structlog
 import torch
 from einops import einsum, rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
+
+from src.constants import ATTENTION_EPSILON
+
+logger = structlog.get_logger(__name__)
 
 
 class GalerkinAttention(nn.Module):
@@ -106,8 +111,8 @@ class GalerkinAttention(nn.Module):
 
         # Optional feature normalization (helps with stability)
         if self.normalize_features:
-            q = q / (q.norm(dim=-1, keepdim=True) + 1e-8)
-            k = k / (k.norm(dim=-1, keepdim=True) + 1e-8)
+            q = q / (q.norm(dim=-1, keepdim=True) + ATTENTION_EPSILON)
+            k = k / (k.norm(dim=-1, keepdim=True) + ATTENTION_EPSILON)
 
         # Galerkin projection: Q * (K^T V / n)
         # Step 1: K^T V (Monte Carlo integral)

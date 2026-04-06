@@ -14,6 +14,7 @@ from typing import Any
 
 import structlog
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.prototyping.builder import ModelBuilder, PrototypeModel
 from src.prototyping.config import (
     PresetType,
@@ -170,7 +171,7 @@ class TransferTemplate(ExperimentTemplate):
 
         start_time = time.time()
 
-        target_sizes = target_sizes or [9, 13, 19]
+        target_sizes = target_sizes or list(DEFAULT_BOARD_SIZES)
 
         self._logger.info(
             "starting_transfer",
@@ -420,7 +421,7 @@ class BenchmarkTemplate(ExperimentTemplate):
 
         start_time = time.time()
 
-        board_sizes = board_sizes or [9, 13, 19]
+        board_sizes = board_sizes or list(DEFAULT_BOARD_SIZES)
         batch_sizes = batch_sizes or [1, 32, 64]
 
         self._logger.info(

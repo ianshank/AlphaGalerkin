@@ -360,6 +360,8 @@ class PDEBenchmarkRunner:
             "uniform_fdm": "uniform_fdm",
             "dorfler_amr": "dorfler_amr",
             "pinn": "pinn",
+            "navier_stokes_fdm": "navier_stokes_fdm",
+            "navier_stokes": "navier_stokes_fdm",
         }
         key = name.lower().replace("-", "_").replace(" ", "_")
         return mapping.get(key, key)

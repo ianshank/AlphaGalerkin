@@ -479,14 +479,11 @@ class Trainer:
             Configured curriculum or None if not enabled.
 
         """
-        # Default curriculum schedule
-        default_schedule = dict(DEFAULT_CURRICULUM_SCHEDULE)
-
-        # Get schedule from config if available
+        # Get schedule from config if available, else use constant default
         schedule = getattr(self.training_config, "curriculum_schedule", None)
         if schedule is None:
             # Fallback to BoardSizeCurriculum's built-in default
-            schedule = {0: [9], 10000: [9, 13], 50000: [9, 13, 19]}
+            schedule = dict(DEFAULT_CURRICULUM_SCHEDULE)
 
         curriculum = BoardSizeCurriculum.from_config(cast(dict[str, Any], schedule))
 
@@ -1349,6 +1346,7 @@ def create_trainer(
     device: str = "auto",
     wandb_logger: WandbLogger | None = None,
     distributed_context: DistributedContext | None = None,
+    game: GameInterface | None = None,
 ) -> Trainer:
     """Create and optionally resume a trainer instance.
 
@@ -1360,6 +1358,7 @@ def create_trainer(
         device: Training device.
         wandb_logger: Optional W&B logger for experiment tracking.
         distributed_context: Optional distributed context (auto-detected if None).
+        game: Optional GameInterface for non-Go games (e.g. PDE, chess).
 
     Returns:
         Configured trainer.
@@ -1372,6 +1371,7 @@ def create_trainer(
         checkpoint_dir=checkpoint_dir,
         wandb_logger=wandb_logger,
         distributed_context=distributed_context,
+        game=game,
     )
 
     if resume_from is not None:

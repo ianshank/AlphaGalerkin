@@ -417,6 +417,76 @@ class ArchitectureDemoConfig(BaseModel):
     )
 
 
+class SBIRDemoConfig(BaseModel):
+    """Configuration for SBIR benchmark demo.
+
+    Controls which benchmarks to run, output formats, and timing limits.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    # Benchmark suite config path
+    suite_config_path: str = Field(
+        default="config/benchmarks/sbir_suite.yaml",
+        description="Path to SBIR benchmark suite YAML configuration",
+    )
+
+    # Output settings
+    output_dir: str = Field(
+        default="outputs/sbir_demo",
+        description="Directory for output reports",
+    )
+    generate_html: bool = Field(
+        default=True,
+        description="Whether to generate HTML report",
+    )
+    generate_json: bool = Field(
+        default=True,
+        description="Whether to generate JSON report",
+    )
+    generate_markdown: bool = Field(
+        default=True,
+        description="Whether to generate Markdown report",
+    )
+
+    # Benchmark selection
+    benchmarks: list[str] | None = Field(
+        default=None,
+        description="Specific benchmark names to run (None = all)",
+    )
+    baselines: list[str] | None = Field(
+        default=None,
+        description="Specific baselines to run (None = all from config)",
+    )
+
+    # Refinement levels override (for quick runs)
+    refinement_levels: list[int] | None = Field(
+        default=None,
+        description="Override refinement levels for all benchmarks",
+    )
+
+    # Timing
+    max_time_per_benchmark_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        le=600.0,
+        description="Maximum wall time per benchmark problem (seconds)",
+    )
+
+    # Seed
+    seed: int = Field(
+        default=42,
+        ge=0,
+        description="Random seed for reproducibility",
+    )
+
+    # Verbosity
+    verbose: bool = Field(
+        default=False,
+        description="Enable verbose logging",
+    )
+
+
 class DemoConfig(BaseModel):
     """Root configuration combining all demo configurations.
 

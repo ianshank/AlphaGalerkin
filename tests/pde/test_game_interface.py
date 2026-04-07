@@ -17,7 +17,6 @@ from src.pde.game_interface import PDEGameInterface, PDEGameInterfaceConfig
 from src.pde.games.basis_selection import BasisSelectionGame
 from src.pde.operators import PoissonOperator
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

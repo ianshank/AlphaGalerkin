@@ -2,7 +2,9 @@
 
 ## Context
 
-AlphaGalerkin (v0.3.0) is a mature resolution-independent AI system with strong mathematical foundations (Galerkin Transformers, FNet, MCTS). Milestones 1-3 and 8 are complete. The project is positioning for SBIR submissions (Navy N252-088, DOE ASCR, NSF, AFWERX) at TRL 3-4. Critical gaps remain in PDE-training integration, SBIR benchmark completeness, test coverage, and production hardening. This plan prioritizes by **ROI = (SBIR readiness + technical risk reduction + downstream unblocking) / effort**.
+AlphaGalerkin (v0.3.0 → v0.4.0) is a mature resolution-independent AI system with strong mathematical foundations (Galerkin Transformers, FNet, MCTS). Milestones 1-3 and 8 are complete. The project is positioning for SBIR submissions (Navy N252-088, DOE ASCR, NSF, AFWERX) at TRL 3-4. This plan prioritizes by **ROI = (SBIR readiness + technical risk reduction + downstream unblocking) / effort**.
+
+**Status Update (2026-04-07):** Tier 1 items 1.1-1.4 are now COMPLETE. Tier 2 items 2.1, 2.3, and partial 2.4 are COMPLETE. Visualization module (from Tier 3.3) is COMPLETE. See commit history on `claude/create-implementation-plan-hFHXP` for details.
 
 ---
 

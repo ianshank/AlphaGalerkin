@@ -89,6 +89,12 @@ Monitors LBB condition during training:
 - [2026-04-02]: **PDE Games Registered** - pde_basis and pde_mesh registered in GameRegistry via src/pde/register_games.py
 - [2026-04-02]: **PDE Training Config** - config/train_pde.yaml for MCTS-guided basis selection training
 - [2026-04-02]: **ROI Implementation Plan** - Tiered next-steps plan in docs/ROI_IMPLEMENTATION_PLAN.md
+- [2026-04-07]: **Physics Loss Tests** - 52 comprehensive tests for physics-informed training (config toggle, gradient flow, property-based)
+- [2026-04-07]: **SBIR Benchmark Demo** - End-to-end sbir_demo.py with HTML/JSON/Markdown report generation
+- [2026-04-07]: **Loss Balancing Audit** - Fixed NaN/Inf propagation bugs in ReLoBRaLo/SoftAdapt, 96 property-based tests
+- [2026-04-07]: **PDE-MCTS Self-Play Wired** - PDE games auto-register, create_trainer() accepts game parameter, 40 tests
+- [2026-04-07]: **Visualization Module** - PlotRegistry with 5 plot types, HTMLReportGenerator with themed templates
+- [2026-04-07]: **Coverage Expansion** - 390+ new tests across training, PDE, games, curriculum, modeling modules
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement

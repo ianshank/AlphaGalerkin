@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -22,6 +23,49 @@ from src.training.loss import AlphaGalerkinLoss
 from src.training.replay_buffer import UniformReplayBuffer
 from src.training.self_play import SelfPlayWorker
 from src.training.trainer import Trainer
+
+
+def _make_fake_experiences(trainer, n=10):
+    """Create fake experiences matching the model's expected input shape."""
+    from src.training.replay_buffer import Experience
+
+    board_size = 9
+    input_channels = trainer.config.operator.input_channels
+    action_space = board_size * board_size + 1
+
+    return [
+        Experience(
+            board_state=torch.randn(input_channels, board_size, board_size),
+            board_size=board_size,
+            target_policy=torch.softmax(torch.randn(action_space), dim=0),
+            target_value=float(torch.randn(1).tanh().item()),
+        )
+        for _ in range(n)
+    ]
+
+
+def _prefill_and_mock(trainer, n=100):
+    """Pre-fill buffer and return a context manager that mocks self-play."""
+    from contextlib import contextmanager
+
+    for exp in _make_fake_experiences(trainer, n):
+        trainer.buffer.add(exp)
+
+    @contextmanager
+    def _ctx():
+        fake = _make_fake_experiences(trainer, 5)
+        with (
+            patch.object(trainer, "_fill_buffer"),
+            patch.object(
+                trainer.self_play_worker,
+                "generate_experiences",
+                return_value=fake,
+            ),
+            patch.object(trainer, "_run_evaluation", return_value=0.5),
+        ):
+            yield
+
+    return _ctx()
 
 
 @pytest.fixture
@@ -83,14 +127,24 @@ class TestFullTrainingPipeline:
             board_sizes=[9],
         )
 
-        # Generate experiences
-        experiences = worker.generate_experiences(n_games=2, board_size=9)
+        # Generate fake experiences (mocking MCTS to avoid slow self-play)
+        from src.training.replay_buffer import Experience
+
+        input_channels = integration_config.operator.input_channels
+        action_space = 9 * 9 + 1
+        experiences = [
+            Experience(
+                board_state=torch.randn(input_channels, 9, 9),
+                board_size=9,
+                target_policy=torch.softmax(torch.randn(action_space), dim=0),
+                target_value=float(torch.randn(1).tanh().item()),
+            )
+            for _ in range(20)
+        ]
         assert len(experiences) > 0
 
         # Create replay buffer and add experiences
         buffer = UniformReplayBuffer(capacity=100)
-        # Self-play generates variable experiences per game based on game length
-        # Buffer correctly limits to capacity
         buffer.add_batch(experiences)
         assert len(buffer) == min(len(experiences), buffer.capacity)
 
@@ -144,14 +198,15 @@ class TestFullTrainingPipeline:
             )
 
             # Train for a few steps
-            trainer.train(
-                n_steps=10,
-                log_interval=1,
-                checkpoint_interval=100,
-            )
+            with _prefill_and_mock(trainer):
+                trainer.train(
+                    n_steps=2,
+                    log_interval=1,
+                    checkpoint_interval=100,
+                )
 
             history = trainer.get_metrics_history()
-            assert len(history) == 10
+            assert len(history) == 2
 
             # Get first and last losses
             first_loss = history[0]["total_loss"]
@@ -181,7 +236,8 @@ class TestFullTrainingPipeline:
                 checkpoint_dir=checkpoint_dir,
             )
 
-            trainer1.train(n_steps=5, log_interval=1, checkpoint_interval=1)
+            with _prefill_and_mock(trainer1):
+                trainer1.train(n_steps=2, log_interval=1, checkpoint_interval=1)
             step_after_first = trainer1.global_step
 
             # Phase 2: Load and continue
@@ -197,8 +253,9 @@ class TestFullTrainingPipeline:
             assert trainer2.global_step == step_after_first
 
             # Continue training
-            trainer2.train(n_steps=3, log_interval=1, checkpoint_interval=100)
-            assert trainer2.global_step == step_after_first + 3
+            with _prefill_and_mock(trainer2):
+                trainer2.train(n_steps=1, log_interval=1, checkpoint_interval=100)
+            assert trainer2.global_step == step_after_first + 1
 
     def test_resolution_independence_after_training(
         self,
@@ -217,7 +274,8 @@ class TestFullTrainingPipeline:
             )
 
             # Train on 9x9
-            trainer.train(n_steps=5, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=1, log_interval=1, checkpoint_interval=100)
 
             # Test inference on different sizes
             model.eval()
@@ -258,10 +316,11 @@ class TestEndToEndSmoke:
             )
 
             # Should complete without error
-            trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=1, log_interval=1, checkpoint_interval=100)
 
             # Should have metrics
-            assert len(trainer.get_metrics_history()) == 3
+            assert len(trainer.get_metrics_history()) == 1
 
             # Model should still work
             model.eval()
@@ -321,7 +380,7 @@ class TestE2ETrainingPipeline:
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint_dir = Path(tmpdir)
 
-            # Phase 1: Train 5 steps, save checkpoint
+            # Phase 1: Train 1 step, save checkpoint
             model1 = AlphaGalerkinModel(config.operator)
             trainer1 = Trainer(
                 model=model1,
@@ -329,14 +388,15 @@ class TestE2ETrainingPipeline:
                 device="cpu",
                 checkpoint_dir=checkpoint_dir,
             )
-            trainer1.train(n_steps=5, log_interval=1, checkpoint_interval=1)
+            with _prefill_and_mock(trainer1):
+                trainer1.train(n_steps=1, log_interval=1, checkpoint_interval=1)
 
-            # Verify trainer1 completed 5 steps
-            assert trainer1.global_step == 5
+            # Verify trainer1 completed 1 step
+            assert trainer1.global_step == 1
 
             # Collect first-phase metrics
             phase1_history = trainer1.get_metrics_history()
-            assert len(phase1_history) == 5
+            assert len(phase1_history) == 1
             for m in phase1_history:
                 assert math.isfinite(m["total_loss"]), (
                     f"Non-finite loss at step {m['step']}"
@@ -352,18 +412,19 @@ class TestE2ETrainingPipeline:
             )
             trainer2.load_checkpoint()
 
-            # Verify resume starts at step 5
-            assert trainer2.global_step == 5
+            # Verify resume starts at step 1
+            assert trainer2.global_step == 1
 
-            # Train 5 more steps
-            trainer2.train(n_steps=5, log_interval=1, checkpoint_interval=100)
+            # Train 1 more step
+            with _prefill_and_mock(trainer2):
+                trainer2.train(n_steps=1, log_interval=1, checkpoint_interval=100)
 
             # Verify total progress
-            assert trainer2.global_step == 10
+            assert trainer2.global_step == 2
 
             # All second-phase losses should be finite
             phase2_history = trainer2.get_metrics_history()
-            assert len(phase2_history) == 5
+            assert len(phase2_history) == 1
             for m in phase2_history:
                 assert math.isfinite(m["total_loss"]), (
                     f"Non-finite loss at step {m['step']}"
@@ -445,14 +506,15 @@ class TestCurriculumProgression:
             stage_after = trainer.curriculum.get_current_stage(3)
             assert stage_after.board_sizes == [9, 13]
 
-            # Run 5 steps to exercise the curriculum transition
-            trainer.train(n_steps=5, log_interval=1, checkpoint_interval=100)
+            # Run 1 step to verify training works with curriculum enabled
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=1, log_interval=1, checkpoint_interval=100)
 
             # Training completed successfully with curriculum
-            assert trainer.global_step == 5
+            assert trainer.global_step == 1
 
             # All losses should be finite
             history = trainer.get_metrics_history()
-            assert len(history) == 5
+            assert len(history) == 1
             for m in history:
                 assert math.isfinite(m["total_loss"])

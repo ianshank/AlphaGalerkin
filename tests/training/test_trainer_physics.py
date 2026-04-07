@@ -20,6 +20,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 from typing import Literal
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -127,6 +128,48 @@ def _make_trainer(
         device="cpu",
         checkpoint_dir=Path(tmpdir),
     )
+
+
+def _make_fake_experiences(trainer: Trainer, n: int = 10) -> list:
+    """Create fake experiences matching the model's expected input shape."""
+    from src.training.replay_buffer import Experience
+
+    board_size = 9
+    input_channels = trainer.config.operator.input_channels
+    action_space = board_size * board_size + 1
+
+    return [
+        Experience(
+            board_state=torch.randn(input_channels, board_size, board_size),
+            board_size=board_size,
+            target_policy=torch.softmax(torch.randn(action_space), dim=0),
+            target_value=float(torch.randn(1).tanh().item()),
+        )
+        for _ in range(n)
+    ]
+
+
+def _prefill_and_mock(trainer: Trainer, n: int = 100):
+    """Pre-fill buffer and return a context manager that mocks self-play."""
+    from contextlib import contextmanager
+
+    for exp in _make_fake_experiences(trainer, n):
+        trainer.buffer.add(exp)
+
+    @contextmanager
+    def _ctx():
+        fake = _make_fake_experiences(trainer, 5)
+        with (
+            patch.object(trainer, "_fill_buffer"),
+            patch.object(
+                trainer.self_play_worker,
+                "generate_experiences",
+                return_value=fake,
+            ),
+        ):
+            yield
+
+    return _ctx()
 
 
 # ============================================================================
@@ -345,7 +388,10 @@ class TestGradientFlowWithPhysics:
     def test_training_steps_update_model_params_with_combined(
         self, op_config: OperatorConfig
     ) -> None:
-        """Training with combined physics loss should update model parameters."""
+        """Training with combined physics loss should update model parameters.
+
+        Uses direct _training_step calls to avoid slow MCTS self-play.
+        """
         model = AlphaGalerkinModel(op_config)
         config = _make_config(op_config, physics_loss_type="combined", physics_weight=0.01)
 
@@ -354,9 +400,34 @@ class TestGradientFlowWithPhysics:
             name: p.clone().detach() for name, p in model.named_parameters()
         }
 
+        board_size = 9
+        batch_size = 4
+        input_channels = op_config.input_channels
+        action_space = board_size * board_size + 1
+
         with tempfile.TemporaryDirectory() as tmpdir:
             trainer = _make_trainer(model, config, tmpdir)
-            trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+            trainer.model.train()
+
+            # Run a few training steps directly (bypasses self-play)
+            for _ in range(3):
+                from src.data.collate import TrainingBatch
+
+                batch = TrainingBatch(
+                    board_states=torch.randn(
+                        batch_size, input_channels, board_size, board_size
+                    ),
+                    target_policies=torch.softmax(
+                        torch.randn(batch_size, action_space), dim=-1
+                    ),
+                    target_values=torch.randn(batch_size, 1).tanh(),
+                    position_mask=torch.ones(
+                        batch_size, board_size, board_size, dtype=torch.bool
+                    ),
+                    action_mask=torch.ones(batch_size, action_space),
+                    board_sizes=torch.full((batch_size,), board_size, dtype=torch.long),
+                )
+                trainer._training_step(batch)
 
         # At least some parameters should have changed
         any_changed = False
@@ -510,7 +581,8 @@ class TestTrainingMetricsPhysics:
         config = _make_config(op_config, physics_loss_type="combined", physics_weight=0.01)
         with tempfile.TemporaryDirectory() as tmpdir:
             trainer = _make_trainer(model, config, tmpdir)
-            trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
 
             history = trainer.get_metrics_history()
             assert len(history) == 3
@@ -614,7 +686,8 @@ class TestTrainerPhysicsTraining:
         config = _make_config(op_config, physics_loss_type="combined", physics_weight=0.01)
         with tempfile.TemporaryDirectory() as tmpdir:
             trainer = _make_trainer(small_model, config, tmpdir)
-            trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
             assert trainer.global_step == 5
 
     def test_training_completes_with_none_physics(
@@ -624,7 +697,8 @@ class TestTrainerPhysicsTraining:
         config = _make_config(op_config, physics_loss_type="none")
         with tempfile.TemporaryDirectory() as tmpdir:
             trainer = _make_trainer(small_model, config, tmpdir)
-            trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
             assert trainer.global_step == 5
 
     def test_training_completes_with_physics_informed(
@@ -635,7 +709,8 @@ class TestTrainerPhysicsTraining:
         config = _make_config(op_config, physics_informed=True, physics_loss_weight=0.1)
         with tempfile.TemporaryDirectory() as tmpdir:
             trainer = _make_trainer(model, config, tmpdir)
-            trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
             assert trainer.global_step == 5
 
     @pytest.mark.parametrize(
@@ -665,7 +740,8 @@ class TestTrainerPhysicsTraining:
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             trainer = _make_trainer(model, config, tmpdir)
-            trainer.train(n_steps=5, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=5, log_interval=1, checkpoint_interval=100)
             history = trainer.get_metrics_history()
             total_losses = [m["total_loss"] for m in history]
 

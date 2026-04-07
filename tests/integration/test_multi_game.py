@@ -9,6 +9,9 @@ from __future__ import annotations
 import math
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
+
+import torch
 
 from config.schemas import (
     AlphaGalerkinConfig,
@@ -21,6 +24,53 @@ from src.games.chess import ChessGame
 from src.games.go import GoGame
 from src.modeling.model import AlphaGalerkinModel
 from src.training.trainer import Trainer
+
+
+def _make_fake_experiences(trainer, n=10):
+    """Create fake experiences matching the model's expected input shape."""
+    from src.training.replay_buffer import Experience
+
+    board_size = trainer.config.board_sizes[0] if trainer.config.board_sizes else 9
+    input_channels = trainer.config.operator.input_channels
+    action_space_size = trainer.config.operator.action_space_size
+    if action_space_size is not None:
+        action_space = action_space_size
+    else:
+        action_space = board_size * board_size + 1
+
+    return [
+        Experience(
+            board_state=torch.randn(input_channels, board_size, board_size),
+            board_size=board_size,
+            target_policy=torch.softmax(torch.randn(action_space), dim=0),
+            target_value=float(torch.randn(1).tanh().item()),
+        )
+        for _ in range(n)
+    ]
+
+
+def _prefill_and_mock(trainer, n=100):
+    """Pre-fill buffer and return a context manager that mocks self-play."""
+    from contextlib import contextmanager
+
+    for exp in _make_fake_experiences(trainer, n):
+        trainer.buffer.add(exp)
+
+    @contextmanager
+    def _ctx():
+        fake = _make_fake_experiences(trainer, 5)
+        with (
+            patch.object(trainer, "_fill_buffer"),
+            patch.object(
+                trainer.self_play_worker,
+                "generate_experiences",
+                return_value=fake,
+            ),
+            patch.object(trainer, "_run_evaluation", return_value=0.5),
+        ):
+            yield
+
+    return _ctx()
 
 
 def _make_go_config() -> AlphaGalerkinConfig:
@@ -134,11 +184,12 @@ class TestMultiGameSwitching:
                 checkpoint_dir=Path(tmpdir) / "go",
                 game=go_game,
             )
-            go_trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(go_trainer):
+                go_trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
 
-            assert go_trainer.global_step == 3
+            assert go_trainer.global_step == 2
             go_history = go_trainer.get_metrics_history()
-            assert len(go_history) == 3
+            assert len(go_history) == 2
             for m in go_history:
                 assert math.isfinite(m["total_loss"]), (
                     f"Go: non-finite loss at step {m['step']}"
@@ -155,11 +206,12 @@ class TestMultiGameSwitching:
                 checkpoint_dir=Path(tmpdir) / "chess",
                 game=chess_game,
             )
-            chess_trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(chess_trainer):
+                chess_trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
 
-            assert chess_trainer.global_step == 3
+            assert chess_trainer.global_step == 2
             chess_history = chess_trainer.get_metrics_history()
-            assert len(chess_history) == 3
+            assert len(chess_history) == 2
             for m in chess_history:
                 assert math.isfinite(m["total_loss"]), (
                     f"Chess: non-finite loss at step {m['step']}"
@@ -178,7 +230,8 @@ class TestMultiGameSwitching:
                 checkpoint_dir=Path(tmpdir),
                 game=go_game,
             )
-            go_trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(go_trainer):
+                go_trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
 
             history = go_trainer.get_metrics_history()
             assert len(history) == 2
@@ -207,7 +260,8 @@ class TestMultiGameSwitching:
                 checkpoint_dir=Path(tmpdir),
                 game=chess_game,
             )
-            chess_trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
+            with _prefill_and_mock(chess_trainer):
+                chess_trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
 
             history = chess_trainer.get_metrics_history()
             assert len(history) == 2

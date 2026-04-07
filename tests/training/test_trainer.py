@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -17,6 +18,55 @@ from config.schemas import (
 )
 from src.modeling.model import AlphaGalerkinModel
 from src.training.trainer import Trainer, TrainingMetrics, create_trainer
+
+
+def _make_fake_experiences(trainer: Trainer, n: int = 10) -> list:
+    """Create fake experiences matching the model's expected input shape."""
+    from src.training.replay_buffer import Experience
+
+    board_size = 9
+    input_channels = trainer.config.operator.input_channels
+    action_space = board_size * board_size + 1
+
+    return [
+        Experience(
+            board_state=torch.randn(input_channels, board_size, board_size),
+            board_size=board_size,
+            target_policy=torch.softmax(torch.randn(action_space), dim=0),
+            target_value=float(torch.randn(1).tanh().item()),
+        )
+        for _ in range(n)
+    ]
+
+
+def _prefill_and_mock(trainer: Trainer, n: int = 100):
+    """Pre-fill buffer and return a context manager that mocks self-play.
+
+    Usage::
+
+        trainer = Trainer(...)
+        with _prefill_and_mock(trainer):
+            trainer.train(n_steps=3)
+    """
+    from contextlib import contextmanager
+
+    for exp in _make_fake_experiences(trainer, n):
+        trainer.buffer.add(exp)
+
+    @contextmanager
+    def _ctx():
+        fake = _make_fake_experiences(trainer, 5)
+        with (
+            patch.object(trainer, "_fill_buffer"),
+            patch.object(
+                trainer.self_play_worker,
+                "generate_experiences",
+                return_value=fake,
+            ),
+        ):
+            yield
+
+    return _ctx()
 
 
 @pytest.fixture
@@ -108,7 +158,8 @@ class TestTrainer:
         )
 
         initial_step = trainer.global_step
-        trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+        with _prefill_and_mock(trainer):
+            trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
 
         assert trainer.global_step == initial_step + 3
 
@@ -126,7 +177,8 @@ class TestTrainer:
             checkpoint_dir=checkpoint_dir,
         )
 
-        trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+        with _prefill_and_mock(trainer):
+            trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
 
         history = trainer.get_metrics_history()
         assert len(history) == 3
@@ -152,7 +204,8 @@ class TestTrainer:
             checkpoint_dir=checkpoint_dir,
         )
 
-        trainer.train(n_steps=5, log_interval=1, checkpoint_interval=2)
+        with _prefill_and_mock(trainer):
+            trainer.train(n_steps=5, log_interval=1, checkpoint_interval=2)
 
         # Should have checkpoints
         checkpoints = list(checkpoint_dir.glob("checkpoint_*.pt"))
@@ -172,7 +225,8 @@ class TestTrainer:
             device="cpu",
             checkpoint_dir=checkpoint_dir,
         )
-        trainer1.train(n_steps=3, log_interval=1, checkpoint_interval=1)
+        with _prefill_and_mock(trainer1):
+            trainer1.train(n_steps=3, log_interval=1, checkpoint_interval=1)
         saved_step = trainer1.global_step
 
         # Create new trainer and resume
@@ -202,7 +256,8 @@ class TestTrainer:
         )
 
         initial_lr = trainer.get_current_lr()
-        trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
+        with _prefill_and_mock(trainer):
+            trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
         final_lr = trainer.get_current_lr()
 
         # With constant scheduler, LR should be same
@@ -265,7 +320,8 @@ class TestCreateTrainer:
             device="cpu",
             checkpoint_dir=checkpoint_dir,
         )
-        trainer1.train(n_steps=2, log_interval=1, checkpoint_interval=1)
+        with _prefill_and_mock(trainer1):
+            trainer1.train(n_steps=2, log_interval=1, checkpoint_interval=1)
         ckpt_path = trainer1.checkpoint_manager.get_latest()
 
         # Create new trainer resuming from checkpoint

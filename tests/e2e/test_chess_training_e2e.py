@@ -1,10 +1,16 @@
 """End-to-end chess training smoke test.
 
-Validates the full pipeline: model → self-play → replay buffer → training step.
+Validates the full pipeline: model -> self-play -> replay buffer -> training step.
 Uses minimal configuration to run fast while exercising the entire code path.
+
+The self-play tests mock MCTS search to return uniform random policies instantly,
+since these tests validate the pipeline plumbing (not MCTS search quality).
+Without mocking, chess self-play with 4672 actions is far too slow for CI.
 """
 
 from __future__ import annotations
+
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -14,6 +20,54 @@ from src.games.chess import ChessGame
 from src.modeling.model import AlphaGalerkinModel
 from src.training.replay_buffer import UniformReplayBuffer
 from src.training.self_play import SelfPlayWorker
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_move_counter: int = 0
+
+
+def _fast_mcts_search(self, game, add_noise=True):  # noqa: ANN001, ANN202, ARG001
+    """Return a uniform policy over legal actions instantly (no tree search).
+
+    This replaces ``MCTS.search`` so that self-play games complete in
+    milliseconds instead of minutes.
+    """
+    legal = game.get_legal_actions()
+    n = len(legal)
+    if n == 0:
+        return {}
+    prob = 1.0 / n
+    return dict.fromkeys(legal, prob)
+
+
+def _make_early_termination_wrapper(game_instance, max_moves=4):  # noqa: ANN001, ANN202
+    """Create a wrapper that forces early termination of chess games.
+
+    Forces termination after *max_moves* calls that returned False.
+    ``game_instance`` is the concrete :class:`ChessGame` so we can call the
+    *original* ``is_terminal`` via the unbound class method.  The wrapper is
+    used as a ``side_effect`` on a :class:`~unittest.mock.MagicMock` that
+    replaces the class-level attribute; because mocks are not descriptors the
+    wrapper receives only ``(state,)`` -- *not* ``(self, state)``.
+    """
+    real_is_terminal = type(game_instance).is_terminal
+    call_count = 0
+
+    def _wrapper(state):  # noqa: ANN001, ANN202
+        nonlocal call_count
+        if real_is_terminal(game_instance, state):
+            return True
+        call_count += 1
+        return call_count > max_moves
+
+    return _wrapper
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -46,8 +100,13 @@ def chess_config() -> tuple[OperatorConfig, MCTSConfig, TrainingConfig]:
 class TestChessTrainingE2E:
     """End-to-end chess training smoke tests."""
 
+    @pytest.mark.slow
     def test_self_play_to_training_step(self, chess_config: tuple) -> None:
-        """Full pipeline: self-play → buffer → training step."""
+        """Full pipeline: self-play -> buffer -> training step.
+
+        MCTS search is mocked to return uniform random policies so the game
+        finishes quickly.  ``is_terminal`` is patched to cap games at 4 moves.
+        """
         op_config, mcts_config, train_config = chess_config
         game = ChessGame()
 
@@ -63,13 +122,19 @@ class TestChessTrainingE2E:
             game=game,
         )
 
-        # 3. Play 2 games
-        records = worker.generate_games(n_games=2, board_size=8)
-        assert len(records) == 2
+        # Mock MCTS.search and cap game length so each game takes ~ms
+        with patch("src.mcts.search.MCTS.search", _fast_mcts_search):
+            wrapper = _make_early_termination_wrapper(game, max_moves=4)
+            with patch.object(ChessGame, "is_terminal", side_effect=wrapper):
+                # 3. Play 2 games
+                records = worker.generate_games(n_games=2, board_size=8)
+                assert len(records) == 2
 
-        # 4. Convert to experiences
-        experiences = worker.generate_experiences(n_games=2, board_size=8)
-        assert len(experiences) > 0
+            # 4. Convert to experiences (plays 2 more games, need fresh wrapper)
+            wrapper2 = _make_early_termination_wrapper(game, max_moves=4)
+            with patch.object(ChessGame, "is_terminal", side_effect=wrapper2):
+                experiences = worker.generate_experiences(n_games=2, board_size=8)
+                assert len(experiences) > 0
 
         for exp in experiences:
             assert exp.board_state.shape == (119, 8, 8)
@@ -112,8 +177,12 @@ class TestChessTrainingE2E:
             if param.requires_grad:
                 assert param.grad is not None, f"No gradient for {name}"
 
+    @pytest.mark.slow
     def test_self_play_game_terminates(self, chess_config: tuple) -> None:
-        """Verify self-play games terminate (no infinite loops)."""
+        """Verify self-play games terminate (no infinite loops).
+
+        MCTS search is mocked; ``is_terminal`` is patched to cap at 6 moves.
+        """
         op_config, mcts_config, _ = chess_config
         game = ChessGame()
         model = AlphaGalerkinModel(op_config)
@@ -126,8 +195,11 @@ class TestChessTrainingE2E:
             game=game,
         )
 
-        # Should terminate within 500 moves (game has max_moves limit)
-        records = worker.generate_games(n_games=1, board_size=8)
+        with patch("src.mcts.search.MCTS.search", _fast_mcts_search):
+            wrapper = _make_early_termination_wrapper(game, max_moves=6)
+            with patch.object(ChessGame, "is_terminal", side_effect=wrapper):
+                records = worker.generate_games(n_games=1, board_size=8)
+
         assert len(records) == 1
         assert len(records[0].states) > 0
         assert len(records[0].policies) > 0

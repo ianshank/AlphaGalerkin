@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 import torch
-from torch.cuda.amp import GradScaler, autocast
-from torch.optim import AdamW, Optimizer
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, LRScheduler
+from torch.cuda.amp import autocast
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 
 from src.constants import (
     DEFAULT_CURRICULUM_SCHEDULE,
@@ -29,6 +29,7 @@ from src.constants import (
     WIN_RATE_REJECT_THRESHOLD,
 )
 from src.data.collate import TrainingBatch, VariableSizeCollator
+from src.training.base_trainer import BaseTrainer
 from src.training.checkpoint import CheckpointManager
 from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
@@ -118,11 +119,17 @@ class TrainingMetrics:
         return result
 
 
-class Trainer:
+class Trainer(BaseTrainer):  # type: ignore[type-arg]
     """Main trainer for AlphaGalerkin.
 
     Coordinates self-play, training, and checkpoint management.
     Supports mixed precision training and gradient accumulation.
+
+    Inherits shared AMP, gradient-clipping, LR-scheduling, and
+    checkpoint helpers from :class:`BaseTrainer`.  The ``__init__``
+    does **not** call ``super().__init__()`` because the AlphaGalerkin
+    trainer has a substantially different setup flow; instead it
+    sets the attributes that ``BaseTrainer`` helpers rely on directly.
     """
 
     def __init__(
@@ -248,9 +255,11 @@ class Trainer:
         # Learning rate scheduler
         self.scheduler = self._create_scheduler()
 
-        # Mixed precision
-        self.use_amp = self.training_config.use_amp and self.device.type == "cuda"
-        self.scaler = GradScaler() if self.use_amp else None
+        # Mixed precision (uses BaseTrainer helper)
+        self.use_amp, self.scaler, self._amp_dtype = self._setup_amp(
+            use_amp=self.training_config.use_amp,
+            device=self.device,
+        )
 
         # Replay buffer (prioritized or uniform based on config)
         self.use_prioritized_replay = self.training_config.use_prioritized_replay
@@ -324,57 +333,63 @@ class Trainer:
         if self.wandb_logger is not None:
             self.wandb_logger.watch_model(self.model)
 
-    def _create_optimizer(self) -> Optimizer:
-        """Create optimizer from config."""
-        return AdamW(
-            self.model.parameters(),
+    def _create_optimizer(self) -> Optimizer:  # type: ignore[override]
+        """Create optimizer from config.
+
+        Delegates to :meth:`BaseTrainer._create_optimizer` static helper.
+        """
+        return BaseTrainer._create_optimizer(
+            self.model,
             lr=self.training_config.learning_rate,
             weight_decay=self.training_config.weight_decay,
         )
 
-    def _create_scheduler(self) -> LRScheduler:
-        """Create learning rate scheduler from config."""
+    def _create_scheduler(self) -> LRScheduler:  # type: ignore[override]
+        """Create learning rate scheduler from config.
+
+        Delegates to :meth:`BaseTrainer._create_scheduler` static helper.
+        The ``"constant"`` type maps to ``"none"`` in the base helper
+        for backwards compatibility.
+        """
         scheduler_type = self.training_config.lr_scheduler
-        warmup_steps = self.training_config.warmup_steps
-        total_steps = self.training_config.total_steps
+        # Map legacy "constant" to "none" (BaseTrainer recognises both)
+        if scheduler_type == "constant":
+            scheduler_type = "none"
 
-        main_scheduler: LRScheduler
-        if scheduler_type == "cosine":
-            # Cosine annealing after warmup
-            main_scheduler = CosineAnnealingLR(
-                self.optimizer,
-                T_max=total_steps - warmup_steps,
-            )
-        elif scheduler_type == "linear":
-            main_scheduler = LinearLR(
-                self.optimizer,
-                start_factor=1.0,
-                end_factor=0.1,
-                total_iters=total_steps - warmup_steps,
-            )
-        else:  # constant
-            main_scheduler = LinearLR(
-                self.optimizer,
-                start_factor=1.0,
-                end_factor=1.0,
-                total_iters=total_steps,
-            )
+        return BaseTrainer._create_scheduler(
+            optimizer=self.optimizer,
+            scheduler_type=scheduler_type,
+            warmup_steps=self.training_config.warmup_steps,
+            total_steps=self.training_config.total_steps,
+            min_lr_ratio=0.1,
+            warmup_start_factor=0.1,
+        )
 
-        # Add warmup
-        if warmup_steps > 0:
-            warmup_scheduler = LinearLR(
-                self.optimizer,
-                start_factor=0.1,
-                end_factor=1.0,
-                total_iters=warmup_steps,
-            )
-            return torch.optim.lr_scheduler.SequentialLR(
-                self.optimizer,
-                schedulers=[warmup_scheduler, main_scheduler],
-                milestones=[warmup_steps],
-            )
+    # ------------------------------------------------------------------
+    # Abstract method implementations (required by BaseTrainer ABC)
+    # ------------------------------------------------------------------
 
-        return main_scheduler
+    def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:
+        """Not used directly -- Trainer uses _training_step instead."""
+        raise NotImplementedError(
+            "Trainer uses _training_step(); use that method or the train() loop."
+        )
+
+    def generate_data(self) -> Any:
+        """Not used directly -- Trainer uses _sample_batch instead."""
+        raise NotImplementedError(
+            "Trainer uses _sample_batch(); use that method or the train() loop."
+        )
+
+    def evaluate(self) -> dict[str, float]:
+        """Not used directly -- Trainer uses _run_evaluation instead."""
+        raise NotImplementedError(
+            "Trainer uses _run_evaluation(); use that method or the train() loop."
+        )
+
+    # ------------------------------------------------------------------
+    # Physics loss, loss balancer, curriculum, stability
+    # ------------------------------------------------------------------
 
     def _create_physics_loss(self) -> PhysicsInformedLoss | None:
         """Create physics-informed loss from config.
@@ -731,22 +746,15 @@ class Trainer:
             lbb=lbb_loss,
         )
 
-        # Backward pass
+        # Backward pass (uses BaseTrainer helpers for AMP and gradient clipping)
         if self.use_amp and self.scaler is not None:
             self.scaler.scale(total_loss).backward()
-            self.scaler.unscale_(self.optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                self.training_config.gradient_clip,
-            )
+            grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             total_loss.backward()  # type: ignore[no-untyped-call]
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                self.training_config.gradient_clip,
-            )
+            grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.optimizer.step()
 
         # Update scheduler
@@ -757,8 +765,8 @@ class Trainer:
             output.lbb_constant.mean().item() if output.lbb_constant is not None else None
         )
 
-        # Convert grad_norm to float
-        grad_norm_float = grad_norm.item()
+        # grad_norm is already a float from _clip_gradients
+        grad_norm_float = grad_norm
 
         # Log if gradient norm is near clipping threshold (debugging aid)
         clip_threshold = self.training_config.gradient_clip

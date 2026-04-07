@@ -95,6 +95,9 @@ Monitors LBB condition during training:
 - [2026-04-07]: **PDE-MCTS Self-Play Wired** - PDE games auto-register, create_trainer() accepts game parameter, 40 tests
 - [2026-04-07]: **Visualization Module** - PlotRegistry with 5 plot types, HTMLReportGenerator with themed templates
 - [2026-04-07]: **Coverage Expansion** - 390+ new tests across training, PDE, games, curriculum, modeling modules
+- [2026-04-07]: **BaseTrainer Refactor** - Extracted shared AMP, grad clip, LR scheduling into BaseTrainer base class
+- [2026-04-07]: **Distributed Trainer Tests** - 35 new tests for DistributedTrainer (metrics, checkpoints, multi-process)
+- [2026-04-07]: **Test Speed Fixes** - Mocked MCTS self-play in all trainer tests to prevent hanging (chess, physics, pipeline)
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement

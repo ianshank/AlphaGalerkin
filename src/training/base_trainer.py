@@ -25,15 +25,16 @@ Usage::
         def evaluate(self):
             return my_eval_fn()
 
-Migration note: The existing ``Trainer``, ``OperatorTrainer``,
-``VertexTrainer``, and video-compression ``Trainer`` will be migrated
-to extend this base in a future PR.  They currently operate independently
-for backwards-compatibility.
+The existing ``Trainer`` and ``DistributedTrainer`` inherit from this
+base class, using the shared AMP, gradient clipping, LR scheduling,
+and checkpoint helpers while preserving their own public APIs.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Generic, TypeVar
@@ -42,7 +43,7 @@ import structlog
 import torch
 from pydantic import Field
 from torch import Tensor
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import (
@@ -225,8 +226,10 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.scheduler: LRScheduler = self._setup_scheduler()
 
         # Mixed precision
-        self.use_amp = config.use_amp and self.device.type == "cuda"
-        self.scaler: GradScaler | None = GradScaler() if self.use_amp else None
+        self.use_amp, self.scaler, self._amp_dtype = self._setup_amp(
+            use_amp=config.use_amp,
+            device=self.device,
+        )
 
         # Checkpoint directory
         _ckpt_dir = checkpoint_dir if checkpoint_dir is not None else config.checkpoint_dir
@@ -303,23 +306,12 @@ class BaseTrainer(ABC, Generic[ConfigT]):
 
         self.optimizer.zero_grad()
 
-        if self.use_amp and self.scaler is not None:
-            with torch.cuda.amp.autocast():
-                loss, metrics = self.compute_loss(batch)
-            self.scaler.scale(loss).backward()
-            self.scaler.unscale_(self.optimizer)
-            grad_norm = float(
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
-            )
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-        else:
-            loss, metrics = self.compute_loss(batch)
-            loss.backward()  # type: ignore[no-untyped-call]
-            grad_norm = float(
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.gradient_clip)
-            )
-            self.optimizer.step()
+        loss, metrics, grad_norm = self._amp_forward_backward(
+            loss_fn=lambda: self.compute_loss(batch),
+            model=self.model,
+            optimizer=self.optimizer,
+            max_norm=self.config.gradient_clip,
+        )
 
         self.scheduler.step()
         self.global_step += 1
@@ -347,10 +339,11 @@ class BaseTrainer(ABC, Generic[ConfigT]):
     def _setup_optimizer(self) -> Optimizer:
         """Create AdamW optimizer from config.
 
+        Delegates to the static ``_create_optimizer`` helper.
         Override to use a different optimizer.
         """
-        return AdamW(
-            self.model.parameters(),
+        return self._create_optimizer(
+            self.model,
             lr=self.config.learning_rate,
             weight_decay=self.config.weight_decay,
         )
@@ -358,61 +351,320 @@ class BaseTrainer(ABC, Generic[ConfigT]):
     def _setup_scheduler(self) -> LRScheduler:
         """Create LR scheduler from config.
 
+        Delegates to the static ``_create_scheduler`` helper.
+
         Supports:
         - ``"cosine"``: linear warmup then cosine annealing.
         - ``"linear"``: linear warmup then constant.
         - ``"none"``: constant LR (no scheduling).
         """
-        scheduler_type = self.config.lr_scheduler.lower()
-        warmup_steps = self.config.warmup_steps
-        total_steps = self.config.total_steps
-        min_lr = self.config.learning_rate * self.config.min_lr_ratio
+        return self._create_scheduler(
+            optimizer=self.optimizer,
+            scheduler_type=self.config.lr_scheduler,
+            warmup_steps=self.config.warmup_steps,
+            total_steps=self.config.total_steps,
+            min_lr_ratio=self.config.min_lr_ratio,
+            warmup_start_factor=self.config.warmup_start_factor,
+        )
 
-        if scheduler_type == "none" or total_steps <= 0:
-            # Constant LR - use ConstantLR (factor=1 = no change)
-            return torch.optim.lr_scheduler.ConstantLR(self.optimizer, factor=1.0, total_iters=0)
+    # ------------------------------------------------------------------
+    # AMP, gradient clipping, and forward/backward helpers
+    # ------------------------------------------------------------------
+
+    def _setup_amp(
+        self,
+        use_amp: bool,
+        device: torch.device,
+        amp_dtype: torch.dtype = torch.float16,
+    ) -> tuple[bool, GradScaler | None, torch.dtype]:
+        """Configure Automatic Mixed Precision (AMP) training.
+
+        AMP is only activated when ``use_amp`` is True *and* the device
+        is a CUDA device.
+
+        Args:
+            use_amp: Whether the caller requests AMP.
+            device: Training device.
+            amp_dtype: Data type for the autocast region (e.g.
+                ``torch.float16`` or ``torch.bfloat16``).
+
+        Returns:
+            Tuple of (effective_use_amp, grad_scaler_or_none, amp_dtype).
+
+        """
+        effective = use_amp and device.type == "cuda"
+        scaler = GradScaler("cuda") if effective else None
+        return effective, scaler, amp_dtype
+
+    @contextmanager
+    def _autocast_context(
+        self,
+        device: torch.device | None = None,
+        amp_dtype: torch.dtype | None = None,
+    ) -> Iterator[None]:
+        """Return an autocast context manager when AMP is active.
+
+        When AMP is disabled this is a no-op context.
+
+        Args:
+            device: Override device type for autocast. Defaults to
+                ``self.device``.
+            amp_dtype: Override dtype. Defaults to ``torch.float16``.
+
+        Yields:
+            None (enters autocast or nullcontext).
+
+        """
+        if self.use_amp:
+            _device = device or self.device
+            _dtype = amp_dtype or torch.float16
+            with autocast(device_type=_device.type, dtype=_dtype):
+                yield
+        else:
+            yield
+
+    def _clip_gradients(
+        self,
+        model: Module,
+        max_norm: float,
+    ) -> float:
+        """Clip gradients by global norm.
+
+        If AMP is active the scaler is unscaled before clipping.
+
+        Args:
+            model: Model whose parameters to clip.
+            max_norm: Maximum allowed gradient norm.
+
+        Returns:
+            The total gradient norm *before* clipping.
+
+        """
+        if self.use_amp and self.scaler is not None:
+            self.scaler.unscale_(self.optimizer)
+
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(),
+            max_norm,
+        )
+        return float(grad_norm)
+
+    def _amp_forward_backward(
+        self,
+        loss_fn: Callable[[], tuple[Tensor, dict[str, float]]],
+        model: Module,
+        optimizer: Optimizer,
+        max_norm: float,
+        device: torch.device | None = None,
+        amp_dtype: torch.dtype | None = None,
+    ) -> tuple[float, dict[str, float], float]:
+        """Run forward + backward with optional AMP scaling.
+
+        Handles the full AMP / non-AMP pattern:
+
+        1. Forward inside autocast (if AMP).
+        2. Scale loss and backward.
+        3. Unscale and clip gradients.
+        4. Optimizer step (via scaler if AMP).
+
+        Args:
+            loss_fn: Callable that returns ``(loss_tensor, metrics_dict)``.
+                Called inside autocast when AMP is active.
+            model: Model whose gradients are clipped.
+            optimizer: Optimizer to step.
+            max_norm: Maximum gradient norm for clipping.
+            device: Override device for autocast. Defaults to ``self.device``.
+            amp_dtype: Override dtype for autocast.
+
+        Returns:
+            Tuple of ``(loss_float, metrics_dict, grad_norm_float)``.
+
+        """
+        if self.use_amp and self.scaler is not None:
+            _device = device or self.device
+            _dtype = amp_dtype or torch.float16
+            with autocast(device_type=_device.type, dtype=_dtype):
+                loss, metrics = loss_fn()
+            self.scaler.scale(loss).backward()
+            grad_norm = self._clip_gradients(model, max_norm)
+            self.scaler.step(optimizer)
+            self.scaler.update()
+        else:
+            loss, metrics = loss_fn()
+            loss.backward()  # type: ignore[no-untyped-call]
+            grad_norm = self._clip_gradients(model, max_norm)
+            optimizer.step()
+
+        return float(loss), metrics, grad_norm
+
+    @staticmethod
+    def _create_optimizer(
+        model: Module,
+        lr: float,
+        weight_decay: float,
+    ) -> AdamW:
+        """Create an AdamW optimizer for the given model.
+
+        This is a static convenience for trainers that cannot use the
+        instance method ``_setup_optimizer`` (e.g. because they have
+        a different constructor flow).
+
+        Args:
+            model: Model to optimise.
+            lr: Learning rate.
+            weight_decay: L2 weight decay coefficient.
+
+        Returns:
+            Configured AdamW optimizer.
+
+        """
+        return AdamW(
+            model.parameters(),
+            lr=lr,
+            weight_decay=weight_decay,
+        )
+
+    @staticmethod
+    def _create_scheduler(
+        optimizer: Optimizer,
+        scheduler_type: str,
+        warmup_steps: int,
+        total_steps: int,
+        min_lr_ratio: float = 0.01,
+        warmup_start_factor: float = 1e-6,
+    ) -> LRScheduler:
+        """Create an LR scheduler with optional warmup.
+
+        Static convenience for trainers that manage their own
+        optimizer/scheduler lifecycle.
+
+        Args:
+            optimizer: The optimizer to schedule.
+            scheduler_type: One of ``"cosine"``, ``"linear"``,
+                ``"constant"``, or ``"none"``.
+            warmup_steps: Number of linear warmup steps.
+            total_steps: Total training steps.
+            min_lr_ratio: Minimum LR as a fraction of peak LR
+                (used by cosine and linear schedules).
+            warmup_start_factor: Starting LR factor for warmup.
+
+        Returns:
+            Configured LR scheduler (possibly ``SequentialLR`` with
+            warmup prepended).
+
+        """
+        scheduler_type = scheduler_type.lower()
+        base_lr = optimizer.param_groups[0]["lr"]
+        min_lr = base_lr * min_lr_ratio
+
+        if scheduler_type in ("none", "constant") or total_steps <= 0:
+            return torch.optim.lr_scheduler.ConstantLR(
+                optimizer, factor=1.0, total_iters=0
+            )
 
         main_steps = max(1, total_steps - warmup_steps)
 
         if scheduler_type == "cosine":
             main_sched: LRScheduler = CosineAnnealingLR(
-                self.optimizer,
+                optimizer,
                 T_max=main_steps,
                 eta_min=min_lr,
             )
         elif scheduler_type == "linear":
             main_sched = LinearLR(
-                self.optimizer,
+                optimizer,
                 start_factor=1.0,
-                end_factor=self.config.min_lr_ratio,
+                end_factor=min_lr_ratio,
                 total_iters=main_steps,
             )
         else:
-            self._log.warning(
+            # Unknown type: fall back to cosine
+            logger.warning(
                 "unknown_scheduler_type",
                 scheduler=scheduler_type,
                 fallback="cosine",
             )
             main_sched = CosineAnnealingLR(
-                self.optimizer,
+                optimizer,
                 T_max=main_steps,
                 eta_min=min_lr,
             )
 
         if warmup_steps > 0:
             warmup_sched = LinearLR(
-                self.optimizer,
-                start_factor=self.config.warmup_start_factor,
+                optimizer,
+                start_factor=warmup_start_factor,
                 end_factor=1.0,
                 total_iters=warmup_steps,
             )
             return SequentialLR(
-                self.optimizer,
+                optimizer,
                 schedulers=[warmup_sched, main_sched],
                 milestones=[warmup_steps],
             )
 
         return main_sched
+
+    # ------------------------------------------------------------------
+    # Training state persistence helpers
+    # ------------------------------------------------------------------
+
+    def _save_training_state(self, path: Path | str) -> Path:
+        """Save optimizer, scheduler, scaler, and step to a file.
+
+        This is a low-level helper that only persists training *state*
+        (not model weights).  Concrete trainers that need to include
+        model weights or extra metadata should call this and merge the
+        resulting dict, or use ``save_checkpoint`` instead.
+
+        Args:
+            path: File path to write.
+
+        Returns:
+            The resolved path that was written.
+
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        state: dict[str, Any] = {
+            "global_step": self.global_step,
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
+            "scaler_state_dict": (
+                self.scaler.state_dict() if self.scaler is not None else None
+            ),
+        }
+        torch.save(state, path)
+        return path
+
+    def _load_training_state(self, path: Path | str) -> int:
+        """Load optimizer, scheduler, scaler, and step from a file.
+
+        Args:
+            path: File path to read.
+
+        Returns:
+            The ``global_step`` that was restored.
+
+        Raises:
+            FileNotFoundError: If *path* does not exist.
+
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Training state not found: {path}")
+
+        state = torch.load(path, map_location=self.device, weights_only=False)
+
+        self.optimizer.load_state_dict(state["optimizer_state_dict"])
+        self.scheduler.load_state_dict(state["scheduler_state_dict"])
+
+        if self.scaler is not None and state.get("scaler_state_dict") is not None:
+            self.scaler.load_state_dict(state["scaler_state_dict"])
+
+        self.global_step = state.get("global_step", 0)
+        return self.global_step
 
     # ------------------------------------------------------------------
     # Checkpoint helpers

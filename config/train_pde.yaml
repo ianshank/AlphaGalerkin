@@ -1,0 +1,67 @@
+# PDE basis selection training configuration
+# Use with: python -m scripts.train --config-name=train_pde
+#
+# Trains AlphaGalerkin on PDE basis selection via MCTS self-play.
+# The agent learns to select optimal Galerkin basis functions for
+# solving Poisson-type PDEs, guided by error reduction rewards.
+
+defaults:
+  - train
+  - _self_
+
+# Game selection — uses PDEGameInterface registered as "pde_basis"
+game:
+  name: pde_basis
+
+# Smaller model suitable for PDE state encoding
+operator:
+  d_model: 64
+  d_key: 32
+  d_value: 32
+  d_ffn: 256
+  n_heads: 4
+  n_galerkin_layers: 2
+  n_softmax_layers: 1
+  n_fourier_features: 32
+  use_fnet_mixing: true
+  fnet_dropout: 0.1
+
+# MCTS for PDE exploration
+mcts:
+  n_simulations: 100
+  batch_size: 8
+  c_puct: 2.5
+  dirichlet_alpha: 0.25
+
+# Training settings
+training:
+  learning_rate: 1e-3
+  batch_size: 32
+  gradient_clip: 1.0
+  lr_scheduler: cosine
+  warmup_steps: 50
+  total_steps: 5000
+  n_self_play_games: 20
+  replay_buffer_size: 10000
+  checkpoint_interval: 500
+  use_amp: false
+  eval_interval: 250
+  eval_games: 10
+  # Enable physics-informed loss for PDE training
+  physics_informed: true
+  physics_loss_weight: 0.1
+  physics_n_collocation_points: 500
+  physics_n_boundary_points: 100
+  physics_use_adaptive_weights: true
+
+# W&B logging
+wandb:
+  enabled: false
+  mode: disabled
+
+# Experiment settings
+experiment_name: alphagalerkin_pde_basis
+seed: 42
+log_level: INFO
+device: cpu
+log_interval: 50

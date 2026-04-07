@@ -71,6 +71,85 @@ class SolverConfig(BaseModel):
     tolerance: float = Field(default=1e-10, gt=0, description="Convergence tolerance")
 
 
+class FDMConfig(SolverConfig):
+    """Configuration for finite difference solvers."""
+
+    min_grid_points: int = Field(
+        default=3, ge=2,
+        description="Minimum grid points per dimension",
+    )
+
+
+class AMRConfig(SolverConfig):
+    """Configuration for adaptive mesh refinement solvers."""
+
+    marking_fraction: float = Field(
+        default=0.3, gt=0.0, lt=1.0,
+        description="Dorfler bulk-chasing marking fraction (theta)",
+    )
+    max_refinements: int = Field(
+        default=10, ge=1,
+        description="Maximum number of refinement iterations",
+    )
+    initial_dof_divisor: int = Field(
+        default=4, ge=1,
+        description="Divisor for initial DOF count (n_dof // divisor)",
+    )
+    max_initial_points_1d: int = Field(
+        default=8, ge=2,
+        description="Maximum initial grid points for 1D AMR",
+    )
+    min_initial_points: int = Field(
+        default=4, ge=2,
+        description="Minimum initial grid points (1D) or per-side (2D)",
+    )
+    initial_side_divisor_2d: int = Field(
+        default=2, ge=1,
+        description="Divisor for initial 2D side length (sqrt(n_dof) // divisor)",
+    )
+    min_initial_side_2d: int = Field(
+        default=3, ge=2,
+        description="Minimum initial side grid points for 2D AMR",
+    )
+
+
+class PINNConfig(SolverConfig):
+    """Configuration for PINN solver."""
+
+    hidden_dim: int = Field(default=64, ge=8, description="Hidden layer dimension")
+    n_layers: int = Field(default=3, ge=1, description="Number of hidden layers")
+    n_epochs: int = Field(default=2000, ge=1, description="Training epochs")
+    learning_rate: float = Field(default=1e-3, gt=0, description="Learning rate")
+    n_collocation: int = Field(default=1000, ge=10, description="Interior collocation points")
+    bc_loss_weight: float = Field(default=10.0, gt=0, description="Boundary condition loss weight")
+    n_boundary_points: int = Field(default=50, ge=4, description="Boundary points per epoch")
+    log_interval: int = Field(default=500, ge=1, description="Logging interval (epochs)")
+
+
+class NavierStokesConfig(SolverConfig):
+    """Configuration for Navier-Stokes FDM solver."""
+
+    dt: float = Field(default=0.01, gt=0, description="Time step size")
+    t_final: float = Field(default=1.0, gt=0, description="Final simulation time")
+    default_viscosity: float = Field(
+        default=0.01, gt=0,
+        description="Fallback viscosity if operator lacks viscosity attribute",
+    )
+    min_grid_points: int = Field(default=4, ge=2, description="Minimum grid points per side")
+    cfl_safety: float = Field(
+        default=0.25, gt=0, le=1.0,
+        description="CFL stability factor for diffusion (dt <= cfl_safety * h^2 / nu)",
+    )
+    viscosity_floor: float = Field(
+        default=1e-12, gt=0,
+        description="Minimum viscosity for CFL denominator to avoid division by zero",
+    )
+    log_fraction: int = Field(
+        default=10, ge=1,
+        description="Log every n_steps // log_fraction steps",
+    )
+
+
 class BaseSolver(ABC):
     """Protocol for classical PDE solvers.
 
@@ -124,8 +203,8 @@ class UniformFDMSolver(BaseSolver):
     name = "uniform_fdm"
     description = "Uniform-grid finite difference method"
 
-    def __init__(self, config: SolverConfig | None = None) -> None:
-        self.config = config or SolverConfig()
+    def __init__(self, config: FDMConfig | None = None) -> None:
+        self.config = config or FDMConfig()
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve using finite differences on a uniform grid."""
@@ -164,14 +243,14 @@ class UniformFDMSolver(BaseSolver):
     # ------------------------------------------------------------------
     # 1D solver
     # ------------------------------------------------------------------
-    @staticmethod
     def _solve_1d(
+        self,
         operator: PDEOperator,
         n_dof: int,
         sparse: Any,
         spsolve: Any,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        n = max(n_dof, 3)
+        n = max(n_dof, self.config.min_grid_points)
         x = np.linspace(
             float(operator.domain_min[0]),
             float(operator.domain_max[0]),
@@ -209,14 +288,14 @@ class UniformFDMSolver(BaseSolver):
     # ------------------------------------------------------------------
     # 2D solver
     # ------------------------------------------------------------------
-    @staticmethod
     def _solve_2d(
+        self,
         operator: PDEOperator,
         n_dof: int,
         sparse: Any,
         spsolve: Any,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        n = max(int(np.sqrt(n_dof)), 3)
+        n = max(int(np.sqrt(n_dof)), self.config.min_grid_points)
         xs = np.linspace(
             float(operator.domain_min[0]),
             float(operator.domain_max[0]),
@@ -304,15 +383,21 @@ class DorflerAMRSolver(BaseSolver):
 
     def __init__(
         self,
-        marking_fraction: float = 0.3,
-        max_refinements: int = 10,
-        config: SolverConfig | None = None,
+        marking_fraction: float | None = None,
+        max_refinements: int | None = None,
+        config: AMRConfig | None = None,
     ) -> None:
-        if not 0.0 < marking_fraction < 1.0:
-            raise ValueError(f"marking_fraction must be in (0,1), got {marking_fraction}")
-        self.marking_fraction = marking_fraction
-        self.max_refinements = max_refinements
-        self.config = config or SolverConfig()
+        self.config = config or AMRConfig()
+        self.marking_fraction = (
+            marking_fraction if marking_fraction is not None
+            else self.config.marking_fraction
+        )
+        self.max_refinements = (
+            max_refinements if max_refinements is not None
+            else self.config.max_refinements
+        )
+        if not 0.0 < self.marking_fraction < 1.0:
+            raise ValueError(f"marking_fraction must be in (0,1), got {self.marking_fraction}")
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve with adaptive refinement via Dorfler marking.
@@ -329,15 +414,51 @@ class DorflerAMRSolver(BaseSolver):
                 "DorflerAMRSolver requires scipy. Install with: pip install scipy"
             ) from exc
 
-        if operator.dim != 1:
-            raise NotImplementedError("DorflerAMRSolver currently supports dim=1 only")
+        if operator.dim not in (1, 2):
+            raise NotImplementedError(
+                f"DorflerAMRSolver supports dim=1 and dim=2, got dim={operator.dim}"
+            )
 
         log = logger.bind(solver=self.name, n_dof=n_dof, dim=operator.dim)
         log.info("amr_solve_start")
         t0 = time.perf_counter()
 
-        # Start with a coarse grid
-        n_start = max(min(n_dof // 4, 8), 4)
+        if operator.dim == 1:
+            result = self._solve_amr_1d(operator, n_dof, sparse, spsolve, log)
+        else:
+            result = self._solve_amr_2d(operator, n_dof, sparse, spsolve, log)
+
+        wall_time = time.perf_counter() - t0
+        solution, grid, n_refinements = result
+        l2_err = self._compute_l2_error(solution, grid, operator)
+
+        log.info("amr_solve_done", wall_time=wall_time, l2_error=l2_err, final_dof=len(solution))
+        return SolverResult(
+            solution=solution,
+            grid_points=grid,
+            n_dof=len(solution),
+            wall_time_seconds=wall_time,
+            l2_error=l2_err,
+            metadata={
+                "marking_fraction": self.marking_fraction,
+                "n_refinements": n_refinements,
+                "dim": operator.dim,
+            },
+        )
+
+    def _solve_amr_1d(
+        self,
+        operator: PDEOperator,
+        n_dof: int,
+        sparse: Any,
+        spsolve: Any,
+        log: Any,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], int]:
+        """Run 1D AMR loop. Returns (solution, grid, n_refinements)."""
+        n_start = max(
+            min(n_dof // self.config.initial_dof_divisor, self.config.max_initial_points_1d),
+            self.config.min_initial_points,
+        )
         x = np.linspace(
             float(operator.domain_min[0]),
             float(operator.domain_max[0]),
@@ -347,47 +468,68 @@ class DorflerAMRSolver(BaseSolver):
 
         step = 0
         for step in range(self.max_refinements):
-            # Solve on current grid
             u, _ = self._solve_on_grid(x, operator, sparse, spsolve)
-
             if len(x) >= n_dof:
                 break
-
-            # Compute element-wise error indicators (residual jump)
             indicators = self._compute_indicators(x, u, operator)
-
-            # Dorfler marking: mark smallest set with fraction of total indicator
             marked = self._dorfler_mark(indicators)
-
-            # Refine marked elements (bisection)
             x = self._refine_grid(x, marked)
-
             log.debug(
-                "amr_step",
-                step=step,
-                n_points=len(x),
+                "amr_step", step=step, n_points=len(x),
                 max_indicator=float(np.max(indicators)),
             )
 
-        # Final solve
         u, _ = self._solve_on_grid(x, operator, sparse, spsolve)
-        wall_time = time.perf_counter() - t0
-
         grid = x.reshape(-1, 1).astype(np.float64)
-        l2_err = self._compute_l2_error(u, grid, operator)
+        return u, grid, step + 1
 
-        log.info("amr_solve_done", wall_time=wall_time, l2_error=l2_err, final_dof=len(u))
-        return SolverResult(
-            solution=u,
-            grid_points=grid,
-            n_dof=len(u),
-            wall_time_seconds=wall_time,
-            l2_error=l2_err,
-            metadata={
-                "marking_fraction": self.marking_fraction,
-                "n_refinements": step + 1,
-            },
+    def _solve_amr_2d(
+        self,
+        operator: PDEOperator,
+        n_dof: int,
+        sparse: Any,
+        spsolve: Any,
+        log: Any,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], int]:
+        """Run 2D AMR loop with element-wise refinement.
+
+        Uses a quadrilateral mesh with element-wise bisection.
+        Returns (solution, grid, n_refinements).
+        """
+        # Start with coarse grid
+        n_side = max(
+            int(np.sqrt(n_dof)) // self.config.initial_side_divisor_2d,
+            self.config.min_initial_side_2d,
         )
+        x_lo, x_hi = float(operator.domain_min[0]), float(operator.domain_max[0])
+        y_lo, y_hi = float(operator.domain_min[1]), float(operator.domain_max[1])
+        xs = np.linspace(x_lo, x_hi, n_side + 1, dtype=np.float64)
+        ys = np.linspace(y_lo, y_hi, n_side + 1, dtype=np.float64)
+
+        step = 0
+        for step in range(self.max_refinements):
+            u, grid = self._solve_on_grid_2d(xs, ys, operator, sparse, spsolve)
+            current_dof = len(xs) * len(ys)
+            if current_dof >= n_dof:
+                break
+
+            indicators = self._compute_indicators_2d(xs, ys, u, operator)
+            marked_x, marked_y = self._dorfler_mark_2d(indicators, xs, ys)
+
+            xs = self._refine_grid(xs, marked_x)
+            ys = self._refine_grid(ys, marked_y)
+
+            log.debug(
+                "amr_step_2d",
+                step=step,
+                n_x=len(xs),
+                n_y=len(ys),
+                n_dof=len(xs) * len(ys),
+                max_indicator=float(np.max(indicators)),
+            )
+
+        u, grid = self._solve_on_grid_2d(xs, ys, operator, sparse, spsolve)
+        return u, grid, step + 1
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -491,6 +633,214 @@ class DorflerAMRSolver(BaseSolver):
             x = np.sort(np.concatenate([x, new_points]))
         return x
 
+    # ------------------------------------------------------------------
+    # 2D AMR helpers
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _solve_on_grid_2d(
+        xs: NDArray[np.float64],
+        ys: NDArray[np.float64],
+        operator: PDEOperator,
+        sparse: Any,
+        spsolve: Any,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Solve 2D Poisson-type PDE on a (possibly non-uniform) tensor-product grid."""
+        nx = len(xs) - 2  # interior x points
+        ny = len(ys) - 2  # interior y points
+        if nx < 1 or ny < 1:
+            # Grid too coarse — return zeros
+            XX, YY = np.meshgrid(xs, ys, indexing="ij")
+            grid = np.stack([XX.ravel(), YY.ravel()], axis=-1).astype(np.float64)
+            return np.zeros(len(grid), dtype=np.float64), grid
+
+        hx = np.diff(xs)
+        hy = np.diff(ys)
+
+        xi = xs[1:-1]
+        yi = ys[1:-1]
+        XX, YY = np.meshgrid(xi, yi, indexing="ij")
+        coords_flat = np.stack([XX.ravel(), YY.ravel()], axis=-1).astype(np.float32)
+
+        n_interior = nx * ny
+
+        # Build sparse matrix with variable spacing
+        # For each interior point (i,j), stencil:
+        #   -u(i-1,j)/hx_l*hx_avg - u(i+1,j)/hx_r*hx_avg
+        #   -u(i,j-1)/hy_l*hy_avg - u(i,j+1)/hy_r*hy_avg
+        #   + u(i,j) * (1/hx_l + 1/hx_r)/hx_avg + (1/hy_l + 1/hy_r)/hy_avg)
+        rows: list[int] = []
+        cols: list[int] = []
+        vals: list[float] = []
+        rhs = np.zeros(n_interior, dtype=np.float64)
+
+        for i in range(nx):
+            hx_l = hx[i]
+            hx_r = hx[i + 1]
+            hx_avg = (hx_l + hx_r) / 2.0
+            for j in range(ny):
+                hy_l = hy[j]
+                hy_r = hy[j + 1]
+                hy_avg = (hy_l + hy_r) / 2.0
+
+                idx = i * ny + j
+
+                cx = (1.0 / hx_l + 1.0 / hx_r) / hx_avg
+                cy = (1.0 / hy_l + 1.0 / hy_r) / hy_avg
+                rows.append(idx)
+                cols.append(idx)
+                vals.append(cx + cy)
+
+                # x-neighbors
+                if i > 0:
+                    rows.append(idx)
+                    cols.append((i - 1) * ny + j)
+                    vals.append(-1.0 / (hx_l * hx_avg))
+                else:
+                    bc = float(np.asarray(operator.boundary_value(
+                        np.array([[xs[0], yi[j]]], dtype=np.float32)
+                    )).flat[0])
+                    rhs[idx] += bc / (hx_l * hx_avg)
+
+                if i < nx - 1:
+                    rows.append(idx)
+                    cols.append((i + 1) * ny + j)
+                    vals.append(-1.0 / (hx_r * hx_avg))
+                else:
+                    bc = float(np.asarray(operator.boundary_value(
+                        np.array([[xs[-1], yi[j]]], dtype=np.float32)
+                    )).flat[0])
+                    rhs[idx] += bc / (hx_r * hx_avg)
+
+                # y-neighbors
+                if j > 0:
+                    rows.append(idx)
+                    cols.append(i * ny + (j - 1))
+                    vals.append(-1.0 / (hy_l * hy_avg))
+                else:
+                    bc = float(np.asarray(operator.boundary_value(
+                        np.array([[xi[i], ys[0]]], dtype=np.float32)
+                    )).flat[0])
+                    rhs[idx] += bc / (hy_l * hy_avg)
+
+                if j < ny - 1:
+                    rows.append(idx)
+                    cols.append(i * ny + (j + 1))
+                    vals.append(-1.0 / (hy_r * hy_avg))
+                else:
+                    bc = float(np.asarray(operator.boundary_value(
+                        np.array([[xi[i], ys[-1]]], dtype=np.float32)
+                    )).flat[0])
+                    rhs[idx] += bc / (hy_r * hy_avg)
+
+        A = sparse.csc_matrix(
+            (vals, (rows, cols)),
+            shape=(n_interior, n_interior),
+        )
+
+        f = np.asarray(operator.source_term(coords_flat), dtype=np.float64).flatten()
+        rhs += f
+
+        u_inner = spsolve(A, rhs)
+
+        # Build full grid including boundary
+        XX_full, YY_full = np.meshgrid(xs, ys, indexing="ij")
+        grid_full = np.stack([XX_full.ravel(), YY_full.ravel()], axis=-1).astype(np.float64)
+
+        u_full = np.zeros((len(xs), len(ys)), dtype=np.float64)
+        u_full[1:-1, 1:-1] = u_inner.reshape(nx, ny)
+
+        # Fill boundaries
+        for i in range(len(xs)):
+            for y_val in [ys[0], ys[-1]]:
+                bc = float(np.asarray(operator.boundary_value(
+                    np.array([[xs[i], y_val]], dtype=np.float32)
+                )).flat[0])
+                j_idx = 0 if y_val == ys[0] else len(ys) - 1
+                u_full[i, j_idx] = bc
+        for j in range(len(ys)):
+            for x_val in [xs[0], xs[-1]]:
+                bc = float(np.asarray(operator.boundary_value(
+                    np.array([[x_val, ys[j]]], dtype=np.float32)
+                )).flat[0])
+                i_idx = 0 if x_val == xs[0] else len(xs) - 1
+                u_full[i_idx, j] = bc
+
+        return u_full.ravel().astype(np.float64), grid_full
+
+    @staticmethod
+    def _compute_indicators_2d(
+        xs: NDArray[np.float64],
+        ys: NDArray[np.float64],
+        u: NDArray[np.float64],
+        operator: PDEOperator,
+    ) -> NDArray[np.float64]:
+        """Compute element-wise residual error indicators on 2D grid.
+
+        Returns a 2D array of shape (n_elem_x, n_elem_y) with residual indicators.
+        """
+        nx = len(xs) - 1
+        ny = len(ys) - 1
+        u_grid = u.reshape(len(xs), len(ys))
+        indicators = np.zeros((nx, ny), dtype=np.float64)
+
+        for i in range(nx):
+            hx = xs[i + 1] - xs[i]
+            for j in range(ny):
+                hy = ys[j + 1] - ys[j]
+                mid = np.array(
+                    [[(xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2]],
+                    dtype=np.float32,
+                )
+                f_mid = float(np.asarray(operator.source_term(mid)).flat[0])
+
+                # Approximate Laplacian at element center using surrounding values
+                ci = min(i + 1, len(xs) - 2)
+                cj = min(j + 1, len(ys) - 2)
+                ci = max(ci, 1)
+                cj = max(cj, 1)
+
+                u_xx = 0.0
+                if 0 < ci < len(xs) - 1 and hx > 0:
+                    u_xx = (u_grid[ci - 1, cj] - 2 * u_grid[ci, cj] + u_grid[ci + 1, cj]) / (hx**2)
+                u_yy = 0.0
+                if 0 < cj < len(ys) - 1 and hy > 0:
+                    u_yy = (u_grid[ci, cj - 1] - 2 * u_grid[ci, cj] + u_grid[ci, cj + 1]) / (hy**2)
+
+                laplacian = u_xx + u_yy
+                has_nan = np.isnan(laplacian) or np.isnan(f_mid)
+                residual = 0.0 if has_nan else abs(-laplacian - f_mid)
+                h_elem = np.sqrt(hx * hy)
+                indicators[i, j] = h_elem * residual
+
+        return indicators
+
+    def _dorfler_mark_2d(
+        self,
+        indicators: NDArray[np.float64],
+        xs: NDArray[np.float64],
+        ys: NDArray[np.float64],
+    ) -> tuple[NDArray[np.bool_], NDArray[np.bool_]]:
+        """Dorfler marking on 2D grid. Returns marked arrays for x and y element edges."""
+        flat = indicators.ravel()
+        total = np.sum(flat**2)
+        threshold = self.marking_fraction * total
+
+        sorted_idx = np.argsort(flat)[::-1]
+        cumsum = np.cumsum(flat[sorted_idx] ** 2)
+        n_mark = int(np.searchsorted(cumsum, threshold)) + 1
+
+        ny_elem = indicators.shape[1]
+        marked_x = np.zeros(len(xs) - 1, dtype=bool)
+        marked_y = np.zeros(len(ys) - 1, dtype=bool)
+
+        for flat_idx in sorted_idx[:n_mark]:
+            i = flat_idx // ny_elem
+            j = flat_idx % ny_elem
+            marked_x[i] = True
+            marked_y[j] = True
+
+        return marked_x, marked_y
+
 
 class SimplePINNSolver(BaseSolver):
     """Simple Physics-Informed Neural Network baseline.
@@ -504,21 +854,28 @@ class SimplePINNSolver(BaseSolver):
 
     def __init__(
         self,
-        hidden_dim: int = 64,
-        n_layers: int = 3,
-        n_epochs: int = 2000,
-        learning_rate: float = 1e-3,
-        n_collocation: int = 1000,
-        bc_loss_weight: float = 10.0,
-        config: SolverConfig | None = None,
+        hidden_dim: int | None = None,
+        n_layers: int | None = None,
+        n_epochs: int | None = None,
+        learning_rate: float | None = None,
+        n_collocation: int | None = None,
+        bc_loss_weight: float | None = None,
+        config: PINNConfig | None = None,
     ) -> None:
-        self.hidden_dim = hidden_dim
-        self.n_layers = n_layers
-        self.n_epochs = n_epochs
-        self.learning_rate = learning_rate
-        self.n_collocation = n_collocation
-        self.bc_loss_weight = bc_loss_weight
-        self.config = config or SolverConfig()
+        self.config = config or PINNConfig()
+        c = self.config
+        self.hidden_dim = hidden_dim if hidden_dim is not None else c.hidden_dim
+        self.n_layers = n_layers if n_layers is not None else c.n_layers
+        self.n_epochs = n_epochs if n_epochs is not None else c.n_epochs
+        self.learning_rate = (
+            learning_rate if learning_rate is not None else c.learning_rate
+        )
+        self.n_collocation = (
+            n_collocation if n_collocation is not None else c.n_collocation
+        )
+        self.bc_loss_weight = (
+            bc_loss_weight if bc_loss_weight is not None else c.bc_loss_weight
+        )
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve by training a PINN."""
@@ -555,7 +912,9 @@ class SimplePINNSolver(BaseSolver):
             loss_pde = torch.mean(pde_residual**2)
 
             # Boundary loss
-            bc_coords_np = operator.generate_boundary_points(50, seed=None)
+            bc_coords_np = operator.generate_boundary_points(
+                self.config.n_boundary_points, seed=None,
+            )
             bc_coords = torch.tensor(bc_coords_np, dtype=torch.float32, device=device)
             u_bc = net(bc_coords).squeeze(-1)
             bc_vals = operator.boundary_value(bc_coords_np)
@@ -567,7 +926,7 @@ class SimplePINNSolver(BaseSolver):
             loss.backward()
             optimizer.step()
 
-            if epoch % 500 == 0:
+            if epoch % self.config.log_interval == 0:
                 log.debug(
                     "pinn_epoch",
                     epoch=epoch,
@@ -632,6 +991,212 @@ class SimplePINNSolver(BaseSolver):
         return laplacian
 
 
+class NavierStokesFDMSolver(BaseSolver):
+    """Projection method FDM solver for 2D incompressible Navier-Stokes.
+
+    Uses the Chorin projection method (fractional step):
+    1. Advection-diffusion step (explicit for advection, implicit for diffusion)
+    2. Pressure Poisson solve for pressure correction
+    3. Velocity projection to enforce divergence-free constraint
+
+    Supports Taylor-Green vortex benchmark with exact analytical solution.
+    """
+
+    name = "navier_stokes_fdm"
+    description = "Projection method FDM for 2D incompressible Navier-Stokes"
+
+    def __init__(
+        self,
+        dt: float | None = None,
+        t_final: float | None = None,
+        config: NavierStokesConfig | None = None,
+    ) -> None:
+        self.config = config or NavierStokesConfig()
+        self.dt = dt if dt is not None else self.config.dt
+        self.t_final = t_final if t_final is not None else self.config.t_final
+
+    def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
+        """Solve 2D NS using Chorin projection method."""
+        try:
+            from scipy import sparse
+            from scipy.sparse.linalg import spsolve
+        except ImportError as exc:
+            raise ImportError(
+                "NavierStokesFDMSolver requires scipy."
+            ) from exc
+
+        if operator.dim != 2:
+            raise NotImplementedError(
+                f"NavierStokesFDMSolver requires dim=2, got dim={operator.dim}"
+            )
+
+        log = logger.bind(solver=self.name, n_dof=n_dof)
+        log.info("ns_fdm_solve_start")
+        t0 = time.perf_counter()
+
+        # Extract viscosity from operator
+        viscosity = getattr(operator, "viscosity", self.config.default_viscosity)
+
+        # Grid setup
+        n = max(int(np.sqrt(n_dof / 2)), self.config.min_grid_points)
+        x_min, x_max = float(operator.domain_min[0]), float(operator.domain_max[0])
+        y_min, y_max = float(operator.domain_min[1]), float(operator.domain_max[1])
+        xs = np.linspace(x_min, x_max, n, dtype=np.float64)
+        ys = np.linspace(y_min, y_max, n, dtype=np.float64)
+        h = xs[1] - xs[0]
+
+        # Initialize velocity with exact initial condition if available
+        xx, yy = np.meshgrid(xs, ys, indexing="ij")
+        ux = np.zeros((n, n), dtype=np.float64)
+        uy = np.zeros((n, n), dtype=np.float64)
+
+        if hasattr(operator, "initial_condition"):
+            coords_init = np.stack([xx.ravel(), yy.ravel()], axis=-1).astype(np.float32)
+            ic = operator.initial_condition(coords_init)
+            if isinstance(ic, torch.Tensor):
+                ic = ic.detach().cpu().numpy()
+            ic = np.asarray(ic, dtype=np.float64)
+            if ic.ndim == 2 and ic.shape[-1] >= 2:
+                ux = ic[:, 0].reshape(n, n)
+                uy = ic[:, 1].reshape(n, n)
+
+        # Time stepping via Chorin projection
+        cfl_dt = self.config.cfl_safety * h**2 / max(viscosity, self.config.viscosity_floor)
+        dt = min(self.dt, cfl_dt)
+        n_steps = int(self.t_final / dt)
+
+        # Build Laplacian for pressure Poisson solve (interior only)
+        ni = n - 2
+        if ni < 1:
+            # Too coarse
+            grid = np.stack([xx.ravel(), yy.ravel()], axis=-1).astype(np.float64)
+            return SolverResult(
+                solution=np.zeros(2 * n * n, dtype=np.float64),
+                grid_points=grid,
+                n_dof=2 * n * n,
+                wall_time_seconds=time.perf_counter() - t0,
+                l2_error=None,
+            )
+
+        I_n = sparse.eye(ni, format="csc")
+        T = sparse.diags(
+            [np.full(ni - 1, 1.0), np.full(ni, -4.0), np.full(ni - 1, 1.0)],
+            [-1, 0, 1],
+            format="csc",
+        )
+        L = sparse.kron(I_n, T) + sparse.kron(
+            sparse.diags([np.full(ni - 1, 1.0), np.full(ni - 1, 1.0)], [-1, 1], format="csc"),
+            I_n,
+        )
+        L = L / (h**2)
+
+        for step_idx in range(n_steps):
+            # 1. Advection-diffusion (explicit Euler for simplicity)
+            ux_star = ux.copy()
+            uy_star = uy.copy()
+
+            for i in range(1, n - 1):
+                for j in range(1, n - 1):
+                    # Advection (central differences)
+                    dux_dx = (ux[i + 1, j] - ux[i - 1, j]) / (2.0 * h)
+                    dux_dy = (ux[i, j + 1] - ux[i, j - 1]) / (2.0 * h)
+                    duy_dx = (uy[i + 1, j] - uy[i - 1, j]) / (2.0 * h)
+                    duy_dy = (uy[i, j + 1] - uy[i, j - 1]) / (2.0 * h)
+
+                    advection_x = ux[i, j] * dux_dx + uy[i, j] * dux_dy
+                    advection_y = ux[i, j] * duy_dx + uy[i, j] * duy_dy
+
+                    # Diffusion (5-point Laplacian)
+                    lap_ux = (
+                        ux[i + 1, j] + ux[i - 1, j] + ux[i, j + 1] + ux[i, j - 1] - 4.0 * ux[i, j]
+                    ) / (h**2)
+                    lap_uy = (
+                        uy[i + 1, j] + uy[i - 1, j] + uy[i, j + 1] + uy[i, j - 1] - 4.0 * uy[i, j]
+                    ) / (h**2)
+
+                    ux_star[i, j] = ux[i, j] + dt * (-advection_x + viscosity * lap_ux)
+                    uy_star[i, j] = uy[i, j] + dt * (-advection_y + viscosity * lap_uy)
+
+            # 2. Pressure Poisson solve: nabla^2 p = (1/dt) * div(u*)
+            div = np.zeros((ni, ni), dtype=np.float64)
+            for i in range(ni):
+                for j in range(ni):
+                    gi, gj = i + 1, j + 1
+                    div[i, j] = (
+                        (ux_star[gi + 1, gj] - ux_star[gi - 1, gj]) / (2.0 * h)
+                        + (uy_star[gi, gj + 1] - uy_star[gi, gj - 1]) / (2.0 * h)
+                    )
+
+            rhs_p = div.ravel() / dt
+            p_inner = spsolve(L, rhs_p)
+            p = np.zeros((n, n), dtype=np.float64)
+            p[1:-1, 1:-1] = p_inner.reshape(ni, ni)
+
+            # 3. Projection step: u^{n+1} = u* - dt * grad(p)
+            for i in range(1, n - 1):
+                for j in range(1, n - 1):
+                    dp_dx = (p[i + 1, j] - p[i - 1, j]) / (2.0 * h)
+                    dp_dy = (p[i, j + 1] - p[i, j - 1]) / (2.0 * h)
+                    ux[i, j] = ux_star[i, j] - dt * dp_dx
+                    uy[i, j] = uy_star[i, j] - dt * dp_dy
+
+            if step_idx % max(n_steps // self.config.log_fraction, 1) == 0:
+                log.debug("ns_step", step=step_idx, max_ux=float(np.max(np.abs(ux))))
+
+        wall_time = time.perf_counter() - t0
+
+        # Build output
+        grid = np.stack([xx.ravel(), yy.ravel()], axis=-1).astype(np.float64)
+        solution = np.concatenate([ux.ravel(), uy.ravel()])
+
+        # Compute L2 error against exact solution at t_final
+        l2_err = self._compute_ns_l2_error(ux, uy, xx, yy, operator, self.t_final)
+
+        log.info("ns_fdm_solve_done", wall_time=wall_time, l2_error=l2_err)
+        return SolverResult(
+            solution=solution,
+            grid_points=grid,
+            n_dof=2 * n * n,
+            wall_time_seconds=wall_time,
+            l2_error=l2_err,
+            metadata={
+                "method": "chorin_projection",
+                "dt": dt,
+                "n_steps": n_steps,
+                "grid_size": n,
+            },
+        )
+
+    @staticmethod
+    def _compute_ns_l2_error(
+        ux: NDArray[np.float64],
+        uy: NDArray[np.float64],
+        xx: NDArray[np.float64],
+        yy: NDArray[np.float64],
+        operator: PDEOperator,
+        t_final: float,
+    ) -> float | None:
+        """Compute L2 error of velocity against exact solution."""
+        if not hasattr(operator, "exact_solution"):
+            return None
+        coords = np.stack([xx.ravel(), yy.ravel()], axis=-1).astype(np.float32)
+        exact = operator.exact_solution(coords, time=t_final)
+        if exact is None:
+            return None
+        if isinstance(exact, torch.Tensor):
+            exact = exact.detach().cpu().numpy()
+        exact = np.asarray(exact, dtype=np.float64)
+        if exact.ndim == 2 and exact.shape[-1] >= 2:
+            exact_ux = exact[:, 0].reshape(xx.shape)
+            exact_uy = exact[:, 1].reshape(xx.shape)
+        else:
+            return None
+        err_ux = ux - exact_ux
+        err_uy = uy - exact_uy
+        n_pts = ux.size
+        return float(np.sqrt((np.sum(err_ux**2) + np.sum(err_uy**2)) / (2 * n_pts)))
+
+
 # ---------------------------------------------------------------------------
 # Registry of available solvers
 # ---------------------------------------------------------------------------
@@ -639,6 +1204,7 @@ SOLVER_REGISTRY: dict[str, type[BaseSolver]] = {
     "uniform_fdm": UniformFDMSolver,
     "dorfler_amr": DorflerAMRSolver,
     "pinn": SimplePINNSolver,
+    "navier_stokes_fdm": NavierStokesFDMSolver,
 }
 
 

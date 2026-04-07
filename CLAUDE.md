@@ -82,6 +82,13 @@ Monitors LBB condition during training:
 - [2026-03-30]: **IP Strategy Documented** - 3 provisional patent claims, publication plan, dual-licensing
 - [2026-03-30]: **Property-Based Tests** - Hypothesis tests for loss, PDE operators, attention mechanisms
 - [2026-03-30]: **Numerical Stability Tests** - Edge cases, extreme values, mixed precision, NaN propagation
+- [2026-04-02]: **Physics Loss Fully Wired** - CombinedAlphaGalerkinPhysicsLoss passes lbb_constant, action_mask, model to trainer
+- [2026-04-02]: **2D AMR Baseline** - DorflerAMRSolver extended to 2D with element-wise refinement and Dorfler marking
+- [2026-04-02]: **Navier-Stokes FDM Solver** - Chorin projection method baseline for Taylor-Green vortex benchmark
+- [2026-04-02]: **PDE GameInterface Bridge** - PDEGameInterface wraps PDEGame for GameRegistry registration
+- [2026-04-02]: **PDE Games Registered** - pde_basis and pde_mesh registered in GameRegistry via src/pde/register_games.py
+- [2026-04-02]: **PDE Training Config** - config/train_pde.yaml for MCTS-guided basis selection training
+- [2026-04-02]: **ROI Implementation Plan** - Tiered next-steps plan in docs/ROI_IMPLEMENTATION_PLAN.md
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement

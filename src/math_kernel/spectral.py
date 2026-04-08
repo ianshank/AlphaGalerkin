@@ -162,6 +162,7 @@ class SpectralFilter(nn.Module):
 
         return x_filtered
 
+
 class ResolutionAdapter(nn.Module):
     """Adapter for resolution-independent inference.
 
@@ -266,6 +267,7 @@ class ResolutionAdapter(nn.Module):
         features_out = features_out * scale_factor
 
         return features_out
+
     def _apply_adaptive_filter(
         self,
         x: Float[Tensor, "batch channels height width"],
@@ -291,6 +293,7 @@ class ResolutionAdapter(nn.Module):
         self.spectral_filter.cutoff_ratio.data.copy_(original_cutoff)
 
         return result
+
     def forward(
         self,
         features: Float[Tensor, "batch n d"],

@@ -32,21 +32,28 @@ class PDEGameInterfaceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     default_tolerance: float = Field(
-        default=0.01, gt=0,
+        default=0.01,
+        gt=0,
         description="Fallback tolerance if operator config lacks tolerance attribute",
     )
     phase_opening_multiplier: float = Field(
-        default=10.0, gt=1.0,
+        default=10.0,
+        gt=1.0,
         description="Error > tolerance * multiplier → OPENING phase",
     )
     convergence_reduction: float = Field(
-        default=0.1, gt=0.0, lt=1.0,
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
         description="Error reduction ratio for +1 winner (e.g. 0.1 = 90%+ reduction)",
     )
     failure_reduction: float = Field(
-        default=0.5, gt=0.0, lt=1.0,
+        default=0.5,
+        gt=0.0,
+        lt=1.0,
         description="Error reduction ratio above which result is -1 (failure)",
     )
+
 
 logger = structlog.get_logger(__name__)
 
@@ -266,7 +273,8 @@ class PDEGameInterface(GameInterface):
 
         # Check error reduction from initial state
         initial_error = state.metadata.get(
-            "_initial_error", pde_state.error_estimate,
+            "_initial_error",
+            pde_state.error_estimate,
         )
         if initial_error > 0:
             ratio = pde_state.error_estimate / initial_error

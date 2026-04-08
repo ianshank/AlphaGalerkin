@@ -235,9 +235,7 @@ class TestHybridAttention:
 
     def test_initialization_fixed_gate(self) -> None:
         """Test initialization with fixed gate."""
-        attn = HybridAttention(
-            d_model=16, n_heads=2, galerkin_ratio=0.6, learnable_gate=False
-        )
+        attn = HybridAttention(d_model=16, n_heads=2, galerkin_ratio=0.6, learnable_gate=False)
         assert not isinstance(attn.gate, torch.nn.Parameter)
 
     def test_forward_shape(self) -> None:

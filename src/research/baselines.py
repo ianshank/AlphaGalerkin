@@ -75,7 +75,8 @@ class FDMConfig(SolverConfig):
     """Configuration for finite difference solvers."""
 
     min_grid_points: int = Field(
-        default=3, ge=2,
+        default=3,
+        ge=2,
         description="Minimum grid points per dimension",
     )
 
@@ -84,31 +85,39 @@ class AMRConfig(SolverConfig):
     """Configuration for adaptive mesh refinement solvers."""
 
     marking_fraction: float = Field(
-        default=0.3, gt=0.0, lt=1.0,
+        default=0.3,
+        gt=0.0,
+        lt=1.0,
         description="Dorfler bulk-chasing marking fraction (theta)",
     )
     max_refinements: int = Field(
-        default=10, ge=1,
+        default=10,
+        ge=1,
         description="Maximum number of refinement iterations",
     )
     initial_dof_divisor: int = Field(
-        default=4, ge=1,
+        default=4,
+        ge=1,
         description="Divisor for initial DOF count (n_dof // divisor)",
     )
     max_initial_points_1d: int = Field(
-        default=8, ge=2,
+        default=8,
+        ge=2,
         description="Maximum initial grid points for 1D AMR",
     )
     min_initial_points: int = Field(
-        default=4, ge=2,
+        default=4,
+        ge=2,
         description="Minimum initial grid points (1D) or per-side (2D)",
     )
     initial_side_divisor_2d: int = Field(
-        default=2, ge=1,
+        default=2,
+        ge=1,
         description="Divisor for initial 2D side length (sqrt(n_dof) // divisor)",
     )
     min_initial_side_2d: int = Field(
-        default=3, ge=2,
+        default=3,
+        ge=2,
         description="Minimum initial side grid points for 2D AMR",
     )
 
@@ -132,20 +141,25 @@ class NavierStokesConfig(SolverConfig):
     dt: float = Field(default=0.01, gt=0, description="Time step size")
     t_final: float = Field(default=1.0, gt=0, description="Final simulation time")
     default_viscosity: float = Field(
-        default=0.01, gt=0,
+        default=0.01,
+        gt=0,
         description="Fallback viscosity if operator lacks viscosity attribute",
     )
     min_grid_points: int = Field(default=4, ge=2, description="Minimum grid points per side")
     cfl_safety: float = Field(
-        default=0.25, gt=0, le=1.0,
+        default=0.25,
+        gt=0,
+        le=1.0,
         description="CFL stability factor for diffusion (dt <= cfl_safety * h^2 / nu)",
     )
     viscosity_floor: float = Field(
-        default=1e-12, gt=0,
+        default=1e-12,
+        gt=0,
         description="Minimum viscosity for CFL denominator to avoid division by zero",
     )
     log_fraction: int = Field(
-        default=10, ge=1,
+        default=10,
+        ge=1,
         description="Log every n_steps // log_fraction steps",
     )
 
@@ -389,12 +403,10 @@ class DorflerAMRSolver(BaseSolver):
     ) -> None:
         self.config = config or AMRConfig()
         self.marking_fraction = (
-            marking_fraction if marking_fraction is not None
-            else self.config.marking_fraction
+            marking_fraction if marking_fraction is not None else self.config.marking_fraction
         )
         self.max_refinements = (
-            max_refinements if max_refinements is not None
-            else self.config.max_refinements
+            max_refinements if max_refinements is not None else self.config.max_refinements
         )
         if not 0.0 < self.marking_fraction < 1.0:
             raise ValueError(f"marking_fraction must be in (0,1), got {self.marking_fraction}")
@@ -475,7 +487,9 @@ class DorflerAMRSolver(BaseSolver):
             marked = self._dorfler_mark(indicators)
             x = self._refine_grid(x, marked)
             log.debug(
-                "amr_step", step=step, n_points=len(x),
+                "amr_step",
+                step=step,
+                n_points=len(x),
                 max_indicator=float(np.max(indicators)),
             )
 
@@ -696,9 +710,11 @@ class DorflerAMRSolver(BaseSolver):
                     cols.append((i - 1) * ny + j)
                     vals.append(-1.0 / (hx_l * hx_avg))
                 else:
-                    bc = float(np.asarray(operator.boundary_value(
-                        np.array([[xs[0], yi[j]]], dtype=np.float32)
-                    )).flat[0])
+                    bc = float(
+                        np.asarray(
+                            operator.boundary_value(np.array([[xs[0], yi[j]]], dtype=np.float32))
+                        ).flat[0]
+                    )
                     rhs[idx] += bc / (hx_l * hx_avg)
 
                 if i < nx - 1:
@@ -706,9 +722,11 @@ class DorflerAMRSolver(BaseSolver):
                     cols.append((i + 1) * ny + j)
                     vals.append(-1.0 / (hx_r * hx_avg))
                 else:
-                    bc = float(np.asarray(operator.boundary_value(
-                        np.array([[xs[-1], yi[j]]], dtype=np.float32)
-                    )).flat[0])
+                    bc = float(
+                        np.asarray(
+                            operator.boundary_value(np.array([[xs[-1], yi[j]]], dtype=np.float32))
+                        ).flat[0]
+                    )
                     rhs[idx] += bc / (hx_r * hx_avg)
 
                 # y-neighbors
@@ -717,9 +735,11 @@ class DorflerAMRSolver(BaseSolver):
                     cols.append(i * ny + (j - 1))
                     vals.append(-1.0 / (hy_l * hy_avg))
                 else:
-                    bc = float(np.asarray(operator.boundary_value(
-                        np.array([[xi[i], ys[0]]], dtype=np.float32)
-                    )).flat[0])
+                    bc = float(
+                        np.asarray(
+                            operator.boundary_value(np.array([[xi[i], ys[0]]], dtype=np.float32))
+                        ).flat[0]
+                    )
                     rhs[idx] += bc / (hy_l * hy_avg)
 
                 if j < ny - 1:
@@ -727,9 +747,11 @@ class DorflerAMRSolver(BaseSolver):
                     cols.append(i * ny + (j + 1))
                     vals.append(-1.0 / (hy_r * hy_avg))
                 else:
-                    bc = float(np.asarray(operator.boundary_value(
-                        np.array([[xi[i], ys[-1]]], dtype=np.float32)
-                    )).flat[0])
+                    bc = float(
+                        np.asarray(
+                            operator.boundary_value(np.array([[xi[i], ys[-1]]], dtype=np.float32))
+                        ).flat[0]
+                    )
                     rhs[idx] += bc / (hy_r * hy_avg)
 
         A = sparse.csc_matrix(
@@ -752,16 +774,20 @@ class DorflerAMRSolver(BaseSolver):
         # Fill boundaries
         for i in range(len(xs)):
             for y_val in [ys[0], ys[-1]]:
-                bc = float(np.asarray(operator.boundary_value(
-                    np.array([[xs[i], y_val]], dtype=np.float32)
-                )).flat[0])
+                bc = float(
+                    np.asarray(
+                        operator.boundary_value(np.array([[xs[i], y_val]], dtype=np.float32))
+                    ).flat[0]
+                )
                 j_idx = 0 if y_val == ys[0] else len(ys) - 1
                 u_full[i, j_idx] = bc
         for j in range(len(ys)):
             for x_val in [xs[0], xs[-1]]:
-                bc = float(np.asarray(operator.boundary_value(
-                    np.array([[x_val, ys[j]]], dtype=np.float32)
-                )).flat[0])
+                bc = float(
+                    np.asarray(
+                        operator.boundary_value(np.array([[x_val, ys[j]]], dtype=np.float32))
+                    ).flat[0]
+                )
                 i_idx = 0 if x_val == xs[0] else len(xs) - 1
                 u_full[i_idx, j] = bc
 
@@ -867,15 +893,9 @@ class SimplePINNSolver(BaseSolver):
         self.hidden_dim = hidden_dim if hidden_dim is not None else c.hidden_dim
         self.n_layers = n_layers if n_layers is not None else c.n_layers
         self.n_epochs = n_epochs if n_epochs is not None else c.n_epochs
-        self.learning_rate = (
-            learning_rate if learning_rate is not None else c.learning_rate
-        )
-        self.n_collocation = (
-            n_collocation if n_collocation is not None else c.n_collocation
-        )
-        self.bc_loss_weight = (
-            bc_loss_weight if bc_loss_weight is not None else c.bc_loss_weight
-        )
+        self.learning_rate = learning_rate if learning_rate is not None else c.learning_rate
+        self.n_collocation = n_collocation if n_collocation is not None else c.n_collocation
+        self.bc_loss_weight = bc_loss_weight if bc_loss_weight is not None else c.bc_loss_weight
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve by training a PINN."""
@@ -913,7 +933,8 @@ class SimplePINNSolver(BaseSolver):
 
             # Boundary loss
             bc_coords_np = operator.generate_boundary_points(
-                self.config.n_boundary_points, seed=None,
+                self.config.n_boundary_points,
+                seed=None,
             )
             bc_coords = torch.tensor(bc_coords_np, dtype=torch.float32, device=device)
             u_bc = net(bc_coords).squeeze(-1)
@@ -1021,9 +1042,7 @@ class NavierStokesFDMSolver(BaseSolver):
             from scipy import sparse
             from scipy.sparse.linalg import spsolve
         except ImportError as exc:
-            raise ImportError(
-                "NavierStokesFDMSolver requires scipy."
-            ) from exc
+            raise ImportError("NavierStokesFDMSolver requires scipy.") from exc
 
         if operator.dim != 2:
             raise NotImplementedError(
@@ -1057,8 +1076,8 @@ class NavierStokesFDMSolver(BaseSolver):
                 ic = ic.detach().cpu().numpy()
             ic = np.asarray(ic, dtype=np.float64)
             if ic.ndim == 2 and ic.shape[-1] >= 2:
-                ux = ic[:, 0].reshape(n, n)
-                uy = ic[:, 1].reshape(n, n)
+                ux = np.asarray(ic[:, 0].reshape(n, n), dtype=np.float64)
+                uy = np.asarray(ic[:, 1].reshape(n, n), dtype=np.float64)
 
         # Time stepping via Chorin projection
         cfl_dt = self.config.cfl_safety * h**2 / max(viscosity, self.config.viscosity_floor)
@@ -1122,10 +1141,9 @@ class NavierStokesFDMSolver(BaseSolver):
             for i in range(ni):
                 for j in range(ni):
                     gi, gj = i + 1, j + 1
-                    div[i, j] = (
-                        (ux_star[gi + 1, gj] - ux_star[gi - 1, gj]) / (2.0 * h)
-                        + (uy_star[gi, gj + 1] - uy_star[gi, gj - 1]) / (2.0 * h)
-                    )
+                    div[i, j] = (ux_star[gi + 1, gj] - ux_star[gi - 1, gj]) / (2.0 * h) + (
+                        uy_star[gi, gj + 1] - uy_star[gi, gj - 1]
+                    ) / (2.0 * h)
 
             rhs_p = div.ravel() / dt
             p_inner = spsolve(L, rhs_p)

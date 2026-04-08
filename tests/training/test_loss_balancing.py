@@ -542,7 +542,7 @@ class TestGradNormEdgeCases:
         shared_layer = torch.nn.Linear(10, 5)
         x = torch.randn(4, 10)
         out = shared_layer(x)
-        losses = {"policy": (out ** 2).mean()}
+        losses = {"policy": (out**2).mean()}
 
         # Don't set initial_losses — triggers rel_rates default of 1.0
         gradnorm_loss = balancer.compute_gradnorm_loss(losses, shared_layer)

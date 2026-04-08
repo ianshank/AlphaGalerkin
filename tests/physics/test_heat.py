@@ -202,8 +202,10 @@ class TestHeatSolverSolve:
         result = solver.solve(u0)
 
         numpy.testing.assert_allclose(
-            numpy.mean(result), numpy.mean(u0), atol=1e-5,
-            err_msg="Mean should be preserved under periodic heat equation"
+            numpy.mean(result),
+            numpy.mean(u0),
+            atol=1e-5,
+            err_msg="Mean should be preserved under periodic heat equation",
         )
 
     def test_small_resolution(self) -> None:

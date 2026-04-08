@@ -6,9 +6,10 @@ Tests the complete Chess implementation including:
 - Legal move generation
 - Special moves (castling, en passant, promotion)
 - Check and checkmate detection
-- Draw conditions
+- Draw conditions (stalemate, 50-move, threefold repetition, insufficient material)
 - Neural network tensor encoding
 - Symmetry transformations
+- Encode/decode roundtrip fuzz testing
 """
 
 from __future__ import annotations
@@ -27,6 +28,42 @@ from src.games.chess import (
 )
 from src.games.registry import GameRegistry
 from src.games.state import ActionMask, GameState
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_state(
+    board: np.ndarray,
+    current_player: int = WHITE,
+    castling: dict[str, bool] | None = None,
+    en_passant: tuple[int, int] | None = None,
+    halfmove_clock: int = 0,
+    position_history: list[str] | None = None,
+    move_number: int = 0,
+) -> GameState:
+    """Create a GameState with the given board and metadata."""
+    if castling is None:
+        castling = {"K": False, "Q": False, "k": False, "q": False}
+    return GameState(
+        board=board,
+        current_player=current_player,
+        move_number=move_number,
+        move_history=[],
+        metadata={
+            "castling_rights": castling,
+            "en_passant_square": en_passant,
+            "halfmove_clock": halfmove_clock,
+            "position_history": position_history or [],
+            "board_history": [],
+        },
+    )
+
+
+def _empty_board() -> np.ndarray:
+    """Return an empty 8x8 board."""
+    return np.zeros((8, 8), dtype=np.int8)
 
 
 class TestChessRegistration:

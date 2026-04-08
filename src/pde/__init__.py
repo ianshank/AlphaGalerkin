@@ -12,6 +12,8 @@ Key components:
 - PDERegistry: Registration and discovery of PDE operators
 """
 
+import contextlib
+
 from src.pde.config import (
     BasisSelectionConfig,
     MeshRefinementConfig,
@@ -36,6 +38,11 @@ from src.pde.operators import (
     PoissonOperator,
 )
 from src.pde.registry import PDEOperatorRegistry, register_pde_operator
+
+# Import register_games to trigger PDE game registration in GameRegistry
+# at import time, matching the pattern used by Go and Chess in src/games/__init__.py.
+with contextlib.suppress(Exception):  # pragma: no cover — optional dependency chain
+    from src.pde import register_games as _register_games  # noqa: F401
 
 __all__ = [
     # Config

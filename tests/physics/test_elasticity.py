@@ -274,8 +274,10 @@ class TestElasticitySolverGenerateSample:
         mean_force = numpy.mean(F, axis=0)
 
         numpy.testing.assert_allclose(
-            mean_force, 0.0, atol=1e-5,
-            err_msg="Force field should have zero mean for periodic equilibrium"
+            mean_force,
+            0.0,
+            atol=1e-5,
+            err_msg="Force field should have zero mean for periodic equilibrium",
         )
 
     def test_generate_sample_coords_range(self, solver: ElasticitySolver) -> None:

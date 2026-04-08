@@ -63,9 +63,7 @@ class TestAlphaGalerkinLossDefault:
 
     def test_total_equals_weighted_sum(self) -> None:
         """Total loss equals weighted sum of components (no LBB constant)."""
-        loss_fn = AlphaGalerkinLoss(
-            policy_weight=1.0, value_weight=1.0, lbb_weight=0.01
-        )
+        loss_fn = AlphaGalerkinLoss(policy_weight=1.0, value_weight=1.0, lbb_weight=0.01)
         policy_logits, value, target_policy, target_value = _make_inputs()
 
         result = loss_fn(
@@ -75,9 +73,7 @@ class TestAlphaGalerkinLossDefault:
             target_value=target_value,
         )
 
-        expected = (
-            1.0 * result.policy + 1.0 * result.value + 0.01 * result.lbb
-        )
+        expected = 1.0 * result.policy + 1.0 * result.value + 0.01 * result.lbb
         torch.testing.assert_close(result.total, expected)
 
     def test_to_dict(self) -> None:
@@ -146,9 +142,7 @@ class TestLossNonNegativity:
         for _ in range(10):
             policy_logits, value, target_policy, target_value = _make_inputs()
             lbb_constant = torch.rand(BATCH_SIZE) * 2.0
-            result = loss_fn(
-                policy_logits, value, target_policy, target_value, lbb_constant
-            )
+            result = loss_fn(policy_logits, value, target_policy, target_value, lbb_constant)
             assert result.total.isfinite()
             assert result.policy >= 0
             assert result.value >= 0
@@ -290,7 +284,7 @@ class TestEntropyRegularizerComputation:
         reg = EntropyRegularizer(weight=1.0)
         logits = torch.randn(BATCH_SIZE, ACTION_SIZE)
         mask = torch.ones(BATCH_SIZE, ACTION_SIZE)
-        mask[:, ACTION_SIZE // 2:] = 0.0
+        mask[:, ACTION_SIZE // 2 :] = 0.0
 
         result = reg(logits, mask=mask)
         assert result.isfinite()
@@ -365,9 +359,7 @@ class TestGradientFlow:
         target_policy = torch.softmax(torch.randn(BATCH_SIZE, ACTION_SIZE), dim=-1)
         target_value = torch.randn(BATCH_SIZE, 1)
 
-        result = loss_fn(
-            policy_logits, value, target_policy, target_value, lbb_constant
-        )
+        result = loss_fn(policy_logits, value, target_policy, target_value, lbb_constant)
         result.total.backward()
 
         assert lbb_constant.grad is not None

@@ -150,8 +150,11 @@ class TestGameResult:
     def test_various_reasons(self) -> None:
         for reason in ["resignation", "timeout", "score", "checkmate"]:
             result = GameResult(
-                winner=1, score_black=1.0, score_white=0.0,
-                reason=reason, move_count=50,
+                winner=1,
+                score_black=1.0,
+                score_white=0.0,
+                reason=reason,
+                move_count=50,
             )
             assert result.reason == reason
 

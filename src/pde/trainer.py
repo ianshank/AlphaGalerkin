@@ -51,11 +51,13 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 # PDE types actually supported by _create_operator
-SUPPORTED_PDE_TYPES: frozenset[PDEType] = frozenset({
-    PDEType.POISSON,
-    PDEType.BURGERS,
-    PDEType.ADVECTION_DIFFUSION,
-})
+SUPPORTED_PDE_TYPES: frozenset[PDEType] = frozenset(
+    {
+        PDEType.POISSON,
+        PDEType.BURGERS,
+        PDEType.ADVECTION_DIFFUSION,
+    }
+)
 
 
 def _create_operator(pde_config: PDEConfig) -> PDEOperator:
@@ -185,14 +187,12 @@ class PDETrainingConfig(BaseModuleConfig):
         except ValueError:
             supported = [t.value for t in SUPPORTED_PDE_TYPES]
             raise ValueError(
-                f"Unknown pde_type: '{self.pde_type}'. "
-                f"Supported options: {supported}"
+                f"Unknown pde_type: '{self.pde_type}'. Supported options: {supported}"
             ) from None
         if pde_type not in SUPPORTED_PDE_TYPES:
             supported = [t.value for t in SUPPORTED_PDE_TYPES]
             raise ValueError(
-                f"Unsupported pde_type: '{self.pde_type}'. "
-                f"Supported options: {supported}"
+                f"Unsupported pde_type: '{self.pde_type}'. Supported options: {supported}"
             )
         return self
 

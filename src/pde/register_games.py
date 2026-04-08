@@ -15,6 +15,8 @@ Usage::
 
 from __future__ import annotations
 
+from typing import Literal
+
 import structlog
 
 from src.games.registry import register_game
@@ -34,7 +36,7 @@ def _create_default_pde_config(pde_type: PDEType = PDEType.POISSON) -> PDEConfig
 
 
 def _create_default_game_config(
-    game_mode: str = "basis_selection",
+    game_mode: Literal["basis_selection", "mesh_refinement", "collocation"] = "basis_selection",
     pde_type: PDEType = PDEType.POISSON,
 ) -> PDEGameConfig:
     """Create a default PDE game config."""

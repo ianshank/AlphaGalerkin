@@ -220,6 +220,19 @@ class LossBalancer(ABC):
             ValueError: If no valid loss terms are provided.
 
         """
+        # Filter out NaN/Inf losses to prevent state corruption
+        sanitized: dict[str, Tensor] = {}
+        for name, val in losses.items():
+            if torch.isfinite(val):
+                sanitized[name] = val
+            else:
+                logger.warning(
+                    "non_finite_loss_filtered",
+                    loss_name=name,
+                    value=val.item(),
+                )
+        losses = sanitized
+
         # Check for missing loss terms and log warning
         missing_terms = [name for name in self.loss_names if name not in losses]
         if missing_terms:
@@ -302,6 +315,10 @@ class ReLoBRaLo(LossBalancer):
                 continue
 
             loss_val = losses[name].detach().item()
+
+            # Skip NaN/Inf values to avoid corrupting history
+            if not math.isfinite(loss_val):
+                continue
 
             # Store history for random lookback
             self._loss_history[name].append(loss_val)
@@ -597,6 +614,11 @@ class SoftAdapt(LossBalancer):
                 continue
 
             loss_val = losses[name].detach().item()
+
+            # Skip NaN/Inf values to avoid corrupting history
+            if not math.isfinite(loss_val):
+                continue
+
             self._loss_history[name].append(loss_val)
             if len(self._loss_history[name]) > self._window_size:
                 self._loss_history[name] = self._loss_history[name][-self._window_size :]
@@ -607,7 +629,7 @@ class SoftAdapt(LossBalancer):
             history = self._loss_history.get(name, [])
             if len(history) >= 2:
                 # Rate of improvement (negative = improving)
-                denominator = len(history) * max(history[0], eps)
+                denominator = len(history) * max(abs(history[0]), eps)
                 rate = (history[-1] - history[0]) / denominator
                 rates[name] = rate
             else:

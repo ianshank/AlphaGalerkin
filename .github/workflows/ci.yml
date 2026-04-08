@@ -65,10 +65,10 @@ jobs:
           pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
       - name: Run Ruff linting
-        run: ruff check src/ --output-format=github
+        run: ruff check src/ tests/ --output-format=github
 
       - name: Run Ruff formatting check
-        run: ruff format src/ --check
+        run: ruff format src/ tests/ --check
 
       - name: Run MyPy type checking
         run: mypy src/ --strict --ignore-missing-imports

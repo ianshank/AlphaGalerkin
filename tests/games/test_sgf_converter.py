@@ -161,9 +161,7 @@ class TestMoveSequenceConversion:
         assert tree.root.get_property("PB") == "Alice"
         assert tree.root.get_property("PW") == "Bob"
 
-    def test_from_move_sequence_sets_standard_properties(
-        self, converter: SGFConverter
-    ) -> None:
+    def test_from_move_sequence_sets_standard_properties(self, converter: SGFConverter) -> None:
         moves = [("B", 0, 0)]
         tree = converter.from_move_sequence(moves, board_size=19)
         assert tree.root.get_property("FF") == "4"
@@ -303,9 +301,7 @@ class TestAnalysis:
         converter.add_analysis(node, comment="Test annotation")
         assert "Test annotation" in node.get_comment()
 
-    def test_add_analysis_preserves_existing_comment(
-        self, converter: SGFConverter
-    ) -> None:
+    def test_add_analysis_preserves_existing_comment(self, converter: SGFConverter) -> None:
         node = SGFNode()
         node._board_size = 9
         node.set_comment("Existing comment")
@@ -418,7 +414,8 @@ class TestCreateAnalysisTree:
     def test_add_analysis_to_mainline(self, converter: SGFConverter) -> None:
         """Test adding analysis annotations directly to tree nodes."""
         tree = converter.from_move_sequence(
-            [("B", 4, 4), ("W", 2, 4)], board_size=9,
+            [("B", 4, 4), ("W", 2, 4)],
+            board_size=9,
         )
         evaluations = [{"value": 0.1}, {"value": 0.3}]
         # Add analysis to each mainline node directly
@@ -434,7 +431,8 @@ class TestCreateAnalysisTree:
 
     def test_analysis_preserves_move_count(self, converter: SGFConverter) -> None:
         tree = converter.from_move_sequence(
-            [("B", 4, 4), ("W", 2, 4)], board_size=9,
+            [("B", 4, 4), ("W", 2, 4)],
+            board_size=9,
         )
         original_count = tree.count_moves()
         # Add analysis to nodes

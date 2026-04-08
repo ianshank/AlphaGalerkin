@@ -229,9 +229,7 @@ class TestBasisSelectionGameActions:
         """No valid actions when max basis functions reached."""
         state = game.get_initial_state()
         # Manually set n_basis to max
-        state.basis_coefficients = np.zeros(
-            game.basis_config.max_basis_functions, dtype=np.float32
-        )
+        state.basis_coefficients = np.zeros(game.basis_config.max_basis_functions, dtype=np.float32)
         actions = game.get_valid_actions(state)
         assert len(actions) == 0
 
@@ -251,9 +249,7 @@ class TestBasisSelectionGameActions:
 
     def test_action_mask_all_false_at_max(self, game: BasisSelectionGame) -> None:
         state = game.get_initial_state()
-        state.basis_coefficients = np.zeros(
-            game.basis_config.max_basis_functions, dtype=np.float32
-        )
+        state.basis_coefficients = np.zeros(game.basis_config.max_basis_functions, dtype=np.float32)
         mask = game.get_action_mask(state)
         assert not mask.any()
 

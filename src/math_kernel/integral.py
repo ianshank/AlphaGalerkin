@@ -182,6 +182,7 @@ class GalerkinProjection(nn.Module):
         output = self.to_output(output)
 
         return output
+
     def forward(
         self,
         x: Float[Tensor, "batch n d"],
@@ -218,6 +219,7 @@ class GalerkinProjection(nn.Module):
 
         # Return minimum singular value (LBB constant)
         return singular_values.min(dim=-1).values
+
 
 class PetrovGalerkinProjection(nn.Module):
     """Petrov-Galerkin projection with different trial and test spaces.
@@ -298,6 +300,7 @@ class PetrovGalerkinProjection(nn.Module):
         output = einsum(q, context, "b n q, b q v -> b n v")
 
         return self.to_output(output)
+
     def forward(
         self,
         x: Float[Tensor, "batch n d"],

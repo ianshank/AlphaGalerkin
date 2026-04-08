@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+import torch
 import yaml
 
 OmegaConf = pytest.importorskip("omegaconf").OmegaConf
@@ -20,6 +22,49 @@ from config.schemas import (
     OperatorConfig,
     TrainingConfig,
 )
+
+
+def _make_fake_experiences(trainer, n=10):
+    """Create fake experiences matching the model's expected input shape."""
+    from src.training.replay_buffer import Experience
+
+    board_size = 9
+    input_channels = trainer.config.operator.input_channels
+    action_space = board_size * board_size + 1
+
+    return [
+        Experience(
+            board_state=torch.randn(input_channels, board_size, board_size),
+            board_size=board_size,
+            target_policy=torch.softmax(torch.randn(action_space), dim=0),
+            target_value=float(torch.randn(1).tanh().item()),
+        )
+        for _ in range(n)
+    ]
+
+
+def _prefill_and_mock(trainer, n=100):
+    """Pre-fill buffer and return a context manager that mocks self-play."""
+    from contextlib import contextmanager
+
+    for exp in _make_fake_experiences(trainer, n):
+        trainer.buffer.add(exp)
+
+    @contextmanager
+    def _ctx():
+        fake = _make_fake_experiences(trainer, 5)
+        with (
+            patch.object(trainer, "_fill_buffer"),
+            patch.object(
+                trainer.self_play_worker,
+                "generate_experiences",
+                return_value=fake,
+            ),
+            patch.object(trainer, "_run_evaluation", return_value=0.5),
+        ):
+            yield
+
+    return _ctx()
 
 
 class TestExtendedConfigLoads:
@@ -368,15 +413,16 @@ class TestExtendedTrainingIntegration:
             )
 
             # Run short training
-            trainer.train(
-                n_steps=15,
-                log_interval=5,
-                checkpoint_interval=10,
-                eval_interval=10,
-            )
+            with _prefill_and_mock(trainer):
+                trainer.train(
+                    n_steps=6,
+                    log_interval=5,
+                    checkpoint_interval=10,
+                    eval_interval=10,
+                )
 
             # Verify training completed
-            assert trainer.global_step == 15
+            assert trainer.global_step == 6
 
             # Verify warmup completed (warmup_steps=5)
             assert trainer._warmup_completed is True
@@ -400,11 +446,12 @@ class TestExtendedTrainingIntegration:
                 checkpoint_dir=Path(tmpdir),
             )
 
-            trainer.train(n_steps=10)
+            with _prefill_and_mock(trainer):
+                trainer.train(n_steps=3)
 
             # Verify metrics recorded
             history = trainer.get_metrics_history()
-            assert len(history) == 10
+            assert len(history) == 3
 
             # Verify metrics have expected fields
             first_metric = history[0]

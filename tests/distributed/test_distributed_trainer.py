@@ -389,7 +389,10 @@ class TestDistributedTrainerCheckpoint:
         optimizer2 = AdamW(model2.parameters(), lr=0.01)
         scheduler2 = StepLR(optimizer2, step_size=5, gamma=0.5)
         trainer2 = _make_trainer(
-            model=model2, optimizer=optimizer2, scheduler=scheduler2, rank=0,
+            model=model2,
+            optimizer=optimizer2,
+            scheduler=scheduler2,
+            rank=0,
         )
         trainer2.load_checkpoint(ckpt_path)
 
@@ -423,7 +426,9 @@ def _metric_aggregation_worker(
     os.environ["LOCAL_RANK"] = str(rank)
 
     torch.distributed.init_process_group(
-        backend="gloo", world_size=world_size, rank=rank,
+        backend="gloo",
+        world_size=world_size,
+        rank=rank,
     )
 
     try:
@@ -436,15 +441,17 @@ def _metric_aggregation_worker(
         local_throughput = float(rank + 1) * 100.0
         local_step_time = float(rank + 1) * 5.0
 
-        metrics_tensor = torch.tensor([
-            local_total_loss,
-            local_policy_loss,
-            local_value_loss,
-            local_lbb_loss,
-            local_grad_norm,
-            local_throughput,
-            local_step_time,
-        ])
+        metrics_tensor = torch.tensor(
+            [
+                local_total_loss,
+                local_policy_loss,
+                local_value_loss,
+                local_lbb_loss,
+                local_grad_norm,
+                local_throughput,
+                local_step_time,
+            ]
+        )
 
         torch.distributed.all_reduce(metrics_tensor, op=torch.distributed.ReduceOp.SUM)
         metrics_tensor /= world_size
@@ -518,7 +525,9 @@ def _checkpoint_coordination_worker(
     os.environ["LOCAL_RANK"] = str(rank)
 
     torch.distributed.init_process_group(
-        backend="gloo", world_size=world_size, rank=rank,
+        backend="gloo",
+        world_size=world_size,
+        rank=rank,
     )
 
     try:
@@ -561,7 +570,8 @@ def _checkpoint_coordination_worker(
             loaded_model = _ToyModel()
             loaded_model.load_state_dict(loaded["model_state_dict"])
             for (name, p1), (_, p2) in zip(
-                model.named_parameters(), loaded_model.named_parameters(),
+                model.named_parameters(),
+                loaded_model.named_parameters(),
             ):
                 assert torch.allclose(p1, p2, atol=1e-6), f"Weight mismatch: {name}"
 

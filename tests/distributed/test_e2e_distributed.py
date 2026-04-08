@@ -117,8 +117,7 @@ def _worker_fn(
         # Confirm sync actually changed something (gradients were different before)
         if world_size > 1:
             assert not torch.allclose(pre_sync_grad, post_sync_grad, atol=1e-7), (
-                f"Rank {rank}: gradients unchanged after all_reduce — "
-                "sync may not have happened"
+                f"Rank {rank}: gradients unchanged after all_reduce — sync may not have happened"
             )
 
         # --- Checkpoint: rank 0 saves, rank 1 loads and verifies -----------

@@ -73,12 +73,8 @@ def _make_mock_operator(*, is_time_dependent: bool = False) -> MagicMock:
     op.source_term.side_effect = _source_term
 
     # collocation/boundary point generation
-    op.generate_collocation_points.return_value = np.random.rand(N_POINTS, DIM).astype(
-        np.float32
-    )
-    op.generate_boundary_points.return_value = np.random.rand(N_POINTS, DIM).astype(
-        np.float32
-    )
+    op.generate_collocation_points.return_value = np.random.rand(N_POINTS, DIM).astype(np.float32)
+    op.generate_boundary_points.return_value = np.random.rand(N_POINTS, DIM).astype(np.float32)
 
     return op
 

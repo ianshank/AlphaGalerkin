@@ -155,7 +155,9 @@ class TestContinuousEmbedding:
     def test_learnable_positions_disabled(self) -> None:
         """Test with learnable positions disabled (default)."""
         emb = ContinuousEmbedding(
-            input_channels=17, d_model=16, n_fourier_features=8,
+            input_channels=17,
+            d_model=16,
+            n_fourier_features=8,
             use_learnable_positions=False,
         )
         assert emb.use_learnable_positions is False
@@ -166,7 +168,9 @@ class TestContinuousEmbedding:
     def test_learnable_positions_enabled(self) -> None:
         """Test with learnable positions enabled."""
         emb = ContinuousEmbedding(
-            input_channels=17, d_model=16, n_fourier_features=8,
+            input_channels=17,
+            d_model=16,
+            n_fourier_features=8,
             use_learnable_positions=True,
         )
         assert emb.use_learnable_positions is True
@@ -178,7 +182,9 @@ class TestContinuousEmbedding:
         """Test with various input channel counts."""
         for channels in [1, 4, 17]:
             emb = ContinuousEmbedding(
-                input_channels=channels, d_model=16, n_fourier_features=8,
+                input_channels=channels,
+                d_model=16,
+                n_fourier_features=8,
             )
             x = torch.randn(2, channels, 3, 3)
             output = emb(x)

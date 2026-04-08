@@ -265,7 +265,8 @@ class TestErrorReductionLogging:
         assert isinstance(reduction, float)
 
     def test_error_tracked_in_game_state_metadata(
-        self, pde_interface: PDEGameInterface,
+        self,
+        pde_interface: PDEGameInterface,
     ) -> None:
         """Error should be recorded in GameState.metadata after each step."""
         state = pde_interface.initial_state()

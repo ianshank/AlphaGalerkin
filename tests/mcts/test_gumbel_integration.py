@@ -11,16 +11,11 @@ Tests cover:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
-from unittest.mock import MagicMock, patch
-
 import numpy as np
 import pytest
 import torch
 
 from config.schemas import OperatorConfig
-from src.games.interface import GameInterface
 from src.games.state import ActionMask, GameState
 from src.mcts.gumbel import (
     GumbelMCTS,
@@ -30,7 +25,6 @@ from src.mcts.gumbel import (
     create_gumbel_mcts,
 )
 from src.modeling.model import AlphaGalerkinModel
-
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -163,9 +157,7 @@ class TestGumbelMCTSInit:
         mock_game: _MockGame,
         small_model: AlphaGalerkinModel,
     ) -> None:
-        mcts = GumbelMCTS(
-            config=gumbel_config, game=mock_game, model=small_model, device="cpu"
-        )
+        mcts = GumbelMCTS(config=gumbel_config, game=mock_game, model=small_model, device="cpu")
         assert mcts.config is gumbel_config
         assert mcts.game is mock_game
         assert mcts.model is small_model
@@ -176,9 +168,7 @@ class TestGumbelMCTSInit:
         mock_game: _MockGame,
         small_model: AlphaGalerkinModel,
     ) -> None:
-        mcts = GumbelMCTS(
-            config=gumbel_config, game=mock_game, model=small_model, device="cpu"
-        )
+        mcts = GumbelMCTS(config=gumbel_config, game=mock_game, model=small_model, device="cpu")
         assert mcts.device == torch.device("cpu")
 
     def test_init_device_tensor(
@@ -188,9 +178,7 @@ class TestGumbelMCTSInit:
         small_model: AlphaGalerkinModel,
     ) -> None:
         device = torch.device("cpu")
-        mcts = GumbelMCTS(
-            config=gumbel_config, game=mock_game, model=small_model, device=device
-        )
+        mcts = GumbelMCTS(config=gumbel_config, game=mock_game, model=small_model, device=device)
         assert mcts.device == device
 
 
@@ -202,9 +190,7 @@ class TestGumbelMCTSInit:
 class TestGumbelEvaluate:
     """Tests for GumbelMCTS._evaluate()."""
 
-    def test_evaluate_returns_policy_and_value(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_evaluate_returns_policy_and_value(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         policy, value = gumbel_mcts._evaluate(state)
 
@@ -237,24 +223,18 @@ class TestGumbelEvaluate:
 class TestGumbelSimulate:
     """Tests for GumbelMCTS._simulate()."""
 
-    def test_simulate_terminal_node_returns_stored_value(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_simulate_terminal_node_returns_stored_value(self, gumbel_mcts: GumbelMCTS) -> None:
         node = GumbelNode()
         node._terminal_value = 1.0
         value = gumbel_mcts._simulate(node)
         assert value == 1.0
 
-    def test_simulate_none_state_returns_zero(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_simulate_none_state_returns_zero(self, gumbel_mcts: GumbelMCTS) -> None:
         node = GumbelNode()  # state is None by default
         value = gumbel_mcts._simulate(node)
         assert value == 0.0
 
-    def test_simulate_terminal_game_state_sets_value(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_simulate_terminal_game_state_sets_value(self, gumbel_mcts: GumbelMCTS) -> None:
         # State with move_number >= 3 is terminal in _MockGame
         state = _make_state(player=1, move_number=3)
         node = GumbelNode(state=state)
@@ -262,26 +242,20 @@ class TestGumbelSimulate:
         assert value in (-1.0, 0.0, 1.0)
         assert node._terminal_value is not None
 
-    def test_simulate_non_terminal_calls_evaluate(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_simulate_non_terminal_calls_evaluate(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state(player=1, move_number=0)
         node = GumbelNode(state=state)
         value = gumbel_mcts._simulate(node)
         assert np.isfinite(value)
 
-    def test_simulate_winner_current_player_returns_positive(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_simulate_winner_current_player_returns_positive(self, gumbel_mcts: GumbelMCTS) -> None:
         # In _MockGame get_winner always returns 1, and we set player=1
         state = _make_state(player=1, move_number=3)
         node = GumbelNode(state=state)
         value = gumbel_mcts._simulate(node)
         assert value == 1.0
 
-    def test_simulate_winner_opponent_returns_negative(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_simulate_winner_opponent_returns_negative(self, gumbel_mcts: GumbelMCTS) -> None:
         # In _MockGame get_winner always returns 1, but current player is -1
         state = _make_state(player=-1, move_number=3)
         node = GumbelNode(state=state)
@@ -297,9 +271,7 @@ class TestGumbelSimulate:
 class TestSequentialHalving:
     """Tests for GumbelMCTS._sequential_halving()."""
 
-    def test_returns_action_in_input_list(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_returns_action_in_input_list(self, gumbel_mcts: GumbelMCTS) -> None:
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
@@ -316,9 +288,7 @@ class TestSequentialHalving:
         )
         assert best_action in actions
 
-    def test_visit_counts_keys_match_actions(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_visit_counts_keys_match_actions(self, gumbel_mcts: GumbelMCTS) -> None:
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
@@ -330,14 +300,10 @@ class TestSequentialHalving:
                 gumbel=0.0,
             )
 
-        _, visit_counts = gumbel_mcts._sequential_halving(
-            root, actions, total_simulations=8
-        )
+        _, visit_counts = gumbel_mcts._sequential_halving(root, actions, total_simulations=8)
         assert set(visit_counts.keys()) == set(actions)
 
-    def test_total_visits_within_budget(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_total_visits_within_budget(self, gumbel_mcts: GumbelMCTS) -> None:
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
@@ -350,15 +316,11 @@ class TestSequentialHalving:
                 gumbel=0.0,
             )
 
-        _, visit_counts = gumbel_mcts._sequential_halving(
-            root, actions, total_simulations=budget
-        )
+        _, visit_counts = gumbel_mcts._sequential_halving(root, actions, total_simulations=budget)
         total_visits = sum(visit_counts.values())
         assert total_visits <= budget
 
-    def test_single_action_returns_it(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_single_action_returns_it(self, gumbel_mcts: GumbelMCTS) -> None:
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
@@ -368,14 +330,10 @@ class TestSequentialHalving:
             prior=1.0,
             gumbel=0.0,
         )
-        best_action, _ = gumbel_mcts._sequential_halving(
-            root, actions, total_simulations=4
-        )
+        best_action, _ = gumbel_mcts._sequential_halving(root, actions, total_simulations=4)
         assert best_action == 5
 
-    def test_zero_budget_returns_action(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_zero_budget_returns_action(self, gumbel_mcts: GumbelMCTS) -> None:
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
@@ -386,9 +344,7 @@ class TestSequentialHalving:
                 prior=0.5,
                 gumbel=float(a),
             )
-        best_action, _ = gumbel_mcts._sequential_halving(
-            root, actions, total_simulations=0
-        )
+        best_action, _ = gumbel_mcts._sequential_halving(root, actions, total_simulations=0)
         assert best_action in actions
 
 
@@ -400,9 +356,7 @@ class TestSequentialHalving:
 class TestGumbelSearch:
     """Tests for GumbelMCTS.search()."""
 
-    def test_search_returns_gumbel_search_result(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_search_returns_gumbel_search_result(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         result = gumbel_mcts.search(state)
         assert isinstance(result, GumbelSearchResult)
@@ -418,9 +372,7 @@ class TestGumbelSearch:
         result = gumbel_mcts.search(state)
         assert abs(result.policy.sum() - 1.0) < 1e-4
 
-    def test_search_policy_size_matches_action_space(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_search_policy_size_matches_action_space(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         result = gumbel_mcts.search(state)
         # Policy size matches game's action space (determined by model output)
@@ -432,9 +384,7 @@ class TestGumbelSearch:
         assert np.isfinite(result.value)
         assert np.isfinite(result.root_value)
 
-    def test_search_records_correct_n_simulations(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_search_records_correct_n_simulations(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         result = gumbel_mcts.search(state)
         assert result.n_simulations == gumbel_mcts.config.n_simulations
@@ -447,16 +397,12 @@ class TestGumbelSearch:
         if len(nonzero) > 0:
             assert np.all(np.isfinite(nonzero))
 
-    def test_search_visit_counts_nonnegative(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_search_visit_counts_nonnegative(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         result = gumbel_mcts.search(state)
         assert np.all(result.visit_counts >= 0)
 
-    def test_search_is_deterministic_with_fixed_seed(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_search_is_deterministic_with_fixed_seed(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         np.random.seed(0)
         result1 = gumbel_mcts.search(state)
@@ -464,9 +410,7 @@ class TestGumbelSearch:
         result2 = gumbel_mcts.search(state)
         assert result1.action == result2.action
 
-    def test_search_multiple_calls_dont_share_state(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_search_multiple_calls_dont_share_state(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         result1 = gumbel_mcts.search(state)
         result2 = gumbel_mcts.search(state)
@@ -483,16 +427,12 @@ class TestGumbelSearch:
 class TestGetImprovedPolicy:
     """Tests for GumbelMCTS.get_improved_policy()."""
 
-    def test_improved_policy_sums_to_one(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_improved_policy_sums_to_one(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         policy = gumbel_mcts.get_improved_policy(state, temperature=1.0)
         assert abs(policy.sum() - 1.0) < 1e-4
 
-    def test_improved_policy_all_nonnegative(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_improved_policy_all_nonnegative(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         policy = gumbel_mcts.get_improved_policy(state, temperature=1.0)
         assert np.all(policy >= 0)
@@ -506,9 +446,7 @@ class TestGetImprovedPolicy:
         assert policy.sum() == pytest.approx(1.0, abs=1e-4)
         assert (policy == 1.0).sum() == 1
 
-    def test_improved_policy_high_temperature_smoother(
-        self, gumbel_mcts: GumbelMCTS
-    ) -> None:
+    def test_improved_policy_high_temperature_smoother(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()
         np.random.seed(42)
         policy_low = gumbel_mcts.get_improved_policy(state, temperature=0.1)

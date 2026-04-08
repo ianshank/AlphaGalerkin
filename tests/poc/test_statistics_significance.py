@@ -94,12 +94,12 @@ class TestSignificanceTestConfig:
         assert config.confidence_level == pytest.approx(0.95)
 
     def test_alpha_must_be_positive(self) -> None:
-        """alpha <= 0 is invalid."""
+        """Alpha <= 0 is invalid."""
         with pytest.raises(ValidationError):
             SignificanceTest(alpha=0.0)
 
     def test_alpha_must_be_less_than_one(self) -> None:
-        """alpha >= 1 is invalid."""
+        """Alpha >= 1 is invalid."""
         with pytest.raises(ValidationError):
             SignificanceTest(alpha=1.0)
 
@@ -183,9 +183,7 @@ class TestComparisonResult:
     ) -> None:
         """is_significant should match whether p_value < alpha."""
         baseline, treatment = clearly_different_samples
-        analyzer = StatisticalAnalyzer(
-            test_config=SignificanceTest(test_type="t_test", alpha=0.05)
-        )
+        analyzer = StatisticalAnalyzer(test_config=SignificanceTest(test_type="t_test", alpha=0.05))
         result = analyzer.compare_runs(baseline, treatment)
         assert result.is_significant == (result.p_value < 0.05)
 
@@ -453,17 +451,13 @@ class TestMultipleComparisonCorrection:
         """P-values that would overflow past 1.0 under naive Bonferroni."""
         return [0.5, 0.6, 0.7, 0.8]
 
-    def test_none_correction_returns_original(
-        self, raw_p_values: list[float]
-    ) -> None:
+    def test_none_correction_returns_original(self, raw_p_values: list[float]) -> None:
         """'none' correction must return the original p-values unchanged."""
         analyzer = StatisticalAnalyzer()
         corrected = analyzer.apply_correction(raw_p_values, method="none")
         assert corrected == raw_p_values
 
-    def test_bonferroni_multiplies_by_n(
-        self, raw_p_values: list[float]
-    ) -> None:
+    def test_bonferroni_multiplies_by_n(self, raw_p_values: list[float]) -> None:
         """Bonferroni correction should multiply each p by n, capped at 1.0."""
         analyzer = StatisticalAnalyzer()
         n = len(raw_p_values)
@@ -472,17 +466,13 @@ class TestMultipleComparisonCorrection:
             expected = min(1.0, original * n)
             assert corr == pytest.approx(expected)
 
-    def test_bonferroni_never_exceeds_one(
-        self, small_p_values: list[float]
-    ) -> None:
+    def test_bonferroni_never_exceeds_one(self, small_p_values: list[float]) -> None:
         """Bonferroni corrected values must never exceed 1.0."""
         analyzer = StatisticalAnalyzer()
         corrected = analyzer.apply_correction(small_p_values, method="bonferroni")
         assert all(p <= 1.0 for p in corrected)
 
-    def test_holm_returns_valid_p_values(
-        self, raw_p_values: list[float]
-    ) -> None:
+    def test_holm_returns_valid_p_values(self, raw_p_values: list[float]) -> None:
         """Holm-Bonferroni correction should return values in [0, 1]."""
         analyzer = StatisticalAnalyzer()
         corrected = analyzer.apply_correction(raw_p_values, method="holm")
@@ -497,9 +487,7 @@ class TestMultipleComparisonCorrection:
         for prev, curr in zip(sorted_corrected, sorted_corrected[1:]):
             assert curr >= prev - 1e-12
 
-    def test_fdr_returns_valid_p_values(
-        self, raw_p_values: list[float]
-    ) -> None:
+    def test_fdr_returns_valid_p_values(self, raw_p_values: list[float]) -> None:
         """FDR (Benjamini-Hochberg) correction should return values in [0, 1]."""
         analyzer = StatisticalAnalyzer()
         corrected = analyzer.apply_correction(raw_p_values, method="fdr")

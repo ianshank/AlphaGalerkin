@@ -10,14 +10,12 @@ import json
 import math
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
-from src.poc.tuning.config import SearchSpace, TuningConfig, create_search_space_from_dict
-from src.poc.tuning.sampler import GridSampler, RandomSampler, TPESampler, create_sampler
+from src.poc.tuning.config import SearchSpace, TuningConfig
+from src.poc.tuning.sampler import GridSampler, RandomSampler, TPESampler
 from src.poc.tuning.tuner import HyperparameterTuner, TrialResult, TuningResult
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -102,9 +100,18 @@ def _make_scenario_cls(
         def __init__(self, **kwargs: Any) -> None:  # type: ignore[override]
             # Pull out the known config fields; everything else is for the
             # objective function.
-            config_keys = {"name", "description", "tier", "enabled", "timeout_seconds",
-                           "retry_count", "seed", "thresholds", "requires_gpu",
-                           "estimated_duration_seconds"}
+            config_keys = {
+                "name",
+                "description",
+                "tier",
+                "enabled",
+                "timeout_seconds",
+                "retry_count",
+                "seed",
+                "thresholds",
+                "requires_gpu",
+                "estimated_duration_seconds",
+            }
             config_kwargs = {k: v for k, v in kwargs.items() if k in config_keys}
             self._extra_params: dict[str, Any] = {
                 k: v for k, v in kwargs.items() if k not in config_keys
@@ -140,9 +147,7 @@ class TestRandomSampler:
         result = sampler.sample(float_search_space, trial_number=0)
         assert set(result.keys()) == set(float_search_space.keys())
 
-    def test_float_values_within_bounds(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_float_values_within_bounds(self, float_search_space: dict[str, SearchSpace]) -> None:
         """All sampled float values lie within [low, high]."""
         sampler = RandomSampler(seed=42)
         for trial in range(20):
@@ -162,11 +167,8 @@ class TestRandomSampler:
                 assert isinstance(val, int), f"{name} should be int, got {type(val)}"
                 assert int(space.low) <= val <= int(space.high)
 
-    def test_same_seed_reproducibility(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
-        """A single sampler seeded identically across two sequential runs produces
-        the same first sample.
+    def test_same_seed_reproducibility(self, float_search_space: dict[str, SearchSpace]) -> None:
+        """Verify identical seeds produce identical first samples.
 
         Because RandomSampler seeds Python's global ``random`` module at
         ``__init__`` time, we reseed immediately before sampling to isolate
@@ -185,9 +187,7 @@ class TestRandomSampler:
 
         assert p1 == pytest.approx(p2), "Same seed must produce same first sample"
 
-    def test_handles_mixed_param_types(
-        self, mixed_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_handles_mixed_param_types(self, mixed_search_space: dict[str, SearchSpace]) -> None:
         """Sampler handles mixed float/int log-scale parameters without error."""
         sampler = RandomSampler(seed=0)
         params = sampler.sample(mixed_search_space, trial_number=0)
@@ -230,29 +230,23 @@ class TestGridSampler:
         tuples = [tuple(sorted(p.items())) for p in points]
         assert len(set(tuples)) == total
 
-    def test_grid_covers_all_combinations(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_grid_covers_all_combinations(self, float_search_space: dict[str, SearchSpace]) -> None:
         """Grid contains n^d total combinations for n_samples_per_dim=n, d dimensions."""
         n = 4
         sampler = GridSampler(float_search_space, n_samples_per_dim=n)
         expected = n ** len(float_search_space)
         assert len(sampler._grid) == expected
 
-    def test_wraps_around_when_exhausted(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_wraps_around_when_exhausted(self, float_search_space: dict[str, SearchSpace]) -> None:
         """trial_number >= grid_size wraps around modulo grid size."""
         n = 2
         sampler = GridSampler(float_search_space, n_samples_per_dim=n)
-        grid_size = n ** 2  # 4 points
+        grid_size = n**2  # 4 points
         p0 = sampler.sample(float_search_space, trial_number=0)
         p_wrap = sampler.sample(float_search_space, trial_number=grid_size)
         assert p0 == pytest.approx(p_wrap)
 
-    def test_single_value_per_dim(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_single_value_per_dim(self, float_search_space: dict[str, SearchSpace]) -> None:
         """n_samples_per_dim=1 produces a single grid point."""
         sampler = GridSampler(float_search_space, n_samples_per_dim=1)
         assert len(sampler._grid) == 1
@@ -278,26 +272,20 @@ class TestTPESampler:
         for name, space in float_search_space.items():
             assert space.low <= params[name] <= space.high
 
-    def test_returns_all_param_keys(
-        self, mixed_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_returns_all_param_keys(self, mixed_search_space: dict[str, SearchSpace]) -> None:
         """sample() always returns all keys from the search space."""
         sampler = TPESampler(seed=42, n_startup_trials=5)
         params = sampler.sample(mixed_search_space, trial_number=0)
         assert set(params.keys()) == set(mixed_search_space.keys())
 
-    def test_update_does_not_raise(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_update_does_not_raise(self, float_search_space: dict[str, SearchSpace]) -> None:
         """update() with valid params and value does not raise."""
         sampler = TPESampler(seed=0, n_startup_trials=10)
         params = sampler.sample(float_search_space, trial_number=0)
         sampler.update(params, value=0.25)  # Should not raise
         assert len(sampler._history) == 1
 
-    def test_history_accumulates(
-        self, float_search_space: dict[str, SearchSpace]
-    ) -> None:
+    def test_history_accumulates(self, float_search_space: dict[str, SearchSpace]) -> None:
         """History list grows with each update() call."""
         sampler = TPESampler(seed=0, n_startup_trials=10)
         for i in range(5):
@@ -460,7 +448,6 @@ class TestHyperparameterTuner:
 
     def test_skips_trial_on_unexpected_exception(self) -> None:
         """Trials that raise an exception increment n_failed and do not crash the tuner."""
-
         call_count = {"n": 0}
 
         def flaky_objective(params: dict[str, Any]) -> float:
@@ -533,7 +520,7 @@ class TestTuningResult:
         assert hasattr(result, "trials")
 
     def test_trials_list_length(self) -> None:
-        """trials list length equals n_trials_completed (all pass in this scenario)."""
+        """Trials list length equals n_trials_completed (all pass in this scenario)."""
         n = 7
         result = self._run_tuner(n_trials=n)
         assert len(result.trials) == n
@@ -585,11 +572,12 @@ class TestTrialResult:
         assert t.status == "completed"
 
     def test_timestamp_is_set_automatically(self) -> None:
-        """timestamp field is populated with an ISO-format datetime string."""
+        """Timestamp field is populated with an ISO-format datetime string."""
         t = self._make_trial()
         assert isinstance(t.timestamp, str)
         # Quick sanity: should be parseable
         from datetime import datetime
+
         datetime.fromisoformat(t.timestamp)
 
     def test_metrics_dict(self) -> None:

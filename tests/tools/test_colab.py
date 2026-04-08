@@ -101,8 +101,7 @@ class TestGenerateColabNotebook:
             data = json.load(f)
         # Count setup cells
         setup_cells = [
-            c for c in data["cells"]
-            if c.get("metadata", {}).get("id") == "colab-setup-cell"
+            c for c in data["cells"] if c.get("metadata", {}).get("id") == "colab-setup-cell"
         ]
         assert len(setup_cells) == 1
 

@@ -398,9 +398,7 @@ class TestE2ETrainingPipeline:
             phase1_history = trainer1.get_metrics_history()
             assert len(phase1_history) == 1
             for m in phase1_history:
-                assert math.isfinite(m["total_loss"]), (
-                    f"Non-finite loss at step {m['step']}"
-                )
+                assert math.isfinite(m["total_loss"]), f"Non-finite loss at step {m['step']}"
 
             # Phase 2: Load checkpoint into fresh trainer, continue training
             model2 = AlphaGalerkinModel(config.operator)
@@ -426,9 +424,7 @@ class TestE2ETrainingPipeline:
             phase2_history = trainer2.get_metrics_history()
             assert len(phase2_history) == 1
             for m in phase2_history:
-                assert math.isfinite(m["total_loss"]), (
-                    f"Non-finite loss at step {m['step']}"
-                )
+                assert math.isfinite(m["total_loss"]), f"Non-finite loss at step {m['step']}"
 
 
 class TestCurriculumProgression:

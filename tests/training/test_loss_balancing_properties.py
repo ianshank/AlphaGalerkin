@@ -72,8 +72,7 @@ def _make_losses(
 ) -> dict[str, Tensor]:
     """Create a loss dict from names and float values."""
     return {
-        name: torch.tensor(val, requires_grad=requires_grad)
-        for name, val in zip(names, values)
+        name: torch.tensor(val, requires_grad=requires_grad) for name, val in zip(names, values)
     }
 
 
@@ -273,12 +272,8 @@ class TestWeightStability:
             result = balancer.compute_weighted_loss(losses)
 
         for name, w in result.weights.items():
-            assert w >= config.min_weight, (
-                f"Weight {name}={w} below min_weight={config.min_weight}"
-            )
-            assert w <= config.max_weight, (
-                f"Weight {name}={w} above max_weight={config.max_weight}"
-            )
+            assert w >= config.min_weight, f"Weight {name}={w} below min_weight={config.min_weight}"
+            assert w <= config.max_weight, f"Weight {name}={w} above max_weight={config.max_weight}"
             assert math.isfinite(w), f"Weight {name}={w} is not finite"
 
     @pytest.mark.parametrize("strategy", ALL_STRATEGIES)
@@ -378,9 +373,7 @@ class TestEqualLossesEqualWeights:
         mean_w = sum(weights) / len(weights)
         for w in weights:
             # ReLoBRaLo with random lookback may have small deviations
-            assert abs(w - mean_w) < 0.5, (
-                f"Weights not equal for equal losses: {result.weights}"
-            )
+            assert abs(w - mean_w) < 0.5, f"Weights not equal for equal losses: {result.weights}"
 
 
 # ---------------------------------------------------------------------------

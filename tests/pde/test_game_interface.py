@@ -383,7 +383,8 @@ class TestInitialErrorPropagation:
         assert state.metadata["_initial_error"] == state.metadata["error_estimate"]
 
     def test_apply_action_propagates_initial_error(
-        self, pde_interface: PDEGameInterface,
+        self,
+        pde_interface: PDEGameInterface,
     ):
         """apply_action should carry _initial_error from parent state."""
         state = pde_interface.initial_state()

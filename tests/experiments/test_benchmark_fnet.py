@@ -171,7 +171,11 @@ class TestBenchmarkLayer:
 
         with torch.no_grad():
             mean_time, memory = benchmark_layer(
-                layer, x, n_warmup=1, n_iterations=3, grid_size=3,
+                layer,
+                x,
+                n_warmup=1,
+                n_iterations=3,
+                grid_size=3,
             )
 
         assert mean_time > 0
@@ -185,7 +189,10 @@ class TestBenchmarkLayer:
 
         with torch.no_grad():
             mean_time, memory = benchmark_layer(
-                layer, x, n_warmup=1, n_iterations=3,
+                layer,
+                x,
+                n_warmup=1,
+                n_iterations=3,
             )
 
         assert mean_time > 0

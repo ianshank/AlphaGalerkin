@@ -203,9 +203,18 @@ class TestGTPEngine:
     def test_init_has_commands(self, engine: GTPEngine) -> None:
         """Engine registers all standard GTP commands."""
         expected = {
-            "protocol_version", "name", "version", "known_command",
-            "list_commands", "quit", "boardsize", "clear_board",
-            "komi", "play", "genmove", "showboard",
+            "protocol_version",
+            "name",
+            "version",
+            "known_command",
+            "list_commands",
+            "quit",
+            "boardsize",
+            "clear_board",
+            "komi",
+            "play",
+            "genmove",
+            "showboard",
         }
         assert set(engine.commands.keys()) == expected
 

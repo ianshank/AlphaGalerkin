@@ -191,9 +191,7 @@ class TestMultiGameSwitching:
             go_history = go_trainer.get_metrics_history()
             assert len(go_history) == 2
             for m in go_history:
-                assert math.isfinite(m["total_loss"]), (
-                    f"Go: non-finite loss at step {m['step']}"
-                )
+                assert math.isfinite(m["total_loss"]), f"Go: non-finite loss at step {m['step']}"
 
             # ----- Chess training -----
             chess_config = _make_chess_config()
@@ -213,9 +211,7 @@ class TestMultiGameSwitching:
             chess_history = chess_trainer.get_metrics_history()
             assert len(chess_history) == 2
             for m in chess_history:
-                assert math.isfinite(m["total_loss"]), (
-                    f"Chess: non-finite loss at step {m['step']}"
-                )
+                assert math.isfinite(m["total_loss"]), f"Chess: non-finite loss at step {m['step']}"
 
     def test_go_training_produces_valid_metrics(self) -> None:
         """Smoke test that Go training produces valid metric keys."""

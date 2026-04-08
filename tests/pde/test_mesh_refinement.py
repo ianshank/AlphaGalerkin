@@ -25,7 +25,8 @@ class TestMeshElement:
 
     def test_create_element(self) -> None:
         vertices = np.array(
-            [[0, 0], [1, 0], [0, 1], [1, 1]], dtype=np.float32,
+            [[0, 0], [1, 0], [0, 1], [1, 1]],
+            dtype=np.float32,
         )
         elem = MeshElement(
             index=0,

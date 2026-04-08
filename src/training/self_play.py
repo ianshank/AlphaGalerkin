@@ -17,7 +17,7 @@ import numpy as np
 import structlog
 import torch
 
-from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_TEMPERATURE_SCHEDULE
+from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_MAX_MOVES, DEFAULT_TEMPERATURE_SCHEDULE
 from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS, BatchMCTS
 from src.tools.gtp import SimpleGoGame
@@ -183,7 +183,7 @@ class SelfPlayWorker:
     def play_game(
         self,
         board_size: int | None = None,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
         add_noise: bool = True,
     ) -> GameRecord:
         """Play a complete self-play game.
@@ -203,7 +203,7 @@ class SelfPlayWorker:
 
     def _play_game_generic(
         self,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
         add_noise: bool = True,
     ) -> GameRecord:
         """Play a self-play game using a GameInterface (chess, etc.).
@@ -293,7 +293,7 @@ class SelfPlayWorker:
     def _play_game_go(
         self,
         board_size: int | None = None,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
         add_noise: bool = True,
     ) -> GameRecord:
         """Play a self-play game using SimpleGoGame (original Go path)."""

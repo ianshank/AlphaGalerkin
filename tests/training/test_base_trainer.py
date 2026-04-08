@@ -626,9 +626,7 @@ class TestTrainingStatePersistence:
 
         # Both should have the same param groups
         assert len(state1["param_groups"]) == len(state2["param_groups"])
-        assert state1["param_groups"][0]["lr"] == pytest.approx(
-            state2["param_groups"][0]["lr"]
-        )
+        assert state1["param_groups"][0]["lr"] == pytest.approx(state2["param_groups"][0]["lr"])
 
     def test_load_missing_file_raises(self, tmp_path: Path):
         trainer = _make_trainer(tmp_path)

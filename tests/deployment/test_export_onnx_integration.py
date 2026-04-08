@@ -21,13 +21,13 @@ from src.deployment.config import (
     QuantizationConfig,
     QuantizationMode,
 )
-from src.deployment.export_onnx import ONNXExporter, create_exporter, export_model
+from src.deployment.export_onnx import ONNXExporter, export_model
 from src.modeling.model import AlphaGalerkinModel
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _tiny_op_config(**overrides: Any) -> OperatorConfig:
     """Return a small OperatorConfig suitable for fast unit tests.
@@ -39,18 +39,18 @@ def _tiny_op_config(**overrides: Any) -> OperatorConfig:
         A minimal OperatorConfig instance.
 
     """
-    defaults: dict[str, Any] = dict(
-        d_model=16,
-        d_key=8,
-        d_value=8,
-        d_ffn=32,
-        n_heads=2,
-        n_galerkin_layers=1,
-        n_softmax_layers=1,
-        n_fourier_features=8,
-        use_fnet_mixing=False,
-        input_channels=4,
-    )
+    defaults: dict[str, Any] = {
+        "d_model": 16,
+        "d_key": 8,
+        "d_value": 8,
+        "d_ffn": 32,
+        "n_heads": 2,
+        "n_galerkin_layers": 1,
+        "n_softmax_layers": 1,
+        "n_fourier_features": 8,
+        "use_fnet_mixing": False,
+        "input_channels": 4,
+    }
     defaults.update(overrides)
     return OperatorConfig(**defaults)
 
@@ -121,6 +121,7 @@ def _export_to(
 # Group 1 – ExportConfig dynamic axes
 # ---------------------------------------------------------------------------
 
+
 class TestONNXExporterConfig:
     """Tests for ExportConfig dynamic-axes helpers and validation."""
 
@@ -169,6 +170,7 @@ class TestONNXExporterConfig:
 # ---------------------------------------------------------------------------
 # Group 2 – Actual export
 # ---------------------------------------------------------------------------
+
 
 class TestONNXExporterActualExport:
     """Tests that perform a real ONNX export and verify the file output."""
@@ -266,6 +268,7 @@ class TestONNXExporterActualExport:
 # Group 3 – Dynamic shapes
 # ---------------------------------------------------------------------------
 
+
 class TestONNXDynamicShapes:
     """Tests for resolution independence through ONNX dynamic spatial axes."""
 
@@ -325,9 +328,7 @@ class TestONNXDynamicShapes:
         assert result[0].shape[0] == 4
         assert result[1].shape[0] == 4
 
-    def test_policy_output_size_matches_board_positions_plus_pass(
-        self, tmp_path: Path
-    ) -> None:
+    def test_policy_output_size_matches_board_positions_plus_pass(self, tmp_path: Path) -> None:
         """Policy head output has board_size^2 + 1 entries (positions + pass move)."""
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnx")
@@ -344,9 +345,7 @@ class TestONNXDynamicShapes:
             f"Expected {expected_actions} policy logits, got {result[0].shape[-1]}"
         )
 
-    def test_fixed_spatial_export_has_no_spatial_dynamic_dims(
-        self, tmp_path: Path
-    ) -> None:
+    def test_fixed_spatial_export_has_no_spatial_dynamic_dims(self, tmp_path: Path) -> None:
         """Config with only batch dynamic produces fixed spatial dims in ONNX graph."""
         onnx = pytest.importorskip("onnx")
         fixed_axes: dict[str, dict[int, str]] = {
@@ -374,9 +373,12 @@ class TestONNXDynamicShapes:
 # Group 4 – ONNX validation
 # ---------------------------------------------------------------------------
 
+
 class TestONNXValidation:
-    """Tests for exported model correctness via ONNXExporter.verify_export()
-    and ModelValidator.validate()."""
+    """Tests for exported model correctness.
+
+    Validates via ONNXExporter.verify_export() and ModelValidator.validate().
+    """
 
     def test_verify_export_returns_true_for_valid_model(self, tmp_path: Path) -> None:
         """verify_export() returns True for a freshly exported model."""
@@ -386,9 +388,7 @@ class TestONNXValidation:
         exporter = ONNXExporter()
         assert exporter.verify_export(out) is True
 
-    def test_policy_outputs_match_pytorch_within_tolerance(
-        self, tmp_path: Path
-    ) -> None:
+    def test_policy_outputs_match_pytorch_within_tolerance(self, tmp_path: Path) -> None:
         """ONNX policy outputs are numerically close to PyTorch outputs."""
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnx")
@@ -409,13 +409,13 @@ class TestONNXValidation:
         onnx_policy = onnx_outputs[0]
 
         np.testing.assert_allclose(
-            pt_policy, onnx_policy, atol=1e-4,
+            pt_policy,
+            onnx_policy,
+            atol=1e-4,
             err_msg="Policy outputs diverge beyond tolerance",
         )
 
-    def test_value_outputs_match_pytorch_within_tolerance(
-        self, tmp_path: Path
-    ) -> None:
+    def test_value_outputs_match_pytorch_within_tolerance(self, tmp_path: Path) -> None:
         """ONNX value outputs are numerically close to PyTorch outputs."""
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnx")
@@ -434,7 +434,9 @@ class TestONNXValidation:
         onnx_value = onnx_outputs[1]
 
         np.testing.assert_allclose(
-            pt_value, onnx_value, atol=1e-4,
+            pt_value,
+            onnx_value,
+            atol=1e-4,
             err_msg="Value outputs diverge beyond tolerance",
         )
 
@@ -490,6 +492,7 @@ class TestONNXValidation:
 # Group 5 – Quantization
 # ---------------------------------------------------------------------------
 
+
 class TestONNXWithQuantization:
     """Tests for ONNX model quantization via ModelQuantizer."""
 
@@ -532,13 +535,10 @@ class TestONNXWithQuantization:
 
         # Quantized model should not be more than 2x the original
         assert quantized_size < original_size * 2, (
-            f"Quantized model ({quantized_size} B) is much larger than original "
-            f"({original_size} B)"
+            f"Quantized model ({quantized_size} B) is much larger than original ({original_size} B)"
         )
 
-    def test_quantized_model_policy_accuracy_within_tolerance(
-        self, tmp_path: Path
-    ) -> None:
+    def test_quantized_model_policy_accuracy_within_tolerance(self, tmp_path: Path) -> None:
         """Quantized model policy outputs are within 10 % of original ONNX outputs."""
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnx")
@@ -555,19 +555,11 @@ class TestONNXWithQuantization:
 
         inp_np = sample.numpy()
 
-        orig_session = ort.InferenceSession(
-            str(onnx_path), providers=["CPUExecutionProvider"]
-        )
-        orig_policy = orig_session.run(
-            None, {orig_session.get_inputs()[0].name: inp_np}
-        )[0]
+        orig_session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+        orig_policy = orig_session.run(None, {orig_session.get_inputs()[0].name: inp_np})[0]
 
-        q_session = ort.InferenceSession(
-            str(q_path), providers=["CPUExecutionProvider"]
-        )
-        q_policy = q_session.run(
-            None, {q_session.get_inputs()[0].name: inp_np}
-        )[0]
+        q_session = ort.InferenceSession(str(q_path), providers=["CPUExecutionProvider"])
+        q_policy = q_session.run(None, {q_session.get_inputs()[0].name: inp_np})[0]
 
         # Relative difference should be within 10 % of the original magnitude
         rel_diff = np.abs(orig_policy - q_policy) / (np.abs(orig_policy) + 1e-8)

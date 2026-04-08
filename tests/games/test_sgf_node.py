@@ -34,7 +34,7 @@ class TestSGFMove:
         move = SGFMove.from_sgf("B", "pd", board_size=19)
         assert move.color == "B"
         assert move.x == 15  # 'p' - 'a' = 15
-        assert move.y == 3   # 'd' - 'a' = 3
+        assert move.y == 3  # 'd' - 'a' = 3
         assert move.sgf_coord == "pd"
 
     def test_from_sgf_pass_empty(self) -> None:

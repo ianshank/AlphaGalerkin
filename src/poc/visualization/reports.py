@@ -274,9 +274,7 @@ class HTMLReportGenerator:
 
         # Comparison table
         if section.table_data and section.table_headers:
-            parts.append(
-                self._render_comparison_table(section.table_headers, section.table_data)
-            )
+            parts.append(self._render_comparison_table(section.table_headers, section.table_data))
 
         # Embedded plots
         if section.figures:
@@ -347,16 +345,11 @@ class HTMLReportGenerator:
         header_cells = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
         rows: list[str] = []
         for row in data:
-            cells = "".join(
-                f"<td>{html.escape(str(row.get(h, '')))}</td>" for h in headers
-            )
+            cells = "".join(f"<td>{html.escape(str(row.get(h, '')))}</td>" for h in headers)
             rows.append(f"<tr>{cells}</tr>")
 
         return (
-            "<table>"
-            f"<thead><tr>{header_cells}</tr></thead>"
-            f"<tbody>{''.join(rows)}</tbody>"
-            "</table>"
+            f"<table><thead><tr>{header_cells}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
         )
 
     # ------------------------------------------------------------------
@@ -382,9 +375,7 @@ class HTMLReportGenerator:
         buf.close()
 
         return (
-            '<div class="plot-container">'
-            f'<img src="data:image/png;base64,{b64}" alt="plot">'
-            "</div>"
+            f'<div class="plot-container"><img src="data:image/png;base64,{b64}" alt="plot"></div>'
         )
 
 

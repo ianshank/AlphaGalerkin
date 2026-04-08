@@ -396,9 +396,7 @@ class TestGradientFlowWithPhysics:
         config = _make_config(op_config, physics_loss_type="combined", physics_weight=0.01)
 
         # Snapshot parameters before training
-        params_before = {
-            name: p.clone().detach() for name, p in model.named_parameters()
-        }
+        params_before = {name: p.clone().detach() for name, p in model.named_parameters()}
 
         board_size = 9
         batch_size = 4
@@ -414,16 +412,10 @@ class TestGradientFlowWithPhysics:
                 from src.data.collate import TrainingBatch
 
                 batch = TrainingBatch(
-                    board_states=torch.randn(
-                        batch_size, input_channels, board_size, board_size
-                    ),
-                    target_policies=torch.softmax(
-                        torch.randn(batch_size, action_space), dim=-1
-                    ),
+                    board_states=torch.randn(batch_size, input_channels, board_size, board_size),
+                    target_policies=torch.softmax(torch.randn(batch_size, action_space), dim=-1),
                     target_values=torch.randn(batch_size, 1).tanh(),
-                    position_mask=torch.ones(
-                        batch_size, board_size, board_size, dtype=torch.bool
-                    ),
+                    position_mask=torch.ones(batch_size, board_size, board_size, dtype=torch.bool),
                     action_mask=torch.ones(batch_size, action_space),
                     board_sizes=torch.full((batch_size,), board_size, dtype=torch.long),
                 )
@@ -573,9 +565,7 @@ class TestTrainingMetricsPhysics:
         for key in ("step", "total_loss", "policy_loss", "value_loss", "lbb_loss", "learning_rate"):
             assert key in result, f"Core metric '{key}' missing from to_dict"
 
-    def test_metrics_history_populated_during_training(
-        self, op_config: OperatorConfig
-    ) -> None:
+    def test_metrics_history_populated_during_training(self, op_config: OperatorConfig) -> None:
         """Training should populate metrics history with physics fields when enabled."""
         model = AlphaGalerkinModel(op_config)
         config = _make_config(op_config, physics_loss_type="combined", physics_weight=0.01)
@@ -701,9 +691,7 @@ class TestTrainerPhysicsTraining:
                 trainer.train(n_steps=5, log_interval=2, checkpoint_interval=100)
             assert trainer.global_step == 5
 
-    def test_training_completes_with_physics_informed(
-        self, op_config: OperatorConfig
-    ) -> None:
+    def test_training_completes_with_physics_informed(self, op_config: OperatorConfig) -> None:
         """Training with physics_informed=True should complete."""
         model = AlphaGalerkinModel(op_config)
         config = _make_config(op_config, physics_informed=True, physics_loss_weight=0.1)
@@ -745,9 +733,7 @@ class TestTrainerPhysicsTraining:
             history = trainer.get_metrics_history()
             total_losses = [m["total_loss"] for m in history]
 
-            assert all(
-                torch.isfinite(torch.tensor(v)) for v in total_losses
-            ), (
+            assert all(torch.isfinite(torch.tensor(v)) for v in total_losses), (
                 f"Non-finite loss with type={physics_loss_type}, "
                 f"informed={physics_informed}: {total_losses}"
             )
@@ -858,9 +844,7 @@ class TestPhysicsLossConfigPropertyBased:
     """Hypothesis tests for physics config validation bounds."""
 
     @given(
-        weight=st.floats(
-            min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
-        ),
+        weight=st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False),
     )
     @settings(max_examples=30)
     def test_non_negative_physics_weight_accepted(self, weight: float) -> None:
@@ -869,9 +853,7 @@ class TestPhysicsLossConfigPropertyBased:
         assert cfg.physics_weight == pytest.approx(weight)
 
     @given(
-        weight=st.floats(
-            min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False
-        ),
+        weight=st.floats(min_value=0.0, max_value=100.0, allow_nan=False, allow_infinity=False),
     )
     @settings(max_examples=30)
     def test_non_negative_physics_loss_weight_accepted(self, weight: float) -> None:

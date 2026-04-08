@@ -319,9 +319,7 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
         grad_norm = 0.0
         if is_sync_step:
             # Use BaseTrainer._clip_gradients for consistent clipping
-            grad_norm = self._clip_gradients(
-                self.ddp_model, self.config.training.gradient_clip
-            )
+            grad_norm = self._clip_gradients(self.ddp_model, self.config.training.gradient_clip)
             if self.use_amp and self.scaler is not None:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
@@ -370,21 +368,15 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
 
     def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:
         """Not used directly -- DistributedTrainer uses train_step instead."""
-        raise NotImplementedError(
-            "DistributedTrainer uses train_step(); use that method instead."
-        )
+        raise NotImplementedError("DistributedTrainer uses train_step(); use that method instead.")
 
     def generate_data(self) -> Any:
         """Not used directly -- DistributedTrainer manages data externally."""
-        raise NotImplementedError(
-            "DistributedTrainer receives batches via train_step()."
-        )
+        raise NotImplementedError("DistributedTrainer receives batches via train_step().")
 
     def evaluate(self) -> dict[str, float]:
         """Not used directly -- evaluation is handled externally."""
-        raise NotImplementedError(
-            "DistributedTrainer evaluation is managed externally."
-        )
+        raise NotImplementedError("DistributedTrainer evaluation is managed externally.")
 
     def _get_lr(self) -> float:
         """Get current learning rate.
@@ -445,7 +437,7 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
             global_batch_size=local_metrics.global_batch_size,
         )
 
-    def save_checkpoint(
+    def save_checkpoint(  # type: ignore[override]
         self,
         path: Path | str,
         metrics: dict[str, Any] | None = None,
@@ -491,7 +483,7 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
 
         return path
 
-    def load_checkpoint(self, path: Path | str) -> int:
+    def load_checkpoint(self, path: Path | str) -> int:  # type: ignore[override]
         """Load checkpoint.
 
         Args:

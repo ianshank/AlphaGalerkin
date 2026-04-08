@@ -39,11 +39,7 @@ class TestCurriculumConfigDefaults:
         """When curriculum_enabled=False the trainer path sets curriculum to None."""
         config = TrainingConfig(curriculum_enabled=False)
         # The trainer conditionally creates curriculum; simulate the branch:
-        curriculum = (
-            _mock_create_curriculum(config)
-            if config.curriculum_enabled
-            else None
-        )
+        curriculum = _mock_create_curriculum(config) if config.curriculum_enabled else None
         assert curriculum is None
 
     def test_enabled_with_none_schedule_uses_default(self) -> None:
@@ -124,9 +120,7 @@ class TestStageTransitions:
 
     def test_transition_step_logging(self) -> None:
         """is_transition_step returns True exactly at boundaries."""
-        curriculum = BoardSizeCurriculum.from_schedule(
-            {0: [9], 100: [9, 13], 500: [9, 13, 19]}
-        )
+        curriculum = BoardSizeCurriculum.from_schedule({0: [9], 100: [9, 13], 500: [9, 13, 19]})
         assert curriculum.is_transition_step(0)
         assert curriculum.is_transition_step(100)
         assert curriculum.is_transition_step(500)
@@ -139,9 +133,7 @@ class TestStageTransitions:
 
         We simulate the trainer's logging branch and verify structlog is called.
         """
-        curriculum = BoardSizeCurriculum.from_schedule(
-            {0: [9], 100: [9, 13]}
-        )
+        curriculum = BoardSizeCurriculum.from_schedule({0: [9], 100: [9, 13]})
         mock_logger = MagicMock()
 
         step = 100

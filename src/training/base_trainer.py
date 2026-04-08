@@ -43,7 +43,7 @@ import structlog
 import torch
 from pydantic import Field
 from torch import Tensor
-from torch.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast  # type: ignore[attr-defined]
 from torch.nn import Module
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import (
@@ -485,7 +485,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             _dtype = amp_dtype or torch.float16
             with autocast(device_type=_device.type, dtype=_dtype):
                 loss, metrics = loss_fn()
-            self.scaler.scale(loss).backward()
+            self.scaler.scale(loss).backward()  # type: ignore[no-untyped-call]
             grad_norm = self._clip_gradients(model, max_norm)
             self.scaler.step(optimizer)
             self.scaler.update()
@@ -558,9 +558,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         min_lr = base_lr * min_lr_ratio
 
         if scheduler_type in ("none", "constant") or total_steps <= 0:
-            return torch.optim.lr_scheduler.ConstantLR(
-                optimizer, factor=1.0, total_iters=0
-            )
+            return torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0, total_iters=0)
 
         main_steps = max(1, total_steps - warmup_steps)
 
@@ -631,9 +629,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             "global_step": self.global_step,
             "optimizer_state_dict": self.optimizer.state_dict(),
             "scheduler_state_dict": self.scheduler.state_dict(),
-            "scaler_state_dict": (
-                self.scaler.state_dict() if self.scaler is not None else None
-            ),
+            "scaler_state_dict": (self.scaler.state_dict() if self.scaler is not None else None),
         }
         torch.save(state, path)
         return path
@@ -670,12 +666,17 @@ class BaseTrainer(ABC, Generic[ConfigT]):
     # Checkpoint helpers
     # ------------------------------------------------------------------
 
-    def save_checkpoint(self, filename: str | None = None) -> Path:
+    def save_checkpoint(
+        self,
+        filename: str | Path | None = None,
+        metrics: dict[str, Any] | None = None,
+    ) -> Path | None:
         """Save model and optimizer state to disk.
 
         Args:
             filename: Filename for the checkpoint. Defaults to
                 ``checkpoint_{global_step:08d}.pt``.
+            metrics: Optional metrics to include in checkpoint.
 
         Returns:
             Path to the saved checkpoint file.
@@ -702,18 +703,21 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self._log.info("checkpoint_saved", path=str(path), step=self.global_step)
         return path
 
-    def load_checkpoint(self, path: Path | str) -> None:
+    def load_checkpoint(self, path: Path | str | None = None, **kwargs: Any) -> int | None:
         """Load model and optimizer state from a checkpoint.
 
         Args:
             path: Path to the checkpoint file.
+            **kwargs: Additional keyword arguments for subclass compatibility.
 
         """
-        path = Path(path)
-        if not path.exists():
-            raise FileNotFoundError(f"Checkpoint not found: {path}")
+        if path is None:
+            raise ValueError("Checkpoint path must be provided")
+        resolved = Path(path)
+        if not resolved.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {resolved}")
 
-        state = torch.load(path, map_location=self.device, weights_only=False)
+        state = torch.load(resolved, map_location=self.device, weights_only=False)
 
         self.model.load_state_dict(state["model_state_dict"])
         self.optimizer.load_state_dict(state["optimizer_state_dict"])
@@ -725,9 +729,10 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self.global_step = state.get("global_step", 0)
         self._log.info(
             "checkpoint_loaded",
-            path=str(path),
+            path=str(resolved),
             step=self.global_step,
         )
+        return self.global_step
 
     # ------------------------------------------------------------------
     # Utilities

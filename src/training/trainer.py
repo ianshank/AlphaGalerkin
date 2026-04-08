@@ -119,7 +119,7 @@ class TrainingMetrics:
         return result
 
 
-class Trainer(BaseTrainer):  # type: ignore[type-arg]
+class Trainer(BaseTrainer):
     """Main trainer for AlphaGalerkin.
 
     Coordinates self-play, training, and checkpoint management.
@@ -272,9 +272,7 @@ class Trainer(BaseTrainer):  # type: ignore[type-arg]
 
         # Board size curriculum (optional)
         self.curriculum = (
-            self._create_curriculum()
-            if self.training_config.curriculum_enabled
-            else None
+            self._create_curriculum() if self.training_config.curriculum_enabled else None
         )
 
         # Self-play worker (use raw model, not DDP-wrapped)
@@ -351,7 +349,7 @@ class Trainer(BaseTrainer):  # type: ignore[type-arg]
         The ``"constant"`` type maps to ``"none"`` in the base helper
         for backwards compatibility.
         """
-        scheduler_type = self.training_config.lr_scheduler
+        scheduler_type: str = self.training_config.lr_scheduler
         # Map legacy "constant" to "none" (BaseTrainer recognises both)
         if scheduler_type == "constant":
             scheduler_type = "none"
@@ -721,9 +719,7 @@ class Trainer(BaseTrainer):  # type: ignore[type-arg]
                     target_value=batch.target_values,
                     lbb_constant=output.lbb_constant,
                     action_mask=(
-                        batch.action_mask.float()
-                        if batch.action_mask is not None
-                        else None
+                        batch.action_mask.float() if batch.action_mask is not None else None
                     ),
                     model=self._raw_model,
                 )
@@ -748,7 +744,7 @@ class Trainer(BaseTrainer):  # type: ignore[type-arg]
 
         # Backward pass (uses BaseTrainer helpers for AMP and gradient clipping)
         if self.use_amp and self.scaler is not None:
-            self.scaler.scale(total_loss).backward()
+            self.scaler.scale(total_loss).backward()  # type: ignore[no-untyped-call]
             grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -1294,7 +1290,7 @@ class Trainer(BaseTrainer):  # type: ignore[type-arg]
 
         return checkpoint_path
 
-    def load_checkpoint(
+    def load_checkpoint(  # type: ignore[override]
         self,
         path: Path | str | None = None,
         load_best: bool = False,

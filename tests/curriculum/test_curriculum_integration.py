@@ -268,9 +268,7 @@ class TestCurriculumManagerIntegration:
 
         assert manager.current_board_size == 13
 
-    def test_stage_transition_logged(
-        self, fast_curriculum_config: CurriculumConfig
-    ) -> None:
+    def test_stage_transition_logged(self, fast_curriculum_config: CurriculumConfig) -> None:
         """Stage transitions produce structlog output."""
         mock_logger = MagicMock()
         manager = CurriculumManager(
@@ -297,9 +295,7 @@ class TestCurriculumManagerIntegration:
         info_calls = [call.args[0] for call in mock_logger.info.call_args_list]
         assert "new_stage_started" in info_calls
 
-    def test_metrics_reflect_current_stage(
-        self, fast_curriculum_config: CurriculumConfig
-    ) -> None:
+    def test_metrics_reflect_current_stage(self, fast_curriculum_config: CurriculumConfig) -> None:
         """get_metrics returns correct stage info."""
         manager = CurriculumManager(config=fast_curriculum_config)
         manager.start()
@@ -309,9 +305,7 @@ class TestCurriculumManagerIntegration:
         assert metrics.current_stage == "stage_9x9"
         assert metrics.total_stages == 2
 
-    def test_curriculum_not_started_raises(
-        self, fast_curriculum_config: CurriculumConfig
-    ) -> None:
+    def test_curriculum_not_started_raises(self, fast_curriculum_config: CurriculumConfig) -> None:
         """Calling step before start raises RuntimeError."""
         manager = CurriculumManager(config=fast_curriculum_config)
         with pytest.raises(RuntimeError, match="not started"):
@@ -378,15 +372,11 @@ class TestSchedulerCallbackIntegration:
         scheduler.start()
         assert "small" in start_events
 
-    def test_stage_complete_callback_fires(
-        self, scheduler_config: CurriculumConfig
-    ) -> None:
+    def test_stage_complete_callback_fires(self, scheduler_config: CurriculumConfig) -> None:
         """on_stage_complete callback fires when stage completes."""
         scheduler = CurriculumScheduler(scheduler_config)
         complete_events: list[str] = []
-        scheduler.on_stage_complete(
-            lambda stage: complete_events.append(stage.config.name)
-        )
+        scheduler.on_stage_complete(lambda stage: complete_events.append(stage.config.name))
 
         scheduler.start()
         # Record training step to satisfy min_steps
@@ -398,9 +388,7 @@ class TestSchedulerCallbackIntegration:
 
         assert "small" in complete_events
 
-    def test_three_stage_full_progression(
-        self, scheduler_config: CurriculumConfig
-    ) -> None:
+    def test_three_stage_full_progression(self, scheduler_config: CurriculumConfig) -> None:
         """Full three-stage progression fires callbacks in order."""
         scheduler = CurriculumScheduler(scheduler_config)
         transitions: list[tuple[str, str]] = []
@@ -408,9 +396,7 @@ class TestSchedulerCallbackIntegration:
         scheduler.on_stage_complete(
             lambda stage: transitions.append(("complete", stage.config.name))
         )
-        scheduler.on_stage_start(
-            lambda stage: transitions.append(("start", stage.config.name))
-        )
+        scheduler.on_stage_start(lambda stage: transitions.append(("start", stage.config.name)))
 
         scheduler.start()
         # Starts with "small"

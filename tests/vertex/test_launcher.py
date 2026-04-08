@@ -195,6 +195,7 @@ class TestVertexLauncher:
         # `from google.cloud import aiplatform` inside the method gets our mock.
         # Also patch the google.cloud package's attribute lookup.
         import google.cloud as google_cloud_pkg
+
         with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
             with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
                 result = launcher.launch(
@@ -233,6 +234,7 @@ class TestVertexLauncher:
         launcher._initialized = True
 
         import google.cloud as google_cloud_pkg
+
         with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
             with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
                 status = launcher.get_job_status(
@@ -258,11 +260,10 @@ class TestVertexLauncher:
         launcher._initialized = True
 
         import google.cloud as google_cloud_pkg
+
         with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
             with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
-                success = launcher.cancel_job(
-                    "projects/test/locations/us-central1/customJobs/789"
-                )
+                success = launcher.cancel_job("projects/test/locations/us-central1/customJobs/789")
 
         assert success is True
         mock_job.cancel.assert_called_once()
@@ -278,11 +279,10 @@ class TestVertexLauncher:
         launcher._initialized = True
 
         import google.cloud as google_cloud_pkg
+
         with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
             with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
-                success = launcher.cancel_job(
-                    "projects/test/locations/us-central1/customJobs/999"
-                )
+                success = launcher.cancel_job("projects/test/locations/us-central1/customJobs/999")
 
         assert success is False
 
@@ -313,6 +313,7 @@ class TestVertexLauncher:
         launcher._initialized = True
 
         import google.cloud as google_cloud_pkg
+
         with patch.dict("sys.modules", {"google.cloud.aiplatform": mock_aiplatform}):
             with patch.object(google_cloud_pkg, "aiplatform", mock_aiplatform, create=True):
                 results = launcher.list_jobs()

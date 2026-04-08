@@ -139,6 +139,7 @@ class H1Loss(nn.Module):
 
         return l2_term + self.lambda_grad * (grad_loss_x + grad_loss_y)
 
+
 @register_loss("mse")
 class MSELoss(nn.Module):
     """Standard MSE loss wrapper for compatibility."""

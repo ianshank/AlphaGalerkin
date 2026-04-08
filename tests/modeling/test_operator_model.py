@@ -43,7 +43,11 @@ class TestNeuralOperatorFNO:
     def test_forward_shape(self) -> None:
         """FNO forward pass produces correct output shape."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, modes=8,
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            modes=8,
         )
         x = torch.randn(BATCH, IN_CH, H, W)
         y = model(x)
@@ -52,7 +56,11 @@ class TestNeuralOperatorFNO:
     def test_forward_different_resolution(self) -> None:
         """FNO handles different input resolutions."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, modes=4,
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            modes=4,
         )
         # Train resolution
         x_small = torch.randn(BATCH, IN_CH, 8, 8)
@@ -74,7 +82,11 @@ class TestNeuralOperatorFNO:
     def test_forward_with_coords(self) -> None:
         """FNO forward pass works with optional coordinate grid."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, modes=4,
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            modes=4,
         )
         x = torch.randn(BATCH, IN_CH, H, W)
         coords = torch.randn(BATCH, H, W, 2)
@@ -84,7 +96,11 @@ class TestNeuralOperatorFNO:
     def test_output_is_finite(self) -> None:
         """FNO output contains no NaN or Inf values."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, modes=4,
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            modes=4,
         )
         x = torch.randn(BATCH, IN_CH, H, W)
         y = model(x)
@@ -93,7 +109,11 @@ class TestNeuralOperatorFNO:
     def test_gradient_flow(self) -> None:
         """Gradients flow through FNO model."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, modes=4,
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            modes=4,
         )
         x = torch.randn(BATCH, IN_CH, H, W, requires_grad=True)
         y = model(x)
@@ -119,7 +139,11 @@ class TestNeuralOperatorGalerkin:
     def test_forward_shape(self) -> None:
         """Galerkin forward pass produces correct output shape."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, backend="galerkin",
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            backend="galerkin",
         )
         x = torch.randn(BATCH, IN_CH, H, W)
         y = model(x)
@@ -128,7 +152,11 @@ class TestNeuralOperatorGalerkin:
     def test_different_resolution(self) -> None:
         """Galerkin handles different resolutions."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, backend="galerkin",
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            backend="galerkin",
         )
         for size in [8, 16, 24]:
             x = torch.randn(BATCH, IN_CH, size, size)
@@ -138,7 +166,10 @@ class TestNeuralOperatorGalerkin:
     def test_custom_n_heads(self) -> None:
         """Custom n_heads is passed to Galerkin backend."""
         model = NeuralOperator(
-            backend="galerkin", width=64, n_heads=8, n_layers=2,
+            backend="galerkin",
+            width=64,
+            n_heads=8,
+            n_layers=2,
         )
         assert model.backend == "galerkin"
 
@@ -151,7 +182,11 @@ class TestNeuralOperatorGalerkin:
     def test_output_is_finite(self) -> None:
         """Galerkin output is finite."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, backend="galerkin",
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            backend="galerkin",
         )
         x = torch.randn(BATCH, IN_CH, H, W)
         y = model(x)
@@ -160,7 +195,11 @@ class TestNeuralOperatorGalerkin:
     def test_gradient_flow(self) -> None:
         """Gradients flow through Galerkin model."""
         model = NeuralOperator(
-            in_channels=IN_CH, out_channels=OUT_CH, width=32, n_layers=2, backend="galerkin",
+            in_channels=IN_CH,
+            out_channels=OUT_CH,
+            width=32,
+            n_layers=2,
+            backend="galerkin",
         )
         x = torch.randn(BATCH, IN_CH, H, W, requires_grad=True)
         y = model(x)

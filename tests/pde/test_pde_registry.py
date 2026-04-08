@@ -176,6 +176,7 @@ class TestRegisterCustomOperator:
         """Registering the same name twice should raise ValueError."""
         # "poisson" is already registered
         with pytest.raises(ValueError, match="already registered"):
+
             @register_pde_operator("poisson")
             class DuplicateOp(PoissonOperator):
                 pass

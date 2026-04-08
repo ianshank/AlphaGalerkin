@@ -80,9 +80,7 @@ class TestNavierStokesFDMSolver:
         result = solver.solve(operator, n_dof=128)
 
         assert result.l2_error is not None
-        assert result.l2_error < 0.5, (
-            f"L2 error {result.l2_error:.4f} exceeds threshold 0.5"
-        )
+        assert result.l2_error < 0.5, f"L2 error {result.l2_error:.4f} exceeds threshold 0.5"
 
     def test_viscosity_from_operator(self) -> None:
         """Solver should extract viscosity from the operator."""

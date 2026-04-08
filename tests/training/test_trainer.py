@@ -335,3 +335,198 @@ class TestCreateTrainer:
         )
 
         assert trainer2.global_step == trainer1.global_step
+
+
+class TestTrainerFillBuffer:
+    """Tests for the Trainer._fill_buffer method."""
+
+    def test_fill_buffer_populates_replay(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """_fill_buffer should populate the replay buffer to min_size."""
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        fake = _make_fake_experiences(trainer, 20)
+        with patch.object(
+            trainer.self_play_worker,
+            "generate_experiences",
+            return_value=fake,
+        ):
+            trainer._fill_buffer(min_size=10)
+        assert len(trainer.buffer) >= 10
+
+    def test_fill_buffer_increments_total_games(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """_fill_buffer increments total_games_generated."""
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        fake = _make_fake_experiences(trainer, 20)
+        with patch.object(
+            trainer.self_play_worker,
+            "generate_experiences",
+            return_value=fake,
+        ):
+            trainer._fill_buffer(min_size=10)
+        assert trainer.total_games_generated > 0
+
+
+class TestTrainerStabilityMonitor:
+    """Tests for _create_stability_monitor."""
+
+    def test_no_monitor_when_disabled(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """No stability monitor when early stopping and plateau are disabled."""
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        monitor = trainer._create_stability_monitor()
+        # Default config has both disabled
+        assert monitor is None
+
+    def test_monitor_with_early_stopping(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Stability monitor created when early stopping is enabled."""
+        small_config.training.early_stopping_enabled = True
+        small_config.training.early_stopping_patience = 5
+        small_config.training.early_stopping_min_delta = 0.01
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        monitor = trainer._create_stability_monitor()
+        assert monitor is not None
+        assert monitor.early_stopping is not None
+
+    def test_monitor_with_plateau_detection(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Stability monitor created when plateau detection is enabled."""
+        small_config.training.plateau_detection_enabled = True
+        small_config.training.plateau_patience = 10
+        small_config.training.plateau_factor = 0.5
+        small_config.training.plateau_min_lr = 1e-6
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        monitor = trainer._create_stability_monitor()
+        assert monitor is not None
+        assert monitor.plateau_detector is not None
+
+
+class TestTrainerCurriculum:
+    """Tests for trainer curriculum creation."""
+
+    def test_curriculum_created_when_enabled(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Curriculum is created when use_curriculum is enabled."""
+        small_config.training.curriculum_enabled = True
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        assert trainer.curriculum is not None
+
+    def test_no_curriculum_by_default(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """No curriculum by default."""
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        assert trainer.curriculum is None
+
+
+class TestTrainerPhysicsLoss:
+    """Tests for physics loss creation."""
+
+    def test_combined_physics_loss_created_when_type_combined(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Combined physics loss is created when physics_loss_type='combined'."""
+        small_config.training.physics_loss_type = "combined"
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        assert trainer.combined_physics_loss_fn is not None
+
+    def test_no_combined_physics_loss_by_default(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """No combined physics loss when type is 'none'."""
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        assert trainer.combined_physics_loss_fn is None
+
+    def test_no_physics_informed_loss_by_default(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """No physics-informed loss by default."""
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        assert trainer.physics_loss_fn is None

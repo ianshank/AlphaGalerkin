@@ -84,9 +84,7 @@ class TestDorflerAMR2DLShaped:
         # With at least two valid error values, the finer grid should
         # produce a smaller (or at least non-larger) error.
         if len(errors) >= 2:
-            assert errors[-1] <= errors[0] * 1.5, (
-                f"Error should decrease with refinement: {errors}"
-            )
+            assert errors[-1] <= errors[0] * 1.5, f"Error should decrease with refinement: {errors}"
 
     def test_metadata_contains_refinement_info(self) -> None:
         """Solver metadata should include AMR-specific information."""

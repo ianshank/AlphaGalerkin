@@ -116,3 +116,54 @@ class TestCheckpointNames:
 
     def test_final_checkpoint_has_extension(self) -> None:
         assert C.CHECKPOINT_FINAL.endswith(".pt")
+
+
+class TestMathematicalConstants:
+    """Verify mathematical constants are correct."""
+
+    def test_two_pi_value(self) -> None:
+        import math
+
+        assert math.tau == C.TWO_PI  # math.tau == 2*pi
+
+    def test_two_pi_positive(self) -> None:
+        assert C.TWO_PI > 0
+
+
+class TestPDEOperatorDefaults:
+    """Verify PDE operator default constants are physically sensible."""
+
+    def test_burgers_fourier_terms_positive(self) -> None:
+        assert C.BURGERS_FOURIER_TERMS > 0
+
+    def test_burgers_fourier_terms_sufficient(self) -> None:
+        # Must be large enough for reasonable Fourier series convergence
+        assert C.BURGERS_FOURIER_TERMS >= 10
+
+    def test_shock_position_in_unit_interval(self) -> None:
+        assert 0.0 < C.DEFAULT_SHOCK_POSITION < 1.0
+
+    def test_shock_width_positive(self) -> None:
+        assert C.DEFAULT_SHOCK_WIDTH > 0.0
+
+    def test_gaussian_width_ratio_small(self) -> None:
+        # Should be a small fraction of domain — not zero, not too large
+        assert 0.0 < C.GAUSSIAN_WIDTH_RATIO < 1.0
+
+
+class TestLossNumericalDefaults:
+    """Verify loss and numerical stability defaults."""
+
+    def test_log_prob_min_is_negative(self) -> None:
+        assert C.LOG_PROB_MIN < 0
+
+    def test_log_prob_min_finite(self) -> None:
+        import math
+
+        assert math.isfinite(C.LOG_PROB_MIN)
+
+    def test_h1_gradient_weight_positive(self) -> None:
+        assert C.DEFAULT_H1_GRADIENT_WEIGHT > 0
+
+    def test_bytes_per_mb_correct(self) -> None:
+        assert C.BYTES_PER_MB == 1024 * 1024

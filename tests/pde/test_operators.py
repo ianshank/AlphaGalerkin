@@ -350,3 +350,78 @@ class TestDerivativeComputation:
             [expected_laplacian, expected_laplacian],
             rtol=1e-4,
         )
+
+
+class TestConstantBackedOperatorDefaults:
+    """Verify operators use centralized constants for their defaults."""
+
+    def test_burgers_default_shock_position_from_constant(self) -> None:
+        from src.constants import DEFAULT_SHOCK_POSITION
+
+        config = PDEConfig(
+            name="burgers_const_test",
+            pde_type=PDEType.BURGERS,
+            is_time_dependent=True,
+        )
+        op = BurgersOperator(config)
+        assert op.shock_position == DEFAULT_SHOCK_POSITION
+
+    def test_burgers_default_shock_width_from_constant(self) -> None:
+        from src.constants import DEFAULT_SHOCK_WIDTH
+
+        config = PDEConfig(
+            name="burgers_const_test",
+            pde_type=PDEType.BURGERS,
+            is_time_dependent=True,
+        )
+        op = BurgersOperator(config)
+        assert op.shock_width == DEFAULT_SHOCK_WIDTH
+
+    def test_burgers_custom_shock_params_override_defaults(self) -> None:
+        config = PDEConfig(
+            name="burgers_custom",
+            pde_type=PDEType.BURGERS,
+            is_time_dependent=True,
+        )
+        op = BurgersOperator(config, shock_position=0.3, shock_width=5.0)
+        assert op.shock_position == pytest.approx(0.3)
+        assert op.shock_width == pytest.approx(5.0)
+
+    def test_initial_condition_uses_two_pi(self) -> None:
+        """sin(TWO_PI * x) matches sin(2π * x) — constant is consistent."""
+        import math
+
+        from src.constants import TWO_PI
+
+        config = PDEConfig(
+            name="burgers_two_pi",
+            pde_type=PDEType.BURGERS,
+            is_time_dependent=True,
+        )
+        op = BurgersOperator(config)
+        coords = np.array([[0.25, 0.0]], dtype=np.float32)
+        ic = op.initial_condition(coords)
+        expected = np.sin(TWO_PI * 0.25)  # == sin(π/2) == 1
+        np.testing.assert_allclose(ic[0], expected, atol=1e-5)
+        assert pytest.approx(2 * math.pi) == TWO_PI
+
+    def test_gaussian_width_ratio_used_in_heat_ic(self) -> None:
+        """HeatOperator uses GAUSSIAN_WIDTH_RATIO for initial condition sigma."""
+        from src.constants import GAUSSIAN_WIDTH_RATIO
+
+        config = PDEConfig(
+            name="heat_const_test",
+            pde_type=PDEType.HEAT,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[2.0, 2.0],
+            is_time_dependent=True,
+        )
+        op = HeatOperator(config)
+        coords = np.array([[1.0, 1.0]], dtype=np.float32)
+        ic = op.initial_condition(coords)
+        # IC should be finite and peak near center
+        assert np.isfinite(ic).all()
+        # sigma = GAUSSIAN_WIDTH_RATIO * mean(domain_size)
+        expected_sigma = GAUSSIAN_WIDTH_RATIO * np.mean([2.0, 2.0])
+        assert expected_sigma == pytest.approx(0.2)  # 0.1 * 2.0

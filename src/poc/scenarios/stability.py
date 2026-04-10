@@ -18,6 +18,7 @@ import numpy as np
 import structlog
 import torch
 
+from src.backend import get_device
 from src.poc.config import (
     ScenarioResult,
     ScenarioStatus,
@@ -62,7 +63,7 @@ class StabilityScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = get_device()
         self._scenario_logger = ScenarioLogger(
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),

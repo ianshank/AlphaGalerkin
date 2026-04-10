@@ -115,3 +115,42 @@ CHECKPOINT_BEST: str = "best.pt"
 
 CHECKPOINT_FINAL: str = "final.pt"
 """Filename for final checkpoint."""
+
+# ---------------------------------------------------------------------------
+# Mathematical constants
+# ---------------------------------------------------------------------------
+TWO_PI: float = 6.283185307179586
+"""2π — used in Fourier/trigonometric calculations across PDE operators."""
+
+# ---------------------------------------------------------------------------
+# PDE operator defaults
+# ---------------------------------------------------------------------------
+BURGERS_FOURIER_TERMS: int = 50
+"""Number of Fourier series terms for Cole-Hopf Burgers solution approximation.
+Higher values improve accuracy near shocks at the cost of compute."""
+
+DEFAULT_SHOCK_POSITION: float = 0.5
+"""Default shock centre position (fraction of domain) for Burgers IC."""
+
+DEFAULT_SHOCK_WIDTH: float = 10.0
+"""Default shock width parameter (tanh sharpness) for Burgers IC."""
+
+GAUSSIAN_WIDTH_RATIO: float = 0.1
+"""Fraction of mean domain size used as Gaussian IC standard deviation.
+Applies to AdvectionDiffusionOperator and HeatOperator initial conditions."""
+
+# ---------------------------------------------------------------------------
+# Loss / training numerical stability
+# ---------------------------------------------------------------------------
+LOG_PROB_MIN: float = -100.0
+"""Floor for log-probability clamping.  Prevents log(0) → -inf from
+poisoning policy gradient updates; equivalent to probability ~ 3.7e-44."""
+
+DEFAULT_H1_GRADIENT_WEIGHT: float = 0.1
+"""Default weight for the gradient term in H¹ Sobolev loss (H1Loss)."""
+
+# ---------------------------------------------------------------------------
+# Unit conversion
+# ---------------------------------------------------------------------------
+BYTES_PER_MB: int = 1024 * 1024
+"""Bytes per megabyte — used when reporting memory usage."""

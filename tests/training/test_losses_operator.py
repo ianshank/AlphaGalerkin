@@ -392,3 +392,27 @@ class TestEdgeCases:
         assert L2RelativeLoss()(pred_2d, target_2d).ndim == 0
         assert H1Loss()(pred_4d, target_4d).ndim == 0
         assert MSELoss()(pred_2d, target_2d).ndim == 0
+
+
+class TestConstantBackedDefaults:
+    """Verify that constant-backed defaults match the constant values."""
+
+    def test_l2_eps_matches_numeric_epsilon(self) -> None:
+        from src.constants import NUMERIC_EPSILON
+
+        fn = L2RelativeLoss()
+        assert fn.eps == NUMERIC_EPSILON
+
+    def test_h1_lambda_grad_matches_default_constant(self) -> None:
+        from src.constants import DEFAULT_H1_GRADIENT_WEIGHT
+
+        fn = H1Loss()
+        assert fn.lambda_grad == DEFAULT_H1_GRADIENT_WEIGHT
+
+    def test_override_eps_works(self) -> None:
+        fn = L2RelativeLoss(eps=1e-4)
+        assert fn.eps == pytest.approx(1e-4)
+
+    def test_override_lambda_grad_works(self) -> None:
+        fn = H1Loss(lambda_grad=0.5)
+        assert fn.lambda_grad == pytest.approx(0.5)

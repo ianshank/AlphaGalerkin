@@ -185,6 +185,33 @@ def clear_cache() -> None:
         _default_backend = None
 
 
+def get_device(device: str = "auto") -> torch.device:
+    """Return a ``torch.device``, auto-selecting GPU when available.
+
+    Centralises the ``torch.device("cuda" if … else "cpu")`` pattern that
+    was previously duplicated across training, POC, and experiment modules.
+
+    Args:
+        device: One of ``"auto"`` (GPU if available, else CPU), ``"cuda"``,
+            or ``"cpu"``.  Unrecognised strings are forwarded to
+            :class:`torch.device` directly so that ``"cuda:1"`` etc. work.
+
+    Returns:
+        A :class:`torch.device` instance.
+
+    Examples:
+        >>> dev = get_device()           # cuda if available else cpu
+        >>> dev = get_device("cpu")      # always CPU
+        >>> dev = get_device("cuda:1")   # second GPU
+
+    """
+    import torch
+
+    if device == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(device)
+
+
 __all__ = [
     "Array",
     "BackendConfig",
@@ -197,5 +224,6 @@ __all__ = [
     "clear_cache",
     "default_backend",
     "get_backend",
+    "get_device",
     "set_default_backend",
 ]

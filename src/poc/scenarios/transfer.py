@@ -19,6 +19,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+from src.backend import get_device
 from src.physics.poisson import PoissonSample
 from src.poc.config import (
     ScenarioResult,
@@ -82,7 +83,7 @@ class TransferScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = get_device()
         self._output_dir = Path("outputs/poc/transfer")
         self._output_dir.mkdir(parents=True, exist_ok=True)
 

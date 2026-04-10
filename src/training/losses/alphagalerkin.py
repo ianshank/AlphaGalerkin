@@ -15,7 +15,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
-from src.constants import DEFAULT_LBB_EPS, DEFAULT_LBB_TARGET, DEFAULT_LBB_WEIGHT
+from src.constants import DEFAULT_LBB_EPS, DEFAULT_LBB_TARGET, DEFAULT_LBB_WEIGHT, LOG_PROB_MIN
 from src.training.losses.base import LossOutput, register_loss
 
 if TYPE_CHECKING:
@@ -123,7 +123,7 @@ class AlphaGalerkinLoss(nn.Module):
 
         # Compute log softmax with clamping to prevent -inf * 0 = NaN
         log_probs = torch.log_softmax(policy_logits, dim=-1)
-        log_probs = log_probs.clamp(min=-100.0)
+        log_probs = log_probs.clamp(min=LOG_PROB_MIN)
 
         # Apply label smoothing if configured
         if self.label_smoothing > 0:
@@ -331,7 +331,7 @@ class EntropyRegularizer(nn.Module):
             log_probs = torch.log_softmax(masked_logits, dim=-1)
 
             # Clamp log_probs to prevent -inf * 0 = NaN edge cases
-            log_probs = log_probs.clamp(min=-100.0)
+            log_probs = log_probs.clamp(min=LOG_PROB_MIN)
 
             # Compute entropy: -sum(p * log(p))
             entropy = -(probs * log_probs).sum(dim=-1)
@@ -348,7 +348,7 @@ class EntropyRegularizer(nn.Module):
             # No mask - compute normally
             probs = torch.softmax(policy_logits, dim=-1)
             log_probs = torch.log_softmax(policy_logits, dim=-1)
-            log_probs = log_probs.clamp(min=-100.0)
+            log_probs = log_probs.clamp(min=LOG_PROB_MIN)
 
             entropy = -(probs * log_probs).sum(dim=-1)
             max_entropy = torch.log(torch.tensor(n_actions, dtype=torch.float32, device=device))

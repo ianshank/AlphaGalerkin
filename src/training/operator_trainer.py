@@ -22,6 +22,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
 from torch.utils.data import DataLoader
 
+from src.backend import get_device
 from src.constants import CHECKPOINT_BEST
 from src.training.losses import get_loss
 
@@ -60,7 +61,7 @@ class TrainingConfig:
     def __post_init__(self) -> None:
         self.checkpoint_dir = Path(self.checkpoint_dir)
         if self.device == "auto":
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = get_device().type
 
 
 class OperatorTrainer:

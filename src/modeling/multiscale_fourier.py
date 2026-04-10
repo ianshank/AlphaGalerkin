@@ -30,13 +30,13 @@ from jaxtyping import Float
 from pydantic import Field
 from torch import Tensor, nn
 
+from src.constants import TWO_PI
 from src.templates.config import BaseModuleConfig
 
 # Module-level logger
 logger = structlog.get_logger(__name__)
 
 # Constants
-TWO_PI = 2 * np.pi
 DEFAULT_SCALES = [1.0, 2.0, 4.0, 8.0, 16.0]
 
 __all__ = [

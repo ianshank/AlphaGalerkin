@@ -437,3 +437,20 @@ class TestEdgeCases:
 
         result = loss_fn(policy_logits, value, target_policy, target_value)
         assert result.total.isfinite()
+
+    def test_log_prob_clamping_uses_constant(self) -> None:
+        """LOG_PROB_MIN constant prevents NaN for near-zero probabilities."""
+        from src.constants import LOG_PROB_MIN
+
+        loss_fn = AlphaGalerkinLoss()
+        # One action overwhelmingly dominates → others have log_prob near -inf
+        policy_logits = torch.zeros(1, ACTION_SIZE)
+        policy_logits[0, 0] = 100.0
+        target_policy = torch.full((1, ACTION_SIZE), 1.0 / ACTION_SIZE)
+
+        result = loss_fn(policy_logits, torch.zeros(1, 1), target_policy, torch.zeros(1, 1))
+        # Clamp prevents -inf * 0 → NaN; loss must be finite
+        assert result.policy.isfinite()
+        # The constant itself must be a negative finite number
+        assert LOG_PROB_MIN < 0
+        assert float("-inf") < LOG_PROB_MIN

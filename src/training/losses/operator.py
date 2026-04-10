@@ -11,6 +11,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from src.constants import DEFAULT_H1_GRADIENT_WEIGHT, NUMERIC_EPSILON
 from src.training.losses.base import register_loss
 
 logger = structlog.get_logger(__name__)
@@ -26,7 +27,7 @@ class L2RelativeLoss(nn.Module):
     scale-invariant across different output magnitudes.
     """
 
-    def __init__(self, reduction: str = "mean", eps: float = 1e-8) -> None:
+    def __init__(self, reduction: str = "mean", eps: float = NUMERIC_EPSILON) -> None:
         """Initialize L2 relative loss.
 
         Args:
@@ -83,7 +84,7 @@ class H1Loss(nn.Module):
 
     def __init__(
         self,
-        lambda_grad: float = 0.1,
+        lambda_grad: float = DEFAULT_H1_GRADIENT_WEIGHT,
         reduction: str = "mean",
     ) -> None:
         """Initialize H1 loss.

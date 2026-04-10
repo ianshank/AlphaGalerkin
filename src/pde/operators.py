@@ -32,6 +32,13 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
+from src.constants import (
+    BURGERS_FOURIER_TERMS,
+    DEFAULT_SHOCK_POSITION,
+    DEFAULT_SHOCK_WIDTH,
+    GAUSSIAN_WIDTH_RATIO,
+    TWO_PI,
+)
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
 from src.pde.geometry import (
     DomainGeometry,
@@ -599,8 +606,10 @@ class BurgersOperator(PDEOperator):
         super().__init__(config)
         self.viscosity = viscosity if viscosity is not None else config.diffusion_coeff
         self.is_time_dependent = config.is_time_dependent
-        self.shock_position = shock_position if shock_position is not None else 0.5
-        self.shock_width = shock_width if shock_width is not None else 10.0
+        self.shock_position = (
+            shock_position if shock_position is not None else DEFAULT_SHOCK_POSITION
+        )
+        self.shock_width = shock_width if shock_width is not None else DEFAULT_SHOCK_WIDTH
 
     def residual(
         self,
@@ -663,10 +672,10 @@ class BurgersOperator(PDEOperator):
         """Compute initial condition (sinusoidal wave)."""
         if isinstance(coords, Tensor):
             x = coords[:, 0]
-            return torch.sin(2 * np.pi * x)
+            return torch.sin(TWO_PI * x)
         else:
             x = coords[:, 0]
-            return np.sin(2 * np.pi * x).astype(np.float32)
+            return np.sin(TWO_PI * x).astype(np.float32)
 
     def exact_solution(
         self,
@@ -703,12 +712,11 @@ class BurgersOperator(PDEOperator):
 
         if isinstance(coords, Tensor):
             x = coords[:, 0]
-            # Fourier series approximation (N_terms for convergence)
-            n_terms = 50
+            # Fourier series approximation (BURGERS_FOURIER_TERMS for convergence)
             phi = torch.ones_like(x) * 0.5  # a_0/2 term
             dphi = torch.zeros_like(x)
 
-            for n in range(1, n_terms + 1):
+            for n in range(1, BURGERS_FOURIER_TERMS + 1):
                 # Bessel function coefficients approximated numerically
                 # For u0 = sin(2*pi*x), use direct Fourier series of exp transform
                 decay = np.exp(-((n * np.pi) ** 2) * nu * t)
@@ -719,11 +727,10 @@ class BurgersOperator(PDEOperator):
             return u
         else:
             x = coords[:, 0]
-            n_terms = 50
             phi = np.ones_like(x) * 0.5
             dphi = np.zeros_like(x)
 
-            for n in range(1, n_terms + 1):
+            for n in range(1, BURGERS_FOURIER_TERMS + 1):
                 decay = np.exp(-((n * np.pi) ** 2) * nu * t)
                 phi = phi + decay * np.cos(n * np.pi * x)
                 dphi = dphi - n * np.pi * decay * np.sin(n * np.pi * x)
@@ -861,7 +868,7 @@ class AdvectionDiffusionOperator(PDEOperator):
     ) -> NDArray[np.float32] | Tensor:
         """Compute initial condition (Gaussian pulse)."""
         center = (self.domain_min + self.domain_max) / 2
-        sigma = 0.1 * np.mean(self.domain_size)
+        sigma = GAUSSIAN_WIDTH_RATIO * np.mean(self.domain_size)
 
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
@@ -882,7 +889,9 @@ class AdvectionDiffusionOperator(PDEOperator):
 
         # Advected center
         center = (self.domain_min + self.domain_max) / 2 + self.advection_velocity * time
-        sigma = 0.1 * np.mean(self.domain_size) + np.sqrt(2 * self.diffusion * time)
+        sigma = GAUSSIAN_WIDTH_RATIO * np.mean(self.domain_size) + np.sqrt(
+            2 * self.diffusion * time
+        )
 
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
@@ -989,7 +998,7 @@ class HeatOperator(PDEOperator):
         """Compute initial temperature distribution."""
         # Hot spot in center
         center = (self.domain_min + self.domain_max) / 2
-        sigma = 0.1 * np.mean(self.domain_size)
+        sigma = GAUSSIAN_WIDTH_RATIO * np.mean(self.domain_size)
 
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
@@ -1291,7 +1300,7 @@ class LShapedPoissonOperator(PDEOperator):
         r = torch.sqrt(x**2 + y**2)
         theta = torch.atan2(y, x)
         # Map to [0, 2*pi)
-        theta = torch.where(theta < 0, theta + 2 * np.pi, theta)
+        theta = torch.where(theta < 0, theta + TWO_PI, theta)
         return r, theta
 
     @staticmethod
@@ -1310,7 +1319,7 @@ class LShapedPoissonOperator(PDEOperator):
         """Numpy version of the singular solution."""
         r = np.sqrt(x**2 + y**2)
         theta = np.arctan2(y, x)
-        theta = np.where(theta < 0, theta + 2 * np.pi, theta)
+        theta = np.where(theta < 0, theta + TWO_PI, theta)
         # Avoid 0^(2/3) producing nan
         result = np.where(
             r > 0,

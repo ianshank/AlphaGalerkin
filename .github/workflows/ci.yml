@@ -103,6 +103,11 @@ jobs:
           pip install -e ".[dev]" || pip install -e ".[dev]"
           pip install matplotlib
 
+      - name: Show installed package versions
+        run: |
+          python -c "import sys; print('Python', sys.version)"
+          pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow"
+
       - name: Run fast unit tests
         run: |
           pytest tests/ \
@@ -113,7 +118,15 @@ jobs:
             --ignore=tests/demos/ \
             --ignore=tests/video_compression/ \
             --ignore=tests/training/test_extended_config.py \
-            -q
+            -q 2>&1 | tee /tmp/pytest-output.txt; exit ${PIPESTATUS[0]}
+
+      - name: Upload pytest output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output-py${{ matrix.python-version }}
+          path: /tmp/pytest-output.txt
+          retention-days: 7
 
       - name: Upload test results
         if: always()

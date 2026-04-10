@@ -45,10 +45,14 @@ def fig_to_pil(fig: plt.Figure, *, dpi: int = 110) -> PILImage.Image:
         fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
     finally:
         plt.close(fig)
-    buf.seek(0)
-    img = PILImage.open(buf)
-    # .copy() detaches the image from the BytesIO buffer so the buffer can be GC'd
-    return img.copy()
+    try:
+        buf.seek(0)
+        with PILImage.open(buf) as img:
+            # Convert to RGB to match the documented return mode, then copy
+            # so the returned image is detached from the temporary buffer.
+            return img.convert("RGB").copy()
+    finally:
+        buf.close()
 
 
 # ---------------------------------------------------------------------------

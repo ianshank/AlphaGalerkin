@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 
 import pytest
-from hypothesis import HealthCheck, settings as hypothesis_settings
+from hypothesis import HealthCheck
+from hypothesis import settings as hypothesis_settings
 
 # Register a CI-friendly hypothesis profile: no deadline, suppressed slow-health-check.
 # This is loaded whenever the CI env var is set (GitHub Actions sets CI=true).

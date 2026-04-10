@@ -62,7 +62,6 @@ def _ensure_loaded() -> bool:
         if _loaded:  # double-checked locking
             return _model is not None
 
-        _loaded = True
         try:
             import torch
             from config.board import get_default_space_config  # type: ignore[import]
@@ -100,6 +99,9 @@ def _ensure_loaded() -> bool:
                 logger.warning("checkpoint_not_found_or_empty", ckpt=str(ckpt_path))
 
             _game_manager = GameManager(config=_space_config, evaluator=_evaluator)
+            # Only mark as loaded after a successful initialisation so that
+            # transient failures (import errors, IO) allow a future retry.
+            _loaded = True
             return True
 
         except Exception as exc:

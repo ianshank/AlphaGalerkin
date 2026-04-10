@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Final
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # UI / Server
@@ -163,6 +163,19 @@ class TransferMilestone(BaseModel):
         description="Achieved MSE values per evaluation resolution (from 2026-01-26 run)",
     )
     milestone_date: str = Field(default="2026-01-26", description="Date milestone was achieved")
+
+    @field_validator("achieved_mse")
+    @classmethod
+    def validate_achieved_mse(cls, v: dict[int, float]) -> dict[int, float]:
+        """Ensure the map is non-empty and all MSE values are strictly positive."""
+        if not v:
+            raise ValueError("achieved_mse must contain at least one entry")
+        non_positive = {k: val for k, val in v.items() if val <= 0}
+        if non_positive:
+            raise ValueError(
+                f"achieved_mse values must be > 0; invalid entries: {non_positive}"
+            )
+        return v
 
 
 class PoCConfig(BaseModel):

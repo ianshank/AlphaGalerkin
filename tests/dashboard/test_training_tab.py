@@ -36,12 +36,43 @@ class TestGetModelSummary:
         assert len(result) > 0
 
     def test_contains_config_params_on_success(self):
-        """If model loads, summary should mention the given dimensions."""
-        try:
+        """Success-path summary includes the given dimensions and param count."""
+        from unittest.mock import MagicMock, patch
+
+        mock_cfg = MagicMock()
+        mock_cfg.d_key = 32
+        mock_cfg.d_value = 32
+        mock_cfg.d_ffn = 128
+        mock_cfg.n_heads = 4
+        mock_cfg.use_fnet_mixing = True
+        mock_cfg.lbb_beta_threshold = 1e-6
+
+        mock_param = MagicMock()
+        mock_param.numel.return_value = 1000
+        mock_param.requires_grad = True
+
+        mock_model = MagicMock()
+        mock_model.parameters.return_value = [mock_param] * 5
+
+        mock_schemas = MagicMock()
+        mock_schemas.OperatorConfig = MagicMock(return_value=mock_cfg)
+
+        mock_modeling = MagicMock()
+        mock_modeling.AlphaGalerkinModel = MagicMock(return_value=mock_model)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "config": MagicMock(),
+                "config.schemas": mock_schemas,
+                "src.modeling": MagicMock(),
+                "src.modeling.model": mock_modeling,
+            },
+        ):
             result = get_model_summary(64, 2, 1, 32)
-        except Exception:
-            pytest.skip("Model load failed in test environment")
-        assert "64" in result or "Architecture" in result
+
+        assert "64" in result
+        assert "5,000" in result  # 5 params × 1000 numel
 
     def test_fallback_contains_params(self):
         """Even on failure, the fallback string includes the input parameters."""

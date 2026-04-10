@@ -38,13 +38,26 @@ class TestFigToPil:
         assert w > 0
         assert h > 0
 
-    @pytest.mark.parametrize("dpi", [72, 110, 200])
-    def test_dpi_affects_size(self, dpi):
-        fig, ax = plt.subplots(figsize=(4, 4))
+    def test_dpi_affects_size(self):
+        """Higher DPI must produce a larger image for the same figsize."""
+        fig_lo, ax_lo = plt.subplots(figsize=(4, 4))
+        ax_lo.plot([0, 1])
+        img_lo = fig_to_pil(fig_lo, dpi=72)
+
+        fig_hi, ax_hi = plt.subplots(figsize=(4, 4))
+        ax_hi.plot([0, 1])
+        img_hi = fig_to_pil(fig_hi, dpi=200)
+
+        # Higher DPI → more pixels on both axes
+        assert img_hi.size[0] > img_lo.size[0]
+        assert img_hi.size[1] > img_lo.size[1]
+
+    def test_returns_rgb_mode(self):
+        """fig_to_pil must always return an RGB image regardless of backend."""
+        fig, ax = plt.subplots()
         ax.plot([0, 1])
-        img = fig_to_pil(fig, dpi=dpi)
-        # Larger DPI → larger pixel dimensions
-        assert img.size[0] > 0
+        img = fig_to_pil(fig)
+        assert img.mode == "RGB"
 
     def test_figure_closed_on_exception(self):
         """fig_to_pil must close the figure even when savefig raises."""

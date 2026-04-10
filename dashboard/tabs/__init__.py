@@ -1,0 +1,1 @@
+"""AlphaGalerkin dashboard tab modules."""

@@ -77,7 +77,7 @@ class AssignmentSolver(ABC):
         ...
 
 
-AssignmentRegistry, register_assignment = create_registry("AssignmentSolver", AssignmentSolver)
+AssignmentRegistry, register_assignment = create_registry("AssignmentSolver", AssignmentSolver)  # type: ignore[type-abstract]
 
 
 def build_cost_matrix(

@@ -404,8 +404,9 @@ class ComplexityScenario(BaseScenario):
         if len(results) < 2:
             return 0.0
 
+        times = [max(r.mean_time_ms, 1e-9) for r in results]  # guard log(0)
         log_n = np.log([r.n_tokens for r in results])
-        log_t = np.log([r.mean_time_ms for r in results])
+        log_t = np.log(times)
 
         # Linear regression: log_t = exponent * log_n + intercept
         # Using np.polyfit for simplicity

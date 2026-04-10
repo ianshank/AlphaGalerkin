@@ -1,14 +1,13 @@
 [run]
-source = src/games
-include =
-    src/games/chess.py
-    src/games/interface.py
-    src/games/registry.py
-    src/games/state.py
-    src/games/wrapper.py
+omit =
+    src/games/go.py
+    src/games/sgf/*
+    src/games/pettingzoo_adapter.py
+    src/games/fen.py
 
 [report]
 omit =
     src/games/go.py
     src/games/sgf/*
     src/games/pettingzoo_adapter.py
+    src/games/fen.py

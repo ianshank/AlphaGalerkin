@@ -79,7 +79,7 @@ class BaseSensor(ABC):
         return True
 
 
-SensorRegistry, register_sensor = create_registry("Sensor", BaseSensor)
+SensorRegistry, register_sensor = create_registry("Sensor", BaseSensor)  # type: ignore[type-abstract]
 
 
 def _spherical_to_ned(

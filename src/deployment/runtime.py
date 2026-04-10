@@ -344,7 +344,7 @@ class ONNXRuntime:
         input_shape: tuple[int, ...],
         n_warmup: int = 10,
         n_iterations: int = 100,
-    ) -> dict[str, float]:
+    ) -> dict[str, float | str]:
         """Benchmark inference performance.
 
         Args:
@@ -372,15 +372,16 @@ class ONNXRuntime:
             result = self.run(test_input)
             times.append(result.inference_time_ms)
 
+        mean_ms = float(np.mean(times))
         return {
-            "mean_ms": np.mean(times),
-            "std_ms": np.std(times),
-            "min_ms": np.min(times),
-            "max_ms": np.max(times),
-            "median_ms": np.median(times),
-            "p95_ms": np.percentile(times, 95),
-            "p99_ms": np.percentile(times, 99),
-            "throughput_per_sec": 1000.0 / np.mean(times),
+            "mean_ms": mean_ms,
+            "std_ms": float(np.std(times)),
+            "min_ms": float(np.min(times)),
+            "max_ms": float(np.max(times)),
+            "median_ms": float(np.median(times)),
+            "p95_ms": float(np.percentile(times, 95)),
+            "p99_ms": float(np.percentile(times, 99)),
+            "throughput_per_sec": 1000.0 / mean_ms if mean_ms > 0 else 0.0,
             "provider": self._provider,
         }
 

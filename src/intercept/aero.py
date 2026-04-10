@@ -68,7 +68,7 @@ class AeroModel(ABC):
 
 
 # Registry for aerodynamic models
-AeroModelRegistry, register_aero_model = create_registry("AeroModel", AeroModel)
+AeroModelRegistry, register_aero_model = create_registry("AeroModel", AeroModel)  # type: ignore[type-abstract]
 
 
 @register_aero_model("simple")

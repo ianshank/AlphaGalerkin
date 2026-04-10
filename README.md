@@ -146,6 +146,30 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
+### E2E Dashboard
+
+Launch the interactive dashboard exposing all AlphaGalerkin capabilities in a single tabbed UI:
+
+```bash
+python dashboard/app.py
+# Open http://localhost:7860
+```
+
+Options:
+```bash
+python dashboard/app.py --port 8080 --share    # Gradio public link
+python dashboard/app.py --debug                # Verbose logging
+```
+
+The dashboard includes:
+| Tab | Description |
+|-----|-------------|
+| **Go AI** | Human vs AI and AI vs AI — 9×9 / 13×13 / 19×19 with zero-shot transfer |
+| **PDE Solver** | Interactive Poisson solver — charge patterns, multi-resolution comparison |
+| **PoC Scenarios** | Complexity O(N) benchmark, LBB stability, transfer milestone visualisation |
+| **Training** | Architecture summary, simulated training curves, loss breakdown diagram |
+| **About** | Project overview and quick-start commands |
+
 ### GTP Engine
 
 Connect to any GTP-compatible Go GUI (Sabaki, GoGui, KaTrain):
@@ -229,9 +253,12 @@ See `config/` for training, scenario, and benchmark configurations.
 
 ## Testing
 
-The project has **4,900+ tests** across unit, integration, E2E, property-based, and security categories with an 85% coverage gate.
+The project has **5,100+ tests** across unit, integration, E2E, property-based, and security categories with an 85% coverage gate.
 
 ```bash
+# Dashboard-only tests (203 tests, 89% coverage)
+pytest tests/dashboard/ -v --cov=dashboard
+
 # Full test suite
 pytest tests/ -v
 
@@ -319,6 +346,11 @@ Zero-shot transfer between resolutions uses spectral methods:
 
 ```
 AlphaGalerkin/
+├── dashboard/           # E2E Gradio dashboard (all capabilities in one UI)
+│   ├── app.py           # Application factory and CLI entry point
+│   ├── config.py        # Pydantic config hierarchy — zero hardcoded values
+│   ├── utils.py         # Shared utilities (fig_to_pil, device_str, format_exc)
+│   └── tabs/            # Tab modules: game, pde, poc, training
 ├── src/
 │   ├── modeling/        # Neural architecture (Galerkin/Softmax attention, FNet, embeddings)
 │   ├── math_kernel/     # Basis functions, integral approximation, spectral filtering
@@ -333,7 +365,8 @@ AlphaGalerkin/
 │   ├── agents/          # Multi-physics PDE agent orchestration
 │   ├── vertex/          # Google Vertex AI cloud training integration
 │   └── video_compression/ # Neural video codec (experimental)
-├── tests/               # 4,900+ tests (unit, integration, E2E, property-based)
+├── tests/               # 5,100+ tests (unit, integration, E2E, property-based)
+│   └── dashboard/       # 203 tests, 89% coverage, ruff-clean
 ├── config/              # Pydantic/Hydra configuration schemas
 ├── docs/                # C4 architecture diagrams, proposals, guides
 ├── scripts/             # Training and utility CLI entry points

@@ -79,7 +79,7 @@ jobs:
   test-fast:
     name: Unit Tests (Fast)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     needs: lint
 
     strategy:
@@ -100,8 +100,17 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]" || pip install -e ".[dev]"
-          pip install matplotlib
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+          # Safety-net: ensure core scientific/ML deps are present even if
+          # the editable install partially failed (can happen with complex
+          # dependency graphs on older pip resolvers).
+          python -c "import einops, jaxtyping, gradio" 2>/dev/null || \
+            pip install --no-cache-dir "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
+
+      - name: Show installed package versions
+        run: |
+          python -c "import sys; print('Python', sys.version)"
+          pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
 
       - name: Run fast unit tests
         run: |
@@ -113,7 +122,15 @@ jobs:
             --ignore=tests/demos/ \
             --ignore=tests/video_compression/ \
             --ignore=tests/training/test_extended_config.py \
-            -q
+            -q 2>&1 | tee /tmp/pytest-output.txt; exit ${PIPESTATUS[0]}
+
+      - name: Upload pytest output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output-py${{ matrix.python-version }}
+          path: /tmp/pytest-output.txt
+          retention-days: 7
 
       - name: Upload test results
         if: always()

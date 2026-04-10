@@ -390,7 +390,8 @@ class BasisSelectionGame(PDEGame):
 
         # Compute new solution (basis_coefficients is always set above)
         basis_coeffs = new_state.basis_coefficients
-        assert basis_coeffs is not None, "basis_coefficients must be set before computing solution"
+        if basis_coeffs is None:
+            raise RuntimeError("basis_coefficients must be set before computing solution")
         new_state.solution = (Phi @ basis_coeffs).astype(np.float32)
 
         # Compute residual and error

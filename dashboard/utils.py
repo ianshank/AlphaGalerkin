@@ -76,7 +76,7 @@ def device_str() -> str:
         dev = "cuda" if torch.cuda.is_available() else "cpu"
         logger.debug("device_detected", device=dev)
         return dev
-    except ImportError:
+    except (ImportError, AttributeError, TypeError):
         logger.debug("torch_not_available_falling_back_to_cpu")
         return "cpu"
 
@@ -117,7 +117,7 @@ def configure_structlog(level: int = logging.INFO) -> None:
     """
     import structlog as sl
 
-    logging.basicConfig(level=level, format="%(message)s")
+    logging.basicConfig(level=level, format="%(message)s", force=True)
     sl.configure(
         processors=[
             sl.stdlib.add_log_level,

@@ -150,7 +150,7 @@ def build_app(cfg: DashboardConfig | None = None) -> gr.Blocks:
 
     logger.info("dashboard_building")
 
-    with gr.Blocks(title="AlphaGalerkin Dashboard") as demo:
+    with gr.Blocks(title="AlphaGalerkin Dashboard", css=_build_css(cfg.app)) as demo:
         gr.Markdown(
             "# AlphaGalerkin E2E Dashboard\n"
             "Resolution-independent Go AI · Galerkin Transformers · FNet · Physics PoC"
@@ -230,21 +230,22 @@ def main(argv: list[str] | None = None) -> None:
         debug=args.debug,
     )
 
-    app_cfg = AppConfig(
-        host=args.host,
-        port=args.port,
-        share=args.share,
-        debug=args.debug,
-    )
+    try:
+        app_cfg = AppConfig(
+            host=args.host,
+            port=args.port,
+            share=args.share,
+            debug=args.debug,
+        )
+    except Exception as exc:
+        sys.exit(f"error: Invalid configuration: {exc}")
     cfg = DashboardConfig(app=app_cfg)
     app = build_app(cfg)
-    css = _build_css(cfg.app)
     app.launch(
         server_name=args.host,
         server_port=args.port,
         share=args.share,
         debug=args.debug,
-        css=css,
     )
 
 

@@ -45,7 +45,7 @@ dev = [
     # Pin pydantic to align with lint step and avoid 2.10+ behavioural changes
     "pydantic>=2.7,<2.10",
     # Dashboard test dependencies
-    "gradio>=4.0.0",
+    "gradio>=6.0.0",
     "matplotlib>=3.7.0",
     "Pillow>=10.0.0",
 ]

@@ -381,7 +381,7 @@ class ONNXRuntime:
             "median_ms": float(np.median(times)),
             "p95_ms": float(np.percentile(times, 95)),
             "p99_ms": float(np.percentile(times, 99)),
-            "throughput_per_sec": 1000.0 / mean_ms,
+            "throughput_per_sec": 1000.0 / mean_ms if mean_ms > 0 else 0.0,
             "provider": self._provider,
         }
 

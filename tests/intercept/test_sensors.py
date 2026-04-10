@@ -98,6 +98,31 @@ class TestElectroOpticalSensor:
         assert torch.trace(meas.covariance).item() > 1000.0
 
 
+class TestInfraredSensor:
+    def test_detection(self) -> None:
+        from src.intercept.sensors import InfraredSensor
+
+        config = SensorConfig(
+            name="test_ir",
+            sensor_type=SensorType.IR,
+            azimuth_noise_rad=0.005,
+            elevation_noise_rad=0.005,
+            max_range_m=30000.0,
+            fov_rad=1.0,
+            range_uncertainty_fraction=0.2,
+        )
+        sensor = InfraredSensor(config)
+        target = create_initial_state(position=[5000.0, 0.0, -3000.0], velocity=[-200.0, 0.0, 0.0])
+        own_pos = torch.tensor([0.0, 0.0, -3000.0], dtype=torch.float64)
+        meas = sensor.detect(target, own_pos, time_s=0.0)
+        assert meas is not None
+        assert meas.sensor_id == "ir"
+        assert meas.covariance.shape == (3, 3)
+
+    def test_ir_registered(self) -> None:
+        assert SensorRegistry().get("ir") is not None
+
+
 class TestStalenessTracker:
     def test_initial_staleness_infinite(self) -> None:
         tracker = StalenessTracker()

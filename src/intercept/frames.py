@@ -344,40 +344,6 @@ class FrameTransform:
         return lat, lon, alt
 
     @staticmethod
-    def ned_to_ecef_rotation(lat_rad: Tensor, lon_rad: Tensor) -> Tensor:
-        """Get 3x3 rotation matrix from NED to ECEF.
-
-        Args:
-            lat_rad: Latitude in radians (...).
-            lon_rad: Longitude in radians (...).
-
-        Returns:
-            Rotation matrix (..., 3, 3).
-
-        """
-        sl = torch.sin(lat_rad)
-        cl = torch.cos(lat_rad)
-        slo = torch.sin(lon_rad)
-        clo = torch.cos(lon_rad)
-
-        # NED to ECEF rotation matrix columns
-        r00 = -sl * clo
-        r01 = -slo
-        r02 = -cl * clo
-        r10 = -sl * slo
-        r11 = clo
-        r12 = -cl * slo
-        r20 = cl
-        r21 = torch.zeros_like(cl)
-        r22 = -sl
-
-        row0 = torch.stack([r00, r01, r02], dim=-1)
-        row1 = torch.stack([r10, r11, r12], dim=-1)
-        row2 = torch.stack([r20, r21, r22], dim=-1)
-
-        return torch.stack([row0, row1, row2], dim=-2)
-
-    @staticmethod
     def relative_ned(
         pos_own: Tensor,
         pos_target: Tensor,

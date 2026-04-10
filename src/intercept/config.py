@@ -56,7 +56,6 @@ class SensorType(str, Enum):
     RADAR = "radar"
     EO = "eo"
     IR = "ir"
-    FUSED = "fused"
 
 
 class AssignmentAlgorithm(str, Enum):

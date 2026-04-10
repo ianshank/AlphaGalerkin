@@ -19,6 +19,7 @@ from numpy.typing import NDArray
 
 from src.intercept.aero import AeroModel, SimpleAeroModel
 from src.intercept.atmosphere import ISAAtmosphere
+from src.intercept.config import STANDARD_GRAVITY_MS2 as G0
 from src.intercept.config import ThreatConfig
 from src.intercept.dynamics import (
     RigidBody6DOF,
@@ -26,9 +27,6 @@ from src.intercept.dynamics import (
 )
 
 logger = structlog.get_logger(__name__)
-
-# Standard gravity for g-load conversion
-G0 = 9.80665
 
 
 @dataclass

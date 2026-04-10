@@ -270,7 +270,10 @@ class TabularAeroModel(AeroModel):
             return cd, cl
 
         # Analytical fallback: drag polar + linear lift
-        k = 1.0 / (torch.pi * 5.0 * 0.8)  # induced drag factor
+        # k = 1/(pi * AR * e) where AR=aspect ratio, e=Oswald efficiency
+        aspect_ratio = 5.0  # reasonable default for missile/drone body
+        oswald_efficiency = 0.8
+        k = 1.0 / (torch.pi * aspect_ratio * oswald_efficiency)
         cd = self.cd_0 + k * alpha**2
         cl = self.cl_alpha * alpha
         return cd, cl

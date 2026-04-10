@@ -13,9 +13,9 @@ import structlog
 import torch
 from torch import Tensor, nn
 
-logger = structlog.get_logger(__name__)
+from src.intercept.config import STANDARD_GRAVITY_MS2 as G0
 
-G0 = 9.80665
+logger = structlog.get_logger(__name__)
 
 
 class DynamicsResidualLoss(nn.Module):

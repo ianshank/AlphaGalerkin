@@ -82,6 +82,30 @@ class BaseSensor(ABC):
 SensorRegistry, register_sensor = create_registry("Sensor", BaseSensor)
 
 
+def _spherical_to_ned(
+    range_m: float, azimuth_rad: float, elevation_rad: float
+) -> tuple[float, float, float]:
+    """Convert spherical coords to NED Cartesian offsets."""
+    horiz = range_m * math.cos(elevation_rad)
+    return (
+        horiz * math.cos(azimuth_rad),
+        horiz * math.sin(azimuth_rad),
+        -range_m * math.sin(elevation_rad),
+    )
+
+
+def _build_measurement_covariance(
+    range_var: float, cross_range_var: float, dtype: torch.dtype = torch.float64
+) -> Tensor:
+    """Build diagonal measurement covariance matrix (3x3)."""
+    return torch.diag(
+        torch.tensor(
+            [range_var + cross_range_var, range_var + cross_range_var, range_var],
+            dtype=dtype,
+        )
+    )
+
+
 @register_sensor("radar")
 class RadarSensor(BaseSensor):
     """Radar sensor with range + angular measurements.
@@ -112,23 +136,12 @@ class RadarSensor(BaseSensor):
         noisy_az = true_az.item() + az_noise
         noisy_el = true_el.item() + el_noise
 
-        # Convert back to Cartesian
-        horiz = noisy_range * math.cos(noisy_el)
-        meas_n = horiz * math.cos(noisy_az)
-        meas_e = horiz * math.sin(noisy_az)
-        meas_d = -noisy_range * math.sin(noisy_el)
-
+        meas_n, meas_e, meas_d = _spherical_to_ned(noisy_range, noisy_az, noisy_el)
         meas_pos = own_position + torch.tensor([meas_n, meas_e, meas_d], dtype=torch.float64)
 
-        # Build covariance from measurement noise
         r_var = self.config.range_noise_m**2
-        cross_range_var = (range_m * self.config.azimuth_noise_rad) ** 2
-        cov = torch.diag(
-            torch.tensor(
-                [r_var + cross_range_var, r_var + cross_range_var, r_var],
-                dtype=torch.float64,
-            )
-        )
+        cross_var = (range_m * self.config.azimuth_noise_rad) ** 2
+        cov = _build_measurement_covariance(r_var, cross_var)
 
         return Measurement(
             position=meas_pos,
@@ -167,21 +180,13 @@ class ElectroOpticalSensor(BaseSensor):
         noisy_az = true_az.item() + az_noise
         noisy_el = true_el.item() + el_noise
 
-        horiz = range_m * math.cos(noisy_el)
-        meas_n = horiz * math.cos(noisy_az)
-        meas_e = horiz * math.sin(noisy_az)
-        meas_d = -range_m * math.sin(noisy_el)
-
+        meas_n, meas_e, meas_d = _spherical_to_ned(range_m, noisy_az, noisy_el)
         meas_pos = own_position + torch.tensor([meas_n, meas_e, meas_d], dtype=torch.float64)
 
-        # Large range uncertainty for bearing-only
-        range_var = (range_m * 0.3) ** 2  # 30% range uncertainty
+        frac = self.config.range_uncertainty_fraction
+        range_var = (range_m * frac) ** 2
         cross_var = (range_m * self.config.azimuth_noise_rad * 2) ** 2
-        cov = torch.diag(
-            torch.tensor(
-                [range_var + cross_var, range_var + cross_var, range_var], dtype=torch.float64
-            )
-        )
+        cov = _build_measurement_covariance(range_var, cross_var)
 
         return Measurement(
             position=meas_pos,
@@ -219,20 +224,13 @@ class InfraredSensor(BaseSensor):
         noisy_az = true_az.item() + az_noise
         noisy_el = true_el.item() + el_noise
 
-        horiz = range_m * math.cos(noisy_el)
-        meas_n = horiz * math.cos(noisy_az)
-        meas_e = horiz * math.sin(noisy_az)
-        meas_d = -range_m * math.sin(noisy_el)
-
+        meas_n, meas_e, meas_d = _spherical_to_ned(range_m, noisy_az, noisy_el)
         meas_pos = own_position + torch.tensor([meas_n, meas_e, meas_d], dtype=torch.float64)
 
-        range_var = (range_m * 0.2) ** 2
+        frac = self.config.range_uncertainty_fraction
+        range_var = (range_m * frac) ** 2
         cross_var = (range_m * self.config.azimuth_noise_rad) ** 2
-        cov = torch.diag(
-            torch.tensor(
-                [range_var + cross_var, range_var + cross_var, range_var], dtype=torch.float64
-            )
-        )
+        cov = _build_measurement_covariance(range_var, cross_var)
 
         return Measurement(
             position=meas_pos,

@@ -186,13 +186,13 @@ class WindModel:
         if self.config.wind_profile == WindProfileType.CONSTANT:
             speed = torch.full_like(altitude_m, base_speed)
         elif self.config.wind_profile == WindProfileType.LOGARITHMIC:
-            z0 = 0.03  # roughness length (m) for open terrain
+            z0 = self.config.log_wind_roughness_m
             ref_alt = self.config.wind_reference_altitude_m
             alt_clamped = torch.clamp(altitude_m, min=z0 + 0.1)
             speed = base_speed * (torch.log(alt_clamped / z0) / math.log(ref_alt / z0))
         else:  # POWER_LAW
             ref_alt = self.config.wind_reference_altitude_m
-            alpha = 0.143  # power law exponent for open terrain
+            alpha = self.config.power_law_exponent
             alt_clamped = torch.clamp(altitude_m, min=0.1)
             speed = base_speed * (alt_clamped / ref_alt) ** alpha
 

@@ -20,13 +20,12 @@ import structlog
 import torch
 from torch import Tensor
 
+from src.intercept.config import STANDARD_GRAVITY_MS2 as G0
 from src.intercept.config import GuidanceConfig
 from src.intercept.dynamics import RigidBodyState
 from src.templates.registry import create_registry
 
 logger = structlog.get_logger(__name__)
-
-G0 = 9.80665
 
 
 @dataclass

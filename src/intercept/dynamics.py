@@ -19,13 +19,11 @@ import structlog
 import torch
 from torch import Tensor
 
+from src.intercept.config import STANDARD_GRAVITY_MS2 as G0
 from src.intercept.config import DynamicsConfig, GravityModel, IntegrationMethod
 from src.intercept.frames import QuaternionOps
 
 logger = structlog.get_logger(__name__)
-
-# Standard gravity
-G0 = 9.80665  # m/s^2
 
 
 @dataclass

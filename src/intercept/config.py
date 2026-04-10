@@ -14,6 +14,13 @@ from pydantic import Field, model_validator
 from src.templates.config import BaseModuleConfig
 
 # ---------------------------------------------------------------------------
+# Physical constants (single source of truth)
+# ---------------------------------------------------------------------------
+
+STANDARD_GRAVITY_MS2: float = 9.80665
+"""Standard gravitational acceleration in m/s^2 (ISO 80000-3)."""
+
+# ---------------------------------------------------------------------------
 # Enumerations
 # ---------------------------------------------------------------------------
 
@@ -263,6 +270,17 @@ class AtmosphereConfig(BaseModuleConfig):
         default=0.0,
         description="Temperature offset from ISA in Kelvin.",
     )
+    log_wind_roughness_m: float = Field(
+        default=0.03,
+        gt=0.0,
+        description="Surface roughness length for logarithmic wind profile (m).",
+    )
+    power_law_exponent: float = Field(
+        default=0.143,
+        gt=0.0,
+        lt=1.0,
+        description="Exponent for power-law wind profile.",
+    )
 
 
 class SensorConfig(BaseModuleConfig):
@@ -301,6 +319,12 @@ class SensorConfig(BaseModuleConfig):
         default=1.0,
         gt=0.0,
         description="Field of view half-angle in radians.",
+    )
+    range_uncertainty_fraction: float = Field(
+        default=0.3,
+        gt=0.0,
+        lt=1.0,
+        description="Fractional range uncertainty for bearing-only sensors.",
     )
 
 
@@ -381,6 +405,16 @@ class MCTSInterceptConfig(BaseModuleConfig):
         default=0.25,
         gt=0.0,
         description="Dirichlet noise alpha for exploration.",
+    )
+    divergence_velocity_ms: float = Field(
+        default=-100.0,
+        lt=0.0,
+        description="Closing velocity threshold for divergence detection (m/s, negative).",
+    )
+    divergence_min_steps: int = Field(
+        default=5,
+        ge=1,
+        description="Minimum steps before divergence detection activates.",
     )
 
 

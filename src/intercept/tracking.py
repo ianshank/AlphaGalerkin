@@ -291,7 +291,7 @@ class ConfidenceEnvelope:
         pos_var = torch.diagonal(predicted.covariance)[:3]
         # CEP from horizontal position variances (N and E)
         horizontal_var = pos_var[0] + pos_var[1]
-        cep = 0.674 * torch.sqrt(horizontal_var).item()
+        cep: float = 0.674 * torch.sqrt(horizontal_var).item()
         return cep
 
 

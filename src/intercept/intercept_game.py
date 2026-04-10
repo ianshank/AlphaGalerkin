@@ -12,6 +12,7 @@ Architecture follows the PDEGameAdapter pattern from src/pde/mcts_adapter.py.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 import structlog
@@ -20,6 +21,7 @@ from numpy.typing import NDArray
 
 from src.intercept.aero import AeroModel, SimpleAeroModel
 from src.intercept.atmosphere import ISAAtmosphere
+from src.intercept.config import STANDARD_GRAVITY_MS2 as G0
 from src.intercept.config import (
     EngagementPhase,
     GuidanceConfig,
@@ -28,9 +30,10 @@ from src.intercept.config import (
 )
 from src.intercept.dynamics import RigidBody6DOF, RigidBodyState
 
-logger = structlog.get_logger(__name__)
+if TYPE_CHECKING:
+    from src.intercept.guidance import GuidanceLaw
 
-G0 = 9.80665
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -110,6 +113,8 @@ class InterceptGameAdapter:
         self._dt = self._mcts_config.rollout_dt_s
         self._max_steps = int(self._mcts_config.time_horizon_s / self._dt)
         self._kill_radius = self._interceptor_config.kill_radius_m
+        self._divergence_vel = self._mcts_config.divergence_velocity_ms
+        self._divergence_steps = self._mcts_config.divergence_min_steps
 
     def _update_geometry(self) -> None:
         """Update range, closing velocity, miss estimate."""
@@ -237,7 +242,10 @@ class InterceptGameAdapter:
         if self._state.steps >= self._max_steps:
             return True
         # Diverging (target moving away)
-        if self._state.closing_velocity < -100.0 and self._state.steps > 5:
+        if (
+            self._state.closing_velocity < self._divergence_vel
+            and self._state.steps > self._divergence_steps
+        ):
             return True
         # Crashed
         if self._state.interceptor.altitude.item() < 0:
@@ -255,7 +263,7 @@ class InterceptGameAdapter:
             return 1
         if self._state.interceptor.altitude.item() < 0:
             return -1
-        if self._state.closing_velocity < -100.0:
+        if self._state.closing_velocity < self._divergence_vel:
             return -1
         if self._state.steps >= self._max_steps:
             if self._state.miss_estimate < self._kill_radius * 5:
@@ -294,7 +302,7 @@ class InterceptGameAdapter:
 def run_engagement(
     interceptor_state: RigidBodyState,
     threat_state: RigidBodyState,
-    guidance_law: object,
+    guidance_law: GuidanceLaw,
     guidance_config: GuidanceConfig | None = None,
     interceptor_config: InterceptorConfig | None = None,
     dynamics: RigidBody6DOF | None = None,

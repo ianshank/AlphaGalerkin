@@ -208,8 +208,12 @@ def get_device(device: str = "auto") -> torch.device:
     import torch
 
     if device == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(device)
+        selected = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        selected = torch.device(device)
+
+    logger.debug("device.selected", device=str(selected), requested=device)
+    return selected
 
 
 __all__ = [

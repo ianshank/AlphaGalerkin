@@ -89,6 +89,7 @@ class TestFallbackBoard:
 class TestBoardSizeChoices:
     def test_returns_list_of_tuples(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True  # prevent actual loading
         game_tab._game_manager = None
 
@@ -100,6 +101,7 @@ class TestBoardSizeChoices:
 
     def test_values_match_config_board_sizes(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -118,8 +120,10 @@ class TestEnsureLoaded:
         import dashboard.tabs.game_tab as game_tab
 
         game_tab._loaded = False
-        with patch("dashboard.tabs.game_tab.device_str", return_value="cpu"), \
-             patch("dashboard.tabs.game_tab.Path") as mock_path:
+        with (
+            patch("dashboard.tabs.game_tab.device_str", return_value="cpu"),
+            patch("dashboard.tabs.game_tab.Path") as mock_path,
+        ):
             # Simulate missing checkpoint
             mock_path.return_value.__truediv__.return_value.exists.return_value = False
             # The import path patching is complex; just verify it runs without crash
@@ -154,6 +158,7 @@ class TestEnsureLoaded:
 class TestHumanReset:
     def test_returns_tuple_of_4(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -162,6 +167,7 @@ class TestHumanReset:
 
     def test_history_is_empty_list(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -170,6 +176,7 @@ class TestHumanReset:
 
     def test_status_is_string(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -178,6 +185,7 @@ class TestHumanReset:
 
     def test_board_is_numpy_array(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -186,6 +194,7 @@ class TestHumanReset:
 
     def test_uses_default_config(self):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -220,6 +229,7 @@ class TestHumanReset:
 class TestHumanMove:
     def test_returns_4_tuple_when_no_model(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -262,6 +272,7 @@ class TestHumanMove:
 class TestAiReset:
     def test_returns_4_tuple_when_no_model(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -270,6 +281,7 @@ class TestAiReset:
 
     def test_history_empty(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -302,6 +314,7 @@ class TestAiReset:
 class TestAiStep:
     def test_returns_4_tuple_when_no_model(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -373,6 +386,7 @@ class TestAiStep:
 class TestCreateGameTab:
     def test_creates_gradio_tab_with_default(self):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -381,6 +395,7 @@ class TestCreateGameTab:
 
     def test_creates_gradio_tab_with_custom_config(self, game_cfg):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 
@@ -389,6 +404,7 @@ class TestCreateGameTab:
 
     def test_custom_board_sizes_in_tab(self):
         import dashboard.tabs.game_tab as game_tab
+
         game_tab._loaded = True
         game_tab._game_manager = None
 

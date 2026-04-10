@@ -253,15 +253,11 @@ class TestCreatePocTab:
             create_poc_tab()  # Should not raise
 
     def test_custom_complexity_defaults(self):
-        cfg = PoCConfig(
-            complexity=ComplexityRunConfig(default_d_model=128)
-        )
+        cfg = PoCConfig(complexity=ComplexityRunConfig(default_d_model=128))
         with gr.Blocks():
             create_poc_tab(cfg)
 
     def test_custom_stability_defaults(self):
-        cfg = PoCConfig(
-            stability=StabilityRunConfig(default_training_steps=200)
-        )
+        cfg = PoCConfig(stability=StabilityRunConfig(default_training_steps=200))
         with gr.Blocks():
             create_poc_tab(cfg)

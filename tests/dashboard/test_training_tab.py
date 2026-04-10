@@ -162,9 +162,7 @@ class TestCreateTrainingTab:
             create_training_tab(training_cfg)
 
     def test_slider_bounds_from_config(self):
-        cfg = TrainingConfig(
-            d_model_min=32, d_model_max=512, d_model_default=64, d_model_step=32
-        )
+        cfg = TrainingConfig(d_model_min=32, d_model_max=512, d_model_default=64, d_model_step=32)
         with gr.Blocks():
             create_training_tab(cfg)  # Should not raise
 

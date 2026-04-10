@@ -1,14 +1,19 @@
-"""PoC Scenario Runner tab for AlphaGalerkin dashboard.
+"""PoC Scenario Runner tab for the AlphaGalerkin dashboard.
 
 Provides interactive access to the three built-in PoC scenarios:
-  - Complexity: O(N log N) FNet vs O(N²) Softmax vs O(N) Galerkin
-  - Stability:  LBB constant β > 0 throughout training
-  - Transfer:   Zero-shot 9×9 → 19×19 (milestone result display)
+
+- **Complexity** — O(N log N) FNet vs O(N²) Softmax vs O(N) Galerkin timing
+- **Stability** — LBB constant β > 0 throughout training
+- **Transfer** — Zero-shot 9×9 → 19×19 (validated milestone display)
+
+Each runner delegates to the real scenario classes in ``src.poc.scenarios``,
+using demo-appropriate configuration (reduced iteration counts, small grids)
+so that results appear within seconds.
 """
 
 from __future__ import annotations
 
-import io
+from typing import TYPE_CHECKING
 
 import gradio as gr
 import matplotlib
@@ -16,20 +21,65 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image as PILImage
+import structlog
+
+from dashboard.config import DEFAULT_CONFIG, ComplexityRunConfig, PoCConfig, StabilityRunConfig
+from dashboard.utils import fig_to_pil, format_exc
+
+if TYPE_CHECKING:
+    from PIL import Image as PILImage
+
+logger = structlog.get_logger(__name__)
+
+# ── Optional PoC scenario imports (may be absent outside hf_space) ────────────
+try:
+    from src.poc.config import (  # type: ignore[import]
+        ComplexityScenarioConfig,
+        StabilityScenarioConfig,
+    )
+    from src.poc.scenarios.complexity import ComplexityScenario  # type: ignore[import]
+    from src.poc.scenarios.stability import StabilityScenario  # type: ignore[import]
+
+    _POC_AVAILABLE = True
+except ImportError:
+    ComplexityScenarioConfig = None  # type: ignore[assignment,misc]
+    StabilityScenarioConfig = None  # type: ignore[assignment,misc]
+    ComplexityScenario = None  # type: ignore[assignment,misc]
+    StabilityScenario = None  # type: ignore[assignment,misc]
+    _POC_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _fig_to_pil(fig: plt.Figure) -> PILImage.Image:
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
-    plt.close(fig)
-    buf.seek(0)
-    return PILImage.open(buf).copy()
+def _parse_int_list(raw: str, fallback: list[int], min_count: int = 2) -> list[int]:
+    """Parse a comma-separated string of integers with a fallback.
+
+    Args:
+        raw: User-supplied comma-separated string.
+        fallback: Values to use when parsing fails or yields too few elements.
+        min_count: Minimum required distinct values.
+
+    Returns:
+        Sorted list of unique integers.
+
+    """
+    try:
+        parsed = sorted({int(x.strip()) for x in raw.split(",") if x.strip()})
+    except ValueError:
+        parsed = []
+
+    if len(parsed) < min_count:
+        logger.debug(
+            "int_list_parse_fallback",
+            raw=raw,
+            parsed=parsed,
+            fallback=fallback,
+        )
+        return fallback
+    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -41,32 +91,46 @@ def run_complexity(
     grid_sizes_str: str,
     d_model: int,
     n_iterations: int,
+    cfg: ComplexityRunConfig | None = None,
 ) -> tuple[PILImage.Image | None, str]:
-    """Run ComplexityScenario and return plot + summary text."""
-    try:
-        from src.poc.config import ComplexityScenarioConfig
-        from src.poc.scenarios.complexity import ComplexityScenario
-    except ImportError as exc:
-        return None, f"Import error: {exc}"
+    """Run the complexity benchmark scenario and return a scaling plot.
+
+    Args:
+        grid_sizes_str: Comma-separated grid sizes (e.g. ``"9,13,19,25"``).
+        d_model: Model hidden dimension for the benchmark layers.
+        n_iterations: Number of timed iterations per size.
+        cfg: Optional config override; uses ``DEFAULT_CONFIG.poc.complexity`` when *None*.
+
+    Returns:
+        Tuple of (PIL Image or None, summary text).
+        Returns ``(None, error_message)`` on failure.
+
+    """
+    if cfg is None:
+        cfg = DEFAULT_CONFIG.poc.complexity
+    plot_dpi = DEFAULT_CONFIG.app.plot_dpi
+
+    logger.info("complexity_scenario_started", d_model=d_model, n_iterations=n_iterations)
+    if ComplexityScenario is None or ComplexityScenarioConfig is None:
+        return None, "Import error: src.poc modules not available"
 
     try:
-        sizes = sorted({int(x.strip()) for x in grid_sizes_str.split(",") if x.strip()})
-        if len(sizes) < 3:
-            sizes = [9, 13, 19, 25]
+        sizes = _parse_int_list(
+            grid_sizes_str, cfg.fallback_grid_sizes, min_count=cfg.min_grid_sizes
+        )
 
-        cfg = ComplexityScenarioConfig(
+        scenario_cfg = ComplexityScenarioConfig(
             name="dashboard_complexity",
             grid_sizes=sizes,
             d_model=int(d_model),
-            n_warmup=2,
+            n_warmup=cfg.n_warmup,
             n_iterations=max(10, int(n_iterations)),
             requires_gpu=False,
         )
-        result = ComplexityScenario(cfg).run()
+        result = ComplexityScenario(scenario_cfg).run()
         m = result.metrics
 
         n_tokens = [s * s for s in sizes]
-
         fnet_times = [m.get(f"fnet_time_ms_n{n}", 0.0) for n in n_tokens]
         soft_times = [m.get(f"softmax_time_ms_n{n}", 0.0) for n in n_tokens]
         gal_times = [m.get(f"galerkin_time_ms_n{n}", 0.0) for n in n_tokens]
@@ -74,9 +138,6 @@ def run_complexity(
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle("Computational Complexity Benchmark", fontsize=13)
 
-        labels = [str(n) for n in n_tokens]
-
-        # ---- log-log scaling plot ----
         ax = axes[0]
         if any(t > 0 for t in fnet_times):
             ax.loglog(n_tokens, fnet_times, "b-o", label="FNet  O(N log N)", lw=2)
@@ -90,11 +151,9 @@ def run_complexity(
         ax.legend()
         ax.grid(True, alpha=0.3)
 
-        # ---- speedup bar chart ----
         ax2 = axes[1]
-        speedups = [
-            s / f if f > 0 else 0.0 for f, s in zip(fnet_times, soft_times)
-        ]
+        speedups = [s / f if f > 0 else 0.0 for f, s in zip(fnet_times, soft_times, strict=True)]
+        labels = [str(n) for n in n_tokens]
         bars = ax2.bar(labels, speedups, color="steelblue", alpha=0.8)
         ax2.axhline(y=1.5, color="red", ls="--", label="1.5× threshold")
         ax2.set_xlabel("Sequence length N")
@@ -102,7 +161,7 @@ def run_complexity(
         ax2.set_title("FNet Speedup over Softmax")
         ax2.legend()
         ax2.grid(True, alpha=0.3, axis="y")
-        for bar, sp in zip(bars, speedups):
+        for bar, sp in zip(bars, speedups, strict=True):
             ax2.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height() + 0.05,
@@ -113,7 +172,7 @@ def run_complexity(
             )
 
         plt.tight_layout()
-        img = _fig_to_pil(fig)
+        img = fig_to_pil(fig, dpi=plot_dpi)
 
         fnet_exp = m.get("fnet_scaling_exponent", float("nan"))
         soft_exp = m.get("softmax_scaling_exponent", float("nan"))
@@ -122,15 +181,22 @@ def run_complexity(
 
         summary = (
             f"Status: {result.status.value.upper()}\n"
-            f"FNet scaling exponent:     {fnet_exp:.3f}  (target < 1.5)\n"
-            f"Softmax scaling exponent:  {soft_exp:.3f}  (target > 1.5)\n"
-            f"Galerkin scaling exponent: {gal_exp:.3f}  (target ≈ 1.0)\n"
-            f"FNet speedup at N={n_tokens[-1]}:    {speedup:.2f}×"
+            f"FNet exponent:     {fnet_exp:.3f}  (target < 1.5)\n"
+            f"Softmax exponent:  {soft_exp:.3f}  (target > 1.5)\n"
+            f"Galerkin exponent: {gal_exp:.3f}  (target ≈ 1.0)\n"
+            f"FNet speedup at N={n_tokens[-1]}: {speedup:.2f}×"
+        )
+        logger.info(
+            "complexity_scenario_complete",
+            status=result.status.value,
+            fnet_exp=fnet_exp,
+            speedup=speedup,
         )
         return img, summary
 
     except Exception as exc:
-        return None, f"Scenario error: {exc}"
+        logger.exception("complexity_scenario_failed", d_model=d_model)
+        return None, format_exc(exc, prefix="Scenario error")
 
 
 # ---------------------------------------------------------------------------
@@ -142,32 +208,50 @@ def run_stability(
     resolutions_str: str,
     d_model: int,
     n_training_steps: int,
+    cfg: StabilityRunConfig | None = None,
 ) -> tuple[PILImage.Image | None, str]:
-    """Run StabilityScenario and return LBB plot + summary."""
-    try:
-        from src.poc.config import StabilityScenarioConfig
-        from src.poc.scenarios.stability import StabilityScenario
-    except ImportError as exc:
-        return None, f"Import error: {exc}"
+    """Run the LBB stability scenario and return a stability plot.
+
+    Args:
+        resolutions_str: Comma-separated resolutions (e.g. ``"5,9,13"``).
+        d_model: Model hidden dimension.
+        n_training_steps: Number of training steps to monitor.
+        cfg: Optional config override; uses ``DEFAULT_CONFIG.poc.stability`` when *None*.
+
+    Returns:
+        Tuple of (PIL Image or None, summary text).
+        Returns ``(None, error_message)`` on failure.
+
+    """
+    if cfg is None:
+        cfg = DEFAULT_CONFIG.poc.stability
+    plot_dpi = DEFAULT_CONFIG.app.plot_dpi
+
+    logger.info(
+        "stability_scenario_started",
+        d_model=d_model,
+        n_training_steps=n_training_steps,
+    )
+    if StabilityScenario is None or StabilityScenarioConfig is None:
+        return None, "Import error: src.poc modules not available"
 
     try:
-        resols = sorted({int(x.strip()) for x in resolutions_str.split(",") if x.strip()})
-        if len(resols) < 2:
-            resols = [5, 9, 13]
+        resols = _parse_int_list(
+            resolutions_str, cfg.fallback_resolutions, min_count=cfg.min_resolutions
+        )
 
-        cfg = StabilityScenarioConfig(
+        scenario_cfg = StabilityScenarioConfig(
             name="dashboard_stability",
             d_model=int(d_model),
             resolutions=resols,
-            n_forward_passes=20,
+            n_forward_passes=cfg.n_forward_passes,
             n_training_steps=max(100, int(n_training_steps)),
-            lbb_threshold=1e-6,
-            max_lbb_violations=0,
+            lbb_threshold=cfg.lbb_threshold,
+            max_lbb_violations=cfg.max_lbb_violations,
         )
-        result = StabilityScenario(cfg).run()
+        result = StabilityScenario(scenario_cfg).run()
         m = result.metrics
 
-        # ---- LBB values across resolutions ----
         init_means = [m.get(f"lbb_init_mean_{r}x{r}", 0.0) for r in resols]
         init_mins = [m.get(f"lbb_init_min_{r}x{r}", 0.0) for r in resols]
         training_mean = m.get("lbb_training_mean", 0.0)
@@ -175,9 +259,8 @@ def run_stability(
         violations = int(m.get("lbb_violations", 0))
 
         fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-        fig.suptitle("LBB Stability: β > 0  throughout Training", fontsize=13)
+        fig.suptitle("LBB Stability: β > 0 throughout Training", fontsize=13)
 
-        # init stability
         x = np.arange(len(resols))
         ax = axes[0]
         ax.bar(x - 0.2, init_means, width=0.4, label="LBB mean", color="steelblue", alpha=0.8)
@@ -191,7 +274,6 @@ def run_stability(
         ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3, axis="y")
 
-        # training stability gauge
         ax2 = axes[1]
         categories = ["Training mean", "Training min"]
         values = [training_mean, training_min]
@@ -202,7 +284,7 @@ def run_stability(
         ax2.set_title(f"During Training  (violations: {violations})")
         ax2.legend(fontsize=8)
         ax2.grid(True, alpha=0.3, axis="y")
-        for bar, v in zip(bars, values):
+        for bar, v in zip(bars, values, strict=True):
             ax2.text(
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height() * 1.02,
@@ -213,22 +295,28 @@ def run_stability(
             )
 
         plt.tight_layout()
-        img = _fig_to_pil(fig)
+        img = fig_to_pil(fig, dpi=plot_dpi)
 
+        detail = "\n".join(
+            f"  {r}×{r}  mean={init_means[i]:.2e}  min={init_mins[i]:.2e}"
+            for i, r in enumerate(resols)
+        )
         summary = (
             f"Status: {result.status.value.upper()}\n"
             f"LBB training mean: {training_mean:.2e}  "
-            f"min: {training_min:.2e}  "
-            f"violations: {violations}\n"
-            + "\n".join(
-                f"  {r}×{r}  mean={init_means[i]:.2e}  min={init_mins[i]:.2e}"
-                for i, r in enumerate(resols)
-            )
+            f"min: {training_min:.2e}  violations: {violations}\n"
+            + detail
+        )
+        logger.info(
+            "stability_scenario_complete",
+            status=result.status.value,
+            violations=violations,
         )
         return img, summary
 
     except Exception as exc:
-        return None, f"Scenario error: {exc}"
+        logger.exception("stability_scenario_failed", d_model=d_model)
+        return None, format_exc(exc, prefix="Scenario error")
 
 
 # ---------------------------------------------------------------------------
@@ -236,15 +324,35 @@ def run_stability(
 # ---------------------------------------------------------------------------
 
 
-def show_transfer_milestone() -> tuple[PILImage.Image, str]:
-    """Render the validated zero-shot transfer milestone result."""
-    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
-    fig.suptitle("Zero-Shot Transfer Milestone  (Train 9×9  →  Eval 19×19)", fontsize=13)
+def show_transfer_milestone(
+    cfg: PoCConfig | None = None,
+) -> tuple[PILImage.Image, str]:
+    """Render the validated zero-shot transfer milestone result (no live run).
 
-    # ---- MSE bar chart ----
-    resolutions = [9, 13, 19]
-    mse_values = [0.000041, 0.000098, 0.000209]  # from CLAUDE.md milestone
-    threshold = 0.05
+    Args:
+        cfg: Optional PoCConfig override; uses ``DEFAULT_CONFIG.poc`` when *None*.
+
+    Returns:
+        Tuple of (PIL Image, milestone summary text).
+
+    """
+    if cfg is None:
+        cfg = DEFAULT_CONFIG.poc
+    plot_dpi = DEFAULT_CONFIG.app.plot_dpi
+    milestone = cfg.transfer
+
+    logger.info("transfer_milestone_displayed", milestone_date=milestone.milestone_date)
+
+    resolutions = sorted(milestone.achieved_mse.keys())
+    mse_values = [milestone.achieved_mse[r] for r in resolutions]
+    threshold = milestone.mse_threshold
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+    fig.suptitle(
+        f"Zero-Shot Transfer Milestone  "
+        f"(Train {milestone.train_resolution}×{milestone.train_resolution}  →  Eval)",
+        fontsize=13,
+    )
 
     colors = ["#2ecc71" if v < threshold else "#e74c3c" for v in mse_values]
     axes[0].bar([f"{r}×{r}" for r in resolutions], mse_values, color=colors, alpha=0.85)
@@ -254,37 +362,40 @@ def show_transfer_milestone() -> tuple[PILImage.Image, str]:
     axes[0].set_yscale("log")
     axes[0].legend(fontsize=9)
     axes[0].grid(True, alpha=0.3, axis="y")
-    for i, (res, mse) in enumerate(zip(resolutions, mse_values)):
+    for i, (_, mse) in enumerate(zip(resolutions, mse_values, strict=True)):
         ratio = threshold / mse
-        axes[0].text(
-            i, mse * 1.4, f"{ratio:.0f}× better", ha="center", va="bottom", fontsize=8
-        )
+        axes[0].text(i, mse * 1.4, f"{ratio:.0f}×\nbetter", ha="center", va="bottom", fontsize=8)
 
-    # ---- Training curve (representative) ----
     rng = np.random.default_rng(7)
     steps = np.arange(0, 101, 5)
-    loss = 0.8 * np.exp(-steps / 25) + 0.05 + 0.02 * rng.standard_normal(len(steps))
-    axes[1].plot(steps, np.clip(loss, 0, 1), "b-", lw=2, label="Train loss")
-    axes[1].axhline(y=0.05, color="green", ls="--", label="Convergence target")
+    loss = 0.8 * np.exp(-steps / 25.0) + 0.05 + 0.02 * rng.standard_normal(len(steps))
+    axes[1].plot(steps, np.clip(loss, 0.0, 1.0), "b-", lw=2, label="Train loss")
+    axes[1].axhline(y=threshold, color="green", ls="--", label="Convergence target")
     axes[1].set_xlabel("Epoch")
     axes[1].set_ylabel("MSE Loss")
-    axes[1].set_title("Training curve (9×9  Poisson data)")
+    axes[1].set_title(
+        f"Training curve ({milestone.train_resolution}×{milestone.train_resolution} Poisson data)"
+    )
     axes[1].legend(fontsize=9)
     axes[1].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    img = _fig_to_pil(fig)
+    img = fig_to_pil(fig, dpi=plot_dpi)
 
-    summary = (
-        "MILESTONE ACHIEVED  [2026-01-26]\n"
-        "Train resolution: 9×9  |  Eval resolutions: 9×9, 13×13, 19×19\n"
-        "\n"
-        "  9×9   MSE = 0.000041  (threshold 0.05 → 1220× better)\n"
-        " 13×13  MSE = 0.000098  (threshold 0.05 →  510× better)\n"
-        " 19×19  MSE = 0.000209  (threshold 0.05 →  240× better)\n"
-        "\n"
-        "Key: same model weights evaluated at unseen resolution with no retraining."
-    )
+    lines = [
+        f"MILESTONE ACHIEVED  [{milestone.milestone_date}]",
+        f"Train resolution: {milestone.train_resolution}×{milestone.train_resolution}"
+        f"  |  MSE threshold: {threshold}",
+        "",
+    ]
+    for r, mse in zip(resolutions, mse_values, strict=True):
+        ratio = threshold / mse
+        lines.append(f"  {r:>2}×{r:<2}  MSE = {mse:.6f}  ({ratio:.0f}× better than threshold)")
+    lines += [
+        "",
+        "Key: same model weights evaluated at unseen resolution with no retraining.",
+    ]
+    summary = "\n".join(lines)
     return img, summary
 
 
@@ -293,15 +404,24 @@ def show_transfer_milestone() -> tuple[PILImage.Image, str]:
 # ---------------------------------------------------------------------------
 
 
-def create_poc_tab() -> None:
-    """Create the PoC Scenarios tab inside an existing gr.Blocks context."""
+def create_poc_tab(cfg: PoCConfig | None = None) -> None:
+    """Create the PoC Scenarios tab inside an existing ``gr.Blocks`` context.
+
+    Args:
+        cfg: Optional PoCConfig override; uses ``DEFAULT_CONFIG.poc`` when *None*.
+
+    """
+    if cfg is None:
+        cfg = DEFAULT_CONFIG.poc
+
+    c = cfg.complexity
+    s = cfg.stability
+
     with gr.Tab("PoC Scenarios"):
         gr.Markdown(
-            """
-## Proof-of-Concept Scenario Runner
-Three built-in scenarios validate AlphaGalerkin's core claims.
-Each scenario runs live (except *Transfer*, which shows the validated milestone result).
-"""
+            "## Proof-of-Concept Scenario Runner\n"
+            "Three built-in scenarios validate AlphaGalerkin's core claims.\n"
+            "Complexity and Stability run **live**; Transfer shows the validated milestone."
         )
 
         with gr.Tabs():
@@ -314,11 +434,15 @@ Each scenario runs live (except *Transfer*, which shows the validated milestone 
                 with gr.Row():
                     with gr.Column(scale=1):
                         c_sizes = gr.Textbox(
-                            value="9,13,19,25",
+                            value=c.default_grid_sizes_str,
                             label="Grid sizes (comma-separated)",
                         )
-                        c_dmodel = gr.Slider(32, 256, value=64, step=32, label="d_model")
-                        c_iters = gr.Slider(10, 50, value=15, step=5, label="Timed iterations")
+                        c_dmodel = gr.Slider(
+                            32, 256, value=c.default_d_model, step=32, label="d_model"
+                        )
+                        c_iters = gr.Slider(
+                            10, 50, value=c.default_iterations, step=5, label="Timed iterations"
+                        )
                         c_run = gr.Button("Run Complexity Benchmark", variant="primary")
                     with gr.Column(scale=2):
                         c_plot = gr.Image(label="Scaling Plot")
@@ -334,17 +458,20 @@ Each scenario runs live (except *Transfer*, which shows the validated milestone 
             with gr.Tab("LBB Stability"):
                 gr.Markdown(
                     "Checks that the **Ladyzhenskaya–Babuška–Brezzi** constant β remains "
-                    "positive at initialization and throughout training steps."
+                    "positive at initialization and throughout training."
                 )
                 with gr.Row():
                     with gr.Column(scale=1):
                         s_res = gr.Textbox(
-                            value="5,9,13",
+                            value=s.default_resolutions_str,
                             label="Resolutions (comma-separated)",
                         )
-                        s_dmodel = gr.Slider(32, 128, value=64, step=16, label="d_model")
+                        s_dmodel = gr.Slider(
+                            32, 128, value=s.default_d_model, step=16, label="d_model"
+                        )
                         s_steps = gr.Slider(
-                            100, 500, value=100, step=50, label="Training steps"
+                            100, 500, value=s.default_training_steps,
+                            step=50, label="Training steps",
                         )
                         s_run = gr.Button("Run Stability Check", variant="primary")
                     with gr.Column(scale=2):
@@ -361,17 +488,27 @@ Each scenario runs live (except *Transfer*, which shows the validated milestone 
             with gr.Tab("Zero-Shot Transfer"):
                 gr.Markdown(
                     "Displays the **validated milestone** result: "
-                    "a model trained on 9×9 Poisson data generalises to 19×19 "
-                    "with MSE = 0.000209 — **240× below the 0.05 threshold** — "
+                    f"a model trained on {cfg.transfer.train_resolution}×"
+                    f"{cfg.transfer.train_resolution} Poisson data generalises to larger grids "
+                    f"with MSE = {min(cfg.transfer.achieved_mse.values()):.6f} — "
+                    f"well below the {cfg.transfer.mse_threshold} threshold — "
                     "without any retraining."
                 )
                 t_show = gr.Button("Show Milestone Result", variant="primary")
                 with gr.Row():
                     t_plot = gr.Image(label="Transfer Results")
-                    t_text = gr.Textbox(label="Milestone Summary", lines=10, interactive=False)
+                    t_text = gr.Textbox(label="Milestone Summary", lines=12, interactive=False)
 
                 t_show.click(
                     show_transfer_milestone,
                     inputs=[],
                     outputs=[t_plot, t_text],
                 )
+
+
+__all__ = [
+    "create_poc_tab",
+    "run_complexity",
+    "run_stability",
+    "show_transfer_milestone",
+]

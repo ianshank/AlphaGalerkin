@@ -152,7 +152,8 @@ class TestBuildApp:
 
         # The Gradio 6 CSS deprecation warning contains both "css" and "launch"
         css_warnings = [
-            w for w in caught
+            w
+            for w in caught
             if issubclass(w.category, UserWarning)
             and "css" in str(w.message).lower()
             and "launch" in str(w.message).lower()

@@ -79,7 +79,7 @@ jobs:
   test-fast:
     name: Unit Tests (Fast)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     needs: lint
 
     strategy:

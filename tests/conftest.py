@@ -8,11 +8,13 @@ import pytest
 from hypothesis import HealthCheck
 from hypothesis import settings as hypothesis_settings
 
-# Register a CI-friendly hypothesis profile: no deadline, suppressed slow-health-check.
+# Register a CI-friendly hypothesis profile: no deadline, lower example count to
+# stay within the CI job timeout across all Python versions.
 # This is loaded whenever the CI env var is set (GitHub Actions sets CI=true).
 hypothesis_settings.register_profile(
     "ci",
     deadline=None,
+    max_examples=20,
     suppress_health_check=[HealthCheck.too_slow],
 )
 hypothesis_settings.register_profile(

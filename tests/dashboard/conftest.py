@@ -10,12 +10,18 @@ import matplotlib
 import numpy as np
 import pytest
 
-# ── Ensure hf_space/ is in sys.path so `src.*` resolves correctly ─────────────
+# ── Ensure hf_space/ is available without letting it shadow the repository src ─
+# ROOT must come before HF_SPACE so that `from src.*` imports resolve to the
+# main package tree and not to the hf_space copy (which can be out-of-sync).
 ROOT = Path(__file__).parent.parent.parent
 HF_SPACE = ROOT / "hf_space"
-for p in (str(HF_SPACE), str(ROOT)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+ROOT_STR = str(ROOT)
+HF_SPACE_STR = str(HF_SPACE)
+# Remove both entries then re-insert in the correct order so this conftest is
+# idempotent and doesn't re-order entries on repeated collection.
+sys.path[:] = [p for p in sys.path if p not in {ROOT_STR, HF_SPACE_STR}]
+sys.path.insert(0, ROOT_STR)
+sys.path.insert(1, HF_SPACE_STR)
 
 # Use non-interactive backend for all matplotlib calls in tests
 matplotlib.use("Agg")

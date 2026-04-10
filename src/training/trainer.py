@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 import torch
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
@@ -359,8 +359,8 @@ class Trainer(BaseTrainer):
             scheduler_type=scheduler_type,
             warmup_steps=self.training_config.warmup_steps,
             total_steps=self.training_config.total_steps,
-            min_lr_ratio=0.1,
-            warmup_start_factor=0.1,
+            min_lr_ratio=self.training_config.min_lr_ratio,
+            warmup_start_factor=self.training_config.warmup_start_factor,
         )
 
     # ------------------------------------------------------------------
@@ -677,7 +677,7 @@ class Trainer(BaseTrainer):
             return out, p_loss, v_loss, l_loss
 
         if self.use_amp:
-            with autocast():
+            with autocast(device_type=self.device.type):
                 output, policy_loss, value_loss, lbb_loss = _forward_and_losses()
         else:
             output, policy_loss, value_loss, lbb_loss = _forward_and_losses()

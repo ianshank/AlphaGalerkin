@@ -348,10 +348,10 @@ class TestCrankNicolson:
         stepper = CrankNicolson(cfg, max_iterations=1, tolerance=1e-20)
         with caplog.at_level(logging.WARNING, logger="src.pde.time_stepping"):
             # Stiff RHS that won't converge in 1 iteration
-            stepper.step(torch.tensor([1.0]), 0.0, _linear_rhs(-100.0))
-        # Warning should have been logged (structlog may use different handlers)
-        # Just ensure no crash
-        assert True  # The step should complete without exception
+            u_new, info = stepper.step(torch.tensor([1.0]), 0.0, _linear_rhs(-100.0))
+        # Step must still return a valid tensor of the correct shape (not converged, but defined)
+        assert u_new.shape == torch.Size([1])
+        assert torch.isfinite(u_new).all()
 
     def test_custom_tolerance(self):
         """CrankNicolson respects custom tolerance."""

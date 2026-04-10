@@ -48,6 +48,8 @@ training:
   lr_scheduler: cosine
   warmup_steps: 1000
   total_steps: 100000
+  min_lr_ratio: 0.1  # LR decays to learning_rate * min_lr_ratio at end of training
+  warmup_start_factor: 0.1  # LR starts at learning_rate * warmup_start_factor
   n_self_play_games: 100
   replay_buffer_size: 500000
   policy_loss_weight: 1.0

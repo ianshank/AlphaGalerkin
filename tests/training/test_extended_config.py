@@ -179,6 +179,24 @@ class TestWarmupPlateauInteraction:
         assert config.learning_rate == 1e-3
         assert config.warmup_steps == 500
 
+    def test_scheduler_ratio_defaults(self) -> None:
+        """Verify scheduler ratio fields have valid defaults and accept overrides."""
+        default_cfg = TrainingConfig()
+        assert 0.0 < default_cfg.min_lr_ratio < 1.0
+        assert 0.0 < default_cfg.warmup_start_factor < 1.0
+
+        custom_cfg = TrainingConfig(min_lr_ratio=0.05, warmup_start_factor=0.01)
+        assert custom_cfg.min_lr_ratio == pytest.approx(0.05)
+        assert custom_cfg.warmup_start_factor == pytest.approx(0.01)
+
+    def test_scheduler_ratio_bounds(self) -> None:
+        """Verify Pydantic rejects out-of-range scheduler ratios."""
+        with pytest.raises(Exception):  # pydantic ValidationError
+            TrainingConfig(min_lr_ratio=0.0)  # must be > 0
+
+        with pytest.raises(Exception):
+            TrainingConfig(warmup_start_factor=1.0)  # must be < 1
+
 
 class TestBufferCapacity:
     """Verify buffer sizing for extended config."""

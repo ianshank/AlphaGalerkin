@@ -244,6 +244,52 @@ class TestOperatorTrainer:
         assert len(history["train_loss"]) == 2
         assert len(history["val_loss"]) == 2
 
+    def test_save_and_load_checkpoint(
+        self,
+        small_model: NeuralOperator,
+        tmp_path,
+    ) -> None:
+        """Test checkpoint round-trip: save then load restores state."""
+        config = TrainingConfig(device="cpu", checkpoint_dir=tmp_path)
+        trainer = OperatorTrainer(small_model, config)
+        trainer.current_epoch = 3
+        trainer.best_val_loss = 0.42
+
+        path = trainer.save_checkpoint("test_ckpt.pt")
+        assert path.exists()
+
+        # Load into a fresh trainer with a fresh model instance
+        model2 = NeuralOperator(in_channels=1, out_channels=1, width=16, n_layers=1, modes=4)
+        trainer2 = OperatorTrainer(model2, config)
+        trainer2.load_checkpoint(path)
+
+        assert trainer2.current_epoch == 3
+        assert trainer2.best_val_loss == pytest.approx(0.42)
+
+    def test_early_stopping_triggers(
+        self,
+        small_model: NeuralOperator,
+        small_dataset: PhysicsDataset,
+        tmp_path,
+    ) -> None:
+        """Early stopping halts training before max epochs when val loss stagnates."""
+        from torch.utils.data import DataLoader
+
+        config = TrainingConfig(
+            epochs=20,
+            batch_size=8,
+            device="cpu",
+            patience=1,  # Stop after 1 epoch without improvement
+            min_delta=1e10,  # Unreachably large delta → always triggers
+            checkpoint_dir=tmp_path,
+        )
+        trainer = OperatorTrainer(small_model, config)
+        loader = DataLoader(small_dataset, batch_size=8)
+        history = trainer.fit(loader, loader)
+
+        # Should stop well before 20 epochs
+        assert len(history["train_loss"]) < 20
+
 
 class TestResolutionTransfer:
     """Test resolution transfer capability."""

@@ -143,6 +143,26 @@ class TrainingConfig(BaseModel):
     )
     warmup_steps: int = Field(default=1000, description="Number of warmup steps")
     total_steps: int = Field(default=100000, description="Total training steps")
+    min_lr_ratio: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Minimum LR as a fraction of peak LR for cosine/linear schedulers. "
+            "LR = learning_rate * min_lr_ratio at end of training. "
+            "Default 0.1 follows standard AlphaZero scheduling practice."
+        ),
+    )
+    warmup_start_factor: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Starting LR multiplier at warmup step 0. "
+            "LR ramps from learning_rate * warmup_start_factor to peak LR "
+            "over warmup_steps. Default 0.1 avoids large initial gradient updates."
+        ),
+    )
 
     # Self-play
     n_self_play_games: int = Field(default=100, description="Self-play games per iteration")

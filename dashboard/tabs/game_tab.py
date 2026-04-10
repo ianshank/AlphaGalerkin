@@ -241,8 +241,6 @@ def human_move(
     if _game_manager is None:
         return history, _init_error or "Model not loaded.", _fallback_board(board_size, cfg), ""
 
-    from src.mcts.search import MCTS  # type: ignore[import]
-
     game = _game_manager.replay_history(history, board_size)  # type: ignore[union-attr]
 
     try:
@@ -285,6 +283,8 @@ def human_move(
         board_img = _renderer.render(game)  # type: ignore[union-attr]
         score = _game_manager.get_score_display(session)  # type: ignore[union-attr]
         return history, "Move applied. No AI (model not loaded).", board_img, score
+
+    from src.mcts.search import MCTS  # type: ignore[import]
 
     mcts = MCTS(evaluator=_evaluator, **_game_manager.mcts_kwargs)  # type: ignore[union-attr]
     action = mcts.get_action(game, temperature=cfg.ai_temperature_vs_human, add_noise=False)
@@ -376,9 +376,6 @@ def ai_step(
     if _game_manager is None:
         return history, _init_error or "Model not loaded.", _fallback_board(board_size, cfg), ""
 
-    from src.mcts.search import MCTS  # type: ignore[import]
-    from src.tools.gtp import SimpleGoGame  # type: ignore[import]
-
     game = _game_manager.replay_history(history, board_size)  # type: ignore[union-attr]
     session = _build_session(game, board_size, history)
 
@@ -390,6 +387,9 @@ def ai_step(
     if _evaluator is None:
         board_img = _renderer.render(game)  # type: ignore[union-attr]
         return history, "AI model not loaded.", board_img, _game_manager.get_score_display(session)  # type: ignore[union-attr]
+
+    from src.mcts.search import MCTS  # type: ignore[import]
+    from src.tools.gtp import SimpleGoGame  # type: ignore[import]
 
     mcts = MCTS(evaluator=_evaluator, **_game_manager.mcts_kwargs)  # type: ignore[union-attr]
     action = mcts.get_action(game, temperature=cfg.ai_temperature_self_play, add_noise=False)

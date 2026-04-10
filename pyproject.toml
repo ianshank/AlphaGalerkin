@@ -42,6 +42,10 @@ dev = [
     "hypothesis>=6.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
+    # Dashboard test dependencies
+    "gradio>=4.0.0",
+    "matplotlib>=3.7.0",
+    "Pillow>=10.0.0",
 ]
 jax = [
     "jax[cpu]>=0.4.20",
@@ -67,7 +71,7 @@ alphagalerkin = "src.tools.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["src*", "config*"]
+include = ["src*", "config*", "dashboard*"]
 
 [tool.ruff]
 line-length = 100

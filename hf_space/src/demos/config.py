@@ -425,7 +425,11 @@ class DemoConfig(BaseModel):
     This is the single source of truth for all demo settings.
     """
 
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        validate_assignment=True,
+        protected_namespaces=(),  # allow model_checkpoint_path field
+    )
 
     # Sub-configurations
     game: GameDemoConfig = Field(

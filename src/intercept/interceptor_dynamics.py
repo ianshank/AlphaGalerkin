@@ -17,6 +17,7 @@ from torch import Tensor
 
 from src.intercept.aero import AeroModel, SimpleAeroModel
 from src.intercept.atmosphere import ISAAtmosphere
+from src.intercept.config import STANDARD_GRAVITY_MS2 as G0
 from src.intercept.config import InterceptorConfig
 from src.intercept.dynamics import RigidBody6DOF, RigidBodyState
 from src.intercept.frames import FrameTransform
@@ -92,7 +93,7 @@ class MissileDynamics:
 
         # Update motor state
         self.motor.burn_time_remaining -= dt
-        fuel_rate = self.motor.thrust_n / (250.0 * 9.80665)  # Isp=250s
+        fuel_rate = self.motor.thrust_n / (self.config.specific_impulse_s * G0)
         self.motor.fuel_mass_kg = max(0.0, self.motor.fuel_mass_kg - fuel_rate * dt)
 
         return thrust_body
@@ -129,7 +130,7 @@ class MissileDynamics:
         guidance_force = accel_cmd_ned * current_mass
 
         # Clamp guidance force by max-g
-        max_force = self.config.max_g * 9.80665 * current_mass
+        max_force = self.config.max_g * G0 * current_mass
         force_mag = torch.norm(guidance_force)
         if force_mag.item() > max_force:
             guidance_force = guidance_force * (max_force / force_mag)
@@ -206,7 +207,7 @@ class RotorDroneDynamics:
         dt = dt or self.dynamics.config.dt
 
         # Clamp by max-g
-        max_accel = self.config.max_g * 9.80665
+        max_accel = self.config.max_g * G0
         accel_mag = torch.norm(accel_cmd_ned)
         if accel_mag.item() > max_accel:
             accel_cmd_ned = accel_cmd_ned * (max_accel / accel_mag)

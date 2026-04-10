@@ -15,7 +15,7 @@ import structlog
 import torch
 from torch import Tensor
 
-from src.intercept.config import AtmosphereConfig, WindProfileType
+from src.intercept.config import STANDARD_GRAVITY_MS2, AtmosphereConfig, WindProfileType
 
 logger = structlog.get_logger(__name__)
 
@@ -28,7 +28,7 @@ ISA_TROPOPAUSE_ALT = 11000.0  # Tropopause altitude (m)
 ISA_TROPOPAUSE_T = 216.65  # Tropopause temperature (K)
 ISA_R = 287.05287  # Specific gas constant for dry air (J/(kg·K))
 ISA_GAMMA = 1.4  # Ratio of specific heats for air
-ISA_G0 = 9.80665  # Standard gravity (m/s^2)
+ISA_G0 = STANDARD_GRAVITY_MS2  # Standard gravity (m/s^2)
 
 
 class ISAAtmosphere:

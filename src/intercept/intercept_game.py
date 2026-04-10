@@ -309,6 +309,7 @@ def run_engagement(
     atmosphere: ISAAtmosphere | None = None,
     max_time: float = 60.0,
     dt: float = 0.02,
+    divergence_velocity_ms: float = -100.0,
 ) -> list[InterceptState]:
     """Run a closed-loop engagement simulation.
 
@@ -325,6 +326,7 @@ def run_engagement(
         atmosphere: Atmosphere model.
         max_time: Maximum engagement duration (s).
         dt: Simulation time step (s).
+        divergence_velocity_ms: Closing velocity threshold for divergence (m/s).
 
     Returns:
         List of InterceptState snapshots.
@@ -371,7 +373,7 @@ def run_engagement(
             break
         if int_state.altitude.item() < 0 or thr_state.altitude.item() < 0:
             break
-        if closing < -100.0 and step > 10:
+        if closing < divergence_velocity_ms and step > 10:
             break
 
         # Compute guidance command

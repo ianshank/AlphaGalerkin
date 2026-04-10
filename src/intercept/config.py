@@ -233,6 +233,11 @@ class InterceptorConfig(BaseModuleConfig):
         gt=0.0,
         description="Kill radius in meters.",
     )
+    specific_impulse_s: float = Field(
+        default=250.0,
+        gt=0.0,
+        description="Motor specific impulse in seconds.",
+    )
     fin_rate_limit_rads: float = Field(
         default=10.0,
         gt=0.0,

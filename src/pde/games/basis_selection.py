@@ -388,8 +388,10 @@ class BasisSelectionGame(PDEGame):
             coeffs = np.linalg.pinv(Phi) @ target
             new_state.basis_coefficients = coeffs.astype(np.float32)
 
-        # Compute new solution
-        new_state.solution = (Phi @ new_state.basis_coefficients).astype(np.float32)
+        # Compute new solution (basis_coefficients is always set above)
+        basis_coeffs = new_state.basis_coefficients
+        assert basis_coeffs is not None, "basis_coefficients must be set before computing solution"
+        new_state.solution = (Phi @ basis_coeffs).astype(np.float32)
 
         # Compute residual and error
         residual_result = self.pde_operator.residual(

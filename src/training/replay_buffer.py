@@ -228,12 +228,10 @@ class PrioritizedReplayBuffer:
 
         """
         with self._lock:
-            if priority is None:
-                priority = self.max_priority
-
+            p: float = self.max_priority if priority is None else priority
             # Apply alpha exponent
-            priority = (priority + self.epsilon) ** self.alpha
-            self.tree.add(priority, experience)
+            scaled_priority = (p + self.epsilon) ** self.alpha
+            self.tree.add(scaled_priority, experience)
 
     def add_batch(
         self,

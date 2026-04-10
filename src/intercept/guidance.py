@@ -72,7 +72,7 @@ class GuidanceLaw(ABC):
         ...
 
 
-GuidanceLawRegistry, register_guidance_law = create_registry("GuidanceLaw", GuidanceLaw)
+GuidanceLawRegistry, register_guidance_law = create_registry("GuidanceLaw", GuidanceLaw)  # type: ignore[type-abstract]
 
 
 def _compute_los_geometry(

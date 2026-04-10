@@ -695,7 +695,8 @@ class Trainer(BaseTrainer):
             try:
                 # Use the raw model for physics loss (not DDP wrapped)
                 physics_output = self.physics_loss_fn(self._raw_model)
-                losses["physics"] = physics_output.total * self.physics_loss_weight
+                if physics_output is not None:
+                    losses["physics"] = physics_output.total * self.physics_loss_weight
             except Exception as e:
                 logger.warning(
                     "physics_loss_computation_failed",

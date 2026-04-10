@@ -180,7 +180,7 @@ class ConvergenceRatesPlot(BasePlot):
     def create(self, data: dict[str, Any], config: VisualizationConfig) -> Figure:
         """Create convergence rate figure."""
         methods: dict[str, dict[str, Any]] = data["methods"]
-        colors = plt.cm.tab10(np.linspace(0, 1, max(len(methods), 1)))
+        colors = plt.colormaps["tab10"](np.linspace(0, 1, max(len(methods), 1)))
 
         fig, ax = _new_figure(config)
 
@@ -259,7 +259,7 @@ class ComparisonBoxPlot(BasePlot):
         fig, ax = _new_figure(config)
         bp = ax.boxplot(values, labels=labels, patch_artist=True)
 
-        colors = plt.cm.Set2(np.linspace(0, 1, max(len(labels), 1)))
+        colors = plt.colormaps["Set2"](np.linspace(0, 1, max(len(labels), 1)))
         for patch, color in zip(bp["boxes"], colors, strict=False):
             patch.set_facecolor(color)
 

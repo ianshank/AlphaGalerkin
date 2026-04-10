@@ -150,7 +150,7 @@ def build_app(cfg: DashboardConfig | None = None) -> gr.Blocks:
 
     logger.info("dashboard_building")
 
-    with gr.Blocks(title="AlphaGalerkin Dashboard", css=_build_css(cfg.app)) as demo:
+    with gr.Blocks(title="AlphaGalerkin Dashboard") as demo:
         gr.Markdown(
             "# AlphaGalerkin E2E Dashboard\n"
             "Resolution-independent Go AI · Galerkin Transformers · FNet · Physics PoC"
@@ -246,6 +246,7 @@ def main(argv: list[str] | None = None) -> None:
         server_port=args.port,
         share=args.share,
         debug=args.debug,
+        css=_build_css(cfg.app),
     )
 
 

@@ -137,6 +137,15 @@ class TestBuildApp:
         app = build_app()
         assert app.title == "AlphaGalerkin Dashboard"
 
+    def test_no_css_deprecation_warning(self):
+        """build_app() must not trigger the Gradio 6 'css moved to launch()' warning."""
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            # Should not raise — css is no longer passed to gr.Blocks()
+            build_app()
+
 
 # ---------------------------------------------------------------------------
 # main
@@ -159,6 +168,8 @@ class TestMain:
         assert kwargs["server_port"] == 7861
         assert kwargs["share"] is False
         assert kwargs["debug"] is False
+        # Gradio 6: css is passed to launch(), not gr.Blocks()
+        assert isinstance(kwargs.get("css"), str)
 
     def test_main_share_flag(self):
         from dashboard.app import main

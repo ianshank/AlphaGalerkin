@@ -100,13 +100,26 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]" || pip install -e ".[dev]"
-          pip install matplotlib
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+          # Safety-net: ensure core scientific/ML deps are present even if
+          # the editable install partially failed (can happen with complex
+          # dependency graphs on older pip resolvers).
+          python -c "import einops, jaxtyping, gradio" 2>/dev/null || \
+            pip install --no-cache-dir "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
 
       - name: Show installed package versions
         run: |
           python -c "import sys; print('Python', sys.version)"
-          pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow"
+          pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
+
+      - name: Verify critical imports
+        run: |
+          python -c "
+          import einops, jaxtyping, gradio, matplotlib, numpy, scipy, torch
+          import src.math_kernel.basis
+          import src.modeling.attention
+          print('All critical imports OK')
+          "
 
       - name: Run fast unit tests
         run: |

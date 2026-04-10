@@ -116,13 +116,17 @@ class TestBuildApp:
         assert isinstance(app, gr.Blocks)
 
     def test_hf_demos_available_path(self):
-        """Ensure the HF demo branch runs when mocked demos are available."""
+        """Ensure the HF demo branch runs when mocked demos are available.
+
+        Uses create=True on each patch so the test works regardless of whether
+        the optional hf_space demo modules are importable in the test environment.
+        """
         mock_tab_fn = MagicMock()
         with (
             patch("dashboard.app._HF_DEMOS_AVAILABLE", True),
-            patch("dashboard.app.create_physics_demo_tab", mock_tab_fn),
-            patch("dashboard.app.create_benchmark_demo_tab", mock_tab_fn),
-            patch("dashboard.app.create_architecture_demo_tab", mock_tab_fn),
+            patch("dashboard.app.create_physics_demo_tab", mock_tab_fn, create=True),
+            patch("dashboard.app.create_benchmark_demo_tab", mock_tab_fn, create=True),
+            patch("dashboard.app.create_architecture_demo_tab", mock_tab_fn, create=True),
         ):
             app = build_app()
         assert isinstance(app, gr.Blocks)

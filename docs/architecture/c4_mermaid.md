@@ -63,6 +63,7 @@ C4Container
     Person(user, "User", "Researcher, Developer, Go Player, or Computational Scientist")
 
     Container_Boundary(alphagalerkin, "AlphaGalerkin System") {
+        Container(dashboard, "E2E Dashboard", "Gradio / Python", "Interactive tabbed web UI exposing all AlphaGalerkin capabilities: Go AI, PDE Solver, PoC Scenarios, Training visualiser, About. Launches at http://localhost:7860. Config-driven via Pydantic DashboardConfig.")
         Container(cli, "CLI Entrypoints", "Python Scripts", "Command-line interface for training, benchmarking, PDE solving, and experiments")
         Container(gtp_server, "GTP Server", "Python", "Go Text Protocol server for game playing and analysis")
 
@@ -98,8 +99,14 @@ C4Container
     System_Ext(go_gui, "Go GUI", "GTP Client")
     System_Ext(compute, "GPU Cluster", "CUDA Infrastructure")
 
+    Rel(user, dashboard, "Explores capabilities via browser", "HTTP / Gradio")
     Rel(user, cli, "Runs commands", "CLI")
     Rel(go_gui, gtp_server, "Sends GTP commands", "GTP/TCP")
+
+    Rel(dashboard, mcts_engine, "Drives Go AI game moves")
+    Rel(dashboard, pde_framework, "Triggers Poisson solve / comparison")
+    Rel(dashboard, poc_framework, "Runs complexity & stability scenarios")
+    Rel(dashboard, neural_operator, "Queries model for game tab")
 
     Rel(cli, training_pipeline, "Initiates training")
     Rel(cli, poc_framework, "Runs experiments")

@@ -7,7 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Added — E2E Dashboard (`dashboard/`)
+
+- **`dashboard/app.py`** — Gradio Blocks application factory (`build_app()`) and CLI entry point (`main()`). Launches a tabbed UI exposing all AlphaGalerkin capabilities at `http://localhost:7860`. Accepts `--host`, `--port`, `--share`, `--debug` flags.
+
+- **`dashboard/config.py`** — Full Pydantic v2 config hierarchy eliminating every hardcoded value:
+  `AppConfig`, `GameConfig`, `PDEConfig`, `ComplexityRunConfig`, `StabilityRunConfig`,
+  `TransferMilestone`, `PoCConfig`, `TrainingConfig`, `DashboardConfig`.
+  `DEFAULT_CONFIG` singleton for zero-configuration startup.
+
+- **`dashboard/utils.py`** — Shared utility module:
+  - `fig_to_pil()` — always closes matplotlib figure (even on exception); `.copy()` detaches from buffer
+  - `device_str()` — CUDA/CPU detection with graceful fallback
+  - `format_exc()` — consistent exception formatting
+  - `configure_structlog()` — idempotent structured logging setup
+
+- **`dashboard/tabs/game_tab.py`** — Go AI tab. Thread-safe lazy model loading via `threading.Lock` (double-checked locking). Human vs AI and AI vs AI modes with 9×9/13×13/19×19 board support (zero-shot transfer). Config-injected via `GameConfig`.
+
+- **`dashboard/tabs/pde_tab.py`** — Interactive Poisson equation solver. Five charge patterns (Point Charge, Dipole, Quadrupole, Ring, Random), multi-resolution comparison with zoom-upsampling MSE. Config-injected via `PDEConfig`.
+
+- **`dashboard/tabs/poc_tab.py`** — PoC scenario runner. O(N) complexity benchmark, LBB stability monitoring, zero-shot transfer milestone display. Module-level optional imports for test patchability. Config-injected via `PoCConfig`.
+
+- **`dashboard/tabs/training_tab.py`** — Architecture summary, simulated training curves (policy/value/LBB losses), and loss breakdown diagram. Config-injected via `TrainingConfig`.
+
+### Added — Dashboard Test Suite (`tests/dashboard/`)
+
+- **203 tests**, **89% line coverage** (gate: 85%), all passing with zero ruff violations.
+- `conftest.py` — shared fixtures, `matplotlib.use("Agg")`, config fixture hierarchy, mock scenario results, charge-grid fixtures.
+- `test_app.py` (24 tests) — CSS builder, arg parser, `build_app()`, `main()`.
+- `test_config.py` (31 tests) — all Pydantic models, validation errors, JSON round-trip.
+- `test_utils.py` (24 tests) — `fig_to_pil` (close on error, detached buffer), `device_str`, `format_exc`, `configure_structlog`.
+- `test_pde_tab.py` (37 tests) — all charge patterns, Poisson solve integration, `solve_and_visualize`, `compare_resolutions` with shape-matching mock.
+- `test_poc_tab.py` (32 tests) — `_parse_int_list`, `run_complexity`, `run_stability` (mocked), `show_transfer_milestone` (live).
+- `test_training_tab.py` (28 tests) — model summary (fallback on import error), training curves, loss breakdown.
+- `test_game_tab.py` (27 tests) — `autouse` fixture resetting module globals, fallback board, `_ensure_loaded` idempotency, human/AI move handlers.
+
+### Changed
+
+- **`pyproject.toml`** — Added `[[tool.mypy.overrides]]` for `dashboard.*` modules (relaxed strict checks for Gradio code). Added `[tool.coverage.report]` with `fail_under = 85` and `show_missing = true`. Added `dashboard` pytest marker.
+- **Gradio 6 compatibility** — CSS argument moved from `Blocks()` constructor to `launch()`.
 
 > **Branch and PR cleanup** — removed 28 stale remote branches and 6 open stale PRs.
 

@@ -98,6 +98,12 @@ multirun/
 # Claude Code
 .claude/
 
+# Gradio dashboard cache and temporary files
+gradio_cached_examples/
+.gradio/
+dashboard/__pycache__/
+dashboard/tabs/__pycache__/
+
 # Video compression testing
 Test_Video_Materals/
 validation_outputs/

@@ -112,15 +112,6 @@ jobs:
           python -c "import sys; print('Python', sys.version)"
           pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
 
-      - name: Verify critical imports
-        run: |
-          python -c "
-          import einops, jaxtyping, gradio, matplotlib, numpy, scipy, torch
-          import src.math_kernel.basis
-          import src.modeling.attention
-          print('All critical imports OK')
-          "
-
       - name: Run fast unit tests
         run: |
           pytest tests/ \

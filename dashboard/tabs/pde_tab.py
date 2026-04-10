@@ -264,17 +264,27 @@ def compare_resolutions(
         plt.tight_layout()
         img = fig_to_pil(fig, dpi=plot_dpi)
 
-        # Cross-resolution MSE: upsample each to the largest for comparison
-        ref_n = sizes[-1]
-        ref_pot = potentials[-1].flatten()
+        # Cross-resolution MSE: upsample each to the largest for comparison.
+        # Use explicit per-axis scale factors so scipy.ndimage.zoom always
+        # produces exactly ref_shape, then validate before computing MSE.
+        ref_pot_2d = potentials[-1]
+        ref_shape = ref_pot_2d.shape
+        ref_pot = ref_pot_2d.flatten()
         ref_norm = float(np.linalg.norm(ref_pot)) + cfg.epsilon
         mse_parts: list[str] = []
         for i, n in enumerate(sizes[:-1]):
-            scale = ref_n / n
-            up = zoom(potentials[i], scale).flatten()[: ref_n * ref_n]
+            src_shape = potentials[i].shape
+            scale = (ref_shape[0] / src_shape[0], ref_shape[1] / src_shape[1])
+            up_2d = zoom(potentials[i], scale)
+            if up_2d.shape != ref_shape:
+                raise ValueError(
+                    f"Upsampled potential shape mismatch for {n}×{n}: "
+                    f"expected {ref_shape}, got {up_2d.shape}"
+                )
+            up = up_2d.flatten()
             up_norm = float(np.linalg.norm(up)) + cfg.epsilon
             mse = float(np.mean(((up / up_norm) - (ref_pot / ref_norm)) ** 2))
-            mse_parts.append(f"{n}×{n}→{ref_n}×{ref_n} MSE≈{mse:.4f}")
+            mse_parts.append(f"{n}×{n}→{ref_shape[0]}×{ref_shape[1]} MSE≈{mse:.4f}")
 
         msg = "Comparison complete.  " + "  |  ".join(mse_parts) if mse_parts else "Complete."
         logger.info("resolution_compare_complete", mse_parts=mse_parts)

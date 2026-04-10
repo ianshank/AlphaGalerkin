@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Bytes per parameter for 32-bit floating-point (fp32) VRAM estimation.
+_BYTES_PER_FLOAT32: int = 4
+
 
 # ---------------------------------------------------------------------------
 # Architecture summary
@@ -91,7 +94,7 @@ def get_model_summary(
             "─" * 44,
             f"Total parameters:     {total:>12,}",
             f"Trainable parameters: {trainable:>12,}",
-            f"Approx. VRAM (fp32):  {total * 4 / 1e6:>10.1f} MB",
+            f"Approx. VRAM (fp32):  {total * _BYTES_PER_FLOAT32 / 1e6:>10.1f} MB",
         ]
         logger.info("model_summary_complete", total_params=total)
         return "\n".join(lines)

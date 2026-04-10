@@ -117,21 +117,25 @@ class TestBoardSizeChoices:
 
 class TestEnsureLoaded:
     def test_returns_bool(self):
+        """_ensure_loaded() always returns a bool and never raises.
+
+        The function wraps all loading logic in try/except so it must return
+        a bool regardless of missing imports or absent checkpoint files.
+        Resetting _loaded and _model forces the full loading path to run;
+        the result is False because either imports are unavailable or there is
+        no checkpoint.pt in the test environment.
+        """
         import dashboard.tabs.game_tab as game_tab
 
         game_tab._loaded = False
-        with (
-            patch("dashboard.tabs.game_tab.device_str", return_value="cpu"),
-            patch("dashboard.tabs.game_tab.Path") as mock_path,
-        ):
-            # Simulate missing checkpoint
-            mock_path.return_value.__truediv__.return_value.exists.return_value = False
-            # The import path patching is complex; just verify it runs without crash
-            try:
-                result = _ensure_loaded()
-                assert isinstance(result, bool)
-            except Exception:
-                pass  # Acceptable if model files are missing in test env
+        game_tab._model = None
+
+        # _ensure_loaded() catches all exceptions internally and returns bool.
+        result = _ensure_loaded()
+
+        assert isinstance(result, bool)
+        # In the test env there is no checkpoint → _model stays None → False.
+        assert result is False
 
     def test_idempotent_after_first_call(self):
         import dashboard.tabs.game_tab as game_tab

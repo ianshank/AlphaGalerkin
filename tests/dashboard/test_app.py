@@ -138,13 +138,29 @@ class TestBuildApp:
         assert app.title == "AlphaGalerkin Dashboard"
 
     def test_no_css_deprecation_warning(self):
-        """build_app() must not trigger the Gradio 6 'css moved to launch()' warning."""
+        """build_app() must not trigger the Gradio 6 'css moved to launch()' warning.
+
+        Records all warnings and checks that none of them are the specific
+        Gradio 6 CSS-location warning.  Other Gradio UserWarnings are ignored
+        so the test remains forward-compatible across Gradio patch releases.
+        """
         import warnings
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", UserWarning)
-            # Should not raise — css is no longer passed to gr.Blocks()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
             build_app()
+
+        # The Gradio 6 CSS deprecation warning contains both "css" and "launch"
+        css_warnings = [
+            w for w in caught
+            if issubclass(w.category, UserWarning)
+            and "css" in str(w.message).lower()
+            and "launch" in str(w.message).lower()
+        ]
+        assert not css_warnings, (
+            "build_app() must not emit the Gradio 6 CSS-moved-to-launch warning; "
+            f"got: {[str(w.message) for w in css_warnings]}"
+        )
 
 
 # ---------------------------------------------------------------------------

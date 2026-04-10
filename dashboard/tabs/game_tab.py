@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Minimum file size (bytes) for a checkpoint to be considered non-empty.
+_MIN_CHECKPOINT_BYTES: int = 1_000
+
 # ---------------------------------------------------------------------------
 # Lazy-initialised module-level singletons
 # ---------------------------------------------------------------------------
@@ -79,20 +82,33 @@ def _ensure_loaded() -> bool:
             hf_space = Path(__file__).parent.parent.parent / "hf_space"
             ckpt_path = hf_space / "checkpoint.pt"
 
-            if ckpt_path.exists() and ckpt_path.stat().st_size > 1000:
+            if ckpt_path.exists() and ckpt_path.stat().st_size > _MIN_CHECKPOINT_BYTES:
                 from config.schemas import AlphaGalerkinConfig  # type: ignore[import]
                 from src.modeling.model import AlphaGalerkinModel  # type: ignore[import]
 
-                ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-                raw_cfg = ckpt.get("config", {})
+                # weights_only=True avoids arbitrary code execution when loading.
+                ckpt = torch.load(ckpt_path, map_location=device, weights_only=True)
+                raw_cfg = ckpt.get("config", {}) if isinstance(ckpt, dict) else {}
                 if isinstance(raw_cfg, dict):
                     config = AlphaGalerkinConfig(**raw_cfg)
                     _model = AlphaGalerkinModel(config.operator)
-                    key = "model_state_dict" if "model_state_dict" in ckpt else None
-                    _model.load_state_dict(ckpt[key] if key else ckpt)
-                    _model.to(device).eval()
-                    _evaluator = FNetEvaluator(_model, device=device, use_fast_path=True)
-                    logger.info("game_model_loaded", device=device, ckpt=str(ckpt_path))
+                    # Robustly extract state dict regardless of key name.
+                    state_dict = None
+                    if isinstance(ckpt, dict):
+                        if isinstance(ckpt.get("model_state_dict"), dict):
+                            state_dict = ckpt["model_state_dict"]
+                        elif isinstance(ckpt.get("state_dict"), dict):
+                            state_dict = ckpt["state_dict"]
+                        elif "config" not in ckpt:
+                            state_dict = ckpt
+                    if state_dict is not None:
+                        _model.load_state_dict(state_dict)
+                        _model.to(device).eval()
+                        _evaluator = FNetEvaluator(_model, device=device, use_fast_path=True)
+                        logger.info("game_model_loaded", device=device, ckpt=str(ckpt_path))
+                    else:
+                        logger.warning("checkpoint_state_dict_not_found", ckpt=str(ckpt_path))
+                        _model = None
                 else:
                     logger.warning("checkpoint_config_not_dict", ckpt=str(ckpt_path))
             else:
@@ -143,7 +159,11 @@ def _board_size_choices(cfg: GameConfig | None = None) -> list[tuple[str, int]]:
         List of ``(label, value)`` tuples compatible with ``gr.Dropdown``.
 
     """
-    _ensure_loaded()
+    # Do NOT call _ensure_loaded() here: _board_size_choices() is called during
+    # UI construction (create_game_tab), so eager loading would import torch and
+    # attempt checkpoint IO at startup.  If the game manager is already live
+    # (e.g., after a first event-handler call), use its choices; otherwise fall
+    # back to the config defaults so the dropdown is always populated.
     if _game_manager is not None:
         return _game_manager.get_board_size_choices()  # type: ignore[union-attr]
 
@@ -206,6 +226,8 @@ def human_reset(
     session = _game_manager.create_game(board_size)  # type: ignore[union-attr]
     zs_label = "Zero-shot transfer" if session.is_zero_shot else "Training size"
     status = f"New game. You are Black. Komi {session.komi} ({zs_label})."
+    if _evaluator is None:
+        status = f"{status} AI unavailable; no AI response will be generated."
     return (
         [],
         status,

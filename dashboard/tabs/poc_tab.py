@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Minimum number of benchmark iterations to avoid degenerate timing results.
+_MIN_ITERATIONS: int = 10
+
 # ── Optional PoC scenario imports (may be absent outside hf_space) ────────────
 try:
     from src.poc.config import (  # type: ignore[import]
@@ -124,7 +127,7 @@ def run_complexity(
             grid_sizes=sizes,
             d_model=int(d_model),
             n_warmup=cfg.n_warmup,
-            n_iterations=max(10, int(n_iterations)),
+            n_iterations=max(_MIN_ITERATIONS, int(n_iterations)),
             requires_gpu=False,
         )
         result = ComplexityScenario(scenario_cfg).run()
@@ -363,6 +366,7 @@ def show_transfer_milestone(
     axes[0].legend(fontsize=9)
     axes[0].grid(True, alpha=0.3, axis="y")
     for i, (_, mse) in enumerate(zip(resolutions, mse_values, strict=True)):
+        mse = max(mse, 1e-12)  # guard against zero/negative MSE
         ratio = threshold / mse
         axes[0].text(i, mse * 1.4, f"{ratio:.0f}×\nbetter", ha="center", va="bottom", fontsize=8)
 

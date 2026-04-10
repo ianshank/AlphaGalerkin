@@ -40,8 +40,10 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "hypothesis>=6.0.0",
-    "mypy>=1.0.0",
+    "mypy>=1.10,<1.12",
     "ruff>=0.1.0",
+    # Pin pydantic to align with lint step and avoid 2.10+ behavioural changes
+    "pydantic>=2.7,<2.10",
     # Dashboard test dependencies
     "gradio>=4.0.0",
     "matplotlib>=3.7.0",

@@ -257,7 +257,7 @@ class ComparisonBoxPlot(BasePlot):
         values = list(methods.values())
 
         fig, ax = _new_figure(config)
-        bp = ax.boxplot(values, labels=labels, patch_artist=True)
+        bp = ax.boxplot(values, tick_labels=labels, patch_artist=True)
 
         colors = plt.colormaps["Set2"](np.linspace(0, 1, max(len(labels), 1)))
         for patch, color in zip(bp["boxes"], colors, strict=False):

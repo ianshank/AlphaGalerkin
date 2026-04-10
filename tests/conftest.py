@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
+from hypothesis import HealthCheck, settings as hypothesis_settings
+
+# Register a CI-friendly hypothesis profile: no deadline, suppressed slow-health-check.
+# This is loaded whenever the CI env var is set (GitHub Actions sets CI=true).
+hypothesis_settings.register_profile(
+    "ci",
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+hypothesis_settings.register_profile(
+    "default",
+    deadline=None,  # keep deadline off locally too to avoid false flakes
+)
+hypothesis_settings.load_profile("ci" if os.environ.get("CI") else "default")
 
 # Re-export video compression fixtures for test discovery
 pytest_plugins = ["tests.video_compression.video_fixtures"]

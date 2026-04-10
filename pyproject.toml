@@ -331,6 +331,7 @@ markers = [
 # video_compression tests are ignored via --ignore=tests/video_compression/
 # backend tests cause JAX crashes on Windows CI and are skipped
 # demos tests are ignored via --ignore=tests/demos/
+branch = true
 omit = [
     "src/video_compression/*",
     "src/backend/*",
@@ -338,6 +339,6 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Enforce minimum coverage thresholds
+# Enforce minimum coverage thresholds (applies to combined line+branch coverage)
 fail_under = 85
 show_missing = true

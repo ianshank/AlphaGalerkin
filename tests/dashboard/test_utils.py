@@ -115,13 +115,11 @@ class TestDeviceStr:
         assert result == "cpu"
 
     def test_import_error_returns_cpu(self):
-        with patch("dashboard.utils.device_str", wraps=device_str):
-            with patch("builtins.__import__", side_effect=ImportError("no torch")):
-                # The real function handles ImportError internally
-                pass
-        # At least the function doesn't crash
-        result = device_str()
-        assert result in ("cpu", "cuda")
+        # Setting sys.modules["torch"] = None makes `import torch` raise ImportError,
+        # exercising the except ImportError branch in device_str().
+        with patch.dict("sys.modules", {"torch": None}):
+            result = device_str()
+        assert result == "cpu"
 
 
 # ---------------------------------------------------------------------------

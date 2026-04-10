@@ -257,7 +257,11 @@ class ComparisonBoxPlot(BasePlot):
         values = list(methods.values())
 
         fig, ax = _new_figure(config)
-        bp = ax.boxplot(values, tick_labels=labels, patch_artist=True)
+        try:
+            bp = ax.boxplot(values, tick_labels=labels, patch_artist=True)
+        except TypeError:
+            # tick_labels= was added in matplotlib 3.9; fall back for older versions
+            bp = ax.boxplot(values, labels=labels, patch_artist=True)
 
         colors = plt.colormaps["Set2"](np.linspace(0, 1, max(len(labels), 1)))
         for patch, color in zip(bp["boxes"], colors, strict=False):

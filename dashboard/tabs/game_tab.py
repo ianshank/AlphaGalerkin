@@ -99,10 +99,11 @@ def _ensure_loaded() -> bool:
                 logger.warning("checkpoint_not_found_or_empty", ckpt=str(ckpt_path))
 
             _game_manager = GameManager(config=_space_config, evaluator=_evaluator)
-            # Only mark as loaded after a successful initialisation so that
-            # transient failures (import errors, IO) allow a future retry.
+            # Mark initialized; _model is not None only when checkpoint loaded.
+            # Return _model is not None so that the first call is consistent
+            # with the short-circuit path: `if _loaded: return _model is not None`.
             _loaded = True
-            return True
+            return _model is not None
 
         except Exception as exc:
             _init_error = format_exc(exc, prefix="Game init failed")
@@ -470,12 +471,16 @@ def create_game_tab(cfg: GameConfig | None = None) -> None:
                 with gr.Row():
                     with gr.Column(scale=2):
                         hva_size = gr.Dropdown(
-                            choices=choices, value=default_size,
+                            choices=choices,
+                            value=default_size,
                             label="Board Size",
                             info=f"{cfg.board_sizes[0]}×{cfg.board_sizes[0]}: training"
-                                 + (f" | {cfg.board_sizes[1]}×{cfg.board_sizes[1]}+"
-                                    if len(cfg.board_sizes) > 1 else "")
-                                 + ": zero-shot",
+                            + (
+                                f" | {cfg.board_sizes[1]}×{cfg.board_sizes[1]}+"
+                                if len(cfg.board_sizes) > 1
+                                else ""
+                            )
+                            + ": zero-shot",
                         )
                         hva_board = gr.Image(
                             label="Board",
@@ -500,7 +505,7 @@ def create_game_tab(cfg: GameConfig | None = None) -> None:
                         gr.Markdown(
                             "**Coordinates:** row 0 = top, col 0 = left.  "
                             f"Centre of {cfg.board_sizes[0]}×{cfg.board_sizes[0]} = "
-                            f"`{cfg.board_sizes[0]//2},{cfg.board_sizes[0]//2}`."
+                            f"`{cfg.board_sizes[0] // 2},{cfg.board_sizes[0] // 2}`."
                         )
 
                 hva_history = gr.State([])
@@ -522,7 +527,8 @@ def create_game_tab(cfg: GameConfig | None = None) -> None:
                             " | larger: zero-shot"
                         )
                         ava_size = gr.Dropdown(
-                            choices=choices, value=default_size,
+                            choices=choices,
+                            value=default_size,
                             label="Board Size",
                             info=_ava_info,
                         )

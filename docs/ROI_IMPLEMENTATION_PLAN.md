@@ -4,7 +4,7 @@
 
 AlphaGalerkin (v0.3.0 → v0.4.0) is a mature resolution-independent AI system with strong mathematical foundations (Galerkin Transformers, FNet, MCTS). Milestones 1-3 and 8 are complete. The project is positioning for SBIR submissions (Navy N252-088, DOE ASCR, NSF, AFWERX) at TRL 3-4. This plan prioritizes by **ROI = (SBIR readiness + technical risk reduction + downstream unblocking) / effort**.
 
-**Status Update (2026-04-07):** Tier 1 items 1.1-1.4 are now COMPLETE. Tier 2 items 2.1, 2.3, and partial 2.4 are COMPLETE. Visualization module (from Tier 3.3) is COMPLETE. See commit history on `claude/create-implementation-plan-hFHXP` for details.
+**Status Update (2026-04-10):** Tier 1 ALL COMPLETE (1.1-1.4). Tier 2: 2.1 (chess coverage), 2.3 (curriculum), 2.4 (BaseTrainer) COMPLETE; 2.2 (distributed multi-process) partially done (35 tests, no multi-node validation). Tier 3: 3.3 (visualization) and 3.5 (parallel self-play) COMPLETE. See CLAUDE.md milestones and commit history for details.
 
 ---
 

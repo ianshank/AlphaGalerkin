@@ -42,6 +42,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `test_training_tab.py` (28 tests) — model summary (fallback on import error), training curves, loss breakdown.
 - `test_game_tab.py` (27 tests) — `autouse` fixture resetting module globals, fallback board, `_ensure_loaded` idempotency, human/AI move handlers.
 
+- **Intercept Module** (`src/intercept/`)
+  - `InterceptGame` implementing `GameInterface` protocol for MCTS-guided missile defense
+  - 6-DOF rigid body dynamics (`dynamics.py`, `interceptor_dynamics.py`)
+  - Proportional Navigation guidance (`guidance.py`)
+  - `ExtendedKalmanFilter` for target tracking (`tracking.py`)
+  - `RadarSensor`, `SensorFusion` for multi-sensor tracking (`sensors.py`)
+  - `HungarianAssigner` for weapon-target assignment (`assignment.py`)
+  - `ISAAtmosphere`, `WindModel` for atmospheric modeling (`atmosphere.py`)
+  - `AeroModel`, `TabularAeroModel` for aerodynamic coefficients (`aero.py`)
+  - `FrameTransform`, `QuaternionOps` for reference frame conversions (`frames.py`)
+  - Pydantic-validated `InterceptorConfig`, `EngagementConfig`, `ThreatConfig`
+
+- **Backend Abstraction** (`src/backend/`)
+  - `BackendInterface` protocol for unified PyTorch/JAX operations
+  - `TorchBackend`, `JaxBackend` implementations
+  - `Array`, `Precision`, `DeviceType` type abstractions (`types.py`)
+  - Random number generator abstraction (`rng.py`)
+  - Backend-aware logging and debug utilities
+
+- **Prototyping Module** (`src/prototyping/`)
+  - `ModelBuilder`, `PrototypeModel` for rapid architecture iteration
+  - `QuickTrainer`, `TrainResult` for fast experiment loops
+  - `QuickEvaluator`, `EvalResult` for quick model evaluation
+  - `DataGenerator`, `SyntheticData` for synthetic data creation
+  - `Visualizer` with multiple plot types
+  - `ExperimentTemplate`, `TemplateRegistry` for experiment patterns
+
+- **Analysis Module** (`src/analysis/`)
+  - `PositionEvaluator`, `EvaluationResult` for position evaluation
+  - `GameReviewer`, `MoveAnalysis` for game review and move quality assessment
+  - `PatternMatcher`, `PatternLibrary` for board pattern detection
+  - `GameStatistics`, `StatisticsCollector` for game statistics aggregation
+  - `AnalysisConfig`, `AnalysisMode` Pydantic configuration
+
+- **Tournament Module** (`src/tournament/`)
+  - `TournamentManager`, `TournamentState` supporting Round-Robin, Swiss, Elimination formats
+  - `TournamentScheduler` for match scheduling
+  - `EloRating`, `RatingSystem` for player rating computation
+  - `Player`, `PlayerRegistry` for participant management
+  - `Match`, `MatchResult`, `MatchStatus` for match tracking
+
 ### Changed
 
 - **`pyproject.toml`** — Added `[[tool.mypy.overrides]]` for `dashboard.*` modules (relaxed strict checks for Gradio code). Added `[tool.coverage.report]` with `fail_under = 85` and `show_missing = true`. Added `dashboard` pytest marker.

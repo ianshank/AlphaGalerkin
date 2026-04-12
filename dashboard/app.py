@@ -44,9 +44,12 @@ import structlog  # noqa: E402
 
 from dashboard.config import DEFAULT_CONFIG, AppConfig, DashboardConfig  # noqa: E402
 from dashboard.tabs.game_tab import create_game_tab  # noqa: E402
+from dashboard.tabs.missile_defense_tab import create_missile_defense_tab  # noqa: E402
 from dashboard.tabs.pde_tab import create_pde_tab  # noqa: E402
 from dashboard.tabs.poc_tab import create_poc_tab  # noqa: E402
+from dashboard.tabs.reentry_tab import create_reentry_tab  # noqa: E402
 from dashboard.tabs.training_tab import create_training_tab  # noqa: E402
+from dashboard.tabs.wildfire_tab import create_wildfire_tab  # noqa: E402
 from dashboard.utils import configure_structlog  # noqa: E402
 
 configure_structlog()
@@ -150,7 +153,8 @@ def build_app(cfg: DashboardConfig | None = None) -> gr.Blocks:
 
     logger.info("dashboard_building")
 
-    with gr.Blocks(title="AlphaGalerkin Dashboard") as demo:
+    css = _build_css(cfg.app)
+    with gr.Blocks(title="AlphaGalerkin Dashboard", css=css) as demo:
         gr.Markdown(
             "# AlphaGalerkin E2E Dashboard\n"
             "Resolution-independent Go AI · Galerkin Transformers · FNet · Physics PoC"
@@ -172,6 +176,10 @@ def build_app(cfg: DashboardConfig | None = None) -> gr.Blocks:
         create_pde_tab(cfg.pde)
         create_poc_tab(cfg.poc)
         create_training_tab(cfg.training)
+
+        create_reentry_tab(cfg.reentry)
+        create_wildfire_tab(cfg.wildfire)
+        create_missile_defense_tab(cfg.missile_defense)
 
         with gr.Tab("About"):
             gr.Markdown(_ABOUT_MARKDOWN)
@@ -200,15 +208,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--host", default=DEFAULT_CONFIG.app.host, help="Bind host")
+    parser.add_argument("--port", type=int, default=DEFAULT_CONFIG.app.port, help="Bind port")
     parser.add_argument(
-        "--port", type=int, default=DEFAULT_CONFIG.app.port, help="Bind port"
-    )
-    parser.add_argument(
-        "--share", action="store_true", default=DEFAULT_CONFIG.app.share,
+        "--share",
+        action="store_true",
+        default=DEFAULT_CONFIG.app.share,
         help="Create a public Gradio share link",
     )
     parser.add_argument(
-        "--debug", action="store_true", default=DEFAULT_CONFIG.app.debug,
+        "--debug",
+        action="store_true",
+        default=DEFAULT_CONFIG.app.debug,
         help="Enable Gradio debug mode",
     )
     return parser.parse_args(argv)
@@ -246,7 +256,6 @@ def main(argv: list[str] | None = None) -> None:
         server_port=args.port,
         share=args.share,
         debug=args.debug,
-        css=_build_css(cfg.app),
     )
 
 

@@ -48,6 +48,10 @@ dev = [
     "gradio>=6.0.0",
     "matplotlib>=3.7.0",
     "Pillow>=10.0.0",
+    # E2E browser testing
+    "pytest-playwright>=0.4.0",
+    "playwright>=1.40.0",
+    "httpx>=0.25.0",
 ]
 jax = [
     "jax[cpu]>=0.4.20",

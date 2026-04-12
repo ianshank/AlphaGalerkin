@@ -67,12 +67,12 @@ def _ensure_loaded() -> bool:
 
         try:
             import torch
+
             from config.board import get_default_space_config  # type: ignore[import]
             from src.endgame import EndgameDetector  # type: ignore[import]
             from src.game_manager import GameManager  # type: ignore[import]
-            from src.rendering.board_renderer import BoardRenderer  # type: ignore[import]
-
             from src.mcts.evaluator import FNetEvaluator  # type: ignore[import]
+            from src.rendering.board_renderer import BoardRenderer  # type: ignore[import]
 
             device = device_str()
             _space_config = get_default_space_config()

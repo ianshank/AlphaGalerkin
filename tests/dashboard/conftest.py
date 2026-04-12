@@ -140,3 +140,26 @@ def mock_poisson_potential(small_charge_grid):
     n = small_charge_grid.shape[0]
     rng = np.random.default_rng(0)
     return rng.standard_normal((n, n)).astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# Defense / government tab fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def reentry_cfg(dashboard_cfg):
+    """Return the default ReentryConfig."""
+    return dashboard_cfg.reentry
+
+
+@pytest.fixture
+def wildfire_cfg(dashboard_cfg):
+    """Return the default WildfireConfig."""
+    return dashboard_cfg.wildfire
+
+
+@pytest.fixture
+def missile_defense_cfg(dashboard_cfg):
+    """Return the default MissileDefenseConfig."""
+    return dashboard_cfg.missile_defense

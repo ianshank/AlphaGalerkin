@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Defense Domain Dashboard Tabs
+
+- **`dashboard/tabs/reentry_tab.py`** — Reentry Thermal Protection System (TPS) analysis. 2D heat diffusion with velocity-scaled Dirichlet surface boundary, explicit finite-difference solver, centerline temperature profile with bondline safety limit (450 K). Resolution comparison at 9/13/19 with cross-resolution MSE.
+
+- **`dashboard/tabs/wildfire_tab.py`** — Wildfire spread simulation via advection-diffusion with combustion. First-order upwind advection for wind transport, 5-point Laplacian diffusion, nonlinear fuel-consuming combustion source term. Five ignition patterns (Center, Edge, Corner, Line, Random). 2x2 visualization: initial state, final temperature with wind arrow, burned area, burn-progression curve.
+
+- **`dashboard/tabs/missile_defense_tab.py`** — Missile defense intercept trajectory analysis. Ballistic threat arc, proportional-navigation interceptor guidance, closest-approach computation, Gaussian P_kill model. Poisson potential flow field solved at configurable resolution to demonstrate zero-shot transfer. Trajectory overlay on flow field.
+
+- **`dashboard/config.py`** — Added `ReentryConfig`, `WildfireConfig`, `MissileDefenseConfig` Pydantic models with Field-validated physical parameters. Registered in `DashboardConfig`.
+
+- **76 new tests** across `test_reentry_tab.py` (23), `test_wildfire_tab.py` (25), `test_missile_defense_tab.py` (25), plus 3 conftest fixtures.
+
+### Added — Dashboard Testing Infrastructure
+
+- **`tests/dashboard/test_backend_handlers.py`** (19 tests) — Backend handler tests calling PDE/Training/PoC event handlers directly with real computation (no mocks).
+
+- **`tests/dashboard/test_frontend_rendering.py`** (17 tests) — Frontend rendering tests verifying Gradio app structure, component types, tab labels, and event listener wiring.
+
+- **`tests/e2e/test_dashboard_e2e.py`** (18 tests) — End-to-end Playwright browser tests: page load, tab navigation, PDE solver interaction, responsive layout (desktop/tablet/mobile), screenshot capture.
+
+- **`tests/e2e/conftest.py`** — Added `dashboard_server` (launches Gradio on random port with health-check polling) and `dashboard_page` (Playwright page fixture with Gradio-aware wait strategy).
+
+- **`pyproject.toml`** — Added `pytest-playwright`, `playwright`, `httpx` to dev dependencies.
+
+### Fixed
+
+- **Gradio 6 CSS compatibility** — Moved `css=` from `Blocks.launch()` (removed in Gradio 6) to `gr.Blocks()` constructor in `dashboard/app.py`.
+
+- **PILImage runtime resolution** — Moved `from PIL import Image as PILImage` from `TYPE_CHECKING` guard to runtime import in `pde_tab.py`, `poc_tab.py`, `training_tab.py`. Fixes `NameError` when Gradio 6 resolves type hints at runtime via `typing.get_type_hints()`.
+
 ### Added — E2E Dashboard (`dashboard/`)
 
 - **`dashboard/app.py`** — Gradio Blocks application factory (`build_app()`) and CLI entry point (`main()`). Launches a tabbed UI exposing all AlphaGalerkin capabilities at `http://localhost:7860`. Accepts `--host`, `--port`, `--share`, `--debug` flags.

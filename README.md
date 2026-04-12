@@ -168,6 +168,9 @@ The dashboard includes:
 | **PDE Solver** | Interactive Poisson solver — charge patterns, multi-resolution comparison |
 | **PoC Scenarios** | Complexity O(N) benchmark, LBB stability, transfer milestone visualisation |
 | **Training** | Architecture summary, simulated training curves, loss breakdown diagram |
+| **Reentry TPS** | Heat-diffusion through thermal protection tiles — bondline temperature analysis |
+| **Wildfire Spread** | Advection-diffusion fire model with wind, fuel, and combustion dynamics |
+| **Missile Defense** | Ballistic intercept trajectories with potential flow at variable resolution |
 | **About** | Project overview and quick-start commands |
 
 ### GTP Engine

@@ -95,6 +95,12 @@ stockfish*
 hydra_outputs/
 multirun/
 
+# E2E test screenshots (generated during test runs)
+tests/e2e/screenshots/
+
+# Playwright
+.playwright/
+
 # Claude Code
 .claude/
 

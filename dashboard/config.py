@@ -172,9 +172,7 @@ class TransferMilestone(BaseModel):
             raise ValueError("achieved_mse must contain at least one entry")
         non_positive = {k: val for k, val in v.items() if val <= 0}
         if non_positive:
-            raise ValueError(
-                f"achieved_mse values must be > 0; invalid entries: {non_positive}"
-            )
+            raise ValueError(f"achieved_mse values must be > 0; invalid entries: {non_positive}")
         return v
 
 
@@ -223,9 +221,7 @@ class TrainingConfig(BaseModel):
     default_policy_weight: float = Field(
         default=1.0, gt=0, description="Default policy loss weight"
     )
-    default_value_weight: float = Field(
-        default=1.0, gt=0, description="Default value loss weight"
-    )
+    default_value_weight: float = Field(default=1.0, gt=0, description="Default value loss weight")
     default_lbb_weight: float = Field(default=0.1, ge=0, description="Default LBB loss weight")
 
     # Simulated curve parameters (representative training dynamics)
@@ -269,6 +265,129 @@ class TrainingConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Reentry TPS tab
+# ---------------------------------------------------------------------------
+
+
+class ReentryConfig(BaseModel):
+    """Configuration for the Reentry Thermal Protection System tab."""
+
+    grid_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19, 25, 32],
+        description="Dropdown options for N in the N×N grid",
+    )
+    default_grid_size: int = Field(default=13, ge=3, description="Initially selected grid size")
+    comparison_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19],
+        description="Grid sizes used in resolution-comparison plot",
+    )
+    kappa_min: float = Field(default=0.01, gt=0, description="Min thermal diffusivity (m²/s)")
+    kappa_max: float = Field(default=0.5, description="Max thermal diffusivity")
+    default_kappa: float = Field(default=0.1, description="Default thermal diffusivity")
+    surface_temp_min: float = Field(default=1000.0, description="Min surface temperature (K)")
+    surface_temp_max: float = Field(default=3500.0, description="Max surface temperature (K)")
+    default_surface_temp: float = Field(default=2500.0, description="Default surface temperature")
+    interior_temp: float = Field(default=300.0, description="Initial interior temperature (K)")
+    bondline_temp_limit: float = Field(
+        default=450.0, description="Max allowable bondline temperature (K)"
+    )
+    velocity_min: float = Field(default=3.0, description="Min reentry velocity (km/s)")
+    velocity_max: float = Field(default=12.0, description="Max reentry velocity (km/s)")
+    default_velocity: float = Field(default=7.5, description="Default reentry velocity")
+    total_time_min: float = Field(default=0.1, gt=0, description="Min simulation time (s)")
+    total_time_max: float = Field(default=5.0, description="Max simulation time (s)")
+    default_total_time: float = Field(default=1.0, description="Default simulation time")
+    n_time_snapshots: int = Field(default=5, ge=2, description="Time snapshots to display")
+    epsilon: float = Field(default=1e-9, gt=0, description="Guard against division by zero")
+
+
+# ---------------------------------------------------------------------------
+# Wildfire spread tab
+# ---------------------------------------------------------------------------
+
+
+class WildfireConfig(BaseModel):
+    """Configuration for the Wildfire Spread Simulation tab."""
+
+    grid_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19, 25, 32],
+        description="Dropdown options for N in the N×N grid",
+    )
+    default_grid_size: int = Field(default=19, ge=3, description="Initially selected grid size")
+    comparison_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19],
+        description="Grid sizes for resolution-comparison plot",
+    )
+    ignition_patterns: list[str] = Field(
+        default_factory=lambda: ["Center", "Edge", "Corner", "Line", "Random"],
+        description="Available ignition pattern options",
+    )
+    default_ignition: str = Field(default="Center", description="Initially selected pattern")
+    wind_speed_min: float = Field(default=0.0, description="Min wind speed (m/s)")
+    wind_speed_max: float = Field(default=20.0, description="Max wind speed (m/s)")
+    default_wind_speed: float = Field(default=5.0, description="Default wind speed")
+    wind_direction_min: float = Field(default=0.0, description="Min wind direction (degrees)")
+    wind_direction_max: float = Field(default=360.0, description="Max wind direction (degrees)")
+    default_wind_direction: float = Field(default=45.0, description="Default wind direction")
+    diffusion_min: float = Field(default=0.01, gt=0, description="Min thermal diffusion")
+    diffusion_max: float = Field(default=0.5, description="Max thermal diffusion")
+    default_diffusion: float = Field(default=0.1, description="Default diffusion rate")
+    fuel_density_min: float = Field(default=0.1, gt=0, description="Min fuel density")
+    fuel_density_max: float = Field(default=2.0, description="Max fuel density")
+    default_fuel_density: float = Field(default=1.0, description="Default fuel density")
+    ignition_threshold: float = Field(default=0.5, description="Temperature for ignition")
+    total_time_min: float = Field(default=0.5, gt=0, description="Min simulation time")
+    total_time_max: float = Field(default=10.0, description="Max simulation time")
+    default_total_time: float = Field(default=3.0, description="Default simulation time")
+    n_time_snapshots: int = Field(default=6, ge=2, description="Time snapshots to display")
+    epsilon: float = Field(default=1e-9, gt=0, description="Guard against division by zero")
+
+
+# ---------------------------------------------------------------------------
+# Missile defense tab
+# ---------------------------------------------------------------------------
+
+
+class MissileDefenseConfig(BaseModel):
+    """Configuration for the Missile Defense Intercept Analysis tab."""
+
+    grid_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19, 25, 32],
+        description="Dropdown options for flow-field resolution N×N",
+    )
+    default_grid_size: int = Field(default=19, ge=3, description="Initially selected grid size")
+    comparison_sizes: list[int] = Field(
+        default_factory=lambda: [9, 13, 19],
+        description="Grid sizes for resolution-comparison plot",
+    )
+    threat_angle_min: float = Field(default=20.0, description="Min launch angle (degrees)")
+    threat_angle_max: float = Field(default=80.0, description="Max launch angle (degrees)")
+    default_threat_angle: float = Field(default=45.0, description="Default threat launch angle")
+    threat_velocity_min: float = Field(default=1.0, description="Min threat velocity (km/s)")
+    threat_velocity_max: float = Field(default=7.0, description="Max threat velocity (km/s)")
+    default_threat_velocity: float = Field(default=3.0, description="Default threat velocity")
+    interceptor_x_min: float = Field(default=0.1, description="Min interceptor X (normalised)")
+    interceptor_x_max: float = Field(default=0.9, description="Max interceptor X (normalised)")
+    default_interceptor_x: float = Field(default=0.7, description="Default interceptor X")
+    interceptor_y_min: float = Field(default=0.0, description="Min interceptor Y (normalised)")
+    interceptor_y_max: float = Field(default=0.5, description="Max interceptor Y (normalised)")
+    default_interceptor_y: float = Field(default=0.0, description="Default interceptor Y")
+    interceptor_speed_min: float = Field(default=1.0, description="Min interceptor speed (km/s)")
+    interceptor_speed_max: float = Field(default=10.0, description="Max interceptor speed (km/s)")
+    default_interceptor_speed: float = Field(default=5.0, description="Default interceptor speed")
+    dt: float = Field(default=0.01, gt=0, description="Time step for trajectory integration")
+    max_time: float = Field(default=10.0, gt=0, description="Max simulation time")
+    gravity: float = Field(default=9.81, gt=0, description="Gravitational acceleration (m/s²)")
+    kill_radius: float = Field(default=0.05, gt=0, description="Kill radius for P_kill model")
+    epsilon: float = Field(default=1e-9, gt=0, description="Guard against division by zero")
+
+
+# ---------------------------------------------------------------------------
+# Top-level composite config
+# ---------------------------------------------------------------------------
+
+
 class DashboardConfig(BaseModel):
     """Root configuration for the AlphaGalerkin E2E Dashboard."""
 
@@ -277,6 +396,9 @@ class DashboardConfig(BaseModel):
     pde: PDEConfig = Field(default_factory=PDEConfig)
     poc: PoCConfig = Field(default_factory=PoCConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
+    reentry: ReentryConfig = Field(default_factory=ReentryConfig)
+    wildfire: WildfireConfig = Field(default_factory=WildfireConfig)
+    missile_defense: MissileDefenseConfig = Field(default_factory=MissileDefenseConfig)
 
 
 # Module-level singleton — import and use directly in tab modules.
@@ -291,6 +413,9 @@ __all__ = [
     "TransferMilestone",
     "PoCConfig",
     "TrainingConfig",
+    "ReentryConfig",
+    "WildfireConfig",
+    "MissileDefenseConfig",
     "DashboardConfig",
     "DEFAULT_CONFIG",
 ]

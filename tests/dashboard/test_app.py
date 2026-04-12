@@ -185,8 +185,8 @@ class TestMain:
         assert kwargs["server_port"] == 7861
         assert kwargs["share"] is False
         assert kwargs["debug"] is False
-        # Gradio 6: css is passed to launch(), not gr.Blocks()
-        assert isinstance(kwargs.get("css"), str)
+        # Gradio 6: css is passed to gr.Blocks(), not launch()
+        assert "css" not in kwargs
 
     def test_main_share_flag(self):
         from dashboard.app import main

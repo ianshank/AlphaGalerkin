@@ -101,6 +101,9 @@ Monitors LBB condition during training:
 - [2026-04-07]: **Coverage Sprint** - 115 new tests: statistics significance (52), tuning sampler/tuner (33), ONNX integration (30)
 - [2026-04-07]: **GPU Skip Hook** - Root conftest.py auto-skips gpu_required tests when CUDA unavailable; 0 spurious failures
 - [2026-04-07]: **Gumbel MCTS Search Tests** - 38 integration tests for search(), _sequential_halving(), _simulate(), get_improved_policy(), factory
+- [2026-04-11]: **Defense Domain Dashboards** - Reentry TPS, Wildfire Spread, Missile Defense tabs with PDE solvers and resolution comparison
+- [2026-04-11]: **Dashboard Testing Infrastructure** - BE handler tests (19), FE rendering tests (17), E2E Playwright browser tests (18)
+- [2026-04-11]: **Gradio 6 Compatibility Fixes** - CSS moved to Blocks(), PILImage runtime import for type-hint resolution
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement

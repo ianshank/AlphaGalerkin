@@ -36,6 +36,7 @@ class StabilityGuard(nn.Module):
         beta_threshold: float = 1e-6,
         regularization_strength: float = 0.01,
         log_interval: int = 100,
+        margin_multiplier: float = 10.0,
     ) -> None:
         """Initialize stability guard.
 
@@ -43,12 +44,30 @@ class StabilityGuard(nn.Module):
             beta_threshold: Minimum acceptable LBB constant.
             regularization_strength: Strength of regularization term.
             log_interval: Steps between stability logging.
+            margin_multiplier: Multiplier on ``beta_threshold`` used as the
+                soft-margin target in :meth:`regularization_loss`. Default
+                ``10.0`` preserves prior behaviour.
+
+        Raises:
+            ValueError: If any numeric argument is non-positive.
 
         """
         super().__init__()
+        if beta_threshold <= 0:
+            raise ValueError(f"beta_threshold must be > 0, got {beta_threshold}")
+        if regularization_strength < 0:
+            raise ValueError(
+                f"regularization_strength must be >= 0, got {regularization_strength}"
+            )
+        if log_interval < 1:
+            raise ValueError(f"log_interval must be >= 1, got {log_interval}")
+        if margin_multiplier <= 0:
+            raise ValueError(f"margin_multiplier must be > 0, got {margin_multiplier}")
+
         self.beta_threshold = beta_threshold
         self.regularization_strength = regularization_strength
         self.log_interval = log_interval
+        self.margin_multiplier = margin_multiplier
 
         # Tracking
         self.step_counter: Tensor
@@ -203,9 +222,8 @@ class StabilityGuard(nn.Module):
         else:
             beta = self.compute_lbb_constant(keys)
 
-        # Penalize when beta is below threshold
-        # Uses soft margin to encourage larger values
-        margin = self.beta_threshold * 10  # Target margin
+        # Penalize when beta is below threshold (soft margin targets larger values).
+        margin = self.beta_threshold * self.margin_multiplier
         violation = torch.relu(margin - beta)
 
         loss = self.regularization_strength * violation.mean()
@@ -259,21 +277,67 @@ class StableGalerkinInitializer:
     This class provides initialization schemes that satisfy LBB from t=0.
     """
 
+    # Default numerical safety constants (made parameters for testability and
+    # for downstream consumers that need to tune them; defaults preserve prior
+    # behaviour bit-for-bit).
+    DEFAULT_GUARD_THRESHOLD_RATIO: float = 10.0
+    DEFAULT_SCALE_EPSILON: float = 1e-8
+    DEFAULT_SCALE_CLAMP: tuple[float, float] = (1.0, 2.0)
+
     def __init__(
         self,
         beta_target: float = 0.1,
         max_iterations: int = 10,
+        scale_epsilon: float = DEFAULT_SCALE_EPSILON,
+        scale_clamp: tuple[float, float] = DEFAULT_SCALE_CLAMP,
+        guard_threshold_ratio: float = DEFAULT_GUARD_THRESHOLD_RATIO,
     ) -> None:
         """Initialize the stable initializer.
 
         Args:
             beta_target: Target LBB constant.
             max_iterations: Maximum initialization attempts.
+            scale_epsilon: Small constant added to the denominator when
+                computing the adjustment scale factor to avoid division by
+                zero. Default ``1e-8`` preserves prior behaviour.
+            scale_clamp: ``(min, max)`` clamp range applied to the
+                per-iteration adjustment scale factor. Prevents both
+                shrinking weights and pathologically large boosts. Default
+                ``(1.0, 2.0)`` preserves prior behaviour.
+            guard_threshold_ratio: Ratio used to derive the internal
+                :class:`StabilityGuard` threshold from ``beta_target``
+                (``threshold = beta_target / ratio``). Default ``10.0``
+                preserves prior behaviour.
+
+        Raises:
+            ValueError: If any numeric argument is invalid.
 
         """
+        if beta_target <= 0:
+            raise ValueError(f"beta_target must be > 0, got {beta_target}")
+        if max_iterations < 1:
+            raise ValueError(f"max_iterations must be >= 1, got {max_iterations}")
+        if scale_epsilon <= 0:
+            raise ValueError(f"scale_epsilon must be > 0, got {scale_epsilon}")
+        if guard_threshold_ratio <= 0:
+            raise ValueError(
+                f"guard_threshold_ratio must be > 0, got {guard_threshold_ratio}"
+            )
+        if scale_clamp[0] <= 0 or scale_clamp[1] <= 0:
+            raise ValueError(f"scale_clamp values must be > 0, got {scale_clamp}")
+        if scale_clamp[0] > scale_clamp[1]:
+            raise ValueError(
+                f"scale_clamp[0] must be <= scale_clamp[1], got {scale_clamp}"
+            )
+
         self.beta_target = beta_target
         self.max_iterations = max_iterations
-        self.stability_guard = StabilityGuard(beta_threshold=beta_target / 10)
+        self.scale_epsilon = scale_epsilon
+        self.scale_clamp = scale_clamp
+        self.guard_threshold_ratio = guard_threshold_ratio
+        self.stability_guard = StabilityGuard(
+            beta_threshold=beta_target / guard_threshold_ratio
+        )
 
     def initialize_projection(
         self,
@@ -363,7 +427,7 @@ class StableGalerkinInitializer:
         else:
             return
 
-        # Scale up slightly to increase singular values
-        scale_factor = (self.beta_target / (current_beta.min() + 1e-8)).sqrt()
-        scale_factor = torch.clamp(scale_factor, 1.0, 2.0)
+        # Scale up slightly to increase singular values.
+        scale_factor = (self.beta_target / (current_beta.min() + self.scale_epsilon)).sqrt()
+        scale_factor = torch.clamp(scale_factor, *self.scale_clamp)
         weight.data.mul_(scale_factor.item())

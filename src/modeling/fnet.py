@@ -11,10 +11,16 @@ Reference: "FNet: Mixing Tokens with Fourier Transforms" (Lee-Thorp et al., 2021
 
 from __future__ import annotations
 
+import structlog
 import torch
 from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
+
+logger = structlog.get_logger(__name__)
+
+# Default feed-forward expansion ratio (mirrors original FNet paper).
+DEFAULT_FFN_EXPANSION: int = 4
 
 
 class FNetMixing(nn.Module):
@@ -154,8 +160,15 @@ class FNetBlock(nn.Module):
 
         """
         super().__init__()
+        if d_model <= 0:
+            raise ValueError(f"d_model must be > 0, got {d_model}")
+        if d_ffn is not None and d_ffn <= 0:
+            raise ValueError(f"d_ffn must be > 0 if provided, got {d_ffn}")
+        if not 0.0 <= dropout < 1.0:
+            raise ValueError(f"dropout must be in [0, 1), got {dropout}")
+
         self.d_model = d_model
-        d_ffn = d_ffn or 4 * d_model
+        d_ffn = d_ffn or DEFAULT_FFN_EXPANSION * d_model
 
         # FFT mixing
         self.fft_mixing = FNetMixing(use_2d=use_2d_fft)
@@ -172,6 +185,14 @@ class FNetBlock(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
         self.dropout = nn.Dropout(dropout)
+
+        logger.debug(
+            "initialized_fnet_block",
+            d_model=d_model,
+            d_ffn=d_ffn,
+            dropout=dropout,
+            use_2d_fft=use_2d_fft,
+        )
 
     def forward(
         self,

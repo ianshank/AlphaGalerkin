@@ -137,6 +137,15 @@ class MultiScaleFourierFeatures(nn.Module):
         if scales is None:
             scales = DEFAULT_SCALES.copy()
 
+        if input_dim < 1:
+            raise ValueError(f"input_dim must be >= 1, got {input_dim}")
+        if n_features < 1:
+            raise ValueError(f"n_features must be >= 1, got {n_features}")
+        if not scales:
+            raise ValueError("scales must contain at least one value")
+        if any(s <= 0 for s in scales):
+            raise ValueError(f"all scales must be > 0, got {scales}")
+
         self.input_dim = input_dim
         self.n_features = n_features
         self.scales = scales
@@ -155,6 +164,16 @@ class MultiScaleFourierFeatures(nn.Module):
                 B = torch.randn(input_dim, n_features) * scale
                 self.register_buffer(f"B_{i}", B)
             self.frequency_matrices = None
+
+        logger.debug(
+            "initialized_multiscale_fourier",
+            input_dim=input_dim,
+            n_features=n_features,
+            n_scales=len(scales),
+            learnable=learnable,
+            include_input=include_input,
+            output_dim=self.output_dim,
+        )
 
     @property
     def output_dim(self) -> int:

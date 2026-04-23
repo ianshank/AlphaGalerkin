@@ -44,7 +44,7 @@ class TestTorchGrad:
         x = tb.tensor([3.0, 4.0])
         grad_fn = tb.grad(f)
         g = grad_fn(x)
-        expected = torch.tensor([6.0, 8.0])
+        expected = tb.tensor([6.0, 8.0])
         torch.testing.assert_close(g, expected)
 
     def test_grad_with_aux(self, tb) -> None:
@@ -58,7 +58,7 @@ class TestTorchGrad:
         x = tb.tensor([3.0, 4.0])
         grad_fn = tb.grad(f, has_aux=True)
         g, aux = grad_fn(x)
-        expected = torch.tensor([6.0, 8.0])
+        expected = tb.tensor([6.0, 8.0])
         torch.testing.assert_close(g, expected)
         assert "intermediate" in aux
 
@@ -107,7 +107,7 @@ class TestTorchValueAndGrad:
         vag_fn = tb.value_and_grad(f)
         val, g = vag_fn(x)
         npt.assert_allclose(val.item(), 25.0, rtol=1e-5)
-        expected = torch.tensor([6.0, 8.0])
+        expected = tb.tensor([6.0, 8.0])
         torch.testing.assert_close(g, expected)
 
     def test_value_and_grad_with_aux(self, tb) -> None:
@@ -122,7 +122,7 @@ class TestTorchValueAndGrad:
         (val, aux), g = vag_fn(x)
         npt.assert_allclose(val.item(), 25.0, rtol=1e-5)
         assert aux["tag"] == "test"
-        expected = torch.tensor([6.0, 8.0])
+        expected = tb.tensor([6.0, 8.0])
         torch.testing.assert_close(g, expected)
 
 

@@ -124,7 +124,7 @@ The stability rules above are enforced mechanically in CI:
   a backwards-compatible parameter**, run
   `python tests/modeling/gen_public_surface_golden.py` to refresh
   `tests/modeling/_public_surface_golden.json` and update the
-  "§Key signatures (frozen)" block below in the **same PR**.
+  "§Key signatures (frozen)" block in this ADR in the **same PR**.
   Non-additive changes (renames, reorders, default-value changes,
   forward-signature changes) require superseding this ADR.
 - **Type & lint contracts**: `mypy src/ --strict --ignore-missing-imports`
@@ -132,7 +132,7 @@ The stability rules above are enforced mechanically in CI:
 - **Coverage contract**: `pytest tests/modeling/ --cov=src.modeling --cov-fail-under=85`
   is the per-module gate in the `coverage` CI job.
 
-Manual smoke-test (unchanged — useful when triaging a local failure):
+Manual re-export smoke test (useful when triaging a local failure):
 
 ```bash
 # Re-exports stable (must match the stable public surface table above)

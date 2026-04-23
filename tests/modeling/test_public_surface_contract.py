@@ -78,6 +78,26 @@ def _require_class(entry: SurfaceEntry) -> type:
     return cls
 
 
+def _require_golden_record(name: str) -> dict[str, Any]:
+    """Fetch the golden record for *name* or fail with actionable guidance.
+
+    Guards against the out-of-sync case where ``PUBLIC_SURFACE`` lists a
+    class that the golden doesn't record. ``test_golden_has_every_adr_class``
+    also catches this, but pytest doesn't guarantee execution order, so
+    the per-class tests must produce their own actionable message instead
+    of a cryptic ``KeyError``.
+    """
+    record = _GOLDEN.get(name)
+    assert record is not None, (
+        f"{name} is listed in PUBLIC_SURFACE but missing from the golden "
+        f"snapshot. Regenerate via\n"
+        f"    python tests/modeling/gen_public_surface_golden.py\n"
+        f"or remove {name!r} from PUBLIC_SURFACE if the class is being "
+        f"dropped (which also requires superseding the ADR)."
+    )
+    return record
+
+
 @pytest.mark.parametrize("entry", PUBLIC_SURFACE, ids=_entry_id)
 def test_class_importable_from_toplevel(entry: SurfaceEntry) -> None:
     """Each ADR class is reachable via ``from src.modeling import <Class>``.
@@ -121,7 +141,7 @@ def test_constructor_signature_is_additive_only(entry: SurfaceEntry) -> None:
     """
     cls = _require_class(entry)
     name = entry.class_name
-    golden_entries: list[dict[str, str]] = _GOLDEN[name]["init"]
+    golden_entries: list[dict[str, str]] = _require_golden_record(name)["init"]
     current_entries = _current_init_entries(cls)
 
     assert len(current_entries) >= len(golden_entries), (
@@ -164,7 +184,7 @@ def test_forward_signature_matches_golden(entry: SurfaceEntry) -> None:
     """
     cls = _require_class(entry)
     name = entry.class_name
-    golden_record = _GOLDEN[name]
+    golden_record = _require_golden_record(name)
     golden_forward = golden_record.get("forward")
     current_forward = _current_forward_entries(cls)
 

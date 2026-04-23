@@ -15,17 +15,17 @@ tests/modeling/gen_public_surface_golden.py`` and update the ADR's
 
 from __future__ import annotations
 
-import inspect
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import BaseModel
-from pydantic_core import PydanticUndefined
 
 import src.modeling as modeling_pkg
 from tests.modeling._public_surface_adr import PUBLIC_SURFACE, SurfaceEntry
+from tests.modeling._signature_utils import EMPTY as _EMPTY
+from tests.modeling._signature_utils import forward_entries as _current_forward_entries
+from tests.modeling._signature_utils import init_entries as _current_init_entries
 
 _GOLDEN_PATH = Path(__file__).parent / "_public_surface_golden.json"
 _REMEDIATION = (
@@ -38,8 +38,6 @@ _REMEDIATION = (
     "(renames, reorders, default-value changes, forward-signature changes) "
     "require superseding the ADR."
 )
-_EMPTY = "<empty>"
-_FACTORY = "<factory>"
 
 
 def _load_golden() -> dict[str, dict[str, Any]]:
@@ -49,54 +47,6 @@ def _load_golden() -> dict[str, dict[str, Any]]:
 
 
 _GOLDEN = _load_golden()
-
-
-def _param_entries_from_signature(sig: inspect.Signature) -> list[dict[str, str]]:
-    entries: list[dict[str, str]] = []
-    for name, param in sig.parameters.items():
-        if name == "self":
-            continue
-        default_repr = _EMPTY if param.default is inspect.Parameter.empty else repr(param.default)
-        entries.append(
-            {
-                "name": name,
-                "kind": param.kind.name,
-                "default": default_repr,
-            }
-        )
-    return entries
-
-
-def _pydantic_init_entries(cls: type[BaseModel]) -> list[dict[str, str]]:
-    entries: list[dict[str, str]] = []
-    for field_name, field_info in cls.model_fields.items():
-        if field_info.default is not PydanticUndefined:
-            default_repr = repr(field_info.default)
-        elif field_info.default_factory is not None:
-            default_repr = _FACTORY
-        else:
-            default_repr = _EMPTY
-        entries.append(
-            {
-                "name": field_name,
-                "kind": "PYDANTIC_FIELD",
-                "default": default_repr,
-            }
-        )
-    return entries
-
-
-def _current_init_entries(cls: type) -> list[dict[str, str]]:
-    if isinstance(cls, type) and issubclass(cls, BaseModel):
-        return _pydantic_init_entries(cls)
-    return _param_entries_from_signature(inspect.signature(cls.__init__))
-
-
-def _current_forward_entries(cls: type) -> list[dict[str, str]] | None:
-    forward = getattr(cls, "forward", None)
-    if forward is None:
-        return None
-    return _param_entries_from_signature(inspect.signature(forward))
 
 
 def _entry_id(entry: SurfaceEntry) -> str:

@@ -390,7 +390,7 @@ class SBIRDemo:
         if self.config.generate_json:
             self._write_json(results, output_dir / "results.json", total_time)
 
-        # Generate Markdown via runner
+        # Generate Markdown via runner (also writes CSV)
         if self.config.generate_markdown:
             runner.generate_report(results, output_dir)
 
@@ -398,8 +398,62 @@ class SBIRDemo:
         if self.config.generate_html:
             self._write_html(results, output_dir / "report.html", total_time)
 
+        # Generate Pareto + convergence plots (best-effort; matplotlib optional)
+        self._write_plots(runner, results, output_dir)
+
         self._log.info("sbir_demo_done", output_dir=str(output_dir))
         return results
+
+    def _write_plots(
+        self,
+        runner: PDEBenchmarkRunner,
+        results: list[PDEBenchmarkResult],
+        output_dir: Path,
+    ) -> None:
+        """Render Pareto frontier and convergence plots via the poc visualization registry."""
+        try:
+            from src.poc.visualization.config import VisualizationConfig
+            from src.poc.visualization.plots import create_plot
+        except ImportError as exc:  # pragma: no cover - optional dep
+            self._log.warning("plot_deps_missing", error=str(exc))
+            return
+
+        methods_data = runner.build_pareto_plot_data(results)
+        if not methods_data:
+            self._log.info("plot_skipped_no_valid_results")
+            return
+
+        viz_config = VisualizationConfig()
+
+        try:
+            pareto_fig = create_plot(
+                "pareto_frontier",
+                {"methods": methods_data},
+                viz_config,
+            )
+            pareto_path = output_dir / "pareto_plot.png"
+            pareto_fig.savefig(pareto_path, dpi=150, bbox_inches="tight")
+            self._log.info("pareto_plot_written", path=str(pareto_path))
+        except Exception:  # pragma: no cover - plot failures are non-fatal
+            self._log.exception("pareto_plot_failed")
+
+        try:
+            convergence_data: dict[str, dict[str, list[float]]] = {}
+            for method_name, series in methods_data.items():
+                convergence_data[method_name] = {
+                    "dof": [float(x) for x in series["n_dof"]],
+                    "error": [float(x) for x in series["error"]],
+                }
+            conv_fig = create_plot(
+                "convergence_rates",
+                {"methods": convergence_data},
+                viz_config,
+            )
+            conv_path = output_dir / "convergence_plot.png"
+            conv_fig.savefig(conv_path, dpi=150, bbox_inches="tight")
+            self._log.info("convergence_plot_written", path=str(conv_path))
+        except Exception:  # pragma: no cover - plot failures are non-fatal
+            self._log.exception("convergence_plot_failed")
 
     def _write_json(
         self,

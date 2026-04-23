@@ -1,0 +1,378 @@
+"""Unified AlphaGalerkin solver wrapper for benchmark comparison.
+
+Wraps the MCTS + PDE-game stack behind the ``BaseSolver`` protocol
+defined in ``src.research.baselines`` so that ``PDEBenchmarkRunner``
+can compare AlphaGalerkin against classical solvers on an equal footing.
+
+The solver does not train a network: it uses a ``RandomEvaluator``
+(or a uniform/trained evaluator, reserved for future work) so the MCTS
+explores the PDE game purely via the tree search policy.  The result is
+the canonical ``(l2_error, n_dof, wall_time_seconds)`` triple plus a
+solution vector (when the underlying game exposes one) and rich metadata
+for downstream analysis.
+
+Design notes
+------------
+- ``AlphaGalerkinConfig`` extends ``SolverConfig`` so it inherits the
+  ``seed``/``max_iterations``/``tolerance`` fields already used by the
+  classical baselines.
+- The solver deliberately does not modify ``baselines.SOLVER_REGISTRY``
+  at import time: benchmark code can register it lazily via the helper
+  ``_register_with_baselines`` which is safe to call multiple times.
+  This lets ``src.alphagalerkin`` stay import-safe even when the user
+  has not installed the MCTS dependencies.
+- For ``mesh_refinement`` game mode the underlying game reconstructs
+  the state's solution vector on the adaptive mesh; we pass that
+  through in ``SolverResult.solution``.  For ``basis_selection`` the
+  solution is the Galerkin approximation sampled at the collocation
+  points.
+"""
+
+from __future__ import annotations
+
+import random
+import time
+from typing import TYPE_CHECKING, Any, Literal
+
+import numpy as np
+import structlog
+import torch
+from pydantic import Field
+
+from src.mcts.evaluator import RandomEvaluator
+from src.mcts.search import MCTS
+from src.pde.config import PDEConfig, PDEGameConfig
+from src.pde.games.basis_selection import BasisSelectionGame
+from src.pde.games.mesh_refinement import MeshRefinementGame
+from src.pde.mcts_adapter import PDEGameAdapter
+from src.research.baselines import BaseSolver, SolverConfig, SolverResult
+
+if TYPE_CHECKING:
+    from src.pde.game import PDEGame
+    from src.pde.operators import PDEOperator
+
+logger = structlog.get_logger(__name__)
+
+
+class AlphaGalerkinConfig(SolverConfig):
+    """Configuration for the unified :class:`AlphaGalerkinSolver`.
+
+    Inherits ``seed``, ``max_iterations`` and ``tolerance`` from
+    :class:`~src.research.baselines.SolverConfig`.
+
+    Attributes:
+        game_mode: Which PDE game to drive (basis-function selection
+            or adaptive mesh refinement).
+        n_mcts_simulations: Simulations per MCTS search call.
+        max_steps: Hard cap on game actions per episode.
+        target_tolerance: Early-stop threshold on the game's L2 error.
+        evaluator: Evaluator type used by MCTS.  ``trained`` is
+            reserved for a future hook into a learned network.
+        device: Torch device for the evaluator.
+
+    """
+
+    game_mode: Literal["basis_selection", "mesh_refinement"] = Field(
+        default="basis_selection",
+        description="PDE game formulation used to drive the search.",
+    )
+    n_mcts_simulations: int = Field(
+        default=50,
+        ge=1,
+        description="Number of MCTS simulations per search call.",
+    )
+    max_steps: int = Field(
+        default=20,
+        ge=1,
+        description="Maximum game actions applied per episode.",
+    )
+    target_tolerance: float = Field(
+        default=1e-4,
+        gt=0.0,
+        description="Early-stop threshold on the game error estimate.",
+    )
+    evaluator: Literal["random", "uniform", "trained"] = Field(
+        default="random",
+        description="Evaluator strategy; 'trained' is reserved for future work.",
+    )
+    device: str = Field(
+        default="cpu",
+        description="Torch device for the evaluator.",
+    )
+
+
+class AlphaGalerkinSolver(BaseSolver):
+    """MCTS-guided AlphaGalerkin solver exposed via the BaseSolver protocol.
+
+    ``solve()`` builds a ``PDEGame`` for the supplied ``PDEOperator``,
+    wraps it in a ``PDEGameAdapter``, and runs an MCTS-driven episode
+    for up to :attr:`AlphaGalerkinConfig.max_steps` actions.  The final
+    L2 error, degree-of-freedom count and wall time are returned in a
+    :class:`~src.research.baselines.SolverResult`.
+
+    The solver does not modify the underlying PDE modules or the MCTS
+    core - it is a thin orchestration layer.
+    """
+
+    name: str = "alphagalerkin"
+    description: str = "MCTS-guided Galerkin / mesh refinement solver"
+
+    def __init__(self, config: AlphaGalerkinConfig | None = None) -> None:
+        """Initialize the solver.
+
+        Args:
+            config: Solver configuration. A default is used if omitted.
+
+        """
+        self.config: AlphaGalerkinConfig = config or AlphaGalerkinConfig()
+
+    # ------------------------------------------------------------------ #
+    # BaseSolver API                                                      #
+    # ------------------------------------------------------------------ #
+
+    def solve(
+        self,
+        operator: PDEOperator,
+        n_dof: int = 0,
+        **kwargs: Any,
+    ) -> SolverResult:
+        """Run an MCTS-guided PDE game episode.
+
+        Matches ``BaseSolver.solve(operator, n_dof, **kwargs)``.  The
+        ``n_dof`` argument is interpreted as a soft hint (equivalent to
+        ``max_dof`` for the underlying ``PDEGameConfig``); the actual
+        degree-of-freedom count in the returned ``SolverResult`` is
+        taken from the terminal game state.
+
+        Args:
+            operator: PDE operator defining the problem.
+            n_dof: Soft DOF budget hint (``0`` keeps the game default).
+            **kwargs: Optional ``domain_params`` dict plus forward-
+                compatible keyword arguments.
+
+        Returns:
+            ``SolverResult`` with ``l2_error``, ``n_dof`` and
+            ``wall_time_seconds`` populated.  Metadata includes the
+            per-step error history and the MCTS simulation count.
+
+        """
+        # Silence unused-argument warnings while preserving the protocol.
+        _ = kwargs.pop("domain_params", None)
+
+        self._seed_everything(self.config.seed)
+
+        log = logger.bind(
+            solver=self.name,
+            run_id=f"ag_{self.config.seed}_{self.config.game_mode}",
+            game_mode=self.config.game_mode,
+            n_mcts_simulations=self.config.n_mcts_simulations,
+        )
+        log.info("alphagalerkin_solve_start", pde=getattr(operator, "name", "unknown"))
+
+        t0 = time.perf_counter()
+
+        # Build PDE + game config from operator metadata so the game
+        # sees the same domain / BCs the operator was built with.
+        pde_config = self._derive_pde_config(operator, n_dof)
+        game_config = PDEGameConfig(
+            name=f"ag_{self.config.game_mode}",
+            pde_config=pde_config,
+            game_mode=self.config.game_mode,
+            max_steps=self.config.max_steps,
+            max_dof=max(n_dof, 10),
+            error_tolerance=self.config.target_tolerance,
+            seed=self.config.seed,
+        )
+
+        pde_game = self._build_game(operator, game_config)
+        adapter = PDEGameAdapter(pde_game)
+        mcts = self._build_mcts(pde_game)
+
+        # Main episode loop.  We call ``mcts.search`` to obtain an
+        # improved policy, pick the mode-argmax action, and advance the
+        # adapter until termination / tolerance / max_steps.
+        n_actions_taken = 0
+        for step in range(self.config.max_steps):
+            if adapter.is_terminal():
+                log.debug("terminated_early", step=step, reason="is_terminal")
+                break
+            if adapter.current_error < self.config.target_tolerance:
+                log.debug(
+                    "terminated_early",
+                    step=step,
+                    reason="below_tolerance",
+                    error=adapter.current_error,
+                )
+                break
+
+            legal = adapter.get_legal_actions()
+            if not legal:
+                log.debug("terminated_early", step=step, reason="no_legal_actions")
+                break
+
+            policy = mcts.search(adapter, add_noise=False)
+            if not policy:
+                log.debug("terminated_early", step=step, reason="empty_policy")
+                break
+
+            # Mode-argmax (deterministic given the MCTS visit counts).
+            action = max(policy, key=lambda a: policy[a])
+            adapter.apply_action(action)
+            mcts.advance(action)
+            n_actions_taken += 1
+
+        wall_time = time.perf_counter() - t0
+
+        # Extract the final solution vector from the game state.  For
+        # ``basis_selection`` the solution is the Galerkin approximation
+        # at the collocation points; for ``mesh_refinement`` it's the
+        # nodal solution on the adaptive mesh.  Older state snapshots
+        # may not carry a populated solution - fall back to an empty
+        # array and flag it via metadata so downstream consumers can
+        # skip solution-dependent plots safely.
+        final_state = adapter.state
+        solution_arr = np.asarray(final_state.solution, dtype=np.float64)
+        grid_arr = np.asarray(final_state.coords, dtype=np.float64)
+        solution_available = solution_arr.size > 0
+
+        # Prefer the game's exact-error computation which understands
+        # the game's internal representation (ref: compute_exact_error);
+        # fall back to the generic helper used by classical baselines.
+        errors = pde_game.compute_exact_error(final_state)
+        l2_error = errors.get("l2")
+        if l2_error is None and solution_available:
+            l2_error = self._compute_l2_error(solution_arr, grid_arr, operator)
+
+        n_dof_final = int(final_state.dof) if final_state.dof > 0 else int(len(solution_arr))
+
+        log.info(
+            "alphagalerkin_solve_done",
+            wall_time=wall_time,
+            l2_error=l2_error,
+            n_dof=n_dof_final,
+            n_actions_taken=n_actions_taken,
+        )
+
+        return SolverResult(
+            solution=solution_arr,
+            grid_points=grid_arr,
+            n_dof=n_dof_final,
+            wall_time_seconds=wall_time,
+            l2_error=float(l2_error) if l2_error is not None else None,
+            metadata={
+                "solver": self.name,
+                "game_mode": self.config.game_mode,
+                "n_mcts_simulations": self.config.n_mcts_simulations,
+                "n_actions_taken": n_actions_taken,
+                "max_steps": self.config.max_steps,
+                "error_history": list(adapter.error_history),
+                "target_tolerance": self.config.target_tolerance,
+                "evaluator": self.config.evaluator,
+                "solution_available": solution_available,
+                "termination_reason": (
+                    "tolerance"
+                    if adapter.current_error < self.config.target_tolerance
+                    else "is_terminal"
+                    if adapter.is_terminal()
+                    else "max_steps"
+                ),
+            },
+        )
+
+    # ------------------------------------------------------------------ #
+    # Internals                                                           #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _seed_everything(seed: int) -> None:
+        """Seed numpy / random / torch deterministically.
+
+        MCTS child-selection includes a small amount of randomness via
+        Dirichlet noise (disabled) and policy ties; seeding keeps two
+        back-to-back ``solve()`` calls bit-identical.
+        """
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
+    @staticmethod
+    def _derive_pde_config(operator: PDEOperator, n_dof: int) -> PDEConfig:
+        """Build a ``PDEConfig`` from an operator's runtime metadata.
+
+        The operator owns its own ``PDEConfig`` (see ``PDEOperator.__init__``).
+        We return that config directly so the PDE game sees exactly the
+        same domain and coefficients the classical baselines were given.
+
+        ``n_dof`` is a hint only: it is not written back into the PDE
+        config here because classical baselines similarly treat it as
+        a per-call argument, not as part of the operator definition.
+        """
+        del n_dof  # accepted for symmetry with BaseSolver.solve()
+        cfg = getattr(operator, "config", None)
+        if cfg is None:
+            raise ValueError(
+                "AlphaGalerkinSolver requires operator.config to be a PDEConfig; "
+                f"operator {type(operator).__name__} exposes no .config attribute."
+            )
+        if not isinstance(cfg, PDEConfig):
+            raise TypeError(
+                "AlphaGalerkinSolver expected operator.config to be a PDEConfig, "
+                f"got {type(cfg).__name__!r}."
+            )
+        return cfg
+
+    def _build_game(
+        self,
+        operator: PDEOperator,
+        game_config: PDEGameConfig,
+    ) -> PDEGame:
+        """Instantiate the appropriate ``PDEGame`` subclass."""
+        if self.config.game_mode == "basis_selection":
+            return BasisSelectionGame(operator, game_config)
+        if self.config.game_mode == "mesh_refinement":
+            return MeshRefinementGame(operator, game_config)
+        # Pydantic validation guarantees this is unreachable, but mypy
+        # cannot prove that from the Literal type alone.
+        raise ValueError(f"Unsupported game_mode: {self.config.game_mode!r}")
+
+    def _build_mcts(self, pde_game: PDEGame) -> MCTS:
+        """Construct the MCTS engine with the configured evaluator.
+
+        ``random`` and ``uniform`` both map to the ``RandomEvaluator``
+        (uniform prior + zero value) for now.  ``trained`` is rejected
+        until a network-backed evaluator is wired in.
+        """
+        if self.config.evaluator == "trained":
+            raise NotImplementedError(
+                "evaluator='trained' is reserved for future network integration; "
+                "use 'random' or 'uniform' for now."
+            )
+        evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+        return MCTS(
+            evaluator=evaluator,
+            n_simulations=self.config.n_mcts_simulations,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Registry hook                                                       #
+    # ------------------------------------------------------------------ #
+
+
+def _register_with_baselines() -> None:
+    """Register :class:`AlphaGalerkinSolver` in the baselines registry.
+
+    ``src.research.baselines`` owns ``SOLVER_REGISTRY`` as a plain dict,
+    so we can insert ourselves without importing/modifying that module's
+    code.  The function is idempotent and safe to call multiple times.
+    """
+    from src.research import baselines
+
+    baselines.SOLVER_REGISTRY.setdefault("alphagalerkin", AlphaGalerkinSolver)
+
+
+# Eagerly register on import so that ``get_solver("alphagalerkin")``
+# works once the user has ``import src.alphagalerkin`` anywhere in the
+# call graph (e.g. via ``PDEBenchmarkRunner``).
+_register_with_baselines()

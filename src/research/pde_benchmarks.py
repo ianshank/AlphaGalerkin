@@ -182,7 +182,7 @@ class PDEBenchmarkRunner:
         results: list[PDEBenchmarkResult],
         output_dir: Path,
     ) -> None:
-        """Generate JSON and Markdown reports.
+        """Generate JSON, Markdown and CSV reports.
 
         Args:
             results: Benchmark results to report.
@@ -194,8 +194,84 @@ class PDEBenchmarkRunner:
         self._generate_json_report(results, output_dir / "results.json")
         md = self._generate_markdown_table(results)
         (output_dir / "results.md").write_text(md, encoding="utf-8")
+        self.export_csv(results, output_dir / "results.csv")
 
         self._log.info("report_generated", output_dir=str(output_dir))
+
+    def export_csv(
+        self,
+        results: list[PDEBenchmarkResult],
+        output_path: Path,
+    ) -> None:
+        """Export benchmark results as CSV for Pareto plot + external analysis.
+
+        Columns: problem, method, refinement_level, n_dof, l2_error,
+        wall_time_seconds, convergence_rate, seed.
+
+        Args:
+            results: Benchmark results to export.
+            output_path: Destination CSV file path.
+
+        """
+        import csv
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "problem",
+                    "method",
+                    "refinement_level",
+                    "n_dof",
+                    "l2_error",
+                    "wall_time_seconds",
+                    "convergence_rate",
+                    "seed",
+                ]
+            )
+            for r in results:
+                seed = r.metadata.get("seed", "")
+                refinement_level = r.metadata.get("refinement_level", r.n_dof)
+                writer.writerow(
+                    [
+                        r.benchmark_name,
+                        r.method_name,
+                        refinement_level,
+                        r.n_dof,
+                        r.l2_error if not math.isnan(r.l2_error) else "",
+                        f"{r.wall_time_seconds:.6f}",
+                        f"{r.convergence_rate:.4f}" if r.convergence_rate is not None else "",
+                        seed,
+                    ]
+                )
+        self._log.info("csv_export", path=str(output_path), rows=len(results))
+
+    def build_pareto_plot_data(
+        self,
+        results: list[PDEBenchmarkResult],
+    ) -> dict[str, dict[str, Any]]:
+        """Build the ``methods`` payload for :class:`ParetoFrontierPlot`.
+
+        Args:
+            results: Benchmark results (may span multiple problems).
+
+        Returns:
+            Dict keyed by method name with ``wall_time``, ``error``, ``n_dof``
+            lists, ready to feed into ``create_plot('pareto_frontier', ...)``.
+
+        """
+        by_method: dict[str, dict[str, list[Any]]] = {}
+        for r in results:
+            if math.isnan(r.l2_error):
+                continue
+            entry = by_method.setdefault(
+                r.method_name, {"wall_time": [], "error": [], "n_dof": []}
+            )
+            entry["wall_time"].append(r.wall_time_seconds)
+            entry["error"].append(r.l2_error)
+            entry["n_dof"].append(r.n_dof)
+        return by_method
 
     # ------------------------------------------------------------------
     # Report generation

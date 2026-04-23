@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import structlog
 import torch
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from src.mcts.evaluator import RandomEvaluator
 from src.mcts.search import MCTS
@@ -116,13 +116,35 @@ class AlphaGalerkinConfig(SolverConfig):
     )
     device: str = Field(
         default="cpu",
-        description="Torch device for the evaluator.",
+        description=(
+            "Torch device spec for the evaluator (accepted values match "
+            "``torch.device`` - e.g. 'cpu', 'cuda', 'cuda:0'). Validated at "
+            "config-construction time via ``torch.device(...)`` so invalid "
+            "strings fail fast. Used to log the active device at solve time "
+            "and reserved for the future network-backed evaluator."
+        ),
     )
     min_game_dof: int = Field(
         default=10,
         ge=1,
         description="Floor on the DOF budget passed to PDEGameConfig.max_dof.",
     )
+
+    @field_validator("device")
+    @classmethod
+    def _validate_device(cls, value: str) -> str:
+        """Reject bogus ``device`` strings at config construction.
+
+        ``torch.device`` raises ``RuntimeError`` on unknown device types or
+        malformed indices (e.g. ``'cuba:0'``, ``'cuda:foo'``).  We catch
+        that and surface a ``ValueError`` so Pydantic reports it via its
+        normal validation machinery (``ValidationError``).
+        """
+        try:
+            torch.device(value)
+        except (RuntimeError, ValueError) as exc:
+            raise ValueError(f"Invalid torch device string: {value!r} ({exc})") from exc
+        return value
 
 
 class AlphaGalerkinSolver(BaseSolver):
@@ -389,6 +411,20 @@ class AlphaGalerkinSolver(BaseSolver):
                 "evaluator='trained' is reserved for future network integration; "
                 "use 'random' or 'uniform' for now."
             )
+        # The current ``RandomEvaluator`` samples via numpy and has no
+        # device-dependent state, so ``config.device`` is a no-op for it.
+        # We resolve and log the device anyway so the solver's run
+        # provenance is complete and the value is validated against
+        # ``torch.device`` at config construction (see ``_validate_device``).
+        torch_device = torch.device(self.config.device)
+        logger.debug(
+            "alphagalerkin_mcts_built",
+            solver=self.name,
+            evaluator=self.config.evaluator,
+            device=str(torch_device),
+            n_actions=pde_game.action_space_size,
+            n_simulations=self.config.n_mcts_simulations,
+        )
         evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
         return MCTS(
             evaluator=evaluator,

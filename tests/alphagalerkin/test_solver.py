@@ -114,6 +114,19 @@ class TestAlphaGalerkinConfig:
         """``min_game_dof`` default floor is 10."""
         assert AlphaGalerkinConfig().min_game_dof == 10
 
+    def test_device_accepts_cpu(self) -> None:
+        """``device='cpu'`` is always valid."""
+        assert AlphaGalerkinConfig(device="cpu").device == "cpu"
+
+    def test_device_rejects_invalid_string(self) -> None:
+        """Bogus device strings fail at Pydantic validation time."""
+        with pytest.raises(ValidationError):
+            AlphaGalerkinConfig(device="cuba:0")
+
+    def test_device_rejects_empty(self) -> None:
+        with pytest.raises(ValidationError):
+            AlphaGalerkinConfig(device="")
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers

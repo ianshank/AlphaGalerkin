@@ -101,7 +101,9 @@ def _require_skfem() -> Any:
         import skfem
     except ImportError as exc:  # pragma: no cover - dependency gate
         raise ImportError(
-            "ScikitFEM*Solver requires scikit-fem. Install with: pip install 'scikit-fem>=9.0'"
+            "ScikitFEM*Solver requires scikit-fem. "
+            "Install via the project extra: pip install -e '.[fem]' "
+            "(or ``pip install scikit-fem>=9.0`` if you only need the dependency)."
         ) from exc
     return skfem
 

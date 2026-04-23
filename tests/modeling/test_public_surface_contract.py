@@ -21,6 +21,7 @@ tests/modeling/gen_public_surface_golden.py`` and update the ADR's
 from __future__ import annotations
 
 import json
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -52,13 +53,33 @@ _REMEDIATION = (
 )
 
 
-def _load_golden() -> dict[str, dict[str, Any]]:
-    with _GOLDEN_PATH.open(encoding="utf-8") as f:
-        data: dict[str, dict[str, Any]] = json.load(f)
+@cache
+def _golden() -> dict[str, dict[str, Any]]:
+    """Lazily load the golden snapshot with actionable errors.
+
+    Loading is deferred from module import to first test execution so a
+    missing or corrupted snapshot surfaces as an ``AssertionError`` with
+    regeneration guidance, not a ``FileNotFoundError``/``JSONDecodeError``
+    that derails pytest collection before any remediation can be shown.
+    """
+    if not _GOLDEN_PATH.exists():
+        raise AssertionError(
+            f"Golden snapshot missing at {_GOLDEN_PATH}. "
+            f"Restore it from git (shallow/partial checkouts can miss "
+            f"it) or regenerate via\n"
+            f"    python tests/modeling/gen_public_surface_golden.py"
+        )
+    try:
+        with _GOLDEN_PATH.open(encoding="utf-8") as f:
+            data: dict[str, dict[str, Any]] = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(
+            f"Golden snapshot at {_GOLDEN_PATH} is corrupted "
+            f"(JSON decode error: {exc}). Restore from git or "
+            f"regenerate via\n"
+            f"    python tests/modeling/gen_public_surface_golden.py"
+        ) from exc
     return data
-
-
-_GOLDEN = _load_golden()
 
 
 def _entry_id(entry: SurfaceEntry) -> str:
@@ -87,7 +108,7 @@ def _require_golden_record(name: str) -> dict[str, Any]:
     the per-class tests must produce their own actionable message instead
     of a cryptic ``KeyError``.
     """
-    record = _GOLDEN.get(name)
+    record = _golden().get(name)
     assert record is not None, (
         f"{name} is listed in PUBLIC_SURFACE but missing from the golden "
         f"snapshot. Regenerate via\n"
@@ -104,12 +125,23 @@ def test_class_importable_from_toplevel(entry: SurfaceEntry) -> None:
 
     Also asserts ``__module__`` matches the submodule declared in the
     ADR table, so an accidental move (e.g. copying ``FNetBlock`` into a
-    new file) is caught.
+    new file) is caught. The golden's own ``module`` field is
+    cross-checked against the ADR table to catch a drifted golden
+    without the regenerator being re-run.
     """
     cls = _require_class(entry)
     assert cls.__module__ == entry.expected_module, (
         f"{entry.class_name}.__module__ is {cls.__module__!r}, "
         f"ADR declares {entry.expected_module!r}. Did the class move?"
+    )
+    record = _require_golden_record(entry.class_name)
+    golden_module = record.get("module")
+    assert golden_module == entry.expected_module, (
+        f"Golden's module for {entry.class_name!r} is {golden_module!r} "
+        f"but the ADR table declares {entry.expected_module!r}. "
+        f"Regenerate via\n"
+        f"    python tests/modeling/gen_public_surface_golden.py\n"
+        f"or reconcile PUBLIC_SURFACE with the ADR."
     )
 
 
@@ -213,13 +245,13 @@ def test_golden_has_every_adr_class() -> None:
     """Detect a golden that fell out of sync with the ADR class list.
 
     If a new class is added to :data:`PUBLIC_SURFACE` but the golden is
-    not regenerated, the ``_GOLDEN[name]`` lookup in the per-class
-    tests would raise ``KeyError``. This whole-surface test gives a
-    clearer error and also catches the reverse (classes lingering in
-    the golden after removal from the ADR tuple).
+    not regenerated, the per-class lookups would raise ``KeyError``.
+    This whole-surface test gives a clearer error and also catches the
+    reverse (classes lingering in the golden after removal from the
+    ADR tuple).
     """
     adr_names = {entry.class_name for entry in PUBLIC_SURFACE}
-    golden_names = set(_GOLDEN.keys())
+    golden_names = set(_golden().keys())
     missing_from_golden = adr_names - golden_names
     extra_in_golden = golden_names - adr_names
     assert not missing_from_golden, (

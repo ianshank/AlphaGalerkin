@@ -369,6 +369,8 @@ class TestStableGalerkinInitializerNewParams:
             ({"guard_threshold_ratio": 0.0}, "guard_threshold_ratio must be > 0"),
             ({"scale_clamp": (0.0, 1.0)}, "scale_clamp values must be > 0"),
             ({"scale_clamp": (3.0, 1.0)}, "scale_clamp\\[0\\] must be <="),
+            ({"scale_clamp": (1.0,)}, "scale_clamp must have exactly 2 elements"),
+            ({"scale_clamp": (1.0, 2.0, 3.0)}, "scale_clamp must have exactly 2 elements"),
         ],
     )
     def test_init_rejects_invalid_args(self, kwargs: dict[str, Any], match: str) -> None:

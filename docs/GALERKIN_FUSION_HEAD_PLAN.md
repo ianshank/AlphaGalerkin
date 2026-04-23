@@ -2,9 +2,9 @@
 
 ## Context
 
-**Why this work:** Mouse-Droid-AGI currently fuses heterogeneous sensors (IMX500 camera features, HC-SR04 ultrasonic, ESP32 encoder ticks) through a hand-written adapter inside `sensing/`. The hypothesis is that a Galerkin-attention block — built from the resolution-independent operators already validated in AlphaGalerkin (Zero-Shot Transfer MSE 0.000209) — can replace that adapter and either (a) free RAM headroom on the Orin Nano's 8GB budget, (b) shorten frame latency tails, or (c) improve downstream RSSM/MCTS quality. Any one of those is a win; all four flat is a publishable negative result.
+**Why this work:** Mouse-Droid-AGI currently fuses heterogeneous sensors (IMX500 camera features, HC-SR04 ultrasonic, ESP32 encoder ticks) through a hand-written adapter inside `sensing/`. The hypothesis is that a Galerkin-attention block — built from the resolution-independent operators already validated in AlphaGalerkin (Zero-Shot Transfer MSE 0.000209) — can replace that adapter and either (a) free RAM headroom on the Orin Nano's 8GB budget, (b) shorten frame latency tails, or (c) improve downstream RSSM/MCTS quality. Any one of those is a win; all three flat is a publishable negative result.
 
-**Why a cross-repo plan:** Mouse-Droid-AGI will consume AlphaGalerkin via **git submodule** (decided up front). That means this repo (AlphaGalerkin) needs a stable, importable surface for `GalerkinAttention`, `FNetBlock`, `MultiScaleFourierFeatures`, and `StabilityGuard`, and Mouse-Droid-AGI's `sensing/galerkin_fusion.py` will import them from `src.modeling.*` paths.
+**Why a cross-repo plan:** Mouse-Droid-AGI will consume AlphaGalerkin via **git submodule** (decided up front). That means this repo (AlphaGalerkin) needs a stable, importable surface for `GalerkinAttention`, `FNetBlock`, `MultiScaleFourierFeatures`, and `StabilityGuard`. Mouse-Droid-AGI's `sensing/galerkin_fusion.py` **must import only from the top-level package** (`from src.modeling import GalerkinAttention, FNetBlock, ...`) — not from the underlying `src.modeling.*` submodules. The re-export surface declared in `docs/architecture/ADR-mouse-droid-fusion-integration.md` is the stability contract; deep-submodule imports bypass it.
 
 **Outcome the plan must produce:** A merged feature-flagged PR in Mouse-Droid-AGI, four benchmark plots on Orin Nano, a 1000–3000 word technical note, and an ADR recorded in **both** repos by end of Day 10 — recording either "continue to Week 3 (ICM refinement + HJB)" or "redirect to SEAL SQE / AlphaGalerkin proper."
 
@@ -28,7 +28,7 @@ All resolution-independent. Import paths verified by Phase 1 exploration.
 | `GalerkinAttention` | `src/modeling/attention.py:26` | `(d_model, n_heads, d_key=None, d_value=None, dropout=0.0, normalize_features=True)`; forward `[B, n, d] → [B, n, d]`; optional `return_lbb=True`. **Requires float32 for SVD.** |
 | `FNetBlock` | `src/modeling/fnet.py:132` | `(d_model, d_ffn=None, dropout=0.1, use_2d_fft=True)`; forward `(x, board_size=None) → [B, n, d]`. 2D mode requires `board_size² == seq_len`. |
 | `MultiScaleFourierFeatures` | `src/modeling/multiscale_fourier.py:93` | Use to embed heterogeneous coordinate inputs (camera pixel grid, scalar ultrasonic, encoder tick coords) into a shared feature space before attention. Configured via `FourierFeaturesConfig`. |
-| `StabilityGuard` | `src/modeling/stability.py:25` | `(beta_threshold, regularization_strength)`; methods `compute_lbb_constant`, `check_stability`, `regularization_loss`. Standalone-importable. |
+| `StabilityGuard` | `src/modeling/stability.py:25` | `(beta_threshold=1e-6, regularization_strength=0.01, log_interval=100, margin_multiplier=10.0)`; methods `compute_lbb_constant`, `check_stability`, `regularization_loss`. Standalone-importable. |
 | `BaseModuleConfig` | `src/templates/config.py:120` | Pydantic base for the new `SensingConfig.fusion_backend` schema. `extra="forbid"`. |
 | `create_registry` | `src/templates/registry.py:240` | Decorator pattern for `make_fusion_backend()`. |
 

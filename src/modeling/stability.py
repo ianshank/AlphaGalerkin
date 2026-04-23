@@ -321,6 +321,10 @@ class StableGalerkinInitializer:
             raise ValueError(f"scale_epsilon must be > 0, got {scale_epsilon}")
         if guard_threshold_ratio <= 0:
             raise ValueError(f"guard_threshold_ratio must be > 0, got {guard_threshold_ratio}")
+        if len(scale_clamp) != 2:
+            raise ValueError(
+                f"scale_clamp must have exactly 2 elements (min, max), got {len(scale_clamp)}"
+            )
         if scale_clamp[0] <= 0 or scale_clamp[1] <= 0:
             raise ValueError(f"scale_clamp values must be > 0, got {scale_clamp}")
         if scale_clamp[0] > scale_clamp[1]:

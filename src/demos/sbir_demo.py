@@ -423,7 +423,7 @@ class SBIRDemo:
             self._log.info("plot_skipped_no_valid_results")
             return
 
-        viz_config = VisualizationConfig()
+        viz_config = VisualizationConfig(name="sbir_demo_plots")
 
         try:
             pareto_fig = create_plot(

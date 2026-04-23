@@ -18,7 +18,7 @@ Supports three adaptation strategies:
 from __future__ import annotations
 
 import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import structlog
@@ -72,18 +72,17 @@ class FEMConfig(SolverConfig):
     smoothness_threshold: float = Field(
         default=0.5,
         gt=0,
-        description="hp-adaptive threshold: elements with local smoothness above this get p-refined",
+        description="hp-adaptive threshold: smoother elements (above this) get p-refined",
     )
 
 
 def _require_skfem() -> Any:
     """Import scikit-fem or raise a helpful error."""
     try:
-        import skfem  # type: ignore[import-not-found]
+        import skfem
     except ImportError as exc:  # pragma: no cover - dependency gate
         raise ImportError(
-            "ScikitFEM*Solver requires scikit-fem. "
-            "Install with: pip install 'scikit-fem>=9.0'"
+            "ScikitFEM*Solver requires scikit-fem. Install with: pip install 'scikit-fem>=9.0'"
         ) from exc
     return skfem
 
@@ -143,9 +142,7 @@ class ScikitFEMPoissonSolver(BaseSolver):
         levels_used = 0
 
         for level in range(self.config.max_refinement_levels):
-            solution, coords, l2_err = self._assemble_and_solve(
-                mesh, element, operator, skfem
-            )
+            solution, coords, l2_err = self._assemble_and_solve(mesh, element, operator, skfem)
             last_solution, last_coords, last_l2_err = solution, coords, l2_err
             levels_used = level + 1
 
@@ -166,13 +163,13 @@ class ScikitFEMPoissonSolver(BaseSolver):
 
             if self.config.refinement_strategy == "p_adaptive":
                 new_order = min(3, _order_of(element_type) + 1)
-                element_type = f"P{new_order}"
+                element_type = cast("Literal['P1', 'P2', 'P3']", f"P{new_order}")
                 element = _make_element(element_type, skfem)
             elif self.config.refinement_strategy == "hp_adaptive":
                 smooth = self._estimate_smoothness(indicators, marked)
-                if smooth > self.config.smoothness_threshold:
-                    new_order = min(3, _order_of(element_type) + 1)
-                    element_type = f"P{new_order}"
+                current_p = _order_of(element_type)
+                if smooth > self.config.smoothness_threshold and current_p < 3:
+                    element_type = cast("Literal['P1', 'P2', 'P3']", f"P{current_p + 1}")
                     element = _make_element(element_type, skfem)
                 else:
                     mesh = mesh.refined(np.where(marked)[0])
@@ -243,9 +240,8 @@ class ScikitFEMPoissonSolver(BaseSolver):
     ) -> tuple[NDArray[np.float64], NDArray[np.float64], float | None]:
         """Assemble the Poisson system and solve it."""
         from scipy.sparse.linalg import spsolve
-
-        from skfem import BilinearForm, LinearForm  # type: ignore[import-not-found]
-        from skfem.helpers import dot, grad  # type: ignore[import-not-found]
+        from skfem import BilinearForm, LinearForm
+        from skfem.helpers import dot, grad
 
         basis = skfem.Basis(mesh, element)
 
@@ -257,25 +253,34 @@ class ScikitFEMPoissonSolver(BaseSolver):
         def l_form(v: Any, w: Any) -> Any:
             x = w.x  # quadrature point coordinates (dim, n_q, n_elements)
             pts = np.stack([x[0].ravel(), x[1].ravel()], axis=-1).astype(np.float32)
-            f_vals = np.asarray(operator.source_term(pts), dtype=np.float64)
+            f_out = operator.source_term(pts)
+            if isinstance(f_out, torch.Tensor):
+                f_out = f_out.detach().cpu().numpy()
+            f_vals = np.asarray(f_out, dtype=np.float64)
             f = f_vals.reshape(x[0].shape)
             return f * v
 
         A = a_form.assemble(basis)
         b = l_form.assemble(basis)
 
-        # Dirichlet boundary conditions via operator.boundary_value.
+        # Dirichlet boundary conditions via operator.boundary_value,
+        # evaluated at the actual DOF locations (covers P2/P3 edge dofs).
         dirichlet_dofs = basis.get_dofs()
-        dirichlet_pts = mesh.p[:, dirichlet_dofs.nodal["u"]] if hasattr(
-            dirichlet_dofs, "nodal"
-        ) else mesh.p[:, dirichlet_dofs]
-        bc_pts = np.asarray(dirichlet_pts.T, dtype=np.float32)
-        bc_values = np.asarray(operator.boundary_value(bc_pts), dtype=np.float64).flatten()
+        if hasattr(dirichlet_dofs, "flatten"):
+            dof_indices = dirichlet_dofs.flatten()
+        elif hasattr(dirichlet_dofs, "nodal"):
+            dof_indices = dirichlet_dofs.nodal["u"]
+        else:
+            dof_indices = np.asarray(dirichlet_dofs)
+
+        dof_locs = basis.doflocs  # (dim, n_dof)
+        bc_pts = np.asarray(dof_locs[:, dof_indices].T, dtype=np.float32)
+        bc_out = operator.boundary_value(bc_pts)
+        if isinstance(bc_out, torch.Tensor):
+            bc_out = bc_out.detach().cpu().numpy()
+        bc_values = np.asarray(bc_out, dtype=np.float64).flatten()
 
         u = np.zeros(A.shape[0], dtype=np.float64)
-        dof_indices = (
-            dirichlet_dofs.nodal["u"] if hasattr(dirichlet_dofs, "nodal") else dirichlet_dofs
-        )
         u[dof_indices] = bc_values
 
         # Solve the condensed system
@@ -283,12 +288,11 @@ class ScikitFEMPoissonSolver(BaseSolver):
         u_c = spsolve(A_c, b_c)
         u[I] = u_c
 
-        # Evaluate at mesh nodes for error computation
-        coords = mesh.p.T.astype(np.float64)
-        nodal_values = u[: coords.shape[0]]
-        l2_err = self._compute_l2_error(nodal_values, coords, operator)
+        # Use basis.doflocs as the coordinate array so it has the same
+        # length as u (critical for P2/P3 where u has edge-midpoint dofs).
+        coords = basis.doflocs.T.astype(np.float64)
+        l2_err = self._compute_l2_error(u, coords, operator)
 
-        # Store full solution (includes higher-order dofs for P2/P3)
         return u.astype(np.float64), coords, l2_err
 
     # ------------------------------------------------------------------
@@ -307,7 +311,9 @@ class ScikitFEMPoissonSolver(BaseSolver):
         G is the patch-recovery operator implemented here as nodal
         averaging of element-wise gradients.
         """
-        basis = skfem.Basis(mesh, element)
+        # skfem.Basis(mesh, element) reserved for future use when switching
+        # to quadrature-based ZZ recovery; the simple P1 downsampling below
+        # does not need it.
         n_elements = mesh.t.shape[1]
 
         # Element-wise constant gradients via P1 approximation of u_h
@@ -396,23 +402,6 @@ class ScikitFEMPoissonSolver(BaseSolver):
             return 0.0
         return float(np.mean(marked_vals) / (np.max(marked_vals) + 1e-12))
 
-    def _compute_l2_error(  # type: ignore[override]
-        self,
-        solution: NDArray[np.float64],
-        coords: NDArray[np.float64],
-        operator: PDEOperator,
-    ) -> float | None:
-        """Override to use nodal values only (ignores interior P2/P3 dofs)."""
-        exact = operator.exact_solution(coords.astype(np.float32))
-        if exact is None:
-            return None
-        if isinstance(exact, torch.Tensor):
-            exact = exact.detach().cpu().numpy()
-        exact = np.asarray(exact, dtype=np.float64).flatten()
-        diff = solution.flatten() - exact
-        n = len(diff)
-        return float(np.sqrt(np.sum(diff**2) / n)) if n > 0 else None
-
 
 class ScikitFEMLShapedSolver(ScikitFEMPoissonSolver):
     """hp-adaptive FEM specialized for the L-shaped domain.
@@ -428,9 +417,9 @@ class ScikitFEMLShapedSolver(ScikitFEMPoissonSolver):
     description = "hp-adaptive FEM (scikit-fem) on L-shaped domain"
 
     def _build_initial_mesh(self, operator: PDEOperator, n_dof: int, skfem: Any) -> Any:
-        """Build an L-shaped mesh by assembling three unit squares.
+        r"""Build an L-shaped mesh by assembling three unit squares.
 
-        The L-shaped domain is defined as ``[-1,1]^2 \\ [0,1]x[-1,0]``.
+        The L-shaped domain is defined as ``[-1,1]^2 \ [0,1]x[-1,0]``.
         """
         if operator.dim != 2:
             raise NotImplementedError("L-shaped domain is inherently 2D")
@@ -441,7 +430,7 @@ class ScikitFEMLShapedSolver(ScikitFEMPoissonSolver):
         sw = skfem.MeshTri.init_tensor(np.linspace(-1.0, 0.0, 3), np.linspace(-1.0, 0.0, 3))
 
         try:
-            mesh = nw + ne + sw  # type: ignore[operator]
+            mesh = nw + ne + sw
         except TypeError:
             # Fallback for older skfem without + operator: concatenate via init_lshaped if present
             if hasattr(skfem.MeshTri, "init_lshaped"):

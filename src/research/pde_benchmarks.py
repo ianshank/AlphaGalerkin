@@ -265,9 +265,7 @@ class PDEBenchmarkRunner:
         for r in results:
             if math.isnan(r.l2_error):
                 continue
-            entry = by_method.setdefault(
-                r.method_name, {"wall_time": [], "error": [], "n_dof": []}
-            )
+            entry = by_method.setdefault(r.method_name, {"wall_time": [], "error": [], "n_dof": []})
             entry["wall_time"].append(r.wall_time_seconds)
             entry["error"].append(r.l2_error)
             entry["n_dof"].append(r.n_dof)

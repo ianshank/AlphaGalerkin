@@ -187,10 +187,7 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
         assert result_a.l2_error == pytest.approx(result_b.l2_error, rel=0.0, abs=0.0)
-        assert (
-            result_a.metadata["n_actions_taken"]
-            == result_b.metadata["n_actions_taken"]
-        )
+        assert result_a.metadata["n_actions_taken"] == result_b.metadata["n_actions_taken"]
 
     def test_trained_evaluator_not_yet_implemented(
         self,

@@ -243,7 +243,11 @@ class AlphaGalerkinSolver(BaseSolver):
         if l2_error is None and solution_available:
             l2_error = self._compute_l2_error(solution_arr, grid_arr, operator)
 
-        n_dof_final = int(final_state.dof) if final_state.dof > 0 else int(len(solution_arr))
+        # ``final_state.dof`` is the authoritative DOF count (basis functions
+        # selected for basis_selection, mesh nodes for mesh_refinement).
+        # ``len(solution_arr)`` is the collocation-point count and would be
+        # wrong for basis_selection, so do not use it as a fallback.
+        n_dof_final = int(final_state.dof)
 
         log.info(
             "alphagalerkin_solve_done",

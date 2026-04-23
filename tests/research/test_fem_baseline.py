@@ -9,7 +9,6 @@ scikit-fem is required; tests are skipped if not installed.
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from src.pde.config import PDEConfig, PDEType

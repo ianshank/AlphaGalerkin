@@ -305,10 +305,10 @@ class TimingComparisonPlot(BasePlot):
 
 @register_plot("pareto_frontier")
 class ParetoFrontierPlot(BasePlot):
-    """Plot L2 error vs wall-clock compute on a log-log scale with the
-    Pareto frontier highlighted.
+    """Plot L2 error vs wall-clock compute with Pareto frontier highlighted.
 
-    This is the headline plot for the DOE Genesis Mission proposal:
+    Uses a log-log scale. This is the headline plot for the DOE Genesis
+    Mission proposal:
     methods that sit on the lower-left frontier are strictly better
     (lower error at lower compute) than those above it.
 

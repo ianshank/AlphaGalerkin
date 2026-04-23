@@ -182,8 +182,16 @@ class ScikitFEMPoissonSolver(BaseSolver):
 
             max_p = self.config.max_element_order
             if self.config.refinement_strategy == "p_adaptive":
-                new_order = min(max_p, _order_of(element_type) + 1)
-                element_type = cast("Literal['P1', 'P2', 'P3']", f"P{new_order}")
+                current_p = _order_of(element_type)
+                if current_p >= max_p:
+                    log.info(
+                        "p_adaptive_saturated",
+                        level=level,
+                        element_type=element_type,
+                        max_element_order=max_p,
+                    )
+                    break
+                element_type = cast("Literal['P1', 'P2', 'P3']", f"P{current_p + 1}")
                 element = _make_element(element_type, skfem)
             elif self.config.refinement_strategy == "hp_adaptive":
                 smooth = self._estimate_smoothness(indicators, marked)

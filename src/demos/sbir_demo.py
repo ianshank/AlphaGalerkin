@@ -32,6 +32,15 @@ logger = structlog.get_logger(__name__)
 app = typer.Typer(name="sbir-demo", help="SBIR benchmark demonstration")
 
 
+def _sanitize_filename(name: str) -> str:
+    """Replace filesystem-unsafe characters with underscores.
+
+    Used to derive per-benchmark plot file names from benchmark names
+    that may contain whitespace, slashes, or other separators.
+    """
+    return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in name).strip("_") or "plot"
+
+
 # ---------------------------------------------------------------------------
 # HTML report generation
 # ---------------------------------------------------------------------------
@@ -410,7 +419,13 @@ class SBIRDemo:
         results: list[PDEBenchmarkResult],
         output_dir: Path,
     ) -> None:
-        """Render Pareto frontier and convergence plots via the poc visualization registry."""
+        """Render per-problem Pareto + convergence plots via the visualization registry.
+
+        Each benchmark problem gets its own pair of plots (error axes are
+        not cross-comparable between different PDEs).  File names are
+        derived from the benchmark name with filesystem-unsafe characters
+        replaced by underscores.
+        """
         try:
             from src.poc.visualization.config import VisualizationConfig
             from src.poc.visualization.plots import create_plot
@@ -418,42 +433,53 @@ class SBIRDemo:
             self._log.warning("plot_deps_missing", error=str(exc))
             return
 
-        methods_data = runner.build_pareto_plot_data(results)
-        if not methods_data:
+        per_problem = runner.build_pareto_plot_data(results)
+        if not per_problem:
             self._log.info("plot_skipped_no_valid_results")
             return
 
         viz_config = VisualizationConfig(name="sbir_demo_plots")
 
-        try:
-            pareto_fig = create_plot(
-                "pareto_frontier",
-                {"methods": methods_data},
-                viz_config,
-            )
-            pareto_path = output_dir / "pareto_plot.png"
-            pareto_fig.savefig(pareto_path, dpi=viz_config.dpi, bbox_inches="tight")
-            self._log.info("pareto_plot_written", path=str(pareto_path))
-        except Exception:  # pragma: no cover - plot failures are non-fatal
-            self._log.exception("pareto_plot_failed")
+        for benchmark_name, methods_data in per_problem.items():
+            safe_name = _sanitize_filename(benchmark_name)
 
-        try:
-            convergence_data: dict[str, dict[str, list[float]]] = {}
-            for method_name, series in methods_data.items():
-                convergence_data[method_name] = {
-                    "dof": [float(x) for x in series["n_dof"]],
-                    "error": [float(x) for x in series["error"]],
-                }
-            conv_fig = create_plot(
-                "convergence_rates",
-                {"methods": convergence_data},
-                viz_config,
-            )
-            conv_path = output_dir / "convergence_plot.png"
-            conv_fig.savefig(conv_path, dpi=viz_config.dpi, bbox_inches="tight")
-            self._log.info("convergence_plot_written", path=str(conv_path))
-        except Exception:  # pragma: no cover - plot failures are non-fatal
-            self._log.exception("convergence_plot_failed")
+            try:
+                pareto_fig = create_plot(
+                    "pareto_frontier",
+                    {"methods": methods_data},
+                    viz_config,
+                )
+                pareto_path = output_dir / f"pareto_{safe_name}.png"
+                pareto_fig.savefig(pareto_path, dpi=viz_config.dpi, bbox_inches="tight")
+                self._log.info(
+                    "pareto_plot_written",
+                    benchmark=benchmark_name,
+                    path=str(pareto_path),
+                )
+            except Exception:  # pragma: no cover - plot failures are non-fatal
+                self._log.exception("pareto_plot_failed", benchmark=benchmark_name)
+
+            try:
+                convergence_data: dict[str, dict[str, list[float]]] = {}
+                for method_name, series in methods_data.items():
+                    convergence_data[method_name] = {
+                        "dof": [float(x) for x in series["n_dof"]],
+                        "error": [float(x) for x in series["error"]],
+                    }
+                conv_fig = create_plot(
+                    "convergence_rates",
+                    {"methods": convergence_data},
+                    viz_config,
+                )
+                conv_path = output_dir / f"convergence_{safe_name}.png"
+                conv_fig.savefig(conv_path, dpi=viz_config.dpi, bbox_inches="tight")
+                self._log.info(
+                    "convergence_plot_written",
+                    benchmark=benchmark_name,
+                    path=str(conv_path),
+                )
+            except Exception:  # pragma: no cover - plot failures are non-fatal
+                self._log.exception("convergence_plot_failed", benchmark=benchmark_name)
 
     def _write_json(
         self,

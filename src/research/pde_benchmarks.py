@@ -140,13 +140,18 @@ class PDEBenchmarkRunner:
             for n_dof in refinement_levels:
                 try:
                     sr = solver.solve(operator, n_dof)
+                    # Record the requested refinement_level hint alongside
+                    # the solver-reported n_dof so CSV consumers can
+                    # distinguish the input budget from the output DOF.
+                    metadata_with_level = dict(sr.metadata)
+                    metadata_with_level.setdefault("refinement_level", n_dof)
                     result = PDEBenchmarkResult(
                         benchmark_name=name,
                         method_name=solver.name,
                         n_dof=sr.n_dof,
                         l2_error=sr.l2_error if sr.l2_error is not None else float("nan"),
                         wall_time_seconds=sr.wall_time_seconds,
-                        metadata=sr.metadata,
+                        metadata=metadata_with_level,
                     )
                     results.append(result)
                     self._log.info(
@@ -250,26 +255,38 @@ class PDEBenchmarkRunner:
     def build_pareto_plot_data(
         self,
         results: list[PDEBenchmarkResult],
-    ) -> dict[str, dict[str, Any]]:
-        """Build the ``methods`` payload for :class:`ParetoFrontierPlot`.
+    ) -> dict[str, dict[str, dict[str, list[Any]]]]:
+        """Build per-problem ``methods`` payloads for :class:`ParetoFrontierPlot`.
+
+        Results across different PDEs are incomparable on a shared
+        error/time axis (e.g. an L-shaped Poisson error of 1e-3 is not
+        directly comparable to a Burgers-shock error of 1e-3), so we
+        partition by ``benchmark_name`` and return a nested
+        ``{benchmark_name: {method_name: {wall_time, error, n_dof}}}``
+        structure.  Callers render one plot per problem.
 
         Args:
             results: Benchmark results (may span multiple problems).
 
         Returns:
-            Dict keyed by method name with ``wall_time``, ``error``, ``n_dof``
-            lists, ready to feed into ``create_plot('pareto_frontier', ...)``.
+            Nested dict keyed by benchmark name, then by method name.
+            Each inner dict has parallel ``wall_time``, ``error``,
+            ``n_dof`` lists ready to feed into
+            ``create_plot('pareto_frontier', {'methods': inner}, ...)``.
 
         """
-        by_method: dict[str, dict[str, list[Any]]] = {}
+        by_problem: dict[str, dict[str, dict[str, list[Any]]]] = {}
         for r in results:
             if math.isnan(r.l2_error):
                 continue
-            entry = by_method.setdefault(r.method_name, {"wall_time": [], "error": [], "n_dof": []})
+            problem_bucket = by_problem.setdefault(r.benchmark_name, {})
+            entry = problem_bucket.setdefault(
+                r.method_name, {"wall_time": [], "error": [], "n_dof": []}
+            )
             entry["wall_time"].append(r.wall_time_seconds)
             entry["error"].append(r.l2_error)
             entry["n_dof"].append(r.n_dof)
-        return by_method
+        return by_problem
 
     # ------------------------------------------------------------------
     # Report generation

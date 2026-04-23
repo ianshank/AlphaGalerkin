@@ -16,11 +16,16 @@ Design notes
 - ``AlphaGalerkinConfig`` extends ``SolverConfig`` so it inherits the
   ``seed``/``max_iterations``/``tolerance`` fields already used by the
   classical baselines.
-- The solver deliberately does not modify ``baselines.SOLVER_REGISTRY``
-  at import time: benchmark code can register it lazily via the helper
-  ``_register_with_baselines`` which is safe to call multiple times.
-  This lets ``src.alphagalerkin`` stay import-safe even when the user
-  has not installed the MCTS dependencies.
+- The solver registers itself with ``baselines.SOLVER_REGISTRY`` at
+  import time via the ``_register_with_baselines`` helper, using
+  ``setdefault`` so the side effect is idempotent.  This means
+  ``get_solver("alphagalerkin")`` works after any ``import
+  src.alphagalerkin`` (including transitive imports through
+  ``PDEBenchmarkRunner``) with no explicit wiring.  The helper is
+  exposed as a module-level function so callers that want to strip
+  the side effect (for example, when loading the package in an
+  environment where the MCTS stack is unavailable) can skip it by
+  monkey-patching before import.
 - For ``mesh_refinement`` game mode the underlying game reconstructs
   the state's solution vector on the adaptive mesh; we pass that
   through in ``SolverResult.solution``.  For ``basis_selection`` the
@@ -195,29 +200,40 @@ class AlphaGalerkinSolver(BaseSolver):
 
         # Main episode loop.  We call ``mcts.search`` to obtain an
         # improved policy, pick the mode-argmax action, and advance the
-        # adapter until termination / tolerance / max_steps.
+        # adapter until termination / tolerance / max_steps.  The actual
+        # break reason is captured in ``termination_reason`` so metadata
+        # distinguishes e.g. ``no_legal_actions`` from ``max_steps``.
         n_actions_taken = 0
+        termination_reason = "max_steps"
         for step in range(self.config.max_steps):
             if adapter.is_terminal():
-                log.debug("terminated_early", step=step, reason="is_terminal")
+                termination_reason = "is_terminal"
+                log.debug("terminated_early", step=step, reason=termination_reason)
                 break
-            if adapter.current_error < self.config.target_tolerance:
+            # ``adapter.current_error`` is a reduction *fraction*; the raw
+            # error estimate lives on the state and is what the tolerance
+            # contract is defined against.
+            current_error = adapter.state.error_estimate
+            if current_error < self.config.target_tolerance:
+                termination_reason = "tolerance"
                 log.debug(
                     "terminated_early",
                     step=step,
-                    reason="below_tolerance",
-                    error=adapter.current_error,
+                    reason=termination_reason,
+                    error=current_error,
                 )
                 break
 
             legal = adapter.get_legal_actions()
             if not legal:
-                log.debug("terminated_early", step=step, reason="no_legal_actions")
+                termination_reason = "no_legal_actions"
+                log.debug("terminated_early", step=step, reason=termination_reason)
                 break
 
             policy = mcts.search(adapter, add_noise=False)
             if not policy:
-                log.debug("terminated_early", step=step, reason="empty_policy")
+                termination_reason = "empty_policy"
+                log.debug("terminated_early", step=step, reason=termination_reason)
                 break
 
             # Mode-argmax (deterministic given the MCTS visit counts).
@@ -278,13 +294,7 @@ class AlphaGalerkinSolver(BaseSolver):
                 "target_tolerance": self.config.target_tolerance,
                 "evaluator": self.config.evaluator,
                 "solution_available": solution_available,
-                "termination_reason": (
-                    "tolerance"
-                    if adapter.current_error < self.config.target_tolerance
-                    else "is_terminal"
-                    if adapter.is_terminal()
-                    else "max_steps"
-                ),
+                "termination_reason": termination_reason,
             },
         )
 

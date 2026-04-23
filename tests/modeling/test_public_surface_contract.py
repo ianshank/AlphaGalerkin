@@ -43,8 +43,9 @@ from tests.modeling._signature_utils import (
 _GOLDEN_PATH = Path(__file__).parent / "_public_surface_golden.json"
 _REMEDIATION = (
     "If this change is intentional and backwards-compatible "
-    "(new keyword argument appended with a default that preserves prior "
-    "behaviour), regenerate the golden via\n"
+    "(new parameter appended at the end with a default that preserves "
+    "prior behaviour — positional-or-keyword or keyword-only, both are "
+    "accepted by the additive rule), regenerate the golden via\n"
     "    python tests/modeling/gen_public_surface_golden.py\n"
     "and update docs/architecture/ADR-mouse-droid-fusion-integration.md "
     "'§Key signatures (frozen)' in the same PR. Non-additive changes "

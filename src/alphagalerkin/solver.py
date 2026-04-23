@@ -51,6 +51,20 @@ from src.pde.games.basis_selection import BasisSelectionGame
 from src.pde.games.mesh_refinement import MeshRefinementGame
 from src.pde.mcts_adapter import PDEGameAdapter
 from src.research.baselines import BaseSolver, SolverConfig, SolverResult
+from src.research.metadata_keys import (
+    METADATA_KEY_ERROR_HISTORY,
+    METADATA_KEY_EVALUATOR,
+    METADATA_KEY_GAME_MODE,
+    METADATA_KEY_MAX_STEPS,
+    METADATA_KEY_MIN_GAME_DOF,
+    METADATA_KEY_N_ACTIONS_TAKEN,
+    METADATA_KEY_N_MCTS_SIMULATIONS,
+    METADATA_KEY_SEED,
+    METADATA_KEY_SOLUTION_AVAILABLE,
+    METADATA_KEY_SOLVER,
+    METADATA_KEY_TARGET_TOLERANCE,
+    METADATA_KEY_TERMINATION_REASON,
+)
 
 if TYPE_CHECKING:
     from src.pde.game import PDEGame
@@ -285,23 +299,23 @@ class AlphaGalerkinSolver(BaseSolver):
             wall_time_seconds=wall_time,
             l2_error=float(l2_error) if l2_error is not None else None,
             metadata={
-                "solver": self.name,
+                METADATA_KEY_SOLVER: self.name,
                 # Determinism-affecting fields - surfaced explicitly so
                 # PDEBenchmarkRunner.export_csv() can populate the seed
                 # column and downstream analysis can tell two runs apart
                 # without inspecting the solver config out-of-band.
-                "seed": self.config.seed,
-                "game_mode": self.config.game_mode,
-                "n_mcts_simulations": self.config.n_mcts_simulations,
-                "max_steps": self.config.max_steps,
-                "target_tolerance": self.config.target_tolerance,
-                "evaluator": self.config.evaluator,
-                "min_game_dof": self.config.min_game_dof,
+                METADATA_KEY_SEED: self.config.seed,
+                METADATA_KEY_GAME_MODE: self.config.game_mode,
+                METADATA_KEY_N_MCTS_SIMULATIONS: self.config.n_mcts_simulations,
+                METADATA_KEY_MAX_STEPS: self.config.max_steps,
+                METADATA_KEY_TARGET_TOLERANCE: self.config.target_tolerance,
+                METADATA_KEY_EVALUATOR: self.config.evaluator,
+                METADATA_KEY_MIN_GAME_DOF: self.config.min_game_dof,
                 # Run outcome
-                "n_actions_taken": n_actions_taken,
-                "error_history": list(adapter.error_history),
-                "solution_available": solution_available,
-                "termination_reason": termination_reason,
+                METADATA_KEY_N_ACTIONS_TAKEN: n_actions_taken,
+                METADATA_KEY_ERROR_HISTORY: list(adapter.error_history),
+                METADATA_KEY_SOLUTION_AVAILABLE: solution_available,
+                METADATA_KEY_TERMINATION_REASON: termination_reason,
             },
         )
 

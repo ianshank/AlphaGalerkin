@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 from dataclasses import dataclass, field
@@ -25,6 +26,21 @@ from src.pde.registry import get_pde_operator, list_pde_operators
 from src.research.baselines import BaseSolver, get_solver, list_solvers
 
 logger = structlog.get_logger(__name__)
+
+# Re-export metadata-key constants so existing callers (if any) can keep
+# importing ``METADATA_KEY_*`` from this module without breaking.  The
+# canonical home is :mod:`src.research.metadata_keys`.
+from src.research.metadata_keys import (  # noqa: E402
+    METADATA_KEY_METHOD,
+    METADATA_KEY_REFINEMENT_LEVEL,
+    METADATA_KEY_SEED,
+)
+
+# Log underflow guard for convergence rate computation: skip any step where
+# the previous or current l2_error is below this threshold, since the log()
+# result dominates numerical noise.  Kept module-private; if a caller needs
+# to sweep it, expose it via a config field.
+_CONVERGENCE_RATE_EPS = 1e-12
 
 
 @dataclass
@@ -144,7 +160,7 @@ class PDEBenchmarkRunner:
                     # the solver-reported n_dof so CSV consumers can
                     # distinguish the input budget from the output DOF.
                     metadata_with_level = dict(sr.metadata)
-                    metadata_with_level.setdefault("refinement_level", n_dof)
+                    metadata_with_level.setdefault(METADATA_KEY_REFINEMENT_LEVEL, n_dof)
                     result = PDEBenchmarkResult(
                         benchmark_name=name,
                         method_name=solver.name,
@@ -218,26 +234,25 @@ class PDEBenchmarkRunner:
             output_path: Destination CSV file path.
 
         """
-        import csv
-
+        # ``csv`` is already imported at module scope; no late import needed.
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(
                 [
                     "problem",
-                    "method",
-                    "refinement_level",
+                    METADATA_KEY_METHOD,
+                    METADATA_KEY_REFINEMENT_LEVEL,
                     "n_dof",
                     "l2_error",
                     "wall_time_seconds",
                     "convergence_rate",
-                    "seed",
+                    METADATA_KEY_SEED,
                 ]
             )
             for r in results:
-                seed = r.metadata.get("seed", "")
-                refinement_level = r.metadata.get("refinement_level", r.n_dof)
+                seed = r.metadata.get(METADATA_KEY_SEED, "")
+                refinement_level = r.metadata.get(METADATA_KEY_REFINEMENT_LEVEL, r.n_dof)
                 writer.writerow(
                     [
                         r.benchmark_name,

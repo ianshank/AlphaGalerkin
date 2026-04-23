@@ -32,13 +32,43 @@ logger = structlog.get_logger(__name__)
 app = typer.Typer(name="sbir-demo", help="SBIR benchmark demonstration")
 
 
+_FILENAME_FALLBACK = "plot"
+_FILENAME_ALLOWED_PUNCT = frozenset({"-", "_"})
+
+
 def _sanitize_filename(name: str) -> str:
     """Replace filesystem-unsafe characters with underscores.
 
     Used to derive per-benchmark plot file names from benchmark names
     that may contain whitespace, slashes, or other separators.
+
+    Edge cases handled deliberately:
+    * Empty / whitespace-only input maps to the ``_FILENAME_FALLBACK``
+      (never returns an empty string, which would produce a hidden
+      file like ``.png``).
+    * Runs of unsafe characters collapse to a single ``_``.
+    * Leading/trailing underscores are stripped so the final file does
+      not start with ``_``.
+    * Input strings that are entirely punctuation (e.g. ``"..."``) also
+      fall back to ``_FILENAME_FALLBACK``.
     """
-    return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in name).strip("_") or "plot"
+    if not name or not name.strip():
+        return _FILENAME_FALLBACK
+
+    # Collapse runs of unsafe chars into a single underscore so
+    # "Navier–Stokes // test" doesn't become "Navier_Stokes___test".
+    out_chars: list[str] = []
+    prev_was_underscore = False
+    for c in name:
+        if c.isalnum() or c in _FILENAME_ALLOWED_PUNCT:
+            out_chars.append(c)
+            prev_was_underscore = c == "_"
+        elif not prev_was_underscore:
+            out_chars.append("_")
+            prev_was_underscore = True
+
+    cleaned = "".join(out_chars).strip("_")
+    return cleaned or _FILENAME_FALLBACK
 
 
 # ---------------------------------------------------------------------------

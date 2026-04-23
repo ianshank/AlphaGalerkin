@@ -55,18 +55,42 @@ dev = [
     "Pillow>=10.0.0",
 ]
 jax = [
-    "jax[cpu]>=0.4.20",
-    "flax>=0.8.0",
-    "optax>=0.2.0",
-    "orbax-checkpoint>=0.5.0",
-    "chex>=0.1.85",
+    # Pins are intentionally narrow because flax 0.9 (the only release
+    # compatible with our ``JaxBackend`` Module call sites) has a narrow
+    # JAX support window:
+    #
+    #   * JAX 0.4.31+ reworked its trace machinery (``EvalTrace``) in a
+    #     way that breaks ``flax<0.10`` with ``AttributeError: 'EvalTrace'
+    #     object has no attribute 'level'`` during ``nn.Module.init``.
+    #     This takes out the whole ``tests/ -m cross_backend`` suite.
+    #   * flax>=0.10 requires jax>=0.6 which changed ``nn.Module``
+    #     initialisation semantics (trace-context requirements) that
+    #     ``src/backend/jax_backend.py`` has not been migrated to.
+    #
+    # The ``jnp.clip`` signature (the other historical pin driver) is
+    # already forward-compatible: ``JaxBackend.clamp`` passes bounds
+    # positionally so it works on both the legacy ``a_min``/``a_max``
+    # kwargs (JAX<0.5) and the new ``min``/``max`` (JAX>=0.5).
+    #
+    # Until flax 0.10 ``Module`` / trace-context migration lands, we pin
+    # the stack to the last mutually-compatible release set:
+    # jax/jaxlib==0.4.30 + flax==0.9.0 + orbax<0.10.
+    # TODO: drop these upper bounds after modernising the JaxBackend.
+    "jax[cpu]>=0.4.30,<0.4.31",
+    "jaxlib>=0.4.30,<0.4.31",
+    "flax>=0.9.0,<0.10",
+    "optax>=0.2.0,<0.3",
+    "orbax-checkpoint>=0.5.0,<0.10",
+    "chex>=0.1.85,<0.1.91",
 ]
 jax-gpu = [
-    "jax[cuda12]>=0.4.20",
-    "flax>=0.8.0",
-    "optax>=0.2.0",
-    "orbax-checkpoint>=0.5.0",
-    "chex>=0.1.85",
+    # Mirror the CPU pins; see ``jax`` extra above for rationale.
+    "jax[cuda12]>=0.4.30,<0.4.31",
+    "jaxlib>=0.4.30,<0.4.31",
+    "flax>=0.9.0,<0.10",
+    "optax>=0.2.0,<0.3",
+    "orbax-checkpoint>=0.5.0,<0.10",
+    "chex>=0.1.85,<0.1.91",
 ]
 vertex = [
     "google-cloud-aiplatform>=1.36.0",

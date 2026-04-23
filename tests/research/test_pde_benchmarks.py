@@ -396,9 +396,7 @@ class TestExportCSV:
 
 
 class TestBuildParetoPlotData:
-    def test_groups_by_benchmark_then_method(
-        self, minimal_config_yaml: Path
-    ) -> None:
+    def test_groups_by_benchmark_then_method(self, minimal_config_yaml: Path) -> None:
         runner = PDEBenchmarkRunner(minimal_config_yaml)
         results = [
             PDEBenchmarkResult(
@@ -444,9 +442,7 @@ class TestBuildParetoPlotData:
         ]
         assert runner.build_pareto_plot_data(results) == {}
 
-    def test_empty_input_returns_empty_dict(
-        self, minimal_config_yaml: Path
-    ) -> None:
+    def test_empty_input_returns_empty_dict(self, minimal_config_yaml: Path) -> None:
         runner = PDEBenchmarkRunner(minimal_config_yaml)
         assert runner.build_pareto_plot_data([]) == {}
 

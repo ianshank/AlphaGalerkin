@@ -1,11 +1,12 @@
-"""Targeted gap-coverage tests for the public modeling surface.
+"""Targeted gap-coverage tests for modeling defensive branches.
 
-These tests exist to (a) lock down the re-export surface declared in
-``docs/architecture/ADR-mouse-droid-fusion-integration.md`` and (b)
-exercise defensive branches and new constructor parameters added during
-the Galerkin Fusion Head preparation work, so the four classes used by
-Mouse-Droid-AGI keep passing the 85% coverage gate as the API surface
-grows.
+Exercises defensive branches and new constructor parameters added
+during the Galerkin Fusion Head preparation work so the modeling
+modules keep passing the 85% coverage gate as the API surface grows.
+
+The ADR re-export + signature contract is enforced in a separate file,
+``tests/modeling/test_public_surface_contract.py``; the ``__all__``
+parity check below is retained here for defence-in-depth.
 
 No hardcoded shape/dtype assumptions: every dimension referenced is
 derived from a parameter and could be re-parametrized without rewriting

@@ -115,6 +115,25 @@ StabilityGuard(
 
 ## Verification
 
+The stability rules above are enforced mechanically in CI:
+
+- **Re-export surface + constructor/forward signature contract**:
+  `pytest tests/modeling/test_public_surface_contract.py -v` runs on
+  every push. If a signature drifts, the failing test prints a diff
+  and points at the remediation path. **If you are intentionally adding
+  a backwards-compatible parameter**, run
+  `python tests/modeling/gen_public_surface_golden.py` to refresh
+  `tests/modeling/_public_surface_golden.json` and update the
+  "§Key signatures (frozen)" block in this ADR in the **same PR**.
+  Non-additive changes (renames, reorders, default-value changes,
+  forward-signature changes) require superseding this ADR.
+- **Type & lint contracts**: `mypy src/ --strict --ignore-missing-imports`
+  and `ruff check src/ tests/` run in the `lint` CI job.
+- **Coverage contract**: `pytest tests/modeling/ --cov=src.modeling --cov-fail-under=85`
+  is the per-module gate in the `coverage` CI job.
+
+Manual re-export smoke test (useful when triaging a local failure):
+
 ```bash
 # Re-exports stable (must match the stable public surface table above)
 python -c "from src.modeling import (
@@ -125,11 +144,4 @@ python -c "from src.modeling import (
     StabilityGuard, StableGalerkinInitializer,
     AlphaGalerkinModel, ContinuousEmbedding, FourierFeatures,
 )"
-
-# Type & lint contracts
-mypy src/modeling/ --strict --ignore-missing-imports
-ruff check src/modeling/
-
-# Coverage contract
-pytest tests/modeling/ --cov=src.modeling --cov-fail-under=85
 ```

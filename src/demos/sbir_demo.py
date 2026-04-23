@@ -32,6 +32,45 @@ logger = structlog.get_logger(__name__)
 app = typer.Typer(name="sbir-demo", help="SBIR benchmark demonstration")
 
 
+_FILENAME_FALLBACK = "plot"
+_FILENAME_ALLOWED_PUNCT = frozenset({"-", "_"})
+
+
+def _sanitize_filename(name: str) -> str:
+    """Replace filesystem-unsafe characters with underscores.
+
+    Used to derive per-benchmark plot file names from benchmark names
+    that may contain whitespace, slashes, or other separators.
+
+    Edge cases handled deliberately:
+    * Empty / whitespace-only input maps to the ``_FILENAME_FALLBACK``
+      (never returns an empty string, which would produce a hidden
+      file like ``.png``).
+    * Runs of unsafe characters collapse to a single ``_``.
+    * Leading/trailing underscores are stripped so the final file does
+      not start with ``_``.
+    * Input strings that are entirely punctuation (e.g. ``"..."``) also
+      fall back to ``_FILENAME_FALLBACK``.
+    """
+    if not name or not name.strip():
+        return _FILENAME_FALLBACK
+
+    # Collapse runs of unsafe chars into a single underscore so
+    # "Navier–Stokes // test" doesn't become "Navier_Stokes___test".
+    out_chars: list[str] = []
+    prev_was_underscore = False
+    for c in name:
+        if c.isalnum() or c in _FILENAME_ALLOWED_PUNCT:
+            out_chars.append(c)
+            prev_was_underscore = c == "_"
+        elif not prev_was_underscore:
+            out_chars.append("_")
+            prev_was_underscore = True
+
+    cleaned = "".join(out_chars).strip("_")
+    return cleaned or _FILENAME_FALLBACK
+
+
 # ---------------------------------------------------------------------------
 # HTML report generation
 # ---------------------------------------------------------------------------
@@ -390,7 +429,7 @@ class SBIRDemo:
         if self.config.generate_json:
             self._write_json(results, output_dir / "results.json", total_time)
 
-        # Generate Markdown via runner
+        # Generate Markdown via runner (also writes CSV)
         if self.config.generate_markdown:
             runner.generate_report(results, output_dir)
 
@@ -398,8 +437,79 @@ class SBIRDemo:
         if self.config.generate_html:
             self._write_html(results, output_dir / "report.html", total_time)
 
+        # Generate Pareto + convergence plots (best-effort; matplotlib optional)
+        self._write_plots(runner, results, output_dir)
+
         self._log.info("sbir_demo_done", output_dir=str(output_dir))
         return results
+
+    def _write_plots(
+        self,
+        runner: PDEBenchmarkRunner,
+        results: list[PDEBenchmarkResult],
+        output_dir: Path,
+    ) -> None:
+        """Render per-problem Pareto + convergence plots via the visualization registry.
+
+        Each benchmark problem gets its own pair of plots (error axes are
+        not cross-comparable between different PDEs).  File names are
+        derived from the benchmark name with filesystem-unsafe characters
+        replaced by underscores.
+        """
+        try:
+            from src.poc.visualization.config import VisualizationConfig
+            from src.poc.visualization.plots import create_plot
+        except ImportError as exc:  # pragma: no cover - optional dep
+            self._log.warning("plot_deps_missing", error=str(exc))
+            return
+
+        per_problem = runner.build_pareto_plot_data(results)
+        if not per_problem:
+            self._log.info("plot_skipped_no_valid_results")
+            return
+
+        viz_config = VisualizationConfig(name="sbir_demo_plots")
+
+        for benchmark_name, methods_data in per_problem.items():
+            safe_name = _sanitize_filename(benchmark_name)
+
+            try:
+                pareto_fig = create_plot(
+                    "pareto_frontier",
+                    {"methods": methods_data},
+                    viz_config,
+                )
+                pareto_path = output_dir / f"pareto_{safe_name}.png"
+                pareto_fig.savefig(pareto_path, dpi=viz_config.dpi, bbox_inches="tight")
+                self._log.info(
+                    "pareto_plot_written",
+                    benchmark=benchmark_name,
+                    path=str(pareto_path),
+                )
+            except Exception:  # pragma: no cover - plot failures are non-fatal
+                self._log.exception("pareto_plot_failed", benchmark=benchmark_name)
+
+            try:
+                convergence_data: dict[str, dict[str, list[float]]] = {}
+                for method_name, series in methods_data.items():
+                    convergence_data[method_name] = {
+                        "dof": [float(x) for x in series["n_dof"]],
+                        "error": [float(x) for x in series["error"]],
+                    }
+                conv_fig = create_plot(
+                    "convergence_rates",
+                    {"methods": convergence_data},
+                    viz_config,
+                )
+                conv_path = output_dir / f"convergence_{safe_name}.png"
+                conv_fig.savefig(conv_path, dpi=viz_config.dpi, bbox_inches="tight")
+                self._log.info(
+                    "convergence_plot_written",
+                    benchmark=benchmark_name,
+                    path=str(conv_path),
+                )
+            except Exception:  # pragma: no cover - plot failures are non-fatal
+                self._log.exception("convergence_plot_failed", benchmark=benchmark_name)
 
     def _write_json(
         self,

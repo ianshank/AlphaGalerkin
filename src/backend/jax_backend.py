@@ -312,14 +312,12 @@ class JaxBackend:
     ) -> Array:
         """Clamp values to a range.
 
-        Uses ``jnp.clip``'s modern keyword form (``min``/``max``). The
-        previous form (``a_min``/``a_max``) was removed in JAX 0.5.x, so
-        the old spelling would raise ``TypeError`` on any supported JAX
-        version (>=0.4.20 per pyproject.toml still accepts both, but
-        current pins and CI resolve to newer JAX where only the short
-        form is accepted).
+        Uses positional arguments so this works on both legacy JAX
+        (``a_min``/``a_max`` kwargs) and JAX 0.5+ (``min``/``max``
+        kwargs).  ``None`` on either bound is the documented sentinel
+        for "no clipping on that side" in both versions.
         """
-        return jnp.clip(x, min=min_val, max=max_val)
+        return jnp.clip(x, min_val, max_val)
 
     def where(self, condition: Array, x: Array, y: Array) -> Array:
         """Element-wise conditional selection."""

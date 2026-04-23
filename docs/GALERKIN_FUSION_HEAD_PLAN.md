@@ -191,8 +191,12 @@ python -c "from src.modeling import GalerkinAttention, FNetBlock, MultiScaleFour
 # Existing test suite unchanged
 pytest tests/modeling/ -v
 
-# ADRs committed
-ls docs/architecture/ADR-mouse-droid-fusion-integration.md docs/architecture/ADR-post-fusion-direction.md
+# Day-1 ADR committed
+ls docs/architecture/ADR-mouse-droid-fusion-integration.md
+
+# Day-10 ADR (created after the decision gate — see §8; not expected to exist
+# on day 1 of the sprint, only after the benchmark results are in)
+# ls docs/architecture/ADR-post-fusion-direction.md
 ```
 
 ---

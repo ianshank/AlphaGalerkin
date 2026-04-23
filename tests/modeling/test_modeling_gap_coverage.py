@@ -40,9 +40,12 @@ from src.modeling import (
     StabilityGuard,
     StableGalerkinInitializer,
 )
+
+# Submodule imports only for module-level constants (DEFAULT_FFN_EXPANSION,
+# DEFAULT_SCALES) that are not part of the re-export class surface. All class
+# imports use the stable top-level `src.modeling` path per the integration ADR.
 from src.modeling import fnet as fnet_module
 from src.modeling import multiscale_fourier as mf_module
-from src.modeling.stability import StabilityGuard as RawStabilityGuard
 
 # ---------------------------------------------------------------------------
 # Re-export surface (ADR-mouse-droid-fusion-integration)
@@ -417,7 +420,7 @@ class TestFusionHeadCompositionSmoke:
 
     def test_stability_guard_can_consume_attention_keys(self) -> None:
         d_key = 4
-        guard = RawStabilityGuard(beta_threshold=1e-9)
+        guard = StabilityGuard(beta_threshold=1e-9)
         keys = torch.randn(2, 6, d_key)
         is_stable, beta = guard.check_stability(keys)
         assert isinstance(is_stable, bool)

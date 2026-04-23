@@ -116,13 +116,14 @@ StabilityGuard(
 ## Verification
 
 ```bash
-# Re-exports stable
+# Re-exports stable (must match the stable public surface table above)
 python -c "from src.modeling import (
     GalerkinAttention, SoftmaxAttention, HybridAttention,
     FNetBlock, FNetMixing, FNetStack, GalerkinFNetHybrid,
     MultiScaleFourierFeatures, AdaptiveFourierFeatures, ProgressiveFourierFeatures,
     PositionalEncoding, SpatialPositionalEncoding, FourierFeaturesConfig,
     StabilityGuard, StableGalerkinInitializer,
+    AlphaGalerkinModel, ContinuousEmbedding, FourierFeatures,
 )"
 
 # Type & lint contracts

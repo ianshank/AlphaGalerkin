@@ -44,7 +44,8 @@ Small surface — just enough to make the submodule import path stable for two w
 
 - **Edit** `src/modeling/__init__.py`: add `MultiScaleFourierFeatures` to the explicit re-exports (it's currently importable but not in `__all__`). Verify `GalerkinAttention`, `FNetBlock`, `StabilityGuard` are all listed.
 - **Add** `docs/architecture/ADR-mouse-droid-fusion-integration.md` documenting that Mouse-Droid-AGI consumes `src.modeling.*` as a submodule and that those four classes' constructor signatures are now considered a stable interface for the duration of this experiment.
-- **No new code in src/.** No packaging changes (git submodule does not need pyproject changes).
+- **Additive hardening permitted** on the four target modules: new constructor parameters with defaults that preserve prior behaviour, structured logging, input validation, and new test coverage. Any such change must stay backwards compatible per the rules in the integration ADR. **Non-additive changes** (renaming params, changing defaults, altering forward signatures) are *not* allowed without bumping the ADR.
+- **No packaging changes** (git submodule does not need pyproject changes).
 
 ### Day 9–10 (parallel with Mouse-Droid-AGI publish/decision)
 
@@ -58,7 +59,7 @@ Small surface — just enough to make the submodule import path stable for two w
 - `docs/architecture/ADR-post-fusion-direction.md` — new on Day 10
 - `docs/benchmarks/galerkin_fusion/` — new directory with mirrored plots
 
-**Out of scope for this repo:** No changes to attention/fnet/multiscale_fourier internals. No new operators. No packaging. Constructor signatures are frozen for two weeks (any change requires updating the integration ADR).
+**Out of scope for this repo:** No *non-additive* changes to attention/fnet/multiscale_fourier internals (no renaming params, changing defaults, or altering forward signatures). No new operators. No packaging. Constructor signatures are frozen for two weeks (any breaking change requires updating the integration ADR).
 
 ---
 

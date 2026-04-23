@@ -39,6 +39,13 @@ the **stable public surface** of `src.modeling`:
 | `FourierFeaturesConfig` | `src/modeling/multiscale_fourier.py` | `from src.modeling import FourierFeaturesConfig` |
 | `StabilityGuard` | `src/modeling/stability.py` | `from src.modeling import StabilityGuard` |
 | `StableGalerkinInitializer` | `src/modeling/stability.py` | `from src.modeling import StableGalerkinInitializer` |
+| `AlphaGalerkinModel` | `src/modeling/model.py` | `from src.modeling import AlphaGalerkinModel` |
+| `ContinuousEmbedding` | `src/modeling/embeddings.py` | `from src.modeling import ContinuousEmbedding` |
+| `FourierFeatures` | `src/modeling/embeddings.py` | `from src.modeling import FourierFeatures` |
+
+The last three classes pre-date this ADR and were already exported by
+`src/modeling/__init__.py`; they are included in the stable surface so
+that existing downstream code is not broken by the fusion-head work.
 
 ### Stability rules
 

@@ -49,16 +49,16 @@ class StabilityGuard(nn.Module):
                 ``10.0`` preserves prior behaviour.
 
         Raises:
-            ValueError: If any numeric argument is non-positive.
+            ValueError: If ``beta_threshold`` or ``margin_multiplier`` is
+                not strictly positive, if ``regularization_strength`` is
+                negative, or if ``log_interval`` is less than 1.
 
         """
         super().__init__()
         if beta_threshold <= 0:
             raise ValueError(f"beta_threshold must be > 0, got {beta_threshold}")
         if regularization_strength < 0:
-            raise ValueError(
-                f"regularization_strength must be >= 0, got {regularization_strength}"
-            )
+            raise ValueError(f"regularization_strength must be >= 0, got {regularization_strength}")
         if log_interval < 1:
             raise ValueError(f"log_interval must be >= 1, got {log_interval}")
         if margin_multiplier <= 0:
@@ -320,24 +320,18 @@ class StableGalerkinInitializer:
         if scale_epsilon <= 0:
             raise ValueError(f"scale_epsilon must be > 0, got {scale_epsilon}")
         if guard_threshold_ratio <= 0:
-            raise ValueError(
-                f"guard_threshold_ratio must be > 0, got {guard_threshold_ratio}"
-            )
+            raise ValueError(f"guard_threshold_ratio must be > 0, got {guard_threshold_ratio}")
         if scale_clamp[0] <= 0 or scale_clamp[1] <= 0:
             raise ValueError(f"scale_clamp values must be > 0, got {scale_clamp}")
         if scale_clamp[0] > scale_clamp[1]:
-            raise ValueError(
-                f"scale_clamp[0] must be <= scale_clamp[1], got {scale_clamp}"
-            )
+            raise ValueError(f"scale_clamp[0] must be <= scale_clamp[1], got {scale_clamp}")
 
         self.beta_target = beta_target
         self.max_iterations = max_iterations
         self.scale_epsilon = scale_epsilon
         self.scale_clamp = scale_clamp
         self.guard_threshold_ratio = guard_threshold_ratio
-        self.stability_guard = StabilityGuard(
-            beta_threshold=beta_target / guard_threshold_ratio
-        )
+        self.stability_guard = StabilityGuard(beta_threshold=beta_target / guard_threshold_ratio)
 
     def initialize_projection(
         self,

@@ -28,15 +28,27 @@ _google_cloud_mock.aiplatform = _aiplatform_mock
 _google_cloud_mock.storage = _storage_mock
 _google_mock.cloud = _google_cloud_mock
 
-# Only add to sys.modules if not already installed
-if "google" not in sys.modules:
+# Install the mocks. Previous logic only installed when ``"google" not
+# in sys.modules``, but ``google`` is a PEP 420 implicit namespace
+# package that can be imported by any upstream test (hypothesis /
+# huggingface-hub / wandb / etc. all do). Once the real, empty
+# namespace is already in ``sys.modules`` without a ``cloud``
+# attribute, ``unittest.mock.patch("google.cloud.storage.Client")``
+# fails during target resolution with ``AttributeError: module
+# 'google' has no attribute 'cloud'`` — which is what the 3.10
+# CI matrix was hitting but 3.11/3.12 happened to miss because a
+# different upstream test happened to import differently there.
+_existing_google = sys.modules.get("google")
+if _existing_google is None:
     sys.modules["google"] = _google_mock
-if "google.cloud" not in sys.modules:
-    sys.modules["google.cloud"] = _google_cloud_mock
-if "google.cloud.aiplatform" not in sys.modules:
-    sys.modules["google.cloud.aiplatform"] = _aiplatform_mock
-if "google.cloud.storage" not in sys.modules:
-    sys.modules["google.cloud.storage"] = _storage_mock
+elif not hasattr(_existing_google, "cloud"):
+    # Real namespace package is already imported (empty); attach our
+    # cloud mock so importlib attribute resolution for google.cloud.*
+    # succeeds.
+    _existing_google.cloud = _google_cloud_mock  # type: ignore[attr-defined]
+sys.modules["google.cloud"] = _google_cloud_mock
+sys.modules["google.cloud.aiplatform"] = _aiplatform_mock
+sys.modules["google.cloud.storage"] = _storage_mock
 
 
 @pytest.fixture

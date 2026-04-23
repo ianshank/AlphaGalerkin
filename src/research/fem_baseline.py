@@ -479,5 +479,8 @@ def _order_of(element_type: str) -> int:
 # ---------------------------------------------------------------------------
 # Registry injection
 # ---------------------------------------------------------------------------
-SOLVER_REGISTRY["scikit_fem_poisson"] = ScikitFEMPoissonSolver
-SOLVER_REGISTRY["scikit_fem_lshaped"] = ScikitFEMLShapedSolver
+# Use setdefault to keep registration idempotent: a second import of this
+# module (or a user-supplied override registered earlier) will not be
+# silently overwritten.  Matches the pattern in src/alphagalerkin/solver.py.
+SOLVER_REGISTRY.setdefault("scikit_fem_poisson", ScikitFEMPoissonSolver)
+SOLVER_REGISTRY.setdefault("scikit_fem_lshaped", ScikitFEMLShapedSolver)

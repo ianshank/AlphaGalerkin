@@ -212,6 +212,7 @@ class TestAlphaGalerkinSolver:
         # Metadata carries the expected provenance keys.
         for key in (
             "solver",
+            "seed",
             "game_mode",
             "n_mcts_simulations",
             "n_actions_taken",
@@ -219,10 +220,14 @@ class TestAlphaGalerkinSolver:
             "error_history",
             "target_tolerance",
             "evaluator",
+            "min_game_dof",
             "solution_available",
             "termination_reason",
         ):
             assert key in result.metadata, f"missing metadata key {key!r}"
+        # seed round-trips the solver config so PDEBenchmarkRunner.export_csv
+        # can populate its seed column without re-inspecting the config.
+        assert result.metadata["seed"] == 7
         assert result.metadata["game_mode"] == "basis_selection"
         assert result.metadata["n_mcts_simulations"] == 2
 

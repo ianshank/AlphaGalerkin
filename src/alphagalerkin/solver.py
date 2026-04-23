@@ -286,13 +286,20 @@ class AlphaGalerkinSolver(BaseSolver):
             l2_error=float(l2_error) if l2_error is not None else None,
             metadata={
                 "solver": self.name,
+                # Determinism-affecting fields - surfaced explicitly so
+                # PDEBenchmarkRunner.export_csv() can populate the seed
+                # column and downstream analysis can tell two runs apart
+                # without inspecting the solver config out-of-band.
+                "seed": self.config.seed,
                 "game_mode": self.config.game_mode,
                 "n_mcts_simulations": self.config.n_mcts_simulations,
-                "n_actions_taken": n_actions_taken,
                 "max_steps": self.config.max_steps,
-                "error_history": list(adapter.error_history),
                 "target_tolerance": self.config.target_tolerance,
                 "evaluator": self.config.evaluator,
+                "min_game_dof": self.config.min_game_dof,
+                # Run outcome
+                "n_actions_taken": n_actions_taken,
+                "error_history": list(adapter.error_history),
                 "solution_available": solution_available,
                 "termination_reason": termination_reason,
             },

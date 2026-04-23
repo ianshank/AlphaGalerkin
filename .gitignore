@@ -112,6 +112,7 @@ validation_outputs/
 *.json
 !package.json
 !tsconfig.json
+!tests/modeling/_public_surface_golden.json
 notebooks/utils/*.json
 uv.lock
 

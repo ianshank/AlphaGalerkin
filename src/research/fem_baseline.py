@@ -74,6 +74,25 @@ class FEMConfig(SolverConfig):
         gt=0,
         description="hp-adaptive threshold: smoother elements (above this) get p-refined",
     )
+    max_element_order: Literal[1, 2, 3] = Field(
+        default=3,
+        description="Upper bound on Lagrange element order (P3 is scikit-fem's max)",
+    )
+    min_mesh_side: int = Field(
+        default=3,
+        ge=2,
+        description="Minimum grid points per side when sizing the initial tensor mesh",
+    )
+    min_initial_dof_hint: int = Field(
+        default=9,
+        ge=1,
+        description="Floor on n_dof hint used to size the initial mesh",
+    )
+    zz_epsilon: float = Field(
+        default=1e-12,
+        gt=0,
+        description="Numerical floor in the smoothness denominator and area guards",
+    )
 
 
 def _require_skfem() -> Any:
@@ -161,14 +180,15 @@ class ScikitFEMPoissonSolver(BaseSolver):
                 log.debug("no_elements_marked", level=level)
                 break
 
+            max_p = self.config.max_element_order
             if self.config.refinement_strategy == "p_adaptive":
-                new_order = min(3, _order_of(element_type) + 1)
+                new_order = min(max_p, _order_of(element_type) + 1)
                 element_type = cast("Literal['P1', 'P2', 'P3']", f"P{new_order}")
                 element = _make_element(element_type, skfem)
             elif self.config.refinement_strategy == "hp_adaptive":
                 smooth = self._estimate_smoothness(indicators, marked)
                 current_p = _order_of(element_type)
-                if smooth > self.config.smoothness_threshold and current_p < 3:
+                if smooth > self.config.smoothness_threshold and current_p < max_p:
                     element_type = cast("Literal['P1', 'P2', 'P3']", f"P{current_p + 1}")
                     element = _make_element(element_type, skfem)
                 else:
@@ -218,7 +238,8 @@ class ScikitFEMPoissonSolver(BaseSolver):
 
         xmin, ymin = float(operator.domain_min[0]), float(operator.domain_min[1])
         xmax, ymax = float(operator.domain_max[0]), float(operator.domain_max[1])
-        side = max(3, int(np.ceil(np.sqrt(max(n_dof, 9)))))
+        dof_hint = max(n_dof, self.config.min_initial_dof_hint)
+        side = max(self.config.min_mesh_side, int(np.ceil(np.sqrt(dof_hint))))
 
         xs = np.linspace(xmin, xmax, side)
         ys = np.linspace(ymin, ymax, side)
@@ -387,20 +408,20 @@ class ScikitFEMPoissonSolver(BaseSolver):
         marked[order[:cutoff]] = True
         return marked
 
-    @staticmethod
     def _estimate_smoothness(
+        self,
         indicators: NDArray[np.float64],
         marked: NDArray[np.bool_],
     ) -> float:
-        """Rough smoothness proxy: ratio of marked-region max to mean indicator.
+        """Rough smoothness proxy: ratio of marked-region mean to max.
 
-        High values indicate a concentrated feature (suitable for h-refinement);
-        low values suggest a smooth solution (suitable for p-refinement).
+        High values indicate a smooth solution (suitable for p-refinement);
+        low values suggest a concentrated feature (suitable for h-refinement).
         """
         marked_vals = indicators[marked]
         if marked_vals.size == 0:
             return 0.0
-        return float(np.mean(marked_vals) / (np.max(marked_vals) + 1e-12))
+        return float(np.mean(marked_vals) / (np.max(marked_vals) + self.config.zz_epsilon))
 
 
 class ScikitFEMLShapedSolver(ScikitFEMPoissonSolver):

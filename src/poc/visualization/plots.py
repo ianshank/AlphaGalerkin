@@ -322,30 +322,14 @@ class ParetoFrontierPlot(BasePlot):
 
     def create(self, data: dict[str, Any], config: VisualizationConfig) -> Figure:
         """Create Pareto frontier figure."""
+        from src.poc.visualization.pareto import collect_points, compute_pareto_front
+
         methods: dict[str, dict[str, Any]] = data["methods"]
         colors = plt.colormaps["tab10"](np.linspace(0, 1, max(len(methods), 1)))
 
         fig, ax = _new_figure(config)
 
-        # Collect all (time, error) points across methods for the Pareto frontier
-        all_points: list[tuple[float, float]] = []
-        for method_data in methods.values():
-            times: list[float] = method_data["wall_time"]
-            errors: list[float] = method_data["error"]
-            all_points.extend(zip(times, errors, strict=True))
-
-        # Compute Pareto front: point (t, e) is on the front if no other
-        # point has both strictly lower t and strictly lower e.
-        pareto: list[tuple[float, float]] = []
-        for t, e in all_points:
-            dominated = any(
-                (ot < t and oe <= e) or (ot <= t and oe < e)
-                for ot, oe in all_points
-                if (ot, oe) != (t, e)
-            )
-            if not dominated:
-                pareto.append((t, e))
-        pareto.sort()
+        pareto = compute_pareto_front(list(collect_points(methods, "wall_time", "error")))
 
         # Plot per-method series
         for idx, (method_name, method_data) in enumerate(methods.items()):

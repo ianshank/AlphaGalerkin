@@ -99,6 +99,11 @@ class AlphaGalerkinConfig(SolverConfig):
         default="cpu",
         description="Torch device for the evaluator.",
     )
+    min_game_dof: int = Field(
+        default=10,
+        ge=1,
+        description="Floor on the DOF budget passed to PDEGameConfig.max_dof.",
+    )
 
 
 class AlphaGalerkinSolver(BaseSolver):
@@ -179,7 +184,7 @@ class AlphaGalerkinSolver(BaseSolver):
             pde_config=pde_config,
             game_mode=self.config.game_mode,
             max_steps=self.config.max_steps,
-            max_dof=max(n_dof, 10),
+            max_dof=max(n_dof, self.config.min_game_dof),
             error_tolerance=self.config.target_tolerance,
             seed=self.config.seed,
         )

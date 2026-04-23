@@ -105,6 +105,82 @@ class TestAlphaGalerkinConfig:
         with pytest.raises(ValidationError):
             AlphaGalerkinConfig(max_steps=0)
 
+    def test_min_game_dof_rejects_zero(self) -> None:
+        """``min_game_dof`` must be at least 1."""
+        with pytest.raises(ValidationError):
+            AlphaGalerkinConfig(min_game_dof=0)
+
+    def test_min_game_dof_default(self) -> None:
+        """``min_game_dof`` default floor is 10."""
+        assert AlphaGalerkinConfig().min_game_dof == 10
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+class TestDerivePDEConfig:
+    """Covers ``AlphaGalerkinSolver._derive_pde_config``."""
+
+    def test_returns_operator_config(self, poisson_operator: PoissonOperator) -> None:
+        """The operator's own PDEConfig is returned unchanged."""
+        cfg = AlphaGalerkinSolver._derive_pde_config(poisson_operator, n_dof=32)
+        assert isinstance(cfg, PDEConfig)
+        assert cfg is poisson_operator.config
+
+    def test_raises_when_operator_has_no_config(self) -> None:
+        """Operators without a ``.config`` attribute are rejected clearly."""
+
+        class _BareOperator:
+            pass
+
+        with pytest.raises(ValueError, match="PDEConfig"):
+            AlphaGalerkinSolver._derive_pde_config(_BareOperator(), n_dof=1)  # type: ignore[arg-type]
+
+    def test_raises_when_config_wrong_type(self) -> None:
+        """Non-PDEConfig .config values raise TypeError."""
+
+        class _WeirdOperator:
+            config = "not a config"
+
+        with pytest.raises(TypeError, match="PDEConfig"):
+            AlphaGalerkinSolver._derive_pde_config(_WeirdOperator(), n_dof=1)  # type: ignore[arg-type]
+
+
+class TestBuildGame:
+    """Covers ``AlphaGalerkinSolver._build_game`` factory dispatch."""
+
+    def test_basis_selection_mode_returns_basis_game(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        from src.pde.config import PDEGameConfig
+        from src.pde.games.basis_selection import BasisSelectionGame
+
+        solver = AlphaGalerkinSolver(_fast_solver_config(game_mode="basis_selection"))
+        game_cfg = PDEGameConfig(
+            name="t",
+            pde_config=poisson_operator.config,
+            game_mode="basis_selection",
+        )
+        game = solver._build_game(poisson_operator, game_cfg)
+        assert isinstance(game, BasisSelectionGame)
+
+    def test_mesh_refinement_mode_returns_mesh_game(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        from src.pde.config import PDEGameConfig
+        from src.pde.games.mesh_refinement import MeshRefinementGame
+
+        solver = AlphaGalerkinSolver(_fast_solver_config(game_mode="mesh_refinement"))
+        game_cfg = PDEGameConfig(
+            name="t",
+            pde_config=poisson_operator.config,
+            game_mode="mesh_refinement",
+        )
+        game = solver._build_game(poisson_operator, game_cfg)
+        assert isinstance(game, MeshRefinementGame)
+
 
 # ---------------------------------------------------------------------------
 # Solver behaviour

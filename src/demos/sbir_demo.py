@@ -432,7 +432,7 @@ class SBIRDemo:
                 viz_config,
             )
             pareto_path = output_dir / "pareto_plot.png"
-            pareto_fig.savefig(pareto_path, dpi=150, bbox_inches="tight")
+            pareto_fig.savefig(pareto_path, dpi=viz_config.dpi, bbox_inches="tight")
             self._log.info("pareto_plot_written", path=str(pareto_path))
         except Exception:  # pragma: no cover - plot failures are non-fatal
             self._log.exception("pareto_plot_failed")
@@ -450,7 +450,7 @@ class SBIRDemo:
                 viz_config,
             )
             conv_path = output_dir / "convergence_plot.png"
-            conv_fig.savefig(conv_path, dpi=150, bbox_inches="tight")
+            conv_fig.savefig(conv_path, dpi=viz_config.dpi, bbox_inches="tight")
             self._log.info("convergence_plot_written", path=str(conv_path))
         except Exception:  # pragma: no cover - plot failures are non-fatal
             self._log.exception("convergence_plot_failed")

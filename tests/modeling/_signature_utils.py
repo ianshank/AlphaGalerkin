@@ -8,13 +8,50 @@ extraction rules is a single-file edit.
 
 from __future__ import annotations
 
+import importlib
 import inspect
+from typing import Any
 
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 EMPTY = "<empty>"
-FACTORY = "<factory>"
+FACTORY_UNKNOWN = "<factory:unknown>"
+_TOPLEVEL_PACKAGE = "src.modeling"
+
+
+def resolve_class(class_name: str) -> type | None:
+    """Look up *class_name* as a top-level re-export of ``src.modeling``.
+
+    Returns ``None`` if the attribute is absent — the contract test turns
+    that into an assertion failure with remediation guidance, rather than
+    letting an ``ImportError`` derail pytest collection before any
+    meaningful message can be emitted.
+    """
+    pkg = importlib.import_module(_TOPLEVEL_PACKAGE)
+    obj = getattr(pkg, class_name, None)
+    if isinstance(obj, type):
+        return obj
+    return None
+
+
+def _factory_identifier(factory: Any) -> str:
+    """Serialise a ``default_factory`` callable to a stable string.
+
+    Named functions and classes serialise to ``module.qualname`` so a
+    swap from (say) ``default_factory=list`` to
+    ``default_factory=OrderedDict`` is caught by the golden comparison.
+    Lambdas serialise to ``module.<containing-class>.<lambda>`` — stable
+    enough to detect refactors that move a lambda between classes, but
+    a lambda-body edit will slip through unless the body is extracted
+    to a named helper (recommended regardless). Unknown or
+    un-introspectable callables fall back to ``<factory:unknown>``.
+    """
+    module = getattr(factory, "__module__", None)
+    qualname = getattr(factory, "__qualname__", None)
+    if module and qualname:
+        return f"{module}.{qualname}"
+    return FACTORY_UNKNOWN
 
 
 def param_entries_from_signature(sig: inspect.Signature) -> list[dict[str, str]]:
@@ -43,14 +80,16 @@ def pydantic_init_entries(cls: type[BaseModel]) -> list[dict[str, str]]:
 
     Pydantic v2 rewrites ``__init__`` to ``(**data)``; the true surface
     is the field set (including inherited). Iterating ``model_fields``
-    preserves declaration order (MRO-aware).
+    preserves declaration order (MRO-aware). ``default_factory`` values
+    are serialised via :func:`_factory_identifier` so swapping the
+    factory function is caught.
     """
     entries: list[dict[str, str]] = []
     for field_name, field_info in cls.model_fields.items():
         if field_info.default is not PydanticUndefined:
             default_repr = repr(field_info.default)
         elif field_info.default_factory is not None:
-            default_repr = FACTORY
+            default_repr = _factory_identifier(field_info.default_factory)
         else:
             default_repr = EMPTY
         entries.append(

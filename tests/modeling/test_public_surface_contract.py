@@ -6,6 +6,11 @@ window. Stability rule §1 says constructor signatures must stay
 backwards-compatible; §2 says ``forward`` signatures must stay stable.
 These tests turn those rules into a mechanical CI check.
 
+Class resolution is deliberately lazy (via ``resolve_class``): a removed
+or renamed export becomes an ``AssertionError`` with the remediation
+message below, rather than an ``ImportError`` that derails pytest
+collection before any contract test can even run.
+
 Failure here is a signal to the author: either revert the signature
 change, or — if the change is an intentional, backwards-compatible
 addition — regenerate the golden with ``python
@@ -24,8 +29,15 @@ import pytest
 import src.modeling as modeling_pkg
 from tests.modeling._public_surface_adr import PUBLIC_SURFACE, SurfaceEntry
 from tests.modeling._signature_utils import EMPTY as _EMPTY
-from tests.modeling._signature_utils import forward_entries as _current_forward_entries
-from tests.modeling._signature_utils import init_entries as _current_init_entries
+from tests.modeling._signature_utils import (
+    forward_entries as _current_forward_entries,
+)
+from tests.modeling._signature_utils import (
+    init_entries as _current_init_entries,
+)
+from tests.modeling._signature_utils import (
+    resolve_class as _resolve_class,
+)
 
 _GOLDEN_PATH = Path(__file__).parent / "_public_surface_golden.json"
 _REMEDIATION = (
@@ -50,7 +62,20 @@ _GOLDEN = _load_golden()
 
 
 def _entry_id(entry: SurfaceEntry) -> str:
-    return entry.cls.__name__
+    return entry.class_name
+
+
+def _require_class(entry: SurfaceEntry) -> type:
+    """Resolve *entry*'s class or fail the test with ADR remediation."""
+    cls = _resolve_class(entry.class_name)
+    assert cls is not None, (
+        f"{entry.class_name} is not reachable from src.modeling "
+        f"(ADR stable surface). Add it to src/modeling/__init__.py "
+        f"imports + __all__, or — if this removal is intentional — "
+        f"supersede the ADR.\n\n"
+        f"{_REMEDIATION}"
+    )
+    return cls
 
 
 @pytest.mark.parametrize("entry", PUBLIC_SURFACE, ids=_entry_id)
@@ -61,18 +86,9 @@ def test_class_importable_from_toplevel(entry: SurfaceEntry) -> None:
     ADR table, so an accidental move (e.g. copying ``FNetBlock`` into a
     new file) is caught.
     """
-    name = entry.cls.__name__
-    assert hasattr(modeling_pkg, name), (
-        f"{name} is not reachable from src.modeling (ADR stable surface). "
-        f"Add it to src/modeling/__init__.py imports + __all__."
-    )
-    assert getattr(modeling_pkg, name) is entry.cls, (
-        f"src.modeling.{name} resolves to a different object than "
-        f"{entry.cls!r}; the top-level export and the direct import "
-        f"must point at the same class."
-    )
-    assert entry.cls.__module__ == entry.expected_module, (
-        f"{name}.__module__ is {entry.cls.__module__!r}, "
+    cls = _require_class(entry)
+    assert cls.__module__ == entry.expected_module, (
+        f"{entry.class_name}.__module__ is {cls.__module__!r}, "
         f"ADR declares {entry.expected_module!r}. Did the class move?"
     )
 
@@ -86,9 +102,8 @@ def test_class_is_in_all(entry: SurfaceEntry) -> None:
     self-contained — the gap-coverage file may be refactored for other
     reasons.
     """
-    name = entry.cls.__name__
-    assert name in modeling_pkg.__all__, (
-        f"{name} missing from src.modeling.__all__. "
+    assert entry.class_name in modeling_pkg.__all__, (
+        f"{entry.class_name} missing from src.modeling.__all__. "
         f"The ADR requires all 18 stable-surface classes to be listed."
     )
 
@@ -104,9 +119,10 @@ def test_constructor_signature_is_additive_only(entry: SurfaceEntry) -> None:
     2. Extra parameters (beyond the golden) are allowed **only at the
        end** and must have a non-empty default.
     """
-    name = entry.cls.__name__
+    cls = _require_class(entry)
+    name = entry.class_name
     golden_entries: list[dict[str, str]] = _GOLDEN[name]["init"]
-    current_entries = _current_init_entries(entry.cls)
+    current_entries = _current_init_entries(cls)
 
     assert len(current_entries) >= len(golden_entries), (
         f"{name}.__init__ dropped parameters — had "
@@ -146,10 +162,11 @@ def test_forward_signature_matches_golden(entry: SurfaceEntry) -> None:
     positional argument on ``forward`` silently breaks every existing
     caller.
     """
-    name = entry.cls.__name__
+    cls = _require_class(entry)
+    name = entry.class_name
     golden_record = _GOLDEN[name]
     golden_forward = golden_record.get("forward")
-    current_forward = _current_forward_entries(entry.cls)
+    current_forward = _current_forward_entries(cls)
 
     if golden_forward is None:
         assert current_forward is None, (
@@ -181,7 +198,7 @@ def test_golden_has_every_adr_class() -> None:
     clearer error and also catches the reverse (classes lingering in
     the golden after removal from the ADR tuple).
     """
-    adr_names = {entry.cls.__name__ for entry in PUBLIC_SURFACE}
+    adr_names = {entry.class_name for entry in PUBLIC_SURFACE}
     golden_names = set(_GOLDEN.keys())
     missing_from_golden = adr_names - golden_names
     extra_in_golden = golden_names - adr_names

@@ -129,8 +129,8 @@ The stability rules above are enforced mechanically in CI:
   forward-signature changes) require superseding this ADR.
 - **Type & lint contracts**: `mypy src/ --strict --ignore-missing-imports`
   and `ruff check src/ tests/` run in the `lint` CI job.
-- **Coverage contract**: `pytest tests/modeling/ --cov=src.modeling
-  --cov-fail-under=85` is the per-module gate in the `coverage` CI job.
+- **Coverage contract**: `pytest tests/modeling/ --cov=src.modeling --cov-fail-under=85`
+  is the per-module gate in the `coverage` CI job.
 
 Manual smoke-test (unchanged — useful when triaging a local failure):
 

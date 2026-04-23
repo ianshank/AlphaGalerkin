@@ -266,7 +266,7 @@
         "name": "debug"
       },
       {
-        "default": "<factory>",
+        "default": "src.templates.config.BaseModuleConfig.<lambda>",
         "kind": "PYDANTIC_FIELD",
         "name": "created_at"
       },
@@ -276,7 +276,7 @@
         "name": "n_features"
       },
       {
-        "default": "<factory>",
+        "default": "src.modeling.multiscale_fourier.FourierFeaturesConfig.<lambda>",
         "kind": "PYDANTIC_FIELD",
         "name": "scales"
       },

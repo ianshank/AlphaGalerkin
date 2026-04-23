@@ -28,7 +28,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from tests.modeling._public_surface_adr import PUBLIC_SURFACE  # noqa: E402
-from tests.modeling._signature_utils import forward_entries, init_entries  # noqa: E402
+from tests.modeling._signature_utils import (  # noqa: E402
+    forward_entries,
+    init_entries,
+    resolve_class,
+)
 
 GOLDEN_PATH = Path(__file__).parent / "_public_surface_golden.json"
 
@@ -36,7 +40,14 @@ GOLDEN_PATH = Path(__file__).parent / "_public_surface_golden.json"
 def build_golden() -> dict[str, Any]:
     golden: dict[str, Any] = {}
     for entry in PUBLIC_SURFACE:
-        cls = entry.cls
+        cls = resolve_class(entry.class_name)
+        if cls is None:
+            raise RuntimeError(
+                f"Cannot generate golden: {entry.class_name!r} is not "
+                f"reachable from src.modeling. The ADR re-export surface "
+                f"is broken; fix src/modeling/__init__.py before "
+                f"regenerating the golden."
+            )
         record: dict[str, Any] = {
             "module": entry.expected_module,
             "init": init_entries(cls),
@@ -44,7 +55,7 @@ def build_golden() -> dict[str, Any]:
         fwd = forward_entries(cls)
         if fwd is not None:
             record["forward"] = fwd
-        golden[cls.__name__] = record
+        golden[entry.class_name] = record
     return golden
 
 

@@ -301,9 +301,13 @@ class StableGalerkinInitializer:
                 computing the adjustment scale factor to avoid division by
                 zero. Default ``1e-8`` preserves prior behaviour.
             scale_clamp: ``(min, max)`` clamp range applied to the
-                per-iteration adjustment scale factor. Prevents both
-                shrinking weights and pathologically large boosts. Default
-                ``(1.0, 2.0)`` preserves prior behaviour.
+                per-iteration adjustment scale factor. Bounds the scale
+                factor to this range on every adjustment step. With the
+                default ``(1.0, 2.0)`` the clamp prevents both shrinking
+                weights (``min >= 1.0``) and pathologically large boosts
+                (``max``-capped); callers may pass ``min < 1.0`` if
+                shrinking during adjustment is acceptable for their use
+                case.
             guard_threshold_ratio: Ratio used to derive the internal
                 :class:`StabilityGuard` threshold from ``beta_target``
                 (``threshold = beta_target / ratio``). Default ``10.0``
@@ -425,7 +429,10 @@ class StableGalerkinInitializer:
         else:
             return
 
-        # Scale up slightly to increase singular values.
+        # Scale up slightly to increase singular values. Wrap the in-place
+        # parameter mutation in ``torch.no_grad()`` so that if this method is
+        # ever called during a training loop, autograd state is not polluted.
         scale_factor = (self.beta_target / (current_beta.min() + self.scale_epsilon)).sqrt()
         scale_factor = torch.clamp(scale_factor, *self.scale_clamp)
-        weight.data.mul_(scale_factor.item())
+        with torch.no_grad():
+            weight.mul_(scale_factor.item())

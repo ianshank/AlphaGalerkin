@@ -338,10 +338,14 @@ markers = [
 # video_compression tests are ignored via --ignore=tests/video_compression/
 # backend tests cause JAX crashes on Windows CI and are skipped
 # demos tests are ignored via --ignore=tests/demos/
+# fem_baseline requires the optional ``fem`` extra (scikit-fem); its tests
+# use ``pytest.importorskip`` and skip cleanly in the default CI matrix,
+# so including it here would unfairly tank the global coverage gate.
 omit = [
     "src/video_compression/*",
     "src/backend/*",
     "src/demos/*",
+    "src/research/fem_baseline.py",
 ]
 
 [tool.coverage.report]

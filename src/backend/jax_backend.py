@@ -310,8 +310,14 @@ class JaxBackend:
         min_val: float | None = None,
         max_val: float | None = None,
     ) -> Array:
-        """Clamp values to a range."""
-        return jnp.clip(x, a_min=min_val, a_max=max_val)
+        """Clamp values to a range.
+
+        Uses positional arguments so this works on both legacy JAX
+        (``a_min``/``a_max`` kwargs) and JAX 0.5+ (``min``/``max``
+        kwargs).  ``None`` on either bound is the documented sentinel
+        for "no clipping on that side" in both versions.
+        """
+        return jnp.clip(x, min_val, max_val)
 
     def where(self, condition: Array, x: Array, y: Array) -> Array:
         """Element-wise conditional selection."""

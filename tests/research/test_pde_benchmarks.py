@@ -296,6 +296,158 @@ class TestGenerateReport:
 
 
 # ---------------------------------------------------------------------------
+# export_csv
+# ---------------------------------------------------------------------------
+
+
+class TestExportCSV:
+    def _sample_results(self) -> list[PDEBenchmarkResult]:
+        return [
+            PDEBenchmarkResult(
+                benchmark_name="poisson",
+                method_name="fdm",
+                n_dof=16,
+                l2_error=1e-3,
+                wall_time_seconds=0.05,
+                convergence_rate=2.0,
+                metadata={"seed": 42, "refinement_level": 16},
+            ),
+            PDEBenchmarkResult(
+                benchmark_name="poisson",
+                method_name="fdm",
+                n_dof=64,
+                l2_error=2.5e-4,
+                wall_time_seconds=0.18,
+                convergence_rate=None,
+                metadata={"seed": 42},  # no refinement_level -> falls back to n_dof
+            ),
+            PDEBenchmarkResult(
+                benchmark_name="burgers",
+                method_name="amr",
+                n_dof=32,
+                l2_error=math.nan,  # NaN rows still export
+                wall_time_seconds=0.10,
+                metadata={},
+            ),
+        ]
+
+    def test_export_csv_writes_header_and_rows(
+        self, minimal_config_yaml: Path, tmp_path: Path
+    ) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        out = tmp_path / "out.csv"
+        runner.export_csv(self._sample_results(), out)
+
+        lines = out.read_text().splitlines()
+        assert lines[0].startswith(
+            "problem,method,refinement_level,n_dof,l2_error,wall_time_seconds,convergence_rate,seed"
+        )
+        assert len(lines) == 4  # header + 3 data rows
+
+    def test_export_csv_uses_refinement_level_metadata(
+        self, minimal_config_yaml: Path, tmp_path: Path
+    ) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        out = tmp_path / "out.csv"
+        runner.export_csv(self._sample_results(), out)
+
+        rows = out.read_text().splitlines()[1:]
+        # First row has explicit metadata['refinement_level']=16
+        assert rows[0].split(",")[2] == "16"
+        # Second row falls back to n_dof=64 because metadata lacks the key
+        assert rows[1].split(",")[2] == "64"
+
+    def test_export_csv_leaves_nan_error_blank(
+        self, minimal_config_yaml: Path, tmp_path: Path
+    ) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        out = tmp_path / "out.csv"
+        runner.export_csv(self._sample_results(), out)
+
+        nan_row = out.read_text().splitlines()[3]
+        # Column 4 is l2_error; NaN renders as empty to match downstream
+        # pandas read_csv conventions.
+        assert nan_row.split(",")[4] == ""
+
+    def test_export_csv_creates_parent_dirs(
+        self, minimal_config_yaml: Path, tmp_path: Path
+    ) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        out = tmp_path / "deep" / "nested" / "out.csv"
+        assert not out.parent.exists()
+        runner.export_csv([], out)
+        assert out.exists()
+        assert out.read_text().splitlines()[0].startswith("problem,method")
+
+    def test_generate_report_writes_csv_alongside(
+        self, minimal_config_yaml: Path, tmp_path: Path
+    ) -> None:
+        """``generate_report`` now emits results.csv in addition to json/md."""
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        results = runner.run_all()
+        out_dir = tmp_path / "reports"
+        runner.generate_report(results, out_dir)
+        assert (out_dir / "results.csv").exists()
+
+
+# ---------------------------------------------------------------------------
+# build_pareto_plot_data
+# ---------------------------------------------------------------------------
+
+
+class TestBuildParetoPlotData:
+    def test_groups_by_benchmark_then_method(self, minimal_config_yaml: Path) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        results = [
+            PDEBenchmarkResult(
+                benchmark_name="poisson",
+                method_name="fdm",
+                n_dof=16,
+                l2_error=1e-3,
+                wall_time_seconds=0.05,
+            ),
+            PDEBenchmarkResult(
+                benchmark_name="poisson",
+                method_name="fdm",
+                n_dof=64,
+                l2_error=3e-4,
+                wall_time_seconds=0.2,
+            ),
+            PDEBenchmarkResult(
+                benchmark_name="burgers",
+                method_name="amr",
+                n_dof=32,
+                l2_error=5e-3,
+                wall_time_seconds=0.1,
+            ),
+        ]
+        by_problem = runner.build_pareto_plot_data(results)
+
+        assert set(by_problem.keys()) == {"poisson", "burgers"}
+        assert set(by_problem["poisson"].keys()) == {"fdm"}
+        assert by_problem["poisson"]["fdm"]["n_dof"] == [16, 64]
+        assert by_problem["poisson"]["fdm"]["error"] == [1e-3, 3e-4]
+        assert by_problem["burgers"]["amr"]["wall_time"] == [0.1]
+
+    def test_skips_nan_error_rows(self, minimal_config_yaml: Path) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        results = [
+            PDEBenchmarkResult(
+                benchmark_name="poisson",
+                method_name="fdm",
+                n_dof=16,
+                l2_error=math.nan,
+                wall_time_seconds=0.05,
+            ),
+        ]
+        assert runner.build_pareto_plot_data(results) == {}
+
+    def test_empty_input_returns_empty_dict(self, minimal_config_yaml: Path) -> None:
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        assert runner.build_pareto_plot_data([]) == {}
+
+
+# ---------------------------------------------------------------------------
 # _attach_convergence_rates
 # ---------------------------------------------------------------------------
 

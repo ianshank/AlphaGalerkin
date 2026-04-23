@@ -303,6 +303,73 @@ class TimingComparisonPlot(BasePlot):
         return fig
 
 
+@register_plot("pareto_frontier")
+class ParetoFrontierPlot(BasePlot):
+    """Plot L2 error vs wall-clock compute with Pareto frontier highlighted.
+
+    Uses a log-log scale. This is the headline plot for the DOE Genesis
+    Mission proposal:
+    methods that sit on the lower-left frontier are strictly better
+    (lower error at lower compute) than those above it.
+
+    Expected data keys:
+        methods: dict[str, dict] where each value has:
+            wall_time: list[float] - wall-clock seconds
+            error: list[float] - L2 error values
+            n_dof: list[int] - optional DOF annotations
+
+    """
+
+    def create(self, data: dict[str, Any], config: VisualizationConfig) -> Figure:
+        """Create Pareto frontier figure."""
+        from src.poc.visualization.pareto import collect_points, compute_pareto_front
+
+        methods: dict[str, dict[str, Any]] = data["methods"]
+        colors = plt.colormaps["tab10"](np.linspace(0, 1, max(len(methods), 1)))
+
+        fig, ax = _new_figure(config)
+
+        pareto = compute_pareto_front(list(collect_points(methods, "wall_time", "error")))
+
+        # Plot per-method series
+        for idx, (method_name, method_data) in enumerate(methods.items()):
+            times = method_data["wall_time"]
+            errors = method_data["error"]
+            ax.loglog(
+                times,
+                errors,
+                marker="o",
+                color=colors[idx],
+                linewidth=1.5,
+                markersize=6,
+                label=method_name,
+                alpha=0.85,
+            )
+
+        # Overlay the Pareto frontier as a dashed black line
+        if len(pareto) >= 2:
+            px = [p[0] for p in pareto]
+            py = [p[1] for p in pareto]
+            ax.loglog(
+                px,
+                py,
+                linestyle="--",
+                color="black",
+                linewidth=1.0,
+                alpha=0.6,
+                label="Pareto frontier",
+            )
+
+        ax.set_xlabel("Wall-clock time (s)")
+        ax.set_ylabel("L2 error")
+        ax.set_title("Error vs Compute (Pareto frontier)")
+        ax.legend(loc="best")
+
+        _apply_theme(fig, config)
+        fig.tight_layout()
+        return fig
+
+
 # ---------------------------------------------------------------------------
 # Factory function
 # ---------------------------------------------------------------------------

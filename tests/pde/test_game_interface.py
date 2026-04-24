@@ -277,22 +277,67 @@ class TestWinnerAndPhaseLogic:
         # Non-terminal: could be None (ambiguous) or -1 (initial error high)
         assert winner is None or isinstance(winner, int)
 
-    def test_get_winner_with_convergence(self, basis_game: BasisSelectionGame):
-        """Winner should be +1 when error < tolerance."""
-        config = PDEGameInterfaceConfig(default_tolerance=999.0)
-        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+    def test_get_winner_with_convergence(self, poisson_operator: PoissonOperator) -> None:
+        """Winner is +1 when PDE-game ``error_tolerance`` is generous enough.
+
+        Winner determination now reads ``PDEGameConfig.error_tolerance``
+        (keeping the interface's winner in sync with the underlying
+        game's termination), so the tolerance must be set on the PDE
+        config rather than on the interface config.
+        """
+        pde_cfg = PDEConfig(
+            name="test_poisson",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            advection_coeff=[0.0, 0.0],
+        )
+        game = BasisSelectionGame(
+            poisson_operator,
+            PDEGameConfig(
+                name="win_cfg",
+                pde_config=pde_cfg,
+                game_mode="basis_selection",
+                error_tolerance=0.99,
+            ),
+        )
+        interface = PDEGameInterface(pde_game=game)
         state = interface.initial_state()
         winner = interface.get_winner(state)
-        assert winner == 1  # Error < very large tolerance
+        assert winner == 1
 
-    def test_get_winner_failure(self, basis_game: BasisSelectionGame):
-        """Winner should be -1 when error reduction is insufficient."""
-        config = PDEGameInterfaceConfig(
-            default_tolerance=1e-20,
-            convergence_reduction=1e-15,
-            failure_reduction=0.0001,
+    def test_get_winner_failure(self, poisson_operator: PoissonOperator) -> None:
+        """Winner is -1 when the error-reduction ratio exceeds failure_reduction.
+
+        Forces the below-tolerance branch of ``_compute_winner`` to
+        miss by setting an impossibly tight ``error_tolerance`` on the
+        PDE config.
+        """
+        pde_cfg = PDEConfig(
+            name="test_poisson",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            advection_coeff=[0.0, 0.0],
         )
-        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
+        game = BasisSelectionGame(
+            poisson_operator,
+            PDEGameConfig(
+                name="fail_cfg",
+                pde_config=pde_cfg,
+                game_mode="basis_selection",
+                error_tolerance=1e-20,
+            ),
+        )
+        interface = PDEGameInterface(
+            pde_game=game,
+            interface_config=PDEGameInterfaceConfig(
+                convergence_reduction=1e-15,
+                failure_reduction=0.0001,
+            ),
+        )
         state = interface.initial_state()
         # Inject initial_error so ratio > failure_reduction
         state.metadata["_initial_error"] = state.metadata["error_estimate"] * 0.9
@@ -396,9 +441,7 @@ class TestInitialErrorPropagation:
             assert "_initial_error" in new_state.metadata
             assert new_state.metadata["_initial_error"] == initial_err
 
-    def test_get_tolerance_uses_interface_config(
-        self, pde_interface: PDEGameInterface
-    ) -> None:
+    def test_get_tolerance_uses_interface_config(self, pde_interface: PDEGameInterface) -> None:
         """_get_tolerance returns the interface config's default_tolerance.
 
         The interface tolerance segments phases for curriculum purposes;
@@ -418,6 +461,36 @@ class TestInitialErrorPropagation:
             interface_config=PDEGameInterfaceConfig(default_tolerance=0.25),
         )
         assert interface._get_tolerance() == 0.25
+
+    def test_get_convergence_tolerance_uses_pde_config(
+        self, basis_game: BasisSelectionGame
+    ) -> None:
+        """_get_convergence_tolerance returns PDEGameConfig.error_tolerance."""
+        interface = PDEGameInterface(
+            pde_game=basis_game,
+            interface_config=PDEGameInterfaceConfig(default_tolerance=999.0),
+        )
+        assert interface._get_convergence_tolerance() == basis_game.config.error_tolerance
+
+    def test_get_convergence_tolerance_falls_back_to_interface(
+        self, basis_game: BasisSelectionGame
+    ) -> None:
+        """Falls back to interface default when the PDE config lacks the field.
+
+        Games whose config predates ``error_tolerance`` still get a
+        meaningful tolerance via the interface config. Simulated here by
+        swapping in a bare object without the attribute.
+        """
+
+        class _BareConfig:
+            pass
+
+        interface = PDEGameInterface(
+            pde_game=basis_game,
+            interface_config=PDEGameInterfaceConfig(default_tolerance=0.42),
+        )
+        interface.pde_game.config = _BareConfig()  # type: ignore[assignment]
+        assert interface._get_convergence_tolerance() == 0.42
 
     def test_action_mask_numpy_path(self, basis_game: BasisSelectionGame):
         """get_action_mask should handle numpy array masks."""

@@ -18,6 +18,7 @@ Note:
 
 from __future__ import annotations
 
+import copy
 import itertools
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -439,30 +440,64 @@ class MeshRefinementGame(PDEGame):
         # For simplicity, use h-refinement only
         self._refinement_strategy = self.mesh_config.refinement_strategy
 
+    def clone(self) -> PDEGame:
+        """MCTS-safe clone with an independent mesh.
+
+        ``apply_action`` mutates ``self.mesh`` in-place (both refine and
+        coarsen edit the element tree), so sibling MCTS simulations must
+        not share it. The expensive immutables — ``pde_operator``,
+        ``config``, ``mesh_config`` — are shared by reference; only the
+        mutable mesh tree is deep-copied.
+        """
+        cls = type(self)
+        cloned = cls.__new__(cls)
+        cloned.pde_operator = self.pde_operator
+        cloned.config = self.config
+        cloned._action_space_size = self._action_space_size
+        cloned._state_channels = self._state_channels
+        cloned.mesh_config = self.mesh_config
+        cloned._refinement_strategy = self._refinement_strategy
+        cloned.mesh = copy.deepcopy(self.mesh)
+        logger.debug(
+            "mesh_game_cloned",
+            n_elements=cloned.mesh.n_elements,
+            n_leaves=len(cloned.mesh.leaf_elements),
+        )
+        return cloned
+
     @property
     def _coarsen_enabled(self) -> bool:
         """Whether the coarsen half of the action space is active."""
         return self.mesh_config.allow_coarsening
 
     @property
-    def action_space_size(self) -> int:
-        """Number of possible actions.
+    def _refine_slot_count(self) -> int:
+        """Effective width of the refine half of the action space.
 
-        Each leaf element can be refined. When ``allow_coarsening`` is set,
-        the action space is partitioned into two equal halves of width
-        ``n_candidate_elements``: the low half refines, the high half
-        coarsens.
+        This is the *single source of truth* for the refine/coarsen
+        partition point. ``action_space_size``, ``_decode_action``,
+        ``get_valid_actions``, and ``get_action_mask`` all derive their
+        slot count from this property so the partition stays consistent
+        when ``max_elements`` is smaller than ``n_candidate_elements``
+        (e.g. low-dim / low-level configs).
         """
-        # Dynamic based on mesh state
-        # Use maximum possible for fixed action space
-        # Initial elements: resolution^dim, each refinement creates 2^dim children
         dim = self.mesh.dim
         max_elements = (
             self.mesh_config.initial_resolution**dim
             * (2**dim) ** self.mesh_config.max_refinement_level
         )
-        refine_slots = min(max_elements, self.mesh_config.n_candidate_elements)
-        return refine_slots * 2 if self._coarsen_enabled else refine_slots
+        return min(max_elements, self.mesh_config.n_candidate_elements)
+
+    @property
+    def action_space_size(self) -> int:
+        """Number of possible actions.
+
+        When ``allow_coarsening`` is set the action space is partitioned
+        into two equal halves of width :attr:`_refine_slot_count`: the
+        low half refines, the high half coarsens.
+        """
+        n = self._refine_slot_count
+        return n * 2 if self._coarsen_enabled else n
 
     @property
     def state_channels(self) -> int:
@@ -523,8 +558,11 @@ class MeshRefinementGame(PDEGame):
             [0, n)          -> REFINE leaf_elements[action]
             [n, 2n)         -> COARSEN leaf_elements[action - n]
 
-        where ``n = n_candidate_elements``. When coarsening is disabled the
-        upper half is absent and every action decodes as a refinement.
+        where ``n = _refine_slot_count`` (the effective slot width —
+        matches the bound used by ``action_space_size``, never the raw
+        ``n_candidate_elements`` config value). When coarsening is
+        disabled the upper half is absent and every action decodes as a
+        refinement.
 
         Args:
             action: Flat action index.
@@ -537,11 +575,9 @@ class MeshRefinementGame(PDEGame):
                 action space.
 
         """
-        slots = self.mesh_config.n_candidate_elements
+        slots = self._refine_slot_count
         if action < 0 or action >= self.action_space_size:
-            raise ValueError(
-                f"Invalid action: {action} not in [0, {self.action_space_size})"
-            )
+            raise ValueError(f"Invalid action: {action} not in [0, {self.action_space_size})")
         if not self._coarsen_enabled or action < slots:
             return ActionKind.REFINE, action
         return ActionKind.COARSEN, action - slots
@@ -559,16 +595,25 @@ class MeshRefinementGame(PDEGame):
     def get_valid_actions(self, state: PDEState) -> list[int]:
         """Get valid refinement (and optionally coarsening) actions.
 
+        The partition point is driven by :attr:`_refine_slot_count` so
+        emitted indices are always within ``action_space_size``.
+
+        Coarsen actions are deduplicated by parent: every child in a
+        coarsenable sibling group triggers the same parent collapse, so
+        exposing one action per parent (rather than one per child)
+        keeps the MCTS branching factor minimal without losing
+        expressivity.
+
         Args:
             state: Current state.
 
         Returns:
-            List of valid flat action indices. When ``allow_coarsening`` is
-            enabled, indices below ``n_candidate_elements`` are refine
-            actions and indices above are coarsen actions.
+            List of valid flat action indices. When ``allow_coarsening``
+            is enabled, indices below :attr:`_refine_slot_count` are
+            refine actions and indices above are coarsen actions.
 
         """
-        slots = self.mesh_config.n_candidate_elements
+        slots = self._refine_slot_count
         leaves = self.mesh.leaf_elements
 
         refine_actions: list[int] = []
@@ -582,11 +627,15 @@ class MeshRefinementGame(PDEGame):
             return refine_actions
 
         coarsen_actions: list[int] = []
+        seen_parents: set[int] = set()
         for i, element in enumerate(leaves):
             if i >= slots:
                 break
+            if element.parent is None or element.parent in seen_parents:
+                continue
             if self.mesh.can_coarsen_element(element.index):
                 coarsen_actions.append(slots + i)
+                seen_parents.add(element.parent)
 
         return refine_actions + coarsen_actions
 

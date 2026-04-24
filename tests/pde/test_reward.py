@@ -36,9 +36,7 @@ class TestLogReward:
 
     def test_epsilon_floor_prevents_negative_infinity(self) -> None:
         """Zero error/cost is clamped to epsilon so the result stays finite."""
-        value = log_reward(
-            error=0.0, cost=0.0, alpha=1.0, beta=0.5, epsilon=1e-9
-        )
+        value = log_reward(error=0.0, cost=0.0, alpha=1.0, beta=0.5, epsilon=1e-9)
         assert math.isfinite(value)
 
     def test_invalid_epsilon_rejected(self) -> None:
@@ -47,6 +45,16 @@ class TestLogReward:
             log_reward(error=0.1, cost=1.0, alpha=1.0, beta=0.5, epsilon=0.0)
         with pytest.raises(ValueError):
             log_reward(error=0.1, cost=1.0, alpha=1.0, beta=0.5, epsilon=-1.0)
+
+    def test_negative_error_rejected(self) -> None:
+        """Negative error values are rejected (log is undefined there)."""
+        with pytest.raises(ValueError):
+            log_reward(error=-0.01, cost=1.0, alpha=1.0, beta=0.5, epsilon=1e-12)
+
+    def test_negative_cost_rejected(self) -> None:
+        """Negative cost values are rejected (log is undefined there)."""
+        with pytest.raises(ValueError):
+            log_reward(error=0.1, cost=-1.0, alpha=1.0, beta=0.5, epsilon=1e-12)
 
     def test_zero_coefficients_drop_terms(self) -> None:
         """alpha=0 zeroes out the error term; beta=0 zeroes out the cost term."""

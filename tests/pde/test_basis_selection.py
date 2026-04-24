@@ -414,9 +414,7 @@ class TestBasisSelectionGameLogReward:
         reward = log_game.get_reward(new_state, state)
         assert np.isfinite(reward)
 
-    def test_log_reward_monotone_in_error(
-        self, log_game: BasisSelectionGame
-    ) -> None:
+    def test_log_reward_monotone_in_error(self, log_game: BasisSelectionGame) -> None:
         """Decreasing error strictly increases the log-form reward."""
         state = log_game.get_initial_state()
         low_error = state.clone()
@@ -429,9 +427,7 @@ class TestBasisSelectionGameLogReward:
         high_reward = log_game.get_reward(high_error, prev)
         assert low_reward > high_reward
 
-    def test_log_reward_monotone_in_cost(
-        self, log_game: BasisSelectionGame
-    ) -> None:
+    def test_log_reward_monotone_in_cost(self, log_game: BasisSelectionGame) -> None:
         """Increasing DOF (cost) strictly decreases the log-form reward."""
         state = log_game.get_initial_state()
         cheap = state.clone()
@@ -446,9 +442,7 @@ class TestBasisSelectionGameLogReward:
         expensive_reward = log_game.get_reward(expensive, prev)
         assert cheap_reward > expensive_reward
 
-    def test_log_reward_terminal_bonus_applied(
-        self, log_game: BasisSelectionGame
-    ) -> None:
+    def test_log_reward_terminal_bonus_applied(self, log_game: BasisSelectionGame) -> None:
         """Terminal bonus is still applied under the log reward form."""
         state = log_game.get_initial_state()
         below_tol = state.clone()
@@ -464,9 +458,7 @@ class TestBasisSelectionGameLogReward:
 
         assert reward_below_tol > reward_above_tol
 
-    def test_linear_default_unchanged_by_new_fields(
-        self, game: BasisSelectionGame
-    ) -> None:
+    def test_linear_default_unchanged_by_new_fields(self, game: BasisSelectionGame) -> None:
         """Default reward_form='linear' keeps the historical formula."""
         state = game.get_initial_state()
         new_state = game.apply_action(state, 0)

@@ -538,9 +538,7 @@ class TestMeshRefinementGameReward:
 class TestMeshRefinementGameInterpolation:
     """Tests for ``_interpolate_solution`` (linear projection between meshes)."""
 
-    def test_smooth_function_interpolated_accurately(
-        self, game: MeshRefinementGame
-    ) -> None:
+    def test_smooth_function_interpolated_accurately(self, game: MeshRefinementGame) -> None:
         """Beat nearest-neighbor on a smooth known field after one refinement.
 
         Interpolating a smooth field onto a refined mesh should be close to
@@ -575,9 +573,7 @@ class TestMeshRefinementGameInterpolation:
         assert linear_err <= nn_err + 1e-9
         assert np.all(np.isfinite(interpolated))
 
-    def test_interpolation_handles_empty_old_state(
-        self, game: MeshRefinementGame
-    ) -> None:
+    def test_interpolation_handles_empty_old_state(self, game: MeshRefinementGame) -> None:
         """Empty old coords produces a zero-filled result of the right shape."""
         initial = game.get_initial_state()
         empty_state = PDEState(
@@ -601,9 +597,7 @@ class TestMeshRefinementGameLogReward:
     """Tests for the proposal-form log reward on the mesh game."""
 
     @pytest.fixture
-    def log_reward_game(
-        self, poisson_operator: PoissonOperator
-    ) -> MeshRefinementGame:
+    def log_reward_game(self, poisson_operator: PoissonOperator) -> MeshRefinementGame:
         mesh_cfg = MeshRefinementConfig(
             name="log_reward_mesh",
             initial_resolution=2,
@@ -628,9 +622,7 @@ class TestMeshRefinementGameLogReward:
         self, log_reward_game: MeshRefinementGame
     ) -> None:
         state = log_reward_game.get_initial_state()
-        new_state = log_reward_game.apply_action(
-            state, log_reward_game.get_valid_actions(state)[0]
-        )
+        new_state = log_reward_game.apply_action(state, log_reward_game.get_valid_actions(state)[0])
         reward = log_reward_game.get_reward(new_state, state)
         assert np.isfinite(reward)
         # Log-form depends on new_state only; sanity-check monotonicity in error
@@ -828,6 +820,67 @@ class TestPRefinementGame:
         assert new_state.dof >= state.dof
 
 
+class TestMeshRefinementGameCloneSafety:
+    """MCTS tree-search depends on ``clone()`` producing independent meshes."""
+
+    def test_clone_deep_copies_mesh(self, game: MeshRefinementGame) -> None:
+        """``clone()`` returns a new game whose mesh is a deep copy."""
+        cloned = game.clone()
+        assert cloned is not game
+        assert cloned.mesh is not game.mesh
+        assert cloned.mesh.n_elements == game.mesh.n_elements
+        # Shared immutables remain shared (no wasted copy of heavy state).
+        assert cloned.pde_operator is game.pde_operator
+        assert cloned.config is game.config
+        assert cloned.mesh_config is game.mesh_config
+
+    def test_clone_isolates_refinement_mutation(self, game: MeshRefinementGame) -> None:
+        """Refining on the clone must not change the original's mesh."""
+        state = game.get_initial_state()
+        original_n_elements = game.mesh.n_elements
+
+        cloned = game.clone()
+        cloned.apply_action(state, cloned.get_valid_actions(state)[0])
+
+        assert game.mesh.n_elements == original_n_elements
+        assert cloned.mesh.n_elements > original_n_elements
+
+    def test_clone_isolates_coarsen_mutation(self, poisson_operator: PoissonOperator) -> None:
+        """Coarsening on the clone must not collapse the original's tree."""
+        mesh_cfg = MeshRefinementConfig(
+            name="clone_coarsen_mesh",
+            initial_resolution=2,
+            max_refinement_level=3,
+            refinement_strategy=RefinementStrategy.H_REFINEMENT,
+            n_candidate_elements=32,
+            allow_coarsening=True,
+        )
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_cfg = PDEGameConfig(
+            name="clone_coarsen_game",
+            pde_config=pde_config,
+            game_mode="mesh_refinement",
+            mesh_config=mesh_cfg,
+            max_steps=20,
+            max_dof=2000,
+        )
+        game = MeshRefinementGame(poisson_operator, game_cfg)
+
+        # Refine the original so a coarsen action is available.
+        state = game.get_initial_state()
+        state = game.apply_action(state, game.get_valid_actions(state)[0])
+        original_leaf_count = len(game.mesh.leaf_elements)
+
+        cloned = game.clone()
+        slots = cloned._refine_slot_count
+        coarsen_actions = [a for a in cloned.get_valid_actions(state) if a >= slots]
+        assert coarsen_actions, "expected a coarsen action on the cloned game"
+        cloned.apply_action(state, coarsen_actions[0])
+
+        assert len(game.mesh.leaf_elements) == original_leaf_count
+        assert len(cloned.mesh.leaf_elements) < original_leaf_count
+
+
 class TestMeshCoarsen:
     """Unit tests for Mesh.coarsen_element (independent of the game)."""
 
@@ -930,9 +983,7 @@ class TestMeshRefinementGameCoarsen:
         """Enabling allow_coarsening doubles action_space_size."""
         assert coarsen_game.action_space_size == 2 * game.action_space_size
 
-    def test_initial_valid_actions_are_all_refine(
-        self, coarsen_game: MeshRefinementGame
-    ) -> None:
+    def test_initial_valid_actions_are_all_refine(self, coarsen_game: MeshRefinementGame) -> None:
         """On a fresh mesh every leaf is refinable, none is coarsenable."""
         state = coarsen_game.get_initial_state()
         valid = coarsen_game.get_valid_actions(state)
@@ -951,9 +1002,7 @@ class TestMeshRefinementGameCoarsen:
         slots = coarsen_game.mesh_config.n_candidate_elements
         assert any(a >= slots for a in valid), "coarsen slot should be valid"
 
-    def test_coarsen_action_reduces_dof(
-        self, coarsen_game: MeshRefinementGame
-    ) -> None:
+    def test_coarsen_action_reduces_dof(self, coarsen_game: MeshRefinementGame) -> None:
         """Applying a coarsen action strictly reduces the DOF count."""
         state = coarsen_game.get_initial_state()
         state = coarsen_game.apply_action(state, coarsen_game.get_valid_actions(state)[0])
@@ -965,17 +1014,13 @@ class TestMeshRefinementGameCoarsen:
         state = coarsen_game.apply_action(state, coarsen_actions[0])
         assert state.dof < refined_dof
 
-    def test_action_mask_has_doubled_length(
-        self, coarsen_game: MeshRefinementGame
-    ) -> None:
+    def test_action_mask_has_doubled_length(self, coarsen_game: MeshRefinementGame) -> None:
         """Mask length matches the doubled action_space_size."""
         state = coarsen_game.get_initial_state()
         mask = coarsen_game.get_action_mask(state)
         assert mask.shape[0] == coarsen_game.action_space_size
 
-    def test_action_to_string_distinguishes_kinds(
-        self, coarsen_game: MeshRefinementGame
-    ) -> None:
+    def test_action_to_string_distinguishes_kinds(self, coarsen_game: MeshRefinementGame) -> None:
         """action_to_string labels refine vs coarsen correctly."""
         state = coarsen_game.get_initial_state()
         state = coarsen_game.apply_action(state, coarsen_game.get_valid_actions(state)[0])
@@ -987,9 +1032,7 @@ class TestMeshRefinementGameCoarsen:
         assert "refine_element" in coarsen_game.action_to_string(refine_actions[0])
         assert "coarsen_element" in coarsen_game.action_to_string(coarsen_actions[0])
 
-    def test_invalid_coarsen_action_raises(
-        self, coarsen_game: MeshRefinementGame
-    ) -> None:
+    def test_invalid_coarsen_action_raises(self, coarsen_game: MeshRefinementGame) -> None:
         """Dispatching a coarsen action on an ineligible leaf raises ValueError."""
         state = coarsen_game.get_initial_state()
         slots = coarsen_game.mesh_config.n_candidate_elements
@@ -997,17 +1040,13 @@ class TestMeshRefinementGameCoarsen:
         with pytest.raises(ValueError):
             coarsen_game.apply_action(state, slots)
 
-    def test_out_of_range_action_raises(
-        self, coarsen_game: MeshRefinementGame
-    ) -> None:
+    def test_out_of_range_action_raises(self, coarsen_game: MeshRefinementGame) -> None:
         """Actions outside [0, action_space_size) are rejected."""
         state = coarsen_game.get_initial_state()
         with pytest.raises(ValueError):
             coarsen_game.apply_action(state, coarsen_game.action_space_size + 1)
 
-    def test_backwards_compat_no_coarsen(
-        self, game: MeshRefinementGame
-    ) -> None:
+    def test_backwards_compat_no_coarsen(self, game: MeshRefinementGame) -> None:
         """With allow_coarsening=False (default), action layout is unchanged."""
         state = game.get_initial_state()
         valid = game.get_valid_actions(state)

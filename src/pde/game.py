@@ -548,13 +548,22 @@ class PDEGame(ABC):
         return action in self.get_valid_actions(state)
 
     def clone(self) -> PDEGame:
-        """Create a copy of the game interface.
+        """Return a copy that can mutate independently of ``self``.
+
+        Used by ``PDEGameAdapter.clone()`` to make MCTS tree search safe
+        across sibling simulations. The default implementation returns
+        ``self`` because many PDE games are stateless once constructed
+        (their per-episode state lives entirely in ``PDEState``). Games
+        whose per-episode state is held on the game instance itself —
+        for instance :class:`MeshRefinementGame`, which mutates
+        ``self.mesh`` during ``apply_action`` — must override this to
+        return a deep-copied instance.
 
         Returns:
-            New instance of the game.
+            A :class:`PDEGame` safe to use as an isolated clone.
 
         """
-        return type(self)(self.pde_operator, self.config)
+        return self
 
     def __repr__(self) -> str:
         """String representation."""

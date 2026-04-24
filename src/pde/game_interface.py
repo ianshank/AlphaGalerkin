@@ -211,11 +211,30 @@ class PDEGameInterface(GameInterface):
         """Return the phase-segmentation tolerance for this interface.
 
         Used only by ``get_phase`` to label OPENING / MIDGAME / ENDGAME.
-        Terminal convergence is handled by the underlying PDE game via
-        ``PDEGameConfig.error_tolerance``; the interface-level tolerance
-        lets callers tune curriculum phase boundaries independently.
+        The per-problem convergence tolerance that decides winners lives
+        on the PDE game's config - see :meth:`_get_convergence_tolerance`.
+        The interface-level tolerance lets callers tune curriculum phase
+        boundaries independently of the underlying game's termination.
         """
         return float(self.interface_config.default_tolerance)
+
+    def _get_convergence_tolerance(self) -> float:
+        """Return the tolerance that drives winner computation.
+
+        Sourced from ``PDEGameConfig.error_tolerance`` (the same field
+        the underlying game uses in :meth:`PDEGame.is_terminal`) so that
+        the interface's winner determination is consistent with the
+        game's own termination criterion. Falls back to
+        ``interface_config.default_tolerance`` for games whose config
+        predates the ``error_tolerance`` field.
+        """
+        return float(
+            getattr(
+                self.pde_game.config,
+                "error_tolerance",
+                self.interface_config.default_tolerance,
+            )
+        )
 
     # ------------------------------------------------------------------
     # State conversion helpers
@@ -269,8 +288,12 @@ class PDEGameInterface(GameInterface):
         +1: Converged (error < tolerance)
         -1: Budget exhausted with poor error
          0: Ambiguous / partial convergence
+
+        Uses the PDE game's own ``error_tolerance`` (via
+        :meth:`_get_convergence_tolerance`) so the interface and the
+        underlying game agree on what "converged" means.
         """
-        tolerance = self._get_tolerance()
+        tolerance = self._get_convergence_tolerance()
 
         if pde_state.error_estimate < tolerance:
             return 1

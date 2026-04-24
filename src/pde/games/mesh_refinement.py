@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -31,11 +32,24 @@ from torch import Tensor
 
 from src.pde.config import MeshRefinementConfig, PDEGameConfig, RefinementStrategy
 from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.reward import log_reward
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
 
 logger = structlog.get_logger(__name__)
+
+
+class ActionKind(IntEnum):
+    """Action type for the mesh-refinement game.
+
+    When ``MeshRefinementConfig.allow_coarsening`` is true the action space
+    is partitioned into ``REFINE`` (low half) and ``COARSEN`` (high half)
+    slots of width ``n_candidate_elements``.
+    """
+
+    REFINE = 0
+    COARSEN = 1
 
 
 @dataclass
@@ -51,6 +65,9 @@ class MeshElement:
         polynomial_degree: Polynomial degree for p-refinement.
         parent: Parent element index (None for initial elements).
         children: Child element indices (empty if not refined).
+        active: False once the element has been merged back into its parent
+            by coarsening; such an element is kept in ``Mesh.elements`` for
+            stable global indexing but is excluded from ``leaf_elements``.
 
     """
 
@@ -62,11 +79,12 @@ class MeshElement:
     polynomial_degree: int = 1
     parent: int | None = None
     children: list[int] = field(default_factory=list)
+    active: bool = True
 
     @property
     def is_leaf(self) -> bool:
-        """Whether this element is a leaf (not refined)."""
-        return len(self.children) == 0
+        """Whether this element is a live leaf (active and not refined)."""
+        return self.active and len(self.children) == 0
 
 
 class Mesh:
@@ -309,6 +327,72 @@ class Mesh:
         children = self._subdivide_element(element)
         return [c.index for c in children]
 
+    def can_coarsen_element(self, element_idx: int) -> bool:
+        """Whether the leaf ``element_idx`` can be merged back into its parent.
+
+        Coarsening is valid only when every sibling (i.e. each child of the
+        common parent) is itself an active leaf — otherwise merging would
+        discard refinement work done further down the tree.
+
+        Args:
+            element_idx: Global element index.
+
+        Returns:
+            True if the element participates in a fully-leaf sibling group
+            that can be collapsed back to its parent.
+
+        """
+        element = self.elements[element_idx]
+        if not element.is_leaf or element.parent is None:
+            return False
+        parent = self.elements[element.parent]
+        if not parent.children:
+            return False
+        return all(self.elements[c].is_leaf for c in parent.children)
+
+    def coarsen_element(self, element_idx: int) -> int:
+        """Merge the sibling group containing ``element_idx`` back to the parent.
+
+        Undoes a previous ``H_REFINEMENT`` on the parent: all children are
+        marked inactive (so they drop out of ``leaf_elements`` while keeping
+        their global indices stable for history replay), and the parent
+        becomes a leaf again. The parent's polynomial degree is left intact
+        so that any p-refinement that happened before the subdivision is
+        preserved.
+
+        Args:
+            element_idx: Global element index of a leaf in a coarsenable group.
+
+        Returns:
+            Global index of the parent element (now a leaf again).
+
+        Raises:
+            ValueError: If the element cannot be coarsened (no parent, or
+                at least one sibling has been refined further).
+
+        """
+        if not self.can_coarsen_element(element_idx):
+            raise ValueError(
+                f"Element {element_idx} is not coarsenable: it must be a leaf "
+                "with a parent whose every child is also an active leaf."
+            )
+        element = self.elements[element_idx]
+        parent_idx = element.parent
+        assert parent_idx is not None  # guaranteed by can_coarsen_element
+        parent = self.elements[parent_idx]
+
+        sibling_indices = list(parent.children)
+        for sibling_idx in sibling_indices:
+            self.elements[sibling_idx].active = False
+        parent.children = []
+
+        logger.debug(
+            "element_coarsened",
+            parent_index=parent_idx,
+            merged_indices=sibling_indices,
+        )
+        return parent_idx
+
     def get_element_centers(self) -> NDArray[np.float32]:
         """Get centers of all leaf elements."""
         return np.array([e.center for e in self.leaf_elements], dtype=np.float32)
@@ -356,10 +440,18 @@ class MeshRefinementGame(PDEGame):
         self._refinement_strategy = self.mesh_config.refinement_strategy
 
     @property
+    def _coarsen_enabled(self) -> bool:
+        """Whether the coarsen half of the action space is active."""
+        return self.mesh_config.allow_coarsening
+
+    @property
     def action_space_size(self) -> int:
         """Number of possible actions.
 
-        Each leaf element can be refined.
+        Each leaf element can be refined. When ``allow_coarsening`` is set,
+        the action space is partitioned into two equal halves of width
+        ``n_candidate_elements``: the low half refines, the high half
+        coarsens.
         """
         # Dynamic based on mesh state
         # Use maximum possible for fixed action space
@@ -369,7 +461,8 @@ class MeshRefinementGame(PDEGame):
             self.mesh_config.initial_resolution**dim
             * (2**dim) ** self.mesh_config.max_refinement_level
         )
-        return min(max_elements, self.mesh_config.n_candidate_elements)
+        refine_slots = min(max_elements, self.mesh_config.n_candidate_elements)
+        return refine_slots * 2 if self._coarsen_enabled else refine_slots
 
     @property
     def state_channels(self) -> int:
@@ -422,30 +515,80 @@ class MeshRefinementGame(PDEGame):
             history=[],
         )
 
+    def _decode_action(self, action: int) -> tuple[ActionKind, int]:
+        """Split a flat action into (kind, leaf_index).
+
+        When coarsening is enabled the action space is::
+
+            [0, n)          -> REFINE leaf_elements[action]
+            [n, 2n)         -> COARSEN leaf_elements[action - n]
+
+        where ``n = n_candidate_elements``. When coarsening is disabled the
+        upper half is absent and every action decodes as a refinement.
+
+        Args:
+            action: Flat action index.
+
+        Returns:
+            Pair of the decoded action kind and the leaf-order index.
+
+        Raises:
+            ValueError: If the action is out of range for the current
+                action space.
+
+        """
+        slots = self.mesh_config.n_candidate_elements
+        if action < 0 or action >= self.action_space_size:
+            raise ValueError(
+                f"Invalid action: {action} not in [0, {self.action_space_size})"
+            )
+        if not self._coarsen_enabled or action < slots:
+            return ActionKind.REFINE, action
+        return ActionKind.COARSEN, action - slots
+
+    def _refine_eligible(self, element: MeshElement) -> bool:
+        """Whether a leaf element can be refined under current config limits."""
+        if element.level >= self.mesh_config.max_refinement_level:
+            return False
+        if element.size < self.mesh_config.min_element_size:
+            return False
+        if element.polynomial_degree >= self.mesh_config.max_polynomial_degree:
+            return False
+        return True
+
     def get_valid_actions(self, state: PDEState) -> list[int]:
-        """Get valid refinement actions.
+        """Get valid refinement (and optionally coarsening) actions.
 
         Args:
             state: Current state.
 
         Returns:
-            List of valid element indices to refine.
+            List of valid flat action indices. When ``allow_coarsening`` is
+            enabled, indices below ``n_candidate_elements`` are refine
+            actions and indices above are coarsen actions.
 
         """
-        valid = []
-        for i, element in enumerate(self.mesh.leaf_elements):
-            # Check refinement constraints
-            if element.level >= self.mesh_config.max_refinement_level:
-                continue
-            if element.size < self.mesh_config.min_element_size:
-                continue
-            if element.polynomial_degree >= self.mesh_config.max_polynomial_degree:
-                continue
+        slots = self.mesh_config.n_candidate_elements
+        leaves = self.mesh.leaf_elements
 
-            valid.append(i)
+        refine_actions: list[int] = []
+        for i, element in enumerate(leaves):
+            if i >= slots:
+                break
+            if self._refine_eligible(element):
+                refine_actions.append(i)
 
-        # Limit to candidate count
-        return valid[: self.mesh_config.n_candidate_elements]
+        if not self._coarsen_enabled:
+            return refine_actions
+
+        coarsen_actions: list[int] = []
+        for i, element in enumerate(leaves):
+            if i >= slots:
+                break
+            if self.mesh.can_coarsen_element(element.index):
+                coarsen_actions.append(slots + i)
+
+        return refine_actions + coarsen_actions
 
     def get_action_mask(self, state: PDEState) -> NDArray[np.bool_]:
         """Get boolean mask for valid actions.
@@ -454,7 +597,7 @@ class MeshRefinementGame(PDEGame):
             state: Current state.
 
         Returns:
-            Boolean mask.
+            Boolean mask of length ``action_space_size``.
 
         """
         mask = np.zeros(self.action_space_size, dtype=bool)
@@ -465,28 +608,40 @@ class MeshRefinementGame(PDEGame):
         return mask
 
     def apply_action(self, state: PDEState, action: int) -> PDEState:
-        """Apply refinement action.
+        """Apply a refinement or coarsening action.
 
         Args:
             state: Current state.
-            action: Element index to refine.
+            action: Flat action index; see :meth:`_decode_action`.
 
         Returns:
-            New state after refinement.
+            New state after the action.
 
         """
-        # Get leaf element to refine
+        kind, leaf_idx = self._decode_action(action)
+
         leaf_elements = self.mesh.leaf_elements
-        if action >= len(leaf_elements):
-            raise ValueError(f"Invalid action: {action} >= {len(leaf_elements)}")
+        if leaf_idx >= len(leaf_elements):
+            raise ValueError(f"Invalid action: {action} (leaf {leaf_idx} missing)")
 
-        element = leaf_elements[action]
+        element = leaf_elements[leaf_idx]
 
-        # Perform refinement
-        self.mesh.refine_element(
-            element.index,
-            self._refinement_strategy,
-        )
+        if kind is ActionKind.REFINE:
+            self.mesh.refine_element(
+                element.index,
+                self._refinement_strategy,
+            )
+        else:
+            # ActionKind.COARSEN: raise a clean error if the action space
+            # happened to expose a slot whose leaf is no longer coarsenable
+            # (e.g. a sibling was refined further between mask evaluation
+            # and dispatch). This preserves the "invalid action" contract.
+            if not self.mesh.can_coarsen_element(element.index):
+                raise ValueError(
+                    f"Invalid coarsen action {action}: element {element.index} "
+                    "is not in a fully-leaf sibling group."
+                )
+            self.mesh.coarsen_element(element.index)
 
         # Rebuild state
         coords = self.mesh.get_element_centers()
@@ -542,26 +697,72 @@ class MeshRefinementGame(PDEGame):
         old_state: PDEState,
         new_coords: NDArray[np.float32],
     ) -> NDArray[np.float32]:
-        """Interpolate solution to new mesh.
+        """Interpolate the old solution onto the refined mesh.
+
+        Uses piecewise-linear interpolation (barycentric in 2D+, linear in
+        1D) over the previous mesh's collocation points. Points that fall
+        outside the convex hull of the old coords fall back to nearest-
+        neighbor so the returned array is always well-defined.
+
+        A proper Galerkin :math:`L^2`-projection onto the refined trial
+        space would require assembling the refined mass matrix; that
+        refinement is tracked as a future deliverable alongside the FEM
+        baseline (see ``docs/doe_genesis/mdp_specification.md § 4``).
 
         Args:
             old_state: Previous state.
-            new_coords: New coordinate points.
+            new_coords: New coordinate points; shape ``(n_new, dim)``.
 
         Returns:
-            Interpolated solution.
+            Interpolated solution at ``new_coords`` with ``np.float32`` dtype.
 
         """
-        # Simple nearest-neighbor interpolation
-        from scipy.spatial import cKDTree
+        old_coords = np.asarray(old_state.coords, dtype=np.float64)
+        new_coords_f64 = np.asarray(new_coords, dtype=np.float64)
+        old_solution = np.asarray(old_state.solution, dtype=np.float64)
 
-        tree = cKDTree(old_state.coords)
-        _, indices = tree.query(new_coords, k=1)
+        # Degenerate case: nothing to interpolate from.
+        if old_coords.size == 0:
+            return np.zeros(len(new_coords_f64), dtype=np.float32)
 
-        return old_state.solution[indices].astype(np.float32)
+        if old_coords.ndim == 1 or old_coords.shape[1] == 1:
+            # 1-D: sort by x and use numpy linear interpolation; out-of-range
+            # points are clamped to the edge values (extrapolation would be
+            # worse than a constant for a collocation mesh).
+            xs = old_coords.reshape(-1)
+            order = np.argsort(xs)
+            xs_sorted = xs[order]
+            ys_sorted = old_solution[order]
+            queries = new_coords_f64.reshape(-1)
+            interpolated = np.interp(queries, xs_sorted, ys_sorted)
+            return interpolated.astype(np.float32)
+
+        # 2-D and higher: linear interpolation with nearest-neighbor fallback.
+        from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+
+        nearest = NearestNDInterpolator(old_coords, old_solution)
+        try:
+            linear = LinearNDInterpolator(old_coords, old_solution, fill_value=np.nan)
+            values = linear(new_coords_f64)
+        except Exception:  # pragma: no cover - degenerate triangulation
+            values = np.full(len(new_coords_f64), np.nan)
+
+        missing = np.isnan(values)
+        if missing.any():
+            values[missing] = nearest(new_coords_f64[missing])
+
+        return values.astype(np.float32)
 
     def get_reward(self, state: PDEState, prev_state: PDEState) -> float:
         """Compute reward for refinement action.
+
+        Two forms are supported, selected by ``PDEGameConfig.reward_form``:
+
+        * ``"linear"`` (default): error-reduction reward minus DOF cost
+          plus an efficiency bonus plus terminal bonus.
+        * ``"log"``: the DOE Genesis proposal reward
+          ``-alpha * log(error) - beta * log(cost)`` with ``cost = state.dof``,
+          plus the terminal bonus.
 
         Args:
             state: New state.
@@ -571,15 +772,32 @@ class MeshRefinementGame(PDEGame):
             Reward value.
 
         """
-        # Error reduction
+        if self.config.reward_form == "log":
+            reward = log_reward(
+                error=state.error_estimate,
+                cost=float(state.dof),
+                alpha=self.config.log_reward_alpha,
+                beta=self.config.log_reward_beta,
+                epsilon=self.config.log_reward_epsilon,
+            )
+            if state.error_estimate < self.config.error_tolerance:
+                reward += self.config.terminal_bonus
+
+            logger.debug(
+                "reward_computed",
+                form="log",
+                error=state.error_estimate,
+                dof=state.dof,
+                total_reward=reward,
+            )
+            return reward
+
+        # Linear form (historical default).
         error_reduction = prev_state.error_estimate - state.error_estimate
 
-        # DOF cost
         dof_added = state.dof - prev_state.dof
         cost = self.config.cost_per_dof * dof_added
 
-        # Efficiency bonus (reward good error/DOF ratio)
-        # Uses configurable threshold and multiplier from mesh_config
         efficiency_threshold = self.mesh_config.efficiency_threshold
         efficiency_multiplier = self.mesh_config.efficiency_multiplier
 
@@ -591,7 +809,6 @@ class MeshRefinementGame(PDEGame):
 
         reward = self.config.reward_per_error_reduction * error_reduction - cost + efficiency_bonus
 
-        # Terminal bonus
         if state.error_estimate < self.config.error_tolerance:
             reward += self.config.terminal_bonus
 
@@ -786,7 +1003,11 @@ class MeshRefinementGame(PDEGame):
             Action description.
 
         """
-        if action < len(self.mesh.leaf_elements):
-            element = self.mesh.leaf_elements[action]
-            return f"refine_element({action}, level={element.level})"
-        return f"invalid_action_{action}"
+        if action < 0 or action >= self.action_space_size:
+            return f"invalid_action_{action}"
+        kind, leaf_idx = self._decode_action(action)
+        if leaf_idx >= len(self.mesh.leaf_elements):
+            return f"invalid_action_{action}"
+        element = self.mesh.leaf_elements[leaf_idx]
+        verb = "refine_element" if kind is ActionKind.REFINE else "coarsen_element"
+        return f"{verb}({leaf_idx}, level={element.level})"

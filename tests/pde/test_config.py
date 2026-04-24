@@ -269,6 +269,59 @@ class TestPDEGameConfig:
         assert len(config.success_metrics) >= 1
         assert config.success_metrics[0].name == "final_error"
 
+    def test_winner_threshold_defaults(self) -> None:
+        """Winner thresholds default to the historical 0.1 / 0.5 values."""
+        pde = PDEConfig(name="poisson", pde_type=PDEType.POISSON)
+        config = PDEGameConfig(name="test_game", pde_config=pde)
+        assert config.winner_good_reduction_threshold == 0.1
+        assert config.winner_poor_reduction_threshold == 0.5
+
+    def test_winner_threshold_override(self) -> None:
+        """Winner thresholds accept overrides in (0, 1) with good < poor."""
+        pde = PDEConfig(name="poisson", pde_type=PDEType.POISSON)
+        config = PDEGameConfig(
+            name="test_game",
+            pde_config=pde,
+            winner_good_reduction_threshold=0.05,
+            winner_poor_reduction_threshold=0.8,
+        )
+        assert config.winner_good_reduction_threshold == 0.05
+        assert config.winner_poor_reduction_threshold == 0.8
+
+    def test_winner_threshold_ordering_enforced(self) -> None:
+        """Reject configurations where good >= poor at validator time."""
+        pde = PDEConfig(name="poisson", pde_type=PDEType.POISSON)
+        with pytest.raises(ValidationError):
+            PDEGameConfig(
+                name="test_game",
+                pde_config=pde,
+                winner_good_reduction_threshold=0.6,
+                winner_poor_reduction_threshold=0.4,
+            )
+        with pytest.raises(ValidationError):
+            PDEGameConfig(
+                name="test_game",
+                pde_config=pde,
+                winner_good_reduction_threshold=0.3,
+                winner_poor_reduction_threshold=0.3,
+            )
+
+    def test_winner_threshold_bounds(self) -> None:
+        """Threshold fields enforce (0, 1) open bounds."""
+        pde = PDEConfig(name="poisson", pde_type=PDEType.POISSON)
+        with pytest.raises(ValidationError):
+            PDEGameConfig(
+                name="test_game",
+                pde_config=pde,
+                winner_good_reduction_threshold=0.0,
+            )
+        with pytest.raises(ValidationError):
+            PDEGameConfig(
+                name="test_game",
+                pde_config=pde,
+                winner_poor_reduction_threshold=1.0,
+            )
+
 
 class TestEnums:
     """Tests for configuration enums."""

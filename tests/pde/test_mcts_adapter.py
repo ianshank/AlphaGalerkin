@@ -294,3 +294,88 @@ class TestPDEGameAdapterWinnerEdgeCases:
         reduction_ratio = final_error / initial_error
 
         assert reduction_ratio < 0.1  # Should return +1
+
+
+class TestPDEGameAdapterWinnerConfigThresholds:
+    """Exercise the real get_winner() against the configured thresholds."""
+
+    @staticmethod
+    def _make_adapter(
+        pde_config: PDEConfig,
+        *,
+        error_tolerance: float = 0.01,
+        good: float = 0.1,
+        poor: float = 0.5,
+    ) -> PDEGameAdapter:
+        game_config = PDEGameConfig(
+            name="winner_thresholds",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            max_steps=4,
+            error_tolerance=error_tolerance,
+            computational_budget=1e4,
+            winner_good_reduction_threshold=good,
+            winner_poor_reduction_threshold=poor,
+            basis_config=BasisSelectionConfig(
+                name="winner_thresholds_basis",
+                max_basis_functions=8,
+                basis_type="fourier",
+                max_frequency=3,
+            ),
+        )
+        operator = PoissonOperator(pde_config)
+        pde_game = BasisSelectionGame(operator, game_config)
+        return PDEGameAdapter(pde_game)
+
+    def test_empty_history_returns_zero(self, pde_config: PDEConfig) -> None:
+        """No error history collapses to a draw."""
+        adapter = self._make_adapter(pde_config)
+        adapter.error_history = []
+        assert adapter.get_winner() == 0
+
+    def test_below_tolerance_is_win(self, pde_config: PDEConfig) -> None:
+        """Final error below error_tolerance always returns +1."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.1)
+        adapter.error_history = [1.0, 0.05]
+        assert adapter.get_winner() == 1
+
+    def test_good_reduction_is_win(self, pde_config: PDEConfig) -> None:
+        """Reduction past the good threshold returns +1 even above tolerance."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, good=0.1)
+        adapter.error_history = [1.0, 0.05]  # ratio 0.05 < good 0.1
+        assert adapter.get_winner() == 1
+
+    def test_poor_reduction_is_loss(self, pde_config: PDEConfig) -> None:
+        """Reduction worse than poor threshold returns -1."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, poor=0.5)
+        adapter.error_history = [1.0, 0.9]  # ratio 0.9 > poor 0.5
+        assert adapter.get_winner() == -1
+
+    def test_middle_reduction_is_draw(self, pde_config: PDEConfig) -> None:
+        """Reduction between thresholds returns 0."""
+        adapter = self._make_adapter(
+            pde_config, error_tolerance=0.001, good=0.1, poor=0.5
+        )
+        adapter.error_history = [1.0, 0.3]
+        assert adapter.get_winner() == 0
+
+    def test_threshold_override_flips_outcome(self, pde_config: PDEConfig) -> None:
+        """Changing config thresholds changes the outcome for a fixed history."""
+        # ratio 0.2 is neutral under defaults (0.1 < 0.2 < 0.5)
+        neutral = self._make_adapter(pde_config, error_tolerance=0.001)
+        neutral.error_history = [1.0, 0.2]
+        assert neutral.get_winner() == 0
+
+        # tightening the good threshold still leaves it neutral, but widening
+        # it past 0.2 should now classify the same history as a win.
+        win = self._make_adapter(
+            pde_config, error_tolerance=0.001, good=0.3, poor=0.5
+        )
+        win.error_history = [1.0, 0.2]
+        assert win.get_winner() == 1
+
+    def test_zero_initial_error_is_draw(self, pde_config: PDEConfig) -> None:
+        """Zero initial error falls through to reduction_ratio=1.0 (a loss)."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, poor=0.5)
+        adapter.error_history = [0.0, 0.2]  # above tolerance, ratio defaults to 1.0
+        assert adapter.get_winner() == -1

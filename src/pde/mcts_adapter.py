@@ -157,10 +157,8 @@ class PDEGameAdapter:
         initial_error = self.error_history[0]
         final_error = self.error_history[-1]
 
-        # Tolerance from config (with reasonable fallback)
-        tolerance = getattr(self.pde_game.config, "tolerance", 0.01)
-
-        if final_error < tolerance:
+        config = self.pde_game.config
+        if final_error < config.error_tolerance:
             return 1  # Converged successfully
 
         # Measure relative error reduction
@@ -169,11 +167,9 @@ class PDEGameAdapter:
         else:
             reduction_ratio = 1.0
 
-        if reduction_ratio < 0.1:
-            # Reduced error by 90%+ even if not below tolerance
+        if reduction_ratio < config.winner_good_reduction_threshold:
             return 1
-        elif reduction_ratio > 0.5:
-            # Less than 50% reduction — poor outcome
+        elif reduction_ratio > config.winner_poor_reduction_threshold:
             return -1
         else:
             return 0

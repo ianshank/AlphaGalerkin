@@ -208,10 +208,14 @@ class PDEGameInterface(GameInterface):
     # ------------------------------------------------------------------
 
     def _get_tolerance(self) -> float:
-        """Get convergence tolerance from PDE config, falling back to interface config."""
-        return float(
-            getattr(self.pde_game.config, "tolerance", self.interface_config.default_tolerance)
-        )
+        """Return the phase-segmentation tolerance for this interface.
+
+        Used only by ``get_phase`` to label OPENING / MIDGAME / ENDGAME.
+        Terminal convergence is handled by the underlying PDE game via
+        ``PDEGameConfig.error_tolerance``; the interface-level tolerance
+        lets callers tune curriculum phase boundaries independently.
+        """
+        return float(self.interface_config.default_tolerance)
 
     # ------------------------------------------------------------------
     # State conversion helpers

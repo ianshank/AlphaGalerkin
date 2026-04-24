@@ -396,21 +396,28 @@ class TestInitialErrorPropagation:
             assert "_initial_error" in new_state.metadata
             assert new_state.metadata["_initial_error"] == initial_err
 
-    def test_get_tolerance_uses_config(self, pde_interface: PDEGameInterface):
-        """_get_tolerance should return the config default_tolerance."""
+    def test_get_tolerance_uses_interface_config(
+        self, pde_interface: PDEGameInterface
+    ) -> None:
+        """_get_tolerance returns the interface config's default_tolerance.
+
+        The interface tolerance segments phases for curriculum purposes;
+        convergence termination is driven by ``PDEGameConfig.error_tolerance``
+        via the underlying game's ``is_terminal``. The two intentionally
+        decouple so phases can be tuned independently of termination.
+        """
         tol = pde_interface._get_tolerance()
         assert tol == pde_interface.interface_config.default_tolerance
 
-    def test_get_tolerance_uses_pde_config(self, basis_game: BasisSelectionGame):
-        """_get_tolerance should prefer PDE game config tolerance if present."""
-        config = PDEGameInterfaceConfig(default_tolerance=999.0)
-        interface = PDEGameInterface(pde_game=basis_game, interface_config=config)
-        tol = interface._get_tolerance()
-        # If basis_game.config has tolerance attr, it takes precedence
-        if hasattr(basis_game.config, "tolerance"):
-            assert tol == basis_game.config.tolerance
-        else:
-            assert tol == 999.0
+    def test_get_tolerance_honors_custom_interface_config(
+        self, basis_game: BasisSelectionGame
+    ) -> None:
+        """Overriding interface_config.default_tolerance flows through."""
+        interface = PDEGameInterface(
+            pde_game=basis_game,
+            interface_config=PDEGameInterfaceConfig(default_tolerance=0.25),
+        )
+        assert interface._get_tolerance() == 0.25
 
     def test_action_mask_numpy_path(self, basis_game: BasisSelectionGame):
         """get_action_mask should handle numpy array masks."""

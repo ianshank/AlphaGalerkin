@@ -297,15 +297,16 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_not_yet_implemented(
-        self,
-        poisson_operator: PoissonOperator,
-    ) -> None:
-        """``evaluator='trained'`` is reserved for future work."""
-        cfg = _fast_solver_config(evaluator="trained")
-        solver = AlphaGalerkinSolver(cfg)
-        with pytest.raises(NotImplementedError):
-            solver.solve(poisson_operator, n_dof=16)
+    def test_trained_evaluator_rejected_by_config(self) -> None:
+        """Reject ``evaluator='trained'`` at config construction time.
+
+        The value is not in the supported ``Literal`` set and will regain a
+        slot once a learned evaluator is wired in.
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _fast_solver_config(evaluator="trained")
 
 
 # ---------------------------------------------------------------------------

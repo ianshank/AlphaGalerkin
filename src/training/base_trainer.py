@@ -43,7 +43,7 @@ import structlog
 import torch
 from pydantic import Field
 from torch import Tensor
-from torch.amp import GradScaler, autocast  # type: ignore[attr-defined]
+from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import (
@@ -485,13 +485,13 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             _dtype = amp_dtype or torch.float16
             with autocast(device_type=_device.type, dtype=_dtype):
                 loss, metrics = loss_fn()
-            self.scaler.scale(loss).backward()  # type: ignore[no-untyped-call]
+            self.scaler.scale(loss).backward()
             grad_norm = self._clip_gradients(model, max_norm)
             self.scaler.step(optimizer)
             self.scaler.update()
         else:
             loss, metrics = loss_fn()
-            loss.backward()  # type: ignore[no-untyped-call]
+            loss.backward()
             grad_norm = self._clip_gradients(model, max_norm)
             optimizer.step()
 

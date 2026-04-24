@@ -261,6 +261,22 @@ class TestAlphaGalerkinSolver:
         # is exactly ``n_actions_taken + 1`` for every terminated loop.
         assert len(result.metadata["error_history"]) == taken + 1
 
+    def test_solver_terminates_via_game_is_terminal(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        """A loose ``target_tolerance`` flows into the game's ``error_tolerance``.
+
+        The solver propagates ``target_tolerance`` directly to
+        ``PDEGameConfig.error_tolerance`` (so a ``target_tolerance``
+        above the initial Galerkin residual makes the underlying game
+        terminal on the very first iteration), and the loop exits with
+        ``termination_reason == "is_terminal"``.
+        """
+        solver = AlphaGalerkinSolver(_fast_solver_config(target_tolerance=0.99))
+        result = solver.solve(poisson_operator, n_dof=32)
+        assert result.metadata["termination_reason"] == "is_terminal"
+        assert result.metadata["n_actions_taken"] == 0
+
     def test_solver_deterministic_with_seed(
         self,
         poisson_operator: PoissonOperator,

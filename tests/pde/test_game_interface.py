@@ -377,6 +377,37 @@ class TestWinnerAndPhaseLogic:
         phase = interface.get_phase(state)
         assert phase == GamePhase.ENDGAME
 
+    def test_get_phase_terminal_when_game_terminal(self, poisson_operator: PoissonOperator) -> None:
+        """A terminal underlying game state forces ``get_phase -> TERMINAL``.
+
+        Drives the early-return at ``get_phase`` line
+        ``if self.is_terminal(state): return GamePhase.TERMINAL`` by
+        loosening the PDE-level ``error_tolerance`` so the initial
+        Galerkin error is already below it, making the underlying game
+        report terminal on the very first state.
+        """
+        pde_cfg = PDEConfig(
+            name="terminal_phase_poisson",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            advection_coeff=[0.0, 0.0],
+        )
+        game = BasisSelectionGame(
+            poisson_operator,
+            PDEGameConfig(
+                name="terminal_phase_game",
+                pde_config=pde_cfg,
+                game_mode="basis_selection",
+                error_tolerance=0.99,
+            ),
+        )
+        interface = PDEGameInterface(pde_game=game)
+        state = interface.initial_state()
+        assert interface.is_terminal(state)
+        assert interface.get_phase(state) == GamePhase.TERMINAL
+
     def test_action_mask_with_torch_tensor(self, pde_interface: PDEGameInterface):
         """Verify action mask works when underlying returns Tensor."""
         state = pde_interface.initial_state()

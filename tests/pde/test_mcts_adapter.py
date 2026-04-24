@@ -215,6 +215,22 @@ class TestPDEGameAdapterEdgeCases:
         """error_reduction is 0.0 at initial state."""
         assert adapter.error_reduction == 0.0
 
+    def test_error_reduction_empty_history_returns_zero(self, adapter: PDEGameAdapter) -> None:
+        """Defensive: an empty error_history short-circuits to 0.0."""
+        adapter.error_history = []
+        assert adapter.error_reduction == 0.0
+
+    def test_error_reduction_zero_initial_returns_zero(self, adapter: PDEGameAdapter) -> None:
+        """A zero-valued initial error short-circuits to 0.0 without ZeroDiv."""
+        adapter.error_history = [0.0, 0.5]
+        assert adapter.error_reduction == 0.0
+
+    def test_error_reduction_positive_path(self, adapter: PDEGameAdapter) -> None:
+        """A non-empty, non-zero history returns the documented ratio."""
+        adapter.error_history = [1.0, 0.4]
+        # 1 - 0.4/1.0 = 0.6
+        assert adapter.error_reduction == pytest.approx(0.6, rel=1e-9)
+
     def test_state_tensor_finite(self, adapter: PDEGameAdapter) -> None:
         """State tensor contains finite values."""
         state = adapter.get_state()

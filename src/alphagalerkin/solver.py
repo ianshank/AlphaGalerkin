@@ -240,8 +240,13 @@ class AlphaGalerkinSolver(BaseSolver):
 
         # Main episode loop.  We call ``mcts.search`` to obtain an
         # improved policy, pick the mode-argmax action, and advance the
-        # adapter until termination / tolerance / max_steps.  The actual
-        # break reason is captured in ``termination_reason`` so metadata
+        # adapter until termination / max_steps. The dedicated
+        # ``target_tolerance`` early-stop branch is omitted intentionally:
+        # ``target_tolerance`` is propagated directly into
+        # ``PDEGameConfig.error_tolerance`` (line 233 above), so the
+        # underlying game's ``is_terminal`` already converges on the same
+        # threshold and ``adapter.is_terminal()`` fires first. The break
+        # reason is captured in ``termination_reason`` so metadata
         # distinguishes e.g. ``no_legal_actions`` from ``max_steps``.
         n_actions_taken = 0
         termination_reason = "max_steps"
@@ -249,19 +254,6 @@ class AlphaGalerkinSolver(BaseSolver):
             if adapter.is_terminal():
                 termination_reason = "is_terminal"
                 log.debug("terminated_early", step=step, reason=termination_reason)
-                break
-            # ``adapter.current_error`` is a reduction *fraction*; the raw
-            # error estimate lives on the state and is what the tolerance
-            # contract is defined against.
-            current_error = adapter.state.error_estimate
-            if current_error < self.config.target_tolerance:
-                termination_reason = "tolerance"
-                log.debug(
-                    "terminated_early",
-                    step=step,
-                    reason=termination_reason,
-                    error=current_error,
-                )
                 break
 
             legal = adapter.get_legal_actions()

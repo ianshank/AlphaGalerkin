@@ -324,6 +324,20 @@ def poisson_operator() -> PoissonOperator:
 
 
 @pytest.fixture
+def poisson_operator_1d() -> PoissonOperator:
+    """1D Poisson operator for exercising the 1D interpolation path."""
+    config = PDEConfig(
+        name="test_poisson_1d",
+        pde_type=PDEType.POISSON,
+        domain_dim=1,
+        domain_min=[0.0],
+        domain_max=[1.0],
+        advection_coeff=[0.0],
+    )
+    return PoissonOperator(config)
+
+
+@pytest.fixture
 def mesh_config() -> MeshRefinementConfig:
     return MeshRefinementConfig(
         name="test_mesh",
@@ -592,6 +606,71 @@ class TestMeshRefinementGameInterpolation:
         assert values.shape == (len(initial.coords),)
         assert np.all(values == 0.0)
 
+    def test_interpolation_1d_uses_numpy_interp(self, poisson_operator_1d: PoissonOperator) -> None:
+        """Recover a smooth 1D field exactly via ``np.interp``.
+
+        The 1D code path uses ``np.interp`` and is exact at the original
+        coordinates (and well-behaved between them).
+        """
+        mesh_cfg = MeshRefinementConfig(
+            name="interp_1d_mesh",
+            initial_resolution=4,
+            max_refinement_level=3,
+            refinement_strategy=RefinementStrategy.H_REFINEMENT,
+        )
+        pde_cfg_1d = PDEConfig(
+            name="poisson_1d",
+            pde_type=PDEType.POISSON,
+            domain_dim=1,
+            domain_min=[0.0],
+            domain_max=[1.0],
+            advection_coeff=[0.0],
+        )
+        game_cfg = PDEGameConfig(
+            name="interp_1d_game",
+            pde_config=pde_cfg_1d,
+            game_mode="mesh_refinement",
+            mesh_config=mesh_cfg,
+            max_steps=5,
+        )
+        game = MeshRefinementGame(poisson_operator_1d, game_cfg)
+        initial = game.get_initial_state()
+
+        def u(points: np.ndarray) -> np.ndarray:
+            xs = points.reshape(-1)
+            return np.sin(np.pi * xs).astype(np.float32)
+
+        old_state = initial.clone()
+        old_state.solution = u(old_state.coords)
+
+        # Query at the same points - linear interpolation should be exact.
+        values = game._interpolate_solution(old_state, old_state.coords)
+        np.testing.assert_allclose(values, u(old_state.coords), atol=1e-6)
+        assert values.dtype == np.float32
+
+    def test_interpolation_outside_hull_falls_back_to_nearest(
+        self, game: MeshRefinementGame
+    ) -> None:
+        """Outside-hull points fall back to nearest-neighbor.
+
+        Verifies the helper produces finite output even when some
+        query points lie outside the convex hull of the old coords.
+        """
+        initial = game.get_initial_state()
+
+        def u(points: np.ndarray) -> np.ndarray:
+            return np.sin(np.pi * points[:, 0]) * np.sin(np.pi * points[:, 1])
+
+        old_state = initial.clone()
+        old_state.solution = u(old_state.coords).astype(np.float32)
+
+        # Query a point well outside the [0,1]x[0,1] domain. The convex hull
+        # of the existing leaf centers does not contain it.
+        outside_points = np.array([[10.0, 10.0], *list(old_state.coords[:2])], dtype=np.float32)
+        values = game._interpolate_solution(old_state, outside_points)
+        assert values.shape == (3,)
+        assert np.all(np.isfinite(values))
+
 
 class TestMeshRefinementGameLogReward:
     """Tests for the proposal-form log reward on the mesh game."""
@@ -630,6 +709,29 @@ class TestMeshRefinementGameLogReward:
         halved.error_estimate = new_state.error_estimate * 0.5
         halved_reward = log_reward_game.get_reward(halved, state)
         assert halved_reward >= reward - 1e-9
+
+    def test_log_reward_terminal_bonus_applied(self, log_reward_game: MeshRefinementGame) -> None:
+        """The log-reward branch adds ``terminal_bonus`` when below tolerance.
+
+        Crafts a synthetic state with ``error_estimate`` strictly below
+        ``error_tolerance`` so the bonus fires, then asserts the reward
+        equals the bare ``log_reward`` value plus the configured bonus.
+        """
+        from src.pde.reward import log_reward as _log_reward_helper
+
+        state = log_reward_game.get_initial_state()
+        below = state.clone()
+        below.error_estimate = log_reward_game.config.error_tolerance * 0.1
+
+        actual = log_reward_game.get_reward(below, state)
+        bare = _log_reward_helper(
+            error=below.error_estimate,
+            cost=float(below.dof),
+            alpha=log_reward_game.config.log_reward_alpha,
+            beta=log_reward_game.config.log_reward_beta,
+            epsilon=log_reward_game.config.log_reward_epsilon,
+        )
+        assert actual == pytest.approx(bare + log_reward_game.config.terminal_bonus, rel=1e-9)
 
 
 class TestMeshRefinementGameTerminal:
@@ -755,6 +857,34 @@ class TestMeshRefinementGameMisc:
     def test_action_to_string_invalid(self, game: MeshRefinementGame) -> None:
         s = game.action_to_string(99999)
         assert "invalid" in s
+
+    def test_action_to_string_in_range_but_no_leaf(self, game: MeshRefinementGame) -> None:
+        """Action in ``[0, action_space_size)`` but the leaf index has no leaf.
+
+        ``n_candidate_elements`` is much larger than the actual number of
+        leaves on the initial coarse mesh, so any action with leaf index
+        beyond ``len(leaf_elements)`` decodes successfully but cannot be
+        labelled - the helper returns the ``invalid_action_<n>`` form.
+        """
+        # Initial mesh has 4 leaves but action_space_size is 64.
+        leaf_count = len(game.mesh.leaf_elements)
+        action = leaf_count + 1
+        assert 0 <= action < game.action_space_size
+        assert game.action_to_string(action) == f"invalid_action_{action}"
+
+    def test_apply_action_rejects_decoded_leaf_out_of_range(self, game: MeshRefinementGame) -> None:
+        """``apply_action`` raises when the decoded leaf index has no leaf.
+
+        Drives the ``leaf_idx >= len(leaf_elements)`` guard in
+        ``apply_action`` (covers the dead-leaf safety net).
+        """
+        state = game.get_initial_state()
+        leaf_count = len(game.mesh.leaf_elements)
+        # An in-range refine action whose leaf index does not exist.
+        action = leaf_count + 1
+        assert 0 <= action < game.action_space_size
+        with pytest.raises(ValueError, match=r"leaf .* missing"):
+            game.apply_action(state, action)
 
     def test_game_loop(self, game: MeshRefinementGame) -> None:
         """Run a short game loop to verify integration."""

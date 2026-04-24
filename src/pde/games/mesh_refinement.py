@@ -797,8 +797,15 @@ class MeshRefinementGame(PDEGame):
             values = np.full(len(new_coords_f64), np.nan)
 
         missing = np.isnan(values)
-        if missing.any():
+        n_missing = int(missing.sum())
+        if n_missing:
             values[missing] = nearest(new_coords_f64[missing])
+            logger.debug(
+                "interpolation_nn_fallback",
+                n_query_points=len(new_coords_f64),
+                n_missing=n_missing,
+                fraction=float(n_missing) / float(len(new_coords_f64)),
+            )
 
         return values.astype(np.float32)
 

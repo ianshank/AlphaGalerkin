@@ -49,13 +49,10 @@ def _require_picogk_3d(config: PDEConfig, operator_name: str) -> None:
     """
     if config.geometry.geometry_type != GeometryType.PICOGK:
         raise ValueError(
-            f"{operator_name} requires geometry_type=PICOGK; "
-            f"got {config.geometry.geometry_type}"
+            f"{operator_name} requires geometry_type=PICOGK; got {config.geometry.geometry_type}"
         )
     if config.domain_dim != 3:
-        raise ValueError(
-            f"{operator_name} requires domain_dim=3; got {config.domain_dim}"
-        )
+        raise ValueError(f"{operator_name} requires domain_dim=3; got {config.domain_dim}")
 
 
 def _sample_with_geometry_interior(
@@ -161,9 +158,7 @@ class HelicalHeatOperator(HeatOperator):
         treated as a target total count for compatibility with the base
         class API used by ``BasisSelectionGame``.
         """
-        return _sample_with_geometry_boundary(
-            self.geometry, n_points_per_face, seed
-        )
+        return _sample_with_geometry_boundary(self.geometry, n_points_per_face, seed)
 
     # ------------------------------------------------------------------
     # Boundary values: hot inner / cold outer Dirichlet
@@ -248,13 +243,9 @@ class HelicalStokesOperator(PDEOperator):
         super().__init__(config)
         # Reuse ``diffusion_coeff`` as the kinematic viscosity to keep
         # the existing PDEConfig schema unchanged.
-        self.viscosity = (
-            viscosity if viscosity is not None else config.diffusion_coeff
-        )
+        self.viscosity = viscosity if viscosity is not None else config.diffusion_coeff
         if self.viscosity <= 0:
-            raise ValueError(
-                f"viscosity must be > 0, got {self.viscosity}"
-            )
+            raise ValueError(f"viscosity must be > 0, got {self.viscosity}")
         self.geometry: DomainGeometry = create_geometry(config.geometry)
         logger.info(
             "helical_stokes_operator_created",
@@ -289,9 +280,7 @@ class HelicalStokesOperator(PDEOperator):
         n_points_per_face: int,
         seed: int | None = None,
     ) -> NDArray[np.float32]:
-        return _sample_with_geometry_boundary(
-            self.geometry, n_points_per_face, seed
-        )
+        return _sample_with_geometry_boundary(self.geometry, n_points_per_face, seed)
 
     # ------------------------------------------------------------------
     # Stokes physics
@@ -335,9 +324,7 @@ class HelicalStokesOperator(PDEOperator):
     ) -> NDArray[np.float32] | Tensor:
         """Stokes flow has no body force in the v1 PoC."""
         if isinstance(coords, Tensor):
-            return torch.zeros(
-                coords.shape[0], dtype=coords.dtype, device=coords.device
-            )
+            return torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
         return np.zeros(coords.shape[0], dtype=np.float32)
 
     def boundary_value(
@@ -347,9 +334,7 @@ class HelicalStokesOperator(PDEOperator):
     ) -> NDArray[np.float32] | Tensor:
         """No-slip Dirichlet condition on the channel wall (u = 0)."""
         if isinstance(coords, Tensor):
-            return torch.zeros(
-                coords.shape[0], dtype=coords.dtype, device=coords.device
-            )
+            return torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
         return np.zeros(coords.shape[0], dtype=np.float32)
 
 
@@ -376,9 +361,7 @@ class HelicalMagnetostaticsOperator(PDEOperator):
     """
 
     name = "helical_magnetostatics"
-    description = (
-        "Vector-potential magnetostatics on a Leap 71 helical actuator SDF."
-    )
+    description = "Vector-potential magnetostatics on a Leap 71 helical actuator SDF."
     # Reuse the Poisson PDEType — magnetostatics is a Poisson-type
     # equation per component.
     pde_type = PDEType.POISSON
@@ -394,13 +377,9 @@ class HelicalMagnetostaticsOperator(PDEOperator):
     ) -> None:
         _require_picogk_3d(config, "HelicalMagnetostaticsOperator")
         super().__init__(config)
-        self.permeability = (
-            permeability if permeability is not None else config.diffusion_coeff
-        )
+        self.permeability = permeability if permeability is not None else config.diffusion_coeff
         if self.permeability <= 0:
-            raise ValueError(
-                f"permeability must be > 0, got {self.permeability}"
-            )
+            raise ValueError(f"permeability must be > 0, got {self.permeability}")
         self.current_density = float(current_density)
         self.geometry: DomainGeometry = create_geometry(config.geometry)
         logger.info(
@@ -437,9 +416,7 @@ class HelicalMagnetostaticsOperator(PDEOperator):
         n_points_per_face: int,
         seed: int | None = None,
     ) -> NDArray[np.float32]:
-        return _sample_with_geometry_boundary(
-            self.geometry, n_points_per_face, seed
-        )
+        return _sample_with_geometry_boundary(self.geometry, n_points_per_face, seed)
 
     # ------------------------------------------------------------------
     # Magnetostatic physics (axial component of vector potential)
@@ -487,9 +464,7 @@ class HelicalMagnetostaticsOperator(PDEOperator):
                 dtype=coords.dtype,
                 device=coords.device,
             )
-        return np.full(
-            (coords.shape[0],), self.current_density, dtype=np.float32
-        )
+        return np.full((coords.shape[0],), self.current_density, dtype=np.float32)
 
     def boundary_value(
         self,
@@ -498,7 +473,5 @@ class HelicalMagnetostaticsOperator(PDEOperator):
     ) -> NDArray[np.float32] | Tensor:
         """Vector potential vanishes far from the core (Dirichlet A = 0)."""
         if isinstance(coords, Tensor):
-            return torch.zeros(
-                coords.shape[0], dtype=coords.dtype, device=coords.device
-            )
+            return torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
         return np.zeros(coords.shape[0], dtype=np.float32)

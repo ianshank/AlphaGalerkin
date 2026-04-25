@@ -86,9 +86,9 @@ def test_smoke_run_completes_without_error() -> None:
     result = scenario.run()
     # ERROR means an unexpected exception. PASSED/FAILED both indicate
     # the lifecycle completed; we only forbid ERROR here.
-    assert result.status != ScenarioStatus.ERROR, (
-        f"Scenario errored: {result.error_message}\n{result.error_traceback}"
-    )
+    assert (
+        result.status != ScenarioStatus.ERROR
+    ), f"Scenario errored: {result.error_message}\n{result.error_traceback}"
     assert "mse_low" in result.metrics
     assert "mse_high" in result.metrics
     assert "transfer_ratio" in result.metrics
@@ -117,9 +117,7 @@ def test_auto_device_falls_back_to_cpu() -> None:
     cls = _import_scenario_class()
     scenario = cls(config=cfg)
     result = scenario.run()
-    assert result.status != ScenarioStatus.ERROR, (
-        f"Scenario errored: {result.error_message}"
-    )
+    assert result.status != ScenarioStatus.ERROR, f"Scenario errored: {result.error_message}"
 
 
 def test_invalid_device_preference_raises() -> None:
@@ -141,9 +139,9 @@ def test_voxel_fdm_reference_path_round_trips(tmp_path) -> None:
     cls = _import_scenario_class()
     scenario = cls(config=cfg)
     result = scenario.run()
-    assert result.status != ScenarioStatus.ERROR, (
-        f"Scenario errored: {result.error_message}\n{result.error_traceback}"
-    )
+    assert (
+        result.status != ScenarioStatus.ERROR
+    ), f"Scenario errored: {result.error_message}\n{result.error_traceback}"
     # Custom field set in execute() — voxel_fdm should round-trip through the result.
     assert getattr(result, "ref_solver_kind", None) == "voxel_fdm"
 

@@ -36,15 +36,18 @@ def resolve_device(
     """Resolve a device-preference string into a concrete ``torch.device``.
 
     Args:
+    ----
         preference: One of ``"cuda"``, ``"cpu"``, or ``"auto"``.
         context: Human-readable name of the calling scenario, included in
             the ``RuntimeError`` message when CUDA is requested but
             unavailable. Lets the user see which scenario asked for GPU.
 
     Returns:
+    -------
         The resolved ``torch.device``.
 
     Raises:
+    ------
         RuntimeError: ``preference="cuda"`` was requested but CUDA is not
             available.
         ValueError: ``preference`` is not one of the supported values.
@@ -64,8 +67,7 @@ def resolve_device(
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         raise ValueError(
-            f"Unknown device preference: {preference!r}. Expected one of "
-            f"'cuda', 'cpu', 'auto'."
+            f"Unknown device preference: {preference!r}. Expected one of 'cuda', 'cpu', 'auto'."
         )
 
     logger.debug(

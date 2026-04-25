@@ -60,9 +60,7 @@ def _create_helical_pde_config(
     """
     z_max = helix_pitch * helix_n_turns
     outer = helix_R_major + helix_r_minor
-    pde_type = (
-        PDEType.HEAT if operator_name == "helical_heat" else PDEType.POISSON
-    )
+    pde_type = PDEType.HEAT if operator_name == "helical_heat" else PDEType.POISSON
     if operator_name == "helical_stokes":
         pde_type = PDEType.NAVIER_STOKES
     return PDEConfig(
@@ -117,6 +115,7 @@ class PDEBasisSelectionInterface(PDEGameInterface):
         """Initialize with configurable PDE operator.
 
         Args:
+        ----
             pde_type: Which PDE operator to use (defaults to Poisson).
 
         """
@@ -142,6 +141,7 @@ class PDEMeshRefinementInterface(PDEGameInterface):
         """Initialize with configurable PDE operator.
 
         Args:
+        ----
             pde_type: Which PDE operator to use (defaults to Poisson).
 
         """
@@ -167,10 +167,7 @@ class HelicalBasisSelectionInterface(PDEGameInterface):
     """
 
     name = "pde_basis_helical"
-    description = (
-        "MCTS-guided Galerkin basis selection on a helical SDF "
-        "(Leap 71 Noyron HX/RP/EA)."
-    )
+    description = "MCTS-guided Galerkin basis selection on a helical SDF (Leap 71 Noyron HX/RP/EA)."
 
     def __init__(self, operator_name: str = "helical_heat") -> None:
         if operator_name not in HELICAL_OPERATOR_NAMES:

@@ -38,15 +38,9 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
     helix_R_major: float = Field(  # noqa: N815 - mathematical convention
         default=0.05, gt=0.0, description="Helix radius."
     )
-    helix_r_minor: float = Field(
-        default=0.012, gt=0.0, description="Tube cross-section radius."
-    )
-    helix_pitch: float = Field(
-        default=0.02, gt=0.0, description="Vertical rise per turn."
-    )
-    helix_n_turns: int = Field(
-        default=3, ge=1, description="Number of helical revolutions."
-    )
+    helix_r_minor: float = Field(default=0.012, gt=0.0, description="Tube cross-section radius.")
+    helix_pitch: float = Field(default=0.02, gt=0.0, description="Vertical rise per turn.")
+    helix_n_turns: int = Field(default=3, ge=1, description="Number of helical revolutions.")
 
     # ----- SDF backend selection -----
     use_picogk: bool = Field(
@@ -84,23 +78,15 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
     # ----- training settings -----
     n_epochs: int = Field(default=200, ge=1, description="Training epochs.")
     batch_size: int = Field(default=1, ge=1, description="Batch size.")
-    learning_rate: float = Field(
-        default=1e-3, gt=0, description="Adam learning rate."
-    )
-    diffusivity: float = Field(
-        default=1.0, gt=0, description="Thermal diffusivity (kappa)."
-    )
+    learning_rate: float = Field(default=1e-3, gt=0, description="Adam learning rate.")
+    diffusivity: float = Field(default=1.0, gt=0, description="Thermal diffusivity (kappa).")
 
     # ----- model -----
     d_model: int = Field(default=64, ge=16, description="Hidden dim.")
     n_heads: int = Field(default=4, ge=1, description="Attention heads.")
     n_layers: int = Field(default=3, ge=1, description="Galerkin layers.")
-    n_fourier_features: int = Field(
-        default=32, ge=8, description="Fourier feature count."
-    )
-    fourier_scale: float = Field(
-        default=10.0, gt=0, description="Fourier feature scale."
-    )
+    n_fourier_features: int = Field(default=32, ge=8, description="Fourier feature count.")
+    fourier_scale: float = Field(default=10.0, gt=0, description="Fourier feature scale.")
     use_fnet: bool = Field(default=True, description="Use FNet mixing.")
 
     # ----- reference solution -----
@@ -186,9 +172,7 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
                 f"self-intersection."
             )
         if self.use_picogk and not self.picogk_voxel_path:
-            raise ValueError(
-                "use_picogk=True requires picogk_voxel_path to be set."
-            )
+            raise ValueError("use_picogk=True requires picogk_voxel_path to be set.")
         if self.n_eval_pts < self.n_train_pts:
             raise ValueError(
                 f"n_eval_pts ({self.n_eval_pts}) should be >= n_train_pts "

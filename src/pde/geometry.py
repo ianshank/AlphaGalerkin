@@ -95,12 +95,8 @@ class GeometryConfig(BaseModel):
     helix_r_minor: float = Field(
         default=0.012, gt=0.0, description="Helical tube cross-section radius."
     )
-    helix_pitch: float = Field(
-        default=0.02, gt=0.0, description="Vertical rise per turn."
-    )
-    helix_n_turns: int = Field(
-        default=5, ge=1, description="Number of full helical revolutions."
-    )
+    helix_pitch: float = Field(default=0.02, gt=0.0, description="Vertical rise per turn.")
+    helix_n_turns: int = Field(default=5, ge=1, description="Number of full helical revolutions.")
 
 
 class DomainGeometry(ABC):
@@ -111,9 +107,11 @@ class DomainGeometry(ABC):
         """Check if points are inside the domain.
 
         Args:
+        ----
             points: Tensor of shape (N, dim) with coordinates.
 
         Returns:
+        -------
             Boolean tensor of shape (N,).
 
         """
@@ -124,10 +122,12 @@ class DomainGeometry(ABC):
         """Check if points are on the domain boundary.
 
         Args:
+        ----
             points: Tensor of shape (N, dim).
             tol: Tolerance for boundary detection.
 
         Returns:
+        -------
             Boolean tensor of shape (N,).
 
         """
@@ -138,10 +138,12 @@ class DomainGeometry(ABC):
         """Sample random points from the domain interior.
 
         Args:
+        ----
             n_points: Number of points to sample.
             device: Torch device.
 
         Returns:
+        -------
             Tensor of shape (n_points, dim).
 
         """
@@ -152,10 +154,12 @@ class DomainGeometry(ABC):
         """Sample random points from the domain boundary.
 
         Args:
+        ----
             n_points: Number of boundary points.
             device: Torch device.
 
         Returns:
+        -------
             Tensor of shape (n_points, dim).
 
         """
@@ -595,12 +599,15 @@ def create_geometry(config: GeometryConfig) -> DomainGeometry:
     """Factory to create domain geometry from config.
 
     Args:
+    ----
         config: Geometry configuration specifying type and parameters.
 
     Returns:
+    -------
         Concrete DomainGeometry instance.
 
     Raises:
+    ------
         ValueError: If geometry_type is not supported.
 
     """
@@ -640,9 +647,7 @@ def create_geometry(config: GeometryConfig) -> DomainGeometry:
             return PicoGKDomain(sdf_evaluator=sdf)
         elif config.sdf_kind == "picogk":
             if config.picogk_voxel_path is None:
-                raise ValueError(
-                    "sdf_kind='picogk' requires picogk_voxel_path to be set"
-                )
+                raise ValueError("sdf_kind='picogk' requires picogk_voxel_path to be set")
             sdf_evaluator = PicoGKSDFEvaluator(config.picogk_voxel_path)
             return PicoGKDomain(sdf_evaluator=sdf_evaluator)
         else:  # pragma: no cover - validated by Pydantic Literal

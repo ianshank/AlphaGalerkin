@@ -65,9 +65,7 @@ class NoyronHXScenario(BaseScenario):
         from src.pde.geometry import GeometryConfig, GeometryType
         from src.pde.operators_picogk import HelicalHeatOperator
 
-        self._device = _resolve_device(
-            self.config.device, context=f"NoyronHXScenario({self.name})"
-        )
+        self._device = _resolve_device(self.config.device, context=f"NoyronHXScenario({self.name})")
         self._output_dir = Path("outputs/poc/noyron_hx")
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -106,9 +104,7 @@ class NoyronHXScenario(BaseScenario):
             ),
         )
 
-        self._operator = HelicalHeatOperator(
-            pde_config, diffusivity=self.config.diffusivity
-        )
+        self._operator = HelicalHeatOperator(pde_config, diffusivity=self.config.diffusivity)
 
         self._scenario_logger.info(
             "setup_complete",
@@ -165,17 +161,13 @@ class NoyronHXScenario(BaseScenario):
         with self._scenario_logger.timed("eval_low_density"):
             mse_low = self._evaluate(model, self.config.n_train_pts, seed_offset=1)
         self.record_metric("mse_low", float(mse_low))
-        self._scenario_logger.metric(
-            "mse_low", float(mse_low), n_pts=self.config.n_train_pts
-        )
+        self._scenario_logger.metric("mse_low", float(mse_low), n_pts=self.config.n_train_pts)
 
         # ----- evaluation at zero-shot higher density -----
         with self._scenario_logger.timed("eval_high_density"):
             mse_high = self._evaluate(model, self.config.n_eval_pts, seed_offset=2)
         self.record_metric("mse_high", float(mse_high))
-        self._scenario_logger.metric(
-            "mse_high", float(mse_high), n_pts=self.config.n_eval_pts
-        )
+        self._scenario_logger.metric("mse_high", float(mse_high), n_pts=self.config.n_eval_pts)
 
         transfer_ratio = float(mse_high / max(mse_low, 1e-12))
         self.record_metric("transfer_ratio", transfer_ratio)
@@ -234,18 +226,20 @@ class NoyronHXScenario(BaseScenario):
         """
         k = self.config.harmonic_wave_number
         return (
-            torch.sin(k * coords[:, 0])
-            + torch.sin(k * coords[:, 1])
-            + torch.sin(k * coords[:, 2])
+            torch.sin(k * coords[:, 0]) + torch.sin(k * coords[:, 1]) + torch.sin(k * coords[:, 2])
         )
 
     def _harmonic_source(self, coords: Tensor) -> Tensor:
         """Source matching the harmonic reference under -kappa Laplacian u = f."""
         k = self.config.harmonic_wave_number
-        return self.config.diffusivity * (k**2) * (
-            torch.sin(k * coords[:, 0])
-            + torch.sin(k * coords[:, 1])
-            + torch.sin(k * coords[:, 2])
+        return (
+            self.config.diffusivity
+            * (k**2)
+            * (
+                torch.sin(k * coords[:, 0])
+                + torch.sin(k * coords[:, 1])
+                + torch.sin(k * coords[:, 2])
+            )
         )
 
     def _voxel_fdm_reference(self) -> tuple[Tensor, Tensor]:
@@ -282,9 +276,7 @@ class NoyronHXScenario(BaseScenario):
         )
 
         def boundary_value_fn(pts: np.ndarray) -> np.ndarray:
-            return np.asarray(
-                self._operator.boundary_value(pts), dtype=np.float32
-            )
+            return np.asarray(self._operator.boundary_value(pts), dtype=np.float32)
 
         u = solve_steady_heat_voxel(
             interior_mask=interior_mask,
@@ -314,12 +306,8 @@ class NoyronHXScenario(BaseScenario):
         we use the geometry bounding box for the affine transform.
         """
         (mins, maxs) = self._operator.geometry.bounding_box()
-        mins_t = torch.tensor(
-            mins, dtype=coords.dtype, device=coords.device
-        ).view(1, 3)
-        maxs_t = torch.tensor(
-            maxs, dtype=coords.dtype, device=coords.device
-        ).view(1, 3)
+        mins_t = torch.tensor(mins, dtype=coords.dtype, device=coords.device).view(1, 3)
+        maxs_t = torch.tensor(maxs, dtype=coords.dtype, device=coords.device).view(1, 3)
         return (coords - mins_t) / (maxs_t - mins_t).clamp_min(1e-9)
 
     def _sample_training_batch(
@@ -334,9 +322,7 @@ class NoyronHXScenario(BaseScenario):
         assert self._operator is not None
 
         interior = self._operator.geometry.sample_interior(n_pts).to(self._device)
-        boundary = self._operator.geometry.sample_boundary(n_boundary_pts).to(
-            self._device
-        )
+        boundary = self._operator.geometry.sample_boundary(n_boundary_pts).to(self._device)
 
         if self.config.ref_solver_kind == "analytical_harmonic":
             interior_target = self._harmonic_reference(interior)
@@ -374,9 +360,7 @@ class NoyronHXScenario(BaseScenario):
             boundary_norm = self._normalize(boundary)
 
             optimizer.zero_grad()
-            interior_pred = model(
-                coords_norm.unsqueeze(0), source.unsqueeze(0)
-            ).squeeze(0)
+            interior_pred = model(coords_norm.unsqueeze(0), source.unsqueeze(0)).squeeze(0)
             boundary_pred = model(
                 boundary_norm.unsqueeze(0),
                 torch.zeros_like(boundary[:, 0]).unsqueeze(0),
@@ -422,16 +406,12 @@ class NoyronHXScenario(BaseScenario):
                 target = ref_u[idx].to(self._device)
                 source = self._harmonic_source(coords)
             else:
-                coords = self._operator.geometry.sample_interior(n_pts).to(
-                    self._device
-                )
+                coords = self._operator.geometry.sample_interior(n_pts).to(self._device)
                 target = self._harmonic_reference(coords)
                 source = self._harmonic_source(coords)
 
             coords_norm = self._normalize(coords)
-            pred = model(
-                coords_norm.unsqueeze(0), source.unsqueeze(0)
-            ).squeeze(0)
+            pred = model(coords_norm.unsqueeze(0), source.unsqueeze(0)).squeeze(0)
             mse = float(((pred - target) ** 2).mean().item())
         model.train()
         return mse

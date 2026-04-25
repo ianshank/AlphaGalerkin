@@ -89,9 +89,7 @@ class TestHelicalHeatOperatorConstruction:
 
 
 class TestHelicalHeatOperatorSampling:
-    def test_collocation_points_in_domain(
-        self, operator: HelicalHeatOperator
-    ) -> None:
+    def test_collocation_points_in_domain(self, operator: HelicalHeatOperator) -> None:
         points = operator.generate_collocation_points(256, seed=0)
         assert points.shape == (256, 3)
         # All collocation points must be inside the SDF (sdf <= 0).
@@ -99,9 +97,7 @@ class TestHelicalHeatOperatorSampling:
             mask = operator.geometry.contains_point(torch.from_numpy(points))
         assert bool(mask.all().item())
 
-    def test_boundary_points_on_surface(
-        self, operator: HelicalHeatOperator
-    ) -> None:
+    def test_boundary_points_on_surface(self, operator: HelicalHeatOperator) -> None:
         points = operator.generate_boundary_points(64, seed=0)
         assert points.shape == (64, 3)
         with torch.no_grad():
@@ -110,9 +106,7 @@ class TestHelicalHeatOperatorSampling:
         tol = operator.geometry.boundary_tolerance
         assert bool(sdf.abs().max().item() < tol)
 
-    def test_sampling_deterministic_under_seed(
-        self, operator: HelicalHeatOperator
-    ) -> None:
+    def test_sampling_deterministic_under_seed(self, operator: HelicalHeatOperator) -> None:
         a = operator.generate_collocation_points(64, seed=42)
         b = operator.generate_collocation_points(64, seed=42)
         np.testing.assert_array_equal(a, b)
@@ -123,9 +117,7 @@ class TestHelicalHeatOperatorSampling:
         mask = operator.is_boundary_point(interior, tolerance=1e-6)
         assert not bool(np.asarray(mask).any())
 
-    def test_is_boundary_point_tensor_path(
-        self, operator: HelicalHeatOperator
-    ) -> None:
+    def test_is_boundary_point_tensor_path(self, operator: HelicalHeatOperator) -> None:
         """The Tensor branch must round-trip without numpy conversion."""
         interior_np = operator.generate_collocation_points(8, seed=3)
         interior = torch.from_numpy(interior_np)
@@ -135,9 +127,7 @@ class TestHelicalHeatOperatorSampling:
 
 
 class TestHelicalHeatOperatorPhysics:
-    def test_residual_finite_on_random_u(
-        self, operator: HelicalHeatOperator
-    ) -> None:
+    def test_residual_finite_on_random_u(self, operator: HelicalHeatOperator) -> None:
         coords_np = operator.generate_collocation_points(128, seed=2)
         coords = torch.from_numpy(coords_np).requires_grad_(True)
         # A simple harmonic test field; gradient must trace through coords.
@@ -147,9 +137,7 @@ class TestHelicalHeatOperatorPhysics:
         assert torch.isfinite(residual.values).all()
         assert np.isfinite(residual.l2_norm)
 
-    def test_inner_dirichlet_boundary_value(
-        self, operator: HelicalHeatOperator
-    ) -> None:
+    def test_inner_dirichlet_boundary_value(self, operator: HelicalHeatOperator) -> None:
         coords = torch.zeros(8, 3)
         bv = operator.boundary_value(coords)
         # default config.boundary_value is 0.0
@@ -157,9 +145,7 @@ class TestHelicalHeatOperatorPhysics:
 
     def test_hot_cold_boundary_value(self) -> None:
         cfg = _make_pde_config()
-        op = HelicalHeatOperator(
-            cfg, boundary_mode="hot_cold", hot_value=2.5, cold_value=-1.5
-        )
+        op = HelicalHeatOperator(cfg, boundary_mode="hot_cold", hot_value=2.5, cold_value=-1.5)
         z_max = HELIX_PITCH * HELIX_N_TURNS
         coords = torch.tensor(
             [
@@ -173,9 +159,7 @@ class TestHelicalHeatOperatorPhysics:
 
     def test_hot_cold_boundary_value_numpy_path(self) -> None:
         cfg = _make_pde_config()
-        op = HelicalHeatOperator(
-            cfg, boundary_mode="hot_cold", hot_value=1.0, cold_value=0.0
-        )
+        op = HelicalHeatOperator(cfg, boundary_mode="hot_cold", hot_value=1.0, cold_value=0.0)
         z_max = HELIX_PITCH * HELIX_N_TURNS
         coords = np.array(
             [

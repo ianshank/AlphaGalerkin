@@ -72,9 +72,7 @@ def _register_builtin_operators() -> None:
         register_pde_operator("helical_stokes")(HelicalStokesOperator)
 
     if not registry.is_registered("helical_magnetostatics"):
-        register_pde_operator("helical_magnetostatics")(
-            HelicalMagnetostaticsOperator
-        )
+        register_pde_operator("helical_magnetostatics")(HelicalMagnetostaticsOperator)
 
 
 # Register built-in operators on import
@@ -85,12 +83,15 @@ def get_pde_operator(name: str) -> type[PDEOperator]:
     """Get a PDE operator class by name.
 
     Args:
+    ----
         name: Registered operator name.
 
     Returns:
+    -------
         PDE operator class.
 
     Raises:
+    ------
         KeyError: If operator not registered.
 
     """
@@ -100,7 +101,8 @@ def get_pde_operator(name: str) -> type[PDEOperator]:
 def list_pde_operators() -> list[str]:
     """List all registered PDE operators.
 
-    Returns:
+    Returns
+    -------
         List of registered operator names.
 
     """

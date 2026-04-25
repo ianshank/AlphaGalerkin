@@ -36,6 +36,7 @@ def voxelize_sdf(
     """Sample an SDF on a uniform voxel grid.
 
     Args:
+    ----
         sdf_fn: Callable mapping ``(N, 3)`` numpy points to ``(N,)``
             signed distances. Negative inside, positive outside.
         bbox_min: ``(x_min, y_min, z_min)``.
@@ -43,6 +44,7 @@ def voxelize_sdf(
         resolution: Number of voxels per axis (cubic grid).
 
     Returns:
+    -------
         ``(interior_mask, voxel_coords)`` where ``interior_mask`` has
         shape ``(R, R, R)`` (True for interior voxels) and
         ``voxel_coords`` has shape ``(R, R, R, 3)`` with the world-space
@@ -68,9 +70,7 @@ def voxelize_sdf(
 def solve_steady_heat_voxel(
     interior_mask: NDArray[np.bool_],
     voxel_coords: NDArray[np.float32],
-    boundary_value_fn: Callable[
-        [NDArray[np.float32]], NDArray[np.float32]
-    ],
+    boundary_value_fn: Callable[[NDArray[np.float32]], NDArray[np.float32]],
     source_fn: Callable[[NDArray[np.float32]], NDArray[np.float32]] | None = None,
     diffusivity: float = 1.0,
     n_iterations: int = 1500,
@@ -85,6 +85,7 @@ def solve_steady_heat_voxel(
     between the interior cell and the exterior cell.
 
     Args:
+    ----
         interior_mask: ``(R, R, R)`` boolean mask of interior voxels.
         voxel_coords: ``(R, R, R, 3)`` world-space voxel centers.
         boundary_value_fn: Callable mapping ``(N, 3)`` points to
@@ -98,14 +99,13 @@ def solve_steady_heat_voxel(
             Set very large to disable; set to 1 for per-iteration tracing.
 
     Returns:
+    -------
         Solution field ``u`` of shape ``(R, R, R)`` with NaN at exterior
         voxels (so callers can mask them out).
 
     """
     if log_every_n_iters < 1:
-        raise ValueError(
-            f"log_every_n_iters must be >= 1, got {log_every_n_iters}"
-        )
+        raise ValueError(f"log_every_n_iters must be >= 1, got {log_every_n_iters}")
     if voxel_coords.shape[:3] != interior_mask.shape:
         raise ValueError(
             f"voxel_coords shape {voxel_coords.shape[:3]} does not match "
@@ -135,15 +135,11 @@ def solve_steady_heat_voxel(
     # at exterior cells adjacent to interior cells are actually used in
     # the update, but precomputing keeps the per-iteration code clean.
     flat_coords = voxel_coords.reshape(-1, 3)
-    boundary_values = np.asarray(
-        boundary_value_fn(flat_coords), dtype=np.float32
-    ).reshape(R, R, R)
+    boundary_values = np.asarray(boundary_value_fn(flat_coords), dtype=np.float32).reshape(R, R, R)
     if source_fn is None:
         source = np.zeros((R, R, R), dtype=np.float32)
     else:
-        source = np.asarray(source_fn(flat_coords), dtype=np.float32).reshape(
-            R, R, R
-        )
+        source = np.asarray(source_fn(flat_coords), dtype=np.float32).reshape(R, R, R)
 
     # Set u to boundary values on exterior cells so neighbour reads find
     # the right Dirichlet value.
@@ -171,8 +167,7 @@ def solve_steady_heat_voxel(
         u_up[:, :, -1] = u[:, :, -1]
 
         u_new = (
-            u_left + u_right + u_front + u_back + u_down + u_up
-            + h2 * source / diffusivity
+            u_left + u_right + u_front + u_back + u_down + u_up + h2 * source / diffusivity
         ) / 6.0
 
         # Only update interior cells; exterior cells stay pinned to

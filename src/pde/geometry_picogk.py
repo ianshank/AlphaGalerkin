@@ -57,7 +57,8 @@ DEFAULT_MIN_GRAD_NORM_SQ = 1e-12
 class PicoGKDomain(DomainGeometry):
     """Domain geometry backed by a signed distance field.
 
-    Attributes:
+    Attributes
+    ----------
         sdf_evaluator: any ``SDFEvaluator`` (analytical or PicoGK voxel).
         oversample_factor: initial multiplier for rejection sampling; grows
             adaptively if acceptance is low.
@@ -79,13 +80,9 @@ class PicoGKDomain(DomainGeometry):
         min_grad_norm_sq: float = DEFAULT_MIN_GRAD_NORM_SQ,
     ) -> None:
         if oversample_factor <= 1.0:
-            raise ValueError(
-                f"oversample_factor must be > 1.0, got {oversample_factor}"
-            )
+            raise ValueError(f"oversample_factor must be > 1.0, got {oversample_factor}")
         if boundary_tolerance <= 0.0:
-            raise ValueError(
-                f"boundary_tolerance must be > 0, got {boundary_tolerance}"
-            )
+            raise ValueError(f"boundary_tolerance must be > 0, got {boundary_tolerance}")
         if volume_samples < 1:
             raise ValueError(f"volume_samples must be >= 1, got {volume_samples}")
         if grad_epsilon <= 0.0:
@@ -96,13 +93,9 @@ class PicoGKDomain(DomainGeometry):
                 f"oversample_factor ({oversample_factor})"
             )
         if projection_max_iters < 1:
-            raise ValueError(
-                f"projection_max_iters must be >= 1, got {projection_max_iters}"
-            )
+            raise ValueError(f"projection_max_iters must be >= 1, got {projection_max_iters}")
         if min_grad_norm_sq <= 0.0:
-            raise ValueError(
-                f"min_grad_norm_sq must be > 0, got {min_grad_norm_sq}"
-            )
+            raise ValueError(f"min_grad_norm_sq must be > 0, got {min_grad_norm_sq}")
 
         self.sdf_evaluator = sdf_evaluator
         self.oversample_factor = float(oversample_factor)
@@ -114,14 +107,10 @@ class PicoGKDomain(DomainGeometry):
 
         (mins, maxs) = sdf_evaluator.bounding_box()
         if len(mins) != len(maxs):
-            raise ValueError(
-                f"bounding_box min/max length mismatch: {len(mins)} vs {len(maxs)}"
-            )
+            raise ValueError(f"bounding_box min/max length mismatch: {len(mins)} vs {len(maxs)}")
         for i, (lo, hi) in enumerate(zip(mins, maxs, strict=True)):
             if hi <= lo:
-                raise ValueError(
-                    f"bounding_box dim {i}: max ({hi}) <= min ({lo})"
-                )
+                raise ValueError(f"bounding_box dim {i}: max ({hi}) <= min ({lo})")
 
         self._bbox_min = tuple(float(m) for m in mins)
         self._bbox_max = tuple(float(m) for m in maxs)
@@ -167,9 +156,7 @@ class PicoGKDomain(DomainGeometry):
         values = self.sdf_evaluator.sdf(points)
         return values.abs() < tol
 
-    def sample_interior(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_interior(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Rejection-sample ``n_points`` interior points from the SDF bbox.
 
         Oversamples adaptively when the bbox is mostly empty (typical for
@@ -191,10 +178,7 @@ class PicoGKDomain(DomainGeometry):
 
         while n_remaining > 0:
             n_candidates = max(int(n_remaining * oversample) + 64, 64)
-            candidates = (
-                torch.rand(n_candidates, self._dim, device=device) * bbox_extent
-                + bbox_min
-            )
+            candidates = torch.rand(n_candidates, self._dim, device=device) * bbox_extent + bbox_min
             mask = self.contains_point(candidates)
             accepted = candidates[mask]
 
@@ -214,9 +198,7 @@ class PicoGKDomain(DomainGeometry):
 
         return torch.cat(collected, dim=0)
 
-    def sample_boundary(
-        self, n_points: int, device: torch.device | None = None
-    ) -> Tensor:
+    def sample_boundary(self, n_points: int, device: torch.device | None = None) -> Tensor:
         """Sample ``n_points`` points on the zero level set of the SDF.
 
         Strategy: draw candidates uniformly in the bbox, then take up to
@@ -244,10 +226,7 @@ class PicoGKDomain(DomainGeometry):
 
         while n_remaining > 0:
             n_candidates = max(int(n_remaining * oversample) + 64, 64)
-            candidates = (
-                torch.rand(n_candidates, self._dim, device=device) * bbox_extent
-                + bbox_min
-            )
+            candidates = torch.rand(n_candidates, self._dim, device=device) * bbox_extent + bbox_min
             projected = self._project_to_surface(candidates)
             residual = self.sdf_evaluator.sdf(projected).abs()
             mask = residual < self.boundary_tolerance
@@ -292,9 +271,11 @@ class PicoGKDomain(DomainGeometry):
         """Central-difference gradient of the SDF at each point.
 
         Args:
+        ----
             points: shape ``(N, dim)``.
 
         Returns:
+        -------
             Gradient tensor of shape ``(N, dim)``. Rows with vanishing
             magnitude are returned as-is; the caller guards against division
             by zero.
@@ -323,8 +304,8 @@ class PicoGKDomain(DomainGeometry):
                 )
                 break
             grads = self._estimate_gradient(x)
-            grad_norm_sq = (grads * grads).sum(dim=-1, keepdim=True).clamp_min(
-                self.min_grad_norm_sq
+            grad_norm_sq = (
+                (grads * grads).sum(dim=-1, keepdim=True).clamp_min(self.min_grad_norm_sq)
             )
             step = (values.unsqueeze(-1) / grad_norm_sq) * grads
             x = x - step

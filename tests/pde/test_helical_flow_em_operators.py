@@ -59,16 +59,12 @@ def _make_picogk_pde_config(pde_type: PDEType) -> PDEConfig:
 class TestHelicalStokesOperator:
     @pytest.fixture
     def operator(self) -> HelicalStokesOperator:
-        return HelicalStokesOperator(
-            _make_picogk_pde_config(PDEType.NAVIER_STOKES)
-        )
+        return HelicalStokesOperator(_make_picogk_pde_config(PDEType.NAVIER_STOKES))
 
     def test_inherits_pde_operator(self, operator: HelicalStokesOperator) -> None:
         assert isinstance(operator, PDEOperator)
 
-    def test_holds_picogk_geometry(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_holds_picogk_geometry(self, operator: HelicalStokesOperator) -> None:
         assert isinstance(operator.geometry, PicoGKDomain)
         assert operator.geometry.dim == 3
 
@@ -95,9 +91,7 @@ class TestHelicalStokesOperator:
             domain_dim=2,
             domain_min=[0.0, 0.0],
             domain_max=[1.0, 1.0],
-            geometry=GeometryConfig(
-                geometry_type=GeometryType.PICOGK, sdf_kind="analytical_helix"
-            ),
+            geometry=GeometryConfig(geometry_type=GeometryType.PICOGK, sdf_kind="analytical_helix"),
         )
         with pytest.raises(ValueError, match="domain_dim=3"):
             HelicalStokesOperator(cfg)
@@ -107,18 +101,12 @@ class TestHelicalStokesOperator:
         with pytest.raises(ValueError, match="viscosity"):
             HelicalStokesOperator(cfg, viscosity=0.0)
 
-    def test_collocation_points_inside_domain(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_collocation_points_inside_domain(self, operator: HelicalStokesOperator) -> None:
         points = operator.generate_collocation_points(64, seed=0)
         assert points.shape == (64, 3)
-        assert bool(
-            operator.geometry.contains_point(torch.from_numpy(points)).all().item()
-        )
+        assert bool(operator.geometry.contains_point(torch.from_numpy(points)).all().item())
 
-    def test_boundary_points_on_surface(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_boundary_points_on_surface(self, operator: HelicalStokesOperator) -> None:
         points = operator.generate_boundary_points(32, seed=0)
         assert points.shape == (32, 3)
         sdf = operator.geometry.sdf_evaluator.sdf(torch.from_numpy(points))
@@ -134,17 +122,13 @@ class TestHelicalStokesOperator:
         s = operator.source_term(coords)
         assert torch.allclose(s, torch.zeros_like(s))
 
-    def test_zero_source_term_numpy_path(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_zero_source_term_numpy_path(self, operator: HelicalStokesOperator) -> None:
         coords_np = np.zeros((4, 3), dtype=np.float32)
         s = operator.source_term(coords_np)
         assert isinstance(s, np.ndarray)
         np.testing.assert_array_equal(s, np.zeros(4, dtype=np.float32))
 
-    def test_residual_finite_on_random_field(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_residual_finite_on_random_field(self, operator: HelicalStokesOperator) -> None:
         coords_np = operator.generate_collocation_points(32, seed=1)
         coords = torch.from_numpy(coords_np).requires_grad_(True)
         u = torch.sin(coords[:, 0]) + torch.sin(coords[:, 1]) + torch.sin(coords[:, 2])
@@ -152,17 +136,13 @@ class TestHelicalStokesOperator:
         assert residual.values.shape == (32,)
         assert torch.isfinite(residual.values).all()
 
-    def test_is_boundary_point_numpy_path(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_is_boundary_point_numpy_path(self, operator: HelicalStokesOperator) -> None:
         interior_np = operator.generate_collocation_points(8, seed=2)
         mask = operator.is_boundary_point(interior_np, tolerance=1e-6)
         assert isinstance(mask, np.ndarray)
         assert mask.dtype == np.bool_
 
-    def test_no_slip_boundary_value_numpy_path(
-        self, operator: HelicalStokesOperator
-    ) -> None:
+    def test_no_slip_boundary_value_numpy_path(self, operator: HelicalStokesOperator) -> None:
         coords_np = np.zeros((6, 3), dtype=np.float32)
         bv = operator.boundary_value(coords_np)
         assert isinstance(bv, np.ndarray)
@@ -177,18 +157,12 @@ class TestHelicalStokesOperator:
 class TestHelicalMagnetostaticsOperator:
     @pytest.fixture
     def operator(self) -> HelicalMagnetostaticsOperator:
-        return HelicalMagnetostaticsOperator(
-            _make_picogk_pde_config(PDEType.POISSON)
-        )
+        return HelicalMagnetostaticsOperator(_make_picogk_pde_config(PDEType.POISSON))
 
-    def test_inherits_pde_operator(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_inherits_pde_operator(self, operator: HelicalMagnetostaticsOperator) -> None:
         assert isinstance(operator, PDEOperator)
 
-    def test_holds_picogk_geometry(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_holds_picogk_geometry(self, operator: HelicalMagnetostaticsOperator) -> None:
         assert isinstance(operator.geometry, PicoGKDomain)
         assert operator.geometry.dim == 3
 
@@ -208,23 +182,17 @@ class TestHelicalMagnetostaticsOperator:
         with pytest.raises(ValueError, match="permeability"):
             HelicalMagnetostaticsOperator(cfg, permeability=0.0)
 
-    def test_constant_current_source(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_constant_current_source(self, operator: HelicalMagnetostaticsOperator) -> None:
         coords = torch.zeros(6, 3)
         s = operator.source_term(coords)
         assert torch.allclose(s, torch.full_like(s, operator.current_density))
 
-    def test_zero_dirichlet_far_field(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_zero_dirichlet_far_field(self, operator: HelicalMagnetostaticsOperator) -> None:
         coords = torch.zeros(4, 3)
         bv = operator.boundary_value(coords)
         assert torch.allclose(bv, torch.zeros_like(bv))
 
-    def test_residual_finite_on_random_field(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_residual_finite_on_random_field(self, operator: HelicalMagnetostaticsOperator) -> None:
         coords_np = operator.generate_collocation_points(32, seed=1)
         coords = torch.from_numpy(coords_np).requires_grad_(True)
         u = torch.sin(coords[:, 0]) + torch.sin(coords[:, 1]) + torch.sin(coords[:, 2])
@@ -238,9 +206,7 @@ class TestHelicalMagnetostaticsOperator:
         coords_np = np.zeros((4, 3), dtype=np.float32)
         s = operator.source_term(coords_np)
         assert isinstance(s, np.ndarray)
-        np.testing.assert_allclose(
-            s, np.full(4, operator.current_density, dtype=np.float32)
-        )
+        np.testing.assert_allclose(s, np.full(4, operator.current_density, dtype=np.float32))
 
     def test_zero_dirichlet_far_field_numpy_path(
         self, operator: HelicalMagnetostaticsOperator
@@ -250,18 +216,14 @@ class TestHelicalMagnetostaticsOperator:
         assert isinstance(bv, np.ndarray)
         np.testing.assert_array_equal(bv, np.zeros(4, dtype=np.float32))
 
-    def test_is_boundary_point_tensor_path(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_is_boundary_point_tensor_path(self, operator: HelicalMagnetostaticsOperator) -> None:
         interior_np = operator.generate_collocation_points(8, seed=2)
         interior = torch.from_numpy(interior_np)
         mask = operator.is_boundary_point(interior, tolerance=1e-6)
         assert isinstance(mask, torch.Tensor)
         assert mask.dtype == torch.bool
 
-    def test_is_boundary_point_numpy_path(
-        self, operator: HelicalMagnetostaticsOperator
-    ) -> None:
+    def test_is_boundary_point_numpy_path(self, operator: HelicalMagnetostaticsOperator) -> None:
         interior_np = operator.generate_collocation_points(8, seed=3)
         mask = operator.is_boundary_point(interior_np, tolerance=1e-6)
         assert isinstance(mask, np.ndarray)

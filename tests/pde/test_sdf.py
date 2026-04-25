@@ -89,9 +89,7 @@ class TestAnalyticalHelixSDFGeometry:
         assert torch.all(values < 0)
         # Values must be close to -r_minor (but Newton may not converge
         # exactly; allow a generous tolerance).
-        assert torch.allclose(
-            values, torch.full_like(values, -HELIX_R_MINOR), atol=1e-4
-        )
+        assert torch.allclose(values, torch.full_like(values, -HELIX_R_MINOR), atol=1e-4)
 
     def test_far_points_outside(self, helix: AnalyticalHelixSDF) -> None:
         # Points far from the helical tube must have sdf > 0.
@@ -108,25 +106,17 @@ class TestAnalyticalHelixSDFGeometry:
     def test_central_axis_is_outside(self, helix: AnalyticalHelixSDF) -> None:
         # The helix axis (x=y=0) is at distance R_major from the
         # centerline, which is >> r_minor, so it must be exterior.
-        axis = torch.tensor(
-            [[0.0, 0.0, HELIX_PITCH * HELIX_N_TURNS / 2]]
-        )
+        axis = torch.tensor([[0.0, 0.0, HELIX_PITCH * HELIX_N_TURNS / 2]])
         values = helix.sdf(axis)
         assert float(values[0]) > 0
         # Distance from axis to centerline is exactly R_major, so
         # sdf == R_major - r_minor.
-        assert float(values[0]) == pytest.approx(
-            HELIX_R_MAJOR - HELIX_R_MINOR, abs=1e-4
-        )
+        assert float(values[0]) == pytest.approx(HELIX_R_MAJOR - HELIX_R_MINOR, abs=1e-4)
 
-    def test_volume_estimate_matches_analytical(
-        self, helix: AnalyticalHelixSDF
-    ) -> None:
+    def test_volume_estimate_matches_analytical(self, helix: AnalyticalHelixSDF) -> None:
         # The closed-form tube volume is pi * r^2 * arc_length.
         volume = helix.volume()
-        arc = HELIX_N_TURNS * float(
-            np.sqrt((2 * np.pi * HELIX_R_MAJOR) ** 2 + HELIX_PITCH**2)
-        )
+        arc = HELIX_N_TURNS * float(np.sqrt((2 * np.pi * HELIX_R_MAJOR) ** 2 + HELIX_PITCH**2))
         expected = np.pi * HELIX_R_MINOR**2 * arc
         assert volume == pytest.approx(expected, rel=1e-6)
 
@@ -144,9 +134,7 @@ class TestAnalyticalHelixSDFGeometry:
 class TestAnalyticalHelixSDFGradient:
     """Finite-difference sanity check on the SDF gradient direction."""
 
-    def test_gradient_satisfies_eikonal(
-        self, helix: AnalyticalHelixSDF
-    ) -> None:
+    def test_gradient_satisfies_eikonal(self, helix: AnalyticalHelixSDF) -> None:
         # Any well-defined SDF satisfies the eikonal equation
         # ``||grad(sdf)|| == 1`` away from the medial axis. We sample
         # well-separated exterior points (radial offset >> r_minor) and
@@ -158,9 +146,7 @@ class TestAnalyticalHelixSDFGradient:
         radius = HELIX_R_MAJOR + 3 * HELIX_R_MINOR
         theta = torch.rand(n) * 2 * np.pi
         z = torch.rand(n) * (HELIX_PITCH * HELIX_N_TURNS)
-        points = torch.stack(
-            [radius * torch.cos(theta), radius * torch.sin(theta), z], dim=-1
-        )
+        points = torch.stack([radius * torch.cos(theta), radius * torch.sin(theta), z], dim=-1)
 
         eps = 1e-4
         grads = []
@@ -192,7 +178,4 @@ class TestPicoGKSDFEvaluator:
         with pytest.raises((ImportError, NotImplementedError)) as excinfo:
             PicoGKSDFEvaluator(fake)
         msg = str(excinfo.value)
-        assert (
-            "alphagalerkin[picogk]" in msg
-            or "PicoGK voxel ingestion" in msg
-        )
+        assert "alphagalerkin[picogk]" in msg or "PicoGK voxel ingestion" in msg

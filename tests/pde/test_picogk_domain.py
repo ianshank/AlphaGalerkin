@@ -48,20 +48,14 @@ class TestPicoGKDomainConstruction:
     def test_dim_matches_sdf(self, domain: PicoGKDomain) -> None:
         assert domain.dim == 3
 
-    def test_bounding_box_matches_sdf(
-        self, domain: PicoGKDomain, sdf: AnalyticalHelixSDF
-    ) -> None:
+    def test_bounding_box_matches_sdf(self, domain: PicoGKDomain, sdf: AnalyticalHelixSDF) -> None:
         assert domain.bounding_box() == sdf.bounding_box()
 
-    def test_invalid_oversample_factor(
-        self, sdf: AnalyticalHelixSDF
-    ) -> None:
+    def test_invalid_oversample_factor(self, sdf: AnalyticalHelixSDF) -> None:
         with pytest.raises(ValueError, match="oversample_factor"):
             PicoGKDomain(sdf_evaluator=sdf, oversample_factor=1.0)
 
-    def test_invalid_boundary_tolerance(
-        self, sdf: AnalyticalHelixSDF
-    ) -> None:
+    def test_invalid_boundary_tolerance(self, sdf: AnalyticalHelixSDF) -> None:
         with pytest.raises(ValueError, match="boundary_tolerance"):
             PicoGKDomain(sdf_evaluator=sdf, boundary_tolerance=0.0)
 
@@ -81,6 +75,7 @@ class TestPicoGKDomainConstruction:
 
             def sdf(self, points):  # pragma: no cover - never called
                 import torch as _torch
+
                 return _torch.zeros(points.shape[0])
 
         with pytest.raises(ValueError, match="max .* <= min"):
@@ -95,6 +90,7 @@ class TestPicoGKDomainConstruction:
 
             def sdf(self, points):  # pragma: no cover
                 import torch as _torch
+
                 return _torch.zeros(points.shape[0])
 
         with pytest.raises(ValueError, match="length mismatch"):
@@ -116,6 +112,7 @@ class TestPicoGKDomainEmptySDFFailures:
 
             def sdf(self, points):
                 import torch as _torch
+
                 return _torch.ones(points.shape[0])
 
         domain = PicoGKDomain(
@@ -137,6 +134,7 @@ class TestPicoGKDomainEmptySDFFailures:
 
             def sdf(self, points):
                 import torch as _torch
+
                 # Constant 1.0 with zero gradient → projection cannot converge.
                 return _torch.ones(points.shape[0])
 
@@ -186,9 +184,7 @@ class TestPicoGKDomainContains:
         # principal normal (toward the helix axis projected onto xy).
         center = sdf._centerline(ts)
         # Use radial outward direction in xy as a rough normal.
-        radial = torch.stack(
-            [center[:, 0], center[:, 1], torch.zeros_like(ts)], dim=-1
-        )
+        radial = torch.stack([center[:, 0], center[:, 1], torch.zeros_like(ts)], dim=-1)
         radial = radial / torch.linalg.norm(radial, dim=-1, keepdim=True)
         on_surface = center + HELIX_R_MINOR * radial
         # Tolerance must be loose enough to absorb the Newton residual.
@@ -197,9 +193,7 @@ class TestPicoGKDomainContains:
 
 
 class TestPicoGKDomainSampling:
-    def test_sample_interior_returns_correct_shape(
-        self, domain: PicoGKDomain
-    ) -> None:
+    def test_sample_interior_returns_correct_shape(self, domain: PicoGKDomain) -> None:
         points = domain.sample_interior(128)
         assert points.shape == (128, 3)
         # All must be strictly interior.
@@ -209,9 +203,7 @@ class TestPicoGKDomainSampling:
         with pytest.raises(ValueError):
             domain.sample_interior(0)
 
-    def test_sample_boundary_returns_correct_shape(
-        self, domain: PicoGKDomain
-    ) -> None:
+    def test_sample_boundary_returns_correct_shape(self, domain: PicoGKDomain) -> None:
         points = domain.sample_boundary(64)
         assert points.shape == (64, 3)
         # Newton projection must converge to within boundary_tolerance.
@@ -222,9 +214,7 @@ class TestPicoGKDomainSampling:
         with pytest.raises(ValueError):
             domain.sample_boundary(0)
 
-    def test_sample_interior_is_within_bounding_box(
-        self, domain: PicoGKDomain
-    ) -> None:
+    def test_sample_interior_is_within_bounding_box(self, domain: PicoGKDomain) -> None:
         (mins, maxs) = domain.bounding_box()
         points = domain.sample_interior(256)
         for d, (lo, hi) in enumerate(zip(mins, maxs, strict=True)):

@@ -32,9 +32,7 @@ class TestHelicalBasisSelectionInterface:
         assert config.geometry.sdf_kind == "analytical_helix"
 
     @pytest.mark.parametrize("operator_name", list(HELICAL_OPERATOR_NAMES))
-    def test_constructs_for_each_helical_operator(
-        self, operator_name: str
-    ) -> None:
+    def test_constructs_for_each_helical_operator(self, operator_name: str) -> None:
         instance = HelicalBasisSelectionInterface(operator_name=operator_name)
         config = instance.pde_game.pde_operator.config
         assert config.domain_dim == 3

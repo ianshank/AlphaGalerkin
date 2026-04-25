@@ -77,9 +77,7 @@ class TestSolveSteadyHeatVoxel:
         )
         interior_values = u[mask]
         assert interior_values.shape[0] > 0
-        np.testing.assert_allclose(
-            interior_values, np.ones_like(interior_values), atol=5e-2
-        )
+        np.testing.assert_allclose(interior_values, np.ones_like(interior_values), atol=5e-2)
 
     def test_exterior_voxels_are_nan(self) -> None:
         mask, coords = voxelize_sdf(
@@ -127,9 +125,7 @@ class TestSolveSteadyHeatVoxel:
         # equal the boundary value (zero) everywhere.
         no_src_interior = u_no_source[mask]
         src_interior = u_with_source[mask]
-        np.testing.assert_allclose(
-            no_src_interior, np.zeros_like(no_src_interior), atol=1e-3
-        )
+        np.testing.assert_allclose(no_src_interior, np.zeros_like(no_src_interior), atol=1e-3)
         assert float(src_interior.mean()) > 0
 
     def test_invalid_diffusivity_raises(self) -> None:
@@ -143,9 +139,7 @@ class TestSolveSteadyHeatVoxel:
             solve_steady_heat_voxel(
                 interior_mask=mask,
                 voxel_coords=coords,
-                boundary_value_fn=lambda pts: np.zeros(
-                    pts.shape[0], dtype=np.float32
-                ),
+                boundary_value_fn=lambda pts: np.zeros(pts.shape[0], dtype=np.float32),
                 diffusivity=0.0,
             )
 
@@ -156,9 +150,7 @@ class TestSolveSteadyHeatVoxel:
             solve_steady_heat_voxel(
                 interior_mask=mask,
                 voxel_coords=coords,
-                boundary_value_fn=lambda pts: np.zeros(
-                    pts.shape[0], dtype=np.float32
-                ),
+                boundary_value_fn=lambda pts: np.zeros(pts.shape[0], dtype=np.float32),
             )
 
     def test_non_positive_voxel_spacing_raises(self) -> None:
@@ -170,7 +162,5 @@ class TestSolveSteadyHeatVoxel:
             solve_steady_heat_voxel(
                 interior_mask=mask,
                 voxel_coords=coords,
-                boundary_value_fn=lambda pts: np.zeros(
-                    pts.shape[0], dtype=np.float32
-                ),
+                boundary_value_fn=lambda pts: np.zeros(pts.shape[0], dtype=np.float32),
             )

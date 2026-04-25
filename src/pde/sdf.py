@@ -63,7 +63,8 @@ class SDFEvaluator(Protocol):
     def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Axis-aligned bounding box containing the surface.
 
-        Returns:
+        Returns
+        -------
             ``(min_coords, max_coords)`` where each tuple has length ``dim``.
 
         """
@@ -73,9 +74,11 @@ class SDFEvaluator(Protocol):
         """Evaluate the signed distance at a batch of points.
 
         Args:
+        ----
             points: Float tensor of shape ``(N, dim)``.
 
         Returns:
+        -------
             Float tensor of shape ``(N,)`` with one signed distance per row.
 
         """
@@ -103,7 +106,8 @@ class AnalyticalHelixSDF:
     analytical derivative), with bisection on the squared-distance
     derivative sign as a defensive fallback.
 
-    Attributes:
+    Attributes
+    ----------
         R_major: Helix radius (centerline distance from the helix axis).
         r_minor: Tube cross-section radius.
         pitch: Vertical rise per turn (world units).
@@ -129,13 +133,9 @@ class AnalyticalHelixSDF:
         if n_turns <= 0:
             raise ValueError(f"n_turns must be > 0, got {n_turns}")
         if newton_max_iters < 1:
-            raise ValueError(
-                f"newton_max_iters must be >= 1, got {newton_max_iters}"
-            )
+            raise ValueError(f"newton_max_iters must be >= 1, got {newton_max_iters}")
         if newton_deriv_tol <= 0:
-            raise ValueError(
-                f"newton_deriv_tol must be > 0, got {newton_deriv_tol}"
-            )
+            raise ValueError(f"newton_deriv_tol must be > 0, got {newton_deriv_tol}")
         # A tube wider than its helix radius produces a self-intersecting
         # torus; forbid this to keep the SDF well-defined.
         if r_minor >= R_major:
@@ -195,9 +195,11 @@ class AnalyticalHelixSDF:
         """Helical centerline ``c(t)`` for a batch of parameters.
 
         Args:
+        ----
             t: Shape ``(N,)``.
 
         Returns:
+        -------
             Shape ``(N, 3)``.
 
         """
@@ -231,9 +233,11 @@ class AnalyticalHelixSDF:
         never leave the parameterized centerline.
 
         Args:
+        ----
             points: Shape ``(N, 3)``.
 
         Returns:
+        -------
             Shape ``(N,)``.
 
         """
@@ -270,8 +274,7 @@ class AnalyticalHelixSDF:
         """Signed distance for a batch of 3D points."""
         if points.ndim != 2 or points.shape[-1] != 3:
             raise ValueError(
-                f"AnalyticalHelixSDF expects points of shape (N, 3), "
-                f"got {tuple(points.shape)}"
+                f"AnalyticalHelixSDF expects points of shape (N, 3), got {tuple(points.shape)}"
             )
 
         t_star = self._nearest_t(points)
@@ -292,9 +295,11 @@ class PicoGKSDFEvaluator:
     clean ``ImportError`` pointing at the right install command.
 
     Args:
+    ----
         voxel_path: Path to a PicoGK-compatible voxel/STL file on disk.
 
     Raises:
+    ------
         ImportError: if ``pythonnet`` or PicoGK's Python bindings cannot be
             resolved. Callers should catch this and fall back to an
             analytical surrogate for CI/tests.

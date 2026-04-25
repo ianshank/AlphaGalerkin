@@ -239,7 +239,10 @@ class AlphaGalerkinConfig(SolverConfig):
 
         Fails fast at config construction so misconfigured benchmark runs
         don't waste time spinning up a PDE game before discovering the
-        checkpoint is missing.
+        checkpoint is missing. Both the unset case and the
+        directory-instead-of-file case surface as ``ValidationError`` so
+        callers don't get a deferred, opaque ``IsADirectoryError`` from
+        ``torch.load`` later in ``_build_trained_evaluator``.
         """
         if self.evaluator == "trained":
             if self.checkpoint_path is None:
@@ -249,6 +252,11 @@ class AlphaGalerkinConfig(SolverConfig):
                 )
             if not self.checkpoint_path.exists():
                 raise ValueError(f"checkpoint_path does not exist: {self.checkpoint_path}")
+            if not self.checkpoint_path.is_file():
+                raise ValueError(
+                    "checkpoint_path must point to an existing AlphaGalerkin "
+                    f"checkpoint file, got non-file path: {self.checkpoint_path}"
+                )
         return self
 
 
@@ -583,22 +591,30 @@ class AlphaGalerkinSolver(BaseSolver):
 
         - ``random`` / ``uniform``: fresh ``RandomEvaluator`` per call
           (its only state is ``pde_game.action_space_size``, which varies
-          between PDE instances).
+          between PDE instances). The random path does *not* resolve the
+          device because ``RandomEvaluator`` is device-agnostic; doing so
+          would emit a misleading ``cuda_requested_but_unavailable``
+          warning under the GPU-primary default for users on a CPU-only
+          host who never asked for GPU inference.
         - ``trained``: ``FNetEvaluator`` returned by
           ``_build_trained_evaluator()`` (cached on the solver instance).
+          Device resolution (and any CUDA-fallback warning) happens
+          inside that path.
         """
-        torch_device = _resolve_device_cached(self.config.device)
+        evaluator: RandomEvaluator | FNetEvaluator
         if self.config.evaluator == "trained":
-            evaluator: RandomEvaluator | FNetEvaluator = self._build_trained_evaluator()
+            evaluator = self._build_trained_evaluator()
+            logged_device = _resolve_device_cached(self.config.device)
         else:
             evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+            logged_device = self.config.device
 
         ckpt = self.config.checkpoint_path
         logger.debug(
             "alphagalerkin_mcts_built",
             solver=self.name,
             evaluator=self.config.evaluator,
-            device=torch_device,
+            device=logged_device,
             n_actions=pde_game.action_space_size,
             n_simulations=self.config.n_mcts_simulations,
             checkpoint_path=str(ckpt) if ckpt is not None else None,

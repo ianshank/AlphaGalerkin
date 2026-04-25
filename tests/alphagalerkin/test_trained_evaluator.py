@@ -167,6 +167,35 @@ class TestEvaluatorDispatch:
         first_param = next(mcts.evaluator.model.parameters())
         assert first_param.device.type == "cpu"
 
+    def test_random_path_does_not_resolve_device(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Random/uniform evaluator must not trigger device-resolution warnings.
+
+        With the GPU-primary default (``device='cuda'``), naively resolving
+        the device for every ``solve()`` would emit a misleading
+        ``cuda_requested_but_unavailable`` warning on CPU-only hosts even
+        though ``RandomEvaluator`` never touches the device. Guards against
+        regressing back to the unconditional resolution flagged by
+        Copilot's review.
+        """
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(evaluator="random", device="cuda"),
+            ),
+        )
+        # Pre-condition: cache is empty (autouse conftest fixture clears it).
+        assert _resolve_device_cached.cache_info().misses == 0
+
+        solver._build_mcts(_StubPDEGame(action_space_size=8))
+
+        # Random path must not have called the cached resolver at all.
+        assert _resolve_device_cached.cache_info().misses == 0
+        assert _resolve_device_cached.cache_info().hits == 0
+
 
 # ---------------------------------------------------------------------------
 # Graceful degradation: action-space mismatch

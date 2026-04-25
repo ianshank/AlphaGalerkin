@@ -317,15 +317,16 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_requires_checkpoint(self) -> None:
-        """``evaluator='trained'`` must be paired with an existing checkpoint.
+    def test_trained_evaluator_requires_checkpoint(self, tmp_path: object) -> None:
+        """``evaluator='trained'`` must be paired with an existing checkpoint *file*.
 
         The Literal accepts ``"trained"``, but the post-construction
         ``_validate_trained_checkpoint`` model validator rejects the
-        config when ``checkpoint_path`` is ``None`` or points at a missing
-        file. Both failure modes must surface as ``ValidationError`` from
-        Pydantic so callers see them at config-build time, not deep in
-        ``solve()``.
+        config when ``checkpoint_path`` is ``None``, points at a missing
+        path, or points at a *directory*. All failure modes surface as
+        ``ValidationError`` from Pydantic so callers see them at
+        config-build time, not deep in ``solve()`` (where ``torch.load``
+        would otherwise raise an opaque ``IsADirectoryError``).
         """
         from pathlib import Path
 
@@ -340,6 +341,14 @@ class TestAlphaGalerkinSolver:
             _fast_solver_config(
                 evaluator="trained",
                 checkpoint_path=Path("/nonexistent/checkpoint.pt"),
+            )
+
+        # Existing path that is a directory (not a file) → reject.
+        assert isinstance(tmp_path, Path)
+        with pytest.raises(ValidationError, match="non-file path"):
+            _fast_solver_config(
+                evaluator="trained",
+                checkpoint_path=tmp_path,
             )
 
 

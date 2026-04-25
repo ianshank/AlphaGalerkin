@@ -102,6 +102,7 @@ Monitors LBB condition during training:
 - [2026-04-07]: **GPU Skip Hook** - Root conftest.py auto-skips gpu_required tests when CUDA unavailable; 0 spurious failures
 - [2026-04-07]: **Gumbel MCTS Search Tests** - 38 integration tests for search(), _sequential_halving(), _simulate(), get_improved_policy(), factory
 - [2026-04-24]: **DOE Genesis Phase I MDP Deliverables Closed** - four open items from `docs/doe_genesis/mdp_specification.md §4` resolved: get_winner thresholds moved to `PDEGameConfig`, `coarsen` action added to `MeshRefinementGame` (opt-in via `allow_coarsening`), proposal-form log reward exposed via `PDEGameConfig.reward_form`, and `_interpolate_solution` upgraded from nearest-neighbor to piecewise-linear projection. `evaluator="trained"` stub removed from `AlphaGalerkinConfig` until a learned evaluator lands.
+- [2026-04-25]: **Learned PDE Evaluator Wired** - `AlphaGalerkinConfig.evaluator="trained"` re-enabled and now loads an `AlphaGalerkinModel` checkpoint via `FNetEvaluator` through the existing `create_model_from_checkpoint` helper. Solver default device is `cuda` (GPU primary) with a `_resolve_device_cached` runtime fallback to CPU when CUDA is unavailable. New `tests/alphagalerkin/test_trained_evaluator.py` covers round-trip, action-space mismatch (strict=False), and a GPU smoke test. `config/train_pde.yaml` now defaults to `device: auto` so `BaseTrainer`'s native `torch.cuda.is_available()` check picks GPU when present and falls back to CPU on CI hosts without it.
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement
@@ -218,7 +219,20 @@ Monitors LBB condition during training:
 ## Known Issues
 - SGF variation parsing in `tests/games/sgf/test_sgf.py::test_variation_parsing` is skipped pending full tree-structured parsing support.
 - MCTS rate-control tests in `tests/video_compression/unit/test_mcts_rate_control.py` are skipped until a trained MCTS model is available and the rate controller is enabled in the default codec path.
-- A network-backed evaluator for `AlphaGalerkinSolver` is not yet wired in; `AlphaGalerkinConfig.evaluator` currently accepts only `"random"` / `"uniform"` and will regain a `"trained"` option once the learned evaluator lands.
+
+## Regression Surface
+
+When changing the AlphaGalerkin solver or evaluator wiring, the following test surfaces must remain green:
+
+| Surface | Command | What it guards |
+|---|---|---|
+| Solver wiring (config validation, dispatch) | `pytest tests/alphagalerkin/test_solver.py -v` | Pydantic field defaults/validators, evaluator Literal, mesh/basis dispatch |
+| Trained evaluator | `pytest tests/alphagalerkin/test_trained_evaluator.py -v` | `evaluator="trained"` round-trip, `_resolve_device_cached` LRU semantics, on-instance evaluator cache, action-space mismatch under `strict=False`, GPU smoke |
+| PDE end-to-end | `pytest tests/integration/test_pde_e2e.py -v` | `pde_basis`/`pde_mesh` registration, full self-play episode, trainer integration |
+| MCTS evaluator protocol | `pytest tests/mcts/test_evaluator.py -v` | `RandomEvaluator` and `FNetEvaluator` `Evaluator` protocol compliance |
+| Per-module coverage | `pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85` | Coverage gate; current 94% |
+
+The trained-evaluator path additionally depends on `src/training/checkpoint.py::create_model_from_checkpoint`, `src/modeling/model.py::AlphaGalerkinModel`, and `src/mcts/evaluator.py::FNetEvaluator` — changes there should run the *Trained evaluator* surface above as a smoke test.
 
 ## Verification Commands
 ```bash

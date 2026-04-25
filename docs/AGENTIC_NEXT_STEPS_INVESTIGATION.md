@@ -4,7 +4,7 @@
 > **Branch:** `claude/investigate-agentic-next-steps-Wsbgj`
 > **Methodology:** Universal Dev Agent framework with Planner/SQE/Coder/Reviewer/Orchestrator subagent delegation
 > **Previous Plan:** `docs/NEXT_STEPS_PLAN.md` (2026-02-01)
-> **Last Updated:** 2026-04-10 — All P0 and most P1/P2 items now resolved
+> **Last Updated:** 2026-04-25 — Learned PDE Evaluator wired (PR #54). All P0 and most P1/P2 items now resolved
 
 ---
 
@@ -19,6 +19,7 @@ AlphaGalerkin has matured significantly since the last investigation (2026-02-01
 | Chess Implementation | **DONE** | `src/games/chess.py` (1,173 LOC, full rules, 119-plane encoding) |
 | Test Coverage Reporting | **DONE** | Codecov integration, 60% threshold enforced |
 | Video Compression Hyperprior | **DONE** | Proper z_bitstream encoding/decoding |
+| Learned PDE Evaluator | **DONE (2026-04-25)** | `AlphaGalerkinConfig.evaluator="trained"` re-enabled, `FNetEvaluator` wired through `_build_trained_evaluator` with on-instance caching, GPU-primary default with CPU fallback. PR #54. |
 
 This investigation identifies the **remaining gaps** and provides an updated, prioritized roadmap.
 

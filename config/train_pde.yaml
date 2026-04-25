@@ -63,5 +63,11 @@ wandb:
 experiment_name: alphagalerkin_pde_basis
 seed: 42
 log_level: INFO
-device: cpu
+# GPU-primary with safe fallback: ``Trainer`` resolves ``device: auto`` via
+# ``torch.cuda.is_available()`` (see ``src/training/base_trainer.py:211``),
+# so this default uses GPU when present and falls back to CPU on CI hosts
+# without CUDA. ``device: cuda`` would hard-error on CPU-only machines —
+# the ``AlphaGalerkinSolver``'s ``_resolve_device_cached`` fallback only
+# applies inside the solver, not the training pipeline.
+device: auto
 log_interval: 50

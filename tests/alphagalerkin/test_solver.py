@@ -20,6 +20,8 @@ deselecting the marker.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -81,7 +83,11 @@ class TestAlphaGalerkinConfig:
         assert cfg.max_steps == 20
         assert cfg.target_tolerance == pytest.approx(1e-4)
         assert cfg.evaluator == "random"
-        assert cfg.device == "cpu"
+        # GPU-primary: default device is now ``cuda``. The runtime
+        # ``_resolve_device`` helper falls back to CPU at solve time when
+        # CUDA is unavailable, so this default is safe on CPU-only CI.
+        assert cfg.device == "cuda"
+        assert cfg.checkpoint_path is None
         # Inherited from SolverConfig.
         assert cfg.seed == 42
 
@@ -313,16 +319,34 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_rejected_by_config(self) -> None:
-        """Reject ``evaluator='trained'`` at config construction time.
+    def test_trained_evaluator_requires_checkpoint(self, tmp_path: Path) -> None:
+        """``evaluator='trained'`` must be paired with an existing checkpoint *file*.
 
-        The value is not in the supported ``Literal`` set and will regain a
-        slot once a learned evaluator is wired in.
+        The Literal accepts ``"trained"``, but the post-construction
+        ``_validate_trained_checkpoint`` model validator rejects the
+        config when ``checkpoint_path`` is ``None``, points at a missing
+        path, or points at a *directory*. All failure modes surface as
+        ``ValidationError`` from Pydantic so callers see them at
+        config-build time, not deep in ``solve()`` (where ``torch.load``
+        would otherwise raise an opaque ``IsADirectoryError``).
         """
-        from pydantic import ValidationError
-
+        # Missing checkpoint_path → reject.
         with pytest.raises(ValidationError):
             _fast_solver_config(evaluator="trained")
+
+        # Non-existent checkpoint_path → reject.
+        with pytest.raises(ValidationError):
+            _fast_solver_config(
+                evaluator="trained",
+                checkpoint_path=Path("/nonexistent/checkpoint.pt"),
+            )
+
+        # Existing path that is a directory (not a file) → reject.
+        with pytest.raises(ValidationError, match="non-file path"):
+            _fast_solver_config(
+                evaluator="trained",
+                checkpoint_path=tmp_path,
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -249,6 +249,38 @@ config = OperatorConfig(
 
 See `config/` for training, scenario, and benchmark configurations.
 
+### AlphaGalerkin Solver Evaluator Modes
+
+`AlphaGalerkinSolver` supports three evaluator modes via `AlphaGalerkinConfig.evaluator`:
+
+| Mode | Backed by | When to use |
+|---|---|---|
+| `"random"` (default) | `RandomEvaluator` (uniform prior + zero value) | Baseline / smoke testing |
+| `"uniform"` | Alias for `"random"` | Same |
+| `"trained"` | `FNetEvaluator` over an `AlphaGalerkinModel` loaded from `checkpoint_path` | Production / SBIR demos with multi-step look-ahead via learned policy/value |
+
+```python
+from pathlib import Path
+from src.alphagalerkin import AlphaGalerkinConfig, AlphaGalerkinSolver
+
+cfg = AlphaGalerkinConfig(
+    evaluator="trained",
+    checkpoint_path=Path("outputs/.../checkpoint_00010000.pt"),
+    evaluator_temperature=1.0,        # softmax temperature on policy logits
+    evaluator_use_fast_path=True,     # FNet fast-forward path inside FNetEvaluator
+    checkpoint_strict_load=False,     # tolerate policy-head shape mismatches
+    device="cuda",                    # GPU-primary; auto-falls back to "cpu" if CUDA missing
+    n_mcts_simulations=100,
+    max_steps=20,
+)
+solver = AlphaGalerkinSolver(cfg)
+result = solver.solve(operator, n_dof=128)
+```
+
+The trained evaluator is cached on the solver instance — `solve()` calls in a benchmark loop pay the checkpoint-load cost once. Call `solver.reset_cache()` to force a reload after rotating the checkpoint at the same path.
+
+> **GPU-primary default.** `AlphaGalerkinConfig.device` defaults to `"cuda"`. The module-level `_resolve_device_cached` helper falls back to CPU at runtime when `torch.cuda.is_available()` is False, emitting a single downgrade warning per unique device string so CPU-only CI hosts do not spam the log.
+
 ---
 
 ## Testing

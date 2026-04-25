@@ -217,7 +217,7 @@ Monitors LBB condition during training:
 - **GDN/IGDN**: Generalized Divisive Normalization for density modeling.
 
 ## Known Issues
-- SGF variation parsing in `tests/games/sgf/test_sgf.py::test_variation_parsing` is skipped pending full tree-structured parsing support.
+- SGF variation parsing in `tests/games/sgf/test_sgf.py::TestSGFParser::test_parse_variations` is skipped pending full tree-structured parsing support.
 - MCTS rate-control tests in `tests/video_compression/unit/test_mcts_rate_control.py` are skipped until a trained MCTS model is available and the rate controller is enabled in the default codec path.
 
 ## Regression Surface

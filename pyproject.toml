@@ -379,6 +379,7 @@ omit = [
     "src/backend/*",
     "src/demos/*",
     "src/research/fem_baseline.py",
+    "src/vertex/*",
 ]
 
 [tool.coverage.report]

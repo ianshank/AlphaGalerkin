@@ -121,17 +121,6 @@ def _solver_kwargs(**overrides: object) -> dict[str, object]:
     return kwargs
 
 
-@pytest.fixture(autouse=True)
-def _clear_device_cache() -> None:
-    """Reset the module-level ``_resolve_device_cached`` LRU between tests.
-
-    The cache is process-wide and would otherwise leak state between
-    tests that toggle ``torch.cuda.is_available``. ``autouse=True`` so
-    every test in this module starts from a clean cache.
-    """
-    _resolve_device_cached.cache_clear()
-
-
 # ---------------------------------------------------------------------------
 # Dispatch: random/uniform vs trained
 # ---------------------------------------------------------------------------
@@ -349,6 +338,42 @@ class TestTrainedEvaluatorCaching:
         solver.reset_cache()
         second = solver._build_trained_evaluator()
         assert first is not second
+
+    def test_checkpoint_path_change_rebuilds_evaluator(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Mutating ``self.config`` to swap the checkpoint must rebuild.
+
+        The cache is keyed on the ``(checkpoint_path, resolved_device)``
+        tuple, so a caller that bypasses ``reset_cache()`` and reassigns
+        ``self.config`` directly should still get a fresh evaluator on
+        the next call instead of silently receiving the prior checkpoint
+        (the staleness hazard the simplify review flagged).
+        """
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt_a = tmp_path / "a.pt"
+        ckpt_b = tmp_path / "b.pt"
+        _save_tiny_checkpoint(ckpt_a, op_cfg, seed=0)
+        _save_tiny_checkpoint(ckpt_b, op_cfg, seed=1)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(evaluator="trained", checkpoint_path=ckpt_a),
+            ),
+        )
+        first = solver._build_trained_evaluator()
+
+        # Swap checkpoint without explicit cache reset.
+        solver.config = AlphaGalerkinConfig(
+            **_solver_kwargs(evaluator="trained", checkpoint_path=ckpt_b),
+        )
+        second = solver._build_trained_evaluator()
+
+        assert first is not second
+        # Calling again with the same config must hit the (rebuilt) cache.
+        third = solver._build_trained_evaluator()
+        assert second is third
 
 
 class TestEvaluatorConfigFields:

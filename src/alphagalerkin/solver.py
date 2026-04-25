@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import random
 import time
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -82,22 +82,26 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-@lru_cache(maxsize=8)
+@cache
 def _resolve_device_cached(requested: str) -> str:
     """Cached device-resolution helper (module-level, deduplicated by string).
 
-    Maps a config device string to a runtime-available device:
+    Maps a config device string to a runtime-available device. ``cuda`` /
+    ``cuda:N`` silently fall back to ``cpu`` when ``torch.cuda.is_available()``
+    is False, with a single ``cuda_requested_but_unavailable`` warning so
+    benchmark suites that solve many PDEs do not flood logs. Explicit
+    ``cpu`` is honoured untouched.
 
-    * ``'cuda'`` (and ``'cuda:N'``) silently fall back to ``'cpu'`` when
-      ``torch.cuda.is_available()`` is False, with a single warning so
-      benchmark suites that solve many PDEs do not flood logs with one
-      warning per ``solve()`` call.
-    * Explicit ``'cpu'`` is honoured untouched.
+    The ``cache`` wrapper guarantees the resolution (and the warning, if
+    any) executes at most once per unique requested device string for
+    the lifetime of the process; the input domain is bounded (``cpu``
+    plus a handful of ``cuda:N`` strings). Tests exercise both branches
+    via ``cache_clear()``.
 
-    The ``lru_cache`` wrapper guarantees the resolution (and the warning,
-    if any) executes at most once per unique requested device string for
-    the lifetime of the process. Tests that need to exercise both
-    branches use ``_resolve_device_cached.cache_clear()`` to reset state.
+    See :class:`src.backend.torch_backend.TorchBackend._resolve_device`
+    for the parallel enum-based resolver in the backend stack — kept
+    separate because it has different inputs (``DeviceType`` enum) and
+    no warn-once / fallback semantics.
     """
     if requested.startswith("cuda") and not torch.cuda.is_available():
         logger.warning(
@@ -272,15 +276,12 @@ class AlphaGalerkinSolver(BaseSolver):
 
         """
         self.config: AlphaGalerkinConfig = config or AlphaGalerkinConfig()
-        # Lazily-populated cache for the trained-evaluator path. The
-        # ``FNetEvaluator`` (and the underlying ``AlphaGalerkinModel``) is
-        # independent of the specific PDE instance the solver is run on, so
-        # benchmark suites that call ``solve()`` repeatedly with different
-        # operators only pay the disk I/O + model-init cost once. The cache
-        # is keyed implicitly on (``config.checkpoint_path``, resolved
-        # device) by virtue of ``self.config`` being immutable; tests that
-        # need to invalidate it explicitly call ``reset_cache()``.
+        # Lazily-loaded; invalidate via ``reset_cache()``. Keyed on the
+        # (checkpoint_path, device) tuple so direct ``self.config = ...``
+        # mutation between solves rebuilds the evaluator instead of
+        # silently serving the previous checkpoint.
         self._cached_trained_evaluator: FNetEvaluator | None = None
+        self._cached_evaluator_key: tuple[Path, str] | None = None
 
     # ------------------------------------------------------------------ #
     # BaseSolver API                                                      #
@@ -505,46 +506,56 @@ class AlphaGalerkinSolver(BaseSolver):
     def _resolve_device(requested: str) -> str:
         """Resolve a config device string to a runtime-available device.
 
-        Thin instance-side delegate to the module-level
-        ``_resolve_device_cached``. Kept on the class so test code can
-        monkey-patch the helper if needed and so the staticmethod surface
-        stays stable for downstream callers.
+        Public delegate to ``_resolve_device_cached`` kept for test
+        monkey-patching and as a stable, class-scoped surface for
+        downstream callers (``PDEBenchmarkRunner`` etc.).
         """
         return _resolve_device_cached(requested)
 
     def reset_cache(self) -> None:
         """Drop the cached trained evaluator so the next ``solve()`` reloads.
 
-        Useful when a long-running process swaps in a new checkpoint at
-        the same ``checkpoint_path`` (e.g. periodic checkpoint rotation
-        during a benchmark) or when tests need to force a fresh load.
+        Used when a long-running process rotates a checkpoint at the same
+        ``checkpoint_path`` or when tests force a fresh load. Also calls
+        ``torch.cuda.empty_cache()`` after dropping the reference so
+        notebook usage that creates many solvers in sequence does not
+        accumulate dead GPU buffers between cells; the call is a no-op
+        on CPU-only runs.
         """
         self._cached_trained_evaluator = None
+        self._cached_evaluator_key = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def _build_trained_evaluator(self) -> FNetEvaluator:
-        """Construct (or return the cached) ``FNetEvaluator``.
+        """Build or return the cached ``FNetEvaluator``.
 
-        Caching policy: the ``FNetEvaluator`` is built once per solver
-        instance and reused across subsequent ``solve()`` calls so
-        benchmark suites that iterate over many PDEs do not pay repeated
-        disk I/O + model-init cost. The cache is invalidated explicitly
-        via ``reset_cache()``; ``self.config`` is treated as immutable for
-        the lifetime of the instance.
-
-        ``checkpoint_path`` is guaranteed non-None and existent by the
-        ``_validate_trained_checkpoint`` model validator on the config,
-        so the assert below is a defensive belt-and-braces for callers
-        that mutate the config directly via ``model_copy``.
+        The cache key is the ``(checkpoint_path, resolved_device)`` tuple,
+        so direct mutation of ``self.config`` between ``solve()`` calls
+        rebuilds the evaluator instead of silently serving the previous
+        checkpoint. The path is guaranteed non-None by
+        ``_validate_trained_checkpoint``.
         """
-        if self._cached_trained_evaluator is not None:
+        # mypy can't see the validator's guarantee; the cast is cheaper
+        # than an assert (which is stripped under `python -O`).
+        checkpoint_path = self.config.checkpoint_path
+        if checkpoint_path is None:  # pragma: no cover - validator-enforced
+            raise RuntimeError(
+                "evaluator='trained' but checkpoint_path is None "
+                "(config validator should have rejected this)."
+            )
+
+        torch_device = _resolve_device_cached(self.config.device)
+        cache_key = (checkpoint_path, torch_device)
+        if self._cached_trained_evaluator is not None and self._cached_evaluator_key == cache_key:
             return self._cached_trained_evaluator
 
-        assert self.config.checkpoint_path is not None  # nosec B101 - validator-enforced
+        # Lazy import: keeps the random/uniform fast path free of the
+        # heavy modeling imports pulled in by ``create_model_from_checkpoint``.
         from src.training.checkpoint import create_model_from_checkpoint
 
-        torch_device = self._resolve_device(self.config.device)
         model, _saved_config = create_model_from_checkpoint(
-            self.config.checkpoint_path,
+            checkpoint_path,
             device=torch_device,
             strict=self.config.checkpoint_strict_load,
         )
@@ -555,10 +566,11 @@ class AlphaGalerkinSolver(BaseSolver):
             temperature=self.config.evaluator_temperature,
         )
         self._cached_trained_evaluator = evaluator
+        self._cached_evaluator_key = cache_key
         logger.info(
             "trained_evaluator_loaded",
             solver=self.name,
-            checkpoint_path=str(self.config.checkpoint_path),
+            checkpoint_path=str(checkpoint_path),
             device=torch_device,
             temperature=self.config.evaluator_temperature,
             use_fast_path=self.config.evaluator_use_fast_path,
@@ -569,20 +581,19 @@ class AlphaGalerkinSolver(BaseSolver):
     def _build_mcts(self, pde_game: PDEGame) -> MCTS:
         """Construct the MCTS engine with the configured evaluator.
 
-        - ``random`` / ``uniform``: fresh ``RandomEvaluator`` per call (it
-          captures only ``pde_game.action_space_size``, which can vary
+        - ``random`` / ``uniform``: fresh ``RandomEvaluator`` per call
+          (its only state is ``pde_game.action_space_size``, which varies
           between PDE instances).
         - ``trained``: ``FNetEvaluator`` returned by
           ``_build_trained_evaluator()`` (cached on the solver instance).
         """
-        evaluator: RandomEvaluator | FNetEvaluator
+        torch_device = _resolve_device_cached(self.config.device)
         if self.config.evaluator == "trained":
-            evaluator = self._build_trained_evaluator()
-            torch_device = self._resolve_device(self.config.device)
+            evaluator: RandomEvaluator | FNetEvaluator = self._build_trained_evaluator()
         else:
             evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
-            torch_device = self._resolve_device(self.config.device)
 
+        ckpt = self.config.checkpoint_path
         logger.debug(
             "alphagalerkin_mcts_built",
             solver=self.name,
@@ -590,9 +601,7 @@ class AlphaGalerkinSolver(BaseSolver):
             device=torch_device,
             n_actions=pde_game.action_space_size,
             n_simulations=self.config.n_mcts_simulations,
-            checkpoint_path=str(self.config.checkpoint_path)
-            if self.config.checkpoint_path is not None
-            else None,
+            checkpoint_path=str(ckpt) if ckpt is not None else None,
         )
         return MCTS(
             evaluator=evaluator,

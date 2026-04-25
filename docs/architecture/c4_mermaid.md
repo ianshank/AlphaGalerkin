@@ -71,6 +71,8 @@ C4Container
 
         Container(mcts_engine, "MCTS Search Engine", "Python", "Monte Carlo Tree Search with neural network guidance for move/action selection")
 
+        Container(ag_solver, "AlphaGalerkin Solver", "Python/PyTorch", "Unified PDE solver wrapping MCTS + PDE games behind BaseSolver. Three evaluator modes: 'random'/'uniform' (RandomEvaluator) and 'trained' (FNetEvaluator over a checkpoint-loaded AlphaGalerkinModel, cached on the solver instance and resolved through the LRU device-resolution helper).")
+
         Container(pde_framework, "PDE Game Framework", "Python/PyTorch", "Treats PDE solving as sequential decision-making with MCTS-guided basis selection and mesh refinement")
 
         Container(training_pipeline, "Training Pipeline", "PyTorch", "Self-play, replay buffer, physics-informed loss, adaptive loss balancing, and checkpoint management")
@@ -116,6 +118,11 @@ C4Container
 
     Rel(mcts_engine, neural_operator, "Evaluates positions")
     Rel(mcts_engine, pde_framework, "Guides basis/mesh selection")
+    Rel(ag_solver, mcts_engine, "Drives PDE-game episodes")
+    Rel(ag_solver, pde_framework, "Builds basis_selection / mesh_refinement game")
+    Rel(ag_solver, neural_operator, "Loads checkpoint via FNetEvaluator (trained mode)")
+    Rel(ag_solver, checkpoint_store, "Reads model_state_dict (cached per solver instance)")
+    Rel(cli, ag_solver, "Runs PDE benchmarks")
     Rel(pde_framework, neural_operator, "Uses for solution approximation")
     Rel(pde_framework, math_kernel, "Uses PDE operators, residuals")
     Rel(training_pipeline, neural_operator, "Trains weights")

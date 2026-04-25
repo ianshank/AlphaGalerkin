@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -168,10 +169,17 @@ class DistributedLauncher:
             LaunchResult with SLURM job information.
 
         """
-        # Generate SLURM script
+        # Generate SLURM script in a per-launch temp file to avoid
+        # collisions when multiple launchers run concurrently on the same host.
         slurm_script = self._generate_slurm_script()
-        script_path = Path("/tmp/alphagalerkin_slurm.sh")
-        script_path.write_text(slurm_script)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            prefix="alphagalerkin_slurm_",
+            suffix=".sh",
+            delete=False,
+        ) as tmp:
+            tmp.write(slurm_script)
+            script_path = Path(tmp.name)
         script_path.chmod(0o755)
 
         cmd = ["sbatch", str(script_path)]

@@ -28,9 +28,11 @@ import structlog
 import torch
 import torch.distributed as dist
 
-from src.vertex.config import VertexTrainingConfig
+from src.vertex.config import VertexStorageConfig, VertexTrainingConfig
 from src.vertex.multi_node import DistributedContext, setup_distributed_training
 from src.vertex.storage import GCSCheckpointManager
+
+_DEFAULT_LOCAL_CACHE_DIR: str = VertexStorageConfig.model_fields["local_cache_dir"].default
 
 logger = structlog.get_logger(__name__)
 
@@ -122,7 +124,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint-dir",
         type=str,
-        default="/tmp/alphagalerkin_cache",
+        default=_DEFAULT_LOCAL_CACHE_DIR,
         help="Local checkpoint cache directory",
     )
 

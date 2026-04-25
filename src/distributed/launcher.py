@@ -272,7 +272,7 @@ srun --ntasks-per-node={self.config.nproc_per_node} \\
             }
         )
 
-        cmd = [sys.executable, str(self.script_path)] + self.script_args
+        cmd = [sys.executable, str(self.script_path), *self.script_args]
 
         self._logger.debug("custom_command", cmd=" ".join(cmd))
 

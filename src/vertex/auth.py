@@ -318,7 +318,7 @@ def run_gcloud_command(
     # issues because it doesn't go through the shell. The gcloud.cmd is executed
     # directly by the Windows API, avoiding PSSecurityException.
     gcloud_cmd = str(gcloud_path)
-    full_command = [gcloud_cmd] + args
+    full_command = [gcloud_cmd, *args]
 
     logger.debug(
         "executing_gcloud_command",

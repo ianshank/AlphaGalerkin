@@ -176,9 +176,7 @@ class TransferScenarioConfig(BaseScenarioConfig):
     def validate_primary_in_eval(self) -> TransferScenarioConfig:
         """Ensure primary eval resolution is in eval list."""
         if self.primary_eval_resolution not in self.eval_resolutions:
-            self.eval_resolutions = sorted(
-                set(self.eval_resolutions + [self.primary_eval_resolution])
-            )
+            self.eval_resolutions = sorted({*self.eval_resolutions, self.primary_eval_resolution})
         return self
 
     def get_default_thresholds(self) -> list[MetricThreshold]:

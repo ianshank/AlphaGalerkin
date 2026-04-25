@@ -730,7 +730,7 @@ class MeshRefinementGame(PDEGame):
             step=state.step + 1,
             budget_remaining=state.budget_remaining - 1,
             phase=state.phase,
-            history=state.history + [action],
+            history=[*state.history, action],
         )
 
         # Update phase
@@ -1040,7 +1040,7 @@ class MeshRefinementGame(PDEGame):
             level_grid = np.zeros(grid_shape)
 
         # Build tensor with shape (channels, *grid_shape)
-        tensor_shape = (self.state_channels,) + grid_shape
+        tensor_shape = (self.state_channels, *grid_shape)
         tensor = torch.zeros(tensor_shape)
         tensor[0] = torch.from_numpy(solution_grid.astype(np.float32))
         tensor[1] = torch.from_numpy(residual_grid.astype(np.float32))

@@ -689,10 +689,8 @@ class GCSCheckpointManager:
 
         if (
             self._best_value is None
-            or self._best_mode == "min"
-            and metric_value < self._best_value
-            or self._best_mode == "max"
-            and metric_value > self._best_value
+            or (self._best_mode == "min" and metric_value < self._best_value)
+            or (self._best_mode == "max" and metric_value > self._best_value)
         ):
             is_better = True
 

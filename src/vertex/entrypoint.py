@@ -76,7 +76,7 @@ def init_wandb_for_vertex(
             "entity": os_module.environ.get("WANDB_ENTITY", wandb_config.get("entity")),
             "name": os_module.environ.get("WANDB_RUN_NAME", wandb_config.get("name")),
             "mode": mode,
-            "tags": wandb_config.get("tags", []) + ["vertex-ai"],
+            "tags": [*wandb_config.get("tags", []), "vertex-ai"],
         }
     )
 

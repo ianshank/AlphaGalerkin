@@ -23,12 +23,14 @@ def create_fire_spread_adapter(
     """Create a MCTS-compatible adapter for fire spread mesh refinement.
 
     Args:
+    ----
         n_regions: Number of refinement regions.
         max_budget: Maximum DOF budget.
         max_steps: Maximum refinement steps.
         convergence_tolerance: Error threshold.
 
     Returns:
+    -------
         PDEGameAdapter wrapping the fire spread game.
 
     """
@@ -47,9 +49,9 @@ def create_fire_spread_adapter(
         name="fire_spread_game",
         pde_config=pde_config,
         game_mode="mesh_refinement",
-        max_budget=max_budget,
+        max_dof=max_budget,
         max_steps=max_steps,
-        convergence_tolerance=convergence_tolerance,
+        error_tolerance=convergence_tolerance,
     )
 
     operator = PoissonOperator(pde_config)

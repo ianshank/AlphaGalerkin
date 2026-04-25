@@ -55,7 +55,8 @@ class PDEGameAdapter:
     ``get_winner`` method: convergence maps to +1, budget exhaustion
     with poor error maps to -1, and intermediate outcomes interpolate.
 
-    Attributes:
+    Attributes
+    ----------
         pde_game: The underlying PDE game instance.
         state: Current PDE state (mutated by ``apply_action``).
         error_history: Tracked error values across steps.
@@ -66,6 +67,7 @@ class PDEGameAdapter:
         """Initialize adapter.
 
         Args:
+        ----
             pde_game: A concrete ``PDEGame`` implementation (e.g.
                 ``BasisSelectionGame``, ``MeshRefinementGame``).
 
@@ -91,18 +93,22 @@ class PDEGameAdapter:
         Delegates to ``pde_game.to_tensor()`` and converts the
         resulting PyTorch tensor to numpy for MCTS compatibility.
 
-        Returns:
+        Returns
+        -------
             State tensor (channels, height, width) or (channels, n).
 
         """
         tensor = self.pde_game.to_tensor(self.state)
+        if isinstance(tensor, np.ndarray):
+            return tensor.astype(np.float32)
         arr: NDArray[np.float32] = tensor.detach().cpu().numpy().astype(np.float32)
         return arr
 
     def get_legal_actions(self) -> list[int]:
         """Return indices of legal actions in the current state.
 
-        Returns:
+        Returns
+        -------
             Sorted list of valid action indices.
 
         """
@@ -112,9 +118,11 @@ class PDEGameAdapter:
         """Apply an action, mutating the internal state.
 
         Args:
+        ----
             action: Action index to apply.
 
         Raises:
+        ------
             ValueError: If the action is not legal.
 
         """
@@ -133,7 +141,8 @@ class PDEGameAdapter:
     def is_terminal(self) -> bool:
         """Check whether the PDE game has terminated.
 
-        Returns:
+        Returns
+        -------
             True when the game has converged or budget is exhausted.
 
         """
@@ -147,7 +156,8 @@ class PDEGameAdapter:
         - -1: Budget exhausted with error > 2x tolerance — *failure*
         -  0: Ambiguous / partial convergence
 
-        Returns:
+        Returns
+        -------
             Outcome in {-1, 0, 1}.
 
         """
@@ -181,7 +191,8 @@ class PDEGameAdapter:
     def clone(self) -> PDEGameAdapter:
         """Create a deep copy for MCTS simulation.
 
-        Returns:
+        Returns
+        -------
             Independent copy of this adapter.
 
         """

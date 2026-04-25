@@ -28,12 +28,14 @@ def create_compressible_flow_adapter(
     The adapter satisfies the GameInterface protocol expected by MCTS.
 
     Args:
+    ----
         n_regions: Number of refinement regions (action space size).
         max_budget: Maximum DOF budget.
         max_steps: Maximum refinement steps per episode.
         convergence_tolerance: Error threshold for convergence.
 
     Returns:
+    -------
         PDEGameAdapter wrapping the compressible flow game.
 
     """
@@ -55,9 +57,9 @@ def create_compressible_flow_adapter(
         name="compressible_flow_game",
         pde_config=pde_config,
         game_mode="mesh_refinement",
-        max_budget=max_budget,
+        max_dof=max_budget,
         max_steps=max_steps,
-        convergence_tolerance=convergence_tolerance,
+        error_tolerance=convergence_tolerance,
     )
 
     operator = PoissonOperator(pde_config)
@@ -75,9 +77,11 @@ def create_evaluator_for_game(
     that returns random policy and neutral value.
 
     Args:
+    ----
         action_space_size: Size of the action space.
 
     Returns:
+    -------
         Evaluator instance for MCTS.
 
     """

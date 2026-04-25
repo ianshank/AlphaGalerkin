@@ -384,6 +384,96 @@ class TestBasisSelectionGameReward:
         assert reward > 0
 
 
+class TestBasisSelectionGameLogReward:
+    """Tests for the proposal-form log reward (PDEGameConfig.reward_form='log')."""
+
+    @pytest.fixture
+    def log_game(
+        self,
+        poisson_operator: PoissonOperator,
+        small_basis_config: BasisSelectionConfig,
+    ) -> BasisSelectionGame:
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(
+            name="log_reward_game",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            basis_config=small_basis_config,
+            max_steps=20,
+            error_tolerance=1e-4,
+            reward_form="log",
+            log_reward_alpha=1.0,
+            log_reward_beta=0.1,
+        )
+        return BasisSelectionGame(poisson_operator, game_config)
+
+    def test_log_reward_finite(self, log_game: BasisSelectionGame) -> None:
+        """Log-form reward is always finite on normal states."""
+        state = log_game.get_initial_state()
+        new_state = log_game.apply_action(state, 0)
+        reward = log_game.get_reward(new_state, state)
+        assert np.isfinite(reward)
+
+    def test_log_reward_monotone_in_error(self, log_game: BasisSelectionGame) -> None:
+        """Decreasing error strictly increases the log-form reward."""
+        state = log_game.get_initial_state()
+        low_error = state.clone()
+        low_error.error_estimate = 0.01
+        high_error = state.clone()
+        high_error.error_estimate = 0.5
+        prev = state.clone()
+
+        low_reward = log_game.get_reward(low_error, prev)
+        high_reward = log_game.get_reward(high_error, prev)
+        assert low_reward > high_reward
+
+    def test_log_reward_monotone_in_cost(self, log_game: BasisSelectionGame) -> None:
+        """Increasing DOF (cost) strictly decreases the log-form reward."""
+        state = log_game.get_initial_state()
+        cheap = state.clone()
+        cheap.dof = 10
+        cheap.error_estimate = 0.1
+        expensive = state.clone()
+        expensive.dof = 1000
+        expensive.error_estimate = 0.1
+        prev = state.clone()
+
+        cheap_reward = log_game.get_reward(cheap, prev)
+        expensive_reward = log_game.get_reward(expensive, prev)
+        assert cheap_reward > expensive_reward
+
+    def test_log_reward_terminal_bonus_applied(self, log_game: BasisSelectionGame) -> None:
+        """Terminal bonus is still applied under the log reward form."""
+        state = log_game.get_initial_state()
+        below_tol = state.clone()
+        below_tol.error_estimate = 1e-6
+        prev = state.clone()
+
+        reward_below_tol = log_game.get_reward(below_tol, prev)
+
+        # Same state but just above tolerance — no bonus.
+        above_tol = state.clone()
+        above_tol.error_estimate = 1.1 * log_game.config.error_tolerance
+        reward_above_tol = log_game.get_reward(above_tol, prev)
+
+        assert reward_below_tol > reward_above_tol
+
+    def test_linear_default_unchanged_by_new_fields(self, game: BasisSelectionGame) -> None:
+        """Default reward_form='linear' keeps the historical formula."""
+        state = game.get_initial_state()
+        new_state = game.apply_action(state, 0)
+        linear_reward = game.get_reward(new_state, state)
+
+        error_reduction = state.error_estimate - new_state.error_estimate
+        dof_added = new_state.dof - state.dof
+        cost = game.config.cost_per_dof * dof_added
+        expected = game.config.reward_per_error_reduction * error_reduction - cost
+        if new_state.error_estimate < game.config.error_tolerance:
+            expected += game.config.terminal_bonus
+
+        np.testing.assert_allclose(linear_reward, expected, rtol=1e-6)
+
+
 class TestBasisSelectionGameTerminal:
     """Tests for terminal conditions."""
 

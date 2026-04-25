@@ -5,8 +5,9 @@ defined in ``src.research.baselines`` so that ``PDEBenchmarkRunner``
 can compare AlphaGalerkin against classical solvers on an equal footing.
 
 The solver does not train a network: it uses a ``RandomEvaluator``
-(or a uniform/trained evaluator, reserved for future work) so the MCTS
-explores the PDE game purely via the tree search policy.  The result is
+(``random`` and ``uniform`` are accepted evaluator modes; the latter is
+an alias for the former until a learned evaluator is wired in) so the
+MCTS explores the PDE game purely via the tree search policy.  The result is
 the canonical ``(l2_error, n_dof, wall_time_seconds)`` triple plus a
 solution vector (when the underlying game exposes one) and rich metadata
 for downstream analysis.
@@ -85,8 +86,7 @@ class AlphaGalerkinConfig(SolverConfig):
         n_mcts_simulations: Simulations per MCTS search call.
         max_steps: Hard cap on game actions per episode.
         target_tolerance: Early-stop threshold on the game's L2 error.
-        evaluator: Evaluator type used by MCTS.  ``trained`` is
-            reserved for a future hook into a learned network.
+        evaluator: Evaluator type used by MCTS.
         device: Torch device for the evaluator.
 
     """
@@ -110,9 +110,13 @@ class AlphaGalerkinConfig(SolverConfig):
         gt=0.0,
         description="Early-stop threshold on the game error estimate.",
     )
-    evaluator: Literal["random", "uniform", "trained"] = Field(
+    evaluator: Literal["random", "uniform"] = Field(
         default="random",
-        description="Evaluator strategy; 'trained' is reserved for future work.",
+        description=(
+            "Evaluator strategy. Both 'random' and 'uniform' map to the "
+            "RandomEvaluator (uniform prior + zero value) until a network-"
+            "backed evaluator is wired in."
+        ),
     )
     device: str = Field(
         default="cpu",
@@ -236,8 +240,13 @@ class AlphaGalerkinSolver(BaseSolver):
 
         # Main episode loop.  We call ``mcts.search`` to obtain an
         # improved policy, pick the mode-argmax action, and advance the
-        # adapter until termination / tolerance / max_steps.  The actual
-        # break reason is captured in ``termination_reason`` so metadata
+        # adapter until termination / max_steps. The dedicated
+        # ``target_tolerance`` early-stop branch is omitted intentionally:
+        # ``target_tolerance`` is propagated directly into
+        # ``PDEGameConfig.error_tolerance`` (line 233 above), so the
+        # underlying game's ``is_terminal`` already converges on the same
+        # threshold and ``adapter.is_terminal()`` fires first. The break
+        # reason is captured in ``termination_reason`` so metadata
         # distinguishes e.g. ``no_legal_actions`` from ``max_steps``.
         n_actions_taken = 0
         termination_reason = "max_steps"
@@ -245,19 +254,6 @@ class AlphaGalerkinSolver(BaseSolver):
             if adapter.is_terminal():
                 termination_reason = "is_terminal"
                 log.debug("terminated_early", step=step, reason=termination_reason)
-                break
-            # ``adapter.current_error`` is a reduction *fraction*; the raw
-            # error estimate lives on the state and is what the tolerance
-            # contract is defined against.
-            current_error = adapter.state.error_estimate
-            if current_error < self.config.target_tolerance:
-                termination_reason = "tolerance"
-                log.debug(
-                    "terminated_early",
-                    step=step,
-                    reason=termination_reason,
-                    error=current_error,
-                )
                 break
 
             legal = adapter.get_legal_actions()
@@ -403,14 +399,10 @@ class AlphaGalerkinSolver(BaseSolver):
         """Construct the MCTS engine with the configured evaluator.
 
         ``random`` and ``uniform`` both map to the ``RandomEvaluator``
-        (uniform prior + zero value) for now.  ``trained`` is rejected
-        until a network-backed evaluator is wired in.
+        (uniform prior + zero value). A trained, network-backed
+        evaluator is not yet part of the typed Literal - when it is
+        added the config schema will gain a ``"trained"`` option.
         """
-        if self.config.evaluator == "trained":
-            raise NotImplementedError(
-                "evaluator='trained' is reserved for future network integration; "
-                "use 'random' or 'uniform' for now."
-            )
         # The current ``RandomEvaluator`` samples via numpy and has no
         # device-dependent state, so ``config.device`` is a no-op for it.
         # We resolve and log the device anyway so the solver's run

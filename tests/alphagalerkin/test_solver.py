@@ -261,6 +261,22 @@ class TestAlphaGalerkinSolver:
         # is exactly ``n_actions_taken + 1`` for every terminated loop.
         assert len(result.metadata["error_history"]) == taken + 1
 
+    def test_solver_terminates_via_game_is_terminal(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        """A loose ``target_tolerance`` flows into the game's ``error_tolerance``.
+
+        The solver propagates ``target_tolerance`` directly to
+        ``PDEGameConfig.error_tolerance`` (so a ``target_tolerance``
+        above the initial Galerkin residual makes the underlying game
+        terminal on the very first iteration), and the loop exits with
+        ``termination_reason == "is_terminal"``.
+        """
+        solver = AlphaGalerkinSolver(_fast_solver_config(target_tolerance=0.99))
+        result = solver.solve(poisson_operator, n_dof=32)
+        assert result.metadata["termination_reason"] == "is_terminal"
+        assert result.metadata["n_actions_taken"] == 0
+
     def test_solver_deterministic_with_seed(
         self,
         poisson_operator: PoissonOperator,
@@ -297,15 +313,16 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_not_yet_implemented(
-        self,
-        poisson_operator: PoissonOperator,
-    ) -> None:
-        """``evaluator='trained'`` is reserved for future work."""
-        cfg = _fast_solver_config(evaluator="trained")
-        solver = AlphaGalerkinSolver(cfg)
-        with pytest.raises(NotImplementedError):
-            solver.solve(poisson_operator, n_dof=16)
+    def test_trained_evaluator_rejected_by_config(self) -> None:
+        """Reject ``evaluator='trained'`` at config construction time.
+
+        The value is not in the supported ``Literal`` set and will regain a
+        slot once a learned evaluator is wired in.
+        """
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _fast_solver_config(evaluator="trained")
 
 
 # ---------------------------------------------------------------------------

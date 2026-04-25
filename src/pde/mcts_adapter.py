@@ -157,10 +157,8 @@ class PDEGameAdapter:
         initial_error = self.error_history[0]
         final_error = self.error_history[-1]
 
-        # Tolerance from config (with reasonable fallback)
-        tolerance = getattr(self.pde_game.config, "tolerance", 0.01)
-
-        if final_error < tolerance:
+        config = self.pde_game.config
+        if final_error < config.error_tolerance:
             return 1  # Converged successfully
 
         # Measure relative error reduction
@@ -169,24 +167,33 @@ class PDEGameAdapter:
         else:
             reduction_ratio = 1.0
 
-        if reduction_ratio < 0.1:
-            # Reduced error by 90%+ even if not below tolerance
+        # Inclusive comparisons match the field docstrings in
+        # ``PDEGameConfig``. The model validator enforces
+        # ``good < poor`` strictly, so no ratio is labelled both win and
+        # loss — the (good, poor) interior is the draw zone.
+        if reduction_ratio <= config.winner_good_reduction_threshold:
             return 1
-        elif reduction_ratio > 0.5:
-            # Less than 50% reduction — poor outcome
+        elif reduction_ratio >= config.winner_poor_reduction_threshold:
             return -1
         else:
             return 0
 
     def clone(self) -> PDEGameAdapter:
-        """Create a deep copy for MCTS simulation.
+        """Create a sibling-safe copy for MCTS simulation.
+
+        Delegates game cloning to ``PDEGame.clone()`` so stateless games
+        can share instances (O(1) clone) while stateful games like
+        :class:`~src.pde.games.mesh_refinement.MeshRefinementGame` can
+        return a deep-copied instance. ``state`` and ``error_history``
+        are always deep-copied so sibling MCTS branches cannot interfere
+        through the adapter alone.
 
         Returns:
             Independent copy of this adapter.
 
         """
         cloned = PDEGameAdapter.__new__(PDEGameAdapter)
-        cloned.pde_game = self.pde_game  # Game rules are shared (stateless)
+        cloned.pde_game = self.pde_game.clone()
         cloned.state = copy.deepcopy(self.state)
         cloned.error_history = list(self.error_history)
         return cloned

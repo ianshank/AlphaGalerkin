@@ -25,6 +25,7 @@ from torch import Tensor
 
 from src.pde.config import BasisSelectionConfig, PDEGameConfig
 from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.reward import log_reward
 
 logger = structlog.get_logger(__name__)
 
@@ -453,6 +454,13 @@ class BasisSelectionGame(PDEGame):
     def get_reward(self, state: PDEState, prev_state: PDEState) -> float:
         """Compute reward for state transition.
 
+        Two forms are supported, selected by ``PDEGameConfig.reward_form``:
+
+        * ``"linear"`` (default): ``alpha * Delta_error - beta * Delta_dof``
+          plus a terminal bonus when the new state is below tolerance.
+        * ``"log"``: the DOE Genesis proposal reward
+          ``-alpha * log(error) - beta * log(cost)`` where ``cost = state.dof``.
+
         Args:
             state: New state after action.
             prev_state: Previous state.
@@ -461,20 +469,26 @@ class BasisSelectionGame(PDEGame):
             Reward value.
 
         """
-        # Error reduction
-        error_reduction = prev_state.error_estimate - state.error_estimate
+        if self.config.reward_form == "log":
+            reward = log_reward(
+                error=state.error_estimate,
+                cost=float(state.dof),
+                alpha=self.config.log_reward_alpha,
+                beta=self.config.log_reward_beta,
+                epsilon=self.config.log_reward_epsilon,
+            )
+            if state.error_estimate < self.config.error_tolerance:
+                reward += self.config.terminal_bonus
+            return reward
 
-        # Cost penalty
+        # Linear form (historical default).
+        error_reduction = prev_state.error_estimate - state.error_estimate
         dof_added = state.dof - prev_state.dof
         cost = self.config.cost_per_dof * dof_added
 
-        # Base reward
         reward = self.config.reward_per_error_reduction * error_reduction - cost
-
-        # Bonus for reaching tolerance
         if state.error_estimate < self.config.error_tolerance:
             reward += self.config.terminal_bonus
-
         return reward
 
     def is_terminal(self, state: PDEState) -> bool:

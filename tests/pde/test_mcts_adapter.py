@@ -215,6 +215,22 @@ class TestPDEGameAdapterEdgeCases:
         """error_reduction is 0.0 at initial state."""
         assert adapter.error_reduction == 0.0
 
+    def test_error_reduction_empty_history_returns_zero(self, adapter: PDEGameAdapter) -> None:
+        """Defensive: an empty error_history short-circuits to 0.0."""
+        adapter.error_history = []
+        assert adapter.error_reduction == 0.0
+
+    def test_error_reduction_zero_initial_returns_zero(self, adapter: PDEGameAdapter) -> None:
+        """A zero-valued initial error short-circuits to 0.0 without ZeroDiv."""
+        adapter.error_history = [0.0, 0.5]
+        assert adapter.error_reduction == 0.0
+
+    def test_error_reduction_positive_path(self, adapter: PDEGameAdapter) -> None:
+        """A non-empty, non-zero history returns the documented ratio."""
+        adapter.error_history = [1.0, 0.4]
+        # 1 - 0.4/1.0 = 0.6
+        assert adapter.error_reduction == pytest.approx(0.6, rel=1e-9)
+
     def test_state_tensor_finite(self, adapter: PDEGameAdapter) -> None:
         """State tensor contains finite values."""
         state = adapter.get_state()
@@ -294,3 +310,151 @@ class TestPDEGameAdapterWinnerEdgeCases:
         reduction_ratio = final_error / initial_error
 
         assert reduction_ratio < 0.1  # Should return +1
+
+
+class TestPDEGameAdapterCloneWithStatefulGame:
+    """``PDEGameAdapter.clone()`` must yield MCTS-safe clones for stateful games.
+
+    ``MeshRefinementGame`` mutates ``self.mesh`` inside ``apply_action``
+    (refine + coarsen both edit the element tree). If the adapter shared
+    the game instance across clones, sibling MCTS simulations would
+    corrupt each other's mesh; the adapter's clone therefore delegates
+    to ``PDEGame.clone()`` which the mesh game overrides to deep-copy.
+    """
+
+    def _mesh_adapter(self) -> PDEGameAdapter:
+        from src.pde.config import MeshRefinementConfig, RefinementStrategy
+        from src.pde.games.mesh_refinement import MeshRefinementGame
+
+        pde_cfg = PDEConfig(
+            name="mesh_clone_poisson",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+        )
+        mesh_cfg = MeshRefinementConfig(
+            name="mesh_clone_cfg",
+            initial_resolution=2,
+            max_refinement_level=3,
+            refinement_strategy=RefinementStrategy.H_REFINEMENT,
+            n_candidate_elements=32,
+        )
+        game_cfg = PDEGameConfig(
+            name="mesh_clone_game",
+            pde_config=pde_cfg,
+            game_mode="mesh_refinement",
+            mesh_config=mesh_cfg,
+            max_steps=10,
+            max_dof=2000,
+        )
+        operator = PoissonOperator(pde_cfg)
+        game = MeshRefinementGame(operator, game_cfg)
+        return PDEGameAdapter(game)
+
+    def test_clone_gives_independent_mesh(self) -> None:
+        """Applying actions on a clone leaves the original adapter untouched."""
+        adapter = self._mesh_adapter()
+        cloned = adapter.clone()
+        assert cloned.pde_game is not adapter.pde_game
+        assert cloned.pde_game.mesh is not adapter.pde_game.mesh
+
+        original_leaves = len(adapter.pde_game.mesh.leaf_elements)
+        cloned.apply_action(cloned.get_legal_actions()[0])
+
+        assert len(adapter.pde_game.mesh.leaf_elements) == original_leaves
+        assert len(cloned.pde_game.mesh.leaf_elements) > original_leaves
+
+    def test_clone_preserves_stateless_sharing(self, adapter: PDEGameAdapter) -> None:
+        """Stateless games (BasisSelectionGame) keep the shared-instance fast path."""
+        cloned = adapter.clone()
+        # Default PDEGame.clone() returns self, so stateless games avoid the
+        # deep-copy cost and the two adapters share the same pde_game.
+        assert cloned.pde_game is adapter.pde_game
+
+
+class TestPDEGameAdapterWinnerConfigThresholds:
+    """Exercise the real get_winner() against the configured thresholds."""
+
+    @staticmethod
+    def _make_adapter(
+        pde_config: PDEConfig,
+        *,
+        error_tolerance: float = 0.01,
+        good: float = 0.1,
+        poor: float = 0.5,
+    ) -> PDEGameAdapter:
+        game_config = PDEGameConfig(
+            name="winner_thresholds",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            max_steps=4,
+            error_tolerance=error_tolerance,
+            computational_budget=1e4,
+            winner_good_reduction_threshold=good,
+            winner_poor_reduction_threshold=poor,
+            basis_config=BasisSelectionConfig(
+                name="winner_thresholds_basis",
+                max_basis_functions=8,
+                basis_type="fourier",
+                max_frequency=3,
+            ),
+        )
+        operator = PoissonOperator(pde_config)
+        pde_game = BasisSelectionGame(operator, game_config)
+        return PDEGameAdapter(pde_game)
+
+    def test_empty_history_returns_zero(self, pde_config: PDEConfig) -> None:
+        """No error history collapses to a draw."""
+        adapter = self._make_adapter(pde_config)
+        adapter.error_history = []
+        assert adapter.get_winner() == 0
+
+    def test_below_tolerance_is_win(self, pde_config: PDEConfig) -> None:
+        """Final error below error_tolerance always returns +1."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.1)
+        adapter.error_history = [1.0, 0.05]
+        assert adapter.get_winner() == 1
+
+    def test_good_reduction_is_win(self, pde_config: PDEConfig) -> None:
+        """Reduction past the good threshold returns +1 even above tolerance."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, good=0.1)
+        adapter.error_history = [1.0, 0.05]  # ratio 0.05 < good 0.1
+        assert adapter.get_winner() == 1
+
+    def test_poor_reduction_is_loss(self, pde_config: PDEConfig) -> None:
+        """Reduction worse than poor threshold returns -1."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, poor=0.5)
+        adapter.error_history = [1.0, 0.9]  # ratio 0.9 > poor 0.5
+        assert adapter.get_winner() == -1
+
+    def test_middle_reduction_is_draw(self, pde_config: PDEConfig) -> None:
+        """Reduction between thresholds returns 0."""
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, good=0.1, poor=0.5)
+        adapter.error_history = [1.0, 0.3]
+        assert adapter.get_winner() == 0
+
+    def test_threshold_override_flips_outcome(self, pde_config: PDEConfig) -> None:
+        """Changing config thresholds changes the outcome for a fixed history."""
+        # ratio 0.2 is neutral under defaults (0.1 < 0.2 < 0.5)
+        neutral = self._make_adapter(pde_config, error_tolerance=0.001)
+        neutral.error_history = [1.0, 0.2]
+        assert neutral.get_winner() == 0
+
+        # tightening the good threshold still leaves it neutral, but widening
+        # it past 0.2 should now classify the same history as a win.
+        win = self._make_adapter(pde_config, error_tolerance=0.001, good=0.3, poor=0.5)
+        win.error_history = [1.0, 0.2]
+        assert win.get_winner() == 1
+
+    def test_zero_initial_error_is_loss(self, pde_config: PDEConfig) -> None:
+        """Zero initial error falls through to reduction_ratio=1.0 and returns -1.
+
+        When ``initial_error == 0`` the adapter's fallback pegs the
+        ratio at 1.0, which is at or above any valid
+        ``winner_poor_reduction_threshold`` (bounded to ``(0, 1)``),
+        producing a loss.
+        """
+        adapter = self._make_adapter(pde_config, error_tolerance=0.001, poor=0.5)
+        adapter.error_history = [0.0, 0.2]  # above tolerance, ratio defaults to 1.0
+        assert adapter.get_winner() == -1

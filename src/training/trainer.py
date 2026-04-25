@@ -747,12 +747,12 @@ class Trainer(BaseTrainer):
 
         # Backward pass (uses BaseTrainer helpers for AMP and gradient clipping)
         if self.use_amp and self.scaler is not None:
-            self.scaler.scale(total_loss).backward()
+            self.scaler.scale(total_loss).backward()  # type: ignore[no-untyped-call]
             grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
-            total_loss.backward()
+            total_loss.backward()  # type: ignore[no-untyped-call]
             grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.optimizer.step()
 

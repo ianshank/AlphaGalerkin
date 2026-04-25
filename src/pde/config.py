@@ -437,8 +437,10 @@ class PDEGameConfig(BaseModuleConfig):
     )
 
     # Winner thresholds (consumed by PDEGameAdapter.get_winner)
-    # Current final/initial error ratio is compared against these:
-    #   ratio < good -> +1 (win),  ratio > poor -> -1 (loss),  else 0.
+    # Current final/initial error ratio is compared against these
+    # (inclusive on both sides; the model validator enforces good < poor
+    # strictly so no ratio can be classified as both win and loss):
+    #   ratio <= good -> +1 (win),  ratio >= poor -> -1 (loss),  else 0.
     winner_good_reduction_threshold: float = Field(
         default=0.1,
         gt=0.0,

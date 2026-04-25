@@ -311,8 +311,8 @@ class PicoGKSDFEvaluator:
         try:
             # pythonnet is the standard bridge to .NET assemblies from
             # Python; PicoGK ships a Python wrapper on top of it.
-            import PicoGK  # type: ignore[import-not-found]  # noqa: F401
-            import pythonnet  # type: ignore[import-not-found]  # noqa: F401
+            import PicoGK  # noqa: F401
+            import pythonnet  # noqa: F401
         except ImportError as exc:  # pragma: no cover - exercised via tests
             raise ImportError(
                 "PicoGKSDFEvaluator requires the optional [picogk] extra. "

@@ -129,6 +129,8 @@ ignore = [
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
+    "ANN101", # Missing type annotation for self (deprecated in ruff 0.3+)
+    "ANN102", # Missing type annotation for cls (deprecated in ruff 0.3+)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)

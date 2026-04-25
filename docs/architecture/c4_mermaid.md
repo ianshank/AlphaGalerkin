@@ -3,10 +3,13 @@
 This document provides a comprehensive C4 architecture model for the AlphaGalerkin system using Mermaid diagrams.
 The C4 model consists of four levels: System Context, Containers, Components, and Code.
 
-The system supports two primary use cases:
+The system supports three primary use cases:
 
-1. **Go AI**: Resolution-independent game playing with zero-shot transfer between board sizes
-2. **PDE Solving**: AlphaZero-style MCTS for adaptive basis selection and mesh refinement
+1. **Board Game AI**: Resolution-independent Go and Chess with zero-shot transfer between board sizes
+2. **PDE Solving**: MCTS-guided adaptive mesh refinement and Galerkin basis selection
+3. **SBIR Commercialization**: Benchmark infrastructure, proposal configs, IP strategy, and competitive positioning for $50B+ simulation market
+
+This architecture reflects v0.3.x including SBIR proposal infrastructure, classical solver baselines, domain geometry abstractions, time-stepping integration, and swarm planning.
 
 ---
 
@@ -63,7 +66,6 @@ C4Container
     Person(user, "User", "Researcher, Developer, Go Player, or Computational Scientist")
 
     Container_Boundary(alphagalerkin, "AlphaGalerkin System") {
-        Container(dashboard, "E2E Dashboard", "Gradio / Python", "Interactive tabbed web UI exposing all AlphaGalerkin capabilities: Go AI, PDE Solver, PoC Scenarios, Training visualiser, About. Launches at http://localhost:7860. Config-driven via Pydantic DashboardConfig.")
         Container(cli, "CLI Entrypoints", "Python Scripts", "Command-line interface for training, benchmarking, PDE solving, and experiments")
         Container(gtp_server, "GTP Server", "Python", "Go Text Protocol server for game playing and analysis")
 
@@ -87,10 +89,9 @@ C4Container
 
         Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
 
-        Container(agents, "Agent Orchestration", "Python/Pydantic", "Multi-physics PDE solving via specialized sub-agents (Orchestrator, Collocation, Decomposition, Coupling, Meta)")
-        Container(engines, "Chess Engine Integration", "Python/UCI", "Stockfish evaluation, Elo calculation, UCI protocol adapter, tournament management")
-        Container(curriculum, "Curriculum Learning", "Python", "Progressive difficulty scheduling and model zoo management for multi-game training")
-        Container(demos, "SBIR Demo Suite", "Python", "End-to-end benchmark demonstrations for Navy/DOE/NSF/AFWERX proposals")
+        Container(sbir_infra, "SBIR Proposal Infrastructure", "Markdown/YAML", "SAM.gov guide, budget templates, submission timeline, program offices, IP strategy, competitive landscape, M&A analysis")
+
+        Container(deployment, "Deployment", "ONNX/PyTorch", "ONNX export, quantization, runtime inference wrapper for edge deployment")
 
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
@@ -99,14 +100,8 @@ C4Container
     System_Ext(go_gui, "Go GUI", "GTP Client")
     System_Ext(compute, "GPU Cluster", "CUDA Infrastructure")
 
-    Rel(user, dashboard, "Explores capabilities via browser", "HTTP / Gradio")
     Rel(user, cli, "Runs commands", "CLI")
     Rel(go_gui, gtp_server, "Sends GTP commands", "GTP/TCP")
-
-    Rel(dashboard, mcts_engine, "Drives Go AI game moves")
-    Rel(dashboard, pde_framework, "Triggers Poisson solve / comparison")
-    Rel(dashboard, poc_framework, "Runs complexity & stability scenarios")
-    Rel(dashboard, neural_operator, "Queries model for game tab")
 
     Rel(cli, training_pipeline, "Initiates training")
     Rel(cli, poc_framework, "Runs experiments")
@@ -131,13 +126,6 @@ C4Container
 
     Rel(neural_operator, compute, "GPU execution")
 
-    Rel(cli, agents, "Orchestrates multi-physics solving")
-    Rel(agents, pde_framework, "Delegates PDE sub-problems")
-    Rel(agents, neural_operator, "Uses for solution evaluation")
-    Rel(training_pipeline, curriculum, "Stages training progression")
-    Rel(training_pipeline, engines, "Evaluates vs Stockfish")
-    Rel(cli, demos, "Generates SBIR benchmark reports")
-
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
@@ -157,10 +145,8 @@ C4Container
 | **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
 | **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
-| **Agent Orchestration** | Multi-physics PDE decomposition and coupling via specialized sub-agents | Python, Pydantic, structlog |
-| **Chess Engine Integration** | UCI protocol, Elo evaluation, tournament management | Python, Stockfish, UCI |
-| **Curriculum Learning** | Progressive board size and difficulty scheduling | Python, model zoo |
-| **SBIR Demo Suite** | End-to-end benchmark demos for government proposal validation | Python, Matplotlib, JSON |
+| **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
+| **Deployment** | Model export and edge inference | ONNX, quantization, runtime wrapper |
 
 ---
 
@@ -174,21 +160,21 @@ C4Component
 
     Container_Boundary(neural_operator, "Neural Operator Model") {
         Component(model, "AlphaGalerkinModel", "PyTorch nn.Module", "Main model orchestrating all components")
-        
+
         Component(embedding, "Continuous Embedding", "PyTorch Layer", "Maps discrete board to continuous domain with Fourier features")
-        
+
         Component(galerkin_attention, "Galerkin Attention", "PyTorch Layer", "O(N) attention via Petrov-Galerkin projection for global influence")
-        
+
         Component(softmax_attention, "Softmax Attention", "PyTorch Layer", "Traditional attention for local tactical reading")
-        
+
         Component(fnet_block, "FNet Mixing Block", "PyTorch Layer", "O(N log N) FFT-based mixing for fast rollouts")
-        
+
         Component(stability_guard, "LBB Stability Guard", "PyTorch Module", "Monitors inf-sup condition during training")
-        
+
         Component(policy_head, "Policy Head", "PyTorch Layer", "Outputs move probability distribution")
-        
+
         Component(value_head, "Value Head", "PyTorch Layer", "Outputs position evaluation [-1, 1]")
-        
+
         Component(adapter, "Resolution Adapter", "Python Module", "Spectral filtering for zero-shot transfer")
     }
 
@@ -201,14 +187,14 @@ C4Component
     Rel(fnet_block, softmax_attention, "Refines features")
     Rel(softmax_attention, policy_head, "Generates policy")
     Rel(softmax_attention, value_head, "Generates value")
-    
+
     Rel(galerkin_attention, stability_guard, "Monitors LBB")
     Rel(model, adapter, "Adapts resolution")
-    
+
     Rel(embedding, math_kernel, "Uses Fourier basis")
     Rel(galerkin_attention, math_kernel, "Uses Galerkin projection")
     Rel(adapter, math_kernel, "Uses spectral filtering")
-    
+
     Rel(stability_guard, training_loss, "Adds regularization term")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
@@ -239,17 +225,17 @@ C4Component
 
     Container_Boundary(training_pipeline, "Training Pipeline") {
         Component(trainer, "Trainer", "Python Class", "Main training loop orchestration")
-        
+
         Component(self_play, "Self-Play Engine", "Python Module", "Generates training games using MCTS")
-        
+
         Component(replay_buffer, "Experience Replay Buffer", "Python Class", "Stores and samples game experiences")
-        
+
         Component(loss_fn, "AlphaGalerkin Loss", "PyTorch Module", "Combined loss: policy CE + value MSE + LBB regularization")
-        
+
         Component(checkpoint_mgr, "Checkpoint Manager", "Python Module", "Saves/loads models with rotation")
-        
+
         Component(evaluator, "Model Evaluator", "Python Module", "Win rate and policy agreement metrics")
-        
+
         Component(optimizer, "Optimizer", "PyTorch", "Adam optimizer with learning rate scheduling")
     }
 
@@ -261,18 +247,18 @@ C4Component
     Rel(trainer, self_play, "Generates games")
     Rel(self_play, mcts, "Uses for move selection")
     Rel(self_play, replay_buffer, "Stores experiences")
-    
+
     Rel(trainer, replay_buffer, "Samples batches")
     Rel(replay_buffer, data_layer, "Uses collation")
-    
+
     Rel(trainer, neural_operator, "Forward pass")
     Rel(neural_operator, loss_fn, "Computes loss")
     Rel(loss_fn, optimizer, "Backpropagates")
     Rel(optimizer, neural_operator, "Updates weights")
-    
+
     Rel(trainer, evaluator, "Evaluates periodically")
     Rel(evaluator, neural_operator, "Tests model")
-    
+
     Rel(trainer, checkpoint_mgr, "Saves checkpoints")
     Rel(checkpoint_mgr, checkpoint_store, "Persists to disk")
 
@@ -303,13 +289,13 @@ C4Component
 
     Container_Boundary(engine_subsystem, "Engine Integration Subsystem") {
         Component(uci_adapter, "UCI Adapter", "Python Module", "Universal Chess Interface protocol driver for Stockfish/Leela")
-        
+
         Component(engine_match, "EngineMatch", "Python Class", "Orchestrates N-game matches: color alternation, time control, PGN output")
-        
+
         Component(elo_calculator, "EloCalculator", "Python Class", "Bayesian Elo estimation with confidence intervals and LOS")
-        
+
         Component(uci_config, "UCIConfig", "Pydantic Model", "Engine path, depth, nodes, movetime, hash, threads")
-        
+
         Component(match_config, "MatchConfig", "Pydantic Model", "N games, time control, max moves, opening FEN")
     }
 
@@ -352,21 +338,21 @@ C4Component
 
     Container_Boundary(poc_framework, "PoC Framework") {
         Component(cli_poc, "PoC CLI", "Python argparse", "Command-line interface: run, list, info, compare")
-        
+
         Component(registry, "Scenario Registry", "Python Module", "Discovers and manages available scenarios")
-        
+
         Component(runner, "Scenario Runner", "Python Module", "Executes scenarios with parallel support")
-        
+
         Component(config_mgr, "Config Manager", "Pydantic", "Validates and loads scenario configurations")
-        
+
         Component(results_collector, "Results Collector", "Python Module", "Aggregates and persists experiment results")
-        
+
         Component(logger, "Structured Logger", "structlog", "High-signal logging with context")
-        
+
         Component(scenario_transfer, "Transfer Scenario", "Python Class", "Validates zero-shot transfer (9x9 → 19x19)")
-        
+
         Component(scenario_complexity, "Complexity Scenario", "Python Class", "Validates O(N) vs O(N²) complexity")
-        
+
         Component(scenario_stability, "Stability Scenario", "Python Class", "Monitors LBB condition during training")
     }
 
@@ -377,21 +363,21 @@ C4Component
     Rel(cli_poc, registry, "Lists scenarios")
     Rel(cli_poc, runner, "Executes scenarios")
     Rel(cli_poc, config_mgr, "Loads configs")
-    
+
     Rel(registry, scenario_transfer, "Registers")
     Rel(registry, scenario_complexity, "Registers")
     Rel(registry, scenario_stability, "Registers")
-    
+
     Rel(runner, scenario_transfer, "Runs")
     Rel(runner, scenario_complexity, "Runs")
     Rel(runner, scenario_stability, "Runs")
-    
+
     Rel(scenario_transfer, neural_operator, "Tests transfer")
     Rel(scenario_complexity, neural_operator, "Benchmarks complexity")
     Rel(scenario_stability, neural_operator, "Monitors stability")
-    
+
     Rel(scenario_transfer, physics_data, "Generates test data")
-    
+
     Rel(runner, results_collector, "Collects results")
     Rel(results_collector, results_store, "Persists results")
     Rel(results_collector, logger, "Logs outcomes")
@@ -424,15 +410,15 @@ C4Component
 
     Container_Boundary(math_kernel, "Math Kernel") {
         Component(fourier_basis, "Fourier Basis Functions", "NumPy/PyTorch", "Resolution-independent positional encoding")
-        
+
         Component(galerkin_projection, "Galerkin Projection", "PyTorch", "Monte Carlo integral approximation for operators")
-        
+
         Component(spectral_filter, "Spectral Filter", "PyTorch FFT", "Anti-aliasing for resolution transfer")
-        
+
         Component(lbb_checker, "LBB Condition Checker", "NumPy/PyTorch", "Computes inf-sup constant β")
-        
+
         Component(fredholm_kernel, "Fredholm Kernel", "Math Functions", "Green's function formulation for influence")
-        
+
         Component(monte_carlo_integral, "Monte Carlo Integral", "NumPy", "Numerical integration with 1/n normalization")
     }
 
@@ -443,10 +429,10 @@ C4Component
     Rel(neural_operator, galerkin_projection, "Projects values")
     Rel(neural_operator, spectral_filter, "Adapts resolution")
     Rel(neural_operator, lbb_checker, "Monitors stability")
-    
+
     Rel(galerkin_projection, monte_carlo_integral, "Approximates integral")
     Rel(galerkin_projection, fredholm_kernel, "Uses Green's function")
-    
+
     Rel(poc_framework, lbb_checker, "Validates β > 0")
     Rel(poc_framework, spectral_filter, "Tests transfer quality")
 
@@ -1009,15 +995,15 @@ flowchart LR
     Embed --> Galerkin[Galerkin<br/>Attention<br/>6 layers]
     Galerkin --> FNet[FNet<br/>Mixing]
     FNet --> Softmax[Softmax<br/>Attention<br/>2 layers]
-    
+
     Softmax --> Policy[Policy Head<br/>361+1 moves]
     Softmax --> Value[Value Head<br/>[-1, 1]]
-    
+
     Policy --> MCTS[MCTS<br/>Search]
     Value --> MCTS
-    
+
     MCTS --> Move[Best Move]
-    
+
     style Input fill:#e1f5ff
     style Policy fill:#ffe1e1
     style Value fill:#e1ffe1
@@ -1179,7 +1165,7 @@ C4Deployment
     Rel(trainer1, shared_storage, "Saves checkpoints")
     Rel(trainer2, shared_storage, "Saves checkpoints")
     Rel(trainer1, trainer2, "Synchronizes gradients", "NCCL/Gloo")
-    
+
     Rel(gtp_server_deploy, model_inference, "Gets predictions")
     Rel(model_inference, shared_storage, "Loads models")
     Rel(go_gui_deploy, gtp_server_deploy, "Sends GTP commands", "TCP")
@@ -1521,34 +1507,62 @@ C4Component
 
 ---
 
-## Recent Architecture Changes (v0.3.0)
+## Level 3: Component Diagram - SBIR Proposal Infrastructure
 
-### New Modules Added
-- **`src/agents/`** — Multi-physics agent orchestration (`OrchestratorAgent`, `CollocationAgent`, `DecompositionAgent`, `CouplingAgent`, `MetaAgent`)
-- **`src/engines/`** — UCI chess engine integration (`UCIAdapter`, `EloCalculator`, `EngineMatch`, `TournamentManager`)
-- **`src/curriculum/`** — Progressive training curriculum with model zoo integration
-- **`src/tournament/`** — Chess tournament management and Elo rating system
-- **`src/demos/`** — SBIR benchmark demonstration scripts
-- **`src/research/`** — Classical solver baselines (FDM, AMR, PINN) and `PDEBenchmarkRunner`
-- **`src/pde/geometry.py`** — Domain abstractions (Rectangular, L-shaped, Cylinder)
-- **`src/pde/time_stepping.py`** — Time integrators (ForwardEuler, RK4, CrankNicolson)
-- **`src/pde/games/swarm_planning.py`** — Multi-agent swarm with potential field avoidance
-- **`src/games/pettingzoo_adapter.py`** — PettingZoo `ParallelEnv` wrapper
-- **`src/training/base_trainer.py`** — Abstract `BaseTrainer[ConfigT]` with shared AMP/grad/LR
-- **`src/training/losses/`** — Unified `LossRegistry` with `get_loss()` factory
+This diagram shows the proposal submission infrastructure supporting 5 target solicitations.
 
-### Key Architecture Decisions (v0.3.0)
-- Game-agnostic self-play: `SelfPlayWorker` accepts any `GameInterface` (Go, Chess, PDE)
-- Action mask derived from policy tensor size, not hardcoded `board_size²+1`
-- DDP-safe: `_training_resolution` mutation moved out of `forward()`
-- LBB fields exposed in config (Babuska-Brezzi condition): `lbb_loss_weight`, `lbb_target`, `lbb_eps`
-- Coverage gates: 85% overall + per-module, nightly CI schedule
+```mermaid
+C4Component
+    title Component Diagram - SBIR Proposal Infrastructure
 
----
+    Container_Boundary(sbir, "SBIR Proposal Infrastructure") {
+        Component(sam_guide, "SAM Registration Guide", "Markdown", "Step-by-step SAM.gov checklist: EIN, UEI, CAGE, NAICS 541715/541511")
 
-*Last Updated: 2026-04-01*
-*Architecture Version: 3.0.0*
-*Corresponds to AlphaGalerkin v0.3.0*
+        Component(timeline, "Submission Timeline", "Markdown", "Gantt-style calendar for 5 solicitations with prep windows and dependencies")
+
+        Component(program_offices, "Program Offices", "Markdown", "Tier 1/2 contacts: DARPA STO, DOE ASCR, NAVAIR, AFWERX, AFRL, ONR")
+
+        Component(budget_templates, "Budget Templates", "Markdown", "4 budget tables: DoD $250K, NSF $305K, AFWERX $75K, DARPA $1.5M")
+
+        Component(proposal_configs, "Solicitation Configs", "YAML", "navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml, afwerx_open.yaml, darpa_d2p2.yaml")
+
+        Component(ip_strategy, "IP Strategy", "Markdown", "3 provisional patent claims, trade secret inventory, publication plan, licensing strategy")
+
+        Component(competitive, "Competitive Landscape", "Markdown", "PhysicsX, BeyondMath, Pasteur Labs, Godela, PhysicsNeMo comparison matrix")
+
+        Component(valuation, "Valuation & M&A", "Markdown", "Stage-based valuation ($1M-$200M+), top 5 acquirers, revenue multiples")
+
+        Component(differentiation, "Differentiation Matrix", "Markdown", "AlphaGalerkin vs PINNs vs FNO vs AMR vs PhysicsNeMo across 10 criteria")
+
+        Component(sbir_demo, "SBIR Demo Script", "Python", "End-to-end benchmark runner with convergence plots and comparison reports")
+    }
+
+    Component_Ext(benchmark_runner, "PDEBenchmarkRunner", "Runs baselines and generates reports")
+    Component_Ext(baseline_solvers, "Baseline Solvers", "FDM, Dorfler AMR, PINN")
+
+    Rel(sbir_demo, benchmark_runner, "Executes benchmarks")
+    Rel(sbir_demo, baseline_solvers, "Compares against")
+    Rel(sbir_demo, proposal_configs, "Loads config")
+    Rel(timeline, proposal_configs, "References deadlines from")
+    Rel(budget_templates, proposal_configs, "Matches funding ranges")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### SBIR Infrastructure Components
+
+| Component | Content | Key Files |
+|-----------|---------|-----------|
+| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/proposals/SAM_REGISTRATION_GUIDE.md` |
+| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/proposals/SUBMISSION_TIMELINE.md` |
+| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/proposals/PROGRAM_OFFICES.md` |
+| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/proposals/BUDGET_TEMPLATES.md` |
+| **Solicitation Configs** | YAML configs with benchmark suites per solicitation | `config/proposals/*.yaml` |
+| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/proposals/IP_STRATEGY.md` |
+| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/proposals/COMPETITIVE_LANDSCAPE.md` |
+| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
+| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/proposals/DIFFERENTIATION_MATRIX.md` |
+| **SBIR Demo** | CLI script generating convergence plots + reports | `scripts/run_sbir_demo.py` |
 
 ---
 

@@ -143,8 +143,7 @@ class GameManager:
 
         if board_size not in self.config.supported_sizes:
             raise ValueError(
-                f"Board size {board_size} not in supported sizes: "
-                f"{self.config.supported_sizes}"
+                f"Board size {board_size} not in supported sizes: {self.config.supported_sizes}"
             )
 
         komi = self.config.get_komi(board_size)
@@ -247,16 +246,10 @@ class GameManager:
 
         if black_score > white_score:
             margin = black_score - white_score
-            return (
-                f"Black wins by {margin:.1f} points "
-                f"(B: {black_score:.1f}, W: {white_score:.1f})"
-            )
+            return f"Black wins by {margin:.1f} points (B: {black_score:.1f}, W: {white_score:.1f})"
         elif white_score > black_score:
             margin = white_score - black_score
-            return (
-                f"White wins by {margin:.1f} points "
-                f"(B: {black_score:.1f}, W: {white_score:.1f})"
-            )
+            return f"White wins by {margin:.1f} points (B: {black_score:.1f}, W: {white_score:.1f})"
         else:
             return f"Draw (B: {black_score:.1f}, W: {white_score:.1f})"
 
@@ -283,10 +276,7 @@ class GameManager:
             List of (label, value) tuples for dropdown.
 
         """
-        return [
-            (self.get_board_size_label(size), size)
-            for size in self.config.supported_sizes
-        ]
+        return [(self.get_board_size_label(size), size) for size in self.config.supported_sizes]
 
     def format_move(self, row: int, col: int, board_size: int) -> str:
         """Format a move for display.
@@ -360,6 +350,10 @@ class GameManager:
         if len(parts) == 2:
             try:
                 row, col = int(parts[0]), int(parts[1])
+            except ValueError:
+                # Couldn't parse as integers — fall through to generic error
+                row = col = None  # type: ignore[assignment]
+            else:
                 if 0 <= row < board_size and 0 <= col < board_size:
                     logger.debug(
                         "parsed_numeric_move",
@@ -368,15 +362,22 @@ class GameManager:
                         col=col,
                     )
                     return (row, col)
+                # Integers parsed successfully but out of bounds — re-raise
+                # the precise diagnostic so users see the bounds message.
+                logger.debug(
+                    "numeric_move_out_of_bounds",
+                    input=input_text,
+                    row=row,
+                    col=col,
+                    board_size=board_size,
+                )
                 raise ValueError(
                     f"Position ({row},{col}) is outside the "
-                    f"{board_size}×{board_size} board (valid: 0-{board_size-1})"
+                    f"{board_size}×{board_size} board (valid: 0-{board_size - 1})"
                 )
-            except ValueError:
-                pass
 
         # If nothing worked, provide helpful error
         raise ValueError(
             f"Invalid format. Use GTP (e.g., D4, A1) or "
-            f"numeric row,col (e.g., 3,3). Range: 0-{board_size-1}"
+            f"numeric row,col (e.g., 3,3). Range: 0-{board_size - 1}"
         )

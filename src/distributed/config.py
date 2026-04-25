@@ -589,21 +589,34 @@ def _get_env_rank_info() -> tuple[int, int, int]:
     return rank, local_rank, world_size
 
 
-def from_environment() -> DistributedInfraConfig | None:
-    """Build distributed config from environment variables.
+def config_from_environment() -> DistributedInfraConfig | None:
+    """Build :class:`DistributedInfraConfig` from environment variables.
 
     Returns:
-        DistributedInfraConfig if running in distributed mode
-        (WORLD_SIZE > 1), or None if single-process.
+        ``DistributedInfraConfig`` if running in distributed mode
+        (``WORLD_SIZE`` > 1), or ``None`` if single-process.
 
     """
-    rank, local_rank, world_size = _get_env_rank_info()
+    _rank, _local_rank, world_size = _get_env_rank_info()
     if world_size <= 1:
         return None
     return DistributedInfraConfig(
         enabled=True,
         world_size=world_size,
     )
+
+
+def from_environment() -> tuple[int, int, int]:
+    """Return ``(rank, local_rank, world_size)`` from environment variables.
+
+    .. deprecated::
+        This function originally returned a 3-tuple. PR #53 briefly
+        repurposed it to return :class:`DistributedInfraConfig`; that
+        renamed helper is now :func:`config_from_environment`. This
+        function preserves the historical tuple contract for any
+        downstream callers that imported it directly.
+    """
+    return _get_env_rank_info()
 
 
 # Rebuild DistributedInfraConfig to resolve forward references to LauncherConfig

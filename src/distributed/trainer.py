@@ -131,6 +131,13 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
         self.rank, self.local_rank, self.world_size = _get_env_rank_info()
         self._is_main_process = self.rank == 0
 
+        # Logger must be initialised before _create_optimizer (which logs scaling)
+        self._logger = structlog.get_logger(__name__).bind(
+            rank=self.rank,
+            local_rank=self.local_rank,
+            world_size=self.world_size,
+        )
+
         # Device setup
         self.device = self._setup_device()
 
@@ -160,12 +167,6 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
         self.global_step = 0
         self._is_initialized = False
 
-        self._logger = structlog.get_logger(__name__).bind(
-            rank=self.rank,
-            local_rank=self.local_rank,
-            world_size=self.world_size,
-        )
-
     def _setup_device(self) -> torch.device:
         """Setup device based on local rank.
 
@@ -179,18 +180,27 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
         return torch.device("cpu")
 
     def _create_optimizer(self) -> Optimizer:  # type: ignore[override]
-        """Create optimizer with learning rate scaling.
+        """Create optimizer with config-driven learning-rate scaling.
 
-        Uses :meth:`BaseTrainer._create_optimizer` static helper with
-        linear scaling rule applied to the learning rate.
+        Honours :attr:`DistributedInfraConfig.learning_rate_scaling`
+        (``linear`` / ``sqrt`` / ``none``) via
+        :meth:`DistributedInfraConfig.scale_learning_rate`. Uses
+        :meth:`BaseTrainer._create_optimizer` to build the optimizer.
 
         Returns:
             Configured optimizer.
 
         """
-        # Scale learning rate by world size (linear scaling rule)
         base_lr = self.config.training.learning_rate
-        scaled_lr = base_lr * self.world_size
+        scaled_lr = self.distributed_config.scale_learning_rate(base_lr)
+
+        self._logger.info(
+            "scaled_learning_rate",
+            base_lr=base_lr,
+            scaled_lr=scaled_lr,
+            strategy=self.distributed_config.learning_rate_scaling,
+            world_size=self.distributed_config.world_size,
+        )
 
         return BaseTrainer._create_optimizer(
             self.model,

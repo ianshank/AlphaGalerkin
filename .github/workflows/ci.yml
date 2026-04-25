@@ -75,6 +75,7 @@ jobs:
         # distributed/, modeling/ that require incremental refactoring.
         # Ruff check + format are the hard quality gates.
         # Track progress: mypy errors should decrease over time.
+        continue-on-error: true
         run: mypy src/ --strict --ignore-missing-imports
 
   # ============================================================

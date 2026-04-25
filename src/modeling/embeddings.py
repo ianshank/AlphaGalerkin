@@ -37,6 +37,7 @@ class FourierFeatures(nn.Module):
         scale: float = 1.0,
         learnable: bool = True,
         include_coordinates: bool = True,
+        input_dim: int = 2,
     ) -> None:
         """Initialize Fourier features.
 
@@ -45,16 +46,19 @@ class FourierFeatures(nn.Module):
             scale: Standard deviation for frequency initialization.
             learnable: Whether frequencies are learnable.
             include_coordinates: Whether to concatenate raw coordinates.
+            input_dim: Spatial dimension of input coordinates (2 or 3).
 
         """
         super().__init__()
         self.n_features = n_features
         self.include_coordinates = include_coordinates
+        self.input_dim = input_dim
 
         self.fourier_basis = FourierBasis(
             n_features=n_features,
             scale=scale,
             learnable=learnable,
+            input_dim=input_dim,
         )
 
     @property
@@ -62,17 +66,17 @@ class FourierFeatures(nn.Module):
         """Output dimension of Fourier features."""
         dim = 2 * self.n_features  # cos + sin
         if self.include_coordinates:
-            dim += 2  # raw x, y
+            dim += self.input_dim
         return dim
 
     def forward(
         self,
-        coords: Float[Tensor, "batch n 2"],
+        coords: Float[Tensor, "batch n d"],
     ) -> Float[Tensor, "batch n features"]:
         """Encode coordinates with Fourier features.
 
         Args:
-            coords: Normalized coordinates in [0, 1]^2.
+            coords: Normalized coordinates in [0, 1]^d where d == input_dim.
 
         Returns:
             Fourier feature embeddings.

@@ -13,12 +13,14 @@ Design Principles:
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import structlog
 import torch
 from torch import Tensor
 
@@ -26,6 +28,8 @@ from src.games.state import ActionMask, GameState
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+_logger = structlog.get_logger(__name__)
 
 
 class GamePhase(str, Enum):
@@ -286,6 +290,7 @@ class GameInterface(ABC):
         self,
         move_str: str,
         state_or_board_size: GameState | int | None = None,
+        **kwargs: Any,
     ) -> int | None:
         """Convert human-readable move to action index.
 
@@ -293,15 +298,36 @@ class GameInterface(ABC):
             move_str: Move string (e.g., "D4", "pass").
             state_or_board_size: A ``GameState`` for legality validation,
                 or an int board size for coordinate conversion.
+            **kwargs: Accepts the deprecated ``board_size=`` keyword for
+                backwards compatibility with the pre-PR-#53 signature.
+                Emits :class:`DeprecationWarning`.
 
         Returns:
             Action index, or ``None`` if the notation is invalid or the
             move is illegal.
 
         """
-        board_size: int | None = (
-            state_or_board_size if isinstance(state_or_board_size, int) else None
-        )
+        if "board_size" in kwargs and state_or_board_size is None:
+            warnings.warn(
+                "string_to_action(board_size=...) is deprecated; "
+                "pass a GameState or int positionally as state_or_board_size.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            _logger.debug("string_to_action_deprecated_kwarg", value=kwargs["board_size"])
+            state_or_board_size = kwargs.pop("board_size")
+        elif "board_size" in kwargs:
+            kwargs.pop("board_size")
+        if kwargs:
+            raise TypeError(f"string_to_action got unexpected keyword arguments: {sorted(kwargs)}")
+
+        # Resolve board size: prefer explicit state, then int, then default
+        if isinstance(state_or_board_size, GameState):
+            board_size = getattr(state_or_board_size, "board_size", None)
+        elif isinstance(state_or_board_size, int):
+            board_size = state_or_board_size
+        else:
+            board_size = None
         board_size = board_size or self.default_board_size
 
         if move_str.lower() == "pass":

@@ -96,6 +96,13 @@ vertex = [
     "google-cloud-aiplatform>=1.36.0",
     "google-cloud-storage>=2.10.0",
 ]
+# Optional bridge to Leap 71's PicoGK voxel/SDF kernel for the Noyron HX
+# integration scenario. Not installed in CI; the analytical-helix SDF in
+# src/pde/sdf.py keeps the test suite and headline demo independent of
+# the .NET runtime that pythonnet pulls in.
+picogk = [
+    "pythonnet>=3.0",
+]
 
 [project.scripts]
 alphagalerkin = "src.tools.cli:main"
@@ -122,6 +129,8 @@ ignore = [
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
+    "ANN101", # Missing type annotation for self (deprecated in ruff 0.3+)
+    "ANN102", # Missing type annotation for cls (deprecated in ruff 0.3+)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)
@@ -370,6 +379,7 @@ omit = [
     "src/backend/*",
     "src/demos/*",
     "src/research/fem_baseline.py",
+    "src/vertex/*",
 ]
 
 [tool.coverage.report]

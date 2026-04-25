@@ -101,6 +101,8 @@ Monitors LBB condition during training:
 - [2026-04-07]: **Coverage Sprint** - 115 new tests: statistics significance (52), tuning sampler/tuner (33), ONNX integration (30)
 - [2026-04-07]: **GPU Skip Hook** - Root conftest.py auto-skips gpu_required tests when CUDA unavailable; 0 spurious failures
 - [2026-04-07]: **Gumbel MCTS Search Tests** - 38 integration tests for search(), _sequential_halving(), _simulate(), get_improved_policy(), factory
+- [2026-04-25]: **Leap 71 / PicoGK Integration v1** - SDFEvaluator Protocol + AnalyticalHelixSDF (closed-form helical-tube SDF), PicoGKDomain(DomainGeometry) with Newton-projected boundary sampling, HelicalHeatOperator on the LShapedPoissonOperator override pattern, voxel-FDM reference solver, NoyronHXScenario for zero-shot 3D heat-transfer transfer (GPU-preferred device handling), 48 new tests covering SDF, domain adapter, operator, and scenario smoke. The PicoGK .NET dependency is gated behind the optional `[picogk]` extra; CI runs entirely on the analytical helix surrogate.
+- [2026-04-25]: **PhysicsOperator 3D-Aware** - FourierBasis/FourierFeatures parameterized by `input_dim` (default 2 preserves all existing 2D callers); PhysicsOperator gained an `input_dim` constructor arg. Enables the Noyron HX 3D scenario without touching any 2D code path.
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement

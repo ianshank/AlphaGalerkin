@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Literal
 
 import numpy as np
 import structlog
@@ -36,6 +37,7 @@ class GeometryType(str, Enum):
     RECTANGULAR = "rectangular"
     L_SHAPED = "l_shaped"
     CYLINDER_FLOW = "cylinder_flow"
+    PICOGK = "picogk"
 
 
 class GeometryConfig(BaseModel):
@@ -70,6 +72,34 @@ class GeometryConfig(BaseModel):
         default=0.05,
         gt=0.0,
         description="Cylinder radius",
+    )
+
+    # PicoGK / Leap 71 helical heat-exchanger SDF params.
+    # These describe the analytical helix surrogate; ``picogk_voxel_path``
+    # is reserved for the optional voxel-STL path (post-v1).
+    sdf_kind: Literal["analytical_helix", "picogk"] = Field(
+        default="analytical_helix",
+        description=(
+            "Which SDF backend to use when geometry_type=PICOGK. "
+            "'analytical_helix' is closed-form and CI-safe; 'picogk' "
+            "lazy-imports the optional [picogk] extra."
+        ),
+    )
+    picogk_voxel_path: str | None = Field(
+        default=None,
+        description="Path to a PicoGK voxel/STL file (only when sdf_kind='picogk').",
+    )
+    helix_R_major: float = Field(  # noqa: N815 - mathematical convention
+        default=0.05, gt=0.0, description="Helix radius (centerline)."
+    )
+    helix_r_minor: float = Field(
+        default=0.012, gt=0.0, description="Helical tube cross-section radius."
+    )
+    helix_pitch: float = Field(
+        default=0.02, gt=0.0, description="Vertical rise per turn."
+    )
+    helix_n_turns: int = Field(
+        default=5, ge=1, description="Number of full helical revolutions."
     )
 
 
@@ -593,5 +623,29 @@ def create_geometry(config: GeometryConfig) -> DomainGeometry:
             cy=config.cylinder_cy,
             radius=config.cylinder_radius,
         )
+    elif config.geometry_type == GeometryType.PICOGK:
+        # Lazy-import to keep ``geometry`` free of the SDF/PicoGK
+        # dependencies when only rectangular/L-shaped/cylinder geometries
+        # are in use.
+        from src.pde.geometry_picogk import PicoGKDomain
+        from src.pde.sdf import AnalyticalHelixSDF, PicoGKSDFEvaluator
+
+        if config.sdf_kind == "analytical_helix":
+            sdf = AnalyticalHelixSDF(
+                R_major=config.helix_R_major,
+                r_minor=config.helix_r_minor,
+                pitch=config.helix_pitch,
+                n_turns=config.helix_n_turns,
+            )
+            return PicoGKDomain(sdf_evaluator=sdf)
+        elif config.sdf_kind == "picogk":
+            if config.picogk_voxel_path is None:
+                raise ValueError(
+                    "sdf_kind='picogk' requires picogk_voxel_path to be set"
+                )
+            sdf_evaluator = PicoGKSDFEvaluator(config.picogk_voxel_path)
+            return PicoGKDomain(sdf_evaluator=sdf_evaluator)
+        else:  # pragma: no cover - validated by Pydantic Literal
+            raise ValueError(f"Unsupported sdf_kind: {config.sdf_kind}")
     else:
         raise ValueError(f"Unsupported geometry type: {config.geometry_type}")

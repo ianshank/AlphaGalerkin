@@ -36,7 +36,7 @@ from config.schemas import (
     TrainingConfig,
 )
 from src.modeling.model import AlphaGalerkinModel
-from src.training.loss import AlphaGalerkinLoss
+from src.training.losses import AlphaGalerkinLoss
 from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 from src.training.trainer import Trainer, TrainingMetrics
 

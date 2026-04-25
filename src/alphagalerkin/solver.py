@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import random
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -79,6 +80,33 @@ if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
 
 logger = structlog.get_logger(__name__)
+
+
+@lru_cache(maxsize=8)
+def _resolve_device_cached(requested: str) -> str:
+    """Cached device-resolution helper (module-level, deduplicated by string).
+
+    Maps a config device string to a runtime-available device:
+
+    * ``'cuda'`` (and ``'cuda:N'``) silently fall back to ``'cpu'`` when
+      ``torch.cuda.is_available()`` is False, with a single warning so
+      benchmark suites that solve many PDEs do not flood logs with one
+      warning per ``solve()`` call.
+    * Explicit ``'cpu'`` is honoured untouched.
+
+    The ``lru_cache`` wrapper guarantees the resolution (and the warning,
+    if any) executes at most once per unique requested device string for
+    the lifetime of the process. Tests that need to exercise both
+    branches use ``_resolve_device_cached.cache_clear()`` to reset state.
+    """
+    if requested.startswith("cuda") and not torch.cuda.is_available():
+        logger.warning(
+            "cuda_requested_but_unavailable",
+            requested=requested,
+            fallback="cpu",
+        )
+        return "cpu"
+    return requested
 
 
 class AlphaGalerkinConfig(SolverConfig):
@@ -153,6 +181,37 @@ class AlphaGalerkinConfig(SolverConfig):
         ge=1,
         description="Floor on the DOF budget passed to PDEGameConfig.max_dof.",
     )
+    evaluator_temperature: float = Field(
+        default=1.0,
+        gt=0.0,
+        description=(
+            "Softmax temperature applied by the trained-evaluator path "
+            "(``FNetEvaluator``) when projecting policy logits to a "
+            "probability distribution. Lower values sharpen the prior; "
+            "higher values flatten it. Ignored by the random/uniform "
+            "evaluator path."
+        ),
+    )
+    evaluator_use_fast_path: bool = Field(
+        default=True,
+        description=(
+            "Toggle the FNet fast-forward path inside ``FNetEvaluator``. "
+            "Set to ``False`` to force the full forward pass for "
+            "debugging or for models without an FNet block. Ignored by "
+            "the random/uniform evaluator path."
+        ),
+    )
+    checkpoint_strict_load: bool = Field(
+        default=False,
+        description=(
+            "Whether ``create_model_from_checkpoint`` should require the "
+            "checkpoint state-dict shapes to exactly match the constructed "
+            "model. The default ``False`` lets policy-head shape mismatches "
+            "(e.g. checkpoint trained with one PDE's action_space_size, "
+            "solver run on another) load gracefully with a warning. Set "
+            "to ``True`` for strict provenance checks in production runs."
+        ),
+    )
 
     @field_validator("device")
     @classmethod
@@ -213,6 +272,15 @@ class AlphaGalerkinSolver(BaseSolver):
 
         """
         self.config: AlphaGalerkinConfig = config or AlphaGalerkinConfig()
+        # Lazily-populated cache for the trained-evaluator path. The
+        # ``FNetEvaluator`` (and the underlying ``AlphaGalerkinModel``) is
+        # independent of the specific PDE instance the solver is run on, so
+        # benchmark suites that call ``solve()`` repeatedly with different
+        # operators only pay the disk I/O + model-init cost once. The cache
+        # is keyed implicitly on (``config.checkpoint_path``, resolved
+        # device) by virtue of ``self.config`` being immutable; tests that
+        # need to invalidate it explicitly call ``reset_cache()``.
+        self._cached_trained_evaluator: FNetEvaluator | None = None
 
     # ------------------------------------------------------------------ #
     # BaseSolver API                                                      #
@@ -435,57 +503,85 @@ class AlphaGalerkinSolver(BaseSolver):
 
     @staticmethod
     def _resolve_device(requested: str) -> str:
-        """Map a config device string to a runtime-available device.
+        """Resolve a config device string to a runtime-available device.
 
-        ``'cuda'`` (and ``'cuda:N'``) silently fall back to ``'cpu'`` when
-        CUDA is not available, with a warning so the downgrade is visible.
-        Explicit ``'cpu'`` is honoured untouched. This keeps the GPU-primary
-        default workable on CPU-only CI without forcing every caller to
-        branch on ``torch.cuda.is_available()``.
+        Thin instance-side delegate to the module-level
+        ``_resolve_device_cached``. Kept on the class so test code can
+        monkey-patch the helper if needed and so the staticmethod surface
+        stays stable for downstream callers.
         """
-        if requested.startswith("cuda") and not torch.cuda.is_available():
-            logger.warning(
-                "cuda_requested_but_unavailable",
-                requested=requested,
-                fallback="cpu",
-            )
-            return "cpu"
-        return requested
+        return _resolve_device_cached(requested)
+
+    def reset_cache(self) -> None:
+        """Drop the cached trained evaluator so the next ``solve()`` reloads.
+
+        Useful when a long-running process swaps in a new checkpoint at
+        the same ``checkpoint_path`` (e.g. periodic checkpoint rotation
+        during a benchmark) or when tests need to force a fresh load.
+        """
+        self._cached_trained_evaluator = None
+
+    def _build_trained_evaluator(self) -> FNetEvaluator:
+        """Construct (or return the cached) ``FNetEvaluator``.
+
+        Caching policy: the ``FNetEvaluator`` is built once per solver
+        instance and reused across subsequent ``solve()`` calls so
+        benchmark suites that iterate over many PDEs do not pay repeated
+        disk I/O + model-init cost. The cache is invalidated explicitly
+        via ``reset_cache()``; ``self.config`` is treated as immutable for
+        the lifetime of the instance.
+
+        ``checkpoint_path`` is guaranteed non-None and existent by the
+        ``_validate_trained_checkpoint`` model validator on the config,
+        so the assert below is a defensive belt-and-braces for callers
+        that mutate the config directly via ``model_copy``.
+        """
+        if self._cached_trained_evaluator is not None:
+            return self._cached_trained_evaluator
+
+        assert self.config.checkpoint_path is not None  # nosec B101 - validator-enforced
+        from src.training.checkpoint import create_model_from_checkpoint
+
+        torch_device = self._resolve_device(self.config.device)
+        model, _saved_config = create_model_from_checkpoint(
+            self.config.checkpoint_path,
+            device=torch_device,
+            strict=self.config.checkpoint_strict_load,
+        )
+        evaluator = FNetEvaluator(
+            model=model,
+            device=torch_device,
+            use_fast_path=self.config.evaluator_use_fast_path,
+            temperature=self.config.evaluator_temperature,
+        )
+        self._cached_trained_evaluator = evaluator
+        logger.info(
+            "trained_evaluator_loaded",
+            solver=self.name,
+            checkpoint_path=str(self.config.checkpoint_path),
+            device=torch_device,
+            temperature=self.config.evaluator_temperature,
+            use_fast_path=self.config.evaluator_use_fast_path,
+            strict=self.config.checkpoint_strict_load,
+        )
+        return evaluator
 
     def _build_mcts(self, pde_game: PDEGame) -> MCTS:
         """Construct the MCTS engine with the configured evaluator.
 
-        - ``random`` / ``uniform``: ``RandomEvaluator`` (uniform prior, zero value).
-        - ``trained``: ``FNetEvaluator`` wrapping an ``AlphaGalerkinModel``
-          loaded from ``self.config.checkpoint_path``. The checkpoint's stored
-          ``OperatorConfig`` determines the model architecture; weights are
-          loaded with ``strict=False`` so policy-head shape mismatches between
-          the checkpoint's training PDE and the current solve-time PDE
-          degrade gracefully (the unloaded keys are surfaced via the
-          checkpoint loader's logger).
+        - ``random`` / ``uniform``: fresh ``RandomEvaluator`` per call (it
+          captures only ``pde_game.action_space_size``, which can vary
+          between PDE instances).
+        - ``trained``: ``FNetEvaluator`` returned by
+          ``_build_trained_evaluator()`` (cached on the solver instance).
         """
-        torch_device = self._resolve_device(self.config.device)
-
         evaluator: RandomEvaluator | FNetEvaluator
         if self.config.evaluator == "trained":
-            # ``checkpoint_path`` is guaranteed non-None and existent by the
-            # ``_validate_trained_checkpoint`` model validator on the config.
-            assert self.config.checkpoint_path is not None  # nosec B101 - validator-enforced
-            from src.training.checkpoint import create_model_from_checkpoint
-
-            model, _saved_config = create_model_from_checkpoint(
-                self.config.checkpoint_path,
-                device=torch_device,
-                strict=False,
-            )
-            evaluator = FNetEvaluator(
-                model=model,
-                device=torch_device,
-                use_fast_path=True,
-                temperature=1.0,
-            )
+            evaluator = self._build_trained_evaluator()
+            torch_device = self._resolve_device(self.config.device)
         else:
             evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+            torch_device = self._resolve_device(self.config.device)
 
         logger.debug(
             "alphagalerkin_mcts_built",

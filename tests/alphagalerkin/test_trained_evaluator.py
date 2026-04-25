@@ -28,8 +28,10 @@ import torch
 
 from config.schemas import OperatorConfig
 from src.alphagalerkin import AlphaGalerkinConfig, AlphaGalerkinSolver
+from src.alphagalerkin.solver import _resolve_device_cached
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.modeling.model import AlphaGalerkinModel
+from src.pde.config import BasisSelectionConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,7 +55,21 @@ class _StubPDEGame:
         self.action_space_size = action_space_size
 
 
-def _operator_config(action_space_size: int) -> OperatorConfig:
+# ``BasisSelectionGame.state_channels = 3 + max_basis_functions`` (see
+# ``src/pde/games/basis_selection.py``); deriving from the config keeps the
+# test in sync if the default ever moves and avoids the magic literal that
+# Gemini's review surfaced.
+_BASIS_GAME_STATE_CHANNEL_OFFSET = 3
+_BASIS_DEFAULT_INPUT_CHANNELS: int = (
+    _BASIS_GAME_STATE_CHANNEL_OFFSET
+    + BasisSelectionConfig(name="default_for_channel_count").max_basis_functions
+)
+
+
+def _operator_config(
+    action_space_size: int,
+    input_channels: int = _BASIS_DEFAULT_INPUT_CHANNELS,
+) -> OperatorConfig:
     """Tiny ``OperatorConfig`` matching the PDE-state channel layout."""
     return OperatorConfig(
         d_model=16,
@@ -65,7 +81,7 @@ def _operator_config(action_space_size: int) -> OperatorConfig:
         n_softmax_layers=1,
         n_fourier_features=8,
         use_fnet_mixing=False,
-        input_channels=23,  # 3 + default max_basis_functions=20
+        input_channels=input_channels,
         action_space_size=action_space_size,
     )
 
@@ -103,6 +119,17 @@ def _solver_kwargs(**overrides: object) -> dict[str, object]:
     }
     kwargs.update(overrides)
     return kwargs
+
+
+@pytest.fixture(autouse=True)
+def _clear_device_cache() -> None:
+    """Reset the module-level ``_resolve_device_cached`` LRU between tests.
+
+    The cache is process-wide and would otherwise leak state between
+    tests that toggle ``torch.cuda.is_available``. ``autouse=True`` so
+    every test in this module starts from a clean cache.
+    """
+    _resolve_device_cached.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +240,177 @@ class TestDeviceResolution:
         monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
         assert AlphaGalerkinSolver._resolve_device("cuda") == "cuda"
         assert AlphaGalerkinSolver._resolve_device("cuda:0") == "cuda:0"
+
+
+class TestDeviceResolutionCaching:
+    """``_resolve_device_cached`` deduplicates work and warnings.
+
+    Gemini review surfaced the concern that benchmark suites would emit
+    one ``cuda_requested_but_unavailable`` warning per ``solve()`` call.
+    The module-level ``lru_cache`` collapses that to one warning per
+    unique device string for the lifetime of the process.
+    """
+
+    def test_resolve_is_memoized_per_device_string(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Repeated calls with the same input hit the cache (no recomputation)."""
+        call_count = {"n": 0}
+
+        def _counting_is_available() -> bool:
+            call_count["n"] += 1
+            return False
+
+        monkeypatch.setattr(torch.cuda, "is_available", _counting_is_available)
+
+        # First call populates the cache, subsequent calls bypass torch.cuda.
+        assert _resolve_device_cached("cuda") == "cpu"
+        assert _resolve_device_cached("cuda") == "cpu"
+        assert _resolve_device_cached("cuda") == "cpu"
+        assert call_count["n"] == 1
+
+    def test_warning_emitted_once_per_unique_device(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Distinct device strings each warn once; repeats are silent.
+
+        Without the cache, every ``solve()`` call would re-emit the
+        downgrade warning. This test guards against regressing back to
+        the noisy pattern Gemini flagged. We assert cache hits/misses
+        directly via ``lru_cache.cache_info`` because structlog does not
+        pipe through pytest's ``caplog`` fixture by default; the cache
+        miss count is a sound proxy for "warnings emitted" since the
+        warning lives on the cache-miss code path.
+        """
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+        _resolve_device_cached("cuda")
+        _resolve_device_cached("cuda")  # cache hit, no new warning
+        _resolve_device_cached("cuda:0")  # distinct key, new warning
+        _resolve_device_cached("cuda:0")  # cache hit
+        _resolve_device_cached("cuda:1")  # distinct, new warning
+
+        info = _resolve_device_cached.cache_info()
+        assert info.misses == 3, f"expected 3 cache misses, got {info.misses}"
+        assert info.hits == 2, f"expected 2 cache hits, got {info.hits}"
+
+
+# ---------------------------------------------------------------------------
+# Trained evaluator caching + new config fields
+# ---------------------------------------------------------------------------
+
+
+class TestTrainedEvaluatorCaching:
+    """The trained evaluator is loaded once per solver instance.
+
+    Gemini review surfaced the concern that benchmark suites that solve
+    many PDEs would re-load the checkpoint from disk on every call.
+    This test class guards the cache + reset semantics.
+    """
+
+    def test_trained_evaluator_is_cached_across_build_calls(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """``_build_trained_evaluator`` returns the same instance on repeat calls."""
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt = tmp_path / "cached.pt"
+        _save_tiny_checkpoint(ckpt, op_cfg)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(evaluator="trained", checkpoint_path=ckpt),
+            ),
+        )
+        first = solver._build_trained_evaluator()
+        second = solver._build_trained_evaluator()
+        assert first is second
+        # ``_build_mcts`` must reuse the cached instance too.
+        mcts = solver._build_mcts(_StubPDEGame(action_space_size=64))
+        assert mcts.evaluator is first
+
+    def test_reset_cache_forces_reload(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """``reset_cache()`` invalidates the cached evaluator."""
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt = tmp_path / "reset.pt"
+        _save_tiny_checkpoint(ckpt, op_cfg)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(evaluator="trained", checkpoint_path=ckpt),
+            ),
+        )
+        first = solver._build_trained_evaluator()
+        solver.reset_cache()
+        second = solver._build_trained_evaluator()
+        assert first is not second
+
+
+class TestEvaluatorConfigFields:
+    """New config fields propagate into ``FNetEvaluator`` construction.
+
+    Removes the previous magic numbers (``temperature=1.0``,
+    ``use_fast_path=True``, ``strict=False``) that were hardcoded inside
+    ``_build_mcts``; this test class is the contract for that surface.
+    """
+
+    @pytest.mark.parametrize("temperature", [0.5, 1.0, 2.5])
+    def test_temperature_is_propagated(
+        self,
+        tmp_path: Path,
+        temperature: float,
+    ) -> None:
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt = tmp_path / f"temp_{temperature}.pt"
+        _save_tiny_checkpoint(ckpt, op_cfg)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(
+                    evaluator="trained",
+                    checkpoint_path=ckpt,
+                    evaluator_temperature=temperature,
+                ),
+            ),
+        )
+        evaluator = solver._build_trained_evaluator()
+        assert isinstance(evaluator, FNetEvaluator)
+        assert evaluator.temperature == pytest.approx(temperature)
+
+    @pytest.mark.parametrize("use_fast_path", [True, False])
+    def test_use_fast_path_is_propagated(
+        self,
+        tmp_path: Path,
+        use_fast_path: bool,
+    ) -> None:
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt = tmp_path / f"fast_{use_fast_path}.pt"
+        _save_tiny_checkpoint(ckpt, op_cfg)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(
+                    evaluator="trained",
+                    checkpoint_path=ckpt,
+                    evaluator_use_fast_path=use_fast_path,
+                ),
+            ),
+        )
+        evaluator = solver._build_trained_evaluator()
+        assert evaluator.use_fast_path is use_fast_path
+
+    def test_temperature_must_be_positive(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AlphaGalerkinConfig(evaluator_temperature=0.0)
+        with pytest.raises(ValidationError):
+            AlphaGalerkinConfig(evaluator_temperature=-1.0)
 
 
 # ---------------------------------------------------------------------------

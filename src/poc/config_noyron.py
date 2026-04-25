@@ -119,6 +119,26 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
         le=128,
         description="Cubic voxel grid resolution for the FDM reference.",
     )
+    voxel_fdm_iterations: int = Field(
+        default=1500,
+        ge=10,
+        description="Maximum Jacobi sweeps in the FDM reference solver.",
+    )
+    voxel_fdm_tolerance: float = Field(
+        default=1e-5,
+        gt=0,
+        description="Convergence tolerance (max-norm update) for the FDM solver.",
+    )
+    harmonic_wave_number: float = Field(
+        default=4.0 * 3.141592653589793,
+        gt=0,
+        description=(
+            "Wave number ``k`` used by the analytical-harmonic reference "
+            "field ``u(p) = sin(k*x) + sin(k*y) + sin(k*z)``. Smaller "
+            "values yield smoother references; larger values stress the "
+            "Fourier-feature surrogate at high frequencies."
+        ),
+    )
 
     # ----- success criteria -----
     mse_threshold_low: float = Field(

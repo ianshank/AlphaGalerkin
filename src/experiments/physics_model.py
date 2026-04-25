@@ -79,7 +79,10 @@ class PhysicsOperator(nn.Module):
             input_dim=input_dim,
         )
 
-        # Fourier feature encoding for coordinates
+        # Fourier feature encoding for coordinates. Maps an arbitrary-dim
+        # input into [coords, sin(B*coords), cos(B*coords)] features, so
+        # the same backbone serves both the 2D Poisson and 3D Noyron HX
+        # use cases.
         self.coord_encoder = FourierFeatures(
             n_features=n_fourier_features,
             scale=fourier_scale,

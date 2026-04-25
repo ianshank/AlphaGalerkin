@@ -31,19 +31,27 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-# Relative step size used by the central-difference gradient. Chosen small
+# Default step size for the central-difference SDF gradient. Chosen small
 # enough to capture local curvature on typical Leap 71 parts (mm scale) but
-# large enough to avoid float32 cancellation.
-_GRAD_EPSILON = 1e-4
+# large enough to avoid float32 cancellation. Override via
+# ``PicoGKDomain(grad_epsilon=...)``.
+DEFAULT_GRAD_EPSILON = 1e-4
 
-# Maximum oversample multiplier that sample_interior will grow to before
-# giving up. Prevents an unbounded loop on pathological SDFs.
-_MAX_OVERSAMPLE = 256.0
+# Default upper bound on the oversample multiplier for rejection sampling
+# before sampling fails loud. Prevents an unbounded loop on pathological
+# SDFs. Override via ``PicoGKDomain(max_oversample=...)``.
+DEFAULT_MAX_OVERSAMPLE = 256.0
 
-# Newton projection configuration for sample_boundary. Mirrors the defensive
-# style of CylinderFlowDomain in src/pde/geometry.py.
-_PROJECTION_MAX_ITERS = 16
-_PROJECTION_DEFAULT_TOL = 1e-5
+# Default Newton projection iterations for sample_boundary.
+DEFAULT_PROJECTION_MAX_ITERS = 16
+
+# Default boundary tolerance used by ``is_boundary`` and the Newton
+# projector. Mirrors the defensive style of CylinderFlowDomain.
+DEFAULT_BOUNDARY_PROJECTION_TOL = 1e-5
+
+# Default minimum gradient norm squared; below this the projector treats
+# the gradient as numerically zero.
+DEFAULT_MIN_GRAD_NORM_SQ = 1e-12
 
 
 class PicoGKDomain(DomainGeometry):
@@ -63,8 +71,12 @@ class PicoGKDomain(DomainGeometry):
         self,
         sdf_evaluator: SDFEvaluator,
         oversample_factor: float = 50.0,
-        boundary_tolerance: float = _PROJECTION_DEFAULT_TOL,
+        boundary_tolerance: float = DEFAULT_BOUNDARY_PROJECTION_TOL,
         volume_samples: int = 8192,
+        grad_epsilon: float = DEFAULT_GRAD_EPSILON,
+        max_oversample: float = DEFAULT_MAX_OVERSAMPLE,
+        projection_max_iters: int = DEFAULT_PROJECTION_MAX_ITERS,
+        min_grad_norm_sq: float = DEFAULT_MIN_GRAD_NORM_SQ,
     ) -> None:
         if oversample_factor <= 1.0:
             raise ValueError(
@@ -76,10 +88,29 @@ class PicoGKDomain(DomainGeometry):
             )
         if volume_samples < 1:
             raise ValueError(f"volume_samples must be >= 1, got {volume_samples}")
+        if grad_epsilon <= 0.0:
+            raise ValueError(f"grad_epsilon must be > 0, got {grad_epsilon}")
+        if max_oversample <= oversample_factor:
+            raise ValueError(
+                f"max_oversample ({max_oversample}) must be > "
+                f"oversample_factor ({oversample_factor})"
+            )
+        if projection_max_iters < 1:
+            raise ValueError(
+                f"projection_max_iters must be >= 1, got {projection_max_iters}"
+            )
+        if min_grad_norm_sq <= 0.0:
+            raise ValueError(
+                f"min_grad_norm_sq must be > 0, got {min_grad_norm_sq}"
+            )
 
         self.sdf_evaluator = sdf_evaluator
         self.oversample_factor = float(oversample_factor)
         self.boundary_tolerance = float(boundary_tolerance)
+        self.grad_epsilon = float(grad_epsilon)
+        self.max_oversample = float(max_oversample)
+        self.projection_max_iters = int(projection_max_iters)
+        self.min_grad_norm_sq = float(min_grad_norm_sq)
 
         (mins, maxs) = sdf_evaluator.bounding_box()
         if len(mins) != len(maxs):
@@ -173,8 +204,8 @@ class PicoGKDomain(DomainGeometry):
             else:
                 collected.append(accepted)
                 n_remaining -= int(accepted.shape[0])
-                oversample = min(oversample * 2.0, _MAX_OVERSAMPLE)
-                if oversample >= _MAX_OVERSAMPLE and accepted.shape[0] == 0:
+                oversample = min(oversample * 2.0, self.max_oversample)
+                if oversample >= self.max_oversample and accepted.shape[0] == 0:
                     raise RuntimeError(
                         "PicoGKDomain.sample_interior failed to find any "
                         "interior points; the SDF bounding box may be "
@@ -228,8 +259,8 @@ class PicoGKDomain(DomainGeometry):
             else:
                 collected.append(accepted)
                 n_remaining -= int(accepted.shape[0])
-                oversample = min(oversample * 2.0, _MAX_OVERSAMPLE)
-                if oversample >= _MAX_OVERSAMPLE and accepted.shape[0] == 0:
+                oversample = min(oversample * 2.0, self.max_oversample)
+                if oversample >= self.max_oversample and accepted.shape[0] == 0:
                     raise RuntimeError(
                         "PicoGKDomain.sample_boundary could not project any "
                         "candidates onto the zero level set; the SDF may "
@@ -269,7 +300,7 @@ class PicoGKDomain(DomainGeometry):
             by zero.
 
         """
-        eps = _GRAD_EPSILON
+        eps = self.grad_epsilon
         grads: list[Tensor] = []
         for d in range(self._dim):
             step = torch.zeros_like(points)
@@ -282,12 +313,19 @@ class PicoGKDomain(DomainGeometry):
     def _project_to_surface(self, points: Tensor) -> Tensor:
         """Project points onto the zero level set via damped Newton steps."""
         x = points.clone()
-        for _ in range(_PROJECTION_MAX_ITERS):
+        for it in range(self.projection_max_iters):
             values = self.sdf_evaluator.sdf(x)
             if bool((values.abs() < self.boundary_tolerance).all()):
+                logger.debug(
+                    "picogk_projection_converged",
+                    iteration=it,
+                    n_points=int(x.shape[0]),
+                )
                 break
             grads = self._estimate_gradient(x)
-            grad_norm_sq = (grads * grads).sum(dim=-1, keepdim=True).clamp_min(1e-12)
+            grad_norm_sq = (grads * grads).sum(dim=-1, keepdim=True).clamp_min(
+                self.min_grad_norm_sq
+            )
             step = (values.unsqueeze(-1) / grad_norm_sq) * grads
             x = x - step
         return x

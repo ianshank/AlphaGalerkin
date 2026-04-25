@@ -13,7 +13,6 @@ fails loud if CUDA is unavailable so we never silently fall back to a
 
 from __future__ import annotations
 
-import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -27,33 +26,11 @@ from torch.optim import Adam
 
 from src.poc.config import ScenarioResult, ScenarioStatus
 from src.poc.config_noyron import NoyronHXScenarioConfig
+from src.poc.device import resolve_device as _resolve_device
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
 
 logger = structlog.get_logger(__name__)
-
-
-# Wave number used by the analytical harmonic reference. Chosen small so
-# that the field has roughly one period across the helix bounding box,
-# which is the regime where Fourier-feature surrogates excel.
-_HARMONIC_WAVE_NUMBER = 4.0 * math.pi
-
-
-def _resolve_device(preference: str) -> torch.device:
-    """Resolve the user's device preference, failing loud when needed."""
-    if preference == "cuda":
-        if not torch.cuda.is_available():
-            raise RuntimeError(
-                "Noyron HX scenario requested device='cuda' but CUDA is "
-                "not available. Set device='cpu' to force CPU, or "
-                "device='auto' to fall back silently."
-            )
-        return torch.device("cuda")
-    if preference == "cpu":
-        return torch.device("cpu")
-    if preference == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    raise ValueError(f"Unknown device preference: {preference}")
 
 
 @scenario("noyron_hx")
@@ -68,7 +45,10 @@ class NoyronHXScenario(BaseScenario):
         **kwargs: Any,
     ) -> None:
         super().__init__(config, **kwargs)
-        self.config: NoyronHXScenarioConfig  # type: ignore[assignment]
+        # Type-check refinement: tell mypy the config attribute is the
+        # narrower NoyronHXScenarioConfig, not the BaseScenarioConfig
+        # declared on the base class.
+        self.config: NoyronHXScenarioConfig
 
         self._model: nn.Module | None = None
         self._device: torch.device | None = None
@@ -85,7 +65,9 @@ class NoyronHXScenario(BaseScenario):
         from src.pde.geometry import GeometryConfig, GeometryType
         from src.pde.operators_picogk import HelicalHeatOperator
 
-        self._device = _resolve_device(self.config.device)
+        self._device = _resolve_device(
+            self.config.device, context=f"NoyronHXScenario({self.name})"
+        )
         self._output_dir = Path("outputs/poc/noyron_hx")
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -167,22 +149,37 @@ class NoyronHXScenario(BaseScenario):
         self._model = model
 
         # ----- training -----
+        self._scenario_logger.info(
+            "training_start",
+            n_pts=self.config.n_train_pts,
+            n_boundary_pts=self.config.n_train_boundary_pts,
+            n_epochs=self.config.n_epochs,
+            ref_solver_kind=self.config.ref_solver_kind,
+        )
         with self._scenario_logger.timed("training"):
             train_loss = self._train(model)
         self.record_metric("train_loss_final", float(train_loss))
+        self._scenario_logger.metric("train_loss_final", float(train_loss))
 
         # ----- evaluation at training point density -----
         with self._scenario_logger.timed("eval_low_density"):
             mse_low = self._evaluate(model, self.config.n_train_pts, seed_offset=1)
         self.record_metric("mse_low", float(mse_low))
+        self._scenario_logger.metric(
+            "mse_low", float(mse_low), n_pts=self.config.n_train_pts
+        )
 
         # ----- evaluation at zero-shot higher density -----
         with self._scenario_logger.timed("eval_high_density"):
             mse_high = self._evaluate(model, self.config.n_eval_pts, seed_offset=2)
         self.record_metric("mse_high", float(mse_high))
+        self._scenario_logger.metric(
+            "mse_high", float(mse_high), n_pts=self.config.n_eval_pts
+        )
 
         transfer_ratio = float(mse_high / max(mse_low, 1e-12))
         self.record_metric("transfer_ratio", transfer_ratio)
+        self._scenario_logger.metric("transfer_ratio", transfer_ratio)
 
         # ----- pass/fail -----
         threshold_results = {
@@ -230,12 +227,12 @@ class NoyronHXScenario(BaseScenario):
     def _harmonic_reference(self, coords: Tensor) -> Tensor:
         """Closed-form temperature field used by analytical_harmonic mode.
 
-        ``u(x, y, z) = sin(k x) + sin(k y) + sin(k z)`` for some wave
-        number ``k``; this is harmonic (Laplacian = -k^2 (sum of sins))
-        with a forcing ``f = kappa * k^2 * (sum of sins)`` that we set
-        consistently in ``_evaluate``.
+        ``u(x, y, z) = sin(k x) + sin(k y) + sin(k z)`` for the configured
+        wave number ``k``. The Laplacian is ``-k^2 (sum of sins)``, so
+        ``_harmonic_source`` returns ``kappa * k^2 * (sum of sins)`` to
+        make ``-kappa Laplacian u = f`` consistent.
         """
-        k = _HARMONIC_WAVE_NUMBER
+        k = self.config.harmonic_wave_number
         return (
             torch.sin(k * coords[:, 0])
             + torch.sin(k * coords[:, 1])
@@ -244,7 +241,7 @@ class NoyronHXScenario(BaseScenario):
 
     def _harmonic_source(self, coords: Tensor) -> Tensor:
         """Source matching the harmonic reference under -kappa Laplacian u = f."""
-        k = _HARMONIC_WAVE_NUMBER
+        k = self.config.harmonic_wave_number
         return self.config.diffusivity * (k**2) * (
             torch.sin(k * coords[:, 0])
             + torch.sin(k * coords[:, 1])
@@ -267,10 +264,20 @@ class NoyronHXScenario(BaseScenario):
             return values.cpu().numpy()
 
         (mins, maxs) = self._operator.geometry.bounding_box()
+        bbox_min: tuple[float, float, float] = (
+            float(mins[0]),
+            float(mins[1]),
+            float(mins[2]),
+        )
+        bbox_max: tuple[float, float, float] = (
+            float(maxs[0]),
+            float(maxs[1]),
+            float(maxs[2]),
+        )
         interior_mask, voxel_coords = voxelize_sdf(
             sdf_fn=sdf_fn,
-            bbox_min=tuple(float(x) for x in mins),
-            bbox_max=tuple(float(x) for x in maxs),
+            bbox_min=bbox_min,
+            bbox_max=bbox_max,
             resolution=self.config.voxel_fdm_resolution,
         )
 
@@ -284,6 +291,8 @@ class NoyronHXScenario(BaseScenario):
             voxel_coords=voxel_coords,
             boundary_value_fn=boundary_value_fn,
             diffusivity=self.config.diffusivity,
+            n_iterations=self.config.voxel_fdm_iterations,
+            tolerance=self.config.voxel_fdm_tolerance,
         )
 
         flat_coords = voxel_coords.reshape(-1, 3)

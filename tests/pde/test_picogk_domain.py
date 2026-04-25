@@ -56,14 +56,97 @@ class TestPicoGKDomainConstruction:
     def test_invalid_oversample_factor(
         self, sdf: AnalyticalHelixSDF
     ) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="oversample_factor"):
             PicoGKDomain(sdf_evaluator=sdf, oversample_factor=1.0)
 
     def test_invalid_boundary_tolerance(
         self, sdf: AnalyticalHelixSDF
     ) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="boundary_tolerance"):
             PicoGKDomain(sdf_evaluator=sdf, boundary_tolerance=0.0)
+
+    def test_invalid_volume_samples(self, sdf: AnalyticalHelixSDF) -> None:
+        with pytest.raises(ValueError, match="volume_samples"):
+            PicoGKDomain(sdf_evaluator=sdf, volume_samples=0)
+
+    def test_inverted_bounding_box_raises(self) -> None:
+        """An SDF with min >= max in any axis must be rejected."""
+
+        class _BadBoundsSDF:
+            dim = 3
+
+            def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+                # x-axis is inverted (min == max == 1.0) → degenerate bbox.
+                return (1.0, -1.0, -1.0), (1.0, 1.0, 1.0)
+
+            def sdf(self, points):  # pragma: no cover - never called
+                import torch as _torch
+                return _torch.zeros(points.shape[0])
+
+        with pytest.raises(ValueError, match="max .* <= min"):
+            PicoGKDomain(sdf_evaluator=_BadBoundsSDF())  # type: ignore[arg-type]
+
+    def test_mismatched_bounding_box_lengths_raises(self) -> None:
+        class _BadBoundsSDF:
+            dim = 3
+
+            def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+                return (0.0, 0.0), (1.0, 1.0, 1.0)  # len 2 vs len 3
+
+            def sdf(self, points):  # pragma: no cover
+                import torch as _torch
+                return _torch.zeros(points.shape[0])
+
+        with pytest.raises(ValueError, match="length mismatch"):
+            PicoGKDomain(sdf_evaluator=_BadBoundsSDF())  # type: ignore[arg-type]
+
+
+class TestPicoGKDomainEmptySDFFailures:
+    """``sample_interior`` / ``sample_boundary`` must raise when the SDF is unworkable."""
+
+    def test_sample_interior_raises_when_sdf_always_positive(self) -> None:
+        """If the SDF reports every point as exterior, sampling must fail loud."""
+        from src.pde.geometry_picogk import PicoGKDomain
+
+        class _AlwaysOutsideSDF:
+            dim = 3
+
+            def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+                return (-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)
+
+            def sdf(self, points):
+                import torch as _torch
+                return _torch.ones(points.shape[0])
+
+        domain = PicoGKDomain(
+            sdf_evaluator=_AlwaysOutsideSDF(),  # type: ignore[arg-type]
+            volume_samples=64,
+        )
+        with pytest.raises(RuntimeError, match="any interior points"):
+            domain.sample_interior(8)
+
+    def test_sample_boundary_raises_when_sdf_has_no_zero_crossing(self) -> None:
+        """If the SDF never gets close to zero, the projector must fail loud."""
+        from src.pde.geometry_picogk import PicoGKDomain
+
+        class _FlatPositiveSDF:
+            dim = 3
+
+            def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+                return (-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)
+
+            def sdf(self, points):
+                import torch as _torch
+                # Constant 1.0 with zero gradient → projection cannot converge.
+                return _torch.ones(points.shape[0])
+
+        domain = PicoGKDomain(
+            sdf_evaluator=_FlatPositiveSDF(),  # type: ignore[arg-type]
+            volume_samples=64,
+            boundary_tolerance=1e-6,
+        )
+        with pytest.raises(RuntimeError, match="zero level set"):
+            domain.sample_boundary(4)
 
     def test_volume_estimate_within_bbox_volume(
         self, domain: PicoGKDomain, sdf: AnalyticalHelixSDF

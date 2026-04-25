@@ -43,11 +43,20 @@ class TestAnalyticalHelixSDFConstruction:
             {"r_minor": 0.0},
             {"pitch": 0.0},
             {"n_turns": 0},
+            {"newton_max_iters": 0},
+            {"newton_deriv_tol": 0.0},
+            {"newton_deriv_tol": -1e-9},
         ],
     )
     def test_invalid_params_raise(self, kwargs: dict) -> None:
         with pytest.raises(ValueError):
             AnalyticalHelixSDF(**kwargs)
+
+    def test_newton_overrides_take_effect(self) -> None:
+        """Custom Newton settings must propagate to instance state."""
+        sdf = AnalyticalHelixSDF(newton_max_iters=4, newton_deriv_tol=1e-6)
+        assert sdf.newton_max_iters == 4
+        assert sdf.newton_deriv_tol == pytest.approx(1e-6)
 
     def test_self_intersection_blocked(self) -> None:
         # r_minor >= R_major creates a self-intersecting torus.

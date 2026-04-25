@@ -123,6 +123,16 @@ class TestHelicalHeatOperatorSampling:
         mask = operator.is_boundary_point(interior, tolerance=1e-6)
         assert not bool(np.asarray(mask).any())
 
+    def test_is_boundary_point_tensor_path(
+        self, operator: HelicalHeatOperator
+    ) -> None:
+        """The Tensor branch must round-trip without numpy conversion."""
+        interior_np = operator.generate_collocation_points(8, seed=3)
+        interior = torch.from_numpy(interior_np)
+        mask = operator.is_boundary_point(interior, tolerance=1e-6)
+        assert isinstance(mask, torch.Tensor)
+        assert mask.dtype == torch.bool
+
 
 class TestHelicalHeatOperatorPhysics:
     def test_residual_finite_on_random_u(

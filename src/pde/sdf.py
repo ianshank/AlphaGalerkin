@@ -30,13 +30,15 @@ from torch import Tensor
 logger = structlog.get_logger(__name__)
 
 
-# Maximum Newton iterations when projecting to the nearest helix-centerline
-# parameter. Chosen to match the defensive style in CylinderFlowDomain.
-_NEWTON_MAX_ITERS = 16
+# Default upper bound on Newton iterations when projecting to the nearest
+# helix-centerline parameter. Chosen to match the defensive style in
+# CylinderFlowDomain. Callers can override via ``newton_max_iters``.
+DEFAULT_NEWTON_MAX_ITERS = 16
 
-# Absolute tolerance for the Newton stopping criterion on the derivative of
-# the squared distance. Values smaller than this flip sign indistinguishably.
-_NEWTON_DERIV_TOL = 1e-8
+# Default absolute tolerance for the Newton stopping criterion on the
+# derivative of the squared distance. Values smaller than this flip sign
+# indistinguishably under float32. Override via ``newton_deriv_tol``.
+DEFAULT_NEWTON_DERIV_TOL = 1e-8
 
 
 @runtime_checkable
@@ -115,6 +117,8 @@ class AnalyticalHelixSDF:
         r_minor: float = 0.012,
         pitch: float = 0.02,
         n_turns: int = 5,
+        newton_max_iters: int = DEFAULT_NEWTON_MAX_ITERS,
+        newton_deriv_tol: float = DEFAULT_NEWTON_DERIV_TOL,
     ) -> None:
         if R_major <= 0:
             raise ValueError(f"R_major must be > 0, got {R_major}")
@@ -124,6 +128,14 @@ class AnalyticalHelixSDF:
             raise ValueError(f"pitch must be > 0, got {pitch}")
         if n_turns <= 0:
             raise ValueError(f"n_turns must be > 0, got {n_turns}")
+        if newton_max_iters < 1:
+            raise ValueError(
+                f"newton_max_iters must be >= 1, got {newton_max_iters}"
+            )
+        if newton_deriv_tol <= 0:
+            raise ValueError(
+                f"newton_deriv_tol must be > 0, got {newton_deriv_tol}"
+            )
         # A tube wider than its helix radius produces a self-intersecting
         # torus; forbid this to keep the SDF well-defined.
         if r_minor >= R_major:
@@ -136,6 +148,8 @@ class AnalyticalHelixSDF:
         self.r_minor = float(r_minor)
         self.pitch = float(pitch)
         self.n_turns = int(n_turns)
+        self.newton_max_iters = int(newton_max_iters)
+        self.newton_deriv_tol = float(newton_deriv_tol)
 
         logger.debug(
             "analytical_helix_sdf_created",
@@ -143,6 +157,8 @@ class AnalyticalHelixSDF:
             r_minor=r_minor,
             pitch=pitch,
             n_turns=n_turns,
+            newton_max_iters=newton_max_iters,
+            newton_deriv_tol=newton_deriv_tol,
         )
 
     @property
@@ -227,7 +243,7 @@ class AnalyticalHelixSDF:
         # Initial guess from the z-coordinate of the point.
         t = torch.clamp(points[:, 2] / self.pitch, min=t_min, max=t_max)
 
-        for _ in range(_NEWTON_MAX_ITERS):
+        for _ in range(self.newton_max_iters):
             c = self._centerline(t)
             dc = self._centerline_tangent(t)
             ddc = self._centerline_curvature(t)
@@ -241,9 +257,9 @@ class AnalyticalHelixSDF:
 
             # Avoid dividing by a vanishing derivative.
             safe_fprime = torch.where(
-                fprime.abs() > _NEWTON_DERIV_TOL,
+                fprime.abs() > self.newton_deriv_tol,
                 fprime,
-                torch.full_like(fprime, _NEWTON_DERIV_TOL),
+                torch.full_like(fprime, self.newton_deriv_tol),
             )
             step = f / safe_fprime
             t = torch.clamp(t - step, min=t_min, max=t_max)

@@ -75,11 +75,12 @@ def solve_steady_heat_voxel(
     diffusivity: float = 1.0,
     n_iterations: int = 1500,
     tolerance: float = 1e-5,
+    log_every_n_iters: int = 100,
 ) -> NDArray[np.float32]:
     """Solve the steady heat equation on a voxelized SDF domain.
 
-    Uses Gauss-Seidel iteration with masked Laplacian: each interior voxel
-    is updated from its six face-neighbors. Voxels neighboring an exterior
+    Uses Jacobi iteration with masked Laplacian: each interior voxel is
+    updated from its six face-neighbors. Voxels neighboring an exterior
     voxel use the boundary Dirichlet value at the world-space midpoint
     between the interior cell and the exterior cell.
 
@@ -91,14 +92,20 @@ def solve_steady_heat_voxel(
         source_fn: Optional callable for the heat-equation source term;
             defaults to zero.
         diffusivity: Thermal diffusivity ``kappa``.
-        n_iterations: Maximum Gauss-Seidel sweeps.
+        n_iterations: Maximum Jacobi sweeps.
         tolerance: Convergence threshold on max-norm update.
+        log_every_n_iters: Emit a debug log entry every Nth iteration.
+            Set very large to disable; set to 1 for per-iteration tracing.
 
     Returns:
         Solution field ``u`` of shape ``(R, R, R)`` with NaN at exterior
         voxels (so callers can mask them out).
 
     """
+    if log_every_n_iters < 1:
+        raise ValueError(
+            f"log_every_n_iters must be >= 1, got {log_every_n_iters}"
+        )
     if voxel_coords.shape[:3] != interior_mask.shape:
         raise ValueError(
             f"voxel_coords shape {voxel_coords.shape[:3]} does not match "
@@ -108,6 +115,14 @@ def solve_steady_heat_voxel(
         raise ValueError(f"diffusivity must be > 0, got {diffusivity}")
 
     R = interior_mask.shape[0]
+    n_interior = int(interior_mask.sum())
+    logger.info(
+        "voxel_fdm_solve_start",
+        resolution=R,
+        n_interior_voxels=n_interior,
+        diffusivity=diffusivity,
+        max_iterations=n_iterations,
+    )
     u = np.zeros((R, R, R), dtype=np.float32)
 
     # Voxel spacing assumed isotropic; recover from the first axis.
@@ -166,7 +181,7 @@ def solve_steady_heat_voxel(
         u = np.where(interior_mask, u_new, boundary_values)
 
         max_delta = float(np.max(np.abs(delta)))
-        if it % 100 == 0:
+        if it % log_every_n_iters == 0:
             logger.debug(
                 "voxel_fdm_iteration",
                 iteration=it,

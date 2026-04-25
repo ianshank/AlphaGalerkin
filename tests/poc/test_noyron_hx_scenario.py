@@ -109,3 +109,94 @@ def test_cuda_preference_fails_loud_when_unavailable() -> None:
     result = scenario.run()
     assert result.status == ScenarioStatus.ERROR
     assert "CUDA" in (result.error_message or "")
+
+
+def test_auto_device_falls_back_to_cpu() -> None:
+    """device='auto' must complete on machines without CUDA."""
+    cfg = _smoke_config().model_copy(update={"device": "auto"})
+    cls = _import_scenario_class()
+    scenario = cls(config=cfg)
+    result = scenario.run()
+    assert result.status != ScenarioStatus.ERROR, (
+        f"Scenario errored: {result.error_message}"
+    )
+
+
+def test_invalid_device_preference_raises() -> None:
+    """An unknown device string must raise from the resolver."""
+    from src.poc.scenarios.noyron_hx import _resolve_device
+
+    with pytest.raises(ValueError, match="Unknown device preference"):
+        _resolve_device("tpu")
+
+
+def test_voxel_fdm_reference_path_round_trips(tmp_path) -> None:
+    """The voxel_fdm reference branch must be exercised end-to-end."""
+    cfg = _smoke_config().model_copy(
+        update={
+            "ref_solver_kind": "voxel_fdm",
+            "voxel_fdm_resolution": 16,  # tiny to keep the test fast
+        }
+    )
+    cls = _import_scenario_class()
+    scenario = cls(config=cfg)
+    result = scenario.run()
+    assert result.status != ScenarioStatus.ERROR, (
+        f"Scenario errored: {result.error_message}\n{result.error_traceback}"
+    )
+    # Custom field set in execute() — voxel_fdm should round-trip through the result.
+    assert getattr(result, "ref_solver_kind", None) == "voxel_fdm"
+
+
+def test_model_checkpoint_artifact_recorded() -> None:
+    """The trained model must be persisted as a recorded artifact."""
+    from pathlib import Path
+
+    cls = _import_scenario_class()
+    scenario = cls(config=_smoke_config())
+    result = scenario.run()
+    assert result.status != ScenarioStatus.ERROR
+    assert "model" in result.artifacts
+    assert Path(result.artifacts["model"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# Config validator tests — exercise the model_validator branches directly so
+# coverage hits config_noyron.py lines 163/169/173.
+# ---------------------------------------------------------------------------
+
+
+class TestNoyronHXScenarioConfigValidators:
+    def test_self_intersecting_helix_rejected(self) -> None:
+        with pytest.raises(ValueError, match="self-intersection"):
+            NoyronHXScenarioConfig(
+                name="bad",
+                description="x",
+                helix_R_major=0.01,
+                helix_r_minor=0.01,  # equals R_major -> self-intersection
+                n_train_pts=64,
+                n_eval_pts=64,
+                device="cpu",
+            )
+
+    def test_picogk_requires_voxel_path(self) -> None:
+        with pytest.raises(ValueError, match="picogk_voxel_path"):
+            NoyronHXScenarioConfig(
+                name="bad",
+                description="x",
+                use_picogk=True,
+                picogk_voxel_path=None,
+                n_train_pts=64,
+                n_eval_pts=64,
+                device="cpu",
+            )
+
+    def test_eval_pts_must_be_at_least_train_pts(self) -> None:
+        with pytest.raises(ValueError, match="should be >= n_train_pts"):
+            NoyronHXScenarioConfig(
+                name="bad",
+                description="x",
+                n_train_pts=4096,
+                n_eval_pts=128,  # smaller than train: degenerate
+                device="cpu",
+            )

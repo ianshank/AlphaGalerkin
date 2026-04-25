@@ -4,13 +4,19 @@ Wraps the MCTS + PDE-game stack behind the ``BaseSolver`` protocol
 defined in ``src.research.baselines`` so that ``PDEBenchmarkRunner``
 can compare AlphaGalerkin against classical solvers on an equal footing.
 
-The solver does not train a network: it uses a ``RandomEvaluator``
-(``random`` and ``uniform`` are accepted evaluator modes; the latter is
-an alias for the former until a learned evaluator is wired in) so the
-MCTS explores the PDE game purely via the tree search policy.  The result is
-the canonical ``(l2_error, n_dof, wall_time_seconds)`` triple plus a
-solution vector (when the underlying game exposes one) and rich metadata
-for downstream analysis.
+The solver chooses between three evaluator modes:
+
+* ``random`` / ``uniform`` (default) wrap MCTS with a ``RandomEvaluator``
+  (uniform prior + zero value), so the search explores the PDE game
+  purely via the tree-search policy.
+* ``trained`` loads an ``AlphaGalerkinModel`` checkpoint via
+  ``FNetEvaluator``, providing a learned policy/value prior. The
+  checkpoint path is required at config construction (see
+  ``AlphaGalerkinConfig._validate_trained_checkpoint``).
+
+The result is the canonical ``(l2_error, n_dof, wall_time_seconds)`` triple
+plus a solution vector (when the underlying game exposes one) and rich
+metadata for downstream analysis.
 
 Design notes
 ------------
@@ -38,14 +44,15 @@ from __future__ import annotations
 
 import random
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import structlog
 import torch
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
-from src.mcts.evaluator import RandomEvaluator
+from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.pde.config import PDEConfig, PDEGameConfig
 from src.pde.games.basis_selection import BasisSelectionGame
@@ -110,22 +117,35 @@ class AlphaGalerkinConfig(SolverConfig):
         gt=0.0,
         description="Early-stop threshold on the game error estimate.",
     )
-    evaluator: Literal["random", "uniform"] = Field(
+    evaluator: Literal["random", "uniform", "trained"] = Field(
         default="random",
         description=(
-            "Evaluator strategy. Both 'random' and 'uniform' map to the "
-            "RandomEvaluator (uniform prior + zero value) until a network-"
-            "backed evaluator is wired in."
+            "Evaluator strategy. 'random' and 'uniform' both map to the "
+            "RandomEvaluator (uniform prior + zero value). 'trained' loads "
+            "an AlphaGalerkinModel checkpoint via FNetEvaluator and requires "
+            "``checkpoint_path`` to point at an existing file."
+        ),
+    )
+    checkpoint_path: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a trained AlphaGalerkin checkpoint (saved by the standard "
+            "Trainer). Required when ``evaluator='trained'``. Existence is "
+            "validated by the post-construction ``_validate_trained_checkpoint`` "
+            "model validator so misconfigurations fail at config construction "
+            "rather than at solve time."
         ),
     )
     device: str = Field(
-        default="cpu",
+        default="cuda",
         description=(
             "Torch device spec for the evaluator (accepted values match "
             "``torch.device`` - e.g. 'cpu', 'cuda', 'cuda:0'). Validated at "
             "config-construction time via ``torch.device(...)`` so invalid "
-            "strings fail fast. Used to log the active device at solve time "
-            "and reserved for the future network-backed evaluator."
+            "strings fail fast. The default is ``'cuda'`` (GPU is primary); "
+            "the trained-evaluator dispatch falls back to CPU at runtime when "
+            "``torch.cuda.is_available()`` is False so CPU-only CI hosts still "
+            "execute the same code path."
         ),
     )
     min_game_dof: int = Field(
@@ -149,6 +169,24 @@ class AlphaGalerkinConfig(SolverConfig):
         except (RuntimeError, ValueError) as exc:
             raise ValueError(f"Invalid torch device string: {value!r} ({exc})") from exc
         return value
+
+    @model_validator(mode="after")
+    def _validate_trained_checkpoint(self) -> AlphaGalerkinConfig:
+        """Cross-field check: ``evaluator='trained'`` requires a real checkpoint.
+
+        Fails fast at config construction so misconfigured benchmark runs
+        don't waste time spinning up a PDE game before discovering the
+        checkpoint is missing.
+        """
+        if self.evaluator == "trained":
+            if self.checkpoint_path is None:
+                raise ValueError(
+                    "evaluator='trained' requires checkpoint_path to be set "
+                    "to an existing AlphaGalerkin checkpoint file."
+                )
+            if not self.checkpoint_path.exists():
+                raise ValueError(f"checkpoint_path does not exist: {self.checkpoint_path}")
+        return self
 
 
 class AlphaGalerkinSolver(BaseSolver):
@@ -395,29 +433,71 @@ class AlphaGalerkinSolver(BaseSolver):
         # cannot prove that from the Literal type alone.
         raise ValueError(f"Unsupported game_mode: {self.config.game_mode!r}")
 
+    @staticmethod
+    def _resolve_device(requested: str) -> str:
+        """Map a config device string to a runtime-available device.
+
+        ``'cuda'`` (and ``'cuda:N'``) silently fall back to ``'cpu'`` when
+        CUDA is not available, with a warning so the downgrade is visible.
+        Explicit ``'cpu'`` is honoured untouched. This keeps the GPU-primary
+        default workable on CPU-only CI without forcing every caller to
+        branch on ``torch.cuda.is_available()``.
+        """
+        if requested.startswith("cuda") and not torch.cuda.is_available():
+            logger.warning(
+                "cuda_requested_but_unavailable",
+                requested=requested,
+                fallback="cpu",
+            )
+            return "cpu"
+        return requested
+
     def _build_mcts(self, pde_game: PDEGame) -> MCTS:
         """Construct the MCTS engine with the configured evaluator.
 
-        ``random`` and ``uniform`` both map to the ``RandomEvaluator``
-        (uniform prior + zero value). A trained, network-backed
-        evaluator is not yet part of the typed Literal - when it is
-        added the config schema will gain a ``"trained"`` option.
+        - ``random`` / ``uniform``: ``RandomEvaluator`` (uniform prior, zero value).
+        - ``trained``: ``FNetEvaluator`` wrapping an ``AlphaGalerkinModel``
+          loaded from ``self.config.checkpoint_path``. The checkpoint's stored
+          ``OperatorConfig`` determines the model architecture; weights are
+          loaded with ``strict=False`` so policy-head shape mismatches between
+          the checkpoint's training PDE and the current solve-time PDE
+          degrade gracefully (the unloaded keys are surfaced via the
+          checkpoint loader's logger).
         """
-        # The current ``RandomEvaluator`` samples via numpy and has no
-        # device-dependent state, so ``config.device`` is a no-op for it.
-        # We resolve and log the device anyway so the solver's run
-        # provenance is complete and the value is validated against
-        # ``torch.device`` at config construction (see ``_validate_device``).
-        torch_device = torch.device(self.config.device)
+        torch_device = self._resolve_device(self.config.device)
+
+        evaluator: RandomEvaluator | FNetEvaluator
+        if self.config.evaluator == "trained":
+            # ``checkpoint_path`` is guaranteed non-None and existent by the
+            # ``_validate_trained_checkpoint`` model validator on the config.
+            assert self.config.checkpoint_path is not None  # nosec B101 - validator-enforced
+            from src.training.checkpoint import create_model_from_checkpoint
+
+            model, _saved_config = create_model_from_checkpoint(
+                self.config.checkpoint_path,
+                device=torch_device,
+                strict=False,
+            )
+            evaluator = FNetEvaluator(
+                model=model,
+                device=torch_device,
+                use_fast_path=True,
+                temperature=1.0,
+            )
+        else:
+            evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+
         logger.debug(
             "alphagalerkin_mcts_built",
             solver=self.name,
             evaluator=self.config.evaluator,
-            device=str(torch_device),
+            device=torch_device,
             n_actions=pde_game.action_space_size,
             n_simulations=self.config.n_mcts_simulations,
+            checkpoint_path=str(self.config.checkpoint_path)
+            if self.config.checkpoint_path is not None
+            else None,
         )
-        evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
         return MCTS(
             evaluator=evaluator,
             n_simulations=self.config.n_mcts_simulations,

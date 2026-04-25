@@ -81,7 +81,11 @@ class TestAlphaGalerkinConfig:
         assert cfg.max_steps == 20
         assert cfg.target_tolerance == pytest.approx(1e-4)
         assert cfg.evaluator == "random"
-        assert cfg.device == "cpu"
+        # GPU-primary: default device is now ``cuda``. The runtime
+        # ``_resolve_device`` helper falls back to CPU at solve time when
+        # CUDA is unavailable, so this default is safe on CPU-only CI.
+        assert cfg.device == "cuda"
+        assert cfg.checkpoint_path is None
         # Inherited from SolverConfig.
         assert cfg.seed == 42
 
@@ -313,16 +317,30 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_rejected_by_config(self) -> None:
-        """Reject ``evaluator='trained'`` at config construction time.
+    def test_trained_evaluator_requires_checkpoint(self) -> None:
+        """``evaluator='trained'`` must be paired with an existing checkpoint.
 
-        The value is not in the supported ``Literal`` set and will regain a
-        slot once a learned evaluator is wired in.
+        The Literal accepts ``"trained"``, but the post-construction
+        ``_validate_trained_checkpoint`` model validator rejects the
+        config when ``checkpoint_path`` is ``None`` or points at a missing
+        file. Both failure modes must surface as ``ValidationError`` from
+        Pydantic so callers see them at config-build time, not deep in
+        ``solve()``.
         """
+        from pathlib import Path
+
         from pydantic import ValidationError
 
+        # Missing checkpoint_path → reject.
         with pytest.raises(ValidationError):
             _fast_solver_config(evaluator="trained")
+
+        # Non-existent checkpoint_path → reject.
+        with pytest.raises(ValidationError):
+            _fast_solver_config(
+                evaluator="trained",
+                checkpoint_path=Path("/nonexistent/checkpoint.pt"),
+            )
 
 
 # ---------------------------------------------------------------------------

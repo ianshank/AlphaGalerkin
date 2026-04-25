@@ -17,11 +17,19 @@ from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 import torch
-from torch.cuda.amp import GradScaler, autocast
-from torch.optim import AdamW, Optimizer
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, LRScheduler
+from torch.cuda.amp import autocast
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler
 
+from src.constants import (
+    DEFAULT_CURRICULUM_SCHEDULE,
+    DEFAULT_PER_ALPHA,
+    DEFAULT_PER_BETA,
+    WIN_RATE_ACCEPT_THRESHOLD,
+    WIN_RATE_REJECT_THRESHOLD,
+)
 from src.data.collate import TrainingBatch, VariableSizeCollator
+from src.training.base_trainer import BaseTrainer
 from src.training.checkpoint import CheckpointManager
 from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
@@ -54,6 +62,7 @@ if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
     from src.games.interface import GameInterface
     from src.modeling.model import AlphaGalerkinModel
+    from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 
 logger = structlog.get_logger(__name__)
 
@@ -110,11 +119,17 @@ class TrainingMetrics:
         return result
 
 
-class Trainer:
+class Trainer(BaseTrainer):
     """Main trainer for AlphaGalerkin.
 
     Coordinates self-play, training, and checkpoint management.
     Supports mixed precision training and gradient accumulation.
+
+    Inherits shared AMP, gradient-clipping, LR-scheduling, and
+    checkpoint helpers from :class:`BaseTrainer`.  The ``__init__``
+    does **not** call ``super().__init__()`` because the AlphaGalerkin
+    trainer has a substantially different setup flow; instead it
+    sets the attributes that ``BaseTrainer`` helpers rely on directly.
     """
 
     def __init__(
@@ -201,17 +216,34 @@ class Trainer:
             value_weight=self.training_config.value_loss_weight,
         )
 
+        # Combined physics loss (wraps policy/value/LBB + physics into one module)
+        # Stored separately from loss_fn to preserve _training_step compatibility.
+        self.combined_physics_loss_fn: CombinedAlphaGalerkinPhysicsLoss | None = None
+        _physics_loss_type = self.training_config.physics_loss_type
+        if _physics_loss_type != "none":
+            from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
+
+            _physics_weight = self.training_config.physics_weight
+            self.combined_physics_loss_fn = CombinedAlphaGalerkinPhysicsLoss(
+                physics_weight=_physics_weight,
+            )
+            logger.info(
+                "combined_physics_loss_enabled",
+                physics_loss_type=_physics_loss_type,
+                physics_weight=_physics_weight,
+            )
+
         # Physics-informed loss (optional)
         self.physics_loss_fn: PhysicsInformedLoss | None = None
-        self.use_physics_loss = getattr(self.training_config, "physics_informed", False)
-        self.physics_loss_weight = getattr(self.training_config, "physics_loss_weight", 0.1)
+        self.use_physics_loss = self.training_config.physics_informed
+        self.physics_loss_weight = self.training_config.physics_loss_weight
         if self.use_physics_loss:
             self.physics_loss_fn = self._create_physics_loss()
             logger.info(
                 "physics_loss_enabled",
                 weight=self.physics_loss_weight,
-                n_collocation=getattr(self.training_config, "physics_n_collocation_points", 1000),
-                n_boundary=getattr(self.training_config, "physics_n_boundary_points", 200),
+                n_collocation=self.training_config.physics_n_collocation_points,
+                n_boundary=self.training_config.physics_n_boundary_points,
             )
 
         # Loss balancer for adaptive weighting
@@ -223,24 +255,24 @@ class Trainer:
         # Learning rate scheduler
         self.scheduler = self._create_scheduler()
 
-        # Mixed precision
-        self.use_amp = self.training_config.use_amp and self.device.type == "cuda"
-        self.scaler = GradScaler() if self.use_amp else None
+        # Mixed precision (uses BaseTrainer helper)
+        self.use_amp, self.scaler, self._amp_dtype = self._setup_amp(
+            use_amp=self.training_config.use_amp,
+            device=self.device,
+        )
 
         # Replay buffer (prioritized or uniform based on config)
-        self.use_prioritized_replay = getattr(self.training_config, "use_prioritized_replay", False)
+        self.use_prioritized_replay = self.training_config.use_prioritized_replay
         self.buffer = create_replay_buffer(
             capacity=self.training_config.replay_buffer_size,
             prioritized=self.use_prioritized_replay,
-            alpha=getattr(self.training_config, "per_alpha", 0.6),
-            beta=getattr(self.training_config, "per_beta", 0.4),
+            alpha=getattr(self.training_config, "per_alpha", DEFAULT_PER_ALPHA),
+            beta=getattr(self.training_config, "per_beta", DEFAULT_PER_BETA),
         )
 
         # Board size curriculum (optional)
         self.curriculum = (
-            self._create_curriculum()
-            if getattr(self.training_config, "curriculum_enabled", False)
-            else None
+            self._create_curriculum() if self.training_config.curriculum_enabled else None
         )
 
         # Self-play worker (use raw model, not DDP-wrapped)
@@ -283,10 +315,9 @@ class Trainer:
 
         # Elo tracker for checkpoint evaluation (optional)
         self.elo_tracker: EloTracker | None = None
-        if getattr(self.training_config, "eval_vs_checkpoints", False):
-            k_factor = getattr(self.training_config, "elo_k_factor", 32.0)
-            self.elo_tracker = EloTracker(k_factor=k_factor)
-            logger.info("elo_tracker_enabled", k_factor=k_factor)
+        if self.training_config.eval_vs_checkpoints:
+            self.elo_tracker = EloTracker(k_factor=self.training_config.elo_k_factor)
+            logger.info("elo_tracker_enabled", k_factor=self.training_config.elo_k_factor)
 
         # Training stability monitor (optional)
         self.stability_monitor = self._create_stability_monitor()
@@ -300,57 +331,63 @@ class Trainer:
         if self.wandb_logger is not None:
             self.wandb_logger.watch_model(self.model)
 
-    def _create_optimizer(self) -> Optimizer:
-        """Create optimizer from config."""
-        return AdamW(
-            self.model.parameters(),
+    def _create_optimizer(self) -> Optimizer:  # type: ignore[override]
+        """Create optimizer from config.
+
+        Delegates to :meth:`BaseTrainer._create_optimizer` static helper.
+        """
+        return BaseTrainer._create_optimizer(
+            self.model,
             lr=self.training_config.learning_rate,
             weight_decay=self.training_config.weight_decay,
         )
 
-    def _create_scheduler(self) -> LRScheduler:
-        """Create learning rate scheduler from config."""
-        scheduler_type = self.training_config.lr_scheduler
-        warmup_steps = self.training_config.warmup_steps
-        total_steps = self.training_config.total_steps
+    def _create_scheduler(self) -> LRScheduler:  # type: ignore[override]
+        """Create learning rate scheduler from config.
 
-        main_scheduler: LRScheduler
-        if scheduler_type == "cosine":
-            # Cosine annealing after warmup
-            main_scheduler = CosineAnnealingLR(
-                self.optimizer,
-                T_max=total_steps - warmup_steps,
-            )
-        elif scheduler_type == "linear":
-            main_scheduler = LinearLR(
-                self.optimizer,
-                start_factor=1.0,
-                end_factor=0.1,
-                total_iters=total_steps - warmup_steps,
-            )
-        else:  # constant
-            main_scheduler = LinearLR(
-                self.optimizer,
-                start_factor=1.0,
-                end_factor=1.0,
-                total_iters=total_steps,
-            )
+        Delegates to :meth:`BaseTrainer._create_scheduler` static helper.
+        The ``"constant"`` type maps to ``"none"`` in the base helper
+        for backwards compatibility.
+        """
+        scheduler_type: str = self.training_config.lr_scheduler
+        # Map legacy "constant" to "none" (BaseTrainer recognises both)
+        if scheduler_type == "constant":
+            scheduler_type = "none"
 
-        # Add warmup
-        if warmup_steps > 0:
-            warmup_scheduler = LinearLR(
-                self.optimizer,
-                start_factor=0.1,
-                end_factor=1.0,
-                total_iters=warmup_steps,
-            )
-            return torch.optim.lr_scheduler.SequentialLR(
-                self.optimizer,
-                schedulers=[warmup_scheduler, main_scheduler],
-                milestones=[warmup_steps],
-            )
+        return BaseTrainer._create_scheduler(
+            optimizer=self.optimizer,
+            scheduler_type=scheduler_type,
+            warmup_steps=self.training_config.warmup_steps,
+            total_steps=self.training_config.total_steps,
+            min_lr_ratio=0.1,
+            warmup_start_factor=0.1,
+        )
 
-        return main_scheduler
+    # ------------------------------------------------------------------
+    # Abstract method implementations (required by BaseTrainer ABC)
+    # ------------------------------------------------------------------
+
+    def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:
+        """Not used directly -- Trainer uses _training_step instead."""
+        raise NotImplementedError(
+            "Trainer uses _training_step(); use that method or the train() loop."
+        )
+
+    def generate_data(self) -> Any:
+        """Not used directly -- Trainer uses _sample_batch instead."""
+        raise NotImplementedError(
+            "Trainer uses _sample_batch(); use that method or the train() loop."
+        )
+
+    def evaluate(self) -> dict[str, float]:
+        """Not used directly -- Trainer uses _run_evaluation instead."""
+        raise NotImplementedError(
+            "Trainer uses _run_evaluation(); use that method or the train() loop."
+        )
+
+    # ------------------------------------------------------------------
+    # Physics loss, loss balancer, curriculum, stability
+    # ------------------------------------------------------------------
 
     def _create_physics_loss(self) -> PhysicsInformedLoss | None:
         """Create physics-informed loss from config.
@@ -374,19 +411,13 @@ class Trainer:
             # Create physics loss config from training config
             physics_config = PhysicsLossConfig(
                 name="training_physics_loss",
-                residual_weight=getattr(self.training_config, "physics_residual_weight", 1.0),
-                boundary_weight=getattr(self.training_config, "physics_boundary_weight", 10.0),
-                initial_weight=getattr(self.training_config, "physics_initial_weight", 10.0),
-                conservation_weight=getattr(
-                    self.training_config, "physics_conservation_weight", 1.0
-                ),
-                n_collocation_points=getattr(
-                    self.training_config, "physics_n_collocation_points", 1000
-                ),
-                n_boundary_points=getattr(self.training_config, "physics_n_boundary_points", 200),
-                use_adaptive_weights=getattr(
-                    self.training_config, "physics_use_adaptive_weights", True
-                ),
+                residual_weight=self.training_config.physics_residual_weight,
+                boundary_weight=self.training_config.physics_boundary_weight,
+                initial_weight=self.training_config.physics_initial_weight,
+                conservation_weight=self.training_config.physics_conservation_weight,
+                n_collocation_points=self.training_config.physics_n_collocation_points,
+                n_boundary_points=self.training_config.physics_n_boundary_points,
+                use_adaptive_weights=self.training_config.physics_use_adaptive_weights,
             )
 
             return PhysicsInformedLoss(pde_operator, physics_config)
@@ -461,17 +492,11 @@ class Trainer:
             Configured curriculum or None if not enabled.
 
         """
-        # Default curriculum schedule
-        default_schedule = {
-            0: [9],
-            10000: [9, 13],
-            50000: [9, 13, 19],
-        }
-
-        # Get schedule from config if available
+        # Get schedule from config if available, else use constant default
         schedule = getattr(self.training_config, "curriculum_schedule", None)
         if schedule is None:
-            schedule = default_schedule
+            # Fallback to BoardSizeCurriculum's built-in default
+            schedule = dict(DEFAULT_CURRICULUM_SCHEDULE)
 
         curriculum = BoardSizeCurriculum.from_config(cast(dict[str, Any], schedule))
 
@@ -493,40 +518,35 @@ class Trainer:
         plateau_detector: PlateauDetector | None = None
 
         # Early stopping
-        if getattr(self.training_config, "early_stopping_enabled", False):
-            patience = getattr(self.training_config, "early_stopping_patience", 10)
-            min_delta = getattr(self.training_config, "early_stopping_min_delta", 0.01)
+        if self.training_config.early_stopping_enabled:
             es_config = EarlyStoppingConfig(
-                patience=patience,
-                min_delta=min_delta,
+                patience=self.training_config.early_stopping_patience,
+                min_delta=self.training_config.early_stopping_min_delta,
                 metric="eval/win_rate",
                 mode="max",  # Higher win rate is better
             )
             early_stopping = EarlyStopping(es_config)
             logger.info(
                 "early_stopping_enabled",
-                patience=patience,
-                min_delta=min_delta,
+                patience=es_config.patience,
+                min_delta=es_config.min_delta,
             )
 
         # Plateau detection (LR reduction)
-        if getattr(self.training_config, "plateau_detection_enabled", False):
-            patience = getattr(self.training_config, "plateau_patience", 5)
-            factor = getattr(self.training_config, "plateau_factor", 0.5)
-            min_lr = getattr(self.training_config, "plateau_min_lr", 1e-6)
+        if self.training_config.plateau_detection_enabled:
             pd_config = PlateauConfig(
-                patience=patience,
-                factor=factor,
-                min_lr=min_lr,
+                patience=self.training_config.plateau_patience,
+                factor=self.training_config.plateau_factor,
+                min_lr=self.training_config.plateau_min_lr,
                 metric="train/loss/total",
                 mode="min",  # Lower loss is better
             )
             plateau_detector = PlateauDetector(pd_config, self.optimizer)
             logger.info(
                 "plateau_detection_enabled",
-                patience=patience,
-                factor=factor,
-                min_lr=min_lr,
+                patience=pd_config.patience,
+                factor=pd_config.factor,
+                min_lr=pd_config.min_lr,
             )
 
         # Return monitor if any feature is enabled
@@ -639,38 +659,28 @@ class Trainer:
         """
         self.optimizer.zero_grad()
 
-        # Forward pass with optional mixed precision
-        if self.use_amp:
-            with autocast():
-                output = self.model(batch.board_states, return_lbb=True)
-                # Compute individual losses
-                policy_loss = self.loss_fn.compute_policy_loss(
-                    policy_logits=output.policy_logits,
-                    target_policy=batch.target_policies,
-                    mask=batch.action_mask.float(),
-                )
-                value_loss = self.loss_fn.compute_value_loss(
-                    value=output.value,
-                    target_value=batch.target_values,
-                )
-                lbb_loss = self.loss_fn.compute_lbb_loss(
-                    lbb_constant=output.lbb_constant,
-                )
-        else:
-            output = self.model(batch.board_states, return_lbb=True)
-            # Compute individual losses
-            policy_loss = self.loss_fn.compute_policy_loss(
-                policy_logits=output.policy_logits,
+        # Forward pass and loss computation (shared between AMP and non-AMP paths)
+        def _forward_and_losses() -> tuple[Any, Tensor, Tensor, Tensor]:
+            out = self.model(batch.board_states, return_lbb=True)
+            p_loss = self.loss_fn.compute_policy_loss(
+                policy_logits=out.policy_logits,
                 target_policy=batch.target_policies,
                 mask=batch.action_mask.float(),
             )
-            value_loss = self.loss_fn.compute_value_loss(
-                value=output.value,
+            v_loss = self.loss_fn.compute_value_loss(
+                value=out.value,
                 target_value=batch.target_values,
             )
-            lbb_loss = self.loss_fn.compute_lbb_loss(
-                lbb_constant=output.lbb_constant,
+            l_loss = self.loss_fn.compute_lbb_loss(
+                lbb_constant=out.lbb_constant,
             )
+            return out, p_loss, v_loss, l_loss
+
+        if self.use_amp:
+            with autocast():
+                output, policy_loss, value_loss, lbb_loss = _forward_and_losses()
+        else:
+            output, policy_loss, value_loss, lbb_loss = _forward_and_losses()
 
         # Apply adaptive loss balancing
         losses = {
@@ -685,7 +695,10 @@ class Trainer:
             try:
                 # Use the raw model for physics loss (not DDP wrapped)
                 physics_output = self.physics_loss_fn(self._raw_model)
-                losses["physics"] = physics_output.total * self.physics_loss_weight
+                if physics_output is not None:
+                    losses["physics"] = physics_output.total * self.physics_loss_weight
+                else:
+                    losses["physics"] = torch.tensor(0.0, device=self.device)
             except Exception as e:
                 logger.warning(
                     "physics_loss_computation_failed",
@@ -699,6 +712,31 @@ class Trainer:
         total_loss = loss_terms.weighted_sum
         weights = loss_terms.weights
 
+        # Add combined physics loss contribution if enabled
+        if self.combined_physics_loss_fn is not None:
+            try:
+                combined_physics_result = self.combined_physics_loss_fn(
+                    policy_logits=output.policy_logits,
+                    value=output.value,
+                    target_policy=batch.target_policies,
+                    target_value=batch.target_values,
+                    lbb_constant=output.lbb_constant,
+                    action_mask=(
+                        batch.action_mask.float() if batch.action_mask is not None else None
+                    ),
+                    model=self._raw_model,
+                )
+                physics_total = combined_physics_result.get(
+                    "total", torch.tensor(0.0, device=self.device)
+                )
+                total_loss = total_loss + self.training_config.physics_weight * physics_total
+            except Exception as e:
+                logger.warning(
+                    "combined_physics_loss_computation_failed",
+                    error=str(e),
+                    step=self.global_step,
+                )
+
         # Create LossOutput for compatibility
         loss_output = LossOutput(
             total=total_loss,
@@ -707,34 +745,27 @@ class Trainer:
             lbb=lbb_loss,
         )
 
-        # Backward pass
+        # Backward pass (uses BaseTrainer helpers for AMP and gradient clipping)
         if self.use_amp and self.scaler is not None:
-            self.scaler.scale(total_loss).backward()
-            self.scaler.unscale_(self.optimizer)
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                self.training_config.gradient_clip,
-            )
+            self.scaler.scale(total_loss).backward()  # type: ignore[no-untyped-call]
+            grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             total_loss.backward()  # type: ignore[no-untyped-call]
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(),
-                self.training_config.gradient_clip,
-            )
+            grad_norm = self._clip_gradients(self.model, self.training_config.gradient_clip)
             self.optimizer.step()
 
         # Update scheduler
         self.scheduler.step()
 
         # Get LBB constant
-        lbb_constant = None
-        if output.lbb_constant is not None:
-            lbb_constant = output.lbb_constant.mean().item()
+        lbb_constant = (
+            output.lbb_constant.mean().item() if output.lbb_constant is not None else None
+        )
 
-        # Convert grad_norm to float
-        grad_norm_float = grad_norm.item()
+        # grad_norm is already a float from _clip_gradients
+        grad_norm_float = grad_norm
 
         # Log if gradient norm is near clipping threshold (debugging aid)
         clip_threshold = self.training_config.gradient_clip
@@ -766,7 +797,7 @@ class Trainer:
         """
         n_steps = n_steps or self.training_config.total_steps
         checkpoint_interval = checkpoint_interval or self.training_config.checkpoint_interval
-        eval_interval = eval_interval or getattr(self.training_config, "eval_interval", None)
+        eval_interval = eval_interval or self.training_config.eval_interval
 
         # Minimum buffer size before training
         min_buffer_size = min(
@@ -987,8 +1018,8 @@ class Trainer:
         logger.info("evaluation_starting", step=step)
         self.model.eval()
 
-        n_games = getattr(self.training_config, "eval_games", 20)
-        use_multi_res = getattr(self.training_config, "multi_resolution_eval", True)
+        n_games = self.training_config.eval_games
+        use_multi_res = self.training_config.multi_resolution_eval
 
         win_rates: list[float] = []
 
@@ -1023,9 +1054,11 @@ class Trainer:
             self._run_checkpoint_tournament(step, n_games)
 
         # Engine evaluation (Stockfish benchmark)
-        engine_eval_enabled = getattr(self.training_config, "engine_eval_enabled", False)
-        engine_eval_path = getattr(self.training_config, "engine_eval_path", None)
-        if engine_eval_enabled and engine_eval_path is not None and self.evaluator.game is not None:
+        if (
+            self.training_config.engine_eval_enabled
+            and self.training_config.engine_eval_path is not None
+            and self.evaluator.game is not None
+        ):
             self._run_engine_evaluation(step)
 
         # Measure policy agreement
@@ -1061,7 +1094,7 @@ class Trainer:
         checkpoint_paths = self.checkpoint_manager.get_all_checkpoints()
         n_opponents = min(
             len(checkpoint_paths),
-            getattr(self.training_config, "n_tournament_opponents", 5),
+            self.training_config.n_tournament_opponents,
         )
 
         if n_opponents == 0:
@@ -1087,9 +1120,9 @@ class Trainer:
                 opponent_step = self._extract_step_from_checkpoint(opponent_path)
 
                 # Determine score: 1.0=win, 0.5=draw, 0.0=loss
-                if result.win_rate > 0.55:
+                if result.win_rate > WIN_RATE_ACCEPT_THRESHOLD:
                     score = 1.0
-                elif result.win_rate < 0.45:
+                elif result.win_rate < WIN_RATE_REJECT_THRESHOLD:
                     score = 0.0
                 else:
                     score = 0.5
@@ -1132,17 +1165,17 @@ class Trainer:
             step: Current training step.
 
         """
-        engine_path = getattr(self.training_config, "engine_eval_path", None)
-        if engine_path is None:
+        if self.training_config.engine_eval_path is None:
             return
 
         from pathlib import Path
 
         from src.engines.config import MatchConfig, UCIConfig
 
-        depth = getattr(self.training_config, "engine_eval_depth", 5)
-        n_games = getattr(self.training_config, "engine_eval_games", 4)
-        movetime = getattr(self.training_config, "engine_eval_movetime_ms", None)
+        engine_path = self.training_config.engine_eval_path
+        depth = self.training_config.engine_eval_depth
+        n_games = self.training_config.engine_eval_games
+        movetime = self.training_config.engine_eval_movetime_ms
 
         try:
             engine_config = UCIConfig(
@@ -1187,7 +1220,7 @@ class Trainer:
 
             if self.wandb_logger is not None:
                 self.wandb_logger.log_metrics(
-                    elo_metrics,  # type: ignore[arg-type]
+                    elo_metrics,
                     step=step,
                 )
 
@@ -1260,7 +1293,7 @@ class Trainer:
 
         return checkpoint_path
 
-    def load_checkpoint(
+    def load_checkpoint(  # type: ignore[override]
         self,
         path: Path | str | None = None,
         load_best: bool = False,
@@ -1320,6 +1353,7 @@ def create_trainer(
     device: str = "auto",
     wandb_logger: WandbLogger | None = None,
     distributed_context: DistributedContext | None = None,
+    game: GameInterface | None = None,
 ) -> Trainer:
     """Create and optionally resume a trainer instance.
 
@@ -1331,6 +1365,7 @@ def create_trainer(
         device: Training device.
         wandb_logger: Optional W&B logger for experiment tracking.
         distributed_context: Optional distributed context (auto-detected if None).
+        game: Optional GameInterface for non-Go games (e.g. PDE, chess).
 
     Returns:
         Configured trainer.
@@ -1343,6 +1378,7 @@ def create_trainer(
         checkpoint_dir=checkpoint_dir,
         wandb_logger=wandb_logger,
         distributed_context=distributed_context,
+        game=game,
     )
 
     if resume_from is not None:

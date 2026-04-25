@@ -5,7 +5,9 @@ Backwards-compatibility wrapper. All implementations now live in
 """
 
 from src.training.losses.alphagalerkin import (
-    AlphaGalerkinLoss,  # noqa: F401
-    EntropyRegularizer,  # noqa: F401
+    AlphaGalerkinLoss,
+    EntropyRegularizer,
 )
-from src.training.losses.base import LossOutput  # noqa: F401
+from src.training.losses.base import LossOutput
+
+__all__ = ["AlphaGalerkinLoss", "EntropyRegularizer", "LossOutput"]

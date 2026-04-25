@@ -123,11 +123,11 @@ class TournamentScheduler:
 
         """
         n = len(players)
-        player_list = list(players)
+        player_list: list[Player | None] = list(players)
 
         # Add bye player if odd number
         if n % 2 == 1:
-            player_list.append(None)  # type: ignore[arg-type]
+            player_list.append(None)
             n += 1
 
         pairings = []

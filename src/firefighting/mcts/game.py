@@ -64,7 +64,7 @@ class FireSpreadGame(PDEGame):
             error_estimate=1.0,
             dof=n_points,
             step=0,
-            budget_remaining=self.config.max_budget - n_points,
+            budget_remaining=self.config.max_dof - n_points,
         )
 
     def get_valid_actions(self, state: PDEState) -> list[int]:
@@ -117,7 +117,7 @@ class FireSpreadGame(PDEGame):
 
     def is_terminal(self, state: PDEState) -> bool:
         return (
-            state.error_estimate < self.config.convergence_tolerance
+            state.error_estimate < self.config.error_tolerance
             or state.budget_remaining <= 0
             or state.step >= self.config.max_steps
         )
@@ -127,7 +127,7 @@ class FireSpreadGame(PDEGame):
             final_error=state.error_estimate,
             final_dof=state.dof,
             n_steps=state.step,
-            converged=state.error_estimate < self.config.convergence_tolerance,
+            converged=state.error_estimate < self.config.error_tolerance,
             error_history=[state.error_estimate],
         )
 
@@ -158,3 +158,18 @@ class FireSpreadGame(PDEGame):
             if max_val > 0:
                 tensor[0] /= max_val
         return tensor
+
+    def get_action_mask(self, state: PDEState) -> NDArray[np.bool_]:
+        mask = np.zeros(self._action_size, dtype=np.bool_)
+        valid = self.get_valid_actions(state)
+        for a in valid:
+            mask[a] = True
+        return mask
+
+    def get_reward(self, state: PDEState, prev_state: PDEState) -> float:
+        error_reduction = prev_state.error_estimate - state.error_estimate
+        dof_cost = (state.dof - prev_state.dof) * self.config.cost_per_dof
+        return error_reduction * self.config.reward_per_error_reduction - dof_cost
+
+    def compute_exact_error(self, state: PDEState) -> dict[str, float]:
+        return {"l2": float(state.error_estimate)}

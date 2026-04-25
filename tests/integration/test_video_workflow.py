@@ -12,11 +12,12 @@ from scripts.decode_video import main as decode_main
 from scripts.encode_video import main as encode_main
 from src.video_compression.config import CodecConfig
 
+cv2 = pytest.importorskip("cv2", reason="opencv-python not installed")
+
 
 @pytest.fixture
 def temp_video_file(tmp_path):
     """Create a dummy stored video file."""
-    import cv2
     import numpy as np
 
     path = tmp_path / "test_video.mp4"

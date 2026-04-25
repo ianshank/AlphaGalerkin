@@ -215,7 +215,7 @@ class TestGameManager:
 
         assert game.board[4, 4] == SimpleGoGame.BLACK
         assert game.board[3, 3] == SimpleGoGame.WHITE
-        assert game.board[5, 5] == SimpleGoGame.BLACK
+        assert game.board[5, 5] == SimpleGoGame.WHITE  # After PASS, white plays
 
     def test_replay_history_all_passes(
         self,
@@ -408,17 +408,76 @@ class TestGameManager:
         self,
         game_manager: GameManager,
     ) -> None:
-        """Test parsing out-of-bounds move raises error."""
-        with pytest.raises(ValueError, match="outside"):
+        """Test parsing out-of-bounds move surfaces the precise diagnostic."""
+        with pytest.raises(ValueError, match="outside the"):
             game_manager.parse_move("10,10", 9)
+
+    def test_parse_move_non_numeric_invalid_format(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Non-integer two-token input still falls through to generic error."""
+        with pytest.raises(ValueError, match="Invalid format"):
+            game_manager.parse_move("foo bar", 9)
+
+    def test_parse_move_gtp_format(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Test parsing GTP format move (e.g., D4)."""
+        # D4 on a 9x9 board: D is column 3, row 4 is gtp_row 5 → internal row 4
+        move = game_manager.parse_move("D5", 9)
+        assert move == (4, 3)
+
+    def test_parse_move_gtp_format_lowercase(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Test parsing lowercase GTP format."""
+        move = game_manager.parse_move("d5", 9)
+        assert move == (4, 3)
+
+    def test_parse_move_gtp_format_a1(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Test parsing A1 (bottom-left corner)."""
+        # A1 on 9x9: A is column 0, row 1 → internal row 8
+        move = game_manager.parse_move("A1", 9)
+        assert move == (8, 0)
+
+    def test_parse_move_gtp_format_j10(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Test parsing two-digit GTP format (J10 on 13x13)."""
+        # J10 on 13x13: J is column 8 (skips I), row 10 → internal row 3
+        move = game_manager.parse_move("J10", 13)
+        assert move == (3, 8)
+
+    def test_parse_move_shorthand_p(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Test parsing shorthand 'p' for pass."""
+        move = game_manager.parse_move("p", 9)
+        assert move == "PASS"
+
+    def test_parse_move_numeric_space_separator(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Test parsing numeric format with space separator."""
+        move = game_manager.parse_move("4 4", 9)
+        assert move == (4, 4)
 
     def test_parse_move_non_numeric(
         self,
         game_manager: GameManager,
     ) -> None:
-        """Test parsing non-numeric coordinates raises error."""
-        with pytest.raises(ValueError, match="numbers"):
-            game_manager.parse_move("a,b", 9)
+        """Test parsing garbage input raises error."""
+        with pytest.raises(ValueError, match="Invalid format"):
+            game_manager.parse_move("xyz123abc", 9)
 
 
 class TestGameManagerMCTSConfig:

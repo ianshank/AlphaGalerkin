@@ -143,8 +143,7 @@ class GameManager:
 
         if board_size not in self.config.supported_sizes:
             raise ValueError(
-                f"Board size {board_size} not in supported sizes: "
-                f"{self.config.supported_sizes}"
+                f"Board size {board_size} not in supported sizes: {self.config.supported_sizes}"
             )
 
         komi = self.config.get_komi(board_size)
@@ -247,16 +246,10 @@ class GameManager:
 
         if black_score > white_score:
             margin = black_score - white_score
-            return (
-                f"Black wins by {margin:.1f} points "
-                f"(B: {black_score:.1f}, W: {white_score:.1f})"
-            )
+            return f"Black wins by {margin:.1f} points (B: {black_score:.1f}, W: {white_score:.1f})"
         elif white_score > black_score:
             margin = white_score - black_score
-            return (
-                f"White wins by {margin:.1f} points "
-                f"(B: {black_score:.1f}, W: {white_score:.1f})"
-            )
+            return f"White wins by {margin:.1f} points (B: {black_score:.1f}, W: {white_score:.1f})"
         else:
             return f"Draw (B: {black_score:.1f}, W: {white_score:.1f})"
 
@@ -283,10 +276,7 @@ class GameManager:
             List of (label, value) tuples for dropdown.
 
         """
-        return [
-            (self.get_board_size_label(size), size)
-            for size in self.config.supported_sizes
-        ]
+        return [(self.get_board_size_label(size), size) for size in self.config.supported_sizes]
 
     def format_move(self, row: int, col: int, board_size: int) -> str:
         """Format a move for display.
@@ -310,8 +300,9 @@ class GameManager:
         """Parse move input from user.
 
         Accepts formats:
-        - "row,col" (0-indexed): "4,4"
-        - "PASS": Pass move
+        - GTP format: "D4", "A1", "J10" (letter + number, skipping I)
+        - Numeric format: "row,col" or "row col" (0-indexed)
+        - Pass: "PASS", "pass", "P", "p"
 
         Args:
             input_text: User input text.
@@ -324,27 +315,69 @@ class GameManager:
             ValueError: If input format is invalid.
 
         """
+        from src.tools.gtp import gtp_to_coord
+
         text = input_text.strip().upper()
 
-        if text == "PASS":
+        # Handle pass moves
+        if text in ("PASS", "P"):
             return "PASS"
 
-        parts = text.split(",")
-        if len(parts) != 2:
-            raise ValueError(
-                "Invalid format. Use 'row,col' (e.g., '4,4') or 'PASS'"
-            )
+        # Try GTP format first: letter + optional space + digits (e.g., A4, D10, J 5)
+        # GTP letters are A-H, J-T (skipping I)
+        if len(text) >= 2 and text[0].isalpha():
+            # Extract letter and number parts
+            letter = text[0]
+            rest = text[1:].strip()
+            if rest.isdigit():
+                try:
+                    gtp_coord = f"{letter}{rest}"
+                    row, col = gtp_to_coord(gtp_coord, board_size)
+                    if 0 <= row < board_size and 0 <= col < board_size:
+                        logger.debug(
+                            "parsed_gtp_move",
+                            input=input_text,
+                            gtp=gtp_coord,
+                            row=row,
+                            col=col,
+                        )
+                        return (row, col)
+                except (ValueError, IndexError):
+                    pass  # Fall through to numeric parsing
 
-        try:
-            row, col = int(parts[0]), int(parts[1])
-        except ValueError as e:
-            raise ValueError(
-                "Invalid format. Row and column must be numbers."
-            ) from e
+        # Try numeric format: row,col or row col (0-indexed)
+        parts = text.replace(",", " ").split()
+        if len(parts) == 2:
+            try:
+                row, col = int(parts[0]), int(parts[1])
+            except ValueError:
+                # Couldn't parse as integers — fall through to generic error
+                row = col = None  # type: ignore[assignment]
+            else:
+                if 0 <= row < board_size and 0 <= col < board_size:
+                    logger.debug(
+                        "parsed_numeric_move",
+                        input=input_text,
+                        row=row,
+                        col=col,
+                    )
+                    return (row, col)
+                # Integers parsed successfully but out of bounds — re-raise
+                # the precise diagnostic so users see the bounds message.
+                logger.debug(
+                    "numeric_move_out_of_bounds",
+                    input=input_text,
+                    row=row,
+                    col=col,
+                    board_size=board_size,
+                )
+                raise ValueError(
+                    f"Position ({row},{col}) is outside the "
+                    f"{board_size}×{board_size} board (valid: 0-{board_size - 1})"
+                )
 
-        if not (0 <= row < board_size and 0 <= col < board_size):
-            raise ValueError(
-                f"Position ({row},{col}) is outside the {board_size}×{board_size} board"
-            )
-
-        return (row, col)
+        # If nothing worked, provide helpful error
+        raise ValueError(
+            f"Invalid format. Use GTP (e.g., D4, A1) or "
+            f"numeric row,col (e.g., 3,3). Range: 0-{board_size - 1}"
+        )

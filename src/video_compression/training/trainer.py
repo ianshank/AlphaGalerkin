@@ -21,6 +21,7 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from src.constants import CHECKPOINT_BEST
 from src.video_compression.codec.codec import VideoCodec
 from src.video_compression.config import TrainingConfig
 from src.video_compression.training.loss import CompressionLoss
@@ -174,7 +175,7 @@ class VideoCompressionTrainer:
             lr=self.optimizer.param_groups[0]["lr"],
         )
 
-    @torch.no_grad()  # type: ignore[untyped-decorator]
+    @torch.no_grad()
     def eval_step(
         self,
         batch: torch.Tensor,
@@ -244,7 +245,7 @@ class VideoCompressionTrainer:
                 # Save best model
                 if val_metrics.loss < self.state.best_rd_loss:
                     self.state.best_rd_loss = val_metrics.loss
-                    self.save_checkpoint("best.pt")
+                    self.save_checkpoint(CHECKPOINT_BEST)
 
             # Checkpoint
             if self.state.step % self.config.checkpoint_interval == 0:

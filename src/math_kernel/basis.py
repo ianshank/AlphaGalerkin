@@ -89,6 +89,7 @@ class FourierBasis(nn.Module):
         n_features: int,
         scale: float = 1.0,
         learnable: bool = False,
+        input_dim: int = 2,
     ) -> None:
         """Initialize Fourier basis.
 
@@ -96,15 +97,18 @@ class FourierBasis(nn.Module):
             n_features: Number of Fourier features (output dimension // 2).
             scale: Standard deviation for frequency sampling.
             learnable: Whether to make frequencies learnable.
+            input_dim: Spatial dimension of input coordinates (2 or 3).
 
         """
         super().__init__()
+        if input_dim < 1:
+            raise ValueError(f"input_dim must be >= 1, got {input_dim}")
         self.n_features = n_features
         self.scale = scale
+        self.input_dim = input_dim
 
-        # Random frequency matrix B ~ N(0, scale^2)
-        # Shape: (2, n_features) for 2D input coordinates
-        b_matrix = torch.randn(2, n_features) * scale
+        # Random frequency matrix B ~ N(0, scale^2), shape (input_dim, n_features)
+        b_matrix = torch.randn(input_dim, n_features) * scale
         if learnable:
             self.b_matrix = nn.Parameter(b_matrix)
         else:
@@ -112,19 +116,24 @@ class FourierBasis(nn.Module):
 
     def evaluate(
         self,
-        coords: Float[Tensor, "batch n 2"],
+        coords: Float[Tensor, "batch n d"],
     ) -> Float[Tensor, "batch n features"]:
         """Evaluate Fourier features at given coordinates.
 
         Args:
-            coords: Normalized coordinates in [0, 1]^2.
+            coords: Normalized coordinates in [0, 1]^d where d == input_dim.
 
         Returns:
             Fourier features of shape (batch, n, 2*n_features).
 
         """
+        if coords.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"FourierBasis expected input_dim={self.input_dim}, "
+                f"got coords with last dim {coords.shape[-1]}"
+            )
         # Project coordinates onto frequency basis
-        # coords: (batch, n, 2), b_matrix: (2, n_features)
+        # coords: (batch, n, d), b_matrix: (d, n_features)
         projection = torch.einsum("bnd,df->bnf", coords, self.b_matrix)
 
         # Apply 2*pi scaling
@@ -137,7 +146,7 @@ class FourierBasis(nn.Module):
 
     def forward(
         self,
-        coords: Float[Tensor, "batch n 2"],
+        coords: Float[Tensor, "batch n d"],
     ) -> Float[Tensor, "batch n features"]:
         """Forward pass (alias for evaluate)."""
         return self.evaluate(coords)
@@ -303,7 +312,7 @@ if HAS_JAX:
         scale: float = 1.0
         learnable: bool = False
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, coords: Any) -> Any:
             """Evaluate Fourier features at given coordinates.
 
@@ -388,7 +397,7 @@ if HAS_JAX:
 
             return jnp.stack(polynomials, axis=-1)
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, coords: Any) -> Any:
             """Evaluate 2D Chebyshev features at given coordinates.
 

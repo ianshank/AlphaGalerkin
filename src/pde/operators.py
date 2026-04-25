@@ -242,6 +242,11 @@ class PDEOperator(ABC):
     ) -> dict[str, Tensor]:
         """Compute spatial derivatives using automatic differentiation.
 
+        When ``u`` is disconnected from ``coords`` in the computational graph
+        (e.g. computed via numpy and converted with ``torch.from_numpy``), all
+        derivatives are returned as zero tensors because autograd cannot trace
+        through the non-differentiable path.
+
         Args:
             u: Solution values as a function of coords.
             coords: Collocation point coordinates (N, dim).
@@ -250,10 +255,29 @@ class PDEOperator(ABC):
             Dictionary with derivative tensors.
 
         """
+        n_points = coords.shape[0]
+
+        # If u has no grad_fn and doesn't require grad, it is disconnected
+        # from coords in the computational graph — derivatives are undefined.
+        # Return zeros so callers (e.g. PoissonOperator.residual) still work.
+        if not u.requires_grad and u.grad_fn is None:
+            derivatives: dict[str, Tensor] = {}
+            for d in range(self.dim):
+                derivatives[f"u_x{d}"] = torch.zeros(
+                    n_points, dtype=coords.dtype, device=coords.device
+                )
+                derivatives[f"u_x{d}x{d}"] = torch.zeros(
+                    n_points, dtype=coords.dtype, device=coords.device
+                )
+            derivatives["laplacian"] = torch.zeros(
+                n_points, dtype=coords.dtype, device=coords.device
+            )
+            return derivatives
+
         coords = coords.requires_grad_(True)
 
         # First derivatives
-        derivatives: dict[str, Tensor] = {}
+        derivatives = {}
 
         if u.dim() == 1:
             u = u.unsqueeze(-1)
@@ -270,9 +294,15 @@ class PDEOperator(ABC):
                 derivatives[key] = grad[:, d]
 
             # Laplacian (second derivatives)
-            laplacian = torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
+            laplacian = torch.zeros(n_points, dtype=coords.dtype, device=coords.device)
             for d in range(self.dim):
                 grad_d = grad[:, d : d + 1]
+                # Skip second derivative if first derivative is constant (no grad_fn)
+                if grad_d.grad_fn is None and not grad_d.requires_grad:
+                    derivatives[f"u_x{d}x{d}"] = torch.zeros(
+                        n_points, dtype=coords.dtype, device=coords.device
+                    )
+                    continue
                 grad2 = torch.autograd.grad(
                     grad_d,
                     coords,
@@ -283,8 +313,24 @@ class PDEOperator(ABC):
                 if grad2 is not None:
                     derivatives[f"u_x{d}x{d}"] = grad2[:, d]
                     laplacian = laplacian + grad2[:, d]
+                else:
+                    derivatives[f"u_x{d}x{d}"] = torch.zeros(
+                        n_points, dtype=coords.dtype, device=coords.device
+                    )
 
             derivatives["laplacian"] = laplacian
+        else:
+            # u doesn't depend on coords — return zero derivatives
+            for d in range(self.dim):
+                derivatives[f"u_x{d}"] = torch.zeros(
+                    n_points, dtype=coords.dtype, device=coords.device
+                )
+                derivatives[f"u_x{d}x{d}"] = torch.zeros(
+                    n_points, dtype=coords.dtype, device=coords.device
+                )
+            derivatives["laplacian"] = torch.zeros(
+                n_points, dtype=coords.dtype, device=coords.device
+            )
 
         return derivatives
 

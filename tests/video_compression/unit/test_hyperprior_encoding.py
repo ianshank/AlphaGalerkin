@@ -551,9 +551,12 @@ class TestHyperpriorShapeConsistency:
         # So downsampling is 4x
         expected_h = 16 // 4
         expected_w = 16 // 4
-        assert z.shape == (1, 64, expected_h, expected_w), (
-            f"Expected shape (1, 64, {expected_h}, {expected_w}), got {z.shape}"
-        )
+        assert z.shape == (
+            1,
+            64,
+            expected_h,
+            expected_w,
+        ), f"Expected shape (1, 64, {expected_h}, {expected_w}), got {z.shape}"
 
     def test_hyper_synthesis_upsamples(self, hyper_synthesis: HyperSynthesis) -> None:
         """Test that hyper_synthesis upsamples spatial dimensions."""
@@ -566,9 +569,12 @@ class TestHyperpriorShapeConsistency:
         # So upsampling is 4x
         expected_h = 4 * 4
         expected_w = 4 * 4
-        assert scales.shape == (1, 64, expected_h, expected_w), (
-            f"Expected shape (1, 64, {expected_h}, {expected_w}), got {scales.shape}"
-        )
+        assert scales.shape == (
+            1,
+            64,
+            expected_h,
+            expected_w,
+        ), f"Expected shape (1, 64, {expected_h}, {expected_w}), got {scales.shape}"
 
     def test_analysis_synthesis_roundtrip_shape(
         self,

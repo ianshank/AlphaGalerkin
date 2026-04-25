@@ -26,8 +26,9 @@ Action encoding follows AlphaZero's scheme:
 from __future__ import annotations
 
 import hashlib
+import warnings
 from enum import IntEnum
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import structlog
@@ -1172,19 +1173,43 @@ class ChessGame(GameInterface):
 
         return move_str
 
-    def string_to_action(self, move_str: str, board_size: int | None = None) -> int:
+    def string_to_action(
+        self,
+        move_str: str,
+        state_or_board_size: GameState | int | None = None,
+        **kwargs: Any,
+    ) -> int | None:
         """Convert algebraic notation to action.
 
         Args:
             move_str: Move in algebraic notation (e.g., "e2e4").
-            board_size: Unused for chess (always 8x8); kept for interface compatibility.
+            state_or_board_size: A ``GameState`` for legality validation,
+                or an int board size (ignored for chess). When a state is
+                provided, illegal moves return ``None``.
+            **kwargs: Accepts the deprecated ``board_size=`` keyword for
+                backwards compatibility with the pre-PR-#53 signature.
 
         Returns:
-            Action index, or -1 if invalid.
+            Action index, or ``None`` if the notation is invalid or the
+            move is illegal in the given state.
 
         """
+        if "board_size" in kwargs:
+            if state_or_board_size is None:
+                warnings.warn(
+                    "Chess.string_to_action(board_size=...) is deprecated; "
+                    "pass a GameState positionally as state_or_board_size.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                state_or_board_size = kwargs.pop("board_size")
+            else:
+                kwargs.pop("board_size")
+        if kwargs:
+            raise TypeError(f"string_to_action got unexpected keyword arguments: {sorted(kwargs)}")
+
         if len(move_str) < 4:
-            return -1
+            return None
 
         files = "abcdefgh"
         ranks = "87654321"
@@ -1195,7 +1220,7 @@ class ChessGame(GameInterface):
             to_col = files.index(move_str[2])
             to_row = ranks.index(move_str[3])
         except ValueError:
-            return -1
+            return None
 
         promotion = None
         if len(move_str) >= 5:
@@ -1205,4 +1230,13 @@ class ChessGame(GameInterface):
         move = (to_row, to_col, promotion)
         action = self._encode_move(from_row, from_col, move)
 
-        return action if action is not None else -1
+        if action is None:
+            return None
+
+        # Validate legality when a GameState is provided
+        if isinstance(state_or_board_size, GameState):
+            legal_actions = self.get_legal_actions(state_or_board_size)
+            if action not in legal_actions:
+                return None
+
+        return action

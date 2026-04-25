@@ -154,6 +154,19 @@ def main(cfg: DictConfig) -> None:
         )
         logger.info("wandb_logger_created", enabled=wandb_logger.is_enabled)
 
+    # Resolve game from config (if specified)
+    game = None
+    game_cfg = cfg_dict.get("game")
+    if game_cfg is not None:
+        game_name = game_cfg.get("name") if isinstance(game_cfg, dict) else str(game_cfg)
+        if game_name:
+            # Import PDE games to ensure they are registered
+            import src.pde.register_games  # noqa: F401
+            from src.games.registry import get_game
+
+            game = get_game(game_name)
+            logger.info("game_resolved", game_name=game_name, action_space=game.action_space_size)
+
     # Create trainer
     trainer = create_trainer(
         model=model,
@@ -162,6 +175,7 @@ def main(cfg: DictConfig) -> None:
         resume_from=resume_from,
         device=device,
         wandb_logger=wandb_logger,
+        game=game,
     )
 
     # Run training

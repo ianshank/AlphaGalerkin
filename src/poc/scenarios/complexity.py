@@ -168,25 +168,27 @@ class ComplexityScenario(BaseScenario):
         assert self._start_time is not None
         duration = (end_time - self._start_time).total_seconds()
 
-        return ScenarioResult(
-            scenario_name=self.name,
-            config_hash=self.config.compute_hash(),
-            status=status,
-            passed=all_passed,
-            metrics=dict(self._metrics),
-            threshold_results=threshold_results,
-            artifacts={k: str(v) for k, v in self._artifacts.items()},
-            start_time=self._start_time,
-            end_time=end_time,
-            duration_seconds=duration,
-            device=str(self._device),
-            python_version=sys.version,
-            torch_version=torch.__version__,
-            # Custom fields
-            fnet_exponent=fnet_exponent,
-            softmax_exponent=softmax_exponent,
-            galerkin_exponent=galerkin_exponent,
-            speedup=speedup,
+        return ScenarioResult.model_validate(
+            {
+                "scenario_name": self.name,
+                "config_hash": self.config.compute_hash(),
+                "status": status,
+                "passed": all_passed,
+                "metrics": dict(self._metrics),
+                "threshold_results": threshold_results,
+                "artifacts": {k: str(v) for k, v in self._artifacts.items()},
+                "start_time": self._start_time,
+                "end_time": end_time,
+                "duration_seconds": duration,
+                "device": str(self._device),
+                "python_version": sys.version,
+                "torch_version": torch.__version__,
+                # Custom fields (allowed by extra="allow" in model_config)
+                "fnet_exponent": fnet_exponent,
+                "softmax_exponent": softmax_exponent,
+                "galerkin_exponent": galerkin_exponent,
+                "speedup": speedup,
+            }
         )
 
     def _benchmark_fnet(self) -> list[BenchmarkResult]:
@@ -402,8 +404,9 @@ class ComplexityScenario(BaseScenario):
         if len(results) < 2:
             return 0.0
 
+        times = [max(r.mean_time_ms, 1e-9) for r in results]  # guard log(0)
         log_n = np.log([r.n_tokens for r in results])
-        log_t = np.log([r.mean_time_ms for r in results])
+        log_t = np.log(times)
 
         # Linear regression: log_t = exponent * log_n + intercept
         # Using np.polyfit for simplicity

@@ -278,6 +278,7 @@ class TestParallelSelfPlayWorker:
         )
         assert not worker._use_parallel()
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA")
     def test_sequential_fallback_cuda_device(
         self,
         small_model: AlphaGalerkinModel,
@@ -291,6 +292,7 @@ class TestParallelSelfPlayWorker:
         )
         assert not worker._use_parallel()
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Requires CUDA")
     def test_sequential_fallback_cuda_torch_device(
         self,
         small_model: AlphaGalerkinModel,
@@ -364,12 +366,12 @@ class TestParallelSelfPlayWorker:
             device="cpu",
             board_sizes=[9],
         )
-        # Patch mp to raise, verifying fallback
-        with patch(
-            "src.training.self_play.torch.multiprocessing",
+        # Trigger the except handler inside generate_games by making
+        # share_memory raise, which is called inside the try block.
+        with patch.object(
+            worker.model,
+            "share_memory",
             side_effect=RuntimeError("mp unavailable"),
         ):
-            # Even if import patch fails, the try/except in generate_games
-            # catches the error and falls back
             games = worker.generate_games(n_games=2, board_size=9)
             assert len(games) == 2

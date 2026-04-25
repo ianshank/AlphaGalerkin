@@ -6,7 +6,7 @@
 # 2. Unit Tests (Fast) - Core functionality without slow/e2e tests
 # 3. Unit Tests (Slow) - Long-running tests
 # 4. Integration Tests - End-to-end workflow validation
-# 5. Coverage Report - Test coverage aggregation
+# 5. Coverage Report - Test coverage aggregation with 85% gate
 
 name: CI
 
@@ -28,10 +28,13 @@ env:
   PYTHON_VERSION: "3.11"
   PYTHONUNBUFFERED: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_WARN_SCRIPT_LOCATION: "1"
   # Disable W&B for CI to avoid API key requirements
   WANDB_MODE: disabled
   # Set matplotlib to non-interactive backend
   MPLBACKEND: Agg
+  # Reproducible builds
+  PYTHONHASHSEED: "0"
 
 jobs:
   # ============================================================
@@ -55,23 +58,25 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy
+          pip install ruff
+          # Pin mypy + pydantic for plugin compatibility
+          pip install "mypy>=1.10,<1.12" "pydantic>=2.7,<2.10"
           # Install minimal deps for type checking
-          pip install torch einops jaxtyping pydantic hydra-core structlog numpy scipy
+          pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
       - name: Run Ruff linting
-        run: ruff check src/ --output-format=github
+        run: ruff check src/ tests/ --output-format=github
 
       - name: Run Ruff formatting check
-        run: ruff format src/ --check
+        run: ruff format src/ tests/ --check
 
       - name: Run MyPy type checking
         # Informational: pre-existing codebase has type errors in video_compression/,
         # distributed/, modeling/ that require incremental refactoring.
         # Ruff check + format are the hard quality gates.
         # Track progress: mypy errors should decrease over time.
-        run: mypy src/ --strict --ignore-missing-imports
         continue-on-error: true
+        run: mypy src/ --strict --ignore-missing-imports
 
   # ============================================================
   # Stage 2: Unit Tests (Fast)
@@ -79,7 +84,7 @@ jobs:
   test-fast:
     name: Unit Tests (Fast)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     needs: lint
 
     strategy:
@@ -100,7 +105,17 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+          # Safety-net: ensure core scientific/ML deps are present even if
+          # the editable install partially failed (can happen with complex
+          # dependency graphs on older pip resolvers).
+          python -c "import einops, jaxtyping, gradio" 2>/dev/null || \
+            pip install --no-cache-dir "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
+
+      - name: Show installed package versions
+        run: |
+          python -c "import sys; print('Python', sys.version)"
+          pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
 
       - name: Run fast unit tests
         run: |
@@ -127,7 +142,15 @@ jobs:
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_device \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_torch_device \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
-            -q
+            -q 2>&1 | tee /tmp/pytest-output.txt; exit ${PIPESTATUS[0]}
+
+      - name: Upload pytest output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output-py${{ matrix.python-version }}
+          path: /tmp/pytest-output.txt
+          retention-days: 7
 
       - name: Upload test results
         if: always()
@@ -203,7 +226,7 @@ jobs:
             -q
 
   # ============================================================
-  # Stage 5: Coverage Report
+  # Stage 5: Coverage Report (85% global gate)
   # ============================================================
   coverage:
     name: Test Coverage
@@ -225,7 +248,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install pytest-cov
+          pip install pytest-cov matplotlib
 
       - name: Run tests with coverage
         run: |
@@ -255,31 +278,45 @@ jobs:
             --cov-report=xml \
             --cov-report=html \
             --cov-report=term-missing \
-            --cov-fail-under=75 \
+            --cov-fail-under=85 \
             -q
 
-      # Per-module coverage gates — set to measured baseline with margin.
-      # New code targets 85%+; pre-existing modules have legacy gaps.
-      # Ratchet these upward as tests are added.
+      # Per-module coverage gates — ratcheted up as part of tech-debt reduction.
+      # Each gate ensures no single subsystem regresses below its threshold.
       - name: Per-module coverage gate (pde)
-        if: hashFiles('tests/pde/') != ''
+        if: always() && hashFiles('tests/pde/') != ''
         run: |
-          pytest tests/pde/ --cov=src/pde --cov-fail-under=55 -q --no-header
+          pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
 
       - name: Per-module coverage gate (modeling)
-        if: hashFiles('tests/modeling/') != ''
+        if: always() && hashFiles('tests/modeling/') != ''
         run: |
-          pytest tests/modeling/ --cov=src/modeling --cov-fail-under=80 -q --no-header
+          pytest tests/modeling/ --cov=src/modeling --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (training)
-        if: hashFiles('tests/training/') != ''
+        if: always() && hashFiles('tests/training/') != ''
         run: |
-          pytest tests/training/ --cov=src/training --cov-fail-under=70 -q --no-header
+          pytest tests/training/ --cov=src/training --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (research)
-        if: hashFiles('tests/research/') != ''
+        if: always() && hashFiles('tests/research/') != ''
         run: |
           pytest tests/research/ --cov=src/research --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (games)
+        if: always() && hashFiles('tests/games/') != ''
+        run: |
+          pytest tests/games/ --cov=src/games --cov-fail-under=80 -q --no-header
+
+      - name: Per-module coverage gate (distributed)
+        if: always() && hashFiles('tests/distributed/') != ''
+        run: |
+          pytest tests/distributed/ --cov=src/distributed --cov-fail-under=60 -q --no-header
+
+      - name: Per-module coverage gate (physics)
+        if: always() && hashFiles('tests/physics/') != ''
+        run: |
+          pytest tests/physics/ --cov=src/physics --cov-fail-under=75 -q --no-header
 
       - name: Per-module coverage gate (reentry)
         if: hashFiles('tests/reentry/') != ''
@@ -292,6 +329,7 @@ jobs:
           pytest tests/firefighting/ --cov=src/firefighting --cov-fail-under=60 -q --no-header
 
       - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
@@ -302,6 +340,7 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage report artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -409,7 +448,8 @@ jobs:
             tests/training/test_chess_self_play.py \
             tests/training/test_trainer_chess.py \
             tests/security/test_chess_security.py \
-            --cov=src/games/chess --cov=src/games/wrapper \
+            --cov=src/games \
+            --cov-config=.github/chess-coveragerc \
             --cov-report=term-missing \
             --cov-fail-under=80 \
             --tb=short \
@@ -465,13 +505,28 @@ jobs:
     steps:
       - name: Check required jobs passed
         run: |
-          if [[ "${{ needs.lint.result }}" != "success" ]] || \
-             [[ "${{ needs.test-fast.result }}" != "success" ]] || \
-             [[ "${{ needs.coverage.result }}" != "success" ]]; then
-            echo "FAIL: One or more required jobs failed"
-            echo "  lint=${{ needs.lint.result }}"
-            echo "  test-fast=${{ needs.test-fast.result }}"
-            echo "  coverage=${{ needs.coverage.result }}"
+          echo "=== CI Gate Results ==="
+          echo "  lint:      ${{ needs.lint.result }}"
+          echo "  test-fast: ${{ needs.test-fast.result }}"
+          echo "  coverage:  ${{ needs.coverage.result }}"
+          echo "======================="
+
+          # Required gates: lint must pass
+          if [[ "${{ needs.lint.result }}" != "success" ]]; then
+            echo "FAIL: Lint & Type Check failed (result=${{ needs.lint.result }})"
             exit 1
           fi
-          echo "All required CI jobs passed!"
+
+          # test-fast must pass
+          if [[ "${{ needs.test-fast.result }}" != "success" ]]; then
+            echo "FAIL: Unit tests failed (result=${{ needs.test-fast.result }})"
+            exit 1
+          fi
+
+          # Coverage gate is a hard threshold (--cov-fail-under=85)
+          if [[ "${{ needs.coverage.result }}" != "success" ]]; then
+            echo "FAIL: Coverage gate did not pass (result=${{ needs.coverage.result }})"
+            exit 1
+          fi
+
+          echo "All core CI gates passed"

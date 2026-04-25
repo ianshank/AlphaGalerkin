@@ -212,11 +212,11 @@ class QuickEvaluator:
         for inp, target in data:
             pred = predict_fn(raw_model, inp)
             # Handle various prediction types
-            if isinstance(pred, (list, tuple)):
+            if isinstance(pred, list | tuple):
                 predictions.extend(pred)
             else:
                 predictions.append(float(pred))
-            if isinstance(target, (list, tuple)):
+            if isinstance(target, list | tuple):
                 targets.extend(target)
             else:
                 targets.append(float(target))

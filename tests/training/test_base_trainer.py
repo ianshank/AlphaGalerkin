@@ -348,3 +348,325 @@ class TestCheckpointing:
         assert not new_dir.exists()
         trainer.save_checkpoint()
         assert new_dir.exists()
+
+
+# ---------------------------------------------------------------------------
+# _setup_amp
+# ---------------------------------------------------------------------------
+
+
+class TestSetupAmp:
+    def test_amp_disabled_on_cpu(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path, use_amp=True)
+        # On CPU, AMP should be disabled regardless of config
+        assert trainer.use_amp is False
+        assert trainer.scaler is None
+
+    def test_amp_disabled_when_not_requested(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path, use_amp=False)
+        assert trainer.use_amp is False
+        assert trainer.scaler is None
+
+    def test_setup_amp_returns_tuple(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        result = trainer._setup_amp(use_amp=False, device=torch.device("cpu"))
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+        use_amp, scaler, dtype = result
+        assert use_amp is False
+        assert scaler is None
+        assert dtype == torch.float16
+
+    def test_setup_amp_custom_dtype(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        _, _, dtype = trainer._setup_amp(
+            use_amp=False, device=torch.device("cpu"), amp_dtype=torch.bfloat16
+        )
+        assert dtype == torch.bfloat16
+
+
+# ---------------------------------------------------------------------------
+# _clip_gradients
+# ---------------------------------------------------------------------------
+
+
+class TestClipGradients:
+    def test_clip_gradients_returns_float(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        model = trainer.model
+        # Do a forward + backward to create gradients
+        x = torch.randn(4, 2)
+        y = model(x)
+        y.sum().backward()
+        norm = trainer._clip_gradients(model, max_norm=1.0)
+        assert isinstance(norm, float)
+        assert norm >= 0.0
+
+    def test_clip_gradients_respects_max_norm(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        model = trainer.model
+        # Create large gradients
+        x = torch.randn(4, 2) * 1000
+        y = model(x)
+        (y.sum() * 1000).backward()
+        norm_before = trainer._clip_gradients(model, max_norm=0.01)
+        # Gradients should now be clipped
+        total_norm = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                total_norm += p.grad.norm().item() ** 2
+        total_norm = total_norm**0.5
+        assert total_norm <= 0.01 + 1e-6  # Allow small numerical error
+
+    def test_clip_gradients_no_grad_returns_zero(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        # No backward pass performed, no gradients
+        model = trainer.model
+        model.zero_grad()
+        norm = trainer._clip_gradients(model, max_norm=1.0)
+        assert norm == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# _amp_forward_backward
+# ---------------------------------------------------------------------------
+
+
+class TestAmpForwardBackward:
+    def test_returns_loss_metrics_grad_norm(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        trainer.optimizer.zero_grad()
+
+        def loss_fn():
+            x = torch.randn(4, 2)
+            pred = trainer.model(x)
+            loss = pred.sum()
+            return loss, {"custom": 1.0}
+
+        loss, metrics, grad_norm = trainer._amp_forward_backward(
+            loss_fn=loss_fn,
+            model=trainer.model,
+            optimizer=trainer.optimizer,
+            max_norm=1.0,
+        )
+        assert isinstance(loss, float)
+        assert "custom" in metrics
+        assert isinstance(grad_norm, float)
+        assert grad_norm >= 0.0
+
+    def test_optimizer_steps_weights(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path, learning_rate=0.1)
+        params_before = [p.clone().detach() for p in trainer.model.parameters()]
+        trainer.optimizer.zero_grad()
+
+        def loss_fn():
+            x = torch.ones(4, 2) * 10.0
+            pred = trainer.model(x)
+            loss = (pred**2).sum()
+            return loss, {}
+
+        trainer._amp_forward_backward(
+            loss_fn=loss_fn,
+            model=trainer.model,
+            optimizer=trainer.optimizer,
+            max_norm=10.0,
+        )
+        # Weights should have changed
+        changed = any(
+            not torch.equal(p_before, p_after)
+            for p_before, p_after in zip(params_before, trainer.model.parameters())
+        )
+        assert changed, "Optimizer should have updated model parameters"
+
+    def test_loss_is_finite(self, tmp_path: Path):
+        import math
+
+        trainer = _make_trainer(tmp_path)
+        trainer.optimizer.zero_grad()
+
+        def loss_fn():
+            x = torch.randn(4, 2)
+            pred = trainer.model(x)
+            loss = (pred**2).mean()
+            return loss, {}
+
+        loss, _, _ = trainer._amp_forward_backward(
+            loss_fn=loss_fn,
+            model=trainer.model,
+            optimizer=trainer.optimizer,
+            max_norm=1.0,
+        )
+        assert math.isfinite(loss)
+
+
+# ---------------------------------------------------------------------------
+# Static _create_optimizer
+# ---------------------------------------------------------------------------
+
+
+class TestStaticCreateOptimizer:
+    def test_creates_adamw(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=1e-4)
+        from torch.optim import AdamW
+
+        assert isinstance(opt, AdamW)
+
+    def test_learning_rate_set(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.05, weight_decay=0.0)
+        assert opt.param_groups[0]["lr"] == pytest.approx(0.05)
+
+    def test_weight_decay_set(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.1)
+        assert opt.param_groups[0]["weight_decay"] == pytest.approx(0.1)
+
+
+# ---------------------------------------------------------------------------
+# Static _create_scheduler
+# ---------------------------------------------------------------------------
+
+
+class TestStaticCreateScheduler:
+    def test_cosine_scheduler(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="cosine", warmup_steps=0, total_steps=100
+        )
+        from torch.optim.lr_scheduler import CosineAnnealingLR
+
+        assert isinstance(sched, CosineAnnealingLR)
+
+    def test_linear_scheduler(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="linear", warmup_steps=0, total_steps=100
+        )
+        from torch.optim.lr_scheduler import LinearLR
+
+        assert isinstance(sched, LinearLR)
+
+    def test_constant_scheduler(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="constant", warmup_steps=0, total_steps=100
+        )
+        # Should be ConstantLR
+        assert sched is not None
+
+    def test_none_scheduler(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="none", warmup_steps=0, total_steps=100
+        )
+        assert sched is not None
+
+    def test_warmup_creates_sequential(self):
+        from torch.optim.lr_scheduler import SequentialLR
+
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="cosine", warmup_steps=10, total_steps=100
+        )
+        assert isinstance(sched, SequentialLR)
+
+    def test_unknown_type_falls_back_to_cosine(self):
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="polynomial", warmup_steps=0, total_steps=100
+        )
+        from torch.optim.lr_scheduler import CosineAnnealingLR
+
+        assert isinstance(sched, CosineAnnealingLR)
+
+
+# ---------------------------------------------------------------------------
+# _save_training_state / _load_training_state
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingStatePersistence:
+    def test_save_creates_file(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        path = trainer._save_training_state(tmp_path / "state.pt")
+        assert path.exists()
+
+    def test_save_load_roundtrip_global_step(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        for _ in range(5):
+            trainer.step()
+        assert trainer.global_step == 5
+        trainer._save_training_state(tmp_path / "state.pt")
+
+        trainer2 = _make_trainer(tmp_path)
+        assert trainer2.global_step == 0
+        step = trainer2._load_training_state(tmp_path / "state.pt")
+        assert step == 5
+        assert trainer2.global_step == 5
+
+    def test_save_load_roundtrip_optimizer_state(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        for _ in range(3):
+            trainer.step()
+        trainer._save_training_state(tmp_path / "state.pt")
+
+        # Get optimizer state keys
+        state1 = trainer.optimizer.state_dict()
+
+        trainer2 = _make_trainer(tmp_path)
+        trainer2._load_training_state(tmp_path / "state.pt")
+        state2 = trainer2.optimizer.state_dict()
+
+        # Both should have the same param groups
+        assert len(state1["param_groups"]) == len(state2["param_groups"])
+        assert state1["param_groups"][0]["lr"] == pytest.approx(state2["param_groups"][0]["lr"])
+
+    def test_load_missing_file_raises(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        with pytest.raises(FileNotFoundError):
+            trainer._load_training_state(tmp_path / "nonexistent.pt")
+
+    def test_save_creates_parent_dirs(self, tmp_path: Path):
+        trainer = _make_trainer(tmp_path)
+        nested = tmp_path / "a" / "b" / "c" / "state.pt"
+        path = trainer._save_training_state(nested)
+        assert path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Inheritance verification
+# ---------------------------------------------------------------------------
+
+
+class TestInheritance:
+    def test_trainer_inherits_base_trainer(self):
+        """Verify the main Trainer inherits from BaseTrainer."""
+        from src.training.trainer import Trainer
+
+        assert issubclass(Trainer, BaseTrainer)
+
+    def test_distributed_trainer_inherits_base_trainer(self):
+        """Verify DistributedTrainer inherits from BaseTrainer."""
+        from src.distributed.trainer import DistributedTrainer
+
+        assert issubclass(DistributedTrainer, BaseTrainer)
+
+    def test_base_trainer_has_all_required_helpers(self):
+        """Verify BaseTrainer exposes all required helper methods."""
+        for method_name in [
+            "_setup_amp",
+            "_create_scheduler",
+            "_create_optimizer",
+            "_clip_gradients",
+            "_amp_forward_backward",
+            "_save_training_state",
+            "_load_training_state",
+        ]:
+            assert hasattr(BaseTrainer, method_name), f"Missing {method_name}"

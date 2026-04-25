@@ -22,7 +22,7 @@ try:
     HAS_PETTINGZOO = True
 except ImportError:
     HAS_PETTINGZOO = False
-    ParallelEnv = object  # type: ignore[assignment,misc]
+    ParallelEnv = object
 
 import structlog
 
@@ -32,14 +32,15 @@ from src.games.state import GameState
 logger = structlog.get_logger(__name__)
 
 
-class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ignore[misc]
+class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):
     """Wraps AlphaGalerkin GameInterface as a PettingZoo ParallelEnv.
 
     Each agent takes an action simultaneously. The adapter maps between
     PettingZoo's multi-agent dict-based API and GameInterface's
     sequential action model.
 
-    Attributes:
+    Attributes
+    ----------
         metadata: PettingZoo environment metadata.
         game: The underlying GameInterface instance.
         n_agents: Number of agents in the environment.
@@ -57,11 +58,13 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         """Initialize PettingZoo adapter.
 
         Args:
+        ----
             game: AlphaGalerkin GameInterface implementation.
             n_agents: Number of agents.
             board_size: Board size override (uses game default if None).
 
         Raises:
+        ------
             RuntimeError: If pettingzoo is not installed.
 
         """
@@ -100,10 +103,12 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         """Reset the environment to initial state.
 
         Args:
+        ----
             seed: Random seed (unused, for API compatibility).
             options: Additional options (unused).
 
         Returns:
+        -------
             Tuple of (observations, infos) dicts keyed by agent ID.
 
         """
@@ -137,9 +142,11 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         terminal state. Invalid actions receive a -1.0 penalty.
 
         Args:
+        ----
             actions: Dict mapping agent IDs to action indices.
 
         Returns:
+        -------
             Tuple of (observations, rewards, terminations, truncations, infos).
 
         """
@@ -190,9 +197,11 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         """Get observation space for an agent.
 
         Args:
+        ----
             agent: Agent identifier.
 
         Returns:
+        -------
             gymnasium Box space for observations.
 
         """
@@ -203,9 +212,11 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
         """Get action space for an agent.
 
         Args:
+        ----
             agent: Agent identifier.
 
         Returns:
+        -------
             gymnasium Discrete space for actions.
 
         """
@@ -214,7 +225,8 @@ class PettingZooAdapter(ParallelEnv if HAS_PETTINGZOO else object):  # type: ign
     def _get_observations(self) -> dict[str, np.ndarray]:
         """Build observation dict for all active agents.
 
-        Returns:
+        Returns
+        -------
             Dict mapping agent IDs to observation arrays.
 
         """

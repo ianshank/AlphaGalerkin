@@ -1,0 +1,674 @@
+{
+  "AdaptiveFourierFeatures": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "input_dim"
+      },
+      {
+        "default": "128",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_features"
+      },
+      {
+        "default": "8",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_frequency_banks"
+      },
+      {
+        "default": "(0.1, 100.0)",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "scale_range"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "use_attention"
+      },
+      {
+        "default": "64",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "attention_hidden_dim"
+      }
+    ],
+    "module": "src.modeling.multiscale_fourier"
+  },
+  "AlphaGalerkinModel": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "return_lbb"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "config"
+      }
+    ],
+    "module": "src.modeling.model"
+  },
+  "ContinuousEmbedding": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "coords"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "input_channels"
+      },
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "128",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_fourier_features"
+      },
+      {
+        "default": "1.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "fourier_scale"
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "use_learnable_positions"
+      }
+    ],
+    "module": "src.modeling.embeddings"
+  },
+  "FNetBlock": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "board_size"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_ffn"
+      },
+      {
+        "default": "0.1",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "dropout"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "use_2d_fft"
+      }
+    ],
+    "module": "src.modeling.fnet"
+  },
+  "FNetMixing": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "board_size"
+      }
+    ],
+    "init": [
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "use_2d"
+      }
+    ],
+    "module": "src.modeling.fnet"
+  },
+  "FNetStack": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "board_size"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_layers"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_ffn"
+      },
+      {
+        "default": "0.1",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "dropout"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "use_2d_fft"
+      }
+    ],
+    "module": "src.modeling.fnet"
+  },
+  "FourierFeatures": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "coords"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_features"
+      },
+      {
+        "default": "1.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "scale"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "learnable"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "include_coordinates"
+      }
+    ],
+    "module": "src.modeling.embeddings"
+  },
+  "FourierFeaturesConfig": {
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "PYDANTIC_FIELD",
+        "name": "name"
+      },
+      {
+        "default": "''",
+        "kind": "PYDANTIC_FIELD",
+        "name": "description"
+      },
+      {
+        "default": "42",
+        "kind": "PYDANTIC_FIELD",
+        "name": "seed"
+      },
+      {
+        "default": "3600",
+        "kind": "PYDANTIC_FIELD",
+        "name": "timeout_seconds"
+      },
+      {
+        "default": "False",
+        "kind": "PYDANTIC_FIELD",
+        "name": "debug"
+      },
+      {
+        "default": "src.templates.config.BaseModuleConfig.<lambda>",
+        "kind": "PYDANTIC_FIELD",
+        "name": "created_at"
+      },
+      {
+        "default": "128",
+        "kind": "PYDANTIC_FIELD",
+        "name": "n_features"
+      },
+      {
+        "default": "src.modeling.multiscale_fourier.FourierFeaturesConfig.<lambda>",
+        "kind": "PYDANTIC_FIELD",
+        "name": "scales"
+      },
+      {
+        "default": "True",
+        "kind": "PYDANTIC_FIELD",
+        "name": "learnable"
+      },
+      {
+        "default": "True",
+        "kind": "PYDANTIC_FIELD",
+        "name": "include_input"
+      },
+      {
+        "default": "'random'",
+        "kind": "PYDANTIC_FIELD",
+        "name": "encoding_type"
+      },
+      {
+        "default": "100",
+        "kind": "PYDANTIC_FIELD",
+        "name": "max_frequency"
+      }
+    ],
+    "module": "src.modeling.multiscale_fourier"
+  },
+  "GalerkinAttention": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "return_lbb"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_heads"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_key"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_value"
+      },
+      {
+        "default": "0.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "dropout"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "normalize_features"
+      }
+    ],
+    "module": "src.modeling.attention"
+  },
+  "GalerkinFNetHybrid": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "board_size"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_heads"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_ffn"
+      },
+      {
+        "default": "0.1",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "dropout"
+      },
+      {
+        "default": "0.5",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "fnet_ratio"
+      }
+    ],
+    "module": "src.modeling.fnet"
+  },
+  "HybridAttention": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_heads"
+      },
+      {
+        "default": "0.7",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "galerkin_ratio"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "learnable_gate"
+      },
+      {
+        "default": "0.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "dropout"
+      }
+    ],
+    "module": "src.modeling.attention"
+  },
+  "MultiScaleFourierFeatures": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "input_dim"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "config"
+      },
+      {
+        "default": "128",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_features"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "scales"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "learnable"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "include_input"
+      }
+    ],
+    "module": "src.modeling.multiscale_fourier"
+  },
+  "PositionalEncoding": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "10000",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "max_len"
+      },
+      {
+        "default": "10000.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "temperature"
+      }
+    ],
+    "module": "src.modeling.multiscale_fourier"
+  },
+  "ProgressiveFourierFeatures": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "input_dim"
+      },
+      {
+        "default": "128",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_features"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "scales"
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "learnable"
+      },
+      {
+        "default": "10.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "gate_steepness"
+      }
+    ],
+    "module": "src.modeling.multiscale_fourier"
+  },
+  "SoftmaxAttention": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "mask"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "n_heads"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_key"
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_value"
+      },
+      {
+        "default": "0.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "dropout"
+      }
+    ],
+    "module": "src.modeling.attention"
+  },
+  "SpatialPositionalEncoding": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "x"
+      }
+    ],
+    "init": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "d_model"
+      },
+      {
+        "default": "256",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "max_size"
+      },
+      {
+        "default": "10000.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "temperature"
+      }
+    ],
+    "module": "src.modeling.multiscale_fourier"
+  },
+  "StabilityGuard": {
+    "forward": [
+      {
+        "default": "<empty>",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "keys"
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "multihead"
+      }
+    ],
+    "init": [
+      {
+        "default": "1e-06",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "beta_threshold"
+      },
+      {
+        "default": "0.01",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "regularization_strength"
+      },
+      {
+        "default": "100",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "log_interval"
+      },
+      {
+        "default": "10.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "margin_multiplier"
+      }
+    ],
+    "module": "src.modeling.stability"
+  },
+  "StableGalerkinInitializer": {
+    "init": [
+      {
+        "default": "0.1",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "beta_target"
+      },
+      {
+        "default": "10",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "max_iterations"
+      },
+      {
+        "default": "1e-08",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "scale_epsilon"
+      },
+      {
+        "default": "(1.0, 2.0)",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "scale_clamp"
+      },
+      {
+        "default": "10.0",
+        "kind": "POSITIONAL_OR_KEYWORD",
+        "name": "guard_threshold_ratio"
+      }
+    ],
+    "module": "src.modeling.stability"
+  }
+}

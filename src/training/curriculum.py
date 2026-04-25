@@ -12,6 +12,8 @@ from typing import Any
 
 import structlog
 
+from src.constants import DEFAULT_CURRICULUM_SCHEDULE
+
 logger = structlog.get_logger(__name__)
 
 
@@ -207,10 +209,4 @@ def create_default_curriculum() -> BoardSizeCurriculum:
         Default curriculum.
 
     """
-    return BoardSizeCurriculum.from_schedule(
-        {
-            0: [9],
-            10000: [9, 13],
-            50000: [9, 13, 19],
-        }
-    )
+    return BoardSizeCurriculum.from_schedule(dict(DEFAULT_CURRICULUM_SCHEDULE))

@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import csv
 import json
 import math
 from dataclasses import dataclass, field
@@ -25,6 +26,21 @@ from src.pde.registry import get_pde_operator, list_pde_operators
 from src.research.baselines import BaseSolver, get_solver, list_solvers
 
 logger = structlog.get_logger(__name__)
+
+# Re-export metadata-key constants so existing callers (if any) can keep
+# importing ``METADATA_KEY_*`` from this module without breaking.  The
+# canonical home is :mod:`src.research.metadata_keys`.
+from src.research.metadata_keys import (  # noqa: E402
+    METADATA_KEY_METHOD,
+    METADATA_KEY_REFINEMENT_LEVEL,
+    METADATA_KEY_SEED,
+)
+
+# Log underflow guard for convergence rate computation: skip any step where
+# the previous or current l2_error is below this threshold, since the log()
+# result dominates numerical noise.  Kept module-private; if a caller needs
+# to sweep it, expose it via a config field.
+_CONVERGENCE_RATE_EPS = 1e-12
 
 
 @dataclass
@@ -140,13 +156,18 @@ class PDEBenchmarkRunner:
             for n_dof in refinement_levels:
                 try:
                     sr = solver.solve(operator, n_dof)
+                    # Record the requested refinement_level hint alongside
+                    # the solver-reported n_dof so CSV consumers can
+                    # distinguish the input budget from the output DOF.
+                    metadata_with_level = dict(sr.metadata)
+                    metadata_with_level.setdefault(METADATA_KEY_REFINEMENT_LEVEL, n_dof)
                     result = PDEBenchmarkResult(
                         benchmark_name=name,
                         method_name=solver.name,
                         n_dof=sr.n_dof,
                         l2_error=sr.l2_error if sr.l2_error is not None else float("nan"),
                         wall_time_seconds=sr.wall_time_seconds,
-                        metadata=sr.metadata,
+                        metadata=metadata_with_level,
                     )
                     results.append(result)
                     self._log.info(
@@ -182,7 +203,7 @@ class PDEBenchmarkRunner:
         results: list[PDEBenchmarkResult],
         output_dir: Path,
     ) -> None:
-        """Generate JSON and Markdown reports.
+        """Generate JSON, Markdown and CSV reports.
 
         Args:
             results: Benchmark results to report.
@@ -194,8 +215,93 @@ class PDEBenchmarkRunner:
         self._generate_json_report(results, output_dir / "results.json")
         md = self._generate_markdown_table(results)
         (output_dir / "results.md").write_text(md, encoding="utf-8")
+        self.export_csv(results, output_dir / "results.csv")
 
         self._log.info("report_generated", output_dir=str(output_dir))
+
+    def export_csv(
+        self,
+        results: list[PDEBenchmarkResult],
+        output_path: Path,
+    ) -> None:
+        """Export benchmark results as CSV for Pareto plot + external analysis.
+
+        Columns: problem, method, refinement_level, n_dof, l2_error,
+        wall_time_seconds, convergence_rate, seed.
+
+        Args:
+            results: Benchmark results to export.
+            output_path: Destination CSV file path.
+
+        """
+        # ``csv`` is already imported at module scope; no late import needed.
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "problem",
+                    METADATA_KEY_METHOD,
+                    METADATA_KEY_REFINEMENT_LEVEL,
+                    "n_dof",
+                    "l2_error",
+                    "wall_time_seconds",
+                    "convergence_rate",
+                    METADATA_KEY_SEED,
+                ]
+            )
+            for r in results:
+                seed = r.metadata.get(METADATA_KEY_SEED, "")
+                refinement_level = r.metadata.get(METADATA_KEY_REFINEMENT_LEVEL, r.n_dof)
+                writer.writerow(
+                    [
+                        r.benchmark_name,
+                        r.method_name,
+                        refinement_level,
+                        r.n_dof,
+                        r.l2_error if not math.isnan(r.l2_error) else "",
+                        f"{r.wall_time_seconds:.6f}",
+                        f"{r.convergence_rate:.4f}" if r.convergence_rate is not None else "",
+                        seed,
+                    ]
+                )
+        self._log.info("csv_export", path=str(output_path), rows=len(results))
+
+    def build_pareto_plot_data(
+        self,
+        results: list[PDEBenchmarkResult],
+    ) -> dict[str, dict[str, dict[str, list[Any]]]]:
+        """Build per-problem ``methods`` payloads for :class:`ParetoFrontierPlot`.
+
+        Results across different PDEs are incomparable on a shared
+        error/time axis (e.g. an L-shaped Poisson error of 1e-3 is not
+        directly comparable to a Burgers-shock error of 1e-3), so we
+        partition by ``benchmark_name`` and return a nested
+        ``{benchmark_name: {method_name: {wall_time, error, n_dof}}}``
+        structure.  Callers render one plot per problem.
+
+        Args:
+            results: Benchmark results (may span multiple problems).
+
+        Returns:
+            Nested dict keyed by benchmark name, then by method name.
+            Each inner dict has parallel ``wall_time``, ``error``,
+            ``n_dof`` lists ready to feed into
+            ``create_plot('pareto_frontier', {'methods': inner}, ...)``.
+
+        """
+        by_problem: dict[str, dict[str, dict[str, list[Any]]]] = {}
+        for r in results:
+            if math.isnan(r.l2_error):
+                continue
+            problem_bucket = by_problem.setdefault(r.benchmark_name, {})
+            entry = problem_bucket.setdefault(
+                r.method_name, {"wall_time": [], "error": [], "n_dof": []}
+            )
+            entry["wall_time"].append(r.wall_time_seconds)
+            entry["error"].append(r.l2_error)
+            entry["n_dof"].append(r.n_dof)
+        return by_problem
 
     # ------------------------------------------------------------------
     # Report generation
@@ -360,6 +466,8 @@ class PDEBenchmarkRunner:
             "uniform_fdm": "uniform_fdm",
             "dorfler_amr": "dorfler_amr",
             "pinn": "pinn",
+            "navier_stokes_fdm": "navier_stokes_fdm",
+            "navier_stokes": "navier_stokes_fdm",
         }
         key = name.lower().replace("-", "_").replace(" ", "_")
         return mapping.get(key, key)

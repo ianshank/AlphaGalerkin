@@ -219,9 +219,12 @@ class TestGalerkin2d:
         for resolution in [8, 12, 16, 20, 24]:
             x = torch.randn(batch, 1, resolution, resolution)
             y = model(x)
-            assert y.shape == (batch, 1, resolution, resolution), (
-                f"Failed at resolution {resolution}"
-            )
+            assert y.shape == (
+                batch,
+                1,
+                resolution,
+                resolution,
+            ), f"Failed at resolution {resolution}"
 
     def test_non_square_resolution(self, model: Galerkin2d) -> None:
         """Test model works with non-square inputs."""

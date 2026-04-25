@@ -1,7 +1,27 @@
-"""Test fixtures for Vertex AI tests."""
+"""Test fixtures for Vertex AI tests.
+
+The ``google-cloud-storage`` and ``google-cloud-aiplatform`` packages are in
+the optional ``[vertex]`` extra, so the default CI matrix (`[dev]`) runs
+without them.  This conftest stubs the ``google.cloud.*`` module tree so
+``unittest.mock.patch("google.cloud.storage.Client")`` resolves cleanly.
+
+Historical bug (fixed): an earlier version only installed the stubs when
+``"google" not in sys.modules``.  That is insufficient on Python 3.10
+because packages like ``wandb`` pull in the ``google`` namespace package
+transitively — so ``sys.modules["google"]`` already exists, but the real
+module has no ``cloud`` attribute, and ``patch("google.cloud.storage.Client")``
+fails with ``AttributeError: module 'google' has no attribute 'cloud'``
+during test setup.
+
+The fix: if ``google-cloud-storage`` is not actually importable, install
+our mock tree via ``sys.modules`` **and** set the ``cloud`` attribute on
+whatever ``google`` object is live so attribute walks used by ``patch``
+succeed regardless of how ``google`` was originally loaded.
+"""
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from collections.abc import Generator
 from unittest.mock import MagicMock, patch
@@ -17,25 +37,37 @@ from src.vertex.config import (
     VertexTrainingConfig,
 )
 
-# Mock google.cloud module tree if not installed
-_google_mock = MagicMock()
-_google_cloud_mock = MagicMock()
-_aiplatform_mock = MagicMock()
-_storage_mock = MagicMock()
 
-# Set up module hierarchy
-_google_cloud_mock.aiplatform = _aiplatform_mock
-_google_cloud_mock.storage = _storage_mock
-_google_mock.cloud = _google_cloud_mock
+def _google_cloud_storage_installed() -> bool:
+    """True when the real ``google-cloud-storage`` package can be imported.
 
-# Only add to sys.modules if not already installed
-if "google" not in sys.modules:
+    ``importlib.util.find_spec`` raises ``ModuleNotFoundError`` when a
+    parent package in the dotted path is itself missing, so we catch it
+    and treat it the same as "not installed".
+    """
+    try:
+        return importlib.util.find_spec("google.cloud.storage") is not None
+    except (ModuleNotFoundError, ValueError):
+        return False
+
+
+if not _google_cloud_storage_installed():
+    _google_mock = MagicMock(name="google")
+    _google_cloud_mock = MagicMock(name="google.cloud")
+    _aiplatform_mock = MagicMock(name="google.cloud.aiplatform")
+    _storage_mock = MagicMock(name="google.cloud.storage")
+
+    _google_cloud_mock.aiplatform = _aiplatform_mock
+    _google_cloud_mock.storage = _storage_mock
+    _google_mock.cloud = _google_cloud_mock
+
+    # Force-install the stub tree.  We do NOT guard behind
+    # ``"google" not in sys.modules`` because other deps (e.g. wandb) may
+    # have already imported the real namespace package — in that case we
+    # still need ``google.cloud`` to be discoverable.
     sys.modules["google"] = _google_mock
-if "google.cloud" not in sys.modules:
     sys.modules["google.cloud"] = _google_cloud_mock
-if "google.cloud.aiplatform" not in sys.modules:
     sys.modules["google.cloud.aiplatform"] = _aiplatform_mock
-if "google.cloud.storage" not in sys.modules:
     sys.modules["google.cloud.storage"] = _storage_mock
 
 

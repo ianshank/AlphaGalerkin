@@ -17,6 +17,7 @@ import numpy as np
 import structlog
 import torch
 
+from src.constants import DEFAULT_BOARD_SIZES, DEFAULT_MAX_MOVES, DEFAULT_TEMPERATURE_SCHEDULE
 from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS, BatchMCTS
 from src.tools.gtp import SimpleGoGame
@@ -121,15 +122,11 @@ class SelfPlayWorker:
         """
         self.model = model
         self.device = torch.device(device)
-        self.board_sizes = board_sizes or [9, 13, 19]
+        self.board_sizes = board_sizes or list(DEFAULT_BOARD_SIZES)
         self.game = game
 
         # Default temperature schedule: high exploration early, low late
-        self.temperature_schedule = temperature_schedule or {
-            0: 1.0,  # Moves 0-29: temperature 1.0
-            30: 0.5,  # Moves 30-59: temperature 0.5
-            60: 0.1,  # Moves 60+: temperature 0.1
-        }
+        self.temperature_schedule = temperature_schedule or dict(DEFAULT_TEMPERATURE_SCHEDULE)
 
         # Create evaluator
         self.evaluator = FNetEvaluator(
@@ -139,7 +136,7 @@ class SelfPlayWorker:
         )
 
         # MCTS configuration
-        self._mcts_kwargs: dict[str, int | float] = {}
+        self._mcts_kwargs: dict[str, Any] = {}
         if mcts_config is not None:
             self._mcts_kwargs = {
                 "n_simulations": mcts_config.n_simulations,
@@ -161,8 +158,8 @@ class SelfPlayWorker:
     def _create_mcts(self) -> MCTS:
         """Create MCTS instance."""
         if self.use_batch_mcts:
-            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
-        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)  # type: ignore[arg-type]
+            return BatchMCTS(evaluator=self.evaluator, **self._mcts_kwargs)
+        return MCTS(evaluator=self.evaluator, **self._mcts_kwargs)
 
     def _get_temperature(self, move_number: int) -> float:
         """Get temperature for given move number.
@@ -186,7 +183,7 @@ class SelfPlayWorker:
     def play_game(
         self,
         board_size: int | None = None,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
         add_noise: bool = True,
     ) -> GameRecord:
         """Play a complete self-play game.
@@ -206,7 +203,7 @@ class SelfPlayWorker:
 
     def _play_game_generic(
         self,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
         add_noise: bool = True,
     ) -> GameRecord:
         """Play a self-play game using a GameInterface (chess, etc.).
@@ -296,7 +293,7 @@ class SelfPlayWorker:
     def _play_game_go(
         self,
         board_size: int | None = None,
-        max_moves: int = 500,
+        max_moves: int = DEFAULT_MAX_MOVES,
         add_noise: bool = True,
     ) -> GameRecord:
         """Play a self-play game using SimpleGoGame (original Go path)."""

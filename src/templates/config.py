@@ -32,7 +32,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -286,7 +286,7 @@ class TrainableModuleConfig(BaseModuleConfig):
         description="Use automatic mixed precision",
     )
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def validate_intervals(self) -> TrainableModuleConfig:
         """Ensure intervals don't exceed total steps."""
         if self.warmup_steps >= self.total_steps:
@@ -321,7 +321,7 @@ class BoardSizeConfig(BaseModel):
         description="Specific board sizes to use",
     )
 
-    @field_validator("sizes")  # type: ignore[untyped-decorator]
+    @field_validator("sizes")
     @classmethod
     def validate_sizes(cls, v: list[int]) -> list[int]:
         """Validate and normalize board sizes."""
@@ -332,7 +332,7 @@ class BoardSizeConfig(BaseModel):
                 raise ValueError(f"Board size {size} must be between 3 and 25")
         return sorted(set(v))
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def validate_size_range(self) -> BoardSizeConfig:
         """Ensure sizes are within min/max range."""
         for size in self.sizes:
@@ -344,11 +344,26 @@ class BoardSizeConfig(BaseModel):
 T = TypeVar("T", bound=BaseModuleConfig)
 
 
+@overload
 def create_config_class(
     name: str,
-    base: type[T] = BaseModuleConfig,
     **field_definitions: tuple[type, Any],
-) -> type[T]:
+) -> type[BaseModuleConfig]: ...
+
+
+@overload
+def create_config_class(
+    name: str,
+    base: type[T],
+    **field_definitions: tuple[type, Any],
+) -> type[T]: ...
+
+
+def create_config_class(
+    name: str,
+    base: type[BaseModuleConfig] = BaseModuleConfig,
+    **field_definitions: tuple[type, Any],
+) -> type[BaseModuleConfig]:
     """Factory function to create configuration classes dynamically.
 
     Args:

@@ -33,6 +33,8 @@ from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 
+from src.constants import CHECKPOINT_BEST
+
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
 
@@ -226,7 +228,7 @@ class CheckpointManager:
 
         """
         if load_best:
-            path = self.checkpoint_dir / "best.pt"
+            path = self.checkpoint_dir / CHECKPOINT_BEST
         elif path is None:
             path = self.get_latest()
 
@@ -353,7 +355,7 @@ class CheckpointManager:
 
         if is_better:
             self._best_value = metric_value
-            best_path = self.checkpoint_dir / "best.pt"
+            best_path = self.checkpoint_dir / CHECKPOINT_BEST
 
             # Copy checkpoint to best.pt
             shutil.copy2(checkpoint_path, best_path)

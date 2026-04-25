@@ -486,9 +486,10 @@ class TestPruneExcept:
 
     def test_prune_except_returns_child(self, expanded_node: MCTSNode):
         """Test prune_except returns the kept child."""
+        expected_child = expanded_node.children[1]
         result = expanded_node.prune_except(1)
 
-        assert result is expanded_node.children.get(1)
+        assert result is expected_child
 
     def test_prune_except_sets_parent_none(self, expanded_node: MCTSNode):
         """Test pruned child becomes new root."""

@@ -22,12 +22,12 @@ import structlog
 import torch
 import torch.distributed as dist
 
-from src.distributed.config import SelfPlayDistributedConfig, from_environment
+from src.distributed.config import SelfPlayDistributedConfig, _get_env_rank_info
 
 if TYPE_CHECKING:
     from config.schemas import MCTSConfig
     from src.modeling.model import AlphaGalerkinModel
-    from src.training.self_play import Experience
+    from src.training.replay_buffer import Experience
 
 logger = structlog.get_logger(__name__)
 
@@ -237,7 +237,7 @@ class SelfPlayCoordinator:
         self.board_sizes = board_sizes
 
         # Distributed info
-        self.rank, self.local_rank, self.world_size = from_environment()
+        self.rank, self.local_rank, self.world_size = _get_env_rank_info()
 
         # Workers
         self.workers: list[SelfPlayWorker] = []
@@ -253,7 +253,7 @@ class SelfPlayCoordinator:
         self._logger = structlog.get_logger(__name__).bind(
             rank=self.rank,
             world_size=self.world_size,
-            n_workers=config.workers_per_node,
+            n_workers=config.num_workers,
         )
 
         # Initialize workers
@@ -267,8 +267,8 @@ class SelfPlayCoordinator:
             # Use local_rank for proper GPU assignment in multi-GPU setups
             device = torch.device(f"cuda:{self.local_rank}")
 
-        for i in range(self.config.workers_per_node):
-            worker_id = self.rank * self.config.workers_per_node + i
+        for i in range(self.config.num_workers):
+            worker_id = self.rank * self.config.num_workers + i
 
             # Clone model for each worker to avoid state sharing
             worker_model = type(self.model)(self.model.config)

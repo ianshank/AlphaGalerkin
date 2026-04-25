@@ -9,15 +9,11 @@ from unittest.mock import patch
 
 import pytest
 
-# Try to import the main entry point
-try:
-    from src.tools.cli import main
-except ImportError:
-    # Fallback if the path isn't set up in the test runner
-    main = None
+# Skip the entire module if the CLI entry point cannot be imported
+cli_module = pytest.importorskip("src.tools.cli", reason="CLI module (src.tools.cli) not available")
+main = cli_module.main
 
 
-@pytest.mark.skipif(main is None, reason="CLI module not found")
 def test_cli_help_command() -> None:
     """Verify the application boots and shows help correctly.
 
@@ -31,7 +27,6 @@ def test_cli_help_command() -> None:
         assert excinfo.value.code == 0
 
 
-@pytest.mark.skipif(main is None, reason="CLI module not found")
 def test_cli_train_dry_run() -> None:
     """Verify invalid arguments are rejected with appropriate error code.
 

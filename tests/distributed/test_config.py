@@ -10,6 +10,7 @@ from src.distributed.config import (
     DistributedInfraConfig,
     LauncherConfig,
     SelfPlayDistributedConfig,
+    config_from_environment,
     create_distributed_config,
     from_environment,
 )
@@ -130,26 +131,45 @@ class TestFactoryFunctions:
         assert config.world_size == 4
         assert config.backend == DistributedBackend.GLOO
 
-    def test_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test environment variable extraction."""
+    def test_config_from_environment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``config_from_environment`` returns a config for distributed mode."""
         monkeypatch.setenv("RANK", "2")
         monkeypatch.setenv("LOCAL_RANK", "0")
         monkeypatch.setenv("WORLD_SIZE", "8")
 
-        rank, local_rank, world_size = from_environment()
+        config = config_from_environment()
 
-        assert rank == 2
-        assert local_rank == 0
-        assert world_size == 8
+        assert config is not None
+        assert config.enabled is True
+        assert config.world_size == 8
 
-    def test_from_environment_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test default values when env vars not set."""
+    def test_config_from_environment_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``config_from_environment`` returns ``None`` outside distributed mode."""
         monkeypatch.delenv("RANK", raising=False)
         monkeypatch.delenv("LOCAL_RANK", raising=False)
         monkeypatch.delenv("WORLD_SIZE", raising=False)
 
-        rank, local_rank, world_size = from_environment()
+        config = config_from_environment()
 
-        assert rank == 0
-        assert local_rank == 0
-        assert world_size == 1
+        # Single-process returns None
+        assert config is None
+
+    def test_from_environment_legacy_tuple(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Legacy ``from_environment`` returns the historical 3-tuple shape."""
+        monkeypatch.setenv("RANK", "3")
+        monkeypatch.setenv("LOCAL_RANK", "1")
+        monkeypatch.setenv("WORLD_SIZE", "4")
+
+        result = from_environment()
+
+        assert result == (3, 1, 4)
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+
+    def test_from_environment_legacy_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Legacy ``from_environment`` defaults to ``(0, 0, 1)`` outside distributed."""
+        monkeypatch.delenv("RANK", raising=False)
+        monkeypatch.delenv("LOCAL_RANK", raising=False)
+        monkeypatch.delenv("WORLD_SIZE", raising=False)
+
+        assert from_environment() == (0, 0, 1)

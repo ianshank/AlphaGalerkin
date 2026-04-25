@@ -160,21 +160,21 @@ C4Component
 
     Container_Boundary(neural_operator, "Neural Operator Model") {
         Component(model, "AlphaGalerkinModel", "PyTorch nn.Module", "Main model orchestrating all components")
-        
+
         Component(embedding, "Continuous Embedding", "PyTorch Layer", "Maps discrete board to continuous domain with Fourier features")
-        
+
         Component(galerkin_attention, "Galerkin Attention", "PyTorch Layer", "O(N) attention via Petrov-Galerkin projection for global influence")
-        
+
         Component(softmax_attention, "Softmax Attention", "PyTorch Layer", "Traditional attention for local tactical reading")
-        
+
         Component(fnet_block, "FNet Mixing Block", "PyTorch Layer", "O(N log N) FFT-based mixing for fast rollouts")
-        
+
         Component(stability_guard, "LBB Stability Guard", "PyTorch Module", "Monitors inf-sup condition during training")
-        
+
         Component(policy_head, "Policy Head", "PyTorch Layer", "Outputs move probability distribution")
-        
+
         Component(value_head, "Value Head", "PyTorch Layer", "Outputs position evaluation [-1, 1]")
-        
+
         Component(adapter, "Resolution Adapter", "Python Module", "Spectral filtering for zero-shot transfer")
     }
 
@@ -187,14 +187,14 @@ C4Component
     Rel(fnet_block, softmax_attention, "Refines features")
     Rel(softmax_attention, policy_head, "Generates policy")
     Rel(softmax_attention, value_head, "Generates value")
-    
+
     Rel(galerkin_attention, stability_guard, "Monitors LBB")
     Rel(model, adapter, "Adapts resolution")
-    
+
     Rel(embedding, math_kernel, "Uses Fourier basis")
     Rel(galerkin_attention, math_kernel, "Uses Galerkin projection")
     Rel(adapter, math_kernel, "Uses spectral filtering")
-    
+
     Rel(stability_guard, training_loss, "Adds regularization term")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
@@ -225,17 +225,17 @@ C4Component
 
     Container_Boundary(training_pipeline, "Training Pipeline") {
         Component(trainer, "Trainer", "Python Class", "Main training loop orchestration")
-        
+
         Component(self_play, "Self-Play Engine", "Python Module", "Generates training games using MCTS")
-        
+
         Component(replay_buffer, "Experience Replay Buffer", "Python Class", "Stores and samples game experiences")
-        
+
         Component(loss_fn, "AlphaGalerkin Loss", "PyTorch Module", "Combined loss: policy CE + value MSE + LBB regularization")
-        
+
         Component(checkpoint_mgr, "Checkpoint Manager", "Python Module", "Saves/loads models with rotation")
-        
+
         Component(evaluator, "Model Evaluator", "Python Module", "Win rate and policy agreement metrics")
-        
+
         Component(optimizer, "Optimizer", "PyTorch", "Adam optimizer with learning rate scheduling")
     }
 
@@ -247,18 +247,18 @@ C4Component
     Rel(trainer, self_play, "Generates games")
     Rel(self_play, mcts, "Uses for move selection")
     Rel(self_play, replay_buffer, "Stores experiences")
-    
+
     Rel(trainer, replay_buffer, "Samples batches")
     Rel(replay_buffer, data_layer, "Uses collation")
-    
+
     Rel(trainer, neural_operator, "Forward pass")
     Rel(neural_operator, loss_fn, "Computes loss")
     Rel(loss_fn, optimizer, "Backpropagates")
     Rel(optimizer, neural_operator, "Updates weights")
-    
+
     Rel(trainer, evaluator, "Evaluates periodically")
     Rel(evaluator, neural_operator, "Tests model")
-    
+
     Rel(trainer, checkpoint_mgr, "Saves checkpoints")
     Rel(checkpoint_mgr, checkpoint_store, "Persists to disk")
 
@@ -289,13 +289,13 @@ C4Component
 
     Container_Boundary(engine_subsystem, "Engine Integration Subsystem") {
         Component(uci_adapter, "UCI Adapter", "Python Module", "Universal Chess Interface protocol driver for Stockfish/Leela")
-        
+
         Component(engine_match, "EngineMatch", "Python Class", "Orchestrates N-game matches: color alternation, time control, PGN output")
-        
+
         Component(elo_calculator, "EloCalculator", "Python Class", "Bayesian Elo estimation with confidence intervals and LOS")
-        
+
         Component(uci_config, "UCIConfig", "Pydantic Model", "Engine path, depth, nodes, movetime, hash, threads")
-        
+
         Component(match_config, "MatchConfig", "Pydantic Model", "N games, time control, max moves, opening FEN")
     }
 
@@ -338,21 +338,21 @@ C4Component
 
     Container_Boundary(poc_framework, "PoC Framework") {
         Component(cli_poc, "PoC CLI", "Python argparse", "Command-line interface: run, list, info, compare")
-        
+
         Component(registry, "Scenario Registry", "Python Module", "Discovers and manages available scenarios")
-        
+
         Component(runner, "Scenario Runner", "Python Module", "Executes scenarios with parallel support")
-        
+
         Component(config_mgr, "Config Manager", "Pydantic", "Validates and loads scenario configurations")
-        
+
         Component(results_collector, "Results Collector", "Python Module", "Aggregates and persists experiment results")
-        
+
         Component(logger, "Structured Logger", "structlog", "High-signal logging with context")
-        
+
         Component(scenario_transfer, "Transfer Scenario", "Python Class", "Validates zero-shot transfer (9x9 → 19x19)")
-        
+
         Component(scenario_complexity, "Complexity Scenario", "Python Class", "Validates O(N) vs O(N²) complexity")
-        
+
         Component(scenario_stability, "Stability Scenario", "Python Class", "Monitors LBB condition during training")
     }
 
@@ -363,21 +363,21 @@ C4Component
     Rel(cli_poc, registry, "Lists scenarios")
     Rel(cli_poc, runner, "Executes scenarios")
     Rel(cli_poc, config_mgr, "Loads configs")
-    
+
     Rel(registry, scenario_transfer, "Registers")
     Rel(registry, scenario_complexity, "Registers")
     Rel(registry, scenario_stability, "Registers")
-    
+
     Rel(runner, scenario_transfer, "Runs")
     Rel(runner, scenario_complexity, "Runs")
     Rel(runner, scenario_stability, "Runs")
-    
+
     Rel(scenario_transfer, neural_operator, "Tests transfer")
     Rel(scenario_complexity, neural_operator, "Benchmarks complexity")
     Rel(scenario_stability, neural_operator, "Monitors stability")
-    
+
     Rel(scenario_transfer, physics_data, "Generates test data")
-    
+
     Rel(runner, results_collector, "Collects results")
     Rel(results_collector, results_store, "Persists results")
     Rel(results_collector, logger, "Logs outcomes")
@@ -410,15 +410,15 @@ C4Component
 
     Container_Boundary(math_kernel, "Math Kernel") {
         Component(fourier_basis, "Fourier Basis Functions", "NumPy/PyTorch", "Resolution-independent positional encoding")
-        
+
         Component(galerkin_projection, "Galerkin Projection", "PyTorch", "Monte Carlo integral approximation for operators")
-        
+
         Component(spectral_filter, "Spectral Filter", "PyTorch FFT", "Anti-aliasing for resolution transfer")
-        
+
         Component(lbb_checker, "LBB Condition Checker", "NumPy/PyTorch", "Computes inf-sup constant β")
-        
+
         Component(fredholm_kernel, "Fredholm Kernel", "Math Functions", "Green's function formulation for influence")
-        
+
         Component(monte_carlo_integral, "Monte Carlo Integral", "NumPy", "Numerical integration with 1/n normalization")
     }
 
@@ -429,10 +429,10 @@ C4Component
     Rel(neural_operator, galerkin_projection, "Projects values")
     Rel(neural_operator, spectral_filter, "Adapts resolution")
     Rel(neural_operator, lbb_checker, "Monitors stability")
-    
+
     Rel(galerkin_projection, monte_carlo_integral, "Approximates integral")
     Rel(galerkin_projection, fredholm_kernel, "Uses Green's function")
-    
+
     Rel(poc_framework, lbb_checker, "Validates β > 0")
     Rel(poc_framework, spectral_filter, "Tests transfer quality")
 
@@ -995,15 +995,15 @@ flowchart LR
     Embed --> Galerkin[Galerkin<br/>Attention<br/>6 layers]
     Galerkin --> FNet[FNet<br/>Mixing]
     FNet --> Softmax[Softmax<br/>Attention<br/>2 layers]
-    
+
     Softmax --> Policy[Policy Head<br/>361+1 moves]
     Softmax --> Value[Value Head<br/>[-1, 1]]
-    
+
     Policy --> MCTS[MCTS<br/>Search]
     Value --> MCTS
-    
+
     MCTS --> Move[Best Move]
-    
+
     style Input fill:#e1f5ff
     style Policy fill:#ffe1e1
     style Value fill:#e1ffe1
@@ -1165,7 +1165,7 @@ C4Deployment
     Rel(trainer1, shared_storage, "Saves checkpoints")
     Rel(trainer2, shared_storage, "Saves checkpoints")
     Rel(trainer1, trainer2, "Synchronizes gradients", "NCCL/Gloo")
-    
+
     Rel(gtp_server_deploy, model_inference, "Gets predictions")
     Rel(model_inference, shared_storage, "Loads models")
     Rel(go_gui_deploy, gtp_server_deploy, "Sends GTP commands", "TCP")

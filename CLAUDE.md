@@ -82,6 +82,28 @@ Monitors LBB condition during training:
 - [2026-03-30]: **IP Strategy Documented** - 3 provisional patent claims, publication plan, dual-licensing
 - [2026-03-30]: **Property-Based Tests** - Hypothesis tests for loss, PDE operators, attention mechanisms
 - [2026-03-30]: **Numerical Stability Tests** - Edge cases, extreme values, mixed precision, NaN propagation
+- [2026-04-02]: **Physics Loss Fully Wired** - CombinedAlphaGalerkinPhysicsLoss passes lbb_constant, action_mask, model to trainer
+- [2026-04-02]: **2D AMR Baseline** - DorflerAMRSolver extended to 2D with element-wise refinement and Dorfler marking
+- [2026-04-02]: **Navier-Stokes FDM Solver** - Chorin projection method baseline for Taylor-Green vortex benchmark
+- [2026-04-02]: **PDE GameInterface Bridge** - PDEGameInterface wraps PDEGame for GameRegistry registration
+- [2026-04-02]: **PDE Games Registered** - pde_basis and pde_mesh registered in GameRegistry via src/pde/register_games.py
+- [2026-04-02]: **PDE Training Config** - config/train_pde.yaml for MCTS-guided basis selection training
+- [2026-04-02]: **ROI Implementation Plan** - Tiered next-steps plan in docs/ROI_IMPLEMENTATION_PLAN.md
+- [2026-04-07]: **Physics Loss Tests** - 52 comprehensive tests for physics-informed training (config toggle, gradient flow, property-based)
+- [2026-04-07]: **SBIR Benchmark Demo** - End-to-end sbir_demo.py with HTML/JSON/Markdown report generation
+- [2026-04-07]: **Loss Balancing Audit** - Fixed NaN/Inf propagation bugs in ReLoBRaLo/SoftAdapt, 96 property-based tests
+- [2026-04-07]: **PDE-MCTS Self-Play Wired** - PDE games auto-register, create_trainer() accepts game parameter, 40 tests
+- [2026-04-07]: **Visualization Module** - PlotRegistry with 5 plot types, HTMLReportGenerator with themed templates
+- [2026-04-07]: **Coverage Expansion** - 390+ new tests across training, PDE, games, curriculum, modeling modules
+- [2026-04-07]: **BaseTrainer Refactor** - Extracted shared AMP, grad clip, LR scheduling into BaseTrainer base class
+- [2026-04-07]: **Distributed Trainer Tests** - 35 new tests for DistributedTrainer (metrics, checkpoints, multi-process)
+- [2026-04-07]: **Test Speed Fixes** - Mocked MCTS self-play in all trainer tests to prevent hanging (chess, physics, pipeline)
+- [2026-04-07]: **Coverage Sprint** - 115 new tests: statistics significance (52), tuning sampler/tuner (33), ONNX integration (30)
+- [2026-04-07]: **GPU Skip Hook** - Root conftest.py auto-skips gpu_required tests when CUDA unavailable; 0 spurious failures
+- [2026-04-07]: **Gumbel MCTS Search Tests** - 38 integration tests for search(), _sequential_halving(), _simulate(), get_improved_policy(), factory
+- [2026-04-25]: **Leap 71 / PicoGK Integration v1** - SDFEvaluator Protocol + AnalyticalHelixSDF (closed-form helical-tube SDF), PicoGKDomain(DomainGeometry) with Newton-projected boundary sampling, HelicalHeatOperator on the LShapedPoissonOperator override pattern, voxel-FDM reference solver, NoyronHXScenario for zero-shot 3D heat-transfer transfer (GPU-preferred device handling), 48 new tests covering SDF, domain adapter, operator, and scenario smoke. The PicoGK .NET dependency is gated behind the optional `[picogk]` extra; CI runs entirely on the analytical helix surrogate.
+- [2026-04-25]: **PhysicsOperator 3D-Aware** - FourierBasis/FourierFeatures parameterized by `input_dim` (default 2 preserves all existing 2D callers); PhysicsOperator gained an `input_dim` constructor arg. Enables the Noyron HX 3D scenario without touching any 2D code path.
+- [2026-04-25]: **Leap 71 / PicoGK Integration v2** - Added `HelicalStokesOperator` (steady incompressible Stokes flow on a helical SDF — Noyron RP coolant channels, v2.3 expansion), `HelicalMagnetostaticsOperator` (vector-potential magnetostatics — Noyron EA actuators, v3.1 expansion), and `HelicalBasisSelectionInterface` (MCTS basis selection on any helical operator — v2.2 expansion). All three operators registered in `PDEOperatorRegistry` and wired through the `pde_basis_helical` game. 35 new tests; 100% coverage on the new flow/EM operators. Module-level constants (Newton iters, gradient epsilon, oversample max, voxel-FDM iter cadence, harmonic wave number) surfaced as constructor / Pydantic fields for tunability. Shared `src/poc/device.py` helper extracted with explicit GPU-preferred / CPU-fallback / fail-loud semantics. `tests/pde/conftest.py` adds reusable helix-param fixtures.
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement

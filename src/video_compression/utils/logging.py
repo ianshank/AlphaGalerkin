@@ -17,7 +17,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import structlog
 
@@ -100,7 +100,7 @@ def log_function_call(
                 logger.error("call_failed", **log_data)
                 raise
 
-        return wrapper  # type: ignore[return-value]
+        return cast(F, wrapper)
 
     return decorator
 

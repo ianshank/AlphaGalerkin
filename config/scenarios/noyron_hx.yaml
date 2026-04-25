@@ -1,0 +1,67 @@
+# Noyron HX Zero-Shot Transfer Scenario (Leap 71 integration)
+#
+# Train a 3D PINN-style PhysicsOperator at 4k collocation points on the
+# analytical helical-tube SDF that mirrors Leap 71's downloadable heat
+# exchanger, then evaluate zero-shot at 16k points. The scenario fails
+# fast if CUDA is unavailable (device='cuda' is the project default);
+# pass `device=cpu` on the command line for the CPU smoke test.
+#
+# Run:
+#   python -m src.poc.cli run --config config/scenarios/noyron_hx.yaml
+#
+# Override the reference solver:
+#   python -m src.poc.cli run --config config/scenarios/noyron_hx.yaml \
+#       scenarios.0.ref_solver_kind=voxel_fdm
+
+defaults:
+  seed: 42
+  timeout_seconds: 7200
+
+scenarios:
+  - name: noyron_hx
+    description: "Zero-shot 3D heat transfer on Leap 71 helical HX (analytical reference)"
+    tier: integration
+    enabled: true
+    requires_gpu: true
+
+    # Helix geometry (matches the Leap 71 downloadable HX scale).
+    helix_R_major: 0.05
+    helix_r_minor: 0.012
+    helix_pitch: 0.02
+    helix_n_turns: 5
+
+    # Use the closed-form helix SDF for CI / reproducibility.
+    use_picogk: false
+
+    # Training point density.
+    n_train_pts: 4096
+    n_train_boundary_pts: 512
+
+    # Zero-shot evaluation density (~4x training).
+    n_eval_pts: 16384
+
+    # Training hyperparameters.
+    n_epochs: 200
+    batch_size: 1
+    learning_rate: 1.0e-3
+    diffusivity: 1.0
+
+    # Model.
+    d_model: 64
+    n_heads: 4
+    n_layers: 3
+    n_fourier_features: 32
+    fourier_scale: 10.0
+    use_fnet: true
+
+    # Reference solution.
+    ref_solver_kind: analytical_harmonic
+    voxel_fdm_resolution: 48
+
+    # Pass/fail criteria.
+    mse_threshold_low: 5.0e-4
+    mse_threshold_high: 1.0e-3
+    transfer_ratio_threshold: 4.0
+
+    # GPU-preferred device handling.
+    device: cuda

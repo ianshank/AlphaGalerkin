@@ -336,7 +336,7 @@ if HAS_JAX:
         filter_type: str = "gaussian"
         learnable: bool = False
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(
             self,
             x: Any,
@@ -455,7 +455,7 @@ if HAS_JAX:
         filter_cutoff: float = 0.5
         filter_type: str = "gaussian"
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(
             self,
             features: Any,

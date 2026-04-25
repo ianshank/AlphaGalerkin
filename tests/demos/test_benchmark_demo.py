@@ -12,6 +12,8 @@ from __future__ import annotations
 import pytest
 import torch
 
+pytest.importorskip("matplotlib")
+
 from src.demos.benchmark_demo import (
     BenchmarkDemo,
     BenchmarkResult,

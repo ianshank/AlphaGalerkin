@@ -22,6 +22,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
 from torch.utils.data import DataLoader
 
+from src.constants import CHECKPOINT_BEST
 from src.training.losses import get_loss
 
 logger = structlog.get_logger(__name__)
@@ -277,7 +278,7 @@ class OperatorTrainer:
                 if val_loss < self.best_val_loss - self.config.min_delta:
                     self.best_val_loss = val_loss
                     self.patience_counter = 0
-                    self.save_checkpoint("best.pt")
+                    self.save_checkpoint(CHECKPOINT_BEST)
                 else:
                     self.patience_counter += 1
                     if self.patience_counter >= self.config.patience:

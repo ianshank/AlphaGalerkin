@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 import torch
 from jaxtyping import Float
 from numpy.typing import NDArray
@@ -24,6 +25,8 @@ from torch import Tensor
 
 from src.pde.config import BasisSelectionConfig, PDEGameConfig
 from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+
+logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
@@ -385,8 +388,11 @@ class BasisSelectionGame(PDEGame):
             coeffs = np.linalg.pinv(Phi) @ target
             new_state.basis_coefficients = coeffs.astype(np.float32)
 
-        # Compute new solution
-        new_state.solution = (Phi @ new_state.basis_coefficients).astype(np.float32)
+        # Compute new solution (basis_coefficients is always set above)
+        basis_coeffs = new_state.basis_coefficients
+        if basis_coeffs is None:
+            raise RuntimeError("basis_coefficients must be set before computing solution")
+        new_state.solution = (Phi @ basis_coeffs).astype(np.float32)
 
         # Compute residual and error
         residual_result = self.pde_operator.residual(

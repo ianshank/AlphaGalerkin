@@ -1,0 +1,13 @@
+[run]
+omit =
+    src/games/go.py
+    src/games/sgf/*
+    src/games/pettingzoo_adapter.py
+    src/games/fen.py
+
+[report]
+omit =
+    src/games/go.py
+    src/games/sgf/*
+    src/games/pettingzoo_adapter.py
+    src/games/fen.py

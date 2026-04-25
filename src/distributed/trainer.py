@@ -23,14 +23,15 @@ import structlog
 import torch
 import torch.distributed as dist
 from torch import nn
-from torch.amp import GradScaler, autocast
+from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.optim import AdamW, Optimizer
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 
-from src.distributed.config import DistributedInfraConfig, from_environment
+from src.distributed.config import DistributedInfraConfig, _get_env_rank_info
 from src.distributed.gradient_sync import GradientAccumulator, GradientSynchronizer
+from src.training.base_trainer import BaseTrainer
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
@@ -80,11 +81,17 @@ class DistributedMetrics:
         }
 
 
-class DistributedTrainer:
+class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
     """Distributed trainer for AlphaGalerkin.
 
     Coordinates distributed training across multiple nodes/GPUs using
     PyTorch's DistributedDataParallel.
+
+    Inherits shared AMP, gradient-clipping, LR-scheduling, and
+    checkpoint helpers from :class:`BaseTrainer`.  The ``__init__``
+    does **not** call ``super().__init__()`` because the distributed
+    trainer has a substantially different setup flow; instead it
+    sets the attributes that ``BaseTrainer`` helpers rely on directly.
 
     Attributes:
         model: The model being trained (unwrapped).
@@ -121,8 +128,15 @@ class DistributedTrainer:
         self.loss_fn = loss_fn
 
         # Get distributed info from environment
-        self.rank, self.local_rank, self.world_size = from_environment()
+        self.rank, self.local_rank, self.world_size = _get_env_rank_info()
         self._is_main_process = self.rank == 0
+
+        # Logger must be initialised before _create_optimizer (which logs scaling)
+        self._logger = structlog.get_logger(__name__).bind(
+            rank=self.rank,
+            local_rank=self.local_rank,
+            world_size=self.world_size,
+        )
 
         # Device setup
         self.device = self._setup_device()
@@ -135,10 +149,13 @@ class DistributedTrainer:
         self.optimizer = optimizer or self._create_optimizer()
         self.scheduler = scheduler
 
-        # Mixed precision
-        self.use_amp = distributed_config.use_amp and self.device.type == "cuda"
-        self.scaler = GradScaler("cuda") if self.use_amp else None
-        self.amp_dtype = getattr(torch, distributed_config.amp_dtype, torch.float16)
+        # Mixed precision (uses BaseTrainer helper)
+        _amp_dtype = getattr(torch, distributed_config.amp_dtype, torch.float16)
+        self.use_amp, self.scaler, self.amp_dtype = self._setup_amp(
+            use_amp=distributed_config.use_amp,
+            device=self.device,
+            amp_dtype=_amp_dtype,
+        )
 
         # Gradient synchronization
         self.grad_sync: GradientSynchronizer | None = None
@@ -149,12 +166,6 @@ class DistributedTrainer:
         # Training state
         self.global_step = 0
         self._is_initialized = False
-
-        self._logger = structlog.get_logger(__name__).bind(
-            rank=self.rank,
-            local_rank=self.local_rank,
-            world_size=self.world_size,
-        )
 
     def _setup_device(self) -> torch.device:
         """Setup device based on local rank.
@@ -168,19 +179,31 @@ class DistributedTrainer:
             return torch.device(f"cuda:{self.local_rank}")
         return torch.device("cpu")
 
-    def _create_optimizer(self) -> Optimizer:
-        """Create optimizer with learning rate scaling.
+    def _create_optimizer(self) -> Optimizer:  # type: ignore[override]
+        """Create optimizer with config-driven learning-rate scaling.
+
+        Honours :attr:`DistributedInfraConfig.learning_rate_scaling`
+        (``linear`` / ``sqrt`` / ``none``) via
+        :meth:`DistributedInfraConfig.scale_learning_rate`. Uses
+        :meth:`BaseTrainer._create_optimizer` to build the optimizer.
 
         Returns:
             Configured optimizer.
 
         """
-        # Scale learning rate by world size (linear scaling rule)
         base_lr = self.config.training.learning_rate
-        scaled_lr = base_lr * self.world_size
+        scaled_lr = self.distributed_config.scale_learning_rate(base_lr)
 
-        return AdamW(
-            self.model.parameters(),
+        self._logger.info(
+            "scaled_learning_rate",
+            base_lr=base_lr,
+            scaled_lr=scaled_lr,
+            strategy=self.distributed_config.learning_rate_scaling,
+            world_size=self.distributed_config.world_size,
+        )
+
+        return BaseTrainer._create_optimizer(
+            self.model,
             lr=scaled_lr,
             weight_decay=self.config.training.weight_decay,
         )
@@ -305,19 +328,12 @@ class DistributedTrainer:
         # Optimizer step if accumulation complete
         grad_norm = 0.0
         if is_sync_step:
+            # Use BaseTrainer._clip_gradients for consistent clipping
+            grad_norm = self._clip_gradients(self.ddp_model, self.config.training.gradient_clip)
             if self.use_amp and self.scaler is not None:
-                self.scaler.unscale_(self.optimizer)
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.ddp_model.parameters(),
-                    self.config.training.gradient_clip,
-                ).item()
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.ddp_model.parameters(),
-                    self.config.training.gradient_clip,
-                ).item()
                 self.optimizer.step()
 
             self.optimizer.zero_grad()
@@ -355,6 +371,22 @@ class DistributedTrainer:
         )
 
         return metrics
+
+    # ------------------------------------------------------------------
+    # Abstract method implementations (required by BaseTrainer ABC)
+    # ------------------------------------------------------------------
+
+    def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:
+        """Not used directly -- DistributedTrainer uses train_step instead."""
+        raise NotImplementedError("DistributedTrainer uses train_step(); use that method instead.")
+
+    def generate_data(self) -> Any:
+        """Not used directly -- DistributedTrainer manages data externally."""
+        raise NotImplementedError("DistributedTrainer receives batches via train_step().")
+
+    def evaluate(self) -> dict[str, float]:
+        """Not used directly -- evaluation is handled externally."""
+        raise NotImplementedError("DistributedTrainer evaluation is managed externally.")
 
     def _get_lr(self) -> float:
         """Get current learning rate.
@@ -415,7 +447,7 @@ class DistributedTrainer:
             global_batch_size=local_metrics.global_batch_size,
         )
 
-    def save_checkpoint(
+    def save_checkpoint(  # type: ignore[override]
         self,
         path: Path | str,
         metrics: dict[str, Any] | None = None,
@@ -461,7 +493,7 @@ class DistributedTrainer:
 
         return path
 
-    def load_checkpoint(self, path: Path | str) -> int:
+    def load_checkpoint(self, path: Path | str) -> int:  # type: ignore[override]
         """Load checkpoint.
 
         Args:

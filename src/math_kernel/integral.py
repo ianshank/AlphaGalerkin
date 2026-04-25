@@ -330,7 +330,7 @@ if HAS_JAX:
         It is a pure-function module with no trainable parameters.
         """
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(
             self,
             values: Any,
@@ -379,7 +379,7 @@ if HAS_JAX:
         d_key: int
         d_value: int
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, x: Any) -> Any:
             """Apply Galerkin projection (linear attention).
 
@@ -432,10 +432,12 @@ if HAS_JAX:
                 Minimum singular value for each batch element, shape ``(batch,)``.
 
             """
-            # Apply the key projection using stored parameters
-            k = fnn.Dense(self.d_key, name="to_key").apply(
-                {"params": variables["params"]["to_key"]}, x
-            )
+            # Apply the key projection using stored parameters directly
+            # (avoid creating a child Dense module outside a Flax scope)
+            key_params = variables["params"]["to_key"]
+            k = x @ key_params["kernel"]
+            if "bias" in key_params:
+                k = k + key_params["bias"]
             n = x.shape[1]
 
             # Compute K^T K / n (Gram matrix)
@@ -485,7 +487,7 @@ if HAS_JAX:
                     f"LBB violation: d_trial ({self.d_trial}) must be >= d_test ({self.d_test})"
                 )
 
-        @fnn.compact  # type: ignore[untyped-decorator]
+        @fnn.compact
         def __call__(self, x: Any) -> Any:
             """Apply Petrov-Galerkin projection.
 

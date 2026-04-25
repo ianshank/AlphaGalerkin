@@ -7,12 +7,15 @@ This enables zero-shot transfer between different board sizes.
 
 from __future__ import annotations
 
+import structlog
 import torch
 from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 
 from src.math_kernel.basis import FourierBasis, create_grid_coordinates
+
+logger = structlog.get_logger(__name__)
 
 
 class FourierFeatures(nn.Module):
@@ -34,6 +37,7 @@ class FourierFeatures(nn.Module):
         scale: float = 1.0,
         learnable: bool = True,
         include_coordinates: bool = True,
+        input_dim: int = 2,
     ) -> None:
         """Initialize Fourier features.
 
@@ -42,16 +46,19 @@ class FourierFeatures(nn.Module):
             scale: Standard deviation for frequency initialization.
             learnable: Whether frequencies are learnable.
             include_coordinates: Whether to concatenate raw coordinates.
+            input_dim: Spatial dimension of input coordinates (2 or 3).
 
         """
         super().__init__()
         self.n_features = n_features
         self.include_coordinates = include_coordinates
+        self.input_dim = input_dim
 
         self.fourier_basis = FourierBasis(
             n_features=n_features,
             scale=scale,
             learnable=learnable,
+            input_dim=input_dim,
         )
 
     @property
@@ -59,17 +66,17 @@ class FourierFeatures(nn.Module):
         """Output dimension of Fourier features."""
         dim = 2 * self.n_features  # cos + sin
         if self.include_coordinates:
-            dim += 2  # raw x, y
+            dim += self.input_dim
         return dim
 
     def forward(
         self,
-        coords: Float[Tensor, "batch n 2"],
+        coords: Float[Tensor, "batch n d"],
     ) -> Float[Tensor, "batch n features"]:
         """Encode coordinates with Fourier features.
 
         Args:
-            coords: Normalized coordinates in [0, 1]^2.
+            coords: Normalized coordinates in [0, 1]^d where d == input_dim.
 
         Returns:
             Fourier feature embeddings.
@@ -135,7 +142,8 @@ class ContinuousEmbedding(nn.Module):
         # Optional learnable position embedding (for baseline comparison)
         if use_learnable_positions:
             # This will be dynamically created based on board size
-            self._position_embedding: nn.Parameter | None = None
+            # Typed as Tensor | None because .to(device) returns Tensor
+            self._position_embedding: Tensor | None = None
             self._position_embedding_size: int = 0
 
     def _get_position_embedding(
@@ -158,12 +166,15 @@ class ContinuousEmbedding(nn.Module):
 
         # Create or resize position embedding
         if self._position_embedding is None or self._position_embedding_size != n_positions:
-            # Create new embedding
-            self._position_embedding = nn.Parameter(
-                torch.randn(1, n_positions, self.d_model) * 0.02
-            ).to(device)
+            # Create new embedding on target device
+            param_data = torch.randn(1, n_positions, self.d_model, device=device) * 0.02
+            # Store as plain Tensor (nn.Parameter inherits from Tensor)
+            self._position_embedding = nn.Parameter(param_data)
             self._position_embedding_size = n_positions
+        else:
+            self._position_embedding = self._position_embedding.to(device)
 
+        assert self._position_embedding is not None
         return self._position_embedding
 
     def forward(

@@ -173,7 +173,11 @@ class AlphaGalerkinConfig(SolverConfig):
             "Trainer). Required when ``evaluator='trained'``. Existence is "
             "validated by the post-construction ``_validate_trained_checkpoint`` "
             "model validator so misconfigurations fail at config construction "
-            "rather than at solve time."
+            "rather than at solve time. **Security note:** loading goes through "
+            "``create_model_from_checkpoint`` which calls ``torch.load(..., "
+            "weights_only=False)`` (pickle-based deserialization) — only load "
+            "checkpoints from trusted sources, since a malicious file can "
+            "execute arbitrary code at deserialization time."
         ),
     )
     device: str = Field(
@@ -524,9 +528,15 @@ class AlphaGalerkinSolver(BaseSolver):
     def _resolve_device(requested: str) -> str:
         """Resolve a config device string to a runtime-available device.
 
-        Public delegate to ``_resolve_device_cached`` kept for test
-        monkey-patching and as a stable, class-scoped surface for
-        downstream callers (``PDEBenchmarkRunner`` etc.).
+        Class-scoped wrapper around ``_resolve_device_cached`` kept as a
+        stable access point for callers that want device resolution
+        logic via ``AlphaGalerkinSolver`` without depending on the
+        module-level helper directly. Note that the solver's own
+        internal call sites (``_build_trained_evaluator``,
+        ``_build_mcts``) call ``_resolve_device_cached`` directly so
+        monkey-patching this method at the class level does **not**
+        affect the solver's behaviour — patch the module-level helper
+        instead if you need to override resolution.
         """
         return _resolve_device_cached(requested)
 

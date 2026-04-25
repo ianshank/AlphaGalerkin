@@ -20,6 +20,8 @@ deselecting the marker.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -317,7 +319,7 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_requires_checkpoint(self, tmp_path: object) -> None:
+    def test_trained_evaluator_requires_checkpoint(self, tmp_path: Path) -> None:
         """``evaluator='trained'`` must be paired with an existing checkpoint *file*.
 
         The Literal accepts ``"trained"``, but the post-construction
@@ -328,10 +330,6 @@ class TestAlphaGalerkinSolver:
         config-build time, not deep in ``solve()`` (where ``torch.load``
         would otherwise raise an opaque ``IsADirectoryError``).
         """
-        from pathlib import Path
-
-        from pydantic import ValidationError
-
         # Missing checkpoint_path → reject.
         with pytest.raises(ValidationError):
             _fast_solver_config(evaluator="trained")
@@ -344,7 +342,6 @@ class TestAlphaGalerkinSolver:
             )
 
         # Existing path that is a directory (not a file) → reject.
-        assert isinstance(tmp_path, Path)
         with pytest.raises(ValidationError, match="non-file path"):
             _fast_solver_config(
                 evaluator="trained",

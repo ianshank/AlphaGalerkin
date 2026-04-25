@@ -82,6 +82,14 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+# Cache key for the per-instance trained-evaluator: every field that the
+# constructed ``FNetEvaluator`` actually depends on. Devin's review on
+# PR #54 surfaced that omitting the hyperparameter fields silently
+# served stale evaluators when callers mutated ``self.config`` to tune
+# temperature / fast-path / strict-load.
+_TrainedEvaluatorCacheKey = tuple[Path, str, float, bool, bool]
+
+
 @cache
 def _resolve_device_cached(requested: str) -> str:
     """Cached device-resolution helper (module-level, deduplicated by string).
@@ -284,12 +292,14 @@ class AlphaGalerkinSolver(BaseSolver):
 
         """
         self.config: AlphaGalerkinConfig = config or AlphaGalerkinConfig()
-        # Lazily-loaded; invalidate via ``reset_cache()``. Keyed on the
-        # (checkpoint_path, device) tuple so direct ``self.config = ...``
-        # mutation between solves rebuilds the evaluator instead of
-        # silently serving the previous checkpoint.
+        # Lazily-loaded; invalidate via ``reset_cache()``. Keyed on every
+        # field that changes the constructed evaluator's behaviour
+        # (checkpoint, device, temperature, fast-path toggle, strict-load
+        # toggle) so direct ``self.config = ...`` mutation between solves
+        # rebuilds the evaluator instead of silently serving stale
+        # weights or stale hyperparameters.
         self._cached_trained_evaluator: FNetEvaluator | None = None
-        self._cached_evaluator_key: tuple[Path, str] | None = None
+        self._cached_evaluator_key: _TrainedEvaluatorCacheKey | None = None
 
     # ------------------------------------------------------------------ #
     # BaseSolver API                                                      #
@@ -538,10 +548,12 @@ class AlphaGalerkinSolver(BaseSolver):
     def _build_trained_evaluator(self) -> FNetEvaluator:
         """Build or return the cached ``FNetEvaluator``.
 
-        The cache key is the ``(checkpoint_path, resolved_device)`` tuple,
-        so direct mutation of ``self.config`` between ``solve()`` calls
-        rebuilds the evaluator instead of silently serving the previous
-        checkpoint. The path is guaranteed non-None by
+        The cache key spans every config field that the constructed
+        evaluator depends on — ``checkpoint_path``, resolved device,
+        ``evaluator_temperature``, ``evaluator_use_fast_path``,
+        ``checkpoint_strict_load`` — so direct mutation of ``self.config``
+        between ``solve()`` calls rebuilds the evaluator regardless of
+        which knob the caller turned. The path is guaranteed non-None by
         ``_validate_trained_checkpoint``.
         """
         # mypy can't see the validator's guarantee; the cast is cheaper
@@ -554,7 +566,13 @@ class AlphaGalerkinSolver(BaseSolver):
             )
 
         torch_device = _resolve_device_cached(self.config.device)
-        cache_key = (checkpoint_path, torch_device)
+        cache_key: _TrainedEvaluatorCacheKey = (
+            checkpoint_path,
+            torch_device,
+            self.config.evaluator_temperature,
+            self.config.evaluator_use_fast_path,
+            self.config.checkpoint_strict_load,
+        )
         if self._cached_trained_evaluator is not None and self._cached_evaluator_key == cache_key:
             return self._cached_trained_evaluator
 

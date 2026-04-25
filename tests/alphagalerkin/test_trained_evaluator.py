@@ -368,14 +368,87 @@ class TestTrainedEvaluatorCaching:
         second = solver._build_trained_evaluator()
         assert first is not second
 
+    def test_temperature_change_rebuilds_evaluator(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Mutating ``evaluator_temperature`` must rebuild on the next solve.
+
+        Devin's review flagged the original cache key
+        ``(checkpoint_path, resolved_device)`` as omitting
+        ``evaluator_temperature`` / ``evaluator_use_fast_path`` /
+        ``checkpoint_strict_load``. A caller swapping ``self.config`` to
+        change temperature alone would silently keep the prior FNet
+        evaluator's old temperature. The cache key is now the full
+        5-tuple of evaluator-affecting fields; this test guards that.
+        """
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt = tmp_path / "temp_change.pt"
+        _save_tiny_checkpoint(ckpt, op_cfg)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(
+                    evaluator="trained",
+                    checkpoint_path=ckpt,
+                    evaluator_temperature=1.0,
+                ),
+            ),
+        )
+        first = solver._build_trained_evaluator()
+        assert first.temperature == pytest.approx(1.0)
+
+        solver.config = AlphaGalerkinConfig(
+            **_solver_kwargs(
+                evaluator="trained",
+                checkpoint_path=ckpt,
+                evaluator_temperature=2.5,
+            ),
+        )
+        second = solver._build_trained_evaluator()
+        assert first is not second
+        assert second.temperature == pytest.approx(2.5)
+
+    def test_use_fast_path_change_rebuilds_evaluator(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Mutating ``evaluator_use_fast_path`` must rebuild on the next solve."""
+        op_cfg = _operator_config(action_space_size=64)
+        ckpt = tmp_path / "fast_change.pt"
+        _save_tiny_checkpoint(ckpt, op_cfg)
+
+        solver = AlphaGalerkinSolver(
+            AlphaGalerkinConfig(
+                **_solver_kwargs(
+                    evaluator="trained",
+                    checkpoint_path=ckpt,
+                    evaluator_use_fast_path=True,
+                ),
+            ),
+        )
+        first = solver._build_trained_evaluator()
+        assert first.use_fast_path is True
+
+        solver.config = AlphaGalerkinConfig(
+            **_solver_kwargs(
+                evaluator="trained",
+                checkpoint_path=ckpt,
+                evaluator_use_fast_path=False,
+            ),
+        )
+        second = solver._build_trained_evaluator()
+        assert first is not second
+        assert second.use_fast_path is False
+
     def test_checkpoint_path_change_rebuilds_evaluator(
         self,
         tmp_path: Path,
     ) -> None:
         """Mutating ``self.config`` to swap the checkpoint must rebuild.
 
-        The cache is keyed on the ``(checkpoint_path, resolved_device)``
-        tuple, so a caller that bypasses ``reset_cache()`` and reassigns
+        The cache is keyed on the full evaluator-config tuple, so a
+        caller that bypasses ``reset_cache()`` and reassigns
         ``self.config`` directly should still get a fresh evaluator on
         the next call instead of silently receiving the prior checkpoint
         (the staleness hazard the simplify review flagged).

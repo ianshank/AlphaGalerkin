@@ -151,10 +151,20 @@ class PDEGameAdapter:
     def get_winner(self) -> int:
         """Map the PDE outcome to {-1, 0, 1}.
 
-        Convention:
-        - +1: Converged (error < tolerance) — *success*
-        - -1: Budget exhausted with error > 2x tolerance — *failure*
-        -  0: Ambiguous / partial convergence
+        The mapping is driven by the configured error tolerance and the
+        relative-error-reduction thresholds on
+        :class:`PDEGameConfig`:
+
+        * **+1 (success)**: final error is below
+          ``config.error_tolerance``, *or* the relative-error-reduction
+          ratio ``final_error / initial_error`` is at most
+          ``config.winner_good_reduction_threshold``.
+        * **-1 (failure)**: the reduction ratio is at least
+          ``config.winner_poor_reduction_threshold``.
+        * **0 (draw)**: the reduction ratio falls in the open interval
+          ``(good, poor)``. The model validator on ``PDEGameConfig``
+          enforces ``good < poor`` strictly so no ratio is labelled
+          both win and loss.
 
         Returns
         -------

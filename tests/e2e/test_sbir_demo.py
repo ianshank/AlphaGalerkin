@@ -146,9 +146,9 @@ class TestSBIRDemoDryRun:
         data = json.loads(json_path.read_text(encoding="utf-8"))
 
         sigma_min = data["lbb_sigma_min"]
-        assert isinstance(
-            sigma_min, float | int
-        ), f"lbb_sigma_min should be numeric, got {type(sigma_min)}"
+        assert isinstance(sigma_min, float | int), (
+            f"lbb_sigma_min should be numeric, got {type(sigma_min)}"
+        )
         assert sigma_min > 0, f"lbb_sigma_min should be positive (LBB stable), got {sigma_min}"
 
     def test_dry_run_complexity_timing_structure(self, tmp_path: Path) -> None:
@@ -186,9 +186,9 @@ class TestSBIRDemoDryRun:
         )
         assert result.returncode == 0, f"Script failed: {result.stderr}"
         combined = result.stdout + result.stderr
-        assert (
-            "dry" in combined.lower() or "DRY" in combined
-        ), "Expected 'dry' mention in output to distinguish from a real run"
+        assert "dry" in combined.lower() or "DRY" in combined, (
+            "Expected 'dry' mention in output to distinguish from a real run"
+        )
 
     def test_dry_run_does_not_require_config_file(self, tmp_path: Path) -> None:
         """Verify dry-run works even if config file path doesn't exist.

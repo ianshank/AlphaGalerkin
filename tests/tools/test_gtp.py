@@ -46,9 +46,9 @@ class TestGTPCoordinateEdgeCases:
             for action in range(board_size**2):
                 gtp_str = action_to_gtp(action, board_size)
                 recovered = gtp_to_action(gtp_str, board_size)
-                assert (
-                    recovered == action
-                ), f"Roundtrip failed for action={action}, size={board_size}"
+                assert recovered == action, (
+                    f"Roundtrip failed for action={action}, size={board_size}"
+                )
 
     def test_pass_action_roundtrip(self) -> None:
         """Pass action roundtrips correctly."""

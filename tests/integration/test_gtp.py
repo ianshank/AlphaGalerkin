@@ -218,9 +218,9 @@ class TestSimpleGoGame:
             row = action // game.board_size
             col = action % game.board_size
             result = test_game.play(row, col)
-            assert (
-                result
-            ), f"Action {action} at ({row},{col}) was in legal_actions but play() returned False"
+            assert result, (
+                f"Action {action} at ({row},{col}) was in legal_actions but play() returned False"
+            )
 
 
 class TestGTPEngine:

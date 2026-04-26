@@ -86,9 +86,9 @@ class TestLossNumericalStability:
         assert torch.isfinite(loss), "LBB loss must be finite with very large constant"
         # Threshold penalty should be 0 (100 >> 0.1 target)
         # With log_barrier_weight=0, loss should be ~0
-        assert loss.item() == pytest.approx(
-            0.0, abs=1e-4
-        ), "LBB threshold loss should be ~0 when constant greatly exceeds target"
+        assert loss.item() == pytest.approx(0.0, abs=1e-4), (
+            "LBB threshold loss should be ~0 when constant greatly exceeds target"
+        )
 
     def test_lbb_loss_with_negative_constant_clamped(self) -> None:
         """Negative LBB constant should be clamped and produce finite loss."""
@@ -126,9 +126,9 @@ class TestLossNumericalStability:
         assert torch.isfinite(entropy), "Entropy must be finite with single valid action"
         # With a single valid action, the distribution is deterministic -> entropy = 0
         # The regularizer returns -weight * normalized_entropy, so result should be ~0
-        assert entropy.item() == pytest.approx(
-            0.0, abs=1e-5
-        ), "Entropy should be ~0 with single valid action per sample"
+        assert entropy.item() == pytest.approx(0.0, abs=1e-5), (
+            "Entropy should be ~0 with single valid action per sample"
+        )
 
     def test_loss_gradient_flow_through_all_components(self) -> None:
         """Verify gradients flow through all loss components including LBB."""
@@ -193,9 +193,9 @@ class TestLossNumericalStability:
 
         result = loss_fn(policy_logits, value, target_policy, target_value)
 
-        assert torch.isfinite(
-            result.total
-        ), f"Loss not finite for shape ({batch_size}, {n_actions})"
+        assert torch.isfinite(result.total), (
+            f"Loss not finite for shape ({batch_size}, {n_actions})"
+        )
 
     def test_policy_loss_with_identical_logits(self) -> None:
         """All-identical logits should produce a valid uniform-like prediction."""

@@ -109,9 +109,9 @@ class TestPolicyLossProperties:
         policy_loss = loss_fn.compute_policy_loss(uniform_logits, uniform_target)
 
         expected = math.log(n_actions)
-        assert policy_loss.item() == pytest.approx(
-            expected, abs=1e-4
-        ), f"Uniform CE should be log({n_actions})={expected:.4f}, got {policy_loss.item():.4f}"
+        assert policy_loss.item() == pytest.approx(expected, abs=1e-4), (
+            f"Uniform CE should be log({n_actions})={expected:.4f}, got {policy_loss.item():.4f}"
+        )
 
     def test_value_loss_zero_when_exact(self) -> None:
         """Value loss is zero when prediction equals target."""
@@ -141,12 +141,12 @@ class TestLBBLossProperties:
         loss_large = loss_fn.compute_lbb_loss(lbb_large).item()
 
         # Loss should decrease as LBB constant approaches target
-        assert (
-            loss_small > loss_medium
-        ), f"Loss at 0.01 ({loss_small:.4f}) should exceed loss at 0.05 ({loss_medium:.4f})"
-        assert (
-            loss_medium > loss_large
-        ), f"Loss at 0.05 ({loss_medium:.4f}) should exceed loss at 0.1 ({loss_large:.4f})"
+        assert loss_small > loss_medium, (
+            f"Loss at 0.01 ({loss_small:.4f}) should exceed loss at 0.05 ({loss_medium:.4f})"
+        )
+        assert loss_medium > loss_large, (
+            f"Loss at 0.05 ({loss_medium:.4f}) should exceed loss at 0.1 ({loss_large:.4f})"
+        )
 
     def test_lbb_loss_is_zero_without_constant(self) -> None:
         """LBB loss returns 0 when no LBB constant is provided."""
@@ -232,9 +232,9 @@ class TestLabelSmoothing:
         assert result_sm.policy.isfinite(), "Smoothed policy loss must be finite"
         # The two should differ (label smoothing changes the target)
         if data["policy_logits"].shape[-1] > 2:
-            assert result_no.policy.item() != pytest.approx(
-                result_sm.policy.item(), abs=1e-6
-            ), "Smoothed loss should differ from unsmoothed loss"
+            assert result_no.policy.item() != pytest.approx(result_sm.policy.item(), abs=1e-6), (
+                "Smoothed loss should differ from unsmoothed loss"
+            )
 
 
 class TestDeterminism:

@@ -42,9 +42,9 @@ def test_safe_model_loading_explicit_flag() -> None:
 
         # Verify the flag was passed explicitly
         _args, kwargs = mock_load.call_args
-        assert (
-            kwargs.get("weights_only") is True
-        ), "Security: weights_only=True must be set explicitly"
+        assert kwargs.get("weights_only") is True, (
+            "Security: weights_only=True must be set explicitly"
+        )
 
 
 def test_weights_only_false_detected() -> None:
@@ -59,6 +59,6 @@ def test_weights_only_false_detected() -> None:
 
         # Verify we can detect the insecure pattern
         _args, kwargs = mock_load.call_args
-        assert (
-            kwargs.get("weights_only") is False
-        ), "Test setup: expected insecure pattern for detection"
+        assert kwargs.get("weights_only") is False, (
+            "Test setup: expected insecure pattern for detection"
+        )

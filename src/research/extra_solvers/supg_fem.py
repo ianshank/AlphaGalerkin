@@ -130,8 +130,7 @@ class SUPGFEMSolver(BaseSolver):
 
         if operator.dim != 1:
             raise NotImplementedError(
-                f"SUPGFEMSolver currently supports 1D problems only "
-                f"(operator.dim={operator.dim})."
+                f"SUPGFEMSolver currently supports 1D problems only (operator.dim={operator.dim})."
             )
 
         log = logger.bind(solver=self.name, n_dof=n_dof)

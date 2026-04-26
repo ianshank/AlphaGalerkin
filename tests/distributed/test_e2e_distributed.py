@@ -116,9 +116,9 @@ def _worker_fn(
 
         # Confirm sync actually changed something (gradients were different before)
         if world_size > 1:
-            assert not torch.allclose(
-                pre_sync_grad, post_sync_grad, atol=1e-7
-            ), f"Rank {rank}: gradients unchanged after all_reduce — sync may not have happened"
+            assert not torch.allclose(pre_sync_grad, post_sync_grad, atol=1e-7), (
+                f"Rank {rank}: gradients unchanged after all_reduce — sync may not have happened"
+            )
 
         # --- Checkpoint: rank 0 saves, rank 1 loads and verifies -----------
         ckpt_path = os.path.join(checkpoint_dir, "checkpoint.pt")
@@ -191,13 +191,13 @@ def test_distributed_e2e_2_processes(tmp_path: pathlib.Path) -> None:
         pytest.skip(f"torch.multiprocessing.spawn not supported on this platform: {exc}")
 
     # Verify both processes reported success
-    assert (
-        len(result_dict) == world_size
-    ), f"Expected {world_size} results, got {len(result_dict)}: {dict(result_dict)}"
+    assert len(result_dict) == world_size, (
+        f"Expected {world_size} results, got {len(result_dict)}: {dict(result_dict)}"
+    )
     for rank in range(world_size):
-        assert (
-            result_dict[rank] == "ok"
-        ), f"Rank {rank} did not complete successfully: {result_dict.get(rank)}"
+        assert result_dict[rank] == "ok", (
+            f"Rank {rank} did not complete successfully: {result_dict.get(rank)}"
+        )
 
 
 def test_find_free_port_returns_valid_port() -> None:

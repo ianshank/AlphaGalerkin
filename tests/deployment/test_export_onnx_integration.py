@@ -341,9 +341,9 @@ class TestONNXDynamicShapes:
         inp = _sample_input(board=board).numpy()
         result = session.run(None, {session.get_inputs()[0].name: inp})
         expected_actions = board * board + 1  # positions + pass
-        assert (
-            result[0].shape[-1] == expected_actions
-        ), f"Expected {expected_actions} policy logits, got {result[0].shape[-1]}"
+        assert result[0].shape[-1] == expected_actions, (
+            f"Expected {expected_actions} policy logits, got {result[0].shape[-1]}"
+        )
 
     def test_fixed_spatial_export_has_no_spatial_dynamic_dims(self, tmp_path: Path) -> None:
         """Config with only batch dynamic produces fixed spatial dims in ONNX graph."""
@@ -483,9 +483,9 @@ class TestONNXValidation:
 
         out_a = session.run(None, {input_name: inp_a})[0]
         out_b = session.run(None, {input_name: inp_b})[0]
-        assert not np.allclose(
-            out_a, out_b
-        ), "ONNX model produced identical outputs for different inputs"
+        assert not np.allclose(out_a, out_b), (
+            "ONNX model produced identical outputs for different inputs"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -534,9 +534,9 @@ class TestONNXWithQuantization:
         quantized_size = q_path.stat().st_size
 
         # Quantized model should not be more than 2x the original
-        assert (
-            quantized_size < original_size * 2
-        ), f"Quantized model ({quantized_size} B) is much larger than original ({original_size} B)"
+        assert quantized_size < original_size * 2, (
+            f"Quantized model ({quantized_size} B) is much larger than original ({original_size} B)"
+        )
 
     def test_quantized_model_policy_accuracy_within_tolerance(self, tmp_path: Path) -> None:
         """Quantized model policy outputs are within 10 % of original ONNX outputs."""
@@ -563,9 +563,9 @@ class TestONNXWithQuantization:
 
         # Relative difference should be within 10 % of the original magnitude
         rel_diff = np.abs(orig_policy - q_policy) / (np.abs(orig_policy) + 1e-8)
-        assert (
-            rel_diff.mean() < 0.10
-        ), f"Quantized policy mean relative error {rel_diff.mean():.4f} exceeds 10 %"
+        assert rel_diff.mean() < 0.10, (
+            f"Quantized policy mean relative error {rel_diff.mean():.4f} exceeds 10 %"
+        )
 
     def test_int8_quantization_config_validates(self) -> None:
         """QuantizationConfig with weight_type='int8' and mode=dynamic is valid."""

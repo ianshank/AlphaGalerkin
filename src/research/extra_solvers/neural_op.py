@@ -383,7 +383,7 @@ else:  # pragma: no cover - we always run with torch in CI
 def _resolve_grid_size_2d(operator: PDEOperator, n_dof: int, floor: int) -> int:
     if operator.dim != 2:
         raise NotImplementedError(
-            f"Neural-operator baselines support 2D only " f"(operator.dim={operator.dim})."
+            f"Neural-operator baselines support 2D only (operator.dim={operator.dim})."
         )
     n_per_side = int(round(np.sqrt(max(int(n_dof), floor**2))))
     return max(n_per_side, floor)

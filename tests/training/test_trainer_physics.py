@@ -656,9 +656,9 @@ class TestCombinedPhysicsLossForward:
 
         physics = result["physics"]
         assert isinstance(physics, torch.Tensor)
-        assert physics.item() == pytest.approx(
-            0.0, abs=1e-7
-        ), "Physics loss should be zero without PDE operator"
+        assert physics.item() == pytest.approx(0.0, abs=1e-7), (
+            "Physics loss should be zero without PDE operator"
+        )
 
 
 # ============================================================================

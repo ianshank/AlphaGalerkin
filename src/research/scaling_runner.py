@@ -301,8 +301,7 @@ class WeakScalingRunner:
                 ):
                     last_exc = (
                         "TimeoutError",
-                        f"Wall time {duration:.2f}s exceeds budget "
-                        f"{self.config.timeout_seconds}s",
+                        f"Wall time {duration:.2f}s exceeds budget {self.config.timeout_seconds}s",
                     )
                     break
                 durations.append(float(duration))
@@ -429,8 +428,7 @@ class WeakScalingRunner:
             "td,th{border:1px solid #ccc;padding:.25em .5em}"
         )
         summary_header = (
-            "<thead><tr><th>solver</th><th>exponent</th>"
-            "<th>R²</th><th>n_points</th></tr></thead>"
+            "<thead><tr><th>solver</th><th>exponent</th><th>R²</th><th>n_points</th></tr></thead>"
         )
         raw_header = (
             "<thead><tr><th>solver</th><th>n_dof</th>"

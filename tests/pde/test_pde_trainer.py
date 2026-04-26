@@ -290,9 +290,9 @@ class TestErrorConvergenceTrend:
         mean_final = sum(all_final_errors) / len(all_final_errors)
 
         # On average, final error should be no worse than initial
-        assert (
-            mean_final <= mean_initial + 1e-6
-        ), f"Mean final error ({mean_final:.6f}) > mean initial error ({mean_initial:.6f})"
+        assert mean_final <= mean_initial + 1e-6, (
+            f"Mean final error ({mean_final:.6f}) > mean initial error ({mean_initial:.6f})"
+        )
 
     def test_best_error_improves_with_more_episodes(self) -> None:
         """More episodes gives more chances to find a good basis sequence.

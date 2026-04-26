@@ -448,9 +448,9 @@ class TestGOPHandling:
         try:
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             # Allow some tolerance
-            assert (
-                frame_count >= num_frames - 1
-            ), f"Frame count mismatch: expected {num_frames}, got {frame_count}"
+            assert frame_count >= num_frames - 1, (
+                f"Frame count mismatch: expected {num_frames}, got {frame_count}"
+            )
         finally:
             cap.release()
 

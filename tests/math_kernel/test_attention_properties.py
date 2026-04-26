@@ -118,9 +118,9 @@ class TestGalerkinLinearComplexity:
         ratio = t_large / t_small
         # For O(N^2) the ratio would be ~4; for O(N) it is ~2.
         # We allow a generous range because CPU overhead dominates at small sizes.
-        assert (
-            ratio < 8.0
-        ), f"t({n_large})/t({n_small}) = {ratio:.2f}, which exceeds the O(N) upper bound of 8.0"
+        assert ratio < 8.0, (
+            f"t({n_large})/t({n_small}) = {ratio:.2f}, which exceeds the O(N) upper bound of 8.0"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -156,9 +156,9 @@ class TestGalerkinNormalizationScaling:
         mean_scale = sum(scales) / len(scales)
         # Empirically, well-initialised Galerkin attention at these sizes
         # produces mean |output| in (0.01, 50.0).
-        assert (
-            0.0 < mean_scale < 100.0
-        ), f"Output scale {mean_scale:.4f} at seq_len={seq_len} is out of expected range"
+        assert 0.0 < mean_scale < 100.0, (
+            f"Output scale {mean_scale:.4f} at seq_len={seq_len} is out of expected range"
+        )
 
     def test_normalization_dampens_growth_with_n(self) -> None:
         """1/N factor: output norm should not grow linearly with N.
@@ -199,6 +199,6 @@ class TestGalerkinNormalizationScaling:
             out = attn(x)
 
         mean_abs = out.abs().mean().item()
-        assert (
-            0.0 < mean_abs < 100.0
-        ), f"Output scale {mean_abs:.4f} at seq_len={seq_len} suggests incorrect normalisation"
+        assert 0.0 < mean_abs < 100.0, (
+            f"Output scale {mean_abs:.4f} at seq_len={seq_len} suggests incorrect normalisation"
+        )

@@ -1,0 +1,20 @@
+# Normalize all text files to LF in the repository
+* text=auto eol=lf
+
+# Explicit Python/config overrides
+*.py    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.sh    text eol=lf
+
+# Binary
+*.png   binary
+*.jpg   binary
+*.gif   binary
+*.ico   binary
+*.whl   binary
+*.pyc   binary

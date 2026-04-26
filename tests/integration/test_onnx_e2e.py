@@ -205,9 +205,7 @@ class TestONNXQuantization:
         # metadata, which is brittle on the dynamo exporter.
         eval_batch = 8
         sample_for_quant = torch.randn(eval_batch, INPUT_DIM)
-        ONNXExporter(_static_export_config()).export(
-            model, sample_for_quant, fp32_path
-        )
+        ONNXExporter(_static_export_config()).export(model, sample_for_quant, fp32_path)
         quant_pre_process(str(fp32_path), str(prepared_path))
 
         quantize_dynamic(
@@ -221,9 +219,7 @@ class TestONNXQuantization:
         x = np.random.randn(eval_batch, INPUT_DIM).astype(np.float32)
         with torch.no_grad():
             torch_out = model(torch.from_numpy(x)).cpu().numpy()
-        session = ort.InferenceSession(
-            str(int8_path), providers=["CPUExecutionProvider"]
-        )
+        session = ort.InferenceSession(str(int8_path), providers=["CPUExecutionProvider"])
         ort_out = session.run(["output"], {"input": x})[0]
 
         # INT8 has noticeable but bounded MAE

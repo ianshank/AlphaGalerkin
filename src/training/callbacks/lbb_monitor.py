@@ -175,10 +175,7 @@ class LBBStabilityCallback(Callback):
             self._fh.flush()
             self._steps_since_flush = 0
 
-        if (
-            self.config.warn_below > 0.0
-            and sample.lbb_constant < self.config.warn_below
-        ):
+        if self.config.warn_below > 0.0 and sample.lbb_constant < self.config.warn_below:
             self._log.warning(
                 "lbb_below_threshold",
                 step=sample.step,
@@ -197,9 +194,7 @@ class LBBStabilityCallback(Callback):
         # Persist a JSON sidecar with summary statistics
         summary = self._compute_summary()
         if summary is not None:
-            (self._csv_path.parent / "lbb_summary.json").write_text(
-                json.dumps(summary, indent=2)
-            )
+            (self._csv_path.parent / "lbb_summary.json").write_text(json.dumps(summary, indent=2))
 
         if self.config.emit_html:
             try:
@@ -274,9 +269,7 @@ class LBBStabilityCallback(Callback):
         if summary is not None:
             summary_html = (
                 "<table><tbody>"
-                + "".join(
-                    f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in summary.items()
-                )
+                + "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in summary.items())
                 + "</tbody></table>"
             )
         self._html_path.write_text(

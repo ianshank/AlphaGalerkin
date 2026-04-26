@@ -182,8 +182,7 @@ def register_callback(name: str) -> Any:
     def decorator(cls: type) -> type:
         if not issubclass(cls, Callback):
             raise TypeError(
-                f"Callback {cls.__name__} must inherit from "
-                f"src.training.callbacks.Callback"
+                f"Callback {cls.__name__} must inherit from " f"src.training.callbacks.Callback"
             )
         return _register_callback_decorator(name)(cls)
 
@@ -229,9 +228,7 @@ class CallbackSpec(BaseModel):
 # imported lazily by ``build_callbacks_from_specs`` to ensure side-
 # effect registration happens before lookup.  Adding a new built-in
 # callback module is O(1): just append to this list.
-BUILTIN_CALLBACK_MODULES: tuple[str, ...] = (
-    "src.training.callbacks.lbb_monitor",
-)
+BUILTIN_CALLBACK_MODULES: tuple[str, ...] = ("src.training.callbacks.lbb_monitor",)
 
 
 def _ensure_builtin_callbacks_imported() -> None:
@@ -283,8 +280,7 @@ def build_callbacks_from_specs(specs: list[CallbackSpec]) -> list[Callback]:
             instance = cls(**spec.params)
         except TypeError as exc:
             raise TypeError(
-                f"Failed to instantiate callback '{spec.name}' with "
-                f"params {spec.params}: {exc}"
+                f"Failed to instantiate callback '{spec.name}' with " f"params {spec.params}: {exc}"
             ) from exc
         if not isinstance(instance, Callback):
             raise TypeError(

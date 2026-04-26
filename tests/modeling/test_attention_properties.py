@@ -76,9 +76,9 @@ class TestGalerkinAttentionProperties:
 
         output = attn(x)
 
-        assert output.shape == x.shape, (
-            f"Output shape {output.shape} must match input shape {x.shape}"
-        )
+        assert (
+            output.shape == x.shape
+        ), f"Output shape {output.shape} must match input shape {x.shape}"
 
     @given(
         batch_size=st.integers(min_value=1, max_value=4),
@@ -148,9 +148,9 @@ class TestGalerkinAttentionProperties:
         out1 = galerkin_attn(x)
         out2 = galerkin_attn(x)
 
-        assert torch.allclose(out1, out2, atol=1e-6), (
-            "Galerkin attention must be deterministic in eval mode"
-        )
+        assert torch.allclose(
+            out1, out2, atol=1e-6
+        ), "Galerkin attention must be deterministic in eval mode"
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +204,9 @@ class TestSoftmaxAttentionProperties:
         out_masked = softmax_attn(x, mask=mask)
 
         # Outputs should differ when mask is applied
-        assert not torch.allclose(out_no_mask, out_masked, atol=1e-4), (
-            "Masked and unmasked outputs should differ"
-        )
+        assert not torch.allclose(
+            out_no_mask, out_masked, atol=1e-4
+        ), "Masked and unmasked outputs should differ"
 
 
 # ---------------------------------------------------------------------------
@@ -256,9 +256,9 @@ class TestHybridAttentionProperties:
         # Hybrid output norm should be at most the max of the two component norms
         # (plus some tolerance for floating point)
         max_norm = max(galerkin_out.norm().item(), softmax_out.norm().item())
-        assert hybrid_out.norm().item() <= max_norm * 1.1, (
-            "Hybrid norm should not exceed the max of its components (with tolerance)"
-        )
+        assert (
+            hybrid_out.norm().item() <= max_norm * 1.1
+        ), "Hybrid norm should not exceed the max of its components (with tolerance)"
 
 
 # ---------------------------------------------------------------------------

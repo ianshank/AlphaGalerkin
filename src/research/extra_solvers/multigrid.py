@@ -303,9 +303,7 @@ class MultigridPoissonSolver(BaseSolver):
         # Validate the operator shape before the (optional) pyamg
         # import so dim-mismatch errors do not get masked by a missing
         # dependency on environments without pyamg installed.
-        n_per_side = _resolve_grid_size(
-            operator, n_dof, self.config.min_grid_points
-        )
+        n_per_side = _resolve_grid_size(operator, n_dof, self.config.min_grid_points)
 
         try:
             import pyamg  # type: ignore[import-not-found]
@@ -314,9 +312,7 @@ class MultigridPoissonSolver(BaseSolver):
                 f"Solver '{self.name}' requires the optional package "
                 f"'pyamg'.  Install it with: {self._MISSING_DEP_HINT}"
             ) from exc
-        log = self._log.bind(
-            n_per_side=n_per_side, cycle=self.config.cycle
-        )
+        log = self._log.bind(n_per_side=n_per_side, cycle=self.config.cycle)
         log.debug("multigrid_solve_start", n_dof=n_dof)
         t0 = time.perf_counter()
 

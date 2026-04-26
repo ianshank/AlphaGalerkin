@@ -145,9 +145,9 @@ class _SinusoidalPoissonOperator(PoissonOperator):
         arr = np.asarray(coords, dtype=np.float32)
         xn = arr[..., 0]
         yn = arr[..., 1] if arr.shape[-1] > 1 else np.zeros_like(xn)
-        out_np: NDArray[np.float32] = (
-            np.sin(k * np.pi * xn) * np.sin(k * np.pi * yn)
-        ).astype(np.float32)
+        out_np: NDArray[np.float32] = (np.sin(k * np.pi * xn) * np.sin(k * np.pi * yn)).astype(
+            np.float32
+        )
         return out_np
 
     def exact_solution(

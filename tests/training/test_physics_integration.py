@@ -103,9 +103,9 @@ class TestPhysicsLossConfig:
 
             training = config.get("training", {})
             for key, expected in expected_defaults.items():
-                assert training.get(key) == expected, (
-                    f"Expected {key}={expected}, got {training.get(key)}"
-                )
+                assert (
+                    training.get(key) == expected
+                ), f"Expected {key}={expected}, got {training.get(key)}"
 
 
 class TestPhysicsLossIntegration:

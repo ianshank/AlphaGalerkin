@@ -56,9 +56,7 @@ class TestLBBCallback:
 
         cb.on_train_start(CallbackContext(step=0))
         for step, value in enumerate([0.1, 0.2, 0.3]):
-            cb.on_step_end(
-                CallbackContext(step=step, metrics={"lbb_constant": value})
-            )
+            cb.on_step_end(CallbackContext(step=step, metrics={"lbb_constant": value}))
         cb.on_train_end(CallbackContext(step=2))
 
         csv_path = tmp_path / "lbb_trace.csv"
@@ -76,9 +74,7 @@ class TestLBBCallback:
         )
         cb.on_train_start(CallbackContext(step=0))
         for step, value in enumerate([0.1, 0.2, 0.3, 0.4]):
-            cb.on_step_end(
-                CallbackContext(step=step, metrics={"lbb_constant": value})
-            )
+            cb.on_step_end(CallbackContext(step=step, metrics={"lbb_constant": value}))
         cb.on_train_end(CallbackContext(step=3))
 
         csv_path = tmp_path / "lbb_trace.csv"
@@ -124,9 +120,7 @@ class TestLBBCallback:
         )
         cb.on_train_start(CallbackContext(step=0))
         for step, value in enumerate([0.5, 0.3, 0.7]):
-            cb.on_step_end(
-                CallbackContext(step=step, metrics={"lbb_constant": value})
-            )
+            cb.on_step_end(CallbackContext(step=step, metrics={"lbb_constant": value}))
         cb.on_train_end(CallbackContext(step=2))
 
         summary = json.loads((tmp_path / "lbb_summary.json").read_text())
@@ -180,9 +174,7 @@ class TestLBBHTMLRendering:
         )
         cb.on_train_start(CallbackContext(step=0))
         for step, value in enumerate([0.5, 0.6, 0.4, 0.3]):
-            cb.on_step_end(
-                CallbackContext(step=step, metrics={"lbb_constant": value})
-            )
+            cb.on_step_end(CallbackContext(step=step, metrics={"lbb_constant": value}))
         cb.on_train_end(CallbackContext(step=3))
 
         html = tmp_path / "lbb_trace.html"
@@ -211,9 +203,7 @@ class TestLBBHTMLRendering:
             emit_html=False,
         )
         cb.on_train_start(CallbackContext(step=0))
-        cb.on_step_end(
-            CallbackContext(step=0, metrics={"lbb_constant": 0.5})
-        )
+        cb.on_step_end(CallbackContext(step=0, metrics={"lbb_constant": 0.5}))
         cb.on_train_end(CallbackContext(step=0))
         # When emit_html=False, no HTML file is produced
         assert not (tmp_path / "lbb_trace.html").exists()

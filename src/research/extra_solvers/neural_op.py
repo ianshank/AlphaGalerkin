@@ -189,12 +189,10 @@ if _TORCH_AVAILABLE:
             self.modes = modes
             scale = 1.0 / (in_channels * out_channels)
             self.weights1 = nn.Parameter(
-                scale
-                * torch.randn(in_channels, out_channels, modes, modes, dtype=torch.cfloat)
+                scale * torch.randn(in_channels, out_channels, modes, modes, dtype=torch.cfloat)
             )
             self.weights2 = nn.Parameter(
-                scale
-                * torch.randn(in_channels, out_channels, modes, modes, dtype=torch.cfloat)
+                scale * torch.randn(in_channels, out_channels, modes, modes, dtype=torch.cfloat)
             )
 
         @staticmethod
@@ -237,9 +235,7 @@ if _TORCH_AVAILABLE:
             self.blocks = nn.ModuleList(
                 [_SpectralConv2d(width, width, modes) for _ in range(n_layers)]
             )
-            self.skips = nn.ModuleList(
-                [nn.Conv2d(width, width, 1) for _ in range(n_layers)]
-            )
+            self.skips = nn.ModuleList([nn.Conv2d(width, width, 1) for _ in range(n_layers)])
             self.proj = nn.Sequential(
                 nn.Linear(width, proj_hidden),
                 nn.GELU(),
@@ -387,8 +383,7 @@ else:  # pragma: no cover - we always run with torch in CI
 def _resolve_grid_size_2d(operator: PDEOperator, n_dof: int, floor: int) -> int:
     if operator.dim != 2:
         raise NotImplementedError(
-            f"Neural-operator baselines support 2D only "
-            f"(operator.dim={operator.dim})."
+            f"Neural-operator baselines support 2D only " f"(operator.dim={operator.dim})."
         )
     n_per_side = int(round(np.sqrt(max(int(n_dof), floor**2))))
     return max(n_per_side, floor)
@@ -455,9 +450,9 @@ def _deeponet_forward(
             "_deeponet_forward expected a model with a 'branch_grid' attribute "
             "(set by DeepONetSolverConfig.branch_grid)."
         )
-    f_down = torch.nn.functional.adaptive_avg_pool2d(
-        f_grid.unsqueeze(0), branch_grid
-    ).reshape(1, branch_grid * branch_grid)
+    f_down = torch.nn.functional.adaptive_avg_pool2d(f_grid.unsqueeze(0), branch_grid).reshape(
+        1, branch_grid * branch_grid
+    )
     n = grid_2d.shape[0]
     coords = torch.tensor(grid_2d.reshape(-1, 2), dtype=torch.float32, device=config.device)
     coords = coords.unsqueeze(0)  # (1, N, 2)
@@ -494,9 +489,7 @@ def _train_and_evaluate_neural_op(
     minimised directly via collocation.
     """
     if not _TORCH_AVAILABLE:
-        raise ImportError(
-            f"Solver '{solver_name}' requires torch but it is not available."
-        )
+        raise ImportError(f"Solver '{solver_name}' requires torch but it is not available.")
 
     n_per_side = _resolve_grid_size_2d(operator, n_dof, config.grid_points_floor)
     log = logger.bind(solver=solver_name, n_per_side=n_per_side, method=method_name)

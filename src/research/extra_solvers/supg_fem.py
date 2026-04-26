@@ -220,16 +220,12 @@ class SUPGFEMSolver(BaseSolver):
         # Boundary contributions from Dirichlet data
         bc_left = float(
             np.asarray(
-                operator.boundary_value(
-                    np.array([[operator.domain_min[0]]], dtype=np.float32)
-                )
+                operator.boundary_value(np.array([[operator.domain_min[0]]], dtype=np.float32))
             ).flat[0]
         )
         bc_right = float(
             np.asarray(
-                operator.boundary_value(
-                    np.array([[operator.domain_max[0]]], dtype=np.float32)
-                )
+                operator.boundary_value(np.array([[operator.domain_max[0]]], dtype=np.float32))
             ).flat[0]
         )
         rhs[0] -= sub[0] * bc_left
@@ -238,9 +234,7 @@ class SUPGFEMSolver(BaseSolver):
         u_interior = spsolve(A, rhs)
         # Reattach Dirichlet end-points so consumers get a length-(n+2)
         # solution sampled on the full mesh.
-        solution = np.concatenate([[bc_left], u_interior, [bc_right]]).astype(
-            np.float64
-        )
+        solution = np.concatenate([[bc_left], u_interior, [bc_right]]).astype(np.float64)
 
         wall_time = time.perf_counter() - t0
         l2_err = self._compute_l2_error(

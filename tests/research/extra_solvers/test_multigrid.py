@@ -114,6 +114,7 @@ class TestMultigridSolverBehavior:
         op = _make_poisson_op()
         try:
             import pyamg  # noqa: F401
+
             real_available = True
         except ImportError:
             real_available = False

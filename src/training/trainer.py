@@ -1051,9 +1051,7 @@ class Trainer(BaseTrainer):
         )
 
         # Lifecycle: on_train_end (after final checkpoint, before W&B summary)
-        _final_metrics = (
-            self._metrics_history[-1].to_dict() if self._metrics_history else {}
-        )
+        _final_metrics = self._metrics_history[-1].to_dict() if self._metrics_history else {}
         self._dispatch_callback(
             "on_train_end",
             self._build_callback_context(

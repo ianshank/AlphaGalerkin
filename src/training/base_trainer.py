@@ -767,9 +767,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
 
         """
         if not isinstance(callback, Callback):
-            raise TypeError(
-                f"Expected Callback instance, got {type(callback).__name__}"
-            )
+            raise TypeError(f"Expected Callback instance, got {type(callback).__name__}")
         self.callbacks.append(callback)
         self._log.debug(
             "callback_added",

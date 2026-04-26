@@ -153,9 +153,9 @@ class TestRandomSampler:
         for trial in range(20):
             params = sampler.sample(float_search_space, trial_number=trial)
             for name, space in float_search_space.items():
-                assert space.low <= params[name] <= space.high, (
-                    f"{name}={params[name]} out of [{space.low}, {space.high}]"
-                )
+                assert (
+                    space.low <= params[name] <= space.high
+                ), f"{name}={params[name]} out of [{space.low}, {space.high}]"
 
     def test_int_values_within_bounds(self, int_search_space: dict[str, SearchSpace]) -> None:
         """All sampled int values lie within [low, high] and are integers."""

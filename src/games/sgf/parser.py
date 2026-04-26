@@ -153,13 +153,37 @@ class SGFParser:
                 break
 
     def _parse_game_tree(self) -> SGFNode:
-        """Parse a complete game tree starting with '('."""
+        """Parse a complete game tree starting with '('.
+
+        The SGF tree-structured variation grammar is::
+
+            GameTree ::= "(" Sequence GameTree* ")"
+            Sequence ::= Node {Node}
+
+        A nested ``GameTree`` after a ``Sequence`` represents an
+        alternative continuation that must be attached as a sibling to
+        the *last* sequence node — i.e. the last node becomes a
+        branching point with one child per variation tree.  The earlier
+        implementation attached the variation to ``last_node.parent``
+        which placed siblings at the wrong depth and produced empty
+        children lists when there was no parent yet.
+        """
         if not self._expect("("):
             self._error("Expected '(' at start of game tree")
 
         root = self._parse_sequence()
 
-        # Parse variations
+        # Walk to the end of the main sequence — variations attach
+        # there as additional children, making the last node a fork.
+        last_node = root
+        while last_node.children:
+            last_node = last_node.children[0]
+
+        # Parse zero or more variation sub-trees.  Whitespace is
+        # significant in raw SGF only inside property values (handled
+        # by ``_parse_value_content``); between game-tree tokens it
+        # is freely allowed and must be skipped here.
+        self._skip_whitespace()
         while self._peek() == "(":
             self._variation_count += 1
             if self._variation_count > self.config.max_variations:
@@ -170,13 +194,10 @@ class SGFParser:
                 self._skip_to_matching_paren()
                 continue
 
-            # Find the last node in the sequence to attach variation
-            last_node = root
-            while last_node.children:
-                last_node = last_node.children[0]
-
             variation_root = self._parse_game_tree()
-            last_node.parent.add_child(variation_root) if last_node.parent else None
+            last_node.add_child(variation_root)
+            # Skip whitespace before checking for the next variation.
+            self._skip_whitespace()
 
         if not self._expect(")"):
             self._error("Expected ')' at end of game tree")

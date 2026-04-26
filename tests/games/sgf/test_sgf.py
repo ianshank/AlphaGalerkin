@@ -284,21 +284,41 @@ class TestSGFParser:
         assert info["player_white"] == "White Player"
         assert info["result"] == "B+2.5"
 
-    @pytest.mark.skip(
-        reason="Variation parsing requires complex tree handling - future improvement"
-    )
     def test_parse_variations(self) -> None:
-        """Test parsing game with variations."""
+        """Parse a game tree containing two alternative continuations.
+
+        The fixture has the form::
+
+            (;GM[1]FF[4]SZ[19]
+             ;B[pd];W[dd]
+             (;B[pq];W[dp])
+             (;B[pp];W[dq]))
+
+        ``W[dd]`` is the branching point and must have exactly two
+        child sub-trees: ``B[pq] -> W[dp]`` and ``B[pp] -> W[dq]``.
+        """
         parser = SGFParser()
         tree = parser.parse(VARIATION_SGF)
 
-        # Root should have child with 2 grandchildren (variations)
+        # Tree root is the SZ[19] meta node; first move B[pd] is its
+        # first child, then W[dd] follows, and that's the branching
+        # point with two variation children.
         root = tree.root
-        first_move = root.children[0]
-        second_move = first_move.children[0]
+        first_move = root.children[0]  # B[pd]
+        second_move = first_move.children[0]  # W[dd]
 
-        # Second move node should have 2 children (variations)
+        # Branching point: two alternative continuations
         assert len(second_move.children) == 2
+
+        # Each variation begins with a unique B[…] move
+        variation_starts = sorted(
+            child.properties.get("B", [""])[0] for child in second_move.children
+        )
+        assert variation_starts == ["pp", "pq"]
+
+        # Each variation has exactly one W[…] follow-up
+        for child in second_move.children:
+            assert len(child.children) == 1
 
     def test_parse_handicap(self) -> None:
         """Test parsing handicap game."""

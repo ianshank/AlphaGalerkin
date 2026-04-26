@@ -36,6 +36,7 @@ import structlog
 import torch
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
+from torch import Tensor
 
 # Importing the extras package populates SOLVER_REGISTRY with FNO/DeepONet.
 import src.research.extra_solvers  # noqa: F401
@@ -98,6 +99,8 @@ class SpectralBiasMeasurement:
 
 @dataclass(frozen=True)
 class SpectralBiasReport:
+    """Aggregate report produced by :class:`SpectralBiasBenchmark`."""
+
     config: dict[str, Any]
     measurements: list[SpectralBiasMeasurement]
 
@@ -128,40 +131,44 @@ class _SinusoidalPoissonOperator(PoissonOperator):
     def frequency(self) -> float:
         return self._frequency
 
-    def source_term(  # type: ignore[override]
+    def source_term(
         self,
-        coords,
+        coords: NDArray[np.float32] | Tensor,
         time: float | None = None,
-    ):
+    ) -> NDArray[np.float32] | Tensor:
+        """Sinusoidal RHS f(x, y) = sin(k π x) sin(k π y)."""
         k = self._frequency
         if isinstance(coords, torch.Tensor):
-            x = coords[..., 0]
-            y = coords[..., 1] if coords.shape[-1] > 1 else torch.zeros_like(x)
-            return torch.sin(k * torch.pi * x) * torch.sin(k * torch.pi * y)
-        else:
-            arr = np.asarray(coords, dtype=np.float32)
-            x = arr[..., 0]
-            y = arr[..., 1] if arr.shape[-1] > 1 else np.zeros_like(x)
-            return (np.sin(k * np.pi * x) * np.sin(k * np.pi * y)).astype(np.float32)
+            xt = coords[..., 0]
+            yt = coords[..., 1] if coords.shape[-1] > 1 else torch.zeros_like(xt)
+            return torch.sin(k * torch.pi * xt) * torch.sin(k * torch.pi * yt)
+        arr = np.asarray(coords, dtype=np.float32)
+        xn = arr[..., 0]
+        yn = arr[..., 1] if arr.shape[-1] > 1 else np.zeros_like(xn)
+        out_np: NDArray[np.float32] = (
+            np.sin(k * np.pi * xn) * np.sin(k * np.pi * yn)
+        ).astype(np.float32)
+        return out_np
 
-    def exact_solution(  # type: ignore[override]
+    def exact_solution(
         self,
-        coords,
+        coords: NDArray[np.float32] | Tensor,
         time: float | None = None,
-    ):
+    ) -> NDArray[np.float32] | Tensor | None:
+        """Closed-form Poisson solution for the sinusoidal source above."""
         k = self._frequency
         denom = 2.0 * (k * np.pi) ** 2
         if isinstance(coords, torch.Tensor):
-            x = coords[..., 0]
-            y = coords[..., 1] if coords.shape[-1] > 1 else torch.zeros_like(x)
-            return torch.sin(k * torch.pi * x) * torch.sin(k * torch.pi * y) / denom
-        else:
-            arr = np.asarray(coords, dtype=np.float32)
-            x = arr[..., 0]
-            y = arr[..., 1] if arr.shape[-1] > 1 else np.zeros_like(x)
-            return (
-                np.sin(k * np.pi * x) * np.sin(k * np.pi * y) / denom
-            ).astype(np.float32)
+            xt = coords[..., 0]
+            yt = coords[..., 1] if coords.shape[-1] > 1 else torch.zeros_like(xt)
+            return torch.sin(k * torch.pi * xt) * torch.sin(k * torch.pi * yt) / denom
+        arr = np.asarray(coords, dtype=np.float32)
+        xn = arr[..., 0]
+        yn = arr[..., 1] if arr.shape[-1] > 1 else np.zeros_like(xn)
+        out_np: NDArray[np.float32] = (
+            np.sin(k * np.pi * xn) * np.sin(k * np.pi * yn) / denom
+        ).astype(np.float32)
+        return out_np
 
 
 def _make_sinusoidal_operator(

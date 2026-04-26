@@ -20,7 +20,7 @@ from pydantic import ValidationError
 import src.research.extra_solvers  # noqa: F401 — populate registry
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import PoissonOperator
-from src.research.baselines import SOLVER_REGISTRY, get_solver
+from src.research.baselines import SOLVER_REGISTRY
 
 torch = pytest.importorskip("torch")
 

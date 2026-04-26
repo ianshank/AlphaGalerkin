@@ -52,11 +52,10 @@ import numpy as np
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.pde.operators import PDEOperator
-from src.research.baselines import SOLVER_REGISTRY, BaseSolver
-
 # Importing this package registers SUPG / multigrid / direct / FNO / DeepONet.
 import src.research.extra_solvers  # noqa: F401
+from src.pde.operators import PDEOperator
+from src.research.baselines import SOLVER_REGISTRY, BaseSolver
 
 logger = structlog.get_logger(__name__)
 
@@ -422,22 +421,32 @@ class WeakScalingRunner:
             f"<td>{s.r_squared:.4f}</td><td>{s.n_points}</td></tr>"
             for s in report.summaries
         ]
+        # Compose the HTML in pieces so each line stays under the
+        # 100-char limit Ruff enforces project-wide.
+        style = (
+            "body{font-family:sans-serif;max-width:900px;margin:auto;padding:1em}"
+            "table{border-collapse:collapse;margin:1em 0}"
+            "td,th{border:1px solid #ccc;padding:.25em .5em}"
+        )
+        summary_header = (
+            "<thead><tr><th>solver</th><th>exponent</th>"
+            "<th>R²</th><th>n_points</th></tr></thead>"
+        )
+        raw_header = (
+            "<thead><tr><th>solver</th><th>n_dof</th>"
+            "<th>wall time (s)</th><th>L2 error</th><th>success</th></tr></thead>"
+        )
         html_path.write_text(
-            f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>Weak Scaling</title>
-<style>body{{font-family:sans-serif;max-width:900px;margin:auto;padding:1em}}
-table{{border-collapse:collapse;margin:1em 0}}td,th{{border:1px solid #ccc;padding:.25em .5em}}</style>
-</head><body>
-<h1>Weak-scaling benchmark</h1>
-<img src="scaling.png" alt="scaling plot" style="max-width:100%">
-<h2>Per-solver scaling fit</h2>
-<table><thead><tr><th>solver</th><th>exponent</th><th>R²</th><th>n_points</th></tr></thead>
-<tbody>{''.join(summary_rows)}</tbody></table>
-<h2>Raw measurements</h2>
-<table><thead><tr><th>solver</th><th>n_dof</th><th>wall time (s)</th><th>L2 error</th><th>success</th></tr></thead>
-<tbody>{''.join(rows)}</tbody></table>
-</body></html>
-"""
+            "<!doctype html>\n"
+            f"<html><head><meta charset='utf-8'><title>Weak Scaling</title>\n"
+            f"<style>{style}</style></head><body>\n"
+            "<h1>Weak-scaling benchmark</h1>\n"
+            "<img src='scaling.png' alt='scaling plot' style='max-width:100%'>\n"
+            "<h2>Per-solver scaling fit</h2>\n"
+            f"<table>{summary_header}<tbody>{''.join(summary_rows)}</tbody></table>\n"
+            "<h2>Raw measurements</h2>\n"
+            f"<table>{raw_header}<tbody>{''.join(rows)}</tbody></table>\n"
+            "</body></html>\n"
         )
         return html_path
 

@@ -72,8 +72,11 @@ class TestSUPGFEMSolve:
         assert result.metadata["tau"] == pytest.approx(0.0)
 
     def test_high_peclet_produces_finite_solution(self) -> None:
-        """In the convection-dominated regime the SUPG correction must
-        keep the solution bounded (no spurious oscillations)."""
+        """High-Peclet regime stays bounded.
+
+        SUPG stabilisation must keep the solution finite even when
+        central differences would produce spurious oscillations.
+        """
         op = _make_advdiff_op(diffusion=1e-4, advection=1.0)
         solver = SUPGFEMSolver()
         result = solver.solve(op, n_dof=64)

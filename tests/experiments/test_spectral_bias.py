@@ -17,7 +17,6 @@ from src.experiments.spectral_bias_benchmark import (
 )
 from src.research.baselines import SOLVER_REGISTRY, BaseSolver, SolverResult
 
-
 # ---------------------------------------------------------------------------
 # Mock solver to keep the test deterministic and fast.
 # ---------------------------------------------------------------------------

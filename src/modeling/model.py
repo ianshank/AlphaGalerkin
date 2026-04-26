@@ -10,7 +10,7 @@ The model is resolution-independent: trained on 9x9, runs on 19x19.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
@@ -57,7 +57,7 @@ class ModelOutput:
 
     policy_logits: Float[Tensor, "batch n+1"]  # +1 for pass move
     value: Float[Tensor, "batch 1"]
-    lbb_constant: Float[Tensor, "batch"] | None = None
+    lbb_constant: Float[Tensor, batch] | None = None
     vector_fields: dict[str, Tensor] | None = None
     field_metadata: dict[str, Any] | None = None
 
@@ -65,7 +65,7 @@ class ModelOutput:
         self,
         vector_fields: dict[str, Tensor],
         field_metadata: dict[str, Any] | None = None,
-    ) -> "ModelOutput":
+    ) -> ModelOutput:
         """Return a new :class:`ModelOutput` with vector fields attached.
 
         Frozen dataclasses cannot be mutated, so this is the canonical

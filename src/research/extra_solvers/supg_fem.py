@@ -111,6 +111,8 @@ class SUPGFEMSolver(BaseSolver):
                 attributes ``advection_velocity`` and ``diffusion`` are
                 read with permissive fallbacks).
             n_dof: Target number of interior degrees of freedom.
+            **kwargs: Reserved for forward compatibility with the
+                :class:`BaseSolver` protocol; unused here.
 
         Returns:
             :class:`SolverResult` with the discrete solution sampled at
@@ -182,9 +184,11 @@ class SUPGFEMSolver(BaseSolver):
             supg_main = np.zeros(n)
             supg_off = np.zeros(n - 1)
 
+        # Combine diffusion (Galerkin), advection (centred), and SUPG
+        # streamline-upwind contributions into one tridiagonal system.
         main = diags_diff_main + supg_main
-        super_ = diags_adv_super + supg_off
-        sub = diags_adv_sub + supg_off
+        super_ = diags_diff_off + diags_adv_super + supg_off
+        sub = diags_diff_off + diags_adv_sub + supg_off
 
         A = sparse.diags(
             [sub, main, super_],
@@ -273,7 +277,10 @@ class SUPGFEMSolver(BaseSolver):
         for our 1D problem we reshape so the call site lands in the
         same code path.
         """
-        coords_2d = coords.reshape(-1, 1).astype(np.float32)
+        # The base helper expects (N, dim) float64 coords.  Reshape to
+        # 2D and cast back from the float32 input we feed the operator
+        # for compatibility with the abstract signature.
+        coords_2d = coords.reshape(-1, 1).astype(np.float64)
         return super()._compute_l2_error(
             solution=solution,
             coords=coords_2d,

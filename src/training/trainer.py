@@ -32,7 +32,6 @@ from src.data.collate import TrainingBatch, VariableSizeCollator
 from src.training.base_trainer import BaseTrainer
 from src.training.callbacks import (
     Callback,
-    CallbackSpec,
     build_callbacks_from_specs,
 )
 from src.training.checkpoint import CheckpointManager

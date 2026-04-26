@@ -34,7 +34,6 @@ from src.training.callbacks import (
 )
 from src.training.callbacks.base import _ensure_builtin_callbacks_imported
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: registry isolation per test
 # ---------------------------------------------------------------------------

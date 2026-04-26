@@ -177,10 +177,10 @@ if _TORCH_AVAILABLE:
             )
 
         @staticmethod
-        def _compl_mul(x: "torch.Tensor", w: "torch.Tensor") -> "torch.Tensor":
+        def _compl_mul(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
             return torch.einsum("bixy,ioxy->boxy", x, w)
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             batch = x.shape[0]
             modes = min(self.modes, x.shape[-2] // 2 + 1)
             x_ft = torch.fft.rfft2(x, norm="ortho")
@@ -214,7 +214,7 @@ if _TORCH_AVAILABLE:
             )
             self.proj = nn.Sequential(nn.Linear(width, 32), nn.GELU(), nn.Linear(32, 1))
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             # x: (B, H, W, 3) -> lift to (B, width, H, W)
             h = self.lift(x).permute(0, 3, 1, 2)
             for spec, skip in zip(self.blocks, self.skips, strict=True):
@@ -262,7 +262,7 @@ if _TORCH_AVAILABLE:
             layers.append(nn.Linear(hidden, out_dim))
             self.net = nn.Sequential(*layers)
 
-        def forward(self, x: "torch.Tensor") -> "torch.Tensor":
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
             return self.net(x)
 
     class _DeepONet(nn.Module):
@@ -281,9 +281,9 @@ if _TORCH_AVAILABLE:
 
         def forward(
             self,
-            branch_input: "torch.Tensor",
-            trunk_input: "torch.Tensor",
-        ) -> "torch.Tensor":
+            branch_input: torch.Tensor,
+            trunk_input: torch.Tensor,
+        ) -> torch.Tensor:
             b = self.branch(branch_input)  # (B, latent)
             t = self.trunk(trunk_input)  # (B, N, latent)
             return torch.einsum("bl,bnl->bn", b, t) + self.bias
@@ -317,13 +317,13 @@ if _TORCH_AVAILABLE:
     SOLVER_REGISTRY.setdefault("deeponet", DeepONetBaselineSolver)
 
 else:  # pragma: no cover - we always run with torch in CI
-    FNOBaselineSolver = make_optional_dependency_stub(  # type: ignore[assignment, misc]
+    FNOBaselineSolver = make_optional_dependency_stub(  # type: ignore[assignment]
         name="fno",
         description="Fourier Neural Operator baseline",
         dependency="torch",
         install_hint="pip install torch",
     )
-    DeepONetBaselineSolver = make_optional_dependency_stub(  # type: ignore[assignment, misc]
+    DeepONetBaselineSolver = make_optional_dependency_stub(  # type: ignore[assignment]
         name="deeponet",
         description="DeepONet baseline",
         dependency="torch",
@@ -352,7 +352,7 @@ def _sample_grid(
     operator: PDEOperator,
     n_per_side: int,
     device: str,
-) -> tuple["torch.Tensor", NDArray[np.float64], NDArray[np.float64]]:
+) -> tuple[torch.Tensor, NDArray[np.float64], NDArray[np.float64]]:
     """Build an evaluation grid + the source-term tensor at each node."""
     x = np.linspace(
         float(operator.domain_min[0]),
@@ -377,11 +377,11 @@ def _sample_grid(
 
 
 def _fno_forward(
-    model: "nn.Module",
-    f_grid: "torch.Tensor",
+    model: nn.Module,
+    f_grid: torch.Tensor,
     grid_2d: NDArray[np.float64],
     config: NeuralOperatorConfig,
-) -> "torch.Tensor":
+) -> torch.Tensor:
     """Forward an FNO: stack (f, x, y) channels, run, return (B, H, W)."""
     n_per_side = grid_2d.shape[0]
     coords_t = torch.tensor(grid_2d, dtype=torch.float32, device=config.device).unsqueeze(0)
@@ -390,11 +390,11 @@ def _fno_forward(
 
 
 def _deeponet_forward(
-    model: "nn.Module",
-    f_grid: "torch.Tensor",
+    model: nn.Module,
+    f_grid: torch.Tensor,
     grid_2d: NDArray[np.float64],
     config: NeuralOperatorConfig,
-) -> "torch.Tensor":
+) -> torch.Tensor:
     """Forward a DeepONet: branch consumes flattened source on a fixed grid.
 
     To honour DeepONet's fixed branch input width we down-sample the
@@ -417,7 +417,10 @@ class _ComputeErrorHelper(BaseSolver):
     name = "_helper"
     description = "Internal helper for L2 error computation"
 
-    def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:  # pragma: no cover
+    def solve(  # pragma: no cover
+        self, operator: PDEOperator, n_dof: int, **kwargs: Any
+    ) -> SolverResult:
+        """Internal helper – never invoked, present only to satisfy the ABC."""
         raise NotImplementedError("This is an internal helper; never call solve().")
 
 
@@ -458,7 +461,7 @@ def _train_and_evaluate_neural_op(
     exact = operator.exact_solution(grid_2d.reshape(-1, 2).astype(np.float32))
 
     use_exact_target = exact is not None
-    target: "torch.Tensor | None" = None
+    target: torch.Tensor | None = None
     if use_exact_target:
         if isinstance(exact, torch.Tensor):
             target = exact.detach().to(torch.float32).reshape(1, n_per_side, n_per_side).to(device)
@@ -477,7 +480,7 @@ def _train_and_evaluate_neural_op(
         else:
             # Fall back to data-fit on source term as a coarse proxy
             loss = torch.mean((pred - f_grid) ** 2)
-        loss.backward()
+        loss.backward()  # type: ignore[no-untyped-call]
         optim.step()
         losses.append(float(loss.item()))
         if (step + 1) % config.log_interval == 0:
@@ -488,7 +491,7 @@ def _train_and_evaluate_neural_op(
         pred = forward(model, f_grid, grid_2d, config).cpu().numpy().squeeze(0)
 
     wall_time = time.perf_counter() - t0
-    coords_for_err = grid_2d.reshape(-1, 2).astype(np.float32)
+    coords_for_err = grid_2d.reshape(-1, 2).astype(np.float64)
     # ``BaseSolver._compute_l2_error`` is a regular method (not static)
     # but it doesn't touch ``self``; call via a lightweight concrete
     # subclass to keep type-checkers happy.

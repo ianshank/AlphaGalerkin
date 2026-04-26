@@ -271,7 +271,7 @@ except ImportError:
 
 if _PYAMG_AVAILABLE:
 
-    class MultigridPoissonSolver(BaseSolver):  # type: ignore[no-redef]
+    class MultigridPoissonSolver(BaseSolver):
         """Algebraic multigrid Poisson solver (pyamg-backed)."""
 
         name = "multigrid"
@@ -335,7 +335,7 @@ if _PYAMG_AVAILABLE:
 
     SOLVER_REGISTRY.setdefault("multigrid", MultigridPoissonSolver)
 else:
-    MultigridPoissonSolver = make_optional_dependency_stub(  # type: ignore[assignment, misc]
+    MultigridPoissonSolver = make_optional_dependency_stub(  # type: ignore[assignment]
         name="multigrid",
         description="Algebraic Multigrid Poisson solver",
         dependency="pyamg",

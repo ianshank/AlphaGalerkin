@@ -320,6 +320,28 @@ class TestSGFParser:
         for child in second_move.children:
             assert len(child.children) == 1
 
+    def test_variation_count_capped_by_config(self) -> None:
+        """Variations beyond ``max_variations`` are skipped silently.
+
+        Exercises the ``_skip_to_matching_paren`` branch of
+        ``_parse_game_tree`` for branch-coverage of the
+        max-variations safety valve.
+        """
+        from src.games.sgf.config import SGFConfig
+
+        # max_variations=1 keeps only the first variation.
+        cfg = SGFConfig(name="sgf_capped", max_variations=1)
+        parser = SGFParser(cfg)
+        tree = parser.parse(VARIATION_SGF)
+
+        root = tree.root
+        first_move = root.children[0]  # B[pd]
+        second_move = first_move.children[0]  # W[dd]
+
+        # Only one variation kept; the rest were skipped via
+        # ``_skip_to_matching_paren``.
+        assert len(second_move.children) == 1
+
     def test_parse_handicap(self) -> None:
         """Test parsing handicap game."""
         parser = SGFParser()

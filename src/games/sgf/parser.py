@@ -318,7 +318,17 @@ class SGFParser:
             self._pos += 1
 
     def _skip_to_matching_paren(self) -> None:
-        """Skip to matching closing parenthesis."""
+        """Consume one full ``(...)`` group, including its closing ``)``.
+
+        Called when the parser has decided to drop a variation entirely
+        (e.g. because ``max_variations`` was exceeded).  The cursor must
+        be sitting on the opening ``(`` of that group; on return it
+        points just past the matching ``)`` of *only* that group, so the
+        outer parser still sees its own closing token.
+        """
+        if self._pos >= len(self._text) or self._text[self._pos] != "(":
+            return
+        self._pos += 1  # consume the opening '('
         depth = 1
         while self._pos < len(self._text) and depth > 0:
             c = self._text[self._pos]

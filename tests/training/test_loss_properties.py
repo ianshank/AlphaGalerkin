@@ -16,7 +16,7 @@ import torch
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.training.loss import AlphaGalerkinLoss, EntropyRegularizer
+from src.training.losses import AlphaGalerkinLoss, EntropyRegularizer
 
 # ---------------------------------------------------------------------------
 # Hypothesis strategies
@@ -24,11 +24,17 @@ from src.training.loss import AlphaGalerkinLoss, EntropyRegularizer
 
 
 def valid_logits(batch_max: int = 8, actions_max: int = 50) -> st.SearchStrategy:
-    """Strategy for policy logits tensors."""
+    """Strategy for policy logits tensors (deterministic per shape for reproducibility)."""
     return st.tuples(
         st.integers(min_value=1, max_value=batch_max),
         st.integers(min_value=2, max_value=actions_max),
-    ).map(lambda shape: torch.randn(shape[0], shape[1]))
+    ).map(lambda shape: _make_logits(shape[0], shape[1]))
+
+
+def _make_logits(batch: int, n_actions: int) -> torch.Tensor:
+    """Create deterministic logits for a given shape (seeded by shape)."""
+    torch.manual_seed(batch * 1000 + n_actions)
+    return torch.randn(batch, n_actions)
 
 
 def valid_loss_inputs(batch_max: int = 8, actions_max: int = 50) -> st.SearchStrategy:

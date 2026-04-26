@@ -148,7 +148,7 @@ class TournamentScheduler:
             round_num += 1
 
             # Rotate players (keep first player fixed)
-            player_list = [player_list[0]] + [player_list[-1]] + player_list[1:-1]
+            player_list = [player_list[0], player_list[-1], *player_list[1:-1]]
 
         return pairings
 
@@ -237,14 +237,12 @@ class TournamentScheduler:
         # Seed players by rating
         seeded = sorted(players, key=lambda p: p.rating, reverse=True)
 
-        # Pad to power of 2
+        # Pad bracket to next power of 2; players past `n` receive byes
+        # (handled implicitly when we skip pairs where both indices exceed n).
         n = len(seeded)
         bracket_size = 1
         while bracket_size < n:
             bracket_size *= 2
-
-        # Add byes
-        bracket_size - n
 
         pairings = []
 

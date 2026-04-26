@@ -20,15 +20,17 @@ from __future__ import annotations
 
 import copy
 import itertools
+import time
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
 import torch
 from jaxtyping import Float
 from numpy.typing import NDArray
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 from torch import Tensor
 
 from src.pde.config import MeshRefinementConfig, PDEGameConfig, RefinementStrategy
@@ -440,6 +442,20 @@ class MeshRefinementGame(PDEGame):
         # For simplicity, use h-refinement only
         self._refinement_strategy = self.mesh_config.refinement_strategy
 
+        # Interpolator cache for ``_interpolate_solution``.
+        #
+        # ``LinearNDInterpolator(coords, …).__init__`` runs a Delaunay
+        # triangulation on the input points (Qhull); this dominates the
+        # interpolation cost. During an MCTS expansion the *same*
+        # ``old_state`` is fed to ``apply_action`` for many candidate
+        # actions, so caching by object identity (``is``) avoids the
+        # repeated Qhull pass without any change to the public state
+        # type.  The cache stores at most one (state, interpolator) pair
+        # per game instance and is naturally invalidated whenever a new
+        # state object is observed.
+        self._cached_interp_state: PDEState | None = None
+        self._cached_interp_linear: Any | None = None
+
     def clone(self) -> PDEGame:
         """MCTS-safe clone with an independent mesh.
 
@@ -453,11 +469,13 @@ class MeshRefinementGame(PDEGame):
         cloned = cls.__new__(cls)
         cloned.pde_operator = self.pde_operator
         cloned.config = self.config
-        cloned._action_space_size = self._action_space_size
-        cloned._state_channels = self._state_channels
         cloned.mesh_config = self.mesh_config
         cloned._refinement_strategy = self._refinement_strategy
         cloned.mesh = copy.deepcopy(self.mesh)
+        # Each clone starts with a fresh interpolator cache: the cloned game
+        # will see different ``old_state`` objects than the source.
+        cloned._cached_interp_state = None
+        cloned._cached_interp_linear = None
         logger.debug(
             "mesh_game_cloned",
             n_elements=cloned.mesh.n_elements,
@@ -730,7 +748,7 @@ class MeshRefinementGame(PDEGame):
             step=state.step + 1,
             budget_remaining=state.budget_remaining - 1,
             phase=state.phase,
-            history=state.history + [action],
+            history=[*state.history, action],
         )
 
         # Update phase
@@ -787,24 +805,49 @@ class MeshRefinementGame(PDEGame):
             return interpolated.astype(np.float32)
 
         # 2-D and higher: linear interpolation with nearest-neighbor fallback.
-        from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+        # ``LinearNDInterpolator.__init__`` runs Delaunay triangulation on
+        # the source points (Qhull), so we cache the interpolator by source
+        # state identity to avoid re-triangulating across the candidate
+        # actions of a single MCTS expansion. ``NearestNDInterpolator`` is
+        # only built lazily, on the cold path where points fall outside the
+        # convex hull.
+        nearest: NearestNDInterpolator | None = None
+        cache_hit = (
+            self._cached_interp_state is old_state and self._cached_interp_linear is not None
+        )
+        if cache_hit:
+            linear = self._cached_interp_linear
+        else:
+            t0 = time.perf_counter()
+            try:
+                linear = LinearNDInterpolator(old_coords, old_solution, fill_value=np.nan)
+            except Exception:  # pragma: no cover - degenerate triangulation
+                linear = None
+            else:
+                self._cached_interp_state = old_state
+                self._cached_interp_linear = linear
+            logger.debug(
+                "interpolator_built",
+                n_points=len(old_coords),
+                build_time_ms=(time.perf_counter() - t0) * 1e3,
+            )
 
-        nearest = NearestNDInterpolator(old_coords, old_solution)
-        try:
-            linear = LinearNDInterpolator(old_coords, old_solution, fill_value=np.nan)
-            values = linear(new_coords_f64)
-        except Exception:  # pragma: no cover - degenerate triangulation
+        if linear is None:
             values = np.full(len(new_coords_f64), np.nan)
+        else:
+            values = linear(new_coords_f64)
 
         missing = np.isnan(values)
         n_missing = int(missing.sum())
         if n_missing:
+            nearest = NearestNDInterpolator(old_coords, old_solution)
             values[missing] = nearest(new_coords_f64[missing])
             logger.debug(
                 "interpolation_nn_fallback",
                 n_query_points=len(new_coords_f64),
                 n_missing=n_missing,
                 fraction=float(n_missing) / float(len(new_coords_f64)),
+                cache_hit=cache_hit,
             )
 
         return values.astype(np.float32)
@@ -1040,7 +1083,7 @@ class MeshRefinementGame(PDEGame):
             level_grid = np.zeros(grid_shape)
 
         # Build tensor with shape (channels, *grid_shape)
-        tensor_shape = (self.state_channels,) + grid_shape
+        tensor_shape = (self.state_channels, *grid_shape)
         tensor = torch.zeros(tensor_shape)
         tensor[0] = torch.from_numpy(solution_grid.astype(np.float32))
         tensor[1] = torch.from_numpy(residual_grid.astype(np.float32))

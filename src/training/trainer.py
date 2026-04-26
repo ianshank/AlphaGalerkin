@@ -39,13 +39,13 @@ from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
 from src.training.eval_utils import EloTracker
 from src.training.evaluation import Evaluator
-from src.training.loss import AlphaGalerkinLoss, LossOutput
 from src.training.loss_balancing import (
     BalancingStrategy,
     LossBalancer,
     LossBalancingConfig,
     create_loss_balancer,
 )
+from src.training.losses import AlphaGalerkinLoss, LossOutput
 from src.training.physics_loss import (
     PhysicsInformedLoss,
     PhysicsLossConfig,

@@ -100,6 +100,11 @@ class TimeStepper(ABC):
             config: Time-stepping configuration.
 
         """
+        if config.adaptive_dt:
+            raise NotImplementedError(
+                "Adaptive time-stepping is not yet implemented. "
+                "Set adaptive_dt=False and use a fixed dt."
+            )
         self.config = config
         self.dt = config.dt
 

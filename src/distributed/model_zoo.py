@@ -252,10 +252,8 @@ class ModelZoo:
 
         if (
             self._best_metric is None
-            or lower_is_better
-            and metric_value < self._best_metric
-            or not lower_is_better
-            and metric_value > self._best_metric
+            or (lower_is_better and metric_value < self._best_metric)
+            or (not lower_is_better and metric_value > self._best_metric)
         ):
             is_best = True
 

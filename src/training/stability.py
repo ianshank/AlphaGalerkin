@@ -293,6 +293,37 @@ class GradientStatus:
         return not (self.is_exploding or self.is_vanishing or self.is_nan)
 
 
+@dataclass
+class GradientMonitorConfig:
+    """Configuration for gradient health monitoring.
+
+    Attributes:
+        exploding_threshold: Norm above this is considered exploding.
+        vanishing_threshold: Norm below this is considered vanishing.
+        history_size: Size of gradient norm history to keep.
+
+    """
+
+    exploding_threshold: float = 100.0
+    vanishing_threshold: float = 1e-7
+    history_size: int = 100
+
+    def __post_init__(self) -> None:
+        if self.exploding_threshold <= 0:
+            raise ValueError(f"exploding_threshold must be > 0, got {self.exploding_threshold}")
+        if not 0 < self.vanishing_threshold < 1:
+            raise ValueError(
+                f"vanishing_threshold must be in (0, 1), got {self.vanishing_threshold}"
+            )
+        if self.vanishing_threshold >= self.exploding_threshold:
+            raise ValueError(
+                "vanishing_threshold must be < exploding_threshold "
+                f"({self.vanishing_threshold} >= {self.exploding_threshold})"
+            )
+        if self.history_size < 1:
+            raise ValueError(f"history_size must be >= 1, got {self.history_size}")
+
+
 class GradientMonitor:
     """Monitors gradient health during training.
 
@@ -313,21 +344,51 @@ class GradientMonitor:
 
     def __init__(
         self,
-        exploding_threshold: float = 100.0,
-        vanishing_threshold: float = 1e-7,
-        history_size: int = 100,
+        config: GradientMonitorConfig | None = None,
+        *,
+        exploding_threshold: float | None = None,
+        vanishing_threshold: float | None = None,
+        history_size: int | None = None,
     ) -> None:
         """Initialize gradient monitor.
 
+        Accepts either a ``GradientMonitorConfig`` or the legacy keyword
+        arguments. The kwargs path constructs a config internally so
+        validation runs uniformly.
+
         Args:
+            config: Pre-built configuration. Mutually exclusive with kwargs.
             exploding_threshold: Norm above this is considered exploding.
             vanishing_threshold: Norm below this is considered vanishing.
-            history_size: Size of gradient history to keep.
+            history_size: Size of gradient norm history to keep.
 
         """
-        self.exploding_threshold = exploding_threshold
-        self.vanishing_threshold = vanishing_threshold
-        self.history: deque[float] = deque(maxlen=history_size)
+        kwargs_provided = any(
+            v is not None for v in (exploding_threshold, vanishing_threshold, history_size)
+        )
+        if config is not None and kwargs_provided:
+            raise ValueError("Pass either a GradientMonitorConfig or threshold kwargs, not both")
+
+        if config is None:
+            defaults = GradientMonitorConfig()
+            config = GradientMonitorConfig(
+                exploding_threshold=(
+                    exploding_threshold
+                    if exploding_threshold is not None
+                    else defaults.exploding_threshold
+                ),
+                vanishing_threshold=(
+                    vanishing_threshold
+                    if vanishing_threshold is not None
+                    else defaults.vanishing_threshold
+                ),
+                history_size=(history_size if history_size is not None else defaults.history_size),
+            )
+
+        self.config = config
+        self.exploding_threshold = config.exploding_threshold
+        self.vanishing_threshold = config.vanishing_threshold
+        self.history: deque[float] = deque(maxlen=config.history_size)
 
     def check(self, grad_norm: float | torch.Tensor) -> GradientStatus:
         """Check gradient norm and return status.

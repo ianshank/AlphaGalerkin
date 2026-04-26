@@ -10,6 +10,7 @@ from src.training.stability import (
     EarlyStopping,
     EarlyStoppingConfig,
     GradientMonitor,
+    GradientMonitorConfig,
     PlateauConfig,
     PlateauDetector,
     TrainingStabilityMonitor,
@@ -212,6 +213,51 @@ class TestGradientMonitor:
 
         assert stats["mean"] == 0.0
         assert stats["std"] == 0.0
+
+    def test_accepts_config_object(self) -> None:
+        """Test GradientMonitor accepts a GradientMonitorConfig directly."""
+        config = GradientMonitorConfig(
+            exploding_threshold=50.0, vanishing_threshold=1e-6, history_size=10
+        )
+        monitor = GradientMonitor(config)
+        assert monitor.exploding_threshold == 50.0
+        assert monitor.vanishing_threshold == 1e-6
+        assert monitor.history.maxlen == 10
+
+    def test_rejects_config_and_kwargs(self) -> None:
+        """Test GradientMonitor rejects mixing config object and kwargs."""
+        config = GradientMonitorConfig()
+        with pytest.raises(ValueError, match="either a GradientMonitorConfig or"):
+            GradientMonitor(config, exploding_threshold=10.0)
+
+
+class TestGradientMonitorConfig:
+    """Tests for GradientMonitorConfig validation."""
+
+    def test_defaults(self) -> None:
+        """Defaults match the historical GradientMonitor.__init__ defaults."""
+        config = GradientMonitorConfig()
+        assert config.exploding_threshold == 100.0
+        assert config.vanishing_threshold == 1e-7
+        assert config.history_size == 100
+
+    def test_rejects_non_positive_exploding_threshold(self) -> None:
+        with pytest.raises(ValueError, match="exploding_threshold must be > 0"):
+            GradientMonitorConfig(exploding_threshold=0.0)
+
+    def test_rejects_vanishing_threshold_out_of_range(self) -> None:
+        with pytest.raises(ValueError, match="vanishing_threshold must be in"):
+            GradientMonitorConfig(vanishing_threshold=0.0)
+        with pytest.raises(ValueError, match="vanishing_threshold must be in"):
+            GradientMonitorConfig(vanishing_threshold=1.5)
+
+    def test_rejects_vanishing_above_exploding(self) -> None:
+        with pytest.raises(ValueError, match="vanishing_threshold must be <"):
+            GradientMonitorConfig(exploding_threshold=0.1, vanishing_threshold=0.5)
+
+    def test_rejects_zero_history_size(self) -> None:
+        with pytest.raises(ValueError, match="history_size must be >= 1"):
+            GradientMonitorConfig(history_size=0)
 
 
 class TestTrainingStabilityMonitor:

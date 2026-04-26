@@ -114,7 +114,10 @@ class VideoCodec(nn.Module):
         self.entropy_model = create_entropy_model(config.entropy)
 
         # Entropy coder (for inference)
-        self.entropy_coder = EntropyCoder(precision=config.entropy.precision)
+        self.entropy_coder = EntropyCoder(
+            range_precision=config.entropy.range_precision,
+            cdf_precision=config.entropy.cdf_precision,
+        )
 
         # GOP manager
         self.gop_manager = GOPManager(

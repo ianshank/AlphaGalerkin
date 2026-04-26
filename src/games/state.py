@@ -104,7 +104,7 @@ class GameState:
             board=new_board,
             current_player=next_player if next_player is not None else -self.current_player,
             move_number=self.move_number + 1,
-            move_history=self.move_history + [action],
+            move_history=[*self.move_history, action],
             metadata=new_metadata,
         )
 

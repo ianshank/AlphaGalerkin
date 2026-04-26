@@ -408,9 +408,17 @@ class TestGameManager:
         self,
         game_manager: GameManager,
     ) -> None:
-        """Test parsing out-of-bounds move raises error."""
-        with pytest.raises(ValueError, match="Invalid format"):
+        """Test parsing out-of-bounds move surfaces the precise diagnostic."""
+        with pytest.raises(ValueError, match="outside the"):
             game_manager.parse_move("10,10", 9)
+
+    def test_parse_move_non_numeric_invalid_format(
+        self,
+        game_manager: GameManager,
+    ) -> None:
+        """Non-integer two-token input still falls through to generic error."""
+        with pytest.raises(ValueError, match="Invalid format"):
+            game_manager.parse_move("foo bar", 9)
 
     def test_parse_move_gtp_format(
         self,
@@ -470,7 +478,6 @@ class TestGameManager:
         """Test parsing garbage input raises error."""
         with pytest.raises(ValueError, match="Invalid format"):
             game_manager.parse_move("xyz123abc", 9)
-
 
 
 class TestGameManagerMCTSConfig:

@@ -26,8 +26,9 @@ Action encoding follows AlphaZero's scheme:
 from __future__ import annotations
 
 import hashlib
+import warnings
 from enum import IntEnum
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 import structlog
@@ -1176,6 +1177,7 @@ class ChessGame(GameInterface):
         self,
         move_str: str,
         state_or_board_size: GameState | int | None = None,
+        **kwargs: Any,
     ) -> int | None:
         """Convert algebraic notation to action.
 
@@ -1184,12 +1186,28 @@ class ChessGame(GameInterface):
             state_or_board_size: A ``GameState`` for legality validation,
                 or an int board size (ignored for chess). When a state is
                 provided, illegal moves return ``None``.
+            **kwargs: Accepts the deprecated ``board_size=`` keyword for
+                backwards compatibility with the pre-PR-#53 signature.
 
         Returns:
             Action index, or ``None`` if the notation is invalid or the
             move is illegal in the given state.
 
         """
+        if "board_size" in kwargs:
+            if state_or_board_size is None:
+                warnings.warn(
+                    "Chess.string_to_action(board_size=...) is deprecated; "
+                    "pass a GameState positionally as state_or_board_size.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                state_or_board_size = kwargs.pop("board_size")
+            else:
+                kwargs.pop("board_size")
+        if kwargs:
+            raise TypeError(f"string_to_action got unexpected keyword arguments: {sorted(kwargs)}")
+
         if len(move_str) < 4:
             return None
 

@@ -238,7 +238,7 @@ class SGFConverter:
             "tesuji": "TE",
         }
 
-        if quality in quality_map and quality_map[quality]:
+        if quality_map.get(quality):
             node.set_property(quality_map[quality], "1")
 
     def add_label(

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.training.loss import AlphaGalerkinLoss, EntropyRegularizer
+from src.training.losses import AlphaGalerkinLoss, EntropyRegularizer
 
 
 class TestLossNumericalStability:

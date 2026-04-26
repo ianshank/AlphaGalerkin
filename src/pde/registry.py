@@ -27,6 +27,11 @@ from src.pde.operators import (
     PDEOperator,
     PoissonOperator,
 )
+from src.pde.operators_picogk import (
+    HelicalHeatOperator,
+    HelicalMagnetostaticsOperator,
+    HelicalStokesOperator,
+)
 from src.templates.registry import create_registry
 
 if TYPE_CHECKING:
@@ -59,6 +64,16 @@ def _register_builtin_operators() -> None:
     if not registry.is_registered("poisson_lshaped"):
         register_pde_operator("poisson_lshaped")(LShapedPoissonOperator)
 
+    # Leap 71 / Noyron-targeted SDF-aware operators.
+    if not registry.is_registered("helical_heat"):
+        register_pde_operator("helical_heat")(HelicalHeatOperator)
+
+    if not registry.is_registered("helical_stokes"):
+        register_pde_operator("helical_stokes")(HelicalStokesOperator)
+
+    if not registry.is_registered("helical_magnetostatics"):
+        register_pde_operator("helical_magnetostatics")(HelicalMagnetostaticsOperator)
+
 
 # Register built-in operators on import
 _register_builtin_operators()
@@ -68,12 +83,15 @@ def get_pde_operator(name: str) -> type[PDEOperator]:
     """Get a PDE operator class by name.
 
     Args:
+    ----
         name: Registered operator name.
 
     Returns:
+    -------
         PDE operator class.
 
     Raises:
+    ------
         KeyError: If operator not registered.
 
     """
@@ -83,7 +101,8 @@ def get_pde_operator(name: str) -> type[PDEOperator]:
 def list_pde_operators() -> list[str]:
     """List all registered PDE operators.
 
-    Returns:
+    Returns
+    -------
         List of registered operator names.
 
     """

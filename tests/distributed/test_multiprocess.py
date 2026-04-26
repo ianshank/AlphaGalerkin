@@ -70,10 +70,10 @@ class TestDistributedEnvironment:
         clean_env = {k: v for k, v in os.environ.items() if k not in env_vars}
 
         with patch.dict(os.environ, clean_env, clear=True):
-            from src.distributed.config import from_environment
+            from src.distributed.config import config_from_environment
 
-            config = from_environment()
-            # Should return disabled config or raise if not in distributed env
+            config = config_from_environment()
+            # Should return None (single-process) or a disabled config.
             assert config is None or config.enabled is False
 
     def test_environment_detection_with_vars(self) -> None:
@@ -87,9 +87,9 @@ class TestDistributedEnvironment:
         }
 
         with patch.dict(os.environ, env_vars):
-            from src.distributed.config import from_environment
+            from src.distributed.config import config_from_environment
 
-            config = from_environment()
+            config = config_from_environment()
             if config is not None:
                 assert config.world_size == 4
 

@@ -29,7 +29,7 @@ import json
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
 import structlog
@@ -62,7 +62,7 @@ class SpectralBiasConfig(BaseModel):
         min_length=1,
         description="Solver names from SOLVER_REGISTRY to compare.",
     )
-    frequencies: list[float] = Field(
+    frequencies: list[Annotated[float, Field(gt=0)]] = Field(
         default_factory=lambda: [1.0, 5.0, 10.0, 50.0],
         min_length=1,
         description="Wavenumbers k to test (source = sin(kπx) sin(kπy)).",
@@ -315,7 +315,7 @@ class SpectralBiasBenchmark:
                 log.warning("spectral_bias_cell_failed", error=str(exc))
                 break
 
-        if last_exc is not None and not durations:
+        if last_exc is not None:
             return SpectralBiasMeasurement(
                 solver=solver_name,
                 frequency=frequency,

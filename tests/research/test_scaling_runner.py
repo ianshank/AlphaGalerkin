@@ -33,13 +33,28 @@ def _make_op() -> PoissonOperator:
 
 
 # ---------------------------------------------------------------------------
-# Mock solver helpers — testing time-dependent behavior without scipy
-# overhead and with deterministic timing.
+# Deterministic fake clock shared between mock solvers and the monkeypatch.
+#
+# Each _LinearMockSolver.solve() call advances _fake_now by (1e-4 * n_dof)
+# seconds.  The runner measures wall time as:
+#
+#   t0    = time.perf_counter()   ← returns _fake_now before solve()
+#   solve() runs                  ← advances _fake_now
+#   elapsed = time.perf_counter() - t0  ← captures the delta
+#
+# This gives perfectly deterministic O(n) wall times with no CPU spin-wait.
 # ---------------------------------------------------------------------------
+
+_fake_now: list[float] = [0.0]
 
 
 class _LinearMockSolver(BaseSolver):
-    """Solver whose wall-time scales as O(n)."""
+    """Solver whose simulated wall-time scales as O(n).
+
+    Advances the module-level *_fake_now* clock instead of spinning — see
+    the *_mock_solvers_in_registry* fixture which patches
+    ``time.perf_counter`` to read from that clock.
+    """
 
     name = "_mock_linear"
     description = "Mock solver with linear scaling"
@@ -48,19 +63,12 @@ class _LinearMockSolver(BaseSolver):
         pass
 
     def solve(self, operator, n_dof, **kwargs):  # type: ignore[no-untyped-def]
-        # Deterministic synthetic timing: t = c * n
-        synthetic_time = 1e-4 * n_dof
-        # Make the wall-time observable to the runner
-        import time
-
-        t0 = time.perf_counter()
-        while time.perf_counter() - t0 < synthetic_time:
-            pass
+        _fake_now[0] += 1e-4 * n_dof  # advance fake clock proportional to n
         return SolverResult(
             solution=np.zeros(n_dof, dtype=np.float64),
             grid_points=np.zeros((n_dof, 2), dtype=np.float64),
             n_dof=n_dof,
-            wall_time_seconds=synthetic_time,
+            wall_time_seconds=1e-4 * n_dof,
             l2_error=0.0,
         )
 
@@ -74,7 +82,12 @@ class _FailingSolver(BaseSolver):
 
 
 @pytest.fixture(autouse=True)
-def _mock_solvers_in_registry():
+def _mock_solvers_in_registry(monkeypatch: pytest.MonkeyPatch) -> object:
+    """Register mock solvers and patch time.perf_counter for determinism."""
+    _fake_now[0] = 0.0
+
+    monkeypatch.setattr("time.perf_counter", lambda: _fake_now[0])
+
     SOLVER_REGISTRY.setdefault("_mock_linear", _LinearMockSolver)
     SOLVER_REGISTRY.setdefault("_mock_fail", _FailingSolver)
     yield
@@ -105,6 +118,14 @@ class TestScalingConfig:
     def test_extra_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ScalingConfig(solvers=["x"], n_dof_values=[16], unknown=1)  # type: ignore[call-arg]
+
+    def test_zero_dof_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ScalingConfig(solvers=["x"], n_dof_values=[0])
+
+    def test_negative_dof_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ScalingConfig(solvers=["x"], n_dof_values=[-1, 64])
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +196,19 @@ class TestWeakScalingRunner:
         assert len(report.measurements) == 1
         assert report.measurements[0].success
         assert np.isfinite(report.measurements[0].wall_time_seconds)
+
+    def test_timeout_marks_failure(self) -> None:
+        """A cell whose wall time exceeds the timeout budget must be failure."""
+        # n_dof=256 → simulated time = 1e-4 * 256 = 0.0256 > 0.001 budget
+        cfg = ScalingConfig(
+            solvers=["_mock_linear"],
+            n_dof_values=[256],
+            timeout_seconds=0.001,
+        )
+        report = WeakScalingRunner(cfg).run(_make_op())
+        assert report.measurements[0].success is False
+        assert report.measurements[0].error_message is not None
+        assert "TimeoutError" in report.measurements[0].error_message
 
 
 # ---------------------------------------------------------------------------

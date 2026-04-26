@@ -19,8 +19,8 @@ Every solver is **opt-in via Python imports**: importing this package
 triggers registration into :data:`src.research.baselines.SOLVER_REGISTRY`
 so that ``get_solver(name)`` resolves them.  Solvers whose external
 dependency (``pyamg``, ``neuraloperator``) is missing register a
-*stub* solver that raises a clear :class:`ImportError` at construction
-time.  This keeps the global 85% coverage gate green even on machines
+*stub* solver that raises a clear :class:`ImportError` at solve time.
+This keeps the global 85% coverage gate green even on machines
 without the extras installed.
 
 Configuration values (Peclet thresholds, stabilization parameters,

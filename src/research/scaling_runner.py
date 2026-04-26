@@ -46,7 +46,7 @@ import math
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
 import structlog
@@ -80,7 +80,7 @@ class ScalingConfig(BaseModel):
         min_length=1,
         description="Names of solvers (registered in SOLVER_REGISTRY) to sweep.",
     )
-    n_dof_values: list[int] = Field(
+    n_dof_values: list[Annotated[int, Field(ge=1)]] = Field(
         ...,
         min_length=1,
         description="Sequence of DOF targets to evaluate at.",
@@ -312,7 +312,7 @@ class WeakScalingRunner:
                 log.warning("scaling_cell_failed", repeat=repeat_idx, error=str(exc))
                 break
 
-        if last_exc is not None and not durations:
+        if last_exc is not None:
             return ScalingMeasurement(
                 solver=solver_name,
                 n_dof=n_dof,

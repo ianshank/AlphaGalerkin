@@ -67,6 +67,14 @@ class TestSpectralBiasConfig:
         with pytest.raises(ValidationError):
             SpectralBiasConfig(solvers=["x"], unknown=1)  # type: ignore[call-arg]
 
+    def test_zero_frequency_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            SpectralBiasConfig(solvers=["x"], frequencies=[0.0])
+
+    def test_negative_frequency_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            SpectralBiasConfig(solvers=["x"], frequencies=[-1.0, 5.0])
+
 
 # ---------------------------------------------------------------------------
 # Sinusoidal operator
@@ -130,6 +138,26 @@ class TestSpectralBiasBenchmark:
         )
         report = SpectralBiasBenchmark(cfg).run()
         assert report.measurements[0].success is False
+
+    def test_exception_on_first_repeat_is_failure(self) -> None:
+        """A cell that always raises must record success=False."""
+
+        class _AlwaysFailSolver(BaseSolver):
+            name = "_fail_bias"
+            description = "Always raises"
+
+            def solve(self, operator, n_dof, **kwargs):  # type: ignore[no-untyped-def]
+                raise ValueError("forced error")
+
+        SOLVER_REGISTRY.setdefault("_fail_bias", _AlwaysFailSolver)
+        try:
+            cfg = SpectralBiasConfig(solvers=["_fail_bias"], frequencies=[1.0], n_dof=32)
+            report = SpectralBiasBenchmark(cfg).run()
+            m = report.measurements[0]
+            assert m.success is False
+            assert "forced error" in (m.error_message or "")
+        finally:
+            SOLVER_REGISTRY.pop("_fail_bias", None)
 
     def test_save_emits_csv_and_json(self, tmp_path: Path) -> None:
         cfg = SpectralBiasConfig(

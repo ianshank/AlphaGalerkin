@@ -75,6 +75,17 @@ class TestDirectPoissonSolve:
         with pytest.raises(NotImplementedError, match="2D"):
             DirectPoissonSolver().solve(op, n_dof=16)
 
+    def test_homogeneous_bc_boundary_is_zero(self) -> None:
+        """Boundary values for zero-BC Poisson must remain zero in solution."""
+        op = _make_poisson_op()
+        result = DirectPoissonSolver().solve(op, n_dof=64)
+        n = result.metadata["n_per_side"]
+        grid = result.solution.reshape(n + 2, n + 2)
+        np.testing.assert_array_equal(grid[0, :], 0.0)
+        np.testing.assert_array_equal(grid[-1, :], 0.0)
+        np.testing.assert_array_equal(grid[:, 0], 0.0)
+        np.testing.assert_array_equal(grid[:, -1], 0.0)
+
 
 # ---------------------------------------------------------------------------
 # Multigrid (real or stub depending on environment)
@@ -90,6 +101,15 @@ class TestMultigridPoissonConfig:
     def test_extra_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MultigridPoissonConfig(unknown=1)  # type: ignore[call-arg]
+
+    def test_invalid_cycle_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MultigridPoissonConfig(cycle="X")  # type: ignore[arg-type]
+
+    def test_all_valid_cycles_accepted(self) -> None:
+        for cycle in ("V", "W", "F"):
+            cfg = MultigridPoissonConfig(cycle=cycle)  # type: ignore[arg-type]
+            assert cfg.cycle == cycle
 
 
 class TestMultigridSolverBehavior:

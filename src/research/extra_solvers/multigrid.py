@@ -17,7 +17,7 @@ Configuration is fully Pydantic — no hardcoded numerical constants.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import structlog
@@ -63,9 +63,9 @@ class MultigridPoissonConfig(SolverConfig):
         ge=2,
         description="Maximum number of multigrid levels.",
     )
-    cycle: str = Field(
+    cycle: Literal["V", "W", "F"] = Field(
         default="V",
-        description="Multigrid cycle type: 'V', 'W', or 'F'.",
+        description="Multigrid cycle type.",
     )
     presmoother: str = Field(
         default="gauss_seidel",
@@ -198,6 +198,59 @@ def _resolve_grid_size(operator: PDEOperator, n_dof: int, floor: int) -> int:
     return max(n_per_side, floor)
 
 
+def _fill_boundary(
+    solution_grid: NDArray[np.float64],
+    operator: PDEOperator,
+    n_per_side: int,
+) -> None:
+    """Populate boundary edges of *solution_grid* in-place from operator BCs.
+
+    Handles all four edges (excluding corners) and the four corner nodes.
+    For homogeneous Dirichlet BCs this is a no-op (zeros stay zeros), but
+    non-homogeneous boundary values are applied correctly.
+    """
+    n = n_per_side
+    x = np.linspace(
+        float(operator.domain_min[0]),
+        float(operator.domain_max[0]),
+        n + 2,
+        dtype=np.float64,
+    )
+    y = np.linspace(
+        float(operator.domain_min[1]),
+        float(operator.domain_max[1]),
+        n + 2,
+        dtype=np.float64,
+    )
+    interior_x = x[1:-1]
+    interior_y = y[1:-1]
+
+    def _bc(coords: NDArray[np.float32]) -> NDArray[np.float64]:
+        return np.asarray(operator.boundary_value(coords), dtype=np.float64)
+
+    solution_grid[0, 1:-1] = _bc(
+        np.stack([np.full(n, x[0], dtype=np.float32), interior_y.astype(np.float32)], axis=-1)
+    )
+    solution_grid[-1, 1:-1] = _bc(
+        np.stack([np.full(n, x[-1], dtype=np.float32), interior_y.astype(np.float32)], axis=-1)
+    )
+    solution_grid[1:-1, 0] = _bc(
+        np.stack([interior_x.astype(np.float32), np.full(n, y[0], dtype=np.float32)], axis=-1)
+    )
+    solution_grid[1:-1, -1] = _bc(
+        np.stack([interior_x.astype(np.float32), np.full(n, y[-1], dtype=np.float32)], axis=-1)
+    )
+    corners = np.array(
+        [[x[0], y[0]], [x[-1], y[0]], [x[0], y[-1]], [x[-1], y[-1]]],
+        dtype=np.float32,
+    )
+    corner_vals = _bc(corners)
+    solution_grid[0, 0] = corner_vals[0]
+    solution_grid[-1, 0] = corner_vals[1]
+    solution_grid[0, -1] = corner_vals[2]
+    solution_grid[-1, -1] = corner_vals[3]
+
+
 # ---------------------------------------------------------------------------
 # Direct solver
 # ---------------------------------------------------------------------------
@@ -231,9 +284,11 @@ class DirectPoissonSolver(BaseSolver):
         n = n_per_side
         u_interior = spsolve(A.tocsc(), rhs)
 
-        # Embed interior solution into the full grid (Dirichlet BCs on edges).
+        # Embed interior solution into the full grid; populate boundary edges
+        # from operator BCs so non-homogeneous Dirichlet values are correct.
         solution_grid = np.zeros((n + 2, n + 2), dtype=np.float64)
         solution_grid[1:-1, 1:-1] = u_interior.reshape(n, n)
+        _fill_boundary(solution_grid, operator, n)
 
         wall_time = time.perf_counter() - t0
         l2_err = self._compute_l2_error(
@@ -306,7 +361,7 @@ class MultigridPoissonSolver(BaseSolver):
         n_per_side = _resolve_grid_size(operator, n_dof, self.config.min_grid_points)
 
         try:
-            import pyamg  # type: ignore[import-not-found]
+            import pyamg
         except ImportError as exc:
             raise ImportError(
                 f"Solver '{self.name}' requires the optional package "
@@ -333,6 +388,7 @@ class MultigridPoissonSolver(BaseSolver):
         n = n_per_side
         solution_grid = np.zeros((n + 2, n + 2), dtype=np.float64)
         solution_grid[1:-1, 1:-1] = u_interior.reshape(n, n)
+        _fill_boundary(solution_grid, operator, n)
         wall_time = time.perf_counter() - t0
         l2_err = self._compute_l2_error(
             solution=solution_grid.ravel(),

@@ -254,11 +254,54 @@ class TestBuildCallbacks:
                 [CallbackSpec(name="rec_bad_params", params={"unknown_kwarg": 1})]
             )
 
+    def test_non_callback_subclass_in_registry_rejected(self) -> None:
+        """Defensively rejects an entry whose class produces a non-Callback."""
+        # ``register_callback`` already enforces inheritance; we simulate a
+        # bypass by using the lower-level decorator directly.
+        from src.training.callbacks.base import _register_callback_decorator
+
+        class _Fake:
+            def __init__(self) -> None:
+                pass
+
+        _register_callback_decorator("fake_non_callback")(_Fake)
+        with pytest.raises(TypeError, match="non-Callback instance"):
+            build_callbacks_from_specs([CallbackSpec(name="fake_non_callback")])
+
     def test_builtin_modules_are_imported(self) -> None:
         # _ensure_builtin_callbacks_imported is idempotent and must succeed
         # even when the registry already has entries.
         _ensure_builtin_callbacks_imported()
         _ensure_builtin_callbacks_imported()
+
+    def test_builtin_module_import_failure_is_swallowed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failing built-in module import must not abort registry use."""
+        import importlib
+
+        from src.training.callbacks import base as base_module
+
+        monkeypatch.setattr(
+            base_module,
+            "BUILTIN_CALLBACK_MODULES",
+            ("nonexistent_module_xyz",),
+        )
+
+        original = importlib.import_module
+
+        def _blow_up(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "nonexistent_module_xyz":
+                raise ImportError("forced missing module")
+            return original(name, *args, **kwargs)
+
+        monkeypatch.setattr(importlib, "import_module", _blow_up)
+        # Should not raise even though the module is missing
+        base_module._ensure_builtin_callbacks_imported()
+        # Still resolves valid callbacks afterwards
+        register_callback("ok_after_failure")(_RecordingCallback)
+        assert "ok_after_failure" in CallbackRegistry()
 
 
 # ---------------------------------------------------------------------------

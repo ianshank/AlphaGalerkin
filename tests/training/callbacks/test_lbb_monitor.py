@@ -217,3 +217,33 @@ class TestLBBHTMLRendering:
         cb.on_train_end(CallbackContext(step=0))
         # When emit_html=False, no HTML file is produced
         assert not (tmp_path / "lbb_trace.html").exists()
+
+    def test_html_skipped_when_matplotlib_missing(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """If matplotlib import fails, ``on_train_end`` returns silently."""
+        import builtins
+
+        original_import = builtins.__import__
+
+        def _block_matplotlib(name: str, *args, **kwargs):  # type: ignore[no-untyped-def]
+            if name == "matplotlib" or name.startswith("matplotlib."):
+                raise ImportError("forced missing matplotlib for test")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _block_matplotlib)
+
+        cb = LBBStabilityCallback(
+            output_dir=str(tmp_path),
+            log_interval=1,
+            emit_html=True,
+        )
+        cb.on_train_start(CallbackContext(step=0))
+        cb.on_step_end(CallbackContext(step=0, metrics={"lbb_constant": 0.5}))
+        # Must not raise even though matplotlib is unavailable.
+        cb.on_train_end(CallbackContext(step=0))
+        assert not (tmp_path / "lbb_trace.html").exists()
+        # Summary JSON is independent of matplotlib and still present.
+        assert (tmp_path / "lbb_summary.json").exists()

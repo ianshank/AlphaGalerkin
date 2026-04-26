@@ -116,6 +116,17 @@ class FNOSolverConfig(NeuralOperatorConfig):
         ge=1,
         description="Number of stacked spectral conv blocks.",
     )
+    proj_hidden: int = Field(
+        default=32,
+        ge=4,
+        description="Hidden width of the final projection MLP head.",
+    )
+    input_channels: int = Field(
+        default=3,
+        ge=1,
+        description="Number of input channels passed to the lift layer "
+        "(default: source value plus 2D coordinates).",
+    )
 
 
 class DeepONetSolverConfig(NeuralOperatorConfig):
@@ -145,6 +156,16 @@ class DeepONetSolverConfig(NeuralOperatorConfig):
         default=32,
         ge=4,
         description="Inner-product dimension shared by branch and trunk.",
+    )
+    branch_grid: int = Field(
+        default=8,
+        ge=2,
+        description=(
+            "Side length of the down-sampled branch input grid.  The "
+            "branch network sees the source field at this resolution "
+            "regardless of the evaluation grid; values <= 16 are "
+            "typical."
+        ),
     )
 
 
@@ -203,16 +224,27 @@ if _TORCH_AVAILABLE:
     class _FNO2d(nn.Module):
         """Compact 2D FNO mapping (source, x, y) -> u."""
 
-        def __init__(self, modes: int, width: int, n_layers: int) -> None:
+        def __init__(
+            self,
+            modes: int,
+            width: int,
+            n_layers: int,
+            proj_hidden: int,
+            input_channels: int,
+        ) -> None:
             super().__init__()
-            self.lift = nn.Linear(3, width)  # (source_value, x, y)
+            self.lift = nn.Linear(input_channels, width)
             self.blocks = nn.ModuleList(
                 [_SpectralConv2d(width, width, modes) for _ in range(n_layers)]
             )
             self.skips = nn.ModuleList(
                 [nn.Conv2d(width, width, 1) for _ in range(n_layers)]
             )
-            self.proj = nn.Sequential(nn.Linear(width, 32), nn.GELU(), nn.Linear(32, 1))
+            self.proj = nn.Sequential(
+                nn.Linear(width, proj_hidden),
+                nn.GELU(),
+                nn.Linear(proj_hidden, 1),
+            )
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             # x: (B, H, W, 3) -> lift to (B, width, H, W)
@@ -242,6 +274,8 @@ if _TORCH_AVAILABLE:
                     modes=self.config.modes,
                     width=self.config.width,
                     n_layers=self.config.n_layers,
+                    proj_hidden=self.config.proj_hidden,
+                    input_channels=self.config.input_channels,
                 ),
                 forward=_fno_forward,
                 config=self.config,
@@ -268,15 +302,27 @@ if _TORCH_AVAILABLE:
     class _DeepONet(nn.Module):
         """Branch-trunk DeepONet."""
 
-        def __init__(self, cfg: DeepONetSolverConfig, n_branch_inputs: int) -> None:
+        # Coordinate dimension that the trunk MLP consumes (2 for the
+        # 2D problems supported here).  Surfaced as a class constant
+        # so tests can reference it without a magic number.
+        TRUNK_INPUT_DIM = 2
+
+        def __init__(self, cfg: DeepONetSolverConfig) -> None:
             super().__init__()
+            self.branch_grid = cfg.branch_grid
+            n_branch_inputs = cfg.branch_grid * cfg.branch_grid
             self.branch = _MLP(
                 n_branch_inputs,
                 cfg.branch_width,
                 cfg.latent_dim,
                 cfg.branch_layers,
             )
-            self.trunk = _MLP(2, cfg.trunk_width, cfg.latent_dim, cfg.trunk_layers)
+            self.trunk = _MLP(
+                self.TRUNK_INPUT_DIM,
+                cfg.trunk_width,
+                cfg.latent_dim,
+                cfg.trunk_layers,
+            )
             self.bias = nn.Parameter(torch.zeros(1))
 
         def forward(
@@ -304,7 +350,7 @@ if _TORCH_AVAILABLE:
             **kwargs: Any,
         ) -> SolverResult:
             return _train_and_evaluate_neural_op(
-                build_model=lambda: _DeepONet(self.config, n_branch_inputs=64),
+                build_model=lambda: _DeepONet(self.config),
                 forward=_deeponet_forward,
                 config=self.config,
                 operator=operator,
@@ -395,12 +441,20 @@ def _deeponet_forward(
     grid_2d: NDArray[np.float64],
     config: NeuralOperatorConfig,
 ) -> torch.Tensor:
-    """Forward a DeepONet: branch consumes flattened source on a fixed grid.
+    """Forward a DeepONet.
 
-    To honour DeepONet's fixed branch input width we down-sample the
-    source field to an 8x8 grid before feeding to the branch.
+    The branch network has a fixed input width set by
+    ``DeepONetSolverConfig.branch_grid``.  We down-sample the source
+    field to that resolution via adaptive average pooling, regardless
+    of the evaluation grid; the trunk consumes the full coordinate
+    grid so the output resolution still matches ``f_grid``.
     """
-    branch_grid = 8
+    branch_grid = getattr(model, "branch_grid", None)
+    if branch_grid is None:  # pragma: no cover - defensive fallback
+        raise AttributeError(
+            "_deeponet_forward expected a model with a 'branch_grid' attribute "
+            "(set by DeepONetSolverConfig.branch_grid)."
+        )
     f_down = torch.nn.functional.adaptive_avg_pool2d(
         f_grid.unsqueeze(0), branch_grid
     ).reshape(1, branch_grid * branch_grid)

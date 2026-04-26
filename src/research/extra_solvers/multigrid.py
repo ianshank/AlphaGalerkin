@@ -5,9 +5,9 @@ Provides two solvers used by ``config/proposals/doe_ascr_c59.yaml``:
 * :class:`DirectPoissonSolver` — sparse direct factorisation via
   ``scipy.sparse.linalg.spsolve``.  Pure scipy, always available.
 * :class:`MultigridPoissonSolver` — algebraic multigrid via
-  ``pyamg``.  Optional dependency: when ``pyamg`` is unavailable the
-  registry receives a stub that raises a clear :class:`ImportError`
-  at construction time, so the global coverage gate stays green.
+  ``pyamg``.  ``pyamg`` is loaded lazily inside :meth:`solve`, so the
+  class always exists in the registry; missing dep surfaces as a
+  clear :class:`ImportError` at solve time with the install hint.
 
 Both solvers act on the same uniform-grid 5-point Laplacian assembled
 from operator-level ``boundary_value`` / ``source_term`` calls.
@@ -31,7 +31,6 @@ from src.research.baselines import (
     SolverConfig,
     SolverResult,
 )
-from src.research.extra_solvers._optional import make_optional_dependency_stub
 
 logger = structlog.get_logger(__name__)
 
@@ -257,88 +256,107 @@ SOLVER_REGISTRY.setdefault("direct_solver", DirectPoissonSolver)
 
 
 # ---------------------------------------------------------------------------
-# Multigrid solver (optional dep)
+# Multigrid solver (lazy-imports pyamg)
 # ---------------------------------------------------------------------------
 
 
-try:  # pragma: no cover - exercised only when pyamg is installed
-    import pyamg  # type: ignore[import-not-found]
+class MultigridPoissonSolver(BaseSolver):
+    """Algebraic multigrid Poisson solver (pyamg-backed).
 
-    _PYAMG_AVAILABLE = True
-except ImportError:
-    _PYAMG_AVAILABLE = False
+    The :mod:`pyamg` dependency is loaded lazily inside :meth:`solve`
+    so the class itself always exists in the registry.  When the
+    dependency is missing, ``solve`` raises a clear :class:`ImportError`
+    pointing the user at the correct install command — same UX as the
+    explicit stub from :mod:`._optional`, but without an import-time
+    branch that confuses both type-checkers and coverage tooling.
+    """
+
+    name = "multigrid"
+    description = "Algebraic Multigrid (smoothed aggregation, pyamg)"
+    _MISSING_DEP_HINT = "pip install pyamg"
+
+    def __init__(self, config: MultigridPoissonConfig | None = None) -> None:
+        self.config = config or MultigridPoissonConfig()
+        self._log = logger.bind(solver=self.name)
+
+    def solve(
+        self,
+        operator: PDEOperator,
+        n_dof: int,
+        **kwargs: Any,
+    ) -> SolverResult:
+        """Solve the 2D Poisson problem with smoothed-aggregation AMG.
+
+        Args:
+            operator: 2D Poisson-type operator.
+            n_dof: Approximate target DOF (rounded to a perfect square).
+            **kwargs: Reserved for the :class:`BaseSolver` protocol.
+
+        Returns:
+            :class:`SolverResult` with the multigrid-cycle solution,
+            timing, and L2 error vs ``operator.exact_solution`` if any.
+
+        Raises:
+            ImportError: If ``pyamg`` is not installed.
+
+        """
+        # Validate the operator shape before the (optional) pyamg
+        # import so dim-mismatch errors do not get masked by a missing
+        # dependency on environments without pyamg installed.
+        n_per_side = _resolve_grid_size(
+            operator, n_dof, self.config.min_grid_points
+        )
+
+        try:
+            import pyamg  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise ImportError(
+                f"Solver '{self.name}' requires the optional package "
+                f"'pyamg'.  Install it with: {self._MISSING_DEP_HINT}"
+            ) from exc
+        log = self._log.bind(
+            n_per_side=n_per_side, cycle=self.config.cycle
+        )
+        log.debug("multigrid_solve_start", n_dof=n_dof)
+        t0 = time.perf_counter()
+
+        A, rhs, grid = _assemble_poisson_2d(operator, n_per_side)
+        ml = pyamg.smoothed_aggregation_solver(
+            A.tocsr(),
+            max_levels=self.config.max_levels,
+            presmoother=self.config.presmoother,
+            postsmoother=self.config.postsmoother,
+        )
+        u_interior = ml.solve(
+            rhs,
+            tol=self.config.tolerance,
+            maxiter=self.config.max_iterations,
+            cycle=self.config.cycle,
+        )
+
+        n = n_per_side
+        solution_grid = np.zeros((n + 2, n + 2), dtype=np.float64)
+        solution_grid[1:-1, 1:-1] = u_interior.reshape(n, n)
+        wall_time = time.perf_counter() - t0
+        l2_err = self._compute_l2_error(
+            solution=solution_grid.ravel(),
+            coords=grid.astype(np.float32),
+            operator=operator,
+        )
+        log.info("multigrid_solve_done", wall_time=wall_time, l2_error=l2_err)
+        return SolverResult(
+            solution=solution_grid.ravel(),
+            grid_points=grid,
+            n_dof=int(n_per_side**2),
+            wall_time_seconds=float(wall_time),
+            l2_error=l2_err,
+            metadata={
+                "method": "pyamg_smoothed_aggregation",
+                "cycle": self.config.cycle,
+                "n_per_side": int(n_per_side),
+                "n_levels": int(len(ml.levels)),
+            },
+        )
 
 
-if _PYAMG_AVAILABLE:
-
-    class MultigridPoissonSolver(BaseSolver):
-        """Algebraic multigrid Poisson solver (pyamg-backed)."""
-
-        name = "multigrid"
-        description = "Algebraic Multigrid (smoothed aggregation, pyamg)"
-
-        def __init__(self, config: MultigridPoissonConfig | None = None) -> None:
-            self.config = config or MultigridPoissonConfig()
-
-        def solve(
-            self,
-            operator: PDEOperator,
-            n_dof: int,
-            **kwargs: Any,
-        ) -> SolverResult:
-            n_per_side = _resolve_grid_size(
-                operator, n_dof, self.config.min_grid_points
-            )
-            log = logger.bind(
-                solver=self.name, n_per_side=n_per_side, cycle=self.config.cycle
-            )
-            log.info("multigrid_solve_start")
-            t0 = time.perf_counter()
-
-            A, rhs, grid = _assemble_poisson_2d(operator, n_per_side)
-            ml = pyamg.smoothed_aggregation_solver(
-                A.tocsr(),
-                max_levels=self.config.max_levels,
-                presmoother=self.config.presmoother,
-                postsmoother=self.config.postsmoother,
-            )
-            u_interior = ml.solve(
-                rhs,
-                tol=self.config.tolerance,
-                maxiter=self.config.max_iterations,
-                cycle=self.config.cycle,
-            )
-
-            n = n_per_side
-            solution_grid = np.zeros((n + 2, n + 2), dtype=np.float64)
-            solution_grid[1:-1, 1:-1] = u_interior.reshape(n, n)
-            wall_time = time.perf_counter() - t0
-            l2_err = self._compute_l2_error(
-                solution=solution_grid.ravel(),
-                coords=grid.astype(np.float32),
-                operator=operator,
-            )
-            log.info("multigrid_solve_done", wall_time=wall_time, l2_error=l2_err)
-            return SolverResult(
-                solution=solution_grid.ravel(),
-                grid_points=grid,
-                n_dof=int(n_per_side**2),
-                wall_time_seconds=float(wall_time),
-                l2_error=l2_err,
-                metadata={
-                    "method": "pyamg_smoothed_aggregation",
-                    "cycle": self.config.cycle,
-                    "n_per_side": int(n_per_side),
-                    "n_levels": int(len(ml.levels)),
-                },
-            )
-
-    SOLVER_REGISTRY.setdefault("multigrid", MultigridPoissonSolver)
-else:
-    MultigridPoissonSolver = make_optional_dependency_stub(  # type: ignore[assignment]
-        name="multigrid",
-        description="Algebraic Multigrid Poisson solver",
-        dependency="pyamg",
-        install_hint="pip install pyamg",
-    )
-    SOLVER_REGISTRY.setdefault("multigrid", MultigridPoissonSolver)
+SOLVER_REGISTRY.setdefault("multigrid", MultigridPoissonSolver)

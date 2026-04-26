@@ -166,6 +166,13 @@ class SUPGFEMSolver(BaseSolver):
             tau = (h / (2.0 * a_eff)) * (1.0 / np.tanh(peclet) - 1.0 / peclet)
 
         log.info("supg_peclet", peclet=peclet, tau=tau, h=h)
+        log.debug(
+            "supg_stencil",
+            n_interior=n,
+            advection_velocity=a_scalar,
+            diffusion=nu,
+            galerkin_only=tau == 0.0,
+        )
 
         # Linear-element stiffness for diffusion: K_diff_ii = 2ν/h, K_diff_{i,i±1} = -ν/h
         diags_diff_main = np.full(n, 2.0 * nu / h)

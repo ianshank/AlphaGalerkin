@@ -130,3 +130,46 @@ class TestDeepONetSmoke:
         assert result.n_dof == 64
         assert np.all(np.isfinite(result.solution))
         assert result.metadata["method"] == "deeponet"
+
+    def test_branch_grid_attribute_threaded_through(self) -> None:
+        """Forward path must read branch_grid off the model, not a literal."""
+        from src.research.extra_solvers.neural_op import (
+            DeepONetSolverConfig,
+            _DeepONet,
+        )
+
+        cfg = DeepONetSolverConfig(branch_grid=4)
+        model = _DeepONet(cfg)
+        assert model.branch_grid == 4
+        assert model.TRUNK_INPUT_DIM == 2
+
+
+class TestNeuralOpFallbackTarget:
+    """Cover the no-exact-solution training fallback."""
+
+    def test_fallback_when_exact_solution_returns_none(self) -> None:
+        """Operator without exact solution still trains via source-fit."""
+        from src.pde.operators import PoissonOperator
+        from src.research.extra_solvers.neural_op import (
+            FNOBaselineSolver,
+            FNOSolverConfig,
+        )
+
+        class _NoExactPoisson(PoissonOperator):
+            def exact_solution(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+                return None
+
+        op = _NoExactPoisson(_make_poisson_op().config)
+        cfg = FNOSolverConfig(
+            n_train_steps=2,
+            modes=2,
+            width=4,
+            n_layers=1,
+            grid_points_floor=8,
+            log_interval=10,
+        )
+        result = FNOBaselineSolver(cfg).solve(op, n_dof=64)
+        assert result.n_dof == 64
+        assert np.all(np.isfinite(result.solution))
+        # No exact solution means l2_error is None
+        assert result.l2_error is None

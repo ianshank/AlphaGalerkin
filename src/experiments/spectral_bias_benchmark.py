@@ -215,6 +215,16 @@ class SpectralBiasBenchmark:
         return report
 
     def save(self, report: SpectralBiasReport, output_dir: Path | str) -> dict[str, Path]:
+        """Persist the report as CSV + JSON.
+
+        Args:
+            report: Report from :meth:`run`.
+            output_dir: Destination directory.  Created if missing.
+
+        Returns:
+            Mapping of artefact name to path on disk.
+
+        """
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
         out: dict[str, Path] = {}
@@ -259,6 +269,11 @@ class SpectralBiasBenchmark:
             )
         )
         out["json"] = json_path
+        self._log.info(
+            "spectral_bias_report_saved",
+            artefacts={k: str(v) for k, v in out.items()},
+            n_measurements=len(report.measurements),
+        )
         return out
 
     # ------------------------------------------------------------------

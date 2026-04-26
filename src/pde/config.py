@@ -436,6 +436,49 @@ class PDEGameConfig(BaseModuleConfig):
         description="Bonus for reaching tolerance",
     )
 
+    # Winner thresholds (consumed by PDEGameAdapter.get_winner)
+    # Current final/initial error ratio is compared against these
+    # (inclusive on both sides; the model validator enforces good < poor
+    # strictly so no ratio can be classified as both win and loss):
+    #   ratio <= good -> +1 (win),  ratio >= poor -> -1 (loss),  else 0.
+    winner_good_reduction_threshold: float = Field(
+        default=0.1,
+        gt=0.0,
+        lt=1.0,
+        description="Max final/initial error ratio to count as a win (<= matches).",
+    )
+    winner_poor_reduction_threshold: float = Field(
+        default=0.5,
+        gt=0.0,
+        lt=1.0,
+        description="Min final/initial error ratio to count as a loss (>= matches).",
+    )
+
+    # Reward form: "linear" (historical default) matches the per-step
+    # affine reward used by the existing self-play pipeline; "log" selects
+    # the proposal-form reward R = -alpha*log(error) - beta*log(cost)
+    # described in docs/doe_genesis/mdp_specification.md.
+    reward_form: Literal["linear", "log"] = Field(
+        default="linear",
+        description="Reward shaping: 'linear' (code default) or 'log' (proposal form).",
+    )
+    log_reward_alpha: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Coefficient on the -log(error) term when reward_form='log'.",
+    )
+    log_reward_beta: float = Field(
+        default=0.1,
+        gt=0.0,
+        description="Coefficient on the -log(cost) term when reward_form='log'.",
+    )
+    log_reward_epsilon: float = Field(
+        default=1e-12,
+        gt=0.0,
+        lt=1.0,
+        description="Floor applied to error/cost before log to avoid -inf.",
+    )
+
     # Success metrics
     success_metrics: list[MetricDefinition] = Field(
         default_factory=lambda: [
@@ -476,11 +519,18 @@ class PDEGameConfig(BaseModuleConfig):
 
     @model_validator(mode="after")
     def validate_game_config(self) -> PDEGameConfig:
-        """Validate game mode has required sub-config."""
+        """Validate game mode has required sub-config and threshold ordering."""
         if self.game_mode == "basis_selection" and self.basis_config is None:
             # Create default basis config
             self.basis_config = BasisSelectionConfig(name=f"{self.name}_basis")
         if self.game_mode == "mesh_refinement" and self.mesh_config is None:
             # Create default mesh config
             self.mesh_config = MeshRefinementConfig(name=f"{self.name}_mesh")
+        if self.winner_good_reduction_threshold >= self.winner_poor_reduction_threshold:
+            raise ValueError(
+                f"winner_good_reduction_threshold "
+                f"({self.winner_good_reduction_threshold}) must be strictly less "
+                f"than winner_poor_reduction_threshold "
+                f"({self.winner_poor_reduction_threshold})"
+            )
         return self

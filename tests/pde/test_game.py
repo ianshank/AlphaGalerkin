@@ -457,9 +457,16 @@ class TestPDEGameConcreteMethods:
         assert batch.shape == (1, 3, 2, 2)
 
     def test_clone(self, game: ConcretePDEGame) -> None:
+        """``clone()`` returns an MCTS-safe instance.
+
+        The default ``PDEGame.clone()`` is identity-safe for stateless
+        games: it returns ``self`` because the mutable per-episode state
+        lives on ``PDEState`` rather than on the game. Stateful games
+        (e.g. ``MeshRefinementGame``) override this to deep-copy.
+        """
         clone = game.clone()
         assert isinstance(clone, ConcretePDEGame)
-        assert clone is not game
+        assert clone is game
 
     def test_repr(self, game: ConcretePDEGame) -> None:
         r = repr(game)

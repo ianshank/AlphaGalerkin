@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
     from src.data.collate import TrainingBatch
     from src.modeling.model import AlphaGalerkinModel
-    from src.training.loss import AlphaGalerkinLoss
+    from src.training.losses import AlphaGalerkinLoss
 
 logger = structlog.get_logger(__name__)
 

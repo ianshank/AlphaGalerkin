@@ -20,6 +20,8 @@ deselecting the marker.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -81,7 +83,11 @@ class TestAlphaGalerkinConfig:
         assert cfg.max_steps == 20
         assert cfg.target_tolerance == pytest.approx(1e-4)
         assert cfg.evaluator == "random"
-        assert cfg.device == "cpu"
+        # GPU-primary: default device is now ``cuda``. The runtime
+        # ``_resolve_device`` helper falls back to CPU at solve time when
+        # CUDA is unavailable, so this default is safe on CPU-only CI.
+        assert cfg.device == "cuda"
+        assert cfg.checkpoint_path is None
         # Inherited from SolverConfig.
         assert cfg.seed == 42
 
@@ -261,6 +267,22 @@ class TestAlphaGalerkinSolver:
         # is exactly ``n_actions_taken + 1`` for every terminated loop.
         assert len(result.metadata["error_history"]) == taken + 1
 
+    def test_solver_terminates_via_game_is_terminal(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        """A loose ``target_tolerance`` flows into the game's ``error_tolerance``.
+
+        The solver propagates ``target_tolerance`` directly to
+        ``PDEGameConfig.error_tolerance`` (so a ``target_tolerance``
+        above the initial Galerkin residual makes the underlying game
+        terminal on the very first iteration), and the loop exits with
+        ``termination_reason == "is_terminal"``.
+        """
+        solver = AlphaGalerkinSolver(_fast_solver_config(target_tolerance=0.99))
+        result = solver.solve(poisson_operator, n_dof=32)
+        assert result.metadata["termination_reason"] == "is_terminal"
+        assert result.metadata["n_actions_taken"] == 0
+
     def test_solver_deterministic_with_seed(
         self,
         poisson_operator: PoissonOperator,
@@ -297,15 +319,34 @@ class TestAlphaGalerkinSolver:
         assert result_a.l2_error is not None
         assert result_b.l2_error is not None
 
-    def test_trained_evaluator_not_yet_implemented(
-        self,
-        poisson_operator: PoissonOperator,
-    ) -> None:
-        """``evaluator='trained'`` is reserved for future work."""
-        cfg = _fast_solver_config(evaluator="trained")
-        solver = AlphaGalerkinSolver(cfg)
-        with pytest.raises(NotImplementedError):
-            solver.solve(poisson_operator, n_dof=16)
+    def test_trained_evaluator_requires_checkpoint(self, tmp_path: Path) -> None:
+        """``evaluator='trained'`` must be paired with an existing checkpoint *file*.
+
+        The Literal accepts ``"trained"``, but the post-construction
+        ``_validate_trained_checkpoint`` model validator rejects the
+        config when ``checkpoint_path`` is ``None``, points at a missing
+        path, or points at a *directory*. All failure modes surface as
+        ``ValidationError`` from Pydantic so callers see them at
+        config-build time, not deep in ``solve()`` (where ``torch.load``
+        would otherwise raise an opaque ``IsADirectoryError``).
+        """
+        # Missing checkpoint_path → reject.
+        with pytest.raises(ValidationError):
+            _fast_solver_config(evaluator="trained")
+
+        # Non-existent checkpoint_path → reject.
+        with pytest.raises(ValidationError):
+            _fast_solver_config(
+                evaluator="trained",
+                checkpoint_path=Path("/nonexistent/checkpoint.pt"),
+            )
+
+        # Existing path that is a directory (not a file) → reject.
+        with pytest.raises(ValidationError, match="non-file path"):
+            _fast_solver_config(
+                evaluator="trained",
+                checkpoint_path=tmp_path,
+            )
 
 
 # ---------------------------------------------------------------------------

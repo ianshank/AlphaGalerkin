@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -168,10 +169,20 @@ class DistributedLauncher:
             LaunchResult with SLURM job information.
 
         """
-        # Generate SLURM script
+        # Generate SLURM script in a per-launch temp file to avoid
+        # collisions when multiple launchers run concurrently on the same host.
+        # The file is unlinked unconditionally in the ``finally`` block to
+        # avoid accumulating ``alphagalerkin_slurm_*.sh`` artefacts in
+        # automation/test loops.
         slurm_script = self._generate_slurm_script()
-        script_path = Path("/tmp/alphagalerkin_slurm.sh")
-        script_path.write_text(slurm_script)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            prefix="alphagalerkin_slurm_",
+            suffix=".sh",
+            delete=False,
+        ) as tmp:
+            tmp.write(slurm_script)
+            script_path = Path(tmp.name)
         script_path.chmod(0o755)
 
         cmd = ["sbatch", str(script_path)]
@@ -179,39 +190,50 @@ class DistributedLauncher:
         self._logger.debug("slurm_command", cmd=" ".join(cmd))
 
         try:
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-
-            stdout, stderr = process.communicate()
-
-            if process.returncode != 0:
-                return LaunchResult(
-                    success=False,
-                    return_code=process.returncode,
-                    processes=[process],
-                    error_message=stderr,
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
                 )
 
-            self._logger.info("slurm_job_submitted", output=stdout.strip())
+                stdout, stderr = process.communicate()
 
-            return LaunchResult(
-                success=True,
-                return_code=0,
-                processes=[process],
-            )
+                if process.returncode != 0:
+                    return LaunchResult(
+                        success=False,
+                        return_code=process.returncode,
+                        processes=[process],
+                        error_message=stderr,
+                    )
 
-        except Exception as e:
-            self._logger.error("slurm_exception", error=str(e))
-            return LaunchResult(
-                success=False,
-                return_code=-1,
-                processes=[],
-                error_message=str(e),
-            )
+                self._logger.info("slurm_job_submitted", output=stdout.strip())
+
+                return LaunchResult(
+                    success=True,
+                    return_code=0,
+                    processes=[process],
+                )
+
+            except Exception as e:
+                self._logger.error("slurm_exception", error=str(e))
+                return LaunchResult(
+                    success=False,
+                    return_code=-1,
+                    processes=[],
+                    error_message=str(e),
+                )
+        finally:
+            try:
+                script_path.unlink(missing_ok=True)
+            except OSError as cleanup_err:
+                # Cleanup failure must not mask the launch result; log and continue.
+                self._logger.warning(
+                    "slurm_temp_script_cleanup_failed",
+                    path=str(script_path),
+                    error=str(cleanup_err),
+                )
 
     def _generate_slurm_script(self) -> str:
         """Generate SLURM batch script.
@@ -264,7 +286,7 @@ srun --ntasks-per-node={self.config.nproc_per_node} \\
             }
         )
 
-        cmd = [sys.executable, str(self.script_path)] + self.script_args
+        cmd = [sys.executable, str(self.script_path), *self.script_args]
 
         self._logger.debug("custom_command", cmd=" ".join(cmd))
 

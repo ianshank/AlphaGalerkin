@@ -367,6 +367,10 @@ markers = [
 ]
 
 [tool.coverage.run]
+# Branch coverage enforces that both sides of each conditional are exercised
+# (true and false branches, not just lines). Required by the project's
+# 85% minimum and surfaces dead branches that line coverage misses.
+branch = true
 # Omit modules whose tests are excluded from CI coverage runs.
 # video_compression tests are ignored via --ignore=tests/video_compression/
 # backend tests cause JAX crashes on Windows CI and are skipped

@@ -218,7 +218,22 @@ Monitors LBB condition during training:
 - **GDN/IGDN**: Generalized Divisive Normalization for density modeling.
 
 ## Known Issues
-- [None yet]
+- SGF variation parsing in `tests/games/sgf/test_sgf.py::TestSGFParser::test_parse_variations` is skipped pending full tree-structured parsing support.
+- MCTS rate-control tests in `tests/video_compression/unit/test_mcts_rate_control.py` are skipped until a trained MCTS model is available and the rate controller is enabled in the default codec path.
+
+## Regression Surface
+
+When changing the AlphaGalerkin solver or evaluator wiring, the following test surfaces must remain green:
+
+| Surface | Command | What it guards |
+|---|---|---|
+| Solver wiring (config validation, dispatch) | `pytest tests/alphagalerkin/test_solver.py -v` | Pydantic field defaults/validators, evaluator Literal, mesh/basis dispatch |
+| Trained evaluator | `pytest tests/alphagalerkin/test_trained_evaluator.py -v` | `evaluator="trained"` round-trip, `_resolve_device_cached` LRU semantics, on-instance evaluator cache, action-space mismatch under `strict=False`, GPU smoke |
+| PDE end-to-end | `pytest tests/integration/test_pde_e2e.py -v` | `pde_basis`/`pde_mesh` registration, full self-play episode, trainer integration |
+| MCTS evaluator protocol | `pytest tests/mcts/test_evaluator.py -v` | `RandomEvaluator` and `FNetEvaluator` `Evaluator` protocol compliance |
+| Per-module coverage | `pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85` | Coverage gate; current 94% |
+
+The trained-evaluator path additionally depends on `src/training/checkpoint.py::create_model_from_checkpoint`, `src/modeling/model.py::AlphaGalerkinModel`, and `src/mcts/evaluator.py::FNetEvaluator` — changes there should run the *Trained evaluator* surface above as a smoke test.
 
 ## Verification Commands
 ```bash

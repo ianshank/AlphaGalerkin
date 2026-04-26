@@ -19,7 +19,7 @@ from config.schemas import (
 )
 from src.data.collate import VariableSizeCollator
 from src.modeling.model import AlphaGalerkinModel
-from src.training.loss import AlphaGalerkinLoss
+from src.training.losses import AlphaGalerkinLoss
 from src.training.replay_buffer import UniformReplayBuffer
 from src.training.self_play import SelfPlayWorker
 from src.training.trainer import Trainer

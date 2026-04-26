@@ -295,8 +295,6 @@ class EntropyCoder:
         self,
         range_precision: int = 32,
         cdf_precision: int = 12,
-        *,
-        precision: int | None = None,
     ) -> None:
         """Initialize entropy coder.
 
@@ -304,20 +302,11 @@ class EntropyCoder:
             range_precision: Precision bits for range state.
             cdf_precision: Precision bits for CDF quantization.
                 Must be < range_precision.
-            precision: **Deprecated** — backwards-compatible alias
-                for ``range_precision``.  Ignored when
-                ``range_precision`` is explicitly provided.
 
         """
-        if precision is not None:
-            # Backwards compatibility: old callers pass precision=16
-            # Use that as a hint but ensure range > cdf
-            range_precision = max(precision, cdf_precision + 4)
-            logger.debug(
-                "EntropyCoder: legacy precision=%d mapped to range_precision=%d, cdf_precision=%d",
-                precision,
-                range_precision,
-                cdf_precision,
+        if cdf_precision >= range_precision:
+            raise ValueError(
+                f"cdf_precision ({cdf_precision}) must be < range_precision ({range_precision})"
             )
         self.range_precision = range_precision
         self.cdf_precision = cdf_precision

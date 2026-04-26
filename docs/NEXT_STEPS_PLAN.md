@@ -1,9 +1,9 @@
 # AlphaGalerkin Next Steps Plan
 
 > **Investigation Date:** 2026-02-01
-> **Status:** Active — Milestones 1, 2, 3, 4, 6, 8 ✅ Complete; 5, 7, 9 Partial
+> **Status:** Active — Milestones 1, 2, 3, 4, 6, 8 ✅ Complete; 5, 7, 9 Partial; **Learned PDE Evaluator ✅ Complete (2026-04-25, PR #54)**
 > **Methodology:** Universal Dev Agent with Agentic Sub-Tasks
-> **Last Updated:** 2026-04-10
+> **Last Updated:** 2026-04-25
 
 ---
 
@@ -16,6 +16,7 @@ Based on comprehensive codebase exploration, AlphaGalerkin is a **mature v2.0 im
 | ~~No CI/CD Pipeline~~ | ✅ Fixed | All |
 | ~~Video Compression Hyperprior~~ | ✅ Fixed | Video Compression |
 | ~~Integration Gaps~~ | ✅ Fixed | PDE-Training, Curriculum Learning |
+| ~~Trained-Evaluator Stub~~ | ✅ Fixed (2026-04-25, PR #54) | `src/alphagalerkin/solver.py`, `src/mcts/evaluator.py` |
 | **Documentation Gaps** | Low | Distributed, Edge Deployment |
 
 ---

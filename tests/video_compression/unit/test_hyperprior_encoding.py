@@ -486,7 +486,7 @@ class TestEntropyCoderWithHyperprior:
     @pytest.fixture
     def entropy_coder(self) -> EntropyCoder:
         """Create entropy coder."""
-        return EntropyCoder(precision=16)
+        return EntropyCoder(range_precision=16, cdf_precision=12)
 
     def test_encode_without_scales(self, entropy_coder: EntropyCoder) -> None:
         """Test that entropy coder can encode without scales (factorized prior)."""

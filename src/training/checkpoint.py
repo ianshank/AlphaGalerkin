@@ -346,10 +346,8 @@ class CheckpointManager:
 
         if (
             self._best_value is None
-            or self.best_mode == "min"
-            and metric_value < self._best_value
-            or self.best_mode == "max"
-            and metric_value > self._best_value
+            or (self.best_mode == "min" and metric_value < self._best_value)
+            or (self.best_mode == "max" and metric_value > self._best_value)
         ):
             is_better = True
 

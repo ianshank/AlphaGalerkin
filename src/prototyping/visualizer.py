@@ -276,7 +276,7 @@ class Visualizer:
         metrics_to_show = metrics or sorted(all_metrics)
 
         # Build table
-        header = ["Model"] + metrics_to_show
+        header = ["Model", *metrics_to_show]
         rows = []
 
         for result in results:

@@ -54,6 +54,7 @@ from torch.optim.lr_scheduler import (
 )
 
 from src.templates.config import BaseModuleConfig
+from src.training.callbacks import Callback, CallbackContext
 
 logger = structlog.get_logger(__name__)
 
@@ -194,6 +195,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         config: ConfigT,
         device: torch.device | str = "auto",
         checkpoint_dir: Path | str | None = None,
+        callbacks: list[Callback] | None = None,
     ) -> None:
         """Initialise shared training infrastructure.
 
@@ -203,9 +205,13 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             device: Training device. ``"auto"`` selects CUDA if available.
             checkpoint_dir: Override for checkpoint directory. Falls back to
                 ``config.checkpoint_dir``.
+            callbacks: Optional list of :class:`Callback` instances invoked
+                at lifecycle events (start, step end, eval, checkpoint, end).
+                Defaults to empty list — pre-existing callers see no change.
 
         """
         self.config = config
+        self.callbacks: list[Callback] = list(callbacks) if callbacks else []
 
         # Device selection
         if device == "auto":
@@ -745,3 +751,102 @@ class BaseTrainer(ABC, Generic[ConfigT]):
     def set_training(self, mode: bool = True) -> None:
         """Set model training mode."""
         self.model.train(mode)
+
+    # ------------------------------------------------------------------
+    # Callback management
+    # ------------------------------------------------------------------
+
+    def add_callback(self, callback: Callback) -> None:
+        """Append a callback to the trainer's lifecycle dispatch list.
+
+        Args:
+            callback: A :class:`Callback` instance.  Order is preserved.
+
+        Raises:
+            TypeError: If *callback* is not a :class:`Callback` instance.
+
+        """
+        if not isinstance(callback, Callback):
+            raise TypeError(f"Expected Callback instance, got {type(callback).__name__}")
+        self.callbacks.append(callback)
+        self._log.debug(
+            "callback_added",
+            cls=f"{type(callback).__module__}.{type(callback).__name__}",
+            total=len(self.callbacks),
+        )
+
+    def remove_callback(self, callback: Callback) -> bool:
+        """Remove a previously registered callback.
+
+        Args:
+            callback: The callback instance to remove.
+
+        Returns:
+            ``True`` if the callback was found and removed, ``False``
+            otherwise.
+
+        """
+        try:
+            self.callbacks.remove(callback)
+        except ValueError:
+            return False
+        self._log.debug(
+            "callback_removed",
+            cls=f"{type(callback).__module__}.{type(callback).__name__}",
+            total=len(self.callbacks),
+        )
+        return True
+
+    def _build_callback_context(
+        self,
+        step: int | None = None,
+        metrics: dict[str, float] | None = None,
+        extras: dict[str, Any] | None = None,
+    ) -> CallbackContext:
+        """Build a :class:`CallbackContext` for the current step.
+
+        Defaults to ``self.global_step`` when ``step`` is None.
+        """
+        return CallbackContext(
+            step=step if step is not None else self.global_step,
+            metrics=dict(metrics) if metrics else {},
+            model=self.model,
+            trainer=self,
+            extras=dict(extras) if extras else {},
+        )
+
+    def _dispatch_callback(
+        self,
+        event: str,
+        ctx: CallbackContext,
+    ) -> None:
+        """Invoke the named hook on every registered callback.
+
+        Exceptions raised by callbacks are caught and logged (one per
+        offending callback) but do not abort training.  This matches
+        the documented contract on :class:`Callback`.
+
+        Args:
+            event: Name of the hook method (``on_train_start``,
+                ``on_step_end``, ...).
+            ctx: Context to forward.
+
+        """
+        if not self.callbacks:
+            return
+        for cb in self.callbacks:
+            method = getattr(cb, event, None)
+            if method is None:
+                continue
+            try:
+                method(ctx)
+            except Exception as exc:  # noqa: BLE001 — callbacks must not abort training
+                # ``event`` is renamed to ``hook`` because structlog
+                # reserves ``event`` for the message identifier.
+                self._log.warning(
+                    "callback_hook_failed",
+                    hook=event,
+                    callback=type(cb).__name__,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )

@@ -30,18 +30,22 @@ from src.constants import (
 )
 from src.data.collate import TrainingBatch, VariableSizeCollator
 from src.training.base_trainer import BaseTrainer
+from src.training.callbacks import (
+    Callback,
+    build_callbacks_from_specs,
+)
 from src.training.checkpoint import CheckpointManager
 from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
 from src.training.eval_utils import EloTracker
 from src.training.evaluation import Evaluator
-from src.training.loss import AlphaGalerkinLoss, LossOutput
 from src.training.loss_balancing import (
     BalancingStrategy,
     LossBalancer,
     LossBalancingConfig,
     create_loss_balancer,
 )
+from src.training.losses import AlphaGalerkinLoss, LossOutput
 from src.training.physics_loss import (
     PhysicsInformedLoss,
     PhysicsLossConfig,
@@ -141,6 +145,7 @@ class Trainer(BaseTrainer):
         wandb_logger: WandbLogger | None = None,
         distributed_context: DistributedContext | None = None,
         game: GameInterface | None = None,
+        callbacks: list[Callback] | None = None,
     ) -> None:
         """Initialize trainer.
 
@@ -153,6 +158,10 @@ class Trainer(BaseTrainer):
             distributed_context: Optional distributed context (auto-detected if None).
             game: Optional GameInterface for non-Go games (e.g. chess).
                   When provided, self-play uses this game instead of SimpleGoGame.
+            callbacks: Optional list of :class:`Callback` instances dispatched
+                at lifecycle events. Programmatic alternative to
+                ``training_config.callbacks`` (specs). When both are provided,
+                programmatic callbacks are appended after spec-resolved ones.
 
         """
         self.config = config
@@ -330,6 +339,27 @@ class Trainer(BaseTrainer):
         # Watch model with W&B if enabled
         if self.wandb_logger is not None:
             self.wandb_logger.watch_model(self.model)
+
+        # Lifecycle callbacks: resolve specs from config, then append any
+        # explicit callbacks the caller passed.  This keeps user-facing
+        # YAML config in charge while letting programmatic harnesses
+        # (tests, demos) inject extra callbacks at construction time.
+        spec_callbacks: list[Callback] = []
+        config_specs = getattr(self.training_config, "callbacks", None) or []
+        if config_specs:
+            spec_callbacks = build_callbacks_from_specs(list(config_specs))
+        self.callbacks: list[Callback] = spec_callbacks + list(callbacks or [])
+        # Bound logger required by BaseTrainer dispatch helpers.
+        self._log = logger.bind(
+            trainer=type(self).__name__,
+            device=str(self.device),
+        )
+        if self.callbacks:
+            logger.info(
+                "trainer_callbacks_registered",
+                count=len(self.callbacks),
+                callbacks=[type(cb).__name__ for cb in self.callbacks],
+            )
 
     def _create_optimizer(self) -> Optimizer:  # type: ignore[override]
         """Create optimizer from config.
@@ -818,6 +848,16 @@ class Trainer(BaseTrainer):
         self.model.train()
         start_step = self.global_step
 
+        # Lifecycle: on_train_start (dispatched once before the loop)
+        self._dispatch_callback(
+            "on_train_start",
+            self._build_callback_context(
+                step=start_step,
+                metrics={},
+                extras={"n_steps": n_steps, "start_step": start_step},
+            ),
+        )
+
         for step in range(start_step, start_step + n_steps):
             step_start = time.time()
 
@@ -896,6 +936,15 @@ class Trainer(BaseTrainer):
             )
             self._metrics_history.append(metrics)
 
+            # Lifecycle: on_step_end (dispatched after every training step)
+            self._dispatch_callback(
+                "on_step_end",
+                self._build_callback_context(
+                    step=step,
+                    metrics=metrics.to_dict(),
+                ),
+            )
+
             # W&B logging (every step by default, configurable via wandb.log_interval)
             if self.wandb_logger is not None:
                 self.wandb_logger.log_training_step(metrics)
@@ -921,6 +970,15 @@ class Trainer(BaseTrainer):
             # Periodic evaluation
             if eval_interval and step > 0 and step % eval_interval == 0:
                 avg_win_rate = self._run_evaluation(step)
+
+                # Lifecycle: on_evaluation
+                self._dispatch_callback(
+                    "on_evaluation",
+                    self._build_callback_context(
+                        step=step,
+                        metrics={"avg_win_rate": float(avg_win_rate)},
+                    ),
+                )
 
                 # Check early stopping
                 if self.stability_monitor is not None:
@@ -960,6 +1018,16 @@ class Trainer(BaseTrainer):
             if step > 0 and step % checkpoint_interval == 0:
                 checkpoint_path = self.save_checkpoint(metrics=metrics.to_dict())
 
+                # Lifecycle: on_checkpoint
+                self._dispatch_callback(
+                    "on_checkpoint",
+                    self._build_callback_context(
+                        step=step,
+                        metrics=metrics.to_dict(),
+                        extras={"path": str(checkpoint_path) if checkpoint_path else ""},
+                    ),
+                )
+
                 # Log checkpoint as W&B artifact
                 if self.wandb_logger is not None and checkpoint_path is not None:
                     self.wandb_logger.log_model_artifact(
@@ -980,6 +1048,22 @@ class Trainer(BaseTrainer):
         # Final checkpoint
         final_checkpoint_path = self.save_checkpoint(
             metrics=self._metrics_history[-1].to_dict() if self._metrics_history else {}
+        )
+
+        # Lifecycle: on_train_end (after final checkpoint, before W&B summary)
+        _final_metrics = self._metrics_history[-1].to_dict() if self._metrics_history else {}
+        self._dispatch_callback(
+            "on_train_end",
+            self._build_callback_context(
+                step=self.global_step,
+                metrics=_final_metrics,
+                extras={
+                    "final_checkpoint_path": (
+                        str(final_checkpoint_path) if final_checkpoint_path else ""
+                    ),
+                    "n_steps": n_steps,
+                },
+            ),
         )
 
         # Log final summary to W&B

@@ -80,7 +80,7 @@ class ExperimentRun:
         if step is not None:
             if "steps" not in self.metadata:
                 self.metadata["steps"] = {}
-            self.metadata["steps"][name] = self.metadata["steps"].get(name, []) + [step]
+            self.metadata["steps"][name] = [*self.metadata["steps"].get(name, []), step]
 
     def log_artifact(self, name: str, path: str) -> None:
         """Log an artifact path.

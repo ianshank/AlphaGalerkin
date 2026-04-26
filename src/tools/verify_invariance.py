@@ -134,7 +134,7 @@ def verify_forward_pass(
         results["value_std"] = output.value.std().item()
 
     except Exception as e:
-        results["errors"].append(f"Exception: {str(e)}")
+        results["errors"].append(f"Exception: {e!s}")
 
     return results
 
@@ -194,7 +194,7 @@ def verify_lbb_stability(
         results["passed"] = len(results["errors"]) == 0
 
     except Exception as e:
-        results["errors"].append(f"Exception: {str(e)}")
+        results["errors"].append(f"Exception: {e!s}")
 
     return results
 
@@ -274,7 +274,7 @@ def verify_semantic_validity(
         results["passed"] = len(results["errors"]) == 0
 
     except Exception as e:
-        results["errors"].append(f"Exception: {str(e)}")
+        results["errors"].append(f"Exception: {e!s}")
 
     return results
 

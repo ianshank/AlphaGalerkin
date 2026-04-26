@@ -149,7 +149,8 @@ class MessageBus:
         with self._lock:
             for agent_id, queue in self._queues.items():
                 if agent_id != message.sender:
-                    queue.append(copy.copy(message))
+                    # deepcopy so subscribers cannot mutate each other's payload
+                    queue.append(copy.deepcopy(message))
             if self.config.enable_logging:
                 self._logger.debug(
                     "message_broadcast",

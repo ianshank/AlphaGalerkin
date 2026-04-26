@@ -1,4 +1,5 @@
 [run]
+branch = True
 omit =
     src/games/go.py
     src/games/sgf/*

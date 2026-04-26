@@ -29,42 +29,32 @@ def test_train_fast_yaml_exists(config_dir: Path) -> None:
 def test_train_yaml_loads() -> None:
     """Verify train.yaml loads without errors."""
     try:
-        from pathlib import Path
-
         import yaml
-
-        config_path = Path(__file__).parents[2] / "config" / "train.yaml"
-        if not config_path.exists():
-            pytest.skip("train.yaml not found")
-
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        assert config is not None
-        assert isinstance(config, dict)
     except ImportError:
         pytest.skip("PyYAML not installed")
+
+    config_path = Path(__file__).parents[2] / "config" / "train.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    assert config is not None
+    assert isinstance(config, dict)
 
 
 @pytest.mark.e2e
 def test_train_fast_yaml_loads() -> None:
     """Verify train_fast.yaml loads without errors."""
     try:
-        from pathlib import Path
-
         import yaml
-
-        config_path = Path(__file__).parents[2] / "config" / "train_fast.yaml"
-        if not config_path.exists():
-            pytest.skip("train_fast.yaml not found")
-
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        assert config is not None
-        assert isinstance(config, dict)
     except ImportError:
         pytest.skip("PyYAML not installed")
+
+    config_path = Path(__file__).parents[2] / "config" / "train_fast.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    assert config is not None
+    assert isinstance(config, dict)
 
 
 @pytest.mark.e2e
@@ -154,17 +144,12 @@ def test_config_hash_consistency() -> None:
 def test_poc_config_loads() -> None:
     """Verify PoC scenario configs load."""
     try:
-        from pathlib import Path
-
         import yaml
-
-        config_path = Path(__file__).parents[2] / "config" / "scenarios" / "poc_quick.yaml"
-        if not config_path.exists():
-            pytest.skip("poc_quick.yaml not found")
-
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-
-        assert config is not None
     except ImportError:
         pytest.skip("PyYAML not installed")
+
+    config_path = Path(__file__).parents[2] / "config" / "scenarios" / "poc_quick.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    assert config is not None

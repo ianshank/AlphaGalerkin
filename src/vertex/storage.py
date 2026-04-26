@@ -11,12 +11,14 @@ Features:
     - Checkpoint rotation to manage storage
 
 Example:
+    from src.vertex.config import VertexStorageConfig
     from src.vertex.storage import GCSCheckpointManager
 
+    config = VertexStorageConfig(bucket_name="my-training-bucket")
     manager = GCSCheckpointManager(
-        bucket_name="my-training-bucket",
+        bucket_name=config.bucket_name,
         checkpoint_prefix="experiments/run-001/",
-        local_cache_dir=Path("/tmp/checkpoints"),
+        local_cache_dir=Path(config.local_cache_dir),
     )
 
     # Save checkpoint
@@ -687,10 +689,8 @@ class GCSCheckpointManager:
 
         if (
             self._best_value is None
-            or self._best_mode == "min"
-            and metric_value < self._best_value
-            or self._best_mode == "max"
-            and metric_value > self._best_value
+            or (self._best_mode == "min" and metric_value < self._best_value)
+            or (self._best_mode == "max" and metric_value > self._best_value)
         ):
             is_better = True
 

@@ -603,9 +603,10 @@ class TestWarmupBehavior:
             result = balancer.compute_weighted_loss(losses)
 
             # During warmup, weights should remain 1.0
-            assert result.weights == {"a": 1.0, "b": 1.0}, (
-                f"Weights changed during warmup: {result.weights}"
-            )
+            assert result.weights == {
+                "a": 1.0,
+                "b": 1.0,
+            }, f"Weights changed during warmup: {result.weights}"
 
 
 # ---------------------------------------------------------------------------

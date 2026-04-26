@@ -72,7 +72,7 @@ class ConcreteGame(GameInterface):
             board=new_board,
             current_player=-state.current_player,
             move_number=state.move_number + 1,
-            move_history=state.move_history + [action],
+            move_history=[*state.move_history, action],
         )
 
     def is_terminal(self, state: GameState) -> bool:

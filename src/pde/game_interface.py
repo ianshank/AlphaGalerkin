@@ -143,7 +143,7 @@ class PDEGameInterface(GameInterface):
         new_pde_state = self.pde_game.apply_action(pde_state, action)
         new_state = self._pde_to_game_state(
             new_pde_state,
-            prev_move_history=list(state.move_history) + [action],
+            prev_move_history=[*list(state.move_history), action],
         )
         # Propagate initial error from parent state for winner computation
         if "_initial_error" in state.metadata:

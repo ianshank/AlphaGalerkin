@@ -242,10 +242,16 @@ class TestDistributedTrainerInit:
         assert trainer.device == torch.device("cpu")
 
     def test_create_optimizer_scales_lr_by_world_size(self) -> None:
-        """_create_optimizer multiplies base LR by world_size."""
+        """_create_optimizer scales LR via DistributedInfraConfig.scale_learning_rate."""
         world_size = 4
         base_lr = DEFAULT_LR
-        trainer = _make_trainer(world_size=world_size)
+        trainer = _make_trainer(
+            world_size=world_size,
+            distributed_config=_make_distributed_config(
+                world_size=world_size,
+                learning_rate_scaling="linear",
+            ),
+        )
         expected_lr = base_lr * world_size
         actual_lr = trainer.optimizer.param_groups[0]["lr"]
         assert abs(actual_lr - expected_lr) < TOLERANCE

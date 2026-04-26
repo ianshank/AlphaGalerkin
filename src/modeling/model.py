@@ -10,7 +10,8 @@ The model is resolution-independent: trained on 9x9, runs on 19x19.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from dataclasses import dataclass
+from typing import Any
 
 import structlog
 import torch
@@ -28,12 +29,84 @@ from src.modeling.stability import StabilityGuard
 logger = structlog.get_logger(__name__)
 
 
-class ModelOutput(NamedTuple):
-    """Output from AlphaGalerkin model."""
+@dataclass(frozen=True)
+class ModelOutput:
+    """Output from AlphaGalerkin model.
+
+    Migrated from :class:`typing.NamedTuple` to a frozen dataclass so
+    optional fields can be added without breaking call sites.  All
+    existing constructions ``ModelOutput(policy_logits=..., value=...,
+    lbb_constant=...)`` continue to work unchanged.
+
+    Attributes:
+        policy_logits: Policy logits over the action space.
+        value: Scalar value head output in [-1, 1].
+        lbb_constant: Optional per-sample LBB constant (minimum
+            singular value of the K->V projection).  ``None`` for fast
+            forward passes that skip stability tracking.
+        vector_fields: Optional named vector-valued outputs for
+            multi-physics use-cases (e.g.
+            ``{"velocity": Tensor[B, 2, H, W], "pressure": Tensor[B, 1, H, W]}``).
+            ``None`` for scalar policy/value heads (the AlphaZero
+            default), opt-in only.  Carries no shape constraint by
+            design — consumers validate based on the field metadata.
+        field_metadata: Optional free-form metadata describing
+            ``vector_fields`` (units, semantics, normalization).
+
+    """
 
     policy_logits: Float[Tensor, "batch n+1"]  # +1 for pass move
     value: Float[Tensor, "batch 1"]
-    lbb_constant: Float[Tensor, batch] | None
+    lbb_constant: Float[Tensor, batch] | None = None
+    vector_fields: dict[str, Tensor] | None = None
+    field_metadata: dict[str, Any] | None = None
+
+    def with_vector_fields(
+        self,
+        vector_fields: dict[str, Tensor],
+        field_metadata: dict[str, Any] | None = None,
+    ) -> ModelOutput:
+        """Return a new :class:`ModelOutput` with vector fields attached.
+
+        Frozen dataclasses cannot be mutated, so this is the canonical
+        way for downstream models (e.g. Navier-Stokes velocity+pressure
+        heads) to enrich the standard scalar output without changing
+        the upstream construction site.
+
+        Args:
+            vector_fields: Mapping of name -> tensor.  Names should be
+                snake_case and stable across versions.
+            field_metadata: Optional metadata dict.
+
+        Returns:
+            A new :class:`ModelOutput` with the same scalar fields and
+            the vector fields populated.
+
+        """
+        return ModelOutput(
+            policy_logits=self.policy_logits,
+            value=self.value,
+            lbb_constant=self.lbb_constant,
+            vector_fields=dict(vector_fields),
+            field_metadata=dict(field_metadata) if field_metadata else None,
+        )
+
+    def has_vector_fields(self) -> bool:
+        """Return True iff at least one vector field is attached."""
+        return bool(self.vector_fields)
+
+    # Backwards-compatibility helpers --------------------------------
+    # The previous NamedTuple form supported tuple-style unpacking and
+    # indexing.  Although no callers in this repo rely on that, keep
+    # these for any external consumers that may have copied a
+    # ModelOutput pattern, then graduate them away in a future cleanup.
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        yield self.policy_logits
+        yield self.value
+        yield self.lbb_constant
+
+    def __getitem__(self, idx: int) -> Any:
+        return (self.policy_logits, self.value, self.lbb_constant)[idx]
 
 
 class GalerkinBlock(nn.Module):

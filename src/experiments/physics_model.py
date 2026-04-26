@@ -45,6 +45,7 @@ class PhysicsOperator(nn.Module):
         fourier_scale: float = 10.0,
         use_fnet: bool = True,
         dropout: float = 0.1,
+        input_dim: int = 2,
     ) -> None:
         """Initialize physics operator.
 
@@ -56,12 +57,15 @@ class PhysicsOperator(nn.Module):
             fourier_scale: Scale for Fourier features (controls frequency).
             use_fnet: Whether to use FNet mixing layers.
             dropout: Dropout rate.
+            input_dim: Spatial dimension of input coordinates (2 for planar,
+                3 for volumetric domains such as the helical heat exchanger).
 
         """
         super().__init__()
 
         self.d_model = d_model
         self.use_fnet = use_fnet
+        self.input_dim = input_dim
 
         logger.debug(
             "physics_operator_init",
@@ -72,15 +76,19 @@ class PhysicsOperator(nn.Module):
             fourier_scale=fourier_scale,
             use_fnet=use_fnet,
             dropout=dropout,
+            input_dim=input_dim,
         )
 
-        # Fourier feature encoding for coordinates
-        # Maps (x, y) → [x, y, sin(ωx), cos(ωx), sin(ωy), cos(ωy), ...]
+        # Fourier feature encoding for coordinates. Maps an arbitrary-dim
+        # input into [coords, sin(B*coords), cos(B*coords)] features, so
+        # the same backbone serves both the 2D Poisson and 3D Noyron HX
+        # use cases.
         self.coord_encoder = FourierFeatures(
             n_features=n_fourier_features,
             scale=fourier_scale,
             learnable=True,
-            include_coordinates=True,  # Include raw (x, y) in output
+            include_coordinates=True,
+            input_dim=input_dim,
         )
 
         # Input projection: Fourier features + charge → d_model
@@ -114,20 +122,27 @@ class PhysicsOperator(nn.Module):
 
     def forward(
         self,
-        coords: Tensor,  # Float[batch, n_points, 2]
+        coords: Tensor,  # Float[batch, n_points, input_dim]
         charges: Tensor,  # Float[batch, n_points]
     ) -> Tensor:  # Float[batch, n_points]
         """Forward pass: predict potential from coords and charges.
 
         Args:
-            coords: Point coordinates (batch, n_points, 2), normalized to [0, 1].
-            charges: Charge density (batch, n_points) at each point.
+            coords: Point coordinates (batch, n_points, input_dim), normalized
+                to [0, 1]. input_dim is 2 for planar problems, 3 for
+                volumetric (e.g. helical heat exchanger) problems.
+            charges: Source-density field (batch, n_points) at each point.
 
         Returns:
             Predicted potential (batch, n_points) at each point.
 
         """
-        batch_size, n_points, _ = coords.shape
+        batch_size, n_points, coord_dim = coords.shape
+        if coord_dim != self.input_dim:
+            raise ValueError(
+                f"PhysicsOperator was built for input_dim={self.input_dim}, "
+                f"but got coords with last dim {coord_dim}"
+            )
 
         logger.debug(
             "physics_operator_forward_start",

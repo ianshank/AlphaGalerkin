@@ -284,12 +284,30 @@ class EntropyConfig(BaseModuleConfig):
         default=True,
         description="Use range coder (True) or arithmetic coder (False)",
     )
-    precision: int = Field(
+    range_precision: int = Field(
         default=16,
         ge=8,
         le=32,
-        description="Precision bits for entropy coding",
+        description="Precision bits for range encoder/decoder integer state",
     )
+    cdf_precision: int = Field(
+        default=12,
+        ge=4,
+        le=28,
+        description=(
+            "Precision bits for CDF quantization. Must be < range_precision "
+            "so that range // cdf_total >= 1 after renormalization."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_precision_ordering(self) -> EntropyConfig:
+        if self.cdf_precision >= self.range_precision:
+            raise ValueError(
+                f"cdf_precision ({self.cdf_precision}) must be < "
+                f"range_precision ({self.range_precision})"
+            )
+        return self
 
 
 class MCTSRateControlConfig(BaseModuleConfig):

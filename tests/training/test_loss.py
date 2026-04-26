@@ -6,7 +6,7 @@ import torch
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from src.training.loss import AlphaGalerkinLoss, EntropyRegularizer, LossOutput
+from src.training.losses import AlphaGalerkinLoss, EntropyRegularizer, LossOutput
 
 
 class TestAlphaGalerkinLoss:

@@ -105,6 +105,23 @@ Monitors LBB condition during training:
 - [2026-04-25]: **PhysicsOperator 3D-Aware** - FourierBasis/FourierFeatures parameterized by `input_dim` (default 2 preserves all existing 2D callers); PhysicsOperator gained an `input_dim` constructor arg. Enables the Noyron HX 3D scenario without touching any 2D code path.
 - [2026-04-25]: **Leap 71 / PicoGK Integration v2** - Added `HelicalStokesOperator` (steady incompressible Stokes flow on a helical SDF — Noyron RP coolant channels, v2.3 expansion), `HelicalMagnetostaticsOperator` (vector-potential magnetostatics — Noyron EA actuators, v3.1 expansion), and `HelicalBasisSelectionInterface` (MCTS basis selection on any helical operator — v2.2 expansion). All three operators registered in `PDEOperatorRegistry` and wired through the `pde_basis_helical` game. 35 new tests; 100% coverage on the new flow/EM operators. Module-level constants (Newton iters, gradient epsilon, oversample max, voxel-FDM iter cadence, harmonic wave number) surfaced as constructor / Pydantic fields for tunability. Shared `src/poc/device.py` helper extracted with explicit GPU-preferred / CPU-fallback / fail-loud semantics. `tests/pde/conftest.py` adds reusable helix-param fixtures.
 - [2026-04-27]: **Noyron HX v1 Hardening** - Closed the gap-report deviations on the Leap 71 v1 milestone: (1) `voxel_fdm` mode now trains on the cached FDM solution itself (zero source, operator-Dirichlet boundary) instead of the harmonic surrogate, so the headline `mse_low < 5e-4` / `mse_high < 1e-3` thresholds are reachable in FDM mode; (2) `accept_rate`, `train_time_s`, and `eval_time_s` are recorded in `ScenarioResult.metrics`; (3) `helix_n_turns` default aligned across `NoyronHXScenarioConfig`, the YAML scenario, and `AnalyticalHelixSDF` (now 5); (4) bisection / grid-search fallback wired into both `AnalyticalHelixSDF._nearest_t` and `PicoGKDomain._project_to_surface`, opt-out via `enable_fallback` / `enable_bisection_fallback`. `PicoGKDomain.volume_accept_rate` exposes the MC rejection-rate without recomputation. 27 new tests across SDF, domain adapter, and scenario; 0 mypy regressions on the changed surface.
+- [2026-04-27]: **Noyron HX Tech-Debt Scrub** - Hardcoded numerical-stability literals surfaced as named module constants (`DEFAULT_TRANSFER_RATIO_FLOOR=1e-12`, `DEFAULT_NORMALIZE_EXTENT_FLOOR=1e-9`, `EVAL_SEED_STRIDE=9973`); duplicated `randperm`/`randint` voxel-pool sampling between `_sample_voxel_fdm_batch` and `_evaluate` extracted into a single `_draw_pool_indices` helper with explicit input validation. Per-module coverage on the Leap 71 v1 hardening surface: `sdf.py` 100%, `geometry_picogk.py` 100%, `config_noyron.py` 100%, `noyron_hx.py` 97% (16 additional tests for SDF / domain validators + `_draw_pool_indices` semantics). Noyron HX scenario added to the `Regression Surface` table and the C4 PoC-framework component diagram.
+
+## Next Steps (post-PR #58)
+
+The Leap 71 v1 demo is now production-grade for the headline scenario; the
+roadmap below is gated on user demand and reviewer signal, not on additional
+hardening of the HX path.
+
+| Phase | Scope | Notes |
+|---|---|---|
+| **v2.1** | Octree-on-SDF AMR via `MeshRefinementGame` | Currently incompatible (structured grid only); needs an octree backend on top of `PicoGKDomain` |
+| **v2.2** | Plug `BasisSelectionGame` into `HelicalHeatOperator` | First MCTS-on-Noyron result; `HelicalBasisSelectionInterface` (v2 milestone) already provides the plumbing |
+| **v2.3** | Noyron RP — `NavierStokesOperator` on a copper-nozzle SDF | `HelicalStokesOperator` is the linear stepping stone (v2 milestone); needs convective term + nozzle SDF |
+| **v3.1** | Noyron EA — `MagnetostaticsOperator` for actuators | `HelicalMagnetostaticsOperator` (v2 milestone) is in place; needs full vector-potential coupling |
+| **v3.2** | Closed-loop Noyron coupling — surrogate-in-the-loop parametric search | Combine all three operators with a parametric outer-loop (e.g. coil pitch optimization) |
+| **PicoGK STL ingestion** | Replace `AnalyticalHelixSDF` surrogate with the real Leap 71 STL via the `[picogk]` extra | `PicoGKSDFEvaluator` constructor stub already raises `NotImplementedError` with a clear message; needs voxel-grid loading + bbox extraction |
+| **GPU headline run** | Run `python -m src.poc.cli run --config config/scenarios/noyron_hx.yaml` on a CUDA box and capture the headline `mse_low` / `mse_high` / `transfer_ratio` numbers | CI runs the CPU smoke test only; the headline GPU run is a manual reviewer step gated by hardware availability |
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement
@@ -233,8 +250,12 @@ When changing the AlphaGalerkin solver or evaluator wiring, the following test s
 | PDE end-to-end | `pytest tests/integration/test_pde_e2e.py -v` | `pde_basis`/`pde_mesh` registration, full self-play episode, trainer integration |
 | MCTS evaluator protocol | `pytest tests/mcts/test_evaluator.py -v` | `RandomEvaluator` and `FNetEvaluator` `Evaluator` protocol compliance |
 | Per-module coverage | `pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85` | Coverage gate; current 94% |
+| Noyron HX scenario (SDF, domain, scenario) | `pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py -v` | `AnalyticalHelixSDF._nearest_t` grid-search fallback, `PicoGKDomain._project_to_surface` bisection fallback, `volume_accept_rate` property, voxel-FDM training supervision (not harmonic), `accept_rate`/`train_time_s`/`eval_time_s` metric round-trip, `_draw_pool_indices` helper, surfaced numerical-stability constants (`DEFAULT_TRANSFER_RATIO_FLOOR`, `DEFAULT_NORMALIZE_EXTENT_FLOOR`, `EVAL_SEED_STRIDE`) |
+| Noyron HX per-module coverage | `pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py --cov=src/pde/sdf --cov=src/pde/geometry_picogk --cov=src/poc/scenarios/noyron_hx --cov=src/poc/config_noyron --cov-fail-under=85` | Coverage gate on the Leap 71 v1 hardening surface; current sdf 100% / geometry_picogk 100% / config_noyron 100% / noyron_hx 97% |
 
 The trained-evaluator path additionally depends on `src/training/checkpoint.py::create_model_from_checkpoint`, `src/modeling/model.py::AlphaGalerkinModel`, and `src/mcts/evaluator.py::FNetEvaluator` — changes there should run the *Trained evaluator* surface above as a smoke test.
+
+The Noyron HX surface depends on `src/pde/operators_picogk.py::HelicalHeatOperator`, `src/physics/voxel_fdm.py::solve_steady_heat_voxel`, and `src/experiments/physics_model.py::PhysicsOperator` (3D-aware) — changes there should run the *Noyron HX scenario* surface above as a smoke test.
 
 ## Verification Commands
 ```bash

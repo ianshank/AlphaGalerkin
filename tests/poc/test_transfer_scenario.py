@@ -17,7 +17,9 @@ end-to-end training validation. The e2e suite covers the latter.
 
 from __future__ import annotations
 
+import importlib
 import sys
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -44,8 +46,6 @@ def _isolate_registry() -> None:
 
 def _import_scenario_class() -> type:
     """Fresh-import so ``@scenario("transfer")`` registers in this test."""
-    import importlib
-
     module = importlib.import_module("src.poc.scenarios.transfer")
     return module.TransferScenario
 
@@ -179,11 +179,28 @@ class TestTransferScenarioExecute:
     is plumbing-correctness, not training-correctness.
     """
 
-    def _build_scenario(self, tmp_path: Path, monkeypatch, **cfg_overrides):
+    def _build_scenario(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        **cfg_overrides: object,
+    ) -> object:
+        """Build a setup() -ready scenario for execute() orchestration tests.
+
+        Centralizes the repeated boilerplate: chdir into tmp_path so the
+        scenario's hardcoded outputs/poc/transfer dir lands under it,
+        instantiate via the registered class, run setup(), and stamp
+        ``_start_time``. Every execute() test needs all four; pulling
+        them here keeps the test bodies focused on the assertion.
+        """
         monkeypatch.chdir(tmp_path)
         cls = _import_scenario_class()
         scenario = cls(config=_smoke_config(**cfg_overrides))
         scenario.setup()
+        # ``execute`` reads ``self._start_time`` to compute duration; the
+        # framework normally sets this from BaseScenario.run() but our
+        # tests call execute() directly, so seed it here.
+        scenario._start_time = datetime.now()
         return scenario
 
     def test_execute_calls_train_then_eval_per_resolution(
@@ -200,9 +217,6 @@ class TestTransferScenarioExecute:
             ) as eval_mock,
             patch.object(scenario, "_save_model"),
         ):
-            from datetime import datetime
-
-            scenario._start_time = datetime.now()
             result = scenario.execute()
 
         train_mock.assert_called_once()
@@ -212,9 +226,6 @@ class TestTransferScenarioExecute:
 
     def test_execute_records_per_resolution_metrics(self, tmp_path: Path, monkeypatch) -> None:
         scenario = self._build_scenario(tmp_path, monkeypatch)
-        from datetime import datetime
-
-        scenario._start_time = datetime.now()
         with (
             patch.object(scenario, "_train_model", return_value=MagicMock()),
             patch.object(
@@ -234,9 +245,6 @@ class TestTransferScenarioExecute:
 
     def test_execute_passes_when_all_thresholds_met(self, tmp_path: Path, monkeypatch) -> None:
         scenario = self._build_scenario(tmp_path, monkeypatch, mse_threshold=1.0)
-        from datetime import datetime
-
-        scenario._start_time = datetime.now()
         with (
             patch.object(scenario, "_train_model", return_value=MagicMock()),
             patch.object(
@@ -254,9 +262,6 @@ class TestTransferScenarioExecute:
 
     def test_execute_fails_when_any_threshold_missed(self, tmp_path: Path, monkeypatch) -> None:
         scenario = self._build_scenario(tmp_path, monkeypatch, mse_threshold=0.3)
-        from datetime import datetime
-
-        scenario._start_time = datetime.now()
         with (
             patch.object(scenario, "_train_model", return_value=MagicMock()),
             patch.object(
@@ -276,9 +281,6 @@ class TestTransferScenarioExecute:
 
     def test_execute_saves_model_artifact(self, tmp_path: Path, monkeypatch) -> None:
         scenario = self._build_scenario(tmp_path, monkeypatch)
-        from datetime import datetime
-
-        scenario._start_time = datetime.now()
         with (
             patch.object(scenario, "_train_model", return_value=MagicMock()),
             patch.object(
@@ -295,9 +297,6 @@ class TestTransferScenarioExecute:
 
     def test_execute_records_torch_and_python_versions(self, tmp_path: Path, monkeypatch) -> None:
         scenario = self._build_scenario(tmp_path, monkeypatch)
-        from datetime import datetime
-
-        scenario._start_time = datetime.now()
         with (
             patch.object(scenario, "_train_model", return_value=MagicMock()),
             patch.object(

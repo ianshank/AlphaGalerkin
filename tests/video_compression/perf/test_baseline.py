@@ -19,13 +19,11 @@ from src.video_compression.perf.benchmark import (
 )
 from src.video_compression.perf.config import (
     PERF_BASELINE_DOCUMENT_SCHEMA_VERSION,
-    BaselineEntry,
     BenchmarkPhase,
     Precision,
     RuntimeBackend,
 )
 from src.video_compression.perf.metrics import LatencyStats
-
 
 # ------------------------------------------------------------------ helpers
 

@@ -9,12 +9,10 @@ are skipped via ``pytest.skip`` at runtime.
 from __future__ import annotations
 
 import pytest
-import torch
 
 from src.templates.base import ExecutionStatus
 from src.video_compression.perf import (
     BenchmarkPhase,
-    PerfBenchmark,
     PerfBenchmarkConfig,
     Precision,
     ResolutionSpec,
@@ -24,7 +22,6 @@ from src.video_compression.perf import (
     report_from_result,
     run_benchmark,
 )
-
 
 pytestmark = [pytest.mark.gpu_required, pytest.mark.video]
 
@@ -119,9 +116,7 @@ class TestDualCardSweep:
         # run-level default.
         assert labels == {"0", "1"}
 
-    def test_oom_on_smaller_card_is_recorded_not_aborted(
-        self, tiny_codec_config
-    ) -> None:
+    def test_oom_on_smaller_card_is_recorded_not_aborted(self, tiny_codec_config) -> None:
         """Forced VRAM-OOM on cuda:1 must not abort the cuda:0 cell."""
         self._require_two_gpus()
         # Pick a resolution that's small but allocate it twice. The
@@ -169,4 +164,4 @@ class TestPerCardVramLabel:
         for cell in report.cells:
             assert cell.device_label.startswith("cuda:0")
             # Hardware name embedded for human readers
-            assert ":" in cell.device_label[len("cuda:0"):]
+            assert ":" in cell.device_label[len("cuda:0") :]

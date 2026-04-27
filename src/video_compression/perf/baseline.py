@@ -18,9 +18,10 @@ metric is a one-line edit to ``_METRIC_DEFS``.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 import structlog
 
@@ -366,9 +367,7 @@ class BaselineRegistry:
         per_entry_tolerance: float | None = None
         if metric.tolerance_field is not None:
             per_entry_tolerance = getattr(entry, metric.tolerance_field, None)
-        tolerance = (
-            per_entry_tolerance if per_entry_tolerance is not None else run_tolerance_pct
-        )
+        tolerance = per_entry_tolerance if per_entry_tolerance is not None else run_tolerance_pct
 
         if delta > tolerance:
             status = "regressed"

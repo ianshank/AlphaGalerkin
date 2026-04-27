@@ -54,7 +54,7 @@ def resolve_device(
         resolve_device("cpu")
         resolve_device("auto")
 
-    Raises:
+    Raises
     ------
         RuntimeError: indexed CUDA requested but the index is out of range
             (or CUDA is unavailable).

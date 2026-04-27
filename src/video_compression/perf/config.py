@@ -96,8 +96,7 @@ class ResolutionSpec(BaseModuleConfig):
         # actual codec config is known. We only sanity-check non-degeneracy.
         if self.height * self.width < 16 * 16:
             raise ValueError(
-                f"resolution {self.height}x{self.width} too small for any "
-                f"realistic codec config",
+                f"resolution {self.height}x{self.width} too small for any realistic codec config",
             )
         return self
 
@@ -198,9 +197,7 @@ class PerfBenchmarkConfig(BaseModuleConfig):
         default=1,
         ge=1,
         le=4096,
-        description=(
-            "Frames per measurement iteration. >1 amortizes per-call overhead."
-        ),
+        description=("Frames per measurement iteration. >1 amortizes per-call overhead."),
     )
 
     # Hardware. Default is GPU-primary: ``"cuda"`` will fail loud if no
@@ -232,9 +229,7 @@ class PerfBenchmarkConfig(BaseModuleConfig):
     # Output
     output_path: str | None = Field(
         default=None,
-        description=(
-            "If set, write JSON report to this path. Otherwise return only."
-        ),
+        description=("If set, write JSON report to this path. Otherwise return only."),
     )
 
     # Regression-gate plumbing
@@ -311,9 +306,7 @@ class BaselineEntry(BaseModuleConfig):
     cell_key: str = Field(
         ...,
         min_length=1,
-        description=(
-            "Stable composite key: '<resolution>|b<batch>|<profile>|<phase>'."
-        ),
+        description=("Stable composite key: '<resolution>|b<batch>|<profile>|<phase>'."),
     )
     resolution_label: str = Field(..., min_length=1)
     height: int = Field(..., ge=1)

@@ -27,7 +27,6 @@ from src.video_compression.perf import (
     run_benchmark,
 )
 
-
 pytestmark = pytest.mark.video
 
 
@@ -110,10 +109,7 @@ class TestErrorPaths:
         result = run_benchmark(cfg, codec_config=tiny_codec_config)
         report = report_from_result(result)
         assert any(c.failed for c in report.cells)
-        assert any(
-            "downsample_factor" in (c.failure_reason or "")
-            for c in report.cells
-        )
+        assert any("downsample_factor" in (c.failure_reason or "") for c in report.cells)
 
     def test_unimplemented_phase_marked_skipped(
         self,
@@ -124,10 +120,7 @@ class TestErrorPaths:
         result = run_benchmark(cfg, codec_config=tiny_codec_config)
         report = report_from_result(result)
         assert all(c.failed for c in report.cells)
-        assert all(
-            "not implemented" in (c.failure_reason or "")
-            for c in report.cells
-        )
+        assert all("not implemented" in (c.failure_reason or "") for c in report.cells)
 
     def test_unimplemented_backend_marked_skipped(
         self,
@@ -172,9 +165,7 @@ class TestRegressionGate:
         first = run_benchmark(tiny_perf_config, codec_config=tiny_codec_config)
         report = report_from_result(first)
         baseline_path = tmp_path / "baseline.json"
-        BaselineRegistry(
-            baseline_from_report(report, hardware_tag="ci-self")
-        ).save(baseline_path)
+        BaselineRegistry(baseline_from_report(report, hardware_tag="ci-self")).save(baseline_path)
 
         # Second run with very loose tolerance (CI is noisy) must pass.
         cfg = tiny_perf_config.with_overrides(
@@ -201,8 +192,7 @@ class TestRegressionGate:
         forged_doc = baseline_from_report(first_report)
         forged_doc = forged_doc.with_overrides(
             entries=[
-                e.with_overrides(throughput_fps=e.throughput_fps * 10.0)
-                for e in forged_doc.entries
+                e.with_overrides(throughput_fps=e.throughput_fps * 10.0) for e in forged_doc.entries
             ]
         )
         baseline_path = tmp_path / "forged.json"

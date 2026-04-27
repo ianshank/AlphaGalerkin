@@ -15,7 +15,6 @@ from src.video_compression.perf.metrics import (
     throughput_fps,
 )
 
-
 # --------------------------------------------------------------- percentile
 
 
@@ -104,9 +103,7 @@ class TestThroughputFps:
 
     def test_mean_over_iters(self) -> None:
         # 100ms and 200ms => mean 150ms => 6.667 fps
-        assert throughput_fps([100.0, 200.0], frames_per_iter=1) == pytest.approx(
-            1000.0 / 150.0
-        )
+        assert throughput_fps([100.0, 200.0], frames_per_iter=1) == pytest.approx(1000.0 / 150.0)
 
     def test_zero_latency_returns_inf(self) -> None:
         assert throughput_fps([0.0], frames_per_iter=1) == math.inf
@@ -130,21 +127,15 @@ class TestRegressionPct:
         assert regression_pct(100.0, 90.0, higher_is_better=True) == pytest.approx(10.0)
 
     def test_throughput_gain_is_negative(self) -> None:
-        assert regression_pct(100.0, 110.0, higher_is_better=True) == pytest.approx(
-            -10.0
-        )
+        assert regression_pct(100.0, 110.0, higher_is_better=True) == pytest.approx(-10.0)
 
     def test_latency_increase_is_positive(self) -> None:
         # baseline 100 ms, observed 110 ms, lower_is_better
         # That is a 10% regression.
-        assert regression_pct(100.0, 110.0, higher_is_better=False) == pytest.approx(
-            10.0
-        )
+        assert regression_pct(100.0, 110.0, higher_is_better=False) == pytest.approx(10.0)
 
     def test_latency_decrease_is_negative(self) -> None:
-        assert regression_pct(100.0, 90.0, higher_is_better=False) == pytest.approx(
-            -10.0
-        )
+        assert regression_pct(100.0, 90.0, higher_is_better=False) == pytest.approx(-10.0)
 
     def test_zero_baseline_returns_zero(self) -> None:
         # Avoids division by zero spuriously tripping a CI gate
@@ -172,7 +163,11 @@ class TestLatencyStats:
 
     def test_percentile_round_trip(self) -> None:
         stats = LatencyStats(
-            count=1, mean_ms=1.0, min_ms=1.0, max_ms=1.0, std_ms=0.0,
+            count=1,
+            mean_ms=1.0,
+            min_ms=1.0,
+            max_ms=1.0,
+            std_ms=0.0,
             percentiles_ms={50: 1.0, 90: 1.0, 99: 1.0},
         )
         for p in (50, 90, 99):

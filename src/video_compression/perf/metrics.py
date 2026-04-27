@@ -8,8 +8,8 @@ spinning up a codec.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
-from typing import Iterable, Sequence
 
 import structlog
 
@@ -43,8 +43,7 @@ class LatencyStats:
         """Return the p-th percentile, or raise if not recorded."""
         if p not in self.percentiles_ms:
             raise KeyError(
-                f"percentile p{p} not recorded; available: "
-                f"{sorted(self.percentiles_ms)}",
+                f"percentile p{p} not recorded; available: {sorted(self.percentiles_ms)}",
             )
         return self.percentiles_ms[p]
 

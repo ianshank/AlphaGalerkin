@@ -20,7 +20,6 @@ from src.video_compression.perf.device import (
     resolve_device,
 )
 
-
 # ---------------------------------------------------------------- CPU-safe
 
 

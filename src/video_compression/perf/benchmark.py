@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -301,7 +302,9 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
 
     # ------------------------------------------------------ internals
 
-    def _iter_cells(self):
+    def _iter_cells(
+        self,
+    ) -> Iterator[tuple[ResolutionSpec, int, RuntimeProfile, BenchmarkPhase]]:
         for phase in self.config.phases:
             for profile in self.config.runtime_profiles:
                 for resolution in self.config.resolutions:
@@ -326,8 +329,7 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
             )
         if profile.precision is not Precision.FP32:
             raise NotImplementedError(
-                f"precision {profile.precision.value!r} requires "
-                f"phase 1 (mixed-precision support)",
+                f"precision {profile.precision.value!r} requires phase 1 (mixed-precision support)",
             )
 
         # Per-profile device override lets a single sweep cover both GPUs
@@ -529,8 +531,7 @@ def report_from_result(result: ExecutionResult) -> BenchmarkReport:
     """
     if "report" not in result.artifacts:
         raise KeyError(
-            "ExecutionResult has no 'report' artifact; was it produced "
-            "by PerfBenchmark?",
+            "ExecutionResult has no 'report' artifact; was it produced by PerfBenchmark?",
         )
     return _report_from_dict(result.artifacts["report"])
 
@@ -553,8 +554,7 @@ def _report_from_dict(data: dict[str, Any]) -> BenchmarkReport:
                 max_ms=c["latency_stats"]["max_ms"],
                 std_ms=c["latency_stats"]["std_ms"],
                 percentiles_ms={
-                    int(k): float(v)
-                    for k, v in c["latency_stats"]["percentiles_ms"].items()
+                    int(k): float(v) for k, v in c["latency_stats"]["percentiles_ms"].items()
                 },
             ),
             throughput_fps=c["throughput_fps"],

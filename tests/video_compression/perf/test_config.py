@@ -23,7 +23,6 @@ from src.video_compression.perf.config import (
     RuntimeProfile,
 )
 
-
 # ------------------------------------------------------------ ResolutionSpec
 
 
@@ -37,9 +36,9 @@ class TestResolutionSpec:
     @pytest.mark.parametrize(
         "h, w",
         [
-            (8, 1920),    # too short
-            (1920, 8),    # too narrow
-            (-1, 1920),   # negative
+            (8, 1920),  # too short
+            (1920, 8),  # too narrow
+            (-1, 1920),  # negative
             (1080, 16385),  # too wide (out of range)
         ],
     )
@@ -74,9 +73,7 @@ class TestPerfBenchmarkConfig:
     def _minimal(self, **overrides) -> dict:
         base = {
             "name": "test",
-            "resolutions": [
-                ResolutionSpec(name="r", label="64x64", height=64, width=64)
-            ],
+            "resolutions": [ResolutionSpec(name="r", label="64x64", height=64, width=64)],
         }
         base.update(overrides)
         return base
@@ -94,13 +91,16 @@ class TestPerfBenchmarkConfig:
         with pytest.raises(ValidationError):
             PerfBenchmarkConfig(name="t", resolutions=[])
 
-    @pytest.mark.parametrize("field, value", [
-        ("n_warmup", -1),
-        ("n_repeats", 0),
-        ("n_frames_per_iter", 0),
-        ("regression_tolerance_pct", -1.0),
-        ("regression_tolerance_pct", 200.0),
-    ])
+    @pytest.mark.parametrize(
+        "field, value",
+        [
+            ("n_warmup", -1),
+            ("n_repeats", 0),
+            ("n_frames_per_iter", 0),
+            ("regression_tolerance_pct", -1.0),
+            ("regression_tolerance_pct", 200.0),
+        ],
+    )
     def test_field_bounds_enforced(self, field: str, value: float) -> None:
         with pytest.raises(ValidationError):
             PerfBenchmarkConfig(**self._minimal(**{field: value}))
@@ -115,9 +115,7 @@ class TestPerfBenchmarkConfig:
                     for i in range(50)
                 ],
                 batch_sizes=list(range(1, 11)),
-                runtime_profiles=[
-                    RuntimeProfile(name=f"p{i}") for i in range(5)
-                ],
+                runtime_profiles=[RuntimeProfile(name=f"p{i}") for i in range(5)],
                 phases=[BenchmarkPhase.FORWARD],
                 n_repeats=10000,
                 n_warmup=0,
@@ -150,22 +148,22 @@ class TestPerfBenchmarkConfig:
 
 class TestBaselineEntry:
     def _entry(self, **overrides) -> BaselineEntry:
-        base = dict(
-            name="entry",
-            cell_key="64x64|b1|pytorch-fp32|forward",
-            resolution_label="64x64",
-            height=64,
-            width=64,
-            batch_size=1,
-            runtime_backend=RuntimeBackend.PYTORCH,
-            precision=Precision.FP32,
-            phase=BenchmarkPhase.FORWARD,
-            throughput_fps=10.0,
-            latency_ms_mean=100.0,
-            latency_ms_p50=95.0,
-            latency_ms_p90=110.0,
-            latency_ms_p99=120.0,
-        )
+        base = {
+            "name": "entry",
+            "cell_key": "64x64|b1|pytorch-fp32|forward",
+            "resolution_label": "64x64",
+            "height": 64,
+            "width": 64,
+            "batch_size": 1,
+            "runtime_backend": RuntimeBackend.PYTORCH,
+            "precision": Precision.FP32,
+            "phase": BenchmarkPhase.FORWARD,
+            "throughput_fps": 10.0,
+            "latency_ms_mean": 100.0,
+            "latency_ms_p50": 95.0,
+            "latency_ms_p90": 110.0,
+            "latency_ms_p99": 120.0,
+        }
         base.update(overrides)
         return BaselineEntry(**base)
 

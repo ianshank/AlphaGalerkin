@@ -96,9 +96,7 @@ class TestLoadConfig:
     def test_json_supported(self, cli_module, tmp_path: Path) -> None:
         cfg = {
             "name": "json_cfg",
-            "resolutions": [
-                {"name": "r", "label": "8x8", "height": 16, "width": 16}
-            ],
+            "resolutions": [{"name": "r", "label": "8x8", "height": 16, "width": 16}],
             "n_warmup": 0,
             "n_repeats": 1,
             "device_preference": "cpu",
@@ -134,32 +132,40 @@ class TestLoadConfig:
 class TestArgparse:
     def test_run_subcommand_parses(self, cli_module) -> None:
         parser = cli_module.build_parser()
-        args = parser.parse_args(
-            ["run", "--config", "x.yaml", "--output", "out.json"]
-        )
+        args = parser.parse_args(["run", "--config", "x.yaml", "--output", "out.json"])
         assert args.cmd == "run"
         assert str(args.config) == "x.yaml"
         assert str(args.output) == "out.json"
 
     def test_record_subcommand_parses(self, cli_module) -> None:
         parser = cli_module.build_parser()
-        args = parser.parse_args([
-            "record-baseline",
-            "--config", "x.yaml",
-            "--output", "b.json",
-            "--hardware-tag", "rtx-3060",
-        ])
+        args = parser.parse_args(
+            [
+                "record-baseline",
+                "--config",
+                "x.yaml",
+                "--output",
+                "b.json",
+                "--hardware-tag",
+                "rtx-3060",
+            ]
+        )
         assert args.cmd == "record-baseline"
         assert args.hardware_tag == "rtx-3060"
 
     def test_diff_subcommand_parses(self, cli_module) -> None:
         parser = cli_module.build_parser()
-        args = parser.parse_args([
-            "diff",
-            "--report", "r.json",
-            "--baseline", "b.json",
-            "--tolerance", "10.0",
-        ])
+        args = parser.parse_args(
+            [
+                "diff",
+                "--report",
+                "r.json",
+                "--baseline",
+                "b.json",
+                "--tolerance",
+                "10.0",
+            ]
+        )
         assert args.cmd == "diff"
         assert args.tolerance == 10.0
 
@@ -177,9 +183,7 @@ class TestRunSubcommand:
         cfg_path = tmp_path / "cfg.yaml"
         cfg_path.write_text(_smoke_yaml())
         out_path = tmp_path / "out.json"
-        rc = cli_module.main(
-            ["run", "--config", str(cfg_path), "--output", str(out_path)]
-        )
+        rc = cli_module.main(["run", "--config", str(cfg_path), "--output", str(out_path)])
         assert rc == 0
         assert out_path.exists()
 
@@ -188,30 +192,45 @@ class TestRunSubcommand:
         cfg_path.write_text(_smoke_yaml())
 
         baseline_path = tmp_path / "baseline.json"
-        rc = cli_module.main([
-            "record-baseline",
-            "--config", str(cfg_path),
-            "--output", str(baseline_path),
-            "--hardware-tag", "test",
-        ])
+        rc = cli_module.main(
+            [
+                "record-baseline",
+                "--config",
+                str(cfg_path),
+                "--output",
+                str(baseline_path),
+                "--hardware-tag",
+                "test",
+            ]
+        )
         assert rc == 0
         assert baseline_path.exists()
 
         report_path = tmp_path / "report.json"
-        rc = cli_module.main([
-            "run",
-            "--config", str(cfg_path),
-            "--output", str(report_path),
-            "--tolerance", "99.0",  # extremely loose so CI noise can't fail
-        ])
+        rc = cli_module.main(
+            [
+                "run",
+                "--config",
+                str(cfg_path),
+                "--output",
+                str(report_path),
+                "--tolerance",
+                "99.0",  # extremely loose so CI noise can't fail
+            ]
+        )
         assert rc == 0
 
-        rc = cli_module.main([
-            "diff",
-            "--report", str(report_path),
-            "--baseline", str(baseline_path),
-            "--tolerance", "99.0",
-        ])
+        rc = cli_module.main(
+            [
+                "diff",
+                "--report",
+                str(report_path),
+                "--baseline",
+                str(baseline_path),
+                "--tolerance",
+                "99.0",
+            ]
+        )
         assert rc == 0
 
 

@@ -33,6 +33,35 @@ from src.poc.registry import BaseScenario, scenario
 logger = structlog.get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Numerical-stability defaults. Surfaced as module constants (rather than
+# Pydantic config fields) because they are *internal* floors that should
+# never need scenario-level tuning; promoting them keeps the scenario
+# config schema small while still letting downstream callers monkey-patch
+# in tests if a regression demands it.
+# ---------------------------------------------------------------------------
+
+# Floor used to avoid division-by-zero when computing
+# ``transfer_ratio = mse_high / mse_low``. ``1e-12`` is well below any
+# physically meaningful MSE on float32 fields and won't bias the ratio
+# unless ``mse_low`` itself is already at numerical noise.
+DEFAULT_TRANSFER_RATIO_FLOOR = 1e-12
+
+# Lower bound on the bbox extent used by ``_normalize`` to map
+# world-space helix coordinates into ``[0, 1]^3``. The bbox extent is
+# always strictly positive for a well-formed helix; this clamp simply
+# guarantees the affine transform is finite when a degenerate config
+# slips through validation.
+DEFAULT_NORMALIZE_EXTENT_FLOOR = 1e-9
+
+# Multiplier on the eval ``seed_offset`` argument when seeding the
+# evaluation RNG. Picking a large prime gives well-separated seeds for
+# the low- and high-density passes (``seed_offset=1`` and ``2``) so
+# their MC samples don't accidentally overlap. Any large odd number
+# would do; the prime keeps multiplicative aliasing benign.
+EVAL_SEED_STRIDE = 9973
+
+
 @scenario("noyron_hx")
 class NoyronHXScenario(BaseScenario):
     """Zero-shot 3D heat-equation transfer on Leap 71's helical HX."""
@@ -194,7 +223,7 @@ class NoyronHXScenario(BaseScenario):
         )
         self.record_metric("eval_time_s", eval_time_s)
 
-        transfer_ratio = float(mse_high / max(mse_low, 1e-12))
+        transfer_ratio = float(mse_high / max(mse_low, DEFAULT_TRANSFER_RATIO_FLOOR))
         self.record_metric("transfer_ratio", transfer_ratio)
         self._scenario_logger.metric("transfer_ratio", transfer_ratio)
 
@@ -351,6 +380,30 @@ class NoyronHXScenario(BaseScenario):
         bv_np = self._operator.boundary_value(boundary.detach().cpu().numpy())
         return torch.from_numpy(np.asarray(bv_np, dtype=np.float32)).to(boundary.device)
 
+    def _draw_pool_indices(self, n_pool: int, n_pts: int) -> Tensor:
+        """Draw ``n_pts`` indices from a finite voxel pool of size ``n_pool``.
+
+        Returns a permutation when ``n_pts <= n_pool`` so each interior
+        voxel is sampled at most once; falls back to with-replacement
+        sampling when the eval batch is larger than the pool. Centralised
+        here so both the training-batch builder and the evaluation
+        sampler use identical semantics — the previous duplicate logic
+        was a maintenance hazard the gap-analysis flagged.
+        """
+        if n_pool <= 0:
+            raise ValueError(f"n_pool must be > 0, got {n_pool}")
+        if n_pts <= 0:
+            raise ValueError(f"n_pts must be > 0, got {n_pts}")
+        if n_pts > n_pool:
+            if self._scenario_logger is not None:
+                self._scenario_logger.debug(
+                    "voxel_fdm_subsample_with_replacement",
+                    n_pts=n_pts,
+                    n_pool=n_pool,
+                )
+            return torch.randint(0, n_pool, (n_pts,))
+        return torch.randperm(n_pool)[:n_pts]
+
     # ------------------------------------------------------------------
     # Train / evaluate
     # ------------------------------------------------------------------
@@ -364,7 +417,7 @@ class NoyronHXScenario(BaseScenario):
         (mins, maxs) = self._operator.geometry.bounding_box()
         mins_t = torch.tensor(mins, dtype=coords.dtype, device=coords.device).view(1, 3)
         maxs_t = torch.tensor(maxs, dtype=coords.dtype, device=coords.device).view(1, 3)
-        return (coords - mins_t) / (maxs_t - mins_t).clamp_min(1e-9)
+        return (coords - mins_t) / (maxs_t - mins_t).clamp_min(DEFAULT_NORMALIZE_EXTENT_FLOOR)
 
     def _sample_training_batch(
         self, n_pts: int, n_boundary_pts: int
@@ -414,20 +467,7 @@ class NoyronHXScenario(BaseScenario):
         assert self._operator is not None
 
         coords_pool, u_pool = self._voxel_fdm_reference()
-        n_pool = int(coords_pool.shape[0])
-        replace = n_pts > n_pool
-        # ``torch.randint`` samples with replacement, ``torch.randperm``
-        # without; pick whichever respects the requested batch size.
-        if replace:
-            if self._scenario_logger is not None:
-                self._scenario_logger.debug(
-                    "voxel_fdm_batch_with_replacement",
-                    n_pts=n_pts,
-                    n_pool=n_pool,
-                )
-            idx = torch.randint(0, n_pool, (n_pts,))
-        else:
-            idx = torch.randperm(n_pool)[:n_pts]
+        idx = self._draw_pool_indices(int(coords_pool.shape[0]), n_pts)
 
         interior = coords_pool[idx].to(self._device)
         interior_target = u_pool[idx].to(self._device)
@@ -492,7 +532,7 @@ class NoyronHXScenario(BaseScenario):
         assert self._device is not None
         assert self._operator is not None
 
-        torch.manual_seed(self.config.seed + seed_offset * 9973)
+        torch.manual_seed(self.config.seed + seed_offset * EVAL_SEED_STRIDE)
 
         model.eval()
         with torch.no_grad():
@@ -504,11 +544,7 @@ class NoyronHXScenario(BaseScenario):
                 # ``_harmonic_source`` here was the v1 deviation that made
                 # the voxel_fdm threshold unreachable.
                 ref_coords, ref_u = self._voxel_fdm_reference()
-                n_pool = int(ref_coords.shape[0])
-                if n_pts > n_pool:
-                    idx = torch.randint(0, n_pool, (n_pts,))
-                else:
-                    idx = torch.randperm(n_pool)[:n_pts]
+                idx = self._draw_pool_indices(int(ref_coords.shape[0]), n_pts)
                 coords = ref_coords[idx].to(self._device)
                 target = ref_u[idx].to(self._device)
                 source = torch.zeros(n_pts, dtype=coords.dtype, device=self._device)

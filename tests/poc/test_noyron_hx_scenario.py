@@ -300,3 +300,72 @@ class TestNoyronHXScenarioMetrics:
         assert scenario._voxel_fdm_cache is not None
         scenario.teardown()
         assert scenario._voxel_fdm_cache is None
+
+
+class TestNoyronHXScenarioPoolSampling:
+    """Regression tests for the shared ``_draw_pool_indices`` helper."""
+
+    def test_without_replacement_when_pool_large(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            idx = scenario._draw_pool_indices(n_pool=128, n_pts=32)
+            # ``randperm`` semantics: every index unique.
+            assert idx.shape == (32,)
+            assert idx.unique().numel() == 32
+        finally:
+            scenario.teardown()
+
+    def test_with_replacement_when_pool_smaller(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            idx = scenario._draw_pool_indices(n_pool=16, n_pts=128)
+            # ``randint`` semantics: shape preserved, indices in range.
+            assert idx.shape == (128,)
+            assert int(idx.min().item()) >= 0
+            assert int(idx.max().item()) < 16
+        finally:
+            scenario.teardown()
+
+    def test_invalid_n_pool_raises(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            with pytest.raises(ValueError, match="n_pool"):
+                scenario._draw_pool_indices(n_pool=0, n_pts=4)
+        finally:
+            scenario.teardown()
+
+    def test_invalid_n_pts_raises(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            with pytest.raises(ValueError, match="n_pts"):
+                scenario._draw_pool_indices(n_pool=16, n_pts=0)
+        finally:
+            scenario.teardown()
+
+
+class TestNoyronHXScenarioConstants:
+    """Surfaced module constants must be importable and consistent."""
+
+    def test_constants_documented(self) -> None:
+        from src.poc.scenarios.noyron_hx import (
+            DEFAULT_NORMALIZE_EXTENT_FLOOR,
+            DEFAULT_TRANSFER_RATIO_FLOOR,
+            EVAL_SEED_STRIDE,
+        )
+
+        # All numerical-stability floors must be strictly positive.
+        assert DEFAULT_TRANSFER_RATIO_FLOOR > 0
+        assert DEFAULT_NORMALIZE_EXTENT_FLOOR > 0
+        # The seed stride must be a positive integer; it is multiplied
+        # into ``int * int`` arithmetic so non-integers would silently
+        # break determinism.
+        assert isinstance(EVAL_SEED_STRIDE, int)
+        assert EVAL_SEED_STRIDE > 0

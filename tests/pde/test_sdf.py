@@ -196,6 +196,53 @@ class TestAnalyticalHelixSDFFallback:
         s_many = AnalyticalHelixSDF(n_turns=10)
         assert s_many.fallback_grid_size > s_few.fallback_grid_size
 
+    def test_fallback_with_no_newton_refine(self) -> None:
+        """The grid-search fallback must work when Newton refinement is disabled.
+
+        Covers the ``fallback_newton_refine_iters == 0`` branch of
+        ``_grid_fallback`` — pure grid argmin with no follow-up. Uses
+        off-centerline points whose initial-guess residual is non-zero
+        so the fallback path actually runs.
+        """
+        sdf = AnalyticalHelixSDF(
+            R_major=0.05,
+            r_minor=0.012,
+            pitch=0.02,
+            n_turns=3,
+            newton_max_iters=1,
+            enable_fallback=True,
+            fallback_newton_refine_iters=0,
+        )
+        # Points well off the centerline; the z-coordinate-based initial
+        # guess won't be exact, so Newton + fallback must collaborate.
+        torch.manual_seed(0)
+        n = 16
+        z = torch.rand(n) * (sdf.pitch * sdf.n_turns)
+        # Place each test point on the radial midline of the bbox.
+        radius = sdf.R_major + 0.5 * sdf.r_minor
+        theta = torch.rand(n) * 2 * np.pi
+        pts = torch.stack([radius * torch.cos(theta), radius * torch.sin(theta), z], dim=-1)
+        v_no_refine = sdf.sdf(pts)
+        # Now with Newton refinement enabled — same points, but the
+        # post-grid Newton steps tighten convergence.
+        sdf_refined = AnalyticalHelixSDF(
+            R_major=0.05,
+            r_minor=0.012,
+            pitch=0.02,
+            n_turns=3,
+            newton_max_iters=1,
+            enable_fallback=True,
+            fallback_newton_refine_iters=8,
+        )
+        v_refined = sdf_refined.sdf(pts)
+        # Both calls must produce finite SDF values of the right shape;
+        # the refined version's residual should be at least as tight as
+        # the no-refine version (smaller absolute distance to surface).
+        assert torch.all(torch.isfinite(v_no_refine))
+        assert torch.all(torch.isfinite(v_refined))
+        assert v_no_refine.shape == (n,)
+        assert float(v_refined.abs().max()) <= float(v_no_refine.abs().max()) + 1e-6
+
     def test_fallback_recovers_pathological_initial_guess(self) -> None:
         """Fallback rescues a starved Newton (max_iters=1).
 

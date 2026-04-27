@@ -418,9 +418,9 @@ class PicoGKSDFEvaluator:
         try:
             # pythonnet is the standard bridge to .NET assemblies from
             # Python; PicoGK ships a Python wrapper on top of it.
-            import PicoGK  # noqa: F401
-            import pythonnet  # noqa: F401
-        except ImportError as exc:  # pragma: no cover - exercised via tests
+            import PicoGK  # noqa: F401  # pragma: no cover - optional dep
+            import pythonnet  # noqa: F401  # pragma: no cover - optional dep
+        except ImportError as exc:
             raise ImportError(
                 "PicoGKSDFEvaluator requires the optional [picogk] extra. "
                 "Install with: pip install alphagalerkin[picogk]"
@@ -429,7 +429,7 @@ class PicoGKSDFEvaluator:
         # distance grid. That work is deferred to the PicoGK integration
         # milestone; v1 of this research demo runs entirely on
         # AnalyticalHelixSDF.
-        raise NotImplementedError(
+        raise NotImplementedError(  # pragma: no cover - optional dep
             "PicoGK voxel ingestion is part of the post-v1 Leap 71 "
             "integration milestone; use AnalyticalHelixSDF for now."
         )

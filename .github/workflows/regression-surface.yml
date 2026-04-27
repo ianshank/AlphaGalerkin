@@ -231,16 +231,34 @@ jobs:
         # 100%, config_noyron 100%, noyron_hx 97% — gate at 85% is a hard
         # floor. Promote to 90% if the achieved numbers stay there for a
         # full release cycle.
+        #
+        # Why an inline coveragerc with `include = ...` rather than per-file
+        # `--cov=...` args: coverage's `--cov` flag treats each value as a
+        # package or directory. File paths like `--cov=src/pde/sdf` (no .py)
+        # are matched as packages and produce "Module ... was never
+        # imported" warnings (verified on CI run 25015389586). The
+        # documented way to scope coverage to a specific file list is the
+        # `[run] include = ...` config option, which accepts glob patterns.
         run: |
+          cat > .coveragerc.noyron-hx <<'COVEOF'
+          [run]
+          include =
+              src/pde/sdf.py
+              src/pde/geometry_picogk.py
+              src/poc/scenarios/noyron_hx.py
+              src/poc/config_noyron.py
+          branch = true
+
+          [report]
+          show_missing = true
+          fail_under = 85
+          COVEOF
           pytest tests/pde/test_sdf.py \
                  tests/pde/test_picogk_domain.py \
                  tests/poc/test_noyron_hx_scenario.py \
-                 --cov=src/pde/sdf \
-                 --cov=src/pde/geometry_picogk \
-                 --cov=src/poc/scenarios/noyron_hx \
-                 --cov=src/poc/config_noyron \
+                 --cov \
+                 --cov-config=.coveragerc.noyron-hx \
                  --cov-report=term-missing \
-                 --cov-fail-under=85 \
                  -q --tb=short
 
   surface-success:

@@ -1080,18 +1080,33 @@ class NavierStokesOperator(PDEOperator):
 
         derivatives: dict[str, Tensor] = {}
 
-        grad_ux = torch.autograd.grad(
-            ux,
-            coords,
-            grad_outputs=torch.ones_like(ux),
-            create_graph=True,
-            allow_unused=True,
-        )[0]
+        # Symmetry guard: only call autograd on a velocity component when
+        # it actually carries grad through ``coords``. The 1D-u fallback
+        # above makes ``uy`` a constant zero placeholder with no grad
+        # path; the same situation can also arise for ``ux`` when callers
+        # pass a detached or constant tensor (e.g., a numerical-stencil
+        # baseline being benchmarked against the autodiff residual). In
+        # either case ``torch.autograd.grad(<no-grad tensor>, coords, ...)``
+        # raises "element 0 of tensors does not require grad". Setting
+        # the corresponding gradient to ``None`` is already a supported
+        # state downstream (the ``if grad_ux is not None and grad_uy is
+        # not None`` check below routes into the zero-residual fallback).
+        if ux.requires_grad or ux.grad_fn is not None:
+            grad_ux = torch.autograd.grad(
+                ux,
+                coords,
+                grad_outputs=torch.ones_like(ux),
+                create_graph=True,
+                allow_unused=True,
+            )[0]
+        else:
+            grad_ux = None
+            logger.debug(
+                "ns_residual_ux_no_grad_path",
+                u_shape=tuple(u.shape),
+                coords_shape=tuple(coords.shape),
+            )
 
-        # Only call autograd on ``uy`` when it actually carries grad through
-        # ``coords`` — otherwise it's the 1D-fallback constant-zero placeholder
-        # and the grad call would raise (see comment on the ``else`` branch
-        # above). ``grad_uy = None`` is already a supported state below.
         if uy.requires_grad or uy.grad_fn is not None:
             grad_uy = torch.autograd.grad(
                 uy,
@@ -1102,6 +1117,12 @@ class NavierStokesOperator(PDEOperator):
             )[0]
         else:
             grad_uy = None
+            logger.debug(
+                "ns_residual_uy_no_grad_path",
+                u_shape=tuple(u.shape),
+                coords_shape=tuple(coords.shape),
+                reason="1d_fallback" if u.shape[-1] < 2 else "detached_input",
+            )
 
         if grad_ux is not None and grad_uy is not None:
             dux_dx = grad_ux[:, 0]

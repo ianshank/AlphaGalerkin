@@ -844,6 +844,40 @@ class TestNavierStokesOperator1DURegression:
         residual = operator.residual(u, coords, compute_derivatives=False)
         assert residual.derivatives == {}
 
+    def test_detached_ux_does_not_raise(self, operator: NavierStokesOperator) -> None:
+        """Symmetric guard: a detached ux (no grad path) must not crash either.
+
+        Code-review feedback on PR #71 noted that the same defensive
+        guard applied to ``uy`` should also protect ``ux`` against
+        non-differentiable inputs (e.g., a numerical-stencil baseline
+        being benchmarked against the autodiff residual). Pre-extension
+        this would have raised "element 0 of tensors does not require
+        grad" on the ``autograd.grad(ux, ...)`` call.
+        """
+        coords = torch.tensor(
+            [[0.3, 0.4], [0.5, 0.5]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        # u_x is constructed without grad path (detached); u_y has one.
+        ux_detached = torch.tensor([0.5, 0.7])
+        uy_with_grad = torch.sin(coords[:, 0])
+        u = torch.stack([ux_detached, uy_with_grad], dim=-1)
+        residual = operator.residual(u, coords)
+        # grad_ux is None -> downstream zero-residual fallback.
+        assert torch.allclose(residual.values, torch.zeros_like(residual.values))
+
+    def test_both_ux_and_uy_detached_is_safe_zero(self, operator: NavierStokesOperator) -> None:
+        """Both components detached -> both grads None -> zero residual."""
+        coords = torch.tensor(
+            [[0.3, 0.4], [0.5, 0.5]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        u = torch.tensor([[0.5, 0.7], [0.3, 0.2]])
+        residual = operator.residual(u, coords)
+        assert torch.allclose(residual.values, torch.zeros_like(residual.values))
+
 
 class TestLShapedPoissonOperatorPolarHelpers:
     """Cover LShapedPoissonOperator polar conversion + numpy singular path.

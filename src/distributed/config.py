@@ -161,6 +161,24 @@ class DistributedInfraConfig(BaseModel):
         description="Only rank 0 saves model checkpoints",
     )
 
+    # Per-rank batch size override.  Either an int (uniform per rank,
+    # equivalent to the legacy behaviour where every rank gets the
+    # caller-supplied per-GPU batch size) or a list of ints — one entry
+    # per rank — for asymmetric multi-GPU rigs where the cards have
+    # different VRAM (e.g. the user's RTX 5060 Ti + 5060 setup, where
+    # the smaller card needs a smaller batch to avoid OOM).  When ``None``
+    # the existing :meth:`get_effective_batch_size` helper is used as
+    # before; setting a list activates the cross-field validator that
+    # checks ``len(list) == world_size``.
+    per_rank_batch_size: int | list[int] | None = Field(
+        default=None,
+        description=(
+            "Optional per-rank batch size override.  None = uniform "
+            "(legacy behaviour).  int = uniform but explicit.  list[int] "
+            "= per-rank values; len must equal world_size."
+        ),
+    )
+
     # Performance tuning
     prefetch_factor: int = Field(
         default=2,
@@ -193,6 +211,56 @@ class DistributedInfraConfig(BaseModel):
                     stacklevel=2,
                 )
         return v
+
+    @model_validator(mode="after")
+    def validate_per_rank_batch_size(self) -> DistributedInfraConfig:
+        """Cross-field validation for per-rank batch override.
+
+        When ``per_rank_batch_size`` is a list, its length must match
+        ``world_size``.  Each entry must be strictly positive.  An int
+        override or ``None`` is always accepted.
+        """
+        prbs = self.per_rank_batch_size
+        if isinstance(prbs, list):
+            if len(prbs) != self.world_size:
+                msg = (
+                    f"per_rank_batch_size has {len(prbs)} entries but "
+                    f"world_size={self.world_size}.  Provide one entry per rank."
+                )
+                raise ValueError(msg)
+            for i, b in enumerate(prbs):
+                if b <= 0:
+                    msg = f"per_rank_batch_size[{i}]={b} must be strictly " f"positive."
+                    raise ValueError(msg)
+        elif isinstance(prbs, int) and prbs <= 0:
+            msg = f"per_rank_batch_size={prbs} must be strictly positive."
+            raise ValueError(msg)
+        return self
+
+    def get_rank_batch_size(self, rank: int, default: int) -> int:
+        """Resolve the batch size for ``rank``.
+
+        ``per_rank_batch_size`` takes precedence over ``default`` when
+        set.  This is the canonical way to read the rank's batch size
+        from the trainer.
+
+        Args:
+            rank: Rank id in ``[0, world_size)``.
+            default: Fallback batch size when ``per_rank_batch_size`` is None.
+
+        Returns:
+            The batch size to use on this rank.
+
+        """
+        if not 0 <= rank < self.world_size:
+            msg = f"rank={rank} out of range for world_size={self.world_size}"
+            raise ValueError(msg)
+        prbs = self.per_rank_batch_size
+        if prbs is None:
+            return default
+        if isinstance(prbs, int):
+            return prbs
+        return prbs[rank]
 
     @model_validator(mode="after")
     def validate_config(self) -> DistributedInfraConfig:

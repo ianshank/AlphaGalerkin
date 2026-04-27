@@ -286,7 +286,11 @@ jobs:
       - name: Per-module coverage gate (pde)
         if: always() && hashFiles('tests/pde/') != ''
         run: |
-          pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
+          # Raised from 75 -> 85 after Track B (VectorFieldHead +
+          # operator metadata) and Track C (adaptive time-stepping)
+          # pushed measured coverage to 85.4%.  Track E of the
+          # Production Hardening Push.
+          pytest tests/pde/ --cov=src/pde --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''

@@ -398,7 +398,11 @@ class TestStabilityScenarioExecution:
 
         assert result.scenario_name == "stability"
         assert result.config_hash == small_config.compute_hash()
-        assert result.device == "cpu"
+        # StabilityScenario.setup() picks "cuda" when available else "cpu";
+        # the test asserts the recorded device matches that contract on
+        # whatever host runs it (was hardcoded "cpu" and broke CUDA hosts).
+        expected_device = "cuda" if torch.cuda.is_available() else "cpu"
+        assert result.device == expected_device
         assert result.python_version != ""
         assert result.torch_version != ""
         assert result.duration_seconds >= 0

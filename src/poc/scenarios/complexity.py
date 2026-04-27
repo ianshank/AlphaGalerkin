@@ -237,9 +237,8 @@ class ComplexityScenario(BaseScenario):
                 end = time.perf_counter()
                 times.append((end - start) * 1000)  # Convert to ms
 
-            # Memory usage
             memory_mb = 0.0
-            if torch.cuda.is_available():
+            if self._device is not None and self._device.type == "cuda":
                 memory_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
 
             results.append(
@@ -309,7 +308,7 @@ class ComplexityScenario(BaseScenario):
                 times.append((end - start) * 1000)
 
             memory_mb = 0.0
-            if torch.cuda.is_available():
+            if self._device is not None and self._device.type == "cuda":
                 memory_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
 
             results.append(
@@ -372,7 +371,7 @@ class ComplexityScenario(BaseScenario):
                 times.append((end - start) * 1000)
 
             memory_mb = 0.0
-            if torch.cuda.is_available():
+            if self._device is not None and self._device.type == "cuda":
                 memory_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
 
             results.append(

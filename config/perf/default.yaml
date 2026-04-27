@@ -1,0 +1,100 @@
+# GPU-primary headline benchmark.
+#
+# Tuned for the reference home-lab dual-GPU setup:
+#   * cuda:0 — RTX 5060 Ti 16 GB (primary; can do 4K)
+#   * cuda:1 — RTX 5060 8 GB     (secondary; capped at 1080p)
+#
+# Each card has its own ``RuntimeProfile`` so a single sweep produces
+# comparable cells for both. ``device_preference: cuda`` at the run
+# level fails loudly if no CUDA device is present — the project policy
+# from src/poc/device.py.
+#
+# Run with:
+#
+#   python -m scripts.benchmark_codec record-baseline \
+#       --config config/perf/default.yaml \
+#       --output docs/perf/baseline_v1.json \
+#       --hardware-tag rtx5060ti16-rtx5060-8
+
+name: perf_default
+description: "GPU-primary dual-card benchmark (5060 Ti 16 GB + 5060 8 GB)"
+
+# Resolution set covers headline streaming targets. 4K is included only
+# for the 16 GB card (see batch_sizes / runtime_profiles below — failed
+# cells on the 8 GB card are recorded as VRAM-OOM rather than aborting).
+resolutions:
+  - name: r720p
+    label: "720p"
+    height: 720
+    width: 1280
+  - name: r1080p
+    label: "1080p"
+    height: 1088    # padded to multiple of 16 (encoder downsample_factor)
+    width: 1920
+  - name: r2160p
+    label: "2160p"
+    height: 2160
+    width: 3840
+
+batch_sizes: [1]
+
+# Per-profile device pinning is the key to a multi-GPU sweep. The
+# benchmark loop will resolve each profile.device independently;
+# cells on cuda:1 that exceed VRAM will be recorded as failed cells
+# and the sweep continues.
+runtime_profiles:
+  - name: cuda0_fp32
+    backend: pytorch
+    precision: fp32
+    device: "cuda:0"
+  - name: cuda1_fp32
+    backend: pytorch
+    precision: fp32
+    device: "cuda:1"
+
+phases: [forward]
+
+n_warmup: 5
+n_repeats: 30
+n_frames_per_iter: 1
+
+# Run-level default; per-profile ``device`` overrides this when set.
+device_preference: cuda
+track_gpu_memory: true
+
+pattern: motion
+data_seed: 20260427
+
+regression_tolerance_pct: 5.0
+fail_fast: false   # OOM on cuda:1 must not abort the whole sweep
+
+codec:
+  name: codec_default
+  encoder:
+    name: encoder_default
+    in_channels: 3
+    latent_channels: 192
+    n_layers: 4
+    d_model: 256
+    n_heads: 8
+    d_ffn: 1024
+    downsample_factor: 16
+  decoder:
+    name: decoder_default
+    latent_channels: 192
+    out_channels: 3
+    n_layers: 4
+    d_model: 256
+    n_heads: 8
+    d_ffn: 1024
+    upsample_factor: 16
+  quantizer:
+    name: quantizer_default
+  entropy:
+    name: entropy_default
+    hyper_channels: 192
+    num_filters: 192
+  mcts:
+    name: mcts_default
+  training:
+    name: training_default

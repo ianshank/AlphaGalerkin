@@ -95,6 +95,64 @@ class TestSolveSteadyHeatVoxel:
         assert np.all(np.isnan(u[~mask]))
         assert np.all(np.isfinite(u[mask]))
 
+    def test_default_zero_source_zero_dirichlet_is_trivial_solution(self) -> None:
+        """Regression: zero source + zero Dirichlet -> u = 0 everywhere.
+
+        Documents and pins the trivial-solution behavior surfaced by the
+        post-PR-#58 voxel_fdm smoke run on master:
+        ``HelicalHeatOperator``'s defaults (``inner_dirichlet`` mode +
+        ``PDEConfig.boundary_value = 0.0`` + no ``source_function``)
+        produce the unique steady-state ``u = 0`` everywhere, and the
+        Jacobi solver correctly converges to that at iteration 0.
+
+        A surrogate trained against this reference learns "fit zero" -
+        accurate by metric but vacuous as a demonstration. See the
+        ``HelicalHeatOperator`` docstring for the workarounds
+        (non-zero ``boundary_value``, non-zero ``source_function``, or
+        ``boundary_mode='hot_cold'``).
+
+        If this test starts failing, either:
+         (a) someone changed the FDM solver's initial guess, OR
+         (b) someone changed the trivial-solution semantics intentionally
+             - in which case update the operator docstring and the
+             README's voxel-FDM-run note in lockstep.
+        """
+        mask, coords = voxelize_sdf(
+            sdf_fn=_sphere_sdf(0.4),
+            bbox_min=(-0.6, -0.6, -0.6),
+            bbox_max=(0.6, 0.6, 0.6),
+            resolution=10,
+        )
+        u = solve_steady_heat_voxel(
+            interior_mask=mask,
+            voxel_coords=coords,
+            boundary_value_fn=lambda pts: np.zeros(pts.shape[0], dtype=np.float32),
+            source_fn=None,  # explicit: defaults match the noyron_hx scenario
+            n_iterations=200,
+            tolerance=1e-6,
+        )
+        interior_values = u[mask]
+        assert interior_values.shape[0] > 0
+        # Bit-exact equality: solver initial guess is float32 zeros, the
+        # Jacobi update on all-zero neighbors with zero source and zero
+        # boundary produces u_new == 0 identically (every term is the
+        # additive identity, no rounding), max_delta == 0 at iteration 0,
+        # and the loop short-circuits via the ``max_delta < tolerance``
+        # break with u still bit-exact zero. Asserting array_equal (not
+        # allclose) guarantees any future change to the initial-guess or
+        # first-iteration math surfaces here immediately rather than
+        # hiding under a tolerance band.
+        np.testing.assert_array_equal(
+            interior_values,
+            np.zeros_like(interior_values),
+            err_msg=(
+                "Zero source + zero Dirichlet should produce u=0 exactly. "
+                "If this fails, either the solver initial guess changed or "
+                "the trivial-solution semantics were intentionally altered "
+                "(update HelicalHeatOperator docstring + README in lockstep)."
+            ),
+        )
+
     def test_source_term_increases_solution(self) -> None:
         mask, coords = voxelize_sdf(
             sdf_fn=_sphere_sdf(0.4),

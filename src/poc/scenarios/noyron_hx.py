@@ -55,6 +55,11 @@ class NoyronHXScenario(BaseScenario):
         self._output_dir: Path | None = None
         self._scenario_logger: ScenarioLogger | None = None
         self._operator: Any = None  # HelicalHeatOperator (lazy import)
+        # Cached voxel-FDM reference. Populated lazily on first call to
+        # ``_voxel_fdm_reference`` so the (expensive) Jacobi sweep happens
+        # at most once per scenario run, regardless of whether the
+        # solution is consumed by training, evaluation, or both.
+        self._voxel_fdm_cache: tuple[Tensor, Tensor] | None = None
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
@@ -116,6 +121,7 @@ class NoyronHXScenario(BaseScenario):
     def teardown(self) -> None:
         self._model = None
         self._operator = None
+        self._voxel_fdm_cache = None
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -144,6 +150,13 @@ class NoyronHXScenario(BaseScenario):
         ).to(self._device)
         self._model = model
 
+        # Surface the bbox rejection-sampling acceptance rate as a metric
+        # so consumers (and the verifier in the plan) can detect thin or
+        # mis-shaped helix bboxes without re-instrumenting the geometry.
+        accept_rate = float(getattr(self._operator.geometry, "volume_accept_rate", 0.0))
+        self.record_metric("accept_rate", accept_rate)
+        self._scenario_logger.metric("accept_rate", accept_rate)
+
         # ----- training -----
         self._scenario_logger.info(
             "training_start",
@@ -152,22 +165,34 @@ class NoyronHXScenario(BaseScenario):
             n_epochs=self.config.n_epochs,
             ref_solver_kind=self.config.ref_solver_kind,
         )
-        with self._scenario_logger.timed("training"):
+        with self._scenario_logger.timed("training") as train_timing:
             train_loss = self._train(model)
+        train_time_s = float(train_timing.get("duration_seconds", 0.0))
         self.record_metric("train_loss_final", float(train_loss))
+        self.record_metric("train_time_s", train_time_s)
         self._scenario_logger.metric("train_loss_final", float(train_loss))
 
         # ----- evaluation at training point density -----
-        with self._scenario_logger.timed("eval_low_density"):
+        with self._scenario_logger.timed("eval_low_density") as eval_low_timing:
             mse_low = self._evaluate(model, self.config.n_train_pts, seed_offset=1)
         self.record_metric("mse_low", float(mse_low))
         self._scenario_logger.metric("mse_low", float(mse_low), n_pts=self.config.n_train_pts)
 
         # ----- evaluation at zero-shot higher density -----
-        with self._scenario_logger.timed("eval_high_density"):
+        with self._scenario_logger.timed("eval_high_density") as eval_high_timing:
             mse_high = self._evaluate(model, self.config.n_eval_pts, seed_offset=2)
         self.record_metric("mse_high", float(mse_high))
         self._scenario_logger.metric("mse_high", float(mse_high), n_pts=self.config.n_eval_pts)
+
+        # Eval timing is recorded as the sum of low- and high-density
+        # passes so the metric keys defined in the plan
+        # (``train_time_s`` / ``eval_time_s``) round-trip cleanly into
+        # ``ScenarioResult.metrics``.
+        eval_time_s = float(
+            eval_low_timing.get("duration_seconds", 0.0)
+            + eval_high_timing.get("duration_seconds", 0.0)
+        )
+        self.record_metric("eval_time_s", eval_time_s)
 
         transfer_ratio = float(mse_high / max(mse_low, 1e-12))
         self.record_metric("transfer_ratio", transfer_ratio)
@@ -243,11 +268,18 @@ class NoyronHXScenario(BaseScenario):
         )
 
     def _voxel_fdm_reference(self) -> tuple[Tensor, Tensor]:
-        """Solve once on a 3D voxel grid via the in-repo FDM reference.
+        """Return the cached voxel-FDM reference, computing it lazily once.
 
         Returns ``(coords, u)`` for the interior voxels: ``coords`` of
-        shape ``(N, 3)`` and ``u`` of shape ``(N,)``.
+        shape ``(N, 3)`` and ``u`` of shape ``(N,)``. Both training
+        supervision and evaluation read from the same tensor pair so the
+        scenario reports MSE against the same reference field it trained
+        on, instead of training on the harmonic surrogate and grading on
+        FDM (the v1 deviation this fix addresses).
         """
+        if self._voxel_fdm_cache is not None:
+            return self._voxel_fdm_cache
+
         from src.physics.voxel_fdm import solve_steady_heat_voxel, voxelize_sdf
 
         sdf = self._operator.geometry.sdf_evaluator
@@ -290,10 +322,34 @@ class NoyronHXScenario(BaseScenario):
         flat_coords = voxel_coords.reshape(-1, 3)
         flat_u = u.reshape(-1)
         flat_mask = interior_mask.reshape(-1)
-        return (
-            torch.from_numpy(flat_coords[flat_mask]),
-            torch.from_numpy(flat_u[flat_mask]),
-        )
+        coords_t = torch.from_numpy(flat_coords[flat_mask])
+        u_t = torch.from_numpy(flat_u[flat_mask])
+
+        if coords_t.shape[0] == 0:
+            raise RuntimeError(
+                "voxel_fdm reference produced zero interior voxels; the helix "
+                "may be too thin for the configured voxel_fdm_resolution."
+            )
+
+        if self._scenario_logger is not None:
+            self._scenario_logger.info(
+                "voxel_fdm_reference_cached",
+                n_interior_voxels=int(coords_t.shape[0]),
+                resolution=self.config.voxel_fdm_resolution,
+            )
+        self._voxel_fdm_cache = (coords_t, u_t)
+        return self._voxel_fdm_cache
+
+    def _operator_boundary_target(self, boundary: Tensor) -> Tensor:
+        """Evaluate the operator's Dirichlet boundary value at sampled points.
+
+        Used in voxel_fdm mode so boundary supervision matches the
+        Dirichlet condition the FDM reference solver itself enforced.
+        Falls through ``HelicalHeatOperator.boundary_value`` so both
+        ``inner_dirichlet`` and ``hot_cold`` modes are handled correctly.
+        """
+        bv_np = self._operator.boundary_value(boundary.detach().cpu().numpy())
+        return torch.from_numpy(np.asarray(bv_np, dtype=np.float32)).to(boundary.device)
 
     # ------------------------------------------------------------------
     # Train / evaluate
@@ -316,26 +372,69 @@ class NoyronHXScenario(BaseScenario):
         """Draw a single PINN training batch.
 
         Returns ``(interior_coords, interior_target, source, boundary_coords,
-        boundary_target)``, all on the configured device.
+        boundary_target)``, all on the configured device. Dispatches to
+        the harmonic or voxel-FDM batch builder per ``ref_solver_kind``
+        so training supervision matches the held-out evaluation
+        reference.
         """
+        if self.config.ref_solver_kind == "analytical_harmonic":
+            return self._sample_harmonic_batch(n_pts, n_boundary_pts)
+        return self._sample_voxel_fdm_batch(n_pts, n_boundary_pts)
+
+    def _sample_harmonic_batch(
+        self, n_pts: int, n_boundary_pts: int
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Build a training batch driven by the closed-form harmonic field."""
         assert self._device is not None
         assert self._operator is not None
 
         interior = self._operator.geometry.sample_interior(n_pts).to(self._device)
         boundary = self._operator.geometry.sample_boundary(n_boundary_pts).to(self._device)
 
-        if self.config.ref_solver_kind == "analytical_harmonic":
-            interior_target = self._harmonic_reference(interior)
-            source = self._harmonic_source(interior)
-            boundary_target = self._harmonic_reference(boundary)
-        else:
-            # voxel_fdm reference is precomputed once; here we still need
-            # synthetic supervision for training. Use the harmonic field
-            # for training and reserve voxel_fdm for the held-out eval.
-            interior_target = self._harmonic_reference(interior)
-            source = self._harmonic_source(interior)
-            boundary_target = self._harmonic_reference(boundary)
+        interior_target = self._harmonic_reference(interior)
+        source = self._harmonic_source(interior)
+        boundary_target = self._harmonic_reference(boundary)
+        return interior, interior_target, source, boundary, boundary_target
 
+    def _sample_voxel_fdm_batch(
+        self, n_pts: int, n_boundary_pts: int
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Build a training batch driven by the cached voxel-FDM solution.
+
+        Interior coordinates are drawn (with replacement when needed) from
+        the FDM voxel centers along with their FDM-computed temperatures
+        — so supervision and evaluation come from the *same* reference.
+        Boundary supervision uses the operator's Dirichlet condition, the
+        same closure the FDM solver enforced. The PINN source term is
+        zero because :func:`solve_steady_heat_voxel` defaults to a
+        homogeneous Laplacian and the v1 PoC does not configure a body
+        source.
+        """
+        assert self._device is not None
+        assert self._operator is not None
+
+        coords_pool, u_pool = self._voxel_fdm_reference()
+        n_pool = int(coords_pool.shape[0])
+        replace = n_pts > n_pool
+        # ``torch.randint`` samples with replacement, ``torch.randperm``
+        # without; pick whichever respects the requested batch size.
+        if replace:
+            if self._scenario_logger is not None:
+                self._scenario_logger.debug(
+                    "voxel_fdm_batch_with_replacement",
+                    n_pts=n_pts,
+                    n_pool=n_pool,
+                )
+            idx = torch.randint(0, n_pool, (n_pts,))
+        else:
+            idx = torch.randperm(n_pool)[:n_pts]
+
+        interior = coords_pool[idx].to(self._device)
+        interior_target = u_pool[idx].to(self._device)
+        source = torch.zeros(n_pts, dtype=interior.dtype, device=self._device)
+
+        boundary = self._operator.geometry.sample_boundary(n_boundary_pts).to(self._device)
+        boundary_target = self._operator_boundary_target(boundary)
         return interior, interior_target, source, boundary, boundary_target
 
     def _train(self, model: nn.Module) -> float:
@@ -398,13 +497,21 @@ class NoyronHXScenario(BaseScenario):
         model.eval()
         with torch.no_grad():
             if self.config.ref_solver_kind == "voxel_fdm":
-                # Use the FDM reference; subsample to n_pts to keep eval
-                # cost tractable.
+                # Use the cached FDM reference; subsample (with replacement
+                # when n_pts > n_pool) to keep eval cost tractable. The
+                # source term must match the regime the model was *trained*
+                # on, which in voxel_fdm mode is zero — using
+                # ``_harmonic_source`` here was the v1 deviation that made
+                # the voxel_fdm threshold unreachable.
                 ref_coords, ref_u = self._voxel_fdm_reference()
-                idx = torch.randperm(ref_coords.shape[0])[:n_pts]
+                n_pool = int(ref_coords.shape[0])
+                if n_pts > n_pool:
+                    idx = torch.randint(0, n_pool, (n_pts,))
+                else:
+                    idx = torch.randperm(n_pool)[:n_pts]
                 coords = ref_coords[idx].to(self._device)
                 target = ref_u[idx].to(self._device)
-                source = self._harmonic_source(coords)
+                source = torch.zeros(n_pts, dtype=coords.dtype, device=self._device)
             else:
                 coords = self._operator.geometry.sample_interior(n_pts).to(self._device)
                 target = self._harmonic_reference(coords)

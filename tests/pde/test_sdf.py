@@ -165,6 +165,62 @@ class TestAnalyticalHelixSDFGradient:
         assert abs(float(median) - 1.0) < 0.05
 
 
+class TestAnalyticalHelixSDFFallback:
+    """Coverage for the bisection / grid-search fallback in ``_nearest_t``."""
+
+    def test_fallback_disabled_round_trips(self) -> None:
+        sdf = AnalyticalHelixSDF(enable_fallback=False)
+        # Centerline points should still report negative SDF.
+        ts = torch.linspace(0.1, sdf.n_turns - 0.1, steps=8)
+        c = sdf._centerline(ts)
+        assert torch.all(sdf.sdf(c) < 0)
+
+    @pytest.mark.parametrize(
+        "bad_kwargs",
+        [
+            {"fallback_grid_size": 1},
+            {"fallback_newton_refine_iters": -1},
+        ],
+    )
+    def test_fallback_param_validation(self, bad_kwargs: dict) -> None:
+        with pytest.raises(ValueError):
+            AnalyticalHelixSDF(**bad_kwargs)
+
+    def test_fallback_grid_size_scales_with_n_turns(self) -> None:
+        """Default grid size grows linearly with n_turns.
+
+        Ensures each turn gets enough candidate parameters to bracket the
+        global optimum.
+        """
+        s_few = AnalyticalHelixSDF(n_turns=2)
+        s_many = AnalyticalHelixSDF(n_turns=10)
+        assert s_many.fallback_grid_size > s_few.fallback_grid_size
+
+    def test_fallback_recovers_pathological_initial_guess(self) -> None:
+        """Fallback rescues a starved Newton (max_iters=1).
+
+        Ensures centerline-adjacent points still resolve to the right
+        nearest-t even when the primary Newton loop has no budget.
+        """
+        sdf_starved = AnalyticalHelixSDF(
+            R_major=0.05,
+            r_minor=0.012,
+            pitch=0.02,
+            n_turns=3,
+            newton_max_iters=1,  # one Newton step is not enough
+            enable_fallback=True,
+            fallback_newton_refine_iters=8,  # refine after grid search
+        )
+        ts = torch.linspace(0.5, 2.5, steps=10)
+        center = sdf_starved._centerline(ts)
+        values = sdf_starved.sdf(center)
+        # At each centerline point sdf must be ~ -r_minor (within Newton
+        # convergence tolerance of the refined fallback).
+        assert torch.allclose(
+            values, torch.full_like(values, -sdf_starved.r_minor), atol=2e-3
+        )
+
+
 class TestPicoGKSDFEvaluator:
     """The .NET-backed evaluator must fail loud when the extra is absent."""
 

@@ -53,6 +53,17 @@ DEFAULT_BOUNDARY_PROJECTION_TOL = 1e-5
 # the gradient as numerically zero.
 DEFAULT_MIN_GRAD_NORM_SQ = 1e-12
 
+# Default number of bisection iterations used as a fallback after Newton.
+# Each iteration halves the bracket, so 16 reduces a unit-scale bracket
+# to ~1.5e-5 — well below the default boundary tolerance.
+DEFAULT_BISECTION_MAX_ITERS = 16
+
+# Default multiplier on |sdf(x)| used to stretch the initial bisection
+# bracket beyond the Newton step length. Larger values give the bisection
+# a better chance of straddling the zero level set on highly curved
+# surfaces; smaller values keep the bracket close to the original point.
+DEFAULT_BISECTION_BRACKET_FACTOR = 4.0
+
 
 class PicoGKDomain(DomainGeometry):
     """Domain geometry backed by a signed distance field.
@@ -78,6 +89,9 @@ class PicoGKDomain(DomainGeometry):
         max_oversample: float = DEFAULT_MAX_OVERSAMPLE,
         projection_max_iters: int = DEFAULT_PROJECTION_MAX_ITERS,
         min_grad_norm_sq: float = DEFAULT_MIN_GRAD_NORM_SQ,
+        enable_bisection_fallback: bool = True,
+        bisection_max_iters: int = DEFAULT_BISECTION_MAX_ITERS,
+        bisection_bracket_factor: float = DEFAULT_BISECTION_BRACKET_FACTOR,
     ) -> None:
         if oversample_factor <= 1.0:
             raise ValueError(f"oversample_factor must be > 1.0, got {oversample_factor}")
@@ -96,6 +110,12 @@ class PicoGKDomain(DomainGeometry):
             raise ValueError(f"projection_max_iters must be >= 1, got {projection_max_iters}")
         if min_grad_norm_sq <= 0.0:
             raise ValueError(f"min_grad_norm_sq must be > 0, got {min_grad_norm_sq}")
+        if bisection_max_iters < 1:
+            raise ValueError(f"bisection_max_iters must be >= 1, got {bisection_max_iters}")
+        if bisection_bracket_factor <= 0.0:
+            raise ValueError(
+                f"bisection_bracket_factor must be > 0, got {bisection_bracket_factor}"
+            )
 
         self.sdf_evaluator = sdf_evaluator
         self.oversample_factor = float(oversample_factor)
@@ -104,6 +124,9 @@ class PicoGKDomain(DomainGeometry):
         self.max_oversample = float(max_oversample)
         self.projection_max_iters = int(projection_max_iters)
         self.min_grad_norm_sq = float(min_grad_norm_sq)
+        self.enable_bisection_fallback = bool(enable_bisection_fallback)
+        self.bisection_max_iters = int(bisection_max_iters)
+        self.bisection_bracket_factor = float(bisection_bracket_factor)
 
         (mins, maxs) = sdf_evaluator.bounding_box()
         if len(mins) != len(maxs):
@@ -117,6 +140,10 @@ class PicoGKDomain(DomainGeometry):
         self._dim = sdf_evaluator.dim
 
         # Cache a Monte-Carlo volume estimate so .area is O(1) after init.
+        # ``_estimate_volume`` populates ``_volume_accept_rate`` as a side
+        # effect so callers can surface the rejection-sampling efficiency
+        # as a metric without re-running the MC pass.
+        self._volume_accept_rate: float = 0.0
         self._volume = self._estimate_volume(volume_samples)
 
         logger.debug(
@@ -125,6 +152,7 @@ class PicoGKDomain(DomainGeometry):
             bbox_min=self._bbox_min,
             bbox_max=self._bbox_max,
             volume_estimate=self._volume,
+            volume_accept_rate=self._volume_accept_rate,
             oversample_factor=self.oversample_factor,
         )
 
@@ -137,6 +165,17 @@ class PicoGKDomain(DomainGeometry):
     def area(self) -> float:
         """Monte-Carlo estimate of the interior volume / area."""
         return self._volume
+
+    @property
+    def volume_accept_rate(self) -> float:
+        """Empirical interior acceptance rate of bbox rejection sampling.
+
+        Computed once at construction by ``_estimate_volume``; equals the
+        fraction of uniform-bbox samples whose SDF reported them interior.
+        Useful as a sanity check (very low rates flag thin or empty
+        geometries) and as a scenario metric.
+        """
+        return self._volume_accept_rate
 
     def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Return the axis-aligned bounding box reported by the SDF."""
@@ -254,7 +293,11 @@ class PicoGKDomain(DomainGeometry):
     # ------------------------------------------------------------------
 
     def _estimate_volume(self, n_samples: int) -> float:
-        """Monte-Carlo volume estimate by rejection in the bbox."""
+        """Monte-Carlo volume estimate by rejection in the bbox.
+
+        Records the empirical acceptance rate on ``_volume_accept_rate``
+        so :pyattr:`volume_accept_rate` exposes it without recomputation.
+        """
         candidates = torch.rand(n_samples, self._dim)
         bbox_min = torch.tensor(self._bbox_min, dtype=torch.float32)
         bbox_extent = torch.tensor(
@@ -265,6 +308,7 @@ class PicoGKDomain(DomainGeometry):
         mask = self.contains_point(candidates)
         bbox_volume = float(np.prod(bbox_extent.numpy()))
         accept_rate = float(mask.float().mean().item())
+        self._volume_accept_rate = accept_rate
         return accept_rate * bbox_volume
 
     def _estimate_gradient(self, points: Tensor) -> Tensor:
@@ -292,7 +336,18 @@ class PicoGKDomain(DomainGeometry):
         return torch.stack(grads, dim=-1)
 
     def _project_to_surface(self, points: Tensor) -> Tensor:
-        """Project points onto the zero level set via damped Newton steps."""
+        """Project points onto the zero level set via damped Newton steps.
+
+        Two-phase strategy:
+        1. Run damped Newton along the central-difference gradient until
+           every point is within ``boundary_tolerance`` of the surface or
+           ``projection_max_iters`` is exhausted.
+        2. If ``enable_bisection_fallback`` is set, run a bracketed
+           bisection along the gradient line for any point that did not
+           converge. Bisection is robust where Newton can stall (high
+           curvature, sharp edges) because each iteration halves the
+           bracket length irrespective of local derivative behavior.
+        """
         x = points.clone()
         for it in range(self.projection_max_iters):
             values = self.sdf_evaluator.sdf(x)
@@ -309,4 +364,85 @@ class PicoGKDomain(DomainGeometry):
             )
             step = (values.unsqueeze(-1) / grad_norm_sq) * grads
             x = x - step
+
+        if self.enable_bisection_fallback:
+            x = self._bisection_fallback(x)
         return x
+
+    def _bisection_fallback(self, x: Tensor) -> Tensor:
+        """Bracket-and-bisect any points still off the zero level set.
+
+        For each non-converged point we walk along ``-grad/||grad||``
+        scaled by ``bisection_bracket_factor * |sdf(x)|`` to construct a
+        bracket whose endpoints have opposite SDF signs. Pure bisection
+        on the bracketed interval is then guaranteed to halve the
+        residual every iteration, so a small fixed budget (default 16)
+        drives ``|sdf|`` well below the boundary tolerance for any
+        reasonable SDF.
+
+        Points that fail to bracket (e.g., when the SDF is locally
+        constant — :class:`_FlatPositiveSDF` in tests) keep the Newton
+        result; the caller still rejects them via
+        ``residual < boundary_tolerance`` in the sampling loop, so the
+        fail-loud RuntimeError stays intact.
+        """
+        values = self.sdf_evaluator.sdf(x)
+        not_converged = values.abs() >= self.boundary_tolerance
+        n_failing = int(not_converged.sum().item())
+        if n_failing == 0:
+            return x
+
+        sub = x[not_converged]
+        sub_values = values[not_converged]
+        grads = self._estimate_gradient(sub)
+        grad_norm = torch.linalg.norm(grads, dim=-1, keepdim=True).clamp_min(
+            self.min_grad_norm_sq**0.5
+        )
+        # Walk in the direction that *decreases* |sdf|. For points where
+        # sdf > 0 that is ``-grad/||grad||``; for sdf < 0 it is the
+        # opposite, hence the ``sign(value)`` factor.
+        direction = -grads / grad_norm * sub_values.sign().unsqueeze(-1)
+        bracket_len = self.bisection_bracket_factor * sub_values.abs().unsqueeze(-1)
+
+        near = sub.clone()
+        far = sub + bracket_len * direction
+        near_values = self.sdf_evaluator.sdf(near)
+        far_values = self.sdf_evaluator.sdf(far)
+
+        # Only bisect rows that actually bracket a sign change. Rows that
+        # do not bracket (degenerate SDFs, points exactly on a flat
+        # region) keep their Newton result so the caller's "not enough
+        # accepted points" RuntimeError still fires for pathological SDFs.
+        bracketed = (near_values * far_values) < 0
+        n_bracketed = int(bracketed.sum().item())
+        logger.debug(
+            "picogk_projection_bisection_start",
+            n_failing=n_failing,
+            n_bracketed=n_bracketed,
+            max_iters=self.bisection_max_iters,
+        )
+        if n_bracketed == 0:
+            return x
+
+        near_b = near[bracketed]
+        far_b = far[bracketed]
+        near_v = near_values[bracketed]
+
+        for _ in range(self.bisection_max_iters):
+            mid = 0.5 * (near_b + far_b)
+            mid_v = self.sdf_evaluator.sdf(mid)
+            same_sign = (mid_v * near_v) > 0
+            near_b = torch.where(same_sign.unsqueeze(-1), mid, near_b)
+            far_b = torch.where(same_sign.unsqueeze(-1), far_b, mid)
+            near_v = torch.where(same_sign, mid_v, near_v)
+
+        refined = 0.5 * (near_b + far_b)
+
+        # Reassemble. ``not_converged`` selects the failing rows from x;
+        # within those, ``bracketed`` selects the rows we just refined.
+        # Use a helper-index trick to avoid double indexing.
+        out = x.clone()
+        failing_indices = torch.nonzero(not_converged, as_tuple=False).squeeze(-1)
+        bracketed_indices = failing_indices[bracketed]
+        out[bracketed_indices] = refined
+        return out

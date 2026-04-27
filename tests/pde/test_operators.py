@@ -9,6 +9,8 @@ from src.pde.operators import (
     AdvectionDiffusionOperator,
     BurgersOperator,
     HeatOperator,
+    LShapedPoissonOperator,
+    NavierStokesOperator,
     PDEResidual,
     PoissonOperator,
 )
@@ -350,3 +352,268 @@ class TestDerivativeComputation:
             [expected_laplacian, expected_laplacian],
             rtol=1e-4,
         )
+
+
+# ---------------------------------------------------------------------------
+# Coverage sprint additions (Section 2.1 of docs/PLAN_2026-04-27.md).
+# Targets the largest gaps in src/pde/operators.py identified by the audit:
+# BurgersOperator.exact_solution Cole-Hopf branches (698-732),
+# AdvectionDiffusionOperator.residual autodiff path (805-826),
+# NavierStokesOperator.residual full body (1059-1133), and
+# LShapedPoissonOperator residual + compute_error + boundary sampling
+# (1410-1424, 1500-1537).
+# ---------------------------------------------------------------------------
+
+
+class TestBurgersOperatorColeHopf:
+    """Cover BurgersOperator.exact_solution Cole-Hopf branches (lines 698-732)."""
+
+    @pytest.fixture
+    def time_dep_burgers(self) -> BurgersOperator:
+        config = PDEConfig(
+            name="burgers_td",
+            pde_type=PDEType.BURGERS,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.01,
+            is_time_dependent=True,
+        )
+        return BurgersOperator(config)
+
+    def test_steady_returns_none(self) -> None:
+        """Non-time-dependent Burgers has no closed-form Cole-Hopf solution."""
+        config = PDEConfig(
+            name="burgers_steady",
+            pde_type=PDEType.BURGERS,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.01,
+            is_time_dependent=False,
+        )
+        op = BurgersOperator(config)
+        coords = torch.tensor([[0.5, 0.0]], dtype=torch.float32)
+        assert op.exact_solution(coords, time=0.5) is None
+
+    def test_tensor_path_returns_finite_tensor(self, time_dep_burgers: BurgersOperator) -> None:
+        coords = torch.linspace(0.05, 0.95, 11).unsqueeze(-1)
+        coords = torch.cat([coords, torch.zeros_like(coords)], dim=-1)
+        u = time_dep_burgers.exact_solution(coords, time=0.1)
+        assert isinstance(u, torch.Tensor)
+        assert u.shape == (11,)
+        assert torch.isfinite(u).all()
+
+    def test_numpy_path_returns_finite_array(self, time_dep_burgers: BurgersOperator) -> None:
+        coords = np.column_stack(
+            [np.linspace(0.05, 0.95, 11), np.zeros(11)],
+        ).astype(np.float32)
+        u = time_dep_burgers.exact_solution(coords, time=0.1)
+        assert isinstance(u, np.ndarray)
+        assert u.dtype == np.float32
+        assert u.shape == (11,)
+        assert np.isfinite(u).all()
+
+    def test_default_time_is_zero(self, time_dep_burgers: BurgersOperator) -> None:
+        """Both paths default time=None to t=0.0."""
+        coords_t = torch.tensor([[0.3, 0.0]], dtype=torch.float32)
+        u_t = time_dep_burgers.exact_solution(coords_t, time=None)
+        u_t0 = time_dep_burgers.exact_solution(coords_t, time=0.0)
+        assert isinstance(u_t, torch.Tensor)
+        assert isinstance(u_t0, torch.Tensor)
+        assert torch.allclose(u_t, u_t0)
+
+
+class TestAdvectionDiffusionOperatorResidual:
+    """Cover AdvectionDiffusionOperator.residual autodiff body (lines 805-831)."""
+
+    @pytest.fixture
+    def operator(self) -> AdvectionDiffusionOperator:
+        config = PDEConfig(
+            name="advdiff_residual",
+            pde_type=PDEType.ADVECTION_DIFFUSION,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.1,
+            advection_coeff=[1.0, 0.5],
+            is_time_dependent=False,
+        )
+        return AdvectionDiffusionOperator(config)
+
+    def test_residual_finite_on_smooth_u(self, operator: AdvectionDiffusionOperator) -> None:
+        coords = torch.tensor(
+            [[0.3, 0.4], [0.6, 0.7], [0.5, 0.5]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        u = (coords[:, 0] + coords[:, 1]).unsqueeze(-1)
+        residual = operator.residual(u, coords)
+        assert isinstance(residual, PDEResidual)
+        assert residual.values.shape == (3,)
+        assert torch.isfinite(residual.values).all()
+        assert np.isfinite(residual.l2_norm)
+        assert np.isfinite(residual.max_norm)
+
+    def test_residual_drops_derivatives_on_request(
+        self, operator: AdvectionDiffusionOperator
+    ) -> None:
+        coords = torch.tensor([[0.3, 0.4]], dtype=torch.float32, requires_grad=True)
+        u = (coords[:, 0] ** 2).unsqueeze(-1)
+        residual = operator.residual(u, coords, compute_derivatives=False)
+        assert residual.derivatives == {}
+
+
+class TestNavierStokesOperator:
+    """Construction + residual coverage for NavierStokesOperator (lines 1003-1138)."""
+
+    @pytest.fixture
+    def ns_config(self) -> PDEConfig:
+        return PDEConfig(
+            name="ns_test",
+            pde_type=PDEType.NAVIER_STOKES,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.1,
+            is_time_dependent=True,
+        )
+
+    def test_viscosity_from_diffusion_coeff(self, ns_config: PDEConfig) -> None:
+        op = NavierStokesOperator(ns_config)
+        assert op.viscosity == pytest.approx(0.1)
+        assert op.reynolds_number == pytest.approx(10.0)
+
+    def test_viscosity_from_reynolds_number(self, ns_config: PDEConfig) -> None:
+        op = NavierStokesOperator(ns_config, reynolds_number=100.0)
+        assert op.reynolds_number == pytest.approx(100.0)
+        assert op.viscosity == pytest.approx(0.01)
+
+    def test_residual_2d_velocity_returns_finite(self, ns_config: PDEConfig) -> None:
+        op = NavierStokesOperator(ns_config)
+        # coords must be the grad-enabled tensor that u is computed from,
+        # so torch.autograd.grad inside residual() can trace back through u.
+        # The u must also depend non-linearly on coords so the SECOND-order
+        # derivative inside residual (laplacian via d/dx of d ux/dx) has a
+        # non-trivial grad_fn — a purely linear u produces a constant
+        # first derivative and the second-order autograd.grad errors with
+        # "element 0 of tensors does not require grad".
+        coords = torch.tensor(
+            [[0.3, 0.4], [0.6, 0.7]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        # Smooth, non-linear, divergence-friendly velocity field.
+        u = torch.stack(
+            [
+                torch.sin(coords[:, 0]) * torch.cos(coords[:, 1]),
+                -torch.cos(coords[:, 0]) * torch.sin(coords[:, 1]),
+            ],
+            dim=-1,
+        )
+        residual = op.residual(u, coords)
+        assert isinstance(residual, PDEResidual)
+        assert residual.values.shape == (2,)
+        assert torch.isfinite(residual.values).all()
+        # derivatives populated when compute_derivatives=True (default).
+        for key in ("ux_x", "uy_y", "continuity", "momentum_x"):
+            assert key in residual.derivatives, f"missing derivative key {key}"
+
+    def test_residual_drops_derivatives_when_disabled(self, ns_config: PDEConfig) -> None:
+        op = NavierStokesOperator(ns_config)
+        # Non-linear u in coords so the second-order autograd has a grad_fn.
+        # A purely linear u would produce constant first derivatives and the
+        # second-order grad call inside residual() would error.
+        coords = torch.tensor(
+            [[0.3, 0.4], [0.5, 0.5]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        u = torch.stack(
+            [torch.sin(coords[:, 0]) * coords[:, 1], -(coords[:, 0] ** 2)],
+            dim=-1,
+        )
+        residual = op.residual(u, coords, compute_derivatives=False)
+        assert residual.derivatives == {}
+
+
+class TestLShapedPoissonOperatorCoverage:
+    """Cover LShapedPoissonOperator gaps.
+
+    Targets residual, compute_error, generate_boundary_points
+    (lines 1410-1424, 1500-1537 in src/pde/operators.py).
+    """
+
+    @pytest.fixture
+    def operator(self) -> LShapedPoissonOperator:
+        from src.pde.geometry import GeometryConfig, GeometryType
+
+        config = PDEConfig(
+            name="lshaped_test",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[-1.0, -1.0],
+            domain_max=[1.0, 1.0],
+            geometry=GeometryConfig(geometry_type=GeometryType.L_SHAPED),
+        )
+        return LShapedPoissonOperator(config)
+
+    def test_residual_finite_on_smooth_u(self, operator: LShapedPoissonOperator) -> None:
+        coords = torch.tensor(
+            [[0.3, 0.4], [-0.2, 0.5]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        u = (coords[:, 0] ** 2 + coords[:, 1] ** 2).unsqueeze(-1)
+        residual = operator.residual(u, coords)
+        assert isinstance(residual, PDEResidual)
+        assert residual.values.shape == (2,)
+        assert torch.isfinite(residual.values).all()
+
+    def test_residual_drops_derivatives_when_disabled(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        coords = torch.tensor([[0.3, 0.4]], dtype=torch.float32, requires_grad=True)
+        u = (coords[:, 0] ** 2).unsqueeze(-1)
+        residual = operator.residual(u, coords, compute_derivatives=False)
+        assert residual.derivatives == {}
+
+    def test_compute_error_returns_finite_metrics(self, operator: LShapedPoissonOperator) -> None:
+        coords = torch.tensor(
+            [[0.3, 0.4], [-0.2, 0.5]],
+            dtype=torch.float32,
+        )
+        # Use the exact solution itself as a prediction -> error must be ~0.
+        u_pred = operator.exact_solution(coords)
+        assert isinstance(u_pred, torch.Tensor)
+        result = operator.compute_error(u_pred, coords)
+        assert set(result.keys()) == {"l2_error", "linf_error", "mse"}
+        for value in result.values():
+            assert np.isfinite(value)
+            # Predicting the exact solution should yield ~zero error.
+            assert value < 1e-5
+
+    def test_generate_boundary_points_shape(self, operator: LShapedPoissonOperator) -> None:
+        # n_points_per_face=10 distributes 6*10=60 points across the L-shape's
+        # boundary segments (per the operator's docstring).
+        pts = operator.generate_boundary_points(n_points_per_face=10, seed=42)
+        assert pts.shape == (60, 2)
+        assert pts.dtype == np.float32
+
+    def test_generate_boundary_points_seed_reproducible(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        pts_a = operator.generate_boundary_points(n_points_per_face=8, seed=11)
+        pts_b = operator.generate_boundary_points(n_points_per_face=8, seed=11)
+        np.testing.assert_array_equal(pts_a, pts_b)
+
+    def test_singular_solution_zero_on_positive_x_axis(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        # The L-shaped exact solution u(r, theta) = r^(2/3) * sin(2*theta/3)
+        # vanishes at theta = 0 (positive x-axis). r^(2/3) * sin(0) = 0.
+        coords = torch.tensor([[0.5, 0.0], [0.7, 0.0]], dtype=torch.float32)
+        u_exact = operator.exact_solution(coords)
+        assert isinstance(u_exact, torch.Tensor)
+        # Allow float-arithmetic noise around zero.
+        assert float(u_exact.abs().max()) < 1e-5

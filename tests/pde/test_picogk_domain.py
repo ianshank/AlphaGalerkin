@@ -63,6 +63,36 @@ class TestPicoGKDomainConstruction:
         with pytest.raises(ValueError, match="volume_samples"):
             PicoGKDomain(sdf_evaluator=sdf, volume_samples=0)
 
+    def test_invalid_grad_epsilon(self, sdf: AnalyticalHelixSDF) -> None:
+        with pytest.raises(ValueError, match="grad_epsilon"):
+            PicoGKDomain(sdf_evaluator=sdf, volume_samples=64, grad_epsilon=0.0)
+
+    def test_invalid_max_oversample(self, sdf: AnalyticalHelixSDF) -> None:
+        # max_oversample must be strictly greater than oversample_factor.
+        with pytest.raises(ValueError, match="max_oversample"):
+            PicoGKDomain(
+                sdf_evaluator=sdf,
+                volume_samples=64,
+                oversample_factor=10.0,
+                max_oversample=10.0,
+            )
+
+    def test_invalid_projection_max_iters(self, sdf: AnalyticalHelixSDF) -> None:
+        with pytest.raises(ValueError, match="projection_max_iters"):
+            PicoGKDomain(
+                sdf_evaluator=sdf,
+                volume_samples=64,
+                projection_max_iters=0,
+            )
+
+    def test_invalid_min_grad_norm_sq(self, sdf: AnalyticalHelixSDF) -> None:
+        with pytest.raises(ValueError, match="min_grad_norm_sq"):
+            PicoGKDomain(
+                sdf_evaluator=sdf,
+                volume_samples=64,
+                min_grad_norm_sq=0.0,
+            )
+
     def test_inverted_bounding_box_raises(self) -> None:
         """An SDF with min >= max in any axis must be rejected."""
 
@@ -220,6 +250,142 @@ class TestPicoGKDomainSampling:
         for d, (lo, hi) in enumerate(zip(mins, maxs, strict=True)):
             assert torch.all(points[:, d] >= lo - 1e-6)
             assert torch.all(points[:, d] <= hi + 1e-6)
+
+
+class TestPicoGKDomainAcceptRate:
+    """The ``volume_accept_rate`` property must reflect the MC pass."""
+
+    def test_accept_rate_in_unit_interval(self, domain: PicoGKDomain) -> None:
+        rate = domain.volume_accept_rate
+        assert 0.0 < rate < 1.0
+
+    def test_accept_rate_consistent_with_volume(
+        self, domain: PicoGKDomain, sdf: AnalyticalHelixSDF
+    ) -> None:
+        # area = accept_rate * bbox_volume
+        (mins, maxs) = sdf.bounding_box()
+        bbox_volume = 1.0
+        for lo, hi in zip(mins, maxs, strict=True):
+            bbox_volume *= hi - lo
+        derived = domain.volume_accept_rate * bbox_volume
+        assert derived == pytest.approx(domain.area, rel=1e-6)
+
+
+class TestPicoGKDomainBisectionFallback:
+    """Bisection fallback recovers points where Newton stalls."""
+
+    def test_disable_fallback_round_trips(self, sdf: AnalyticalHelixSDF) -> None:
+        # Constructing with the fallback disabled must still satisfy every
+        # invariant; only points that previously needed the fallback may
+        # come back slightly off-surface (still bounded by the Newton
+        # tolerance for typical helix params).
+        d = PicoGKDomain(
+            sdf_evaluator=sdf,
+            volume_samples=512,
+            enable_bisection_fallback=False,
+        )
+        pts = d.sample_boundary(32)
+        assert pts.shape == (32, 3)
+
+    def test_bracket_factor_validation(self, sdf: AnalyticalHelixSDF) -> None:
+        with pytest.raises(ValueError, match="bisection_bracket_factor"):
+            PicoGKDomain(
+                sdf_evaluator=sdf,
+                volume_samples=64,
+                bisection_bracket_factor=0.0,
+            )
+
+    def test_max_iters_validation(self, sdf: AnalyticalHelixSDF) -> None:
+        with pytest.raises(ValueError, match="bisection_max_iters"):
+            PicoGKDomain(
+                sdf_evaluator=sdf,
+                volume_samples=64,
+                bisection_max_iters=0,
+            )
+
+    def test_fallback_drives_residual_below_tolerance(self, sdf: AnalyticalHelixSDF) -> None:
+        """The fallback must drive every accepted point under the tolerance.
+
+        Use a tight tolerance and a tight Newton budget so the fallback
+        is the path that closes the gap.
+        """
+        d = PicoGKDomain(
+            sdf_evaluator=sdf,
+            volume_samples=512,
+            boundary_tolerance=1e-5,
+            projection_max_iters=2,  # tiny Newton budget
+            enable_bisection_fallback=True,
+            bisection_max_iters=24,
+        )
+        pts = d.sample_boundary(32)
+        residual = d.sdf_evaluator.sdf(pts).abs()
+        assert torch.all(residual < d.boundary_tolerance)
+
+    def test_flat_sdf_still_fails_loud(self) -> None:
+        """A degenerate SDF must still raise even with the fallback enabled."""
+        from src.pde.geometry_picogk import PicoGKDomain
+
+        class _FlatPositiveSDF:
+            dim = 3
+
+            def bounding_box(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+                return (-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)
+
+            def sdf(self, points):
+                return torch.ones(points.shape[0])
+
+        domain = PicoGKDomain(
+            sdf_evaluator=_FlatPositiveSDF(),  # type: ignore[arg-type]
+            volume_samples=64,
+            boundary_tolerance=1e-6,
+            enable_bisection_fallback=True,
+        )
+        with pytest.raises(RuntimeError, match="zero level set"):
+            domain.sample_boundary(4)
+
+    def test_bisection_fallback_no_op_when_all_converged(
+        self, domain: PicoGKDomain, sdf: AnalyticalHelixSDF
+    ) -> None:
+        """No-op when every input point already satisfies |sdf| < tol.
+
+        Covers the ``n_failing == 0`` early-exit branch of
+        ``_bisection_fallback``.
+        """
+        ts = torch.linspace(0.2, sdf.n_turns - 0.2, steps=8)
+        center = sdf._centerline(ts)
+        radial = torch.stack([center[:, 0], center[:, 1], torch.zeros_like(ts)], dim=-1)
+        radial = radial / torch.linalg.norm(radial, dim=-1, keepdim=True)
+        on_surface = center + sdf.r_minor * radial
+        # Loose tolerance so every point trivially satisfies |sdf| < tol.
+        d = PicoGKDomain(
+            sdf_evaluator=sdf,
+            volume_samples=64,
+            boundary_tolerance=1.0,
+            enable_bisection_fallback=True,
+        )
+        out = d._bisection_fallback(on_surface)
+        assert torch.equal(out, on_surface)
+
+    def test_projection_converged_log_branch(self, sdf: AnalyticalHelixSDF) -> None:
+        """First-iteration convergence triggers the projection-converged log.
+
+        Covers the ``picogk_projection_converged`` break path inside
+        ``_project_to_surface`` by relaxing ``boundary_tolerance`` enough
+        that any candidate already satisfies it.
+        """
+        d = PicoGKDomain(
+            sdf_evaluator=sdf,
+            volume_samples=64,
+            boundary_tolerance=10.0,  # any candidate already satisfies |sdf| < tol
+            projection_max_iters=4,
+        )
+        # Sample some interior points — any random batch will do — then
+        # run them through the projector. The first iter checks the
+        # tolerance and breaks.
+        pts = d.sample_interior(8)
+        projected = d._project_to_surface(pts)
+        # No crash; shape preserved.
+        assert projected.shape == pts.shape
 
 
 class TestCreateGeometryFactory:

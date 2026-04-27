@@ -198,3 +198,174 @@ class TestNoyronHXScenarioConfigValidators:
                 n_eval_pts=128,  # smaller than train: degenerate
                 device="cpu",
             )
+
+    def test_helix_n_turns_default_matches_yaml(self) -> None:
+        """The dataclass default must match config/scenarios/noyron_hx.yaml.
+
+        Mismatch was the v1 deviation noted in the gap report; locking
+        this in a test keeps the YAML and Python defaults in lockstep.
+        """
+        cfg = NoyronHXScenarioConfig(
+            name="defaults",
+            description="x",
+            n_train_pts=64,
+            n_eval_pts=64,
+            device="cpu",
+        )
+        assert cfg.helix_n_turns == 5
+
+
+# ---------------------------------------------------------------------------
+# Metrics surfaced by execute() — the gap-report fixes for the missing
+# ``accept_rate`` / ``train_time_s`` / ``eval_time_s`` keys.
+# ---------------------------------------------------------------------------
+
+
+class TestNoyronHXScenarioMetrics:
+    """Verify the result.metrics dict contains every expected key."""
+
+    def test_accept_rate_metric_recorded(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        result = scenario.run()
+        assert result.status != ScenarioStatus.ERROR
+        assert "accept_rate" in result.metrics
+        # Helical tube fills only a few percent of its bbox.
+        rate = result.metrics["accept_rate"]
+        assert 0.0 < rate < 1.0
+
+    def test_timing_metrics_recorded(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        result = scenario.run()
+        assert result.status != ScenarioStatus.ERROR
+        assert "train_time_s" in result.metrics
+        assert "eval_time_s" in result.metrics
+        # Times are positive seconds.
+        assert result.metrics["train_time_s"] >= 0.0
+        assert result.metrics["eval_time_s"] >= 0.0
+
+    def test_voxel_fdm_uses_fdm_supervision(self) -> None:
+        """voxel_fdm mode trains on FDM samples, not the harmonic field.
+
+        Verifies the v1 deviation is fixed by checking the cached FDM
+        coordinates are returned by ``_sample_voxel_fdm_batch`` and that
+        the source supplied to the network is exactly zero (matching the
+        homogeneous Laplacian the FDM solver enforces).
+        """
+        import torch
+
+        cls = _import_scenario_class()
+        cfg = _smoke_config().model_copy(
+            update={
+                "ref_solver_kind": "voxel_fdm",
+                "voxel_fdm_resolution": 16,
+            }
+        )
+        scenario = cls(config=cfg)
+        scenario.setup()
+        try:
+            interior, target, source, boundary, b_target = scenario._sample_voxel_fdm_batch(
+                n_pts=8, n_boundary_pts=4
+            )
+            assert interior.shape == (8, 3)
+            assert target.shape == (8,)
+            # FDM training source must be identically zero.
+            assert torch.equal(source, torch.zeros_like(source))
+            # Boundary supervision matches the operator's Dirichlet condition,
+            # not the harmonic reference. With ``boundary_mode='inner_dirichlet'``
+            # the operator returns the configured ``config.boundary_value`` (0.0
+            # by default) at every point.
+            assert torch.allclose(b_target, torch.zeros_like(b_target))
+            # The FDM cache must be populated and the same on a second call.
+            (coords_a, u_a) = scenario._voxel_fdm_reference()
+            (coords_b, u_b) = scenario._voxel_fdm_reference()
+            assert coords_a is coords_b
+            assert u_a is u_b
+        finally:
+            scenario.teardown()
+
+    def test_voxel_fdm_cache_cleared_on_teardown(self) -> None:
+        """teardown() must drop the FDM cache so re-runs do not leak state."""
+        cls = _import_scenario_class()
+        cfg = _smoke_config().model_copy(
+            update={
+                "ref_solver_kind": "voxel_fdm",
+                "voxel_fdm_resolution": 16,
+            }
+        )
+        scenario = cls(config=cfg)
+        scenario.setup()
+        scenario._voxel_fdm_reference()
+        assert scenario._voxel_fdm_cache is not None
+        scenario.teardown()
+        assert scenario._voxel_fdm_cache is None
+
+
+class TestNoyronHXScenarioPoolSampling:
+    """Regression tests for the shared ``_draw_pool_indices`` helper."""
+
+    def test_without_replacement_when_pool_large(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            idx = scenario._draw_pool_indices(n_pool=128, n_pts=32)
+            # ``randperm`` semantics: every index unique.
+            assert idx.shape == (32,)
+            assert idx.unique().numel() == 32
+        finally:
+            scenario.teardown()
+
+    def test_with_replacement_when_pool_smaller(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            idx = scenario._draw_pool_indices(n_pool=16, n_pts=128)
+            # ``randint`` semantics: shape preserved, indices in range.
+            assert idx.shape == (128,)
+            assert int(idx.min().item()) >= 0
+            assert int(idx.max().item()) < 16
+        finally:
+            scenario.teardown()
+
+    def test_invalid_n_pool_raises(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            with pytest.raises(ValueError, match="n_pool"):
+                scenario._draw_pool_indices(n_pool=0, n_pts=4)
+        finally:
+            scenario.teardown()
+
+    def test_invalid_n_pts_raises(self) -> None:
+        cls = _import_scenario_class()
+        scenario = cls(config=_smoke_config())
+        scenario.setup()
+        try:
+            with pytest.raises(ValueError, match="n_pts"):
+                scenario._draw_pool_indices(n_pool=16, n_pts=0)
+        finally:
+            scenario.teardown()
+
+
+class TestNoyronHXScenarioConstants:
+    """Surfaced module constants must be importable and consistent."""
+
+    def test_constants_documented(self) -> None:
+        from src.poc.scenarios.noyron_hx import (
+            DEFAULT_NORMALIZE_EXTENT_FLOOR,
+            DEFAULT_TRANSFER_RATIO_FLOOR,
+            EVAL_SEED_STRIDE,
+        )
+
+        # All numerical-stability floors must be strictly positive.
+        assert DEFAULT_TRANSFER_RATIO_FLOOR > 0
+        assert DEFAULT_NORMALIZE_EXTENT_FLOOR > 0
+        # The seed stride must be a positive integer; it is multiplied
+        # into ``int * int`` arithmetic so non-integers would silently
+        # break determinism.
+        assert isinstance(EVAL_SEED_STRIDE, int)
+        assert EVAL_SEED_STRIDE > 0

@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.training.callbacks import CallbackSpec
+
 
 class DomainConfig(BaseModel):
     """Configuration for the physical domain Omega = [0,1]^2."""
@@ -326,6 +328,20 @@ class TrainingConfig(BaseModel):
         description=(
             "Overall weight for the physics loss term in CombinedAlphaGalerkinPhysicsLoss. "
             "Only active when physics_loss_type != 'none'."
+        ),
+    )
+
+    # Lifecycle callbacks (data-driven extension point for monitoring,
+    # custom logging, LBB stability tracking, etc.). Resolved by name
+    # via ``src.training.callbacks.CallbackRegistry``; built-in callbacks
+    # are auto-imported.  Empty list = no behaviour change (default).
+    callbacks: list[CallbackSpec] = Field(
+        default_factory=list,
+        description=(
+            "Lifecycle callbacks dispatched during training "
+            "(on_train_start, on_step_end, on_evaluation, on_checkpoint, "
+            "on_train_end).  Each entry names a callback registered in "
+            "``CallbackRegistry`` and supplies its constructor params."
         ),
     )
 

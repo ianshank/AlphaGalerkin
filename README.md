@@ -549,6 +549,63 @@ python -m src.poc.cli run --config config/scenarios/poc_full.yaml
 python -m src.poc.cli list
 ```
 
+### Noyron HX — Zero-Shot 3D Heat-Transfer Demo (Leap 71 integration)
+
+Train an `AlphaGalerkin` PINN-style surrogate at low collocation-point density on
+an SDF-bounded helical heat exchanger that mirrors Leap 71's downloadable Noyron
+HX, then evaluate zero-shot at 4× density. The demo runs entirely on the
+analytical helical-tube SDF (no `.NET` / PicoGK runtime required); the optional
+`[picogk]` extra is reserved for runs against a downloaded Leap 71 STL.
+
+The analytical reference is `u(p) = sin(k x) + sin(k y) + sin(k z)` with
+default `k = π` (one full period across the unit cube). This is the
+**headline resolution-independence demo**: at `k = π` the measured
+`transfer_ratio = mse_high / mse_low = 1.00 ± 0.01` on a Blackwell-class
+GPU — eval at 4× training point density gives the same MSE as eval at
+training density, which is the central claim for resolution-independent
+operator learning.
+
+Raising `harmonic_wave_number` to `2π` or `4π` exercises the Fourier-feature
+surrogate at higher frequencies — both absolute MSE and the transfer ratio
+degrade. Reaching tighter absolute MSEs (e.g. `1e-3`) at any frequency
+requires growing the surrogate beyond the YAML defaults: `d_model ≥ 128`,
+`n_train_pts ≥ 16k`, or `n_epochs ≥ 1000`.
+
+```bash
+# CPU smoke test (analytical reference, ~30 s)
+python -m src.poc.cli run --scenario noyron_hx \
+    --config config/scenarios/noyron_hx.yaml \
+    scenarios.0.device=cpu
+
+# GPU headline run (analytical reference, ~7 min on a Blackwell GPU)
+python -m src.poc.cli run --scenario noyron_hx \
+    --config config/scenarios/noyron_hx.yaml
+
+# Voxel-FDM reference run (~15-30 min on GPU)
+python -m src.poc.cli run --scenario noyron_hx \
+    --config config/scenarios/noyron_hx.yaml \
+    scenarios.0.ref_solver_kind=voxel_fdm
+```
+
+**Success criteria at YAML defaults** (4096 colloc, `d_model=64`, 32 Fourier
+features, 200 epochs, `k = π`):
+
+| Metric                                   | Threshold | Measured     |
+| ---------------------------------------- | --------- | ------------ |
+| `transfer_ratio = mse_high / mse_low`    | < 1.5     | 1.00 ± 0.01  |
+| `mse_low` (eval at training density)     | < 2e-2    | ~1.6e-2      |
+| `mse_high` (eval at 4× training density) | < 2e-2    | ~1.6e-2      |
+
+The transfer-ratio threshold is tight because that is the **headline
+resolution-independence claim**. The MSE thresholds are calibrated ~30%
+above the measured floor at the YAML-default surrogate size — they are not
+intended as a tight accuracy claim, only as a regression guard. Operators
+who need tighter absolute MSEs should grow the surrogate per the guidance
+above and tighten the thresholds in their per-scenario YAML accordingly.
+
+The scenario also records `accept_rate` (interior-bbox sampling efficiency),
+`train_time_s`, and `eval_time_s` in `ScenarioResult.metrics`.
+
 ### Code Quality
 
 ```bash

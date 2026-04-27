@@ -385,10 +385,13 @@ def load_config_from_dict(
         ValueError: If scenario type cannot be determined.
 
     """
+    from src.poc.config_noyron import NoyronHXScenarioConfig
+
     type_map: dict[str, type[BaseScenarioConfig]] = {
         "transfer": TransferScenarioConfig,
         "complexity": ComplexityScenarioConfig,
         "stability": StabilityScenarioConfig,
+        "noyron_hx": NoyronHXScenarioConfig,
     }
 
     # Determine type

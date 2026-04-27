@@ -40,6 +40,18 @@ DEFAULT_NEWTON_MAX_ITERS = 16
 # indistinguishably under float32. Override via ``newton_deriv_tol``.
 DEFAULT_NEWTON_DERIV_TOL = 1e-8
 
+# Default number of Newton refinement steps applied after the bisection /
+# grid-search fallback selects a better initial parameter. Kept small —
+# the grid bracket is already coarse enough that convergence is fast.
+DEFAULT_FALLBACK_NEWTON_REFINE_ITERS = 4
+
+# Default base coverage for the grid-search fallback (multiplier on
+# ``n_turns`` plus a constant). Resolves to ``4 * n_turns + 1`` so each
+# helical revolution gets at least four candidate parameters before
+# Newton refines the winner.
+DEFAULT_FALLBACK_GRID_PER_TURN = 4
+DEFAULT_FALLBACK_GRID_BASELINE = 1
+
 
 @runtime_checkable
 class SDFEvaluator(Protocol):
@@ -123,6 +135,9 @@ class AnalyticalHelixSDF:
         n_turns: int = 5,
         newton_max_iters: int = DEFAULT_NEWTON_MAX_ITERS,
         newton_deriv_tol: float = DEFAULT_NEWTON_DERIV_TOL,
+        enable_fallback: bool = True,
+        fallback_grid_size: int | None = None,
+        fallback_newton_refine_iters: int = DEFAULT_FALLBACK_NEWTON_REFINE_ITERS,
     ) -> None:
         if R_major <= 0:
             raise ValueError(f"R_major must be > 0, got {R_major}")
@@ -136,6 +151,10 @@ class AnalyticalHelixSDF:
             raise ValueError(f"newton_max_iters must be >= 1, got {newton_max_iters}")
         if newton_deriv_tol <= 0:
             raise ValueError(f"newton_deriv_tol must be > 0, got {newton_deriv_tol}")
+        if fallback_newton_refine_iters < 0:
+            raise ValueError(
+                f"fallback_newton_refine_iters must be >= 0, got {fallback_newton_refine_iters}"
+            )
         # A tube wider than its helix radius produces a self-intersecting
         # torus; forbid this to keep the SDF well-defined.
         if r_minor >= R_major:
@@ -150,6 +169,19 @@ class AnalyticalHelixSDF:
         self.n_turns = int(n_turns)
         self.newton_max_iters = int(newton_max_iters)
         self.newton_deriv_tol = float(newton_deriv_tol)
+        self.enable_fallback = bool(enable_fallback)
+        # Resolve the grid size: an explicit override wins; otherwise the
+        # default scales linearly with n_turns so each revolution gets
+        # enough candidate parameters to bracket the global optimum.
+        resolved_grid = (
+            fallback_grid_size
+            if fallback_grid_size is not None
+            else DEFAULT_FALLBACK_GRID_PER_TURN * self.n_turns + DEFAULT_FALLBACK_GRID_BASELINE
+        )
+        if resolved_grid < 2:
+            raise ValueError(f"fallback_grid_size must be >= 2, got {resolved_grid}")
+        self.fallback_grid_size = int(resolved_grid)
+        self.fallback_newton_refine_iters = int(fallback_newton_refine_iters)
 
         logger.debug(
             "analytical_helix_sdf_created",
@@ -159,6 +191,9 @@ class AnalyticalHelixSDF:
             n_turns=n_turns,
             newton_max_iters=newton_max_iters,
             newton_deriv_tol=newton_deriv_tol,
+            enable_fallback=self.enable_fallback,
+            fallback_grid_size=self.fallback_grid_size,
+            fallback_newton_refine_iters=self.fallback_newton_refine_iters,
         )
 
     @property
@@ -225,12 +260,103 @@ class AnalyticalHelixSDF:
         nz = torch.zeros_like(t)
         return torch.stack([nx, ny, nz], dim=-1)
 
+    def _newton_residual(self, points: Tensor, t: Tensor) -> Tensor:
+        """Squared-distance derivative ``f(t) = -<p - c(t), c'(t)>``.
+
+        At a true nearest-parameter ``t*(p)`` this residual is zero. Used
+        both as the Newton stopping criterion and to identify points that
+        need the bisection / grid-search fallback.
+        """
+        c = self._centerline(t)
+        dc = self._centerline_tangent(t)
+        return -((points - c) * dc).sum(dim=-1)
+
+    def _newton_refine(self, points: Tensor, t: Tensor, n_iters: int) -> Tensor:
+        """Run ``n_iters`` clamped Newton steps on the squared-distance derivative.
+
+        Pure helper so both the primary loop and the fallback share one
+        well-tested update rule.
+        """
+        t_min = 0.0
+        t_max = float(self.n_turns)
+        for _ in range(n_iters):
+            c = self._centerline(t)
+            dc = self._centerline_tangent(t)
+            ddc = self._centerline_curvature(t)
+            diff = points - c
+            f = -(diff * dc).sum(dim=-1)
+            fprime = (dc * dc).sum(dim=-1) - (diff * ddc).sum(dim=-1)
+            safe_fprime = torch.where(
+                fprime.abs() > self.newton_deriv_tol,
+                fprime,
+                torch.full_like(fprime, self.newton_deriv_tol),
+            )
+            step = f / safe_fprime
+            t = torch.clamp(t - step, min=t_min, max=t_max)
+        return t
+
+    def _grid_fallback(self, points: Tensor, t_init: Tensor) -> Tensor:
+        """Bisection-style fallback for points where Newton has not converged.
+
+        The squared-distance ``||p - c(t)||^2`` is multimodal along the
+        helix (one local minimum per revolution), so blind sign-change
+        bisection on the derivative cannot guarantee the *global* minimum.
+        Instead we evaluate the squared distance on a coarse uniform grid
+        of ``[0, n_turns]``, pick the bracketing minimum per point, and
+        run a few more Newton steps from there. This is the standard
+        global-search-then-refine pattern and recovers the headline
+        accuracy on adversarial points (thin tubes, pathological initial
+        guesses) where pure Newton stalls.
+
+        Only the subset of points whose Newton residual exceeds
+        ``newton_deriv_tol`` participates so the cost is proportional to
+        the failure rate rather than the batch size.
+        """
+        residual = self._newton_residual(points, t_init)
+        needs_fallback = residual.abs() > self.newton_deriv_tol
+        n_fallback = int(needs_fallback.sum().item())
+        if n_fallback == 0:
+            return t_init
+
+        logger.debug(
+            "analytical_helix_sdf_fallback",
+            n_points=int(points.shape[0]),
+            n_fallback=n_fallback,
+            grid_size=self.fallback_grid_size,
+        )
+
+        pts_sub = points[needs_fallback]  # (M, 3)
+        grid = torch.linspace(
+            0.0,
+            float(self.n_turns),
+            steps=self.fallback_grid_size,
+            device=points.device,
+            dtype=points.dtype,
+        )  # (G,)
+        # ``_centerline`` accepts shape (G,) and returns (G, 3); broadcast
+        # the squared-distance computation against the M failing points.
+        centers = self._centerline(grid)  # (G, 3)
+        dists_sq = ((pts_sub.unsqueeze(1) - centers.unsqueeze(0)) ** 2).sum(dim=-1)
+        best = dists_sq.argmin(dim=-1)  # (M,)
+        t_grid = grid[best]
+
+        if self.fallback_newton_refine_iters > 0:
+            t_grid = self._newton_refine(pts_sub, t_grid, self.fallback_newton_refine_iters)
+
+        # Vectorized scatter-style update: indices where the mask is True
+        # get the refined value, all others keep the original Newton result.
+        t_out = t_init.clone()
+        t_out[needs_fallback] = t_grid
+        return t_out
+
     def _nearest_t(self, points: Tensor) -> Tensor:
         """Find the nearest centerline parameter ``t*(p)`` for each point.
 
         Solves ``f(t) = d/dt (1/2 ||p - c(t)||^2) = -(p - c(t)) . c'(t) = 0``
         via Newton's method, clamped to ``[0, n_turns]`` at each step so we
-        never leave the parameterized centerline.
+        never leave the parameterized centerline. Points that have not
+        converged within ``newton_deriv_tol`` after ``newton_max_iters``
+        are routed through ``_grid_fallback``.
 
         Args:
         ----
@@ -241,32 +367,13 @@ class AnalyticalHelixSDF:
             Shape ``(N,)``.
 
         """
-        t_min = 0.0
-        t_max = float(self.n_turns)
-
         # Initial guess from the z-coordinate of the point.
-        t = torch.clamp(points[:, 2] / self.pitch, min=t_min, max=t_max)
+        t = torch.clamp(points[:, 2] / self.pitch, min=0.0, max=float(self.n_turns))
 
-        for _ in range(self.newton_max_iters):
-            c = self._centerline(t)
-            dc = self._centerline_tangent(t)
-            ddc = self._centerline_curvature(t)
+        t = self._newton_refine(points, t, self.newton_max_iters)
 
-            diff = points - c  # (N, 3)
-
-            # f(t) = -<diff, c'(t)>
-            f = -(diff * dc).sum(dim=-1)
-            # f'(t) = <c'(t), c'(t)> - <diff, c''(t)>
-            fprime = (dc * dc).sum(dim=-1) - (diff * ddc).sum(dim=-1)
-
-            # Avoid dividing by a vanishing derivative.
-            safe_fprime = torch.where(
-                fprime.abs() > self.newton_deriv_tol,
-                fprime,
-                torch.full_like(fprime, self.newton_deriv_tol),
-            )
-            step = f / safe_fprime
-            t = torch.clamp(t - step, min=t_min, max=t_max)
+        if self.enable_fallback:
+            t = self._grid_fallback(points, t)
 
         return t
 
@@ -311,9 +418,9 @@ class PicoGKSDFEvaluator:
         try:
             # pythonnet is the standard bridge to .NET assemblies from
             # Python; PicoGK ships a Python wrapper on top of it.
-            import PicoGK  # noqa: F401
-            import pythonnet  # noqa: F401
-        except ImportError as exc:  # pragma: no cover - exercised via tests
+            import PicoGK  # noqa: F401  # pragma: no cover - optional dep
+            import pythonnet  # noqa: F401  # pragma: no cover - optional dep
+        except ImportError as exc:
             raise ImportError(
                 "PicoGKSDFEvaluator requires the optional [picogk] extra. "
                 "Install with: pip install alphagalerkin[picogk]"
@@ -322,7 +429,7 @@ class PicoGKSDFEvaluator:
         # distance grid. That work is deferred to the PicoGK integration
         # milestone; v1 of this research demo runs entirely on
         # AnalyticalHelixSDF.
-        raise NotImplementedError(
+        raise NotImplementedError(  # pragma: no cover - optional dep
             "PicoGK voxel ingestion is part of the post-v1 Leap 71 "
             "integration milestone; use AnalyticalHelixSDF for now."
         )

@@ -1065,6 +1065,16 @@ class NavierStokesOperator(PDEOperator):
             ux = u[:, 0:1]
             uy = u[:, 1:2]
         else:
+            # 1D-u fallback: treat the single component as ``u_x`` with the
+            # transverse component identically zero. ``uy`` is then a
+            # constant tensor with no grad path through ``coords``, so
+            # calling ``autograd.grad(uy, coords, ...)`` below would error
+            # with "element 0 of tensors does not require grad". The
+            # downstream code at the ``if grad_ux is not None and
+            # grad_uy is not None`` check already handles ``grad_uy is None``
+            # by routing into the zero-residual fallback, so we mirror that
+            # contract here by short-circuiting to ``None`` rather than
+            # making a doomed autograd call.
             ux = u
             uy = torch.zeros_like(u)
 
@@ -1078,13 +1088,20 @@ class NavierStokesOperator(PDEOperator):
             allow_unused=True,
         )[0]
 
-        grad_uy = torch.autograd.grad(
-            uy,
-            coords,
-            grad_outputs=torch.ones_like(uy),
-            create_graph=True,
-            allow_unused=True,
-        )[0]
+        # Only call autograd on ``uy`` when it actually carries grad through
+        # ``coords`` — otherwise it's the 1D-fallback constant-zero placeholder
+        # and the grad call would raise (see comment on the ``else`` branch
+        # above). ``grad_uy = None`` is already a supported state below.
+        if uy.requires_grad or uy.grad_fn is not None:
+            grad_uy = torch.autograd.grad(
+                uy,
+                coords,
+                grad_outputs=torch.ones_like(uy),
+                create_graph=True,
+                allow_unused=True,
+            )[0]
+        else:
+            grad_uy = None
 
         if grad_ux is not None and grad_uy is not None:
             dux_dx = grad_ux[:, 0]

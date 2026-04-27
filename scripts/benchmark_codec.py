@@ -38,6 +38,7 @@ from src.templates.logging import configure_module_logging, create_logger_class
 from src.video_compression.config import CodecConfig
 from src.video_compression.perf import (
     BaselineRegistry,
+    BenchmarkReport,
     PerfBenchmark,
     PerfBenchmarkConfig,
     baseline_from_report,
@@ -202,10 +203,7 @@ def _cmd_diff(args: argparse.Namespace) -> int:
     logger = _Logger("cli", subcommand="diff")
 
     report_raw = json.loads(Path(args.report).read_text())
-    # Reuse the report rehydrator from the perf package.
-    from src.video_compression.perf.benchmark import _report_from_dict
-
-    report = _report_from_dict(report_raw)
+    report = BenchmarkReport.from_dict(report_raw)
 
     registry = BaselineRegistry.load(args.baseline)
     diff = registry.compare_report(report, tolerance_pct=args.tolerance)

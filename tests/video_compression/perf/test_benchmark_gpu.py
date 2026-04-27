@@ -116,14 +116,20 @@ class TestDualCardSweep:
         # run-level default.
         assert labels == {"0", "1"}
 
-    def test_oom_on_smaller_card_is_recorded_not_aborted(self, tiny_codec_config) -> None:
-        """Forced VRAM-OOM on cuda:1 must not abort the cuda:0 cell."""
-        self._require_two_gpus()
-        # Pick a resolution that's small but allocate it twice. The
-        # purpose here is correctness-of-error-handling, not VRAM
-        # calibration — we use a deliberately tiny model so cuda:1
-        # *should* succeed on any modern GPU. The contract under test is
-        # "if cell N fails, cell N+1 still runs".
+    def test_cell_failure_is_recorded_not_aborted(self, tiny_codec_config) -> None:
+        """A cell failure must not abort the whole sweep when fail_fast=False.
+
+        This test simulates a failure by providing a resolution (63x63) that
+        is not divisible by the codec's downsample_factor (4), which raises
+        a ValueError during the subject's prepare() phase. The benchmark
+        should catch this, record the cell as failed, and continue to the
+        next cell.
+
+        (Note: this test does *not* exercise a true VRAM-OOM. Robust OOM
+        handling on cuda:1 will need a separate, hardware-calibrated test
+        once we know the 8 GB card's exact failure resolution.)
+        """
+        # Single-card test — no _require_two_gpus() gate needed.
         cfg = PerfBenchmarkConfig(
             name="dual_gpu_robust",
             resolutions=[
@@ -146,9 +152,7 @@ class TestDualCardSweep:
         )
         result = run_benchmark(cfg, codec_config=tiny_codec_config)
         report = report_from_result(result)
-        # Exactly one ok cell (64x64) and one failed cell (63x63 — not
-        # divisible by downsample_factor=4 → ValueError → recorded as
-        # failed, not aborted).
+        # Exactly one ok cell (64x64) and one failed cell (63x63).
         ok_count = sum(1 for c in report.cells if not c.failed)
         bad_count = sum(1 for c in report.cells if c.failed)
         assert ok_count == 1

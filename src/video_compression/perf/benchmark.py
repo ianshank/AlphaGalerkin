@@ -133,6 +133,52 @@ class BenchmarkReport:
     def to_json(self, *, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, sort_keys=True)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BenchmarkReport:
+        """Rehydrate a report from its ``to_dict()`` form.
+
+        Forward-compatible: missing optional fields fall back to
+        sentinels (``device_label=""``, ``schema_version=1``, ...) so
+        baselines or report files written by older code remain loadable.
+        """
+        cells = [
+            CellResult(
+                cell_key=c["cell_key"],
+                resolution_label=c["resolution_label"],
+                height=c["height"],
+                width=c["width"],
+                batch_size=c["batch_size"],
+                backend=RuntimeBackend(c["backend"]),
+                precision=Precision(c["precision"]),
+                phase=BenchmarkPhase(c["phase"]),
+                latency_stats=LatencyStats(
+                    count=c["latency_stats"]["count"],
+                    mean_ms=c["latency_stats"]["mean_ms"],
+                    min_ms=c["latency_stats"]["min_ms"],
+                    max_ms=c["latency_stats"]["max_ms"],
+                    std_ms=c["latency_stats"]["std_ms"],
+                    percentiles_ms={
+                        int(k): float(v) for k, v in c["latency_stats"]["percentiles_ms"].items()
+                    },
+                ),
+                throughput_fps=c["throughput_fps"],
+                peak_vram_mib=c["peak_vram_mib"],
+                device_label=c.get("device_label", ""),
+                failed=c.get("failed", False),
+                failure_reason=c.get("failure_reason"),
+            )
+            for c in data["cells"]
+        ]
+        return cls(
+            schema_version=data.get("schema_version", 1),
+            benchmark_id=data.get("benchmark_id", ""),
+            config_hash=data.get("config_hash", ""),
+            device=data.get("device", ""),
+            started_at=data.get("started_at", 0.0),
+            duration_s=data.get("duration_s", 0.0),
+            cells=cells,
+        )
+
 
 class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
     """Codec performance benchmark.
@@ -533,47 +579,7 @@ def report_from_result(result: ExecutionResult) -> BenchmarkReport:
         raise KeyError(
             "ExecutionResult has no 'report' artifact; was it produced by PerfBenchmark?",
         )
-    return _report_from_dict(result.artifacts["report"])
-
-
-def _report_from_dict(data: dict[str, Any]) -> BenchmarkReport:
-    cells = [
-        CellResult(
-            cell_key=c["cell_key"],
-            resolution_label=c["resolution_label"],
-            height=c["height"],
-            width=c["width"],
-            batch_size=c["batch_size"],
-            backend=RuntimeBackend(c["backend"]),
-            precision=Precision(c["precision"]),
-            phase=BenchmarkPhase(c["phase"]),
-            latency_stats=LatencyStats(
-                count=c["latency_stats"]["count"],
-                mean_ms=c["latency_stats"]["mean_ms"],
-                min_ms=c["latency_stats"]["min_ms"],
-                max_ms=c["latency_stats"]["max_ms"],
-                std_ms=c["latency_stats"]["std_ms"],
-                percentiles_ms={
-                    int(k): float(v) for k, v in c["latency_stats"]["percentiles_ms"].items()
-                },
-            ),
-            throughput_fps=c["throughput_fps"],
-            peak_vram_mib=c["peak_vram_mib"],
-            device_label=c.get("device_label", ""),
-            failed=c.get("failed", False),
-            failure_reason=c.get("failure_reason"),
-        )
-        for c in data["cells"]
-    ]
-    return BenchmarkReport(
-        schema_version=data.get("schema_version", 1),
-        benchmark_id=data.get("benchmark_id", ""),
-        config_hash=data.get("config_hash", ""),
-        device=data.get("device", ""),
-        started_at=data.get("started_at", 0.0),
-        duration_s=data.get("duration_s", 0.0),
-        cells=cells,
-    )
+    return BenchmarkReport.from_dict(result.artifacts["report"])
 
 
 def baseline_from_report(

@@ -1076,8 +1076,8 @@ class NavierStokesFDMSolver(BaseSolver):
                 ic = ic.detach().cpu().numpy()
             ic = np.asarray(ic, dtype=np.float64)
             if ic.ndim == 2 and ic.shape[-1] >= 2:
-                ux = np.asarray(ic[:, 0].reshape(n, n), dtype=np.float64)  # type: ignore[assignment]
-                uy = np.asarray(ic[:, 1].reshape(n, n), dtype=np.float64)  # type: ignore[assignment]
+                ux = np.asarray(ic[:, 0].reshape(n, n), dtype=np.float64)
+                uy = np.asarray(ic[:, 1].reshape(n, n), dtype=np.float64)
 
         # Time stepping via Chorin projection
         cfl_dt = self.config.cfl_safety * h**2 / max(viscosity, self.config.viscosity_floor)

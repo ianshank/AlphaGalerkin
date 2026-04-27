@@ -249,7 +249,9 @@ class TimeStepper(ABC):
             adaptive=False,
         )
 
-        while t < self.config.t_end - 1e-12 and step_count < self.config.max_steps:
+        while (
+            t < self.config.t_end - self.config.t_end_epsilon and step_count < self.config.max_steps
+        ):
             # Ensure we don't overshoot t_end
             dt_actual = min(self.dt, self.config.t_end - t)
             old_dt = self.dt

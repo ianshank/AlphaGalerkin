@@ -99,6 +99,8 @@ torchrun \
 
 `MASTER_ADDR` must be reachable from every node — typically a private IP on the same subnet. NCCL prefers RDMA-capable interconnect (InfiniBand) but falls back to TCP. If you see ~50 MB/s collectives over TCP, set `NCCL_SOCKET_IFNAME=eth0` (or your fast NIC) to force the right interface.
 
+> **Security:** `MASTER_PORT` must **not** be exposed to the public internet. Distributed PyTorch performs no peer authentication — anyone who can reach the port can join the process group, send tensors, and receive parameters. Restrict the port to a private subnet, a VPN, or `localhost` when running on a single node. Use a host-level firewall (`iptables` / `ufw` / Windows Firewall) to drop external connections to the port.
+
 ## SLURM
 
 `scripts/slurm_train.sh` (template):

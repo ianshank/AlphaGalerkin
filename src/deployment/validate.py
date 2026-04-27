@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-def _compute_psnr_db(pairs: list[tuple[np.ndarray, np.ndarray]]) -> float | None:
+def compute_psnr_db(pairs: list[tuple[np.ndarray, np.ndarray]]) -> float | None:
     """Aggregate PSNR (dB) across a list of (reference, candidate) pairs.
 
     PSNR = 10 * log10(peak^2 / mse) where ``peak`` is the dynamic range
@@ -277,8 +277,8 @@ class ModelValidator:
         value_psnr_db: float | None = None
         psnr_passed: bool | None = None
         if self.accuracy_threshold_psnr_db is not None:
-            policy_psnr_db = _compute_psnr_db(psnr_pairs_policy)
-            value_psnr_db = _compute_psnr_db(psnr_pairs_value)
+            policy_psnr_db = compute_psnr_db(psnr_pairs_policy)
+            value_psnr_db = compute_psnr_db(psnr_pairs_value)
             # An output stream "passes" PSNR if either (a) it is undefined
             # because the reference was zero / no pairs were collected
             # (in which case the strict tolerance gate already covers

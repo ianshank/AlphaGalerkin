@@ -11,7 +11,7 @@ Covers:
   validator.
 * ``ModelValidator`` accepts ``accuracy_threshold_psnr_db`` and surfaces
   PSNR + ``psnr_passed`` on :class:`ValidationResult`.
-* The ``_compute_psnr_db`` helper handles edge cases (empty input,
+* The ``compute_psnr_db`` helper handles edge cases (empty input,
   zero MSE, constant reference).
 
 These tests do not require CUDA and run cleanly on CPU CI runners.
@@ -31,7 +31,7 @@ from src.deployment.config import (
 from src.deployment.validate import (
     ModelValidator,
     ValidationResult,
-    _compute_psnr_db,
+    compute_psnr_db,
 )
 
 # ---------------------------------------------------------------------------
@@ -84,26 +84,26 @@ class TestAccuracyThresholdPsnrField:
 
 
 # ---------------------------------------------------------------------------
-# _compute_psnr_db helper
+# compute_psnr_db helper
 # ---------------------------------------------------------------------------
 
 
 class TestComputePsnrDb:
     def test_empty_input_returns_none(self) -> None:
-        assert _compute_psnr_db([]) is None
+        assert compute_psnr_db([]) is None
 
     def test_perfect_parity_returns_none(self) -> None:
         ref = np.array([1.0, 2.0, 3.0])
         # MSE is 0; helper signals "undefined" so the strict tolerance
         # gate carries the assertion.
-        assert _compute_psnr_db([(ref, ref.copy())]) is None
+        assert compute_psnr_db([(ref, ref.copy())]) is None
 
     def test_known_psnr_round_trip(self) -> None:
         # Reference range [0, 10], MSE = 1.0
         # PSNR = 10 * log10(100 / 1) = 20 dB
         ref = np.array([0.0, 5.0, 10.0])
         candidate = ref + 1.0
-        psnr = _compute_psnr_db([(ref, candidate)])
+        psnr = compute_psnr_db([(ref, candidate)])
         assert psnr is not None
         assert psnr == pytest.approx(20.0, abs=1e-9)
 
@@ -111,7 +111,7 @@ class TestComputePsnrDb:
         # peak == 0 would divide by zero; the helper clamps to 1e-12.
         ref = np.full(5, 7.0)
         candidate = ref + 0.5
-        psnr = _compute_psnr_db([(ref, candidate)])
+        psnr = compute_psnr_db([(ref, candidate)])
         # We don't assert a specific value — just that it's finite and
         # the helper didn't raise.
         assert psnr is not None and np.isfinite(psnr)
@@ -120,8 +120,8 @@ class TestComputePsnrDb:
         # Two identical pairs => same PSNR as a single pair.
         ref = np.array([0.0, 10.0])
         candidate = np.array([1.0, 9.0])
-        single = _compute_psnr_db([(ref, candidate)])
-        double = _compute_psnr_db([(ref, candidate), (ref, candidate)])
+        single = compute_psnr_db([(ref, candidate)])
+        double = compute_psnr_db([(ref, candidate), (ref, candidate)])
         assert single is not None and double is not None
         assert single == pytest.approx(double, abs=1e-9)
 

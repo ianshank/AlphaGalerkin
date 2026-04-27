@@ -48,6 +48,15 @@ DEFAULT_POISSON_REGULARIZATION = 1e-6
 # regularization scale; lowering it past ~1e-8 hits float32 noise.
 DEFAULT_GAUSS_SEIDEL_TOL = 1e-6
 
+# Maximum Gauss-Seidel sweeps before giving up. 10_000 is generous: the
+# iteration converges in ~1k sweeps on typical 32x32 grids; the cap is a
+# safety net against pathological problems where every sweep makes no
+# progress (e.g., a degenerate configuration or a tolerance set below
+# float-noise floor). Linked to DEFAULT_GAUSS_SEIDEL_TOL — both control
+# the same iterative fallback, so callers tuning one usually tune the
+# other in lockstep.
+DEFAULT_GAUSS_SEIDEL_MAX_ITER = 10_000
+
 
 @dataclass
 class PoissonSample(PhysicsSample[NDArray[np.float32], NDArray[np.float32]]):
@@ -212,7 +221,7 @@ class PoissonSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
     def _solve_iterative(
         self,
         charges: NDArray[np.float32],
-        max_iter: int = 10000,
+        max_iter: int = DEFAULT_GAUSS_SEIDEL_MAX_ITER,
         tol: float = DEFAULT_GAUSS_SEIDEL_TOL,
     ) -> NDArray[np.float64]:
         """Solve using Gauss-Seidel iteration (fallback method)."""

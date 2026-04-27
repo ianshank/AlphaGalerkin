@@ -40,7 +40,10 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
     )
     helix_r_minor: float = Field(default=0.012, gt=0.0, description="Tube cross-section radius.")
     helix_pitch: float = Field(default=0.02, gt=0.0, description="Vertical rise per turn.")
-    helix_n_turns: int = Field(default=3, ge=1, description="Number of helical revolutions.")
+    # Default of 5 matches both the YAML scenario (config/scenarios/noyron_hx.yaml)
+    # and ``AnalyticalHelixSDF`` so callers that instantiate the config in
+    # code see the same geometry as the headline run.
+    helix_n_turns: int = Field(default=5, ge=1, description="Number of helical revolutions.")
 
     # ----- SDF backend selection -----
     use_picogk: bool = Field(

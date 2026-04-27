@@ -361,10 +361,13 @@ C4Component
         Component(scenario_complexity, "Complexity Scenario", "Python Class", "Validates O(N) vs O(N²) complexity")
 
         Component(scenario_stability, "Stability Scenario", "Python Class", "Monitors LBB condition during training")
+
+        Component(scenario_noyron_hx, "Noyron HX Scenario", "Python Class", "Zero-shot 3D heat-transfer transfer on a Leap 71 helical SDF (analytical or voxel-FDM reference)")
     }
 
     Component_Ext(neural_operator, "Neural Operator Model", "Model under test")
     Component_Ext(physics_data, "Physics Data Generator", "Synthetic Poisson equation data")
+    Component_Ext(picogk_domain, "PicoGKDomain (SDF-backed)", "Helical tube SDF + bisection-projected boundary sampler")
     ComponentDb_Ext(results_store, "Results Store", "JSON/YAML files")
 
     Rel(cli_poc, registry, "Lists scenarios")
@@ -374,14 +377,18 @@ C4Component
     Rel(registry, scenario_transfer, "Registers")
     Rel(registry, scenario_complexity, "Registers")
     Rel(registry, scenario_stability, "Registers")
+    Rel(registry, scenario_noyron_hx, "Registers")
 
     Rel(runner, scenario_transfer, "Runs")
     Rel(runner, scenario_complexity, "Runs")
     Rel(runner, scenario_stability, "Runs")
+    Rel(runner, scenario_noyron_hx, "Runs")
 
     Rel(scenario_transfer, neural_operator, "Tests transfer")
     Rel(scenario_complexity, neural_operator, "Benchmarks complexity")
     Rel(scenario_stability, neural_operator, "Monitors stability")
+    Rel(scenario_noyron_hx, neural_operator, "Tests 3D zero-shot transfer")
+    Rel(scenario_noyron_hx, picogk_domain, "Samples interior + boundary")
 
     Rel(scenario_transfer, physics_data, "Generates test data")
 
@@ -404,6 +411,15 @@ C4Component
 | **Transfer Scenario** | Zero-shot transfer validation | Train 9x9 → eval 19x19, MSE < 0.05 |
 | **Complexity Scenario** | O(N) complexity verification | Timing benchmarks, scaling analysis |
 | **Stability Scenario** | LBB condition monitoring | Singular value tracking, β > 0 check |
+| **Noyron HX Scenario** | Zero-shot 3D heat-transfer on Leap 71 helical SDF | Train at 4k pts → eval at 16k pts, MSE < 1e-3, transfer_ratio < 4 |
+
+#### Noyron HX Scenario — Architecture Notes
+
+**Single-device by design at the current model size.** During the headline GPU run (4096 collocation points, `d_model=64`, 3 Galerkin layers, batch_size=1, 200 epochs) per-GPU utilization was observed at 1–10% on a Blackwell-class card. The bottleneck is per-step Adam overhead and Python/CUDA launch latency, not compute. Adding `DistributedDataParallel` would put NCCL all-reduce on the critical path of every step and slow training, not speed it up.
+
+**Revisit DDP only if the surrogate grows materially**: `n_train_pts ≥ 100k`, `d_model ≥ 512`, or `batch_size ≥ 32`. The torchrun infrastructure in [src/distributed/launcher.py](src/distributed/launcher.py) and the GPU-strict resolver in [src/poc/device.py](src/poc/device.py) already exist if/when that threshold is crossed.
+
+**Multi-GPU host strategy in the meantime**: run independent replicas (one per device) via `CUDA_VISIBLE_DEVICES=N`. Each replica trains its own model and produces an independent `ScenarioResult`; useful for seed-variance estimates or for running different `ref_solver_kind` modes side-by-side.
 
 ---
 

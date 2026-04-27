@@ -549,6 +549,35 @@ python -m src.poc.cli run --config config/scenarios/poc_full.yaml
 python -m src.poc.cli list
 ```
 
+### Noyron HX — Zero-Shot 3D Heat-Transfer Demo (Leap 71 integration)
+
+Train an `AlphaGalerkin` PINN-style surrogate at low collocation-point density on
+an SDF-bounded helical heat exchanger that mirrors Leap 71's downloadable Noyron
+HX, then evaluate zero-shot at 4× density. The demo runs entirely on the
+analytical helical-tube SDF (no `.NET` / PicoGK runtime required); the optional
+`[picogk]` extra is reserved for runs against a downloaded Leap 71 STL.
+
+```bash
+# CPU smoke test (analytical reference, ~30 s)
+python -m src.poc.cli run --scenario noyron_hx \
+    --config config/scenarios/noyron_hx.yaml \
+    scenarios.0.device=cpu
+
+# GPU headline run (analytical reference, ~2 min on GPU)
+python -m src.poc.cli run --scenario noyron_hx \
+    --config config/scenarios/noyron_hx.yaml
+
+# Voxel-FDM reference run (~15-30 min on GPU)
+python -m src.poc.cli run --scenario noyron_hx \
+    --config config/scenarios/noyron_hx.yaml \
+    scenarios.0.ref_solver_kind=voxel_fdm
+```
+
+Success criteria: `mse_low < 5e-4`, `mse_high < 1e-3`, and
+`transfer_ratio = mse_high / mse_low < 4`. The scenario also records
+`accept_rate` (interior-bbox sampling efficiency), `train_time_s`, and
+`eval_time_s` in `ScenarioResult.metrics`.
+
 ### Code Quality
 
 ```bash

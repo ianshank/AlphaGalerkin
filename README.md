@@ -250,6 +250,57 @@ python -m scripts.train_chess \
   training.engine_eval_depth=5
 ```
 
+### Distributed Training (Local Dual-GPU)
+
+For multi-GPU rigs (e.g. RTX 5060 Ti + 5060) with potentially asymmetric VRAM:
+
+```bash
+# 2-rank torchrun on the local box; per-rank batch sizes balance the smaller card.
+CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 scripts/train_distributed.py \
+    distributed.per_rank_batch_size=[128,64]
+```
+
+Full guide (multi-node torchrun, SLURM, Vertex AI, NCCL troubleshooting): [docs/distributed_training_guide.md](docs/distributed_training_guide.md).
+
+### Adaptive Time-Stepping for Transient PDEs
+
+Time-stepping for `BurgersOperator`, `HeatOperator`, `NavierStokesOperator`, etc. now supports a PI-controlled adaptive `dt`:
+
+```python
+from src.pde.time_stepping import TimeSteppingConfig, create_time_stepper, TimeSteppingMethod
+
+cfg = TimeSteppingConfig(
+    name="adaptive_burgers",
+    method=TimeSteppingMethod.RK4,
+    adaptive_dt=True,            # turn on the PI controller
+    dt=0.01, dt_min=1e-6, dt_max=0.1,
+    error_tolerance=1e-4,        # absolute tolerance
+    relative_tolerance=1.0,      # rtol coefficient (configurable)
+    safety_factor=0.9, pi_alpha=0.7, pi_beta=0.4,
+)
+stepper = create_time_stepper(cfg)
+snapshots = stepper.integrate(u0, rhs_fn)
+```
+
+Default `adaptive_dt=False` preserves the existing fixed-dt behaviour byte-identical.
+
+### Production-Ready ONNX Export (GPU-primary)
+
+```python
+from src.deployment.config import ExportConfig, DeploymentConfig
+from src.deployment.export_onnx import ONNXExporter
+from src.deployment.validate import ModelValidator
+
+export_cfg = ExportConfig()                       # export_device defaults to "cuda" — fails loud on missing GPU
+exporter = ONNXExporter(export_cfg)
+exporter.export(model, sample_input, "model.onnx")
+
+deploy_cfg = DeploymentConfig()                   # validation_device="auto", PSNR threshold 35 dB
+validator = ModelValidator(accuracy_threshold_psnr_db=deploy_cfg.accuracy_threshold_psnr_db)
+result = validator.validate(model, "model.onnx", test_inputs, device=deploy_cfg.validation_device)
+assert result.psnr_passed
+```
+
 ```python
 from config.schemas import OperatorConfig
 from src.modeling.model import AlphaGalerkinModel

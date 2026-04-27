@@ -99,6 +99,14 @@ class PDEOperator(ABC):
     is_linear: bool = True
     order: int = 2  # Order of highest derivative
 
+    # Multi-field metadata.  Default ``n_fields=1`` keeps every legacy
+    # operator (scalar Poisson, Heat, Burgers, ...) untouched: callers
+    # that don't need vector outputs simply ignore these attributes.
+    # Override in subclasses for vector-valued operators (e.g.
+    # NavierStokes -> n_fields=3, field_names=("u","v","p")).
+    n_fields: int = 1
+    field_names: tuple[str, ...] = ("scalar",)
+
     def __init__(self, config: PDEConfig) -> None:
         """Initialize PDE operator.
 
@@ -1022,6 +1030,11 @@ class NavierStokesOperator(PDEOperator):
     is_time_dependent = True
     is_linear = False
     order = 2
+
+    # Multi-field metadata: incompressible 2D NS has three primary
+    # unknowns — two velocity components and one pressure scalar.
+    n_fields = 3
+    field_names = ("u", "v", "p")
 
     def __init__(
         self,

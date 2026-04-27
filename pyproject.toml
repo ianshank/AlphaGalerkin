@@ -364,6 +364,7 @@ markers = [
     "video: video compression tests",
     "integration: integration tests",
     "dashboard: dashboard UI tests",
+    "distributed: real torch.multiprocessing.spawn-based distributed tests (Track D)",
 ]
 
 [tool.coverage.run]

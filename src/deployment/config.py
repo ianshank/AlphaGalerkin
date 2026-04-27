@@ -120,6 +120,20 @@ class ExportConfig(BaseModel):
         description="Model version string",
     )
 
+    # Device for the export trace.  Defaults to "cuda" because the
+    # AlphaGalerkin training rig uses CUDA-resident weights; resolved at
+    # call time via :func:`src.poc.device.resolve_device` which fails loud
+    # if CUDA is requested but missing.  Use "auto" for CI / CPU-only
+    # boxes (silent fallback) and "cpu" to force CPU export.
+    export_device: Literal["cuda", "cpu", "auto"] = Field(
+        default="cuda",
+        description=(
+            "Device on which the model trace runs during ONNX export. "
+            "'cuda' fails loud if CUDA is unavailable; 'auto' falls back "
+            "to CPU silently; 'cpu' forces CPU."
+        ),
+    )
+
     @field_validator("input_names", "output_names")
     @classmethod
     def validate_names(cls, v: list[str]) -> list[str]:
@@ -346,6 +360,25 @@ class DeploymentConfig(BaseModel):
         default=10,
         ge=1,
         description="Number of samples for validation",
+    )
+    validation_device: Literal["cuda", "cpu", "auto"] = Field(
+        default="auto",
+        description=(
+            "Device for the PyTorch reference forward pass during "
+            "ONNX-vs-PyTorch validation.  Defaults to 'auto' (silent "
+            "GPU/CPU fallback) so CI runners and edge devices both work; "
+            "set to 'cuda' to require GPU parity."
+        ),
+    )
+    accuracy_threshold_psnr_db: float = Field(
+        default=35.0,
+        ge=0.0,
+        description=(
+            "Minimum PSNR (dB) for the quantized ONNX output relative "
+            "to the float PyTorch reference.  Used by validate.py to "
+            "gate INT8 deployment.  Lower = more lenient; 35 dB is a "
+            "typical 'visually lossless' threshold for image-like outputs."
+        ),
     )
 
     # Target platforms

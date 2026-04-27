@@ -27,6 +27,28 @@ from src.physics.solver import DiffEqSolver, PhysicsSample
 logger = structlog.get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Numerical-stability defaults. Surfaced as named module constants so callers
+# and reviewers can reason about them without grepping the function bodies.
+# These are deliberately not Pydantic Fields because PoissonSolver pre-dates
+# the project's Pydantic-config pattern and is constructed positionally in
+# ~15 call sites; introducing a config class would be a breaking refactor
+# out of scope for the magic-number-externalization sweep. Future work:
+# wrap behind PoissonSolverConfig if/when more knobs are added.
+# ---------------------------------------------------------------------------
+
+# Small additive term used to stabilize spectral-method division when the
+# DST denominator approaches zero (corner Fourier modes). 1e-6 is a tiny
+# fraction of typical |phi| and won't bias the solution at any meaningful
+# resolution.
+DEFAULT_POISSON_REGULARIZATION = 1e-6
+
+# Convergence tolerance (max-norm update) for the Gauss-Seidel iterative
+# fallback used when ``use_spectral=False``. Matches the spectral-path's
+# regularization scale; lowering it past ~1e-8 hits float32 noise.
+DEFAULT_GAUSS_SEIDEL_TOL = 1e-6
+
+
 @dataclass
 class PoissonSample(PhysicsSample[NDArray[np.float32], NDArray[np.float32]]):
     """A single Poisson equation sample.
@@ -62,7 +84,7 @@ class PoissonSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         self,
         boundary_value: float = 0.0,
         use_spectral: bool = True,
-        regularization: float = 1e-6,
+        regularization: float = DEFAULT_POISSON_REGULARIZATION,
         resolution: int = 32,
     ) -> None:
         """Initialize Poisson solver.
@@ -191,7 +213,7 @@ class PoissonSolver(DiffEqSolver[NDArray[np.float32], NDArray[np.float32]]):
         self,
         charges: NDArray[np.float32],
         max_iter: int = 10000,
-        tol: float = 1e-6,
+        tol: float = DEFAULT_GAUSS_SEIDEL_TOL,
     ) -> NDArray[np.float64]:
         """Solve using Gauss-Seidel iteration (fallback method)."""
         n = charges.shape[0]

@@ -349,7 +349,12 @@ class ResultCollector:
             rows.append(row)
 
         try:
-            import pandas as pd
+            # pandas is an optional dep used only for the DataFrame export
+            # path; results consumers without pandas get the list-of-dicts
+            # fallback. `pandas-stubs` is not in the project requirements
+            # so mypy can't type-check the return; the local-import shape
+            # makes that acceptable here.
+            import pandas as pd  # type: ignore[import-untyped]
 
             return pd.DataFrame(rows)
         except ImportError:

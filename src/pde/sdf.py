@@ -417,9 +417,12 @@ class PicoGKSDFEvaluator:
         self.voxel_path = Path(voxel_path)
         try:
             # pythonnet is the standard bridge to .NET assemblies from
-            # Python; PicoGK ships a Python wrapper on top of it.
-            import PicoGK  # noqa: F401  # pragma: no cover - optional dep
-            import pythonnet  # noqa: F401  # pragma: no cover - optional dep
+            # Python; PicoGK ships a Python wrapper on top of it. Both
+            # are gated behind the optional [picogk] extra so neither
+            # has a stub package available in CI; the import is purely
+            # a presence-check and we re-raise as ImportError below.
+            import PicoGK  # type: ignore[import-not-found]  # noqa: F401  # pragma: no cover
+            import pythonnet  # type: ignore[import-not-found]  # noqa: F401  # pragma: no cover
         except ImportError as exc:
             raise ImportError(
                 "PicoGKSDFEvaluator requires the optional [picogk] extra. "

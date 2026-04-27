@@ -582,6 +582,14 @@ python -m src.poc.cli run --scenario noyron_hx \
     --config config/scenarios/noyron_hx.yaml
 
 # Voxel-FDM reference run (~15-30 min on GPU)
+# NOTE: the YAML defaults (zero source, zero Dirichlet boundary) make
+# the unique steady-state solution u=0 everywhere, and the FDM solver
+# correctly converges to that at iteration 0. A surrogate trained
+# against it learns "fit zero" — accurate by metric but vacuous as a
+# demonstration. For a meaningful FDM validation, switch the operator
+# to a non-zero boundary_value or boundary_mode='hot_cold' (or supply
+# a non-zero source_function). See the warning in
+# src/pde/operators_picogk.py::HelicalHeatOperator for details.
 python -m src.poc.cli run --scenario noyron_hx \
     --config config/scenarios/noyron_hx.yaml \
     scenarios.0.ref_solver_kind=voxel_fdm

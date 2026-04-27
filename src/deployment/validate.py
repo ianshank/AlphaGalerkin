@@ -29,9 +29,43 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+def _compute_psnr_db(pairs: list[tuple[np.ndarray, np.ndarray]]) -> float | None:
+    """Aggregate PSNR (dB) across a list of (reference, candidate) pairs.
+
+    PSNR = 10 * log10(peak^2 / mse) where ``peak`` is the dynamic range
+    of the reference (max - min, clamped to a small positive floor to
+    avoid division by zero on constant references) and ``mse`` is the
+    mean squared error.  Returns ``None`` when no pairs are supplied or
+    when the aggregate MSE is exactly zero (perfect parity), in which
+    case the strict tolerance gate carries the assertion.
+    """
+    if not pairs:
+        return None
+    sq_err: list[float] = []
+    peak_max = -np.inf
+    peak_min = np.inf
+    for reference, candidate in pairs:
+        sq_err.append(float(np.mean((reference - candidate) ** 2)))
+        peak_max = max(peak_max, float(np.max(reference)))
+        peak_min = min(peak_min, float(np.min(reference)))
+    mse = float(np.mean(sq_err))
+    if mse <= 0.0:
+        return None
+    peak = max(peak_max - peak_min, 1e-12)
+    return 10.0 * float(np.log10((peak**2) / mse))
+
+
 @dataclass
 class ValidationResult:
-    """Result from model validation."""
+    """Result from model validation.
+
+    The PSNR fields are populated only when ``policy_psnr_db`` /
+    ``value_psnr_db`` can be computed (i.e. the reference output is not
+    identically zero).  ``policy_psnr_db is None`` means the numeric
+    floor was hit and the strict tolerance gate carries the assertion.
+    Backwards compatible: legacy callers that only inspect
+    ``passed`` / ``*_diff`` fields are unaffected.
+    """
 
     passed: bool
     max_policy_diff: float
@@ -44,6 +78,10 @@ class ValidationResult:
     n_samples_tested: int
     failed_samples: int
     error_message: str | None = None
+    policy_psnr_db: float | None = None
+    value_psnr_db: float | None = None
+    psnr_threshold_db: float | None = None
+    psnr_passed: bool | None = None
 
 
 class ModelValidator:
@@ -62,16 +100,25 @@ class ModelValidator:
         self,
         tolerance: float = 1e-5,
         relative_tolerance: float = 1e-4,
+        *,
+        accuracy_threshold_psnr_db: float | None = None,
     ) -> None:
         """Initialize validator.
 
         Args:
             tolerance: Absolute tolerance for comparison.
             relative_tolerance: Relative tolerance for comparison.
+            accuracy_threshold_psnr_db: Optional minimum PSNR (dB) for
+                the ONNX outputs vs. the PyTorch reference.  When
+                provided, :meth:`validate` populates the PSNR fields on
+                :class:`ValidationResult` and gates ``psnr_passed``
+                accordingly.  ``None`` (the default) preserves the
+                pre-PR behaviour: PSNR is not measured.
 
         """
         self.tolerance = tolerance
         self.relative_tolerance = relative_tolerance
+        self.accuracy_threshold_psnr_db = accuracy_threshold_psnr_db
 
         self._logger = structlog.get_logger(__name__).bind(
             tolerance=tolerance,
@@ -83,7 +130,7 @@ class ModelValidator:
         pytorch_model: nn.Module,
         onnx_path: str | Path,
         test_inputs: list[Tensor] | Tensor,
-        device: torch.device | str = "cpu",
+        device: torch.device | str = "auto",
     ) -> ValidationResult:
         """Validate ONNX model against PyTorch model.
 
@@ -91,7 +138,14 @@ class ModelValidator:
             pytorch_model: Original PyTorch model.
             onnx_path: Path to ONNX model.
             test_inputs: Test input tensors.
-            device: Device for PyTorch inference.
+            device: Device for PyTorch reference inference.  Strings
+                ``"cuda"``, ``"cpu"``, ``"auto"`` are routed through
+                :func:`src.poc.device.resolve_device` (``"cuda"`` fails
+                loud if unavailable; ``"auto"`` falls back silently).
+                The legacy default ``"cpu"`` would silently mask GPU
+                regressions on the user's training rig, so the new
+                default is ``"auto"``.  Explicit ``torch.device``
+                objects are respected as-is.
 
         Returns:
             ValidationResult with comparison metrics.
@@ -102,7 +156,9 @@ class ModelValidator:
         onnx_path = Path(onnx_path)
 
         if isinstance(device, str):
-            device = torch.device(device)
+            from src.poc.device import resolve_device
+
+            device = resolve_device(device, context="ModelValidator.validate")
 
         # Prepare test inputs
         if isinstance(test_inputs, Tensor):
@@ -116,11 +172,16 @@ class ModelValidator:
         pytorch_model.eval()
 
         # Comparison metrics
-        policy_diffs = []
-        value_diffs = []
-        pytorch_times = []
-        onnx_times = []
+        policy_diffs: list[float] = []
+        value_diffs: list[float] = []
+        pytorch_times: list[float] = []
+        onnx_times: list[float] = []
         failed_samples = 0
+        # Per-sample (reference, candidate) pairs for PSNR aggregation.
+        # Populated only when self.accuracy_threshold_psnr_db is not None
+        # to keep the legacy path allocation-free.
+        psnr_pairs_policy: list[tuple[np.ndarray, np.ndarray]] = []
+        psnr_pairs_value: list[tuple[np.ndarray, np.ndarray]] = []
 
         self._logger.info(
             "starting_validation",
@@ -182,6 +243,12 @@ class ModelValidator:
                         value_diff=value_diff,
                     )
 
+                # PSNR aggregation (only when threshold gate is active).
+                if self.accuracy_threshold_psnr_db is not None:
+                    psnr_pairs_policy.append((pytorch_policy, onnx_result.policy))
+                    if len(pytorch_value.shape) > 0 and len(onnx_result.value.shape) > 0:
+                        psnr_pairs_value.append((pytorch_value, onnx_result.value))
+
             except Exception as e:
                 self._logger.error(
                     "validation_error",
@@ -205,6 +272,22 @@ class ModelValidator:
         avg_onnx_time = np.mean(onnx_times) if onnx_times else 0
         speedup = avg_pytorch_time / avg_onnx_time if avg_onnx_time > 0 else 0
 
+        # Aggregate PSNR across collected (reference, candidate) pairs.
+        policy_psnr_db: float | None = None
+        value_psnr_db: float | None = None
+        psnr_passed: bool | None = None
+        if self.accuracy_threshold_psnr_db is not None:
+            policy_psnr_db = _compute_psnr_db(psnr_pairs_policy)
+            value_psnr_db = _compute_psnr_db(psnr_pairs_value)
+            # An output stream "passes" PSNR if either (a) it is undefined
+            # because the reference was zero / no pairs were collected
+            # (in which case the strict tolerance gate already covers
+            # correctness) or (b) it meets the threshold.
+            policy_ok = policy_psnr_db is None or policy_psnr_db >= self.accuracy_threshold_psnr_db
+            value_ok = value_psnr_db is None or value_psnr_db >= self.accuracy_threshold_psnr_db
+            psnr_passed = policy_ok and value_ok
+            passed = passed and psnr_passed
+
         result = ValidationResult(
             passed=passed,
             max_policy_diff=max_policy_diff,
@@ -216,6 +299,10 @@ class ModelValidator:
             speedup_ratio=speedup,
             n_samples_tested=len(test_inputs),
             failed_samples=failed_samples,
+            policy_psnr_db=policy_psnr_db,
+            value_psnr_db=value_psnr_db,
+            psnr_threshold_db=self.accuracy_threshold_psnr_db,
+            psnr_passed=psnr_passed,
         )
 
         self._logger.info(
@@ -224,6 +311,8 @@ class ModelValidator:
             max_policy_diff=max_policy_diff,
             max_value_diff=max_value_diff,
             speedup=f"{speedup:.2f}x",
+            policy_psnr_db=policy_psnr_db,
+            value_psnr_db=value_psnr_db,
         )
 
         return result

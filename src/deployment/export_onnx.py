@@ -314,7 +314,7 @@ class ONNXExporter:
         batch_size: int = 1,
         board_size: int = 19,
         channels: int = 17,
-        device: str | torch.device = "cpu",
+        device: str | torch.device | None = None,
     ) -> Tensor:
         """Create a sample input tensor for export.
 
@@ -322,12 +322,24 @@ class ONNXExporter:
             batch_size: Batch size.
             board_size: Board size (height = width).
             channels: Number of input channels.
-            device: Device for the tensor.
+            device: Optional explicit device override.  When ``None``
+                the device is resolved from ``self.config.export_device``
+                via :func:`src.poc.device.resolve_device`.  This keeps the
+                GPU-primary default ('cuda') in effect for the user's
+                training rig while still allowing per-call overrides
+                (e.g. a CPU smoke test in CI).
 
         Returns:
             Sample input tensor.
 
         """
+        if device is None:
+            from src.poc.device import resolve_device
+
+            device = resolve_device(
+                self.config.export_device,
+                context="onnx_export.create_sample_input",
+            )
         return torch.randn(
             batch_size,
             channels,

@@ -109,6 +109,55 @@ class ModelOutput:
         return (self.policy_logits, self.value, self.lbb_constant)[idx]
 
 
+# Register :class:`ModelOutput` as a pytree node so that
+# ``torch.export.export`` (used by the ONNX exporter when
+# ``export_method='dynamo'`` and by the new dynamo-backed default in
+# recent PyTorch) can flatten model outputs.  Without this, exporting
+# any model that returns a :class:`ModelOutput` raises
+# ``RuntimeError: Found <class 'ModelOutput'> in output, which is not
+# a known type``.  The flatten function returns the dataclass fields
+# in declaration order; the unflatten function rebuilds the dataclass.
+# Optional vector_fields / field_metadata dicts are passed through as
+# leaves so multi-field heads (Track B NavierStokes) export correctly.
+try:
+    from torch.utils import _pytree as _torch_pytree  # type: ignore[attr-defined]
+
+    def _modeloutput_flatten(
+        out: ModelOutput,
+    ) -> tuple[list[Any], None]:
+        return (
+            [
+                out.policy_logits,
+                out.value,
+                out.lbb_constant,
+                out.vector_fields,
+                out.field_metadata,
+            ],
+            None,
+        )
+
+    def _modeloutput_unflatten(values: list[Any], _ctx: Any) -> ModelOutput:
+        policy_logits, value, lbb_constant, vector_fields, field_metadata = values
+        return ModelOutput(
+            policy_logits=policy_logits,
+            value=value,
+            lbb_constant=lbb_constant,
+            vector_fields=vector_fields,
+            field_metadata=field_metadata,
+        )
+
+    _torch_pytree.register_pytree_node(
+        ModelOutput,
+        _modeloutput_flatten,
+        _modeloutput_unflatten,
+    )
+except (ImportError, ValueError) as _exc:  # pragma: no cover - defensive
+    # ImportError: very old torch without _pytree (unsupported here).
+    # ValueError: type already registered, e.g. when the module is
+    # re-imported in tests.  Both are safe to ignore.
+    logger.debug("modeloutput_pytree_register_skipped", reason=str(_exc))
+
+
 class GalerkinBlock(nn.Module):
     """Galerkin Transformer block with attention and FFN."""
 

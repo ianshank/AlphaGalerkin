@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Production Hardening Push (Tracks A–E, branch `claude/optimistic-hertz-276d5f`)
+
+Closes Milestones 5 and 9 partials in [docs/NEXT_STEPS_PLAN.md](docs/NEXT_STEPS_PLAN.md). Every track lands at ≥90% per-file coverage, every magic number surfaces as a Pydantic field, and every public signature stays backwards compatible. Targets the user's dual-Blackwell rig (RTX 5060 Ti + 5060) with GPU-primary defaults.
+
+#### Track A — GPU-primary ONNX export + `ModelOutput` pytree fix + PSNR gate
+
+- **`ExportConfig.export_device: Literal["cuda","cpu","auto"]`** (default `"cuda"`) and **`DeploymentConfig.validation_device`** (default `"auto"`) — every export/validation path now resolves through [`src.poc.device.resolve_device`](src/poc/device.py), failing loud when CUDA is requested but missing instead of silently downgrading to CPU.
+- **`DeploymentConfig.accuracy_threshold_psnr_db: float`** (default `35.0`, `ge=0`) — `ModelValidator` populates `policy_psnr_db`, `value_psnr_db`, `psnr_threshold_db`, `psnr_passed` on `ValidationResult` and gates the overall `passed` flag on PSNR. New `_compute_psnr_db` helper handles empty input, perfect parity, and constant references.
+- **`ModelOutput` registered as a `torch.utils._pytree` node** in [src/modeling/model.py](src/modeling/model.py) — fixes the dataclass-migration regression that was failing 19 ONNX integration tests with `Found <class 'ModelOutput'> in output, which is not a known type`. Flattens `policy_logits`, `value`, `lbb_constant`, `vector_fields`, `field_metadata` so Track B's NavierStokes outputs export without further work.
+- 23 new tests in [tests/deployment/test_psnr_and_device.py](tests/deployment/test_psnr_and_device.py).
+
+#### Track B — Multi-field PDE output (`VectorFieldHead`)
+
+- **`src/modeling/heads.py` (new)** — `HeadBase` + `HeadRegistry` via `create_registry("Head", HeadBase)`; `VectorFieldHead(d_model, n_fields, field_names, components_per_field, d_hidden)` emits a `dict[str, Tensor]` matching `ModelOutput.vector_fields`. Default `n_fields=1` produces a single-key `{"scalar": [B, n, 1]}` dict equivalent to the legacy `DenseHead` shape.
+- **`PDEOperator.n_fields` / `field_names`** — class-level metadata defaulting to `(1, ("scalar",))`; **`NavierStokesOperator`** overrides with `(3, ("u", "v", "p"))` so multi-field consumers can introspect without instantiating.
+- 22 new tests in [tests/modeling/test_vector_field_head.py](tests/modeling/test_vector_field_head.py).
+
+#### Track C — PI-controller adaptive time-stepping
+
+- Replaces the `NotImplementedError` at `src/pde/time_stepping.py:104` with a step-doubling + PI-controller scheme that works uniformly for `ForwardEuler` / `RK4` / `Crank-Nicolson`.
+- New `TimeSteppingConfig` fields (all bounded Pydantic): `safety_factor` (default 0.9, in `(0, 1]`), `pi_alpha` (default 0.7, `> 0`), `pi_beta` (default 0.4, `≥ 0`; 0 = pure I-controller), `relative_tolerance` (default 1.0, `≥ 0`), `t_end_epsilon` (default 1e-12, `> 0`). Cross-field `_validate_dt_bounds` enforces `dt_min < dt_max` and that the initial `dt` lies in `[dt_min, dt_max]` when `adaptive_dt=True`.
+- `adaptive_dt=False` (the default) preserves byte-identical fixed-dt behaviour via `_integrate_fixed`.
+- 37 new tests across config validation, three-method convergence, dt-bound clamping invariants, smooth-region growth, large-error shrinkage, fixed-mode regression, and the rejection / final-snapshot / unknown-method branches.
+
+#### Track D — Real `torch.multiprocessing.spawn` distributed tests + dual-GPU guide
+
+- **`DistributedInfraConfig.per_rank_batch_size: int | list[int] | None`** (default `None`, backwards compatible) — when a list, the new cross-field `validate_per_rank_batch_size` validator enforces `len == world_size` and per-entry positivity. New `get_rank_batch_size(rank, default)` helper resolves the per-rank value. Designed for asymmetric multi-GPU rigs where the smaller card needs a smaller batch.
+- **[tests/distributed/test_spawn_integration.py](tests/distributed/test_spawn_integration.py) (new)** — real spawn-based `gloo` collective tests (all_reduce, broadcast, barrier) with file-based c10d rendezvous (no flaky port reuse). NCCL parametrization runs on the user's dual-Blackwell rig and skips cleanly on Windows wheels (which ship without NCCL) via `torch.distributed.is_nccl_available()`.
+- New `distributed` pytest marker registered in `pyproject.toml`; `RUN_DISTRIBUTED_TESTS=1` opt-in for Windows.
+- **[docs/distributed_training_guide.md](docs/distributed_training_guide.md) (new, 233 lines)** — quickstart matrix; dedicated "Local dual-GPU: RTX 5060 Ti + RTX 5060" section with `CUDA_VISIBLE_DEVICES` pinning, asymmetric `per_rank_batch_size=[128, 64]`, and `torchrun --nproc_per_node=2`; multi-node torchrun, SLURM, Vertex AI; troubleshooting (NCCL versions, port collisions, `MASTER_ADDR` resolution); CI integration snippet.
+- 13 new tests (3 spawn-based gloo + 9 config + 1 hygiene).
+
+#### Track E — `src/pde` coverage gate raised 75 → 85
+
+- After Tracks B and C, measured coverage is **85.58%** (from 85.40% pre-gap-fix). The CI per-module gate in [.github/workflows/ci.yml](.github/workflows/ci.yml) now matches `src/modeling`, `src/training`, `src/research`.
+
+#### Gap-analysis pass
+
+- Surfaced three hardcoded numerical constants (`rtol=1.0` in the step-doubling error norm; `1e-12` slack in the adaptive loop terminator and dt-min acceptance gate) as Pydantic fields with bounded validators. Defaults reproduce prior behaviour byte-identical.
+- Removed dead `_typing_anchor()` helper + dangling `Any` / `torch` imports from `src/modeling/heads.py`.
+- Added 9 tests covering previously-uncovered branches: rejection path in `_integrate_adaptive`, trailing-snapshot append between save-interval boundaries, and the unknown-method `ValueError` in `create_time_stepper`.
+
+#### Files changed
+
+```
+.github/workflows/ci.yml                         |   6 +-
+docs/distributed_training_guide.md               | 233 +++++ NEW
+pyproject.toml                                   |   1 +
+src/deployment/config.py                         |  33 ++
+src/deployment/export_onnx.py                    |  16 +-
+src/deployment/validate.py                       | 105 +++
+src/distributed/config.py                        |  68 +++
+src/modeling/heads.py                            | 183 +++++ NEW
+src/modeling/model.py                            |  49 +
+src/pde/operators.py                             |  13 +
+src/pde/time_stepping.py                         | 227 +++
+tests/deployment/test_psnr_and_device.py         | 198 +++ NEW
+tests/distributed/test_spawn_integration.py      | 319 +++ NEW
+tests/modeling/test_vector_field_head.py         | 208 +++ NEW
+tests/pde/test_time_stepping_adaptive.py         | 445 +++ NEW
+```
+
+#### Verification
+
+- **2,471 tests pass** across the post-PR regression surface, **5 correct skips** (NCCL on Windows, GPU-only paths on missing CUDA).
+- **`src/pde` coverage 85.58%** under the new 85% gate.
+- **`ruff check` + `ruff format --check`** clean on every touched file.
+- **Backwards compatible**: every default reproduces prior behaviour; the only behavioural change is GPU-required paths now fail loud on missing CUDA — by design, to prevent silent CPU regressions on the user's training rig.
+
 ### Added — Learned PDE Evaluator (`src/alphagalerkin/`)
 
 - **`AlphaGalerkinConfig.evaluator="trained"`** — re-enables the network-backed evaluator literal that was removed in the DOE Genesis PR. The trained branch loads an `AlphaGalerkinModel` checkpoint via `create_model_from_checkpoint` and wraps it in the existing `FNetEvaluator`, providing learned policy/value priors to MCTS rather than the uniform prior of `RandomEvaluator`. Closes the only non-trivial entry under *Known Issues* in `CLAUDE.md`.

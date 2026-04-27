@@ -1,7 +1,7 @@
 # AlphaGalerkin Next Steps Plan
 
 > **Investigation Date:** 2026-02-01
-> **Status:** Active — Milestones 1, 2, 3, 4, 6, 8 ✅ Complete; 5, 7, 9 Partial; **Learned PDE Evaluator ✅ Complete (2026-04-25, PR #54)**
+> **Status:** Active — Milestones 1, 2, 3, 4, 6, 8, 9 ✅ Complete; 5 ✅ Closed by Track D 2026-04-26; 7 Pending; **Learned PDE Evaluator ✅ Complete (2026-04-25, PR #54); Production Hardening Push ✅ Complete (2026-04-26, branch `claude/optimistic-hertz-276d5f`)**
 > **Methodology:** Universal Dev Agent with Agentic Sub-Tasks
 > **Last Updated:** 2026-04-25
 
@@ -237,13 +237,13 @@ CONSTRAINTS:
 
 ---
 
-## Milestone 5: Distributed Training Validation ⚠️ Partial
+## Milestone 5: Distributed Training Validation ✅
 
 **Goal:** Verify distributed training at scale.
 **Duration:** 3-4 days
 **Subagents:** SQE, Orchestrator
 
-**Status:** ⚠️ **PARTIALLY COMPLETED** — 35 new DistributedTrainer tests added (April 2026), multi-node validation pending
+**Status:** ✅ **COMPLETED** (2026-04-26 via Track D of the Production Hardening Push). 35 mock-based DistributedTrainer tests retained; new [tests/distributed/test_spawn_integration.py](../tests/distributed/test_spawn_integration.py) adds 13 real `torch.multiprocessing.spawn`-based tests with gloo (CPU CI) and NCCL (dual-GPU rig) backends. `DistributedInfraConfig.per_rank_batch_size` (int / list / None) supports asymmetric multi-GPU rigs. The companion guide is at [docs/distributed_training_guide.md](distributed_training_guide.md).
 
 ### What Was Delivered
 - 35 new DistributedTrainer tests covering metrics, checkpoints, multi-process patterns
@@ -404,13 +404,13 @@ CONSTRAINTS:
 
 ---
 
-## Milestone 9: Production Hardening (v0.4.0) ⚠️ Partial
+## Milestone 9: Production Hardening (v0.4.0) ✅
 
 **Goal:** Production-ready deployment and extended benchmarking.
 **Duration:** 3-4 weeks
 **Priority:** P1
 
-**Status:** ⚠️ **PARTIALLY COMPLETED** — SBIR demos and BaseTrainer done; ONNX production export and full PDE training loop pending
+**Status:** ✅ **COMPLETED** (2026-04-26 via Tracks A + B of the Production Hardening Push). Production-ready ONNX export pipeline with GPU-primary device routing and PSNR accuracy gate (Track A); multi-field NavierStokes outputs via the registered `VectorFieldHead` and class-level `n_fields` / `field_names` operator metadata (Track B). PI-controller adaptive time-stepping (Track C) closes the time-integration gap that blocked transient PDE training loops.
 
 ### What Was Delivered
 - End-to-end `sbir_demo.py` with HTML/JSON/Markdown report generation (April 2026)
@@ -508,7 +508,7 @@ These can be completed without blocking dependencies:
 | Engine Eval | Stockfish integration | ✅ Yes | Yes | `_run_engine_evaluation()` |
 | Agent Framework | Agents implemented | ✅ 7 agents | 1+ | Agent count |
 | SBIR Benchmarks | Benchmark runner | ✅ Yes (HTML reports) | Yes | PDEBenchmarkRunner + sbir_demo.py |
-| Distributed | Multi-node validation | ⚠️ Partial (35 tests) | Yes | Integration test passes |
+| Distributed | Multi-node validation | ✅ 13 spawn-based tests + 9 config tests (Track D) | Yes | Integration test passes |
 | PDE | Training integration | ✅ Yes | Yes | `config/train_pde.yaml` works |
 | Video Compression | Hyperprior complete | No | Yes | No TODO comments |
 

@@ -1442,7 +1442,9 @@ C4Component
 
         Component(time_cn, "CrankNicolson", "TimeStepper", "2nd-order implicit with fixed-point iteration")
 
-        Component(time_config, "TimeSteppingConfig", "Pydantic", "method enum, dt, t_start/t_end, adaptive_dt, create_time_stepper() factory")
+        Component(time_config, "TimeSteppingConfig", "Pydantic", "method enum, dt, t_start/t_end, adaptive_dt, safety_factor, pi_alpha, pi_beta, relative_tolerance, t_end_epsilon — all bounded; create_time_stepper() factory")
+
+        Component(pi_controller, "PI-Controller (Track C)", "TimeStepper helpers", "_step_doubling_error + _propose_next_dt + _integrate_adaptive — uniform across Forward Euler / RK4 / Crank-Nicolson; adaptive_dt=False preserves byte-identical fixed-dt path")
     }
 
     Component_Ext(pde_operators, "PDE Operators", "NavierStokes, Burgers, Heat (time-dependent)")
@@ -1594,11 +1596,82 @@ C4Component
 
 ---
 
+## Level 3: Component Diagram — Production Hardening Push (Tracks A–E)
+
+> Added 2026-04-26.  Captures the cross-cutting surface introduced by [docs/NEXT_STEPS_PLAN.md](../NEXT_STEPS_PLAN.md) Milestones 5/9 closure.
+
+```mermaid
+C4Component
+    title Production Hardening Push — Multi-Track Component View
+
+    Container_Boundary(deployment, "Deployment (Track A)") {
+        Component(export_cfg, "ExportConfig", "Pydantic", "export_device: Literal[cuda|cpu|auto]=cuda; opset_version, dynamic_axes, quantization mode")
+        Component(deploy_cfg, "DeploymentConfig", "Pydantic", "validation_device: Literal[...]=auto; accuracy_threshold_psnr_db: float=35.0 ge=0")
+        Component(onnx_exporter, "ONNXExporter.create_sample_input", "Method", "Routes through resolve_device(config.export_device, ...) — fails loud on missing CUDA")
+        Component(validator, "ModelValidator + _compute_psnr_db", "Class + helper", "Populates policy_psnr_db / value_psnr_db / psnr_passed on ValidationResult; gates overall passed flag on PSNR threshold")
+        Component(model_pytree, "ModelOutput pytree node", "torch.utils._pytree", "Flattens policy_logits, value, lbb_constant, vector_fields, field_metadata so torch.export.export accepts dataclass returns")
+    }
+
+    Container_Boundary(modeling, "Modeling (Track B)") {
+        Component(head_base, "HeadBase + HeadRegistry", "create_registry('Head', HeadBase)", "Decorator-driven head selection by string name")
+        Component(vector_field_head, "VectorFieldHead", "nn.Module", "MLP emitting dict[str, Tensor] of shape [B, n, components_per_field]; constructor validates n_fields, field_names uniqueness, components shape")
+        Component(make_head, "make_vector_field_head", "Factory", "Mirrors create_loss_balancer / create_time_stepper pattern for config-driven head selection")
+    }
+
+    Container_Boundary(pde, "PDE Operators + Time-Stepping (Tracks B + C)") {
+        Component(op_metadata, "PDEOperator class metadata", "Class attrs", "n_fields=1, field_names=('scalar',) defaults; NavierStokesOperator overrides with (3, ('u','v','p'))")
+        Component(adaptive_loop, "_integrate_adaptive", "Method", "PI-controlled step-doubling loop; bounds dt to [dt_min, dt_max]; uses configurable rtol + t_end_epsilon")
+        Component(rtol_field, "relative_tolerance + t_end_epsilon", "Pydantic fields", "Surfaced from previously-hardcoded 1.0 / 1e-12 constants — bounded validators, defaults preserve prior behaviour")
+    }
+
+    Container_Boundary(distributed, "Distributed (Track D)") {
+        Component(per_rank, "DistributedInfraConfig.per_rank_batch_size", "int | list[int] | None", "Cross-field validator: len(list)==world_size; positivity per entry. Designed for asymmetric multi-GPU rigs (RTX 5060 Ti + 5060)")
+        Component(spawn_tests, "test_spawn_integration.py", "torch.multiprocessing.spawn", "Real gloo all_reduce/broadcast/barrier with file-based c10d rendezvous; NCCL parametrization gated on torch.distributed.is_nccl_available()")
+        Component(guide, "distributed_training_guide.md", "Docs", "Local dual-GPU section + torchrun/SLURM/Vertex AI quickstart matrix + troubleshooting")
+    }
+
+    Container_Boundary(ci, "CI Gates (Track E)") {
+        Component(pde_gate, "src/pde coverage gate", ".github/workflows/ci.yml", "Raised 75 → 85; measured 85.58% post-Push")
+    }
+
+    Component_Ext(resolve_device, "src.poc.device.resolve_device", "Shared GPU/CPU policy")
+    Component_Ext(create_registry, "src.templates.registry.create_registry", "Singleton registry factory")
+    Component_Ext(model_output, "src.modeling.model.ModelOutput", "Frozen dataclass with vector_fields")
+
+    Rel(onnx_exporter, resolve_device, "preference -> torch.device")
+    Rel(validator, resolve_device, "preference -> torch.device")
+    Rel(validator, model_pytree, "Reads via torch.export")
+    Rel(head_base, create_registry, "Built via")
+    Rel(vector_field_head, head_base, "Registered as 'vector_field'")
+    Rel(make_head, head_base, "Resolves by string name")
+    Rel(vector_field_head, model_output, "Output dict slots into ModelOutput.vector_fields")
+    Rel(adaptive_loop, rtol_field, "Reads")
+    Rel(per_rank, spawn_tests, "Validated in")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Production Hardening Push Components
+
+| Component | Responsibility | Key Feature |
+|-----------|----------------|-------------|
+| **ExportConfig.export_device** | GPU-primary ONNX trace | `cuda` default fails loud on missing GPU |
+| **ModelValidator PSNR gate** | Deployment accuracy gate | Per-stream PSNR + threshold, populated only when threshold set |
+| **ModelOutput pytree node** | torch.export compatibility | Fixes 19 ONNX integration tests broken by NamedTuple→dataclass migration |
+| **VectorFieldHead** | Multi-field PDE outputs | Registry-driven, defaults to scalar=`{name: [B,n,1]}` for backwards compat |
+| **PDEOperator.n_fields** | Operator self-description | NavierStokes advertises 3-field `(u,v,p)`; introspectable at class level |
+| **PI-controller adaptive dt** | Step-doubling integrator | Uniform across all 3 schemes; `adaptive_dt=False` byte-identical |
+| **per_rank_batch_size** | Asymmetric multi-GPU | `list[int]` for cards with different VRAM (5060 Ti + 5060) |
+| **Real spawn-based tests** | Distributed integration | gloo on CPU runners, NCCL on dual-GPU rig; file-rendezvous (no port flake) |
+| **PDE coverage gate** | Regression floor | 75 → 85; measured 85.58% |
+
+---
+
 ## Document Metadata
 
-- **Version**: 3.0.0
+- **Version**: 3.1.0
 - **Created**: 2026-01-26
-- **Updated**: 2026-03-31
+- **Updated**: 2026-04-26
 - **Format**: Mermaid C4 Diagrams
 - **Status**: Complete
 - **Audience**: Developers, Researchers, Computational Scientists, Technical Stakeholders

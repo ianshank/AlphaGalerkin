@@ -88,7 +88,30 @@ class TimeSteppingConfig(BaseModuleConfig):
     error_tolerance: float = Field(
         default=1e-5,
         gt=0.0,
-        description="Error tolerance for adaptive time stepping.",
+        description=(
+            "Absolute error tolerance (atol) for adaptive time stepping. "
+            "Used in the scaled error norm `err = ||u_full - u_two_half|| "
+            "/ (atol + rtol * max(|u|))`."
+        ),
+    )
+    relative_tolerance: float = Field(
+        default=1.0,
+        ge=0.0,
+        description=(
+            "Relative tolerance (rtol) coefficient in the scaled error norm "
+            "for adaptive time stepping.  Multiplied by max(|u_full|, |u_two_half|) "
+            "and added to the absolute tolerance.  Default 1.0 reproduces "
+            "the historical Track-C behaviour."
+        ),
+    )
+    t_end_epsilon: float = Field(
+        default=1e-12,
+        gt=0.0,
+        description=(
+            "Floating-point slack used when comparing t against t_end and "
+            "dt against dt_min during adaptive integration.  Prevents "
+            "spurious extra steps caused by accumulated round-off."
+        ),
     )
     max_steps: int = Field(
         default=100000,
@@ -282,7 +305,7 @@ class TimeStepper(ABC):
         self.dt = full_dt
         # Scaled error norm following the standard PI-controller recipe:
         # err = || u_full - u_two_half || / (atol + rtol * max(|u_full|, |u_two_half|))
-        denom = self.config.error_tolerance + 1.0 * torch.maximum(
+        denom = self.config.error_tolerance + self.config.relative_tolerance * torch.maximum(
             torch.abs(u_full), torch.abs(u_two_half)
         )
         err_tensor = torch.linalg.vector_norm((u_full - u_two_half) / denom)
@@ -341,12 +364,12 @@ class TimeStepper(ABC):
             error_tolerance=cfg.error_tolerance,
         )
 
-        while t < cfg.t_end - 1e-12 and step_count < cfg.max_steps:
+        while t < cfg.t_end - cfg.t_end_epsilon and step_count < cfg.max_steps:
             # Don't overshoot t_end on the trial step
             self.dt = min(self.dt, cfg.t_end - t)
             u_trial, err = self._step_doubling_error(u, t, rhs_fn)
 
-            if err <= cfg.error_tolerance or self.dt <= cfg.dt_min * (1.0 + 1e-12):
+            if err <= cfg.error_tolerance or self.dt <= cfg.dt_min * (1.0 + cfg.t_end_epsilon):
                 # Accept (always accept at dt_min to avoid infinite shrink)
                 u = u_trial
                 t = t + self.dt

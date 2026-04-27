@@ -24,10 +24,7 @@ Push plan):
 
 from __future__ import annotations
 
-from typing import Any
-
 import structlog
-import torch
 from torch import Tensor, nn
 
 from src.templates.registry import create_registry
@@ -184,9 +181,3 @@ __all__ = [
     "make_vector_field_head",
     "register_head",
 ]
-
-
-# Local helper to silence the linter when the imports above are
-# considered "unused" by tooling that does not see the public re-export.
-def _typing_anchor() -> Any:  # pragma: no cover - typing helper
-    return torch

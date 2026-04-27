@@ -321,6 +321,109 @@ class TestFixedModeRegression:
 # ---------------------------------------------------------------------------
 
 
+class TestNewlySurfacedConfigs:
+    """Tests for the newly-surfaced rtol and t_end_epsilon fields.
+
+    Coverage for the rtol / t_end_epsilon fields surfaced during the
+    Production Hardening Push gap-analysis pass.
+    """
+
+    def test_relative_tolerance_default_is_1(self) -> None:
+        cfg = TimeSteppingConfig(name="t")
+        assert cfg.relative_tolerance == 1.0
+
+    def test_relative_tolerance_must_be_non_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            TimeSteppingConfig(name="t", relative_tolerance=-0.5)
+
+    def test_relative_tolerance_zero_is_pure_atol(self) -> None:
+        # rtol=0 reduces the scaled-error denominator to atol alone.
+        cfg = _make_config(adaptive_dt=True, dt=0.01, error_tolerance=1e-3)
+        cfg = cfg.model_copy(update={"relative_tolerance": 0.0})
+        stepper = create_time_stepper(cfg)
+        _, err = stepper._step_doubling_error(torch.tensor([1.0]), 0.0, _decay_rhs(lam=10.0))
+        assert err > 0.0
+
+    def test_t_end_epsilon_default_is_positive(self) -> None:
+        cfg = TimeSteppingConfig(name="t")
+        assert cfg.t_end_epsilon > 0.0
+
+    def test_t_end_epsilon_must_be_strictly_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            TimeSteppingConfig(name="t", t_end_epsilon=0.0)
+
+    def test_t_end_epsilon_threads_through_integrator(self) -> None:
+        # A relaxed epsilon that exceeds the gap to t_end terminates
+        # integration immediately — proves the field is wired.
+        cfg = _make_config(
+            method=TimeSteppingMethod.RK4,
+            adaptive_dt=True,
+            dt=0.05,
+            t_end=0.1,
+            error_tolerance=1.0,
+        )
+        cfg = cfg.model_copy(update={"t_end_epsilon": 1.0})  # >= t_end
+        stepper = create_time_stepper(cfg)
+        snapshots = stepper.integrate(torch.tensor([1.0]), _decay_rhs())
+        # Should produce only the initial snapshot since the loop never enters.
+        assert len(snapshots) == 1
+
+
+class TestRejectAcceptBranches:
+    """Coverage for the rejection branch in _integrate_adaptive."""
+
+    def test_rejection_path_taken_when_dt_above_dt_min(self) -> None:
+        # Engineer a scenario where the first step's error exceeds tol
+        # AND dt > dt_min, forcing the controller into the reject branch.
+        cfg = _make_config(
+            method=TimeSteppingMethod.FORWARD_EULER,
+            adaptive_dt=True,
+            dt=0.05,
+            dt_min=1e-8,
+            dt_max=0.05,
+            t_end=0.1,
+            error_tolerance=1e-12,  # impossibly tight => reject
+            save_interval=1,
+        )
+        stepper = create_time_stepper(cfg)
+        snapshots = stepper.integrate(torch.tensor([1.0]), _decay_rhs(lam=100.0))
+        # The integrator must still terminate (eventually accepts at dt_min).
+        assert len(snapshots) >= 1
+
+    def test_final_snapshot_appended_when_not_on_save_boundary(self) -> None:
+        # Use save_interval > likely step count so the loop never hits
+        # the periodic save; this forces the trailing-append branch.
+        cfg = _make_config(
+            method=TimeSteppingMethod.RK4,
+            adaptive_dt=True,
+            dt=0.05,
+            t_end=0.1,
+            error_tolerance=1e-3,
+            save_interval=10_000,  # never triggered inside the loop
+        )
+        stepper = create_time_stepper(cfg)
+        snapshots = stepper.integrate(torch.tensor([1.0]), _decay_rhs())
+        # Initial snapshot + trailing final snapshot = 2.
+        assert len(snapshots) == 2
+        assert snapshots[-1][1] == pytest.approx(cfg.t_end, abs=1e-9)
+
+
+class TestUnknownMethodFactory:
+    """Coverage for the create_time_stepper unknown-method ValueError."""
+
+    def test_unknown_method_raises_value_error(self) -> None:
+        # Build a config bypassing the enum to simulate an out-of-range
+        # method (e.g. from a corrupted YAML).  We do this by mutating
+        # the field after construction since Pydantic would otherwise
+        # reject the bad value.
+        cfg = _make_config()
+        # Inject a sentinel that will not match any registered method.
+        bad_method = type("Bogus", (), {"value": "bogus"})()
+        object.__setattr__(cfg, "method", bad_method)
+        with pytest.raises(ValueError, match="Unknown time-stepping method"):
+            create_time_stepper(cfg)
+
+
 class TestStepDoublingEstimator:
     def test_zero_dynamics_returns_zero_error(self) -> None:
         """Zero RHS produces zero error.

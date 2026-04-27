@@ -489,7 +489,19 @@ class TestNavierStokesOperator:
         assert op.reynolds_number == pytest.approx(100.0)
         assert op.viscosity == pytest.approx(0.01)
 
-    def test_residual_2d_velocity_returns_finite(self, ns_config: PDEConfig) -> None:
+    def test_residual_taylor_green_continuity_is_zero(self, ns_config: PDEConfig) -> None:
+        """Taylor-Green-shaped u is divergence-free analytically.
+
+        For ``u_x = sin(x) cos(y)``, ``u_y = -cos(x) sin(y)``:
+            div u = du_x/dx + du_y/dy
+                  = cos(x) cos(y) + (-cos(x) cos(y))
+                  = 0  exactly.
+
+        This is a real analytical property that the autodiff residual
+        should reproduce to machine precision. Strengthening the test
+        from "didn't crash + finite values" to this exact assertion
+        per PR #70 review feedback.
+        """
         op = NavierStokesOperator(ns_config)
         # coords must be the grad-enabled tensor that u is computed from,
         # so torch.autograd.grad inside residual() can trace back through u.
@@ -499,11 +511,11 @@ class TestNavierStokesOperator:
         # first derivative and the second-order autograd.grad errors with
         # "element 0 of tensors does not require grad".
         coords = torch.tensor(
-            [[0.3, 0.4], [0.6, 0.7]],
+            [[0.3, 0.4], [0.6, 0.7], [0.5, 0.5]],
             dtype=torch.float32,
             requires_grad=True,
         )
-        # Smooth, non-linear, divergence-friendly velocity field.
+        # Taylor-Green-shaped velocity (analytically divergence-free).
         u = torch.stack(
             [
                 torch.sin(coords[:, 0]) * torch.cos(coords[:, 1]),
@@ -513,11 +525,39 @@ class TestNavierStokesOperator:
         )
         residual = op.residual(u, coords)
         assert isinstance(residual, PDEResidual)
-        assert residual.values.shape == (2,)
+        assert residual.values.shape == (3,)
         assert torch.isfinite(residual.values).all()
         # derivatives populated when compute_derivatives=True (default).
         for key in ("ux_x", "uy_y", "continuity", "momentum_x"):
             assert key in residual.derivatives, f"missing derivative key {key}"
+        # Strong assertion: the analytically divergence-free TG vortex
+        # must produce |continuity| < float32 noise (~1e-6) at every
+        # collocation point. torch.testing.assert_close uses the
+        # idiomatic close-comparison API recommended by code review.
+        torch.testing.assert_close(
+            residual.derivatives["continuity"],
+            torch.zeros_like(residual.derivatives["continuity"]),
+            atol=1e-5,
+            rtol=0.0,
+            msg="TG vortex must be divergence-free (du_x/dx + du_y/dy = 0)",
+        )
+        # Cross-check the individual partials against their closed-form:
+        # du_x/dx = cos(x) cos(y), du_y/dy = -cos(x) cos(y).
+        x, y = coords[:, 0], coords[:, 1]
+        expected_dux_dx = torch.cos(x) * torch.cos(y)
+        expected_duy_dy = -torch.cos(x) * torch.cos(y)
+        torch.testing.assert_close(
+            residual.derivatives["ux_x"],
+            expected_dux_dx,
+            atol=1e-5,
+            rtol=1e-5,
+        )
+        torch.testing.assert_close(
+            residual.derivatives["uy_y"],
+            expected_duy_dy,
+            atol=1e-5,
+            rtol=1e-5,
+        )
 
     def test_residual_drops_derivatives_when_disabled(self, ns_config: PDEConfig) -> None:
         op = NavierStokesOperator(ns_config)

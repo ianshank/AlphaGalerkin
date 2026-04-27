@@ -133,10 +133,18 @@ class TestSolveSteadyHeatVoxel:
         )
         interior_values = u[mask]
         assert interior_values.shape[0] > 0
-        np.testing.assert_allclose(
+        # Bit-exact equality: solver initial guess is float32 zeros, the
+        # Jacobi update on all-zero neighbors with zero source and zero
+        # boundary produces u_new == 0 identically (every term is the
+        # additive identity, no rounding), max_delta == 0 at iteration 0,
+        # and the loop short-circuits via the ``max_delta < tolerance``
+        # break with u still bit-exact zero. Asserting array_equal (not
+        # allclose) guarantees any future change to the initial-guess or
+        # first-iteration math surfaces here immediately rather than
+        # hiding under a tolerance band.
+        np.testing.assert_array_equal(
             interior_values,
             np.zeros_like(interior_values),
-            atol=1e-6,
             err_msg=(
                 "Zero source + zero Dirichlet should produce u=0 exactly. "
                 "If this fails, either the solver initial guess changed or "

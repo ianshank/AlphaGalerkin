@@ -21,12 +21,24 @@ from typing import Any
 
 import structlog
 import torch
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch import Tensor
 
 from src.templates.config import BaseModuleConfig
 
 logger = structlog.get_logger(__name__)
+
+
+# Order-of-accuracy used by the step-doubling error estimator for each
+# concrete time-stepping scheme.  These numbers are the *theoretical*
+# orders the schemes are expected to attain on smooth solutions and are
+# used only as exponents in the PI-controller, never as a substitute for
+# a tunable parameter.
+_SCHEME_ORDER: dict[str, int] = {
+    "forward_euler": 1,
+    "rk4": 4,
+    "crank_nicolson": 2,
+}
 
 
 class TimeSteppingMethod(str, Enum):
@@ -88,6 +100,45 @@ class TimeSteppingConfig(BaseModuleConfig):
         ge=1,
         description="Save solution every N steps.",
     )
+    safety_factor: float = Field(
+        default=0.9,
+        gt=0.0,
+        le=1.0,
+        description="PI-controller safety factor applied to the proposed dt "
+        "(0 < f <= 1).  Used only when adaptive_dt=True.",
+    )
+    pi_alpha: float = Field(
+        default=0.7,
+        gt=0.0,
+        description="PI-controller proportional exponent on the current "
+        "error ratio (tol/err)^alpha.  Used only when adaptive_dt=True.",
+    )
+    pi_beta: float = Field(
+        default=0.4,
+        ge=0.0,
+        description="PI-controller integral exponent on the previous-step "
+        "error ratio (err_prev/err)^beta.  beta=0 reduces to a pure "
+        "I-controller.  Used only when adaptive_dt=True.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_dt_bounds(self) -> TimeSteppingConfig:
+        """Cross-field validation for the dt range.
+
+        Ensures dt_min < dt_max and that the requested initial dt sits
+        inside [dt_min, dt_max] when adaptive control is active.  Without
+        adaptive control the initial dt is honoured as-is.
+        """
+        if self.dt_min >= self.dt_max:
+            msg = f"dt_min ({self.dt_min}) must be strictly less than dt_max " f"({self.dt_max})."
+            raise ValueError(msg)
+        if self.adaptive_dt and not (self.dt_min <= self.dt <= self.dt_max):
+            msg = (
+                f"Initial dt ({self.dt}) must lie within [dt_min, dt_max] = "
+                f"[{self.dt_min}, {self.dt_max}] when adaptive_dt=True."
+            )
+            raise ValueError(msg)
+        return self
 
 
 class TimeStepper(ABC):
@@ -100,13 +151,15 @@ class TimeStepper(ABC):
             config: Time-stepping configuration.
 
         """
-        if config.adaptive_dt:
-            raise NotImplementedError(
-                "Adaptive time-stepping is not yet implemented. "
-                "Set adaptive_dt=False and use a fixed dt."
-            )
         self.config = config
         self.dt = config.dt
+        # Order p used by the step-doubling error estimator: the local
+        # error of one full step minus two half-steps is O(dt^{p+1}); we
+        # use p as the exponent in the dt update rule.
+        self._scheme_order: int = _SCHEME_ORDER.get(config.method.value, 1)
+        # PI-controller memory (previous-step error ratio).  Initialised
+        # to 1 so the first adaptive step behaves as a pure I-controller.
+        self._prev_err_ratio: float = 1.0
 
     @abstractmethod
     def step(
@@ -135,6 +188,12 @@ class TimeStepper(ABC):
     ) -> list[tuple[Tensor, float]]:
         """Integrate from t_start to t_end.
 
+        With ``adaptive_dt=False`` (the default) this is a fixed-dt
+        loop and is byte-identical to the pre-adaptive implementation.
+        With ``adaptive_dt=True`` a PI-controlled, step-doubling
+        adaptive scheme drives ``self.dt`` between
+        ``[config.dt_min, config.dt_max]``.
+
         Args:
             u0: Initial condition.
             rhs_fn: Right-hand side function du/dt = rhs_fn(u, t).
@@ -143,6 +202,16 @@ class TimeStepper(ABC):
             List of (solution, time) snapshots at save intervals.
 
         """
+        if self.config.adaptive_dt:
+            return self._integrate_adaptive(u0, rhs_fn)
+        return self._integrate_fixed(u0, rhs_fn)
+
+    def _integrate_fixed(
+        self,
+        u0: Tensor,
+        rhs_fn: Any,
+    ) -> list[tuple[Tensor, float]]:
+        """Fixed-dt integration loop (byte-identical to pre-adaptive)."""
         u = u0.clone()
         t = self.config.t_start
         snapshots: list[tuple[Tensor, float]] = [(u.clone(), t)]
@@ -154,6 +223,7 @@ class TimeStepper(ABC):
             t_start=self.config.t_start,
             t_end=self.config.t_end,
             dt=self.dt,
+            adaptive=False,
         )
 
         while t < self.config.t_end - 1e-12 and step_count < self.config.max_steps:
@@ -179,6 +249,126 @@ class TimeStepper(ABC):
             n_steps=step_count,
             t_final=t,
             n_snapshots=len(snapshots),
+        )
+
+        return snapshots
+
+    # ------------------------------------------------------------------
+    # Adaptive integration (PI controller + step doubling)
+    # ------------------------------------------------------------------
+
+    def _step_doubling_error(
+        self,
+        u: Tensor,
+        t: float,
+        rhs_fn: Any,
+    ) -> tuple[Tensor, float]:
+        """Local error estimate via step doubling.
+
+        Returns the higher-order solution (two half-steps) and a scalar
+        error norm comparing it to the single full-step solution.  The
+        full step is taken at the current ``self.dt``.  This estimator
+        works uniformly for any concrete :meth:`step` implementation,
+        which keeps Forward-Euler / RK4 / Crank-Nicolson sharing the
+        same adaptive-control surface.
+        """
+        full_dt = self.dt
+        # One full step
+        u_full, _ = self.step(u, t, rhs_fn)
+        # Two half steps
+        self.dt = full_dt / 2.0
+        u_half, t_half = self.step(u, t, rhs_fn)
+        u_two_half, _ = self.step(u_half, t_half, rhs_fn)
+        self.dt = full_dt
+        # Scaled error norm following the standard PI-controller recipe:
+        # err = || u_full - u_two_half || / (atol + rtol * max(|u_full|, |u_two_half|))
+        denom = self.config.error_tolerance + 1.0 * torch.maximum(
+            torch.abs(u_full), torch.abs(u_two_half)
+        )
+        err_tensor = torch.linalg.vector_norm((u_full - u_two_half) / denom)
+        # Use the higher-order (two half-step) solution as the accepted state.
+        return u_two_half, float(err_tensor.item())
+
+    def _propose_next_dt(self, err: float) -> float:
+        """PI-controller dt update.
+
+        ``dt_new = dt * safety * (tol/err)^(alpha/(p+1)) * (err_prev/err)^(beta/(p+1))``
+        clamped to ``[dt_min, dt_max]``.  ``p`` is the scheme's order of
+        accuracy.  ``err`` is the scaled error norm returned by
+        :meth:`_step_doubling_error`.
+        """
+        cfg = self.config
+        order = max(self._scheme_order, 1)
+        # Guard against zero/near-zero error (perfectly smooth region):
+        # treat as success at dt_max growth ceiling.
+        if err <= 0.0:
+            new_dt = cfg.dt_max
+            self._prev_err_ratio = 1.0
+        else:
+            inv = 1.0 / float(order + 1)
+            tol_ratio = cfg.error_tolerance / err
+            growth = (tol_ratio ** (cfg.pi_alpha * inv)) * (
+                self._prev_err_ratio ** (cfg.pi_beta * inv)
+            )
+            new_dt = cfg.safety_factor * self.dt * growth
+            self._prev_err_ratio = tol_ratio
+        # Clamp to configured bounds.
+        return max(cfg.dt_min, min(cfg.dt_max, new_dt))
+
+    def _integrate_adaptive(
+        self,
+        u0: Tensor,
+        rhs_fn: Any,
+    ) -> list[tuple[Tensor, float]]:
+        """PI-controlled adaptive-dt integration loop."""
+        cfg = self.config
+        u = u0.clone()
+        t = cfg.t_start
+        snapshots: list[tuple[Tensor, float]] = [(u.clone(), t)]
+        step_count = 0
+        rejected = 0
+        self._prev_err_ratio = 1.0
+
+        logger.info(
+            "time_integration_start",
+            method=self.__class__.__name__,
+            t_start=cfg.t_start,
+            t_end=cfg.t_end,
+            dt=self.dt,
+            adaptive=True,
+            dt_min=cfg.dt_min,
+            dt_max=cfg.dt_max,
+            error_tolerance=cfg.error_tolerance,
+        )
+
+        while t < cfg.t_end - 1e-12 and step_count < cfg.max_steps:
+            # Don't overshoot t_end on the trial step
+            self.dt = min(self.dt, cfg.t_end - t)
+            u_trial, err = self._step_doubling_error(u, t, rhs_fn)
+
+            if err <= cfg.error_tolerance or self.dt <= cfg.dt_min * (1.0 + 1e-12):
+                # Accept (always accept at dt_min to avoid infinite shrink)
+                u = u_trial
+                t = t + self.dt
+                step_count += 1
+                self.dt = self._propose_next_dt(err)
+                if step_count % cfg.save_interval == 0:
+                    snapshots.append((u.clone(), t))
+            else:
+                # Reject: shrink dt and retry
+                rejected += 1
+                self.dt = self._propose_next_dt(err)
+
+        if snapshots[-1][1] != t:
+            snapshots.append((u.clone(), t))
+
+        logger.info(
+            "time_integration_complete",
+            n_steps=step_count,
+            n_rejected=rejected,
+            t_final=t,
+            n_snapshots=len(snapshots),
+            dt_final=self.dt,
         )
 
         return snapshots

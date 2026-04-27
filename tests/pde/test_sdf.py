@@ -216,9 +216,7 @@ class TestAnalyticalHelixSDFFallback:
         values = sdf_starved.sdf(center)
         # At each centerline point sdf must be ~ -r_minor (within Newton
         # convergence tolerance of the refined fallback).
-        assert torch.allclose(
-            values, torch.full_like(values, -sdf_starved.r_minor), atol=2e-3
-        )
+        assert torch.allclose(values, torch.full_like(values, -sdf_starved.r_minor), atol=2e-3)
 
 
 class TestPicoGKSDFEvaluator:

@@ -273,9 +273,7 @@ class TestPicoGKDomainBisectionFallback:
                 bisection_max_iters=0,
             )
 
-    def test_fallback_drives_residual_below_tolerance(
-        self, sdf: AnalyticalHelixSDF
-    ) -> None:
+    def test_fallback_drives_residual_below_tolerance(self, sdf: AnalyticalHelixSDF) -> None:
         """The fallback must drive every accepted point under the tolerance.
 
         Use a tight tolerance and a tight Newton budget so the fallback

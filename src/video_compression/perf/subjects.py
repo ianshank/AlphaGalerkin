@@ -229,9 +229,14 @@ class RuntimeBackedDecoderSubject:
         x = gen.generate().to(self._device)
         with torch.no_grad():
             latent = temp_codec.encoder(x)
-        # Drop encoder state immediately so the runtime under test
-        # gets a clean device.
+        # Drop encoder state and the input frame immediately so the
+        # runtime under test gets a clean device. ``x`` can be large
+        # at high resolutions (a single 4K fp32 RGB frame is ~95 MB)
+        # and would otherwise stay alive for the entire prepare()
+        # call, inflating peak VRAM before the runtime has even been
+        # constructed.
         del temp_codec
+        del x
         if self._device.type == "cuda":
             torch.cuda.empty_cache()
 

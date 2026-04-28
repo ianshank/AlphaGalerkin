@@ -69,6 +69,15 @@ class PyTorchEagerRuntime(BaseDecoderRuntime):
 
     def prepare(self, *, ctx: DecoderRuntimeContext) -> None:
         device = resolve_device(ctx.device, context=f"runtime.{self.name}")
+        # Normalize an index-less cuda device into the concrete current
+        # index. Without this, ``self._device`` is ``cuda`` while
+        # ``tensor.to(device).device`` is ``cuda:N``, and decode()'s
+        # device-equality check trips a false mismatch when the caller
+        # passes ``ctx.device='cuda'``. This also makes the persisted
+        # ``device_label`` always include the index, which is the
+        # right thing for multi-GPU sweeps to compare against.
+        if device.type == "cuda" and device.index is None:
+            device = torch.device(f"cuda:{torch.cuda.current_device()}")
 
         # Validate latent dims against codec's expectations early so we
         # fail with a useful message before allocating tensors.
@@ -179,9 +188,17 @@ class PyTorchEagerRuntime(BaseDecoderRuntime):
             return self._codec.decoder(latent)
 
     def teardown(self) -> None:
-        # Free GPU memory before clearing the reference.
-        if self._device is not None and self._device.type == "cuda":
-            torch.cuda.empty_cache()
+        # Clear references first so CPython refcounting frees the
+        # codec's GPU tensors, *then* flush the CUDA allocator cache.
+        # Calling empty_cache() while ``self._codec`` is still bound
+        # is a no-op for the codec's memory — those blocks are still
+        # referenced and PyTorch keeps them in the allocator cache.
+        # This matches the established pattern in
+        # ``perf/subjects.py::CodecForwardSubject.teardown`` and
+        # ``RuntimeBackedDecoderSubject.teardown``.
+        device = self._device
         self._codec = None
         self._device = None
         super().teardown()
+        if device is not None and device.type == "cuda":
+            torch.cuda.empty_cache()

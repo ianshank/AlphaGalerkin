@@ -78,10 +78,14 @@ class DecoderRuntimeContext(BaseModuleConfig):
     device: str = Field(
         ...,
         description=(
-            "Concrete device string the runtime will execute on. "
-            "Accepts 'cpu', 'cuda', or 'cuda:N'. The benchmark resolves "
-            "the run-level preference into a concrete index before "
-            "calling prepare()."
+            "Device string the runtime will execute on. Accepts 'cpu', "
+            "'cuda', or 'cuda:N'. A plain 'cuda' value is valid and "
+            "uses the default/current CUDA device — the benchmark does "
+            "not require the preference to be resolved to an indexed "
+            "ordinal before calling prepare(). Runtime implementations "
+            "should normalize 'cuda' -> 'cuda:N' internally so any "
+            "device-equality checks against decoded-tensor devices "
+            "work correctly."
         ),
     )
 
@@ -166,8 +170,13 @@ class DecoderRuntime(Protocol):
     def prepare(self, *, ctx: DecoderRuntimeContext) -> None:
         """Allocate per-cell state.
 
-        Must be idempotent: a second ``prepare`` with the same context
-        is a no-op; a ``prepare`` after ``teardown`` is a fresh build.
+        Must be safe to call repeatedly with the same context. A
+        repeated ``prepare`` may reuse existing state or rebuild it,
+        but must leave the runtime ready to ``decode`` for ``ctx``;
+        a ``prepare`` after ``teardown`` is a fresh build. The
+        bundled eager runtime always rebuilds; future compiled /
+        ONNX / TensorRT runtimes are free to fast-path when the
+        context matches the cached artifact's.
         """
         ...
 

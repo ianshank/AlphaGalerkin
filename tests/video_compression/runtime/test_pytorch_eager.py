@@ -193,6 +193,51 @@ class TestPrepareValidation:
             rt.prepare(ctx=bad_ctx)
 
 
+@pytest.mark.gpu_required
+class TestCudaDeviceNormalization:
+    """Regression tests for index-less ``cuda`` device normalization.
+
+    Caller passes ``device='cuda'`` (no index); the resulting decode
+    call must succeed without a false device-mismatch — fixed in the
+    review pass on PR #76.
+    """
+
+    def test_unindexed_cuda_normalized_to_indexed(
+        self,
+        tiny_codec_config,
+    ) -> None:
+        ctx = DecoderRuntimeContext(
+            name="cuda_unindexed",
+            batch_size=1,
+            latent_channels=32,
+            latent_height=4,
+            latent_width=4,
+            dtype="float32",
+            device="cuda",  # No index
+            model_hash=tiny_codec_config.compute_hash(),
+        )
+        rt = PyTorchEagerRuntime(codec_config=tiny_codec_config)
+        rt.prepare(ctx=ctx)
+        meta = rt.metadata
+        assert meta is not None
+        # Normalization makes the recorded device label include the
+        # concrete index (e.g. 'cuda:0:NVIDIA-...')
+        assert meta.device_label.startswith("cuda:")
+        assert ":" in meta.device_label[len("cuda:") :]
+
+        # And the decode path works without a false mismatch — this
+        # is the original bug Devin/Copilot flagged.
+        latent = torch.zeros(
+            ctx.batch_size,
+            ctx.latent_channels,
+            ctx.latent_height,
+            ctx.latent_width,
+            device="cuda",
+        )
+        out = rt.decode(latent)
+        assert out.device.type == "cuda"
+
+
 class TestDecodeShapeValidation:
     """Regression tests for the decode-time shape validation."""
 

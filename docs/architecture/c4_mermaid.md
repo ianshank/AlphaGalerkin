@@ -95,6 +95,8 @@ C4Container
 
         Container(deployment, "Deployment", "ONNX/PyTorch", "ONNX export, quantization, runtime inference wrapper for edge deployment")
 
+        Container(codec_perf, "Codec Perf Benchmark (Phase 0)", "Python/Pydantic", "GPU-primary perf harness for src/video_compression/. Per-profile cuda:N device pinning (cuda:0 + cuda:1 dual-card sweep), Pydantic-validated PerfBenchmarkConfig with zero hardcoded values, BaselineRegistry with explicit JSON schema versioning + unversioned-file migration, regression diff (throughput / latency p50/p99 / VRAM) with per-entry tolerance overrides, BenchmarkSubject Protocol so Phase-1 runtime backends (ONNX Runtime, TensorRT, torch.compile) drop in without touching the loop.")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -133,6 +135,11 @@ C4Container
 
     Rel(neural_operator, compute, "GPU execution")
 
+    Rel(cli, codec_perf, "Runs codec benchmarks")
+    Rel(codec_perf, neural_operator, "Times forward pass under sweep")
+    Rel(codec_perf, compute, "Per-profile cuda:N pinning")
+    Rel(codec_perf, results_store, "Records baselines + run reports")
+
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```
 
@@ -154,6 +161,7 @@ C4Container
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
 | **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
 | **Deployment** | Model export and edge inference | ONNX, quantization, runtime wrapper |
+| **Codec Perf Benchmark** | GPU-primary perf gating for `src/video_compression/`; per-profile `cuda:N` pinning (RTX 5060 Ti + RTX 5060), Pydantic-validated config with no hardcoded values, BaselineRegistry with schema versioning + migration, regression diff (throughput / latency p50/p99 / VRAM) | Python, Pydantic, structlog, torch, argparse |
 
 ---
 

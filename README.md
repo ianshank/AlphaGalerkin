@@ -501,6 +501,46 @@ config = OperatorConfig(
 
 ---
 
+## Video Compression
+
+### Codec Performance Benchmarking (Phase 0)
+
+GPU-primary perf harness for `src/video_compression/`. Phase 0 of the self-hosted neural transcoder roadmap; the headline measurement gates every later phase (Phase 1 runtime backends, Phase 2 model zoo, Phase 3 MCTS rate control, Phase 4+ daemon and plugins).
+
+The harness sweeps a Cartesian product of `{resolutions} × {batch_sizes} × {runtime_profiles} × {phases}`, captures per-cell throughput / latency-percentile / VRAM, and (optionally) compares against a recorded baseline with per-metric tolerance overrides.
+
+```bash
+# CPU smoke test (CI gate, ~10 s on a single core)
+python -m scripts.benchmark_codec run --config config/perf/smoke.yaml
+
+# Single-card headline on the 16 GB primary (RTX 5060 Ti at cuda:0)
+python -m scripts.benchmark_codec run \
+    --config config/perf/cuda0_headline.yaml \
+    --output reports/perf/headline_$(git rev-parse --short HEAD).json
+
+# Dual-card sweep across cuda:0 + cuda:1 (RTX 5060 Ti + RTX 5060)
+python -m scripts.benchmark_codec run \
+    --config config/perf/default.yaml \
+    --output reports/perf/dual_$(git rev-parse --short HEAD).json
+
+# Record a fresh baseline (commit to docs/perf/ — this is the regression-gate ground truth)
+python -m scripts.benchmark_codec record-baseline \
+    --config config/perf/default.yaml \
+    --output docs/perf/baseline_v1.json \
+    --hardware-tag rtx5060ti16-rtx5060-8
+
+# Compare a run against a baseline
+python -m scripts.benchmark_codec diff \
+    --baseline docs/perf/baseline_v1.json \
+    --report reports/perf/dual_$(git rev-parse --short HEAD).json
+```
+
+Baselines are JSON with explicit schema versioning (`PERF_BASELINE_DOCUMENT_SCHEMA_VERSION`); unversioned files migrate cleanly via `_migrate_baseline_document`. See [docs/perf/README.md](docs/perf/README.md) for the full recording / migration playbook.
+
+The harness is **GPU-primary by design**: `device_preference="cuda"` is the default, and per-profile `device: "cuda:N"` lets a single sweep cover both cards of the reference rig. Set `device_preference: "cpu"` only for CI smoke; the headline measurement requires GPU.
+
+---
+
 ## Testing
 
 The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.

@@ -458,6 +458,53 @@ CONSTRAINTS:
 
 ---
 
+## Milestone 10: Self-Hosted Neural Transcoder ⚠️ Phase 0 ✅
+
+**Goal:** Realtime-decode-on-consumer-hardware target for `src/video_compression/`. Every later phase is conditional on Phase 0's headline measurement.
+**Duration:** Phase 0 complete; Phases 1-4 estimated 6-10 weeks total
+**Priority:** P1 (gates self-hosted streaming-compression product line)
+
+**Status:** ⚠️ **Phase 0 COMPLETE** (2026-04-27, PR #75 + follow-up); Phases 1-4 NOT STARTED.
+
+### Phase 0 — Codec Performance Benchmark Harness ✅ (PR #75 + follow-up)
+
+GPU-primary perf harness in `src/video_compression/perf/`. **The gating measurement** for whether the project can target realtime decode on consumer hardware.
+
+**What was delivered:**
+
+- `PerfBenchmark(BaseExecutable)` with per-profile `cuda:N` device pinning so a single sweep covers both cards of the reference dual-GPU rig (RTX 5060 Ti 16 GB at `cuda:0` + RTX 5060 8 GB at `cuda:1`).
+- `PerfBenchmarkConfig` Pydantic schema with **zero hardcoded values** — every measurement-affecting knob (resolution / batch / phase / warmup / repeats / tolerance / track-VRAM / pattern / data-seed) is a validated field with bounds.
+- `BaselineRegistry` with explicit JSON schema versioning, `extra="ignore"` forward-compat, and `_migrate_baseline_document` hook (unversioned-to-v1 migration shipped).
+- `BenchmarkSubject` Protocol — runtime-agnostic. Phase-1+ runtime backends (ONNX Runtime, TensorRT, FP16, `torch.compile`) drop in without touching the benchmark loop. Extended docstring includes a runnable Phase-1 example.
+- Three YAML configs: `config/perf/smoke.yaml` (CPU CI), `cuda0_headline.yaml` (single-card), `default.yaml` (dual-card sweep).
+- CLI `scripts/benchmark_codec.py` with `run` / `record-baseline` / `diff` subcommands; structured `structlog` events bound to `benchmark_id` + `cell_key`.
+- **126 passing tests + 4 skipped (CPU-only paths skipping correctly on CUDA host); per-module coverage 98.42%** (gate at 85% via `.github/workflows/codec-perf-coverage.yml`).
+
+### Phase 1 — Decoder Runtime Backends (~2-3 weeks)
+
+**Goal:** Determine which runtime backend gets within ~3× of realtime decode on the headline configuration. Only worthwhile if Phase 0 measurement shows it's reachable.
+
+- **Story 10.1.1:** `torch.compile` subject (`tests/video_compression/perf/test_subjects.py` extension)
+- **Story 10.1.2:** ONNX Runtime CUDA execution provider subject
+- **Story 10.1.3:** TensorRT subject (FP16 + INT8 quantization paths)
+- **Story 10.1.4:** Mixed-precision (FP16) on each backend; current `Precision.FP16` raises `NotImplementedError` on Phase 0 — Phase 1 lights it up.
+
+**Acceptance:** at least one backend hits realtime decode at 1080p on `cuda:0`; all backends register cleanly via `BenchmarkSubject` Protocol with no benchmark-loop changes.
+
+### Phase 2 — Pretrained Model Zoo (~2 weeks)
+
+Train + ship 8 model checkpoints across the declared λ rate-distortion points. Each checkpoint becomes a `RuntimeProfile` in the Phase 0 sweep.
+
+### Phase 3 — MCTS Rate Control (~3 weeks)
+
+Resolves the documented "Known Issue" in `CLAUDE.md` (rate-control tests skipped pending trained MCTS model). Wires `src/video_compression/mcts/` into the codec, enabling GOP-level bit allocation.
+
+### Phase 4 — FFmpeg Bridge → Library Daemon → Plugins (~2-3 weeks)
+
+External integration: FFmpeg encoder/decoder shim → background daemon for media-server consumption → Jellyfin / Plex plugins. Phase 4 only ships if Phases 1-3 produce a competitive codec.
+
+---
+
 ## Implementation Priority Matrix
 
 | Priority | Milestone | Estimated Effort | Dependencies |

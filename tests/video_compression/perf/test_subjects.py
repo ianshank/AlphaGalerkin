@@ -85,13 +85,28 @@ class TestCreateSubjectFactory:
         )
         assert isinstance(subj, CodecForwardSubject)
 
-    @pytest.mark.parametrize("phase", [BenchmarkPhase.ENCODE, BenchmarkPhase.DECODE])
-    def test_unimplemented_phases_raise(self, phase, tiny_codec_config) -> None:
-        with pytest.raises(NotImplementedError, match="Phase"):
+    def test_encode_phase_still_unimplemented(self, tiny_codec_config) -> None:
+        # Phase 1 implemented DECODE via the runtime registry; ENCODE
+        # is still future work (Phase 4 — FFmpeg bridge).
+        with pytest.raises(NotImplementedError, match="encode"):
             create_subject(
-                phase=phase,
+                phase=BenchmarkPhase.ENCODE,
                 codec_config=tiny_codec_config,
                 device=torch.device("cpu"),
                 pattern=SyntheticPattern.MOTION,
                 seed=1,
             )
+
+    def test_decode_phase_now_returns_runtime_subject(self, tiny_codec_config) -> None:
+        # Phase 1 wires DECODE to RuntimeBackedDecoderSubject; this
+        # test guards the new behaviour as a Phase 0 -> 1 transition.
+        from src.video_compression.perf.subjects import RuntimeBackedDecoderSubject
+
+        subj = create_subject(
+            phase=BenchmarkPhase.DECODE,
+            codec_config=tiny_codec_config,
+            device=torch.device("cpu"),
+            pattern=SyntheticPattern.MOTION,
+            seed=1,
+        )
+        assert isinstance(subj, RuntimeBackedDecoderSubject)

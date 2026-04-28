@@ -75,14 +75,14 @@ class SyntheticVideoConfig(BaseModel):
     height: int = Field(
         default=64,
         ge=16,
-        le=2048,
-        description="Frame height in pixels",
+        le=8192,
+        description="Frame height in pixels (upper bound covers 8K UHD class, 4320p)",
     )
     width: int = Field(
         default=64,
         ge=16,
-        le=2048,
-        description="Frame width in pixels",
+        le=8192,
+        description="Frame width in pixels (upper bound covers 8K UHD class, 7680p)",
     )
     channels: int = Field(
         default=3,

@@ -63,10 +63,13 @@ class TestDecoderRuntimeContext:
         "field, bad_value",
         [
             ("batch_size", 0),
-            ("batch_size", 5000),
+            ("batch_size", 9000),  # > 8192 cap
             ("latent_channels", 0),
+            ("latent_channels", 5000),  # > 4096 cap
             ("latent_height", 0),
+            ("latent_height", 20000),  # > 16384 cap
             ("latent_width", 0),
+            ("latent_width", 20000),  # > 16384 cap
         ],
     )
     def test_field_bounds(self, field: str, bad_value: int) -> None:

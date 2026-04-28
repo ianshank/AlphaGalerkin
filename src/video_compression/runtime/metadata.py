@@ -20,6 +20,7 @@ Forward-compat rules carried over from Phase 0:
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import structlog
@@ -151,7 +152,10 @@ def _migrate_compiled_artifact_metadata(raw: dict[str, Any]) -> dict[str, Any]:
     New schemas are added by appending here; old code remains able to
     load every metadata file ever written.
     """
-    raw = dict(raw)  # defensive copy
+    # Deep copy so future migrations that mutate nested values
+    # (e.g. extra_tags, or a nested dict added in a v2 schema) do
+    # not leak side effects back into the caller's dict.
+    raw = copy.deepcopy(raw)
 
     schema_version = raw.get("schema_version")
     if schema_version is None:

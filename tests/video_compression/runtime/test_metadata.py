@@ -84,6 +84,15 @@ class TestMigration:
         # Defensive copy: original untouched.
         assert "schema_version" not in raw
 
+    def test_nested_mutation_does_not_leak_to_caller(self) -> None:
+        # Guards the deep-copy contract: a future migration that mutates
+        # nested data (e.g. extra_tags) must not bleed back into the
+        # caller's dict. Shallow ``dict(raw)`` would fail this test.
+        raw = {"runtime_name": "x", "extra_tags": {"compile_mode": "default"}}
+        migrated = _migrate_compiled_artifact_metadata(raw)
+        migrated["extra_tags"]["compile_mode"] = "max-autotune"
+        assert raw["extra_tags"] == {"compile_mode": "default"}
+
     def test_current_version_passes_through(self) -> None:
         raw = {
             "schema_version": COMPILED_ARTIFACT_METADATA_SCHEMA_VERSION,

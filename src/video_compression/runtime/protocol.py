@@ -50,11 +50,18 @@ class DecoderRuntimeContext(BaseModuleConfig):
     # spurious warning at every import.
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
-    # Input description
-    batch_size: int = Field(..., ge=1, le=4096)
-    latent_channels: int = Field(..., ge=1, le=2048)
-    latent_height: int = Field(..., ge=1, le=8192)
-    latent_width: int = Field(..., ge=1, le=8192)
+    # Input description.
+    #
+    # Upper bounds are intentionally generous (16K-class) so 8K
+    # research video (7680x4320) and exploratory 16K work
+    # (15360x8640) fit without bumping the schema. They still serve
+    # as guardrails — typos like ``height=80000`` fail loud rather
+    # than silently allocating a multi-GB tensor. Bump again only
+    # when a real workload exceeds these.
+    batch_size: int = Field(..., ge=1, le=8192)
+    latent_channels: int = Field(..., ge=1, le=4096)
+    latent_height: int = Field(..., ge=1, le=16384)
+    latent_width: int = Field(..., ge=1, le=16384)
 
     # Numerical settings
     dtype: str = Field(

@@ -142,8 +142,9 @@ class TestRegisterDecorator:
             cls = RuntimeRegistry().get("decorator-test-runtime")
             assert cls is _ToyRuntime
         finally:
-            # Clean up so test isolation is preserved across tests
-            RuntimeRegistry()._items.pop("decorator-test-runtime", None)
+            # Public API; preserves the registry's internal locking
+            # semantics rather than reaching into ``_items``.
+            RuntimeRegistry().unregister("decorator-test-runtime")
 
     def test_double_registration_raises(self) -> None:
         @register_runtime("double-register-test")
@@ -169,4 +170,4 @@ class TestRegisterDecorator:
                     def decode(self, latent):  # type: ignore[no-untyped-def]
                         return latent
         finally:
-            RuntimeRegistry()._items.pop("double-register-test", None)
+            RuntimeRegistry().unregister("double-register-test")

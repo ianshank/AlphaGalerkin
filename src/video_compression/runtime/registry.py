@@ -1,11 +1,18 @@
 """Registry of decoder runtime implementations.
 
-The registry is the single dispatch point for the perf benchmark when
-it sees a ``RuntimeProfile.backend`` value. Implementations register
-themselves at import time via the ``@register_runtime("name")``
-decorator; the perf harness looks them up by the same name.
+The registry is keyed by stable runtime *names* (e.g. ``"pytorch-eager"``,
+later ``"pytorch-compiled"``, ``"onnx-cuda"``, ``"tensorrt"``).
+Implementations register themselves at import time via the
+``@register_runtime("name")`` decorator; the perf harness looks them
+up by name through ``create_runtime``.
 
-Design choices, all carried over from Phase 0 patterns:
+The perf layer is responsible for mapping a ``RuntimeProfile``
+(backend + precision + device) onto a runtime *name*; the registry
+itself does not import or reference ``RuntimeBackend``. Keeping the
+mapping in the perf layer means new runtime names can be added here
+without touching the perf config schema, and vice versa.
+
+Design choices, carried over from Phase 0 patterns:
 
 * Reuses ``src/templates/registry.py::create_registry``. Thread-safe
   via the existing ``BaseRegistry._lock``; no re-implementation.
@@ -13,8 +20,6 @@ Design choices, all carried over from Phase 0 patterns:
   pattern (``BaseAnalyzer``, ``BaseEngine``). It implements the
   ``DecoderRuntime`` Protocol's lifecycle in concrete form so
   implementations only override the methods they care about.
-* No hardcoded backend names; all dispatch keys flow through the
-  ``RuntimeBackend`` enum (``src.video_compression.perf.config``).
 * ``create_runtime`` factory is the single public lookup so callers
   never reach into ``RuntimeRegistry()`` directly.
 """
@@ -38,9 +43,15 @@ class BaseDecoderRuntime(ABC):
 
     Concrete subclasses fill in ``prepare`` / ``decode`` / ``teardown``
     and surface a ``CompiledArtifactMetadata`` via ``metadata``. The
-    ABC handles bookkeeping shared across implementations — name,
-    metadata invalidation across prepare cycles, and the "called
-    decode before prepare" guard.
+    ABC handles bookkeeping shared across implementations — exposing
+    ``runtime_name`` as the public ``name`` property, plus metadata and
+    prepared-context invalidation across lifecycle transitions.
+
+    The "decode-before-prepare" guard is the responsibility of each
+    concrete subclass (eager guards via ``self._codec is None``;
+    compiled / ONNX / TensorRT runtimes guard against their own
+    backend handles). The ABC does not enforce it because there is
+    no single backend handle every implementation shares.
 
     By satisfying the ``DecoderRuntime`` Protocol structurally,
     instances pass ``isinstance(rt, DecoderRuntime)`` checks even

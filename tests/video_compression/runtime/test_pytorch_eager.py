@@ -162,3 +162,69 @@ class TestDefaultCodecConfig:
         # is the path the registry's create_runtime() takes.
         rt = PyTorchEagerRuntime()
         assert rt.name == "pytorch-eager"
+
+
+class TestPrepareValidation:
+    """Prepare-time validation regression tests.
+
+    Added in response to PR #76 review feedback: ``prepare`` must
+    reject mismatched dtype and codec hash before allocating any GPU
+    state.
+    """
+
+    def test_dtype_other_than_fp32_rejected(
+        self,
+        tiny_codec_config,
+        tiny_context: DecoderRuntimeContext,
+    ) -> None:
+        rt = PyTorchEagerRuntime(codec_config=tiny_codec_config)
+        bad_ctx = tiny_context.with_overrides(dtype="float16")
+        with pytest.raises(ValueError, match="float32"):
+            rt.prepare(ctx=bad_ctx)
+
+    def test_model_hash_mismatch_rejected(
+        self,
+        tiny_codec_config,
+        tiny_context: DecoderRuntimeContext,
+    ) -> None:
+        rt = PyTorchEagerRuntime(codec_config=tiny_codec_config)
+        bad_ctx = tiny_context.with_overrides(model_hash="not-the-real-hash")
+        with pytest.raises(ValueError, match="model_hash"):
+            rt.prepare(ctx=bad_ctx)
+
+
+class TestDecodeShapeValidation:
+    """Regression tests for the decode-time shape validation."""
+
+    def test_wrong_shape_rejected(
+        self,
+        tiny_codec_config,
+        tiny_context: DecoderRuntimeContext,
+    ) -> None:
+        rt = PyTorchEagerRuntime(codec_config=tiny_codec_config)
+        rt.prepare(ctx=tiny_context)
+        # Right channel count, wrong spatial dims -> reject
+        bad_latent = torch.zeros(
+            tiny_context.batch_size,
+            tiny_context.latent_channels,
+            tiny_context.latent_height + 1,
+            tiny_context.latent_width,
+        )
+        with pytest.raises(ValueError, match="latent shape"):
+            rt.decode(bad_latent)
+
+    def test_wrong_batch_rejected(
+        self,
+        tiny_codec_config,
+        tiny_context: DecoderRuntimeContext,
+    ) -> None:
+        rt = PyTorchEagerRuntime(codec_config=tiny_codec_config)
+        rt.prepare(ctx=tiny_context)
+        bad_latent = torch.zeros(
+            tiny_context.batch_size + 1,
+            tiny_context.latent_channels,
+            tiny_context.latent_height,
+            tiny_context.latent_width,
+        )
+        with pytest.raises(ValueError, match="latent shape"):
+            rt.decode(bad_latent)

@@ -9,7 +9,7 @@ Patterns lifted directly from Phase 0:
 
 * ``@runtime_checkable`` Protocol (mirrors ``BenchmarkSubject``) so
   third-party / non-subclassing implementations satisfy isinstance.
-* Stateful object with explicit ``prepare`` / ``act`` / ``teardown``
+* Stateful object with explicit ``prepare`` / ``decode`` / ``teardown``
   lifecycle, so the benchmark loop owns timing and cleanup.
 * ``BaseModuleConfig`` for the per-cell context with ``extra="forbid"``
   (transient — never persisted, so strictness catches typos).

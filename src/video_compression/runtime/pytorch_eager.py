@@ -79,6 +79,35 @@ class PyTorchEagerRuntime(BaseDecoderRuntime):
                 f"{self._codec_config.encoder.latent_channels}",
             )
 
+        # Eager runtime is the equivalence baseline; it is fp32-only by
+        # contract. AMP / compiled / ONNX / TensorRT runtimes own the
+        # mixed-precision paths in later iterations. Reject anything
+        # else loud so persisted metadata (precision=ctx.dtype) stays
+        # accurate.
+        if ctx.dtype != "float32":
+            raise ValueError(
+                f"{self.name} only supports dtype='float32' (got "
+                f"{ctx.dtype!r}); use a mixed-precision runtime for "
+                f"fp16/bf16 paths in Iteration 2.",
+            )
+
+        # The ctx ``model_hash`` is a cache key; the value here is
+        # checked against the codec config we were constructed with so
+        # the persisted metadata's ``model_hash`` field accurately
+        # describes the model state that produced the decode output.
+        # Mismatch is a real misconfiguration class (caller forwarded
+        # a different config to the runtime than they used to build
+        # the synthetic latent).
+        expected_hash = self._codec_config.compute_hash()
+        if ctx.model_hash != expected_hash:
+            raise ValueError(
+                f"context model_hash={ctx.model_hash!r} does not match "
+                f"this runtime's codec config hash {expected_hash!r}; "
+                f"either pass codec_config=... when constructing the "
+                f"runtime, or pass the matching codec hash in the "
+                f"context.",
+            )
+
         codec = VideoCodec(
             config=self._codec_config,
             use_mcts_rate_control=False,
@@ -125,6 +154,26 @@ class PyTorchEagerRuntime(BaseDecoderRuntime):
             raise ValueError(
                 f"latent on {latent.device}, runtime prepared on "
                 f"{self._device}; caller must move tensor before decode()",
+            )
+        # Shape validation. Eager doesn't strictly need this — the
+        # decoder is shape-agnostic — but compiled / ONNX / TensorRT
+        # runtimes in later iterations *will* be shape-locked, and
+        # the persisted ``CompiledArtifactMetadata`` is shape-specific
+        # either way. Failing here keeps eager and the future
+        # backends behaviourally consistent so test code that runs
+        # against any runtime gets the same error class.
+        expected_shape = (
+            self._prepared_ctx.batch_size,
+            self._prepared_ctx.latent_channels,
+            self._prepared_ctx.latent_height,
+            self._prepared_ctx.latent_width,
+        )
+        actual_shape = tuple(latent.shape)
+        if actual_shape != expected_shape:
+            raise ValueError(
+                f"latent shape {actual_shape} does not match prepared "
+                f"context {expected_shape}; caller must re-run "
+                f"prepare() for a different latent shape",
             )
         with torch.no_grad():
             return self._codec.decoder(latent)

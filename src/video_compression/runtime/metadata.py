@@ -75,7 +75,13 @@ class CompiledArtifactMetadata(BaseModuleConfig):
     precision: str = Field(
         ...,
         min_length=1,
-        description="Precision tag mirroring Precision enum value.",
+        description=(
+            "Runtime dtype string persisted for the artifact build, "
+            'for example "float32", "float16", or "bfloat16". The '
+            "perf-layer ``Precision`` enum (``fp32`` / ``fp16`` / "
+            "``bf16``) is the user-facing knob and is mapped to this "
+            "dtype string by the runtime's ``prepare`` call."
+        ),
     )
 
     # Provenance

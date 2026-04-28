@@ -61,8 +61,13 @@ def tiny_codec_config() -> CodecConfig:
 
 
 @pytest.fixture
-def tiny_context() -> DecoderRuntimeContext:
-    """Per-cell context matching ``tiny_codec_config`` on CPU."""
+def tiny_context(tiny_codec_config: CodecConfig) -> DecoderRuntimeContext:
+    """Per-cell context matching ``tiny_codec_config`` on CPU.
+
+    ``model_hash`` is bound to the actual codec config hash so the
+    eager runtime (which validates the hash matches its own codec)
+    accepts this context without explicit overrides.
+    """
     return DecoderRuntimeContext(
         name="tiny_ctx",
         batch_size=1,
@@ -72,5 +77,5 @@ def tiny_context() -> DecoderRuntimeContext:
         latent_width=4,
         dtype="float32",
         device="cpu",
-        model_hash="tinyhash",
+        model_hash=tiny_codec_config.compute_hash(),
     )

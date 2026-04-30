@@ -71,8 +71,7 @@ def _runtime_name_for_profile(profile: RuntimeProfile) -> str | None:
         RuntimeBackend.PYTORCH: "pytorch-eager",
         RuntimeBackend.COMPILED: "pytorch-compiled",
         RuntimeBackend.ONNX: "onnx-cuda",
-        # Future backends:
-        # RuntimeBackend.TENSORRT: "tensorrt",
+        RuntimeBackend.TENSORRT: "tensorrt",
     }
     if profile.backend not in _backend_to_runtime:
         raise NotImplementedError(

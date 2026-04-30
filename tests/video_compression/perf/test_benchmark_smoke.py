@@ -122,11 +122,18 @@ class TestErrorPaths:
         assert all(c.failed for c in report.cells)
         assert all("not implemented" in (c.failure_reason or "") for c in report.cells)
 
-    def test_unimplemented_backend_marked_skipped(
+    def test_tensorrt_backend_dispatches_successfully(
         self,
         tiny_perf_config,
         tiny_codec_config,
     ) -> None:
+        """All 4 backends are now registered.
+
+        TensorRT dispatches without NotImplementedError. The FORWARD
+        phase doesn't exercise the actual TensorRT engine (that
+        requires CUDA), but the dispatch path itself must resolve
+        cleanly.
+        """
         cfg = tiny_perf_config.with_overrides(
             runtime_profiles=[
                 RuntimeProfile(
@@ -138,7 +145,9 @@ class TestErrorPaths:
         )
         result = run_benchmark(cfg, codec_config=tiny_codec_config)
         report = report_from_result(result)
-        assert all(c.failed for c in report.cells)
+        # FORWARD phase should succeed (doesn't need the runtime).
+        ok = [c for c in report.cells if not c.failed]
+        assert ok, "TensorRT+FORWARD cell should succeed through dispatch"
 
     def test_fail_fast_propagates(self, tiny_perf_config, tiny_codec_config) -> None:
         cfg = tiny_perf_config.with_overrides(

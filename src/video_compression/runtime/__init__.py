@@ -53,6 +53,10 @@ from src.video_compression.runtime.registry import (
     create_runtime,
     register_runtime,
 )
+from src.video_compression.runtime.tensorrt_runtime import (  # noqa: F401
+    TENSORRT_RUNTIME_NAME,
+    TensorRTRuntime,
+)
 
 __all__ = [
     "BaseDecoderRuntime",
@@ -67,6 +71,8 @@ __all__ = [
     "PyTorchCompiledRuntime",
     "PyTorchEagerRuntime",
     "RuntimeRegistry",
+    "TENSORRT_RUNTIME_NAME",
+    "TensorRTRuntime",
     "create_runtime",
     "register_runtime",
 ]

@@ -56,14 +56,13 @@ class TestRuntimeNameForProfile:
         )
         assert _runtime_name_for_profile(profile) == "onnx-cuda"
 
-    def test_tensorrt_raises_not_implemented(self) -> None:
+    def test_tensorrt_maps_to_tensorrt(self) -> None:
         profile = RuntimeProfile(
             name="p",
             backend=RuntimeBackend.TENSORRT,
             precision=Precision.FP32,
         )
-        with pytest.raises(NotImplementedError, match="tensorrt"):
-            _runtime_name_for_profile(profile)
+        assert _runtime_name_for_profile(profile) == "tensorrt"
 
 
 class TestDtypeForPrecision:

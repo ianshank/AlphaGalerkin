@@ -238,3 +238,129 @@ class TestSerialization:
         keys_via_json = {c["cell_key"] for c in decoded["cells"]}
         keys_direct = {c.cell_key for c in report.cells}
         assert keys_via_json == keys_direct
+
+
+# ---------------------------------------------------- defensive error paths
+#
+# Coverage fill-ins added in the follow-up PR off PR #75. These exercise
+# the three reachable defensive-raise paths inside ``PerfBenchmark`` /
+# ``report_from_result`` that the original test suite left at 97% on
+# benchmark.py. The remaining uncovered lines (config.py:98 / 267,
+# device.py:37 / 72, subjects.py:167) are dead code shielded by Pydantic
+# Field bounds (``ge=16``, ``ge=1``, exhaustive enum check) — leaving
+# alone rather than monkey-patching the validators to force coverage.
+
+
+class TestDefensiveRaisePaths:
+    """Cover the three reachable raise-paths inside the benchmark loop.
+
+    These are essential safety nets, not edge cases — every one of them
+    exists because the benchmark must be defensive about misconfigurations
+    that would otherwise corrupt downstream artifacts. Lock them in.
+    """
+
+    def test_fail_fast_propagates_arbitrary_exception(
+        self,
+        tiny_perf_config: PerfBenchmarkConfig,
+        tiny_codec_config,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """benchmark.py:283 — non-NotImplementedError + fail_fast=True re-raises.
+
+        The existing test_fail_fast_propagates uses ENCODE phase which
+        triggers NotImplementedError, hitting a different except clause.
+        This test forces a generic RuntimeError via a mock subject so
+        the BLE001-marked except branch executes.
+        """
+        from unittest.mock import patch
+
+        from src.video_compression.perf.benchmark import PerfBenchmark
+        from src.video_compression.perf.subjects import BenchmarkSubject
+
+        cfg = tiny_perf_config.with_overrides(fail_fast=True)
+        bench = PerfBenchmark(config=cfg, codec_config=tiny_codec_config)
+
+        # Force ``create_subject`` to return a subject whose ``prepare()``
+        # raises a synthetic RuntimeError. This must NOT be a subclass of
+        # NotImplementedError or the operator would route into the
+        # already-tested skip path; the BLE001 ``except Exception`` branch
+        # at benchmark.py:281-283 only fires for "real" runtime failures.
+        class _RaisingSubject(BenchmarkSubject):
+            def prepare(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+                raise RuntimeError("synthetic prepare-time failure for fail_fast test")
+
+            def step(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+                raise AssertionError("step should not be reached")
+
+            def teardown(self) -> None:
+                return None
+
+        with patch(
+            "src.video_compression.perf.benchmark.create_subject",
+            return_value=_RaisingSubject(),
+        ):
+            # The BaseExecutable.run() wrapper converts the raise into a
+            # FAILED ExecutionResult — same outward contract as the
+            # NotImplementedError path, but the inner ``raise`` at line
+            # 283 IS hit, which is what we're locking in.
+            result = bench.run()
+
+        assert result.status == ExecutionStatus.FAILED
+
+    def test_non_fp32_precision_raises_not_implemented(
+        self,
+        tiny_perf_config: PerfBenchmarkConfig,
+        tiny_codec_config,  # type: ignore[no-untyped-def]
+    ) -> None:
+        """benchmark.py:377 — Phase-1 stub for non-FP32 precision.
+
+        Mixed precision lands in Phase 1 (decoder runtime registry).
+        Until then any cell asking for non-FP32 must surface as a clean
+        skipped/failed cell rather than silently degrading to FP32.
+        """
+        cfg = tiny_perf_config.with_overrides(
+            runtime_profiles=[
+                RuntimeProfile(
+                    name="fp16_stub",
+                    backend=RuntimeBackend.PYTORCH,
+                    precision=Precision.FP16,
+                )
+            ],
+        )
+        bench = PerfBenchmark(config=cfg, codec_config=tiny_codec_config)
+        result = bench.run()
+        # The benchmark catches the NotImplementedError per-cell and
+        # records it as failed-with-skipped-reason via ``CellResult.failed=True``
+        # plus ``failure_reason``. The suite-level ExecutionResult still
+        # COMPLETEs because each cell's exception was caught.
+        report = report_from_result(result)
+        failed_cells = [c for c in report.cells if c.failed]
+        assert failed_cells, "non-FP32 cell must not silently succeed"
+        reasons = " ".join(c.failure_reason or "" for c in failed_cells)
+        assert "phase 1" in reasons.lower() or "mixed" in reasons.lower(), (
+            f"failure reason should mention Phase-1 / mixed-precision; got: {reasons!r}"
+        )
+
+    def test_report_from_result_rejects_missing_artifact(
+        self,
+        tiny_perf_config: PerfBenchmarkConfig,
+    ) -> None:
+        """benchmark.py:579 -- ``report_from_result`` raises on bad input.
+
+        Specifically: an ``ExecutionResult`` that wasn't produced by
+        ``PerfBenchmark``. The function is a public utility; downstream
+        tools must get a clear error rather than a silent ``KeyError``
+        at the call site when they pass the wrong result type.
+        """
+        from src.templates.base import ExecutionResult
+
+        # Construct an ExecutionResult that lacks the ``"report"`` key
+        # in artifacts. This mirrors the case where another BaseExecutable
+        # subclass result is mistakenly passed to ``report_from_result``.
+        bogus = ExecutionResult(
+            run_id="not-a-perf-run",
+            config_hash=tiny_perf_config.compute_hash(),
+            status=ExecutionStatus.COMPLETED,
+            artifacts={},  # crucially: no "report" key
+        )
+        with pytest.raises(KeyError, match="report"):
+            report_from_result(bogus)

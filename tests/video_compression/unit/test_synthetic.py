@@ -61,7 +61,7 @@ class TestSyntheticVideoConfig:
         with pytest.raises(ValidationError):
             SyntheticVideoConfig(height=8)  # Below minimum 16
         with pytest.raises(ValidationError):
-            SyntheticVideoConfig(width=4096)  # Above maximum 2048
+            SyntheticVideoConfig(width=16384)  # Above maximum 8192
         with pytest.raises(ValidationError):
             SyntheticVideoConfig(num_frames=0)  # Below minimum 1
 

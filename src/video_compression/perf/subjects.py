@@ -44,6 +44,60 @@ class BenchmarkSubject(Protocol):
     Implementations are expected to be stateful: ``prepare`` configures
     state for one cell, ``step`` runs a single timed iteration. A subject
     must be re-preparable across cells without leaking memory.
+
+    .. rubric:: Extension contract for Phase-1+ runtime backends
+
+    The benchmark loop is **runtime-agnostic by design**: every later
+    phase (Phase 1 ``torch.compile`` / FP16 / ONNX Runtime / TensorRT
+    decoder runtimes; Phase 2 pretrained model zoo; Phase 4 FFmpeg
+    encode/decode) drops a new subject in without touching the loop.
+    The contract a future backend must satisfy is exactly the four
+    members above. Concretely::
+
+        class OnnxRuntimeForwardSubject:
+            '''Phase-1 example -- ONNX Runtime CUDA execution provider.'''
+
+            def __init__(
+                self,
+                onnx_session: 'onnxruntime.InferenceSession',
+                *,
+                device: torch.device,
+                pattern: SyntheticPattern,
+                seed: int,
+            ) -> None:
+                self._sess = onnx_session
+                self._device = device
+                self._pattern = pattern
+                self._seed = seed
+                self._x: 'numpy.ndarray | None' = None
+
+            @property
+            def name(self) -> str:
+                return f'onnx-runtime-forward-{self._device.type}'
+
+            def prepare(self, *, batch_size: int, height: int, width: int) -> None:
+                # Build an ndarray (or pinned tensor) once per cell. Allocate
+                # on the same device the session targets so step() never
+                # incurs host<->device copies.
+                ...
+
+            def step(self) -> None:
+                # Single timed iteration. NO setup, NO logging, NO branches
+                # -- the benchmark loop sandwiches this between
+                # ``time.perf_counter()`` and ``torch.cuda.synchronize()``;
+                # any work here counts toward latency_ms.
+                self._sess.run(None, {'input': self._x})
+
+            def teardown(self) -> None:
+                # Drop per-cell state. The next prepare() will rebuild.
+                self._x = None
+
+    The protocol intentionally has **no** ``device``, ``pattern``, or
+    ``seed`` parameters: those are constructor concerns, not per-cell
+    concerns, so different backends with different setup needs slot in
+    cleanly. The benchmark loop itself uses ``isinstance(...,
+    BenchmarkSubject)`` (because the Protocol is ``runtime_checkable``)
+    to gate-check pluggability.
     """
 
     @property

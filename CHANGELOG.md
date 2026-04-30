@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Codec Performance Benchmark Phase 0 (`src/video_compression/perf/`)
+
+- **GPU-primary benchmark harness** — new `PerfBenchmark(BaseExecutable)` with `device_preference="cuda"` default, per-profile `cuda:N` pinning so a single sweep covers both cards of the reference dual-GPU rig (RTX 5060 Ti 16 GB at `cuda:0` + RTX 5060 8 GB at `cuda:1`). Indexed-CUDA resolver wraps `src/poc/device.resolve_device` without disturbing existing PoC scenarios.
+- **Pydantic-validated config with zero hardcoded values** — `PerfBenchmarkConfig` surfaces every measurement-affecting knob (resolution / batch / phase / warmup / repeats / tolerance / track-VRAM / pattern / data-seed) as validated fields with bounds. `RuntimeProfile` and `ResolutionSpec` schemas pin labels and devices for stable cell keys. Schema versions are module-level constants (`PERF_BENCHMARK_CONFIG_SCHEMA_VERSION`, `PERF_BASELINE_DOCUMENT_SCHEMA_VERSION`, `PERF_BASELINE_ENTRY_SCHEMA_VERSION`).
+- **Forward-compatible baseline registry** — `BaselineRegistry` load/save/diff with explicit JSON schema versioning, `extra="ignore"` for unknown future fields, and `_migrate_baseline_document` hook with an unversioned-to-v1 migration. Per-entry tolerance overrides allow tightening regression gates on critical cells without weakening the global threshold.
+- **Three YAML configs** — `config/perf/smoke.yaml` (CPU CI gate, ~10 s), `config/perf/cuda0_headline.yaml` (single-card 16 GB primary), `config/perf/default.yaml` (dual-card sweep across `cuda:0` + `cuda:1`).
+- **CLI `scripts/benchmark_codec.py`** — `run` / `record-baseline` / `diff` subcommands with structured `structlog` events bound to `benchmark_id` + `cell_key`. Argparse-based; no typer dep.
+- **`BenchmarkSubject` Protocol** — runtime-agnostic interface for the timed object (`prepare` / `step` / `teardown`). Phase 1 (ONNX Runtime, TensorRT, FP16, `torch.compile`) drops new subjects in without touching the benchmark loop. Extended docstring includes a runnable Phase-1 example.
+- **Coverage gate** — new `.github/workflows/codec-perf-coverage.yml` enforces ≥85% per-module coverage on `src/video_compression/perf/`. Inline-coveragerc heredoc with `include = src/video_compression/perf/*.py` (same pattern as `regression-surface.yml::noyron-hx-coverage-gate` on master). Achieved coverage: `__init__.py` 100% / `baseline.py` 99% / `benchmark.py` 100% / `config.py` 96% / `device.py` 90% / `metrics.py` 100% / `subjects.py` 97% — **TOTAL 98.42%**.
+- **Defensive raise-paths covered** — three new tests in `TestDefensiveRaisePaths` (`tests/video_compression/perf/test_benchmark_smoke.py`) lock in: `fail_fast=True` propagates non-`NotImplementedError` exceptions; non-FP32 precision raises clean `NotImplementedError` (Phase-1 stub); `report_from_result` rejects `ExecutionResult` lacking the `"report"` artifact with a clear `KeyError`.
+
 ### Added — Noyron HX v1 Hardening (`src/pde/sdf.py`, `src/pde/geometry_picogk.py`, `src/poc/scenarios/noyron_hx.py`)
 
 - **Voxel-FDM training consistency** — `NoyronHXScenario` now trains directly on the cached FDM solution when `ref_solver_kind="voxel_fdm"`. Previously the scenario trained on the harmonic surrogate but graded against FDM; the head-line `mse_low < 5e-4` / `mse_high < 1e-3` thresholds were unreachable in FDM mode. The cached solution is built lazily via `_voxel_fdm_reference()` and reused at evaluation, so reference and supervision come from the same field.

@@ -30,7 +30,8 @@ Key design choices:
 from __future__ import annotations
 
 import time
-from typing import Literal
+from collections.abc import Callable
+from typing import Any, Literal
 
 import structlog
 import torch
@@ -88,7 +89,7 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
         )
         self._compile_mode = compile_mode
         self._fullgraph = fullgraph
-        self._compiled_decoder: torch.nn.Module | None = None
+        self._compiled_decoder: Callable[..., Any] | None = None
         self._device: torch.device | None = None
         self._autocast_dtype: torch.dtype | None = None
 

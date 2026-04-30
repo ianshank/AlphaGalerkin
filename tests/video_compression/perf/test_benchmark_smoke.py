@@ -130,8 +130,8 @@ class TestErrorPaths:
         cfg = tiny_perf_config.with_overrides(
             runtime_profiles=[
                 RuntimeProfile(
-                    name="onnx",
-                    backend=RuntimeBackend.ONNX,
+                    name="tensorrt",
+                    backend=RuntimeBackend.TENSORRT,
                     precision=Precision.FP32,
                 ),
             ],

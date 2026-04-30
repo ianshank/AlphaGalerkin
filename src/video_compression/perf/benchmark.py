@@ -70,8 +70,8 @@ def _runtime_name_for_profile(profile: RuntimeProfile) -> str | None:
     _backend_to_runtime: dict[RuntimeBackend, str] = {
         RuntimeBackend.PYTORCH: "pytorch-eager",
         RuntimeBackend.COMPILED: "pytorch-compiled",
+        RuntimeBackend.ONNX: "onnx-cuda",
         # Future backends:
-        # RuntimeBackend.ONNX: "onnx-cuda",
         # RuntimeBackend.TENSORRT: "tensorrt",
     }
     if profile.backend not in _backend_to_runtime:

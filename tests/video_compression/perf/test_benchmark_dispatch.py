@@ -14,10 +14,8 @@ import pytest
 
 from src.templates.base import ExecutionStatus
 from src.video_compression.perf import (
-    BenchmarkPhase,
     PerfBenchmarkConfig,
     Precision,
-    ResolutionSpec,
     RuntimeBackend,
     RuntimeProfile,
     report_from_result,
@@ -50,14 +48,13 @@ class TestRuntimeNameForProfile:
         )
         assert _runtime_name_for_profile(profile) == "pytorch-compiled"
 
-    def test_onnx_raises_not_implemented(self) -> None:
+    def test_onnx_maps_to_onnx_cuda(self) -> None:
         profile = RuntimeProfile(
             name="p",
             backend=RuntimeBackend.ONNX,
             precision=Precision.FP32,
         )
-        with pytest.raises(NotImplementedError, match="onnx"):
-            _runtime_name_for_profile(profile)
+        assert _runtime_name_for_profile(profile) == "onnx-cuda"
 
     def test_tensorrt_raises_not_implemented(self) -> None:
         profile = RuntimeProfile(

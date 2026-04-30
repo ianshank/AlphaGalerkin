@@ -35,6 +35,10 @@ from src.video_compression.runtime.protocol import (
 # Side-effect import: registers PYTORCH_EAGER_RUNTIME_NAME.
 # Iteration 2/4/5 add their modules here so registration runs at
 # import time. Order is alphabetical to keep diffs minimal.
+from src.video_compression.runtime.pytorch_compiled import (  # noqa: F401
+    PYTORCH_COMPILED_RUNTIME_NAME,
+    PyTorchCompiledRuntime,
+)
 from src.video_compression.runtime.pytorch_eager import (  # noqa: F401
     PYTORCH_EAGER_RUNTIME_NAME,
     PyTorchEagerRuntime,
@@ -52,7 +56,9 @@ __all__ = [
     "CompiledArtifactMetadata",
     "DecoderRuntime",
     "DecoderRuntimeContext",
+    "PYTORCH_COMPILED_RUNTIME_NAME",
     "PYTORCH_EAGER_RUNTIME_NAME",
+    "PyTorchCompiledRuntime",
     "PyTorchEagerRuntime",
     "RuntimeRegistry",
     "create_runtime",

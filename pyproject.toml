@@ -212,6 +212,12 @@ module = [
     "typer.*",
     "rich",
     "rich.*",
+    "torch_tensorrt",
+    "torch_tensorrt.*",
+    "onnxscript",
+    "onnxscript.*",
+    "dllist",
+    "dllist.*",
 ]
 ignore_missing_imports = true
 

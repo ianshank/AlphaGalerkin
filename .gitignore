@@ -131,6 +131,9 @@ outputs/proposals/
 *.h5
 *.hdf5
 *.ckpt
+*.engine
+*.plan
+*.trt
 
 # TensorBoard / experiment tracking
 runs/

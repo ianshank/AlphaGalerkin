@@ -53,7 +53,7 @@ def _onnx_available() -> bool:
     """Check if onnxruntime and onnxscript are importable."""
     try:
         import onnxruntime  # noqa: F401
-        import onnxscript  # noqa: F401
+        import onnxscript  # noqa: F401  # type: ignore[import-not-found]
 
         return True
     except ImportError:
@@ -142,7 +142,7 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
         torch.onnx.export(
             codec.decoder,
             (dummy_input,),
-            onnx_buffer,
+            onnx_buffer,  # type: ignore[arg-type]
             opset_version=self._opset_version,
             input_names=["latent"],
             output_names=["output"],

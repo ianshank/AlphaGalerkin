@@ -55,7 +55,7 @@ DEFAULT_OPTIMIZATION_LEVEL: TRTOptimizationLevel = 3
 def _tensorrt_available() -> bool:
     """Check if torch_tensorrt is importable."""
     try:
-        import torch_tensorrt  # noqa: F401
+        import torch_tensorrt  # noqa: F401  # type: ignore[import-untyped]
 
         return True
     except ImportError:

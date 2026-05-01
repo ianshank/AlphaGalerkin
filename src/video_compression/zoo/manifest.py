@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+import yaml
 
 from src.video_compression.zoo.config import (
     PERF_ZOO_MANIFEST_SCHEMA_VERSION,
@@ -20,6 +21,9 @@ from src.video_compression.zoo.config import (
 )
 
 logger = structlog.get_logger(__name__)
+
+#: File extensions that should be parsed/serialized as YAML rather than JSON.
+YAML_SUFFIXES: frozenset[str] = frozenset({".yaml", ".yml"})
 
 
 class ManifestMigrationError(ValueError):
@@ -86,11 +90,14 @@ def load_manifest(path: str | Path) -> ModelZooManifestConfig:
         raise FileNotFoundError(f"manifest not found: {p}")
 
     with p.open("r", encoding="utf-8") as fh:
-        raw = json.load(fh)
+        if p.suffix.lower() in YAML_SUFFIXES:
+            raw = yaml.safe_load(fh)
+        else:
+            raw = json.load(fh)
 
     if not isinstance(raw, dict):
         raise ManifestMigrationError(
-            f"manifest root must be a JSON object; got {type(raw).__name__}",
+            f"manifest root must be a mapping; got {type(raw).__name__}",
         )
 
     migrated = _migrate_manifest_document(raw)
@@ -106,12 +113,15 @@ def save_manifest(
     *,
     indent: int = 2,
 ) -> Path:
-    """Persist a manifest as JSON.
+    """Persist a manifest as JSON or YAML.
+
+    The serialization format is dispatched by ``path.suffix``: ``.yaml``
+    and ``.yml`` use ``yaml.safe_dump``; everything else is JSON.
 
     Args:
         manifest: Validated manifest.
         path: Destination path. Parent directories are created.
-        indent: JSON indent width for human-readability.
+        indent: JSON indent width for human-readability (ignored for YAML).
 
     Returns:
         The :class:`pathlib.Path` written to.
@@ -121,7 +131,10 @@ def save_manifest(
     p.parent.mkdir(parents=True, exist_ok=True)
     payload = manifest.to_yaml_dict()
     with p.open("w", encoding="utf-8") as fh:
-        json.dump(payload, fh, indent=indent, sort_keys=True, default=str)
+        if p.suffix.lower() in YAML_SUFFIXES:
+            yaml.safe_dump(payload, fh, sort_keys=True, default_flow_style=False)
+        else:
+            json.dump(payload, fh, indent=indent, sort_keys=True, default=str)
     logger.info(
         "zoo.manifest.saved",
         path=str(p),

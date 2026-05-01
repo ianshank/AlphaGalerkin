@@ -563,6 +563,38 @@ pytest tests/video_compression/perf/ tests/video_compression/runtime/ -v
 
 ---
 
+### Phase 2 — Model Zoo (R-D Lagrangian Sweep) ✅ Phase 2-B COMPLETE
+
+Subpackage `src/video_compression/zoo/` orchestrates an R-D Lagrangian sweep across a heterogeneous-VRAM rig (e.g. `cuda:0=RTX 5060 Ti 16 GiB` + `cuda:1=RTX 5060 8 GiB`). Schedules an arbitrary λ-grid; ships an 8-point grid at [config/video_compression/zoo/lambda_grid.yaml](config/video_compression/zoo/lambda_grid.yaml).
+
+| Module | Responsibility | Coverage |
+|---|---|---|
+| `config.py` | Pydantic schemas (`ModelZooEntryConfig`, `ModelZooManifestConfig`, `OptimizerConfig`, `SchedulerConfig`) — zero hardcoded values | 100% |
+| `manifest.py` | JSON / YAML load / save dispatched by suffix; forward-compat migration via `_migrate_manifest_document` | 100% |
+| `device_planner.py` | `scan_devices()` + `assign_devices()` with four strategies: `VRAM_AWARE` (best-fit pack on current headroom), `ROUND_ROBIN`, `SINGLE_DEVICE`, `MANUAL` | 100% |
+| `storage.py` | Filesystem `VideoCodecZoo` registry (per-entry `checkpoint.pt` / `entry.json` / `metrics.json`); GCS backend gated for Phase D | 100% |
+
+```bash
+# Load and inspect a zoo manifest
+python -c "from src.video_compression.zoo.manifest import load_manifest; \
+  m = load_manifest('config/video_compression/zoo/lambda_grid.yaml'); \
+  print(len(m.entries), 'entries; lambdas:', [e.lambda_rd for e in m.entries])"
+
+# Plan a run on the local rig
+python -c "from src.video_compression.zoo.manifest import load_manifest; \
+  from src.video_compression.zoo.device_planner import scan_devices, assign_devices; \
+  m = load_manifest('config/video_compression/zoo/lambda_grid.yaml'); \
+  plan = assign_devices(m, devices=scan_devices()); \
+  [print(a.entry_id, '->', a.device) for a in plan.assignments]"
+
+# Run the zoo subpackage tests + coverage
+pytest tests/video_compression/zoo/ --cov=src/video_compression/zoo --cov-fail-under=85 -v
+```
+
+Phase 2-C (training composition: `ZooTrainer` per-entry with fixed-λ + AMP + grad-clip + warmup wired from `ModelZooEntryConfig`, warm-start via `parent_entry_id`) is the next milestone — see [docs/NEXT_STEPS_PLAN.md](docs/NEXT_STEPS_PLAN.md).
+
+---
+
 ## Testing
 
 The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.

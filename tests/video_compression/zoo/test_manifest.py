@@ -95,6 +95,24 @@ class TestRoundTrip:
         with pytest.raises(ManifestMigrationError):
             load_manifest(path)
 
+    def test_save_then_load_yaml(self, tmp_path: Path) -> None:
+        # YAML round-trip: shipped configs (e.g. lambda_grid.yaml) use
+        # YAML, so save_manifest/load_manifest must dispatch on suffix.
+        m = _manifest(tmp_path)
+        path = save_manifest(m, tmp_path / "manifest.yaml")
+        loaded = load_manifest(path)
+        assert [e.entry_id for e in loaded.entries] == ["a", "b"]
+        assert loaded.entries[0].lambda_rd == pytest.approx(0.01)
+
+    def test_load_shipped_lambda_grid(self) -> None:
+        # E2E smoke: the shipped 8-point R-D grid must load cleanly.
+        path = Path("config/video_compression/zoo/lambda_grid.yaml")
+        if not path.exists():
+            pytest.skip("shipped grid not present")
+        loaded = load_manifest(path)
+        assert len(loaded.entries) == 8
+        assert all(e.lambda_rd > 0 for e in loaded.entries)
+
 
 class TestPropertyBased:
     @given(

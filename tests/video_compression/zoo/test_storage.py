@@ -109,3 +109,19 @@ class TestUnsupportedBackend:
             pytest.skip("[vertex] extra not installed")
         with pytest.raises(NotImplementedError):
             zoo.save_entry(_entry(), _state_dict(), metrics={"a": 0.0})
+
+    def test_gcs_load_state_dict_not_implemented(self) -> None:
+        try:
+            zoo = VideoCodecZoo("gs://bucket/prefix", backend=StorageBackend.GCS)
+        except ImportError:
+            pytest.skip("[vertex] extra not installed")
+        with pytest.raises(NotImplementedError, match="load_state_dict"):
+            zoo.load_state_dict("any_id")
+
+    def test_gcs_load_metrics_not_implemented(self) -> None:
+        try:
+            zoo = VideoCodecZoo("gs://bucket/prefix", backend=StorageBackend.GCS)
+        except ImportError:
+            pytest.skip("[vertex] extra not installed")
+        with pytest.raises(NotImplementedError, match="load_metrics"):
+            zoo.load_metrics("any_id")

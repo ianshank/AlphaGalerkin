@@ -145,27 +145,41 @@ class VideoCodecZoo:
         entry_dir = self.entry_dir(entry.entry_id)
         entry_dir.mkdir(parents=True, exist_ok=True)
 
-        ckpt_path = entry_dir / CHECKPOINT_FILENAME
-        torch.save(state_dict, ckpt_path)
-
-        with (entry_dir / ENTRY_FILENAME).open("w", encoding="utf-8") as fh:
-            json.dump(entry.to_yaml_dict(), fh, indent=2, sort_keys=True, default=str)
-
-        # Validate metrics are JSON-friendly floats.
+        # Validate metrics are JSON-friendly floats first; we want to
+        # fail before we touch the filesystem.
         clean: dict[str, float] = {}
         for k, v in metrics.items():
             if not isinstance(k, str):
                 raise TypeError(f"metric key must be str; got {type(k).__name__}")
             clean[k] = float(v)
 
+        # Atomic write: stage every artifact at a sibling ``.tmp`` path
+        # then ``Path.replace`` it onto the canonical name. ``replace``
+        # is atomic on POSIX and on Windows for same-volume moves, so
+        # readers never observe a half-written checkpoint, entry.json,
+        # or metrics.json.
+        ckpt_path = entry_dir / CHECKPOINT_FILENAME
+        ckpt_tmp = ckpt_path.with_suffix(ckpt_path.suffix + ".tmp")
+        torch.save(state_dict, ckpt_tmp)
+        ckpt_tmp.replace(ckpt_path)
+
+        entry_path = entry_dir / ENTRY_FILENAME
+        entry_tmp = entry_path.with_suffix(entry_path.suffix + ".tmp")
+        with entry_tmp.open("w", encoding="utf-8") as fh:
+            json.dump(entry.to_yaml_dict(), fh, indent=2, sort_keys=True, default=str)
+        entry_tmp.replace(entry_path)
+
         saved_at = datetime.now(timezone.utc).isoformat()
-        with (entry_dir / METRICS_FILENAME).open("w", encoding="utf-8") as fh:
+        metrics_path = entry_dir / METRICS_FILENAME
+        metrics_tmp = metrics_path.with_suffix(metrics_path.suffix + ".tmp")
+        with metrics_tmp.open("w", encoding="utf-8") as fh:
             json.dump(
                 {"metrics": clean, "saved_at": saved_at},
                 fh,
                 indent=2,
                 sort_keys=True,
             )
+        metrics_tmp.replace(metrics_path)
 
         self._log.info(
             "zoo.entry.saved",
@@ -186,14 +200,36 @@ class VideoCodecZoo:
         entry_id: str,
         *,
         map_location: str | torch.device | None = None,
+        weights_only: bool = True,
     ) -> dict[str, Any]:
-        """Load the raw state-dict bundle for an entry."""
+        """Load the raw state-dict bundle for an entry.
+
+        Security note:
+            ``torch.load`` performs pickle deserialization and can
+            execute arbitrary code when ``weights_only=False``. The
+            default here is ``weights_only=True`` (matching torch ≥2.6
+            guidance) so callers loading checkpoints from an untrusted
+            ``storage_root`` stay safe. Pass ``weights_only=False``
+            explicitly only when the bundle contains non-tensor objects
+            (e.g. an entire optimizer/scheduler) and the source is
+            known-trusted.
+
+        """
+        if self.backend is not StorageBackend.FILESYSTEM:
+            raise NotImplementedError(
+                f"load_state_dict is implemented only for filesystem; got "
+                f"{self.backend!r}",
+            )
         path = self.checkpoint_path(entry_id)
         if not path.exists():
             raise FileNotFoundError(
                 f"no checkpoint for entry_id={entry_id!r} at {path}",
             )
-        bundle = torch.load(path, map_location=map_location, weights_only=False)
+        bundle = torch.load(
+            path,
+            map_location=map_location,
+            weights_only=weights_only,
+        )
         if not isinstance(bundle, dict):
             raise TypeError(
                 f"checkpoint at {path} is not a dict; got "
@@ -202,6 +238,11 @@ class VideoCodecZoo:
         return bundle
 
     def load_metrics(self, entry_id: str) -> dict[str, float]:
+        if self.backend is not StorageBackend.FILESYSTEM:
+            raise NotImplementedError(
+                f"load_metrics is implemented only for filesystem; got "
+                f"{self.backend!r}",
+            )
         path = self.metrics_path(entry_id)
         if not path.exists():
             raise FileNotFoundError(f"no metrics for entry_id={entry_id!r}")

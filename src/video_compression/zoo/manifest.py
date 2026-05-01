@@ -69,10 +69,14 @@ def _migrate_manifest_document(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_manifest(path: str | Path) -> ModelZooManifestConfig:
-    """Load a manifest from JSON, applying migrations as needed.
+    """Load a manifest from JSON or YAML, applying migrations as needed.
+
+    The serialization format is dispatched by ``path.suffix``: ``.yaml``
+    and ``.yml`` use ``yaml.safe_load``; everything else is parsed as
+    JSON.
 
     Args:
-        path: Path to manifest JSON file.
+        path: Path to a manifest JSON or YAML file.
 
     Returns:
         Validated :class:`ModelZooManifestConfig`.

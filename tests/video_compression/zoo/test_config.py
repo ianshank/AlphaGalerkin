@@ -63,6 +63,32 @@ class TestModelZooEntryConfig:
         with pytest.raises(ValidationError):
             _entry(entry_id="bad id!")
 
+    @pytest.mark.parametrize("traversal_id", [".", ".."])
+    def test_entry_id_path_traversal_rejected(self, traversal_id: str) -> None:
+        # Bare ``.`` and ``..`` pass the regex but would resolve outside
+        # ``storage_root`` when fed to ``VideoCodecZoo.entry_dir`` -
+        # the post-validator must reject them explicitly.
+        with pytest.raises(ValidationError, match="path traversal"):
+            _entry(entry_id=traversal_id)
+
+    def test_duplicate_entry_id_reports_all_duplicates(self) -> None:
+        # Multiple duplicates must all be reported in one ValidationError
+        # rather than fix-one-at-a-time.
+        with pytest.raises(ValidationError) as excinfo:
+            ModelZooManifestConfig(
+                name="m",
+                storage_root="./zoo",
+                entries=[
+                    _entry(entry_id="a"),
+                    _entry(entry_id="a"),
+                    _entry(entry_id="b"),
+                    _entry(entry_id="b"),
+                ],
+            )
+        msg = str(excinfo.value)
+        assert "'a'" in msg
+        assert "'b'" in msg
+
     def test_warmup_must_not_exceed_steps(self) -> None:
         with pytest.raises(ValidationError):
             _entry(

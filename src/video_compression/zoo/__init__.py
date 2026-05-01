@@ -1,7 +1,7 @@
 """Pretrained model zoo for the AlphaGalerkin video codec.
 
 Phase 2 of the self-hosted transcoder roadmap (see ``docs/NEXT_STEPS_PLAN.md``
-Milestone 10). The zoo trains and ships one checkpoint per declared
+Milestone 11). The zoo trains and ships one checkpoint per declared
 rate-distortion lambda point, then exposes each checkpoint as a selectable
 ``RuntimeProfile`` in the Phase 0 perf benchmark harness.
 
@@ -11,8 +11,10 @@ Public surface:
 - :class:`ModelZooManifestConfig` — full manifest with schema-versioned
   forward-compat migration.
 - :class:`DeviceAssignmentStrategy` — how zoo entries are mapped to GPUs.
-- :class:`VideoCodecZoo` — checkpoint storage backed by
-  :class:`src.distributed.model_zoo.ModelZoo`.
+- :class:`VideoCodecZoo` — filesystem-backed checkpoint and artifact
+  registry for codec zoo entries. Intentionally orthogonal to
+  :class:`src.distributed.model_zoo.ModelZoo`, which carries AlphaZero
+  curriculum semantics that do not apply to a static R-D grid.
 - :func:`scan_devices` / :func:`assign_devices` — dual-GPU planner.
 """
 

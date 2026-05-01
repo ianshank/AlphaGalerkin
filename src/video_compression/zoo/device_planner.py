@@ -213,12 +213,17 @@ def _assign_vram_aware(
                 f"{entry.estimated_vram_mib:.0f} MiB reservation)"
             )
         else:
-            # Over-commit: pick the largest *total* VRAM device.
+            # Over-commit: pick the largest *total* VRAM device and
+            # still debit its reservation so subsequent entries see the
+            # reduced (possibly negative) headroom and don't get packed
+            # onto an already-overloaded GPU.
             best_label = max(total, key=lambda lbl: total[lbl])
+            remaining[best_label] -= entry.estimated_vram_mib
             reason = (
                 f"vram_aware: over-commit on {best_label} "
                 f"(needed {entry.estimated_vram_mib:.0f} MiB, total "
-                f"{total[best_label]:.0f} MiB)"
+                f"{total[best_label]:.0f} MiB, headroom "
+                f"{remaining[best_label]:.0f} MiB after reservation)"
             )
         assignments_by_idx[idx] = EntryAssignment(
             entry_id=entry.entry_id,

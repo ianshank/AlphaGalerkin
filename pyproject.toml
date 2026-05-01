@@ -385,12 +385,24 @@ branch = true
 # use ``pytest.importorskip`` and skip cleanly in the default CI matrix,
 # so including it here would unfairly tank the global coverage gate.
 omit = [
+    # video_compression subpackages whose tests are excluded from the
+    # global CI run via --ignore=tests/video_compression/. Per-module
+    # coverage gates for perf/, runtime/, and zoo/ are enforced by
+    # dedicated workflows (codec-perf-coverage.yml and the upcoming
+    # phase2-zoo-validation.yml), so they are also omitted here to
+    # avoid double-counting and 0%-from-no-tests in the global gate.
+    "src/video_compression/__init__.py",
     "src/video_compression/codec/*",
     "src/video_compression/data/*",
+    "src/video_compression/demo/*",
     "src/video_compression/mcts/*",
     "src/video_compression/metrics/*",
     "src/video_compression/models/*",
+    "src/video_compression/perf/*",
+    "src/video_compression/runtime/*",
     "src/video_compression/training/*",
+    "src/video_compression/utils/*",
+    "src/video_compression/zoo/*",
     "src/video_compression/config.py",
     "src/backend/*",
     "src/demos/*",

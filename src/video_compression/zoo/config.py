@@ -11,6 +11,7 @@ unversioned-to-v1 migration in :mod:`src.video_compression.zoo.manifest`).
 
 from __future__ import annotations
 
+from collections import Counter
 from enum import Enum
 from typing import Literal
 
@@ -158,6 +159,21 @@ class ModelZooEntryConfig(BaseModuleConfig):
         pattern=r"^[a-zA-Z0-9_\-\.]+$",
         description="Unique identifier within the manifest.",
     )
+
+    @model_validator(mode="after")
+    def _reject_path_traversal_entry_id(self) -> ModelZooEntryConfig:
+        # The base pattern accepts dotted ids like ``lambda_0.0016`` but
+        # also bare ``.`` / ``..`` which would resolve outside
+        # ``storage_root`` when fed to ``VideoCodecZoo.entry_dir``.
+        # Reject those segments explicitly. Pydantic-core's Rust regex
+        # has no look-around, so this lives in a validator instead of
+        # the field pattern.
+        if self.entry_id in {".", ".."}:
+            raise ValueError(
+                f"entry_id {self.entry_id!r} is reserved (path traversal); "
+                f"choose a non-dot identifier",
+            )
+        return self
 
     # Rate-distortion point
     lambda_rd: float = Field(
@@ -385,16 +401,23 @@ class ModelZooManifestConfig(BaseModuleConfig):
 
     @model_validator(mode="after")
     def _validate_entry_ids(self) -> ModelZooManifestConfig:
-        seen: set[str] = set()
+        # Collect *all* duplicate ids in one pass so the user gets the
+        # full picture in a single ValidationError, not a fix-one-at-a-
+        # time loop.
+        counts = Counter(e.entry_id for e in self.entries)
+        duplicates = sorted(eid for eid, n in counts.items() if n > 1)
+        if duplicates:
+            raise ValueError(
+                f"duplicate entry_id(s) in manifest: {duplicates!r}",
+            )
+        # Check parent_entry_id references resolve. The full id set is
+        # safe to use here because we just proved there are no dups.
+        valid_ids = set(counts)
         for entry in self.entries:
-            if entry.entry_id in seen:
-                raise ValueError(
-                    f"duplicate entry_id {entry.entry_id!r} in manifest",
-                )
-            seen.add(entry.entry_id)
-        # Check parent_entry_id references resolve.
-        for entry in self.entries:
-            if entry.parent_entry_id is not None and entry.parent_entry_id not in seen:
+            if (
+                entry.parent_entry_id is not None
+                and entry.parent_entry_id not in valid_ids
+            ):
                 raise ValueError(
                     f"entry {entry.entry_id!r} declares parent_entry_id="
                     f"{entry.parent_entry_id!r} which is not present in the "

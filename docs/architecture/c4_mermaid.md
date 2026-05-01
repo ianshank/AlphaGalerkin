@@ -95,7 +95,9 @@ C4Container
 
         Container(deployment, "Deployment", "ONNX/PyTorch", "ONNX export, quantization, runtime inference wrapper for edge deployment")
 
-        Container(codec_perf, "Codec Perf Benchmark (Phase 0)", "Python/Pydantic", "GPU-primary perf harness for src/video_compression/. Per-profile cuda:N device pinning (cuda:0 + cuda:1 dual-card sweep), Pydantic-validated PerfBenchmarkConfig with zero hardcoded values, BaselineRegistry with explicit JSON schema versioning + unversioned-file migration, regression diff (throughput / latency p50/p99 / VRAM) with per-entry tolerance overrides, BenchmarkSubject Protocol so Phase-1 runtime backends (ONNX Runtime, TensorRT, torch.compile) drop in without touching the loop.")
+        Container(codec_perf, "Codec Perf Benchmark (Phase 0)", "Python/Pydantic", "GPU-primary perf harness for src/video_compression/. Per-profile cuda:N device pinning, Pydantic-validated PerfBenchmarkConfig with zero hardcoded values, BaselineRegistry with schema versioning + migration, regression diff with per-entry tolerance overrides, BenchmarkSubject Protocol for runtime backends.")
+
+        Container(decoder_runtime, "Decoder Runtime Backends (Phase 1)", "Python/PyTorch", "Protocol-based decoder runtime dispatch layer: pytorch-eager (baseline), pytorch-compiled (torch.compile with inductor), onnx-cuda (ONNX Runtime + CUDAExecutionProvider), tensorrt (torch_tensorrt Dynamo IR). Registry-based discovery via @register_runtime decorator. FP32/FP16/BF16 precision dispatch. CompiledArtifactMetadata provenance tracking.")
 
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
@@ -136,7 +138,9 @@ C4Container
     Rel(neural_operator, compute, "GPU execution")
 
     Rel(cli, codec_perf, "Runs codec benchmarks")
-    Rel(codec_perf, neural_operator, "Times forward pass under sweep")
+    Rel(codec_perf, decoder_runtime, "Dispatches to runtime backend")
+    Rel(decoder_runtime, neural_operator, "Wraps decoder for inference")
+    Rel(decoder_runtime, compute, "CUDA/TensorRT execution")
     Rel(codec_perf, compute, "Per-profile cuda:N pinning")
     Rel(codec_perf, results_store, "Records baselines + run reports")
 

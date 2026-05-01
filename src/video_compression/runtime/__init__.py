@@ -27,14 +27,22 @@ from src.video_compression.runtime.metadata import (
     COMPILED_ARTIFACT_METADATA_SCHEMA_VERSION,
     CompiledArtifactMetadata,
 )
-from src.video_compression.runtime.protocol import (
-    DecoderRuntime,
-    DecoderRuntimeContext,
-)
 
 # Side-effect import: registers PYTORCH_EAGER_RUNTIME_NAME.
 # Iteration 2/4/5 add their modules here so registration runs at
 # import time. Order is alphabetical to keep diffs minimal.
+from src.video_compression.runtime.onnx_runtime import (  # noqa: F401
+    ONNX_RUNTIME_NAME,
+    ONNXDecoderRuntime,
+)
+from src.video_compression.runtime.protocol import (
+    DecoderRuntime,
+    DecoderRuntimeContext,
+)
+from src.video_compression.runtime.pytorch_compiled import (  # noqa: F401
+    PYTORCH_COMPILED_RUNTIME_NAME,
+    PyTorchCompiledRuntime,
+)
 from src.video_compression.runtime.pytorch_eager import (  # noqa: F401
     PYTORCH_EAGER_RUNTIME_NAME,
     PyTorchEagerRuntime,
@@ -45,6 +53,10 @@ from src.video_compression.runtime.registry import (
     create_runtime,
     register_runtime,
 )
+from src.video_compression.runtime.tensorrt_runtime import (  # noqa: F401
+    TENSORRT_RUNTIME_NAME,
+    TensorRTRuntime,
+)
 
 __all__ = [
     "BaseDecoderRuntime",
@@ -52,9 +64,15 @@ __all__ = [
     "CompiledArtifactMetadata",
     "DecoderRuntime",
     "DecoderRuntimeContext",
+    "ONNX_RUNTIME_NAME",
+    "ONNXDecoderRuntime",
+    "PYTORCH_COMPILED_RUNTIME_NAME",
     "PYTORCH_EAGER_RUNTIME_NAME",
+    "PyTorchCompiledRuntime",
     "PyTorchEagerRuntime",
     "RuntimeRegistry",
+    "TENSORRT_RUNTIME_NAME",
+    "TensorRTRuntime",
     "create_runtime",
     "register_runtime",
 ]

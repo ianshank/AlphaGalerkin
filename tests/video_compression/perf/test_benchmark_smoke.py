@@ -122,23 +122,32 @@ class TestErrorPaths:
         assert all(c.failed for c in report.cells)
         assert all("not implemented" in (c.failure_reason or "") for c in report.cells)
 
-    def test_unimplemented_backend_marked_skipped(
+    def test_tensorrt_backend_dispatches_successfully(
         self,
         tiny_perf_config,
         tiny_codec_config,
     ) -> None:
+        """All 4 backends are now registered.
+
+        TensorRT dispatches without NotImplementedError. The FORWARD
+        phase doesn't exercise the actual TensorRT engine (that
+        requires CUDA), but the dispatch path itself must resolve
+        cleanly.
+        """
         cfg = tiny_perf_config.with_overrides(
             runtime_profiles=[
                 RuntimeProfile(
-                    name="onnx",
-                    backend=RuntimeBackend.ONNX,
+                    name="tensorrt",
+                    backend=RuntimeBackend.TENSORRT,
                     precision=Precision.FP32,
                 ),
             ],
         )
         result = run_benchmark(cfg, codec_config=tiny_codec_config)
         report = report_from_result(result)
-        assert all(c.failed for c in report.cells)
+        # FORWARD phase should succeed (doesn't need the runtime).
+        ok = [c for c in report.cells if not c.failed]
+        assert ok, "TensorRT+FORWARD cell should succeed through dispatch"
 
     def test_fail_fast_propagates(self, tiny_perf_config, tiny_codec_config) -> None:
         cfg = tiny_perf_config.with_overrides(
@@ -306,16 +315,17 @@ class TestDefensiveRaisePaths:
 
         assert result.status == ExecutionStatus.FAILED
 
-    def test_non_fp32_precision_raises_not_implemented(
+    def test_non_fp32_precision_runs_successfully(
         self,
         tiny_perf_config: PerfBenchmarkConfig,
         tiny_codec_config,  # type: ignore[no-untyped-def]
     ) -> None:
-        """benchmark.py:377 — Phase-1 stub for non-FP32 precision.
+        """Phase 1 activated FP16/BF16 in the benchmark loop.
 
-        Mixed precision lands in Phase 1 (decoder runtime registry).
-        Until then any cell asking for non-FP32 must surface as a clean
-        skipped/failed cell rather than silently degrading to FP32.
+        Mixed precision is now supported via the runtime's autocast.
+        For FORWARD-phase subjects the benchmark runs the codec at FP32
+        (the subject itself doesn't use the runtime registry), but the
+        cell should complete without errors.
         """
         cfg = tiny_perf_config.with_overrides(
             runtime_profiles=[
@@ -328,17 +338,11 @@ class TestDefensiveRaisePaths:
         )
         bench = PerfBenchmark(config=cfg, codec_config=tiny_codec_config)
         result = bench.run()
-        # The benchmark catches the NotImplementedError per-cell and
-        # records it as failed-with-skipped-reason via ``CellResult.failed=True``
-        # plus ``failure_reason``. The suite-level ExecutionResult still
-        # COMPLETEs because each cell's exception was caught.
         report = report_from_result(result)
-        failed_cells = [c for c in report.cells if c.failed]
-        assert failed_cells, "non-FP32 cell must not silently succeed"
-        reasons = " ".join(c.failure_reason or "" for c in failed_cells)
-        assert "phase 1" in reasons.lower() or "mixed" in reasons.lower(), (
-            f"failure reason should mention Phase-1 / mixed-precision; got: {reasons!r}"
-        )
+        # FP16 cells should now complete successfully
+        ok_cells = [c for c in report.cells if not c.failed]
+        assert ok_cells, "FP16 cell should succeed now that Phase 1 is active"
+        assert ok_cells[0].throughput_fps > 0.0
 
     def test_report_from_result_rejects_missing_artifact(
         self,

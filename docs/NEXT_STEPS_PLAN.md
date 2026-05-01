@@ -458,13 +458,13 @@ CONSTRAINTS:
 
 ---
 
-## Milestone 10: Self-Hosted Neural Transcoder ⚠️ Phase 0 ✅
+## Milestone 10: Self-Hosted Neural Transcoder ⚠️ Phase 0+1 ✅
 
 **Goal:** Realtime-decode-on-consumer-hardware target for `src/video_compression/`. Every later phase is conditional on Phase 0's headline measurement.
-**Duration:** Phase 0 complete; Phases 1-4 estimated 6-10 weeks total
+**Duration:** Phase 0+1 complete; Phases 2-4 estimated 4-8 weeks total
 **Priority:** P1 (gates self-hosted streaming-compression product line)
 
-**Status:** ⚠️ **Phase 0 COMPLETE** (2026-04-27, PR #75 + follow-up); Phases 1-4 NOT STARTED.
+**Status:** ⚠️ **Phase 0+1 COMPLETE** (2026-04-27 → 2026-04-30); Phases 2-4 NOT STARTED.
 
 ### Phase 0 — Codec Performance Benchmark Harness ✅ (PR #75 + follow-up)
 
@@ -480,16 +480,17 @@ GPU-primary perf harness in `src/video_compression/perf/`. **The gating measurem
 - CLI `scripts/benchmark_codec.py` with `run` / `record-baseline` / `diff` subcommands; structured `structlog` events bound to `benchmark_id` + `cell_key`.
 - **126 passing tests + 4 skipped (CPU-only paths skipping correctly on CUDA host); per-module coverage 98.42%** (gate at 85% via `.github/workflows/codec-perf-coverage.yml`).
 
-### Phase 1 — Decoder Runtime Backends (~2-3 weeks)
+### Phase 1 — Decoder Runtime Backends ✅ (2026-04-30)
 
-**Goal:** Determine which runtime backend gets within ~3× of realtime decode on the headline configuration. Only worthwhile if Phase 0 measurement shows it's reachable.
+Four decoder runtime backends implemented in `src/video_compression/runtime/`:
 
-- **Story 10.1.1:** `torch.compile` subject (`tests/video_compression/perf/test_subjects.py` extension)
-- **Story 10.1.2:** ONNX Runtime CUDA execution provider subject
-- **Story 10.1.3:** TensorRT subject (FP16 + INT8 quantization paths)
-- **Story 10.1.4:** Mixed-precision (FP16) on each backend; current `Precision.FP16` raises `NotImplementedError` on Phase 0 — Phase 1 lights it up.
+- **Story 10.1.1:** `PyTorchCompiledRuntime` — `torch.compile` with inductor, CUDA graphs via `reduce-overhead` ✅
+- **Story 10.1.2:** `ONNXDecoderRuntime` — In-memory ONNX export + `CUDAExecutionProvider` ✅
+- **Story 10.1.3:** `TensorRTRuntime` — `torch_tensorrt.compile` with Dynamo IR, FP16 via `enabled_precisions` ✅
+- **Story 10.1.4:** FP16/BF16 activation — `NotImplementedError` gates removed, `_runtime_name_for_profile()` dispatch ✅
 
-**Acceptance:** at least one backend hits realtime decode at 1080p on `cuda:0`; all backends register cleanly via `BenchmarkSubject` Protocol with no benchmark-loop changes.
+**CUDA environment:** PyTorch 2.11.0+cu126, torch_tensorrt 2.11.0+cu126, GTX 1660 Ti.
+**Full regression:** 244 passed, 17 skipped, 0 failed.
 
 ### Phase 2 — Pretrained Model Zoo (~2 weeks)
 

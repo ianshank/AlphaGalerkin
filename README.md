@@ -133,8 +133,9 @@ See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for compr
 ### Prerequisites
 
 - Python 3.10+
-- PyTorch 2.0+
-- CUDA 11.8+ (optional, for GPU acceleration)
+- PyTorch 2.0+ (CUDA 12.6 recommended for GPU backends)
+- CUDA 12.x+ (required for TensorRT and ONNX Runtime GPU)
+- Optional: `torch-tensorrt`, `onnxruntime`, `onnxscript` (for Phase 1 runtime backends)
 
 ### From Source
 
@@ -539,6 +540,27 @@ Baselines are JSON with explicit schema versioning (`PERF_BASELINE_DOCUMENT_SCHE
 
 The harness is **GPU-primary by design**: `device_preference="cuda"` is the default, and per-profile `device: "cuda:N"` lets a single sweep cover both cards of the reference rig. Set `device_preference: "cpu"` only for CI smoke; the headline measurement requires GPU.
 
+### Phase 1 — Decoder Runtime Backends ✅ COMPLETE
+
+Four decoder runtime backends implemented as Protocol-compliant modules in `src/video_compression/runtime/`:
+
+| Backend | Registry Name | Key Feature | Precision |
+|---|---|---|---|
+| **PyTorch Eager** | `pytorch-eager` | Baseline, no compilation | FP32 |
+| **torch.compile** | `pytorch-compiled` | Inductor graph fusion, CUDA graphs | FP32/FP16/BF16 + autocast |
+| **ONNX Runtime** | `onnx-cuda` | In-memory ONNX export + CUDAExecutionProvider | FP32 |
+| **TensorRT** | `tensorrt` | torch_tensorrt Dynamo IR, max throughput | FP32/FP16 (BF16→FP16) |
+
+All backends register via `@register_runtime` decorator and are dispatched through the benchmark loop's `_runtime_name_for_profile()` mapping. No hardcoded values — optimization levels, opset versions, and compile modes are configurable, while precision support is backend-dependent and currently follows each runtime's implemented execution path.
+
+```bash
+# Run with TensorRT backend (requires CUDA + torch_tensorrt)
+python -m scripts.benchmark_codec run --config config/perf/cuda0_headline.yaml
+
+# Full runtime test suite (env-gated skips for missing deps)
+pytest tests/video_compression/perf/ tests/video_compression/runtime/ -v
+```
+
 ---
 
 ## Testing
@@ -743,6 +765,17 @@ AlphaGalerkin/
 │   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
+│   ├── video_compression/ # Neural video compression
+│   │   ├── runtime/       # Decoder runtime backends (Phase 1)
+│   │   │   ├── protocol.py       # DecoderRuntime Protocol
+│   │   │   ├── registry.py       # @register_runtime + RuntimeRegistry
+│   │   │   ├── pytorch_eager.py  # Baseline eager runtime
+│   │   │   ├── pytorch_compiled.py # torch.compile + inductor
+│   │   │   ├── onnx_runtime.py   # ONNX Runtime + CUDA EP
+│   │   │   └── tensorrt_runtime.py # torch_tensorrt Dynamo IR
+│   │   ├── perf/          # Phase 0 benchmark harness
+│   │   ├── codec/         # Codec pipeline
+│   │   └── models/        # Encoder, decoder, hyperprior
 │   └── tools/             # Utilities (GTP, CLI)
 ├── tests/                 # 3000+ tests, 85% coverage gate
 │   ├── pde/               # PDE operators, geometry, time-stepping, swarm

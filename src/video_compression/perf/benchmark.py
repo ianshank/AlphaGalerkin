@@ -50,6 +50,59 @@ from src.video_compression.perf.subjects import BenchmarkSubject, create_subject
 _module_logger = structlog.get_logger(__name__)
 _BenchmarkLogger = create_logger_class("PerfBenchmark")
 
+
+# ---------- Phase 1 dispatch helpers ----------------------------------------
+# These map the perf-layer enums to runtime-layer names/dtypes. The mapping
+# lives in the perf layer (not the runtime registry) so the two modules
+# evolve independently.
+
+
+def _runtime_name_for_profile(profile: RuntimeProfile, phase: BenchmarkPhase) -> str | None:
+    """Map a ``RuntimeProfile`` to the runtime registry name.
+
+    Returns ``None`` for ``FORWARD`` phase subjects (they don't use the
+    runtime registry). ``DECODE`` phase subjects forward the name to
+    ``create_subject`` which passes it to ``RuntimeBackedDecoderSubject``.
+
+    Raises ``NotImplementedError`` for backends whose runtime hasn't
+    been registered yet.
+    """
+    _backend_to_runtime: dict[RuntimeBackend, str] = {
+        RuntimeBackend.PYTORCH: "pytorch-eager",
+        RuntimeBackend.COMPILED: "pytorch-compiled",
+        RuntimeBackend.ONNX: "onnx-cuda",
+        RuntimeBackend.TENSORRT: "tensorrt",
+    }
+    if phase is BenchmarkPhase.FORWARD:
+        return None
+
+    if profile.backend not in _backend_to_runtime:
+        raise NotImplementedError(
+            f"runtime backend {profile.backend.value!r} is not yet "
+            f"implemented; available: {sorted(v for v in _backend_to_runtime.values())}",
+        )
+    _fp32_only_backends = (RuntimeBackend.PYTORCH, RuntimeBackend.ONNX)
+    if profile.backend in _fp32_only_backends and profile.precision != Precision.FP32:
+        raise NotImplementedError(
+            f"runtime backend {profile.backend.value!r} currently only supports FP32 precision",
+        )
+    return _backend_to_runtime[profile.backend]
+
+
+def _dtype_for_precision(precision: Precision) -> str:
+    """Map a ``Precision`` enum to the dtype string for ``DecoderRuntimeContext``.
+
+    Returns the torch dtype string (``"float32"``, ``"float16"``,
+    ``"bfloat16"``) accepted by ``DecoderRuntimeContext.dtype``.
+    """
+    _precision_to_dtype: dict[Precision, str] = {
+        Precision.FP32: "float32",
+        Precision.FP16: "float16",
+        Precision.BF16: "bfloat16",
+    }
+    return _precision_to_dtype[precision]
+
+
 # Suffix used to label cells in baselines and reports. Surfaced as a
 # constant so baselines remain comparable if the format ever needs to
 # evolve (older baselines could be migrated by rewriting these keys).
@@ -366,17 +419,12 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
         phase: BenchmarkPhase,
         key: str,
     ) -> CellResult:
-        # Phase 0 only exposes the eager pytorch fp32 path; later phases
-        # extend ``create_subject`` to dispatch on profile.
-        if profile.backend is not RuntimeBackend.PYTORCH:
-            raise NotImplementedError(
-                f"runtime backend {profile.backend.value!r} requires "
-                f"phase 1 (decoder runtime registry)",
-            )
-        if profile.precision is not Precision.FP32:
-            raise NotImplementedError(
-                f"precision {profile.precision.value!r} requires phase 1 (mixed-precision support)",
-            )
+        # Map the profile's RuntimeBackend enum to the stable runtime name
+        # used by the RuntimeRegistry. This mapping lives here (not in the
+        # registry) so new backends can be added to the enum without touching
+        # the registry module, and vice versa.
+        runtime_name = _runtime_name_for_profile(profile, phase)
+        dtype = _dtype_for_precision(profile.precision)
 
         # Per-profile device override lets a single sweep cover both GPUs
         # (cuda:0 and cuda:1) without re-running the whole benchmark.
@@ -387,12 +435,19 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
         )
         assert cell_device is not None
 
+        runtime_kwargs = {}
+        if profile.backend == RuntimeBackend.COMPILED:
+            runtime_kwargs["compile_mode"] = profile.compile_mode
+
         subject: BenchmarkSubject = create_subject(
             phase=phase,
             codec_config=self._codec_config,
             device=cell_device,
             pattern=SyntheticPattern(self.config.pattern),
             seed=self.config.data_seed,
+            runtime_name=runtime_name,
+            dtype=dtype,
+            runtime_kwargs=runtime_kwargs,
         )
 
         peak_vram_mib: float | None = None

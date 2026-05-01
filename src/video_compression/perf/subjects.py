@@ -227,12 +227,14 @@ class RuntimeBackedDecoderSubject:
         pattern: SyntheticPattern,
         seed: int,
         runtime_name: str = DEFAULT_DECODE_RUNTIME_NAME,
+        dtype: str = "float32",
+        runtime_kwargs: dict[str, Any] | None = None,
     ) -> None:
         # Local imports keep ``perf.subjects`` importable even on
         # systems where the runtime package isn't installed (relevant
         # to optional backends in later iterations). Eager runtime is
         # always present so this can never fail in practice today.
-        from src.video_compression.runtime.registry import (
+        from src.video_compression.runtime import (
             BaseDecoderRuntime,
             create_runtime,
         )
@@ -242,6 +244,8 @@ class RuntimeBackedDecoderSubject:
         self._pattern = pattern
         self._seed = seed
         self._runtime_name = runtime_name
+        self._dtype = dtype
+        self._runtime_kwargs = runtime_kwargs or {}
         self._create_runtime = create_runtime
 
         self._runtime: BaseDecoderRuntime | None = None
@@ -304,6 +308,7 @@ class RuntimeBackedDecoderSubject:
         self._runtime = self._create_runtime(
             self._runtime_name,
             codec_config=self._codec_config,
+            **self._runtime_kwargs,
         )
         ctx = DecoderRuntimeContext(
             name=f"decode_ctx_{self._runtime_name}",
@@ -311,7 +316,7 @@ class RuntimeBackedDecoderSubject:
             latent_channels=self._codec_config.encoder.latent_channels,
             latent_height=height // downsample,
             latent_width=width // downsample,
-            dtype="float32",
+            dtype=self._dtype,
             device=str(self._device),
             model_hash=self._codec_config.compute_hash(),
         )
@@ -347,6 +352,8 @@ def create_subject(
     pattern: SyntheticPattern,
     seed: int,
     runtime_name: str | None = None,
+    dtype: str = "float32",
+    runtime_kwargs: dict[str, Any] | None = None,
 ) -> BenchmarkSubject:
     """Factory for benchmark subjects.
 
@@ -376,6 +383,8 @@ def create_subject(
             pattern=pattern,
             seed=seed,
             runtime_name=runtime_name or DEFAULT_DECODE_RUNTIME_NAME,
+            dtype=dtype,
+            runtime_kwargs=runtime_kwargs,
         )
     if phase is BenchmarkPhase.ENCODE:
         raise NotImplementedError(

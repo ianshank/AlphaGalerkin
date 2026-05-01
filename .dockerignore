@@ -1,0 +1,112 @@
+# .dockerignore — AlphaGalerkin
+# Keep the Docker context small by excluding non-essential files.
+
+# Version control
+.git/
+.github/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+sdist/
+wheels/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing artifacts
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.tox/
+.nox/
+
+# ML model binaries (large, mount or download at runtime)
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.engine
+*.plan
+*.trt
+*.h5
+*.hdf5
+*.ckpt
+checkpoints/
+
+# TensorRT / ONNX build caches
+*.tflite
+
+# Outputs and reports
+outputs/
+reports/
+wandb/
+runs/
+lightning_logs/
+mlruns/
+.aim/
+
+# Data directories
+data/raw/
+data/processed/
+data/external/
+datasets/
+
+# Docs (not needed in container)
+docs/proposals/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude / agent
+.claude/
+.gemini/
+
+# Credentials
+.env
+.env.*
+*credentials*.json
+*secret*.json
+*secrets*.json
+*service-account*.json
+*service_account*.json
+
+# Video test materials
+Test_Video_Materals/
+validation_outputs/
+
+# Benchmark artifacts
+*.benchmark
+*.profile
+*.prof
+*.lcov
+prof/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Lock files (install from pyproject.toml)
+uv.lock
+poetry.lock
+Pipfile.lock

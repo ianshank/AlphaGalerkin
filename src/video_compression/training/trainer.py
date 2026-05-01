@@ -101,6 +101,7 @@ class VideoCompressionTrainer:
         self.scheduler = CosineAnnealingLR(
             self.optimizer,
             T_max=config.total_steps - config.warmup_steps,
+            eta_min=config.learning_rate * config.min_lr_ratio,
         )
 
         # Mixed precision

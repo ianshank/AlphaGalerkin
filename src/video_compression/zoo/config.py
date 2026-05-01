@@ -22,11 +22,19 @@ from typing import Literal
 from pydantic import ConfigDict, Field, model_validator
 
 from src.templates.config import BaseModuleConfig
+from src.video_compression.zoo.dataset_spec import DatasetSpec
 
 # Schema-version constants are surfaced (not magic literals) so the
 # migrator and consumers compare against a single source of truth.
+#
+# Manifest version history:
+#   1 — initial Phase 2-B schema.
+# Entry version history:
+#   1 — initial Phase 2-B schema.
+#   2 — Phase 2-C: ``dataset_spec`` field added (optional, defaults to
+#       None — old v1 documents continue to validate without changes).
 PERF_ZOO_MANIFEST_SCHEMA_VERSION: int = 1
-PERF_ZOO_ENTRY_SCHEMA_VERSION: int = 1
+PERF_ZOO_ENTRY_SCHEMA_VERSION: int = 2
 
 
 class StorageBackend(str, Enum):
@@ -307,7 +315,19 @@ class ModelZooEntryConfig(BaseModuleConfig):
         description=(
             "Path / URI of the training dataset. None means the "
             "manifest-level default applies. Synthetic data is used "
-            "when both are None (CI smoke)."
+            "when both are None (CI smoke). Superseded by "
+            "``dataset_spec`` from schema v2; retained for backwards "
+            "compatibility with v1 manifests."
+        ),
+    )
+    dataset_spec: DatasetSpec | None = Field(
+        default=None,
+        description=(
+            "Phase 2-C: declarative dataset pipeline spec. When set, "
+            "takes precedence over ``train_dataset_ref`` and the "
+            "manifest-level ``default_dataset_spec``. None means the "
+            "manifest default applies; if both are None, ZooTrainer "
+            "falls back to a synthetic spec keyed off ``seed``."
         ),
     )
 
@@ -371,6 +391,15 @@ class ModelZooManifestConfig(BaseModuleConfig):
     default_train_dataset_ref: str | None = Field(
         default=None,
         description="Default training dataset path/URI for entries with no override.",
+    )
+    default_dataset_spec: DatasetSpec | None = Field(
+        default=None,
+        description=(
+            "Phase 2-C: manifest-wide dataset pipeline spec. Entries "
+            "that do not declare their own ``dataset_spec`` inherit "
+            "this one. None means each entry falls back to a synthetic "
+            "spec built from its ``seed``."
+        ),
     )
 
     # Sweep behavior

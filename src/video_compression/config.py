@@ -535,6 +535,12 @@ class TrainingConfig(TrainableModuleConfig):
         le=1.0,
         description="MS-SSIM weight when using mixed distortion",
     )
+    min_lr_ratio: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Floor for cosine annealing, expressed as lr / base_lr.",
+    )
 
     # Perceptual loss
     use_perceptual_loss: bool = Field(

@@ -30,9 +30,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Literal, TypeVar, overload
+from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -277,14 +278,30 @@ class TrainableModuleConfig(BaseModuleConfig):
     )
 
     # Hardware
-    device: Literal["auto", "cpu", "cuda", "mps"] = Field(
+    device: str = Field(
         default="auto",
-        description="Device for training",
+        description=(
+            "Device for training. Accepts 'auto', 'cpu', 'mps', 'cuda', "
+            "or an explicit CUDA ordinal like 'cuda:1'."
+        ),
     )
     use_amp: bool = Field(
         default=True,
         description="Use automatic mixed precision",
     )
+
+    @field_validator("device")
+    @classmethod
+    def validate_device(cls, v: str) -> str:
+        """Validate device strings while allowing explicit CUDA ordinals."""
+        if v in {"auto", "cpu", "cuda", "mps"}:
+            return v
+        if re.fullmatch(r"cuda:\d+", v):
+            return v
+        raise ValueError(
+            "device must be one of 'auto', 'cpu', 'mps', 'cuda', or 'cuda:N'; "
+            f"got {v!r}",
+        )
 
     @model_validator(mode="after")
     def validate_intervals(self) -> TrainableModuleConfig:

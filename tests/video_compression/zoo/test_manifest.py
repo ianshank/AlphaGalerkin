@@ -10,12 +10,15 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from src.video_compression.zoo.config import (
+    PERF_ZOO_ENTRY_SCHEMA_VERSION,
     PERF_ZOO_MANIFEST_SCHEMA_VERSION,
     ModelZooEntryConfig,
     ModelZooManifestConfig,
 )
+from src.video_compression.zoo.dataset_spec import DatasetSpec
 from src.video_compression.zoo.manifest import (
     ManifestMigrationError,
+    _migrate_entry_document,
     _migrate_manifest_document,
     load_manifest,
     save_manifest,
@@ -61,6 +64,61 @@ class TestMigration:
         with pytest.raises(ManifestMigrationError, match="must be int"):
             _migrate_manifest_document(raw)
 
+    def test_entry_v1_to_v2_promotes_schema_version(self) -> None:
+        v1_entry = {
+            "schema_version": 1,
+            "entry_id": "lambda_a",
+            "lambda_rd": 0.01,
+            "target_bpp": 0.5,
+            "target_psnr_db": 33.0,
+            "train_steps": 1000,
+        }
+        out = _migrate_entry_document(v1_entry)
+        assert out["schema_version"] == PERF_ZOO_ENTRY_SCHEMA_VERSION
+        assert "dataset_spec" not in out  # additive default, not injected
+
+    def test_entry_unversioned_promoted_to_current(self) -> None:
+        raw = {
+            "entry_id": "lambda_a",
+            "lambda_rd": 0.01,
+            "target_bpp": 0.5,
+            "target_psnr_db": 33.0,
+            "train_steps": 1000,
+        }
+        out = _migrate_entry_document(raw)
+        assert out["schema_version"] == PERF_ZOO_ENTRY_SCHEMA_VERSION
+
+    def test_entry_newer_version_fails_loud(self) -> None:
+        raw = {"schema_version": PERF_ZOO_ENTRY_SCHEMA_VERSION + 1}
+        with pytest.raises(ManifestMigrationError, match="newer than this binary"):
+            _migrate_entry_document(raw)
+
+    def test_v1_manifest_with_v1_entries_loads(self, tmp_path: Path) -> None:
+        # End-to-end backwards compat: a hand-rolled v1 manifest with
+        # v1 entries (no dataset_spec, schema_version=1) must validate
+        # under v2 schema.
+        path = tmp_path / "v1.json"
+        legacy = {
+            "schema_version": 1,
+            "name": "legacy",
+            "storage_root": str(tmp_path / "zoo"),
+            "entries": [
+                {
+                    "schema_version": 1,
+                    "entry_id": "lambda_a",
+                    "lambda_rd": 0.01,
+                    "target_bpp": 0.5,
+                    "target_psnr_db": 33.0,
+                    "train_steps": 1000,
+                },
+            ],
+        }
+        with path.open("w") as fh:
+            json.dump(legacy, fh)
+        loaded = load_manifest(path)
+        assert loaded.entries[0].schema_version == PERF_ZOO_ENTRY_SCHEMA_VERSION
+        assert loaded.entries[0].dataset_spec is None
+
 
 class TestRoundTrip:
     def test_save_then_load(self, tmp_path: Path) -> None:
@@ -103,6 +161,38 @@ class TestRoundTrip:
         loaded = load_manifest(path)
         assert [e.entry_id for e in loaded.entries] == ["a", "b"]
         assert loaded.entries[0].lambda_rd == pytest.approx(0.01)
+
+    def test_dataset_spec_round_trip(self, tmp_path: Path) -> None:
+        dataset_spec = DatasetSpec(
+            name="ds",
+            kind="image_folder",
+            root=str(tmp_path / "frames"),
+            height=32,
+            width=32,
+            seed=99,
+        )
+        manifest = ModelZooManifestConfig(
+            name="ds_manifest",
+            storage_root=str(tmp_path / "zoo"),
+            entries=[
+                ModelZooEntryConfig(
+                    entry_id="entry_with_spec",
+                    lambda_rd=0.01,
+                    target_bpp=0.5,
+                    target_psnr_db=33.0,
+                    train_steps=1000,
+                    dataset_spec=dataset_spec,
+                ),
+            ],
+            default_dataset_spec=DatasetSpec(name="default_ds", kind="synthetic"),
+        )
+        path = save_manifest(manifest, tmp_path / "ds.yaml")
+        loaded = load_manifest(path)
+        assert loaded.default_dataset_spec is not None
+        assert loaded.default_dataset_spec.kind == "synthetic"
+        assert loaded.entries[0].dataset_spec is not None
+        assert loaded.entries[0].dataset_spec.kind == "image_folder"
+        assert loaded.entries[0].dataset_spec.root == str(tmp_path / "frames")
 
     def test_load_shipped_lambda_grid(self) -> None:
         # E2E smoke: the shipped 8-point R-D grid must load cleanly.

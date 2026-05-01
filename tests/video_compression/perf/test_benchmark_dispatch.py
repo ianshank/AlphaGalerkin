@@ -1,9 +1,8 @@
 """Tests for Phase 1 benchmark loop dispatch (Epic 1.4).
 
 Covers:
-- ``_runtime_name_for_profile`` mapping for PYTORCH and COMPILED backends
+- ``_runtime_name_for_profile`` mapping for PYTORCH, COMPILED, ONNX, and TENSORRT backends
 - ``_dtype_for_precision`` mapping for FP32, FP16, BF16
-- Unimplemented backend (ONNX, TENSORRT) raises NotImplementedError
 - Compiled backend runs through the benchmark loop on CPU (FORWARD phase)
 - FP16 precision runs through the benchmark loop (FORWARD phase)
 """
@@ -25,6 +24,7 @@ from src.video_compression.perf.benchmark import (
     _dtype_for_precision,
     _runtime_name_for_profile,
 )
+from src.video_compression.perf.config import BenchmarkPhase
 
 pytestmark = pytest.mark.video
 
@@ -38,7 +38,7 @@ class TestRuntimeNameForProfile:
             backend=RuntimeBackend.PYTORCH,
             precision=Precision.FP32,
         )
-        assert _runtime_name_for_profile(profile) == "pytorch-eager"
+        assert _runtime_name_for_profile(profile, BenchmarkPhase.DECODE) == "pytorch-eager"
 
     def test_compiled_maps_to_compiled(self) -> None:
         profile = RuntimeProfile(
@@ -46,7 +46,7 @@ class TestRuntimeNameForProfile:
             backend=RuntimeBackend.COMPILED,
             precision=Precision.FP32,
         )
-        assert _runtime_name_for_profile(profile) == "pytorch-compiled"
+        assert _runtime_name_for_profile(profile, BenchmarkPhase.DECODE) == "pytorch-compiled"
 
     def test_onnx_maps_to_onnx_cuda(self) -> None:
         profile = RuntimeProfile(
@@ -54,7 +54,7 @@ class TestRuntimeNameForProfile:
             backend=RuntimeBackend.ONNX,
             precision=Precision.FP32,
         )
-        assert _runtime_name_for_profile(profile) == "onnx-cuda"
+        assert _runtime_name_for_profile(profile, BenchmarkPhase.DECODE) == "onnx-cuda"
 
     def test_tensorrt_maps_to_tensorrt(self) -> None:
         profile = RuntimeProfile(
@@ -62,7 +62,7 @@ class TestRuntimeNameForProfile:
             backend=RuntimeBackend.TENSORRT,
             precision=Precision.FP32,
         )
-        assert _runtime_name_for_profile(profile) == "tensorrt"
+        assert _runtime_name_for_profile(profile, BenchmarkPhase.DECODE) == "tensorrt"
 
 
 class TestDtypeForPrecision:

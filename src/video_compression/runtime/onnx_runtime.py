@@ -8,7 +8,7 @@ DirectML, OpenVINO, etc.).
 Key design choices:
 
 * The ONNX export happens inside ``prepare()`` using ``torch.onnx.export``
-  with dynamic axes for batch, height, and width. The export is a one-time
+  with a dynamic batch axis. The export is a one-time
   cost absorbed by the benchmark warmup.
 * The ONNX model is kept in memory (not saved to disk) unless an
   ``artifact_path`` is provided in the ``DecoderRuntimeContext``.
@@ -108,6 +108,15 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
                 f"context latent_channels={ctx.latent_channels} does not "
                 f"match codec config latent_channels="
                 f"{self._codec_config.encoder.latent_channels}",
+            )
+
+        if ctx.dtype != "float32":
+            raise ValueError(
+                f"{self.name} only supports torch.float32 decode inputs for "
+                f"the exported ONNX graph, but prepare() was called with "
+                f"dtype={ctx.dtype!r}. Re-run prepare() with "
+                f"torch.float32 or export a graph that matches the requested "
+                f"dtype.",
             )
 
         # Validate model hash.
@@ -253,9 +262,13 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
             )
 
         # Convert to numpy for ONNX Runtime.
+        #
+        # This backend currently exports the ONNX graph with a float32 dummy
+        # input, so the session input type is float32. Rejecting non-float32
+        # runtime contexts explicitly ensures we don't silently override the
+        # requested dtype here.
         import numpy as np
-
-        latent_np = latent.detach().cpu().numpy().astype(np.float32)
+        latent_np = latent.detach().cpu().numpy().astype(np.float32, copy=False)
 
         # Run inference.
         outputs = self._session.run(

@@ -57,7 +57,7 @@ _BenchmarkLogger = create_logger_class("PerfBenchmark")
 # evolve independently.
 
 
-def _runtime_name_for_profile(profile: RuntimeProfile) -> str | None:
+def _runtime_name_for_profile(profile: RuntimeProfile, phase: BenchmarkPhase) -> str | None:
     """Map a ``RuntimeProfile`` to the runtime registry name.
 
     Returns ``None`` for ``FORWARD`` phase subjects (they don't use the
@@ -73,10 +73,18 @@ def _runtime_name_for_profile(profile: RuntimeProfile) -> str | None:
         RuntimeBackend.ONNX: "onnx-cuda",
         RuntimeBackend.TENSORRT: "tensorrt",
     }
+    if phase is BenchmarkPhase.FORWARD:
+        return None
+
     if profile.backend not in _backend_to_runtime:
         raise NotImplementedError(
             f"runtime backend {profile.backend.value!r} is not yet "
             f"implemented; available: {sorted(v for v in _backend_to_runtime.values())}",
+        )
+    _fp32_only_backends = (RuntimeBackend.PYTORCH, RuntimeBackend.ONNX)
+    if profile.backend in _fp32_only_backends and profile.precision != Precision.FP32:
+        raise NotImplementedError(
+            f"runtime backend {profile.backend.value!r} currently only supports FP32 precision",
         )
     return _backend_to_runtime[profile.backend]
 
@@ -415,7 +423,8 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
         # used by the RuntimeRegistry. This mapping lives here (not in the
         # registry) so new backends can be added to the enum without touching
         # the registry module, and vice versa.
-        runtime_name = _runtime_name_for_profile(profile)
+        runtime_name = _runtime_name_for_profile(profile, phase)
+        dtype = _dtype_for_precision(profile.precision)
 
         # Per-profile device override lets a single sweep cover both GPUs
         # (cuda:0 and cuda:1) without re-running the whole benchmark.
@@ -426,6 +435,9 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
         )
         assert cell_device is not None
 
+        runtime_kwargs = {}
+        if profile.backend == RuntimeBackend.COMPILED:
+            runtime_kwargs["compile_mode"] = profile.compile_mode
 
         subject: BenchmarkSubject = create_subject(
             phase=phase,
@@ -434,6 +446,8 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
             pattern=SyntheticPattern(self.config.pattern),
             seed=self.config.data_seed,
             runtime_name=runtime_name,
+            dtype=dtype,
+            runtime_kwargs=runtime_kwargs,
         )
 
         peak_vram_mib: float | None = None

@@ -546,12 +546,12 @@ Four decoder runtime backends implemented as Protocol-compliant modules in `src/
 
 | Backend | Registry Name | Key Feature | Precision |
 |---|---|---|---|
-| **PyTorch Eager** | `pytorch-eager` | Baseline, no compilation | FP32/FP16/BF16 |
+| **PyTorch Eager** | `pytorch-eager` | Baseline, no compilation | FP32 |
 | **torch.compile** | `pytorch-compiled` | Inductor graph fusion, CUDA graphs | FP32/FP16/BF16 + autocast |
-| **ONNX Runtime** | `onnx-cuda` | In-memory ONNX export + CUDAExecutionProvider | FP32/FP16 |
+| **ONNX Runtime** | `onnx-cuda` | In-memory ONNX export + CUDAExecutionProvider | FP32 |
 | **TensorRT** | `tensorrt` | torch_tensorrt Dynamo IR, max throughput | FP32/FP16 (BF16→FP16) |
 
-All backends register via `@register_runtime` decorator and are dispatched through the benchmark loop's `_runtime_name_for_profile()` mapping. No hardcoded values — optimization levels, opset versions, compile modes, and precision are all configurable.
+All backends register via `@register_runtime` decorator and are dispatched through the benchmark loop's `_runtime_name_for_profile()` mapping. No hardcoded values — optimization levels, opset versions, and compile modes are configurable, while precision support is backend-dependent and currently follows each runtime's implemented execution path.
 
 ```bash
 # Run with TensorRT backend (requires CUDA + torch_tensorrt)

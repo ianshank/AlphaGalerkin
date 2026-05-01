@@ -135,16 +135,17 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
         ).to(device)
         codec.eval()
 
-        # Compile the decoder.
         t_start = time.perf_counter()
+        actual_fullgraph = self._fullgraph
         try:
             compiled = torch.compile(
                 codec.decoder,
                 mode=self._compile_mode,
-                fullgraph=self._fullgraph,
+                fullgraph=actual_fullgraph,
             )
         except Exception:
             # Fallback: retry without fullgraph.
+            actual_fullgraph = False
             logger.warning(
                 "runtime.compiled.fullgraph_failed",
                 runtime=self.name,
@@ -154,7 +155,7 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
             compiled = torch.compile(
                 codec.decoder,
                 mode=self._compile_mode,
-                fullgraph=False,
+                fullgraph=actual_fullgraph,
             )
         build_time = time.perf_counter() - t_start
 
@@ -177,7 +178,7 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
             artifact_size_bytes=None,
             extra_tags={
                 "compile_mode": self._compile_mode,
-                "fullgraph": str(self._fullgraph),
+                "fullgraph": str(actual_fullgraph),
                 "autocast_dtype": ctx.dtype,
             },
         )

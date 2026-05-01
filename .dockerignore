@@ -85,9 +85,11 @@ desktop.ini
 # Credentials
 .env
 .env.*
-*.json
-!package.json
-!tsconfig.json
+*credentials*.json
+*secret*.json
+*secrets*.json
+*service-account*.json
+*service_account*.json
 
 # Video test materials
 Test_Video_Materals/

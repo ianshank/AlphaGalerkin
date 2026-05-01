@@ -164,10 +164,11 @@ class TensorRTRuntime(BaseDecoderRuntime):
         import torch_tensorrt
 
         t_start = time.perf_counter()
+        actual_ir = "dynamo"
         try:
             compiled = torch_tensorrt.compile(
                 codec.decoder,
-                ir="dynamo",
+                ir=actual_ir,
                 inputs=[example_input],
                 enabled_precisions=enabled_precisions,
                 optimization_level=self._optimization_level,
@@ -175,6 +176,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
             )
         except Exception as exc:
             # If dynamo IR fails, try torch_compile fallback.
+            actual_ir = "torch_compile"
             logger.warning(
                 "runtime.tensorrt.dynamo_failed",
                 runtime=self.name,
@@ -183,9 +185,11 @@ class TensorRTRuntime(BaseDecoderRuntime):
             )
             compiled = torch_tensorrt.compile(
                 codec.decoder,
-                ir="torch_compile",
+                ir=actual_ir,
                 inputs=[example_input],
                 enabled_precisions=enabled_precisions,
+                optimization_level=self._optimization_level,
+                truncate_double=True,
             )
         build_time = time.perf_counter() - t_start
 
@@ -211,7 +215,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
                 "enabled_precisions": str(
                     sorted(str(p) for p in enabled_precisions)
                 ),
-                "ir": "dynamo",
+                "ir": actual_ir,
             },
         )
 
@@ -231,9 +235,20 @@ class TensorRTRuntime(BaseDecoderRuntime):
         )
 
     def decode(self, latent: torch.Tensor) -> torch.Tensor:
-        if self._compiled_decoder is None or self._prepared_ctx is None:
+        if (
+            self._compiled_decoder is None
+            or self._prepared_ctx is None
+            or self._device is None
+        ):
             raise RuntimeError(
                 f"{self.name}.decode() called before prepare()",
+            )
+
+        if latent.device != self._device:
+            raise ValueError(
+                f"latent device {latent.device} does not match prepared "
+                f"device {self._device}; caller must move the tensor "
+                f"to the prepared device or re-run prepare()",
             )
 
         # Shape validation.

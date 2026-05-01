@@ -246,24 +246,22 @@ def _assign_single_device(
 
 def _assign_manual(
     entries: list[ModelZooEntryConfig],
-    devices: list[DeviceCapability],
 ) -> list[EntryAssignment]:
-    out: list[EntryAssignment] = []
-    for entry in entries:
-        explicit = _resolve_explicit_device(entry, devices)
-        if explicit is None:
-            raise ValueError(
-                f"manual strategy requires every entry to set 'device'; "
-                f"entry {entry.entry_id!r} has device=None",
-            )
-        out.append(
-            EntryAssignment(
-                entry_id=entry.entry_id,
-                device=explicit,
-                reason=f"manual override -> {explicit}",
-            ),
-        )
-    return out
+    """Reject any entry that did not provide an explicit pin.
+
+    By the time this function is called, all entries with a non-``None``
+    ``device`` field have already been resolved by
+    :func:`_resolve_explicit_device` and excluded from the input list.
+    Therefore, in MANUAL mode every remaining entry is, by construction,
+    a missing pin and the function raises.
+    """
+    if not entries:
+        return []
+    bad = ", ".join(repr(e.entry_id) for e in entries)
+    raise ValueError(
+        f"manual strategy requires every entry to set 'device'; "
+        f"entries with device=None: {bad}",
+    )
 
 
 def _resolve_run_target(preference: str, devices: list[DeviceCapability]) -> str:
@@ -328,7 +326,7 @@ def assign_devices(
 
     if strategy is DeviceAssignmentStrategy.MANUAL:
         # In MANUAL mode every entry must have a pin. Force the check.
-        auto_assignments = _assign_manual(auto_entries, devs) if auto_entries else []
+        auto_assignments = _assign_manual(auto_entries)
     elif strategy is DeviceAssignmentStrategy.SINGLE_DEVICE:
         target = _resolve_run_target(manifest.device_preference, devs)
         auto_assignments = _assign_single_device(auto_entries, target)

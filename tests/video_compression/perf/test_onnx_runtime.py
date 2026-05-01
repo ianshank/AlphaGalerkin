@@ -50,7 +50,8 @@ class TestONNXRuntimeRegistration:
         assert isinstance(rt, ONNXDecoderRuntime)
 
     def test_create_runtime_with_codec_config(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = create_runtime(
             ONNX_RUNTIME_NAME,
@@ -114,7 +115,8 @@ class TestONNXRuntimeLifecycle:
 
     @_SKIP_NO_ONNX
     def test_decode_produces_valid_output(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = ONNXDecoderRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(tiny_codec_config)
@@ -147,7 +149,8 @@ class TestONNXRuntimeLifecycle:
 
     @_SKIP_NO_ONNX
     def test_reprepare_for_new_shape(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = ONNXDecoderRuntime(codec_config=tiny_codec_config)
         ctx1 = self._make_context(tiny_codec_config, height=16, width=16)
@@ -191,29 +194,34 @@ class TestONNXRuntimeValidation:
 
     @_SKIP_NO_ONNX
     def test_latent_channels_mismatch_raises(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = ONNXDecoderRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(
-            tiny_codec_config, latent_channels=999,
+            tiny_codec_config,
+            latent_channels=999,
         )
         with pytest.raises(ValueError, match="latent_channels"):
             rt.prepare(ctx=ctx)
 
     @_SKIP_NO_ONNX
     def test_model_hash_mismatch_raises(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = ONNXDecoderRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(
-            tiny_codec_config, model_hash="wrong_hash",
+            tiny_codec_config,
+            model_hash="wrong_hash",
         )
         with pytest.raises(ValueError, match="model_hash"):
             rt.prepare(ctx=ctx)
 
     @_SKIP_NO_ONNX
     def test_shape_mismatch_on_decode_raises(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = ONNXDecoderRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(tiny_codec_config)
@@ -229,7 +237,9 @@ class TestONNXRuntimeArtifactSave:
 
     @_SKIP_NO_ONNX
     def test_saves_onnx_to_artifact_path(
-        self, tiny_codec_config, tmp_path,
+        self,
+        tiny_codec_config,
+        tmp_path,
     ) -> None:
         rt = ONNXDecoderRuntime(codec_config=tiny_codec_config)
         onnx_path = tmp_path / "decoder.onnx"
@@ -256,7 +266,8 @@ class TestONNXRuntimeMetadataTags:
 
     @_SKIP_NO_ONNX
     def test_extra_tags_contain_opset(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = ONNXDecoderRuntime(
             codec_config=tiny_codec_config,

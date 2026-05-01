@@ -221,9 +221,12 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
                 f"prepare() for a different latent shape",
             )
         if self._autocast_dtype is not None:
-            with torch.no_grad(), torch.autocast(
-                device_type=self._device.type if self._device else "cpu",
-                dtype=self._autocast_dtype,
+            with (
+                torch.no_grad(),
+                torch.autocast(
+                    device_type=self._device.type if self._device else "cpu",
+                    dtype=self._autocast_dtype,
+                ),
             ):
                 return self._compiled_decoder(latent)
         with torch.no_grad():

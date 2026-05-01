@@ -90,6 +90,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
         self._optimization_level = optimization_level
         self._compiled_decoder: Callable[..., Any] | None = None
         self._device: torch.device | None = None
+        self._input_dtype: torch.dtype | None = None
 
     # ----------------------------------------------------------- lifecycle
 
@@ -132,14 +133,15 @@ class TensorRTRuntime(BaseDecoderRuntime):
         # Determine TensorRT precision.
         enabled_precisions: set[torch.dtype] = {torch.float32}
         precision_label = ctx.dtype
+        target_dtype: torch.dtype = torch.float32
         if ctx.dtype in ("float16", "bfloat16"):
             enabled_precisions.add(torch.float16)
+            target_dtype = torch.float16
             if ctx.dtype == "bfloat16":
                 logger.warning(
                     "runtime.tensorrt.bf16_mapped_to_fp16",
                     runtime=self.name,
-                    msg="BF16 not natively supported by TensorRT; "
-                    "using FP16 instead",
+                    msg="BF16 not natively supported by TensorRT; using FP16 instead",
                 )
                 precision_label = "float16"
 
@@ -151,13 +153,23 @@ class TensorRTRuntime(BaseDecoderRuntime):
         ).to(device)
         codec.eval()
 
-        # Create example input for tracing.
+        # Cast the decoder to the target precision so the traced graph,
+        # weights, and example input are dtype-consistent. Without this, the
+        # engine would be built from a float32 input even when metadata
+        # advertises ``precision="float16"``, which both inflates engine
+        # size and lets dtype mismatches slip through to runtime.
+        if target_dtype != torch.float32:
+            codec.decoder.to(dtype=target_dtype)
+
+        # Create example input for tracing — dtype must match the precision
+        # we just cast the decoder to.
         example_input = torch.randn(
             ctx.batch_size,
             ctx.latent_channels,
             ctx.latent_height,
             ctx.latent_width,
             device=device,
+            dtype=target_dtype,
         )
 
         # Compile with TensorRT via torch_tensorrt Dynamo frontend.
@@ -195,6 +207,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
 
         self._compiled_decoder = compiled
         self._device = device
+        self._input_dtype = target_dtype
         self._prepared_ctx = ctx
         self._metadata = CompiledArtifactMetadata(
             name="tensorrt_runtime_metadata",
@@ -212,9 +225,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
             artifact_size_bytes=None,
             extra_tags={
                 "optimization_level": str(self._optimization_level),
-                "enabled_precisions": str(
-                    sorted(str(p) for p in enabled_precisions)
-                ),
+                "enabled_precisions": str(sorted(str(p) for p in enabled_precisions)),
                 "ir": actual_ir,
             },
         )
@@ -235,11 +246,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
         )
 
     def decode(self, latent: torch.Tensor) -> torch.Tensor:
-        if (
-            self._compiled_decoder is None
-            or self._prepared_ctx is None
-            or self._device is None
-        ):
+        if self._compiled_decoder is None or self._prepared_ctx is None or self._device is None:
             raise RuntimeError(
                 f"{self.name}.decode() called before prepare()",
             )
@@ -266,6 +273,17 @@ class TensorRTRuntime(BaseDecoderRuntime):
                 f"prepare() for a different latent shape",
             )
 
+        # Dtype validation — the engine input type is fixed at build time and
+        # must match what we traced with (see ``prepare()``). Silently
+        # autocasting here would hide miswired benchmark profiles.
+        if self._input_dtype is not None and latent.dtype != self._input_dtype:
+            raise ValueError(
+                f"latent dtype {latent.dtype} does not match prepared "
+                f"engine input dtype {self._input_dtype}; caller must cast "
+                f"the latent or re-run prepare() with a different "
+                f"precision",
+            )
+
         with torch.no_grad():
             return self._compiled_decoder(latent)
 
@@ -273,6 +291,7 @@ class TensorRTRuntime(BaseDecoderRuntime):
         device = self._device
         self._compiled_decoder = None
         self._device = None
+        self._input_dtype = None
         super().teardown()
         if device is not None and device.type == "cuda":
             torch.cuda.empty_cache()

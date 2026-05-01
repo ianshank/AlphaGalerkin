@@ -50,7 +50,16 @@ DEFAULT_OPSET_VERSION: int = 17
 
 
 def _onnx_available() -> bool:
-    """Check if onnxruntime and onnxscript are importable."""
+    """Check if both onnxruntime and onnxscript are importable.
+
+    ``onnxscript`` is required even though the call site below uses the
+    legacy (non-Dynamo) ``torch.onnx.export`` API. Recent PyTorch builds
+    (2.6+) eagerly import ``torch.onnx._internal.exporter._compat`` from
+    ``torch.onnx.export``, and that compat module imports ``onnxscript``
+    at module load. Without it, even the legacy export path raises
+    ``ModuleNotFoundError`` before our code can run, so the onnxscript
+    check guards the whole runtime — not just the Dynamo exporter.
+    """
     try:
         import onnxruntime  # noqa: F401
         import onnxscript  # noqa: F401  # type: ignore[import-not-found]
@@ -85,7 +94,6 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
         self._session: Any | None = None
         self._input_name: str | None = None
         self._device: torch.device | None = None
-        self._output_device: torch.device | None = None
 
     # ----------------------------------------------------------- lifecycle
 
@@ -188,9 +196,7 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
 
         # Create inference session.
         sess_options = ort.SessionOptions()
-        sess_options.graph_optimization_level = (
-            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(
             onnx_bytes,
             sess_options=sess_options,
@@ -200,7 +206,6 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
 
         self._input_name = self._session.get_inputs()[0].name
         self._device = device
-        self._output_device = device
         self._prepared_ctx = ctx
         self._metadata = CompiledArtifactMetadata(
             name="onnx_runtime_metadata",
@@ -218,9 +223,7 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
             artifact_size_bytes=len(onnx_bytes),
             extra_tags={
                 "opset_version": str(self._opset_version),
-                "providers": str(
-                    self._session.get_providers()
-                ),
+                "providers": str(self._session.get_providers()),
             },
         )
 
@@ -268,25 +271,31 @@ class ONNXDecoderRuntime(BaseDecoderRuntime):
         # runtime contexts explicitly ensures we don't silently override the
         # requested dtype here.
         import numpy as np
+
         latent_np = latent.detach().cpu().numpy().astype(np.float32, copy=False)
 
         # Run inference.
         outputs = self._session.run(
-            None, {self._input_name: latent_np},
+            None,
+            {self._input_name: latent_np},
         )
 
-        # Convert back to torch tensor on the target device.
-        result = torch.from_numpy(outputs[0])
-        if self._output_device is not None:
-            result = result.to(self._output_device)
-        return result
+        # ``InferenceSession.run()`` materializes outputs as CPU NumPy
+        # arrays even when the execution provider is CUDA. We deliberately
+        # keep the result on CPU here so the benchmark does not absorb a
+        # CPU→GPU transfer on every ``decode()`` call — that transfer would
+        # heavily skew throughput numbers for an EP that already paid the
+        # GPU→CPU cost internally. If GPU-resident outputs are needed in
+        # the future, switch from ``session.run()`` to ONNX Runtime's I/O
+        # binding / ``OrtValue`` API instead of round-tripping through
+        # NumPy.
+        return torch.from_numpy(outputs[0])
 
     def teardown(self) -> None:
         device = self._device
         self._session = None
         self._input_name = None
         self._device = None
-        self._output_device = None
         super().teardown()
         if device is not None and device.type == "cuda":
             torch.cuda.empty_cache()

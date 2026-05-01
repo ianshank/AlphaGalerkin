@@ -55,7 +55,8 @@ class TestTensorRTRegistration:
         assert isinstance(rt, TensorRTRuntime)
 
     def test_create_runtime_with_codec_config(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = create_runtime(
             TENSORRT_RUNTIME_NAME,
@@ -121,7 +122,8 @@ class TestTensorRTLifecycle:
     @_SKIP_NO_TRT
     @_SKIP_NO_CUDA
     def test_decode_produces_valid_output(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = TensorRTRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(tiny_codec_config)
@@ -157,7 +159,8 @@ class TestTensorRTLifecycle:
     @_SKIP_NO_TRT
     @_SKIP_NO_CUDA
     def test_reprepare_for_new_shape(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = TensorRTRuntime(codec_config=tiny_codec_config)
         ctx1 = self._make_context(tiny_codec_config, height=16, width=16)
@@ -210,11 +213,13 @@ class TestTensorRTValidation:
     @_SKIP_NO_TRT
     @_SKIP_NO_CUDA
     def test_latent_channels_mismatch_raises(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = TensorRTRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(
-            tiny_codec_config, latent_channels=999,
+            tiny_codec_config,
+            latent_channels=999,
         )
         with pytest.raises(ValueError, match="latent_channels"):
             rt.prepare(ctx=ctx)
@@ -222,11 +227,13 @@ class TestTensorRTValidation:
     @_SKIP_NO_TRT
     @_SKIP_NO_CUDA
     def test_model_hash_mismatch_raises(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = TensorRTRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(
-            tiny_codec_config, model_hash="wrong_hash",
+            tiny_codec_config,
+            model_hash="wrong_hash",
         )
         with pytest.raises(ValueError, match="model_hash"):
             rt.prepare(ctx=ctx)
@@ -234,13 +241,18 @@ class TestTensorRTValidation:
     @_SKIP_NO_TRT
     @_SKIP_NO_CUDA
     def test_shape_mismatch_on_decode_raises(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = TensorRTRuntime(codec_config=tiny_codec_config)
         ctx = self._make_context(tiny_codec_config)
         rt.prepare(ctx=ctx)
         wrong_shape = torch.randn(
-            1, ctx.latent_channels, 99, 99, device="cuda:0",
+            1,
+            ctx.latent_channels,
+            99,
+            99,
+            device="cuda:0",
         )
         with pytest.raises(ValueError, match="latent shape"):
             rt.decode(wrong_shape)
@@ -269,6 +281,27 @@ class TestTensorRTBF16Mapping:
         assert rt.metadata is not None
         # BF16 should be mapped to FP16 in metadata.
         assert rt.metadata.precision == "float16"
+
+        # Decode must succeed with an FP16 latent — the engine input dtype
+        # must match the precision metadata, otherwise we would have built
+        # an FP32 engine but advertised it as FP16.
+        latent_fp16 = torch.randn(
+            ctx.batch_size,
+            ctx.latent_channels,
+            ctx.latent_height,
+            ctx.latent_width,
+            device="cuda:0",
+            dtype=torch.float16,
+        )
+        output = rt.decode(latent_fp16)
+        assert output.shape[0] == ctx.batch_size
+        assert output.shape[1] == 3  # RGB
+
+        # And FP32 input must be rejected — silent autocasting would hide
+        # miswired benchmark profiles.
+        latent_fp32 = latent_fp16.to(dtype=torch.float32)
+        with pytest.raises(ValueError, match="dtype"):
+            rt.decode(latent_fp32)
         rt.teardown()
 
 
@@ -278,7 +311,8 @@ class TestTensorRTMetadataTags:
     @_SKIP_NO_TRT
     @_SKIP_NO_CUDA
     def test_extra_tags_contain_optimization_level(
-        self, tiny_codec_config,
+        self,
+        tiny_codec_config,
     ) -> None:
         rt = TensorRTRuntime(
             codec_config=tiny_codec_config,

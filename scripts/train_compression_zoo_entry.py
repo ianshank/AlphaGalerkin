@@ -9,104 +9,48 @@ loading, logging, and exit codes live here; training logic stays in
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
-from typing import Any
-
-import yaml
 
 from src.templates.logging import configure_module_logging, create_logger_class
-from src.video_compression.config import CodecConfig
 from src.video_compression.training import ZooTrainer, build_training_config
 from src.video_compression.zoo import VideoCodecZoo, load_manifest
-from src.video_compression.zoo.config import ModelZooEntryConfig, ModelZooManifestConfig
+from src.video_compression.zoo.cli_helpers import (
+    load_codec_config as _load_codec_config,
+)
+from src.video_compression.zoo.cli_helpers import (
+    load_dict as _load_dict,
+)
+from src.video_compression.zoo.cli_helpers import (
+    override_entry as _override_entry,
+)
+from src.video_compression.zoo.cli_helpers import (
+    resolve_codec_config_for_entry as _resolve_codec_config_for_entry,
+)
+from src.video_compression.zoo.cli_helpers import (
+    resolve_device as _resolve_device,
+)
+from src.video_compression.zoo.cli_helpers import (
+    resolve_entry as _resolve_entry,
+)
+from src.video_compression.zoo.cli_helpers import (
+    resolve_path as _resolve_path,
+)
 
 _Logger = create_logger_class("train_compression_zoo_entry")
 
-
-def _load_dict(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
-    suffix = path.suffix.lower()
-    if suffix in {".yaml", ".yml"}:
-        data = yaml.safe_load(text)
-    elif suffix == ".json":
-        data = json.loads(text)
-    else:
-        raise ValueError(
-            f"unsupported config suffix {suffix!r}; expected .yaml/.yml/.json",
-        )
-    if data is None:
-        raise ValueError(f"config file is empty: {path}")
-    if not isinstance(data, dict):
-        raise ValueError(f"config root must be a mapping; got {type(data).__name__}")
-    return data
-
-
-def _resolve_path(path_str: str, *, manifest_path: Path) -> Path:
-    candidate = Path(path_str)
-    if candidate.is_absolute():
-        return candidate
-    if candidate.exists():
-        return candidate.resolve()
-    fallback = (manifest_path.parent / candidate).resolve()
-    return fallback
-
-
-def _load_codec_config(path: Path) -> CodecConfig:
-    return CodecConfig.model_validate(_load_dict(path))
-
-
-def _resolve_entry(
-    manifest: ModelZooManifestConfig,
-    entry_id: str,
-) -> ModelZooEntryConfig:
-    for entry in manifest.entries:
-        if entry.entry_id == entry_id:
-            return entry
-    raise KeyError(f"entry_id {entry_id!r} not found in manifest {manifest.name!r}")
-
-
-def _resolve_codec_config_for_entry(
-    manifest: ModelZooManifestConfig,
-    entry: ModelZooEntryConfig,
-    *,
-    manifest_path: Path,
-) -> CodecConfig:
-    ref = entry.codec_config_ref or manifest.default_codec_config_ref
-    if ref is None:
-        raise ValueError(
-            f"entry {entry.entry_id!r} does not declare codec_config_ref and the "
-            "manifest has no default_codec_config_ref",
-        )
-    return _load_codec_config(_resolve_path(ref, manifest_path=manifest_path))
-
-
-def _override_entry(
-    entry: ModelZooEntryConfig,
-    *,
-    max_steps: int | None,
-    device: str | None,
-) -> ModelZooEntryConfig:
-    overrides: dict[str, Any] = {}
-    if max_steps is not None:
-        overrides["train_steps"] = max_steps
-    if device is not None:
-        overrides["device"] = device
-    if not overrides:
-        return entry
-    payload = entry.model_dump()
-    payload.update(overrides)
-    return ModelZooEntryConfig.model_validate(payload)
-
-
-def _resolve_device(
-    manifest: ModelZooManifestConfig,
-    entry: ModelZooEntryConfig,
-    *,
-    device_override: str | None,
-) -> str:
-    return device_override or entry.device or manifest.device_preference
+# Public re-exports for back-compat with existing imports.
+__all__ = [
+    "_load_dict",
+    "_resolve_path",
+    "_load_codec_config",
+    "_resolve_entry",
+    "_resolve_codec_config_for_entry",
+    "_override_entry",
+    "_resolve_device",
+    "build_parser",
+    "main",
+]
 
 
 def _cmd_dry_run(args: argparse.Namespace) -> int:

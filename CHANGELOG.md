@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Codec Model Zoo Phase 2-D (`src/video_compression/zoo/sweep.py`, `scripts/train_compression_zoo.py`)
+
+- **Manifest-level sweep orchestrator** — `ZooSweep` drives every entry in
+  a manifest through a configurable `EntryRunner`. `should_skip(zoo, entry)`
+  inspects the persisted entry hash so reruns of an unchanged entry skip
+  cleanly. `EntryStatus` + `SweepReport` are frozen dataclasses; the
+  default `default_entry_runner` runs `ZooTrainer` in-process.
+- **Slice A — multi-entry CLI** — `scripts/train_compression_zoo.py` adds
+  `dry-run` / `train` subcommands operating on a manifest. Shared
+  primitives extracted into `src/video_compression/zoo/cli_helpers.py`
+  (load / resolve_path / load_codec_config / resolve_entry /
+  resolve_codec_config_for_entry / override_entry / resolve_device);
+  the original `train_compression_zoo_entry.py` re-imports them as
+  `_underscored` aliases so existing tests continue to monkeypatch
+  through the script module.
+- **Slice B — parallel dispatch + subprocess runner** — `ZooSweep.run_parallel()`
+  groups entries by device and dispatches one worker thread per device,
+  keeping same-device entries serialized inside their worker. Statuses
+  return in manifest order regardless of completion order.
+  `make_subprocess_entry_runner(...)` returns an `EntryRunner` that
+  re-invokes the existing single-entry CLI with `CUDA_VISIBLE_DEVICES`
+  pinned to the parent's `cuda:N` index (translating the child's
+  `--device` to `cuda:0` because only one GPU is visible). After exit 0,
+  the parent reads `metrics.json` + checkpoint back and reconstructs a
+  `ZooTrainingReport`. Tests inject a fake `subprocess.run` via the
+  `subprocess_runner` hook.
+- **`ZooTrainer` persists wall-clock** — `train_wallclock_s` /
+  `eval_wallclock_s` now land in `metrics.json` so the subprocess runner
+  can reconstruct them across process boundaries.
+- **Test surface** — 15 Slice B tests (`tests/video_compression/zoo/test_sweep_parallel.py`)
+  + 9 Slice A tests (`tests/scripts/test_train_compression_zoo.py`) +
+  the 11 existing `tests/video_compression/zoo/test_sweep.py` tests all
+  green; 140-test full zoo+scripts+training regression passes; mypy
+  --strict + ruff clean.
+
 ### Added — Codec Model Zoo Phase 2-B (`src/video_compression/zoo/`)
 
 - **Dual-GPU model zoo for the 8-point R-D Lagrangian sweep** — new

@@ -19,10 +19,11 @@ remain orthogonal; nothing prevents wrapping them together later.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsFloat
 
 import structlog
 import torch
@@ -80,7 +81,13 @@ class VideoCodecZoo:
             import importlib
 
             importlib.import_module("src.vertex.storage")
-            self.root = Path(str(storage_root))  # treated as URI
+            # Keep the original URI string verbatim. ``Path("gs://x/y")``
+            # would normalize the double-slash to a single slash on
+            # POSIX, mangling the URI. Phase 2-D will replace ``self.root``
+            # with a dedicated URI wrapper; the str form is the safe
+            # interim representation that preserves the original value
+            # for logs and future path composition.
+            self.root = str(storage_root)  # type: ignore[assignment]
         else:  # pragma: no cover - exhaustive enum
             raise ValueError(f"unsupported backend: {backend!r}")
 
@@ -120,7 +127,7 @@ class VideoCodecZoo:
         self,
         entry: ModelZooEntryConfig,
         state_dict: dict[str, Any],
-        metrics: dict[str, float],
+        metrics: Mapping[str, SupportsFloat],
     ) -> EntryArtifacts:
         """Persist a trained entry's checkpoint + metadata.
 
@@ -248,6 +255,11 @@ class VideoCodecZoo:
             raise FileNotFoundError(f"no metrics for entry_id={entry_id!r}")
         with path.open("r", encoding="utf-8") as fh:
             payload = json.load(fh)
+        if not isinstance(payload, dict):
+            raise TypeError(
+                f"metrics file at {path} is not a dict; got "
+                f"{type(payload).__name__}",
+            )
         metrics = payload.get("metrics", {})
         if not isinstance(metrics, dict):
             raise TypeError(

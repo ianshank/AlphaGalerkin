@@ -3,7 +3,7 @@
 Two-step pipeline:
 
 1. :func:`scan_devices` — enumerates visible CUDA devices and reports
-   their total/free VRAM. Falls back to a single-CPU plan when CUDA is
+   their total VRAM. Falls back to a single-CPU plan when CUDA is
    unavailable.
 2. :func:`assign_devices` — given a manifest and the scanned devices,
    produces an :class:`EntryAssignment` per entry per the manifest's
@@ -175,11 +175,15 @@ def _assign_round_robin(
 def _assign_vram_aware(
     entries: list[ModelZooEntryConfig],
     cuda_devices: list[DeviceCapability],
+    *,
+    initial_remaining: dict[str, float] | None = None,
 ) -> list[EntryAssignment]:
     """Pack entries onto the GPU with the most remaining headroom.
 
-    Reservation accounting: each device starts with its full VRAM and is
-    debited by ``estimated_vram_mib`` per assignment. Entries are
+    Reservation accounting: each device starts with the per-device
+    starting headroom from ``initial_remaining`` (which is the device's
+    total VRAM minus any pre-debit from explicitly-pinned entries) and
+    is debited by ``estimated_vram_mib`` per assignment. Entries are
     processed in descending VRAM order so the largest entry gets the
     largest GPU.
 
@@ -193,7 +197,11 @@ def _assign_vram_aware(
             "use 'single_device' for CPU sweeps",
         )
 
-    remaining: dict[str, float] = {d.label: d.total_vram_mib for d in cuda_devices}
+    if initial_remaining is None:
+        # Defensive: simplifies test setups that exercise the helper
+        # directly without the public ``assign_devices`` shim.
+        initial_remaining = {d.label: d.total_vram_mib for d in cuda_devices}
+    remaining = {d.label: initial_remaining.get(d.label, d.total_vram_mib) for d in cuda_devices}
     total: dict[str, float] = {d.label: d.total_vram_mib for d in cuda_devices}
 
     indexed = sorted(
@@ -315,9 +323,13 @@ def assign_devices(
 
     # Pre-resolve any explicit device pinning. These entries are then
     # excluded from the strategy-driven assignment so they don't skew
-    # round-robin / vram-aware accounting.
+    # round-robin accounting. For VRAM_AWARE we still debit their
+    # ``estimated_vram_mib`` from the target device's headroom so
+    # subsequent auto-assignments don't get packed onto an
+    # already-occupied GPU.
     explicit: dict[str, EntryAssignment] = {}
     auto_entries: list[ModelZooEntryConfig] = []
+    pinned_debit: dict[str, float] = {}
     for entry in manifest.entries:
         target = _resolve_explicit_device(entry, devs)
         if target is not None:
@@ -326,6 +338,7 @@ def assign_devices(
                 device=target,
                 reason=f"explicit device pin -> {target}",
             )
+            pinned_debit[target] = pinned_debit.get(target, 0.0) + entry.estimated_vram_mib
         else:
             auto_entries.append(entry)
 
@@ -338,7 +351,18 @@ def assign_devices(
     elif strategy is DeviceAssignmentStrategy.ROUND_ROBIN:
         auto_assignments = _assign_round_robin(auto_entries, cuda_devs)
     elif strategy is DeviceAssignmentStrategy.VRAM_AWARE:
-        auto_assignments = _assign_vram_aware(auto_entries, cuda_devs)
+        # Seed remaining-headroom with pinned reservations already debited
+        # so a CUDA-pinned entry shrinks that device's budget for the
+        # subsequent auto pack.
+        seeded_remaining = {
+            d.label: d.total_vram_mib - pinned_debit.get(d.label, 0.0)
+            for d in cuda_devs
+        }
+        auto_assignments = _assign_vram_aware(
+            auto_entries,
+            cuda_devs,
+            initial_remaining=seeded_remaining,
+        )
     else:  # pragma: no cover - exhaustive enum
         raise ValueError(f"unsupported strategy: {strategy!r}")
 

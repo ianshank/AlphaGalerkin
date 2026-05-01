@@ -47,9 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `NotImplementedError` until Phase D wires it). Constants
   `CHECKPOINT_FILENAME`, `ENTRY_FILENAME`, `METRICS_FILENAME` are
   module-level.
-- **Coverage gate** — `pyproject.toml` `coverage.run.omit` narrowed from
-  the global `src/video_compression/*` blanket to a per-subdirectory
-  list, putting `zoo/` under the project-wide 85% gate. Achieved
+- **Coverage gate** — `pyproject.toml` `coverage.run.omit` rebalanced
+  from a global `src/video_compression/*` blanket to a per-subpackage
+  list. The `zoo/` subpackage is omitted from the project-wide 85%
+  gate (CI's fast suite uses `--ignore=tests/video_compression/`, so
+  including `zoo/` globally would 0%-tank the gate); a dedicated per-
+  module gate enforces the zoo coverage floor instead. Achieved
   coverage on the zoo subpackage: **100% line + branch** across all
   five modules (`__init__.py`, `config.py`, `device_planner.py`,
   `manifest.py`, `storage.py`).

@@ -5,8 +5,12 @@ default. There are no hardcoded numbers in zoo training, sweep, or
 validation code paths — they all flow through these schemas.
 
 Schema versioning is explicit so older manifest JSON documents remain
-loadable as new fields are added (forward-compat: ``extra="ignore"``,
-unversioned-to-v1 migration in :mod:`src.video_compression.zoo.manifest`).
+loadable as the manifest format evolves. Forward-compatibility is a
+manifest-level contract (top-level ``extra="ignore"`` and
+unversioned-to-v1 migration in :mod:`src.video_compression.zoo.manifest`);
+nested entry schemas (``ModelZooEntryConfig``, ``OptimizerConfig``,
+``SchedulerConfig``) intentionally set ``extra="forbid"`` so typos in
+entry-level fields fail loud at validation.
 """
 
 from __future__ import annotations

@@ -31,6 +31,7 @@ from src.video_compression.zoo.device_planner import (
     DeviceCapability,
     DevicePlan,
     EntryAssignment,
+    _assign_vram_aware,
     assign_devices,
 )
 from src.video_compression.zoo.storage import (
@@ -290,3 +291,29 @@ class TestVideoCodecZooEdges:
             json.dump({"metrics": [1, 2, 3], "saved_at": "now"}, fh)
         with pytest.raises(TypeError, match="not a dict"):
             zoo.load_metrics("bad")
+
+    def test_load_metrics_root_not_dict_raises(self, tmp_path: Path) -> None:
+        # Top-level JSON is a list rather than a dict; load_metrics must
+        # raise a clear TypeError instead of letting payload.get(...)
+        # blow up with AttributeError.
+        zoo = VideoCodecZoo(tmp_path / "zoo")
+        entry_dir = zoo.entry_dir("bad-root")
+        entry_dir.mkdir(parents=True)
+        with (entry_dir / METRICS_FILENAME).open("w", encoding="utf-8") as fh:
+            json.dump([1, 2, 3], fh)
+        with pytest.raises(TypeError, match="not a dict"):
+            zoo.load_metrics("bad-root")
+
+
+class TestAssignVramAwareDefaults:
+    def test_initial_remaining_defaults_to_total_vram(self) -> None:
+        # Direct unit test of ``_assign_vram_aware`` without an
+        # ``initial_remaining`` arg, exercising the defensive None
+        # fallback. ``assign_devices`` always seeds the dict, so this
+        # branch only fires when the helper is called directly.
+        device = DeviceCapability(
+            label="cuda:0", name="GPU", total_vram_mib=16_000.0, is_cuda=True,
+        )
+        entry = _entry(estimated_vram_mib=4_000.0)
+        assignments = _assign_vram_aware([entry], [device])
+        assert assignments[0].device == "cuda:0"

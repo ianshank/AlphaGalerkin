@@ -1,4 +1,4 @@
-﻿# AlphaGalerkin Next Steps Plan
+# AlphaGalerkin Next Steps Plan
 
 > **Investigation Date:** 2026-02-01
 > **Status:** Active — Milestones 1, 2, 3, 4, 6, 8 ✅ Complete; 5, 7, 9 Partial; **Learned PDE Evaluator ✅ Complete (2026-04-25, PR #54)**
@@ -691,8 +691,8 @@ Shipped in `src/video_compression/zoo/`:
 
 - The current `VRAM_AWARE` planner is correct but conservative on
   asymmetric rigs: when one large entry takes the bigger card, subsequent
-  entries that exceed the smaller card''s headroom over-commit on the
-  bigger card rather than using the smaller card''s free VRAM. A
+  entries that exceed the smaller card's headroom over-commit on the
+  bigger card rather than using the smaller card's free VRAM. A
   two-phase strategy (greedy by descending VRAM, then load-balance by
   total headroom) would push more work onto `cuda:1`. Defer until
   Phase 2-D shows the over-commit cost in wall-clock.

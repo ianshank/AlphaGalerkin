@@ -1,0 +1,106 @@
+# Default 8-point lambda grid for the AlphaGalerkin video-codec model zoo.
+#
+# Lambda values mirror src/video_compression/config.py::TrainingConfig
+# default ``lambda_values`` list verbatim. Targets are placeholders
+# refined per Phase F (BD-rate validation) and may be overridden per
+# entry without touching this file (use a separate manifest).
+#
+# Estimated VRAM is set to keep the largest entries (low lambda, high
+# quality) on cuda:0 (16 GiB headline) and lighter entries on cuda:1
+# (8 GiB) when the dual-GPU rig is detected.
+
+name: alphagalerkin_codec_zoo_v1
+description: Phase 2 8-point R-D grid for the AlphaGalerkin video codec.
+schema_version: 1
+
+storage_backend: filesystem
+storage_root: checkpoints/video_compression/zoo
+
+device_assignment_strategy: vram_aware
+device_preference: cuda
+parallel_workers_per_device: 1
+fail_fast: false
+
+default_codec_config_ref: config/video_compression/codec_default.yaml
+default_train_dataset_ref: null
+
+entries:
+  - entry_id: lambda_0016
+    lambda_rd: 0.0016
+    distortion_metric: mixed
+    target_bpp: 0.10
+    target_psnr_db: 28.0
+    train_steps: 200000
+    batch_size: 8
+    estimated_vram_mib: 12000.0  # → cuda:0
+    seed: 20260501
+
+  - entry_id: lambda_0032
+    lambda_rd: 0.0032
+    distortion_metric: mixed
+    target_bpp: 0.18
+    target_psnr_db: 30.0
+    train_steps: 200000
+    batch_size: 8
+    estimated_vram_mib: 11000.0  # → cuda:0
+    seed: 20260502
+
+  - entry_id: lambda_0075
+    lambda_rd: 0.0075
+    distortion_metric: mixed
+    target_bpp: 0.30
+    target_psnr_db: 32.0
+    train_steps: 180000
+    batch_size: 8
+    estimated_vram_mib: 9500.0  # → cuda:0
+    seed: 20260503
+
+  - entry_id: lambda_0150
+    lambda_rd: 0.015
+    distortion_metric: mixed
+    target_bpp: 0.45
+    target_psnr_db: 34.0
+    train_steps: 180000
+    batch_size: 8
+    estimated_vram_mib: 8500.0  # → cuda:0
+    seed: 20260504
+
+  - entry_id: lambda_0300
+    lambda_rd: 0.03
+    distortion_metric: mixed
+    target_bpp: 0.65
+    target_psnr_db: 36.0
+    train_steps: 160000
+    batch_size: 8
+    estimated_vram_mib: 7500.0  # → cuda:1
+    seed: 20260505
+
+  - entry_id: lambda_0450
+    lambda_rd: 0.045
+    distortion_metric: mixed
+    target_bpp: 0.85
+    target_psnr_db: 37.5
+    train_steps: 160000
+    batch_size: 8
+    estimated_vram_mib: 6500.0  # → cuda:1
+    seed: 20260506
+
+  - entry_id: lambda_0900
+    lambda_rd: 0.09
+    distortion_metric: mixed
+    target_bpp: 1.20
+    target_psnr_db: 39.0
+    train_steps: 140000
+    batch_size: 8
+    estimated_vram_mib: 5500.0  # → cuda:1
+    seed: 20260507
+
+  - entry_id: lambda_1800
+    lambda_rd: 0.18
+    distortion_metric: mixed
+    target_bpp: 1.80
+    target_psnr_db: 40.5
+    train_steps: 140000
+    batch_size: 8
+    estimated_vram_mib: 4500.0  # → cuda:1
+    seed: 20260508

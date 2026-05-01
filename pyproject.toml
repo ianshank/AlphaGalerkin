@@ -385,7 +385,13 @@ branch = true
 # use ``pytest.importorskip`` and skip cleanly in the default CI matrix,
 # so including it here would unfairly tank the global coverage gate.
 omit = [
-    "src/video_compression/*",
+    "src/video_compression/codec/*",
+    "src/video_compression/data/*",
+    "src/video_compression/mcts/*",
+    "src/video_compression/metrics/*",
+    "src/video_compression/models/*",
+    "src/video_compression/training/*",
+    "src/video_compression/config.py",
     "src/backend/*",
     "src/demos/*",
     "src/research/fem_baseline.py",

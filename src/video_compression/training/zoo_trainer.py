@@ -331,6 +331,8 @@ class ZooTrainer:
             "tolerance_passed": 1.0 if tolerance_passed else 0.0,
             "step_count": float(trainer.state.step),
             "lambda_rd": float(self.entry.lambda_rd),
+            "train_wallclock_s": float(train_wallclock_s),
+            "eval_wallclock_s": float(eval_wallclock_s),
         }
         if final_metrics.ms_ssim is not None:
             persisted_metrics["ms_ssim"] = float(final_metrics.ms_ssim)

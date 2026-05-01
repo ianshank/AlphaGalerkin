@@ -22,11 +22,15 @@ commit.
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
+import os
+import subprocess
+import sys
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from src.templates.logging import create_logger_class
 from src.video_compression.config import CodecConfig
@@ -44,6 +48,7 @@ from src.video_compression.zoo.device_planner import (
     assign_devices,
 )
 from src.video_compression.zoo.storage import (
+    CHECKPOINT_FILENAME,
     ENTRY_FILENAME,
     VideoCodecZoo,
 )
@@ -236,85 +241,87 @@ class ZooSweep:
         """Resolved device plan; useful for CLI introspection."""
         return self._plan
 
-    def run(self) -> SweepReport:
-        """Drive every entry through the configured runner."""
-        statuses: list[EntryStatus] = []
-        trained = skipped = failed = 0
+    # ------------------------------------------------------------------
+    # Per-entry processing (shared by run() and run_parallel())
+    # ------------------------------------------------------------------
 
-        for entry in self._manifest.entries:
-            if self._allow is not None and entry.entry_id not in self._allow:
-                continue
+    def _is_selected(self, entry: ModelZooEntryConfig) -> bool:
+        return self._allow is None or entry.entry_id in self._allow
 
-            device = self._plan.device_for(entry.entry_id)
+    def _process_entry(self, entry: ModelZooEntryConfig) -> EntryStatus:
+        """Train (or skip) one entry; thread-safe for parallel dispatch.
 
-            skip, reason = should_skip(self._zoo, entry)
-            if skip:
-                skipped += 1
-                self._log.info(
-                    "sweep.entry.skipped",
-                    entry_id=entry.entry_id,
-                    device=device,
-                    reason=reason,
-                )
-                statuses.append(
-                    EntryStatus(
-                        entry_id=entry.entry_id,
-                        device=device,
-                        skipped=True,
-                        skip_reason=reason,
-                        report=None,
-                    ),
-                )
-                continue
-
-            codec_config = self._codec_config_for(entry)
+        The orchestrator's instance state (``self._plan``,
+        ``self._zoo``, ``self._codec_config_for``, ``self._entry_runner``)
+        is read-only after construction, so this method is safe to call
+        from multiple worker threads concurrently.
+        """
+        device = self._plan.device_for(entry.entry_id)
+        skip, reason = should_skip(self._zoo, entry)
+        if skip:
             self._log.info(
-                "sweep.entry.start",
+                "sweep.entry.skipped",
                 entry_id=entry.entry_id,
                 device=device,
-                lambda_rd=entry.lambda_rd,
+                reason=reason,
             )
-            try:
-                report = self._entry_runner(
-                    entry,
-                    device,
-                    self._zoo,
-                    codec_config,
-                    self._output_root,
-                )
-            except Exception:
-                failed += 1
-                self._log.error(
-                    "sweep.entry.failed",
-                    entry_id=entry.entry_id,
-                    device=device,
-                )
-                raise
-            trained += 1
-            self._log.info(
-                "sweep.entry.completed",
+            return EntryStatus(
                 entry_id=entry.entry_id,
                 device=device,
-                tolerance_passed=report.tolerance_passed,
-                realized_bpp=report.realized_bpp,
-                realized_psnr_db=report.realized_psnr_db,
-            )
-            statuses.append(
-                EntryStatus(
-                    entry_id=entry.entry_id,
-                    device=device,
-                    skipped=False,
-                    skip_reason=None,
-                    report=report,
-                ),
+                skipped=True,
+                skip_reason=reason,
+                report=None,
             )
 
+        codec_config = self._codec_config_for(entry)
+        self._log.info(
+            "sweep.entry.start",
+            entry_id=entry.entry_id,
+            device=device,
+            lambda_rd=entry.lambda_rd,
+        )
+        try:
+            report = self._entry_runner(
+                entry,
+                device,
+                self._zoo,
+                codec_config,
+                self._output_root,
+            )
+        except Exception:
+            self._log.error(
+                "sweep.entry.failed",
+                entry_id=entry.entry_id,
+                device=device,
+            )
+            raise
+        self._log.info(
+            "sweep.entry.completed",
+            entry_id=entry.entry_id,
+            device=device,
+            tolerance_passed=report.tolerance_passed,
+            realized_bpp=report.realized_bpp,
+            realized_psnr_db=report.realized_psnr_db,
+        )
+        return EntryStatus(
+            entry_id=entry.entry_id,
+            device=device,
+            skipped=False,
+            skip_reason=None,
+            report=report,
+        )
+
+    def _aggregate(self, statuses: Sequence[EntryStatus]) -> SweepReport:
+        trained = sum(
+            1 for s in statuses if not s.skipped and s.report is not None
+        )
+        skipped = sum(1 for s in statuses if s.skipped)
         sweep_report = SweepReport(
             manifest_name=self._manifest.name,
             total=len(statuses),
             trained=trained,
             skipped=skipped,
-            failed=failed,
+            failed=0,
             statuses=tuple(statuses),
         )
         self._log.info(
@@ -325,3 +332,203 @@ class ZooSweep:
             failed=sweep_report.failed,
         )
         return sweep_report
+
+    def run(self) -> SweepReport:
+        """Drive every selected entry sequentially in this process."""
+        statuses: list[EntryStatus] = []
+        for entry in self._manifest.entries:
+            if not self._is_selected(entry):
+                continue
+            statuses.append(self._process_entry(entry))
+        return self._aggregate(statuses)
+
+    def run_parallel(self) -> SweepReport:
+        """Drive selected entries with one worker thread per device.
+
+        Entries on the same device are processed sequentially within
+        their worker; different devices run concurrently. The default
+        in-process ``entry_runner`` is *not* GPU-safe under parallel
+        dispatch (two threads sharing the same CUDA context will
+        contend); pair this with :func:`make_subprocess_entry_runner`
+        when running on real GPUs.
+        """
+        selected_ids = {
+            e.entry_id for e in self._manifest.entries if self._is_selected(e)
+        }
+        # Preserve manifest order while grouping by device.
+        groups: dict[str, list[ModelZooEntryConfig]] = {}
+        for entry in self._manifest.entries:
+            if entry.entry_id not in selected_ids:
+                continue
+            groups.setdefault(self._plan.device_for(entry.entry_id), []).append(entry)
+
+        if not groups:
+            return self._aggregate([])
+
+        def _worker(entries: list[ModelZooEntryConfig]) -> list[EntryStatus]:
+            return [self._process_entry(e) for e in entries]
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(groups),
+        ) as pool:
+            future_to_device = {
+                pool.submit(_worker, entries): device
+                for device, entries in groups.items()
+            }
+            results: dict[str, list[EntryStatus]] = {}
+            for fut in concurrent.futures.as_completed(future_to_device):
+                results[future_to_device[fut]] = fut.result()
+
+        # Re-flatten in the manifest's original entry order so the report is
+        # deterministic regardless of which device finished first.
+        statuses: list[EntryStatus] = []
+        order = {e.entry_id: i for i, e in enumerate(self._manifest.entries)}
+        flat = [s for batch in results.values() for s in batch]
+        flat.sort(key=lambda s: order[s.entry_id])
+        statuses.extend(flat)
+        return self._aggregate(statuses)
+
+
+# ---------------------------------------------------------------------------
+# Subprocess-per-device entry runner (Slice B)
+# ---------------------------------------------------------------------------
+
+
+SubprocessRunner = Callable[
+    [list[str], dict[str, str]],
+    "subprocess.CompletedProcess[Any]",
+]
+"""Hook for replacing ``subprocess.run`` in tests.
+
+Receives ``(argv, env)`` and must return a completed-process object
+whose ``returncode`` is 0 on success.
+"""
+
+
+def _device_index(device: str) -> int | None:
+    """Return the GPU index for a ``cuda:N`` label, else ``None``."""
+    if not device.startswith("cuda:"):
+        return None
+    suffix = device.split(":", 1)[1]
+    if not suffix.isdigit():
+        return None
+    return int(suffix)
+
+
+def _read_persisted_report(
+    zoo: VideoCodecZoo,
+    entry: ModelZooEntryConfig,
+    device: str,
+) -> ZooTrainingReport:
+    """Reconstruct a :class:`ZooTrainingReport` from on-disk artifacts."""
+    metrics = zoo.load_metrics(entry.entry_id)
+    checkpoint_path = zoo.entry_dir(entry.entry_id) / CHECKPOINT_FILENAME
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"subprocess runner: expected checkpoint at {checkpoint_path}",
+        )
+    return ZooTrainingReport(
+        entry_id=entry.entry_id,
+        lambda_rd=entry.lambda_rd,
+        target_bpp=entry.target_bpp,
+        target_psnr_db=entry.target_psnr_db,
+        realized_bpp=float(metrics["rate_bpp"]),
+        realized_psnr_db=float(metrics["psnr_db"]),
+        realized_ms_ssim=(
+            float(metrics["ms_ssim"]) if "ms_ssim" in metrics else None
+        ),
+        final_loss=float(metrics["loss"]),
+        step_count=int(metrics["step_count"]),
+        device=device,
+        checkpoint_path=checkpoint_path,
+        tolerance_passed=bool(metrics.get("tolerance_passed", 0.0)),
+        bpp_relative_error=float(metrics["bpp_relative_error"]),
+        psnr_absolute_error_db=float(metrics["psnr_absolute_error_db"]),
+        train_wallclock_s=float(metrics.get("train_wallclock_s", 0.0)),
+        eval_wallclock_s=float(metrics.get("eval_wallclock_s", 0.0)),
+        parent_entry_id=entry.parent_entry_id,
+    )
+
+
+def make_subprocess_entry_runner(
+    *,
+    manifest_path: Path,
+    output_root: Path,
+    python_executable: str | None = None,
+    module_name: str = "scripts.train_compression_zoo_entry",
+    subprocess_runner: SubprocessRunner | None = None,
+    cuda_pinning: Literal["env", "none"] = "env",
+) -> EntryRunner:
+    """Build an :data:`EntryRunner` that delegates to a child process.
+
+    The child re-uses the existing single-entry CLI
+    (``train_compression_zoo_entry train``), so trained checkpoints,
+    ``entry.json`` and ``metrics.json`` land in the same zoo storage
+    that the parent sees. After the child exits 0, the parent reads
+    those artifacts back and reconstructs a :class:`ZooTrainingReport`.
+
+    Args:
+        manifest_path: Path passed to the child's ``--manifest`` flag.
+        output_root: Path passed to the child's ``--output-root`` flag.
+        python_executable: Override ``sys.executable`` (e.g. for tests
+            running the CLI under a venv). Defaults to ``sys.executable``.
+        module_name: Module the child runs via ``-m``. Override only
+            when adding a custom CLI entry point.
+        subprocess_runner: Hook to replace :func:`subprocess.run`; tests
+            inject fakes that record ``(argv, env)`` without forking.
+        cuda_pinning: ``"env"`` sets ``CUDA_VISIBLE_DEVICES=<idx>`` for
+            ``cuda:N`` devices and translates the child's ``--device``
+            flag to ``cuda:0`` (because the child sees only one GPU).
+            ``"none"`` disables this and passes the original device
+            label through (useful for tests).
+
+    """
+    def _default_subprocess_runner(
+        argv: list[str],
+        env: dict[str, str],
+    ) -> subprocess.CompletedProcess[Any]:
+        return subprocess.run(argv, env=env, check=False)
+
+    runner: SubprocessRunner = subprocess_runner or _default_subprocess_runner
+    interpreter = python_executable or sys.executable
+
+    def _runner(
+        entry: ModelZooEntryConfig,
+        device: str,
+        zoo: VideoCodecZoo,
+        codec_config: CodecConfig,  # noqa: ARG001 — child re-resolves from manifest
+        output_root_arg: Path,  # noqa: ARG001 — closure value wins for cross-proc consistency
+    ) -> ZooTrainingReport:
+        env = os.environ.copy()
+        child_device = device
+        if cuda_pinning == "env":
+            idx = _device_index(device)
+            if idx is not None:
+                env["CUDA_VISIBLE_DEVICES"] = str(idx)
+                # Inside the child, the pinned GPU is the only visible
+                # one, so it presents as ``cuda:0`` regardless of N.
+                child_device = "cuda:0"
+
+        argv = [
+            interpreter,
+            "-m",
+            module_name,
+            "train",
+            "--manifest",
+            str(manifest_path),
+            "--entry-id",
+            entry.entry_id,
+            "--device",
+            child_device,
+            "--output-root",
+            str(output_root),
+        ]
+        completed = runner(argv, env)
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"subprocess entry runner failed for entry_id="
+                f"{entry.entry_id!r}: exit code {completed.returncode}",
+            )
+        return _read_persisted_report(zoo, entry, device)
+
+    return _runner

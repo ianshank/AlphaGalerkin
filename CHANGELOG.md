@@ -36,11 +36,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`ZooTrainer` persists wall-clock** — `train_wallclock_s` /
   `eval_wallclock_s` now land in `metrics.json` so the subprocess runner
   can reconstruct them across process boundaries.
-- **Test surface** — 15 Slice B tests (`tests/video_compression/zoo/test_sweep_parallel.py`)
-  + 9 Slice A tests (`tests/scripts/test_train_compression_zoo.py`) +
-  the 11 existing `tests/video_compression/zoo/test_sweep.py` tests all
-  green; 140-test full zoo+scripts+training regression passes; mypy
-  --strict + ruff clean.
+- **Gap-analysis coverage closure** — branch-wide tech-debt scan confirmed
+  zero hardcoded values (sole literal `"cuda:0"` at `sweep.py:510` is a
+  CUDA ABI constant — the only-visible-GPU always presents as `cuda:0` in
+  a `CUDA_VISIBLE_DEVICES=N` subprocess, documented inline). Discovered
+  `cli_helpers.py` at 68% coverage; added 22 unit tests in
+  `tests/video_compression/zoo/test_cli_helpers.py` covering every public
+  helper across YAML/JSON/unsupported-suffix/empty/non-dict load paths,
+  absolute/cwd-relative/manifest-relative path resolution, codec-config
+  round-trip, entry lookup/KeyError, codec-config-ref precedence/fallback
+  /no-ref raise, override short-circuit, device-preference cascade.
+  Lifts `cli_helpers.py` from 68% → **100%**; zoo-subpackage total
+  **98.44%**.
+- **Test surface** — 22 cli_helpers tests + 15 Slice B tests
+  (`tests/video_compression/zoo/test_sweep_parallel.py`) + 9 Slice A
+  tests (`tests/scripts/test_train_compression_zoo.py`) + 4 entry-CLI
+  tests (`tests/scripts/test_train_compression_zoo_entry.py`) + 11
+  sweep-unit tests + zoo-trainer tests; **162-test full
+  zoo+scripts+training regression** passes; mypy --strict + ruff clean.
 
 ### Added — Codec Model Zoo Phase 2-B (`src/video_compression/zoo/`)
 

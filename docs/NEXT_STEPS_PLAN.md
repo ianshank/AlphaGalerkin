@@ -622,3 +622,77 @@ Orchestrator     → Integration, deployment, automation
 *Last Updated: 2026-04-10*
 *Version: 3.0.0*
 *Author: Claude Code Agent Investigation*
+
+
+---
+
+
+## Milestone 11: Codec Model Zoo (R-D Lagrangian Sweep) - Phase 2-B COMPLETE
+
+**Goal:** Schedule the 8-point R-D Lagrangian sweep across the dual-GPU rig
+(`cuda:0=RTX 5060 Ti 16 GiB` + `cuda:1=RTX 5060 8 GiB`) and produce a
+reproducible BD-rate curve.
+**Duration:** Phase 2-B complete; Phases 2-C through 2-G estimated 3-5 weeks total
+**Priority:** P1 (gates the headline R-D number for the self-hosted transcoder)
+
+### Phase 2-B: Schemas, Manifest, Storage, Planner - COMPLETE (2026-05-01)
+
+Shipped in `src/video_compression/zoo/`:
+
+- `ModelZooEntryConfig` / `ModelZooManifestConfig` / `OptimizerConfig` /
+  `SchedulerConfig` - Pydantic v2, zero hardcoded values, schema-versioned.
+- `load_manifest` / `save_manifest` - JSON+YAML by suffix, forward-compat
+  migration via `_migrate_manifest_document`.
+- `scan_devices` / `assign_devices` - four strategies
+  (`VRAM_AWARE` / `ROUND_ROBIN` / `SINGLE_DEVICE` / `MANUAL`).
+- `VideoCodecZoo` filesystem registry with atomic writes (tempfile +
+  `Path.replace`); GCS backend gated for Phase 2-D.
+- `config/video_compression/zoo/lambda_grid.yaml` ships the 8-point grid.
+- 100 percent line + branch coverage across all five modules; 68 tests;
+  mypy `--strict` and `ruff` clean.
+
+### Phase 2-C: ZooTrainer (Per-Entry Composition) - NEXT
+
+- `src/video_compression/training/zoo_trainer.py::ZooTrainer` composes
+  `VideoCompressionTrainer` per entry with fixed-lambda + AMP + grad-clip
+  + warmup wired from `ModelZooEntryConfig`.
+- Warm-start via `parent_entry_id`: load checkpoint from parent entry,
+  re-init optimizer.
+- Structured logging bound to `entry_id` / `lambda_rd` / `device`.
+- Acceptance: an 8 GiB-friendly path on `cuda:1` (FP16/BF16 + grad
+  accumulation) trains a single entry to its `target_psnr_db`.
+
+### Phase 2-D: Subprocess Sweep Driver
+
+- `src/video_compression/zoo/sweep.py::ZooSweep(BaseExecutable)`.
+- Subprocess-per-device with `CUDA_VISIBLE_DEVICES` pinning so each entry
+  sees exactly one GPU and PyTorch never has to multiplex.
+- Manifest-hash resumability - re-running with the same manifest skips
+  entries whose `checkpoint.pt` + `entry.json` already match the
+  expected hash key.
+
+### Phase 2-E: Perf Harness Integration
+
+- `RuntimeProfile.zoo_entry_id: str | None` - links a perf cell back to
+  the entry that produced its weights.
+- `CodecForwardSubject.from_zoo_entry(...)` - perf benchmark loads
+  weights through the zoo registry.
+- `config/perf/zoo_grid.yaml` - runs all eight zoo entries through the
+  Phase 0 perf harness.
+
+### Phase 2-F: BD-rate Validation
+
+- `src/video_compression/metrics/rd_curves.py` ingests the per-entry
+  `metrics.json` files and produces a BD-rate report.
+- Nightly CI workflow `phase2-zoo-validation.yml` rebuilds the curve and
+  diffs against the committed baseline.
+
+### Phase 2-G: Planner Quality (Opportunistic)
+
+- The current `VRAM_AWARE` planner is correct but conservative on
+  asymmetric rigs: when one large entry takes the bigger card, subsequent
+  entries that exceed the smaller card's headroom over-commit on the
+  bigger card rather than using the smaller card's free VRAM. A
+  two-phase strategy (greedy by descending VRAM, then load-balance by
+  total headroom) would push more work onto `cuda:1`. Defer until
+  Phase 2-D shows the over-commit cost in wall-clock.

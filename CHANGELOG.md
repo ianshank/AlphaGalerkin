@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Codec Model Zoo Phase 2-B (`src/video_compression/zoo/`)
+
+- **Dual-GPU model zoo for the 8-point R-D Lagrangian sweep** — new
+  `src/video_compression/zoo/` subpackage that schedules an arbitrary
+  `λ`-grid across heterogeneous CUDA devices. Targets the reference rig
+  (RTX 5060 Ti 16 GiB at `cuda:0` + RTX 5060 8 GiB at `cuda:1`) but is
+  resolution-/SKU-agnostic: the planner consumes a `list[DeviceCapability]`
+  produced at runtime by `scan_devices()`, so the same code runs on a
+  laptop CPU, a single-GPU box, or a multi-node cluster.
+- **Pydantic-validated schemas** (`config.py`, 100% coverage) — every
+  measurement-/training-affecting knob is a validated field with bounds:
+  `lambda_rd > 0`, `target_psnr_db > 0`, `train_steps ≥ 1`,
+  `warmup_steps ≤ train_steps`, Adam betas in `(0, 1)`, entry IDs match
+  `^[a-zA-Z0-9_\-\.]+$`, parent-entry-id resolution, dedupe enforcement.
+  Schema versions are module-level constants
+  (`PERF_ZOO_MANIFEST_SCHEMA_VERSION = 1`,
+  `PERF_ZOO_ENTRY_SCHEMA_VERSION = 1`). Zero hardcoded magic numbers.
+- **Forward-compatible manifest** (`manifest.py`, 100%) — JSON or YAML
+  load/save dispatched by file suffix (`.yaml` / `.yml` → YAML, else
+  JSON). `_migrate_manifest_document` promotes unversioned manifests to
+  v1, fails loud on newer-than-binary, and rejects non-int schema
+  versions. The shipped `config/video_compression/zoo/lambda_grid.yaml`
+  (8 points: λ ∈ {0.0016, 0.0032, 0.0075, 0.015, 0.03, 0.045, 0.09, 0.18})
+  loads cleanly through the same path as user-authored YAML.
+- **Heterogeneous-VRAM device planner** (`device_planner.py`, 100%) —
+  four assignment strategies: `VRAM_AWARE` (default; best-fit packing
+  by current headroom, falls back to largest-total over-commit when no
+  device has room), `ROUND_ROBIN`, `SINGLE_DEVICE`, `MANUAL` (per-entry
+  pin via `device="cuda:N"` / `"cpu"` / `"cuda"`). Explicit pins are
+  pre-resolved out before strategy dispatch, so all strategies compose
+  with manual overrides. `scan_devices()` does a runtime `import torch`
+  to remain monkeypatch-friendly. Module-level `CPU_DEVICE_LABEL`
+  constant; no string literals leaked.
+- **Filesystem `VideoCodecZoo` registry** (`storage.py`, 100%) —
+  per-entry directory layout (`<root>/<entry_id>/{checkpoint.pt,
+  entry.json, metrics.json}`), atomic write semantics, GCS backend gated
+  via `importlib.import_module("src.vertex.storage")` (raises
+  `NotImplementedError` until Phase D wires it). Constants
+  `CHECKPOINT_FILENAME`, `ENTRY_FILENAME`, `METRICS_FILENAME` are
+  module-level.
+- **Coverage gate** — `pyproject.toml` `coverage.run.omit` rebalanced
+  from a global `src/video_compression/*` blanket to a per-subpackage
+  list. The `zoo/` subpackage is omitted from the project-wide 85%
+  gate (CI's fast suite uses `--ignore=tests/video_compression/`, so
+  including `zoo/` globally would 0%-tank the gate); a dedicated per-
+  module gate enforces the zoo coverage floor instead. Achieved
+  coverage on the zoo subpackage: **100% line + branch** across all
+  five modules (`__init__.py`, `config.py`, `device_planner.py`,
+  `manifest.py`, `storage.py`).
+- **Test suite** (`tests/video_compression/zoo/`, 68 tests) —
+  `test_config.py` (22 tests, schema + validator coverage),
+  `test_manifest.py` (11 tests including YAML round-trip + shipped-grid
+  smoke + Hypothesis property-based migration test),
+  `test_device_planner.py` (14 tests across all four strategies +
+  reference-rig fixture + CPU-only fixture),
+  `test_storage.py` (8 tests, 1 GCS-skip),
+  `test_edge_cases.py` (13 tests targeting all originally-uncovered
+  branches: `DevicePlan.device_for` KeyError, bare-`cuda` resolution
+  under MANUAL, CPU pin under VRAM_AWARE, `_resolve_run_target` cuda /
+  cuda:N / invalid paths, MANUAL with missing pin, `list_entries` with
+  removed root, non-dict checkpoint / metrics payloads).
+- **E2E validation on live dual-GPU hardware** — `lambda_grid.yaml`
+  loads, `scan_devices()` reports both cards correctly
+  (`cuda:0=RTX 5060 Ti 16 GiB`, `cuda:1=RTX 5060 8 GiB`),
+  `assign_devices` produces a deterministic plan with structured
+  `structlog` events bound to `entry_id` / `device` / `strategy`.
+  Phase 0 perf harness + Phase 1 runtime backends regress green
+  (228 passed, pre-existing ONNX-runtime test failures on `cuda:0` are
+  unrelated to this branch).
+
 ### Added — Codec Performance Benchmark Phase 0 (`src/video_compression/perf/`)
 
 - **GPU-primary benchmark harness** — new `PerfBenchmark(BaseExecutable)` with `device_preference="cuda"` default, per-profile `cuda:N` pinning so a single sweep covers both cards of the reference dual-GPU rig (RTX 5060 Ti 16 GB at `cuda:0` + RTX 5060 8 GB at `cuda:1`). Indexed-CUDA resolver wraps `src/poc/device.resolve_device` without disturbing existing PoC scenarios.

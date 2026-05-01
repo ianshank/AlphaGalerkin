@@ -190,6 +190,40 @@ C4Component
     Rel(comp_loss, dist_loss, "Distortion term")
 ```
 
+### 3.5 Model Zoo Component (Phase 2-B)
+
+```mermaid
+C4Component
+    title Component Diagram - Model Zoo (src/video_compression/zoo/)
+
+    Container_Boundary(zoo, "Model Zoo — R-D Lagrangian Sweep") {
+        Component(entry_cfg, "ModelZooEntryConfig", "Pydantic v2", "Per-entry validated config:<br/>lambda_rd, target_bpp, target_psnr_db,<br/>train_steps, warmup_steps, optimizer,<br/>scheduler, parent_entry_id, device")
+
+        Component(manifest_cfg, "ModelZooManifestConfig", "Pydantic v2", "Sweep-level config:<br/>entries[], storage_root,<br/>device_assignment_strategy,<br/>device_preference, parallel_workers")
+
+        Component(manifest_io, "load_manifest / save_manifest", "Function", "JSON+YAML I/O dispatched<br/>by file suffix.<br/>_migrate_manifest_document handles<br/>forward-compat (unversioned -> v1).")
+
+        Component(scan, "scan_devices", "Function", "Runtime torch import.<br/>Returns DeviceCapability list:<br/>(label, name, total_vram_mib, is_cuda)")
+
+        Component(planner, "assign_devices", "Function", "Strategy dispatch:<br/>VRAM_AWARE (best-fit pack) /<br/>ROUND_ROBIN /<br/>SINGLE_DEVICE /<br/>MANUAL (per-entry pin)")
+
+        Component(zoo_store, "VideoCodecZoo", "Class", "Filesystem registry:<br/>save_entry / load_state_dict /<br/>load_metrics / list_entries.<br/>GCS backend gated for Phase D.")
+    }
+
+    Component_Ext(yaml_cfg, "lambda_grid.yaml", "8-point R-D grid")
+    Component_Ext(torch_cuda, "torch.cuda", "Device introspection")
+    Component_Ext(checkpoint, "checkpoint.pt", "Per-entry weights")
+
+    Rel(yaml_cfg, manifest_io, "load")
+    Rel(manifest_io, manifest_cfg, "Validates against")
+    Rel(manifest_cfg, entry_cfg, "Contains list of")
+    Rel(scan, torch_cuda, "Introspects")
+    Rel(planner, scan, "Consumes capabilities")
+    Rel(planner, manifest_cfg, "Reads strategy + entries")
+    Rel(zoo_store, checkpoint, "Persists per entry")
+    Rel(zoo_store, entry_cfg, "Indexed by entry_id")
+```
+
 ---
 
 ## Level 4: Code Diagrams

@@ -125,6 +125,7 @@ validation_outputs/
 !package.json
 !tsconfig.json
 !tests/modeling/_public_surface_golden.json
+!config/**/*.json
 notebooks/utils/*.json
 uv.lock
 

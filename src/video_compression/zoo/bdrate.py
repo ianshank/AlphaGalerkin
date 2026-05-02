@@ -202,10 +202,7 @@ class BDRateReport(BaseModuleConfig):
         ...,
         ge=0.0,
         le=1.0,
-        description=(
-            "Fraction of the reference quality range that overlaps the "
-            "test curve."
-        ),
+        description=("Fraction of the reference quality range that overlaps the test curve."),
     )
     test_points: list[BDRatePoint] = Field(
         default_factory=list,
@@ -273,9 +270,7 @@ def _bd_rate_at_primary(
     ``primary_lambda_rd`` or when the neighborhood would have <2 points.
     """
     # Find the test point whose lambda is closest to the primary value.
-    candidates = [
-        (i, p) for i, p in enumerate(test.points) if p.lambda_rd is not None
-    ]
+    candidates = [(i, p) for i, p in enumerate(test.points) if p.lambda_rd is not None]
     if not candidates:
         return None
     nearest_idx, _ = min(
@@ -355,9 +350,7 @@ def compute_bd_rate_report(
     else:
         # Pick the value the gate is judged on: per-primary if available,
         # otherwise the overall BD-rate.
-        gate_value = (
-            primary_bd_rate if primary_bd_rate is not None else bd_rate_pct
-        )
+        gate_value = primary_bd_rate if primary_bd_rate is not None else bd_rate_pct
         gate_passed = gate_value <= cfg.primary_bd_rate_gate_pct
         gate_status = "passed" if gate_passed else "failed"
 

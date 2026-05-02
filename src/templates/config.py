@@ -299,8 +299,7 @@ class TrainableModuleConfig(BaseModuleConfig):
         if re.fullmatch(r"cuda:\d+", v):
             return v
         raise ValueError(
-            "device must be one of 'auto', 'cpu', 'mps', 'cuda', or 'cuda:N'; "
-            f"got {v!r}",
+            f"device must be one of 'auto', 'cpu', 'mps', 'cuda', or 'cuda:N'; got {v!r}",
         )
 
     @model_validator(mode="after")

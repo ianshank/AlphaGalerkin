@@ -342,7 +342,8 @@ class TestComputeRDCurveFailures:
     ),
 )
 def test_property_monotone_input_yields_monotone_curve(
-    psnrs: list[float], tmp_path_factory: pytest.TempPathFactory,
+    psnrs: list[float],
+    tmp_path_factory: pytest.TempPathFactory,
 ) -> None:
     psnrs = sorted(psnrs)  # ascending PSNR
     n = len(psnrs)
@@ -352,10 +353,7 @@ def test_property_monotone_input_yields_monotone_curve(
 
     tmp = tmp_path_factory.mktemp("rdcurve_prop")
     zoo = VideoCodecZoo(tmp / "zoo")
-    entries = [
-        _make_entry(f"e{i}", lambda_rd=lambdas[i])
-        for i in range(n)
-    ]
+    entries = [_make_entry(f"e{i}", lambda_rd=lambdas[i]) for i in range(n)]
     for e, bpp, psnr in zip(entries, bpps, psnrs, strict=True):
         _save_metrics(zoo, e, bpp=bpp, psnr_db=psnr)
 

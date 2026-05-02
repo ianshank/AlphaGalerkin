@@ -116,8 +116,7 @@ class VideoCodecZoo:
         if not self.root.exists():
             return []
         return sorted(
-            d.name for d in self.root.iterdir()
-            if d.is_dir() and (d / CHECKPOINT_FILENAME).exists()
+            d.name for d in self.root.iterdir() if d.is_dir() and (d / CHECKPOINT_FILENAME).exists()
         )
 
     # ------------------------------------------------------------------
@@ -145,8 +144,7 @@ class VideoCodecZoo:
         """
         if self.backend is not StorageBackend.FILESYSTEM:
             raise NotImplementedError(
-                f"save_entry is implemented only for filesystem; got "
-                f"{self.backend!r}",
+                f"save_entry is implemented only for filesystem; got {self.backend!r}",
             )
 
         entry_dir = self.entry_dir(entry.entry_id)
@@ -224,8 +222,7 @@ class VideoCodecZoo:
         """
         if self.backend is not StorageBackend.FILESYSTEM:
             raise NotImplementedError(
-                f"load_state_dict is implemented only for filesystem; got "
-                f"{self.backend!r}",
+                f"load_state_dict is implemented only for filesystem; got {self.backend!r}",
             )
         path = self.checkpoint_path(entry_id)
         if not path.exists():
@@ -239,16 +236,14 @@ class VideoCodecZoo:
         )
         if not isinstance(bundle, dict):
             raise TypeError(
-                f"checkpoint at {path} is not a dict; got "
-                f"{type(bundle).__name__}",
+                f"checkpoint at {path} is not a dict; got {type(bundle).__name__}",
             )
         return bundle
 
     def load_metrics(self, entry_id: str) -> dict[str, float]:
         if self.backend is not StorageBackend.FILESYSTEM:
             raise NotImplementedError(
-                f"load_metrics is implemented only for filesystem; got "
-                f"{self.backend!r}",
+                f"load_metrics is implemented only for filesystem; got {self.backend!r}",
             )
         path = self.metrics_path(entry_id)
         if not path.exists():
@@ -257,8 +252,7 @@ class VideoCodecZoo:
             payload = json.load(fh)
         if not isinstance(payload, dict):
             raise TypeError(
-                f"metrics file at {path} is not a dict; got "
-                f"{type(payload).__name__}",
+                f"metrics file at {path} is not a dict; got {type(payload).__name__}",
             )
         metrics = payload.get("metrics", {})
         if not isinstance(metrics, dict):

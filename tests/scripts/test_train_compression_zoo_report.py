@@ -83,9 +83,7 @@ def _write_manifest(
                 "storage_root": str(storage_root),
                 "default_codec_config_ref": str(codec_path),
                 "device_preference": "cpu",
-                "device_assignment_strategy": (
-                    DeviceAssignmentStrategy.SINGLE_DEVICE.value
-                ),
+                "device_assignment_strategy": (DeviceAssignmentStrategy.SINGLE_DEVICE.value),
                 "entries": entries,
             },
             sort_keys=False,
@@ -173,12 +171,17 @@ def _entry_specs_above_baseline() -> list[tuple[str, float, float, float]]:
 class TestReportArgparse:
     def test_subcommand_registered(self, cli_module) -> None:
         parser = cli_module.build_parser()
-        args = parser.parse_args([
-            "report",
-            "--manifest", "m.yaml",
-            "--baseline", "b.json",
-            "--baseline-sequence-id", "akiyo",
-        ])
+        args = parser.parse_args(
+            [
+                "report",
+                "--manifest",
+                "m.yaml",
+                "--baseline",
+                "b.json",
+                "--baseline-sequence-id",
+                "akiyo",
+            ]
+        )
         assert args.cmd == "report"
         assert args.baseline_sequence_id == "akiyo"
         assert args.baseline_codec == "libx265"
@@ -193,17 +196,26 @@ class TestReportArgparse:
 
     def test_subcommand_overrides_pass_through(self, cli_module) -> None:
         parser = cli_module.build_parser()
-        args = parser.parse_args([
-            "report",
-            "--manifest", "m.yaml",
-            "--baseline", "b.json",
-            "--baseline-sequence-id", "akiyo",
-            "--baseline-codec", "libaom-av1",
-            "--primary-lambda-rd", "0.03",
-            "--gate-pct", "-10.0",
-            "--allow-non-monotone",
-            "--output", "o.json",
-        ])
+        args = parser.parse_args(
+            [
+                "report",
+                "--manifest",
+                "m.yaml",
+                "--baseline",
+                "b.json",
+                "--baseline-sequence-id",
+                "akiyo",
+                "--baseline-codec",
+                "libaom-av1",
+                "--primary-lambda-rd",
+                "0.03",
+                "--gate-pct",
+                "-10.0",
+                "--allow-non-monotone",
+                "--output",
+                "o.json",
+            ]
+        )
         assert args.baseline_codec == "libaom-av1"
         assert args.primary_lambda_rd == pytest.approx(0.03)
         assert args.gate_pct == pytest.approx(-10.0)
@@ -234,15 +246,23 @@ class TestReportCommand:
         _save_metrics_for_entries(storage_root, specs, realized_offset_psnr=4.0)
         _write_baseline(baseline_path)
 
-        rc = cli_module.main([
-            "report",
-            "--manifest", str(manifest_path),
-            "--baseline", str(baseline_path),
-            "--baseline-sequence-id", "akiyo",
-            "--primary-lambda-rd", "0.015",
-            "--gate-pct", "-15.0",
-            "--output", str(output_path),
-        ])
+        rc = cli_module.main(
+            [
+                "report",
+                "--manifest",
+                str(manifest_path),
+                "--baseline",
+                str(baseline_path),
+                "--baseline-sequence-id",
+                "akiyo",
+                "--primary-lambda-rd",
+                "0.015",
+                "--gate-pct",
+                "-15.0",
+                "--output",
+                str(output_path),
+            ]
+        )
 
         # +4 dB shift across an overlapping range should clear the -15 % gate.
         assert rc == 0
@@ -273,15 +293,23 @@ class TestReportCommand:
             rates_psnrs=[(0.1, 28.0), (0.4, 33.0), (0.8, 36.0)],
         )
 
-        rc = cli_module.main([
-            "report",
-            "--manifest", str(manifest_path),
-            "--baseline", str(baseline_path),
-            "--baseline-sequence-id", "akiyo",
-            "--primary-lambda-rd", "0.015",
-            "--gate-pct", "-15.0",
-            "--output", str(output_path),
-        ])
+        rc = cli_module.main(
+            [
+                "report",
+                "--manifest",
+                str(manifest_path),
+                "--baseline",
+                str(baseline_path),
+                "--baseline-sequence-id",
+                "akiyo",
+                "--primary-lambda-rd",
+                "0.015",
+                "--gate-pct",
+                "-15.0",
+                "--output",
+                str(output_path),
+            ]
+        )
         assert rc == 1
         payload = json.loads(output_path.read_text())
         assert payload["gate_status"] in {"failed", "skipped"}
@@ -302,12 +330,17 @@ class TestReportCommand:
         _save_metrics_for_entries(storage_root, specs, realized_offset_psnr=4.0)
         _write_baseline(baseline_path)
 
-        rc = cli_module.main([
-            "report",
-            "--manifest", str(manifest_path),
-            "--baseline", str(baseline_path),
-            "--baseline-sequence-id", "akiyo",
-        ])
+        rc = cli_module.main(
+            [
+                "report",
+                "--manifest",
+                str(manifest_path),
+                "--baseline",
+                str(baseline_path),
+                "--baseline-sequence-id",
+                "akiyo",
+            ]
+        )
         # Default output: <storage_root>/bd_rate_report.json
         assert (storage_root / "bd_rate_report.json").exists()
         # rc could be 0 or 1 depending on default gate; we only assert
@@ -339,22 +372,34 @@ class TestReportCommand:
 
         # Without --allow-non-monotone the report fails.
         with pytest.raises(Exception):
-            cli_module.main([
-                "report",
-                "--manifest", str(manifest_path),
-                "--baseline", str(baseline_path),
-                "--baseline-sequence-id", "akiyo",
-                "--output", str(output_path),
-            ])
+            cli_module.main(
+                [
+                    "report",
+                    "--manifest",
+                    str(manifest_path),
+                    "--baseline",
+                    str(baseline_path),
+                    "--baseline-sequence-id",
+                    "akiyo",
+                    "--output",
+                    str(output_path),
+                ]
+            )
 
         # With the flag it succeeds (gate verdict may be anything).
-        rc = cli_module.main([
-            "report",
-            "--manifest", str(manifest_path),
-            "--baseline", str(baseline_path),
-            "--baseline-sequence-id", "akiyo",
-            "--allow-non-monotone",
-            "--output", str(output_path),
-        ])
+        rc = cli_module.main(
+            [
+                "report",
+                "--manifest",
+                str(manifest_path),
+                "--baseline",
+                str(baseline_path),
+                "--baseline-sequence-id",
+                "akiyo",
+                "--allow-non-monotone",
+                "--output",
+                str(output_path),
+            ]
+        )
         assert rc in (0, 1)
         assert output_path.exists()

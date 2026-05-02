@@ -148,7 +148,8 @@ def make_default_loader_factory(
         if split not in {"train", "val"}:
             raise ValueError(f"split must be 'train' or 'val'; got {split!r}")
         spec = resolve_dataset_spec(
-            entry, default_dataset_spec=default_dataset_spec,
+            entry,
+            default_dataset_spec=default_dataset_spec,
         )
         return build_loader(spec, entry.batch_size, cast(DatasetSplit, split))
 
@@ -355,9 +356,7 @@ class ZooTrainer:
             realized_bpp=float(final_metrics.rate),
             realized_psnr_db=float(final_metrics.psnr),
             realized_ms_ssim=(
-                float(final_metrics.ms_ssim)
-                if final_metrics.ms_ssim is not None
-                else None
+                float(final_metrics.ms_ssim) if final_metrics.ms_ssim is not None else None
             ),
             final_loss=float(final_metrics.loss),
             step_count=trainer.state.step,

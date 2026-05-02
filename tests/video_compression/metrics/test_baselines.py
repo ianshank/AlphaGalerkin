@@ -203,13 +203,19 @@ def _fake_subprocess_factory(
             # encode
             out_path.write_bytes(b"\0" * encoded_size_bytes)
             return subprocess.CompletedProcess(
-                args=cmd, returncode=encode_rc, stdout=b"", stderr=encode_stderr,
+                args=cmd,
+                returncode=encode_rc,
+                stdout=b"",
+                stderr=encode_stderr,
             )
         else:
             # decode
             out_path.write_bytes(b"\0")
             return subprocess.CompletedProcess(
-                args=cmd, returncode=decode_rc, stdout=b"", stderr=decode_stderr,
+                args=cmd,
+                returncode=decode_rc,
+                stdout=b"",
+                stderr=decode_stderr,
             )
 
     return fake_run
@@ -325,7 +331,9 @@ class TestRunnerExecution:
         # to come from the loader.
         decoded = torch.full((2, 3, 16, 16), 0.5)
         monkeypatch.setattr(
-            baselines_mod, "_load_y4m_to_tensor", lambda *_a, **_kw: decoded,
+            baselines_mod,
+            "_load_y4m_to_tensor",
+            lambda *_a, **_kw: decoded,
         )
         src = tmp_path / "in.y4m"
         src.write_bytes(b"YUV4MPEG2\n")
@@ -356,7 +364,10 @@ class TestRunnerExecution:
 
         def fake_run(cmd: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[bytes]:
             return subprocess.CompletedProcess(
-                args=cmd, returncode=1, stdout=b"", stderr=b"encode error",
+                args=cmd,
+                returncode=1,
+                stdout=b"",
+                stderr=b"encode error",
             )
 
         monkeypatch.setattr(baselines_mod, "_run_subprocess", fake_run)
@@ -396,7 +407,10 @@ class TestRunnerExecution:
                 return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=b"", stderr=b"")
             # decode fails
             return subprocess.CompletedProcess(
-                args=cmd, returncode=2, stdout=b"", stderr=b"decode error",
+                args=cmd,
+                returncode=2,
+                stdout=b"",
+                stderr=b"decode error",
             )
 
         monkeypatch.setattr(baselines_mod, "_run_subprocess", fake_run)
@@ -466,7 +480,10 @@ class TestBytesToBpp:
 
     def test_cell_key_format(self) -> None:
         key = FFmpegBaselineRunner._build_cell_key(
-            sequence_id="akiyo", width=352, height=288, fps=30.0,
+            sequence_id="akiyo",
+            width=352,
+            height=288,
+            fps=30.0,
         )
         assert key == "akiyo|352x288|30"
 

@@ -482,8 +482,7 @@ class FFmpegBaselineRunner:
     ) -> float:
         if width <= 0 or height <= 0 or n_frames <= 0:
             raise ValueError(
-                f"invalid sequence dimensions: width={width} height={height} "
-                f"n_frames={n_frames}",
+                f"invalid sequence dimensions: width={width} height={height} n_frames={n_frames}",
             )
         total_pixels = float(width) * float(height) * float(n_frames)
         return float(encoded_bytes * 8) / total_pixels

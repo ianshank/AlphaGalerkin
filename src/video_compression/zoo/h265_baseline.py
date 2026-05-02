@@ -24,6 +24,7 @@ import structlog
 from pydantic import ConfigDict, Field
 
 from src.templates.config import BaseModuleConfig
+from src.video_compression.metrics.psnr_conversions import psnr_db_to_mse_surrogate
 from src.video_compression.metrics.rd_curves import RDCurve, RDPoint
 
 logger = structlog.get_logger(__name__)
@@ -52,10 +53,7 @@ class H265BaselineEntry(BaseModuleConfig):
     cell_key: str = Field(
         ...,
         min_length=1,
-        description=(
-            "Stable composite key, e.g. "
-            "'akiyo|cif|30|libx265|crf28'."
-        ),
+        description=("Stable composite key, e.g. 'akiyo|cif|30|libx265|crf28'."),
     )
     sequence_id: str = Field(..., min_length=1)
     width: int = Field(..., ge=1)
@@ -147,8 +145,11 @@ def _migrate_h265_baseline_document(raw: dict[str, Any]) -> dict[str, Any]:
             "h265_baseline.migration.unversioned_to_v1",
             keys=sorted(raw.keys()),
         )
-        raw["schema_version"] = 1
-        schema_version = 1
+        # Single source of truth for the schema version target — avoids
+        # drift between the migration target and the binary's notion
+        # of "current".
+        raw["schema_version"] = H265_BASELINE_SCHEMA_VERSION
+        schema_version = H265_BASELINE_SCHEMA_VERSION
     if not isinstance(schema_version, int):
         raise H265BaselineMigrationError(
             f"schema_version must be int; got {type(schema_version).__name__}",
@@ -172,9 +173,7 @@ class H265BaselineRegistry:
 
     def __init__(self, document: H265BaselineDocument) -> None:
         self._document = document
-        self._by_key: dict[str, H265BaselineEntry] = {
-            e.cell_key: e for e in document.entries
-        }
+        self._by_key: dict[str, H265BaselineEntry] = {e.cell_key: e for e in document.entries}
 
     @classmethod
     def load(cls, path: str | Path) -> H265BaselineRegistry:
@@ -294,7 +293,7 @@ class H265BaselineRegistry:
             curve.add_point(
                 RDPoint(
                     rate=float(e.bpp),
-                    distortion=float(10.0 ** (-psnr / 10.0)),
+                    distortion=psnr_db_to_mse_surrogate(psnr),
                     psnr=psnr,
                     ssim=ssim,
                 )

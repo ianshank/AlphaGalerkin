@@ -124,9 +124,7 @@ class TestScanDevices:
 # assign_devices: VRAM-aware (dual-GPU acceptance test)
 # ----------------------------------------------------------------------
 class TestVRAMAwareDualGPU:
-    def test_large_entry_packs_to_cuda0(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_large_entry_packs_to_cuda0(self, reference_rig: list[DeviceCapability]) -> None:
         # 12 GiB entry must land on cuda:0 (16 GiB), not cuda:1 (8 GiB).
         manifest = ModelZooManifestConfig(
             name="m",
@@ -159,9 +157,7 @@ class TestVRAMAwareDualGPU:
         # 3 GiB entry should go to cuda:1.
         assert plan.device_for("small") == "cuda:1"
 
-    def test_eight_point_grid_uses_both_cards(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_eight_point_grid_uses_both_cards(self, reference_rig: list[DeviceCapability]) -> None:
         # 8-point grid sized to mirror lambda_grid.yaml: high-VRAM
         # entries should fill cuda:0, lower-VRAM entries land on cuda:1.
         sizes = [12000.0, 11000.0, 9500.0, 8500.0, 7500.0, 6500.0, 5500.0, 4500.0]
@@ -199,9 +195,7 @@ class TestVRAMAwareDualGPU:
 # Round-robin
 # ----------------------------------------------------------------------
 class TestRoundRobin:
-    def test_alternates_between_cards(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_alternates_between_cards(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -214,9 +208,7 @@ class TestRoundRobin:
         assert plan.device_for("e2") == "cuda:0"
         assert plan.device_for("e3") == "cuda:1"
 
-    def test_round_robin_no_cuda_raises(
-        self, cpu_only: list[DeviceCapability]
-    ) -> None:
+    def test_round_robin_no_cuda_raises(self, cpu_only: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -243,9 +235,7 @@ class TestSingleDevice:
         assert plan.device_for("a") == "cpu"
         assert plan.device_for("b") == "cpu"
 
-    def test_auto_picks_first_cuda(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_auto_picks_first_cuda(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -258,9 +248,7 @@ class TestSingleDevice:
 
 
 class TestManualStrategy:
-    def test_requires_explicit_pin(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_requires_explicit_pin(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -286,9 +274,7 @@ class TestManualStrategy:
 
 
 class TestExplicitPin:
-    def test_pin_overrides_strategy(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_pin_overrides_strategy(self, reference_rig: list[DeviceCapability]) -> None:
         # Even under VRAM_AWARE, an explicit device pin wins.
         manifest = ModelZooManifestConfig(
             name="m",
@@ -300,9 +286,7 @@ class TestExplicitPin:
         assert plan.device_for("forced") == "cuda:1"
         assert "explicit" in plan.assignments[0].reason
 
-    def test_invalid_pin_rejected(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_invalid_pin_rejected(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",

@@ -105,9 +105,7 @@ def test_registry_lookup_unknown_kind() -> None:
 
 
 def test_registry_rejects_duplicate_registration() -> None:
-    def _dummy(
-        spec: DatasetSpec, batch_size: int, split: str
-    ) -> Iterator[Tensor]:
+    def _dummy(spec: DatasetSpec, batch_size: int, split: str) -> Iterator[Tensor]:
         del spec, batch_size, split
         yield torch.zeros(1)
 
@@ -124,9 +122,7 @@ def test_list_dataset_kinds_includes_defaults() -> None:
 def test_register_unregister_roundtrip() -> None:
     kind_name = "custom_test_only"
 
-    def _factory(
-        spec: DatasetSpec, batch_size: int, split: str
-    ) -> Iterator[Tensor]:
+    def _factory(spec: DatasetSpec, batch_size: int, split: str) -> Iterator[Tensor]:
         del spec, split
         while True:
             yield torch.zeros((batch_size, 1, 4, 4))

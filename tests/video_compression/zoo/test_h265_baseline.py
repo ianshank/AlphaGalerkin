@@ -60,8 +60,7 @@ def _make_document(
 class TestRegistryRoundTrip:
     def test_save_and_load_round_trip(self, tmp_path: Path) -> None:
         entries = [
-            _make_entry(cell_key=f"akiyo|cif|30|libx265|crf{crf}",
-                        bpp=bpp, psnr=psnr, crf=crf)
+            _make_entry(cell_key=f"akiyo|cif|30|libx265|crf{crf}", bpp=bpp, psnr=psnr, crf=crf)
             for crf, bpp, psnr in [(22, 0.6, 38.5), (28, 0.3, 35.0), (35, 0.1, 31.0)]
         ]
         doc = _make_document(entries)
@@ -103,11 +102,13 @@ class TestRegistryRoundTrip:
     def test_load_newer_schema_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "future.json"
         path.write_text(
-            json.dumps({
-                "name": "future",
-                "schema_version": H265_BASELINE_SCHEMA_VERSION + 1,
-                "entries": [],
-            })
+            json.dumps(
+                {
+                    "name": "future",
+                    "schema_version": H265_BASELINE_SCHEMA_VERSION + 1,
+                    "entries": [],
+                }
+            )
         )
         with pytest.raises(H265BaselineMigrationError, match="newer than this binary"):
             H265BaselineRegistry.load(path)
@@ -138,12 +139,14 @@ class TestForwardCompat:
     def test_unknown_field_at_document_level_ignored(self, tmp_path: Path) -> None:
         path = tmp_path / "fwd.json"
         path.write_text(
-            json.dumps({
-                "name": "fwd",
-                "schema_version": 1,
-                "future_doc_field_v2": "hello",
-                "entries": [],
-            })
+            json.dumps(
+                {
+                    "name": "fwd",
+                    "schema_version": 1,
+                    "future_doc_field_v2": "hello",
+                    "entries": [],
+                }
+            )
         )
         registry = H265BaselineRegistry.load(path)
         assert registry.document.schema_version == 1
@@ -151,26 +154,28 @@ class TestForwardCompat:
     def test_unknown_field_at_entry_level_ignored(self, tmp_path: Path) -> None:
         path = tmp_path / "fwd.json"
         path.write_text(
-            json.dumps({
-                "name": "fwd",
-                "schema_version": 1,
-                "entries": [
-                    {
-                        "name": "e",
-                        "schema_version": 1,
-                        "cell_key": "akiyo|cif|30|libx265|crf28",
-                        "sequence_id": "akiyo",
-                        "codec": "libx265",
-                        "crf": 28,
-                        "width": 352,
-                        "height": 288,
-                        "fps": 30.0,
-                        "bpp": 0.3,
-                        "psnr_db": 35.0,
-                        "future_entry_field_v2": 1.5,
-                    },
-                ],
-            })
+            json.dumps(
+                {
+                    "name": "fwd",
+                    "schema_version": 1,
+                    "entries": [
+                        {
+                            "name": "e",
+                            "schema_version": 1,
+                            "cell_key": "akiyo|cif|30|libx265|crf28",
+                            "sequence_id": "akiyo",
+                            "codec": "libx265",
+                            "crf": 28,
+                            "width": 352,
+                            "height": 288,
+                            "fps": 30.0,
+                            "bpp": 0.3,
+                            "psnr_db": 35.0,
+                            "future_entry_field_v2": 1.5,
+                        },
+                    ],
+                }
+            )
         )
         registry = H265BaselineRegistry.load(path)
         assert len(registry.entries) == 1
@@ -185,10 +190,12 @@ class TestFilterAndCurve:
     def test_filter_by_sequence_and_codec(self) -> None:
         entries = [
             _make_entry(cell_key="akiyo|cif|30|libx265|crf28", bpp=0.3, psnr=35.0),
-            _make_entry(cell_key="akiyo|cif|30|libaom-av1|crf28",
-                        bpp=0.25, psnr=35.5, codec="libaom-av1"),
-            _make_entry(cell_key="foreman|cif|30|libx265|crf28",
-                        bpp=0.4, psnr=33.0, sequence_id="foreman"),
+            _make_entry(
+                cell_key="akiyo|cif|30|libaom-av1|crf28", bpp=0.25, psnr=35.5, codec="libaom-av1"
+            ),
+            _make_entry(
+                cell_key="foreman|cif|30|libx265|crf28", bpp=0.4, psnr=33.0, sequence_id="foreman"
+            ),
         ]
         registry = H265BaselineRegistry(_make_document(entries))
         akiyo_x265 = registry.filter(sequence_id="akiyo", codec="libx265")
@@ -197,10 +204,12 @@ class TestFilterAndCurve:
 
     def test_filter_by_resolution(self) -> None:
         entries = [
-            _make_entry(cell_key="a|cif|30|libx265|crf28",
-                        bpp=0.3, psnr=35.0, width=352, height=288),
-            _make_entry(cell_key="a|hd|30|libx265|crf28",
-                        bpp=0.5, psnr=33.0, width=1920, height=1080),
+            _make_entry(
+                cell_key="a|cif|30|libx265|crf28", bpp=0.3, psnr=35.0, width=352, height=288
+            ),
+            _make_entry(
+                cell_key="a|hd|30|libx265|crf28", bpp=0.5, psnr=33.0, width=1920, height=1080
+            ),
         ]
         registry = H265BaselineRegistry(_make_document(entries))
         cif = registry.filter(sequence_id="akiyo", width=352, height=288)
@@ -208,8 +217,7 @@ class TestFilterAndCurve:
 
     def test_to_curve_happy_path(self) -> None:
         entries = [
-            _make_entry(cell_key=f"a|cif|30|libx265|crf{crf}",
-                        bpp=bpp, psnr=psnr, crf=crf)
+            _make_entry(cell_key=f"a|cif|30|libx265|crf{crf}", bpp=bpp, psnr=psnr, crf=crf)
             for crf, bpp, psnr in [(22, 0.6, 38.5), (28, 0.3, 35.0), (35, 0.1, 31.0)]
         ]
         registry = H265BaselineRegistry(_make_document(entries))
@@ -221,8 +229,7 @@ class TestFilterAndCurve:
 
     def test_to_curve_custom_name(self) -> None:
         entries = [
-            _make_entry(cell_key=f"a|cif|30|libx265|crf{crf}",
-                        bpp=bpp, psnr=psnr, crf=crf)
+            _make_entry(cell_key=f"a|cif|30|libx265|crf{crf}", bpp=bpp, psnr=psnr, crf=crf)
             for crf, bpp, psnr in [(22, 0.6, 38.5), (35, 0.1, 31.0)]
         ]
         registry = H265BaselineRegistry(_make_document(entries))
@@ -240,13 +247,13 @@ class TestFilterAndCurve:
 
     def test_to_curve_other_sequence_excluded(self) -> None:
         entries = [
-            _make_entry(cell_key=f"akiyo|cif|30|libx265|crf{crf}",
-                        bpp=bpp, psnr=psnr, crf=crf)
+            _make_entry(cell_key=f"akiyo|cif|30|libx265|crf{crf}", bpp=bpp, psnr=psnr, crf=crf)
             for crf, bpp, psnr in [(22, 0.6, 38.5), (28, 0.3, 35.0)]
         ]
         entries.append(
-            _make_entry(cell_key="foreman|cif|30|libx265|crf28",
-                        bpp=0.4, psnr=33.0, sequence_id="foreman"),
+            _make_entry(
+                cell_key="foreman|cif|30|libx265|crf28", bpp=0.4, psnr=33.0, sequence_id="foreman"
+            ),
         )
         registry = H265BaselineRegistry(_make_document(entries))
         curve = registry.to_curve(sequence_id="akiyo")
@@ -254,8 +261,9 @@ class TestFilterAndCurve:
 
     def test_to_curve_passes_through_msssim(self) -> None:
         entries = [
-            _make_entry(cell_key=f"a|cif|30|libx265|crf{crf}",
-                        bpp=bpp, psnr=psnr, crf=crf, ms_ssim=ms)
+            _make_entry(
+                cell_key=f"a|cif|30|libx265|crf{crf}", bpp=bpp, psnr=psnr, crf=crf, ms_ssim=ms
+            )
             for crf, bpp, psnr, ms in [
                 (22, 0.6, 38.5, 0.98),
                 (28, 0.3, 35.0, 0.95),

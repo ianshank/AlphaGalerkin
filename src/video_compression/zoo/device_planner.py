@@ -138,8 +138,7 @@ def _resolve_explicit_device(
         cuda_devs = _cuda_only(devices)
         if not cuda_devs:
             raise ValueError(
-                f"entry {entry.entry_id!r} pinned to 'cuda' but no CUDA "
-                f"device is visible",
+                f"entry {entry.entry_id!r} pinned to 'cuda' but no CUDA device is visible",
             )
         return cuda_devs[0].label
     if entry.device not in valid:
@@ -272,8 +271,7 @@ def _assign_manual(
         return []
     bad = ", ".join(repr(e.entry_id) for e in entries)
     raise ValueError(
-        f"manual strategy requires every entry to set 'device'; "
-        f"entries with device=None: {bad}",
+        f"manual strategy requires every entry to set 'device'; entries with device=None: {bad}",
     )
 
 
@@ -286,15 +284,13 @@ def _resolve_run_target(preference: str, devices: list[DeviceCapability]) -> str
         cuda_devs = _cuda_only(devices)
         if not cuda_devs:
             raise ValueError(
-                "device_preference='cuda' but no CUDA device is visible; "
-                "use 'cpu' or 'auto'",
+                "device_preference='cuda' but no CUDA device is visible; use 'cpu' or 'auto'",
             )
         return cuda_devs[0].label
     valid = {d.label for d in devices}
     if preference not in valid:
         raise ValueError(
-            f"device_preference={preference!r} is not visible. Visible: "
-            f"{sorted(valid)}",
+            f"device_preference={preference!r} is not visible. Visible: {sorted(valid)}",
         )
     return preference
 
@@ -355,8 +351,7 @@ def assign_devices(
         # so a CUDA-pinned entry shrinks that device's budget for the
         # subsequent auto pack.
         seeded_remaining = {
-            d.label: d.total_vram_mib - pinned_debit.get(d.label, 0.0)
-            for d in cuda_devs
+            d.label: d.total_vram_mib - pinned_debit.get(d.label, 0.0) for d in cuda_devs
         }
         auto_assignments = _assign_vram_aware(
             auto_entries,

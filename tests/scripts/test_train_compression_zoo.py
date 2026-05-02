@@ -67,9 +67,7 @@ def _write_manifest(
                 "storage_root": str(path.parent / "zoo_store"),
                 "default_codec_config_ref": str(codec_path),
                 "device_preference": "cpu",
-                "device_assignment_strategy": (
-                    DeviceAssignmentStrategy.SINGLE_DEVICE.value
-                ),
+                "device_assignment_strategy": (DeviceAssignmentStrategy.SINGLE_DEVICE.value),
                 "entries": entries,
             },
             sort_keys=False,
@@ -307,9 +305,10 @@ class TestSelectedEntries:
         from src.video_compression.zoo import load_manifest as _load
 
         manifest = _load(manifest_path)
-        assert [
-            e.entry_id for e in cli_module._selected_entries(manifest, None)
-        ] == ["lambda_a", "lambda_b"]
+        assert [e.entry_id for e in cli_module._selected_entries(manifest, None)] == [
+            "lambda_a",
+            "lambda_b",
+        ]
 
     def test_filters_by_id(self, cli_module, tmp_path: Path) -> None:
         codec_path = tmp_path / "codec.yaml"

@@ -23,6 +23,7 @@ Design notes
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Literal
 
 import numpy as np
@@ -30,6 +31,7 @@ import structlog
 from pydantic import ConfigDict, Field, model_validator
 
 from src.templates.config import BaseModuleConfig
+from src.video_compression.metrics.psnr_conversions import psnr_db_to_mse_surrogate
 from src.video_compression.metrics.rd_curves import RDCurve, RDPoint
 from src.video_compression.zoo.config import ModelZooManifestConfig
 from src.video_compression.zoo.storage import VideoCodecZoo
@@ -222,17 +224,13 @@ def compute_rd_curve(
 
         rate = float(metrics[cfg.rate_metric_key])
         psnr = float(metrics[cfg.quality_metric_key])
-        ssim = (
-            float(metrics[cfg.msssim_metric_key])
-            if cfg.msssim_metric_key in metrics
-            else None
-        )
+        ssim = float(metrics[cfg.msssim_metric_key]) if cfg.msssim_metric_key in metrics else None
 
-        # ``RDPoint.distortion`` is "MSE-or-similar"; we use 10**(-PSNR/10)
-        # as a stable surrogate so downstream consumers that look at
-        # distortion (rather than PSNR) stay sane. The PSNR field is
-        # what the BD-rate computation actually uses.
-        surrogate_distortion = float(10.0 ** (-psnr / 10.0))
+        # ``RDPoint.distortion`` is "MSE-or-similar"; we use the closed-form
+        # PSNR -> MSE conversion as a stable surrogate so downstream consumers
+        # that look at distortion (rather than PSNR) stay sane. The PSNR
+        # field is what the BD-rate computation actually uses.
+        surrogate_distortion = psnr_db_to_mse_surrogate(psnr)
 
         points.append(
             RDPoint(
@@ -252,15 +250,13 @@ def compute_rd_curve(
         )
 
     if cfg.require_lambda_unique:
-        unique_lambdas = set(seen_lambdas)
-        if len(unique_lambdas) != len(seen_lambdas):
-            duplicates = sorted(
-                lam for lam in unique_lambdas
-                if seen_lambdas.count(lam) > 1
-            )
+        # Counter is O(n) vs. O(n^2) for the prior list.count() in a
+        # comprehension. Per gemini-code-assist on PR #82.
+        counts = Counter(seen_lambdas)
+        duplicates = sorted(lam for lam, n in counts.items() if n > 1)
+        if duplicates:
             raise RDCurveAssemblyError(
-                f"duplicate lambda_rd values across selected entries: "
-                f"{duplicates!r}",
+                f"duplicate lambda_rd values across selected entries: {duplicates!r}",
             )
 
     curve = RDCurve(name=name or manifest.name, points=[])

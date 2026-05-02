@@ -87,6 +87,18 @@ wandb/
 *.dist-info/
 nul
 
+# Temporary coverage configs (generated per-session, never committed)
+.coveragerc.zoo
+.coveragerc.*
+
+# Zoo / model-zoo runtime artifacts
+config/video_compression/zoo/*.lock
+zoo_outputs/
+
+# Vertex / GCS staging
+.vertex_staging/
+vertex_build/
+
 # Chess engine binaries and output
 stockfish*
 *.pgn

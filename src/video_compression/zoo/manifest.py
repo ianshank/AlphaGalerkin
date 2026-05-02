@@ -16,6 +16,7 @@ import structlog
 import yaml
 
 from src.video_compression.zoo.config import (
+    PERF_ZOO_ENTRY_SCHEMA_VERSION,
     PERF_ZOO_MANIFEST_SCHEMA_VERSION,
     ModelZooManifestConfig,
 )
@@ -30,6 +31,50 @@ class ManifestMigrationError(ValueError):
     """Raised when a manifest cannot be migrated to the current schema."""
 
 
+def _migrate_entry_document(raw: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a raw zoo-entry dict to the current entry schema.
+
+    Migration table:
+
+    +----------------+----------------+--------------------------------+
+    | from           | to             | change                         |
+    +================+================+================================+
+    | (unversioned)  | 1              | add ``schema_version`` field   |
+    +----------------+----------------+--------------------------------+
+    | 1              | 2              | additive ``dataset_spec`` field|
+    |                |                | (defaults to ``None``;         |
+    |                |                | manifest default applies)      |
+    +----------------+----------------+--------------------------------+
+    """
+    raw = dict(raw)  # defensive copy
+    schema_version = raw.get("schema_version")
+    if schema_version is None:
+        raw["schema_version"] = 1
+        schema_version = 1
+
+    if not isinstance(schema_version, int):
+        raise ManifestMigrationError(
+            f"entry schema_version must be int; got "
+            f"{type(schema_version).__name__}",
+        )
+
+    if schema_version > PERF_ZOO_ENTRY_SCHEMA_VERSION:
+        raise ManifestMigrationError(
+            f"entry schema_version={schema_version} is newer than this "
+            f"binary ({PERF_ZOO_ENTRY_SCHEMA_VERSION}); upgrade the "
+            f"package or pin a compatible manifest.",
+        )
+
+    # v1 -> v2: dataset_spec defaults to None; nothing to rewrite.
+    if schema_version < 2:
+        logger.info(
+            "zoo.entry.migration.v1_to_v2",
+            entry_id=raw.get("entry_id"),
+        )
+        raw["schema_version"] = 2
+    return raw
+
+
 def _migrate_manifest_document(raw: dict[str, Any]) -> dict[str, Any]:
     """Migrate a raw manifest dict to the current schema.
 
@@ -41,7 +86,9 @@ def _migrate_manifest_document(raw: dict[str, Any]) -> dict[str, Any]:
     | (unversioned)  | 1              | add ``schema_version`` field   |
     +----------------+----------------+--------------------------------+
 
-    New schemas are appended here. Older manifests remain loadable.
+    Entry-level migrations are dispatched per entry via
+    :func:`_migrate_entry_document` so the manifest-level table stays
+    focused on top-level changes.
     """
     raw = dict(raw)  # defensive copy
 
@@ -65,6 +112,13 @@ def _migrate_manifest_document(raw: dict[str, Any]) -> dict[str, Any]:
             f"binary ({PERF_ZOO_MANIFEST_SCHEMA_VERSION}); upgrade the "
             f"package or pin a compatible manifest.",
         )
+
+    entries = raw.get("entries")
+    if isinstance(entries, list):
+        raw["entries"] = [
+            _migrate_entry_document(e) if isinstance(e, dict) else e
+            for e in entries
+        ]
     return raw
 
 

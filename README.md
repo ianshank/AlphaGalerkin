@@ -563,35 +563,47 @@ pytest tests/video_compression/perf/ tests/video_compression/runtime/ -v
 
 ---
 
-### Phase 2 — Model Zoo (R-D Lagrangian Sweep) ✅ Phase 2-B COMPLETE
+### Phase 2 — Model Zoo (R-D Lagrangian Sweep) ✅ Phase 2-D COMPLETE
 
 Subpackage `src/video_compression/zoo/` orchestrates an R-D Lagrangian sweep across a heterogeneous-VRAM rig (e.g. `cuda:0=RTX 5060 Ti 16 GiB` + `cuda:1=RTX 5060 8 GiB`). Schedules an arbitrary λ-grid; ships an 8-point grid at [config/video_compression/zoo/lambda_grid.yaml](config/video_compression/zoo/lambda_grid.yaml).
+
+**Phase 2-B** — core zoo schemas, manifest I/O, device planner, filesystem registry.  
+**Phase 2-C** — `ZooTrainer` per-entry (fixed-λ, AMP, grad-clip, warmup, `parent_entry_id` warm-start).  
+**Phase 2-D** — manifest-level sweep orchestrator + parallel dispatch + subprocess runner.
 
 | Module | Responsibility | Coverage |
 |---|---|---|
 | `config.py` | Pydantic schemas (`ModelZooEntryConfig`, `ModelZooManifestConfig`, `OptimizerConfig`, `SchedulerConfig`) — zero hardcoded values | 100% |
-| `manifest.py` | JSON / YAML load / save dispatched by suffix; forward-compat migration via `_migrate_manifest_document` | 100% |
+| `manifest.py` | JSON / YAML load / save dispatched by suffix; forward-compat migration via `_migrate_manifest_document` | 98% |
 | `device_planner.py` | `scan_devices()` + `assign_devices()` with four strategies: `VRAM_AWARE` (best-fit pack on current headroom), `ROUND_ROBIN`, `SINGLE_DEVICE`, `MANUAL` | 100% |
 | `storage.py` | Filesystem `VideoCodecZoo` registry (per-entry `checkpoint.pt` / `entry.json` / `metrics.json`); GCS backend gated for Phase D | 100% |
+| `cli_helpers.py` | Shared CLI primitives: `load_dict`, `resolve_path`, `load_codec_config`, `resolve_entry`, `resolve_codec_config_for_entry`, `override_entry`, `resolve_device` | 100% |
+| `sweep.py` | `ZooSweep.run()` (serial) + `run_parallel()` (one worker thread per device); `make_subprocess_entry_runner` with `CUDA_VISIBLE_DEVICES` pinning | 96% |
 
 ```bash
-# Load and inspect a zoo manifest
-python -c "from src.video_compression.zoo.manifest import load_manifest; \
-  m = load_manifest('config/video_compression/zoo/lambda_grid.yaml'); \
-  print(len(m.entries), 'entries; lambdas:', [e.lambda_rd for e in m.entries])"
+# Dry-run a manifest (no training, just plans the sweep)
+python -m scripts.train_compression_zoo dry-run \
+  --manifest config/video_compression/zoo/lambda_grid.yaml \
+  --storage-root /tmp/zoo
 
-# Plan a run on the local rig
-python -c "from src.video_compression.zoo.manifest import load_manifest; \
-  from src.video_compression.zoo.device_planner import scan_devices, assign_devices; \
-  m = load_manifest('config/video_compression/zoo/lambda_grid.yaml'); \
-  plan = assign_devices(m, devices=scan_devices()); \
-  [print(a.entry_id, '->', a.device) for a in plan.assignments]"
+# Train all entries in parallel (one worker per device)
+python -m scripts.train_compression_zoo train \
+  --manifest config/video_compression/zoo/lambda_grid.yaml \
+  --storage-root ./zoo_outputs \
+  --parallel
 
-# Run the zoo subpackage tests + coverage
-pytest tests/video_compression/zoo/ --cov=src/video_compression/zoo --cov-fail-under=85 -v
+# Train a single entry by ID
+python -m scripts.train_compression_zoo train \
+  --manifest config/video_compression/zoo/lambda_grid.yaml \
+  --storage-root ./zoo_outputs \
+  --only-entry-id lam_0016
+
+# Run the zoo subpackage tests + coverage gate
+pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py \
+  tests/scripts/test_train_compression_zoo_entry.py \
+  tests/video_compression/training/test_zoo_trainer.py \
+  --cov=src/video_compression/zoo --cov-fail-under=85 -v
 ```
-
-Phase 2-C (training composition: `ZooTrainer` per-entry with fixed-λ + AMP + grad-clip + warmup wired from `ModelZooEntryConfig`, warm-start via `parent_entry_id`) is the next milestone — see [docs/NEXT_STEPS_PLAN.md](docs/NEXT_STEPS_PLAN.md).
 
 ---
 

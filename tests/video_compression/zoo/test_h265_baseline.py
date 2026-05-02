@@ -245,6 +245,21 @@ class TestFilterAndCurve:
         with pytest.raises(ValueError, match=">=2 baseline entries with PSNR"):
             registry.to_curve(sequence_id="akiyo")
 
+    def test_to_curve_drops_null_psnr_entries_but_keeps_valid_ones(self) -> None:
+        # Mixed nullability: of 4 baseline entries, only the 2 with
+        # non-null psnr_db must end up on the curve. Forward-compat for
+        # future entries that ship with VMAF-only / SSIM-only fields.
+        entries = [
+            _make_entry(cell_key="a|cif|30|libx265|crf22", bpp=0.6, psnr=38.5, crf=22),
+            _make_entry(cell_key="a|cif|30|libx265|crf28", bpp=0.3, psnr=None, crf=28),
+            _make_entry(cell_key="a|cif|30|libx265|crf32", bpp=0.2, psnr=33.0, crf=32),
+            _make_entry(cell_key="a|cif|30|libx265|crf38", bpp=0.1, psnr=None, crf=38),
+        ]
+        registry = H265BaselineRegistry(_make_document(entries))
+        curve = registry.to_curve(sequence_id="akiyo")
+        assert len(curve.points) == 2
+        assert curve.psnrs.tolist() == pytest.approx([33.0, 38.5])
+
     def test_to_curve_other_sequence_excluded(self) -> None:
         entries = [
             _make_entry(cell_key=f"akiyo|cif|30|libx265|crf{crf}", bpp=bpp, psnr=psnr, crf=crf)

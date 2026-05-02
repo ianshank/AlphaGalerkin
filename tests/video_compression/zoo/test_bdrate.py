@@ -221,6 +221,41 @@ class TestGateLogic:
 # --------------------------------------------------------------------------
 
 
+class TestOverlapEdgeCases:
+    def test_zero_variance_reference_yields_zero_overlap(self) -> None:
+        # Reference curve with all PSNRs equal -> ref_range == 0 ->
+        # overlap fraction = 0; gate is "skipped" regardless of test.
+        ref = RDCurve(
+            name="ref",
+            points=[
+                RDPoint(rate=0.1, distortion=0.001, psnr=33.0, lambda_rd=0.001),
+                RDPoint(rate=0.2, distortion=0.001, psnr=33.0, lambda_rd=0.005),
+                RDPoint(rate=0.4, distortion=0.001, psnr=33.0, lambda_rd=0.015),
+                RDPoint(rate=0.8, distortion=0.001, psnr=33.0, lambda_rd=0.03),
+            ],
+        )
+        test = _build_curve(
+            "test",
+            rates_psnrs=[(0.05, 30.0), (0.1, 32.0), (0.2, 34.0), (0.4, 36.0)],
+        )
+        cfg = BDRateConfig(name="cfg", primary_lambda_rd=None)
+        report = compute_bd_rate_report(test, ref, cfg)
+        assert report.overlap_fraction == pytest.approx(0.0)
+        assert report.gate_status == "skipped"
+
+    def test_ssim_metric_with_no_ssim_points_raises(self) -> None:
+        # Curves carry PSNR only — switching to ssim metric must surface
+        # the "needs >=2 points with metric=ssim" failure path
+        # (covers the both-empty branch of _quality_overlap_fraction).
+        psnr_only = _build_curve(
+            "psnr_only",
+            rates_psnrs=[(0.1, 28.0), (0.4, 33.0), (0.8, 36.0)],
+        )
+        cfg = BDRateConfig(name="cfg", metric="ssim", primary_lambda_rd=None)
+        with pytest.raises(BDRateAssemblyError, match="metric='ssim'"):
+            compute_bd_rate_report(psnr_only, psnr_only, cfg)
+
+
 class TestReportFailures:
     def test_too_few_points_raises(self) -> None:
         ref = _build_curve(

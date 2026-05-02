@@ -351,6 +351,52 @@ class TestRunnerExecution:
         assert result.entry is not None
         assert result.entry.psnr_db is not None
 
+    def test_success_with_zero_frame_decoded_returns_no_metrics(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        # Simulates the encoder dropping every frame so the decoded
+        # tensor has shape[0] == 0; the runner must skip quality
+        # computation rather than crash.
+        monkeypatch.setattr(
+            baselines_mod.shutil,
+            "which",
+            lambda _n: "/usr/bin/ffmpeg",
+        )
+        monkeypatch.setattr(
+            baselines_mod,
+            "_run_subprocess",
+            _fake_subprocess_factory(encoded_size_bytes=4096),
+        )
+        # Original has 1 frame; decoded has 0. min(...) == 0 -> short-circuit.
+        load_calls = {"n": 0}
+
+        def fake_load(*_a: Any, **_kw: Any) -> torch.Tensor:
+            load_calls["n"] += 1
+            if load_calls["n"] == 1:
+                return torch.zeros(1, 3, 8, 8)
+            return torch.zeros(0, 3, 8, 8)
+
+        monkeypatch.setattr(baselines_mod, "_load_y4m_to_tensor", fake_load)
+        src = tmp_path / "in.y4m"
+        src.write_bytes(b"x")
+        runner = FFmpegBaselineRunner(FFmpegBaselineConfig(name="cfg"))
+        result = runner.run(
+            sequence_path=src,
+            sequence_id="tiny",
+            width=8,
+            height=8,
+            fps=30.0,
+            n_frames=1,
+        )
+        assert result.status == "ok"
+        assert result.entry is not None
+        # No frames in common -> psnr/ms_ssim are None even though encode
+        # succeeded and bpp is recorded.
+        assert result.entry.psnr_db is None
+        assert result.entry.ms_ssim is None
+
     def test_encode_failure_returns_failed(
         self,
         monkeypatch: pytest.MonkeyPatch,

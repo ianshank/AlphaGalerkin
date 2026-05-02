@@ -219,12 +219,17 @@ class BDRateAssemblyError(ValueError):
 
 
 def _curve_to_points(curve: RDCurve) -> list[BDRatePoint]:
-    """Adapt :class:`RDCurve` points to the report-friendly schema."""
+    """Adapt :class:`RDCurve` points to the report-friendly schema.
+
+    The inherited ``BaseModuleConfig.name`` field gets a unique
+    ``<curve>_p<index>`` identifier so per-point records remain
+    distinguishable in JSON output (and in any future per-point logging).
+    """
     out: list[BDRatePoint] = []
-    for p in curve.points:
+    for i, p in enumerate(curve.points):
         out.append(
             BDRatePoint(
-                name=f"{curve.name}_p",
+                name=f"{curve.name}_p{i}",
                 lambda_rd=p.lambda_rd,
                 bpp=float(p.rate),
                 psnr_db=float(p.psnr) if p.psnr is not None else None,

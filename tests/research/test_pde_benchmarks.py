@@ -168,6 +168,88 @@ class TestPDEBenchmarkRunnerInit:
         with pytest.raises(ValueError, match="YAML mapping"):
             PDEBenchmarkRunner(bad_yaml)
 
+    def test_heavy_default_off(self, minimal_config_yaml: Path):
+        """heavy=False is the default — back-compat for existing callers."""
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        assert runner._heavy is False
+
+    def test_heavy_opt_in(self, minimal_config_yaml: Path):
+        """heavy=True must be honoured by the constructor."""
+        runner = PDEBenchmarkRunner(minimal_config_yaml, heavy=True)
+        assert runner._heavy is True
+
+
+class TestHeavyRefinementLevels:
+    """Slice-5 regression: --heavy must extend refinement_levels."""
+
+    @pytest.fixture()
+    def heavy_config(self, tmp_path: Path) -> Path:
+        config = {
+            "suite_name": "heavy_test_suite",
+            "benchmarks": [
+                {
+                    "name": "test_poisson_heavy",
+                    "pde_type": "poisson",
+                    "domain": {"dim": 1, "min": [0.0], "max": [1.0]},
+                    "parameters": {},
+                    "refinement_levels": [8, 16],
+                    "heavy_refinement_levels": [128, 256],
+                }
+            ],
+            "baselines": [{"name": "uniform_fdm"}],
+        }
+        path = tmp_path / "heavy.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        return path
+
+    def test_default_excludes_heavy_levels(self, heavy_config: Path):
+        """Default (heavy=False) only runs the standard refinement_levels."""
+        runner = PDEBenchmarkRunner(heavy_config)
+        bench_cfg = runner._config["benchmarks"][0]
+        results = runner.run_benchmark(bench_cfg)
+        n_dof_targets = {r.metadata.get("refinement_level") for r in results}
+        assert n_dof_targets == {8, 16}
+
+    def test_heavy_includes_heavy_levels(self, heavy_config: Path):
+        """heavy=True extends the sweep with heavy_refinement_levels."""
+        runner = PDEBenchmarkRunner(heavy_config, heavy=True)
+        bench_cfg = runner._config["benchmarks"][0]
+        results = runner.run_benchmark(bench_cfg)
+        n_dof_targets = {r.metadata.get("refinement_level") for r in results}
+        assert n_dof_targets == {8, 16, 128, 256}
+
+    def test_no_heavy_field_is_a_no_op(self, minimal_config_yaml: Path) -> None:
+        """Benchmarks without heavy_refinement_levels are unaffected."""
+        runner = PDEBenchmarkRunner(minimal_config_yaml, heavy=True)
+        bench_cfg = runner._config["benchmarks"][0]
+        results = runner.run_benchmark(bench_cfg)
+        n_dof_targets = {r.metadata.get("refinement_level") for r in results}
+        assert n_dof_targets == {8, 16}
+
+    def test_heavy_levels_dedup(self, tmp_path: Path) -> None:
+        """A heavy level that overlaps with the standard sweep is not duplicated."""
+        config = {
+            "suite_name": "dedup_test",
+            "benchmarks": [
+                {
+                    "name": "dedup",
+                    "pde_type": "poisson",
+                    "domain": {"dim": 1, "min": [0.0], "max": [1.0]},
+                    "parameters": {},
+                    "refinement_levels": [8, 16, 64],
+                    "heavy_refinement_levels": [16, 256],
+                }
+            ],
+            "baselines": [{"name": "uniform_fdm"}],
+        }
+        path = tmp_path / "dedup.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        runner = PDEBenchmarkRunner(path, heavy=True)
+        bench_cfg = runner._config["benchmarks"][0]
+        results = runner.run_benchmark(bench_cfg)
+        n_dof_targets = {r.metadata.get("refinement_level") for r in results}
+        assert n_dof_targets == {8, 16, 64, 256}
+
 
 # ---------------------------------------------------------------------------
 # run_benchmark

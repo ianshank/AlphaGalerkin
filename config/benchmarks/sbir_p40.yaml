@@ -1,0 +1,60 @@
+# SBIR P40 high-resolution benchmark suite.
+# Compares Chorin-projection NS-FDM (CPU) against PINN on the Tesla P40
+# GPU at high collocation density. Designed to be loaded by
+# scripts/run_sbir_p40.py with optional CLI overrides for output_dir,
+# device, n_epochs, n_collocation, and refinement_levels.
+
+suite_name: "sbir_p40_benchmark"
+description: "AlphaGalerkin SBIR benchmark — Tesla P40 high-resolution run"
+output_dir: "outputs/sbir_p40"
+
+benchmarks:
+  - name: "navier_stokes_taylor_green"
+    pde_type: "navier_stokes"
+    geometry: "rectangular"
+    description: "Taylor-Green vortex — P40 high-res"
+    domain:
+      dim: 2
+      min: [0.0, 0.0]
+      max: [6.283185307, 6.283185307]
+    parameters:
+      reynolds_number: [100, 500]
+    time_stepping:
+      method: "rk4"
+      dt: 0.01
+      t_final: 1.0
+    refinement_levels: [256, 1024, 4096, 16384]
+    target_error: 1.0e-3
+    metrics:
+      - "velocity_l2_error"
+      - "wall_time_seconds"
+
+baselines:
+  - name: "navier_stokes_fdm"
+    description: "Chorin projection FDM (CPU)"
+    type: "classical"
+  - name: "pinn_cpu"
+    description: "PINN on CPU (short-epoch comparison row)"
+    type: "ml"
+  - name: "pinn_p40"
+    description: "PINN on Tesla P40 (cuda:0, 20k collocation, 2000 epochs)"
+    type: "ml"
+
+# PINN-config defaults applied at script registration time. CLI flags
+# override these. Two profiles: ``p40`` for the GPU row and ``cpu`` for
+# the CPU comparison row.
+pinn_profiles:
+  p40:
+    device: "cuda:0"
+    hidden_dim: 256
+    n_layers: 4
+    n_epochs: 2000
+    n_collocation: 20000
+    learning_rate: 5.0e-4
+  cpu:
+    device: "cpu"
+    hidden_dim: 64
+    n_layers: 3
+    n_epochs: 100
+    n_collocation: 1000
+    learning_rate: 1.0e-3

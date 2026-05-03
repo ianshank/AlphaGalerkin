@@ -19,6 +19,10 @@ benchmarks:
     parameters:
       diffusion_coeff: 1.0
     refinement_levels: [4, 8, 16, 32, 64, 128]
+    # Opt-in via `run_sbir_demo --heavy` (or PDEBenchmarkRunner(heavy=True)).
+    # The 65 536-DOF level demonstrates the P40's 24 GiB VRAM advantage over
+    # consumer 8 GiB cards. CI smoke tests run without --heavy.
+    heavy_refinement_levels: [16384, 65536]
     target_error: 1.0e-6
     metrics:
       - "l2_error"
@@ -84,7 +88,10 @@ baselines:
   - name: "dorfler_amr"
     description: "Dorfler marking adaptive mesh refinement"
     type: "classical"
-    marking_fraction: 0.3
+    # marking_fraction inherits the AMRConfig default (0.5 post-2026-05-03).
+    # Pre-fix the explicit 0.3 here forced the YAML-driven SBIR run to use
+    # the conservative marking that produced the 18-DOF Burgers ceiling.
+    # Override here only if a specific benchmark needs a different theta.
 
   - name: "zienkiewicz_zhu"
     description: "Zienkiewicz-Zhu error estimator with AMR"

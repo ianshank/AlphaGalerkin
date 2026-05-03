@@ -1186,7 +1186,7 @@ class NavierStokesOperator(PDEOperator):
             x = coords[:, 0]
             y = coords[:, 1] if self.dim > 1 else np.zeros_like(x)
             ux = -np.cos(x) * np.sin(y) * decay
-            uy = np.cos(x) * np.cos(y) * decay
+            uy = np.sin(x) * np.cos(y) * decay
             return np.stack([ux, uy], axis=-1).astype(np.float32)
 
     def exact_pressure(

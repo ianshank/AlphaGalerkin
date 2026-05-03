@@ -79,6 +79,15 @@ Examples:
             "showing what a real run would produce. Completes in <5 seconds."
         ),
     )
+    parser.add_argument(
+        "--heavy",
+        action="store_true",
+        help=(
+            "Opt into each benchmark's `heavy_refinement_levels` (e.g. the "
+            "65 536-DOF Poisson level demonstrating the P40's 24 GiB VRAM "
+            "advantage). Default off so CI smoke tests stay fast."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -387,7 +396,7 @@ def run_demo(args: argparse.Namespace) -> int:
 
     # Initialize runner
     try:
-        runner = PDEBenchmarkRunner(config_path)
+        runner = PDEBenchmarkRunner(config_path, heavy=args.heavy)
     except FileNotFoundError:
         logger.error("config_not_found", path=str(config_path))
         return 1

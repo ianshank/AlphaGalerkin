@@ -102,18 +102,22 @@ class TestNavierStokesFDMSolver:
         assert "grid_size" in result.metadata
 
     def test_initial_condition_from_operator(self) -> None:
-        """Solver should initialize from the operator's initial_condition."""
+        """Solver should initialize from the operator's initial_condition.
+
+        Taylor-Green at t=0:
+            ux = -cos(x)*sin(y)
+            uy =  sin(x)*cos(y)
+        """
         operator = _make_ns_operator(reynolds_number=100.0)
         coords = np.array([[1.0, 1.0]], dtype=np.float32)
         ic = operator.initial_condition(coords)
         ic_arr = np.asarray(ic, dtype=np.float64)
 
-        # Taylor-Green at t=0: ux = -cos(x)*sin(y)
         expected_ux = -np.cos(1.0) * np.sin(1.0)
-        assert ic_arr[0, 0] == pytest.approx(expected_ux, abs=1e-5)
-        # u_y component should be non-zero
+        expected_uy = np.sin(1.0) * np.cos(1.0)
         assert ic_arr.shape[-1] == 2
-        assert abs(ic_arr[0, 1]) > 0.0
+        assert ic_arr[0, 0] == pytest.approx(expected_ux, abs=1e-5)
+        assert ic_arr[0, 1] == pytest.approx(expected_uy, abs=1e-5)
 
     def test_exact_solution_decays(self) -> None:
         """Taylor-Green exact solution should decay exponentially with time."""

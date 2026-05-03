@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — SBIR P40 Benchmark Hardening (`src/research/`, `scripts/run_sbir_p40.py`, `config/benchmarks/sbir_p40.yaml`)
+
+Closes the gaps surfaced by the post-run SBIR P40 benchmark report
+(NS-FDM L2 ≈ 0.5 floor, Dörfler AMR stuck at 18 DOF on Burgers, no GPU
+telemetry, hard-coded CPU PINN, no extreme-resolution Poisson level).
+
+- **NS-FDM Taylor-Green parity** — fixed numpy/torch asymmetry in
+  `NavierStokesOperator.exact_solution` (numpy branch had `cos(x)*cos(y)`
+  instead of `sin(x)*cos(y)` for `uy`). Single-line fix at
+  [src/pde/operators.py:1189](src/pde/operators.py:1189) corrects three
+  metrics simultaneously: the FDM IC, the FDM L2 reference, and the PINN
+  L2 evaluation (all routed through the numpy branch). The torch branch
+  was always correct, so PINN training was unaffected — only post-hoc
+  evaluation was corrupted. New
+  `tests/pde/test_taylor_green_invariants.py` asserts elementwise
+  numpy/torch agreement to guard against the drift recurring.
+- **Dörfler AMR escapes the 18-DOF ceiling** — `AMRConfig` defaults
+  raised so 1D refinement on smooth Burgers (Cole-Hopf shock indicator
+  is sharply concentrated) reaches meaningful DOF counts:
+  `marking_fraction` 0.3 → **0.5**, `max_refinements` 10 → **30**,
+  `max_initial_points_1d` 8 → **256**, `initial_dof_divisor` 4 → **2**.
+  The `_solve_amr_1d` `n_start` formula is now target-aware:
+  `n_start = max(min(n_dof // 2, max_initial_points_1d), min_initial_points)`.
+  New regression test
+  `TestDorflerAMRSolver.test_dorfler_amr_1d_reaches_meaningful_dof`
+  parametrised across `target_dof ∈ {128, 512, 2048}` ensures the
+  algorithm never collapses back to the 18-DOF bug and that n_dof
+  scales with the request.
+- **Canonical PINN respects `device` + auto-detects vector PDEs** —
+  `PINNConfig` gains `device: str = "auto"` (per CLAUDE.md GPU-preferred
+  policy) and `vector_pde: bool | None = None`.
+  `SimplePINNSolver.solve()` honours both: device resolution flows
+  through `src.poc.device.resolve_device` (extended to support
+  indexed `cuda:N` strings with bounds checking), and Navier-Stokes
+  operators auto-build a 2-channel network with per-component
+  Laplacian residual. The previous hard-coded
+  `device = torch.device("cpu")` is gone.
+  `_build_network(input_dim, output_dim=1)` now accepts an output
+  dimension. Metadata round-trip includes `device`, `vector_pde`,
+  `n_collocation`, and the new `gpu_profile` block.
+- **GPU utilisation profiler** — new
+  [src/research/gpu_profiler.py](src/research/gpu_profiler.py) provides
+  a `GpuUtilizationProfiler` context manager wrapping `nvidia-smi dmon`.
+  Spawns the dmon subprocess on `__enter__`, terminates and parses on
+  `__exit__`, returns a `GpuUtilizationReport` (mean SM-util %, mean
+  memory-util %, peak FB-memory MiB) which `SimplePINNSolver` embeds in
+  `SolverResult.metadata["gpu_profile"]`. Skips silently when
+  `nvidia-smi` is missing (CI on no-GPU hosts). All numerical literals
+  surfaced as named module constants
+  (`_DMON_COL_GPU=0`, `_DMON_COL_SM_PCT=4`, `_DMON_COL_MEM_PCT=5`,
+  `_DMON_COL_FB_MEM_MIB=8`, `_DMON_MIN_COLUMNS=6`,
+  `_DEFAULT_TERMINATE_TIMEOUT_S=5.0`); `terminate_timeout_s` is a
+  configurable constructor field.
+- **`PDEBenchmarkRunner` `--heavy` opt-in** — extra refinement levels
+  (e.g. 65 536-DOF Poisson for the P40's 24 GiB advantage) live under
+  `heavy_refinement_levels` in the YAML and are appended only when the
+  runner is constructed with `heavy=True` (or
+  `run_sbir_demo --heavy`). Default behaviour is unchanged so CI
+  smoke tests stay fast.
+- **`scripts/run_sbir_p40.py` rewritten as a config-driven CLI** — the
+  previous 260-line subclass-based fork is gone. New shape: small
+  argparse-driven driver that loads
+  `config/benchmarks/sbir_p40.yaml` (PINN profiles for `p40` and `cpu`
+  rows, baselines, benchmarks). Surfaced overrides:
+  `--config`, `--output-dir`, `--device`, `--n-epochs`,
+  `--n-collocation`, `--refinement-levels`, `--skip-cpu`,
+  `--require-cuda`. Helper functions (`load_config`, `apply_overrides`,
+  `apply_benchmark_overrides`, `filter_baselines`, `build_pinn_config`,
+  `register_pinn_profiles`, `_make_pinn_class`) are all individually
+  unit-tested via
+  `tests/scripts/test_run_sbir_p40.py`. Zero hardcoded numerics in the
+  script body.
+- **Coverage on the changed surface** — 95% branch+line coverage across
+  the four affected `src/` modules
+  (`gpu_profiler.py` 96%, `baselines.py` 95%, `pde_benchmarks.py` 94%,
+  `poc/device.py` 100%); 1131 tests pass on `tests/research/` +
+  `tests/pde/` + `tests/scripts/test_run_sbir_p40.py` with the global
+  85% gate met (project total 94.84% on the changed module set).
+  `ruff check` + `ruff format --check` clean on every edited file.
+
 ### Added — Codec Model Zoo Phase 2-D (`src/video_compression/zoo/sweep.py`, `scripts/train_compression_zoo.py`)
 
 - **Manifest-level sweep orchestrator** — `ZooSweep` drives every entry in

@@ -21,6 +21,7 @@ Design choices:
 from __future__ import annotations
 
 import contextlib
+import math
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,17 +38,21 @@ _DMON_METRIC_FLAGS = "pucvmt"
 # Column indices into ``nvidia-smi dmon -s pucvmt`` whitespace-split rows.
 # The first six columns are stable across driver versions:
 #   gpu pwr gtemp mtemp sm mem
-# The framebuffer-memory column is driver-version-dependent (some drivers
-# emit it before ``enc``/``dec``/``jpg``/``ofa``, others after, others not
-# at all). The parser treats the optional FB column as best-effort: a
-# misread is silently dropped via ``contextlib.suppress`` and the only
-# downstream effect is a missing ``peak_memory_mib`` entry — never wrong
-# data. Surfaced as named constants so a layout change is a one-line edit.
+# The framebuffer-memory column is **not** stable: some drivers emit it
+# before ``enc``/``dec``/``jpg``/``ofa``, others after, others not at all.
+# Hardcoding ``[8]`` was wrong — on a driver without an ``fb`` column,
+# index 8 is typically ``jpg`` utilisation (often 0), which we'd then
+# silently report as peak FB-MiB. The parser now scans the dmon header
+# (the ``# gpu pwr ...`` line) for an explicit ``fb`` column name and
+# only records FB memory when found. Other indices stay constants
+# because the first six columns are stable.
 _DMON_COL_GPU = 0
 _DMON_COL_SM_PCT = 4
 _DMON_COL_MEM_PCT = 5
-_DMON_COL_FB_MEM_MIB = 8  # NOTE: driver-version dependent; see comment above
 _DMON_MIN_COLUMNS = 6  # below this the row is malformed and gets skipped
+# Header column-name token that identifies the framebuffer-memory column.
+# nvidia-smi prints it lower-case as ``fb`` (or ``FB`` on some drivers).
+_DMON_FB_HEADER_TOKEN = "fb"
 # Process-termination guardrails.
 _DEFAULT_TERMINATE_TIMEOUT_S = 5.0
 
@@ -124,10 +129,12 @@ class GpuUtilizationProfiler:
             self._is_temp_path = False
 
         # ``nvidia-smi dmon -d`` only accepts integer-second cadences, so
-        # round up. Stash the rounded value as ``_effective_interval_s``
-        # so the report records the same cadence dmon actually used (the
-        # un-rounded ``self.sample_interval_s`` would otherwise lie).
-        self._effective_interval_s = float(max(1, int(round(self.sample_interval_s))))
+        # round up via ``math.ceil`` (NOT ``round`` — banker's rounding
+        # would map 1.4 -> 1, under-sampling the workload). Stash the
+        # ceil-rounded value as ``_effective_interval_s`` so the report
+        # records the same cadence dmon actually used (the un-rounded
+        # ``self.sample_interval_s`` would otherwise lie).
+        self._effective_interval_s = float(max(1, math.ceil(self.sample_interval_s)))
         cmd = [
             "nvidia-smi",
             "dmon",
@@ -209,6 +216,43 @@ class GpuUtilizationProfiler:
             )
 
 
+def _find_fb_column_index(text: str) -> int | None:
+    """Discover the FB-memory column index from the dmon header line.
+
+    nvidia-smi dmon emits a column-name header line of the form::
+
+        # gpu    pwr  gtemp  mtemp     sm    mem    enc    dec     fb
+
+    Column names are whitespace-separated. We look for the explicit
+    ``fb`` token; if absent (drivers that don't emit FB MiB), return
+    ``None`` so the parser skips FB extraction entirely instead of
+    misreading another numeric column (e.g. ``jpg`` utilisation) as
+    framebuffer megabytes.
+
+    The dmon `-o T` timestamp prefix flag is not used by this profiler,
+    so the header's first token is always ``gpu``. We strip the leading
+    ``#`` before tokenising.
+    """
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("#"):
+            continue
+        # Strip the comment marker and whitespace, then look for the
+        # "gpu" anchor token to confirm this is the column-name header
+        # (the second header line is a units row that doesn't contain
+        # column names like "gpu", just unit strings like "Idx W ...").
+        body = line.lstrip("#").strip()
+        tokens = body.split()
+        if not tokens or tokens[0].lower() != "gpu":
+            continue
+        for idx, tok in enumerate(tokens):
+            if tok.lower() == _DMON_FB_HEADER_TOKEN:
+                return idx
+        # Found the column-name header but no fb column.
+        return None
+    return None
+
+
 def parse_dmon_output(
     text: str,
     gpu_indices: tuple[int, ...],
@@ -218,9 +262,11 @@ def parse_dmon_output(
     """Parse ``nvidia-smi dmon`` text output into a summary report.
 
     dmon emits a header (lines starting with ``#``) followed by sample
-    rows. The metric flags we use (``pucvmt``) produce these numeric
-    columns after the GPU index: ``pwr  gtemp  mtemp  sm  mem  enc  dec
-    jpg  ofa  mclk  pclk``.
+    rows. The metric flags we use (``pucvmt``) produce these stable
+    columns after the GPU index: ``pwr  gtemp  mtemp  sm  mem``. Other
+    columns (``enc``/``dec``/``jpg``/``ofa``/``fb``) are
+    driver-dependent in both presence and ordering, so the FB-memory
+    column index is discovered from the header at parse time.
     """
     sm_values: list[float] = []
     mem_values: list[float] = []
@@ -233,6 +279,7 @@ def parse_dmon_output(
     # ignore ``-i`` and emit data for every GPU in the system, which
     # would otherwise corrupt the per-GPU means/peaks.
     accepted_indices: set[int] | None = set(gpu_indices) if gpu_indices else None
+    fb_col: int | None = _find_fb_column_index(text)
 
     for raw in text.splitlines():
         line = raw.strip()
@@ -254,10 +301,12 @@ def parse_dmon_output(
             continue
         sm_values.append(sm_pct)
         mem_values.append(mem_pct)
-        # FB-memory column is driver-dependent and may not be present.
-        if len(parts) > _DMON_COL_FB_MEM_MIB:
+        # Only attempt FB-memory parsing when the header confirmed an
+        # ``fb`` column at a known index. Drivers without one yield
+        # ``fb_col is None`` and we record no peak_memory_mib.
+        if fb_col is not None and len(parts) > fb_col:
             with contextlib.suppress(ValueError, TypeError):
-                fb_mem_values.append(int(float(parts[_DMON_COL_FB_MEM_MIB])))
+                fb_mem_values.append(int(float(parts[fb_col])))
         total += 1
 
     return GpuUtilizationReport(

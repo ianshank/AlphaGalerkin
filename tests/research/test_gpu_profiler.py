@@ -15,6 +15,7 @@ import pytest
 from src.research.gpu_profiler import (
     GpuUtilizationProfiler,
     GpuUtilizationReport,
+    _find_fb_column_index,
     parse_dmon_output,
 )
 
@@ -55,6 +56,23 @@ class TestParseDmonOutput:
     def test_parses_fb_memory_when_present(self) -> None:
         report = parse_dmon_output(_DMON_WITH_FB_MEM, gpu_indices=(0,), sample_interval_s=1.0)
         assert report.peak_memory_mib == 7680
+
+    def test_no_fb_column_yields_none_not_silent_zero(self) -> None:
+        """A fixture without an ``fb`` column must NOT report a peak.
+
+        Regression for the Copilot finding on PR #83: hardcoding column
+        index 8 silently parsed ``jpg`` utilisation (typically 0) as
+        framebuffer MiB on drivers that don't emit FB. The parser now
+        scans the header for an ``fb`` token and only records peak
+        memory when it's actually present.
+        """
+        report = parse_dmon_output(_DMON_FIXTURE, gpu_indices=(0,), sample_interval_s=1.0)
+        # _DMON_FIXTURE's header has gpu/pwr/gtemp/mtemp/sm/mem/enc/dec/jpg/ofa
+        # — no fb column — so peak_memory_mib must be None.
+        assert report.peak_memory_mib is None
+        # And the means/samples are still parsed correctly.
+        assert report.total_samples == 3
+        assert report.mean_sm_util_pct is not None
 
     def test_skips_header_lines(self) -> None:
         # Two header lines + three data rows; total_samples must reflect data rows only.
@@ -104,6 +122,36 @@ class TestParseDmonOutput:
         """``gpu_indices=()`` means 'no filter', preserving 2026-05-03 behaviour."""
         report = parse_dmon_output(_DMON_FIXTURE, gpu_indices=(), sample_interval_s=1.0)
         assert report.total_samples == 3
+
+
+class TestFindFbColumnIndex:
+    """Header-based FB-column detection (replaces hardcoded index 8)."""
+
+    def test_returns_index_when_fb_present(self) -> None:
+        idx = _find_fb_column_index(_DMON_WITH_FB_MEM)
+        assert idx == 8  # fb is the 9th column (0-indexed)
+
+    def test_returns_none_when_no_fb_column(self) -> None:
+        idx = _find_fb_column_index(_DMON_FIXTURE)
+        assert idx is None
+
+    def test_returns_none_when_no_header(self) -> None:
+        text = "    0    100     60     58     50     50      0      0      0      0\n"
+        assert _find_fb_column_index(text) is None
+
+    def test_skips_units_header_finds_column_header(self) -> None:
+        """Two header lines: skip the units row, parse the column-name row."""
+        text = (
+            "# gpu    pwr  gtemp  mtemp     sm    mem    enc    dec    fb\n"
+            "# Idx      W      C      C      %      %      %      %    MB\n"
+            "    0    100     60     58     50     50      0      0   1234\n"
+        )
+        assert _find_fb_column_index(text) == 8
+
+    def test_case_insensitive_fb_match(self) -> None:
+        """Some drivers emit ``FB`` in uppercase."""
+        text = "# gpu    pwr  gtemp  mtemp     sm    mem    enc    dec    FB\n"
+        assert _find_fb_column_index(text) == 8
 
     def test_to_dict_serialises_all_fields(self) -> None:
         report = parse_dmon_output(_DMON_WITH_FB_MEM, gpu_indices=(0,), sample_interval_s=1.0)
@@ -241,6 +289,45 @@ class TestEffectiveIntervalSeconds:
         # The user requested 0.4s but dmon only takes integer seconds, so
         # the actual cadence (and thus the report's interval) must be 1.0.
         assert prof.report.sample_interval_s == pytest.approx(1.0)
+
+    @pytest.mark.parametrize(
+        "requested,expected",
+        [
+            (1.4, 2.0),  # Banker's rounding would give 1.0; math.ceil gives 2.0
+            (1.5, 2.0),
+            (1.6, 2.0),
+            (2.0, 2.0),
+            (2.1, 3.0),  # Banker's rounding would give 2.0; math.ceil gives 3.0
+            (0.1, 1.0),  # Floor at 1s minimum
+        ],
+    )
+    def test_math_ceil_rounding_not_round_half_to_even(
+        self, tmp_path: Path, requested: float, expected: float
+    ) -> None:
+        """``math.ceil`` round-up; ``round()`` half-to-even would under-sample.
+
+        Regression for the Copilot finding on PR #83: ``int(round(1.4))``
+        is 1, which would under-sample compared to the 2-second cadence
+        the docstring promises. Using ``math.ceil`` makes the reported
+        interval a true upper bound on dmon's polling rate.
+        """
+        captured = tmp_path / "dmon.out"
+        captured.write_text(_DMON_FIXTURE, encoding="utf-8")
+
+        mock_proc = MagicMock()
+        mock_proc.terminate = MagicMock()
+        mock_proc.wait = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            with GpuUtilizationProfiler(
+                gpu_indices=[0],
+                sample_interval_s=requested,
+                output_path=captured,
+            ) as prof:
+                pass
+
+        assert prof.report is not None
+        assert prof.report.sample_interval_s == pytest.approx(expected)
 
 
 class TestGpuUtilizationProfilerFallback:

@@ -279,7 +279,11 @@ def _print_summary(results: list[Any]) -> None:
     print("-" * 85)
     for r in sorted(results, key=lambda x: (x.benchmark_name, x.method_name, x.n_dof)):
         l2 = f"{r.l2_error:.2e}" if r.l2_error is not None and not math.isnan(r.l2_error) else "N/A"
-        cr = f"{r.convergence_rate:.2f}" if r.convergence_rate else "  -"
+        # Use ``is not None`` (not truthy) so a legitimate ``0.0`` rate
+        # (emitted when consecutive levels have equal L2 error) is shown
+        # as ``0.00`` instead of being hidden as ``-``. Matches the
+        # convention in src/research/pde_benchmarks.py:281,349.
+        cr = f"{r.convergence_rate:.2f}" if r.convergence_rate is not None else "  -"
         print(
             f"{r.benchmark_name:<30} {r.method_name:<16} {r.n_dof:>7} {l2:>12} "
             f"{r.wall_time_seconds:>9.3f} {cr:>6}"

@@ -21,14 +21,15 @@ Design choices:
 from __future__ import annotations
 
 import contextlib
-import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 # dmon column names per `nvidia-smi dmon -h`. We pin the metric set we ask
 # for so the parser knows which numeric columns to read.
@@ -147,7 +148,11 @@ class GpuUtilizationProfiler:
                 stderr=subprocess.DEVNULL,
             )
         except FileNotFoundError:
-            logger.warning("nvidia-smi not found; GPU profiling disabled for this run")
+            logger.warning(
+                "gpu_profiler_disabled",
+                reason="nvidia-smi binary not found on PATH",
+                gpu_indices=list(self.gpu_indices),
+            )
             self._process = None
             self.report = GpuUtilizationReport(
                 gpu_indices=tuple(self.gpu_indices),

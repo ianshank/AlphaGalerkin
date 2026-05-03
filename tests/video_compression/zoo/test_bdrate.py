@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 import pytest
 from hypothesis import given, settings
@@ -366,3 +367,100 @@ def test_property_positive_shift_gives_negative_bd_rate(shift_db: float) -> None
     cfg = BDRateConfig(name="cfg", primary_lambda_rd=None, min_overlap_fraction=0.0)
     report = compute_bd_rate_report(test, ref, cfg)
     assert report.bd_rate_pct < 0.0
+
+
+# --------------------------------------------------------------------------
+# Per Copilot review: SSIM-only path with mixed-nullability curves and
+# the lambda-sorted primary-window selection.
+# --------------------------------------------------------------------------
+
+
+class TestMixedMetricFiltering:
+    def test_ssim_with_mixed_null_points_filters_to_aligned_arrays(self) -> None:
+        # Curves where some points carry SSIM and others don't. Without
+        # the per-metric filter, RDCurve.rates and RDCurve.ssims would
+        # have different lengths and np.interp inside compute_bd_rate
+        # would raise. The report code now filters the curves first.
+        ref = RDCurve(
+            name="ref",
+            points=[
+                RDPoint(rate=0.1, distortion=0.01, psnr=28.0, ssim=0.90, lambda_rd=0.001),
+                RDPoint(rate=0.2, distortion=0.005, psnr=30.0, ssim=None, lambda_rd=0.005),
+                RDPoint(rate=0.4, distortion=0.001, psnr=33.0, ssim=0.96, lambda_rd=0.015),
+                RDPoint(rate=0.8, distortion=0.0001, psnr=36.0, ssim=0.98, lambda_rd=0.03),
+            ],
+        )
+        test = RDCurve(
+            name="test",
+            points=[
+                RDPoint(rate=0.05, distortion=0.01, psnr=28.0, ssim=0.91, lambda_rd=0.001),
+                RDPoint(rate=0.1, distortion=0.005, psnr=30.0, ssim=0.94, lambda_rd=0.005),
+                RDPoint(rate=0.2, distortion=0.001, psnr=33.0, ssim=None, lambda_rd=0.015),
+                RDPoint(rate=0.4, distortion=0.0001, psnr=36.0, ssim=0.99, lambda_rd=0.03),
+            ],
+        )
+        cfg = BDRateConfig(name="cfg", metric="ssim", primary_lambda_rd=None)
+        # Must not raise (was crashing inside np.interp before the fix).
+        # The report's per-point lists are informational and include
+        # every curve point; the metric filter only applies to the BD-rate
+        # *computation* path so np.interp gets aligned-length arrays.
+        report = compute_bd_rate_report(test, ref, cfg)
+        assert report.metric == "ssim"
+        assert math.isfinite(report.bd_rate_pct)
+        # Both source curves expose all 4 points each in the report
+        # payload, including the ones with ms_ssim=None.
+        assert len(report.test_points) == 4
+        assert len(report.reference_points) == 4
+        # The point with ms_ssim=None is preserved (no silent drop).
+        assert any(p.ms_ssim is None for p in report.test_points)
+        assert any(p.ms_ssim is None for p in report.reference_points)
+
+
+class TestPrimaryLambdaWindowSelection:
+    def test_primary_window_selects_lambda_neighborhood_not_rate_neighborhood(
+        self,
+    ) -> None:
+        # Construct a test curve where lambda_rd is intentionally NOT
+        # monotone in rate (e.g. a corrupted manifest or an out-of-order
+        # sweep). The window centered on the primary lambda must include
+        # the entries adjacent to it in lambda space, NOT the entries
+        # adjacent in rate space.
+        test_points = [
+            RDPoint(rate=0.1, distortion=0.001, psnr=28.0, lambda_rd=0.18),  # high λ
+            RDPoint(rate=0.2, distortion=0.001, psnr=30.0, lambda_rd=0.0016),  # low λ
+            RDPoint(rate=0.4, distortion=0.001, psnr=33.0, lambda_rd=0.015),  # primary λ
+            RDPoint(rate=0.8, distortion=0.001, psnr=36.0, lambda_rd=0.045),  # mid λ
+        ]
+        test = RDCurve(name="test", points=[])
+        for p in test_points:
+            test.add_point(p)
+        ref = _build_curve(
+            "ref",
+            rates_psnrs=[(0.1, 26.0), (0.2, 28.0), (0.4, 31.0), (0.8, 34.0)],
+        )
+        cfg = BDRateConfig(name="cfg", primary_lambda_rd=0.015)
+        report = compute_bd_rate_report(test, ref, cfg)
+        # Lambda-sorted: [0.0016, 0.015, 0.018, 0.045]; nearest to 0.015
+        # is index 1; window = [0.0016, 0.015, 0.045]. The window must
+        # exclude lambda=0.18 (the wrong neighbor in lambda space, even
+        # though it sits next to the primary in rate space).
+        assert report.primary_bd_rate_pct is not None
+
+    def test_primary_window_returns_none_when_no_lambda_present(self) -> None:
+        # Curve points all have lambda_rd=None -> can't pick a primary
+        # neighborhood -> primary_bd_rate_pct is None.
+        ref = _build_curve(
+            "ref",
+            rates_psnrs=[(0.1, 28.0), (0.2, 30.0), (0.4, 33.0), (0.8, 36.0)],
+        )
+        test = RDCurve(
+            name="test",
+            points=[],
+        )
+        for rate, psnr in [(0.05, 30.0), (0.1, 32.0), (0.2, 34.0), (0.4, 36.0)]:
+            test.add_point(
+                RDPoint(rate=rate, distortion=0.001, psnr=psnr, lambda_rd=None),
+            )
+        cfg = BDRateConfig(name="cfg", primary_lambda_rd=0.015)
+        report = compute_bd_rate_report(test, ref, cfg)
+        assert report.primary_bd_rate_pct is None

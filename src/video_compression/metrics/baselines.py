@@ -397,6 +397,9 @@ class FFmpegBaselineRunner:
             width=width,
             height=height,
             fps=fps,
+            codec=cfg.codec,
+            crf=cfg.crf,
+            preset=cfg.preset,
         )
         entry = H265BaselineEntry(
             name=cell_key,
@@ -494,10 +497,17 @@ class FFmpegBaselineRunner:
         width: int,
         height: int,
         fps: float,
+        codec: str,
+        crf: int | None,
+        preset: str,
     ) -> str:
-        # Use the same composite-key convention as
-        # BaselineRegistry.cell_key on the perf side.
-        return f"{sequence_id}|{width}x{height}|{fps:g}"
+        # Composite key needs every dimension a sweep can vary so that
+        # H265BaselineRegistry can hold one entry per (sequence, res,
+        # fps, codec, preset, rate-control-setting). Without
+        # codec/crf/preset, a CRF sweep at a single resolution would
+        # silently overwrite earlier entries on registry insert.
+        rate_tag = f"crf{crf}" if crf is not None else "norate"
+        return f"{sequence_id}|{width}x{height}|{fps:g}|{codec}|{preset}|{rate_tag}"
 
     def _measure_quality(
         self,

@@ -9,8 +9,9 @@ Replaces the previous ~260-line subclass-based fork: the canonical
 solver now honours ``PINNConfig.device`` and auto-detects 2-channel
 output for Navier-Stokes, so this script is now config-driven.
 
-Usage:
-    cd C:\Users\iansh\OneDrive\Documents\AlphaGalerkin
+Usage::
+
+    cd <repo_root>
     python -u -m scripts.run_sbir_p40
     python -u -m scripts.run_sbir_p40 --device cuda:1 --n-epochs 1000
     python -u -m scripts.run_sbir_p40 --output-dir outputs/p40_quick \
@@ -152,18 +153,58 @@ def register_pinn_profiles(
 
 
 def _make_pinn_class(solver_name: str, config: PINNConfig) -> type[SimplePINNSolver]:
-    """Return a SimplePINNSolver subclass that defaults to ``config``."""
+    """Return a SimplePINNSolver subclass that defaults to ``config``.
+
+    The bound class accepts ``**kwargs`` so callers like ``get_solver(name,
+    **overrides)`` can pass per-call overrides without raising ``TypeError``.
+    Per-call kwargs win over the YAML profile, matching the precedence the
+    canonical solver already uses (see ``SimplePINNSolver.__init__``).
+    """
 
     class _BoundPINN(SimplePINNSolver):
-        pass
+        name = solver_name
 
-    _BoundPINN.name = solver_name  # type: ignore[assignment]
+        def __init__(self, **kwargs: Any) -> None:
+            kwargs.setdefault("config", config)
+            super().__init__(**kwargs)
 
-    def _bound_init(self: SimplePINNSolver) -> None:
-        SimplePINNSolver.__init__(self, config=config)
-
-    _BoundPINN.__init__ = _bound_init  # type: ignore[method-assign]
     return _BoundPINN
+
+
+def _gpu_index_for_profile(profiles: dict[str, dict[str, Any]]) -> int | None:
+    """Extract the integer GPU index the GPU PINN profile will run on.
+
+    Returns ``None`` for non-CUDA profiles (``cpu``, ``auto`` falls back),
+    or for ``cuda`` (no explicit index — ``torch.cuda.current_device()``
+    will pick at runtime). Used to drive the startup banner so the
+    reported GPU matches what ``--device cuda:N`` actually selects.
+    """
+    p40 = profiles.get("p40")
+    if p40 is None:
+        return None
+    device_label = str(p40.get("device", "auto"))
+    if device_label.startswith("cuda:"):
+        try:
+            return int(device_label.split(":", 1)[1])
+        except ValueError:
+            return None
+    return None
+
+
+def _print_cuda_banner(profiles: dict[str, dict[str, Any]]) -> None:
+    """Print a banner describing the GPU the resolved profile will use."""
+    if not torch.cuda.is_available():
+        return
+    gpu_idx = _gpu_index_for_profile(profiles)
+    n = torch.cuda.device_count()
+    if gpu_idx is None or gpu_idx >= n:
+        # Fall back to current_device() so the banner matches what
+        # ``.to(device)`` will actually select when device.index is None.
+        gpu_idx = torch.cuda.current_device()
+    gpu_name = torch.cuda.get_device_name(gpu_idx)
+    vram_gb = torch.cuda.get_device_properties(gpu_idx).total_memory / 1024**3
+    print(f"GPU : cuda:{gpu_idx}  {gpu_name}  ({vram_gb:.0f} GB VRAM)")
+    print(f"CUDA: {torch.version.cuda}\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -176,14 +217,10 @@ def main(argv: list[str] | None = None) -> int:
         print(msg, file=sys.stderr)
         if args.require_cuda:
             return 1
-    else:
-        gpu_name = torch.cuda.get_device_name(0)
-        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1024**3
-        print(f"GPU : {gpu_name}  ({vram_gb:.0f} GB VRAM)")
-        print(f"CUDA: {torch.version.cuda}\n")
 
     cfg = load_config(Path(args.config))
     profiles = apply_overrides(cfg["pinn_profiles"], args)
+    _print_cuda_banner(profiles)
     register_pinn_profiles(profiles, _baselines.SOLVER_REGISTRY)
 
     bench_cfg = dict(cfg)
@@ -201,33 +238,34 @@ def main(argv: list[str] | None = None) -> int:
         yaml.dump(bench_cfg, tmp)
         tmp_path = tmp.name
 
-    print("=" * 65)
-    print("SBIR BENCHMARK SUITE — Tesla P40 High-Resolution Run")
-    print("=" * 65)
-    print(f"Benchmarks : {len(bench_cfg['benchmarks'])} problems")
-    print(f"Solvers    : {[b['name'] for b in bench_cfg['baselines']]}")
-    print(f"Output     : {output_dir.resolve()}")
-    print("=" * 65 + "\n")
+    try:
+        print("=" * 65)
+        print("SBIR BENCHMARK SUITE — Tesla P40 High-Resolution Run")
+        print("=" * 65)
+        print(f"Benchmarks : {len(bench_cfg['benchmarks'])} problems")
+        print(f"Solvers    : {[b['name'] for b in bench_cfg['baselines']]}")
+        print(f"Output     : {output_dir.resolve()}")
+        print("=" * 65 + "\n")
 
-    t_total = time.perf_counter()
-    runner = PDEBenchmarkRunner(tmp_path)
-    results = runner.run_all()
+        t_total = time.perf_counter()
+        runner = PDEBenchmarkRunner(tmp_path)
+        results = runner.run_all()
 
-    if not results:
-        print("WARNING: No results produced — check solver registry and dependencies.")
+        if not results:
+            print("WARNING: No results produced — check solver registry and dependencies.")
+            return 1
+
+        runner.generate_report(results, output_dir)
+        _print_summary(results)
+
+        elapsed = time.perf_counter() - t_total
+        print(f"\nTotal wall time : {elapsed:.1f}s")
+        print(f"Results written : {output_dir}/results.json")
+        print(f"                  {output_dir}/results.md")
+        print(f"                  {output_dir}/results.csv")
+        return 0
+    finally:
         Path(tmp_path).unlink(missing_ok=True)
-        return 1
-
-    runner.generate_report(results, output_dir)
-    _print_summary(results)
-
-    elapsed = time.perf_counter() - t_total
-    print(f"\nTotal wall time : {elapsed:.1f}s")
-    print(f"Results written : {output_dir}/results.json")
-    print(f"                  {output_dir}/results.md")
-    print(f"                  {output_dir}/results.csv")
-    Path(tmp_path).unlink(missing_ok=True)
-    return 0
 
 
 def _print_summary(results: list[Any]) -> None:

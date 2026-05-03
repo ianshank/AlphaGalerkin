@@ -275,3 +275,21 @@ class TestPinnConfigBuilders:
         assert instance.name == "pinn_cpu"
         assert instance.device_preference == "cpu"
         assert instance.config.hidden_dim == 32
+
+    def test_bound_solver_accepts_kwargs(self) -> None:
+        """``get_solver(name, **overrides)`` must not TypeError on the bound class.
+
+        Regression for the gemini-code-assist HIGH finding on PR #83: the
+        original ``_bound_init(self)`` signature would raise on any
+        keyword argument, so ``get_solver("pinn_cpu", hidden_dim=...)``
+        from the canonical registry path failed.
+        """
+        profiles = _minimal_yaml()["pinn_profiles"]
+        registry: dict[str, type[SimplePINNSolver]] = {}
+        script_module.register_pinn_profiles(profiles, registry)
+
+        # Per-call override should win over the YAML profile default.
+        instance = registry["pinn_cpu"](hidden_dim=99)
+        assert instance.hidden_dim == 99
+        # YAML profile fields not overridden remain.
+        assert instance.config.n_epochs == 10

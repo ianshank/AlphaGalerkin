@@ -82,6 +82,29 @@ class TestParseDmonOutput:
         assert report.gpu_indices == (0, 1)
         assert report.sample_interval_s == 2.5
 
+    def test_filters_rows_by_gpu_indices(self) -> None:
+        """Rows whose GPU index isn't in ``gpu_indices`` must be skipped.
+
+        Guards against pre-captured files / driver versions that ignore
+        ``-i`` and emit data for every GPU in the system.
+        """
+        # Two GPUs in the fixture (indices 0 and 1) — request only GPU 1.
+        text = (
+            "# gpu    pwr  gtemp  mtemp     sm    mem    enc    dec    jpg    ofa\n"
+            "# Idx      W      C      C      %      %      %      %      %      %\n"
+            "    0    100     60     58     50     50      0      0      0      0\n"
+            "    1    200     70     65     90     90      0      0      0      0\n"
+            "    0    100     60     58     50     50      0      0      0      0\n"
+        )
+        report = parse_dmon_output(text, gpu_indices=(1,), sample_interval_s=1.0)
+        assert report.total_samples == 1
+        assert report.mean_sm_util_pct == pytest.approx(90.0)
+
+    def test_empty_gpu_indices_disables_filter(self) -> None:
+        """``gpu_indices=()`` means 'no filter', preserving 2026-05-03 behaviour."""
+        report = parse_dmon_output(_DMON_FIXTURE, gpu_indices=(), sample_interval_s=1.0)
+        assert report.total_samples == 3
+
     def test_to_dict_serialises_all_fields(self) -> None:
         report = parse_dmon_output(_DMON_WITH_FB_MEM, gpu_indices=(0,), sample_interval_s=1.0)
         d = report.to_dict()
@@ -192,6 +215,32 @@ class TestGpuUtilizationProfiler:
 # ---------------------------------------------------------------------------
 # Profiler fallback
 # ---------------------------------------------------------------------------
+
+
+class TestEffectiveIntervalSeconds:
+    """Guards the dmon-rounded interval round-trip into the report."""
+
+    def test_subsecond_interval_rounded_up_in_report(self, tmp_path: Path) -> None:
+        """0.4s requested -> dmon polls at 1s -> report records 1.0, not 0.4."""
+        captured = tmp_path / "dmon.out"
+        captured.write_text(_DMON_FIXTURE, encoding="utf-8")
+
+        mock_proc = MagicMock()
+        mock_proc.terminate = MagicMock()
+        mock_proc.wait = MagicMock()
+
+        with patch("subprocess.Popen", return_value=mock_proc):
+            with GpuUtilizationProfiler(
+                gpu_indices=[0],
+                sample_interval_s=0.4,
+                output_path=captured,
+            ) as prof:
+                pass
+
+        assert prof.report is not None
+        # The user requested 0.4s but dmon only takes integer seconds, so
+        # the actual cadence (and thus the report's interval) must be 1.0.
+        assert prof.report.sample_interval_s == pytest.approx(1.0)
 
 
 class TestGpuUtilizationProfilerFallback:

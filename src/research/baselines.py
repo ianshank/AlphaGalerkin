@@ -963,9 +963,16 @@ class SimplePINNSolver(BaseSolver):
         # proposal-grade telemetry on whether the workload is compute-bound
         # or memory-bandwidth-bound. No-ops cleanly on CPU or no-nvidia-smi
         # hosts.
-        profile_indices: list[int] = (
-            [device.index if device.index is not None else 0] if device.type == "cuda" else []
-        )
+        # When ``device.index is None`` (bare ``torch.device("cuda")``) the
+        # tensor goes to whatever ``torch.cuda.current_device()`` returns,
+        # which is **not** always 0 — third-party libraries or earlier
+        # ``torch.cuda.set_device(N)`` calls can shift it. Sample dmon on
+        # the same index so the report matches the actual workload.
+        if device.type == "cuda":
+            gpu_idx = device.index if device.index is not None else torch.cuda.current_device()
+            profile_indices: list[int] = [gpu_idx]
+        else:
+            profile_indices = []
         with GpuUtilizationProfiler(gpu_indices=profile_indices) as profiler:
             for epoch in range(self.n_epochs):
                 optimizer.zero_grad()
@@ -985,6 +992,19 @@ class SimplePINNSolver(BaseSolver):
                     # Vector PDE (NS): PDE residual = sum of per-component
                     # Laplacians. Source-term forcing is treated as zero for
                     # the momentum residual (Taylor-Green has no body force).
+                    #
+                    # NOTE — physics simplification. Full Navier-Stokes
+                    # momentum is ``du/dt + (u·∇)u + ∇p − ν∇²u = f``; the
+                    # advection, pressure-gradient, and continuity terms are
+                    # not in this loss. This matches the previous P40 fork's
+                    # behaviour and is sufficient for the Taylor-Green decay
+                    # benchmark (where the analytical IC dominates), but the
+                    # PINN row is *not* a fully-physics-informed solver.
+                    # Delegating to ``operator.residual()`` for proper NS
+                    # physics is tracked as future work; doing it correctly
+                    # requires (a) extending the PINN to predict pressure
+                    # alongside velocity and (b) wiring divergence-free
+                    # constraints — out of scope for this PR.
                     loss_pde = torch.zeros((), device=device)
                     for c_idx in range(output_dim):
                         uc = u_raw[:, c_idx]

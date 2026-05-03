@@ -101,6 +101,7 @@ class GpuUtilizationProfiler:
     _process: subprocess.Popen[bytes] | None = field(default=None, init=False, repr=False)
     _captured_path: Path | None = field(default=None, init=False, repr=False)
     _is_temp_path: bool = field(default=False, init=False, repr=False)
+    _effective_interval_s: float | None = field(default=None, init=False, repr=False)
     report: GpuUtilizationReport | None = field(default=None, init=False, repr=False)
 
     def __enter__(self) -> GpuUtilizationProfiler:
@@ -121,13 +122,18 @@ class GpuUtilizationProfiler:
             self._captured_path = Path(self.output_path)
             self._is_temp_path = False
 
+        # ``nvidia-smi dmon -d`` only accepts integer-second cadences, so
+        # round up. Stash the rounded value as ``_effective_interval_s``
+        # so the report records the same cadence dmon actually used (the
+        # un-rounded ``self.sample_interval_s`` would otherwise lie).
+        self._effective_interval_s = float(max(1, int(round(self.sample_interval_s))))
         cmd = [
             "nvidia-smi",
             "dmon",
             "-i",
             ",".join(str(i) for i in self.gpu_indices),
             "-d",
-            str(max(1, int(round(self.sample_interval_s)))),
+            str(int(self._effective_interval_s)),
             "-s",
             _DMON_METRIC_FLAGS,
             "-f",
@@ -161,6 +167,16 @@ class GpuUtilizationProfiler:
                 self._process.wait()
             self._process = None
 
+        # Use the dmon-effective cadence (post-rounding) for both the
+        # parser call and the empty-fallback report so the surface
+        # ``GpuUtilizationReport.sample_interval_s`` always matches what
+        # dmon actually polled at, never the un-rounded user request.
+        report_interval_s = (
+            self._effective_interval_s
+            if self._effective_interval_s is not None
+            else self.sample_interval_s
+        )
+
         if self._captured_path is not None and self._captured_path.exists():
             try:
                 with self._captured_path.open("r", encoding="utf-8") as f:
@@ -168,7 +184,7 @@ class GpuUtilizationProfiler:
                 self.report = parse_dmon_output(
                     text,
                     gpu_indices=tuple(self.gpu_indices),
-                    sample_interval_s=self.sample_interval_s,
+                    sample_interval_s=report_interval_s,
                     captured_path=str(self._captured_path),
                 )
             finally:
@@ -183,7 +199,7 @@ class GpuUtilizationProfiler:
         if self.report is None:
             self.report = GpuUtilizationReport(
                 gpu_indices=tuple(self.gpu_indices),
-                sample_interval_s=self.sample_interval_s,
+                sample_interval_s=report_interval_s,
                 total_samples=0,
             )
 
@@ -205,6 +221,13 @@ def parse_dmon_output(
     mem_values: list[float] = []
     fb_mem_values: list[int] = []
     total = 0
+    # When ``gpu_indices`` is non-empty, only count rows for those indices.
+    # An empty tuple means "no filter" (pre-2026-05-03 behaviour, used by
+    # the no-op-when-no-GPU path that synthesises a zero-sample report).
+    # This guards against pre-captured files or driver versions that
+    # ignore ``-i`` and emit data for every GPU in the system, which
+    # would otherwise corrupt the per-GPU means/peaks.
+    accepted_indices: set[int] | None = set(gpu_indices) if gpu_indices else None
 
     for raw in text.splitlines():
         line = raw.strip()
@@ -214,8 +237,10 @@ def parse_dmon_output(
         if len(parts) < _DMON_MIN_COLUMNS:
             continue
         try:
-            int(parts[_DMON_COL_GPU])
+            row_gpu_idx = int(parts[_DMON_COL_GPU])
         except ValueError:
+            continue
+        if accepted_indices is not None and row_gpu_idx not in accepted_indices:
             continue
         try:
             sm_pct = float(parts[_DMON_COL_SM_PCT])

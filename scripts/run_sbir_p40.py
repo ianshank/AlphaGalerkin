@@ -236,8 +236,7 @@ def _print_summary(results: list[Any]) -> None:
     print("RESULTS SUMMARY")
     print(f"{'=' * 65}")
     print(
-        f"{'Benchmark':<30} {'Solver':<16} {'DOF':>7} {'L2 Error':>12} "
-        f"{'Time(s)':>9} {'Conv':>6}"
+        f"{'Benchmark':<30} {'Solver':<16} {'DOF':>7} {'L2 Error':>12} {'Time(s)':>9} {'Conv':>6}"
     )
     print("-" * 85)
     for r in sorted(results, key=lambda x: (x.benchmark_name, x.method_name, x.n_dof)):

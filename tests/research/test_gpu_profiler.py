@@ -184,9 +184,9 @@ class TestGpuUtilizationProfiler:
 
         assert prof.report is not None
         assert len(captured_paths) == 1
-        assert not captured_paths[
-            0
-        ].exists(), f"Temp dmon file {captured_paths[0]} was not cleaned up"
+        assert not captured_paths[0].exists(), (
+            f"Temp dmon file {captured_paths[0]} was not cleaned up"
+        )
 
 
 # ---------------------------------------------------------------------------

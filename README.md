@@ -835,7 +835,8 @@ AlphaGalerkin/
 │   ├── proposals/         # SBIR configs (Navy, DOE, NSF, AFWERX, DARPA D2P2)
 │   └── benchmarks/        # sbir_suite.yaml
 ├── scripts/
-│   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo
+│   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo (--heavy opt-in for 65 536-DOF Poisson)
+│   ├── run_sbir_p40.py    # Tesla P40 high-resolution PINN/NS-FDM comparison driver
 │   ├── train.py           # Training CLI with Hydra
 │   ├── train_chess.py     # Chess training CLI
 │   └── train_compression.py  # Video compression training
@@ -875,7 +876,23 @@ python -m scripts.run_sbir_demo --config config/benchmarks/sbir_suite.yaml
 
 # Custom output
 python -m scripts.run_sbir_demo --output-dir outputs/navy_demo --formats json latex markdown
+
+# Opt into heavy refinement levels (e.g. 65 536-DOF Poisson L-shaped)
+# to demonstrate the P40's 24 GiB VRAM advantage. Default keeps CI fast.
+python -m scripts.run_sbir_demo --heavy --output-dir outputs/sbir_demo_v2
+
+# Tesla P40 high-resolution PINN vs NS-FDM comparison.
+# Loads config/benchmarks/sbir_p40.yaml; every PINN parameter is
+# config-driven and overridable via CLI flags.
+python -m scripts.run_sbir_p40                              # default profile
+python -m scripts.run_sbir_p40 --device cuda:1              # pin to a different GPU
+python -m scripts.run_sbir_p40 --n-epochs 1000 --skip-cpu   # short GPU-only run
 ```
+
+The P40 driver embeds **GPU utilisation telemetry** (mean SM-util %, mean
+memory-util %, peak FB-MiB) in `SolverResult.metadata["gpu_profile"]`
+when `nvidia-smi` is on PATH. Skips silently on CI / no-GPU hosts so the
+same code path is safe everywhere.
 
 ---
 
@@ -885,9 +902,11 @@ python -m scripts.run_sbir_demo --output-dir outputs/navy_demo --formats json la
 - [x] ~~SBIR demo script~~ (`scripts/run_sbir_demo.py` with convergence plots, LaTeX/Markdown reports)
 - [x] ~~BaseTrainer consolidation~~ (`src/training/base_trainer.py` with AMP, gradient clipping, LR scheduling)
 - [x] ~~SBIR proposal infrastructure~~ (SAM guide, budgets, timeline, program offices, IP strategy)
+- [x] ~~SBIR P40 benchmark hardening~~ (`scripts/run_sbir_p40.py` config-driven driver, `GpuUtilizationProfiler`, AMR escapes 18-DOF ceiling, NS-FDM Taylor-Green parity, PINN device knob)
 - [ ] Multi-field PDE support (extending ModelOutput for vector fields)
 - [ ] Migrate Trainer and OperatorTrainer to BaseTrainer inheritance
 - [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals
+- [ ] Capture proposal-grade Tesla P40 numbers from `scripts/run_sbir_p40.py` once a sm_61-compatible PyTorch wheel is available
 
 ### Medium-Term (v0.5)
 - [ ] 3D tetrahedral domain geometry support

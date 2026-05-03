@@ -1402,31 +1402,50 @@ C4Component
     title Component Diagram - SBIR Research Infrastructure
 
     Container_Boundary(research, "Research & Benchmarking") {
-        Component(benchmark_runner, "PDEBenchmarkRunner", "Python Class", "Runs AlphaGalerkin vs baselines on benchmark suites, generates JSON/Markdown reports")
+        Component(benchmark_runner, "PDEBenchmarkRunner", "Python Class", "Runs AlphaGalerkin vs baselines on benchmark suites; heavy=True opt-in extends refinement_levels with heavy_refinement_levels (e.g. 65 536-DOF Poisson for the P40 24 GiB advantage)")
 
         Component(fdm_solver, "UniformFDMSolver", "BaseSolver", "2nd-order finite differences on uniform grid via scipy.sparse")
 
-        Component(amr_solver, "DorflerAMRSolver", "BaseSolver", "Dorfler bulk-chasing adaptive mesh refinement on 1D grids")
+        Component(amr_solver, "DorflerAMRSolver", "BaseSolver", "Dorfler bulk-chasing adaptive mesh refinement on 1D/2D grids; raised defaults (theta=0.5, max_refinements=30, max_initial_points_1d=256, divisor=2) escape the 18-DOF Burgers ceiling")
 
-        Component(pinn_solver, "SimplePINNSolver", "BaseSolver", "Physics-Informed Neural Network baseline with autograd Laplacian")
+        Component(ns_fdm_solver, "NavierStokesFDMSolver", "BaseSolver", "Chorin projection FDM for incompressible 2D NS; consumes corrected Taylor-Green numpy reference")
 
-        Component(solver_registry, "SOLVER_REGISTRY", "Dict Registry", "Maps solver names to classes: get_solver(), list_solvers()")
+        Component(pinn_solver, "SimplePINNSolver", "BaseSolver", "Physics-Informed Neural Network baseline; honours PINNConfig.device (auto/cpu/cuda/cuda:N), auto-detects vector PDEs (NS=>2-channel network), embeds GpuUtilizationProfiler around the training loop")
 
-        Component(benchmark_config, "Benchmark Configs", "YAML", "sbir_suite.yaml, navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml")
+        Component(gpu_profiler, "GpuUtilizationProfiler", "Context Manager", "Wraps `nvidia-smi dmon` as a subprocess; returns mean SM-util %, mean memory-util %, peak FB-MiB; no-ops cleanly when nvidia-smi is missing")
+
+        Component(device_helper, "resolve_device", "Helper", "Resolves auto/cpu/cuda/cuda:N preference strings to torch.device with fail-loud bounds checking")
+
+        Component(solver_registry, "SOLVER_REGISTRY", "Dict Registry", "Maps solver names to classes: get_solver(), list_solvers(); pinn_p40 / pinn_cpu rows registered by run_sbir_p40.py from YAML profiles")
+
+        Component(benchmark_config, "Benchmark Configs", "YAML", "sbir_suite.yaml (with heavy_refinement_levels), sbir_p40.yaml (PINN profiles for p40/cpu rows), navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml")
+
+        Component(p40_driver, "scripts/run_sbir_p40.py", "argparse CLI", "Config-driven driver: loads sbir_p40.yaml, applies CLI overrides (--device, --n-epochs, --n-collocation, --refinement-levels, --skip-cpu), registers PINN profiles via _make_pinn_class")
     }
 
-    Component_Ext(pde_operators, "PDE Operators", "Provides exact solutions, residuals")
+    Component_Ext(pde_operators, "PDE Operators", "Provides exact solutions, residuals; numpy/torch parity guarded by tests/pde/test_taylor_green_invariants.py")
     Component_Ext(alphagalerkin, "AlphaGalerkin Engine", "MCTS-guided solver under comparison")
+    Component_Ext(nvidia_smi, "nvidia-smi dmon", "External GPU telemetry binary (optional)")
 
     Rel(benchmark_runner, fdm_solver, "Runs baseline")
     Rel(benchmark_runner, amr_solver, "Runs baseline")
+    Rel(benchmark_runner, ns_fdm_solver, "Runs baseline")
     Rel(benchmark_runner, pinn_solver, "Runs baseline")
     Rel(benchmark_runner, solver_registry, "Discovers solvers")
     Rel(benchmark_runner, benchmark_config, "Loads config")
 
     Rel(fdm_solver, pde_operators, "Uses source_term, boundary_value")
     Rel(amr_solver, pde_operators, "Uses source_term, exact_solution")
+    Rel(ns_fdm_solver, pde_operators, "Uses initial_condition, exact_solution (numpy)")
     Rel(pinn_solver, pde_operators, "Uses residual via autograd")
+    Rel(pinn_solver, device_helper, "Resolves device preference")
+    Rel(pinn_solver, gpu_profiler, "Wraps training loop")
+
+    Rel(p40_driver, benchmark_runner, "Drives")
+    Rel(p40_driver, solver_registry, "Registers pinn_p40, pinn_cpu")
+    Rel(p40_driver, benchmark_config, "Loads sbir_p40.yaml")
+
+    Rel(gpu_profiler, nvidia_smi, "Spawns + parses dmon output")
 
     Rel(benchmark_runner, alphagalerkin, "Compares against baselines")
 
@@ -1437,11 +1456,15 @@ C4Component
 
 | Component | Responsibility | Key Interface |
 |-----------|----------------|---------------|
-| **PDEBenchmarkRunner** | Load YAML config, run all solver x problem combos, compute convergence rates | `run_all()`, `generate_report()` |
+| **PDEBenchmarkRunner** | Load YAML config, run all solver x problem combos, compute convergence rates; `--heavy` opt-in extends `refinement_levels` with `heavy_refinement_levels` | `run_all()`, `generate_report()`, `__init__(..., heavy=False)` |
 | **UniformFDMSolver** | Reference FDM solution on 1D/2D uniform grids | `solve(operator, n_dof)` |
-| **DorflerAMRSolver** | Adaptive refinement with residual error indicators | `solve(operator, n_dof)` |
-| **SimplePINNSolver** | PINN baseline with configurable MLP + autograd | `solve(operator, n_dof)` |
-| **SOLVER_REGISTRY** | Plugin system for baseline solvers | `get_solver(name)`, `list_solvers()` |
+| **DorflerAMRSolver** | Adaptive refinement with residual error indicators; target-aware n_start | `solve(operator, n_dof)` |
+| **NavierStokesFDMSolver** | Chorin-projection FDM for 2D incompressible NS; Taylor-Green initial condition + L2 metric corrected by the numpy/torch parity fix | `solve(operator, n_dof)` |
+| **SimplePINNSolver** | PINN baseline with configurable MLP + autograd; honours `PINNConfig.device`, auto-detects vector PDEs, embeds GPU-utilisation telemetry | `solve(operator, n_dof)` |
+| **GpuUtilizationProfiler** | Wraps `nvidia-smi dmon` as a context manager; returns mean SM-util %, mean memory-util %, peak FB-MiB | `__enter__()` / `__exit__()` |
+| **resolve_device** | Resolves `auto`/`cpu`/`cuda`/`cuda:N` strings to `torch.device` with fail-loud bounds checking | `resolve_device(preference, *, context)` |
+| **SOLVER_REGISTRY** | Plugin system for baseline solvers; populated by `run_sbir_p40.py` with `pinn_p40` / `pinn_cpu` rows | `get_solver(name)`, `list_solvers()` |
+| **scripts/run_sbir_p40.py** | Config-driven CLI driver: argparse + YAML profile loader, applies CLI overrides, registers PINN profiles | `parse_args`, `load_config`, `apply_overrides`, `register_pinn_profiles` |
 
 ---
 

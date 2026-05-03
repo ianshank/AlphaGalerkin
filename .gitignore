@@ -131,7 +131,15 @@ uv.lock
 
 # SBIR / proposal outputs
 outputs/sbir_benchmarks/
+outputs/sbir_demo/
+outputs/sbir_demo_v*/
+outputs/sbir_p40/
+outputs/sbir_p40_ns/
+outputs/sbir_p40_ns_v*/
 outputs/proposals/
+
+# nvidia-smi dmon captures (one per profiled solve)
+*.dmon
 
 # Benchmark artifacts
 *.benchmark

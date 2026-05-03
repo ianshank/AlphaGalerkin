@@ -223,9 +223,7 @@ class ZooSweep:
         self._codec_config_for = codec_config_for
         self._output_root = output_root
         self._entry_runner = entry_runner or default_entry_runner
-        self._allow: set[str] | None = (
-            set(only_entry_ids) if only_entry_ids is not None else None
-        )
+        self._allow: set[str] | None = set(only_entry_ids) if only_entry_ids is not None else None
         self._plan: DevicePlan = assign_devices(
             manifest,
             devices=list(devices) if devices is not None else None,
@@ -312,9 +310,7 @@ class ZooSweep:
         )
 
     def _aggregate(self, statuses: Sequence[EntryStatus]) -> SweepReport:
-        trained = sum(
-            1 for s in statuses if not s.skipped and s.report is not None
-        )
+        trained = sum(1 for s in statuses if not s.skipped and s.report is not None)
         skipped = sum(1 for s in statuses if s.skipped)
         sweep_report = SweepReport(
             manifest_name=self._manifest.name,
@@ -352,9 +348,7 @@ class ZooSweep:
         contend); pair this with :func:`make_subprocess_entry_runner`
         when running on real GPUs.
         """
-        selected_ids = {
-            e.entry_id for e in self._manifest.entries if self._is_selected(e)
-        }
+        selected_ids = {e.entry_id for e in self._manifest.entries if self._is_selected(e)}
         # Preserve manifest order while grouping by device.
         groups: dict[str, list[ModelZooEntryConfig]] = {}
         for entry in self._manifest.entries:
@@ -372,8 +366,7 @@ class ZooSweep:
             max_workers=len(groups),
         ) as pool:
             future_to_device = {
-                pool.submit(_worker, entries): device
-                for device, entries in groups.items()
+                pool.submit(_worker, entries): device for device, entries in groups.items()
             }
             results: dict[str, list[EntryStatus]] = {}
             for fut in concurrent.futures.as_completed(future_to_device):
@@ -434,9 +427,7 @@ def _read_persisted_report(
         target_psnr_db=entry.target_psnr_db,
         realized_bpp=float(metrics["rate_bpp"]),
         realized_psnr_db=float(metrics["psnr_db"]),
-        realized_ms_ssim=(
-            float(metrics["ms_ssim"]) if "ms_ssim" in metrics else None
-        ),
+        realized_ms_ssim=(float(metrics["ms_ssim"]) if "ms_ssim" in metrics else None),
         final_loss=float(metrics["loss"]),
         step_count=int(metrics["step_count"]),
         device=device,
@@ -483,6 +474,7 @@ def make_subprocess_entry_runner(
             label through (useful for tests).
 
     """
+
     def _default_subprocess_runner(
         argv: list[str],
         env: dict[str, str],

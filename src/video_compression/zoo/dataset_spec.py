@@ -168,8 +168,7 @@ def register_dataset_factory(kind: str, factory: DatasetFactory) -> None:
     """
     if kind in _REGISTRY:
         raise ValueError(
-            f"dataset factory already registered for kind={kind!r}; "
-            f"existing={_REGISTRY[kind]!r}",
+            f"dataset factory already registered for kind={kind!r}; existing={_REGISTRY[kind]!r}",
         )
     _REGISTRY[kind] = factory
 
@@ -178,8 +177,7 @@ def get_dataset_factory(kind: str) -> DatasetFactory:
     """Return the factory registered for ``kind`` or raise ``KeyError``."""
     if kind not in _REGISTRY:
         raise KeyError(
-            f"no dataset factory registered for kind={kind!r}; "
-            f"known kinds={sorted(_REGISTRY)!r}",
+            f"no dataset factory registered for kind={kind!r}; known kinds={sorted(_REGISTRY)!r}",
         )
     return _REGISTRY[kind]
 
@@ -252,8 +250,7 @@ def _image_folder_factory(
     root = Path(spec.root)
     if not root.exists():
         raise FileNotFoundError(
-            f"DatasetSpec(kind='image_folder', root={spec.root!r}) "
-            f"does not exist",
+            f"DatasetSpec(kind='image_folder', root={spec.root!r}) does not exist",
         )
 
     patch_size = min(spec.height, spec.width)

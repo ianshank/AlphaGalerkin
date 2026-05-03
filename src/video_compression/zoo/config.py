@@ -447,10 +447,7 @@ class ModelZooManifestConfig(BaseModuleConfig):
         # safe to use here because we just proved there are no dups.
         valid_ids = set(counts)
         for entry in self.entries:
-            if (
-                entry.parent_entry_id is not None
-                and entry.parent_entry_id not in valid_ids
-            ):
+            if entry.parent_entry_id is not None and entry.parent_entry_id not in valid_ids:
                 raise ValueError(
                     f"entry {entry.entry_id!r} declares parent_entry_id="
                     f"{entry.parent_entry_id!r} which is not present in the "

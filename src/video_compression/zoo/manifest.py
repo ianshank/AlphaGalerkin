@@ -54,8 +54,7 @@ def _migrate_entry_document(raw: dict[str, Any]) -> dict[str, Any]:
 
     if not isinstance(schema_version, int):
         raise ManifestMigrationError(
-            f"entry schema_version must be int; got "
-            f"{type(schema_version).__name__}",
+            f"entry schema_version must be int; got {type(schema_version).__name__}",
         )
 
     if schema_version > PERF_ZOO_ENTRY_SCHEMA_VERSION:
@@ -115,10 +114,7 @@ def _migrate_manifest_document(raw: dict[str, Any]) -> dict[str, Any]:
 
     entries = raw.get("entries")
     if isinstance(entries, list):
-        raw["entries"] = [
-            _migrate_entry_document(e) if isinstance(e, dict) else e
-            for e in entries
-        ]
+        raw["entries"] = [_migrate_entry_document(e) if isinstance(e, dict) else e for e in entries]
     return raw
 
 

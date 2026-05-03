@@ -195,21 +195,15 @@ class TestResolveCodecConfigForEntry:
         entry = _make_entry(codec_config_ref=str(codec_path))
         manifest = _make_manifest([entry])
         manifest_path = tmp_path / "m.yaml"
-        cfg = resolve_codec_config_for_entry(
-            manifest, entry, manifest_path=manifest_path
-        )
+        cfg = resolve_codec_config_for_entry(manifest, entry, manifest_path=manifest_path)
         assert isinstance(cfg, CodecConfig)
 
     def test_falls_back_to_manifest_default(self, tmp_path: Path) -> None:
         codec_path = _write(tmp_path / "codec", _make_codec_payload(), suffix=".yaml")
         entry = _make_entry()
-        manifest = _make_manifest(
-            [entry], default_codec_config_ref=str(codec_path)
-        )
+        manifest = _make_manifest([entry], default_codec_config_ref=str(codec_path))
         manifest_path = tmp_path / "m.yaml"
-        cfg = resolve_codec_config_for_entry(
-            manifest, entry, manifest_path=manifest_path
-        )
+        cfg = resolve_codec_config_for_entry(manifest, entry, manifest_path=manifest_path)
         assert isinstance(cfg, CodecConfig)
 
     def test_no_ref_anywhere_raises(self, tmp_path: Path) -> None:
@@ -217,9 +211,7 @@ class TestResolveCodecConfigForEntry:
         manifest = _make_manifest([entry])
         manifest_path = tmp_path / "m.yaml"
         with pytest.raises(ValueError, match="does not declare codec_config_ref"):
-            resolve_codec_config_for_entry(
-                manifest, entry, manifest_path=manifest_path
-            )
+            resolve_codec_config_for_entry(manifest, entry, manifest_path=manifest_path)
 
 
 # ---------------------------------------------------------------------------

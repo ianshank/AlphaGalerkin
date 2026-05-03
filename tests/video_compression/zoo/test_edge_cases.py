@@ -114,7 +114,10 @@ class TestDevicePlanLookup:
             strategy=DeviceAssignmentStrategy.SINGLE_DEVICE,
             devices=[
                 DeviceCapability(
-                    label="cpu", name="cpu", total_vram_mib=0.0, is_cuda=False,
+                    label="cpu",
+                    name="cpu",
+                    total_vram_mib=0.0,
+                    is_cuda=False,
                 ),
             ],
             assignments=[
@@ -130,9 +133,7 @@ class TestDevicePlanLookup:
 # Explicit-device resolution edge cases
 # ----------------------------------------------------------------------
 class TestExplicitDeviceEdgeCases:
-    def test_bare_cuda_resolves_to_cuda0(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_bare_cuda_resolves_to_cuda0(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -142,9 +143,7 @@ class TestExplicitDeviceEdgeCases:
         plan = assign_devices(manifest, devices=reference_rig)
         assert plan.device_for("e1") == "cuda:0"
 
-    def test_bare_cuda_no_visible_cuda_raises(
-        self, cpu_only: list[DeviceCapability]
-    ) -> None:
+    def test_bare_cuda_no_visible_cuda_raises(self, cpu_only: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -154,9 +153,7 @@ class TestExplicitDeviceEdgeCases:
         with pytest.raises(ValueError, match="no CUDA"):
             assign_devices(manifest, devices=cpu_only)
 
-    def test_explicit_cpu_under_vram_aware(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_explicit_cpu_under_vram_aware(self, reference_rig: list[DeviceCapability]) -> None:
         # CPU pin must short-circuit the planner without raising.
         manifest = ModelZooManifestConfig(
             name="m",
@@ -177,9 +174,7 @@ class TestExplicitDeviceEdgeCases:
 # _resolve_run_target paths (covered through SINGLE_DEVICE)
 # ----------------------------------------------------------------------
 class TestRunTargetResolution:
-    def test_cuda_preference_no_cuda_raises(
-        self, cpu_only: list[DeviceCapability]
-    ) -> None:
+    def test_cuda_preference_no_cuda_raises(self, cpu_only: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -190,9 +185,7 @@ class TestRunTargetResolution:
         with pytest.raises(ValueError, match="no CUDA"):
             assign_devices(manifest, devices=cpu_only)
 
-    def test_invalid_preference_raises(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_invalid_preference_raises(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -203,9 +196,7 @@ class TestRunTargetResolution:
         with pytest.raises(ValueError, match="not visible"):
             assign_devices(manifest, devices=reference_rig)
 
-    def test_cuda_n_preference_passthrough(
-        self, reference_rig: list[DeviceCapability]
-    ) -> None:
+    def test_cuda_n_preference_passthrough(self, reference_rig: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -231,9 +222,7 @@ class TestRunTargetResolution:
         plan = assign_devices(manifest, devices=reference_rig)
         assert plan.device_for("e1") == "cuda:0"
 
-    def test_vram_aware_no_cuda_raises(
-        self, cpu_only: list[DeviceCapability]
-    ) -> None:
+    def test_vram_aware_no_cuda_raises(self, cpu_only: list[DeviceCapability]) -> None:
         manifest = ModelZooManifestConfig(
             name="m",
             storage_root="./zoo",
@@ -312,7 +301,10 @@ class TestAssignVramAwareDefaults:
         # fallback. ``assign_devices`` always seeds the dict, so this
         # branch only fires when the helper is called directly.
         device = DeviceCapability(
-            label="cuda:0", name="GPU", total_vram_mib=16_000.0, is_cuda=True,
+            label="cuda:0",
+            name="GPU",
+            total_vram_mib=16_000.0,
+            is_cuda=True,
         )
         entry = _entry(estimated_vram_mib=4_000.0)
         assignments = _assign_vram_aware([entry], [device])

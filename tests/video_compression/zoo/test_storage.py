@@ -55,7 +55,8 @@ class TestVideoCodecZooFilesystem:
         bundle = zoo.load_state_dict("e1", map_location="cpu")
         assert "model" in bundle
         assert torch.allclose(
-            bundle["model"]["w"], torch.tensor([1.0, 2.0, 3.0]),
+            bundle["model"]["w"],
+            torch.tensor([1.0, 2.0, 3.0]),
         )
         assert bundle["step"] == 100
 

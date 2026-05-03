@@ -1,4 +1,4 @@
-﻿"""Slice B tests: parallel sweep + subprocess-per-device entry runner."""
+"""Slice B tests: parallel sweep + subprocess-per-device entry runner."""
 
 from __future__ import annotations
 
@@ -409,11 +409,9 @@ class TestSubprocessEntryRunner:
         )
         runner(entry, "cpu", zoo, CodecConfig(name="codec_test"), tmp_path / "out")
         # No env pinning for CPU.
-        assert "CUDA_VISIBLE_DEVICES" not in captured["env"] or captured[
-            "env"
-        ].get("CUDA_VISIBLE_DEVICES") == os.environ.get(
-            "CUDA_VISIBLE_DEVICES", "__missing__"
-        )
+        assert "CUDA_VISIBLE_DEVICES" not in captured["env"] or captured["env"].get(
+            "CUDA_VISIBLE_DEVICES"
+        ) == os.environ.get("CUDA_VISIBLE_DEVICES", "__missing__")
         assert captured["argv"][captured["argv"].index("--device") + 1] == "cpu"
 
     def test_propagates_nonzero_exit(self, tmp_path: Path) -> None:
@@ -543,4 +541,3 @@ class TestSubprocessEntryRunner:
             "CUDA_VISIBLE_DEVICES",
         )
         assert captured["argv"][captured["argv"].index("--device") + 1] == "cuda:1"
-

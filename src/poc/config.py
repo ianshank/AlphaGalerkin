@@ -391,6 +391,17 @@ def load_config_from_dict(
         "stability": StabilityScenarioConfig,
     }
 
+    # Lazy import: pulling LLMPriorAblationConfig at module top would force
+    # `openai` to be importable on every config load. The integration is
+    # opt-in via the [lm-studio] extra, so we resolve it only on demand.
+    inferred_name = scenario_type or data.get("name", "")
+    if inferred_name == "llm_prior_ablation":
+        from src.poc.scenarios.llm_prior_config import (
+            LLMPriorAblationConfig,
+        )
+
+        type_map["llm_prior_ablation"] = LLMPriorAblationConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

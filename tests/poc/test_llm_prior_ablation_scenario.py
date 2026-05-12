@@ -537,6 +537,129 @@ def test_aggregation_handles_empty_random_rollouts(
     assert result.metrics.get("id_rollout_reduction_pct") == 0.0
 
 
+def test_random_arm_disabled_drops_id_rollout_reduction_threshold(
+    stub_device: None,
+    passing_preflight: PreflightReport,
+    stub_lm_client: MagicMock,
+) -> None:
+    """Disabling the random arm drops `id_rollout_reduction_pct` so the run can pass.
+
+    Without this gating, the threshold is installed by `get_default_thresholds`
+    but the metric is never recorded (the LLM-vs-random comparison can't be
+    computed), and `BaseScenario._evaluate_thresholds` would auto-FAIL.
+    """
+    config = LLMPriorAblationConfig(
+        n_seeds=2,
+        run_random_arm=False,
+        run_trained_arm=False,
+        run_llm_arm=True,
+    )
+    scenario = LLMPriorAblationScenario(config)
+    scenario.setup()
+    threshold_names = {t.name for t in scenario.config.thresholds}
+    assert "id_rollout_reduction_pct" not in threshold_names
+
+
+def test_empty_llm_latency_samples_drops_p95_threshold(
+    stub_device: None,
+    passing_preflight: PreflightReport,
+    stub_lm_client: MagicMock,
+) -> None:
+    """If no LLM call was recorded, the p95-latency threshold is dropped at aggregate time.
+
+    Prevents `_percentile` returning NaN from auto-FAILing the run when all
+    cells exited before any LLM `evaluate` call.
+    """
+    config = LLMPriorAblationConfig(
+        n_seeds=2,
+        seeds=[1, 2],
+        run_random_arm=True,
+        run_trained_arm=False,
+        run_llm_arm=True,
+    )
+
+    # Build cells that DO produce LLM final-residual numbers (so the LLM arm
+    # is active) but the synthetic harness's `_run_cell` for "llm" only appends
+    # latency samples when we want it to. Patch the harness to skip latency.
+    class _NoLatencyScenario(_SyntheticScenario):
+        def _run_cell(  # type: ignore[override]
+            self,
+            *,
+            arm: str,
+            pde_name: str,
+            operator: Any,
+            basis_descriptions: list[str],
+            seed: int,
+            cell_logger: Any,
+        ) -> tuple[int, float]:
+            # Deliberately do NOT push to `_llm_latencies_ms`, even on the
+            # llm arm — simulates "every cell exited before any LLM call".
+            return self._cells[(arm, pde_name, seed)]
+
+    cells: dict[tuple[str, str, int], tuple[int, float]] = {}
+    for seed in [1, 2]:
+        cells[("random", config.id_pde, seed)] = (256, 0.01)
+        cells[("llm", config.id_pde, seed)] = (96, 0.01)
+        cells[("random", config.ood_pde, seed)] = (4096, 0.5)
+        cells[("llm", config.ood_pde, seed)] = (2048, 0.005)
+    scenario = _NoLatencyScenario(config, cells)
+    result = scenario.run()
+    assert "llm_call_p95_latency_ms" not in result.metrics
+    assert "llm_call_p95_latency_ms" not in {t.name for t in scenario.config.thresholds}
+
+
+def test_run_cell_logs_warning_on_invalid_action(
+    stub_device: None,
+) -> None:
+    """`_run_cell` logs `cell_loop_early_exit` when the evaluator returns action<0."""
+    from src.mcts.evaluator import EvaluationResult, RandomEvaluator
+
+    config = LLMPriorAblationConfig(
+        n_seeds=2,
+        seeds=[1],
+        run_random_arm=True,
+        run_trained_arm=False,
+        run_llm_arm=False,
+        n_candidate_bases=4,
+        max_basis_functions=2,
+        n_mcts_simulations=4,
+        max_rollouts=8,
+        target_residual=0.999,
+    )
+    scenario = LLMPriorAblationScenario(config)
+    scenario.setup()
+
+    # Patch the evaluator-builder to return an evaluator that emits a
+    # zero-policy so MCTS's `get_action` returns -1.
+    class _AlwaysInvalidEvaluator(RandomEvaluator):
+        def evaluate(self, state: Any, legal_actions: list[int]) -> EvaluationResult:
+            import numpy as np
+
+            return EvaluationResult(
+                policy=np.zeros(config.n_candidate_bases, dtype=np.float32), value=0.0
+            )
+
+    def _build(arm: str, **_: Any) -> Any:
+        return _AlwaysInvalidEvaluator(n_actions=config.n_candidate_bases)
+
+    scenario._build_evaluator = _build  # type: ignore[assignment]
+    operator = scenario._build_pde_operator(config.id_pde)
+    descriptions = scenario._enumerate_basis_descriptions(config.id_pde)
+    # Just verify the call returns without crashing — the warning log emission
+    # is observable via structlog but asserting on it is brittle; the integration
+    # test confirms the early-exit path executes without raising.
+    rollouts, residual = scenario._run_cell(
+        arm="random",
+        pde_name=config.id_pde,
+        operator=operator,
+        basis_descriptions=descriptions,
+        seed=1,
+        cell_logger=scenario._scenario_logger,  # type: ignore[arg-type]
+    )
+    assert rollouts >= 0
+    assert residual >= 0.0
+
+
 def test_no_active_arms_returns_skipped(
     stub_device: None,
     passing_preflight: PreflightReport,

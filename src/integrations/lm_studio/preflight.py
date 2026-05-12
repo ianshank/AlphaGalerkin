@@ -18,12 +18,14 @@ also be called directly from a scenario's ``setup()`` for explicit gating.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.integrations.lm_studio.config import LMStudioConfig
+from src.integrations.lm_studio.schema import LMStudioConnectionError
 
 logger = structlog.get_logger(__name__)
 
@@ -76,15 +78,23 @@ class PreflightReport(BaseModel):
 def _list_models(sdk_client: Any) -> list[str]:
     """Return model ids reported by the SDK's ``models.list`` call.
 
-    Raises ``RuntimeError`` on transport failure so the caller can record
-    it in the report.
+    Coerces every failure mode — transport exceptions raised by the SDK
+    *and* malformed response shapes — into ``LMStudioConnectionError`` so
+    the caller catches a single typed exception.
     """
-    response = sdk_client.models.list()
+    try:
+        response = sdk_client.models.list()
+    except LMStudioConnectionError:
+        raise
+    except Exception as exc:
+        raise LMStudioConnectionError(f"models.list raised {type(exc).__name__}: {exc}") from exc
     data = getattr(response, "data", None)
     if data is None and isinstance(response, list):
         data = response
     if data is None:
-        raise RuntimeError("models.list response has no .data attribute and is not a list")
+        raise LMStudioConnectionError(
+            "models.list response has no .data attribute and is not a list"
+        )
     ids: list[str] = []
     for entry in data:
         entry_id = getattr(entry, "id", None)
@@ -148,7 +158,8 @@ def check_lm_studio_server(
         code may choose to skip the LLM arm and continue).
 
     """
-    if sdk_client is None:
+    owns_client = sdk_client is None
+    if owns_client:
         # Lazy import keeps the base install (no ``openai`` installed)
         # from breaking when this module is imported transitively.
         try:
@@ -168,44 +179,82 @@ def check_lm_studio_server(
             timeout=config.timeout_ms / 1000.0,
         )
 
-    available_models: list[str] = []
-    server_reachable = False
-    model_available = False
-    failure_reasons: list[str] = []
-
     try:
-        available_models = _list_models(sdk_client)
-        server_reachable = True
-    except Exception as exc:
-        failure_reasons.append(f"server unreachable at {config.base_url}: {exc}")
+        available_models: list[str] = []
+        server_reachable = False
+        model_available = False
+        failure_reasons: list[str] = []
 
-    if server_reachable:
-        model_available = config.model in available_models
-        if not model_available:
-            failure_reasons.append(
-                f"model {config.model!r} not in /v1/models response (available: {available_models})"
+        try:
+            available_models = _list_models(sdk_client)
+            server_reachable = True
+            logger.debug(
+                "lm_studio_preflight_check",
+                check="server_reachable",
+                outcome=True,
+                model_count=len(available_models),
+            )
+        except LMStudioConnectionError as exc:
+            failure_reasons.append(f"server unreachable at {config.base_url}: {exc}")
+            logger.debug(
+                "lm_studio_preflight_check",
+                check="server_reachable",
+                outcome=False,
+                error=str(exc),
             )
 
-    free_vram_gib, vram_sufficient = _check_vram(config.min_free_vram_gib)
-    if not vram_sufficient and free_vram_gib is not None:
-        failure_reasons.append(
-            f"free VRAM {free_vram_gib:.2f} GiB < required {config.min_free_vram_gib} GiB"
-        )
+        if server_reachable:
+            model_available = config.model in available_models
+            logger.debug(
+                "lm_studio_preflight_check",
+                check="model_available",
+                outcome=model_available,
+                requested_model=config.model,
+            )
+            if not model_available:
+                failure_reasons.append(
+                    f"model {config.model!r} not in /v1/models response "
+                    f"(available: {available_models})"
+                )
 
-    report = PreflightReport(
-        server_reachable=server_reachable,
-        model_available=model_available,
-        available_models=available_models,
-        free_vram_gib=free_vram_gib,
-        vram_sufficient=vram_sufficient,
-        failure_reason="; ".join(failure_reasons),
-    )
-    logger.info(
-        "lm_studio_preflight",
-        passed=report.passed,
-        server_reachable=server_reachable,
-        model_available=model_available,
-        free_vram_gib=free_vram_gib,
-        vram_sufficient=vram_sufficient,
-    )
-    return report
+        free_vram_gib, vram_sufficient = _check_vram(config.min_free_vram_gib)
+        logger.debug(
+            "lm_studio_preflight_check",
+            check="vram_sufficient",
+            outcome=vram_sufficient,
+            free_vram_gib=free_vram_gib,
+            min_free_vram_gib=config.min_free_vram_gib,
+        )
+        if not vram_sufficient and free_vram_gib is not None:
+            failure_reasons.append(
+                f"free VRAM {free_vram_gib:.2f} GiB < required {config.min_free_vram_gib} GiB"
+            )
+
+        report = PreflightReport(
+            server_reachable=server_reachable,
+            model_available=model_available,
+            available_models=available_models,
+            free_vram_gib=free_vram_gib,
+            vram_sufficient=vram_sufficient,
+            failure_reason="; ".join(failure_reasons),
+        )
+        logger.info(
+            "lm_studio_preflight",
+            passed=report.passed,
+            server_reachable=server_reachable,
+            model_available=model_available,
+            free_vram_gib=free_vram_gib,
+            vram_sufficient=vram_sufficient,
+        )
+        return report
+    finally:
+        if owns_client:
+            # Close the one-shot SDK client this function constructed so
+            # repeated preflight calls don't leak HTTP connections. An
+            # externally-supplied client is left untouched.
+            close = getattr(sdk_client, "close", None)
+            if callable(close):
+                # Best-effort cleanup; the report has already been built so
+                # a teardown failure here must not mask the real outcome.
+                with contextlib.suppress(Exception):  # pragma: no cover
+                    close()

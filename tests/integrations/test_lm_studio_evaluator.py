@@ -136,6 +136,37 @@ def test_latencies_recorded(fake_openai: FakeOpenAIModule) -> None:
     assert evaluator.latencies_ms == []
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"action_space_size": 0}, "action_space_size must be > 0"),
+        ({"basis_descriptions": ["only_one"]}, "basis_descriptions length"),
+        ({"temperature": 0.0}, "temperature must be > 0"),
+    ],
+)
+def test_evaluator_constructor_validators(
+    fake_openai: FakeOpenAIModule, kwargs: dict[str, Any], match: str
+) -> None:
+    """Cover the three constructor guards at evaluator.py:88-97."""
+    client = _build_client(fake_openai)
+    base: dict[str, Any] = {
+        "action_space_size": 4,
+        "pde_family": "poisson",
+        "basis_descriptions": [f"b_{i}" for i in range(4)],
+        "seed": 1,
+    }
+    base.update(kwargs)
+    with pytest.raises(ValueError, match=match):
+        LMStudioEvaluator(client, **base)
+
+
+def test_evaluate_batch_length_mismatch_raises(fake_openai: FakeOpenAIModule) -> None:
+    """`evaluate_batch` rejects mis-aligned state / legal-actions lists."""
+    evaluator = _build_evaluator(_build_client(fake_openai), n_actions=4)
+    with pytest.raises(ValueError, match="legal_actions_batch length"):
+        evaluator.evaluate_batch([_state()], [[0, 1], [2, 3]])
+
+
 def test_raises_when_fallback_disabled(fake_openai: FakeOpenAIModule) -> None:
     client = _build_client(fake_openai, fallback_to_uniform_on_parse_error=False)
     fake_openai.last_client.chat.completions.responses = [

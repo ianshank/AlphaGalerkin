@@ -83,6 +83,42 @@ def test_basis_descriptions_appear_in_prompt() -> None:
     assert "rbf(c=0.50,0.50)" in prompt
 
 
+@pytest.mark.parametrize(
+    "shape",
+    [(2, 4, 4), (4, 4), (1,)],
+)
+def test_summarise_residual_handles_low_dim_state(shape: tuple[int, ...]) -> None:
+    """Low-channel / low-rank state must not crash the prompt builder.
+
+    Covers prompt.py:37 and prompt.py:56 — the early-return guards in
+    `_summarise_residual_channel` and `_selected_basis_indices`.
+    """
+    state = np.zeros(shape, dtype=np.float32)
+    prompt = build_policy_prompt(
+        state,
+        legal_actions=[0],
+        action_space_size=1,
+        pde_family="poisson",
+        basis_descriptions=["b_0"],
+    )
+    assert '"residual_stats"' in prompt
+    assert '"already_selected":[]' in prompt
+
+
+def test_selected_basis_indices_picks_up_full_channels() -> None:
+    """Mean-channel value above the threshold counts as a 'selected' basis."""
+    state = np.zeros((5, 4, 4), dtype=np.float32)
+    state[3].fill(1.0)  # basis 0 fully selected
+    prompt = build_policy_prompt(
+        state,
+        legal_actions=[1],
+        action_space_size=2,
+        pde_family="poisson",
+        basis_descriptions=["b_0", "b_1"],
+    )
+    assert '"already_selected":[0]' in prompt
+
+
 def test_mismatched_basis_descriptions_raises() -> None:
     state = _state()
     with pytest.raises(ValueError):

@@ -28,6 +28,7 @@ The scenario is **GPU-only**. ``setup()`` calls
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -37,6 +38,7 @@ from scipy import stats
 from src.integrations.lm_studio.client import LMStudioClient
 from src.integrations.lm_studio.evaluator import LMStudioEvaluator
 from src.integrations.lm_studio.preflight import check_lm_studio_server
+from src.integrations.lm_studio.schema import LMStudioError
 from src.mcts.evaluator import RandomEvaluator
 from src.mcts.search import MCTS
 from src.pde.config import (
@@ -61,8 +63,6 @@ from src.poc.scenarios.llm_prior_config import (
 )
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from src.mcts.evaluator import Evaluator
     from src.pde.operators import PDEOperator
 
@@ -141,6 +141,7 @@ class LLMPriorAblationScenario(BaseScenario):
         if not self.config.thresholds:
             self.config.thresholds = self.config.get_default_thresholds()
 
+        self._gate_random_arm()
         self._gate_llm_arm()
         self._gate_trained_arm()
 
@@ -234,10 +235,15 @@ class LLMPriorAblationScenario(BaseScenario):
             return
         try:
             report = check_lm_studio_server(self.config.lm_studio)
-        except Exception as exc:
+        except (LMStudioError, OSError, RuntimeError, ValueError, AttributeError) as exc:
+            # `check_lm_studio_server` is expected to be exception-safe and
+            # return a populated `PreflightReport`, but we narrow the catch
+            # so that unexpected non-error exceptions (KeyboardInterrupt,
+            # MemoryError, ...) are NOT silently demoted to a warning.
             self._scenario_logger.warning(
                 "llm_preflight_raised",
                 error=str(exc),
+                error_type=type(exc).__name__,
             )
             self._llm_arm_enabled = False
             self._drop_llm_thresholds()
@@ -258,10 +264,13 @@ class LLMPriorAblationScenario(BaseScenario):
                 client_config,
                 scenario_logger=self._scenario_logger,
             )
-        except Exception as exc:
+        except (LMStudioError, OSError, RuntimeError, ValueError, ImportError) as exc:
+            # Same narrowing rationale as the preflight call above: never
+            # demote a non-error exception to a soft-skip warning.
             self._scenario_logger.warning(
                 "llm_client_construction_failed",
                 error=str(exc),
+                error_type=type(exc).__name__,
             )
             self._llm_arm_enabled = False
             self._drop_llm_thresholds()
@@ -320,6 +329,29 @@ class LLMPriorAblationScenario(BaseScenario):
         trained_keys = {"ood_trained_residual"}
         self.config.thresholds = [t for t in self.config.thresholds if t.name not in trained_keys]
 
+    def _drop_random_dependent_thresholds(self) -> None:
+        """Drop thresholds that require the random arm as a baseline.
+
+        ``id_rollout_reduction_pct`` is computed as LLM-median rollouts
+        divided by random-median rollouts; without the random arm there
+        is no baseline and the metric cannot be recorded. Same SKIPPED-
+        vs-FAIL rationale as ``_drop_llm_thresholds``.
+        """
+        random_dependent_keys = {"id_rollout_reduction_pct"}
+        self.config.thresholds = [
+            t for t in self.config.thresholds if t.name not in random_dependent_keys
+        ]
+
+    def _gate_random_arm(self) -> None:
+        """Drop random-dependent thresholds when the random arm is disabled."""
+        assert self._scenario_logger is not None
+        if not self._random_arm_enabled:
+            self._scenario_logger.warning(
+                "random_arm_disabled",
+                reason="run_random_arm=False — id_rollout_reduction_pct threshold dropped",
+            )
+            self._drop_random_dependent_thresholds()
+
     # ------------------------------------------------------------------ #
     # Per-cell run                                                        #
     # ------------------------------------------------------------------ #
@@ -368,6 +400,13 @@ class LLMPriorAblationScenario(BaseScenario):
         ):
             action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
             if action < 0:
+                cell_logger.warning(
+                    "cell_loop_early_exit",
+                    reason="evaluator_returned_invalid_action",
+                    action=action,
+                    rollouts_used=rollouts_used,
+                    current_error=float(adapter.current_error),
+                )
                 break
             adapter.apply_action(action)
             rollouts_used += sims_per_step
@@ -530,15 +569,29 @@ class LLMPriorAblationScenario(BaseScenario):
             self.record_metric("ood_trained_residual", trained_med)
             self._scenario_logger.metric("ood_trained_residual", trained_med, pde=ood_pde)
 
-        # LLM latency p95
+        # LLM latency p95 — only record when we actually have samples.
+        # If every LLM cell exited before issuing a call (rare; only
+        # possible when the inner game terminates on the first action),
+        # `_percentile` returns NaN, which would auto-FAIL the threshold
+        # via `BaseScenario._evaluate_thresholds`. Drop the threshold
+        # in that case so the rest of the scenario can still pass.
         if self._llm_arm_enabled:
-            p95 = _percentile(self._llm_latencies_ms, _LATENCY_P95)
-            self.record_metric("llm_call_p95_latency_ms", p95)
-            self._scenario_logger.metric(
-                "llm_call_p95_latency_ms",
-                p95,
-                n_samples=len(self._llm_latencies_ms),
-            )
+            if not self._llm_latencies_ms:
+                self._scenario_logger.warning(
+                    "llm_call_p95_latency_ms_no_samples",
+                    reason="no LLM calls recorded; dropping the threshold to avoid spurious FAIL",
+                )
+                self.config.thresholds = [
+                    t for t in self.config.thresholds if t.name != "llm_call_p95_latency_ms"
+                ]
+            else:
+                p95 = _percentile(self._llm_latencies_ms, _LATENCY_P95)
+                self.record_metric("llm_call_p95_latency_ms", p95)
+                self._scenario_logger.metric(
+                    "llm_call_p95_latency_ms",
+                    p95,
+                    n_samples=len(self._llm_latencies_ms),
+                )
 
     def _record_id_metrics(
         self,
@@ -629,8 +682,6 @@ class LLMPriorAblationScenario(BaseScenario):
             sections=sections,
             config=vis_config,
         )
-        from pathlib import Path
-
         output_dir = Path("outputs/poc/llm_prior_ablation")
         output_dir.mkdir(parents=True, exist_ok=True)
         report_path = output_dir / f"report_{self.config.compute_hash()}.html"

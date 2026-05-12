@@ -22,6 +22,14 @@ PROMPT_HASH_LENGTH = 16
 RESIDUAL_PREVIEW_LENGTH = 8
 """How many residual-channel samples to include verbatim in the prompt."""
 
+_BASIS_INDICATOR_THRESHOLD = 0.5
+"""Mean-channel value above which a basis-indicator channel counts as 'selected'.
+
+The state tensor packs binary indicators per candidate basis, so a fully-selected
+indicator channel has mean 1.0 and an unselected channel has mean 0.0. The 0.5
+midpoint is a defensive threshold for clamped/normalised inputs.
+"""
+
 
 def _summarise_residual_channel(state: NDArray[np.float32]) -> dict[str, float]:
     """Extract compact residual statistics from a state tensor.
@@ -58,7 +66,7 @@ def _selected_basis_indices(state: NDArray[np.float32]) -> list[int]:
     indicators = state[3:]
     selected: list[int] = []
     for i, channel in enumerate(indicators):
-        if float(channel.mean()) > 0.5:
+        if float(channel.mean()) > _BASIS_INDICATOR_THRESHOLD:
             selected.append(i)
     return selected
 

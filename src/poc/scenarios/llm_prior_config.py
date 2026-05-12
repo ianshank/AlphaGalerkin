@@ -228,12 +228,16 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
         """Return the per-cell seed list (explicit or derived).
 
         Returns:
-            Either ``self.seeds`` (deduplicated, in order) or a list of
-            length ``self.n_seeds`` derived from ``self.seed``.
+            When ``self.seeds`` is set, the explicit list with duplicates
+            removed in first-seen order (so cell counts stay deterministic
+            and aligned with the user's intent). When ``self.seeds`` is
+            None, a list of length ``self.n_seeds`` derived from
+            ``self.seed`` via a prime stride.
 
         """
         if self.seeds is not None:
-            return list(self.seeds)
+            # dict.fromkeys preserves insertion order while deduplicating.
+            return list(dict.fromkeys(self.seeds))
         return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
 
     def get_default_thresholds(self) -> list[MetricThreshold]:

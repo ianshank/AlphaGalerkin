@@ -292,23 +292,53 @@ class LMStudioClient:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    # The openai SDK splits transport / HTTP errors into a hierarchy. We
+    # treat only the genuinely-transient ones as retryable. 4xx errors
+    # (auth, model-not-found, validation) and other non-rate-limit API
+    # errors surface immediately so the caller fails fast.
+    _RETRYABLE_SDK_ATTRS: tuple[str, ...] = (
+        "APIConnectionError",
+        "APITimeoutError",
+        "RateLimitError",
+        "InternalServerError",
+    )
+    _NON_RETRYABLE_SDK_ATTRS: tuple[str, ...] = (
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "BadRequestError",
+        "NotFoundError",
+        "ConflictError",
+        "UnprocessableEntityError",
+        "APIStatusError",
+        "APIError",
+    )
+
     def _coerce_transport_error(self, exc: BaseException) -> LMStudioError:
-        """Map SDK exceptions to typed ``LMStudioError`` subclasses."""
-        connection_type = getattr(self._openai, "APIConnectionError", None)
-        timeout_type = getattr(self._openai, "APITimeoutError", None)
-        if connection_type is not None and isinstance(exc, connection_type):
-            return LMStudioConnectionError(f"openai.APIConnectionError: {exc}")
-        if timeout_type is not None and isinstance(exc, timeout_type):
-            return LMStudioConnectionError(f"openai.APITimeoutError: {exc}")
+        """Map SDK exceptions to typed ``LMStudioError`` subclasses.
+
+        Retryable transport / 5xx / 429 errors → ``LMStudioConnectionError``.
+        Non-retryable auth / 4xx / validation errors → ``LMStudioError``
+        (parent type) which ``_retryable`` rejects, so the retry loop
+        exits on the first attempt.
+        """
+        for attr in self._RETRYABLE_SDK_ATTRS:
+            sdk_type = getattr(self._openai, attr, None)
+            if sdk_type is not None and isinstance(exc, sdk_type):
+                return LMStudioConnectionError(f"openai.{attr}: {exc}")
+        for attr in self._NON_RETRYABLE_SDK_ATTRS:
+            sdk_type = getattr(self._openai, attr, None)
+            if sdk_type is not None and isinstance(exc, sdk_type):
+                return LMStudioError(f"openai.{attr} (non-retryable): {exc}")
+        # Unknown exception class — be conservative and treat as transient
+        # so the existing retry budget at least gives the caller signal.
         return LMStudioConnectionError(f"{type(exc).__name__}: {exc}")
 
     def _retryable(self, exc: LMStudioError) -> bool:
-        """Connection/timeout errors are retryable; auth and 4xx are not.
+        """Only transient transport / 429 / 5xx errors are retried.
 
-        The coercer wraps both transient and permanent SDK errors in
-        ``LMStudioConnectionError``; for now we retry any connection error
-        and let ``max_retries`` cap the loop. Auth failures will exhaust
-        retries quickly because LM Studio surfaces them on every attempt.
+        Non-retryable SDK errors (auth, bad-request, model-not-found, ...)
+        are coerced to the parent ``LMStudioError`` type, so this check
+        rejects them on the first attempt.
         """
         return isinstance(exc, LMStudioConnectionError)
 

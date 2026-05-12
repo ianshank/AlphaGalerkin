@@ -64,6 +64,12 @@ def test_explicit_seeds_passed_through() -> None:
     assert config.resolved_seeds() == [1, 2, 3]
 
 
+def test_explicit_seeds_deduplicated_in_order() -> None:
+    """Per docstring: duplicates are removed in first-seen order."""
+    config = LLMPriorAblationConfig(seeds=[3, 1, 3, 2, 1])
+    assert config.resolved_seeds() == [3, 1, 2]
+
+
 def test_seeds_must_be_non_empty_when_provided() -> None:
     with pytest.raises(ValidationError):
         LLMPriorAblationConfig(seeds=[])

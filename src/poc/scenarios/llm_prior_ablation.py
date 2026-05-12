@@ -371,7 +371,11 @@ class LLMPriorAblationScenario(BaseScenario):
                 break
             adapter.apply_action(action)
             rollouts_used += sims_per_step
-            mcts = MCTS(evaluator=evaluator, n_simulations=sims_per_step)
+            # Reuse the subtree rooted at the chosen action so we don't
+            # discard search work between macro-steps. `_get_or_create_root`
+            # never resets on game-state divergence, so the explicit
+            # `advance` is what keeps the tree aligned with the adapter.
+            mcts.advance(action)
 
         final_residual = float(adapter.current_error)
         if arm == "llm" and isinstance(evaluator, LMStudioEvaluator):
@@ -651,8 +655,10 @@ class LLMPriorAblationScenario(BaseScenario):
             return None
         fig = figure_cls(figsize=(6.0, 4.0))
         ax = fig.add_subplot(111)
-        # matplotlib 3.9 renamed `labels` -> `tick_labels`; pass the new name.
-        ax.boxplot(data, tick_labels=labels)
+        # Keep `labels=` (not `tick_labels=`) for compatibility with the
+        # project's matplotlib>=3.7 lower bound; `tick_labels` only landed
+        # in matplotlib 3.9. The 3.9+ deprecation warning is acceptable.
+        ax.boxplot(data, labels=labels)
         ax.set_ylabel("Rollouts to target residual")
         ax.set_title(f"Rollouts to target on ID PDE ({id_pde})")
         ax.grid(axis="y", linestyle="--", alpha=0.5)
@@ -677,8 +683,10 @@ class LLMPriorAblationScenario(BaseScenario):
             return None
         fig = figure_cls(figsize=(6.0, 4.0))
         ax = fig.add_subplot(111)
-        # matplotlib 3.9 renamed `labels` -> `tick_labels`; pass the new name.
-        ax.boxplot(data, tick_labels=labels)
+        # Keep `labels=` (not `tick_labels=`) for compatibility with the
+        # project's matplotlib>=3.7 lower bound; `tick_labels` only landed
+        # in matplotlib 3.9. The 3.9+ deprecation warning is acceptable.
+        ax.boxplot(data, labels=labels)
         ax.set_ylabel("Final residual")
         ax.set_yscale("log")
         ax.set_title(f"Final residual on OOD PDE ({ood_pde})")

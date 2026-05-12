@@ -107,7 +107,10 @@ picogk = [
 # scenario (Qwen-14B in LM Studio or any compatible server). The base
 # install never imports the SDK; the integration code under
 # `src/integrations/lm_studio/` imports it lazily so a missing extra
-# fails only when an LMStudioClient is actually constructed.
+# fails only when an LMStudioClient is actually constructed. The pin
+# tracks the openai-python releases that accept `seed` and
+# `response_format={"type": "json_object"}` simultaneously on
+# `chat.completions.create`.
 lm-studio = [
     "openai>=1.40,<2.0",
 ]

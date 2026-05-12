@@ -22,14 +22,6 @@ PROMPT_HASH_LENGTH = 16
 RESIDUAL_PREVIEW_LENGTH = 8
 """How many residual-channel samples to include verbatim in the prompt."""
 
-_BASIS_INDICATOR_THRESHOLD = 0.5
-"""Mean-channel value above which a basis-indicator channel counts as 'selected'.
-
-The state tensor packs binary indicators per candidate basis, so a fully-selected
-indicator channel has mean 1.0 and an unselected channel has mean 0.0. The 0.5
-midpoint is a defensive threshold for clamped/normalised inputs.
-"""
-
 
 def _summarise_residual_channel(state: NDArray[np.float32]) -> dict[str, float]:
     """Extract compact residual statistics from a state tensor.
@@ -52,23 +44,6 @@ def _summarise_residual_channel(state: NDArray[np.float32]) -> dict[str, float]:
         "abs_max": float(abs_residual.max()),
         "l2": float(np.sqrt(np.mean(residual**2))),
     }
-
-
-def _selected_basis_indices(state: NDArray[np.float32]) -> list[int]:
-    """Extract indices of already-selected bases from the state tensor.
-
-    ``BasisSelectionGame.to_tensor`` packs binary indicators in channels
-    ``[3, 3 + max_basis_functions)``. A channel of all-ones indicates the
-    basis at that offset has been selected.
-    """
-    if state.ndim < 3 or state.shape[0] <= 3:
-        return []
-    indicators = state[3:]
-    selected: list[int] = []
-    for i, channel in enumerate(indicators):
-        if float(channel.mean()) > _BASIS_INDICATOR_THRESHOLD:
-            selected.append(i)
-    return selected
 
 
 def build_policy_prompt(
@@ -101,15 +76,21 @@ def build_policy_prompt(
             f"({action_space_size})"
         )
     residual_stats = _summarise_residual_channel(state)
-    already_selected = _selected_basis_indices(state)
     legal_actions_sorted = sorted(set(legal_actions))
 
+    # NB: we intentionally do NOT emit an `already_selected` field.
+    # `BasisSelectionGame.to_tensor` packs channels 3..(3+max_basis) as
+    # *selection-order slots* (channel 3+i set for the i-th selected basis)
+    # rather than one-hot action indices, so a `state[3:]` walk would yield
+    # `[0..n_selected-1]` regardless of which actions were chosen — useless
+    # information that could mislead the LLM. The `legal_actions` list
+    # already excludes selected bases, so the LLM has the constraint it
+    # needs without the misleading slot field.
     payload: dict[str, Any] = {
         "task": "policy_prior_for_galerkin_basis_selection",
         "pde_family": pde_family,
         "action_space_size": action_space_size,
         "legal_actions": legal_actions_sorted,
-        "already_selected": already_selected,
         "residual_stats": residual_stats,
         "basis_library": [
             {"index": i, "description": basis_descriptions[i]} for i in range(action_space_size)

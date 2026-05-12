@@ -90,8 +90,7 @@ def test_basis_descriptions_appear_in_prompt() -> None:
 def test_summarise_residual_handles_low_dim_state(shape: tuple[int, ...]) -> None:
     """Low-channel / low-rank state must not crash the prompt builder.
 
-    Covers prompt.py:37 and prompt.py:56 — the early-return guards in
-    `_summarise_residual_channel` and `_selected_basis_indices`.
+    Covers the early-return guard inside ``_summarise_residual_channel``.
     """
     state = np.zeros(shape, dtype=np.float32)
     prompt = build_policy_prompt(
@@ -101,14 +100,22 @@ def test_summarise_residual_handles_low_dim_state(shape: tuple[int, ...]) -> Non
         pde_family="poisson",
         basis_descriptions=["b_0"],
     )
+    # Residual stats are always emitted; the early-return path supplies
+    # zeros rather than crashing on a malformed state.
     assert '"residual_stats"' in prompt
-    assert '"already_selected":[]' in prompt
 
 
-def test_selected_basis_indices_picks_up_full_channels() -> None:
-    """Mean-channel value above the threshold counts as a 'selected' basis."""
+def test_prompt_omits_already_selected_field() -> None:
+    """`already_selected` was removed: see prompt.py docstring for rationale.
+
+    ``BasisSelectionGame.to_tensor`` packs channels 3+ as selection-order
+    slots, not one-hot action indicators, so reading them produced
+    misleading "selected basis indices". The prompt now relies solely on
+    ``legal_actions`` (which already excludes selected bases) to communicate
+    the constraint to the LLM.
+    """
     state = np.zeros((5, 4, 4), dtype=np.float32)
-    state[3].fill(1.0)  # basis 0 fully selected
+    state[3].fill(1.0)  # the 1st selection-slot is "occupied" in the state
     prompt = build_policy_prompt(
         state,
         legal_actions=[1],
@@ -116,7 +123,9 @@ def test_selected_basis_indices_picks_up_full_channels() -> None:
         pde_family="poisson",
         basis_descriptions=["b_0", "b_1"],
     )
-    assert '"already_selected":[0]' in prompt
+    assert "already_selected" not in prompt
+    # Sanity: the legal_actions constraint is still present.
+    assert '"legal_actions":[1]' in prompt
 
 
 def test_mismatched_basis_descriptions_raises() -> None:

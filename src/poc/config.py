@@ -391,9 +391,14 @@ def load_config_from_dict(
         "stability": StabilityScenarioConfig,
     }
 
-    # Lazy import: pulling LLMPriorAblationConfig at module top would force
-    # `openai` to be importable on every config load. The integration is
-    # opt-in via the [lm-studio] extra, so we resolve it only on demand.
+    # Lazy import: `LLMPriorAblationConfig` itself is light (it only pulls
+    # in `LMStudioConfig`), but resolving it at module top would force the
+    # *scenario* module to load — and that pulls in `scipy.stats`, the
+    # MCTS engine, the PDE registry, and the LM Studio client. Loading
+    # that surface on every config-dispatch call is wasteful for runs
+    # that never touch the LLM-prior scenario, so we resolve it only on
+    # demand. The integration itself remains opt-in via the [lm-studio]
+    # extra.
     inferred_name = scenario_type or data.get("name", "")
     if inferred_name == "llm_prior_ablation":
         from src.poc.scenarios.llm_prior_config import (

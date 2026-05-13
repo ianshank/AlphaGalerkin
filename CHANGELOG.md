@@ -47,9 +47,8 @@ collapses — the headline differentiator for the SBIR narrative.
   implements `src/mcts/evaluator.py::Evaluator` structurally with
   illegal-action `-inf` masking + temperature softmax.
 - **`llm_prior_ablation` PoC scenario** — orchestrates the
-  (arm × pde × seed) grid with median + Mann-Whitney significance,
-  GPU profiling via the existing `GpuUtilizationProfiler`, and an HTML
-  report artifact built via the existing `HTMLReportGenerator`. Arm
+  (arm × pde × seed) grid with median + Mann-Whitney significance and
+  an HTML report artifact built via the existing `HTMLReportGenerator`. Arm
   gating is graceful: when LM Studio preflight fails or no trained
   checkpoint is configured, the affected arm is disabled *and* its
   acceptance thresholds are removed from `self.config.thresholds` so

@@ -31,7 +31,10 @@ def _summarise_residual_channel(state: NDArray[np.float32]) -> dict[str, float]:
         Dict of named scalars suitable for JSON serialisation.
 
     """
-    if state.ndim < 3 or state.shape[0] < 3:
+    # Residual lives at channel index 1 (per `BasisSelectionGame.to_tensor`);
+    # `>= 2` is sufficient. We don't reject `state.shape[0] >= 3` minimums
+    # because callers may pass a stripped state with only (solution, residual).
+    if state.ndim < 3 or state.shape[0] < 2:
         return {"mean": 0.0, "abs_mean": 0.0, "abs_max": 0.0, "l2": 0.0}
     residual = state[1].astype(np.float64, copy=False)
     abs_residual = np.abs(residual)

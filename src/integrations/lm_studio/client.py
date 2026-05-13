@@ -69,11 +69,15 @@ class LMStudioClient:
         - JSON-parse failures (``LMStudioParseError``)
         - Action-space-size mismatches (``LMStudioActionSpaceMismatchError``;
           retry carries a corrective user-turn message)
-        - Transient SDK errors (``openai.APIConnectionError``,
-          ``openai.APITimeoutError``)
+        - Transient SDK errors mapped to ``LMStudioConnectionError``:
+          ``openai.APIConnectionError``, ``openai.APITimeoutError``,
+          ``openai.RateLimitError``, ``openai.InternalServerError``.
 
-    Non-retryable errors (auth, model-not-found, malformed request) are
-    wrapped in ``LMStudioConnectionError`` and surfaced immediately.
+    Non-retryable SDK errors (auth, model-not-found, validation, bad
+    request, etc. — see ``_NON_RETRYABLE_SDK_ATTRS``) are coerced to the
+    plain ``LMStudioError`` parent class and surface immediately on the
+    first attempt because ``_retryable`` only returns True for
+    ``LMStudioConnectionError``.
 
     Structured log events:
         - ``lm_studio_call`` — once per ``complete_policy`` call with

@@ -187,12 +187,6 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
         description="Mann-Whitney significance threshold for ID rollout comparison.",
     )
 
-    # Profiling
-    enable_gpu_profiler: bool = Field(
-        default=True,
-        description="Wrap LLM-arm execution in GpuUtilizationProfiler when True.",
-    )
-
     requires_gpu: bool = Field(
         default=True,
         description="Resource hint — this scenario refuses to run without CUDA.",

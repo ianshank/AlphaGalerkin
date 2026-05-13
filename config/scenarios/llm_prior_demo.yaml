@@ -56,8 +56,6 @@ scenarios:
     llm_call_p95_latency_ms_max: 3000.0
     significance_alpha: 0.05
 
-    enable_gpu_profiler: false
-
     # LM Studio sub-config
     lm_studio:
       enabled: true

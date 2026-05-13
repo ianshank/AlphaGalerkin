@@ -432,6 +432,56 @@ model_int8 = torch.quantization.quantize_dynamic(
 # Deploy on Raspberry Pi, Jetson, etc.
 ```
 
+### 9. LLM-Prior MCTS for Out-of-Distribution PDEs
+
+**Goal**: Guide MCTS basis selection with a *generalist* LLM (Qwen-14B
+served by LM Studio) so the search survives PDE families a
+domain-trained evaluator has never seen.
+
+**Why this is interesting**: the project's existing `FNetEvaluator`
+gives strong policy priors *inside* the training distribution and
+collapses outside it. A generalist LLM with no PDE-specific training
+won't beat the trained evaluator on Poisson, but it remains useful on
+Burgers / biharmonic / Helmholtz where the trained head is silent. The
+ablation scenario benchmarks all three arms (random / trained / LLM) on
+both ID and OOD PDEs and reports the rollout-budget reduction and the
+median final residual.
+
+```bash
+# 1. Install LM Studio and start the local server
+#    (https://lmstudio.ai → load qwen2.5-14b-instruct → Local Server tab)
+# 2. Install the optional [lm-studio] extra
+pip install -e '.[lm-studio]'
+
+# 3. Run the ablation (GPU-only — fails loud if CUDA is unavailable)
+python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml
+```
+
+The scenario is **GPU-only by policy**: `setup()` calls
+`src.poc.device.resolve_device(config.device, context=...)` which raises
+`RuntimeError` when CUDA is unavailable. Arm gating is graceful — when
+LM Studio preflight fails (server unreachable, model not loaded,
+insufficient VRAM) the LLM arm is dropped *with its acceptance
+thresholds removed* so the rest of the scenario can still pass. Same
+behaviour symmetrically when the trained-arm checkpoint is missing or
+when zero LLM-call latency samples are recorded.
+
+**Headline acceptance metrics** (Pydantic-thresholded, all configurable):
+
+| Metric | Threshold | Statistic |
+|---|---|---|
+| `id_rollout_reduction_pct` | ≥ 25% | Mann-Whitney U on per-seed rollouts (random vs LLM) |
+| `ood_llm_residual` | ≤ 1e-2 | Median final residual on the OOD PDE |
+| `ood_trained_residual` | > 1e-1 | Trained evaluator's *expected failure* threshold |
+| `llm_call_p95_latency_ms` | ≤ 3000 | 95th percentile of per-call wall-clock |
+
+CPU CI runs the mocked tests only (`tests/integrations/`,
+`tests/poc/test_llm_prior_ablation_*.py`). The GPU rig captures the
+headline numbers via `pytest -m gpu_required` against a live LM Studio
+endpoint with `LM_STUDIO_URL` set. See
+[CLAUDE.md → Regression Surface](CLAUDE.md#regression-surface) for the
+exact gates.
+
 ---
 
 ## API Reference

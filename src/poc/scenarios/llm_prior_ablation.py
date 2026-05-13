@@ -77,9 +77,6 @@ _PDE_TYPE_MAP: dict[str, PDEType] = {
 }
 """Mapping from PDE registry name to PDEType enum value."""
 
-_NON_CONVERGED_RESIDUAL = float("nan")
-"""Placeholder for cells where MCTS failed to even start (e.g. terminal game)."""
-
 _LATENCY_P95 = 95.0
 """Percentile used for the headline latency threshold."""
 
@@ -178,7 +175,7 @@ class LLMPriorAblationScenario(BaseScenario):
 
         for pde_name in (self.config.id_pde, self.config.ood_pde):
             operator = self._build_pde_operator(pde_name)
-            basis_descriptions = self._enumerate_basis_descriptions(pde_name)
+            basis_descriptions = self._enumerate_basis_descriptions(pde_name, operator)
             for arm in active_arms:
                 cell_rollouts: list[int] = []
                 cell_residuals: list[float] = []
@@ -456,13 +453,14 @@ class LLMPriorAblationScenario(BaseScenario):
         )
         return BasisSelectionGame(operator, game_config)
 
-    def _enumerate_basis_descriptions(self, pde_name: str) -> list[str]:
+    def _enumerate_basis_descriptions(self, pde_name: str, operator: PDEOperator) -> list[str]:
         """Build a one-shot game just to read its basis library descriptions.
 
-        The library is deterministic given config, so this is cheap and
-        avoids leaking the inner game past the scenario boundary.
+        Reuses the operator the caller already built — re-running
+        ``_build_pde_operator`` here would double the up-front cost of
+        operators with non-trivial constructors (collocation-point
+        generation, exact-solution precompute) for nothing.
         """
-        operator = self._build_pde_operator(pde_name)
         game = self._build_game(pde_name, operator)
         return [game.action_to_string(i) for i in range(game.action_space_size)]
 

@@ -140,7 +140,9 @@ def test_action_size_mismatch_exhausts_then_raises(
 
 
 def test_enabled_false_refuses_construction(fake_openai: FakeOpenAIModule) -> None:
-    with pytest.raises(Exception):  # noqa: PT011 - typed LMStudioError covered elsewhere
+    from src.integrations.lm_studio.schema import LMStudioError
+
+    with pytest.raises(LMStudioError, match="enabled=False"):
         LMStudioClient(_config(enabled=False))
 
 
@@ -227,10 +229,15 @@ def test_action_size_mismatch_corrective_messages_have_three_entries(
 
 
 def test_openai_sdk_signature_compat_sentinel() -> None:
-    """If openai is installed, both `seed` and `response_format` must be accepted.
+    """If openai is installed, the SDK surface our client depends on must hold.
+
+    Specifically:
+      - ``openai.OpenAI(base_url=..., api_key=...)`` must remain constructable.
+      - ``chat.completions.create`` must accept both ``seed=`` and
+        ``response_format=`` simultaneously (we pass both on every call).
 
     Falls through silently if the openai SDK is absent (CPU CI without the
-    `[lm-studio]` extra installed); the sentinel is a guard against
+    ``[lm-studio]`` extra installed); the sentinel is a guard against
     incompatible upgrades, not a hard import.
     """
     try:
@@ -239,6 +246,18 @@ def test_openai_sdk_signature_compat_sentinel() -> None:
         pytest.skip("openai SDK not installed; signature sentinel skipped")
     from openai import OpenAI
 
-    sig = inspect.signature(OpenAI.__init__)
-    assert "base_url" in sig.parameters
-    assert "api_key" in sig.parameters
+    # Constructor surface
+    constructor_sig = inspect.signature(OpenAI.__init__)
+    assert "base_url" in constructor_sig.parameters
+    assert "api_key" in constructor_sig.parameters
+
+    # Completions surface — `seed` and `response_format` are the two kwargs
+    # we pass on every call. If either disappears, retries and JSON-mode
+    # both break and this sentinel surfaces the breakage at test time.
+    # `OpenAI.chat` is a cached_property so we need an instance; the SDK
+    # defers API-key validation until the first request, so a dummy key
+    # and URL are fine for inspecting the bound method's signature.
+    sdk_client = OpenAI(api_key="sentinel", base_url="http://127.0.0.1:0/v1")
+    completions_sig = inspect.signature(sdk_client.chat.completions.create)
+    assert "seed" in completions_sig.parameters
+    assert "response_format" in completions_sig.parameters

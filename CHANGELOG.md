@@ -86,9 +86,10 @@ collapses — the headline differentiator for the SBIR narrative.
   91% (line+branch combined: `client.py` 91%, `evaluator.py` 95%,
   `preflight.py` 97%, `prompt.py` 100%, `config.py`/`schema.py`/
   `__init__.py` 100%), `llm_prior_ablation.py` 86%,
-  `llm_prior_config.py` 100%. 96 new tests; full project regression
-  6504 passed / 0 failed; `ruff` + `ruff format` clean;
-  `mypy --strict` zero new errors on the changed surface.
+  `llm_prior_config.py` 100%. 96 new tests across CPU-mocked + GPU
+  smoke (93 CPU-safe + 3 `@pytest.mark.gpu_required`); full project
+  regression green; `ruff` + `ruff format` clean; `mypy --strict`
+  zero new errors on the changed surface.
 
 ### Added — SBIR P40 Benchmark Hardening (`src/research/`, `scripts/run_sbir_p40.py`, `config/benchmarks/sbir_p40.yaml`)
 

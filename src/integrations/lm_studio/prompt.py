@@ -19,9 +19,6 @@ from numpy.typing import NDArray
 PROMPT_HASH_LENGTH = 16
 """Number of hex characters retained from sha256 for the prompt hash."""
 
-RESIDUAL_PREVIEW_LENGTH = 8
-"""How many residual-channel samples to include verbatim in the prompt."""
-
 
 def _summarise_residual_channel(state: NDArray[np.float32]) -> dict[str, float]:
     """Extract compact residual statistics from a state tensor.

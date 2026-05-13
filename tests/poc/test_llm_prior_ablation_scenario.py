@@ -139,7 +139,11 @@ class _SyntheticScenario(LLMPriorAblationScenario):
     def _build_pde_operator(self, pde_name: str) -> Any:  # type: ignore[override]
         return MagicMock(spec_set=["__class__"])
 
-    def _enumerate_basis_descriptions(self, pde_name: str) -> list[str]:  # type: ignore[override]
+    def _enumerate_basis_descriptions(  # type: ignore[override]
+        self,
+        pde_name: str,
+        operator: Any,
+    ) -> list[str]:
         return [f"basis_{i}" for i in range(self.config.n_candidate_bases)]
 
 
@@ -312,7 +316,8 @@ def test_enumerate_basis_descriptions_has_expected_length(stub_device: None) -> 
         max_basis_functions=4,
     )
     scenario = LLMPriorAblationScenario(config)
-    descriptions = scenario._enumerate_basis_descriptions("poisson")
+    operator = scenario._build_pde_operator("poisson")
+    descriptions = scenario._enumerate_basis_descriptions("poisson", operator)
     assert len(descriptions) > 0
     assert all(isinstance(d, str) for d in descriptions)
 
@@ -350,7 +355,7 @@ def test_run_cell_with_random_evaluator_completes(stub_device: None) -> None:
     scenario = LLMPriorAblationScenario(config)
     scenario.setup()
     operator = scenario._build_pde_operator(config.id_pde)
-    descriptions = scenario._enumerate_basis_descriptions(config.id_pde)
+    descriptions = scenario._enumerate_basis_descriptions(config.id_pde, operator)
     rollouts, residual = scenario._run_cell(
         arm="random",
         pde_name=config.id_pde,
@@ -644,7 +649,7 @@ def test_run_cell_logs_warning_on_invalid_action(
 
     scenario._build_evaluator = _build  # type: ignore[assignment]
     operator = scenario._build_pde_operator(config.id_pde)
-    descriptions = scenario._enumerate_basis_descriptions(config.id_pde)
+    descriptions = scenario._enumerate_basis_descriptions(config.id_pde, operator)
     # Just verify the call returns without crashing — the warning log emission
     # is observable via structlog but asserting on it is brittle; the integration
     # test confirms the early-exit path executes without raising.

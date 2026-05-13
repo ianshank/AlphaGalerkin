@@ -1,0 +1,75 @@
+# LLM-Prior MCTS Basis-Selection Ablation — demo configuration.
+#
+# Compares three MCTS evaluators (random / trained / LM-Studio Qwen) on
+# Poisson (ID) and Burgers (OOD). GPU-only — `device: cuda` fails loud
+# when CUDA is unavailable. The trained arm auto-skips when no checkpoint
+# is configured; the LLM arm auto-skips when the LM Studio server fails
+# preflight.
+#
+# Run with:
+#   python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml
+#
+# Requires LM Studio (or any OpenAI-compatible server) running locally
+# serving the model named in lm_studio.model below. Install the extra
+# first:
+#   pip install -e '.[lm-studio]'
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800  # 30 minute upper bound for the whole scenario
+
+scenarios:
+  - name: llm_prior_ablation
+    description: "Random vs trained vs LM-Studio-Qwen MCTS basis selection on Poisson (ID) and Burgers (OOD)."
+    tier: integration
+    enabled: true
+
+    # PDE coverage
+    id_pde: poisson
+    ood_pde: burgers
+
+    # MCTS budget — tuned for a sub-15-minute total wall-clock on a single
+    # GPU with the LM Studio server warm.
+    n_mcts_simulations: 16
+    n_seeds: 5
+    target_residual: 0.05
+    max_rollouts: 512
+
+    # Arm selection — flip run_trained_arm to true and provide
+    # trained_checkpoint_path to compare against an FNetEvaluator.
+    run_random_arm: true
+    run_trained_arm: false
+    run_llm_arm: true
+    trained_checkpoint_path: null
+
+    # Device — GPU-only by project policy.
+    device: cuda
+
+    # Basis-selection game knobs
+    max_basis_functions: 8
+    n_candidate_bases: 16
+
+    # Acceptance thresholds (recalibrated p95 latency; see plan Risk #2)
+    id_rollout_reduction_pct_min: 25.0
+    ood_llm_residual_max: 0.01
+    ood_trained_residual_min: 0.1
+    llm_call_p95_latency_ms_max: 3000.0
+    significance_alpha: 0.05
+
+    # LM Studio sub-config
+    lm_studio:
+      enabled: true
+      base_url: "http://127.0.0.1:1234/v1"
+      model: "qwen2.5-14b-instruct"
+      api_key: "lm-studio"
+      timeout_ms: 30000
+      max_retries: 3
+      backoff_base_s: 0.25
+      temperature: 0.2
+      max_tokens: 256
+      fallback_to_uniform_on_parse_error: false
+      min_free_vram_gib: 10.0
+      preflight_on_construct: true
+
+    requires_gpu: true
+    estimated_duration_seconds: 900

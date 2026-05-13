@@ -99,12 +99,15 @@ C4Container
 
         Container(decoder_runtime, "Decoder Runtime Backends (Phase 1)", "Python/PyTorch", "Protocol-based decoder runtime dispatch layer: pytorch-eager (baseline), pytorch-compiled (torch.compile with inductor), onnx-cuda (ONNX Runtime + CUDAExecutionProvider), tensorrt (torch_tensorrt Dynamo IR). Registry-based discovery via @register_runtime decorator. FP32/FP16/BF16 precision dispatch. CompiledArtifactMetadata provenance tracking.")
 
+        Container(lm_studio_evaluator, "LM Studio Evaluator (LLM Prior)", "Python/openai-SDK", "Optional MCTS evaluator backed by an OpenAI-compatible local LLM (Qwen-14B in LM Studio by default). Implements src/mcts/evaluator.py::Evaluator structurally with illegal-action masking + temperature softmax. Bounded exponential-backoff retries split SDK errors into retryable (APIConnectionError / APITimeoutError / RateLimitError / InternalServerError) and non-retryable (Authentication / BadRequest / NotFound / etc.). Preflight checks server reachable + model in /v1/models + free-VRAM floor before accepting traffic. Gated behind the [lm-studio] optional extra; SDK imported lazily so the base install is unaffected.")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
 
     System_Ext(go_gui, "Go GUI", "GTP Client")
     System_Ext(compute, "GPU Cluster", "CUDA Infrastructure")
+    System_Ext(lm_studio_server, "LM Studio Server", "OpenAI-compatible local LLM server (Qwen-14B). Runs on the same host or a CUDA-attached host; reachable on http://127.0.0.1:1234/v1 by default.")
 
     Rel(user, cli, "Runs commands", "CLI")
     Rel(go_gui, gtp_server, "Sends GTP commands", "GTP/TCP")
@@ -143,6 +146,11 @@ C4Container
     Rel(decoder_runtime, compute, "CUDA/TensorRT execution")
     Rel(codec_perf, compute, "Per-profile cuda:N pinning")
     Rel(codec_perf, results_store, "Records baselines + run reports")
+
+    Rel(poc_framework, lm_studio_evaluator, "Selects LLM arm in llm_prior_ablation scenario")
+    Rel(lm_studio_evaluator, mcts_engine, "Implements MCTS Evaluator protocol")
+    Rel(lm_studio_evaluator, lm_studio_server, "JSON-mode chat.completions over HTTP", "OpenAI SDK")
+    Rel(lm_studio_evaluator, compute, "Preflight VRAM probe via torch.cuda.mem_get_info")
 
     UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 ```

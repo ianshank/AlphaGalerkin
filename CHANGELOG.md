@@ -7,6 +7,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — LLM-Prior MCTS Basis Selection (`src/integrations/lm_studio/`, `src/poc/scenarios/llm_prior_ablation.py`, `src/poc/scenarios/llm_prior_config.py`, `config/scenarios/llm_prior_demo.yaml`)
+
+New PoC scenario `llm_prior_ablation` that benchmarks three MCTS evaluators
+on Poisson (in-distribution) and Burgers (out-of-distribution): the
+existing `RandomEvaluator`, the existing `FNetEvaluator` (trained), and a
+new `LMStudioEvaluator` backed by an OpenAI-compatible local LLM (Qwen-14B
+served via LM Studio by default). The demo proves that a generalist LLM
+with no PDE-specific training can guide MCTS competitively on familiar
+PDEs and survive zero-shot on PDE families where the trained evaluator
+collapses — the headline differentiator for the SBIR narrative.
+
+- **`src/integrations/` namespace** — first entry in a new
+  `src/integrations/` package for third-party-service adapters gated
+  behind optional extras. Each subpackage's SDK is imported lazily so the
+  base install never pulls it in. New `src/integrations/AGENT.md`
+  documents the integration conventions (lazy imports, typed exception
+  hierarchy, structured logging, preflight on construct).
+- **`src/integrations/lm_studio/` subpackage** — six modules.
+  `LMStudioConfig` (Pydantic; every knob — base_url, model, timeout_ms,
+  max_retries, backoff_base_s, temperature, max_tokens,
+  fallback_to_uniform_on_parse_error, min_free_vram_gib,
+  preflight_on_construct, enabled — surfaced as a typed field).
+  `LMStudioPolicyResponse` + typed exception hierarchy (`LMStudioError`
+  → `LMStudioParseError` / `LMStudioActionSpaceMismatchError` /
+  `LMStudioConnectionError` / `LMStudioPreflightError`).
+  Deterministic prompt builder + sha256-truncated `prompt_hash`.
+  Synchronous `LMStudioClient` (openai-SDK wrapper using
+  `response_format={"type":"json_object"}` and `seed=...`, bounded
+  exponential-backoff retries with corrective user-turn on action-size
+  mismatch). The retry classifier splits SDK exceptions into retryable
+  (APIConnectionError / APITimeoutError / RateLimitError /
+  InternalServerError) and non-retryable (Authentication / BadRequest /
+  NotFound / etc.) so auth and validation errors fail fast instead of
+  consuming the retry budget. `check_lm_studio_server` preflight
+  (server reachable + model in `/v1/models` + free-VRAM floor via
+  `torch.cuda.mem_get_info`) closes its one-shot SDK client in a
+  `finally` block to avoid leaking HTTP connections. `LMStudioEvaluator`
+  implements `src/mcts/evaluator.py::Evaluator` structurally with
+  illegal-action `-inf` masking + temperature softmax.
+- **`llm_prior_ablation` PoC scenario** — orchestrates the
+  (arm × pde × seed) grid with median + Mann-Whitney significance and
+  an HTML report artifact built via the existing `HTMLReportGenerator`. Arm
+  gating is graceful: when LM Studio preflight fails or no trained
+  checkpoint is configured, the affected arm is disabled *and* its
+  acceptance thresholds are removed from `self.config.thresholds` so
+  absent metrics don't auto-FAIL the run. The same gating applies
+  symmetrically when the random arm is disabled (the
+  `id_rollout_reduction_pct` joint metric is dropped) and when zero
+  LLM-call latency samples are recorded (the `llm_call_p95_latency_ms`
+  threshold is dropped to avoid recording NaN).
+- **GPU-only by policy** — scenario `setup()` calls
+  `src.poc.device.resolve_device(config.device, context=...)` which
+  raises `RuntimeError` if CUDA is unavailable. No silent CPU fallback
+  anywhere on the new path. Per-seed reproducibility via
+  `np.random.seed`/`torch.manual_seed` before each `MCTS(...)`
+  construction (no `seed` kwarg on `MCTS.__init__`) plus
+  `LMStudioClient.complete_policy(seed=...)`.
+- **MCTS tree reuse** — `_run_cell` reuses the search tree across macro-
+  steps via `mcts.advance(action)` instead of re-instantiating MCTS
+  after every move; matches the AlphaZero convention. Early loop exit
+  on invalid evaluator output is logged via a `cell_loop_early_exit`
+  warning rather than breaking silently.
+- **Optional dependency `[lm-studio]`** — adds
+  `openai>=1.40,<2.0` as a new optional extra in `pyproject.toml`. The
+  SDK is imported lazily so the base install never pulls it in. CPU CI
+  mocks the SDK via `tests/integrations/conftest.py::FakeOpenAIModule`
+  so the optional dep is never required for green CI. GPU smoke tests
+  carry `@pytest.mark.gpu_required` and additionally gate on
+  `LM_STUDIO_URL`.
+- **Headline acceptance thresholds** — `id_rollout_reduction_pct ≥ 25%`
+  (Mann-Whitney p<0.05, 10 seeds), `ood_llm_residual ≤ 1e-2`,
+  `ood_trained_residual > 1e-1`, `llm_call_p95_latency_ms ≤ 3000`
+  (recalibrated from an initially-proposed 300 ms after Qwen-14B Q4
+  empirical latency review).
+- **Coverage** — per-module on the new surface: `lm_studio` package
+  91% (line+branch combined: `client.py` 91%, `evaluator.py` 95%,
+  `preflight.py` 97%, `prompt.py` 100%, `config.py`/`schema.py`/
+  `__init__.py` 100%), `llm_prior_ablation.py` 86%,
+  `llm_prior_config.py` 100%. 96 new tests across CPU-mocked + GPU
+  smoke (93 CPU-safe + 3 `@pytest.mark.gpu_required`); full project
+  regression green; `ruff` + `ruff format` clean; `mypy --strict`
+  zero new errors on the changed surface.
+
 ### Added — SBIR P40 Benchmark Hardening (`src/research/`, `scripts/run_sbir_p40.py`, `config/benchmarks/sbir_p40.yaml`)
 
 Closes the gaps surfaced by the post-run SBIR P40 benchmark report

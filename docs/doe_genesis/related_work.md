@@ -76,6 +76,65 @@ supervised solution prediction. FNO could serve as a fast coarse
 predictor inside an AlphaGalerkin rollout (equivalent to a neural
 preconditioner), but this is not our baseline.
 
+### 2.1 FNO Variants: Practical Recommendations (2026 Perspective)
+
+The single 2020 spectral-convolution idea has since fanned out into a
+family of variants. For practitioners choosing a baseline:
+
+- **Start simple.** Use F-FNO or AM-FNO (via the NeuralOperator library
+  or PhysicsNeMo) for quick baselines on uniform-grid problems.
+- **Need irregular geometry?** → Geo-FNO.
+- **High frequencies or turbulence?** → U-FNO, group-equivariant FNO
+  (GFNO) where symmetries can be exploited, or a Galerkin-hybrid
+  approach.
+- **Limited data or inverse problems?** → PINO (or add a physics
+  residual loss to any variant).
+- **Extreme resolution scaling or curriculum transfer?** → This is
+  where our proposed AlphaGalerkin architecture is aimed. It combines a
+  Galerkin-style attention operator, adaptive spectral mode selection
+  (learned truncation of the active mode set per scale), and a
+  curriculum that escalates resolution and PDE difficulty during
+  training. We hypothesize it will improve zero-shot transfer to higher
+  resolutions and stiffer regimes; this remains to be validated against
+  the baselines below.
+
+### 2.2 How We Intend to Evaluate AlphaGalerkin
+
+The established variants above are recommended on the strength of
+published results. AlphaGalerkin is our contribution and is stated as a
+set of testable claims rather than a settled ranking:
+
+- **Resolution generalization.** Train at low/medium resolution,
+  evaluate zero-shot at 2–8× higher, and measure relative $L^2$ error
+  vs. F-FNO, a multigrid-augmented operator, and a PDE foundation model
+  (e.g., Poseidon/MPP/DPOT) on the same splits.
+- **Curriculum benefit.** Ablate the curriculum (on vs. off, same
+  compute budget) to isolate its contribution rather than attributing
+  gains to the architecture as a whole.
+- **Accuracy/compute trade-off.** Report error at matched inference
+  FLOPs and wall-clock, since spectral adaptivity changes cost.
+- **Benchmarks.** Standard PDE suites (Navier–Stokes, Darcy,
+  diffusion–reaction) plus at least one stiff or multi-scale problem
+  where curriculum transfer should matter most.
+
+The claim of superiority holds only where these comparisons bear it
+out; until then AlphaGalerkin is positioned as a promising synthesis,
+not the strongest available method.
+
+### 2.3 FNO Family: Future Directions (active research areas as of 2026)
+
+- Foundation-model-style pretraining across many PDE families.
+- Hybrid neural + classical-solver correctors.
+- Uncertainty quantification via spectral-energy diagnostics or
+  ensemble FNOs.
+- Extension to space-time operators and stochastic PDEs.
+
+The FNO family has matured from a single elegant idea in 2020 into a
+diverse, production-ready toolkit. AlphaGalerkin attempts to synthesize
+ideas from Fourier, Galerkin, and multi-scale operator learning;
+whether that synthesis outperforms strong baselines is an empirical
+question we aim to answer with the evaluations above.
+
 ---
 
 ## 3. DeepONet

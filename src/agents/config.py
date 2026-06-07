@@ -17,13 +17,32 @@ Example:
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from typing_extensions import Self
 
+from src.integrations.lm_studio.config import LMStudioConfig
 from src.pde.config import PDEConfig
 from src.templates.config import BaseModuleConfig
+
+# Evaluator arms and PDE families available to the research-loop harness.
+# These mirror the canonical `src.poc.scenarios._centaur_common.PDE_TYPE_MAP`
+# keys; kept as local Literals so this config module stays decoupled from the
+# heavy MCTS/PDE import surface (validated again at runtime when operators are
+# actually built).
+ResearchArm = Literal["random", "trained", "llm"]
+ResearchPDEName = Literal[
+    "poisson",
+    "heat",
+    "advection_diffusion",
+    "burgers",
+    "navier_stokes",
+    "poisson_lshaped",
+    "helmholtz",
+    "biharmonic",
+]
 
 
 class AgentType(str, Enum):
@@ -33,6 +52,7 @@ class AgentType(str, Enum):
     DECOMPOSITION = "decomposition"
     COUPLING = "coupling"
     META = "meta"
+    RESEARCH = "research"
 
 
 class DecompositionStrategy(str, Enum):
@@ -504,3 +524,169 @@ class OrchestratorConfig(BaseModuleConfig):
         default=False,
         description="Run solver agents in parallel (requires thread safety)",
     )
+
+
+_SEED_PRIME_STRIDE = 1009
+"""Prime stride for deriving per-seed values from the master seed."""
+
+
+class ResearchProblemSpec(BaseModuleConfig):
+    """A single problem in a research-loop manifest.
+
+    Each problem names a PDE family and (optionally) overrides the loop-level
+    default arms. The "centaur research loop" sweeps MCTS+evaluator across all
+    problems and records which arm discovers the best basis per problem.
+    """
+
+    pde: ResearchPDEName = Field(
+        ...,
+        description="PDE family (a key of the canonical PDE_TYPE_MAP).",
+    )
+    arms: list[ResearchArm] | None = Field(
+        default=None,
+        description="Per-problem arm override. When None, the loop default_arms apply.",
+    )
+
+    @field_validator("arms")
+    @classmethod
+    def _arms_unique(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        if not v:
+            raise ValueError("arms override must be non-empty (use None to inherit defaults)")
+        return list(dict.fromkeys(v))
+
+
+class ResearchLoopConfig(BaseModuleConfig):
+    """Configuration for the centaur research-loop harness.
+
+    Drives the MCTS+evaluator solver across a manifest of independent problems
+    and aggregates a per-problem "discovery ledger" (which arm reached the
+    lowest residual). Every knob is a typed field — no hardcoded budgets or
+    tolerances.
+    """
+
+    agent_type: AgentType = Field(
+        default=AgentType.RESEARCH,
+        description="Agent type (always research).",
+    )
+
+    problems: list[ResearchProblemSpec] = Field(
+        ...,
+        min_length=1,
+        description="Manifest of problems to sweep.",
+    )
+    default_arms: list[ResearchArm] = Field(
+        default_factory=lambda: ["random"],
+        description="Default evaluator arms for problems that don't override.",
+    )
+
+    # Seeds
+    n_seeds: int = Field(
+        default=3,
+        ge=1,
+        le=64,
+        description="Seeds per (problem, arm) cell.",
+    )
+    seeds: list[int] | None = Field(
+        default=None,
+        description=(
+            "Explicit seed list. When None, derived as [seed + i * 1009 for i in range(n_seeds)]."
+        ),
+    )
+
+    # MCTS solve budget (per cell)
+    n_mcts_simulations: int = Field(
+        default=32,
+        ge=1,
+        le=10000,
+        description="MCTS simulations per macro-step.",
+    )
+    max_rollouts: int = Field(
+        default=512,
+        ge=1,
+        description="Hard cap on accumulated simulations per (problem, arm, seed) cell.",
+    )
+    target_residual: float = Field(
+        default=1e-2,
+        gt=0.0,
+        lt=1.0,
+        description="A problem counts as 'solved' when its best-arm median residual is <= this.",
+    )
+    max_basis_functions: int = Field(
+        default=12,
+        ge=1,
+        le=128,
+        description="Maximum bases the inner game may add before terminating.",
+    )
+    n_candidate_bases: int = Field(
+        default=24,
+        ge=2,
+        le=128,
+        description="Size of the candidate basis library (== action space).",
+    )
+
+    # Arm resources
+    trained_checkpoint_path: Path | None = Field(
+        default=None,
+        description="AlphaGalerkin checkpoint (.pt) for the trained arm; None skips it.",
+    )
+    lm_studio: LMStudioConfig = Field(
+        default_factory=LMStudioConfig,
+        description="Configuration for the LM Studio client (LLM arm).",
+    )
+
+    # Device + execution
+    device: str = Field(
+        default="cuda",
+        description=(
+            "Device preference passed to resolve_device. 'cuda' fails loud "
+            "without CUDA; use 'cpu' or 'auto' for CI."
+        ),
+    )
+    parallel: bool = Field(
+        default=False,
+        description="Dispatch one worker thread per problem (problems are independent).",
+    )
+
+    # Acceptance
+    min_solved_fraction: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of problems whose best arm must reach target_residual for "
+            "the run to report COMPLETED rather than FAILED."
+        ),
+    )
+
+    @field_validator("default_arms")
+    @classmethod
+    def _default_arms_non_empty(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("default_arms must be non-empty")
+        return list(dict.fromkeys(v))
+
+    @field_validator("seeds")
+    @classmethod
+    def _seeds_non_empty(cls, v: list[int] | None) -> list[int] | None:
+        if v is not None and not v:
+            raise ValueError("seeds must be non-empty when provided (use None to derive)")
+        return v
+
+    @model_validator(mode="after")
+    def _problem_names_unique(self) -> Self:
+        names = [p.name for p in self.problems]
+        if len(names) != len(set(names)):
+            raise ValueError("problem names must be unique within a manifest")
+        return self
+
+    def resolved_seeds(self) -> list[int]:
+        """Per-cell seeds (explicit deduped, or derived via prime stride)."""
+        if self.seeds is not None:
+            return list(dict.fromkeys(self.seeds))
+        return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
+
+    def arms_for(self, problem: ResearchProblemSpec) -> list[str]:
+        """Effective arms for a problem (its override, else default_arms)."""
+        return list(problem.arms) if problem.arms is not None else list(self.default_arms)

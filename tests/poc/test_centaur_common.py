@@ -63,37 +63,47 @@ def test_build_basis_game_and_descriptions() -> None:
 
 def test_build_arm_evaluator_random() -> None:
     game = SimpleNamespace(action_space_size=5)
-    evaluator = build_arm_evaluator("random", game=game, pde_name="poisson",
-                                    basis_descriptions=[], seed=0)
+    evaluator = build_arm_evaluator(
+        "random", game=game, pde_name="poisson", basis_descriptions=[], seed=0
+    )
     assert isinstance(evaluator, RandomEvaluator)
 
 
 def test_build_arm_evaluator_unknown_arm_raises() -> None:
     game = SimpleNamespace(action_space_size=5)
     with pytest.raises(ValueError, match="unknown arm"):
-        build_arm_evaluator("invented", game=game, pde_name="poisson",
-                            basis_descriptions=[], seed=0)
+        build_arm_evaluator(
+            "invented", game=game, pde_name="poisson", basis_descriptions=[], seed=0
+        )
 
 
 def test_build_arm_evaluator_trained_missing_model_raises() -> None:
     game = SimpleNamespace(action_space_size=5)
     with pytest.raises(RuntimeError, match="trained_model is None"):
-        build_arm_evaluator("trained", game=game, pde_name="poisson",
-                            basis_descriptions=[], seed=0, device="cpu")
+        build_arm_evaluator(
+            "trained", game=game, pde_name="poisson", basis_descriptions=[], seed=0, device="cpu"
+        )
 
 
 def test_build_arm_evaluator_trained_missing_device_raises() -> None:
     game = SimpleNamespace(action_space_size=5)
     with pytest.raises(RuntimeError, match="device is None"):
-        build_arm_evaluator("trained", game=game, pde_name="poisson",
-                            basis_descriptions=[], seed=0, trained_model=MagicMock())
+        build_arm_evaluator(
+            "trained",
+            game=game,
+            pde_name="poisson",
+            basis_descriptions=[],
+            seed=0,
+            trained_model=MagicMock(),
+        )
 
 
 def test_build_arm_evaluator_llm_missing_client_raises() -> None:
     game = SimpleNamespace(action_space_size=5)
     with pytest.raises(RuntimeError, match="lm_client is None"):
-        build_arm_evaluator("llm", game=game, pde_name="poisson",
-                            basis_descriptions=["b"] * 5, seed=0)
+        build_arm_evaluator(
+            "llm", game=game, pde_name="poisson", basis_descriptions=["b"] * 5, seed=0
+        )
 
 
 def test_build_arm_evaluator_llm_with_client() -> None:

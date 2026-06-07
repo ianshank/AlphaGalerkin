@@ -279,9 +279,7 @@ class ScalingLawConfig(BaseScenarioConfig):
                 name="residual_fit_r2",
                 operator=">=",
                 value=self.min_fit_r2,
-                description=(
-                    f"Primary-arm scaling fit R² must be >= {self.min_fit_r2}."
-                ),
+                description=(f"Primary-arm scaling fit R² must be >= {self.min_fit_r2}."),
             ),
         ]
 

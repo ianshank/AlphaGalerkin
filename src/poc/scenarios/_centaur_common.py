@@ -95,9 +95,7 @@ def build_pde_operator(pde_name: str) -> PDEOperator:
 
     """
     if pde_name not in PDE_TYPE_MAP:
-        raise ValueError(
-            f"PDE {pde_name!r} has no PDEType mapping; known: {sorted(PDE_TYPE_MAP)}"
-        )
+        raise ValueError(f"PDE {pde_name!r} has no PDEType mapping; known: {sorted(PDE_TYPE_MAP)}")
     pde_config = PDEConfig(name=pde_name, pde_type=PDE_TYPE_MAP[pde_name])
     operator_cls = get_pde_operator(pde_name)
     return operator_cls(pde_config)

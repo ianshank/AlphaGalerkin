@@ -150,9 +150,7 @@ class TestBiharmonicOperator:
         assert operator.is_linear is True
         assert operator.order == 4
 
-    def test_source_term_matches_manufactured_analytics(
-        self, operator: BiharmonicOperator
-    ) -> None:
+    def test_source_term_matches_manufactured_analytics(self, operator: BiharmonicOperator) -> None:
         coords = np.array([[0.5, 0.5], [0.25, 0.75]], dtype=np.float32)
         source = operator.source_term(coords)
         assert source.shape == (2,)
@@ -183,21 +181,15 @@ class TestBiharmonicOperator:
         assert residual.l2_norm < 1e-3
         assert "biharmonic" in residual.derivatives
 
-    def test_residual_zeros_when_solution_disconnected(
-        self, operator: BiharmonicOperator
-    ) -> None:
+    def test_residual_zeros_when_solution_disconnected(self, operator: BiharmonicOperator) -> None:
         # A solution disconnected from coords (no autograd graph) yields a
         # zero biharmonic term, so the residual reduces to -f.
         points = operator.generate_collocation_points(16, method="random", seed=1)
         coords = torch.tensor(points, dtype=torch.float32)
-        u = torch.tensor(
-            np.asarray(operator.exact_solution(points)), dtype=torch.float32
-        )
+        u = torch.tensor(np.asarray(operator.exact_solution(points)), dtype=torch.float32)
         residual = operator.residual(u, coords)
         source = np.asarray(operator.source_term(points))
-        np.testing.assert_allclose(
-            residual.values.detach().numpy(), -source, rtol=1e-5, atol=1e-6
-        )
+        np.testing.assert_allclose(residual.values.detach().numpy(), -source, rtol=1e-5, atol=1e-6)
 
 
 # --------------------------------------------------------------------------- #
@@ -215,9 +207,7 @@ class TestOODRegistryAndGame:
             ("biharmonic", PDEType.BIHARMONIC, BiharmonicOperator),
         ],
     )
-    def test_registry_round_trip(
-        self, name: str, pde_type: PDEType, cls: type
-    ) -> None:
+    def test_registry_round_trip(self, name: str, pde_type: PDEType, cls: type) -> None:
         assert name in list_pde_operators()
         resolved = get_pde_operator(name)
         assert resolved is cls

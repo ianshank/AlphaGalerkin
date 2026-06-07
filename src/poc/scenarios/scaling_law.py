@@ -71,9 +71,7 @@ def fit_log_log(budgets: list[int], residual_medians: list[float]) -> tuple[floa
 
     """
     pairs = [
-        (b, r)
-        for b, r in zip(budgets, residual_medians, strict=True)
-        if b >= 1 and np.isfinite(r)
+        (b, r) for b, r in zip(budgets, residual_medians, strict=True) if b >= 1 and np.isfinite(r)
     ]
     if len(pairs) < 2:
         return 0.0, 0.0
@@ -285,9 +283,7 @@ class ScalingLawScenario(BaseScenario):
 
     def _drop_primary_thresholds(self) -> None:
         primary_keys = {_PRIMARY_SLOPE_METRIC, _PRIMARY_R2_METRIC}
-        self.config.thresholds = [
-            t for t in self.config.thresholds if t.name not in primary_keys
-        ]
+        self.config.thresholds = [t for t in self.config.thresholds if t.name not in primary_keys]
 
     # ------------------------------------------------------------------ #
     # Per-cell run                                                        #

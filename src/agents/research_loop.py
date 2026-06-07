@@ -14,6 +14,7 @@ re-implemented here.
 
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -70,6 +71,11 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
         self._lm_client: LMStudioClient | None = None
         self._trained_model: Any | None = None
         self._available_arms: set[str] = set()
+        # The MCTS engine and RandomEvaluator draw from the *global* numpy/torch
+        # RNG, so concurrent cells would interleave their per-seed seeding. This
+        # lock serialises the seeded solve (and the shared LM Studio client) so
+        # parallel runs stay deterministic and match the sequential path.
+        self._cell_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     # Entry point                                                         #
@@ -205,7 +211,13 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
         return {p.name: self._solve_problem(p, seeds) for p in self.config.problems}
 
     def _run_parallel(self, seeds: list[int]) -> dict[str, ProblemResults]:
-        """One worker thread per problem (problems are independent)."""
+        """One worker thread per problem (problems are independent).
+
+        Per-problem operator/game/description construction overlaps across
+        threads, but the seeded MCTS solve inside ``_solve_cell`` is serialised
+        by ``self._cell_lock`` (the engine uses global RNG), so results are
+        deterministic and identical to :meth:`_run_sequential`.
+        """
         problems = self.config.problems
         with ThreadPoolExecutor(max_workers=len(problems)) as pool:
             solved = list(pool.map(lambda p: self._solve_problem(p, seeds), problems))
@@ -240,27 +252,34 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
         arm: str,
         seed: int,
     ) -> CellOutcome:
-        """Solve a single (problem, arm, seed) cell. Override point for tests."""
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        game = self._build_game(problem, operator)
-        evaluator = build_arm_evaluator(
-            arm,
-            game=game,
-            pde_name=problem.pde,
-            basis_descriptions=descriptions,
-            seed=seed,
-            lm_client=self._lm_client,
-            trained_model=self._trained_model,
-            device=self._device,
-        )
-        return run_basis_selection_cell(
-            game=game,
-            evaluator=evaluator,
-            target_residual=self.config.target_residual,
-            max_rollouts=self.config.max_rollouts,
-            n_simulations=self.config.n_mcts_simulations,
-        )
+        """Solve a single (problem, arm, seed) cell. Override point for tests.
+
+        The global-RNG seeding and the MCTS solve run under ``self._cell_lock``
+        so that, under ``parallel=True``, concurrent problem workers never
+        interleave their per-seed seeding or share the LM Studio client
+        unsafely — the seeded solve stays atomic and deterministic.
+        """
+        with self._cell_lock:
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            game = self._build_game(problem, operator)
+            evaluator = build_arm_evaluator(
+                arm,
+                game=game,
+                pde_name=problem.pde,
+                basis_descriptions=descriptions,
+                seed=seed,
+                lm_client=self._lm_client,
+                trained_model=self._trained_model,
+                device=self._device,
+            )
+            return run_basis_selection_cell(
+                game=game,
+                evaluator=evaluator,
+                target_residual=self.config.target_residual,
+                max_rollouts=self.config.max_rollouts,
+                n_simulations=self.config.n_mcts_simulations,
+            )
 
     # ------------------------------------------------------------------ #
     # Aggregation                                                         #

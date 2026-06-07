@@ -1774,9 +1774,18 @@ class BiharmonicOperator(PDEOperator):
             biharmonic = torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
             laplacian = biharmonic
         else:
-            coords = coords.requires_grad_(True)
-            laplacian = self._laplacian_autograd(u, coords)
-            biharmonic = self._laplacian_autograd(laplacian, coords)
+            # Use the caller's coords directly when they already carry grad (the
+            # connected case, so ``u`` stays attached); otherwise differentiate
+            # against a private clone so we never flip the caller's leaf tensor
+            # to ``requires_grad`` in place. A solution connected to parameters
+            # but not to ``coords`` yields a zero biharmonic (∇⁴u w.r.t. coords
+            # is undefined), consistent with the base class.
+            if coords.requires_grad:
+                work_coords = coords
+            else:
+                work_coords = coords.detach().clone().requires_grad_(True)
+            laplacian = self._laplacian_autograd(u, work_coords)
+            biharmonic = self._laplacian_autograd(laplacian, work_coords)
 
         source = self.source_term(coords)
         if isinstance(source, np.ndarray):

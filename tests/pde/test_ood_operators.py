@@ -191,6 +191,22 @@ class TestBiharmonicOperator:
         source = np.asarray(operator.source_term(points))
         np.testing.assert_allclose(residual.values.detach().numpy(), -source, rtol=1e-5, atol=1e-6)
 
+    def test_residual_does_not_mutate_caller_coords(self, operator: BiharmonicOperator) -> None:
+        # A solution connected to a parameter but NOT to coords must not flip the
+        # caller's leaf tensor to requires_grad in place (regression for the
+        # in-place ``requires_grad_`` side effect).
+        points = operator.generate_collocation_points(12, method="random", seed=2)
+        coords = torch.tensor(points, dtype=torch.float32)
+        assert coords.requires_grad is False
+        param = torch.nn.Parameter(torch.ones(()))
+        u = torch.tensor(np.asarray(operator.exact_solution(points)), dtype=torch.float32) * param
+        residual = operator.residual(u, coords)
+        # Caller's coords is untouched; biharmonic w.r.t. coords is undefined here
+        # (zero), so the residual reduces to -f.
+        assert coords.requires_grad is False
+        source = np.asarray(operator.source_term(points))
+        np.testing.assert_allclose(residual.values.detach().numpy(), -source, rtol=1e-5, atol=1e-6)
+
 
 # --------------------------------------------------------------------------- #
 # Registry + game integration                                                 #

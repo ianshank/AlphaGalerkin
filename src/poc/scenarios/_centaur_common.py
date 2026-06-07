@@ -19,8 +19,11 @@ reproducibility contract).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
+import structlog
+
+from src.integrations.lm_studio.schema import LMStudioError
 from src.mcts.evaluator import RandomEvaluator
 from src.mcts.search import MCTS
 from src.pde.config import (
@@ -34,13 +37,42 @@ from src.pde.mcts_adapter import PDEGameAdapter
 from src.pde.registry import get_pde_operator
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import torch
 
     from src.integrations.lm_studio.client import LMStudioClient
+    from src.integrations.lm_studio.config import LMStudioConfig
+    from src.integrations.lm_studio.preflight import PreflightReport
     from src.mcts.evaluator import Evaluator
     from src.modeling.model import AlphaGalerkinModel
     from src.pde.operators import PDEOperator
     from src.poc.logging import ScenarioLogger
+
+logger = structlog.get_logger(__name__)
+
+# Exception classes that arm-gating treats as a recoverable "skip this arm"
+# signal (logged, then the arm is disabled) rather than propagating. Surfaced
+# as named tuples so the catch sets stay identical across every centaur
+# scenario and there is no copy-paste drift.
+LLM_PREFLIGHT_RECOVERABLE_ERRORS: tuple[type[BaseException], ...] = (
+    LMStudioError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    AttributeError,
+)
+LLM_CLIENT_RECOVERABLE_ERRORS: tuple[type[BaseException], ...] = (
+    LMStudioError,
+    OSError,
+    RuntimeError,
+    ValueError,
+    ImportError,
+)
+TRAINED_LOAD_RECOVERABLE_ERRORS: tuple[type[BaseException], ...] = (
+    FileNotFoundError,
+    RuntimeError,
+)
 
 
 # Canonical mapping from PDE registry name to PDEType enum. Shared by every
@@ -261,7 +293,97 @@ def run_basis_selection_cell(
         rollouts_used += n_simulations
         mcts.advance(action)
 
+    logger.debug(
+        "basis_selection_cell_complete",
+        rollouts_used=rollouts_used,
+        final_residual=float(adapter.current_error),
+        terminal=adapter.is_terminal(),
+    )
     return CellOutcome(rollouts_used, float(adapter.current_error))
+
+
+def gate_llm_client(
+    lm_config: LMStudioConfig,
+    *,
+    cell_logger: SupportsWarning,
+    preflight_fn: Callable[[LMStudioConfig], PreflightReport],
+    client_factory: Callable[[LMStudioConfig], LMStudioClient],
+) -> LMStudioClient | None:
+    """Preflight the LM Studio server and construct a client, or return None.
+
+    Centralises the LLM-arm gating shared by every centaur scenario so the
+    preflight / construct / recoverable-error handling lives in one place.
+    Dependencies are injected (``preflight_fn`` / ``client_factory``) so each
+    caller keeps its own module-level, test-patchable references and its own
+    client-construction signature.
+
+    Args:
+        lm_config: The LM Studio configuration to gate on.
+        cell_logger: Structured logger for the skip-reason warning events.
+        preflight_fn: Server/model/VRAM preflight check (usually
+            ``check_lm_studio_server``).
+        client_factory: Builds the client from a (preflight-disabled) config.
+
+    Returns:
+        A constructed client, or ``None`` when the arm should be skipped
+        (disabled by config, failed preflight, or construction error).
+
+    """
+    if not lm_config.enabled:
+        cell_logger.warning("llm_arm_disabled_by_config", reason="lm_studio.enabled is False")
+        return None
+    try:
+        report = preflight_fn(lm_config)
+    except LLM_PREFLIGHT_RECOVERABLE_ERRORS as exc:
+        cell_logger.warning("llm_preflight_raised", error=str(exc), error_type=type(exc).__name__)
+        return None
+    if not report.passed:
+        cell_logger.warning(
+            "llm_preflight_failed",
+            failure_reason=report.failure_reason,
+            available_models=report.available_models,
+        )
+        return None
+    client_config = lm_config.model_copy(update={"preflight_on_construct": False})
+    try:
+        return client_factory(client_config)
+    except LLM_CLIENT_RECOVERABLE_ERRORS as exc:
+        cell_logger.warning(
+            "llm_client_construction_failed", error=str(exc), error_type=type(exc).__name__
+        )
+        return None
+
+
+def gate_trained_model(
+    checkpoint: Any,
+    device: torch.device | str,
+    *,
+    cell_logger: SupportsWarning,
+    loader: Callable[..., tuple[Any, Any]],
+) -> Any | None:
+    """Load a trained model from a checkpoint, or return None on failure.
+
+    Centralises the trained-arm checkpoint loading shared by the centaur
+    scenarios. The ``checkpoint is None`` (no-checkpoint) decision stays with
+    the caller, which owns the per-arm enable flags.
+
+    Args:
+        checkpoint: Path to the checkpoint (must be non-None).
+        device: Resolved torch device the model loads onto.
+        cell_logger: Structured logger for the load-failure warning.
+        loader: ``create_model_from_checkpoint``-style ``(checkpoint, device,
+            strict) -> (model, config)`` callable (injected for testability).
+
+    Returns:
+        The loaded model, or ``None`` when loading failed.
+
+    """
+    try:
+        model, _saved_config = loader(checkpoint, device=str(device), strict=False)
+    except TRAINED_LOAD_RECOVERABLE_ERRORS as exc:
+        cell_logger.warning("trained_arm_load_failed", checkpoint=str(checkpoint), error=str(exc))
+        return None
+    return model
 
 
 __all__ = [
@@ -272,5 +394,7 @@ __all__ = [
     "build_basis_game",
     "build_pde_operator",
     "enumerate_basis_descriptions",
+    "gate_llm_client",
+    "gate_trained_model",
     "run_basis_selection_cell",
 ]

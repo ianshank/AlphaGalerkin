@@ -266,3 +266,103 @@ def test_real_random_arm_micro_run_completes() -> None:
     assert result.status in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED)
     assert "solved_fraction" in result.metrics
     assert "discovery_ledger" in result.metadata
+
+
+# --------------------------------------------------------------------------- #
+# Gating + error-path coverage                                                #
+# --------------------------------------------------------------------------- #
+
+
+def test_execute_returns_failed_on_device_error() -> None:
+    # device='cuda' on a CPU box makes resolve_device raise; execute() must
+    # catch it and return a FAILED result (not propagate).
+    config = _cpu_config(device="cuda")
+    result = ResearchLoopOrchestrator(config).run()
+    assert result.status == ExecutionStatus.FAILED
+    assert result.error is not None
+
+
+def test_llm_arm_disabled_by_config_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    # lm_studio.enabled=False -> the llm arm gates off without any preflight.
+    from src.integrations.lm_studio.config import LMStudioConfig
+
+    called = MagicMock()
+    monkeypatch.setattr(research_module, "check_lm_studio_server", called)
+    config = _cpu_config(
+        default_arms=["random", "llm"],
+        lm_studio=LMStudioConfig(enabled=False, preflight_on_construct=False),
+    )
+    loop = _SyntheticLoop(
+        config, {("p_a", "random"): CellOutcome(8, 0.005), ("p_b", "random"): CellOutcome(8, 0.005)}
+    )
+    loop.run()
+    assert "llm" not in loop._available_arms
+    called.assert_not_called()
+
+
+def test_trained_arm_loads_when_checkpoint_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Patch the lazily-imported loader so the trained arm gates ON without a
+    # real checkpoint, exercising the gate_trained_model success path.
+    import src.training.checkpoint as checkpoint_module
+
+    sentinel_model = object()
+    monkeypatch.setattr(
+        checkpoint_module,
+        "create_model_from_checkpoint",
+        lambda ckpt, device, strict: (sentinel_model, {"cfg": 1}),
+    )
+    config = _cpu_config(
+        default_arms=["random", "trained"],
+        trained_checkpoint_path="dummy.pt",  # type: ignore[arg-type]
+    )
+    cells = {
+        ("p_a", "random"): CellOutcome(8, 0.2),
+        ("p_a", "trained"): CellOutcome(4, 0.005),
+        ("p_b", "random"): CellOutcome(8, 0.005),
+        ("p_b", "trained"): CellOutcome(8, 0.2),
+    }
+    loop = _SyntheticLoop(config, cells)
+    result = loop.run()
+    # _trained_model is cleared by teardown(); assert via durable signals.
+    assert loop._available_arms == {"random", "trained"}
+    assert "p_a_trained_median_residual" in result.metrics
+    assert result.metrics["arm_wins_trained"] == 1.0
+
+
+def test_trained_arm_load_failure_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.training.checkpoint as checkpoint_module
+
+    def _raise(*_a: object, **_k: object) -> tuple[object, object]:
+        raise RuntimeError("bad checkpoint")
+
+    monkeypatch.setattr(checkpoint_module, "create_model_from_checkpoint", _raise)
+    config = _cpu_config(
+        default_arms=["random", "trained"],
+        trained_checkpoint_path="dummy.pt",  # type: ignore[arg-type]
+    )
+    loop = _SyntheticLoop(
+        config, {("p_a", "random"): CellOutcome(8, 0.005), ("p_b", "random"): CellOutcome(8, 0.005)}
+    )
+    loop.run()
+    assert loop._available_arms == {"random"}
+
+
+# --------------------------------------------------------------------------- #
+# Config validator coverage                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_problem_spec_empty_arms_override_raises() -> None:
+    with pytest.raises(ValueError, match="arms override must be non-empty"):
+        ResearchProblemSpec(name="p", pde="poisson", arms=[])
+
+
+def test_config_seeds_empty_raises() -> None:
+    with pytest.raises(ValueError, match="seeds must be non-empty"):
+        ResearchLoopConfig(name="c", problems=[_problem("p")], seeds=[])
+
+
+def test_median_empty_returns_nan() -> None:
+    import math
+
+    assert math.isnan(research_module._median([]))

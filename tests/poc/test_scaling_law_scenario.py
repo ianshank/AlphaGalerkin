@@ -225,3 +225,52 @@ def test_real_random_arm_micro_run_completes() -> None:
     assert result.status in (ScenarioStatus.PASSED, ScenarioStatus.FAILED)
     assert "residual_scaling_exponent" in result.metrics
     assert "random_residual_median_b2" in result.metrics
+
+
+# --------------------------------------------------------------------------- #
+# Gating-path coverage                                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_trained_arm_loads_when_checkpoint_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.training.checkpoint as checkpoint_module
+
+    monkeypatch.setattr(
+        checkpoint_module,
+        "create_model_from_checkpoint",
+        lambda ckpt, device, strict: (object(), {"cfg": 1}),
+    )
+    config = _cpu_config(
+        arms=["random", "trained"],
+        trained_checkpoint_path="dummy.pt",
+        min_residual_decay=0.0,
+        min_fit_r2=0.0,
+    )
+    scenario = _SyntheticScenario(config, base={"random": 1.0, "trained": 0.5})
+    scenario.run()
+    assert "trained" in scenario._active_arms
+
+
+def test_trained_arm_load_failure_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    import src.training.checkpoint as checkpoint_module
+
+    def _raise(*_a: object, **_k: object) -> tuple[object, object]:
+        raise RuntimeError("bad checkpoint")
+
+    monkeypatch.setattr(checkpoint_module, "create_model_from_checkpoint", _raise)
+    config = _cpu_config(arms=["random", "trained"], trained_checkpoint_path="dummy.pt")
+    scenario = _SyntheticScenario(config, base={"random": 1.0})
+    scenario.run()
+    assert scenario._active_arms == ["random"]
+
+
+def test_llm_disabled_by_config_skips() -> None:
+    from src.integrations.lm_studio.config import LMStudioConfig
+
+    config = _cpu_config(
+        arms=["random", "llm"],
+        lm_studio=LMStudioConfig(enabled=False, preflight_on_construct=False),
+    )
+    scenario = _SyntheticScenario(config, base={"random": 1.0})
+    scenario.run()
+    assert scenario._active_arms == ["random"]

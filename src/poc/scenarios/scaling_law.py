@@ -20,7 +20,6 @@ import torch
 
 from src.integrations.lm_studio.client import LMStudioClient
 from src.integrations.lm_studio.preflight import check_lm_studio_server
-from src.integrations.lm_studio.schema import LMStudioError
 from src.poc.config import ScenarioResult, ScenarioStatus
 from src.poc.device import resolve_device
 from src.poc.logging import ScenarioLogger
@@ -30,6 +29,8 @@ from src.poc.scenarios._centaur_common import (
     build_basis_game,
     build_pde_operator,
     enumerate_basis_descriptions,
+    gate_llm_client,
+    gate_trained_model,
     run_basis_selection_cell,
 )
 from src.poc.scenarios.scaling_law_config import (
@@ -216,6 +217,7 @@ class ScalingLawScenario(BaseScenario):
 
     def _gate_trained_arm(self) -> bool:
         assert self._scenario_logger is not None
+        assert self._device is not None
         checkpoint = self.config.trained_checkpoint_path
         if checkpoint is None:
             self._scenario_logger.warning(
@@ -223,63 +225,25 @@ class ScalingLawScenario(BaseScenario):
                 reason="trained_checkpoint_path is None",
             )
             return False
-        try:
-            self._trained_model = self._load_trained_model(checkpoint)
-        except (FileNotFoundError, RuntimeError) as exc:
-            self._scenario_logger.warning(
-                "trained_arm_load_failed",
-                checkpoint=str(checkpoint),
-                error=str(exc),
-            )
-            return False
-        return True
+        from src.training.checkpoint import create_model_from_checkpoint
+
+        self._trained_model = gate_trained_model(
+            checkpoint,
+            self._device,
+            cell_logger=self._scenario_logger,
+            loader=create_model_from_checkpoint,
+        )
+        return self._trained_model is not None
 
     def _gate_llm_arm(self) -> bool:
         assert self._scenario_logger is not None
-        if not self.config.lm_studio.enabled:
-            self._scenario_logger.warning(
-                "llm_arm_disabled_by_config",
-                reason="lm_studio.enabled is False",
-            )
-            return False
-        try:
-            report = check_lm_studio_server(self.config.lm_studio)
-        except (LMStudioError, OSError, RuntimeError, ValueError, AttributeError) as exc:
-            self._scenario_logger.warning(
-                "llm_preflight_raised",
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            return False
-        if not report.passed:
-            self._scenario_logger.warning(
-                "llm_preflight_failed",
-                failure_reason=report.failure_reason,
-                available_models=report.available_models,
-            )
-            return False
-        client_config = self.config.lm_studio.model_copy(update={"preflight_on_construct": False})
-        try:
-            self._lm_client = LMStudioClient(client_config, scenario_logger=self._scenario_logger)
-        except (LMStudioError, OSError, RuntimeError, ValueError, ImportError) as exc:
-            self._scenario_logger.warning(
-                "llm_client_construction_failed",
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            return False
-        return True
-
-    def _load_trained_model(self, checkpoint: Path) -> Any:
-        from src.training.checkpoint import create_model_from_checkpoint
-
-        assert self._device is not None
-        model, _saved_config = create_model_from_checkpoint(
-            checkpoint,
-            device=str(self._device),
-            strict=False,
+        self._lm_client = gate_llm_client(
+            self.config.lm_studio,
+            cell_logger=self._scenario_logger,
+            preflight_fn=check_lm_studio_server,
+            client_factory=lambda cfg: LMStudioClient(cfg, scenario_logger=self._scenario_logger),
         )
-        return model
+        return self._lm_client is not None
 
     def _drop_primary_thresholds(self) -> None:
         primary_keys = {_PRIMARY_SLOPE_METRIC, _PRIMARY_R2_METRIC}

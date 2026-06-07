@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -24,7 +23,6 @@ import torch
 
 from src.integrations.lm_studio.client import LMStudioClient
 from src.integrations.lm_studio.preflight import check_lm_studio_server
-from src.integrations.lm_studio.schema import LMStudioError
 from src.poc.device import resolve_device
 from src.poc.scenarios._centaur_common import (
     CellOutcome,
@@ -32,6 +30,8 @@ from src.poc.scenarios._centaur_common import (
     build_basis_game,
     build_pde_operator,
     enumerate_basis_descriptions,
+    gate_llm_client,
+    gate_trained_model,
     run_basis_selection_cell,
 )
 from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
@@ -142,6 +142,7 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
         return available
 
     def _gate_trained_arm(self) -> bool:
+        assert self._device is not None
         checkpoint = self.config.trained_checkpoint_path
         if checkpoint is None:
             self.logger.warning(
@@ -149,55 +150,24 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
                 reason="trained_checkpoint_path is None",
             )
             return False
-        try:
-            self._trained_model = self._load_trained_model(checkpoint)
-        except (FileNotFoundError, RuntimeError) as exc:
-            self.logger.warning(
-                "trained_arm_load_failed",
-                checkpoint=str(checkpoint),
-                error=str(exc),
-            )
-            return False
-        return True
-
-    def _gate_llm_arm(self) -> bool:
-        if not self.config.lm_studio.enabled:
-            self.logger.warning("llm_arm_disabled_by_config", reason="lm_studio.enabled is False")
-            return False
-        try:
-            report = check_lm_studio_server(self.config.lm_studio)
-        except (LMStudioError, OSError, RuntimeError, ValueError, AttributeError) as exc:
-            self.logger.warning(
-                "llm_preflight_raised", error=str(exc), error_type=type(exc).__name__
-            )
-            return False
-        if not report.passed:
-            self.logger.warning(
-                "llm_preflight_failed",
-                failure_reason=report.failure_reason,
-                available_models=report.available_models,
-            )
-            return False
-        client_config = self.config.lm_studio.model_copy(update={"preflight_on_construct": False})
-        try:
-            self._lm_client = LMStudioClient(client_config)
-        except (LMStudioError, OSError, RuntimeError, ValueError, ImportError) as exc:
-            self.logger.warning(
-                "llm_client_construction_failed",
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            return False
-        return True
-
-    def _load_trained_model(self, checkpoint: Path) -> Any:
         from src.training.checkpoint import create_model_from_checkpoint
 
-        assert self._device is not None
-        model, _saved_config = create_model_from_checkpoint(
-            checkpoint, device=str(self._device), strict=False
+        self._trained_model = gate_trained_model(
+            checkpoint,
+            self._device,
+            cell_logger=self.logger,
+            loader=create_model_from_checkpoint,
         )
-        return model
+        return self._trained_model is not None
+
+    def _gate_llm_arm(self) -> bool:
+        self._lm_client = gate_llm_client(
+            self.config.lm_studio,
+            cell_logger=self.logger,
+            preflight_fn=check_lm_studio_server,
+            client_factory=LMStudioClient,
+        )
+        return self._lm_client is not None
 
     def _effective_arms(self, problem: ResearchProblemSpec) -> list[str]:
         """Per-problem arms intersected with the globally available arms."""

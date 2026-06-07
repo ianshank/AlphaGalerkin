@@ -77,3 +77,8 @@ def test_default_thresholds_match_fields() -> None:
     assert thresholds["residual_scaling_exponent"].value == pytest.approx(-0.1)
     assert thresholds["residual_fit_r2"].operator == ">="
     assert thresholds["residual_fit_r2"].value == pytest.approx(0.6)
+
+
+def test_explicit_valid_name_accepted() -> None:
+    cfg = ScalingLawConfig(name=SCALING_SCENARIO_NAME)
+    assert cfg.name == SCALING_SCENARIO_NAME

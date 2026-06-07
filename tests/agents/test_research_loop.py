@@ -13,6 +13,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# research_loop is imported as a module so fixtures can patch the gating
+# helpers (check_lm_studio_server / LMStudioClient) it references by name.
+import src.agents.research_loop as research_module
 from src.agents.config import (
     AgentType,
     ResearchLoopConfig,
@@ -22,10 +25,6 @@ from src.agents.research_loop import ResearchLoopOrchestrator
 from src.integrations.lm_studio.preflight import PreflightReport
 from src.poc.scenarios._centaur_common import CellOutcome
 from src.templates.base import ExecutionStatus
-
-# research_loop imports the gating helpers by name, so patch them on the module.
-import src.agents.research_loop as research_module  # noqa: E402
-
 
 # --------------------------------------------------------------------------- #
 # Config validation                                                           #
@@ -135,20 +134,20 @@ def failing_preflight(monkeypatch: pytest.MonkeyPatch) -> PreflightReport:
     return report
 
 
-def _cpu_config(**overrides) -> ResearchLoopConfig:
-    base = dict(
-        name="loop",
-        problems=[_problem("p_a"), _problem("p_b")],
-        default_arms=["random"],
-        n_seeds=2,
-        seeds=[1, 2],
-        device="cpu",
-        n_mcts_simulations=2,
-        max_rollouts=8,
-        max_basis_functions=2,
-        n_candidate_bases=4,
-        target_residual=1e-2,
-    )
+def _cpu_config(**overrides: object) -> ResearchLoopConfig:
+    base: dict[str, object] = {
+        "name": "loop",
+        "problems": [_problem("p_a"), _problem("p_b")],
+        "default_arms": ["random"],
+        "n_seeds": 2,
+        "seeds": [1, 2],
+        "device": "cpu",
+        "n_mcts_simulations": 2,
+        "max_rollouts": 8,
+        "max_basis_functions": 2,
+        "n_candidate_bases": 4,
+        "target_residual": 1e-2,
+    }
     base.update(overrides)
     return ResearchLoopConfig(**base)  # type: ignore[arg-type]
 

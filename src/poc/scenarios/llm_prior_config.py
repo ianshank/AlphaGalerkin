@@ -54,12 +54,21 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
         default="poisson",
         description="In-distribution PDE — the trained evaluator is expected to win here.",
     )
-    ood_pde: Literal["burgers", "navier_stokes", "poisson_lshaped"] = Field(
+    ood_pde: Literal[
+        "burgers",
+        "navier_stokes",
+        "poisson_lshaped",
+        "helmholtz",
+        "biharmonic",
+    ] = Field(
         default="burgers",
         description=(
             "Out-of-distribution PDE — exposes the trained evaluator's "
             "lack of generalisation. Default 'burgers' covers nonlinear "
-            "shock structure the FNet residual encoding has not seen."
+            "shock structure the FNet residual encoding has not seen. "
+            "'helmholtz' adds an oscillatory zeroth-order term and "
+            "'biharmonic' a fourth-order operator — held-out residual "
+            "structures the FNet was never trained on."
         ),
     )
 

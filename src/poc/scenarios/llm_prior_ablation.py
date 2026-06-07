@@ -40,16 +40,7 @@ from src.integrations.lm_studio.evaluator import LMStudioEvaluator
 from src.integrations.lm_studio.preflight import check_lm_studio_server
 from src.integrations.lm_studio.schema import LMStudioError
 from src.mcts.evaluator import RandomEvaluator
-from src.mcts.search import MCTS
-from src.pde.config import (
-    BasisSelectionConfig,
-    PDEConfig,
-    PDEGameConfig,
-    PDEType,
-)
 from src.pde.games.basis_selection import BasisSelectionGame
-from src.pde.mcts_adapter import PDEGameAdapter
-from src.pde.registry import get_pde_operator
 from src.poc.config import (
     ScenarioResult,
     ScenarioStatus,
@@ -57,6 +48,13 @@ from src.poc.config import (
 from src.poc.device import resolve_device
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
+from src.poc.scenarios._centaur_common import (
+    PDE_TYPE_MAP,
+    build_basis_game,
+    build_pde_operator,
+    enumerate_basis_descriptions,
+    run_basis_selection_cell,
+)
 from src.poc.scenarios.llm_prior_config import (
     SCENARIO_NAME,
     LLMPriorAblationConfig,
@@ -67,15 +65,10 @@ if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
 
 
-_PDE_TYPE_MAP: dict[str, PDEType] = {
-    "poisson": PDEType.POISSON,
-    "burgers": PDEType.BURGERS,
-    "heat": PDEType.HEAT,
-    "advection_diffusion": PDEType.ADVECTION_DIFFUSION,
-    "navier_stokes": PDEType.NAVIER_STOKES,
-    "poisson_lshaped": PDEType.POISSON,
-}
-"""Mapping from PDE registry name to PDEType enum value."""
+# Backwards-compatible alias — the canonical map now lives in `_centaur_common`
+# so a new operator is wired in exactly once across all centaur scenarios.
+_PDE_TYPE_MAP = PDE_TYPE_MAP
+"""Mapping from PDE registry name to PDEType enum value (see `_centaur_common`)."""
 
 _LATENCY_P95 = 95.0
 """Percentile used for the headline latency threshold."""
@@ -365,12 +358,13 @@ class LLMPriorAblationScenario(BaseScenario):
     ) -> tuple[int, float]:
         """Run one (arm, pde, seed) cell — return (rollouts_used, final_residual)."""
         # Per-cell seeding; MCTS.__init__ has no seed kwarg so we set the
-        # global RNGs before constructing the search.
+        # global RNGs before constructing the search. Kept here (before game
+        # and evaluator construction) to preserve this scenario's historical
+        # reproducibility contract.
         np.random.seed(seed)
         torch.manual_seed(seed)
 
         game = self._build_game(pde_name, operator)
-        adapter = PDEGameAdapter(game)
         evaluator = self._build_evaluator(
             arm=arm,
             pde_name=pde_name,
@@ -380,89 +374,48 @@ class LLMPriorAblationScenario(BaseScenario):
             cell_logger=cell_logger,
         )
 
-        target = self.config.target_residual
-        max_rollouts = self.config.max_rollouts
-        sims_per_step = self.config.n_mcts_simulations
-        rollouts_used = 0
+        outcome = run_basis_selection_cell(
+            game=game,
+            evaluator=evaluator,
+            target_residual=self.config.target_residual,
+            max_rollouts=self.config.max_rollouts,
+            n_simulations=self.config.n_mcts_simulations,
+            scenario_logger=cell_logger,
+        )
 
-        if adapter.current_error <= target:
-            return rollouts_used, float(adapter.current_error)
-
-        mcts = MCTS(evaluator=evaluator, n_simulations=sims_per_step)
-
-        while (
-            not adapter.is_terminal()
-            and adapter.current_error > target
-            and rollouts_used + sims_per_step <= max_rollouts
-        ):
-            action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
-            if action < 0:
-                cell_logger.warning(
-                    "cell_loop_early_exit",
-                    reason="evaluator_returned_invalid_action",
-                    action=action,
-                    rollouts_used=rollouts_used,
-                    current_error=float(adapter.current_error),
-                )
-                break
-            adapter.apply_action(action)
-            rollouts_used += sims_per_step
-            # Reuse the subtree rooted at the chosen action so we don't
-            # discard search work between macro-steps. `_get_or_create_root`
-            # never resets on game-state divergence, so the explicit
-            # `advance` is what keeps the tree aligned with the adapter.
-            mcts.advance(action)
-
-        final_residual = float(adapter.current_error)
         if arm == "llm" and isinstance(evaluator, LMStudioEvaluator):
             self._llm_latencies_ms.extend(evaluator.latencies_ms)
         cell_logger.info(
             "cell_complete",
-            rollouts_used=rollouts_used,
-            final_residual=final_residual,
+            rollouts_used=outcome.rollouts_used,
+            final_residual=outcome.final_residual,
         )
-        return rollouts_used, final_residual
+        return outcome.rollouts_used, outcome.final_residual
 
     # ------------------------------------------------------------------ #
-    # Construction helpers                                                #
+    # Construction helpers (thin wrappers over `_centaur_common`)         #
     # ------------------------------------------------------------------ #
 
     def _build_pde_operator(self, pde_name: str) -> PDEOperator:
-        if pde_name not in _PDE_TYPE_MAP:
-            raise ValueError(
-                f"PDE {pde_name!r} has no PDEType mapping; known: {sorted(_PDE_TYPE_MAP)}"
-            )
-        pde_type = _PDE_TYPE_MAP[pde_name]
-        pde_config = PDEConfig(name=pde_name, pde_type=pde_type)
-        operator_cls = get_pde_operator(pde_name)
-        return operator_cls(pde_config)
+        return build_pde_operator(pde_name)
 
     def _build_game(self, pde_name: str, operator: PDEOperator) -> BasisSelectionGame:
-        pde_config = operator.config
-        basis_config = BasisSelectionConfig(
-            name=f"{pde_name}_basis",
+        return build_basis_game(
+            pde_name,
+            operator,
             max_basis_functions=self.config.max_basis_functions,
             n_candidate_bases=self.config.n_candidate_bases,
+            target_residual=self.config.target_residual,
         )
-        game_config = PDEGameConfig(
-            name=f"{pde_name}_game",
-            pde_config=pde_config,
-            game_mode="basis_selection",
-            basis_config=basis_config,
-            error_tolerance=self.config.target_residual,
-        )
-        return BasisSelectionGame(operator, game_config)
 
     def _enumerate_basis_descriptions(self, pde_name: str, operator: PDEOperator) -> list[str]:
-        """Build a one-shot game just to read its basis library descriptions.
+        """Read the basis-library descriptions from a one-shot game.
 
         Reuses the operator the caller already built — re-running
         ``_build_pde_operator`` here would double the up-front cost of
-        operators with non-trivial constructors (collocation-point
-        generation, exact-solution precompute) for nothing.
+        operators with non-trivial constructors for nothing.
         """
-        game = self._build_game(pde_name, operator)
-        return [game.action_to_string(i) for i in range(game.action_space_size)]
+        return enumerate_basis_descriptions(self._build_game(pde_name, operator))
 
     def _build_evaluator(
         self,

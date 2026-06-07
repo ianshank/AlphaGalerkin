@@ -407,6 +407,14 @@ def load_config_from_dict(
 
         type_map["llm_prior_ablation"] = LLMPriorAblationConfig
 
+    # Same lazy-resolution rationale as llm_prior_ablation: the scaling-law
+    # scenario module pulls in the MCTS engine, PDE registry, and LM Studio
+    # client, so only resolve its (light) config class on demand.
+    if inferred_name == "scaling_law":
+        from src.poc.scenarios.scaling_law_config import ScalingLawConfig
+
+        type_map["scaling_law"] = ScalingLawConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

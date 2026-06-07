@@ -36,8 +36,11 @@ from src.pde.registry import get_pde_operator
 if TYPE_CHECKING:
     import torch
 
+    from src.integrations.lm_studio.client import LMStudioClient
     from src.mcts.evaluator import Evaluator
+    from src.modeling.model import AlphaGalerkinModel
     from src.pde.operators import PDEOperator
+    from src.poc.logging import ScenarioLogger
 
 
 # Canonical mapping from PDE registry name to PDEType enum. Shared by every
@@ -148,10 +151,10 @@ def build_arm_evaluator(
     pde_name: str,
     basis_descriptions: list[str],
     seed: int,
-    lm_client: object | None = None,
-    trained_model: object | None = None,
+    lm_client: LMStudioClient | None = None,
+    trained_model: AlphaGalerkinModel | None = None,
     device: torch.device | str | None = None,
-    scenario_logger: object | None = None,
+    scenario_logger: ScenarioLogger | None = None,
 ) -> Evaluator:
     """Construct the MCTS evaluator for an arm.
 

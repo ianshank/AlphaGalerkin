@@ -154,6 +154,54 @@ def run(
         raise typer.Exit(code=1)
 
 
+@app.command()
+@add_common_options
+@with_error_handling
+def research(
+    config: Path = _config_option,
+    verbose: bool = False,
+    debug: bool = False,
+    quiet: bool = False,
+    log_format: str = "text",
+) -> None:
+    """Run the centaur research-loop harness from a YAML configuration."""
+    from src.agents.config import ResearchLoopConfig
+    from src.agents.research_loop import ResearchLoopOrchestrator
+
+    loop_config = load_config_file(config, ResearchLoopConfig)
+    orchestrator = ResearchLoopOrchestrator(loop_config)
+    result = orchestrator.run()
+
+    success = result.is_success()
+    print_status_panel(
+        title="Research-Loop Result",
+        status=result.status.value,
+        details={
+            "duration": f"{result.duration_seconds:.2f}s"
+            if result.duration_seconds is not None
+            else "N/A",
+            "n_problems": str(result.metrics.get("n_problems", 0)),
+            "solved_fraction": f"{result.metrics.get('solved_fraction', 0):.3f}",
+        },
+        success=success,
+    )
+
+    if result.metrics:
+        metric_results = [
+            {"metric": k, "value": f"{v:.6f}" if isinstance(v, float) else str(v)}
+            for k, v in sorted(result.metrics.items())
+        ]
+        print_result_table(
+            title="Metrics",
+            results=metric_results,
+            columns=["metric", "value"],
+        )
+
+    if not success and result.error:
+        typer.echo(f"\nError: {result.error}")
+        raise typer.Exit(code=1)
+
+
 def main() -> None:
     """Entry point for ``python -m src.agents.cli``."""
     app()

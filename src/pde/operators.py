@@ -1535,3 +1535,307 @@ class LShapedPoissonOperator(PDEOperator):
         )
 
         return {"l2_error": l2, "linf_error": linf, "mse": mse}
+
+
+# ---------------------------------------------------------------------------
+# Out-of-distribution operators (held-out generalisation benchmarks)
+#
+# These two operators expose PDE residual structure the domain-trained FNet
+# evaluator has never seen, providing the "held-out" generalisation test for
+# the LLM-prior MCTS ablation: Helmholtz adds an oscillatory zeroth-order
+# (reaction) term, and the biharmonic operator is fourth-order.
+# ---------------------------------------------------------------------------
+
+DEFAULT_HELMHOLTZ_WAVENUMBER: float = 1.0
+"""Default Helmholtz wavenumber ``k`` when neither the constructor argument
+nor a positive ``reaction_coeff`` supplies one. Surfaced as a named constant
+so no magic number lives in the operator body."""
+
+
+class HelmholtzOperator(PDEOperator):
+    """Helmholtz equation operator: ∇²u + k²u = f.
+
+    The Helmholtz equation models time-harmonic wave phenomena (acoustics,
+    electromagnetics, scattering). Relative to Poisson it adds an
+    oscillatory zeroth-order (reaction) term ``k²u`` that the FNet residual
+    encoding trained on diffusion-dominated problems has not seen — the
+    "benchmark-graveyard" out-of-distribution structure.
+
+    Manufactured solution (homogeneous Dirichlet on ``[0, 1]^dim``)::
+
+        u(x) = ∏_d sin(π x_d)
+        ∇²u  = -dim · π² · u
+        f    = (k² - dim · π²) · u
+
+    The wavenumber ``k`` resolves in priority order: explicit ``wavenumber``
+    argument → positive ``config.reaction_coeff`` (interpreted as ``k²``) →
+    :data:`DEFAULT_HELMHOLTZ_WAVENUMBER`.
+    """
+
+    name = "helmholtz"
+    description = "Helmholtz equation: ∇²u + k²u = f"
+    pde_type = PDEType.HELMHOLTZ
+    is_time_dependent = False
+    is_linear = True
+    order = 2
+
+    def __init__(
+        self,
+        config: PDEConfig,
+        wavenumber: float | None = None,
+    ) -> None:
+        """Initialize the Helmholtz operator.
+
+        Args:
+            config: PDE configuration.
+            wavenumber: Helmholtz wavenumber ``k``. When ``None`` it falls
+                back to ``sqrt(config.reaction_coeff)`` if ``reaction_coeff``
+                is positive, otherwise :data:`DEFAULT_HELMHOLTZ_WAVENUMBER`.
+
+        """
+        super().__init__(config)
+        if wavenumber is not None:
+            resolved_k = float(wavenumber)
+        elif config.reaction_coeff > 0.0:
+            resolved_k = float(np.sqrt(config.reaction_coeff))
+        else:
+            resolved_k = DEFAULT_HELMHOLTZ_WAVENUMBER
+        if resolved_k <= 0.0:
+            raise ValueError(f"Helmholtz wavenumber must be positive, got {resolved_k}")
+        self.wavenumber = resolved_k
+
+    def _manufactured(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+    ) -> NDArray[np.float32] | Tensor:
+        """Evaluate the manufactured solution ``∏_d sin(π x_d)``."""
+        if isinstance(coords, Tensor):
+            product = torch.ones(coords.shape[0], dtype=coords.dtype, device=coords.device)
+            for d in range(self.dim):
+                product = product * torch.sin(np.pi * coords[:, d])
+            return product
+        product = np.ones(coords.shape[0], dtype=np.float32)
+        for d in range(self.dim):
+            product = product * np.sin(np.pi * coords[:, d])
+        return product
+
+    def residual(
+        self,
+        u: Tensor,
+        coords: Tensor,
+        compute_derivatives: bool = True,
+    ) -> PDEResidual:
+        """Compute Helmholtz residual: R = ∇²u + k²u - f."""
+        derivatives = self.compute_derivatives(u, coords)
+        laplacian = derivatives.get("laplacian", torch.zeros_like(u))
+
+        source = self.source_term(coords)
+        if isinstance(source, np.ndarray):
+            source = torch.from_numpy(source).to(coords.device)
+
+        # Flatten every term to (N,) so a (N, 1) `u` (and the
+        # `torch.zeros_like(u)` laplacian fallback) cannot trigger implicit
+        # (N, N) broadcasting in the residual sum.
+        u_flat = u.reshape(-1)
+        residual_values = laplacian.reshape(-1) + (self.wavenumber**2) * u_flat - source.reshape(-1)
+
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
+        max_norm = float(torch.max(torch.abs(residual_values)).item())
+        return PDEResidual(
+            values=residual_values,
+            l2_norm=l2_norm,
+            max_norm=max_norm,
+            derivatives=derivatives if compute_derivatives else {},
+        )
+
+    def source_term(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+        time: float | None = None,
+    ) -> NDArray[np.float32] | Tensor:
+        """Source term ``f = (k² - dim · π²) · u`` for the manufactured solution."""
+        coefficient = self.wavenumber**2 - self.dim * (np.pi**2)
+        return coefficient * self._manufactured(coords)
+
+    def boundary_value(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+        time: float | None = None,
+    ) -> NDArray[np.float32] | Tensor:
+        """Dirichlet boundary values (the manufactured solution vanishes there)."""
+        if self.config.boundary_condition == BoundaryCondition.DIRICHLET:
+            if isinstance(coords, Tensor):
+                return torch.full(
+                    (coords.shape[0],),
+                    self.config.boundary_value,
+                    dtype=coords.dtype,
+                    device=coords.device,
+                )
+            return np.full(coords.shape[0], self.config.boundary_value, dtype=np.float32)
+        return self._manufactured(coords)
+
+    def exact_solution(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+        time: float | None = None,
+    ) -> NDArray[np.float32] | Tensor | None:
+        """Manufactured exact solution ``∏_d sin(π x_d)``."""
+        return self._manufactured(coords)
+
+
+class BiharmonicOperator(PDEOperator):
+    """Biharmonic equation operator: ∇⁴u = f.
+
+    The biharmonic (fourth-order) operator models thin-plate bending and
+    Stokes-flow stream functions. Its fourth-order residual structure is a
+    qualitatively different "held-out" generalisation target from the
+    second-order operators the FNet evaluator was trained on.
+
+    Manufactured solution (homogeneous Dirichlet on ``[0, 1]^dim``)::
+
+        u(x) = ∏_d sin(π x_d)
+        ∇²u  = -dim · π² · u
+        ∇⁴u  = (dim · π²)² · u
+        f    = (dim · π²)² · u
+    """
+
+    name = "biharmonic"
+    description = "Biharmonic equation: ∇⁴u = f"
+    pde_type = PDEType.BIHARMONIC
+    is_time_dependent = False
+    is_linear = True
+    order = 4
+
+    def __init__(self, config: PDEConfig) -> None:
+        """Initialize the biharmonic operator."""
+        super().__init__(config)
+
+    def _manufactured(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+    ) -> NDArray[np.float32] | Tensor:
+        """Evaluate the manufactured solution ``∏_d sin(π x_d)``."""
+        if isinstance(coords, Tensor):
+            product = torch.ones(coords.shape[0], dtype=coords.dtype, device=coords.device)
+            for d in range(self.dim):
+                product = product * torch.sin(np.pi * coords[:, d])
+            return product
+        product = np.ones(coords.shape[0], dtype=np.float32)
+        for d in range(self.dim):
+            product = product * np.sin(np.pi * coords[:, d])
+        return product
+
+    def _laplacian_autograd(self, field: Tensor, coords: Tensor) -> Tensor:
+        """Laplacian of a scalar ``field`` w.r.t. ``coords`` via autograd.
+
+        Returns a graph-connected tensor (``create_graph=True``) so it can be
+        differentiated again to form the biharmonic. Returns zeros when
+        ``field`` is disconnected from ``coords`` (mirrors
+        :meth:`PDEOperator.compute_derivatives`).
+        """
+        n_points = coords.shape[0]
+        zeros = torch.zeros(n_points, dtype=coords.dtype, device=coords.device)
+        if not field.requires_grad and field.grad_fn is None:
+            return zeros
+        if field.dim() == 1:
+            field = field.unsqueeze(-1)
+        grad = torch.autograd.grad(
+            field,
+            coords,
+            grad_outputs=torch.ones_like(field),
+            create_graph=True,
+            allow_unused=True,
+        )[0]
+        if grad is None:
+            return zeros
+        laplacian = zeros
+        for d in range(self.dim):
+            grad_d = grad[:, d : d + 1]
+            if grad_d.grad_fn is None and not grad_d.requires_grad:
+                continue
+            grad2 = torch.autograd.grad(
+                grad_d,
+                coords,
+                grad_outputs=torch.ones_like(grad_d),
+                create_graph=True,
+                allow_unused=True,
+            )[0]
+            if grad2 is not None:
+                laplacian = laplacian + grad2[:, d]
+        return laplacian
+
+    def residual(
+        self,
+        u: Tensor,
+        coords: Tensor,
+        compute_derivatives: bool = True,
+    ) -> PDEResidual:
+        """Compute biharmonic residual: R = ∇⁴u - f."""
+        if not u.requires_grad and u.grad_fn is None:
+            # Disconnected solution — derivatives are undefined; the
+            # biharmonic term is zero (consistent with the base class).
+            biharmonic = torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
+            laplacian = biharmonic
+        else:
+            # Use the caller's coords directly when they already carry grad (the
+            # connected case, so ``u`` stays attached); otherwise differentiate
+            # against a private clone so we never flip the caller's leaf tensor
+            # to ``requires_grad`` in place. A solution connected to parameters
+            # but not to ``coords`` yields a zero biharmonic (∇⁴u w.r.t. coords
+            # is undefined), consistent with the base class.
+            if coords.requires_grad:
+                work_coords = coords
+            else:
+                work_coords = coords.detach().clone().requires_grad_(True)
+            laplacian = self._laplacian_autograd(u, work_coords)
+            biharmonic = self._laplacian_autograd(laplacian, work_coords)
+
+        source = self.source_term(coords)
+        if isinstance(source, np.ndarray):
+            source = torch.from_numpy(source).to(coords.device)
+
+        residual_values = biharmonic - source
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
+        max_norm = float(torch.max(torch.abs(residual_values)).item())
+        return PDEResidual(
+            values=residual_values,
+            l2_norm=l2_norm,
+            max_norm=max_norm,
+            derivatives={"laplacian": laplacian, "biharmonic": biharmonic}
+            if compute_derivatives
+            else {},
+        )
+
+    def source_term(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+        time: float | None = None,
+    ) -> NDArray[np.float32] | Tensor:
+        """Source term ``f = (dim · π²)² · u`` for the manufactured solution."""
+        coefficient = (self.dim * (np.pi**2)) ** 2
+        return coefficient * self._manufactured(coords)
+
+    def boundary_value(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+        time: float | None = None,
+    ) -> NDArray[np.float32] | Tensor:
+        """Dirichlet boundary values (the manufactured solution vanishes there)."""
+        if self.config.boundary_condition == BoundaryCondition.DIRICHLET:
+            if isinstance(coords, Tensor):
+                return torch.full(
+                    (coords.shape[0],),
+                    self.config.boundary_value,
+                    dtype=coords.dtype,
+                    device=coords.device,
+                )
+            return np.full(coords.shape[0], self.config.boundary_value, dtype=np.float32)
+        return self._manufactured(coords)
+
+    def exact_solution(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+        time: float | None = None,
+    ) -> NDArray[np.float32] | Tensor | None:
+        """Manufactured exact solution ``∏_d sin(π x_d)``."""
+        return self._manufactured(coords)

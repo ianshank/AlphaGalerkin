@@ -1,0 +1,62 @@
+# Centaur Research-Loop Harness — demo configuration.
+#
+# Drives the MCTS + evaluator solver across a manifest of independent PDE
+# problems and aggregates a per-problem "discovery ledger" of which arm
+# (random / trained / LLM) reached the lowest residual. This is the
+# "billions of cloneable Einsteins" loop: every problem is solved by an
+# independent clone of the centaur solver.
+#
+# The random arm runs on CPU or GPU; the trained arm needs a checkpoint and
+# the LLM arm needs CUDA + a running LM Studio server. Run with:
+#   python -m src.agents.cli research --config config/agents/research_loop_demo.yaml
+#
+# For a CPU-only run, set device: auto and default_arms: [random].
+
+name: research_loop_demo
+description: "Sweep MCTS+evaluator across an OOD PDE manifest and rank arms per problem."
+agent_type: research
+
+# Problem manifest — held-out OOD operators alongside the in-distribution one.
+problems:
+  - name: poisson_id
+    pde: poisson
+  - name: helmholtz_ood
+    pde: helmholtz
+  - name: biharmonic_ood
+    pde: biharmonic
+
+# Arms applied to every problem unless a problem overrides `arms`.
+default_arms: [random, llm]
+
+# Seeds + solve budget
+n_seeds: 5
+n_mcts_simulations: 32
+max_rollouts: 512
+target_residual: 1.0e-2
+max_basis_functions: 12
+n_candidate_bases: 24
+
+# Arm resources — provide a checkpoint to enable the trained arm.
+trained_checkpoint_path: null
+
+# Device + execution
+device: cuda
+parallel: false
+
+# Acceptance — fraction of problems whose best arm must reach target_residual.
+min_solved_fraction: 0.5
+
+# LM Studio sub-config (LLM arm).
+lm_studio:
+  enabled: true
+  base_url: "http://127.0.0.1:1234/v1"
+  model: "qwen2.5-14b-instruct"
+  api_key: "lm-studio"
+  timeout_ms: 30000
+  max_retries: 3
+  backoff_base_s: 0.25
+  temperature: 0.2
+  max_tokens: 256
+  fallback_to_uniform_on_parse_error: false
+  min_free_vram_gib: 10.0
+  preflight_on_construct: true

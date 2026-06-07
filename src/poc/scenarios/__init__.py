@@ -13,6 +13,7 @@ This module contains the core PoC scenarios for AlphaGalerkin:
 from src.poc.scenarios.complexity import ComplexityScenario
 from src.poc.scenarios.llm_prior_ablation import LLMPriorAblationScenario
 from src.poc.scenarios.noyron_hx import NoyronHXScenario
+from src.poc.scenarios.scaling_law import ScalingLawScenario
 from src.poc.scenarios.stability import StabilityScenario
 from src.poc.scenarios.transfer import TransferScenario
 
@@ -20,6 +21,7 @@ __all__ = [
     "ComplexityScenario",
     "LLMPriorAblationScenario",
     "NoyronHXScenario",
+    "ScalingLawScenario",
     "StabilityScenario",
     "TransferScenario",
 ]

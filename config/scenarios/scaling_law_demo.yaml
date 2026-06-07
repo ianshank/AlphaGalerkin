@@ -1,0 +1,72 @@
+# MCTS-Budget Scaling Law — demo configuration.
+#
+# Sweeps the MCTS-simulation budget (per-decision search compute) and fits a
+# log-log scaling curve of final residual vs budget for each evaluator arm.
+# This is the concrete "bitter lesson / scaling curve" experiment: does more
+# search compute predictably reduce the solver residual?
+#
+# The random arm runs on CPU or GPU; the trained and LLM arms require CUDA
+# (and, for the LLM arm, a running LM Studio server). Run with:
+#   python -m src.poc.cli run --config config/scenarios/scaling_law_demo.yaml
+#
+# For a CPU-only random-arm run, set device: auto and arms: [random].
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800
+
+scenarios:
+  - name: scaling_law
+    description: "Residual vs MCTS-budget scaling law on Poisson (random / trained / LLM arms)."
+    tier: integration
+    enabled: true
+
+    # Problem
+    pde: poisson
+
+    # Sweep axes — at least two distinct budgets are required to fit a slope.
+    arms: [random, llm]
+    simulation_budgets: [8, 16, 32, 64]
+
+    # Seeds
+    n_seeds: 5
+
+    # Solve budget — small target so each cell exhausts its macro-steps and
+    # the final residual reflects search quality at the given budget.
+    target_residual: 1.0e-6
+    max_basis_functions: 12
+    n_candidate_bases: 24
+    rollout_headroom: 2
+
+    # Arm resources — provide a checkpoint to enable the trained arm.
+    trained_checkpoint_path: null
+
+    # Device — GPU-preferred; the LLM arm requires CUDA.
+    device: cuda
+
+    # Significance test for the optional arm-vs-arm comparison.
+    significance_test_type: mann_whitney
+    significance_alpha: 0.05
+    n_bootstrap: 2000
+
+    # Acceptance thresholds (primary arm = first in `arms`).
+    min_residual_decay: 0.05
+    min_fit_r2: 0.5
+
+    # LM Studio sub-config (LLM arm).
+    lm_studio:
+      enabled: true
+      base_url: "http://127.0.0.1:1234/v1"
+      model: "qwen2.5-14b-instruct"
+      api_key: "lm-studio"
+      timeout_ms: 30000
+      max_retries: 3
+      backoff_base_s: 0.25
+      temperature: 0.2
+      max_tokens: 256
+      fallback_to_uniform_on_parse_error: false
+      min_free_vram_gib: 10.0
+      preflight_on_construct: true
+
+    requires_gpu: true
+    estimated_duration_seconds: 1200

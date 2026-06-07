@@ -1633,8 +1633,11 @@ class HelmholtzOperator(PDEOperator):
         if isinstance(source, np.ndarray):
             source = torch.from_numpy(source).to(coords.device)
 
+        # Flatten every term to (N,) so a (N, 1) `u` (and the
+        # `torch.zeros_like(u)` laplacian fallback) cannot trigger implicit
+        # (N, N) broadcasting in the residual sum.
         u_flat = u.reshape(-1)
-        residual_values = laplacian + (self.wavenumber**2) * u_flat - source
+        residual_values = laplacian.reshape(-1) + (self.wavenumber**2) * u_flat - source.reshape(-1)
 
         l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
         max_norm = float(torch.max(torch.abs(residual_values)).item())

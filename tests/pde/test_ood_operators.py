@@ -119,6 +119,22 @@ class TestHelmholtzOperator:
         assert isinstance(residual, PDEResidual)
         assert residual.l2_norm < 1e-3
 
+    @pytest.mark.parametrize("u_shape", ["1d", "2d"])
+    def test_residual_shape_stable_for_column_u(
+        self, operator: HelmholtzOperator, u_shape: str
+    ) -> None:
+        # The k²u term must not broadcast against the (N,) laplacian/source when
+        # u is a column vector (N, 1) — the residual stays (N,).
+        points = operator.generate_collocation_points(32, method="random", seed=5)
+        coords = _connected_coords(points)
+        u = operator.exact_solution(coords)
+        assert isinstance(u, torch.Tensor)
+        if u_shape == "2d":
+            u = u.unsqueeze(-1)
+        residual = operator.residual(u, coords)
+        assert residual.values.shape == (32,)
+        assert residual.l2_norm < 1e-3
+
     @settings(max_examples=20, deadline=None)
     @given(k=st.floats(min_value=0.5, max_value=8.0))
     def test_residual_small_across_wavenumbers(self, k: float) -> None:

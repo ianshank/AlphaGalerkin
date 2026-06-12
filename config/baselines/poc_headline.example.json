@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "description": "Illustrative PoC headline baseline. Regenerate from a real run via: python -m src.poc.cli record-baseline --run-id <id> --out <path>. Direction is recorded per-entry so a single document mixes lower-better (residual) and higher-better (fit_r2 / solved_fraction) metrics.",
+  "hardware_tag": "example",
+  "git_sha": "",
+  "llm_backend": "vllm",
+  "entries": [
+    {
+      "schema_version": 1,
+      "scenario_name": "scaling_law",
+      "metric_name": "residual_scaling_exponent",
+      "value": -0.35,
+      "direction": "lower_better",
+      "tolerance_pct": 15.0
+    },
+    {
+      "schema_version": 1,
+      "scenario_name": "scaling_law",
+      "metric_name": "residual_fit_r2",
+      "value": 0.85,
+      "direction": "higher_better",
+      "tolerance_pct": 10.0
+    },
+    {
+      "schema_version": 1,
+      "scenario_name": "research_loop",
+      "metric_name": "solved_fraction",
+      "value": 0.66,
+      "direction": "higher_better",
+      "tolerance_pct": 10.0
+    }
+  ]
+}

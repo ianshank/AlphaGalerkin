@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+# Bare-form backend identifiers. Every value is OpenAI-wire-compatible and
+# served by the same ``openai`` SDK client; the selection only changes the
+# default endpoint / model / VRAM-check policy applied by
+# ``src.integrations.openai_compat.registry.apply_backend_defaults``.
+LLMBackend = Literal["lm_studio", "vllm", "llama_cpp"]
+
+# How preflight treats the *local* CUDA free-VRAM floor.
+#   ``"local"`` — probe ``torch.cuda.mem_get_info`` (model colocated with the
+#     solver, e.g. a single-box LM Studio install).
+#   ``"off"``   — skip the probe (model served on a *remote* box we can't
+#     introspect; the local GPU is the solver's, not the LLM's).
+VramCheckMode = Literal["local", "off"]
 
 
 class LMStudioConfig(BaseModel):
@@ -13,7 +28,11 @@ class LMStudioConfig(BaseModel):
     ``LMStudioConfig`` does not require the SDK to be installed.
 
     Defaults target a fresh LM Studio install serving Qwen-14B on the
-    standard local endpoint.
+    standard local endpoint. Setting ``backend`` to ``"vllm"`` or
+    ``"llama_cpp"`` and leaving ``base_url`` / ``model`` / ``vram_check_mode``
+    unset auto-fills that backend's canonical defaults (see
+    ``src.integrations.openai_compat.registry``); any field the user sets
+    explicitly always wins.
     """
 
     model_config = ConfigDict(
@@ -22,6 +41,24 @@ class LMStudioConfig(BaseModel):
         str_strip_whitespace=True,
     )
 
+    backend: LLMBackend = Field(
+        default="lm_studio",
+        description=(
+            "OpenAI-compatible server family. All three share the same SDK "
+            "client; the value selects which default endpoint/model/VRAM "
+            "policy is applied for fields the user leaves unset. Default "
+            "preserves the historical LM Studio behaviour."
+        ),
+    )
+    vram_check_mode: VramCheckMode = Field(
+        default="local",
+        description=(
+            "Whether preflight probes the local CUDA free-VRAM floor. "
+            "'local' (default) keeps the historical colocated-server check; "
+            "'off' skips it for a remote LLM server whose GPU we cannot "
+            "introspect (the local GPU belongs to the solver, not the LLM)."
+        ),
+    )
     enabled: bool = Field(
         default=True,
         description=(

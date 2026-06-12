@@ -31,6 +31,7 @@ from src.poc.scenarios._centaur_common import (
     enumerate_basis_descriptions,
     gate_llm_client,
     gate_trained_model,
+    median_of,
     run_basis_selection_cell,
 )
 from src.poc.scenarios.scaling_law_config import (
@@ -51,10 +52,9 @@ _PRIMARY_SLOPE_METRIC = "residual_scaling_exponent"
 _PRIMARY_R2_METRIC = "residual_fit_r2"
 
 
-def _median(samples: list[float]) -> float:
-    if not samples:
-        return float("nan")
-    return float(np.median(np.asarray(samples, dtype=np.float64)))
+# Back-compat alias for the shared helper (kept so existing references and
+# tests that import ``scaling_law._median`` keep working).
+_median = median_of
 
 
 def fit_log_log(budgets: list[int], residual_medians: list[float]) -> tuple[float, float]:

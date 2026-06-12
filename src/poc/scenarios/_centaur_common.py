@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
+import numpy as np
 import structlog
 
 from src.integrations.lm_studio.schema import LMStudioError
@@ -97,6 +98,18 @@ class SupportsWarning(Protocol):
     def warning(self, event: str, **kwargs: object) -> object:
         """Emit a warning-level structured event."""
         ...
+
+
+def median_of(samples: list[float]) -> float:
+    """Median of a sample list, ``nan`` for an empty list.
+
+    Shared by every centaur scenario that aggregates per-seed residuals or
+    rollouts (scaling-law, research-loop). Centralised here so the three
+    scenarios keep one definition (previously duplicated verbatim).
+    """
+    if not samples:
+        return float("nan")
+    return float(np.median(np.asarray(samples, dtype=np.float64)))
 
 
 class CellOutcome(NamedTuple):
@@ -332,6 +345,14 @@ def gate_llm_client(
     if not lm_config.enabled:
         cell_logger.warning("llm_arm_disabled_by_config", reason="lm_studio.enabled is False")
         return None
+    # Resolve backend-specific endpoint/model/VRAM defaults for any field the
+    # user left unset. No-op for the default ``lm_studio`` backend; for
+    # ``vllm`` / ``llama_cpp`` this fills the canonical port/model/VRAM policy.
+    from src.integrations.openai_compat.registry import (  # noqa: PLC0415
+        apply_backend_defaults,
+    )
+
+    lm_config = apply_backend_defaults(lm_config)
     try:
         report = preflight_fn(lm_config)
     except LLM_PREFLIGHT_RECOVERABLE_ERRORS as exc:

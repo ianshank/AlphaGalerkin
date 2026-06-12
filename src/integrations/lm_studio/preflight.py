@@ -217,13 +217,19 @@ def check_lm_studio_server(
                     f"(available: {available_models})"
                 )
 
-        free_vram_gib, vram_sufficient = _check_vram(config.min_free_vram_gib)
+        if config.vram_check_mode == "off":
+            # Remote LLM server: the local GPU (if any) belongs to the
+            # solver, not the model, so the free-VRAM floor is meaningless.
+            free_vram_gib, vram_sufficient = None, True
+        else:
+            free_vram_gib, vram_sufficient = _check_vram(config.min_free_vram_gib)
         logger.debug(
             "lm_studio_preflight_check",
             check="vram_sufficient",
             outcome=vram_sufficient,
             free_vram_gib=free_vram_gib,
             min_free_vram_gib=config.min_free_vram_gib,
+            vram_check_mode=config.vram_check_mode,
         )
         if not vram_sufficient and free_vram_gib is not None:
             failure_reasons.append(

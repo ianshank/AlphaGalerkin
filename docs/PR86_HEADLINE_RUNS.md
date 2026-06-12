@@ -156,9 +156,18 @@ python -m src.poc.cli diff --baseline config/baselines/headline.json --run-id <n
 Metric direction is recorded in the document (higher-better for
 `*_fit_r2` / `solved_fraction` / `*_reduction_pct` / `accept_rate`, lower-better
 otherwise); extend with `--higher-better` / `--higher-better-suffix`. The
-research loop persists its result the same way — pass `--output-dir` to
-`python -m src.agents.cli research` and feed the written `result.json` to the
-same recorder.
+research loop persists its result under `<output_dir>/<run_id>/result.json` — pass
+`--output-dir` to `python -m src.agents.cli research`, then record/diff by
+pointing the PoC baseline CLI at that directory (it auto-detects the
+research-loop layout):
+
+```bash
+python -m src.agents.cli research --config <cfg> --output-dir outputs/agents/research
+python -m src.poc.cli record-baseline --output-dir outputs/agents/research \
+    --run-id <run_id> --out config/baselines/headline.json --higher-better solved_fraction
+python -m src.poc.cli diff --baseline config/baselines/headline.json \
+    --output-dir outputs/agents/research --run-id <new_run_id>
+```
 
 ## 3. Pointers
 

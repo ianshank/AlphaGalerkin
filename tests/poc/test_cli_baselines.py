@@ -50,6 +50,51 @@ def test_load_run_result_dicts_missing_raises(tmp_path: Path) -> None:
         _load_run_result_dicts(str(tmp_path), "absent")
 
 
+def test_load_run_result_dicts_research_layout(tmp_path: Path) -> None:
+    """Research-loop layout: {output_dir}/{run_id}/result.json (no results/ segment)."""
+    run_dir = tmp_path / "rl1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result.json").write_text(
+        json.dumps({"name": "research_loop", "metrics": {"solved_fraction": 1.0}})
+    )
+    dicts = _load_run_result_dicts(str(tmp_path), "rl1")
+    assert dicts[0]["name"] == "research_loop"
+
+
+def test_load_run_result_dicts_corrupt_json_raises(tmp_path: Path) -> None:
+    run_dir = tmp_path / "results" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "bad.json").write_text("{not json")
+    with pytest.raises(ValueError, match="not valid JSON"):
+        _load_run_result_dicts(str(tmp_path), "run1")
+
+
+def test_record_baseline_from_research_layout(tmp_path: Path) -> None:
+    """record-baseline works end-to-end on a persisted research-loop run."""
+    run_dir = tmp_path / "rl1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "result.json").write_text(
+        json.dumps({"name": "research_loop", "metrics": {"solved_fraction": 0.66}})
+    )
+    out = tmp_path / "base.json"
+    rc = cmd_record_baseline(
+        argparse.Namespace(
+            run_id="rl1",
+            out=str(out),
+            output_dir=str(tmp_path),
+            tolerance_pct=10.0,
+            higher_better="solved_fraction",
+            higher_better_suffix="",
+            description="",
+            hardware_tag="",
+            git_sha="",
+            llm_backend="",
+        )
+    )
+    assert rc == 0
+    assert out.exists()
+
+
 def test_record_then_diff_clean(tmp_path: Path) -> None:
     _write_run(tmp_path, "run1", {"residual_fit_r2": 0.9, "residual_median_b4": 0.5})
     out = tmp_path / "base.json"

@@ -52,18 +52,38 @@ DEFAULT_HIGHER_BETTER_SUFFIXES: tuple[str, ...] = (
 
 
 def _load_run_result_dicts(output_dir: str, run_id: str) -> list[dict[str, Any]]:
-    """Read every scenario-result JSON written under a run id.
+    """Read every result JSON written under a run id, across both layouts.
 
-    Looks under ``{output_dir}/results/{run_id}/*.json`` (the layout written
-    by ``src/poc/results.py``). Raises ``FileNotFoundError`` when the run dir
-    is absent so the CLI fails loud rather than recording an empty baseline.
+    Supports the two on-disk layouts the harness writes:
+
+    - PoC scenarios (``src/poc/results.py``):
+      ``{output_dir}/results/{run_id}/*.json``
+    - Research loop (``src/agents/cli.py``):
+      ``{output_dir}/{run_id}/result.json``
+
+    The PoC layout is preferred when present; otherwise the research layout is
+    used (so ``--output-dir outputs/agents/research --run-id <id>`` records a
+    research-loop run). Raises ``FileNotFoundError`` when neither layout has a
+    run dir, and ``ValueError`` for a corrupt result file, so the CLI fails
+    loud rather than recording an empty or partial baseline.
     """
-    run_dir = Path(output_dir) / "results" / run_id
-    if not run_dir.is_dir():
-        raise FileNotFoundError(f"no results found for run_id {run_id!r} under {run_dir}")
+    base = Path(output_dir)
+    poc_dir = base / "results" / run_id
+    research_dir = base / run_id
+    if poc_dir.is_dir():
+        run_dir = poc_dir
+    elif research_dir.is_dir():
+        run_dir = research_dir
+    else:
+        raise FileNotFoundError(
+            f"no results found for run_id {run_id!r} under {poc_dir} or {research_dir}"
+        )
     dicts: list[dict[str, Any]] = []
     for path in sorted(run_dir.glob("*.json")):
-        raw = json.loads(path.read_text())
+        try:
+            raw = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"result file {path} is not valid JSON: {exc}") from exc
         if isinstance(raw, dict):
             dicts.append(raw)
     return dicts

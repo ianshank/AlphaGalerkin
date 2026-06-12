@@ -14,7 +14,9 @@ Example:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -154,11 +156,33 @@ def run(
         raise typer.Exit(code=1)
 
 
+_research_output_dir_option = typer.Option(
+    "outputs/agents/research",
+    "--output-dir",
+    "-o",
+    help="Directory to persist the research-loop result JSON under <dir>/<run_id>/result.json.",
+)
+
+
+def _persist_research_result(result: Any, output_dir: Path) -> Path:
+    """Write a research-loop ExecutionResult to ``<output_dir>/<run_id>/result.json``.
+
+    Mirrors ``src/poc/results.py`` persistence so research-loop runs are
+    durable and diffable by the baseline harness. Returns the written path.
+    """
+    run_dir = output_dir / result.run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "result.json"
+    path.write_text(json.dumps(result.to_dict(), indent=2, sort_keys=True, default=str))
+    return path
+
+
 @app.command()
 @add_common_options
 @with_error_handling
 def research(
     config: Path = _config_option,
+    output_dir: Path = _research_output_dir_option,
     verbose: bool = False,
     debug: bool = False,
     quiet: bool = False,
@@ -171,6 +195,9 @@ def research(
     loop_config = load_config_file(config, ResearchLoopConfig)
     orchestrator = ResearchLoopOrchestrator(loop_config)
     result = orchestrator.run()
+
+    result_path = _persist_research_result(result, output_dir)
+    typer.echo(f"Result written to {result_path}")
 
     success = result.is_success()
     print_status_panel(

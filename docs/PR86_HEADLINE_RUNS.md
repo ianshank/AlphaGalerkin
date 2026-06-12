@@ -115,6 +115,51 @@ LM-Studio latency (from the LLM-prior surface, recalibrated for Qwen-14B Q4):
 - Per-GPU latency baselines for the LLM arm should be recorded under
   `outputs/poc/llm_prior_ablation/` per the CLAUDE.md roadmap.
 
+## 2b. Switching the LLM backend (vLLM / llama.cpp / LM Studio)
+
+The LLM arm runs against any OpenAI-wire-compatible server. Select it with the
+`backend:` field under the scenario's `lm_studio:` block — endpoint, model, and
+the local free-VRAM policy auto-resolve from the backend profile, and any field
+you set explicitly always wins:
+
+```yaml
+lm_studio:
+  enabled: true
+  backend: vllm          # lm_studio (default) | vllm | llama_cpp
+  model: Qwen/Qwen2.5-14B-Instruct   # optional; backend has a sensible default
+  # base_url / vram_check_mode auto-fill from the backend profile when unset.
+```
+
+| `backend:` | Default endpoint | `vram_check_mode` default |
+|---|---|---|
+| `lm_studio` | `http://127.0.0.1:1234/v1` | `local` (colocated) |
+| `vllm` | `http://127.0.0.1:8000/v1` | `off` (remote) |
+| `llama_cpp` | `http://127.0.0.1:8080/v1` | `off` (remote) |
+
+See `src/integrations/AGENT.md` for the full tested-server matrix. The `openai`
+SDK from the `[lm-studio]` extra serves all three — no extra install.
+
+## 2c. Recording & regression-guarding headline numbers
+
+Once a GPU headline run completes, capture its metrics as a baseline and gate
+later runs against it (the diff exits non-zero on regression, so it is CI-usable):
+
+```bash
+# Record a baseline from a completed run's metrics (run id = the outputs/poc/results/<id> dir).
+python -m src.poc.cli record-baseline --run-id <id> --out config/baselines/headline.json \
+    --tolerance-pct 10 --hardware-tag "RTX 5060 Ti 16GiB" --llm-backend vllm
+
+# Later: fail if any metric regressed beyond its recorded tolerance.
+python -m src.poc.cli diff --baseline config/baselines/headline.json --run-id <new_id>
+```
+
+Metric direction is recorded in the document (higher-better for
+`*_fit_r2` / `solved_fraction` / `*_reduction_pct` / `accept_rate`, lower-better
+otherwise); extend with `--higher-better` / `--higher-better-suffix`. The
+research loop persists its result the same way — pass `--output-dir` to
+`python -m src.agents.cli research` and feed the written `result.json` to the
+same recorder.
+
 ## 3. Pointers
 
 - Operator definitions: `src/pde/operators.py` (`HelmholtzOperator`,

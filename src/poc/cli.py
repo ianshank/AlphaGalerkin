@@ -24,7 +24,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -34,6 +37,57 @@ from src.poc.results import ResultCollector
 from src.poc.runner import ScenarioRunner
 
 logger = structlog.get_logger(__name__)
+
+# Metric-name suffixes whose larger value is *better*. Used to record metric
+# direction in a baseline without hardcoding a per-metric table; extend at the
+# CLI with ``--higher-better``. Names are matched by suffix because centaur
+# metrics are arm-prefixed (e.g. ``random_residual_fit_r2``).
+DEFAULT_HIGHER_BETTER_SUFFIXES: tuple[str, ...] = (
+    "_fit_r2",
+    "_r2",
+    "solved_fraction",
+    "_reduction_pct",
+    "accept_rate",
+)
+
+
+def _load_run_result_dicts(output_dir: str, run_id: str) -> list[dict[str, Any]]:
+    """Read every scenario-result JSON written under a run id.
+
+    Looks under ``{output_dir}/results/{run_id}/*.json`` (the layout written
+    by ``src/poc/results.py``). Raises ``FileNotFoundError`` when the run dir
+    is absent so the CLI fails loud rather than recording an empty baseline.
+    """
+    run_dir = Path(output_dir) / "results" / run_id
+    if not run_dir.is_dir():
+        raise FileNotFoundError(f"no results found for run_id {run_id!r} under {run_dir}")
+    dicts: list[dict[str, Any]] = []
+    for path in sorted(run_dir.glob("*.json")):
+        raw = json.loads(path.read_text())
+        if isinstance(raw, dict):
+            dicts.append(raw)
+    return dicts
+
+
+def _resolve_higher_better(
+    observed: dict[str, dict[str, float]],
+    *,
+    extra_names: list[str],
+    extra_suffixes: list[str],
+) -> set[str]:
+    """Pick the exact metric names recorded as higher-better.
+
+    A metric is higher-better if its name ends with one of the default
+    suffixes (or an extra suffix), or is named explicitly via ``extra_names``.
+    """
+    suffixes = (*DEFAULT_HIGHER_BETTER_SUFFIXES, *extra_suffixes)
+    explicit = set(extra_names)
+    higher: set[str] = set()
+    for scenario_metrics in observed.values():
+        for metric in scenario_metrics:
+            if metric in explicit or any(metric.endswith(s) for s in suffixes):
+                higher.add(metric)
+    return higher
 
 
 def register_builtin_scenarios() -> None:
@@ -190,6 +244,70 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_record_baseline(args: argparse.Namespace) -> int:
+    """Record a headline baseline document from a completed run's metrics."""
+    from src.poc.baselines import ScenarioBaselineRegistry, observed_from_result_dicts
+
+    result_dicts = _load_run_result_dicts(args.output_dir, args.run_id)
+    observed = observed_from_result_dicts(result_dicts)
+    if not any(observed.values()):
+        print(f"No numeric metrics found for run {args.run_id!r}; nothing to record.")
+        return 1
+    higher_better = _resolve_higher_better(
+        observed,
+        extra_names=_split_csv(args.higher_better),
+        extra_suffixes=_split_csv(args.higher_better_suffix),
+    )
+    registry = ScenarioBaselineRegistry.from_observed(
+        observed,
+        higher_better_metrics=higher_better,
+        tolerance_pct=args.tolerance_pct,
+        description=args.description,
+        hardware_tag=args.hardware_tag,
+        git_sha=args.git_sha,
+        llm_backend=args.llm_backend,
+    )
+    registry.save(args.out)
+    n_entries = len(registry.document.entries)
+    print(f"Recorded {n_entries} metric entries to {args.out} (run {args.run_id}).")
+    return 0
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    """Diff a completed run's metrics against a recorded baseline.
+
+    Exit code is non-zero when any metric regressed beyond tolerance, so this
+    is usable as a CI gate.
+    """
+    from src.poc.baselines import ScenarioBaselineRegistry, observed_from_result_dicts
+
+    registry = ScenarioBaselineRegistry.load(args.baseline)
+    result_dicts = _load_run_result_dicts(args.output_dir, args.run_id)
+    observed = observed_from_result_dicts(result_dicts)
+    report = registry.compare(observed, baseline_path=str(args.baseline))
+
+    print(f"\nBaseline diff: {args.baseline} vs run {args.run_id}")
+    print("=" * 60)
+    for diff in report.diffs:
+        print(
+            f"  [{diff.status:>9}] {diff.key}: "
+            f"{diff.baseline_value:.6g} -> {diff.observed_value:.6g} "
+            f"({diff.delta_pct:+.1f}% vs ±{diff.tolerance_pct:.1f}%)"
+        )
+    if report.missing_in_observed:
+        print(f"\n  Missing in run: {', '.join(report.missing_in_observed)}")
+    print("\n" + "=" * 60)
+    print(f"{len(report.regressions)} regression(s), {len(report.improvements)} improvement(s).")
+    return 1 if report.has_regressions else 0
+
+
+def _split_csv(value: str | None) -> list[str]:
+    """Split a comma-separated CLI value into a trimmed, non-empty list."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -258,6 +376,48 @@ def main() -> int:
         help="Output directory for results",
     )
 
+    # Record-baseline command
+    record_parser = subparsers.add_parser(
+        "record-baseline", help="Record a headline baseline from a run's metrics"
+    )
+    record_parser.add_argument("--run-id", type=str, required=True, help="Run id to record from")
+    record_parser.add_argument("--out", type=str, required=True, help="Baseline JSON output path")
+    record_parser.add_argument(
+        "--output-dir", type=str, default="outputs/poc", help="Results directory"
+    )
+    record_parser.add_argument(
+        "--tolerance-pct",
+        type=float,
+        default=10.0,
+        help="Per-metric regression tolerance to record (percent).",
+    )
+    record_parser.add_argument(
+        "--higher-better",
+        type=str,
+        default="",
+        help="Comma-separated exact metric names whose larger value is better.",
+    )
+    record_parser.add_argument(
+        "--higher-better-suffix",
+        type=str,
+        default="",
+        help="Comma-separated extra metric-name suffixes treated as higher-better.",
+    )
+    record_parser.add_argument("--description", type=str, default="", help="Baseline note.")
+    record_parser.add_argument("--hardware-tag", type=str, default="", help="Hardware identifier.")
+    record_parser.add_argument("--git-sha", type=str, default="", help="Commit sha provenance.")
+    record_parser.add_argument("--llm-backend", type=str, default="", help="LLM backend used.")
+
+    # Diff command
+    diff_parser = subparsers.add_parser(
+        "diff", help="Diff a run's metrics against a recorded baseline (CI gate)"
+    )
+    diff_parser.add_argument("--baseline", type=str, required=True, help="Baseline JSON path")
+    diff_parser.add_argument("--run-id", type=str, required=True, help="Run id to compare")
+    diff_parser.add_argument(
+        "--output-dir", type=str, default="outputs/poc", help="Results directory"
+    )
+
     args = parser.parse_args()
 
     # Configure logging
@@ -272,6 +432,10 @@ def main() -> int:
         return cmd_info(args)
     elif args.command == "compare":
         return cmd_compare(args)
+    elif args.command == "record-baseline":
+        return cmd_record_baseline(args)
+    elif args.command == "diff":
+        return cmd_diff(args)
     else:
         parser.print_help()
         return 0

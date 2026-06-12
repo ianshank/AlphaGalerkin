@@ -32,6 +32,7 @@ from src.poc.scenarios._centaur_common import (
     enumerate_basis_descriptions,
     gate_llm_client,
     gate_trained_model,
+    median_of,
     run_basis_selection_cell,
 )
 from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
@@ -47,10 +48,9 @@ ResearchLoopLogger = create_logger_class("ResearchLoop")
 ProblemResults = dict[str, list[CellOutcome]]
 
 
-def _median(samples: list[float]) -> float:
-    if not samples:
-        return float("nan")
-    return float(np.median(np.asarray(samples, dtype=np.float64)))
+# Back-compat alias for the shared helper (kept so existing references and
+# tests that import ``research_loop._median`` keep working).
+_median = median_of
 
 
 class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):

@@ -12,10 +12,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from eval_harness.core.types import RunResult, ScoreAggregate
+import pytest
 
-from src.integrations.eval_harness.sink import ScenarioResultSink
-from src.poc.baselines.registry import (
+pytest.importorskip("eval_harness")
+
+from eval_harness.core.types import RunResult, ScoreAggregate  # noqa: E402
+
+from src.integrations.eval_harness.sink import ScenarioResultSink  # noqa: E402
+from src.poc.baselines.registry import (  # noqa: E402
     ScenarioBaselineRegistry,
     observed_from_result_dicts,
 )

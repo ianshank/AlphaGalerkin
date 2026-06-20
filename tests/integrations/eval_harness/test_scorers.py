@@ -5,9 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from eval_harness.core.types import EvalItem, RunContext, TargetOutput
 
-from src.integrations.eval_harness.scorers import (
+pytest.importorskip("eval_harness")
+
+from eval_harness.core.types import EvalItem, RunContext, TargetOutput  # noqa: E402
+
+from src.integrations.eval_harness.scorers import (  # noqa: E402
     FAILED_RESIDUAL_SENTINEL,
     FinalResidualScorer,
     PolicyTopKScorer,

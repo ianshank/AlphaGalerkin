@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("torch")
+pytest.importorskip("eval_harness")
 
 from src.integrations.eval_harness.runner import run_eval  # noqa: E402
 

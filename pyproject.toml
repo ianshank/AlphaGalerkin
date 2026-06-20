@@ -448,6 +448,12 @@ omit = [
     "src/demos/*",
     "src/research/fem_baseline.py",
     "src/vertex/*",
+    # The eval-harness adapter requires the optional [eval-harness] git dependency
+    # (langfuse-eval-harness, not on PyPI). Its tests use ``pytest.importorskip``
+    # and skip cleanly in the default CI matrix, so it is omitted from the global
+    # gate (like fem_baseline); per-module coverage is enforced by the dedicated
+    # "Eval-harness adapter" Regression Surface command when the extra is present.
+    "src/integrations/eval_harness/*",
 ]
 
 [tool.coverage.report]

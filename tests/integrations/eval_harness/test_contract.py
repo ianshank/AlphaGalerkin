@@ -10,8 +10,11 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
-from eval_harness.core import interfaces, types
-from eval_harness.plugins import DATASETS, SCORERS, SINKS, TARGETS
+
+pytest.importorskip("eval_harness")
+
+from eval_harness.core import interfaces, types  # noqa: E402
+from eval_harness.plugins import DATASETS, SCORERS, SINKS, TARGETS  # noqa: E402
 
 
 def _field_names(cls: type) -> set[str]:

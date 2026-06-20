@@ -114,9 +114,34 @@ picogk = [
 lm-studio = [
     "openai>=1.40,<2.0",
 ]
+# LLM-evaluation harness (github.com/ianshank/Agents, package `langfuse-eval-harness`)
+# used by `src/integrations/eval_harness/` to trace + score the LLM-prior MCTS
+# layer. It is NOT published on PyPI, so it is pinned to a COMMIT SHA (not a
+# moving tag) via a PEP 508 direct reference. The harness's own deps are light
+# (pyyaml + pydantic); `langfuse` is intentionally NOT pulled here — CI runs the
+# dependency-free `NullLangfuseClient` (`--offline`). The base install never
+# imports `eval_harness`; `src/integrations/eval_harness/` imports it lazily.
+eval-harness = [
+    "langfuse-eval-harness @ git+https://github.com/ianshank/Agents@1dd95fffbfedf7134b76b2c73493e4354ddc0688",
+]
+# Live Langfuse trace export (opt-in). The harness's `SDKLangfuseClient` calls
+# the v2-style score API (`Langfuse(secret_key=...)` + `log_score`), which the
+# OpenTelemetry-based v3/v4 SDK renamed/removed — so pin `<3` explicitly rather
+# than inherit the harness's looser `langfuse>=2`. Requires LANGFUSE_* env vars.
+eval-harness-langfuse = [
+    "langfuse>=2,<3",
+]
 
 [project.scripts]
 alphagalerkin = "src.tools.cli:main"
+
+# Register the AlphaGalerkin scorers/sink/dataset with the harness so the
+# harness's own `eval-harness run --config` CLI discovers them. The target is a
+# torch-free shim whose import registers (see `_entrypoint`), so the global
+# entry-point discovery that fires on any `eval_harness.bootstrap()` never pulls
+# AlphaGalerkin's heavy import graph.
+[project.entry-points."eval_harness.plugins"]
+alphagalerkin = "src.integrations.eval_harness._entrypoint"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -229,6 +254,10 @@ module = [
     "onnxscript.*",
     "dllist",
     "dllist.*",
+    "eval_harness",
+    "eval_harness.*",
+    "langfuse",
+    "langfuse.*",
 ]
 ignore_missing_imports = true
 

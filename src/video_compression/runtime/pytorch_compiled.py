@@ -155,8 +155,9 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
                 device=device,
             )
             if self._autocast_dtype is not None:
-                with torch.no_grad(), torch.autocast(
-                    device_type=device.type, dtype=self._autocast_dtype
+                with (
+                    torch.no_grad(),
+                    torch.autocast(device_type=device.type, dtype=self._autocast_dtype),
                 ):
                     compiled(dummy_input)
             else:

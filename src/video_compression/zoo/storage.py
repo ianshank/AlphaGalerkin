@@ -112,8 +112,7 @@ class VideoCodecZoo:
     def has_entry(self, entry_id: str) -> bool:
         if self.backend is not StorageBackend.FILESYSTEM:
             raise NotImplementedError(
-                f"has_entry is implemented only for the filesystem backend; "
-                f"got {self.backend!r}",
+                f"has_entry is implemented only for the filesystem backend; got {self.backend!r}",
             )
         return self.checkpoint_path(entry_id).exists()
 

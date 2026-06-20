@@ -61,6 +61,7 @@ def run_basis_cell(inputs: dict[str, Any]) -> dict[str, Any]:
         max_basis_functions=params.max_basis_functions,
         n_candidate_bases=params.n_candidate_bases,
         target_residual=params.target_residual,
+        collocation_seed=params.seed,
     )
     descriptions = enumerate_basis_descriptions(game)
 

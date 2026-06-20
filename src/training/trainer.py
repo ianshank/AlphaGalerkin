@@ -336,8 +336,8 @@ class Trainer(BaseTrainer):
         self._warmup_completed = self.training_config.warmup_steps == 0
         self._warmup_steps = self.training_config.warmup_steps
 
-        # Watch model with W&B if enabled
-        if self.wandb_logger is not None:
+        # Watch model with the tracker if enabled (no-op for Langfuse)
+        if self.tracker is not None:
             self.tracker.watch_model(self.model)
 
         # Lifecycle callbacks: resolve specs from config, then append any
@@ -620,7 +620,7 @@ class Trainer(BaseTrainer):
             self.total_games_generated += n_games
 
             # Log self-play progress to W&B
-            if self.wandb_logger is not None:
+            if self.tracker is not None:
                 stats = self.self_play_worker.get_stats()
                 self.tracker.log_metrics(
                     {
@@ -649,7 +649,7 @@ class Trainer(BaseTrainer):
         )
 
         # Log buffer fill summary to W&B
-        if self.wandb_logger is not None:
+        if self.tracker is not None:
             self.tracker.log_metrics(
                 {
                     "self_play/fill_time_seconds": round(fill_time, 2),
@@ -870,7 +870,7 @@ class Trainer(BaseTrainer):
                     board_sizes=stage.board_sizes,
                     weights=stage.size_weights,
                 )
-                if self.wandb_logger is not None:
+                if self.tracker is not None:
                     self.tracker.log_metrics(
                         {
                             "curriculum/n_board_sizes": len(stage.board_sizes),
@@ -945,8 +945,8 @@ class Trainer(BaseTrainer):
                 ),
             )
 
-            # W&B logging (every step by default, configurable via wandb.log_interval)
-            if self.wandb_logger is not None:
+            # Tracker logging (every step by default, configurable via langfuse.log_interval)
+            if self.tracker is not None:
                 self.tracker.log_training_step(metrics)
 
             # Console logging
@@ -1029,7 +1029,7 @@ class Trainer(BaseTrainer):
                 )
 
                 # Log checkpoint as W&B artifact
-                if self.wandb_logger is not None and checkpoint_path is not None:
+                if self.tracker is not None and checkpoint_path is not None:
                     self.tracker.log_model_artifact(
                         checkpoint_path=checkpoint_path,
                         name=f"checkpoint-{step}",
@@ -1067,7 +1067,7 @@ class Trainer(BaseTrainer):
         )
 
         # Log final summary to W&B
-        if self.wandb_logger is not None and self._metrics_history:
+        if self.tracker is not None and self._metrics_history:
             final_metrics = self._metrics_history[-1]
             self.tracker.log_summary(
                 {
@@ -1112,7 +1112,7 @@ class Trainer(BaseTrainer):
             results = self.evaluator.evaluate_multi_resolution(n_games_per_size=n_games)
             for board_size, result in results.items():
                 win_rates.append(result.win_rate)
-                if self.wandb_logger is not None:
+                if self.tracker is not None:
                     self.tracker.log_evaluation(
                         result=result,
                         prefix=f"eval/{board_size}x{board_size}",
@@ -1126,7 +1126,7 @@ class Trainer(BaseTrainer):
                     board_size=board_size,
                 )
                 win_rates.append(result.win_rate)
-                if self.wandb_logger is not None:
+                if self.tracker is not None:
                     self.tracker.log_evaluation(
                         result=result,
                         prefix=f"eval/{board_size}x{board_size}",
@@ -1151,7 +1151,7 @@ class Trainer(BaseTrainer):
             board_size=9,
         )
 
-        if self.wandb_logger is not None:
+        if self.tracker is not None:
             self.tracker.log_metrics(
                 {"eval/policy_agreement": policy_agreement},
                 step=step,
@@ -1215,7 +1215,7 @@ class Trainer(BaseTrainer):
                 self.elo_tracker.update_ratings(step, opponent_step, score)
 
                 # Log to W&B
-                if self.wandb_logger is not None:
+                if self.tracker is not None:
                     current_rating = self.elo_tracker.get_rating(step)
                     self.tracker.log_metrics(
                         {
@@ -1302,7 +1302,7 @@ class Trainer(BaseTrainer):
             if "los" in result.metadata:
                 elo_metrics["eval/engine/los"] = result.metadata["los"]
 
-            if self.wandb_logger is not None:
+            if self.tracker is not None:
                 self.tracker.log_metrics(
                     elo_metrics,
                     step=step,

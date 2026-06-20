@@ -179,35 +179,33 @@ def parse_args() -> argparse.Namespace:
         help="Enable debug logging",
     )
 
-    # W&B configuration
-    wandb_group = parser.add_argument_group("Weights & Biases")
-    wandb_group.add_argument(
-        "--wandb-api-key",
+    # Langfuse configuration
+    langfuse_group = parser.add_argument_group("Langfuse")
+    langfuse_group.add_argument(
+        "--langfuse-public-key",
         type=str,
-        help="W&B API key (or set WANDB_API_KEY env var)",
+        help="Langfuse public key (or set LANGFUSE_PUBLIC_KEY env var)",
     )
-    wandb_group.add_argument(
-        "--wandb-project",
+    langfuse_group.add_argument(
+        "--langfuse-secret-key",
+        type=str,
+        help="Langfuse secret key (or set LANGFUSE_SECRET_KEY env var)",
+    )
+    langfuse_group.add_argument(
+        "--langfuse-project",
         type=str,
         default="alphagalerkin",
-        help="W&B project name (default: alphagalerkin)",
+        help="Langfuse project name (default: alphagalerkin)",
     )
-    wandb_group.add_argument(
-        "--wandb-entity",
+    langfuse_group.add_argument(
+        "--langfuse-run-name",
         type=str,
-        help="W&B entity (team or username)",
+        help="Langfuse run name (auto-generated if not set)",
     )
-    wandb_group.add_argument(
-        "--wandb-run-name",
+    langfuse_group.add_argument(
+        "--langfuse-host",
         type=str,
-        help="W&B run name (auto-generated if not set)",
-    )
-    wandb_group.add_argument(
-        "--wandb-mode",
-        type=str,
-        default="online",
-        choices=["online", "offline", "disabled"],
-        help="W&B mode (default: online)",
+        help="Langfuse host URL (or set LANGFUSE_HOST env var)",
     )
 
     # Authentication configuration
@@ -379,17 +377,21 @@ def main() -> int:
         is_spot=args.spot,
     )
 
-    # Build W&B environment variables
-    wandb_env: dict[str, str] = {}
-    api_key = args.wandb_api_key or os.environ.get("WANDB_API_KEY")
-    if api_key:
-        wandb_env["WANDB_API_KEY"] = api_key
-        wandb_env["WANDB_PROJECT"] = args.wandb_project
-        wandb_env["WANDB_MODE"] = args.wandb_mode
-        if args.wandb_entity:
-            wandb_env["WANDB_ENTITY"] = args.wandb_entity
-        if args.wandb_run_name:
-            wandb_env["WANDB_RUN_NAME"] = args.wandb_run_name
+    # Build Langfuse environment variables for the remote training container.
+    # The container's tracker reads LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+    # and degrades to a no-op when they are absent.
+    tracking_env: dict[str, str] = {}
+    public_key = args.langfuse_public_key or os.environ.get("LANGFUSE_PUBLIC_KEY")
+    secret_key = args.langfuse_secret_key or os.environ.get("LANGFUSE_SECRET_KEY")
+    if public_key and secret_key:
+        tracking_env["LANGFUSE_PUBLIC_KEY"] = public_key
+        tracking_env["LANGFUSE_SECRET_KEY"] = secret_key
+        tracking_env["LANGFUSE_PROJECT"] = args.langfuse_project
+        host = args.langfuse_host or os.environ.get("LANGFUSE_HOST")
+        if host:
+            tracking_env["LANGFUSE_HOST"] = host
+        if args.langfuse_run_name:
+            tracking_env["LANGFUSE_RUN_NAME"] = args.langfuse_run_name
 
     # Print configuration summary
     print("\n" + "=" * 60)
@@ -407,10 +409,10 @@ def main() -> int:
     print(f"  Replicas:      {args.replica_count}")
     print(f"  Spot:          {args.spot}")
     print()
-    if wandb_env.get("WANDB_API_KEY"):
-        print(f"W&B:             Enabled (project: {args.wandb_project})")
+    if tracking_env.get("LANGFUSE_PUBLIC_KEY"):
+        print(f"Langfuse:        Enabled (project: {args.langfuse_project})")
     else:
-        print("W&B:             Disabled (no API key)")
+        print("Langfuse:        Disabled (no credentials)")
     print()
     print("Authentication:")
     print(f"  Method:        {args.auth_method}")
@@ -442,7 +444,7 @@ def main() -> int:
             display_name=args.display_name,
             container_uri=args.container_uri,
             args=training_args,
-            environment_variables=wandb_env if wandb_env else None,
+            environment_variables=tracking_env if tracking_env else None,
             sync=args.sync,
         )
 

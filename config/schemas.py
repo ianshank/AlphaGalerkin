@@ -110,12 +110,24 @@ class MCTSConfig(BaseModel):
     """Configuration for Monte Carlo Tree Search."""
 
     # Search parameters
-    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.")
-    c_puct: float = Field(default=1.5, description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.")
+    n_simulations: int = Field(
+        default=800,
+        description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.",
+    )
+    c_puct: float = Field(
+        default=1.5,
+        description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.",
+    )
 
     # Dirichlet noise for root exploration
-    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.")
-    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.")
+    dirichlet_alpha: float = Field(
+        default=0.03,
+        description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.",
+    )
+    dirichlet_epsilon: float = Field(
+        default=0.25,
+        description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.",
+    )
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")
@@ -415,39 +427,30 @@ class DistributedConfig(BaseModel):
     )
 
 
-class WandbConfig(BaseModel):
-    """Configuration for Weights & Biases logging.
+class LangfuseConfig(BaseModel):
+    """Configuration for Langfuse experiment tracking.
 
-    This is the single source of truth for W&B configuration.
-    The WandbLogger accepts this configuration via model_dump().
+    Single source of truth for the Langfuse tracker config; consumed via
+    ``model_dump()`` by ``src.training.langfuse_tracker.create_tracker``.
+    Credentials are sourced from the environment (``LANGFUSE_PUBLIC_KEY`` /
+    ``LANGFUSE_SECRET_KEY`` / ``LANGFUSE_HOST``), never stored here. The tracker
+    degrades to a no-op when credentials are absent.
     """
 
-    # Core settings
-    enabled: bool = Field(default=True, description="Enable W&B logging")
-    project: str = Field(default="alphagalerkin", description="W&B project name")
-    entity: str | None = Field(default=None, description="W&B team/user entity")
-    name: str | None = Field(default=None, description="Run name (auto-generated if None)")
-    tags: list[str] = Field(default_factory=list, description="Tags for the run")
-    notes: str | None = Field(default=None, description="Notes for the run")
-    group: str | None = Field(default=None, description="Group for organizing runs")
-    job_type: str = Field(default="train", description="Job type (train, eval, etc.)")
-
-    # Mode settings
-    mode: Literal["online", "offline", "disabled"] = Field(default="online", description="W&B mode")
-
-    # Logging settings
-    log_model: bool = Field(default=True, description="Log model checkpoints as artifacts")
-    log_gradients: bool = Field(default=False, description="Log gradient histograms")
-    log_code: bool = Field(default=True, description="Log source code")
+    enabled: bool = Field(default=True, description="Enable Langfuse tracking")
+    project: str = Field(default="alphagalerkin", description="Langfuse project name")
+    run_name: str | None = Field(default=None, description="Run/trace name (auto if None)")
+    session_name: str | None = Field(
+        default=None, description="Langfuse session id grouping related runs"
+    )
+    tags: list[str] = Field(default_factory=list, description="Tags for the run trace")
+    host: str | None = Field(
+        default=None, description="Langfuse host URL (falls back to LANGFUSE_HOST env)"
+    )
+    log_model: bool = Field(
+        default=True, description="Record checkpoint references as trace events (no upload)"
+    )
     log_interval: int = Field(default=10, description="Steps between metric logging")
-
-    # Model watching
-    watch_model: bool = Field(default=False, description="Use wandb.watch() on model")
-    watch_log_freq: int = Field(default=100, description="Frequency for gradient logging")
-
-    # Resume configuration (for resuming W&B runs)
-    resume_id: str | None = Field(default=None, description="W&B run ID to resume")
-    resume_mode: str = Field(default="allow", description="Resume mode: 'allow', 'must', 'never'")
 
 
 class AlphaGalerkinConfig(BaseModel):
@@ -458,7 +461,7 @@ class AlphaGalerkinConfig(BaseModel):
     operator: OperatorConfig = Field(default_factory=OperatorConfig)
     mcts: MCTSConfig = Field(default_factory=MCTSConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
-    wandb: WandbConfig = Field(default_factory=WandbConfig)
+    langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
     distributed: DistributedConfig = Field(default_factory=DistributedConfig)
 
     # Experiment tracking

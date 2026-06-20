@@ -32,6 +32,8 @@ class PDEType(str, Enum):
     NAVIER_STOKES = "navier_stokes"
     HEAT = "heat"
     WAVE = "wave"
+    HELMHOLTZ = "helmholtz"
+    BIHARMONIC = "biharmonic"
 
 
 class BoundaryCondition(str, Enum):

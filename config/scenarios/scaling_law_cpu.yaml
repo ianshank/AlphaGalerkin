@@ -1,0 +1,61 @@
+# MCTS-Budget Scaling Law — CPU-only smoke configuration.
+#
+# Exercises the full ScalingLawScenario pipeline (budget sweep + log-log
+# residual fit + HTML report) on the random arm only, with no CUDA and no
+# LM Studio server. This is the CPU-runnable counterpart to
+# scaling_law_demo.yaml: it proves the merged scaling-law machinery produces
+# a real fit end-to-end, and it is safe to run in CI / on a laptop.
+#
+# Run with:
+#   python -m src.poc.cli run --config config/scenarios/scaling_law_cpu.yaml
+#
+# For the headline run (trained / LLM arms, real scaling curves) use
+# scaling_law_demo.yaml on a CUDA host with LM Studio serving Qwen-14B.
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800
+
+scenarios:
+  - name: scaling_law
+    description: "CPU smoke: residual vs MCTS-budget scaling law on Poisson (random arm)."
+    tier: integration
+    enabled: true
+
+    # Problem
+    pde: poisson
+
+    # Sweep axes — at least two distinct budgets are required to fit a slope.
+    arms: [random]
+    simulation_budgets: [4, 8, 16, 32]
+
+    # Seeds — kept small for a fast CPU smoke.
+    n_seeds: 3
+
+    # Solve budget.
+    target_residual: 1.0e-6
+    max_basis_functions: 12
+    n_candidate_bases: 24
+    rollout_headroom: 2
+
+    # No trained checkpoint on the CPU path.
+    trained_checkpoint_path: null
+
+    # Device — force CPU regardless of CUDA availability.
+    device: cpu
+
+    # Significance test for the optional arm-vs-arm comparison.
+    significance_test_type: mann_whitney
+    significance_alpha: 0.05
+    n_bootstrap: 2000
+
+    # Acceptance thresholds (primary arm = first in `arms`).
+    min_residual_decay: 0.05
+    min_fit_r2: 0.5
+
+    # LM Studio sub-config disabled — the LLM arm is not used on CPU.
+    lm_studio:
+      enabled: false
+
+    requires_gpu: false
+    estimated_duration_seconds: 300

@@ -6,10 +6,18 @@ from src.video_compression.training.loss import (
     RDLoss,
 )
 from src.video_compression.training.trainer import VideoCompressionTrainer
+from src.video_compression.training.zoo_trainer import (
+    ZooTrainer,
+    ZooTrainingReport,
+    build_training_config,
+)
 
 __all__ = [
     "RDLoss",
     "CompressionLoss",
     "DistortionLoss",
     "VideoCompressionTrainer",
+    "ZooTrainer",
+    "ZooTrainingReport",
+    "build_training_config",
 ]

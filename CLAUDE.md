@@ -256,10 +256,33 @@ When changing the AlphaGalerkin solver or evaluator wiring, the following test s
 | Per-module coverage | `pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85` | Coverage gate; current 94% |
 | Noyron HX scenario (SDF, domain, scenario, YAML loader) | `pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py tests/poc/test_config.py::TestLoadConfigFromDict -v` | `AnalyticalHelixSDF._nearest_t` grid-search fallback, `PicoGKDomain._project_to_surface` bisection fallback, `volume_accept_rate` property, voxel-FDM training supervision (not harmonic), `accept_rate`/`train_time_s`/`eval_time_s` metric round-trip, `_draw_pool_indices` helper, surfaced numerical-stability constants (`DEFAULT_TRANSFER_RATIO_FLOOR`, `DEFAULT_NORMALIZE_EXTENT_FLOOR`, `EVAL_SEED_STRIDE`), `load_config_from_dict` dispatches `name="noyron_hx"` to `NoyronHXScenarioConfig` rather than the `extra="forbid"` base. |
 | Noyron HX per-module coverage | `pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py --cov=src/pde/sdf --cov=src/pde/geometry_picogk --cov=src/poc/scenarios/noyron_hx --cov=src/poc/config_noyron --cov-fail-under=85` | Coverage gate on the Leap 71 v1 hardening surface; current sdf 100% / geometry_picogk 100% / config_noyron 100% / noyron_hx 97% |
+| Codec perf benchmark (Phase 0) | `pytest tests/video_compression/perf/ -v` | Guards the perf benchmark harness: config validation, metrics, baseline registry, device pinning, regression diffing, CLI, and GPU test execution. |
+| Decoder runtime backends (Phase 1) | `pytest tests/video_compression/perf/test_compiled_runtime.py tests/video_compression/perf/test_onnx_runtime.py tests/video_compression/perf/test_tensorrt_runtime.py tests/video_compression/perf/test_benchmark_dispatch.py tests/video_compression/runtime/ -v` | Guards the 4 decoder runtime backends: PyTorch eager, torch.compile, ONNX Runtime, TensorRT. Protocol compliance, lifecycle (prepare/decode/teardown), shape/hash validation, precision dispatch, metadata provenance. |
+| Codec model zoo (Phase 2-B) | `pytest tests/video_compression/zoo/ --cov=src/video_compression/zoo --cov-fail-under=85 -v` | Guards the dual-GPU R-D Lagrangian sweep: Pydantic schemas (entry / manifest / optimizer / scheduler), JSON+YAML manifest round-trip, `_migrate_manifest_document` versioning, four device-assignment strategies (`VRAM_AWARE` / `ROUND_ROBIN` / `SINGLE_DEVICE` / `MANUAL`), `_resolve_explicit_device` (bare-`cuda` / `cuda:N` / `cpu`), `VideoCodecZoo` filesystem registry, schema-versioned forward compat. Per-module coverage **100%** on `__init__.py` / `config.py` / `device_planner.py` / `manifest.py` / `storage.py`. |
+| Codec sweep orchestrator (Phase 2-D) | `pytest tests/video_compression/zoo/test_sweep.py tests/video_compression/zoo/test_sweep_parallel.py tests/video_compression/zoo/test_cli_helpers.py tests/scripts/test_train_compression_zoo.py tests/scripts/test_train_compression_zoo_entry.py tests/video_compression/training/test_zoo_trainer.py -v` | Guards the manifest-level sweep orchestrator and the multi-entry CLI: `ZooSweep.run()` + `run_parallel()` (per-device worker threads, manifest-order results), `default_entry_runner` + `make_subprocess_entry_runner` (`CUDA_VISIBLE_DEVICES` pinning + parent/child device-label translation, exit-code propagation, missing-checkpoint failure mode, `cuda_pinning="none"` pass-through), `_device_index` parser, `should_skip` hash gate, `train_compression_zoo` `dry-run`/`train` subcommands and `_only_entry_id` filter, `ZooTrainer` `train_wallclock_s` / `eval_wallclock_s` round-trip via `metrics.json`. CLI helpers (`load_dict` YAML/JSON/unsupported/empty/non-dict, `resolve_path` abs/cwd-relative/manifest-relative, `load_codec_config`, `resolve_entry` + KeyError, `resolve_codec_config_for_entry` ref-precedence + fallback + no-ref raise, `override_entry` short-circuit, `resolve_device` cascade). Zoo-subpackage coverage **98.44%** (cli_helpers 100%). |
+| SBIR P40 hardening surface | `pytest tests/research/test_baselines.py tests/research/test_pinn_device.py tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py tests/scripts/test_run_sbir_p40.py -v` | Guards every SBIR P40 fix: (a) `NavierStokesOperator.exact_solution` numpy/torch parity (cross-branch property test); (b) `AMRConfig` raised defaults + target-aware `_solve_amr_1d` n_start escape from the 18-DOF Burgers ceiling; (c) `PINNConfig.device` resolution including indexed `cuda:N`, `vector_pde` auto-detect for NS, `_build_network(output_dim=2)`; (d) `GpuUtilizationProfiler` lifecycle (`__enter__`/`__exit__`, terminate-timeout fallback to `kill()`, dmon parser, no-op when `nvidia-smi` is missing); (e) `PDEBenchmarkRunner(heavy=True)` opt-in extends `refinement_levels` with `heavy_refinement_levels`; (f) `scripts/run_sbir_p40.py` helper functions (`load_config`, `apply_overrides`, `apply_benchmark_overrides`, `filter_baselines`, `build_pinn_config`, `register_pinn_profiles`). |
+| SBIR P40 per-module coverage | `pytest tests/research/test_baselines.py tests/research/test_pinn_device.py tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py tests/scripts/test_run_sbir_p40.py --cov=src.research.gpu_profiler --cov=src.research.baselines --cov=src.research.pde_benchmarks --cov=src.poc.device --cov-fail-under=85` | Coverage gate on the SBIR P40 hardening surface; current `gpu_profiler.py` 96% / `baselines.py` 95% / `pde_benchmarks.py` 94% / `poc/device.py` 100% (overall 94.8%) |
+| LLM-prior MCTS basis selection (mocked CPU) | `pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py tests/poc/test_llm_prior_ablation_scenario.py -v -m "not gpu_required"` | Guards the LM Studio integration + `llm_prior_ablation` scenario: `LMStudioConfig` Pydantic validation, `LMStudioPolicyResponse` schema + typed exception hierarchy, deterministic `build_policy_prompt`/`prompt_hash`, `LMStudioClient` retry behaviour (JSON parse failure, action-size mismatch with corrective user-turn, `APIConnectionError`/`APITimeoutError` coercion, fallback-to-uniform on exhausted retries), evaluator protocol compliance + illegal-action masking + batch sequential equivalence + latency-sample collection, preflight (server unreachable / model missing / insufficient VRAM / passing), scenario gating (LLM-arm preflight failure / `lm_studio.enabled=False` / client-construction exception / missing trained checkpoint / `create_model_from_checkpoint` raises) and threshold-list mutation when arms drop, real-MCTS micro-run on Poisson with `RandomEvaluator`, and HTML report artifact emission. |
+| LLM-prior MCTS basis selection (per-module coverage) | `pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" --cov=src/integrations/lm_studio --cov=src/poc/scenarios/llm_prior_ablation.py --cov=src/poc/scenarios/llm_prior_config.py --cov-branch --cov-fail-under=85` | Coverage gate on the LM Studio integration; current `lm_studio` package 91% (line+branch combined: `client.py` 91%, `evaluator.py` 95%, `preflight.py` 97%, `prompt.py` 100%, `config.py`/`schema.py`/`__init__.py` 100%), `llm_prior_ablation.py` 86%, `llm_prior_config.py` 100%. |
+| LLM-prior MCTS basis selection (GPU smoke, manual) | `LM_STUDIO_URL=http://127.0.0.1:1234/v1 pytest tests/integrations/test_lm_studio_smoke.py -v -m gpu_required` | Real-server smoke against a running LM Studio + GPU: `complete_policy` round-trip + loose latency ceiling (10 s; the scenario asserts the headline 3 s threshold), seed reproducibility within 1e-2 or argmax stability, preflight returns `PreflightReport(passed=True)`. Auto-skips on CPU CI via the root `conftest.py` hook. |
+| OOD operators (Helmholtz + Biharmonic) | `pytest tests/pde/test_ood_operators.py -v` | Guards the two held-out-generalisation operators: properties/order, manufactured `source_term`/`boundary_value`/`exact_solution` analytics, residual-vanishes-on-exact (≤1e-3, incl. Hypothesis wavenumber sweep), Helmholtz wavenumber resolution (arg → `reaction_coeff` → `DEFAULT_HELMHOLTZ_WAVENUMBER`, non-positive raises), biharmonic disconnected-solution zeros, registry round-trip, and `BasisSelectionGame` construction with finite initial error. |
+| OpenAI-compatible LLM backends (WS1) | `pytest tests/integrations/test_backend_registry.py -v` | Guards the multi-backend layer: `BackendProfile` registry (built-ins, `get_backend` unknown→`KeyError`, duplicate `register_backend`→`ValueError`, frozen/extra-forbid), `apply_backend_defaults` fill-unset semantics (lm_studio no-op, vllm/llama_cpp fill, explicit values win, other fields preserved), `lm_studio` profile == historical `LMStudioConfig` defaults, `LMStudioConfig.backend`/`vram_check_mode` backwards compat (old dicts parse, invalid backend rejected), and preflight `vram_check_mode` conditioning (`off` skips `_check_vram`, `local` invokes it). Per-module coverage `openai_compat` 94%. |
+| PoC baseline harness (WS2) | `pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py tests/agents/test_research_persistence.py -v` | Guards record/diff: `ScenarioBaselineEntry`/`Document` schema + forward-compat `extra="ignore"`, `migrate_baseline_document` (unversioned→v1, future-schema raise, no caller mutation, Hypothesis idempotence), `regression_pct` sign convention (higher/lower-better, zero-baseline floor), `from_observed` direction recording, `compare` (self-clean, lower/higher-better regression, improvement, within-tolerance, missing-metric/scenario not-a-regression), JSON round-trip + load error paths, `observed_from_result_dicts` (`scenario_name`/`name` + non-numeric drop), poc-CLI `record-baseline`/`diff` (self-diff exit 0, regression exit 1, `_resolve_higher_better` suffix+extras, missing-run raise), and `agents.cli research --output-dir` persistence (run-scoped JSON, `from_dict` round-trip, baseline-diffable). Per-module coverage `poc/baselines` 100%. |
+| Scaling-law scenario (mocked CPU) | `pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py tests/poc/test_centaur_common.py -v -m "not gpu_required"` | Guards `ScalingLawConfig` validation (name lock, arms/budget dedup + ≥2 distinct budgets, seed derivation, `max_rollouts_for_budget`, threshold derivation), `fit_log_log` (perfect power law, <2 points, NaN, zero-residual floor), the synthetic sweep (primary-arm aliases + per-arm/per-budget metrics, threshold pass/fail, arm-vs-arm comparison), arm gating (llm preflight fail → primary thresholds dropped → SKIPPED; trained without checkpoint skipped), HTML artifact, a real random-arm micro-run, and the shared `_centaur_common` primitives (operator/game build, `build_arm_evaluator` random/trained/llm + unknown-arm/missing-resource raises, `run_basis_selection_cell` early-return + real loop). |
+| Scaling-law + centaur-common (per-module coverage) | `pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py tests/poc/test_centaur_common.py --cov=src.poc.scenarios.scaling_law --cov=src.poc.scenarios.scaling_law_config --cov=src.poc.scenarios._centaur_common --cov-branch --cov-fail-under=85` | Coverage gate; current `scaling_law.py` 86%, `scaling_law_config.py` 98%, `_centaur_common.py` 89%. |
+| Centaur research-loop harness (mocked CPU) | `pytest tests/agents/test_research_loop.py -v -m "not gpu_required"` | Guards `ResearchLoopConfig`/`ResearchProblemSpec` validation (≥1 problem, unique names, default_arms dedup, seed derivation, `arms_for` override/fallback), `AgentType.RESEARCH`, and `ResearchLoopOrchestrator` orchestration via a synthetic `_solve_cell`: discovery-ledger best-arm selection + `solved_fraction`/`arm_wins_*`, status COMPLETED/FAILED by `min_solved_fraction`, parallel==sequential ledger equivalence, arm gating (llm preflight fail / trained no-checkpoint / no-arms→SKIPPED), per-problem arm override, and a real random-arm micro-run. |
+| Centaur research-loop (per-module coverage) | `pytest tests/agents/test_research_loop.py tests/agents/test_config.py --cov=src.agents.research_loop --cov=src.agents.config --cov-branch --cov-fail-under=85` | Coverage gate; current `research_loop.py` 86%, `agents/config.py` 98%. |
+| Scaling-law + research-loop (GPU smoke, manual) | `pytest tests/poc/test_scaling_law_smoke.py tests/agents/test_research_loop_smoke.py -v -m gpu_required` | Real-CUDA smoke (auto-skips on CPU CI): random-arm scaling sweep + manifest sweep build their fits/ledgers; LLM-arm variants run only when `LM_STUDIO_URL` is set. |
+| Centaur test pyramid (sanity / integration / e2e / regression / AQA) | `pytest tests/integration/test_centaur_sanity.py tests/integration/test_centaur_integration.py tests/integration/test_centaur_aqa.py tests/regression/test_centaur_regression.py tests/e2e/test_centaur_e2e.py -v` | CPU-only, real-interface coverage of the three deliverables: **sanity** (imports/registry/PDE_TYPE_MAP/AgentType/demo-YAML parse/ood_pde Literal), **integration** (OOD operator→game→adapter→MCTS micro-run, `ScalingLawScenario` via `ScenarioRunner`, real multi-PDE research-loop, parallel-ledger consistency, shared gating helpers), **e2e** (shipped demo YAML → `load_config_from_dict`/`load_config_file` dispatch, `run_from_config` with persisted result JSON, poc/agents CLI journeys), **regression** (OOD residual≤1e-3 contract, `_PDE_TYPE_MAP is PDE_TYPE_MAP` + llm_prior private-API intact, `fit_log_log` sign, discovery-ledger winner, gating skip semantics, (N,1) broadcasting guard), **AQA** (each Brown theme's acceptance criterion on a real run + "every knob is a typed field" governance check). |
+| Eval-harness adapter (LLM-prior tracing + labelled scoring) | `pytest tests/integrations/eval_harness -m "not gpu_required" -v` | Guards the `langfuse-eval-harness` adapter (`src/integrations/eval_harness/`): `BasisCellParams`/`OracleDatasetParams` validation + `iter_cells`, `FinalResidualScorer`/`PolicyTopKScorer` scoring incl. threshold/label/error branches, the `ScenarioResultSink` → `observed_from_result_dicts` → `ScenarioBaselineRegistry.compare` regression bridge, idempotent **torch-free** `register_all` + `_entrypoint` shim, the `_import_harness` guard, the greedy oracle == brute-force argmin (torch), `run_basis_cell` random-arm shape/determinism (torch), `BasisOracleDataset`/`build_dataset_jsonl` (torch), and the offline `run_eval` end-to-end (torch). `test_contract.py` pins the upstream `eval_harness` type/registry/`callable`-target contract so an SHA-pin drift fails CI loudly. Torch-free modules 100%; `oracle`/`target`/`dataset`/`runner` covered by `importorskip` torch tests. |
 
 The trained-evaluator path additionally depends on `src/training/checkpoint.py::create_model_from_checkpoint`, `src/modeling/model.py::AlphaGalerkinModel`, and `src/mcts/evaluator.py::FNetEvaluator` — changes there should run the *Trained evaluator* surface above as a smoke test.
 
+The LLM-prior surface depends on the MCTS `Evaluator` Protocol (`src/mcts/evaluator.py`), `BasisSelectionGame` (`src/pde/games/basis_selection.py`) and `PDEGameAdapter` (`src/pde/mcts_adapter.py`), `BaseScenario` lifecycle (`src/poc/registry.py`), `load_config_from_dict` dispatch (`src/poc/config.py`), and `resolve_device` (`src/poc/device.py`) — changes there should run the *LLM-prior MCTS basis selection (mocked CPU)* surface as a smoke test.
+
 The Noyron HX surface depends on `src/pde/operators_picogk.py::HelicalHeatOperator`, `src/physics/voxel_fdm.py::solve_steady_heat_voxel`, and `src/experiments/physics_model.py::PhysicsOperator` (3D-aware) — changes there should run the *Noyron HX scenario* surface above as a smoke test.
+
+The scaling-law and centaur research-loop surfaces both depend on the shared `src/poc/scenarios/_centaur_common.py` primitives (canonical `PDE_TYPE_MAP`, `build_pde_operator`/`build_basis_game`/`build_arm_evaluator`/`run_basis_selection_cell`), which `llm_prior_ablation` also delegates to — changes to `_centaur_common` should run the *LLM-prior MCTS basis selection (mocked CPU)*, *Scaling-law scenario (mocked CPU)*, and *Centaur research-loop harness (mocked CPU)* surfaces together. Adding a new PDE operator means: register it in `src/pde/registry.py`, add it to `PDEType` (`src/pde/config.py`) and the canonical `PDE_TYPE_MAP`, then extend the relevant `Literal` enums (`ood_pde`, `ScalingLawConfig.pde`, `ResearchPDEName`).
 
 ## Verification Commands
 ```bash
@@ -279,6 +302,78 @@ pytest tests/ -v
 
 # Verify resolution independence
 python -m src.tools.verify_invariance --train-size 9 --infer-size 19
+
+# LLM-prior MCTS basis selection (CPU-safe, mocked)
+ruff check src/integrations/lm_studio src/poc/scenarios/llm_prior_ablation.py src/poc/scenarios/llm_prior_config.py
+ruff format --check src/integrations/lm_studio src/poc/scenarios/llm_prior_ablation.py src/poc/scenarios/llm_prior_config.py
+mypy --strict src/integrations/lm_studio src/poc/scenarios/llm_prior_ablation.py src/poc/scenarios/llm_prior_config.py
+pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py tests/poc/test_llm_prior_ablation_scenario.py -v -m "not gpu_required"
+
+# LLM-prior coverage gate (85%)
+pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" --cov=src/integrations/lm_studio --cov=src/poc/scenarios/llm_prior_ablation.py --cov=src/poc/scenarios/llm_prior_config.py --cov-branch --cov-fail-under=85
+
+# LLM-prior GPU smoke (manual; requires CUDA + a live LM Studio endpoint)
+LM_STUDIO_URL=http://127.0.0.1:1234/v1 pytest tests/integrations/test_lm_studio_smoke.py -v -m gpu_required
+
+# End-to-end demo (GPU + LM Studio required)
+pip install -e '.[lm-studio]'
+python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml
+```
+
+## Headline-Run Operationalisation Commands (OpenAI-compatible backends + baseline harness)
+```bash
+# WS1 — multi-backend LLM (CPU-safe, mocked) + coverage gate
+ruff check src/integrations/openai_compat
+mypy --strict src/integrations/openai_compat src/poc/baselines
+pytest tests/integrations/test_backend_registry.py -v
+pytest tests/integrations/test_backend_registry.py \
+       --cov=src/integrations/openai_compat --cov-branch --cov-fail-under=85
+
+# WS2 — PoC baseline harness + research persistence (CPU-safe) + coverage gate
+pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
+       tests/agents/test_research_persistence.py -v
+pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
+       --cov=src/poc/baselines --cov-branch --cov-fail-under=85
+
+# Record a headline baseline from a completed run and regression-gate a later run
+python -m src.poc.cli run --config config/scenarios/scaling_law_cpu.yaml
+python -m src.poc.cli record-baseline --run-id <id> --out /tmp/base.json --tolerance-pct 10
+python -m src.poc.cli diff --baseline /tmp/base.json --run-id <id>   # exits 0 (self), 1 on regression
+
+# Switch the LLM arm to vLLM / llama.cpp (headline GPU run; set backend in the YAML lm_studio block)
+#   lm_studio: { enabled: true, backend: vllm, model: Qwen/Qwen2.5-14B-Instruct }
+python -m src.agents.cli research --config config/agents/research_loop_cpu.yaml --output-dir /tmp/rl
+```
+
+## AI-for-Physics Scaling Commands (OOD operators + scaling law + research loop)
+```bash
+# OOD operators — registry + residual property tests
+pytest tests/pde/test_ood_operators.py -v
+
+# Scaling-law scenario (CPU-safe, mocked) + coverage gate
+pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
+       tests/poc/test_centaur_common.py -v -m "not gpu_required"
+pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
+       tests/poc/test_centaur_common.py \
+       --cov=src.poc.scenarios.scaling_law --cov=src.poc.scenarios.scaling_law_config \
+       --cov=src.poc.scenarios._centaur_common --cov-branch --cov-fail-under=85
+
+# Centaur research-loop harness (CPU-safe, mocked) + coverage gate
+pytest tests/agents/test_research_loop.py -v -m "not gpu_required"
+pytest tests/agents/test_research_loop.py tests/agents/test_config.py \
+       --cov=src.agents.research_loop --cov=src.agents.config --cov-branch --cov-fail-under=85
+
+# List scenarios / agents (new entries appear)
+python -m src.poc.cli info scaling_law
+python -m src.agents.cli list-agents   # AgentType.RESEARCH; 'research' subcommand via --help
+
+# GPU smoke (manual; auto-skips on CPU CI, LLM arm gated on LM_STUDIO_URL)
+LM_STUDIO_URL=http://127.0.0.1:1234/v1 \
+  pytest tests/poc/test_scaling_law_smoke.py tests/agents/test_research_loop_smoke.py -v -m gpu_required
+
+# Headline GPU runs (manual; CUDA + LM Studio)
+python -m src.poc.cli run --config config/scenarios/scaling_law_demo.yaml
+python -m src.agents.cli research --config config/agents/research_loop_demo.yaml
 ```
 
 ## Training Commands
@@ -611,6 +706,14 @@ print(f'Weights: {result.weights}')
 ## Directory Structure
 ```
 src/
+  integrations/ - Third-party-service integrations (gated behind optional extras)
+    lm_studio/      - OpenAI-compatible local-LLM client + MCTS evaluator
+      config.py     - LMStudioConfig Pydantic schema (no hardcoded values)
+      schema.py     - LMStudioPolicyResponse + typed exception hierarchy
+      prompt.py     - Deterministic prompt builder + sha256-truncated hash
+      client.py     - Synchronous openai-SDK wrapper with bounded retries
+      preflight.py  - Server reachable + model present + free-VRAM check
+      evaluator.py  - LMStudioEvaluator implementing src/mcts/evaluator.py::Evaluator
   modeling/     - Neural architectures and layers
     multiscale_fourier.py - Multi-scale Fourier features for spectral bias mitigation
   math_kernel/  - Basis functions, integral approximations
@@ -674,6 +777,8 @@ src/
       transfer.py     - Zero-shot transfer scenario
       complexity.py   - O(N) complexity benchmark
       stability.py    - LBB stability monitoring
+      llm_prior_config.py   - LLMPriorAblationConfig (Pydantic)
+      llm_prior_ablation.py - LLMPriorAblationScenario (LM Studio MCTS prior)
     tuning/           - Hyperparameter tuning
       config.py       - Tuning configuration schemas
       sampler.py      - Parameter samplers (TPE, grid, random)
@@ -697,6 +802,15 @@ src/
       codec.py        - Complete encode/decode pipeline
       entropy_coder.py - Range encoder/decoder
       gop_manager.py  - GOP and reference management
+    runtime/          - Decoder runtime backends (Phase 1)
+      protocol.py     - DecoderRuntime Protocol + DecoderRuntimeContext
+      registry.py     - @register_runtime + RuntimeRegistry
+      metadata.py     - CompiledArtifactMetadata provenance
+      pytorch_eager.py    - Baseline eager runtime
+      pytorch_compiled.py - torch.compile + inductor
+      onnx_runtime.py     - ONNX Runtime + CUDA EP
+      tensorrt_runtime.py - torch_tensorrt Dynamo IR
+    perf/             - Performance benchmark harness (Phase 0)
     mcts/             - MCTS rate control
       networks.py     - Policy, value, dynamics networks
       rate_control.py - MCTS-based rate controller

@@ -97,22 +97,18 @@ training:
   physics_n_boundary_points: 200  # Boundary points per face
   physics_use_adaptive_weights: true  # Use ReLoBRaLo for physics terms
 
-# Weights & Biases configuration
-wandb:
+# Langfuse experiment tracking. Credentials come from the environment
+# (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST); the tracker
+# degrades to a no-op when they are absent.
+langfuse:
   enabled: true
   project: alphagalerkin
-  entity: null  # Uses default entity
-  name: null    # Auto-generated run name
+  run_name: null      # Auto-generated from experiment_name when null
+  session_name: null  # Optional id grouping related runs
   tags: []
-  notes: null
-  group: null
-  job_type: train
-  mode: online  # 'online', 'offline', or 'disabled'
-  log_model: true
-  log_gradients: false
-  log_code: true
+  host: null          # Falls back to LANGFUSE_HOST env
+  log_model: true     # Record checkpoint references as trace events (no upload)
   log_interval: 10
-  watch_model: false
   watch_log_freq: 100
 
 # Distributed training configuration

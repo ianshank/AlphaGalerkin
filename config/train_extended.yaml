@@ -69,16 +69,14 @@ training:
   plateau_factor: 0.5
   plateau_min_lr: 0.000001
 
-# Enable W&B for tracking
-wandb:
+# Enable Langfuse experiment tracking
+langfuse:
   enabled: true
   project: alphagalerkin
-  mode: online
   tags:
     - extended
     - medium-run
   log_model: true
-  log_code: true
   log_interval: 50 # Log every 50 steps
 
 # Runtime settings

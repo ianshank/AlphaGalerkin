@@ -87,15 +87,21 @@ class PDEBenchmarkRunner:
     JSON and Markdown reports.
     """
 
-    def __init__(self, config_path: str | Path) -> None:
+    def __init__(self, config_path: str | Path, *, heavy: bool = False) -> None:
         """Initialize from a YAML config file.
 
         Args:
             config_path: Path to the benchmark suite YAML.
+            heavy: When True, append each benchmark's
+                ``heavy_refinement_levels`` (if present in the YAML) to its
+                ``refinement_levels``. Used by ``run_sbir_demo --heavy``
+                to opt into the 65 536-DOF Poisson level on a P40 rig
+                while keeping default runs / CI smoke tests fast.
 
         """
         self._config_path = Path(config_path)
         self._config = self._load_config(self._config_path)
+        self._heavy = heavy
         self._log = logger.bind(
             suite=self._config.get("suite_name", "unknown"),
         )
@@ -104,6 +110,7 @@ class PDEBenchmarkRunner:
             config_path=str(self._config_path),
             n_benchmarks=len(self._config.get("benchmarks", [])),
             n_baselines=len(self._config.get("baselines", [])),
+            heavy=heavy,
         )
 
     # ------------------------------------------------------------------
@@ -144,9 +151,19 @@ class PDEBenchmarkRunner:
         """
         name = benchmark_config["name"]
         pde_type = benchmark_config.get("pde_type", "poisson")
-        refinement_levels = benchmark_config.get("refinement_levels", [16, 32, 64])
+        refinement_levels = list(benchmark_config.get("refinement_levels", [16, 32, 64]))
+        if self._heavy:
+            for lvl in benchmark_config.get("heavy_refinement_levels", []):
+                if lvl not in refinement_levels:
+                    refinement_levels.append(lvl)
 
-        self._log.info("benchmark_start", benchmark=name, pde_type=pde_type)
+        self._log.info(
+            "benchmark_start",
+            benchmark=name,
+            pde_type=pde_type,
+            n_refinement_levels=len(refinement_levels),
+            heavy=self._heavy,
+        )
 
         operator = self._create_operator(benchmark_config)
         baselines = self._get_baselines()

@@ -190,9 +190,79 @@ C4Component
     Rel(comp_loss, dist_loss, "Distortion term")
 ```
 
----
+### 3.5 Model Zoo Component (Phase 2-B)
 
-## Level 4: Code Diagrams
+```mermaid
+C4Component
+    title Component Diagram - Model Zoo (src/video_compression/zoo/)
+
+    Container_Boundary(zoo, "Model Zoo — R-D Lagrangian Sweep") {
+        Component(entry_cfg, "ModelZooEntryConfig", "Pydantic v2", "Per-entry validated config:<br/>lambda_rd, target_bpp, target_psnr_db,<br/>train_steps, warmup_steps, optimizer,<br/>scheduler, parent_entry_id, device")
+
+        Component(manifest_cfg, "ModelZooManifestConfig", "Pydantic v2", "Sweep-level config:<br/>entries[], storage_root,<br/>device_assignment_strategy,<br/>device_preference, parallel_workers")
+
+        Component(manifest_io, "load_manifest / save_manifest", "Function", "JSON+YAML I/O dispatched<br/>by file suffix.<br/>_migrate_manifest_document handles<br/>forward-compat (unversioned -> v1).")
+
+        Component(scan, "scan_devices", "Function", "Runtime torch import.<br/>Returns DeviceCapability list:<br/>(label, name, total_vram_mib, is_cuda)")
+
+        Component(planner, "assign_devices", "Function", "Strategy dispatch:<br/>VRAM_AWARE (best-fit pack) /<br/>ROUND_ROBIN /<br/>SINGLE_DEVICE /<br/>MANUAL (per-entry pin)")
+
+        Component(zoo_store, "VideoCodecZoo", "Class", "Filesystem registry:<br/>save_entry / load_state_dict /<br/>load_metrics / list_entries.<br/>GCS backend gated for Phase D.")
+    }
+
+    Component_Ext(yaml_cfg, "lambda_grid.yaml", "8-point R-D grid")
+    Component_Ext(torch_cuda, "torch.cuda", "Device introspection")
+    Component_Ext(checkpoint, "checkpoint.pt", "Per-entry weights")
+
+    Rel(yaml_cfg, manifest_io, "load")
+    Rel(manifest_io, manifest_cfg, "Validates against")
+    Rel(manifest_cfg, entry_cfg, "Contains list of")
+    Rel(scan, torch_cuda, "Introspects")
+    Rel(planner, scan, "Consumes capabilities")
+    Rel(planner, manifest_cfg, "Reads strategy + entries")
+    Rel(zoo_store, checkpoint, "Persists per entry")
+    Rel(zoo_store, entry_cfg, "Indexed by entry_id")
+```
+
+### 3.6 Sweep Orchestrator Component (Phase 2-D)
+
+```mermaid
+C4Component
+    title Component Diagram - Sweep Orchestrator (src/video_compression/zoo/sweep.py + scripts/)
+
+    Container_Boundary(sweep, "Sweep Orchestrator — Manifest-level R-D Grid Training") {
+        Component(zoo_sweep, "ZooSweep", "Class", "Drives every entry in a manifest through<br/>a configurable EntryRunner.<br/>run() — serial; run_parallel() — one<br/>worker thread per device, same-device<br/>entries serialized inside their worker.")
+
+        Component(entry_runner, "EntryRunner", "Protocol / Callable", "Pluggable single-entry execution unit.<br/>Default: default_entry_runner (in-process<br/>ZooTrainer). Subprocess variant via<br/>make_subprocess_entry_runner.")
+
+        Component(subprocess_runner, "make_subprocess_entry_runner", "Factory Function", "Returns an EntryRunner that re-invokes<br/>train_compression_zoo_entry.py with<br/>CUDA_VISIBLE_DEVICES=<idx>.<br/>Translates parent cuda:N → child cuda:0.<br/>Reads metrics.json + checkpoint.pt to<br/>reconstruct ZooTrainingReport.")
+
+        Component(should_skip, "should_skip", "Function", "Inspects persisted entry hash in<br/>VideoCodecZoo. Reruns of an unchanged<br/>entry (same config hash) skip cleanly.")
+
+        Component(sweep_report, "SweepReport + EntryStatus", "Frozen Dataclasses", "Immutable result container.<br/>Statuses returned in manifest order<br/>regardless of completion order.")
+
+        Component(cli_helpers, "cli_helpers", "Module", "Shared CLI primitives:<br/>load_dict (YAML/JSON), resolve_path,<br/>load_codec_config, resolve_entry,<br/>resolve_codec_config_for_entry,<br/>override_entry, resolve_device.")
+
+        Component(zoo_cli, "train_compression_zoo.py", "CLI Script", "dry-run / train subcommands operating<br/>on a manifest YAML/JSON.<br/>--only-entry-id filter for single-entry<br/>reruns. Delegates to ZooSweep.")
+
+        Component(entry_cli, "train_compression_zoo_entry.py", "CLI Script", "Single-entry training CLI; re-exports<br/>cli_helpers as _underscored aliases<br/>for back-compat monkeypatching in<br/>existing tests.")
+    }
+
+    Component_Ext(zoo_store2, "VideoCodecZoo", "Storage — Phase 2-B")
+    Component_Ext(zoo_trainer, "ZooTrainer", "Training — Phase 2-C")
+    Component_Ext(manifest2, "ModelZooManifestConfig", "Config — Phase 2-B")
+
+    Rel(zoo_cli, zoo_sweep, "Constructs + calls run() / run_parallel()")
+    Rel(zoo_sweep, entry_runner, "Calls for each entry")
+    Rel(zoo_sweep, should_skip, "Checks before each entry")
+    Rel(zoo_sweep, zoo_store2, "Reads hash / writes results")
+    Rel(zoo_sweep, manifest2, "Reads entries + strategy")
+    Rel(entry_runner, zoo_trainer, "default_entry_runner (in-process)")
+    Rel(subprocess_runner, entry_cli, "Spawns subprocess via")
+    Rel(zoo_cli, cli_helpers, "Uses for YAML/path/device resolution")
+    Rel(entry_cli, cli_helpers, "Re-imports as _underscored aliases")
+    Rel(sweep_report, zoo_sweep, "Returned by run() / run_parallel()")
+```
 
 ### 4.1 Encoding Flow Sequence
 

@@ -20,8 +20,10 @@ from typing import TYPE_CHECKING
 
 from src.pde.operators import (
     AdvectionDiffusionOperator,
+    BiharmonicOperator,
     BurgersOperator,
     HeatOperator,
+    HelmholtzOperator,
     LShapedPoissonOperator,
     NavierStokesOperator,
     PDEOperator,
@@ -63,6 +65,13 @@ def _register_builtin_operators() -> None:
 
     if not registry.is_registered("poisson_lshaped"):
         register_pde_operator("poisson_lshaped")(LShapedPoissonOperator)
+
+    # Out-of-distribution operators for held-out generalisation benchmarks.
+    if not registry.is_registered("helmholtz"):
+        register_pde_operator("helmholtz")(HelmholtzOperator)
+
+    if not registry.is_registered("biharmonic"):
+        register_pde_operator("biharmonic")(BiharmonicOperator)
 
     # Leap 71 / Noyron-targeted SDF-aware operators.
     if not registry.is_registered("helical_heat"):

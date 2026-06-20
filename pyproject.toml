@@ -31,7 +31,9 @@ dependencies = [
     "structlog>=23.0.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "wandb>=0.16.0",
+    # Langfuse experiment tracking (replaces Weights & Biases). v2 pin matches
+    # the eval-harness usage; the tracker no-ops without LANGFUSE_* credentials.
+    "langfuse>=2,<3",
     "typer>=0.9.0",
 ]
 
@@ -222,7 +224,6 @@ module = [
     "einops.*",
     "hydra.*",
     "hypothesis.*",
-    "wandb.*",
     "scipy.*",
     "jaxtyping.*",
     "pydantic.*",
@@ -347,7 +348,6 @@ module = [
     "src.training.evaluation",
     "src.training.loss_balancing",
     "src.training.losses.physics",
-    "src.training.wandb_logger",
     "src.experiments.train_physics",
     "src.experiments.verify_transfer",
     "src.experiments.benchmark_fnet",

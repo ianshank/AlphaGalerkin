@@ -111,14 +111,14 @@ class TestExtendedConfigLoads:
         assert training["plateau_detection_enabled"] is True
         assert training["early_stopping_enabled"] is True
 
-    def test_extended_config_wandb_enabled(self, config_path: Path) -> None:
-        """Verify W&B logging is enabled."""
+    def test_extended_config_langfuse_enabled(self, config_path: Path) -> None:
+        """Verify Langfuse tracking is enabled."""
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        wandb = config["wandb"]
-        assert wandb["enabled"] is True
-        assert "extended" in wandb["tags"]
+        langfuse = config["langfuse"]
+        assert langfuse["enabled"] is True
+        assert "extended" in langfuse["tags"]
 
     def test_omegaconf_loads_extended(self, config_path: Path) -> None:
         """Verify OmegaConf can load the config."""

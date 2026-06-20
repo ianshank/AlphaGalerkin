@@ -39,6 +39,7 @@ from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
 from src.training.eval_utils import EloTracker
 from src.training.evaluation import Evaluator
+from src.training.langfuse_tracker import LangfuseTracker
 from src.training.loss_balancing import (
     BalancingStrategy,
     LossBalancer,
@@ -60,7 +61,6 @@ from src.training.stability import (
     PlateauDetector,
     TrainingStabilityMonitor,
 )
-from src.training.wandb_logger import WandbLogger
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
@@ -142,7 +142,7 @@ class Trainer(BaseTrainer):
         config: AlphaGalerkinConfig,
         device: torch.device | str = "auto",
         checkpoint_dir: Path | str | None = None,
-        wandb_logger: WandbLogger | None = None,
+        tracker: LangfuseTracker | None = None,
         distributed_context: DistributedContext | None = None,
         game: GameInterface | None = None,
         callbacks: list[Callback] | None = None,
@@ -154,7 +154,7 @@ class Trainer(BaseTrainer):
             config: Complete configuration.
             device: Training device ("auto" for automatic selection).
             checkpoint_dir: Directory for checkpoints.
-            wandb_logger: Optional W&B logger for experiment tracking.
+            tracker: Optional Langfuse experiment tracker.
             distributed_context: Optional distributed context (auto-detected if None).
             game: Optional GameInterface for non-Go games (e.g. chess).
                   When provided, self-play uses this game instead of SimpleGoGame.
@@ -188,12 +188,12 @@ class Trainer(BaseTrainer):
         else:
             self.device = torch.device(device)
 
-        # W&B logging only on rank 0
-        if wandb_logger is not None and not self.dist_ctx.is_main_process:
-            self.wandb_logger = None  # Disable W&B on non-main ranks
-            logger.info("wandb_disabled_non_main_rank", rank=self.dist_ctx.rank)
+        # Experiment tracking only on rank 0
+        if tracker is not None and not self.dist_ctx.is_main_process:
+            self.tracker = None  # Disable tracking on non-main ranks
+            logger.info("tracking_disabled_non_main_rank", rank=self.dist_ctx.rank)
         else:
-            self.wandb_logger = wandb_logger
+            self.tracker = tracker
 
         logger.info(
             "trainer_initialized",
@@ -338,7 +338,7 @@ class Trainer(BaseTrainer):
 
         # Watch model with W&B if enabled
         if self.wandb_logger is not None:
-            self.wandb_logger.watch_model(self.model)
+            self.tracker.watch_model(self.model)
 
         # Lifecycle callbacks: resolve specs from config, then append any
         # explicit callbacks the caller passed.  This keeps user-facing
@@ -622,7 +622,7 @@ class Trainer(BaseTrainer):
             # Log self-play progress to W&B
             if self.wandb_logger is not None:
                 stats = self.self_play_worker.get_stats()
-                self.wandb_logger.log_metrics(
+                self.tracker.log_metrics(
                     {
                         "self_play/games_completed": stats["games_played"],
                         "self_play/avg_game_length": stats["avg_game_length"],
@@ -650,7 +650,7 @@ class Trainer(BaseTrainer):
 
         # Log buffer fill summary to W&B
         if self.wandb_logger is not None:
-            self.wandb_logger.log_metrics(
+            self.tracker.log_metrics(
                 {
                     "self_play/fill_time_seconds": round(fill_time, 2),
                     "self_play/experiences_added": experiences_added,
@@ -871,7 +871,7 @@ class Trainer(BaseTrainer):
                     weights=stage.size_weights,
                 )
                 if self.wandb_logger is not None:
-                    self.wandb_logger.log_metrics(
+                    self.tracker.log_metrics(
                         {
                             "curriculum/n_board_sizes": len(stage.board_sizes),
                             "curriculum/max_board_size": max(stage.board_sizes),
@@ -947,7 +947,7 @@ class Trainer(BaseTrainer):
 
             # W&B logging (every step by default, configurable via wandb.log_interval)
             if self.wandb_logger is not None:
-                self.wandb_logger.log_training_step(metrics)
+                self.tracker.log_training_step(metrics)
 
             # Console logging
             if step % log_interval == 0:
@@ -1030,7 +1030,7 @@ class Trainer(BaseTrainer):
 
                 # Log checkpoint as W&B artifact
                 if self.wandb_logger is not None and checkpoint_path is not None:
-                    self.wandb_logger.log_model_artifact(
+                    self.tracker.log_model_artifact(
                         checkpoint_path=checkpoint_path,
                         name=f"checkpoint-{step}",
                         metadata=metrics.to_dict(),
@@ -1069,7 +1069,7 @@ class Trainer(BaseTrainer):
         # Log final summary to W&B
         if self.wandb_logger is not None and self._metrics_history:
             final_metrics = self._metrics_history[-1]
-            self.wandb_logger.log_summary(
+            self.tracker.log_summary(
                 {
                     "final/total_loss": final_metrics.total_loss,
                     "final/policy_loss": final_metrics.policy_loss,
@@ -1082,7 +1082,7 @@ class Trainer(BaseTrainer):
 
             # Log final checkpoint as best model artifact
             if final_checkpoint_path is not None:
-                self.wandb_logger.log_model_artifact(
+                self.tracker.log_model_artifact(
                     checkpoint_path=final_checkpoint_path,
                     name="model-final",
                     metadata=final_metrics.to_dict(),
@@ -1113,7 +1113,7 @@ class Trainer(BaseTrainer):
             for board_size, result in results.items():
                 win_rates.append(result.win_rate)
                 if self.wandb_logger is not None:
-                    self.wandb_logger.log_evaluation(
+                    self.tracker.log_evaluation(
                         result=result,
                         prefix=f"eval/{board_size}x{board_size}",
                         step=step,
@@ -1127,7 +1127,7 @@ class Trainer(BaseTrainer):
                 )
                 win_rates.append(result.win_rate)
                 if self.wandb_logger is not None:
-                    self.wandb_logger.log_evaluation(
+                    self.tracker.log_evaluation(
                         result=result,
                         prefix=f"eval/{board_size}x{board_size}",
                         step=step,
@@ -1152,7 +1152,7 @@ class Trainer(BaseTrainer):
         )
 
         if self.wandb_logger is not None:
-            self.wandb_logger.log_metrics(
+            self.tracker.log_metrics(
                 {"eval/policy_agreement": policy_agreement},
                 step=step,
             )
@@ -1217,7 +1217,7 @@ class Trainer(BaseTrainer):
                 # Log to W&B
                 if self.wandb_logger is not None:
                     current_rating = self.elo_tracker.get_rating(step)
-                    self.wandb_logger.log_metrics(
+                    self.tracker.log_metrics(
                         {
                             f"elo/vs_step_{opponent_step}": result.win_rate,
                             "elo/current_rating": current_rating,
@@ -1303,7 +1303,7 @@ class Trainer(BaseTrainer):
                 elo_metrics["eval/engine/los"] = result.metadata["los"]
 
             if self.wandb_logger is not None:
-                self.wandb_logger.log_metrics(
+                self.tracker.log_metrics(
                     elo_metrics,
                     step=step,
                 )
@@ -1435,7 +1435,7 @@ def create_trainer(
     checkpoint_dir: Path | str | None = None,
     resume_from: Path | str | None = None,
     device: str = "auto",
-    wandb_logger: WandbLogger | None = None,
+    tracker: LangfuseTracker | None = None,
     distributed_context: DistributedContext | None = None,
     game: GameInterface | None = None,
 ) -> Trainer:
@@ -1447,7 +1447,7 @@ def create_trainer(
         checkpoint_dir: Checkpoint directory.
         resume_from: Path to checkpoint to resume from.
         device: Training device.
-        wandb_logger: Optional W&B logger for experiment tracking.
+        tracker: Optional Langfuse experiment tracker.
         distributed_context: Optional distributed context (auto-detected if None).
         game: Optional GameInterface for non-Go games (e.g. PDE, chess).
 
@@ -1460,7 +1460,7 @@ def create_trainer(
         config=config,
         device=device,
         checkpoint_dir=checkpoint_dir,
-        wandb_logger=wandb_logger,
+        tracker=tracker,
         distributed_context=distributed_context,
         game=game,
     )
@@ -1469,8 +1469,8 @@ def create_trainer(
         trainer.load_checkpoint(path=resume_from)
         logger.info("training_resumed", from_step=trainer.global_step)
 
-        # Update W&B step offset for resumed training
-        if wandb_logger is not None:
-            wandb_logger.set_step_offset(trainer.global_step)
+        # Update tracker step offset for resumed training
+        if tracker is not None:
+            tracker.set_step_offset(trainer.global_step)
 
     return trainer

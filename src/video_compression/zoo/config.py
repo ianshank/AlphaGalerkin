@@ -447,10 +447,16 @@ class ModelZooManifestConfig(BaseModuleConfig):
         # safe to use here because we just proved there are no dups.
         valid_ids = set(counts)
         for entry in self.entries:
-            if entry.parent_entry_id is not None and entry.parent_entry_id not in valid_ids:
-                raise ValueError(
-                    f"entry {entry.entry_id!r} declares parent_entry_id="
-                    f"{entry.parent_entry_id!r} which is not present in the "
-                    f"manifest",
-                )
+            if entry.parent_entry_id is not None:
+                if entry.parent_entry_id == entry.entry_id:
+                    raise ValueError(
+                        f"entry {entry.entry_id!r} cannot declare itself as "
+                        f"parent_entry_id (circular dependency)",
+                    )
+                if entry.parent_entry_id not in valid_ids:
+                    raise ValueError(
+                        f"entry {entry.entry_id!r} declares parent_entry_id="
+                        f"{entry.parent_entry_id!r} which is not present in the "
+                        f"manifest",
+                    )
         return self

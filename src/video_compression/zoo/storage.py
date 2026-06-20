@@ -110,9 +110,19 @@ class VideoCodecZoo:
         return self.entry_dir(entry_id) / METRICS_FILENAME
 
     def has_entry(self, entry_id: str) -> bool:
+        if self.backend is not StorageBackend.FILESYSTEM:
+            raise NotImplementedError(
+                f"has_entry is implemented only for the filesystem backend; "
+                f"got {self.backend!r}",
+            )
         return self.checkpoint_path(entry_id).exists()
 
     def list_entries(self) -> list[str]:
+        if self.backend is not StorageBackend.FILESYSTEM:
+            raise NotImplementedError(
+                f"list_entries is implemented only for the filesystem backend; "
+                f"got {self.backend!r}",
+            )
         if not self.root.exists():
             return []
         return sorted(

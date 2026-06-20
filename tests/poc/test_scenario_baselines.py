@@ -249,3 +249,17 @@ def test_observed_from_result_dicts_extracts_metrics() -> None:
     assert "junk" not in observed["scaling_law"]  # non-numeric dropped
     assert observed["research_loop"]["solved_fraction"] == 1.0
     assert "" not in observed
+
+
+def test_observed_from_result_dicts_skips_non_dict_metrics() -> None:
+    result_dicts = [
+        {"scenario_name": "a", "metrics": ["not", "a", "dict"]},  # list -> skipped
+        {"scenario_name": "b", "metrics": "oops"},  # str -> skipped
+        {"scenario_name": "c"},  # metrics absent -> skipped
+        {"scenario_name": "d", "metrics": {"x": 1.0}},  # valid
+    ]
+    observed = observed_from_result_dicts(result_dicts)
+    assert "a" not in observed
+    assert "b" not in observed
+    assert "c" not in observed
+    assert observed["d"] == {"x": 1.0}

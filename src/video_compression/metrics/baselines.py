@@ -221,6 +221,14 @@ def _load_y4m_to_tensor(
                     align_corners=False,
                 ).squeeze(0)
             frames.append(tensor)
+    except Exception as exc:
+        # Corrupt / truncated media (e.g. av.AVError mid-stream) degrades to
+        # whatever frames decoded cleanly rather than crashing the baseline.
+        logger.warning(
+            "baseline.decode.frame_failed",
+            path=str(path),
+            err=str(exc),
+        )
     finally:
         container.close()
 
@@ -536,6 +544,17 @@ class FFmpegBaselineRunner:
         )
         if original is None:
             return None, None
+
+        # A directly-passed original_tensor may not match the decode spec.
+        # _load_y4m_to_tensor already resizes per frame, but the direct path
+        # does not, so guard against a spatial shape mismatch before metrics.
+        if original.shape[-2:] != (height, width):
+            original = torch.nn.functional.interpolate(
+                original,
+                size=(height, width),
+                mode="bilinear",
+                align_corners=False,
+            )
 
         decoded = _load_y4m_to_tensor(
             decoded_path,

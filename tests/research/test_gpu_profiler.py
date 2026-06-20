@@ -185,6 +185,15 @@ class TestGpuUtilizationProfiler:
         assert prof.report.total_samples == 0
         assert prof.report.gpu_indices == (0,)
 
+    def test_no_op_when_nvidia_smi_permission_denied(self) -> None:
+        """A non-FileNotFoundError OSError (e.g. PermissionError) disables cleanly too."""
+        with patch("subprocess.Popen", side_effect=PermissionError("denied")):
+            with GpuUtilizationProfiler(gpu_indices=[0]) as prof:
+                pass  # noqa: PASS101
+        assert prof.report is not None
+        assert prof.report.total_samples == 0
+        assert prof.report.gpu_indices == (0,)
+
     def test_subprocess_terminate_on_exit(self, tmp_path: Path) -> None:
         """Profiler must terminate the dmon subprocess on context exit."""
         captured = tmp_path / "dmon.out"

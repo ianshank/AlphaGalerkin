@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,8 @@ from src.analysis.config import (
     MoveClassification,
 )
 from src.analysis.evaluator import EvaluationResult, PositionEvaluator
+from src.analysis.go_adapter import reconstruct_board
+from src.games.go import GoGame
 
 if TYPE_CHECKING:
     from src.games.sgf.node import SGFGameTree
@@ -197,6 +200,7 @@ class GameReviewer:
         evaluator: PositionEvaluator | None = None,
         config: AnalysisConfig | None = None,
         logger: structlog.stdlib.BoundLogger | None = None,
+        model_evaluator: Callable[..., Any] | None = None,
     ) -> None:
         """Initialize game reviewer.
 
@@ -204,11 +208,49 @@ class GameReviewer:
             evaluator: Position evaluator instance.
             config: Analysis configuration.
             logger: Optional structured logger.
+            model_evaluator: Optional ``board_state -> (value, policy)`` callable.
+                When provided it is attached to the evaluator, giving real model-backed
+                evaluations instead of the uniform dummy fallback.
 
         """
         self.config = config or AnalysisConfig()
-        self._evaluator = evaluator or PositionEvaluator(config=self.config)
         self._logger = logger or structlog.get_logger(__name__)
+        self._evaluator = evaluator or PositionEvaluator(config=self.config)
+        self._game = GoGame()
+
+        # Resolve a model evaluator: explicit argument wins, otherwise build one
+        # from the configured checkpoint. If neither is available we keep the
+        # uniform dummy fallback but log it so the no-signal case is not silent.
+        if model_evaluator is not None:
+            self._evaluator.set_model_evaluator(model_evaluator)
+        elif self._evaluator._model_evaluator is None and self.config.model_checkpoint_path:
+            self._wire_checkpoint_evaluator(self.config.model_checkpoint_path)
+
+        if self._evaluator._model_evaluator is None:
+            self._logger.warning(
+                "review_no_model_evaluator",
+                detail="no model wired; evaluations use uniform dummy (win_rate=0.5)",
+            )
+
+    def _wire_checkpoint_evaluator(self, checkpoint_path: str) -> None:
+        """Attach a checkpoint-backed model evaluator, falling back on failure."""
+        from src.analysis.go_adapter import build_checkpoint_model_evaluator
+
+        try:
+            evaluator_fn = build_checkpoint_model_evaluator(
+                checkpoint_path,
+                device=self.config.device,
+                temperature=self.config.evaluator_temperature,
+            )
+        except Exception as exc:
+            self._logger.warning(
+                "review_checkpoint_load_failed",
+                checkpoint_path=checkpoint_path,
+                error=str(exc),
+            )
+            return
+        self._evaluator.set_model_evaluator(evaluator_fn)
+        self._logger.info("review_model_wired", checkpoint_path=checkpoint_path)
 
     def review_game(
         self,
@@ -330,8 +372,7 @@ class GameReviewer:
             MoveAnalysis for this move.
 
         """
-        # Create board state representation for evaluation
-        # This is a placeholder - actual implementation would use game state
+        # Reconstruct a capture-correct board state for evaluation.
         board_state = self._create_board_state(moves_so_far, board_size)
 
         # Evaluate position before move
@@ -383,24 +424,28 @@ class GameReviewer:
         moves: list[tuple[str, int, int]],
         board_size: int,
     ) -> list[list[int]]:
-        """Create board state from move list.
+        """Create a capture-correct board state from a move list.
+
+        Delegates to :func:`src.analysis.go_adapter.reconstruct_board`, which replays
+        the moves through the real Go engine so captured stones are removed and ko /
+        superko are respected (the previous naive replay left captured stones on the
+        board). The returned marks (``1`` black, ``2`` white, ``0`` empty, indexed
+        ``board[y][x]``) preserve the existing downstream contract.
 
         Args:
-            moves: List of moves.
+            moves: List of ``(color, x, y)`` moves played so far.
             board_size: Board size.
 
         Returns:
-            2D list representing board state.
+            2D list representing the board state.
 
         """
-        # Create empty board
-        board = [[0] * board_size for _ in range(board_size)]
-
-        for color, x, y in moves:
-            if 0 <= x < board_size and 0 <= y < board_size:
-                board[y][x] = 1 if color == "B" else 2
-
-        return board
+        return reconstruct_board(
+            moves,
+            board_size,
+            game=self._game,
+            logger=self._logger,
+        )
 
     def _is_pass(self, move: tuple[int, int]) -> bool:
         """Check if move is a pass."""
@@ -555,12 +600,17 @@ class GameReviewer:
 
 def create_game_reviewer(
     mode: str = "standard",
+    model_evaluator: Callable[..., Any] | None = None,
     **config_kwargs: Any,
 ) -> GameReviewer:
     """Factory function to create game reviewer.
 
     Args:
         mode: Analysis mode.
+        model_evaluator: Optional ``board_state -> (value, policy)`` callable wired
+            into the evaluator for real model-backed evaluations. When omitted, a
+            checkpoint-backed evaluator is built if ``model_checkpoint_path`` is set
+            in the config; otherwise the uniform dummy fallback is used.
         **config_kwargs: Additional config options.
 
     Returns:
@@ -573,4 +623,8 @@ def create_game_reviewer(
     config = create_analysis_config(mode=mode, **config_kwargs)
     evaluator = PositionEvaluator(config=config)
 
-    return GameReviewer(evaluator=evaluator, config=config)
+    return GameReviewer(
+        evaluator=evaluator,
+        config=config,
+        model_evaluator=model_evaluator,
+    )

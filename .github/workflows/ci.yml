@@ -318,6 +318,11 @@ jobs:
         run: |
           pytest tests/physics/ --cov=src/physics --cov-fail-under=75 -q --no-header
 
+      - name: Per-module coverage gate (analysis)
+        if: always() && hashFiles('tests/analysis/') != ''
+        run: |
+          pytest tests/analysis/ --cov=src/analysis --cov-fail-under=85 -q --no-header
+
       - name: Per-module coverage gate (reentry)
         if: hashFiles('tests/reentry/') != ''
         run: |

@@ -1,0 +1,98 @@
+# AlphaGalerkin Vertex Trainer Coverage Gate
+#
+# Locks in the >= 85% coverage floor for the reusable Vertex training-step
+# primitives (`src/vertex/training_step.py`). The pyproject
+# `[tool.coverage.run] omit` list excludes `src/vertex/*` from the global ci.yml
+# gate, and ci.yml's unit-test stages `--ignore=tests/vertex/`, so the new real
+# training-step logic would otherwise be entirely unenforced in CI. This focused
+# workflow gates the new module via the same inline-coveragerc `include =`
+# pattern proven in codec-perf-coverage.yml / phase2-zoo-validation.yml.
+#
+# Scope note: the gate targets only `src/vertex/training_step.py` (the new,
+# fully-testable module). Legacy `src/vertex/trainer.py` is intentionally not
+# gated here — that is precisely why the real logic was extracted into
+# `training_step.py`.
+
+name: Vertex Trainer Coverage Gate
+
+on:
+  push:
+    branches: [master, "claude/*", "feature/*", develop]
+    paths:
+      - "src/vertex/training_step.py"
+      - "src/vertex/trainer.py"
+      - "tests/vertex/test_training_step.py"
+      - "tests/vertex/test_trainer.py"
+      - ".github/workflows/vertex-trainer-coverage.yml"
+      - "pyproject.toml"
+  pull_request:
+    branches: [master, develop, "claude/*"]
+    paths:
+      - "src/vertex/training_step.py"
+      - "src/vertex/trainer.py"
+      - "tests/vertex/test_training_step.py"
+      - "tests/vertex/test_trainer.py"
+      - ".github/workflows/vertex-trainer-coverage.yml"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  WANDB_MODE: disabled
+  MPLBACKEND: Agg
+  PYTHONHASHSEED: "0"
+
+jobs:
+  vertex-trainer-coverage-gate:
+    name: Vertex training-step per-module coverage (>= 85%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+
+      - name: Run vertex training-step coverage gate
+        # Inline coveragerc with `include = ...` overrides the global omit of
+        # `src/vertex/*`. Only the two new tests run (the rest of tests/vertex/
+        # is unrelated and the legacy entrypoint path is known-broken/out of scope).
+        run: |
+          cat > .coveragerc.vertex-trainer <<'COVEOF'
+          [run]
+          include =
+              src/vertex/training_step.py
+          branch = true
+
+          [report]
+          show_missing = true
+          fail_under = 85
+          COVEOF
+          pytest tests/vertex/test_training_step.py tests/vertex/test_trainer.py \
+                 --cov \
+                 --cov-config=.coveragerc.vertex-trainer \
+                 --cov-report=term-missing \
+                 -q --tb=short
+
+      - name: Upload coverage report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vertex-trainer-coverage-failure
+          path: |
+            .coverage
+            htmlcov/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -45,7 +45,7 @@ EMPTY_MARK = 0
 _LOGGER = structlog.get_logger(__name__)
 
 
-class BoardState(list):  # type: ignore[type-arg]
+class BoardState(list[list[int]]):
     """A 2D mark board that also carries the engine's player-to-move.
 
     Subclasses :class:`list` so it stays a drop-in ``list[list[int]]`` (indexing,

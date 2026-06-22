@@ -5,7 +5,18 @@ from __future__ import annotations
 import pytest
 
 import src.firefighting.cli as cli
-from src.firefighting.cli import main
+from src.firefighting.cli import main, run_edge_profile, run_grass_fire_benchmark
+
+
+class TestBenchmarkFunctions:
+    def test_grass_fire_small_grid(self) -> None:
+        # Parameterized (no hardcoded 50x50): small/fast grid exercises the
+        # real solver path and returns True.
+        assert run_grass_fire_benchmark(n=16, horizon_s=15.0) is True
+
+    def test_edge_profile_runs(self) -> None:
+        # Cheap (no solver); n_cycles parameterized.
+        run_edge_profile(max_memory_mb=2048, n_cycles=3)
 
 
 class TestMainDispatch:
@@ -34,6 +45,12 @@ class TestMainDispatch:
         monkeypatch.setattr("sys.argv", ["fire", "--benchmark", "fds_comparison"])
         with pytest.raises(NotImplementedError, match="FDS reference"):
             main()
+
+    def test_list_dispatch_only_runs_list(self, monkeypatch, capsys) -> None:
+        # --list takes precedence and returns before any benchmark dispatch.
+        monkeypatch.setattr("sys.argv", ["fire", "--list", "--benchmark", "fds_comparison"])
+        main()
+        assert "fds_comparison" in capsys.readouterr().out
 
     def test_profile_dispatch(self, monkeypatch) -> None:
         called = {}

@@ -16,6 +16,7 @@ class TestTransferBenchmark:
         result = run_transfer_benchmark(coarse_n=16, fine_n=24, horizon_s=15.0)
         assert isinstance(result, bool)
 
-    def test_run_at_resolution_returns_nonnegative_area(self) -> None:
-        area = _run_fire_at_resolution(20, horizon_s=15.0)
-        assert area >= 0.0
+    def test_run_at_resolution_returns_result(self) -> None:
+        result = _run_fire_at_resolution(20, horizon_s=15.0)
+        assert result.burned_area_m2 >= 0.0
+        assert result.total_steps > 0

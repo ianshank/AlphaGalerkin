@@ -650,6 +650,14 @@ class TestNormaliseSolverName:
             ("pinn", "pinn"),
             ("PINN", "pinn"),
             ("unknown_solver", "unknown_solver"),
+            # Extra solvers + friendly aliases resolve to registry keys.
+            ("multigrid", "multigrid"),
+            ("AMG", "multigrid"),
+            ("algebraic-multigrid", "multigrid"),
+            ("direct", "direct_solver"),
+            ("direct_solver", "direct_solver"),
+            ("fno", "fno"),
+            ("deeponet", "deeponet"),
         ],
     )
     def test_normalisation(self, input_name: str, expected: str):

@@ -10,9 +10,7 @@ class TestTransferBenchmark:
         # Identical resolutions -> identical burned area -> zero relative diff,
         # which is always within tolerance. Exercises the gating logic without
         # depending on physics convergence at toy grid sizes.
-        assert (
-            run_transfer_benchmark(coarse_n=24, fine_n=24, horizon_s=15.0) is True
-        )
+        assert run_transfer_benchmark(coarse_n=24, fine_n=24, horizon_s=15.0) is True
 
     def test_returns_bool_for_differing_resolutions(self) -> None:
         result = run_transfer_benchmark(coarse_n=16, fine_n=24, horizon_s=15.0)

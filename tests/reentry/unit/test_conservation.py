@@ -32,9 +32,7 @@ class TestConservedIntegrals1D:
 
     def test_zero_velocity_zero_momentum(self) -> None:
         n = 5
-        integrals = conserved_integrals_1d(
-            np.ones(n), np.zeros(n), np.ones(n), dx=0.2, gamma=1.4
-        )
+        integrals = conserved_integrals_1d(np.ones(n), np.zeros(n), np.ones(n), dx=0.2, gamma=1.4)
         assert integrals["momentum"] == pytest.approx(0.0)
 
     def test_invalid_dx_raises(self) -> None:

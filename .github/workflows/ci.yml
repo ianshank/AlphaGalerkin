@@ -326,12 +326,12 @@ jobs:
       - name: Per-module coverage gate (reentry)
         if: hashFiles('tests/reentry/') != ''
         run: |
-          pytest tests/reentry/ --cov=src/reentry --cov-fail-under=60 -q --no-header
+          pytest tests/reentry/ --cov=src/reentry --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (firefighting)
         if: hashFiles('tests/firefighting/') != ''
         run: |
-          pytest tests/firefighting/ --cov=src/firefighting --cov-fail-under=60 -q --no-header
+          pytest tests/firefighting/ --cov=src/firefighting --cov-fail-under=85 -q --no-header
 
       - name: Upload coverage to Codecov
         if: always()

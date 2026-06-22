@@ -65,7 +65,7 @@ def _make_small_config(tmp_path: Path, **overrides) -> TrainingConfig:
         "success_threshold": 999.0,  # always pass
         "output_dir": str(tmp_path / "outputs"),
         "seed": 0,
-        "wandb_enabled": False,
+        "langfuse_enabled": False,
     }
     defaults.update(overrides)
     return TrainingConfig(**defaults)
@@ -113,7 +113,7 @@ class TestTrainingConfig:
         assert cfg.success_threshold == 0.05
         assert cfg.output_dir == "outputs/physics_poc"
         assert cfg.seed == 42
-        assert cfg.wandb_enabled is False
+        assert cfg.langfuse_enabled is False
 
     def test_overrides(self) -> None:
         cfg = TrainingConfig(d_model=32, n_epochs=5, seed=99)
@@ -126,11 +126,11 @@ class TestTrainingConfig:
         assert cfg.train_eval_seed_offset == 10000
         assert cfg.transfer_eval_seed_offset == 20000
 
-    def test_wandb_fields(self) -> None:
-        cfg = TrainingConfig(wandb_enabled=True, wandb_name="run1")
-        assert cfg.wandb_enabled is True
-        assert cfg.wandb_name == "run1"
-        assert cfg.wandb_project == "alphagalerkin-physics-poc"
+    def test_langfuse_fields(self) -> None:
+        cfg = TrainingConfig(langfuse_enabled=True, langfuse_run_name="run1")
+        assert cfg.langfuse_enabled is True
+        assert cfg.langfuse_run_name == "run1"
+        assert cfg.langfuse_project == "alphagalerkin-physics-poc"
 
 
 # ---------------------------------------------------------------------------
@@ -348,26 +348,28 @@ class TestTrainPipeline:
 
         assert r1["history"]["train_loss"] == r2["history"]["train_loss"]
 
-    def test_wandb_warning_when_not_available(self, tmp_path: Path) -> None:
-        """When wandb_enabled=True but wandb unavailable, train still runs."""
-        config = _make_small_config(tmp_path, wandb_enabled=True)
-        with patch("src.experiments.train_physics.WANDB_AVAILABLE", False):
-            results = train(config)
+    def test_langfuse_no_op_without_keys(self, tmp_path: Path) -> None:
+        """With langfuse_enabled=True but no credentials, train still runs (no-op)."""
+        config = _make_small_config(tmp_path, langfuse_enabled=True)
+        # No LANGFUSE_* env keys -> the real tracker degrades to a no-op.
+        results = train(config)
         assert isinstance(results, dict)
 
-    def test_wandb_integration_mocked(self, tmp_path: Path) -> None:
-        """When wandb is available and enabled, it is called."""
-        config = _make_small_config(tmp_path, wandb_enabled=True)
-        mock_wandb = MagicMock()
-        with (
-            patch("src.experiments.train_physics.WANDB_AVAILABLE", True),
-            patch("src.experiments.train_physics.wandb", mock_wandb),
-        ):
+    def test_langfuse_tracker_called(self, tmp_path: Path) -> None:
+        """When tracking is enabled, the tracker receives metrics and is finished."""
+        config = _make_small_config(tmp_path, langfuse_enabled=True)
+        mock_tracker = MagicMock()
+        mock_tracker.is_enabled = True
+        with patch(
+            "src.experiments.train_physics.create_tracker", return_value=mock_tracker
+        ) as mock_create:
             results = train(config)
 
-        mock_wandb.init.assert_called_once()
-        assert mock_wandb.log.call_count > 0
-        mock_wandb.finish.assert_called_once()
+        mock_create.assert_called_once()
+        assert mock_tracker.log_metrics.call_count > 0
+        mock_tracker.log_summary.assert_called_once()
+        mock_tracker.finish.assert_called_once()
+        assert isinstance(results, dict)
 
 
 # ---------------------------------------------------------------------------
@@ -441,17 +443,17 @@ class TestMainArgParsing:
         assert config.success_threshold == 0.1
         assert config.seed == 99
 
-    def test_wandb_flag(self, tmp_path: Path) -> None:
+    def test_langfuse_flag(self, tmp_path: Path) -> None:
         with (
             patch("src.experiments.train_physics.train") as mock_train,
             patch(
                 "sys.argv",
                 [
                     "prog",
-                    "--wandb",
-                    "--wandb-project",
+                    "--langfuse",
+                    "--langfuse-project",
                     "my-project",
-                    "--wandb-name",
+                    "--langfuse-name",
                     "my-run",
                     "--output-dir",
                     str(tmp_path),
@@ -462,11 +464,11 @@ class TestMainArgParsing:
             main()
 
         config = mock_train.call_args[0][0]
-        assert config.wandb_enabled is True
-        assert config.wandb_project == "my-project"
-        assert config.wandb_name == "my-run"
+        assert config.langfuse_enabled is True
+        assert config.langfuse_project == "my-project"
+        assert config.langfuse_run_name == "my-run"
 
-    def test_wandb_default_disabled(self, tmp_path: Path) -> None:
+    def test_langfuse_default_disabled(self, tmp_path: Path) -> None:
         with (
             patch("src.experiments.train_physics.train") as mock_train,
             patch("sys.argv", ["prog", "--output-dir", str(tmp_path)]),
@@ -475,7 +477,7 @@ class TestMainArgParsing:
             main()
 
         config = mock_train.call_args[0][0]
-        assert config.wandb_enabled is False
+        assert config.langfuse_enabled is False
 
 
 # ---------------------------------------------------------------------------

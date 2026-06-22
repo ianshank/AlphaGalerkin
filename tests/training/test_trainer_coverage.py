@@ -267,11 +267,11 @@ class TestInitBranches:
             config=small_config,
             device="cpu",
             checkpoint_dir=checkpoint_dir,
-            wandb_logger=fake_wandb,
+            tracker=fake_wandb,
             distributed_context=ctx,
         )
         # wandb logger should be disabled on non-main rank
-        assert trainer.wandb_logger is None
+        assert trainer.tracker is None
 
     def test_wandb_enabled_on_main_rank(self, small_model, small_config, checkpoint_dir) -> None:
         from src.training.distributed_context import DistributedContext
@@ -283,10 +283,10 @@ class TestInitBranches:
             config=small_config,
             device="cpu",
             checkpoint_dir=checkpoint_dir,
-            wandb_logger=fake_wandb,
+            tracker=fake_wandb,
             distributed_context=ctx,
         )
-        assert trainer.wandb_logger is fake_wandb
+        assert trainer.tracker is fake_wandb
 
     def test_warmup_flag_set_when_warmup_nonzero(
         self, small_model, small_config, checkpoint_dir
@@ -369,7 +369,7 @@ class TestRunEvaluation:
         from src.training.evaluation import EvaluationResult
 
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
 
         fake_result = EvaluationResult(
             win_rate=0.5,
@@ -547,7 +547,7 @@ class TestTrainLoopBranches:
         self, small_model, small_config, checkpoint_dir
     ) -> None:
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
         with _prefill_and_mock(trainer):
             trainer.train(n_steps=3, log_interval=1, checkpoint_interval=100)
 
@@ -666,7 +666,7 @@ class TestTrainLoopBranches:
     ) -> None:
         """Checkpoint saving triggers W&B artifact logging."""
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
         with _prefill_and_mock(trainer):
             trainer.train(n_steps=5, log_interval=1, checkpoint_interval=2)
 
@@ -678,7 +678,7 @@ class TestTrainLoopBranches:
     ) -> None:
         """Final checkpoint is logged as W&B artifact with 'final' alias."""
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
         with _prefill_and_mock(trainer):
             trainer.train(n_steps=2, log_interval=1, checkpoint_interval=100)
 
@@ -810,7 +810,7 @@ class TestCreateTrainerWandb:
             checkpoint_dir=checkpoint_dir,
             resume_from=ckpt_path,
             device="cpu",
-            wandb_logger=fake_wandb,
+            tracker=fake_wandb,
         )
         fake_wandb.set_step_offset.assert_called_once_with(trainer2.global_step)
 
@@ -823,7 +823,7 @@ class TestCreateTrainerWandb:
 class TestFillBufferWandb:
     def test_fill_buffer_logs_to_wandb(self, small_model, small_config, checkpoint_dir) -> None:
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
         fake = _make_fake_experiences(trainer, 20)
         with patch.object(
             trainer.self_play_worker,
@@ -1070,7 +1070,7 @@ class TestRunEngineEvaluationAdvanced:
         small_config.training.engine_eval_enabled = True
         small_config.training.engine_eval_path = "/fake/stockfish"
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
 
         fake_result = EvaluationResult(
             win_rate=0.3,
@@ -1182,7 +1182,7 @@ class TestCheckpointTournamentScores:
 
         small_config.training.eval_vs_checkpoints = True
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
 
         fake_result = EvaluationResult(
             win_rate=0.8,
@@ -1254,7 +1254,7 @@ class TestTrainCurriculumSelfPlay:
         """Curriculum transition logs to wandb."""
         small_config.training.curriculum_enabled = True
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
 
         for exp in _make_fake_experiences(trainer, 100):
             trainer.buffer.add(exp)
@@ -1349,7 +1349,7 @@ class TestRunEvalMultiResWandb:
 
         small_config.training.multi_resolution_eval = True
         fake_wandb = MagicMock()
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir, wandb_logger=fake_wandb)
+        trainer = _make_trainer(small_model, small_config, checkpoint_dir, tracker=fake_wandb)
 
         fake_result = EvaluationResult(
             win_rate=0.7,

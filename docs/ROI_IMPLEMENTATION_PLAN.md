@@ -12,27 +12,28 @@ AlphaGalerkin (v0.3.0 → v0.4.0) is a mature resolution-independent AI system w
 
 ## Tier 1: Highest ROI (Do First)
 
-### 1.1 Wire Physics Loss into Training Loop (M4.1)
-**ROI**: Unlocks PDE self-play, SBIR demos, and the core novel capability  
-**Effort**: S (1-2 days) — infrastructure exists, just needs wiring  
-**Value**: Critical for SBIR — this IS the differentiator (MCTS + Galerkin for PDE)
+### 1.1 Wire Physics Loss into Training Loop (M4.1) — DONE 2026-04-02
 
-**Files to modify:**
-- `src/training/trainer.py` — add `physics_informed` branch in training step
-- `src/training/losses/__init__.py` — ensure `CombinedAlphaGalerkinPhysicsLoss` is registered
-- `config/train.yaml` — add `training.physics_informed: bool = false` field
-- `src/training/config.py` — add Pydantic field for physics config
+**Status**: ✅ Wired and live. Confirmed via source-code audit on master at commit `cdaab1c` (2026-04-27) per docs/PLAN_2026-04-27.md Section 4.1.
 
-**Reuse:**
-- `src/training/physics_loss.py` — `CombinedAlphaGalerkinPhysicsLoss` already implemented
-- `src/training/loss_balancing.py` — ReLoBRaLo/GradNorm already implemented
-- `src/pde/operators.py` — Poisson, Burgers, NS operators ready
+**Wiring sites** (all in [src/training/trainer.py](src/training/trainer.py)):
 
-**Tests:**
-- `tests/training/test_trainer_physics.py` — new: physics loss gradient flow, config toggle, NaN guard
-- Target: 85% coverage on new code paths
+- Line 230 — `self.combined_physics_loss_fn: CombinedAlphaGalerkinPhysicsLoss | None = None`
+- Lines 232-241 — instantiated when `training_config.physics_loss_type != "none"` (Pydantic config toggle).
+- Line 246 — `self.physics_loss_fn: PhysicsInformedLoss | None = None`
+- Lines 247-253 — instantiated when `training_config.physics_informed` is True.
+- Lines 724-739 — `physics_loss_fn` invoked at every training step; output added to `losses["physics"]` and routed through `loss_balancer`. Wrapped in `try/except` with warning-log fallback so a transient autodiff failure degrades to zero rather than crashing training.
+- Lines 746-768 — `combined_physics_loss_fn` invoked at every training step; output added to `total_loss` with `training_config.physics_weight`. Same try/except fallback.
 
-**Acceptance:** `python -m scripts.train training.physics_informed=true` runs without error, physics loss logged
+**Acceptance verified** (per 2026-04-02 milestone in CLAUDE.md line 85, "Physics Loss Fully Wired"): `python -m scripts.train training.physics_informed=true` runs without error and the physics loss is recorded in the metrics output.
+
+**Tests in place:**
+
+- `tests/training/test_trainer.py` — physics-loss config-toggle paths and NaN guards.
+- `tests/experiments/test_physics_loss.py` — physics-informed loss components (`ResidualLoss`, `BoundaryLoss`, `InitialConditionLoss`, `ConservationLoss`).
+- `tests/training/test_loss_balancing.py` — adaptive balancers (ReLoBRaLo, GradNorm, SoftAdapt) wired to the physics path.
+
+This entry was previously listed as "not started" — that was stale documentation, not a real gap. The wiring has been live since 2026-04-02.
 
 ---
 

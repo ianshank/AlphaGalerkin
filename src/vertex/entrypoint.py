@@ -37,11 +37,11 @@ _DEFAULT_LOCAL_CACHE_DIR: str = VertexStorageConfig.model_fields["local_cache_di
 logger = structlog.get_logger(__name__)
 
 
-def init_wandb_for_vertex(
+def init_tracker_for_vertex(
     training_config: dict[str, Any],
     ctx: DistributedContext,
 ) -> Any:
-    """Initialize W&B logger from environment variables.
+    """Initialize the Langfuse tracker from environment variables.
 
     Only initializes on main process (rank 0) to avoid duplicate runs.
 
@@ -50,48 +50,48 @@ def init_wandb_for_vertex(
         ctx: Distributed context.
 
     Returns:
-        WandbLogger instance or None if disabled.
+        LangfuseTracker instance or None if disabled.
 
     """
     import os as os_module
 
-    # Only main process logs to W&B
+    # Only the main process tracks the run.
     if not ctx.is_main_process():
         return None
 
-    api_key = os_module.environ.get("WANDB_API_KEY")
-    mode = os_module.environ.get("WANDB_MODE", "online")
-
-    if not api_key or mode == "disabled":
-        logger.info("wandb_disabled", reason="no API key or mode=disabled")
+    # Langfuse credentials come from the environment; without them the tracker
+    # would no-op anyway, so there is nothing to initialize.
+    if not os_module.environ.get("LANGFUSE_PUBLIC_KEY") or not os_module.environ.get(
+        "LANGFUSE_SECRET_KEY"
+    ):
+        logger.info("langfuse_disabled", reason="no LANGFUSE_PUBLIC_KEY/SECRET_KEY")
         return None
 
-    # Build W&B config from environment and training config
-    wandb_config = training_config.get("wandb", {}).copy()
-    default_project = wandb_config.get("project", "alphagalerkin")
-    wandb_config.update(
+    # Build the Langfuse config from environment + training config.
+    langfuse_config = training_config.get("langfuse", {}).copy()
+    default_project = langfuse_config.get("project", "alphagalerkin")
+    langfuse_config.update(
         {
             "enabled": True,
-            "project": os_module.environ.get("WANDB_PROJECT", default_project),
-            "entity": os_module.environ.get("WANDB_ENTITY", wandb_config.get("entity")),
-            "name": os_module.environ.get("WANDB_RUN_NAME", wandb_config.get("name")),
-            "mode": mode,
-            "tags": [*wandb_config.get("tags", []), "vertex-ai"],
+            "project": os_module.environ.get("LANGFUSE_PROJECT", default_project),
+            "run_name": os_module.environ.get("LANGFUSE_RUN_NAME", langfuse_config.get("run_name")),
+            "host": os_module.environ.get("LANGFUSE_HOST", langfuse_config.get("host")),
+            "tags": [*langfuse_config.get("tags", []), "vertex-ai"],
         }
     )
 
     try:
-        from src.training.wandb_logger import create_wandb_logger
+        from src.training.langfuse_tracker import create_tracker
 
-        wandb_logger = create_wandb_logger(wandb_config, training_config)
+        tracker = create_tracker(langfuse_config, training_config)
         logger.info(
-            "wandb_initialized",
-            project=wandb_config["project"],
-            run_id=getattr(wandb_logger, "run_id", None),
+            "langfuse_initialized",
+            project=langfuse_config["project"],
+            run_id=getattr(tracker, "run_id", None),
         )
-        return wandb_logger
+        return tracker
     except Exception as e:
-        logger.warning("wandb_init_failed", error=str(e))
+        logger.warning("langfuse_init_failed", error=str(e))
         return None
 
 
@@ -446,8 +446,8 @@ def main() -> int:
         # Load configurations
         training_config = load_training_config(args.config)
 
-        # Initialize W&B (only on main process)
-        wandb_logger = init_wandb_for_vertex(training_config, ctx)
+        # Initialize the Langfuse tracker (only on main process)
+        tracker = init_tracker_for_vertex(training_config, ctx)
 
         try:
             vertex_config = create_vertex_config_from_env()
@@ -543,13 +543,13 @@ def main() -> int:
                 trainer_ref=_trainer_ref,
             )
         finally:
-            # Cleanup W&B
-            if wandb_logger is not None:
+            # Cleanup the tracker
+            if tracker is not None:
                 try:
-                    wandb_logger.finish()
-                    logger.info("wandb_finished")
+                    tracker.finish()
+                    logger.info("langfuse_finished")
                 except Exception as e:
-                    logger.warning("wandb_finish_failed", error=str(e))
+                    logger.warning("langfuse_finish_failed", error=str(e))
 
         # Cleanup distributed
         if dist.is_initialized():

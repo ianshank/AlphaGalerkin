@@ -165,6 +165,18 @@ class VideoCodecZoo:
     def list_entries(self) -> list[str]:
         if self.backend is StorageBackend.GCS:
             return self._list_entries_gcs()
+        if self.backend is not StorageBackend.FILESYSTEM:
+            raise NotImplementedError(
+                f"has_entry is implemented only for the filesystem backend; got {self.backend!r}",
+            )
+        return self.checkpoint_path(entry_id).exists()
+
+    def list_entries(self) -> list[str]:
+        if self.backend is not StorageBackend.FILESYSTEM:
+            raise NotImplementedError(
+                f"list_entries is implemented only for the filesystem backend; "
+                f"got {self.backend!r}",
+            )
         if not self.root.exists():
             return []
         return sorted(

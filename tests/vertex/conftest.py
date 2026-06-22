@@ -7,7 +7,7 @@ without them.  This conftest stubs the ``google.cloud.*`` module tree so
 
 Historical bug (fixed): an earlier version only installed the stubs when
 ``"google" not in sys.modules``.  That is insufficient on Python 3.10
-because packages like ``wandb`` pull in the ``google`` namespace package
+because some third-party packages pull in the ``google`` namespace package
 transitively — so ``sys.modules["google"]`` already exists, but the real
 module has no ``cloud`` attribute, and ``patch("google.cloud.storage.Client")``
 fails with ``AttributeError: module 'google' has no attribute 'cloud'``
@@ -62,9 +62,9 @@ if not _google_cloud_storage_installed():
     _google_mock.cloud = _google_cloud_mock
 
     # Force-install the stub tree.  We do NOT guard behind
-    # ``"google" not in sys.modules`` because other deps (e.g. wandb) may
-    # have already imported the real namespace package — in that case we
-    # still need ``google.cloud`` to be discoverable.
+    # ``"google" not in sys.modules`` because other deps may have already
+    # imported the real namespace package — in that case we still need
+    # ``google.cloud`` to be discoverable.
     sys.modules["google"] = _google_mock
     sys.modules["google.cloud"] = _google_cloud_mock
     sys.modules["google.cloud.aiplatform"] = _aiplatform_mock

@@ -45,6 +45,22 @@ EMPTY_MARK = 0
 _LOGGER = structlog.get_logger(__name__)
 
 
+class BoardState(list):  # type: ignore[type-arg]
+    """A 2D mark board that also carries the engine's player-to-move.
+
+    Subclasses :class:`list` so it stays a drop-in ``list[list[int]]`` (indexing,
+    ``len``, iteration, and the evaluator's list-based cache key all keep working),
+    while exposing :attr:`current_player` so the true side-to-move (taken straight
+    from the reconstructed engine state) reaches the model evaluator. This avoids
+    the stone-parity heuristic, which is unreliable once captures change stone
+    counts.
+    """
+
+    def __init__(self, rows: Sequence[Sequence[int]], current_player: int = BLACK) -> None:
+        super().__init__([list(row) for row in rows])
+        self.current_player = current_player
+
+
 def move_to_action(x: int, y: int, board_size: int) -> int:
     """Convert a reviewer ``(x, y)`` move to a flat Go engine action index.
 
@@ -85,7 +101,7 @@ def reconstruct_board(
     *,
     game: GoGame | None = None,
     logger: structlog.stdlib.BoundLogger | None = None,
-) -> list[list[int]]:
+) -> BoardState:
     """Replay *moves* through the Go engine, returning a capture-correct board.
 
     Unlike a naive replay, this removes captured stones and respects the engine's
@@ -102,7 +118,8 @@ def reconstruct_board(
         logger: Optional logger for skipped-move diagnostics.
 
     Returns:
-        ``board_size`` x ``board_size`` list of marks (``board[y][x]``).
+        A :class:`BoardState` (``board[y][x]`` marks) whose ``current_player`` is the
+        engine's side-to-move after the replay.
 
     """
     game = game or GoGame()
@@ -131,7 +148,10 @@ def reconstruct_board(
             log.debug("review_skip_illegal_move", x=x, y=y, color=color, error=str(exc))
             continue
 
-    return _board_to_marks(state.board, board_size)
+    return BoardState(
+        _board_to_marks(state.board, board_size),
+        current_player=state.current_player,
+    )
 
 
 def _board_to_marks(board: NDArray[Any], board_size: int) -> list[list[int]]:
@@ -190,12 +210,20 @@ def make_model_evaluator(
         Callable mapping a board state to ``(value, policy)``.
 
     """
-    engine = game or GoGame()
 
     def _evaluate(board_state: Any) -> tuple[float, NDArray[Any]]:
+        # Fresh engine per call: GoGame carries mutable board-size state, so a
+        # shared instance would not be thread-safe across concurrent reviews.
+        engine = game or GoGame()
         board_size = len(board_state)
         board = _marks_to_board(board_state, board_size)
-        state = GameState(board=board, current_player=_infer_side_to_move(board))
+        # Prefer the true side-to-move carried by BoardState; fall back to the
+        # stone-parity heuristic only when the metadata is absent (e.g. a plain
+        # list was passed). Parity is unreliable once captures change counts.
+        current_player = getattr(board_state, "current_player", None)
+        if current_player is None:
+            current_player = _infer_side_to_move(board)
+        state = GameState(board=board, current_player=current_player)
         tensor = engine.to_tensor(state).cpu().numpy().astype(np.float32)
         legal_actions = engine.get_legal_actions(state)
         result = mcts_evaluator.evaluate(tensor, legal_actions)

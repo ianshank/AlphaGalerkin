@@ -23,7 +23,6 @@ from src.analysis.config import (
 )
 from src.analysis.evaluator import EvaluationResult, PositionEvaluator
 from src.analysis.go_adapter import reconstruct_board
-from src.games.go import GoGame
 
 if TYPE_CHECKING:
     from src.games.sgf.node import SGFGameTree
@@ -216,7 +215,6 @@ class GameReviewer:
         self.config = config or AnalysisConfig()
         self._logger = logger or structlog.get_logger(__name__)
         self._evaluator = evaluator or PositionEvaluator(config=self.config)
-        self._game = GoGame()
 
         # Resolve a model evaluator: explicit argument wins, otherwise build one
         # from the configured checkpoint. If neither is available we keep the
@@ -440,10 +438,11 @@ class GameReviewer:
             2D list representing the board state.
 
         """
+        # No shared GoGame instance: reconstruct_board creates its own per call,
+        # keeping GameReviewer thread-safe across concurrent / mixed-size reviews.
         return reconstruct_board(
             moves,
             board_size,
-            game=self._game,
             logger=self._logger,
         )
 

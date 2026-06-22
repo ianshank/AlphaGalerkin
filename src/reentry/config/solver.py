@@ -115,6 +115,17 @@ class ReentrySolverConfig(BaseModuleConfig):
         description="Pressure gradient threshold for shock detection.",
     )
 
+    # Conservation audit
+    conservation_rtol: float = Field(
+        default=1e-8,
+        gt=0.0,
+        description=(
+            "Relative-drift tolerance for the mass/energy conservation audit. "
+            "Finite-volume schemes conserve mass and energy to ~machine precision "
+            "when boundary fluxes vanish, so this is a tight floor."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_cfl_ramp(self) -> ReentrySolverConfig:
         if self.adaptive_cfl and self.cfl_ramp_start >= self.cfl:

@@ -78,123 +78,132 @@ class MultigridPoissonConfig(SolverConfig):
 
 
 # ---------------------------------------------------------------------------
-# Shared assembly: uniform 5-point Laplacian
+# Shared assembly: uniform N-D (2*dim+1)-point Laplacian
 # ---------------------------------------------------------------------------
+#
+# The discretization is dimension-generic via a Kronecker-sum Laplacian:
+#   A = sum_axis ( I (x) ... (x) L1 (x) ... (x) I ),  L1 = tridiag(-1, 2, -1)
+# which is the 3-point (1D), 5-point (2D), or 7-point (3D) stencil with a main
+# diagonal of 2*dim. For dim==2 this reproduces the previous hand-rolled
+# 5-point matrix exactly. The grid is assumed isotropic (equal spacing per
+# axis); exact on the unit cube used by the manufactured-solution benchmarks.
+
+# Maximum spatial dimension supported by the Kronecker assembly.
+MAX_SUPPORTED_DIM: int = 3
 
 
-def _assemble_poisson_2d(
-    operator: PDEOperator,
-    n_per_side: int,
-) -> tuple[Any, NDArray[np.float64], NDArray[np.float64]]:
-    """Assemble the 2D 5-point Laplacian for a uniform-grid Poisson op.
+def _grid_axes(operator: PDEOperator, n: int) -> list[NDArray[np.float64]]:
+    """Per-axis coordinate arrays of length ``n + 2`` (interior + 2 boundaries)."""
+    return [
+        np.linspace(
+            float(operator.domain_min[d]),
+            float(operator.domain_max[d]),
+            n + 2,
+            dtype=np.float64,
+        )
+        for d in range(operator.dim)
+    ]
 
-    Returns
-    -------
-    A
-        ``scipy.sparse.csr_matrix`` of shape (N, N) where N=n_per_side**2.
-    rhs
-        Right-hand side vector of shape (N,).
-    grid_points
-        Coordinate array of shape (N, 2) for downstream error reporting.
 
-    """
+def _laplacian_nd(n: int, dim: int) -> Any:
+    """Assemble the uniform (2*dim+1)-point Laplacian via a Kronecker sum."""
     from scipy import sparse
 
+    l1 = sparse.diags([-1.0, 2.0, -1.0], [-1, 0, 1], shape=(n, n), format="csr")
+    identity = sparse.identity(n, format="csr")
+    a_matrix: Any | None = None
+    for axis in range(dim):
+        term: Any | None = None
+        for k in range(dim):
+            mat = l1 if k == axis else identity
+            term = mat if term is None else sparse.kron(term, mat, format="csr")
+        a_matrix = term if a_matrix is None else (a_matrix + term)
+    assert a_matrix is not None, "dim >= 1 guarantees the Kronecker sum is built"
+    return a_matrix.tocsr()
+
+
+def _assemble_poisson_nd(
+    operator: PDEOperator,
+    n_per_side: int,
+) -> tuple[Any, NDArray[np.float64], NDArray[np.float64], list[NDArray[np.float64]]]:
+    """Assemble the N-D Laplacian system for a uniform-grid Poisson operator.
+
+    Returns:
+        ``(A, rhs, full_grid_coords, axes)`` where ``A`` is the sparse
+        ``(n**dim, n**dim)`` interior Laplacian, ``rhs`` the right-hand side
+        with Dirichlet boundary contributions folded in, ``full_grid_coords``
+        the ``((n+2)**dim, dim)`` coordinate array (interior + boundary) for
+        error reporting, and ``axes`` the per-axis coordinate arrays.
+
+    """
     n = int(n_per_side)
-    x = np.linspace(
-        float(operator.domain_min[0]),
-        float(operator.domain_max[0]),
-        n + 2,
+    dim = operator.dim
+    axes = _grid_axes(operator, n)
+    h = float(axes[0][1] - axes[0][0])
+
+    interior = [ax[1:-1] for ax in axes]
+    interior_mesh = np.meshgrid(*interior, indexing="ij")
+    interior_coords = np.stack([m.ravel() for m in interior_mesh], axis=-1)
+
+    a_matrix = _laplacian_nd(n, dim)
+
+    source = np.asarray(
+        operator.source_term(interior_coords.astype(np.float32)),
         dtype=np.float64,
     )
-    y = np.linspace(
-        float(operator.domain_min[1]),
-        float(operator.domain_max[1]),
-        n + 2,
-        dtype=np.float64,
-    )
-    h = float(x[1] - x[0])
+    rhs_grid = ((h**2) * source).reshape((n,) * dim)
 
-    interior_x = x[1:-1]
-    interior_y = y[1:-1]
-    xx, yy = np.meshgrid(interior_x, interior_y, indexing="ij")
-    coords = np.stack([xx.ravel(), yy.ravel()], axis=-1)
+    # Dirichlet boundary contributions: the interior nodes adjacent to each of
+    # the 2*dim faces gain the boundary value of their off-grid neighbour.
+    for axis in range(dim):
+        for slot, wall in ((0, axes[axis][0]), (n - 1, axes[axis][-1])):
+            face_coords = _face_coords(interior, axis, wall, dim)
+            bc = np.asarray(operator.boundary_value(face_coords), dtype=np.float64)
+            index: list[Any] = [slice(None)] * dim
+            index[axis] = slot
+            rhs_grid[tuple(index)] += bc.reshape(rhs_grid[tuple(index)].shape)
 
-    main = np.full(n * n, 4.0)
-    horiz = np.full(n * n - 1, -1.0)
-    horiz[(np.arange(1, n * n) % n) == 0] = 0.0  # break wrap on row boundaries
-    vert = np.full(n * (n - 1), -1.0)
+    full_mesh = np.meshgrid(*axes, indexing="ij")
+    full_grid = np.stack([m.ravel() for m in full_mesh], axis=-1)
+    return a_matrix, rhs_grid.ravel(), full_grid, axes
 
-    A = sparse.diags(
-        [vert, horiz, main, horiz, vert],
-        offsets=[-n, -1, 0, 1, n],
-        shape=(n * n, n * n),
-        format="csr",
-    )
 
-    f = np.asarray(
-        operator.source_term(coords.astype(np.float32)),
-        dtype=np.float64,
-    ).reshape(n, n)
-    rhs = (h**2) * f.ravel()
-
-    # Boundary contributions: subtract the appropriate column of A applied
-    # to the Dirichlet data on the four sides.
-    bc_left = np.asarray(
-        operator.boundary_value(
-            np.stack([np.full(n, x[0], dtype=np.float32), interior_y.astype(np.float32)], axis=-1)
-        ),
-        dtype=np.float64,
-    )
-    bc_right = np.asarray(
-        operator.boundary_value(
-            np.stack(
-                [np.full(n, x[-1], dtype=np.float32), interior_y.astype(np.float32)],
-                axis=-1,
-            )
-        ),
-        dtype=np.float64,
-    )
-    bc_bottom = np.asarray(
-        operator.boundary_value(
-            np.stack(
-                [interior_x.astype(np.float32), np.full(n, y[0], dtype=np.float32)],
-                axis=-1,
-            )
-        ),
-        dtype=np.float64,
-    )
-    bc_top = np.asarray(
-        operator.boundary_value(
-            np.stack(
-                [interior_x.astype(np.float32), np.full(n, y[-1], dtype=np.float32)],
-                axis=-1,
-            )
-        ),
-        dtype=np.float64,
-    )
-
-    rhs_grid = rhs.reshape(n, n)
-    rhs_grid[0, :] += bc_left  # i=0 column gets contribution from x = x_min wall
-    rhs_grid[-1, :] += bc_right
-    rhs_grid[:, 0] += bc_bottom
-    rhs_grid[:, -1] += bc_top
-
-    full_grid = np.stack(
-        np.meshgrid(x, y, indexing="ij"),
-        axis=-1,
-    )
-    return A, rhs_grid.ravel(), full_grid.reshape(-1, 2)
+def _face_coords(
+    interior: list[NDArray[np.float64]],
+    axis: int,
+    wall: float,
+    dim: int,
+) -> NDArray[np.float32]:
+    """Coordinates of one boundary face: interior transverse grid, axis fixed at ``wall``."""
+    transverse = [interior[k] for k in range(dim) if k != axis]
+    if not transverse:  # 1D: the face is a single point
+        coords = np.array([[wall]], dtype=np.float32)
+        return coords
+    mesh = np.meshgrid(*transverse, indexing="ij")
+    columns: list[NDArray[np.float64]] = []
+    cursor = 0
+    for k in range(dim):
+        if k == axis:
+            columns.append(np.full(mesh[0].size, wall, dtype=np.float64))
+        else:
+            columns.append(mesh[cursor].ravel())
+            cursor += 1
+    return np.stack(columns, axis=-1).astype(np.float32)
 
 
 def _resolve_grid_size(operator: PDEOperator, n_dof: int, floor: int) -> int:
-    """Choose ``n_per_side`` so ``n_per_side**2 == n_dof`` (rounded)."""
-    if operator.dim != 2:
+    """Choose ``n_per_side`` so ``n_per_side**dim ≈ n_dof`` (rounded).
+
+    Supports 1D/2D/3D Poisson-type operators.
+    """
+    dim = operator.dim
+    if dim < 1 or dim > MAX_SUPPORTED_DIM:
         raise NotImplementedError(
-            f"This solver currently supports 2D Poisson-type problems only "
-            f"(operator.dim={operator.dim})."
+            f"This solver supports 1D/2D/3D Poisson-type problems only "
+            f"(operator.dim={dim}; max supported is {MAX_SUPPORTED_DIM})."
         )
-    n_per_side = int(round(np.sqrt(max(int(n_dof), floor**2))))
+    target = max(int(n_dof), floor**dim)
+    n_per_side = int(round(target ** (1.0 / dim)))
     return max(n_per_side, floor)
 
 
@@ -203,52 +212,32 @@ def _fill_boundary(
     operator: PDEOperator,
     n_per_side: int,
 ) -> None:
-    """Populate boundary edges of *solution_grid* in-place from operator BCs.
+    """Populate the boundary faces of *solution_grid* in-place from operator BCs.
 
-    Handles all four edges (excluding corners) and the four corner nodes.
-    For homogeneous Dirichlet BCs this is a no-op (zeros stay zeros), but
-    non-homogeneous boundary values are applied correctly.
+    Dimension-generic: assigns ``operator.boundary_value`` to every node lying
+    on any face of the ``(n+2)**dim`` grid. For homogeneous Dirichlet BCs this
+    is a no-op (zeros stay zeros); non-homogeneous values are applied correctly.
     """
-    n = n_per_side
-    x = np.linspace(
-        float(operator.domain_min[0]),
-        float(operator.domain_max[0]),
-        n + 2,
+    dim = operator.dim
+    axes = _grid_axes(operator, n_per_side)
+    shape = solution_grid.shape
+
+    full_mesh = np.meshgrid(*axes, indexing="ij")
+    coords = np.stack([m.ravel() for m in full_mesh], axis=-1)
+
+    indices = np.indices(shape)
+    boundary_mask = np.zeros(shape, dtype=bool)
+    for axis in range(dim):
+        boundary_mask |= (indices[axis] == 0) | (indices[axis] == shape[axis] - 1)
+    flat_mask = boundary_mask.ravel()
+
+    boundary_vals = np.asarray(
+        operator.boundary_value(coords[flat_mask].astype(np.float32)),
         dtype=np.float64,
     )
-    y = np.linspace(
-        float(operator.domain_min[1]),
-        float(operator.domain_max[1]),
-        n + 2,
-        dtype=np.float64,
-    )
-    interior_x = x[1:-1]
-    interior_y = y[1:-1]
-
-    def _bc(coords: NDArray[np.float32]) -> NDArray[np.float64]:
-        return np.asarray(operator.boundary_value(coords), dtype=np.float64)
-
-    solution_grid[0, 1:-1] = _bc(
-        np.stack([np.full(n, x[0], dtype=np.float32), interior_y.astype(np.float32)], axis=-1)
-    )
-    solution_grid[-1, 1:-1] = _bc(
-        np.stack([np.full(n, x[-1], dtype=np.float32), interior_y.astype(np.float32)], axis=-1)
-    )
-    solution_grid[1:-1, 0] = _bc(
-        np.stack([interior_x.astype(np.float32), np.full(n, y[0], dtype=np.float32)], axis=-1)
-    )
-    solution_grid[1:-1, -1] = _bc(
-        np.stack([interior_x.astype(np.float32), np.full(n, y[-1], dtype=np.float32)], axis=-1)
-    )
-    corners = np.array(
-        [[x[0], y[0]], [x[-1], y[0]], [x[0], y[-1]], [x[-1], y[-1]]],
-        dtype=np.float32,
-    )
-    corner_vals = _bc(corners)
-    solution_grid[0, 0] = corner_vals[0]
-    solution_grid[-1, 0] = corner_vals[1]
-    solution_grid[0, -1] = corner_vals[2]
-    solution_grid[-1, -1] = corner_vals[3]
+    flat = solution_grid.ravel()
+    flat[flat_mask] = boundary_vals
+    solution_grid[...] = flat.reshape(shape)
 
 
 # ---------------------------------------------------------------------------
@@ -274,20 +263,21 @@ class DirectPoissonSolver(BaseSolver):
             ) from exc
 
         n_per_side = _resolve_grid_size(operator, n_dof, self.config.min_grid_points)
-        log = logger.bind(solver=self.name, n_per_side=n_per_side, n_dof=n_per_side**2)
+        dim = operator.dim
+        n = n_per_side
+        log = logger.bind(solver=self.name, n_per_side=n_per_side, dim=dim, n_dof=n**dim)
         log.info("direct_solve_start")
         t0 = time.perf_counter()
 
-        A, rhs, grid = _assemble_poisson_2d(operator, n_per_side)
-        # Reshape rhs back to interior-only for the solve (boundary already
-        # baked into rhs via Dirichlet contributions in ``_assemble_poisson_2d``).
-        n = n_per_side
+        A, rhs, grid, _axes = _assemble_poisson_nd(operator, n_per_side)
+        # Boundary already folded into rhs via Dirichlet contributions.
         u_interior = spsolve(A.tocsc(), rhs)
 
-        # Embed interior solution into the full grid; populate boundary edges
+        # Embed interior solution into the full grid; populate boundary faces
         # from operator BCs so non-homogeneous Dirichlet values are correct.
-        solution_grid = np.zeros((n + 2, n + 2), dtype=np.float64)
-        solution_grid[1:-1, 1:-1] = u_interior.reshape(n, n)
+        solution_grid = np.zeros((n + 2,) * dim, dtype=np.float64)
+        interior_index = tuple(slice(1, -1) for _ in range(dim))
+        solution_grid[interior_index] = u_interior.reshape((n,) * dim)
         _fill_boundary(solution_grid, operator, n)
 
         wall_time = time.perf_counter() - t0
@@ -300,10 +290,10 @@ class DirectPoissonSolver(BaseSolver):
         return SolverResult(
             solution=solution_grid.ravel(),
             grid_points=grid,
-            n_dof=int(n_per_side**2),
+            n_dof=int(n**dim),
             wall_time_seconds=float(wall_time),
             l2_error=l2_err,
-            metadata={"method": "scipy_spsolve", "n_per_side": int(n_per_side)},
+            metadata={"method": "scipy_spsolve", "n_per_side": int(n), "dim": int(dim)},
         )
 
 
@@ -367,11 +357,13 @@ class MultigridPoissonSolver(BaseSolver):
                 f"Solver '{self.name}' requires the optional package "
                 f"'pyamg'.  Install it with: {self._MISSING_DEP_HINT}"
             ) from exc
-        log = self._log.bind(n_per_side=n_per_side, cycle=self.config.cycle)
+        dim = operator.dim
+        n = n_per_side
+        log = self._log.bind(n_per_side=n_per_side, dim=dim, cycle=self.config.cycle)
         log.debug("multigrid_solve_start", n_dof=n_dof)
         t0 = time.perf_counter()
 
-        A, rhs, grid = _assemble_poisson_2d(operator, n_per_side)
+        A, rhs, grid, _axes = _assemble_poisson_nd(operator, n_per_side)
         ml = pyamg.smoothed_aggregation_solver(
             A.tocsr(),
             max_levels=self.config.max_levels,
@@ -385,9 +377,9 @@ class MultigridPoissonSolver(BaseSolver):
             cycle=self.config.cycle,
         )
 
-        n = n_per_side
-        solution_grid = np.zeros((n + 2, n + 2), dtype=np.float64)
-        solution_grid[1:-1, 1:-1] = u_interior.reshape(n, n)
+        solution_grid = np.zeros((n + 2,) * dim, dtype=np.float64)
+        interior_index = tuple(slice(1, -1) for _ in range(dim))
+        solution_grid[interior_index] = u_interior.reshape((n,) * dim)
         _fill_boundary(solution_grid, operator, n)
         wall_time = time.perf_counter() - t0
         l2_err = self._compute_l2_error(
@@ -399,13 +391,14 @@ class MultigridPoissonSolver(BaseSolver):
         return SolverResult(
             solution=solution_grid.ravel(),
             grid_points=grid,
-            n_dof=int(n_per_side**2),
+            n_dof=int(n**dim),
             wall_time_seconds=float(wall_time),
             l2_error=l2_err,
             metadata={
                 "method": "pyamg_smoothed_aggregation",
                 "cycle": self.config.cycle,
-                "n_per_side": int(n_per_side),
+                "n_per_side": int(n),
+                "dim": int(dim),
                 "n_levels": int(len(ml.levels)),
             },
         )

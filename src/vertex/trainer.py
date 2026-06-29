@@ -19,7 +19,7 @@ Example:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from torch import nn
     from torch.optim import Optimizer
     from torch.optim.lr_scheduler import LRScheduler
+
+    from src.vertex.training_step import BatchSource, ComputeLoss, VertexHyperparams
 
 
 def _get_torch() -> Any:
@@ -124,6 +126,9 @@ class VertexTrainer:
         optimizer: Optimizer | None = None,
         scheduler: LRScheduler | None = None,
         train_step_fn: Callable[[], dict[str, float]] | None = None,
+        data_source: Iterable[Any] | None = None,
+        compute_loss: ComputeLoss | None = None,
+        hyperparams: VertexHyperparams | None = None,
     ) -> None:
         """Initialize Vertex AI trainer.
 
@@ -131,17 +136,48 @@ class VertexTrainer:
             model: PyTorch model to train.
             config: Training configuration dictionary.
             vertex_config: Vertex AI configuration.
-            optimizer: Optimizer (created if None).
-            scheduler: LR scheduler (optional).
-            train_step_fn: Custom training step function.
+            optimizer: Optimizer (created from ``hyperparams`` when ``None`` and a
+                ``data_source`` is given).
+            scheduler: Optional **step-wise** LR scheduler.
+            train_step_fn: Custom training step function (top-priority override).
+            data_source: Iterable of training batches. When provided, the default
+                ``_train_step`` runs a real forward/backward/optimizer step over
+                batches drawn from it.
+            compute_loss: ``(model, batch) -> loss`` callable (defaults to MSE over
+                an ``(input, target)`` / ``{"input","target"}`` batch).
+            hyperparams: Typed training hyperparameters; defaults are derived from
+                ``config['training']`` (canonical ``learning_rate`` /
+                ``weight_decay`` / ``gradient_clip`` keys).
 
         """
+        from src.vertex.training_step import (
+            BatchSource,
+            VertexHyperparams,
+            default_compute_loss,
+            make_optimizer,
+        )
+
         self.model = model
         self.config = config
         self.vertex_config = vertex_config
         self.optimizer = optimizer
         self.scheduler = scheduler
         self._train_step_fn = train_step_fn
+
+        # Real-training plumbing (additive; no-op unless a data_source is given).
+        training_section = config.get("training") if isinstance(config, dict) else None
+        self._hyperparams = hyperparams or VertexHyperparams.from_training_dict(training_section)
+        self._compute_loss = compute_loss or default_compute_loss
+        self._batch_source: BatchSource | None = (
+            BatchSource(data_source) if data_source is not None else None
+        )
+        self._warned_train_step_noop = False
+
+        # Eagerly create the optimizer when training from a data_source so a
+        # resumed checkpoint's optimizer state is loaded into a live optimizer
+        # (``_load_state`` runs before the first ``_train_step``).
+        if self._batch_source is not None and self.optimizer is None:
+            self.optimizer = make_optimizer(model, self._hyperparams)
 
         # Initialize components
         self._distributed_ctx: DistributedContext | None = None
@@ -347,10 +383,34 @@ class VertexTrainer:
         if self._train_step_fn is not None:
             return self._train_step_fn()
 
-        # Default placeholder training step
-        # In practice, this would be provided by the user
+        # Real default step: forward/backward/optimizer over the next batch.
+        if self._batch_source is not None:
+            from src.vertex.training_step import run_training_step
+
+            assert self.optimizer is not None  # created eagerly in __init__
+            batch = self._batch_source.next()
+            metrics = run_training_step(
+                self.model,
+                self.optimizer,
+                batch,
+                compute_loss=self._compute_loss,
+                gradient_clip=self._hyperparams.gradient_clip,
+                scheduler=self.scheduler,
+            )
+            metrics["step"] = float(self._current_step)
+            return metrics
+
+        # No training mechanism configured: documented no-op (not silent).
+        if not self._warned_train_step_noop:
+            logger.warning(
+                "vertex_train_step_noop",
+                detail=(
+                    "no train_step_fn or data_source configured; returning loss=0.0 (no learning)"
+                ),
+            )
+            self._warned_train_step_noop = True
         self.model.train()
-        return {"loss": 0.0, "step": self._current_step}
+        return {"loss": 0.0, "step": float(self._current_step)}
 
     def _resume_from_checkpoint(self, checkpoint_path: str) -> None:
         """Resume training from checkpoint.

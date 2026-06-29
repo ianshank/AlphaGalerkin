@@ -485,6 +485,15 @@ class PDEBenchmarkRunner:
             "pinn": "pinn",
             "navier_stokes_fdm": "navier_stokes_fdm",
             "navier_stokes": "navier_stokes_fdm",
+            # Extra solvers from src/research/extra_solvers (registered lazily).
+            "direct_solver": "direct_solver",
+            "direct": "direct_solver",
+            "spsolve": "direct_solver",
+            "multigrid": "multigrid",
+            "amg": "multigrid",
+            "algebraic_multigrid": "multigrid",
+            "fno": "fno",
+            "deeponet": "deeponet",
         }
         key = name.lower().replace("-", "_").replace(" ", "_")
         return mapping.get(key, key)

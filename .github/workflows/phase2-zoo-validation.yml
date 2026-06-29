@@ -1,0 +1,102 @@
+# AlphaGalerkin Codec Model-Zoo Coverage Gate
+#
+# Locks in the >= 85% per-module coverage floor for the codec model zoo
+# (`src/video_compression/zoo/`), including the GCS storage backend. The
+# pyproject `[tool.coverage.run] omit` list excludes `src/video_compression/
+# zoo/*` from the global ci.yml gate (to avoid 0%-from-no-tests double
+# counting), delegating enforcement to this dedicated workflow.
+#
+# Why a dedicated workflow (mirrors codec-perf-coverage.yml):
+#   - ci.yml's fast unit-test pass `--ignore=tests/video_compression/`, so
+#     the zoo tree is not covered there. A focused workflow is the right
+#     scope and uses the same inline-coveragerc `include = ...` pattern that
+#     pytest-cov requires to scope coverage to a file list (per-file
+#     `--cov=...pkg` args collapse to 0% "module never imported").
+
+name: Codec Model-Zoo Coverage Gate
+
+on:
+  push:
+    branches: [master, "claude/*", "feature/*", develop]
+    paths:
+      - "src/video_compression/zoo/**"
+      - "tests/video_compression/zoo/**"
+      - "config/video_compression/zoo/**"
+      - ".github/workflows/phase2-zoo-validation.yml"
+      - "pyproject.toml"
+  pull_request:
+    branches: [master, develop, "claude/*"]
+    paths:
+      - "src/video_compression/zoo/**"
+      - "tests/video_compression/zoo/**"
+      - "config/video_compression/zoo/**"
+      - ".github/workflows/phase2-zoo-validation.yml"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  WANDB_MODE: disabled
+  MPLBACKEND: Agg
+  PYTHONHASHSEED: "0"
+
+jobs:
+  codec-zoo-coverage-gate:
+    name: Codec Model-Zoo per-module coverage (>= 85%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # google-cloud-storage is required so the GCS backend tests can
+          # patch ``google.cloud.storage.Client`` (the client is mocked; the
+          # module only needs to be importable).
+          pip install --no-cache-dir -e ".[dev]" google-cloud-storage \
+            || pip install --no-cache-dir -e ".[dev]" google-cloud-storage
+
+      - name: Run codec model-zoo coverage gate
+        # Inline coveragerc with `include = ...` (rather than per-file
+        # `--cov=...` args) for the reasons documented in
+        # codec-perf-coverage.yml: pytest-cov treats `--cov` values as
+        # packages, and file paths collapse to 0%. The `include` glob also
+        # overrides the global `omit` of `src/video_compression/zoo/*`.
+        run: |
+          cat > .coveragerc.codec-zoo <<'COVEOF'
+          [run]
+          include =
+              src/video_compression/zoo/*.py
+          branch = true
+
+          [report]
+          show_missing = true
+          fail_under = 85
+          COVEOF
+          pytest tests/video_compression/zoo/ \
+                 --cov \
+                 --cov-config=.coveragerc.codec-zoo \
+                 --cov-report=term-missing \
+                 -q --tb=short
+
+      - name: Upload coverage report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codec-zoo-coverage-failure
+          path: |
+            .coverage
+            htmlcov/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -64,6 +64,34 @@ DEFAULT_RETRY_DELAY = 1.0
 DEFAULT_RETRY_MULTIPLIER = 2.0
 DEFAULT_CHUNK_SIZE = 8 * 1024 * 1024  # 8MB chunks
 
+GCS_URI_SCHEME = "gs://"
+
+
+def parse_gcs_uri(uri: str) -> tuple[str, str]:
+    """Split a ``gs://bucket/prefix`` URI into ``(bucket, prefix)``.
+
+    Shared helper so callers don't re-roll ad-hoc ``str.replace`` parsing.
+    The returned prefix has leading/trailing slashes stripped (it may be empty
+    when the URI is just ``gs://bucket``).
+
+    Args:
+        uri: A ``gs://bucket[/prefix...]`` URI.
+
+    Returns:
+        ``(bucket, prefix)`` tuple.
+
+    Raises:
+        ValueError: If *uri* is not a ``gs://`` URI or has no bucket.
+
+    """
+    if not uri.startswith(GCS_URI_SCHEME):
+        raise ValueError(f"not a gs:// URI: {uri!r}")
+    remainder = uri[len(GCS_URI_SCHEME) :]
+    bucket, _, prefix = remainder.partition("/")
+    if not bucket:
+        raise ValueError(f"gs:// URI missing bucket: {uri!r}")
+    return bucket, prefix.strip("/")
+
 
 def _get_torch() -> Any:
     """Lazily import torch to avoid import errors when not installed."""

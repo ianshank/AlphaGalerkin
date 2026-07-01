@@ -26,6 +26,7 @@ Example:
 
 from __future__ import annotations
 
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -158,6 +159,29 @@ class BaseAgent(ABC):
     def get_metrics(self) -> dict[str, float]:
         """Return current metric values."""
 
+    # ------------------------------------------------------------------
+    # Lifecycle hooks
+    #
+    # Optional extension points around ``setup`` and each ``step`` in the
+    # ``run`` loop. All four default to no-ops, so overriding none of them
+    # preserves the historical behaviour exactly — existing agents and tests
+    # are unaffected. Subclasses may override any subset to attach telemetry,
+    # adaptive strategy switching, or resource management without touching the
+    # core loop.
+    # ------------------------------------------------------------------
+
+    def pre_setup(self) -> None:
+        """Hook called immediately before :meth:`setup`. No-op by default."""
+
+    def post_setup(self) -> None:
+        """Hook called immediately after :meth:`setup`. No-op by default."""
+
+    def pre_step(self) -> None:
+        """Hook called before each :meth:`step`. No-op by default."""
+
+    def post_step(self) -> None:
+        """Hook called after each :meth:`step` (and metric refresh). No-op by default."""
+
     def run(self, max_steps: int | None = None) -> AgentState:
         """Main loop: call step() until terminal or max_steps reached.
 
@@ -169,22 +193,44 @@ class BaseAgent(ABC):
 
         """
         step_limit = max_steps if max_steps is not None else self.config.max_steps
+        # Opt-in wall-clock deadline. Enforcement is gated on
+        # ``config.enforce_timeout`` (default False) so the default path never
+        # reads the clock and behaviour is unchanged for existing agents.
+        deadline = (
+            time.monotonic() + self.config.timeout_seconds
+            if getattr(self.config, "enforce_timeout", False)
+            else None
+        )
         self._state.status = ExecutionStatus.RUNNING
         self._logger.info(
             "agent_run_started",
             max_steps=step_limit,
             budget=self._state.budget_remaining,
+            enforce_timeout=deadline is not None,
         )
 
         try:
+            self.pre_setup()
             self.setup()
+            self.post_setup()
             while not self.is_terminal and self._state.step < step_limit:
+                if deadline is not None and time.monotonic() >= deadline:
+                    self._state.status = ExecutionStatus.TIMEOUT
+                    self._logger.warning(
+                        "agent_run_timeout",
+                        timeout_seconds=self.config.timeout_seconds,
+                        steps=self._state.step,
+                    )
+                    break
+                self.pre_step()
                 self._state = self.step()
                 self._state.metrics = self.get_metrics()
+                self.post_step()
 
             if self._state.status not in (
                 ExecutionStatus.COMPLETED,
                 ExecutionStatus.FAILED,
+                ExecutionStatus.TIMEOUT,
             ):
                 self._state.status = ExecutionStatus.COMPLETED
 

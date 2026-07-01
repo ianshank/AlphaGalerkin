@@ -138,3 +138,5 @@ class TestTimeoutEnforcement:
         assert state.status == ExecutionStatus.TIMEOUT
         assert state.step == 1  # exactly one step executed before the deadline
         assert agent.events.count("step") == 1
+        # is_terminal must recognise TIMEOUT as terminal (status consistency).
+        assert agent.is_terminal

@@ -127,14 +127,19 @@ class BaseAgent(ABC):
         """Whether the agent has reached a terminal state.
 
         Terminal conditions:
-        - Status is COMPLETED or FAILED
+        - Status is COMPLETED, FAILED, or TIMEOUT
         - Budget exhausted
         - Max steps reached
         - Error below tolerance (with at least one error recorded)
 
         """
         return (
-            self._state.status in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED)
+            self._state.status
+            in (
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.FAILED,
+                ExecutionStatus.TIMEOUT,
+            )
             or self._state.budget_remaining <= 0
             or self._state.step >= self.config.max_steps
             or (

@@ -229,6 +229,43 @@ def research(
         raise typer.Exit(code=1)
 
 
+_scaffold_root_option = typer.Option(
+    Path("."),
+    "--root",
+    help="Repository root the generated paths are resolved against.",
+)
+_scaffold_dry_run_option = typer.Option(
+    False,
+    "--dry-run",
+    help="Show the files that would be created without writing them.",
+)
+_scaffold_name_argument = typer.Argument(..., help="New agent name (snake_case; e.g. 'my_agent').")
+
+
+@app.command()
+@add_common_options
+@with_error_handling
+def scaffold(
+    name: str = _scaffold_name_argument,
+    root: Path = _scaffold_root_option,
+    dry_run: bool = _scaffold_dry_run_option,
+    verbose: bool = False,
+    debug: bool = False,
+    quiet: bool = False,
+    log_format: str = "text",
+) -> None:
+    """Scaffold a new agent type (spec + module + mirrored test)."""
+    from src.agents.scaffold import scaffold_agent
+
+    plan = scaffold_agent(name, root=root, dry_run=dry_run)
+    action = "Would create" if dry_run else "Created"
+    typer.echo(f"{action} agent {plan.class_name} ({plan.name}):")
+    for path in plan.paths:
+        typer.echo(f"  - {path}")
+    if dry_run:
+        typer.echo("\n(dry run — no files written)")
+
+
 def main() -> None:
     """Entry point for ``python -m src.agents.cli``."""
     app()

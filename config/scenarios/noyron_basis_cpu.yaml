@@ -1,0 +1,45 @@
+# Noyron basis-selection (Leap 71 v2.2) — CPU-only smoke configuration.
+#
+# Exercises the full NoyronBasisScenario pipeline (helical operator build →
+# manufactured target → MCTS basis selection → error-reduction metrics) on the
+# random arm only, with no CUDA and no LM Studio server. This is the CPU-
+# runnable counterpart to noyron_basis_demo.yaml: it proves the first
+# MCTS-on-Noyron pipeline runs end-to-end and produces a monotone (>=0) error
+# reduction on a real Leap 71 helical SDF geometry.
+#
+# Run with:
+#   python -m src.poc.cli run --config config/scenarios/noyron_basis_cpu.yaml
+#
+# The default thresholds assert *provable correctness* (monotone reduction,
+# bounded residual). The magnitude of reduction on 3D SDF geometry is limited
+# by the current candidate basis library (see specs/noyron_basis.spec.md); a
+# larger headline target is a v2.x research item.
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800
+
+scenarios:
+  - name: noyron_basis
+    description: "CPU smoke: MCTS basis selection on the Leap 71 helical heat operator (random arm)."
+    tier: integration
+    enabled: true
+
+    operator_name: helical_heat
+    arms: [random]
+
+    n_seeds: 2
+    n_simulations: 8
+    max_basis_functions: 6
+    n_candidate_bases: 12
+    target_residual: 1.0e-6
+    rollout_headroom: 2
+
+    manufactured: true
+    manufactured_wavenumber: 1
+
+    # Provable-correctness thresholds (see spec). Raise on a tuned/GPU run.
+    min_error_reduction_pct: 0.0
+    max_final_residual: 1.0
+
+    device: cpu

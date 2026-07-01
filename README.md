@@ -91,6 +91,20 @@ Built on solid mathematical foundations:
 - **LBB Stability**: Guaranteed convergence via inf-sup condition monitoring
 - **Spectral Methods**: Proper anti-aliasing for resolution transfer
 
+### Spec-Driven Development & Agentic Tooling
+
+- **Specs before code** ([`specs/`](specs/README.md)): every feature starts as a markdown spec
+  (data contract + acceptance criteria + `MetricThreshold`s), then tests, then code.
+- **Claude Code project scaffolding** ([`.claude/`](.claude/)): a SessionStart bootstrap hook,
+  reusable skills (`spec-new`, `regression-surface`, `coverage-gate`, `new-pde-operator`),
+  persona subagents, and slash commands.
+- **Multi-physics agents** ([`src/agents/`](src/agents/AGENT.md)): lifecycle hooks, opt-in
+  timeouts, and `python -m src.agents.cli scaffold <name>` to generate a new agent from the spec
+  template.
+- **Noyron v2.2** ([`config/scenarios/noyron_basis_cpu.yaml`](config/scenarios/noyron_basis_cpu.yaml)):
+  MCTS-guided Galerkin basis selection on Leap 71 helical SDF geometries —
+  `python -m src.poc.cli run --config config/scenarios/noyron_basis_cpu.yaml`.
+
 ---
 
 ## Architecture

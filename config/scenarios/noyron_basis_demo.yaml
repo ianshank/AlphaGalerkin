@@ -1,0 +1,49 @@
+# Noyron basis-selection (Leap 71 v2.2) — GPU / headline configuration.
+#
+# Compares the random / trained / LLM arms on the helical heat operator. This
+# is the manual reviewer step; it requires CUDA and (for the LLM arm) a running
+# LM Studio server. Arms auto-gate: a missing checkpoint or failing LLM
+# preflight disables that arm and drops its thresholds, so the run degrades
+# gracefully to whatever arms are available.
+#
+# Run with (CUDA host + LM Studio serving a model):
+#   python -m src.poc.cli run --config config/scenarios/noyron_basis_demo.yaml
+
+defaults:
+  seed: 42
+  timeout_seconds: 3600
+
+scenarios:
+  - name: noyron_basis
+    description: "Headline: MCTS basis selection on the Leap 71 helical heat operator (random/trained/llm)."
+    tier: functional
+    enabled: true
+
+    operator_name: helical_heat
+    arms: [random, trained, llm]
+
+    n_seeds: 5
+    n_simulations: 32
+    max_basis_functions: 12
+    n_candidate_bases: 24
+    target_residual: 1.0e-6
+    rollout_headroom: 2
+
+    manufactured: true
+    manufactured_wavenumber: 2
+
+    # Provable-correctness defaults; raise min_error_reduction_pct once a
+    # geometry-aware basis library lands (see specs/noyron_basis.spec.md).
+    min_error_reduction_pct: 0.0
+    max_final_residual: 1.0
+
+    device: cuda
+
+    # trained arm: point at a checkpoint to enable; otherwise it auto-skips.
+    trained_checkpoint_path: null
+
+    # llm arm: enable + point at an OpenAI-compatible server to activate.
+    lm_studio:
+      enabled: true
+      base_url: http://127.0.0.1:1234/v1
+      model: qwen2.5-14b-instruct

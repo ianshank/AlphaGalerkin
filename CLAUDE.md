@@ -832,6 +832,25 @@ src/
     training/         - Training utilities
       loss.py         - R-D loss functions
       trainer.py      - Compression trainer
+  agents/       - Agentic layer (BaseAgent lifecycle, research-loop orchestrator, scaffold CLI)
+  research/     - SBIR benchmark harness (PDE baselines, GPU profiler, PINN solvers)
+  vertex/       - Google Vertex AI cloud-training integration
+  engines/      - UCI chess-engine interface for play evaluation (used by training/evaluation.py, training/trainer.py)
+  tournament/   - Tournament scheduling & config (E2E-tested)
+  backend/      - JAX/Torch backend abstraction (uses data/, templates/)
+  curriculum/   - Curriculum-learning scheduler (uses distributed/)
+  analysis/     - Game code-analysis / auditing utilities (uses games/)
+  demos/        - Benchmark & visualization demos (uses physics/, poc/, research/)
+  reentry/      - MCTS-guided hypersonic-reentry / compressible-flow domain PoC
+  firefighting/ - MCTS-guided wildfire-spread domain PoC
+  intercept/    - MCTS-guided missile-interception domain PoC
+  prototyping/  - Fast-prototyping utilities (test-only; orphaned from production, removal candidate)
+  constants.py  - Centralized numerical constants (imported across training/pde/mcts/modeling)
+dashboard/      - Gradio web UI (uses mcts/, modeling/, physics/, poc/, tools/)
+
+# NOTE: reentry/, firefighting/, intercept/ are domain research PoCs gated behind
+# scenario configs (not production paths); their isolation from the core solver is
+# intentional. prototyping/ is imported only by its own tests and is a removal candidate.
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests

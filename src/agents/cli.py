@@ -239,9 +239,7 @@ _scaffold_dry_run_option = typer.Option(
     "--dry-run",
     help="Show the files that would be created without writing them.",
 )
-_scaffold_name_argument = typer.Argument(
-    ..., help="New agent name (snake_case; e.g. 'my_agent')."
-)
+_scaffold_name_argument = typer.Argument(..., help="New agent name (snake_case; e.g. 'my_agent').")
 
 
 @app.command()

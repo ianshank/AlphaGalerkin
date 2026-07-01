@@ -5,6 +5,11 @@
 .git/
 .github/
 
+# Developer tooling / docs not needed in the runtime image
+.claude/
+specs/
+docs/
+
 # Python caches
 __pycache__/
 *.py[cod]

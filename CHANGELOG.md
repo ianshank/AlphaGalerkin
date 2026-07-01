@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Spec-driven agentic tooling + Noyron v2.2 (`specs/`, `.claude/`, `src/agents/`, `src/poc/scenarios/noyron_basis*`)
+
+Additive, backwards-compatible sprint across four workstreams:
+
+- **Spec-driven development (`specs/`)** — a markdown-only spec tree (`README.md`,
+  `TEMPLATE.spec.md`, and per-feature specs) whose thresholds reuse the canonical
+  `src.poc.config.MetricThreshold` (no parallel schema). Spec → tests → code → AQA →
+  regression-surface entry is now the documented workflow.
+- **`.claude/` project scaffolding** — committed shared Claude Code config so web/CLI sessions
+  can run the repo's checks: a SessionStart hook that bootstraps `pip install -e '.[dev]'`
+  (including the `SETUPTOOLS_USE_DISTUTILS=stdlib` fix for `antlr4-python3-runtime`),
+  `settings.json`, four skills (`spec-new`, `regression-surface`, `coverage-gate`,
+  `new-pde-operator`), five persona subagents, and three slash commands. Local artifacts
+  (`.claude/plans/`, `settings.local.json`) stay gitignored.
+- **`src/agents/` hardening** — new `src/agents/AGENT.md`; opt-in `BaseAgent` lifecycle hooks
+  (`pre/post_setup`, `pre/post_step`, default no-ops); opt-in wall-clock timeout gated on
+  `AgentConfig.enforce_timeout` (default `False` preserves behaviour; enabled →
+  `ExecutionStatus.TIMEOUT`); reusable `src/agents/scaffold.py` + `agents.cli scaffold` command.
+- **Noyron v2.2 — first MCTS-on-Noyron result** — new `noyron_basis` PoC scenario driving MCTS
+  Galerkin basis selection on the Leap 71 helical SDF operators via the existing
+  `pde_basis_helical` path, reusing the geometry-agnostic `_centaur_common` primitives. A
+  reusable `make_manufactured_operator` overlays a product-of-sines target so the homogeneous
+  helical operators yield a non-degenerate game. The default thresholds assert the provable
+  correctness property (`error_reduction_pct ≥ 0` monotone, bounded residual); the reduction
+  *magnitude* on 3D SDF geometry is limited by the current candidate basis library (~2–4 %) and
+  documented as an open research item. Per-arm medians are always recorded so results are never
+  vacuous.
+- **LLM-prior OOD expansion** — shipped `config/scenarios/llm_prior_{helmholtz,biharmonic}.yaml`
+  + AQA tests (operators already in the `ood_pde` Literal / `PDE_TYPE_MAP`).
+- **Known-issue closure** — SGF variation parsing marked RESOLVED (verified green); MCTS
+  rate-control skips documented as a Milestone 10 Phase 3 gate.
+
+Coverage: `agents/base.py` `config.py` `scaffold.py` 100 %; `noyron_basis.py` 97 %,
+`noyron_basis_config.py` 100 %. `ruff` + `mypy --strict` clean on the changed surface.
+
 ### Added — LLM-Prior MCTS Basis Selection (`src/integrations/lm_studio/`, `src/poc/scenarios/llm_prior_ablation.py`, `src/poc/scenarios/llm_prior_config.py`, `config/scenarios/llm_prior_demo.yaml`)
 
 New PoC scenario `llm_prior_ablation` that benchmarks three MCTS evaluators

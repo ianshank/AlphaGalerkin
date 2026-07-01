@@ -383,6 +383,8 @@ C4Component
         Component(scenario_stability, "Stability Scenario", "Python Class", "Monitors LBB condition during training")
 
         Component(scenario_noyron_hx, "Noyron HX Scenario", "Python Class", "Zero-shot 3D heat-transfer transfer on a Leap 71 helical SDF (analytical or voxel-FDM reference)")
+
+        Component(scenario_noyron_basis, "Noyron Basis Scenario (v2.2)", "Python Class", "MCTS Galerkin basis selection on a Leap 71 helical SDF via pde_basis_helical; manufactured target + monotone-reduction thresholds")
     }
 
     Component_Ext(neural_operator, "Neural Operator Model", "Model under test")
@@ -398,17 +400,20 @@ C4Component
     Rel(registry, scenario_complexity, "Registers")
     Rel(registry, scenario_stability, "Registers")
     Rel(registry, scenario_noyron_hx, "Registers")
+    Rel(registry, scenario_noyron_basis, "Registers")
 
     Rel(runner, scenario_transfer, "Runs")
     Rel(runner, scenario_complexity, "Runs")
     Rel(runner, scenario_stability, "Runs")
     Rel(runner, scenario_noyron_hx, "Runs")
+    Rel(runner, scenario_noyron_basis, "Runs")
 
     Rel(scenario_transfer, neural_operator, "Tests transfer")
     Rel(scenario_complexity, neural_operator, "Benchmarks complexity")
     Rel(scenario_stability, neural_operator, "Monitors stability")
     Rel(scenario_noyron_hx, neural_operator, "Tests 3D zero-shot transfer")
     Rel(scenario_noyron_hx, picogk_domain, "Samples interior + boundary")
+    Rel(scenario_noyron_basis, picogk_domain, "Samples helical collocation points")
 
     Rel(scenario_transfer, physics_data, "Generates test data")
 

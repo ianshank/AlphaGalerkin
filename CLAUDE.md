@@ -125,7 +125,7 @@ hardening of the HX path.
 | Phase | Scope | Notes |
 |---|---|---|
 | **v2.1** | Octree-on-SDF AMR via `MeshRefinementGame` | Currently incompatible (structured grid only); needs an octree backend on top of `PicoGKDomain` |
-| **v2.2** | Plug `BasisSelectionGame` into `HelicalHeatOperator` | First MCTS-on-Noyron result; `HelicalBasisSelectionInterface` (v2 milestone) already provides the plumbing |
+| ~~**v2.2**~~ ✅ **DONE (2026-07-01)** | Plug `BasisSelectionGame` into `HelicalHeatOperator` | Delivered as the `noyron_basis` PoC scenario (first MCTS-on-Noyron result). Follow-up research item: the candidate Galerkin basis library is poorly matched to 3D SDF geometry (~2–4 % reduction) — a geometry-aware basis library is needed to raise `min_error_reduction_pct` above the monotone-correctness default. |
 | **v2.3** | Noyron RP — `NavierStokesOperator` on a copper-nozzle SDF | `HelicalStokesOperator` is the linear stepping stone (v2 milestone); needs convective term + nozzle SDF |
 | **v3.1** | Noyron EA — `MagnetostaticsOperator` for actuators | `HelicalMagnetostaticsOperator` (v2 milestone) is in place; needs full vector-potential coupling |
 | **v3.2** | Closed-loop Noyron coupling — surrogate-in-the-loop parametric search | Combine all three operators with a parametric outer-loop (e.g. coil pitch optimization) |

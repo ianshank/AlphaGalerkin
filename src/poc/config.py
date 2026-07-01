@@ -415,6 +415,14 @@ def load_config_from_dict(
 
         type_map["scaling_law"] = ScalingLawConfig
 
+    # Same lazy-resolution rationale: the noyron_basis config is light but its
+    # scenario module pulls in the PDE registry + helical operators, so resolve
+    # only the config class, and only when this scenario is actually requested.
+    if inferred_name == "noyron_basis":
+        from src.poc.scenarios.noyron_basis_config import NoyronBasisConfig
+
+        type_map["noyron_basis"] = NoyronBasisConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

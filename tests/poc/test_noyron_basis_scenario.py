@@ -197,6 +197,19 @@ class TestLLMGating:
         scenario.setup()
         assert scenario._active_arms() == ["random"]
 
+    def test_llm_import_failure_disables_arm(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A missing [lm-studio] extra must disable the arm, not crash the scenario."""
+        import sys
+
+        # Force `from src.integrations.lm_studio.schema import LMStudioError`
+        # (inside the gate's try block) to raise ImportError.
+        monkeypatch.setitem(sys.modules, "src.integrations.lm_studio.schema", None)
+        scenario = NoyronBasisScenario(
+            _config(arms=["random", "llm"], lm_studio=_enabled_lm_studio())
+        )
+        scenario.setup()
+        assert scenario._active_arms() == ["random"]
+
 
 class TestTrainedGating:
     def test_trained_arm_loads_when_checkpoint_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,6 +253,20 @@ class TestRealMicroRun:
         assert result.passed
         assert "error_reduction_pct" in result.metrics
         assert "final_residual" in result.metrics
+        # Per-arm suffixed metrics are always recorded alongside the headline.
+        assert "error_reduction_pct__random" in result.metrics
+        assert "final_residual__random" in result.metrics
         # Least-squares basis addition cannot increase the fit residual.
         assert result.metrics["error_reduction_pct"] >= 0.0
         assert result.metrics["final_residual"] >= 0.0
+
+    def test_primary_gated_off_still_records_per_arm_metrics(self) -> None:
+        """Primary arm disabled → no vacuous PASS: other arms' metrics remain."""
+        # primary = "trained" (arms[0]); no checkpoint → disabled. "random" runs.
+        scenario = NoyronBasisScenario(_config(arms=["trained", "random"], n_seeds=1))
+        result = scenario.run()
+        assert result.passed  # thresholds dropped, so it does not FAIL
+        # Headline (primary) keys absent, but the executed arm's metrics present.
+        assert "error_reduction_pct" not in result.metrics
+        assert "error_reduction_pct__random" in result.metrics
+        assert "final_residual__random" in result.metrics

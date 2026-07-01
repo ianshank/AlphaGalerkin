@@ -100,9 +100,12 @@ def make_manufactured_operator(operator: PDEOperator, wavenumber: int) -> PDEOpe
             time: float | None = None,
         ) -> NDArray[np.float32] | torch.Tensor:
             if isinstance(coords, torch.Tensor):
-                arr = coords.detach().cpu().numpy().astype(np.float64)
-                field = _manufactured_field(arr)
-                return torch.from_numpy(field).to(coords.device)
+                # Compute natively on the tensor's device — no CPU round-trip /
+                # host-device sync (matches the numpy path to float precision).
+                domain_min_t = torch.as_tensor(domain_min, dtype=coords.dtype, device=coords.device)
+                extent_t = torch.as_tensor(extent, dtype=coords.dtype, device=coords.device)
+                normalized = (coords[:, :n_dims] - domain_min_t) / extent_t
+                return torch.prod(torch.sin(wavenumber * np.pi * normalized), dim=-1)
             return _manufactured_field(np.asarray(coords, dtype=np.float64))
 
     return _ManufacturedOperator(operator.config)
@@ -237,13 +240,24 @@ class NoyronBasisScenario(BaseScenario):
             )
             self._disable_arm("llm")
             return
-        # Local imports keep the openai SDK surface out of the cold path.
-        from src.integrations.lm_studio.client import LMStudioClient
-        from src.integrations.lm_studio.preflight import check_lm_studio_server
-        from src.integrations.lm_studio.schema import LMStudioError
-
+        # Local imports keep the openai SDK surface out of the cold path. They
+        # are guarded so a missing optional dependency ([lm-studio]) disables
+        # the arm gracefully instead of crashing the whole scenario. The
+        # dedicated ImportError clause runs *before* the one that references
+        # LMStudioError, so the latter is only evaluated once the import (and
+        # thus the name binding) has succeeded.
         try:
+            from src.integrations.lm_studio.client import LMStudioClient
+            from src.integrations.lm_studio.preflight import check_lm_studio_server
+            from src.integrations.lm_studio.schema import LMStudioError
+
             report = check_lm_studio_server(lm_config)
+        except ImportError as exc:
+            self._scenario_logger.warning(
+                "llm_arm_import_failed", error=str(exc), error_type=type(exc).__name__
+            )
+            self._disable_arm("llm")
+            return
         except (LMStudioError, OSError, RuntimeError, ValueError, AttributeError) as exc:
             self._scenario_logger.warning(
                 "llm_preflight_raised", error=str(exc), error_type=type(exc).__name__
@@ -307,9 +321,12 @@ class NoyronBasisScenario(BaseScenario):
     ) -> tuple[float, float]:
         """Run one (arm, seed) cell -> (error_reduction_pct, final_residual)."""
         # Seed the global RNGs before constructing the search (MCTS.__init__
-        # has no seed kwarg) — preserves per-seed reproducibility.
+        # has no seed kwarg) — preserves per-seed reproducibility. Seed the
+        # CUDA generators too so GPU-side evaluators/samplers are reproducible.
         np.random.seed(seed)
         torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
         game = self._build_game(operator)
         initial_error = float(game.get_initial_state().error_estimate)
@@ -415,11 +432,28 @@ class NoyronBasisScenario(BaseScenario):
     def _record_primary_aggregates(
         self, reductions: dict[str, list[float]], finals: dict[str, list[float]]
     ) -> None:
-        """Record the headline metrics from the primary arm."""
+        """Record per-arm medians plus the primary-arm headline metrics.
+
+        Per-arm medians are recorded under arm-suffixed keys for **every**
+        executed arm, so the result is never vacuous — even when the primary
+        arm was gated off, the other arms' metrics stay available to the
+        baseline harness. The unsuffixed headline keys (which the thresholds
+        evaluate) are recorded only when the primary arm actually ran.
+        """
         assert self._scenario_logger is not None
+
+        # Always-available per-arm medians (never empty when any arm ran).
+        for arm, arm_reductions in reductions.items():
+            self.record_metric(f"{_ERROR_REDUCTION_KEY}__{arm}", median_of(arm_reductions))
+            self.record_metric(f"{_FINAL_RESIDUAL_KEY}__{arm}", median_of(finals[arm]))
+
         primary = self.config.primary_arm
         if primary not in reductions:
-            # Primary arm gated off after threshold drop — nothing to record.
+            # Primary arm gated off; per-arm metrics above still populate the
+            # result. The headline thresholds were already dropped in setup.
+            self._scenario_logger.warning(
+                "primary_arm_absent_headline_metrics_skipped", primary_arm=primary
+            )
             return
         reduction_med = median_of(reductions[primary])
         final_med = median_of(finals[primary])

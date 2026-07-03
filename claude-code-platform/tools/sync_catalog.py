@@ -24,8 +24,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import structlog
+from pydantic import ValidationError
 
+from .logging_config import configure_tool_logging, get_tool_logger
 from .validate.config import ValidatorConfig
 from .validate.gates import load_manifests
 from .validate.schemas import PinsDocument
@@ -36,14 +37,20 @@ EXIT_ERROR = 2
 
 JSON_INDENT = 2
 
-log = structlog.get_logger("tools.sync_catalog")
+log = get_tool_logger("tools.sync_catalog")
 
 
 def load_pins(config: ValidatorConfig) -> PinsDocument:
     path = config.root / config.pins_relpath
     if not path.is_file():
         return PinsDocument(schema_version=1)
-    return PinsDocument.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    try:
+        return PinsDocument.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    except ValidationError as exc:
+        # Explicit re-wrap: run()'s EXIT_ERROR path catches ValueError.
+        # (pydantic's ValidationError already subclasses ValueError, but
+        # relying on that inheritance detail is fragile.)
+        raise ValueError(f"invalid pin manifest {path}: {exc}") from exc
 
 
 def build_plugin_entries(config: ValidatorConfig) -> list[dict[str, Any]]:
@@ -118,14 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.JSONRenderer(),
-        ],
-        logger_factory=structlog.PrintLoggerFactory(sys.stderr),
-    )
+    configure_tool_logging()
     root = (args.root or Path(__file__).resolve().parents[1]).resolve()
     return run(ValidatorConfig(root=root), check_only=args.check)
 

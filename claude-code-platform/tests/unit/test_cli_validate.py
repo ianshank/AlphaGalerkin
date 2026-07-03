@@ -71,3 +71,24 @@ class TestFindRepoRoot:
         orphan = tmp_path / "no" / "marketplace" / "here"
         orphan.mkdir(parents=True)
         assert find_repo_root(orphan, MARKETPLACE_RELPATH) is None
+
+
+def test_gate_summary_logged_with_hyphenated_gate_names(
+    synthetic_marketplace: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Copilot review: gate_summary must not crash on hyphenated gate names."""
+    manifest = (
+        synthetic_marketplace
+        / "plugins"
+        / "demo-plugin"
+        / ".claude-plugin"
+        / "plugin.json"
+    )
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    document["description"] = "Drifted."
+    manifest.write_text(json.dumps(document, indent=2), encoding="utf-8")
+
+    assert main(["--root", str(synthetic_marketplace)]) == 1
+    stderr = capsys.readouterr().err
+    assert "gate_summary" in stderr and "catalog-parity" in stderr

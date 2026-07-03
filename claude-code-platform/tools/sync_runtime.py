@@ -20,8 +20,7 @@ import shutil
 import sys
 from pathlib import Path
 
-import structlog
-
+from .logging_config import configure_tool_logging, get_tool_logger
 from .validate.config import ValidatorConfig
 from .validate.gates import (
     discover_plugin_dirs,
@@ -34,7 +33,7 @@ EXIT_CLEAN = 0
 EXIT_DRIFT = 1
 EXIT_USAGE = 2
 
-log = structlog.get_logger("tools.sync_runtime")
+log = get_tool_logger("tools.sync_runtime")
 
 
 def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
@@ -128,14 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=None)
     args = parser.parse_args(argv)
 
-    structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.JSONRenderer(),
-        ],
-        logger_factory=structlog.PrintLoggerFactory(sys.stderr),
-    )
+    configure_tool_logging()
     root = (args.root or Path(__file__).resolve().parents[1]).resolve()
     if not root.is_dir():
         log.error("root_not_found", root=str(root))

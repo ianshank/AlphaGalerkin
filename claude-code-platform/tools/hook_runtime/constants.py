@@ -29,6 +29,11 @@ DEFAULT_LOG_LEVEL: Final[str] = "INFO"
 #: Values (lower-cased) treated as boolean true in env overrides.
 TRUTHY_VALUES: Final[frozenset[str]] = frozenset({"1", "true", "yes", "on"})
 
+#: Values (lower-cased) treated as boolean false in env overrides.
+#: Anything outside TRUTHY/FALSY is a coercion error — a typo like
+#: "tru" must fail loudly, never silently disable a gate.
+FALSY_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off", ""})
+
 #: Successful / non-blocking hook exit.
 EXIT_OK: Final[int] = 0
 

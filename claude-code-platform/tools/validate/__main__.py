@@ -10,8 +10,7 @@ from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 
-import structlog
-
+from ..logging_config import configure_tool_logging, get_tool_logger
 from .config import ValidatorConfig
 from .gates import run_all_gates
 
@@ -50,15 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.JSONRenderer(),
-        ],
-        logger_factory=structlog.PrintLoggerFactory(sys.stderr),
-    )
-    log = structlog.get_logger("tools.validate")
+    configure_tool_logging()
+    log = get_tool_logger("tools.validate")
 
     defaults = ValidatorConfig.model_fields["marketplace_relpath"].default
     root = args.root or find_repo_root(Path.cwd(), defaults)
@@ -80,7 +72,9 @@ def main(argv: list[str] | None = None) -> int:
 
     per_gate = Counter(violation.gate for violation in violations)
     if per_gate:
-        log.info("gate_summary", **dict(sorted(per_gate.items())))
+        # Single 'counts' field: gate names are hyphenated, and stuffing
+        # them through **kwargs relies on a CPython quirk.
+        log.info("gate_summary", counts=dict(sorted(per_gate.items())))
     log.info(
         "validation_finished",
         violations=len(violations),

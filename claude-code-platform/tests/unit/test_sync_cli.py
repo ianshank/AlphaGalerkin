@@ -173,3 +173,18 @@ class TestSyncCatalogMain:
         rendered = sync_catalog.render_catalog(config)
         assert json.loads(rendered)["plugins"][0]["name"] == "demo-plugin"
         assert rendered.endswith("\n")
+
+
+def test_schema_invalid_pins_is_generation_error(
+    synthetic_marketplace: Path,
+) -> None:
+    """Copilot review: bad pins must hit EXIT_ERROR, never an uncaught crash."""
+    write_json(
+        synthetic_marketplace / "release" / "pins.json",
+        {
+            "schema_version": 1,
+            "pins": {"demo-plugin": {"version": "0.1.0", "sha": "not-a-sha"}},
+        },
+    )
+    argv = ["--check", "--root", str(synthetic_marketplace)]
+    assert sync_catalog.main(argv) == sync_catalog.EXIT_ERROR

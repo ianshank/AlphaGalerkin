@@ -85,7 +85,16 @@ def apply_env_overrides(
 
 def _coerce(raw: str, default: Any, env_key: str) -> Any:
     if isinstance(default, bool):
-        return raw.strip().lower() in constants.TRUTHY_VALUES
+        normalized = raw.strip().lower()
+        if normalized in constants.TRUTHY_VALUES:
+            return True
+        if normalized in constants.FALSY_VALUES:
+            return False
+        raise TunablesError(
+            f"{env_key} must be a boolean "
+            f"({sorted(constants.TRUTHY_VALUES)} / "
+            f"{sorted(constants.FALSY_VALUES)}), got {raw!r}"
+        )
     if isinstance(default, int):
         try:
             return int(raw)

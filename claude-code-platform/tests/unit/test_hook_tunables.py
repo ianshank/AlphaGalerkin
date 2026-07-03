@@ -131,3 +131,16 @@ class TestPluginRoot:
         # canonical file lives at tools/hook_runtime/tunables.py; parents[3]
         # mirrors <plugin>/hooks/scripts/_runtime → plugin root depth.
         assert plugin_root({}).is_dir()
+
+
+class TestStrictBoolCoercion:
+    """Copilot review: a boolean typo must fail loudly, not read as False."""
+
+    def test_bool_typo_raises(self, plugin_dir: Path) -> None:
+        with pytest.raises(TunablesError, match="CCP_GATING must be a boolean"):
+            load_tunables(plugin_dir, env={"CCP_GATING": "tru"})
+
+    @pytest.mark.parametrize("value", ["0", "false", "NO", "off", ""])
+    def test_explicit_falsy_values_accepted(self, plugin_dir: Path, value: str) -> None:
+        tunables = load_tunables(plugin_dir, env={"CCP_GATING": value})
+        assert tunables["gating"] is False

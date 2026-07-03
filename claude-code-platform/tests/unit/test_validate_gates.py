@@ -172,16 +172,29 @@ class TestStdlibImportsGate:
         import_messages = [v.message for v in violations if v.gate == "stdlib-imports"]
         assert any("'requests'" in m for m in import_messages)
 
-    def test_relative_and_runtime_imports_allowed(
+    def test_runtime_and_stdlib_imports_allowed(
         self, synthetic_marketplace: Path, config: ValidatorConfig
     ) -> None:
         script = plugin_dir(synthetic_marketplace) / "hooks" / "scripts" / "ok_hook.py"
-        script.write_text(
-            "from . import helper\nimport _runtime\nimport json\n",
-            encoding="utf-8",
-        )
+        script.write_text("import _runtime\nimport json\n", encoding="utf-8")
         violations = run_all_gates(config)
         assert "stdlib-imports" not in gate_names(violations)
+
+    def test_relative_import_in_file_invoked_script_flagged(
+        self, synthetic_marketplace: Path, config: ValidatorConfig
+    ) -> None:
+        """Copilot review: `from . import x` in a top-level hook script
+        raises ImportError at runtime (no parent package) — the gate must
+        not bless it. Inside the vendored _runtime package it stays legal
+        (the clean-baseline test covers that: _runtime uses them)."""
+        script = plugin_dir(synthetic_marketplace) / "hooks" / "scripts" / "bad_rel.py"
+        script.write_text("from . import helper\n", encoding="utf-8")
+        violations = run_all_gates(config)
+        assert any(
+            "relative import" in v.message
+            for v in violations
+            if v.gate == "stdlib-imports"
+        )
 
 
 class TestFrontmatterGate:

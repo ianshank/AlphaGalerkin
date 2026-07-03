@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "scan_tools": ["Write", "Edit", "MultiEdit", "NotebookEdit"],
+  "max_file_bytes": 1048576,
+  "gating": false,
+  "patterns": {
+    "secret": [
+      "AKIA[0-9A-Z]{16}",
+      "-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY",
+      "(?i)\\b(?:api[_-]?key|secret[_-]?key|auth[_-]?token|password)\\b\\s*[:=]\\s*[\"'][^\"']{8,}[\"']"
+    ],
+    "hardcoded_path": [
+      "(?<![\\[\\w/])/Users/[A-Za-z][A-Za-z0-9._-]*/",
+      "(?<![\\[\\w/])/home/[A-Za-z][A-Za-z0-9._-]*/",
+      "[A-Za-z]:\\\\Users\\\\[A-Za-z][A-Za-z0-9._-]*"
+    ]
+  },
+  "exclude_path_substrings": ["/.git/", "/_runtime/", "/node_modules/"]
+}

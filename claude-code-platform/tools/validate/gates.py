@@ -449,13 +449,16 @@ def _hooks_command_token_violations(
 
 
 def gate_stdlib_imports(config: ValidatorConfig) -> list[Violation]:
-    """Hook scripts import stdlib + plugin-local only; no dynamic imports.
+    """Hook scripts import ONLY the stdlib + the vendored ``_runtime``.
 
     Scans every Python file under ``hooks/`` (vendored runtime included)
     plus any file referenced by a hooks.json command wherever it lives —
     not just ``hooks/scripts/`` (review F2). Dynamic-import machinery
     (``importlib``, ``__import__``) is banned outright because it defeats
-    static analysis (review F5).
+    static analysis (review F5). Relative imports are permitted only
+    inside packaged directories (an ``__init__.py`` sibling — i.e. the
+    vendored ``_runtime`` modules): top-level hook scripts are invoked by
+    file path, where a relative import raises ``ImportError`` at runtime.
     """
     gate = "stdlib-imports"
     allowed = (set(sys.stdlib_module_names) | {config.vendored_import_name}) - set(
@@ -480,6 +483,9 @@ def gate_stdlib_imports(config: ValidatorConfig) -> list[Violation]:
 def _script_import_violations(
     gate: str, script: Path, tree: ast.AST, allowed: set[str]
 ) -> list[Violation]:
+    # Relative imports only resolve when the module lives in a package;
+    # file-invoked scripts have no parent package (review round 5).
+    script_in_package = (script.parent / "__init__.py").is_file()
     violations: list[Violation] = []
     for node in ast.walk(tree):
         # Bare name AND attribute forms (builtins.__import__,
@@ -501,7 +507,18 @@ def _script_import_violations(
             names = [alias.name.split(".")[0] for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
             if node.level and node.level > 0:
-                continue  # relative import: plugin-local by construction
+                if not script_in_package:
+                    violations.append(
+                        Violation(
+                            gate,
+                            str(script),
+                            f"line {node.lineno}: relative import in a "
+                            "file-invoked hook script fails at runtime "
+                            "(no parent package); import the vendored "
+                            "_runtime package instead",
+                        )
+                    )
+                continue  # inside a package (e.g. _runtime): legitimate
             names = [node.module.split(".")[0]] if node.module else []
         else:
             continue

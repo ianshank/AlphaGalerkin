@@ -1,3 +1,9 @@
+# The host repo's root .gitignore blanket-ignores *.json ("credentials");
+# in this subtree JSON files ARE source (marketplace catalog, plugin
+# manifests, hooks config, tunables defaults, release pins) — re-include.
+# Harmless after extraction into a standalone repository.
+!*.json
+
 __pycache__/
 *.py[cod]
 .coverage

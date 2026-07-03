@@ -100,3 +100,30 @@ def test_write_removes_nested_stray_symlink(
     assert "removed:symlink:sub/link.py" in changed
     assert not stray.exists() and not stray.is_symlink()
     assert run_all_gates(config) == []  # write mode fully repairs drift
+
+
+def test_missing_canonical_runtime_refuses_to_mutate(
+    synthetic_marketplace: Path,
+) -> None:
+    """Copilot review: an empty canonical runtime must never wipe vendored copies."""
+    shutil.rmtree(synthetic_marketplace / "tools" / "hook_runtime")
+    config = ValidatorConfig(root=synthetic_marketplace)
+    plugin = synthetic_marketplace / "plugins" / "demo-plugin"
+    vendored = plugin / "hooks" / "scripts" / "_runtime"
+    before = sorted(p.name for p in vendored.glob("*.py"))
+    assert before  # vendored copy exists going in
+
+    with pytest.raises(ValueError, match="refusing to sync"):
+        sync_plugin(config, plugin)
+
+    assert sorted(p.name for p in vendored.glob("*.py")) == before  # untouched
+
+
+def test_run_write_mode_reports_missing_canonical_runtime(
+    synthetic_marketplace: Path,
+) -> None:
+    shutil.rmtree(synthetic_marketplace / "tools" / "hook_runtime")
+    from tools.sync_runtime import EXIT_USAGE, main
+
+    argv = ["--write", "--root", str(synthetic_marketplace)]
+    assert main(argv) == EXIT_USAGE

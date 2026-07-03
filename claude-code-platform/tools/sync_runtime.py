@@ -38,8 +38,22 @@ log = structlog.get_logger("tools.sync_runtime")
 
 
 def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
-    """Vendor the canonical runtime into one plugin; returns changed relpaths."""
+    """Vendor the canonical runtime into one plugin; returns changed relpaths.
+
+    Raises:
+        ValueError: when the canonical runtime is missing or empty — the
+            check runs BEFORE any mutation, so a broken source tree can
+            never wipe a plugin's existing vendored copy.
+    """
     canonical_dir = config.root / config.runtime_src_relpath
+    canonical = {
+        rel: path.read_bytes() for rel, path in relative_file_map(canonical_dir).items()
+    }
+    if not canonical:
+        raise ValueError(
+            f"canonical hook runtime at {canonical_dir} is missing or empty; "
+            "refusing to sync (would delete vendored copies)"
+        )
     vendored_dir = plugin_dir / config.vendored_runtime_relpath
     changed: list[str] = []
     if vendored_dir.is_symlink():
@@ -54,9 +68,6 @@ def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
             rel = stray_link.relative_to(vendored_dir).as_posix()
             stray_link.unlink()
             changed.append(f"removed:symlink:{rel}")
-    canonical = {
-        rel: path.read_bytes() for rel, path in relative_file_map(canonical_dir).items()
-    }
     for rel, content in canonical.items():
         target = vendored_dir / rel
         if not target.is_file() or target.read_bytes() != content:
@@ -98,7 +109,11 @@ def run(config: ValidatorConfig, *, check_only: bool) -> int:
         if not has_hook_scripts(config, plugin_dir):
             log.info("plugin_skipped_no_hooks", plugin=plugin_dir.name)
             continue
-        changed = sync_plugin(config, plugin_dir)
+        try:
+            changed = sync_plugin(config, plugin_dir)
+        except ValueError as exc:
+            log.error("sync_runtime_refused", plugin=plugin_dir.name, error=str(exc))
+            return EXIT_USAGE
         log.info("plugin_synced", plugin=plugin_dir.name, changed=changed)
     return EXIT_CLEAN
 

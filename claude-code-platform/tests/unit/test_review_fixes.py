@@ -222,6 +222,8 @@ class TestF5DynamicImports:
             "import importlib\nimportlib.import_module('numpy')\n",
             "mod = __import__('requests')\n",
             "from importlib import import_module\n",
+            "import builtins\nbuiltins.__import__('requests')\n",
+            "def f(o):\n    return o.__import__('requests')\n",
         ],
     )
     def test_dynamic_import_flagged(

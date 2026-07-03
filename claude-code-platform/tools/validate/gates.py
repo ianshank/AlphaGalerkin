@@ -482,16 +482,20 @@ def _script_import_violations(
 ) -> list[Violation]:
     violations: list[Violation] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and node.id == DYNAMIC_IMPORT_BUILTIN:
-            violations.append(
-                Violation(
-                    gate,
-                    str(script),
-                    f"line {node.lineno}: {DYNAMIC_IMPORT_BUILTIN} is banned "
-                    "in hook scripts (dynamic imports defeat static "
-                    "analysis; ADR-0002)",
+        # Bare name AND attribute forms (builtins.__import__,
+        # obj.__import__) — either defeats static analysis.
+        if isinstance(node, (ast.Name, ast.Attribute)):
+            identifier = node.id if isinstance(node, ast.Name) else node.attr
+            if identifier == DYNAMIC_IMPORT_BUILTIN:
+                violations.append(
+                    Violation(
+                        gate,
+                        str(script),
+                        f"line {node.lineno}: {DYNAMIC_IMPORT_BUILTIN} is "
+                        "banned in hook scripts (dynamic imports defeat "
+                        "static analysis; ADR-0002)",
+                    )
                 )
-            )
             continue
         if isinstance(node, ast.Import):
             names = [alias.name.split(".")[0] for alias in node.names]

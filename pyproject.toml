@@ -54,6 +54,20 @@ dev = [
     "matplotlib>=3.7.0",
     "Pillow>=10.0.0",
 ]
+# Test-only dependencies for suites that previously used pytest.importorskip and
+# skipped silently in the default CI matrix because their deps were absent. The
+# dedicated `test-extras` CI job installs this group so those code paths (FEM
+# baseline, ONNX export/validate, PettingZoo adapter, torchvision perceptual
+# loss) actually execute rather than skipping. onnxscript is required by
+# torch>=2.x `torch.onnx.export` (dynamo path).
+test-extras = [
+    "scikit-fem>=9.0",
+    "onnx>=1.15",
+    "onnxruntime>=1.17",
+    "onnxscript>=0.1",
+    "pettingzoo>=1.24",
+    "torchvision>=0.15",
+]
 jax = [
     # Pins are intentionally narrow because flax 0.9 (the only release
     # compatible with our ``JaxBackend`` Module call sites) has a narrow

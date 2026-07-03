@@ -129,7 +129,7 @@ AlphaGalerkin (v0.3.0 → v0.4.0) is a mature resolution-independent AI system w
 
 **Files to modify:**
 - `tests/integration/test_distributed_multiprocess.py` — 4-process NCCL mock test
-- `tests/vertex/test_launcher.py` — fix 5 skipped tests with improved SDK mocking
+- ~~`tests/vertex/test_launcher.py` — fix 5 skipped tests~~ ✅ done (0 skip markers remain)
 - `src/distributed/trainer.py` — any fixes discovered during testing
 
 **Reuse:** Existing `src/distributed/` infrastructure, `torch.multiprocessing.spawn`

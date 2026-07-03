@@ -16,6 +16,9 @@ python -m tools.sync_catalog --check              # CI staleness mode
 claude plugin validate .                          # official marketplace check
 claude plugin validate ./plugins/<name>           # official manifest check
 pytest tests/unit/ -v                             # harness + hook unit tests
+pytest tests/unit/ --cov --cov-branch             # coverage gate: fail_under=85
+                                                  #   (branch) from pyproject; every
+                                                  #   module currently >=97%
 pytest tests/e2e -v                               # official-CLI smoke (skips w/o CLI)
 ruff check tools/ tests/ plugins/*/hooks/scripts  # lint
 # Use `python -m mypy` (a standalone `mypy` binary may run in an isolated

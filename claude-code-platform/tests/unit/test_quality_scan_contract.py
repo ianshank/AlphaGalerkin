@@ -8,52 +8,15 @@ Runs against the REAL vendored script inside the plugin.
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
-from collections.abc import Mapping
 from pathlib import Path
 
-PLUGIN_RELPATH = Path("plugins/eng-standards")
-SCRIPT_RELPATH = PLUGIN_RELPATH / "hooks" / "scripts" / "quality_scan.py"
-
-
-def run_hook(
-    repo_root: Path,
-    payload: Mapping[str, object] | str,
-    *,
-    env_overrides: dict[str, str] | None = None,
-    plugin_root: Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    root = plugin_root if plugin_root is not None else repo_root / PLUGIN_RELPATH
-    env = {
-        **os.environ,
-        "CLAUDE_PLUGIN_ROOT": str(root),
-        **(env_overrides or {}),
-    }
-    text = payload if isinstance(payload, str) else json.dumps(payload)
-    return subprocess.run(
-        [sys.executable, str(repo_root / SCRIPT_RELPATH)],
-        input=text,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-
-
-def stderr_events(result: subprocess.CompletedProcess[str]) -> list[dict[str, object]]:
-    return [json.loads(line) for line in result.stderr.splitlines() if line.strip()]
-
-
-def write_event(file_path: str, content: str) -> dict[str, object]:
-    return {
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Write",
-        "tool_input": {"file_path": file_path, "content": content},
-    }
+from tests.helpers import (
+    run_hook_script as run_hook,
+)
+from tests.helpers import (
+    stderr_events,
+    write_event,
+)
 
 
 def test_clean_content_exits_ok_no_findings(repo_root: Path) -> None:

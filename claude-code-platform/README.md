@@ -46,6 +46,7 @@ python -m tools.validate                # static gates (schema/parity/paths/impo
 python -m tools.sync_runtime --write    # re-vendor the stdlib hook runtime
 python -m tools.sync_catalog --write    # regenerate catalog from manifests + pins
 pytest tests/unit/ -v                   # unit + subprocess contract tests
+pytest tests/unit/ --cov --cov-branch   # coverage gate (>=85% branch, pyproject)
 pytest tests/e2e -v                     # official `claude plugin validate` smoke
 claude --plugin-dir ./plugins/eng-standards   # interactive local test
 ```

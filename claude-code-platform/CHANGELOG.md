@@ -6,6 +6,29 @@ per-plugin semver plus a marketplace metadata version.
 
 ## [Unreleased]
 
+### Changed — gap-analysis / tech-debt scrub (pre-release)
+
+- **Coverage gate enforced**: `[tool.coverage.*]` config in pyproject
+  (branch coverage, `fail_under=85`, vendored `_runtime` copies omitted to
+  avoid double-counting) + CI runs unit tests coverage-gated. Measured
+  after this scrub: **98% total**, every module ≥97% — including
+  `quality_scan.py`, previously invisible to coverage (subprocess-only)
+  and now also imported directly by white-box unit tests.
+- 52 new tests: quality_scan white-box unit suite, `main()` CLI paths and
+  error branches for both sync tools, and gate error-branch coverage
+  (corrupt/schema-invalid documents, empty canonical runtime, symlinked
+  files, syntax errors, frontmatter edge cases, non-command invocations).
+- Tech debt paid down: `relative_file_map` made public in
+  `tools/validate/gates.py` (old private name kept as a backwards-compat
+  alias); duplicated test helpers (`run_hook`, `stderr_events`,
+  `write_event`, `read_json`/`write_json`, `gate_names`) consolidated
+  into `tests/helpers.py`; function-local imports hoisted.
+- Observability: `python -m tools.validate` now logs a per-gate
+  `gate_summary` event (violation count per gate) and `elapsed_ms` on
+  `validation_finished`.
+- CI additionally runs `ruff format --check` and type-checks `tests/`;
+  mypy invoked as `python -m mypy` (isolated-binary spurious errors).
+
 ### Fixed — adversarial-review hardening (pre-release)
 
 - **Gating hooks now fail CLOSED on crashes** (F1): the fail-safe wrapper

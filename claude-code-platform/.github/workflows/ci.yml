@@ -39,11 +39,16 @@ jobs:
       - name: Lint
         run: ruff check tools/ tests/ plugins/*/hooks/scripts
 
-      - name: Type-check (harness)
-        run: mypy tools/
+      - name: Format check
+        run: ruff format --check tools/ tests/ plugins/*/hooks/scripts
+
+      # python -m mypy: a standalone mypy binary may live in an isolated
+      # tool venv without the project's deps and report spurious errors.
+      - name: Type-check (harness + tests)
+        run: python -m mypy tools/ tests/
 
       - name: Type-check (hook scripts)
-        run: mypy plugins/eng-standards/hooks/scripts/quality_scan.py
+        run: python -m mypy plugins/eng-standards/hooks/scripts/quality_scan.py
 
       - name: Static validation gates
         run: python -m tools.validate
@@ -54,8 +59,10 @@ jobs:
       - name: Catalog staleness
         run: python -m tools.sync_catalog --check
 
-      - name: Unit + contract tests
-        run: pytest tests/unit/ -v
+      # Coverage floor comes from [tool.coverage.report] fail_under in
+      # pyproject.toml (85% branch) — no threshold duplicated here.
+      - name: Unit + contract tests (coverage-gated)
+        run: pytest tests/unit/ -v --cov --cov-branch
 
       - name: Install Claude Code CLI (pinned)
         run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}

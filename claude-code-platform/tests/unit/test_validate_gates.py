@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
-from typing import Any
 
 import pytest
 
+from tests.helpers import gate_names, read_json, write_json
 from tools.validate.config import ValidatorConfig
-from tools.validate.gates import Violation, run_all_gates
+from tools.validate.gates import run_all_gates
 
 VALID_SHA = "b" * 40
 
@@ -18,19 +17,6 @@ VALID_SHA = "b" * 40
 @pytest.fixture()
 def config(synthetic_marketplace: Path) -> ValidatorConfig:
     return ValidatorConfig(root=synthetic_marketplace)
-
-
-def gate_names(violations: list[Violation]) -> set[str]:
-    return {v.gate for v in violations}
-
-
-def read_json(path: Path) -> dict[str, Any]:
-    document: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
-    return document
-
-
-def write_json(path: Path, document: dict[str, Any]) -> None:
-    path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
 
 def marketplace_path(root: Path) -> Path:

@@ -210,7 +210,7 @@ def gate_pins(
     return violations
 
 
-def _relative_file_map(directory: Path) -> dict[str, Path]:
+def relative_file_map(directory: Path) -> dict[str, Path]:
     """All regular files under ``directory`` keyed by posix relpath.
 
     Bytecode caches are ignored; symlinks are NOT followed here — they are
@@ -226,6 +226,10 @@ def _relative_file_map(directory: Path) -> dict[str, Path]:
             continue
         files[path.relative_to(directory).as_posix()] = path
     return files
+
+
+#: Backwards-compat alias for the pre-0.1.0 private name.
+_relative_file_map = relative_file_map
 
 
 def _symlink_violations(gate: str, directory: Path) -> list[Violation]:
@@ -299,7 +303,7 @@ def gate_vendored_runtime(config: ValidatorConfig) -> list[Violation]:
     """
     gate = "vendored-runtime-parity"
     canonical_dir = config.root / config.runtime_src_relpath
-    canonical = _relative_file_map(canonical_dir) if canonical_dir.is_dir() else {}
+    canonical = relative_file_map(canonical_dir) if canonical_dir.is_dir() else {}
     violations: list[Violation] = []
     if not canonical:
         return [Violation(gate, str(canonical_dir), "canonical hook runtime is empty")]
@@ -325,7 +329,7 @@ def gate_vendored_runtime(config: ValidatorConfig) -> list[Violation]:
         violations.extend(_symlink_violations(gate, vendored_dir))
         vendored = {
             rel: path.read_bytes()
-            for rel, path in _relative_file_map(vendored_dir).items()
+            for rel, path in relative_file_map(vendored_dir).items()
         }
         for rel in sorted(set(canonical_bytes) - set(vendored)):
             violations.append(

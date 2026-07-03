@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 
@@ -66,7 +68,9 @@ def main(argv: list[str] | None = None) -> int:
 
     config = ValidatorConfig(root=root.resolve())
     log.info("validation_started", root=str(config.root))
+    started = time.perf_counter()
     violations = run_all_gates(config)
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
 
     if args.format == "json":
         print(json.dumps([asdict(v) for v in violations], indent=2))
@@ -74,10 +78,14 @@ def main(argv: list[str] | None = None) -> int:
         for violation in violations:
             print(f"[{violation.gate}] {violation.path}: {violation.message}")
 
+    per_gate = Counter(violation.gate for violation in violations)
+    if per_gate:
+        log.info("gate_summary", **dict(sorted(per_gate.items())))
     log.info(
         "validation_finished",
         violations=len(violations),
         clean=not violations,
+        elapsed_ms=elapsed_ms,
     )
     return EXIT_VIOLATIONS if violations else EXIT_CLEAN
 

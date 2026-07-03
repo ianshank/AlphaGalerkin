@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 SUBTREE_ROOT = Path(__file__).resolve().parents[1]
 if str(SUBTREE_ROOT) not in sys.path:
     sys.path.insert(0, str(SUBTREE_ROOT))
+
+from tests.helpers import write_json  # noqa: E402
 
 
 @pytest.fixture()
@@ -105,8 +105,3 @@ def synthetic_marketplace(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return root
-
-
-def write_json(path: Path, document: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")

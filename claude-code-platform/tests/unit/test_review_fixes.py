@@ -8,50 +8,24 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import subprocess
-import sys
+import shutil
 from pathlib import Path
 
 import pytest
 
+from tests.helpers import (
+    SECRET_LINE,
+    gate_names,
+)
+from tests.helpers import (
+    run_hook_script as run_hook,
+)
 from tools.hook_runtime import constants
 from tools.hook_runtime.failsafe import run_failsafe
 from tools.hook_runtime.tunables import load_tunables
 from tools.sync_runtime import sync_plugin
 from tools.validate.config import ValidatorConfig
-from tools.validate.gates import Violation, run_all_gates
-
-SCRIPT_RELPATH = Path("plugins/eng-standards/hooks/scripts/quality_scan.py")
-
-SECRET_LINE = 'aws = "AKIA' + "A" * 16 + '"\n'
-
-
-def run_hook(
-    repo_root: Path,
-    payload: object,
-    env_overrides: dict[str, str],
-    plugin_root: Path | None = None,
-) -> subprocess.CompletedProcess[str]:
-    root = (
-        plugin_root
-        if plugin_root is not None
-        else repo_root / "plugins" / "eng-standards"
-    )
-    text = payload if isinstance(payload, str) else json.dumps(payload)
-    return subprocess.run(
-        [sys.executable, str(repo_root / SCRIPT_RELPATH)],
-        input=text,
-        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(root), **env_overrides},
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-
-
-def gate_names(violations: list[Violation]) -> set[str]:
-    return {v.gate for v in violations}
+from tools.validate.gates import run_all_gates
 
 
 def write_event(content: str) -> dict[str, object]:
@@ -66,14 +40,14 @@ class TestF1GatingFailsClosed:
     """A gating hook must fail CLOSED (exit 2) on unexpected crashes."""
 
     def test_malformed_stdin_with_gating_blocks(self, repo_root: Path) -> None:
-        result = run_hook(repo_root, "not json", {"CCP_GATING": "1"})
+        result = run_hook(repo_root, "not json", env_overrides={"CCP_GATING": "1"})
         assert result.returncode == constants.EXIT_BLOCK
 
     def test_broken_env_override_with_gating_blocks(self, repo_root: Path) -> None:
         result = run_hook(
             repo_root,
             write_event("x = 1\n"),
-            {"CCP_GATING": "1", "CCP_MAX_FILE_BYTES": "abc"},
+            env_overrides={"CCP_GATING": "1", "CCP_MAX_FILE_BYTES": "abc"},
         )
         assert result.returncode == constants.EXIT_BLOCK
 
@@ -81,16 +55,16 @@ class TestF1GatingFailsClosed:
         result = run_hook(
             repo_root,
             write_event("x = 1\n"),
-            {"CCP_GATING": "1", "CCP_PATTERNS": '{"secret": ["("]}'},
+            env_overrides={"CCP_GATING": "1", "CCP_PATTERNS": '{"secret": ["("]}'},
         )
         assert result.returncode == constants.EXIT_BLOCK
 
     def test_crash_without_gating_still_warns_only(self, repo_root: Path) -> None:
-        result = run_hook(repo_root, "not json", {})
+        result = run_hook(repo_root, "not json", env_overrides={})
         assert result.returncode == constants.EXIT_OK
 
     def test_failsafe_log_reports_effective_gating(self, repo_root: Path) -> None:
-        result = run_hook(repo_root, "not json", {"CCP_GATING": "1"})
+        result = run_hook(repo_root, "not json", env_overrides={"CCP_GATING": "1"})
         events = [json.loads(line) for line in result.stderr.splitlines()]
         triggered = [e for e in events if e["event"] == "hook_failsafe_triggered"]
         assert triggered and triggered[0]["gating"] is True
@@ -219,9 +193,7 @@ class TestF4SymlinkedRuntime:
     def test_symlinked_runtime_dir_flagged(self, synthetic_marketplace: Path) -> None:
         plugin = synthetic_marketplace / "plugins" / "demo-plugin"
         vendored = plugin / "hooks" / "scripts" / "_runtime"
-        import shutil as _shutil
-
-        _shutil.rmtree(vendored)
+        shutil.rmtree(vendored)
         vendored.symlink_to(synthetic_marketplace / "tools" / "hook_runtime")
         violations = run_all_gates(ValidatorConfig(root=synthetic_marketplace))
         assert any(
@@ -234,9 +206,7 @@ class TestF4SymlinkedRuntime:
         config = ValidatorConfig(root=synthetic_marketplace)
         plugin = synthetic_marketplace / "plugins" / "demo-plugin"
         vendored = plugin / "hooks" / "scripts" / "_runtime"
-        import shutil as _shutil
-
-        _shutil.rmtree(vendored)
+        shutil.rmtree(vendored)
         vendored.symlink_to(synthetic_marketplace / "tools" / "hook_runtime")
         sync_plugin(config, plugin)
         assert not vendored.is_symlink() and vendored.is_dir()
@@ -345,7 +315,7 @@ class TestF7EnvOverridesWithoutDefaultsFile:
         result = run_hook(
             repo_root,
             write_event(SECRET_LINE),
-            {"CCP_PATTERNS": patterns, "CCP_GATING": "1"},
+            env_overrides={"CCP_PATTERNS": patterns, "CCP_GATING": "1"},
             plugin_root=tmp_path,  # no config/defaults.json here
         )
         assert result.returncode == constants.EXIT_BLOCK

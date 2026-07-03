@@ -24,10 +24,10 @@ import structlog
 
 from .validate.config import ValidatorConfig
 from .validate.gates import (
-    _relative_file_map,
     discover_plugin_dirs,
     gate_vendored_runtime,
     plugin_hook_scripts,
+    relative_file_map,
 )
 
 EXIT_CLEAN = 0
@@ -47,8 +47,7 @@ def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
         changed.append("removed:symlink:_runtime")
     vendored_dir.mkdir(parents=True, exist_ok=True)
     canonical = {
-        rel: path.read_bytes()
-        for rel, path in _relative_file_map(canonical_dir).items()
+        rel: path.read_bytes() for rel, path in relative_file_map(canonical_dir).items()
     }
     for rel, content in canonical.items():
         target = vendored_dir / rel
@@ -59,7 +58,7 @@ def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
             changed.append(rel)
-    for rel in sorted(set(_relative_file_map(vendored_dir)) - set(canonical)):
+    for rel in sorted(set(relative_file_map(vendored_dir)) - set(canonical)):
         (vendored_dir / rel).unlink()
         changed.append(f"removed:{rel}")
     _remove_cache_and_empty_dirs(vendored_dir)

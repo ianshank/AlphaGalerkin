@@ -328,6 +328,50 @@ jobs:
         run: |
           pytest tests/firefighting/ --cov=src/firefighting --cov-fail-under=60 -q --no-header
 
+      # Gates previously documented in CLAUDE.md's Regression Surface table but
+      # never wired into CI. Each mirrors the documented Verification command.
+      - name: Per-module coverage gate (alphagalerkin)
+        if: always() && hashFiles('tests/alphagalerkin/') != ''
+        run: |
+          pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (integrations/lm_studio)
+        if: always() && hashFiles('tests/integrations/') != ''
+        run: |
+          pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
+            tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" \
+            --cov=src/integrations/lm_studio \
+            --cov=src/poc/scenarios/llm_prior_ablation.py \
+            --cov=src/poc/scenarios/llm_prior_config.py \
+            --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (integrations/openai_compat)
+        if: always() && hashFiles('tests/integrations/test_backend_registry.py') != ''
+        run: |
+          pytest tests/integrations/test_backend_registry.py \
+            --cov=src/integrations/openai_compat --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (poc/baselines)
+        if: always() && hashFiles('tests/poc/test_scenario_baselines.py') != ''
+        run: |
+          pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
+            --cov=src/poc/baselines --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (poc/scaling_law + centaur-common)
+        if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
+        run: |
+          pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
+            tests/poc/test_centaur_common.py \
+            --cov=src.poc.scenarios.scaling_law --cov=src.poc.scenarios.scaling_law_config \
+            --cov=src.poc.scenarios._centaur_common --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (agents/research_loop + config)
+        if: always() && hashFiles('tests/agents/test_research_loop.py') != ''
+        run: |
+          pytest tests/agents/test_research_loop.py tests/agents/test_config.py \
+            --cov=src.agents.research_loop --cov=src.agents.config \
+            --cov-branch --cov-fail-under=85 -q --no-header
+
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v4
@@ -460,6 +504,52 @@ jobs:
           pytest tests/e2e/test_chess_training_e2e.py \
             --tb=short \
             -v
+
+  # ============================================================
+  # Stage 8: Optional-dependency test suites
+  # ------------------------------------------------------------
+  # These suites used pytest.importorskip and skipped SILENTLY in the default
+  # matrix because their deps are not in [dev]. Installing [test-extras] makes
+  # them actually execute (FEM baseline, ONNX export/validate, PettingZoo,
+  # torchvision perceptual loss) instead of masking those paths as "passing".
+  # ============================================================
+  test-extras:
+    name: Optional-Dependency Suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test-fast
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,test-extras]"
+
+      # Verified green locally with scikit-fem + pettingzoo installed.
+      - name: Run FEM baseline + PettingZoo suites
+        run: |
+          pytest tests/research/test_fem_baseline.py \
+            tests/games/test_pettingzoo_adapter.py \
+            --tb=short -q
+
+      # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
+      # which these tracer-based tests do not target (src/deployment/export_onnx.py
+      # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the
+      # suites RUN and their result is visible, without gating the pipeline on a
+      # torch-version-default until export_onnx.py pins the legacy path.
+      - name: Run ONNX export/validate + torchvision perceptual suites
+        continue-on-error: true
+        run: |
+          pytest tests/deployment/test_export_onnx_integration.py \
+            tests/integration/test_onnx_e2e.py \
+            tests/video_compression/unit/test_loss.py \
+            --tb=short -q
 
   # ============================================================
   # Performance Benchmark

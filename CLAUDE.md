@@ -134,8 +134,8 @@ hardening of the HX path.
 | **SBIR P40 GPU rerun** | Run `python -u -m scripts.run_sbir_p40` on the Tesla P40 with the corrected NS-FDM baseline and the 2000-epoch GPU PINN; verify `mean_sm_util_pct` is populated in `outputs/sbir_p40/results.json` for every `pinn_p40` row | Validates the bug fixes against real GPU hardware; CI runs only the helper-function unit tests because PyTorch's stock wheels don't ship sm_61 kernels for the P40 |
 | **SBIR demo `--heavy` rerun** | Run `python -m scripts.run_sbir_demo --heavy --output-dir outputs/sbir_demo_v2` to capture the 65 536-DOF Poisson L-shaped row demonstrating the P40's 24 GiB VRAM advantage | Manual reviewer step; CI default keeps the heavy levels off |
 | **LLM-prior MCTS GPU run** | Run `python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml` on a CUDA host with LM Studio serving Qwen-14B; verify the four headline metrics (`id_rollout_reduction_pct ≥ 25%`, `ood_llm_residual ≤ 1e-2`, `ood_trained_residual > 1e-1`, `llm_call_p95_latency_ms ≤ 3000`). | CI runs only the mocked-CPU surface (`tests/integrations/`); the headline GPU run is a manual reviewer step gated by `LM_STUDIO_URL` + CUDA. Per-GPU baselines for the latency threshold should be recorded in `outputs/poc/llm_prior_ablation/`. |
-| **LLM-prior OOD coverage expansion** | Add `helmholtz` and `biharmonic` operators to `_PDE_TYPE_MAP` in `src/poc/scenarios/llm_prior_ablation.py` and run them as additional OOD families. Compare LLM-prior vs trained on each. | The trained `FNetEvaluator` was never trained on these residual structures; the LLM should retain a meaningful advantage. New operators land in `src/pde/registry.py` first; the scenario then auto-picks them up via the `Literal` enum. |
-| **LLM-prior alternative backends** | Add adapters for vLLM and llama.cpp-server alongside LM Studio (all OpenAI-compatible). Single `LMStudioConfig.base_url` already points at the endpoint; verify zero code change beyond a `model` rename. | Validates the `[lm-studio]` extra as the canonical OpenAI-compatible client and not LM-Studio-specific. Document tested-server matrix in `src/integrations/AGENT.md`. |
+| ~~**LLM-prior OOD coverage expansion**~~ ✅ **DONE (2026-06-07 / WS2b)** | `helmholtz` and `biharmonic` are registered in the canonical `PDE_TYPE_MAP` (`src/poc/scenarios/_centaur_common.py`; `llm_prior_ablation.py` aliases `_PDE_TYPE_MAP = PDE_TYPE_MAP`) and ship as `config/scenarios/llm_prior_{helmholtz,biharmonic}.yaml`. | Trained `FNetEvaluator` never saw these residual structures; guarded by `tests/poc/test_llm_prior_ood_expansion.py`. |
+| ~~**LLM-prior alternative backends**~~ ✅ **DONE (2026-06-12 / WS1)** | vLLM and llama.cpp profiles registered in `src/integrations/openai_compat/registry.py` (`LMStudioConfig.backend ∈ {lm_studio, vllm, llama_cpp}`, `apply_backend_defaults`). | Validates the `[lm-studio]` extra as the canonical OpenAI-compatible client; tested-server matrix in `src/integrations/AGENT.md`. |
 
 ## SBIR Positioning
 - **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement
@@ -832,6 +832,26 @@ src/
     training/         - Training utilities
       loss.py         - R-D loss functions
       trainer.py      - Compression trainer
+  agents/       - Agentic layer (BaseAgent lifecycle, research-loop orchestrator, scaffold CLI)
+  research/     - SBIR benchmark harness (PDE baselines, GPU profiler, PINN solvers)
+  vertex/       - Google Vertex AI cloud-training integration
+  engines/      - UCI chess-engine interface for play evaluation (used by training/evaluation.py, training/trainer.py)
+  tournament/   - Tournament scheduling & config (E2E-tested)
+  backend/      - JAX/Torch backend abstraction (uses templates/)
+  curriculum/   - Curriculum-learning scheduler (uses distributed/)
+  analysis/     - Game code-analysis / auditing utilities (uses games/)
+  demos/        - Benchmark & visualization demos (uses physics/, poc/, research/)
+  reentry/      - MCTS-guided hypersonic-reentry / compressible-flow domain PoC
+  firefighting/ - MCTS-guided wildfire-spread domain PoC
+  intercept/    - MCTS-guided missile-interception domain PoC
+  prototyping/  - Fast-prototyping utilities (not imported by core src/ production paths; used by its own tests and the hf_space/ HuggingFace Space mirror)
+  constants.py  - Centralized numerical constants (imported across training/pde/mcts/modeling)
+dashboard/      - Gradio web UI (uses mcts/, modeling/, physics/, poc/, tools/)
+
+# NOTE: reentry/, firefighting/, intercept/ are domain research PoCs gated behind
+# scenario configs (not production paths); their isolation from the core solver is
+# intentional. prototyping/ is not imported by core production paths — only by its own
+# tests and the hf_space/ HuggingFace Space mirror (hf_space/src/prototyping/).
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests

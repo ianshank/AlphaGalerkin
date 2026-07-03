@@ -144,14 +144,14 @@ CONSTRAINTS:
 
 ### Epic 2.2: SGF Parsing Completion
 
-**Story 2.2.1: Implement Variation/Tree Node Parsing**
+**Story 2.2.1: Implement Variation/Tree Node Parsing** — ✅ **RESOLVED (2026-07-01)**
 
 - **Task:** Fix skipped test for SGF variation parsing
-- **Location:** `tests/games/test_sgf.py`
+- **Location:** `tests/games/sgf/test_sgf.py::TestSGFParser::test_parse_variations` (passing)
 - **Acceptance Criteria:**
-  - [ ] Parse SGF files with variations
-  - [ ] Handle nested variations correctly
-  - [ ] Test with real KGS/IGS game files
+  - [x] Parse SGF files with variations
+  - [x] Handle nested variations correctly (branching game trees supported)
+  - [x] Test with real KGS/IGS game files
 - **Subagent:** Coder
 
 ---
@@ -262,14 +262,14 @@ CONSTRAINTS:
   - [x] No deadlocks or race conditions
 - **Subagent:** SQE
 
-**Story 5.1.2: Fix Skipped Vertex Launcher Tests**
+**Story 5.1.2: Fix Skipped Vertex Launcher Tests** — ✅ **RESOLVED**
 
 - **Task:** Improve SDK mocking for launcher tests
-- **Location:** `tests/vertex/test_launcher.py` (5 skipped)
+- **Location:** `tests/vertex/test_launcher.py` (0 skip markers; SDK interactions mocked)
 - **Acceptance Criteria:**
-  - [ ] All 5 tests enabled and passing
-  - [ ] SDK interactions properly mocked
-  - [ ] No external API calls in tests
+  - [x] All tests enabled and passing (no `pytest.skip`/`pytest.mark.skip` remain)
+  - [x] SDK interactions properly mocked
+  - [x] No external API calls in tests
 - **Subagent:** SQE
 
 ### Epic 5.2: Distributed Training Guide
@@ -558,7 +558,7 @@ These can be completed without blocking dependencies:
 | SBIR Benchmarks | Benchmark runner | ✅ Yes (HTML reports) | Yes | PDEBenchmarkRunner + sbir_demo.py |
 | Distributed | Multi-node validation | ⚠️ Partial (35 tests) | Yes | Integration test passes |
 | PDE | Training integration | ✅ Yes | Yes | `config/train_pde.yaml` works |
-| Video Compression | Hyperprior complete | No | Yes | No TODO comments |
+| Video Compression | Hyperprior complete | ✅ Yes | Yes | z_bitstream encode/decode wired (`scripts/encode_video.py`, `scripts/decode_video.py`) |
 
 ---
 
@@ -566,10 +566,10 @@ These can be completed without blocking dependencies:
 
 | File | Line | Description | Priority | Status |
 |------|------|-------------|----------|--------|
-| `scripts/encode_video.py` | 261 | Add hyperprior z encoding | High | Open |
-| `scripts/decode_video.py` | 420 | Properly decode hyperprior z_data | High | Open |
+| ~~`scripts/encode_video.py`~~ | ~~261~~ | ~~Add hyperprior z encoding~~ | ~~High~~ | ✅ Fixed (z_bitstream captured, `encode_video.py:288-294`) |
+| ~~`scripts/decode_video.py`~~ | ~~420~~ | ~~Properly decode hyperprior z_data~~ | ~~High~~ | ✅ Fixed (z_bitstream reconstructed, `decode_video.py:430-470`) |
 | ~~`src/training/self_play.py`~~ | ~~419~~ | ~~True parallel generation~~ | ~~Medium~~ | ✅ Fixed (2026-02-04) |
-| `tests/games/test_sgf.py` | - | Variation parsing (skipped) | Medium | Open |
+| ~~`tests/games/sgf/test_sgf.py`~~ | ~~-~~ | ~~Variation parsing (skipped)~~ | ~~Medium~~ | ✅ Fixed (2026-07-01) |
 
 ---
 
@@ -577,8 +577,8 @@ These can be completed without blocking dependencies:
 
 | Module | Tests Skipped | Reason | Resolution Path |
 |--------|---------------|--------|-----------------|
-| Vertex Launcher | 5 | Complex SDK mocking | Improve mock strategy |
-| SGF Variation | 1 | Not implemented | Complete parser |
+| ~~Vertex Launcher~~ | ~~5~~ → 0 | ~~Complex SDK mocking~~ | ✅ Resolved — `tests/vertex/test_launcher.py` has no skip markers |
+| ~~SGF Variation~~ | ~~1~~ → 0 | ~~Not implemented~~ | ✅ Resolved (2026-07-01) — branching-tree parser + passing test |
 | CLI Module | 2 | Discovery issues | Fix import paths |
 
 ---
@@ -651,7 +651,7 @@ Shipped in `src/video_compression/zoo/`:
 - 100 percent line + branch coverage across all five modules; 68 tests;
   mypy `--strict` and `ruff` clean.
 
-### Phase 2-C: ZooTrainer (Per-Entry Composition) - NEXT
+### Phase 2-C: ZooTrainer (Per-Entry Composition) — ✅ DONE (2026-05-01)
 
 - `src/video_compression/training/zoo_trainer.py::ZooTrainer` composes
   `VideoCompressionTrainer` per entry with fixed-lambda + AMP + grad-clip
@@ -662,7 +662,7 @@ Shipped in `src/video_compression/zoo/`:
 - Acceptance: an 8 GiB-friendly path on `cuda:1` (FP16/BF16 + grad
   accumulation) trains a single entry to its `target_psnr_db`.
 
-### Phase 2-D: Subprocess Sweep Driver
+### Phase 2-D: Subprocess Sweep Driver — ✅ DONE (2026-05-01)
 
 - `src/video_compression/zoo/sweep.py::ZooSweep(BaseExecutable)`.
 - Subprocess-per-device with `CUDA_VISIBLE_DEVICES` pinning so each entry

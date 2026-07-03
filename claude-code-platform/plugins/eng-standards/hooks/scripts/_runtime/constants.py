@@ -38,7 +38,9 @@ EXIT_BLOCK: Final[int] = 2
 #: Plugin-relative path of the tunables defaults file.
 DEFAULT_TUNABLES_RELPATH: Final[str] = "config/defaults.json"
 
-#: Highest tunables-file schema version this runtime understands.
+#: Schema version this runtime WRITES/ships. Reading is deliberately
+#: tolerant of newer versions (forward compatibility): unknown keys pass
+#: through untouched and known keys keep working.
 TUNABLES_SCHEMA_VERSION: Final[int] = 1
 
 #: Version of the hook runtime itself (bump on any behavioural change;

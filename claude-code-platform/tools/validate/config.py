@@ -32,6 +32,7 @@ class ValidatorConfig(BaseModel):
     plugins_dirname: str = Field(default="plugins")
     marketplace_relpath: str = Field(default=".claude-plugin/marketplace.json")
     manifest_relpath: str = Field(default=".claude-plugin/plugin.json")
+    hooks_dirname: str = Field(default="hooks")
     hooks_relpath: str = Field(default="hooks/hooks.json")
     pins_relpath: str = Field(default="release/pins.json")
     runtime_src_relpath: str = Field(
@@ -59,10 +60,12 @@ class ValidatorConfig(BaseModel):
     )
     path_literal_patterns: tuple[str, ...] = Field(
         default=(
-            r"/Users/[A-Za-z0-9._-]+/",
-            r"/home/[A-Za-z0-9._-]+/",
-            r"[A-Za-z]:\\Users\\[A-Za-z0-9._-]+",
-            r"~/[A-Za-z0-9._-]+/",
+            # No trailing-slash requirement: "/home/user" without a
+            # trailing segment is just as machine-specific (review F6).
+            r"(?<![\[\w/])/Users/[A-Za-z][A-Za-z0-9._-]*",
+            r"(?<![\[\w/])/home/[A-Za-z][A-Za-z0-9._-]*",
+            r"[A-Za-z]:\\Users\\[A-Za-z][A-Za-z0-9._-]*",
+            r"(?<![\w/])~/[A-Za-z0-9._-]+",
         ),
         description="Regexes flagging machine-specific literal paths",
     )

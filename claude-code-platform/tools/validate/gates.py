@@ -32,6 +32,12 @@ from .schemas import (
 FRONTMATTER_DELIMITER = "---"
 REQUIRED_FRONTMATTER_KEYS = ("name", "description")
 SKILL_FILENAME = "SKILL.md"
+IGNORED_CACHE_DIRNAME = "__pycache__"
+IGNORED_CACHE_SUFFIXES = (".pyc", ".pyo")
+#: Dynamic-import machinery banned from hook scripts: it defeats the
+#: static stdlib-import analysis (ADR-0002).
+DYNAMIC_IMPORT_MODULES = ("importlib",)
+DYNAMIC_IMPORT_BUILTIN = "__import__"
 
 
 @dataclass(frozen=True)
@@ -204,40 +210,137 @@ def gate_pins(
     return violations
 
 
+def _relative_file_map(directory: Path) -> dict[str, Path]:
+    """All regular files under ``directory`` keyed by posix relpath.
+
+    Bytecode caches are ignored; symlinks are NOT followed here — they are
+    reported separately (a symlinked runtime breaks after plugin install).
+    """
+    files: dict[str, Path] = {}
+    for path in sorted(directory.rglob("*")):
+        if IGNORED_CACHE_DIRNAME in path.parts:
+            continue
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix in IGNORED_CACHE_SUFFIXES:
+            continue
+        files[path.relative_to(directory).as_posix()] = path
+    return files
+
+
+def _symlink_violations(gate: str, directory: Path) -> list[Violation]:
+    violations: list[Violation] = []
+    if directory.is_symlink():
+        violations.append(
+            Violation(
+                gate,
+                str(directory),
+                "must be a real directory, not a symlink (symlinks break "
+                "after plugin install; ADR-0002)",
+            )
+        )
+        return violations
+    for path in sorted(directory.rglob("*")):
+        if path.is_symlink():
+            violations.append(
+                Violation(
+                    gate,
+                    str(path),
+                    "symlink not allowed inside the vendored runtime "
+                    "(breaks after plugin install; ADR-0002)",
+                )
+            )
+    return violations
+
+
+def plugin_hook_scripts(config: ValidatorConfig, plugin_dir: Path) -> list[Path]:
+    """Every Python file under ``hooks/`` (vendored runtime included) plus
+    any file referenced by a hooks.json command — the actual entry points,
+    wherever they live in the plugin."""
+    hooks_dir = plugin_dir / config.hooks_dirname
+    scripts: set[Path] = set()
+    if hooks_dir.is_dir():
+        scripts.update(
+            p
+            for p in hooks_dir.rglob("*.py")
+            if IGNORED_CACHE_DIRNAME not in p.parts and p.is_file()
+        )
+    for relative in _hooks_command_paths(config, plugin_dir):
+        candidate = plugin_dir / relative
+        if candidate.suffix == ".py" and candidate.is_file():
+            scripts.add(candidate)
+    return sorted(scripts)
+
+
+def _hooks_command_paths(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
+    """Plugin-relative paths referenced via the root token in hook commands."""
+    hooks_path = plugin_dir / config.hooks_relpath
+    if not hooks_path.is_file():
+        return []
+    try:
+        document = HooksDocument.model_validate(_read_json(hooks_path))
+    except (OSError, json.JSONDecodeError, ValidationError):
+        return []  # reported by the hooks-schema checks elsewhere
+    token_path = re.compile(re.escape(config.plugin_root_token) + r"/([^\"'\s]+)")
+    paths: list[str] = []
+    for groups in document.hooks.values():
+        for group in groups:
+            for invocation in group.hooks:
+                paths.extend(token_path.findall(invocation.command or ""))
+    return paths
+
+
 def gate_vendored_runtime(config: ValidatorConfig) -> list[Violation]:
-    """Vendored ``_runtime`` copies must be byte-identical to the canonical lib."""
+    """Vendored ``_runtime`` copies must be byte-identical to the canonical lib.
+
+    Recursive and content-complete: every file (any suffix, any depth,
+    bytecode caches excluded) is compared, and symlinks are rejected. A
+    plugin triggers the requirement as soon as it ships any hook script.
+    """
     gate = "vendored-runtime-parity"
     canonical_dir = config.root / config.runtime_src_relpath
-    canonical = {p.name: p.read_bytes() for p in sorted(canonical_dir.glob("*.py"))}
+    canonical = _relative_file_map(canonical_dir) if canonical_dir.is_dir() else {}
     violations: list[Violation] = []
     if not canonical:
         return [Violation(gate, str(canonical_dir), "canonical hook runtime is empty")]
+    canonical_bytes = {rel: path.read_bytes() for rel, path in canonical.items()}
     for plugin_dir in discover_plugin_dirs(config):
-        scripts_dir = plugin_dir / config.hook_scripts_relpath
-        if not scripts_dir.is_dir():
-            continue  # plugin ships no hooks; nothing to vendor
         vendored_dir = plugin_dir / config.vendored_runtime_relpath
+        has_scripts = any(
+            not path.is_relative_to(vendored_dir)
+            for path in plugin_hook_scripts(config, plugin_dir)
+        )
+        if not has_scripts:
+            continue  # plugin ships no hook scripts; nothing to vendor
         hint = "run `python -m tools.sync_runtime --write`"
-        if not vendored_dir.is_dir():
-            violations.append(
-                Violation(gate, str(vendored_dir), f"vendored runtime missing; {hint}")
-            )
+        if vendored_dir.is_symlink() or not vendored_dir.is_dir():
+            violations.extend(_symlink_violations(gate, vendored_dir))
+            if not vendored_dir.is_symlink():
+                violations.append(
+                    Violation(
+                        gate, str(vendored_dir), f"vendored runtime missing; {hint}"
+                    )
+                )
             continue
-        vendored = {p.name: p.read_bytes() for p in sorted(vendored_dir.glob("*.py"))}
-        for name in sorted(set(canonical) - set(vendored)):
+        violations.extend(_symlink_violations(gate, vendored_dir))
+        vendored = {
+            rel: path.read_bytes()
+            for rel, path in _relative_file_map(vendored_dir).items()
+        }
+        for rel in sorted(set(canonical_bytes) - set(vendored)):
             violations.append(
-                Violation(gate, str(vendored_dir / name), f"missing file; {hint}")
+                Violation(gate, str(vendored_dir / rel), f"missing file; {hint}")
             )
-        for name in sorted(set(vendored) - set(canonical)):
+        for rel in sorted(set(vendored) - set(canonical_bytes)):
             violations.append(
-                Violation(gate, str(vendored_dir / name), f"stray file; {hint}")
+                Violation(gate, str(vendored_dir / rel), f"stray file; {hint}")
             )
-        for name in sorted(set(canonical) & set(vendored)):
-            if canonical[name] != vendored[name]:
+        for rel in sorted(set(canonical_bytes) & set(vendored)):
+            if canonical_bytes[rel] != vendored[rel]:
                 violations.append(
                     Violation(
                         gate,
-                        str(vendored_dir / name),
+                        str(vendored_dir / rel),
                         f"content drift from canonical runtime; {hint}",
                     )
                 )
@@ -251,9 +354,13 @@ def gate_path_literals(config: ValidatorConfig) -> list[Violation]:
     violations: list[Violation] = []
     for plugin_dir in discover_plugin_dirs(config):
         for file_path in sorted(plugin_dir.rglob("*")):
+            if IGNORED_CACHE_DIRNAME in file_path.parts:
+                continue
             if not file_path.is_file():
                 continue
-            if file_path.suffix not in config.scannable_suffixes:
+            # Extensionless files (shebang scripts, dotfiles) are scanned
+            # too — skipping them was a gate bypass (review F6).
+            if file_path.suffix and file_path.suffix not in config.scannable_suffixes:
                 continue
             relative = file_path.relative_to(plugin_dir).as_posix()
             if relative in config.path_literal_exclude_relpaths:
@@ -303,19 +410,35 @@ def _hooks_command_token_violations(
                             f"{config.plugin_root_token}",
                         )
                     )
+    for relative in _hooks_command_paths(config, plugin_dir):
+        if not (plugin_dir / relative).is_file():
+            violations.append(
+                Violation(
+                    gate,
+                    str(hooks_path),
+                    f"command references {relative!r} which does not exist "
+                    "in the plugin",
+                )
+            )
     return violations
 
 
 def gate_stdlib_imports(config: ValidatorConfig) -> list[Violation]:
-    """Hook scripts (incl. vendored runtime) import stdlib + plugin-local only."""
+    """Hook scripts import stdlib + plugin-local only; no dynamic imports.
+
+    Scans every Python file under ``hooks/`` (vendored runtime included)
+    plus any file referenced by a hooks.json command wherever it lives —
+    not just ``hooks/scripts/`` (review F2). Dynamic-import machinery
+    (``importlib``, ``__import__``) is banned outright because it defeats
+    static analysis (review F5).
+    """
     gate = "stdlib-imports"
-    allowed = set(sys.stdlib_module_names) | {config.vendored_import_name}
+    allowed = (set(sys.stdlib_module_names) | {config.vendored_import_name}) - set(
+        DYNAMIC_IMPORT_MODULES
+    )
     violations: list[Violation] = []
     for plugin_dir in discover_plugin_dirs(config):
-        scripts_dir = plugin_dir / config.hook_scripts_relpath
-        if not scripts_dir.is_dir():
-            continue
-        for script in sorted(scripts_dir.rglob("*.py")):
+        for script in plugin_hook_scripts(config, plugin_dir):
             try:
                 tree = ast.parse(
                     script.read_text(encoding="utf-8"), filename=str(script)
@@ -325,26 +448,55 @@ def gate_stdlib_imports(config: ValidatorConfig) -> list[Violation]:
                     Violation(gate, str(script), f"syntax error: {exc.msg}")
                 )
                 continue
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    names = [alias.name.split(".")[0] for alias in node.names]
-                elif isinstance(node, ast.ImportFrom):
-                    if node.level and node.level > 0:
-                        continue  # relative import: plugin-local by construction
-                    names = [node.module.split(".")[0]] if node.module else []
-                else:
-                    continue
-                for name in names:
-                    if name not in allowed:
-                        violations.append(
-                            Violation(
-                                gate,
-                                str(script),
-                                f"line {node.lineno}: non-stdlib import "
-                                f"{name!r} (hook scripts are stdlib-only, "
-                                "ADR-0002)",
-                            )
-                        )
+            violations.extend(_script_import_violations(gate, script, tree, allowed))
+    return violations
+
+
+def _script_import_violations(
+    gate: str, script: Path, tree: ast.AST, allowed: set[str]
+) -> list[Violation]:
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == DYNAMIC_IMPORT_BUILTIN:
+            violations.append(
+                Violation(
+                    gate,
+                    str(script),
+                    f"line {node.lineno}: {DYNAMIC_IMPORT_BUILTIN} is banned "
+                    "in hook scripts (dynamic imports defeat static "
+                    "analysis; ADR-0002)",
+                )
+            )
+            continue
+        if isinstance(node, ast.Import):
+            names = [alias.name.split(".")[0] for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            if node.level and node.level > 0:
+                continue  # relative import: plugin-local by construction
+            names = [node.module.split(".")[0]] if node.module else []
+        else:
+            continue
+        for name in names:
+            if name in DYNAMIC_IMPORT_MODULES:
+                violations.append(
+                    Violation(
+                        gate,
+                        str(script),
+                        f"line {node.lineno}: {name!r} is banned in hook "
+                        "scripts (dynamic imports defeat static analysis; "
+                        "ADR-0002)",
+                    )
+                )
+            elif name not in allowed:
+                violations.append(
+                    Violation(
+                        gate,
+                        str(script),
+                        f"line {node.lineno}: non-stdlib import "
+                        f"{name!r} (hook scripts are stdlib-only, "
+                        "ADR-0002)",
+                    )
+                )
     return violations
 
 

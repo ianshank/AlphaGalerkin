@@ -3,13 +3,16 @@
 
 Reads the hook event from stdin, scans content written by file-editing
 tools against configurable regex categories (``config/defaults.json``,
-overridable via ``CCP_*`` env vars), and logs structured findings to
-stderr. Matched text is NEVER logged — only category, line number, and
-pattern — so a detected secret cannot leak into logs or transcripts.
+overridable via ``CCP_*`` env vars — overrides work even when the file is
+absent, via in-code fallbacks), and logs structured findings to stderr.
+Matched text is NEVER logged — only category, line number, and pattern —
+so a detected secret cannot leak into logs or transcripts.
 
-Fail-safe contract: always exits 0 (warn-only) unless the ``gating``
-tunable is true, in which case findings exit 2. Stdlib-only; imports the
-vendored ``_runtime`` package (ADR-0002).
+Gating contract: exits 0 (warn-only) by default. When the ``gating``
+tunable is true, findings exit 2 AND unexpected crashes fail CLOSED
+(exit 2) — the gating flag is re-resolved at crash time by the fail-safe
+wrapper. Stdlib-only; imports the vendored ``_runtime`` package
+(ADR-0002).
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from __future__ import annotations
 import logging
 import re
 import sys
+from os import environ
 from pathlib import Path
 from typing import Any
 
@@ -30,10 +34,34 @@ COMPONENT = "eng-standards.quality_scan"
 #: tool_input keys that may carry newly written content, in priority order.
 CONTENT_KEYS: tuple[str, ...] = ("content", "new_string", "new_source")
 FILE_PATH_KEY = "file_path"
+GATING_KEY = "gating"
 
-#: In-code fallbacks used when the tunables file is absent.
-FALLBACK_SCAN_TOOLS: tuple[str, ...] = ("Write", "Edit", "MultiEdit", "NotebookEdit")
-FALLBACK_MAX_FILE_BYTES = 1_048_576
+#: In-code fallbacks; the shipped config/defaults.json overrides these and
+#: CCP_* env vars override both (types are coerced against these values).
+FALLBACK_TUNABLES: dict[str, Any] = {
+    "scan_tools": ["Write", "Edit", "MultiEdit", "NotebookEdit"],
+    "max_file_bytes": 1_048_576,
+    GATING_KEY: False,
+    "patterns": {},
+    "exclude_path_substrings": ["/.git/", "/_runtime/", "/node_modules/"],
+}
+
+
+def effective_tunables() -> dict[str, Any]:
+    return load_tunables(fallbacks=FALLBACK_TUNABLES)
+
+
+def resolve_gating() -> bool:
+    """Crash-time gating resolution for the fail-safe wrapper.
+
+    Never raises: falls back to the raw ``CCP_GATING`` env flag when the
+    tunables file is unreadable, and to False when nothing is set.
+    """
+    try:
+        return bool(effective_tunables().get(GATING_KEY, False))
+    except Exception:
+        raw = environ.get(constants.ENV_PREFIX + GATING_KEY.upper(), "")
+        return raw.strip().lower() in constants.TRUTHY_VALUES
 
 
 def gather_text(event: HookInput, max_file_bytes: int) -> tuple[str, str]:
@@ -47,11 +75,11 @@ def gather_text(event: HookInput, max_file_bytes: int) -> tuple[str, str]:
         return "\n".join(chunks), "tool_input"
     path_value = event.tool_input.get(FILE_PATH_KEY)
     if isinstance(path_value, str) and path_value:
-        path = Path(path_value)
         try:
+            path = Path(path_value)
             if path.is_file() and path.stat().st_size <= max_file_bytes:
                 return path.read_text(encoding="utf-8", errors="replace"), "file"
-        except OSError:
+        except (OSError, ValueError):
             return "", "unreadable"
     return "", "none"
 
@@ -78,26 +106,25 @@ def is_excluded(path_value: str, exclusions: list[str]) -> bool:
 
 def run(logger: logging.Logger) -> int:
     event = parse_hook_input(sys.stdin)
-    tunables = load_tunables()
-    scan_tools = tunables.get("scan_tools", list(FALLBACK_SCAN_TOOLS))
+    tunables = effective_tunables()
+    scan_tools = tunables["scan_tools"]  # always present via FALLBACK_TUNABLES
     if event.tool_name not in scan_tools:
         logger.debug("quality_scan_skipped", extra={"tool_name": event.tool_name})
         return constants.EXIT_OK
 
     file_path = str(event.tool_input.get(FILE_PATH_KEY, ""))
-    exclusions = tunables.get("exclude_path_substrings", [])
+    exclusions = tunables["exclude_path_substrings"]
     if file_path and is_excluded(file_path, exclusions):
         logger.debug("quality_scan_excluded", extra={"file_path": file_path})
         return constants.EXIT_OK
 
-    max_file_bytes = int(tunables.get("max_file_bytes", FALLBACK_MAX_FILE_BYTES))
+    max_file_bytes = int(tunables["max_file_bytes"])
     text, origin = gather_text(event, max_file_bytes)
     if not text:
         logger.debug("quality_scan_no_content", extra={"origin": origin})
         return constants.EXIT_OK
 
-    patterns = tunables.get("patterns", {})
-    findings = scan_text(text, patterns)
+    findings = scan_text(text, tunables["patterns"])
     for finding in findings:
         logger.warning(
             "quality_finding",
@@ -108,7 +135,7 @@ def run(logger: logging.Logger) -> int:
                 **finding,
             },
         )
-    gating = bool(tunables.get("gating", False))
+    gating = bool(tunables[GATING_KEY])
     logger.info(
         "quality_scan_finished",
         extra={
@@ -123,4 +150,4 @@ def run(logger: logging.Logger) -> int:
 
 
 if __name__ == "__main__":
-    main_entry(run, component=COMPONENT)
+    main_entry(run, component=COMPONENT, gating=resolve_gating)

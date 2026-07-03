@@ -3,8 +3,10 @@
 Installed plugins are cached per-directory and cannot import anything
 outside their own root, so ``tools/hook_runtime`` is copied verbatim into
 ``<plugin>/hooks/scripts/_runtime/`` for every plugin that ships hook
-scripts. Copies are byte-identical (no header rewriting) so the CI parity
-gate is a plain content compare.
+scripts. The copy is recursive and content-complete (any suffix, any
+depth; bytecode caches excluded), strays at any depth are removed, and a
+symlinked ``_runtime`` is replaced with a real directory — mirroring
+exactly what the ``vendored-runtime-parity`` gate enforces.
 
 Usage:
     python -m tools.sync_runtime --write   # vendor / refresh copies
@@ -14,13 +16,19 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
 import structlog
 
 from .validate.config import ValidatorConfig
-from .validate.gates import discover_plugin_dirs, gate_vendored_runtime
+from .validate.gates import (
+    _relative_file_map,
+    discover_plugin_dirs,
+    gate_vendored_runtime,
+    plugin_hook_scripts,
+)
 
 EXIT_CLEAN = 0
 EXIT_DRIFT = 1
@@ -30,24 +38,46 @@ log = structlog.get_logger("tools.sync_runtime")
 
 
 def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
-    """Copy canonical runtime files into one plugin; returns changed names."""
+    """Vendor the canonical runtime into one plugin; returns changed relpaths."""
     canonical_dir = config.root / config.runtime_src_relpath
     vendored_dir = plugin_dir / config.vendored_runtime_relpath
-    vendored_dir.mkdir(parents=True, exist_ok=True)
     changed: list[str] = []
-    canonical_files = {
-        p.name: p.read_bytes() for p in sorted(canonical_dir.glob("*.py"))
+    if vendored_dir.is_symlink():
+        vendored_dir.unlink()
+        changed.append("removed:symlink:_runtime")
+    vendored_dir.mkdir(parents=True, exist_ok=True)
+    canonical = {
+        rel: path.read_bytes()
+        for rel, path in _relative_file_map(canonical_dir).items()
     }
-    for name, content in canonical_files.items():
-        target = vendored_dir / name
+    for rel, content in canonical.items():
+        target = vendored_dir / rel
+        if target.is_symlink():
+            target.unlink()
+            changed.append(f"removed:symlink:{rel}")
         if not target.is_file() or target.read_bytes() != content:
+            target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
-            changed.append(name)
-    for stray in sorted(vendored_dir.glob("*.py")):
-        if stray.name not in canonical_files:
-            stray.unlink()
-            changed.append(f"removed:{stray.name}")
+            changed.append(rel)
+    for rel in sorted(set(_relative_file_map(vendored_dir)) - set(canonical)):
+        (vendored_dir / rel).unlink()
+        changed.append(f"removed:{rel}")
+    _remove_cache_and_empty_dirs(vendored_dir)
     return changed
+
+
+def _remove_cache_and_empty_dirs(vendored_dir: Path) -> None:
+    for path in sorted(vendored_dir.rglob("*"), reverse=True):
+        if path.is_dir() and (path.name == "__pycache__" or not any(path.iterdir())):
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def has_hook_scripts(config: ValidatorConfig, plugin_dir: Path) -> bool:
+    vendored_dir = plugin_dir / config.vendored_runtime_relpath
+    return any(
+        not path.is_relative_to(vendored_dir)
+        for path in plugin_hook_scripts(config, plugin_dir)
+    )
 
 
 def run(config: ValidatorConfig, *, check_only: bool) -> int:
@@ -61,7 +91,7 @@ def run(config: ValidatorConfig, *, check_only: bool) -> int:
         return EXIT_DRIFT if violations else EXIT_CLEAN
 
     for plugin_dir in discover_plugin_dirs(config):
-        if not (plugin_dir / config.hook_scripts_relpath).is_dir():
+        if not has_hook_scripts(config, plugin_dir):
             log.info("plugin_skipped_no_hooks", plugin=plugin_dir.name)
             continue
         changed = sync_plugin(config, plugin_dir)

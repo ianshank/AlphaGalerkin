@@ -44,17 +44,20 @@ def load_tunables(
     *,
     relpath: str = constants.DEFAULT_TUNABLES_RELPATH,
     env: Mapping[str, str] | None = None,
+    fallbacks: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Load defaults from the plugin's tunables file and apply env overrides.
+    """Load tunables: in-code ``fallbacks`` ← defaults file ← env overrides.
 
-    A missing file yields ``{}`` plus overrides (hooks must run with
-    sensible in-code fallbacks); an unreadable or malformed file raises
-    :class:`TunablesError` so the fail-safe wrapper can log it.
+    ``fallbacks`` are the hook's in-code defaults; the plugin's tunables
+    file overrides them, and ``CCP_*`` env variables override both — so
+    env overrides keep working even when the defaults file is absent.
+    An unreadable or malformed file raises :class:`TunablesError` so the
+    fail-safe wrapper can log it.
     """
     source = environ if env is None else env
     base = plugin_root(source) if root is None else root
     path = base / relpath
-    defaults: dict[str, Any] = {}
+    defaults: dict[str, Any] = dict(fallbacks) if fallbacks else {}
     if path.is_file():
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
@@ -64,7 +67,7 @@ def load_tunables(
             raise TunablesError(f"tunables file {path} must contain a JSON object")
         # Forward compatibility: a newer schema_version may carry unknown
         # keys; known keys keep working, unknown keys pass through untouched.
-        defaults = {k: v for k, v in document.items() if k != "schema_version"}
+        defaults.update((k, v) for k, v in document.items() if k != "schema_version")
     return apply_env_overrides(defaults, source)
 
 

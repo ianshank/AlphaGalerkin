@@ -18,7 +18,9 @@ claude plugin validate ./plugins/<name>           # official manifest check
 pytest tests/unit/ -v                             # harness + hook unit tests
 pytest tests/e2e -v                               # official-CLI smoke (skips w/o CLI)
 ruff check tools/ tests/ plugins/*/hooks/scripts  # lint
-mypy tools/ && mypy plugins/eng-standards/hooks/scripts/quality_scan.py
+# Use `python -m mypy` (a standalone `mypy` binary may run in an isolated
+# tool venv without the project's deps and report spurious import errors)
+python -m mypy tools/ tests/ plugins/eng-standards/hooks/scripts/quality_scan.py
 claude --plugin-dir ./plugins/<name>              # interactive local test
 /reload-plugins                                   # pick up edits without restart
 ```

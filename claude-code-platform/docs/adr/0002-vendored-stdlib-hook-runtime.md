@@ -26,8 +26,14 @@ against the official plugins-reference docs, 2026-07-03):
 - CI parity-gates the vendored copies byte-for-byte
   (`tools/validate` gate `vendored-runtime-parity`; also
   `sync_runtime --check`).
-- A `stdlib-imports` gate AST-checks every hook script (including the
-  vendored runtime) and fails on any non-stdlib, non-`_runtime` import.
+- A `stdlib-imports` gate AST-checks every hook script — every `*.py`
+  under `hooks/` plus any file referenced by a hooks.json command,
+  wherever it lives in the plugin — and fails on any non-stdlib,
+  non-`_runtime` *static* import. Dynamic-import machinery (`importlib`,
+  `__import__`) is banned outright because it defeats static analysis.
+- The parity gate is recursive and content-complete (all files at any
+  depth, bytecode caches excluded) and rejects symlinks anywhere in the
+  vendored copy — a symlinked runtime dangles after plugin install.
 - Third-party libraries (pydantic, structlog, pyyaml) are permitted only
   in the dev-side harness (`tools/validate`, sync tools, tests).
 

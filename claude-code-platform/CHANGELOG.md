@@ -6,6 +6,27 @@ per-plugin semver plus a marketplace metadata version.
 
 ## [Unreleased]
 
+### Fixed — adversarial-review hardening (pre-release)
+
+- **Gating hooks now fail CLOSED on crashes** (F1): the fail-safe wrapper
+  accepts a crash-time gating resolver; `quality_scan` resolves gating
+  from env/config safely, so a config typo can no longer silently disable
+  an enabled gate. Crash telemetry reports the *effective* gating flag.
+- **Gate bypass closures** (F2–F5): stdlib-import gate now scans every
+  `*.py` under `hooks/` plus files referenced by hooks.json commands;
+  dynamic imports (`importlib`, `__import__`) banned; vendored-runtime
+  parity is recursive/content-complete and rejects symlinks; hooks.json
+  commands referencing nonexistent files are violations; `sync_runtime`
+  mirrors all of the above (recursive vendor/stray removal, symlink
+  replacement).
+- **Path-literal gate coverage** (F6): trailing-slash requirement dropped
+  (`/home/user` now caught), tilde file paths caught, extensionless files
+  scanned.
+- **Env overrides without defaults file** (F7): `load_tunables` gained
+  `fallbacks`; `CCP_*` overrides now work even when `config/defaults.json`
+  is absent.
+- 24 regression tests pinning every finding (`tests/unit/test_review_fixes.py`).
+
 ### Added — marketplace 0.1.0
 
 - Catalog (`.claude-plugin/marketplace.json`) with generated, parity-gated

@@ -51,11 +51,16 @@ tunables.
 Hook behavior notes:
 
 - **Fail-safe:** unexpected errors are logged (`hook_failsafe_triggered`)
-  and exit 0 — a crashing hook never blocks a session.
+  and exit 0 in warn-only mode. When `gating` is enabled, crashes fail
+  CLOSED (exit 2) — a gate that breaks must not silently allow what it
+  was asked to block. The gating flag is re-resolved at crash time
+  (env first, then the defaults file).
 - **No secret leakage:** findings log category/line/pattern, never the
   matched text.
 - **Blocking is opt-in** (`gating`), to be promoted only after the
   false-positive rate is measured in real use.
+- **Env overrides always work**, even without `config/defaults.json` —
+  the script ships in-code fallbacks that `CCP_*` values coerce against.
 
 ## Platform
 

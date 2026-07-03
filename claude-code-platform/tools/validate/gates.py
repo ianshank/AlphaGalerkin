@@ -39,6 +39,20 @@ IGNORED_CACHE_SUFFIXES = (".pyc", ".pyo")
 DYNAMIC_IMPORT_MODULES = ("importlib",)
 DYNAMIC_IMPORT_BUILTIN = "__import__"
 
+#: Failure modes of reading+parsing a JSON document from disk. NOTE:
+#: UnicodeDecodeError (non-UTF-8 bytes) is a ValueError like pydantic's
+#: ValidationError — keep this tuple explicit so schema errors are never
+#: misreported as unreadable files.
+READ_ERRORS: tuple[type[Exception], ...] = (
+    OSError,
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+)
+
+#: READ_ERRORS plus schema validation — for callers that treat both
+#: as "skip this document; another gate reports it".
+READ_OR_SCHEMA_ERRORS: tuple[type[Exception], ...] = (*READ_ERRORS, ValidationError)
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -86,7 +100,7 @@ def load_marketplace(
         return None, [Violation(gate, str(path), "marketplace.json is missing")]
     try:
         document = MarketplaceDocument.model_validate(_read_json(path))
-    except (OSError, json.JSONDecodeError) as exc:
+    except READ_ERRORS as exc:
         return None, [Violation(gate, str(path), f"unreadable JSON: {exc}")]
     except ValidationError as exc:
         return None, _schema_violations(gate, path, exc)
@@ -103,7 +117,7 @@ def load_manifests(
         path = plugin_dir / config.manifest_relpath
         try:
             manifest = PluginManifest.model_validate(_read_json(path))
-        except (OSError, json.JSONDecodeError) as exc:
+        except READ_ERRORS as exc:
             violations.append(Violation(gate, str(path), f"unreadable JSON: {exc}"))
             continue
         except ValidationError as exc:
@@ -179,7 +193,7 @@ def gate_pins(
         return [Violation(gate, str(path), "release pin manifest is missing")]
     try:
         pins = PinsDocument.model_validate(_read_json(path))
-    except (OSError, json.JSONDecodeError) as exc:
+    except READ_ERRORS as exc:
         return [Violation(gate, str(path), f"unreadable JSON: {exc}")]
     except ValidationError as exc:
         return _schema_violations(gate, path, exc)
@@ -290,7 +304,7 @@ def _hooks_command_paths(config: ValidatorConfig, plugin_dir: Path) -> list[str]
         return []
     try:
         document = HooksDocument.model_validate(_read_json(hooks_path))
-    except (OSError, json.JSONDecodeError, ValidationError):
+    except READ_OR_SCHEMA_ERRORS:
         return []  # reported by the hooks-schema checks elsewhere
     token_path = re.compile(re.escape(config.plugin_root_token) + r"/([^\"'\s]+)")
     paths: list[str] = []
@@ -401,7 +415,7 @@ def _hooks_command_token_violations(
         return []
     try:
         document = HooksDocument.model_validate(_read_json(hooks_path))
-    except (OSError, json.JSONDecodeError) as exc:
+    except READ_ERRORS as exc:
         return [Violation("hooks-schema", str(hooks_path), f"unreadable JSON: {exc}")]
     except ValidationError as exc:
         return _schema_violations("hooks-schema", hooks_path, exc)
@@ -518,7 +532,10 @@ def _parse_frontmatter(text: str) -> dict[str, Any] | None:
     for index, line in enumerate(lines[1:], start=1):
         if line.strip() == FRONTMATTER_DELIMITER:
             block = "\n".join(lines[1:index])
-            loaded = yaml.safe_load(block)
+            try:
+                loaded = yaml.safe_load(block)
+            except yaml.YAMLError:
+                return None  # reported as malformed frontmatter by the gate
             return loaded if isinstance(loaded, dict) else None
     return None
 

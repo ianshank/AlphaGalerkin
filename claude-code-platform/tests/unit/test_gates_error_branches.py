@@ -215,3 +215,47 @@ class TestFrontmatterEdges:
         )
         violations = gate_frontmatter(config_for(synthetic_marketplace))
         assert any("'description' is required" in v.message for v in violations)
+
+
+class TestNonUtf8AndYamlRobustness:
+    """Copilot review: bad encodings / bad YAML are violations, not crashes."""
+
+    def test_non_utf8_marketplace_is_unreadable_violation(
+        self, synthetic_marketplace: Path
+    ) -> None:
+        catalog = synthetic_marketplace / ".claude-plugin" / "marketplace.json"
+        catalog.write_bytes(b"\xff\xfe{ not utf8 }")
+        marketplace, violations = load_marketplace(config_for(synthetic_marketplace))
+        assert marketplace is None
+        assert any("unreadable JSON" in v.message for v in violations)
+
+    def test_non_utf8_manifest_is_unreadable_violation(
+        self, synthetic_marketplace: Path
+    ) -> None:
+        manifest = plugin_dir(synthetic_marketplace) / ".claude-plugin" / "plugin.json"
+        manifest.write_bytes(b"\xff\xfe{}")
+        _, violations = load_manifests(config_for(synthetic_marketplace))
+        assert any("unreadable JSON" in v.message for v in violations)
+
+    def test_non_utf8_pins_is_unreadable_violation(
+        self, synthetic_marketplace: Path
+    ) -> None:
+        (synthetic_marketplace / "release" / "pins.json").write_bytes(b"\xff\xfe{}")
+        violations = run_all_gates(config_for(synthetic_marketplace))
+        assert any(
+            v.gate == "release-pins" and "unreadable JSON" in v.message
+            for v in violations
+        )
+
+    def test_invalid_yaml_frontmatter_is_violation_not_crash(
+        self, synthetic_marketplace: Path
+    ) -> None:
+        skill = plugin_dir(synthetic_marketplace) / "skills" / "demo-skill" / "SKILL.md"
+        skill.write_text(
+            "---\nname: demo-skill\ndescription: [unclosed\n  ,bad: {\n---\nbody\n",
+            encoding="utf-8",
+        )
+        violations = run_all_gates(config_for(synthetic_marketplace))
+        assert any(
+            v.gate == "frontmatter" and "malformed" in v.message for v in violations
+        )

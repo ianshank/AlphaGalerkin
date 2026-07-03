@@ -837,20 +837,21 @@ src/
   vertex/       - Google Vertex AI cloud-training integration
   engines/      - UCI chess-engine interface for play evaluation (used by training/evaluation.py, training/trainer.py)
   tournament/   - Tournament scheduling & config (E2E-tested)
-  backend/      - JAX/Torch backend abstraction (uses data/, templates/)
+  backend/      - JAX/Torch backend abstraction (uses templates/)
   curriculum/   - Curriculum-learning scheduler (uses distributed/)
   analysis/     - Game code-analysis / auditing utilities (uses games/)
   demos/        - Benchmark & visualization demos (uses physics/, poc/, research/)
   reentry/      - MCTS-guided hypersonic-reentry / compressible-flow domain PoC
   firefighting/ - MCTS-guided wildfire-spread domain PoC
   intercept/    - MCTS-guided missile-interception domain PoC
-  prototyping/  - Fast-prototyping utilities (test-only; orphaned from production, removal candidate)
+  prototyping/  - Fast-prototyping utilities (not imported by core src/ production paths; used by its own tests and the hf_space/ HuggingFace Space mirror)
   constants.py  - Centralized numerical constants (imported across training/pde/mcts/modeling)
 dashboard/      - Gradio web UI (uses mcts/, modeling/, physics/, poc/, tools/)
 
 # NOTE: reentry/, firefighting/, intercept/ are domain research PoCs gated behind
 # scenario configs (not production paths); their isolation from the core solver is
-# intentional. prototyping/ is imported only by its own tests and is a removal candidate.
+# intentional. prototyping/ is not imported by core production paths — only by its own
+# tests and the hf_space/ HuggingFace Space mirror (hf_space/src/prototyping/).
 tests/
   math_kernel/  - Property-based tests for mathematical operators
     test_fredholm.py  - Fredholm integral equation tests

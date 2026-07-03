@@ -9,6 +9,7 @@ import pytest
 
 from tools.sync_runtime import EXIT_CLEAN, EXIT_DRIFT, run, sync_plugin
 from tools.validate.config import ValidatorConfig
+from tools.validate.gates import run_all_gates
 
 
 @pytest.fixture()
@@ -80,3 +81,22 @@ class TestRunCheckOnly:
         assert run(config, check_only=True) == EXIT_DRIFT
         assert run(config, check_only=False) == EXIT_CLEAN
         assert run(config, check_only=True) == EXIT_CLEAN
+
+
+def test_write_removes_nested_stray_symlink(
+    synthetic_marketplace: Path,
+) -> None:
+    """Copilot review: a stray symlink under _runtime must be repaired."""
+    config = ValidatorConfig(root=synthetic_marketplace)
+    plugin = synthetic_marketplace / "plugins" / "demo-plugin"
+    vendored = plugin / "hooks" / "scripts" / "_runtime"
+    (vendored / "sub").mkdir()
+    stray = vendored / "sub" / "link.py"
+    stray.symlink_to(synthetic_marketplace / "tools" / "hook_runtime" / "constants.py")
+    assert run_all_gates(config) != []  # gate flags the symlink
+
+    changed = sync_plugin(config, plugin)
+
+    assert "removed:symlink:sub/link.py" in changed
+    assert not stray.exists() and not stray.is_symlink()
+    assert run_all_gates(config) == []  # write mode fully repairs drift

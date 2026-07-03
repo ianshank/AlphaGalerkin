@@ -284,3 +284,18 @@ class TestReleasePinsGate:
         violations = run_all_gates(config)
         pin_messages = [v.message for v in violations if v.gate == "release-pins"]
         assert any("missing" in m for m in pin_messages)
+
+
+def test_missing_catalog_description_is_parity_violation(
+    synthetic_marketplace: Path,
+) -> None:
+    """Copilot review: a deleted catalog description must not pass parity."""
+    catalog = synthetic_marketplace / ".claude-plugin" / "marketplace.json"
+    document = read_json(catalog)
+    del document["plugins"][0]["description"]
+    write_json(catalog, document)
+    violations = run_all_gates(ValidatorConfig(root=synthetic_marketplace))
+    assert any(
+        v.gate == "catalog-parity" and "missing description" in v.message
+        for v in violations
+    )

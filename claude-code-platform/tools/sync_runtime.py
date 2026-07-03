@@ -46,14 +46,19 @@ def sync_plugin(config: ValidatorConfig, plugin_dir: Path) -> list[str]:
         vendored_dir.unlink()
         changed.append("removed:symlink:_runtime")
     vendored_dir.mkdir(parents=True, exist_ok=True)
+    # Symlinks anywhere in the vendored tree are gate violations, and
+    # relative_file_map deliberately skips them — remove them up front so
+    # write mode always repairs what the parity gate flags.
+    for stray_link in sorted(vendored_dir.rglob("*")):
+        if stray_link.is_symlink():
+            rel = stray_link.relative_to(vendored_dir).as_posix()
+            stray_link.unlink()
+            changed.append(f"removed:symlink:{rel}")
     canonical = {
         rel: path.read_bytes() for rel, path in relative_file_map(canonical_dir).items()
     }
     for rel, content in canonical.items():
         target = vendored_dir / rel
-        if target.is_symlink():
-            target.unlink()
-            changed.append(f"removed:symlink:{rel}")
         if not target.is_file() or target.read_bytes() != content:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)

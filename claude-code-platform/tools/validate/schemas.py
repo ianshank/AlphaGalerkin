@@ -65,10 +65,14 @@ class MarketplaceDocument(BaseModel):
     def _unique_plugin_names(
         cls, value: list[MarketplacePluginEntry]
     ) -> list[MarketplacePluginEntry]:
-        names = [entry.name for entry in value]
-        duplicates = sorted({n for n in names if names.count(n) > 1})
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for entry in value:
+            if entry.name in seen:
+                duplicates.add(entry.name)
+            seen.add(entry.name)
         if duplicates:
-            raise ValueError(f"duplicate plugin names in catalog: {duplicates}")
+            raise ValueError(f"duplicate plugin names in catalog: {sorted(duplicates)}")
         return value
 
 

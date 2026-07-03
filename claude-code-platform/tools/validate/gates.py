@@ -148,12 +148,19 @@ def gate_catalog_parity(
                 )
             )
             continue
-        if entry.description is not None and entry.description != manifest.description:
+        # None counts as drift too: sync_catalog always writes a
+        # description, so absence means the entry was hand-edited.
+        if entry.description != manifest.description:
+            detail = (
+                "missing description"
+                if entry.description is None
+                else "catalog description differs from manifest"
+            )
             violations.append(
                 Violation(
                     gate,
                     str(path),
-                    f"{entry.name}: catalog description differs from manifest "
+                    f"{entry.name}: {detail} "
                     "(regenerate with `python -m tools.sync_catalog --write`)",
                 )
             )

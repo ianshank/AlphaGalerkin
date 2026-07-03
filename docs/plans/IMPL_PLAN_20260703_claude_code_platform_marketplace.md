@@ -38,7 +38,7 @@ This succeeds when:
 - [ ] `claude plugin validate --strict` passes for the marketplace root and
       every plugin in plugins/
 - [ ] CI validation suite passes: JSON-schema checks on marketplace.json,
-      plugin.json, hooks.json; frontmatter lint on all SKILL.md / agent .md;
+      plugin.json, hooks.json; frontmatter lint on all SKILL.md / agent.md;
       hook-runtime vendoring parity check; pytest on all hook scripts
       (100% of hook scripts covered)
 - [ ] CI component-load smoke test: `claude --plugin-dir ./plugins/<name>`
@@ -154,7 +154,7 @@ self-referential sha-pinned source entries — see ADR-0003).
   mypy-clean.
 - Skills: progressive disclosure — SKILL.md under ~150 lines, heavy
   reference material in adjacent files loaded on demand
-- Agents: single responsibility per agent .md; declare tool restrictions
+- Agents: single responsibility per agent.md; declare tool restrictions
   (disallowedTools) explicitly rather than inheriting everything
 - Testing: pytest for hook scripts (>90% coverage) via subprocess-driven
   stdin/stdout contract tests, one end-to-end smoke test per plugin
@@ -272,7 +272,7 @@ PROHIBITED (do not attempt):
                                        #     stdlib + plugin-local modules only
 4. claude plugin validate --strict .   # marketplace root
    claude plugin validate --strict ./plugins/<each>
-5. pytest tests/ -v                    # unit tests for hook scripts + harness
+5. pytest tests/unit/ -v               # unit tests for hook scripts + harness
 6. pytest tests/e2e -v                 # smoke: launch claude --plugin-dir per
                                        #   plugin, assert components load and
                                        #   namespaced skills are listed
@@ -330,7 +330,7 @@ Before reporting completion:
     + release/pins.json
 - claude plugin validate --strict . : official marketplace check
 - claude plugin validate --strict ./plugins/<name> : official manifest check
-- pytest tests/ -v : harness + hook unit tests
+- pytest tests/unit/ -v : harness + hook unit tests
 - pytest tests/e2e -v : plugin load smoke tests
 - claude --plugin-dir ./plugins/<name> : interactive local test
 - /reload-plugins : pick up edits without restart

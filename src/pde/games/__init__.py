@@ -8,11 +8,13 @@ This module provides concrete implementations of PDEGame:
 """
 
 from src.pde.games.basis_selection import BasisSelectionGame
+from src.pde.games.lshape_amr import LShapeAMRGame
 from src.pde.games.mesh_refinement import MeshRefinementGame
 from src.pde.games.swarm_planning import SwarmPlanningGame
 
 __all__ = [
     "BasisSelectionGame",
+    "LShapeAMRGame",
     "MeshRefinementGame",
     "SwarmPlanningGame",
 ]

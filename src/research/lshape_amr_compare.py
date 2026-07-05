@@ -31,7 +31,7 @@ from __future__ import annotations
 import csv
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -63,6 +63,10 @@ DEFAULT_N_MATCH_CHECKPOINTS: int = 8
 # Floor applied to any denominator (DOF, error, wall-clock, ratio) so ratios
 # stay finite even for a degenerate (single-point / zero-time) trajectory.
 RATIO_FLOOR: float = 1e-15
+
+# Prime stride decorrelating per-seed RNG streams in the multi-seed sweep
+# (mirrors the noyron_basis / scaling_law scenarios).
+SEED_PRIME_STRIDE: int = 7919
 
 
 # --------------------------------------------------------------------------- #
@@ -129,6 +133,7 @@ class ComparisonParams:
     add_noise: bool = True
     # Comparison
     n_match_checkpoints: int = DEFAULT_N_MATCH_CHECKPOINTS
+    n_seeds: int = 5
 
 
 @dataclass
@@ -211,6 +216,39 @@ class ComparisonResult:
 # --------------------------------------------------------------------------- #
 
 
+def _trapezoidal_weights(axis: NDArray[np.float64]) -> NDArray[np.float64]:
+    """Dual-cell (trapezoidal) integration weights for a 1-D grid axis.
+
+    Interior nodes get half of each adjacent spacing; the two endpoints get a
+    single half-spacing. ``sum(weights) == axis[-1] - axis[0]``.
+    """
+    h = np.diff(axis)
+    return np.concatenate([[h[0] / 2.0], 0.5 * (h[:-1] + h[1:]), [h[-1] / 2.0]])
+
+
+def _area_weighted_l2(
+    diff: NDArray[np.float64],
+    xs: NDArray[np.float64],
+    ys: NDArray[np.float64],
+    in_mask: NDArray[np.bool_],
+) -> float:
+    """Area-weighted discrete L2 norm of ``diff`` over in-domain nodes.
+
+    ``diff`` is the already-masked error vector (length ``in_mask.sum()``);
+    ``in_mask`` selects the in-domain nodes from the full ``(len(xs), len(ys))``
+    tensor grid (i-major). Returns ``sqrt(sum(w * diff^2) / sum(w))`` where
+    ``w`` is each node's dual-cell area — the mesh-independent continuous norm.
+    """
+    if diff.size == 0:
+        return float("nan")
+    weights = np.outer(_trapezoidal_weights(xs), _trapezoidal_weights(ys)).ravel()
+    w_in = weights[in_mask]
+    total = float(np.sum(w_in))
+    if total <= 0.0:
+        return float("nan")
+    return float(np.sqrt(np.sum(w_in * diff**2) / total))
+
+
 def make_solve_fn(
     operator: PDEOperator,
     inside: Callable[[NDArray[np.float64]], NDArray[np.bool_]],
@@ -253,7 +291,13 @@ def make_solve_fn(
             operator.exact_solution(grid.astype(np.float32)), dtype=np.float64
         ).ravel()
         diff = (u_full.ravel() - exact)[in_mask]
-        l2 = float(np.sqrt(np.mean(diff**2))) if diff.size else float("nan")
+        # Area-weighted (dual-cell / lumped-mass) discrete L2 norm. A plain
+        # node-wise RMS over-weights the densely-refined singular region on the
+        # non-uniform AMR grid; since MCTS and Dörfler cluster nodes
+        # differently, that bias would distort the *ratio* itself. Weighting
+        # each node by its trapezoidal dual-cell area (wx_i * wy_j) recovers the
+        # mesh-independent continuous norm ||u_h - u||_L2 / sqrt(|Omega|).
+        l2 = _area_weighted_l2(diff, xs, ys, in_mask)
         n_dof = int(in_mask.sum())
         return GridSolveResult(
             solution=u_full,
@@ -500,6 +544,91 @@ def run_comparison(
         l2_error_ratio_at_matched_dof=l2_ratio,
         error_per_dof_ratio_mcts_over_dorfler=epd_ratio,
         matched_dof=matched_dof,
+    )
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# Multi-seed aggregation                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def resolved_seeds(base_seed: int, n_seeds: int) -> list[int]:
+    """Deterministic, decorrelated per-seed RNG seeds for the sweep."""
+    return [base_seed + i * SEED_PRIME_STRIDE for i in range(n_seeds)]
+
+
+@dataclass
+class MultiSeedComparison:
+    """Aggregate of ``n_seeds`` single-seed comparisons.
+
+    A single MCTS run is high-variance, so the headline ratios are the
+    **median** across seeds (robust to an unlucky seed), with the full per-seed
+    spread recorded for honesty. Mirrors the ``noyron_basis`` / ``scaling_law``
+    median-over-seeds convention.
+    """
+
+    per_seed: list[ComparisonResult]
+    seeds: list[int]
+
+    @property
+    def l2_ratios(self) -> list[float]:
+        """Per-seed matched-DOF L2 ratios."""
+        return [r.l2_error_ratio_at_matched_dof for r in self.per_seed]
+
+    @property
+    def epd_ratios(self) -> list[float]:
+        """Per-seed matched-wall-clock error-per-DOF ratios."""
+        return [r.error_per_dof_ratio_mcts_over_dorfler for r in self.per_seed]
+
+    @property
+    def representative(self) -> ComparisonResult:
+        """The per-seed result whose L2 ratio is the median — for the artifact."""
+        ratios = self.l2_ratios
+        order = sorted(range(len(ratios)), key=lambda i: ratios[i])
+        return self.per_seed[order[len(order) // 2]]
+
+    def metrics(self) -> dict[str, float]:
+        """Headline (median) metrics plus per-seed spread and win fraction.
+
+        The gated key ``l2_error_ratio_at_matched_dof`` is the **median** across
+        seeds. Per-arm final DOF/L2 come from the representative (median) seed.
+        """
+        l2 = np.array(self.l2_ratios, dtype=np.float64)
+        epd = np.array(self.epd_ratios, dtype=np.float64)
+        out = dict(self.representative.metrics())
+        out.update(
+            {
+                "l2_error_ratio_at_matched_dof": float(np.median(l2)),
+                "error_per_dof_ratio_mcts_over_dorfler": float(np.median(epd)),
+                "l2_ratio_seed_min": float(np.min(l2)),
+                "l2_ratio_seed_max": float(np.max(l2)),
+                "l2_ratio_seed_std": float(np.std(l2)),
+                "mcts_win_fraction": float(np.mean(l2 < 1.0)),
+                "n_seeds": float(len(self.per_seed)),
+            }
+        )
+        return out
+
+
+def run_multiseed_comparison(
+    operator: PDEOperator,
+    game_config: PDEGameConfig,
+    params: ComparisonParams,
+) -> MultiSeedComparison:
+    """Run ``params.n_seeds`` comparisons and aggregate the median headline.
+
+    Seeds are derived from ``params.seed`` via :func:`resolved_seeds` so the run
+    is fully reproducible. Each seed runs an independent :func:`run_comparison`.
+    """
+    seeds = resolved_seeds(params.seed, params.n_seeds)
+    per_seed = [run_comparison(operator, game_config, replace(params, seed=s)) for s in seeds]
+    result = MultiSeedComparison(per_seed=per_seed, seeds=seeds)
+    logger.info(
+        "lshape_multiseed_done",
+        n_seeds=len(seeds),
+        median_l2_ratio=float(np.median(result.l2_ratios)),
+        win_fraction=float(np.mean(np.array(result.l2_ratios) < 1.0)),
     )
     return result
 

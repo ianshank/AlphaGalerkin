@@ -30,6 +30,7 @@ def _config(tmp_path, **overrides: object) -> LShapeAMRCompareConfig:  # type: i
         "max_steps": 6,
         "n_candidate_elements": 4,
         "n_simulations": 4,
+        "n_seeds": 2,
         "add_noise": False,
         "output_dir": str(tmp_path),
     }
@@ -60,6 +61,13 @@ class TestMicroRun:
 
         # The primary threshold must have been evaluated.
         assert "l2_error_ratio_at_matched_dof" in result.threshold_results
+
+        # Multi-seed aggregation metrics are recorded on the run.
+        for key in ("mcts_win_fraction", "l2_ratio_seed_std", "n_seeds"):
+            assert key in result.metrics
+            assert np.isfinite(result.metrics[key])
+        assert result.metrics["n_seeds"] == pytest.approx(2.0)
+        assert 0.0 <= result.metrics["mcts_win_fraction"] <= 1.0
 
         # CSV + PNG artifacts registered and written.
         assert "csv" in result.artifacts

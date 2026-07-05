@@ -34,7 +34,11 @@ from src.poc.scenarios.lshape_amr_compare_config import (
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
-    from src.research.lshape_amr_compare import ComparisonParams, ComparisonResult
+    from src.research.lshape_amr_compare import (
+        ComparisonParams,
+        ComparisonResult,
+        MultiSeedComparison,
+    )
 
 
 @scenario(SCENARIO_NAME)
@@ -77,23 +81,24 @@ class LShapeAMRCompareScenario(BaseScenario):
             torch.cuda.empty_cache()
 
     def execute(self) -> ScenarioResult:
-        """Run both arms, record metrics, and write the CSV/PNG artifacts."""
+        """Sweep seeds, record the median headline, and write the artifacts."""
         assert self._scenario_logger is not None
         # Imported lazily so the config module (and load_config_from_dict) stays
         # importable without scipy / the MCTS engine present.
         from src.research.lshape_amr_compare import (
             export_csv,
             export_plot,
-            run_comparison,
+            run_multiseed_comparison,
         )
 
         operator = self._build_operator()
         game_config = self._build_game_config(operator)
         params = self._build_params()
 
-        result = run_comparison(operator, game_config, params)
-        self._record_metrics(result)
-        self._write_artifacts(result, export_csv, export_plot)
+        multiseed = run_multiseed_comparison(operator, game_config, params)
+        self._record_metrics(multiseed)
+        # The committed artifact uses the median (representative) seed's run.
+        self._write_artifacts(multiseed.representative, export_csv, export_plot)
 
         return self._create_result(status=ScenarioStatus.RUNNING)
 
@@ -159,23 +164,26 @@ class LShapeAMRCompareScenario(BaseScenario):
             value_scale=self.config.value_scale,
             c_puct=self.config.c_puct,
             add_noise=self.config.add_noise,
+            n_seeds=self.config.n_seeds,
         )
 
     # ------------------------------------------------------------------ #
     # Recording                                                           #
     # ------------------------------------------------------------------ #
 
-    def _record_metrics(self, result: ComparisonResult) -> None:
-        """Record every comparison metric on the result and as a log event."""
+    def _record_metrics(self, multiseed: MultiSeedComparison) -> None:
+        """Record the median headline + per-seed spread metrics."""
         assert self._scenario_logger is not None
-        for name, value in result.metrics().items():
+        metrics = multiseed.metrics()
+        for name, value in metrics.items():
             self.record_metric(name, value)
             self._scenario_logger.metric(name, value)
         self._scenario_logger.info(
             "comparison_recorded",
-            l2_error_ratio_at_matched_dof=result.l2_error_ratio_at_matched_dof,
-            error_per_dof_ratio_mcts_over_dorfler=(result.error_per_dof_ratio_mcts_over_dorfler),
-            matched_dof=result.matched_dof,
+            l2_error_ratio_at_matched_dof=metrics["l2_error_ratio_at_matched_dof"],
+            error_per_dof_ratio_mcts_over_dorfler=metrics["error_per_dof_ratio_mcts_over_dorfler"],
+            mcts_win_fraction=metrics["mcts_win_fraction"],
+            n_seeds=metrics["n_seeds"],
         )
 
     def _write_artifacts(

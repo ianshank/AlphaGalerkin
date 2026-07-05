@@ -48,9 +48,12 @@ class LShapeAMRCompareConfig(BaseScenarioConfig):
     )
     initial_side: int = Field(
         default=4,
-        ge=1,
+        ge=2,
         le=64,
-        description="Elements per axis on the shared coarse grid (nodes = side+1).",
+        description=(
+            "Elements per axis on the shared coarse grid (nodes = side+1). Must be "
+            "even so the reentrant corner at the origin is a grid node."
+        ),
     )
     max_dof: int = Field(
         default=400,
@@ -88,6 +91,15 @@ class LShapeAMRCompareConfig(BaseScenarioConfig):
     )
     n_simulations: int = Field(
         default=12, ge=1, le=4096, description="MCTS simulations per accepted refinement."
+    )
+    n_seeds: int = Field(
+        default=5,
+        ge=1,
+        le=64,
+        description=(
+            "Independent seeds swept; the gated ratio is the MEDIAN across seeds "
+            "(a single MCTS run is high-variance)."
+        ),
     )
     value_scale: float = Field(
         default=4.0,
@@ -130,6 +142,16 @@ class LShapeAMRCompareConfig(BaseScenarioConfig):
     def _lock_name(cls, v: str) -> str:
         if v != SCENARIO_NAME:
             raise ValueError(f"name must be {SCENARIO_NAME!r}, got {v!r}")
+        return v
+
+    @field_validator("initial_side")
+    @classmethod
+    def _even_initial_side(cls, v: int) -> int:
+        if v % 2 != 0:
+            raise ValueError(
+                "initial_side must be even so the L-shape reentrant corner at the "
+                f"origin aligns with a grid node, got {v}"
+            )
         return v
 
     @field_validator("artifact_basename")

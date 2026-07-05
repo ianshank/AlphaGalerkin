@@ -33,6 +33,7 @@ scenarios:
     max_refinements: 12
     n_candidate_elements: 6
     n_simulations: 8
+    n_seeds: 3
     value_scale: 4.0
     c_puct: 1.4
     add_noise: true

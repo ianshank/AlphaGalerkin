@@ -69,13 +69,31 @@ class TestValidation:
             _config(**{field: value})
 
     def test_budget_consistency_rejects_oversized_candidates(self) -> None:
-        # bound is 4 * initial_side^2; initial_side=1 -> 4, so 8 is too large.
+        # bound is 4 * initial_side^2; initial_side=2 -> 16, so 17 is too large.
         with pytest.raises(ValueError, match="exceeds a sane bound"):
-            _config(initial_side=1, n_candidate_elements=8)
+            _config(initial_side=2, n_candidate_elements=17)
+
+    def test_odd_initial_side_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must be even"):
+            _config(initial_side=3)
 
     def test_budget_consistency_accepts_within_bound(self) -> None:
         cfg = _config(initial_side=4, n_candidate_elements=6)
         assert cfg.n_candidate_elements == 6
+
+    def test_n_seeds_default_is_five(self) -> None:
+        assert _config().n_seeds == 5
+
+    def test_n_seeds_zero_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            _config(n_seeds=0)
+
+    def test_n_seeds_above_max_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            _config(n_seeds=65)
+
+    def test_n_seeds_within_bounds_accepted(self) -> None:
+        assert _config(n_seeds=2).n_seeds == 2
 
 
 class TestThresholds:

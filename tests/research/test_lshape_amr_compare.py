@@ -16,17 +16,24 @@ from src.pde.config import PDEConfig, PDEGameConfig, PDEType
 from src.pde.geometry import GeometryConfig, GeometryType
 from src.pde.operators import LShapedPoissonOperator
 from src.research.lshape_amr_compare import (
+    SEED_PRIME_STRIDE,
     ArmTrajectory,
     ComparisonParams,
+    ComparisonResult,
+    MultiSeedComparison,
     TrajectoryPoint,
+    _area_weighted_l2,
     _interp_log,
+    _trapezoidal_weights,
     compare_ratios,
     export_csv,
     export_plot,
     lshape_inside_predicate,
     make_solve_fn,
+    resolved_seeds,
     run_comparison,
     run_dorfler_arm,
+    run_multiseed_comparison,
 )
 
 pytest.importorskip("scipy", reason="scipy required for the masked FD solve")
@@ -265,3 +272,164 @@ class TestArtifacts:
         assert path is not None
         assert path.exists()
         assert path.stat().st_size > 0
+
+
+# --------------------------------------------------------------------------- #
+# _trapezoidal_weights                                                         #
+# --------------------------------------------------------------------------- #
+
+
+class TestTrapezoidalWeights:
+    def test_uniform_axis_interior_and_endpoints(self) -> None:
+        axis = np.linspace(0.0, 1.0, 5, dtype=np.float64)  # h = 0.25
+        w = _trapezoidal_weights(axis)
+        assert w.shape == axis.shape
+        # Endpoints get half-spacing, interior gets a full spacing.
+        assert w[0] == pytest.approx(0.125)
+        assert w[-1] == pytest.approx(0.125)
+        np.testing.assert_allclose(w[1:-1], 0.25)
+        # Sum equals the span.
+        assert float(w.sum()) == pytest.approx(axis[-1] - axis[0])
+
+    def test_non_uniform_axis_sum_equals_span(self) -> None:
+        axis = np.array([-1.0, -0.5, 0.1, 0.4, 2.0], dtype=np.float64)
+        w = _trapezoidal_weights(axis)
+        assert float(w.sum()) == pytest.approx(axis[-1] - axis[0])
+        assert np.all(w > 0.0)
+
+
+# --------------------------------------------------------------------------- #
+# _area_weighted_l2                                                            #
+# --------------------------------------------------------------------------- #
+
+
+class TestAreaWeightedL2:
+    def test_empty_diff_is_nan(self) -> None:
+        xs = np.linspace(0.0, 1.0, 3, dtype=np.float64)
+        ys = np.linspace(0.0, 1.0, 3, dtype=np.float64)
+        in_mask = np.zeros(9, dtype=bool)
+        assert np.isnan(_area_weighted_l2(np.array([], dtype=np.float64), xs, ys, in_mask))
+
+    def test_constant_field_on_uniform_grid_recovers_constant(self) -> None:
+        # On a uniform grid a constant error field returns exactly that constant,
+        # independent of the weighting: sqrt(sum(w*c^2)/sum(w)) == |c|.
+        xs = np.linspace(0.0, 1.0, 3, dtype=np.float64)
+        ys = np.linspace(0.0, 1.0, 3, dtype=np.float64)
+        in_mask = np.ones(9, dtype=bool)
+        c = 0.37
+        diff = np.full(9, c, dtype=np.float64)
+        val = _area_weighted_l2(diff, xs, ys, in_mask)
+        assert val == pytest.approx(c)
+        assert val > 0.0 and np.isfinite(val)
+
+    def test_non_uniform_grid_differs_from_unweighted_rms(self) -> None:
+        # A strongly non-uniform grid makes the area weighting active, so the
+        # dual-cell L2 must diverge from the plain node-wise RMS.
+        xs = np.array([0.0, 0.1, 1.0], dtype=np.float64)
+        ys = np.array([0.0, 0.1, 1.0], dtype=np.float64)
+        in_mask = np.ones(9, dtype=bool)
+        diff = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], dtype=np.float64)
+        weighted = _area_weighted_l2(diff, xs, ys, in_mask)
+        rms = float(np.sqrt(np.mean(diff**2)))
+        assert np.isfinite(weighted) and weighted > 0.0
+        assert weighted != pytest.approx(rms)
+
+
+# --------------------------------------------------------------------------- #
+# resolved_seeds                                                               #
+# --------------------------------------------------------------------------- #
+
+
+class TestResolvedSeeds:
+    def test_deterministic_distinct_and_anchored(self) -> None:
+        seeds = resolved_seeds(42, 5)
+        assert len(seeds) == 5
+        assert seeds[0] == 42  # first == base_seed
+        assert len(set(seeds)) == 5  # distinct
+        # Deterministic re-run.
+        assert resolved_seeds(42, 5) == seeds
+        # Stride is the named prime.
+        assert seeds[1] - seeds[0] == SEED_PRIME_STRIDE
+
+
+# --------------------------------------------------------------------------- #
+# MultiSeedComparison                                                          #
+# --------------------------------------------------------------------------- #
+
+
+def _stub_result(l2_ratio: float, epd_ratio: float, seed: int) -> ComparisonResult:
+    """A minimal ComparisonResult carrying the two headline ratios."""
+    dorfler = _traj("dorfler", [10, 40], [1.0, 0.5], [0.0, 0.1])
+    mcts = _traj("mcts", [10, 40], [1.0, 0.4], [0.0, 0.2])
+    return ComparisonResult(
+        dorfler=dorfler,
+        mcts=mcts,
+        l2_error_ratio_at_matched_dof=l2_ratio,
+        error_per_dof_ratio_mcts_over_dorfler=epd_ratio,
+        matched_dof=40.0,
+        matched_wall_time_seconds=0.1,
+        dorfler_convergence_exponent=-1.0,
+        mcts_convergence_exponent=-1.0,
+        seed=seed,
+    )
+
+
+class TestMultiSeedComparison:
+    def test_metrics_median_and_win_fraction(self) -> None:
+        l2 = [0.5, 2.0, 0.8]
+        epd = [1.1, 3.0, 2.0]
+        seeds = [1, 2, 3]
+        per_seed = [_stub_result(a, b, s) for a, b, s in zip(l2, epd, seeds, strict=True)]
+        ms = MultiSeedComparison(per_seed=per_seed, seeds=seeds)
+
+        assert ms.l2_ratios == l2
+        assert ms.epd_ratios == epd
+
+        metrics = ms.metrics()
+        assert metrics["l2_error_ratio_at_matched_dof"] == pytest.approx(np.median(l2))
+        assert metrics["error_per_dof_ratio_mcts_over_dorfler"] == pytest.approx(np.median(epd))
+        assert metrics["l2_ratio_seed_min"] == pytest.approx(min(l2))
+        assert metrics["l2_ratio_seed_max"] == pytest.approx(max(l2))
+        assert metrics["l2_ratio_seed_std"] == pytest.approx(float(np.std(l2)))
+        # Two of three seeds have ratio < 1.
+        assert metrics["mcts_win_fraction"] == pytest.approx(2.0 / 3.0)
+        assert metrics["n_seeds"] == pytest.approx(3.0)
+
+    def test_representative_is_median_ratio_seed(self) -> None:
+        l2 = [0.5, 2.0, 0.8]
+        seeds = [11, 22, 33]
+        per_seed = [_stub_result(a, 1.0, s) for a, s in zip(l2, seeds, strict=True)]
+        ms = MultiSeedComparison(per_seed=per_seed, seeds=seeds)
+        # Sorted ratios [0.5, 0.8, 2.0] -> median is the 0.8 seed (seed 33).
+        assert ms.representative.seed == 33
+        assert ms.representative.l2_error_ratio_at_matched_dof == pytest.approx(0.8)
+
+
+# --------------------------------------------------------------------------- #
+# run_multiseed_comparison (tiny real run)                                     #
+# --------------------------------------------------------------------------- #
+
+
+class TestRunMultiSeedComparison:
+    def test_two_seed_micro_run(self) -> None:
+        op = _operator()
+        game_config = _game_config()
+        params = ComparisonParams(
+            initial_side=2,
+            max_dof=80,
+            max_steps=4,
+            max_refinements=4,
+            n_candidate_elements=3,
+            n_simulations=3,
+            add_noise=False,
+            n_seeds=2,
+        )
+        ms = run_multiseed_comparison(op, game_config, params)
+        assert isinstance(ms, MultiSeedComparison)
+        assert len(ms.per_seed) == 2
+        assert ms.seeds == resolved_seeds(params.seed, 2)
+        metrics = ms.metrics()
+        assert np.isfinite(metrics["l2_error_ratio_at_matched_dof"])
+        assert np.isfinite(metrics["error_per_dof_ratio_mcts_over_dorfler"])
+        assert metrics["n_seeds"] == pytest.approx(2.0)
+        assert 0.0 <= metrics["mcts_win_fraction"] <= 1.0

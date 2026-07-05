@@ -33,7 +33,8 @@ Pydantic `Field` — no hardcoded values. Key fields:
 | Field | Type | Default | Bounds | Meaning |
 |---|---|---|---|---|
 | `scale` | `float` | `1.0` | `gt=0, le=100` | L-shape half-width `s` (domain `[-s,s]^2 \ (0,s]x[-s,0)`). |
-| `initial_side` | `int` | `4` | `ge=1, le=64` | Elements per axis on the shared coarse grid. |
+| `initial_side` | `int` | `4` | `ge=2, le=64`, **even** | Elements per axis on the shared coarse grid (even so the reentrant corner at the origin is a grid node). |
+| `n_seeds` | `int` | `5` | `ge=1, le=64` | Seeds swept; the gated ratio is the **median** across seeds (a single MCTS run is high-variance). |
 | `max_dof` | `int` | `400` | `ge=10, le=1e6` | Active-DOF budget where both arms stop. |
 | `max_steps` | `int` | `30` | `ge=1, le=1e4` | Max MCTS refinement steps. |
 | `error_tolerance` | `float` | `1e-6` | `gt=0, lt=1` | Shared early-stop L2 tolerance. |
@@ -63,13 +64,16 @@ Named module-level constants (numerical-stability literals):
 - **Given** a fixed L-shape operator and seed
 - **When** the Dörfler and MCTS arms run
 - **Then** both call the same masked `make_solve_fn`, both count active (in-domain) nodes as DOF,
-  and both measure L2 over in-domain nodes — the *only* difference is the marking policy.
+  and both measure the **area-weighted** (dual-cell) L2 over in-domain nodes — the *only*
+  difference is the marking policy. (A plain node-wise RMS over-weights the densely-refined
+  singular region and would bias the ratio; `_area_weighted_l2` recovers the mesh-independent norm.)
 
-### AC3: MCTS refinement policy beats Dörfler at matched DOF
+### AC3: MCTS refinement policy beats Dörfler at matched DOF (median over seeds)
 - **Given** the CPU/demo config
-- **When** `run_comparison` completes
-- **Then** `l2_error_ratio_at_matched_dof < 1.0` (MCTS's error at the largest common DOF is below
-  Dörfler's) — verified on a real CPU micro-run.
+- **When** `run_multiseed_comparison` completes
+- **Then** the **median** `l2_error_ratio_at_matched_dof < 1.0` across `n_seeds` seeds (a single
+  MCTS run is high-variance; the median is robust to an unlucky seed). Per-seed spread
+  (`l2_ratio_seed_min/max/std`, `mcts_win_fraction`) is recorded for honesty.
 
 ### AC4: Both comparisons are reported (honest dual metric)
 - **Given** a completed run

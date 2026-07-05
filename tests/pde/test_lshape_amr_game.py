@@ -231,6 +231,33 @@ class TestTermination:
 
 
 # --------------------------------------------------------------------------- #
+# Bisect guard: non-bisectable elements are excluded from candidates            #
+# --------------------------------------------------------------------------- #
+
+
+class TestBisectGuard:
+    def test_no_bisectable_edge_yields_no_actions(self) -> None:
+        # A merge tolerance so large that no edge on the [-1, 1] grid clears
+        # 2*merge_tol: every element is non-bisectable, so _ranked_elements is
+        # empty even though the cached indicators are all strictly positive.
+        game = _make_game(merge_tol=10.0)
+        state = game.get_initial_state()
+        assert game._last_indicators.min() > 0.0  # indicators would rank normally
+        assert game._ranked_elements() == []
+        assert game.get_valid_actions(state) == []
+        # No legal action => terminal on the "no valid actions" branch.
+        assert game.is_terminal(state)
+
+    def test_bisectable_edge_survives_the_guard(self) -> None:
+        # With a tiny merge tolerance the normal grid is fully bisectable, so
+        # candidates are present (regression guard on the exclusion condition).
+        game = _make_game(merge_tol=1e-12)
+        state = game.get_initial_state()
+        assert game._ranked_elements()
+        assert game.get_valid_actions(state)
+
+
+# --------------------------------------------------------------------------- #
 # Encoding + clone                                                             #
 # --------------------------------------------------------------------------- #
 

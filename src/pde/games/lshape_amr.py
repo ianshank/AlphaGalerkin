@@ -288,17 +288,26 @@ class LShapeAMRGame(PDEGame):
     def _ranked_elements(self) -> list[tuple[int, int]]:
         """Return refinable elements sorted by indicator, descending.
 
-        Only in-domain elements (strictly positive indicator) are candidates.
+        Only in-domain elements (strictly positive indicator) whose x- or y-edge
+        is still wider than the bisection tolerance are candidates. Excluding
+        edges already at ``merge_tol`` avoids no-op refinements that would burn a
+        game step (and could otherwise re-select the same saturated element).
         """
         ind = self._last_indicators
         flat = ind.reshape(-1)
         order = np.argsort(flat)[::-1]
         ny_elem = ind.shape[1]
+        min_width = 2.0 * self._merge_tol
         ranked: list[tuple[int, int]] = []
         for flat_idx in order:
             if flat[flat_idx] <= 0.0:
                 break
-            ranked.append((int(flat_idx) // ny_elem, int(flat_idx) % ny_elem))
+            ix = int(flat_idx) // ny_elem
+            iy = int(flat_idx) % ny_elem
+            can_bisect_x = (self._xs[ix + 1] - self._xs[ix]) >= min_width
+            can_bisect_y = (self._ys[iy + 1] - self._ys[iy]) >= min_width
+            if can_bisect_x or can_bisect_y:
+                ranked.append((ix, iy))
         return ranked
 
     def get_valid_actions(self, state: PDEState) -> list[int]:

@@ -56,10 +56,6 @@ logger = structlog.get_logger(__name__)
 # Named numerical constants (no magic numbers)                                 #
 # --------------------------------------------------------------------------- #
 
-# Number of matched checkpoints sampled along the common DOF / wall-clock range
-# when computing the comparison ratios.
-DEFAULT_N_MATCH_CHECKPOINTS: int = 8
-
 # Floor applied to any denominator (DOF, error, wall-clock, ratio) so ratios
 # stay finite even for a degenerate (single-point / zero-time) trajectory.
 RATIO_FLOOR: float = 1e-15
@@ -132,8 +128,18 @@ class ComparisonParams:
     c_puct: float = 1.4
     add_noise: bool = True
     # Comparison
-    n_match_checkpoints: int = DEFAULT_N_MATCH_CHECKPOINTS
     n_seeds: int = 5
+
+    def __post_init__(self) -> None:
+        """Validate invariants that direct harness callers must also honour.
+
+        Mirrors ``LShapeAMRCompareConfig``: ``initial_side`` must be even so the
+        reentrant corner at the origin is a grid node, and ``n_seeds >= 1``.
+        """
+        if self.initial_side < 2 or self.initial_side % 2 != 0:
+            raise ValueError(f"initial_side must be an even integer >= 2, got {self.initial_side}")
+        if self.n_seeds < 1:
+            raise ValueError(f"n_seeds must be >= 1, got {self.n_seeds}")
 
 
 @dataclass

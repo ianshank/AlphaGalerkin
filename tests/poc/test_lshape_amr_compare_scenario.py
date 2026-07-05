@@ -41,8 +41,12 @@ def _config(tmp_path, **overrides: object) -> LShapeAMRCompareConfig:  # type: i
 class TestConfigDispatch:
     def test_load_config_from_dict_returns_config(self) -> None:
         cfg = load_config_from_dict({"name": SCENARIO_NAME, "device": "cpu"})
-        assert isinstance(cfg, LShapeAMRCompareConfig)
+        # Check by class name, not isinstance: under some pytest import modes the
+        # config module is imported under two keys, making identity-based checks
+        # flaky while the by-name dispatch is correct.
+        assert type(cfg).__name__ == LShapeAMRCompareConfig.__name__
         assert cfg.name == SCENARIO_NAME
+        assert hasattr(cfg, "n_seeds")
 
 
 class TestMicroRun:

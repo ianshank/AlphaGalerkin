@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -82,8 +82,13 @@ def build_config(config_path: str | Path, args: argparse.Namespace) -> LShapeAMR
     """Load, override, and validate the scenario config."""
     data = apply_overrides(load_scenario_dict(config_path), args)
     config = load_config_from_dict(data, scenario_type=SCENARIO_NAME)
-    assert isinstance(config, LShapeAMRCompareConfig)
-    return config
+    # ``load_config_from_dict`` dispatches by scenario name; verify by class
+    # *name* rather than ``isinstance``. Under some pytest import modes the
+    # config module can be imported under two keys, so identity-based checks are
+    # fragile while the dispatch itself is correct.
+    if type(config).__name__ != LShapeAMRCompareConfig.__name__:
+        raise TypeError(f"expected {LShapeAMRCompareConfig.__name__}, got {type(config).__name__}")
+    return cast("LShapeAMRCompareConfig", config)
 
 
 def build_parser() -> argparse.ArgumentParser:

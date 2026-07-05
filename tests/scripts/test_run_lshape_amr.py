@@ -107,7 +107,8 @@ class TestBuildConfig:
         args = _empty_args()
         args.seed = 7
         config = build_config(cfg_path, args)
-        assert isinstance(config, LShapeAMRCompareConfig)
+        # By class name, not isinstance (dual-import safe — see build_config).
+        assert type(config).__name__ == LShapeAMRCompareConfig.__name__
         assert config.seed == 7
 
 

@@ -365,12 +365,18 @@ class LShapeAMRGame(PDEGame):
         return float(self.config.reward_per_error_reduction * (epd_prev - epd_cur))
 
     def is_terminal(self, state: PDEState) -> bool:
-        """Terminal on DOF budget, step cap, tolerance, or no legal actions."""
+        """Terminal on convergence, DOF budget, step cap, or no legal actions.
+
+        Checks convergence (``error_tolerance``) first — matching
+        :meth:`_termination_reason` and the sibling mesh_refinement /
+        basis_selection games — so a state that both converged and hit a budget
+        limit is treated as converged, not budget-exhausted.
+        """
+        if state.error_estimate < self.config.error_tolerance:
+            return True
         if state.dof >= self.config.max_dof:
             return True
         if state.step >= self.config.max_steps:
-            return True
-        if state.error_estimate < self.config.error_tolerance:
             return True
         return not self.get_valid_actions(state)
 

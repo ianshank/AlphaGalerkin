@@ -104,10 +104,11 @@ quality. Closing the wall-clock gap with a trained evaluator is Out of Scope (be
 ## Regression Surface
 
 ```bash
-# Scenario + config + harness + game + mask (CPU)
+# Scenario + config + harness + game + mask + CLI (CPU)
 COVERAGE_CORE=pytrace pytest tests/research/test_lshape_notch_mask.py \
   tests/pde/test_lshape_amr_game.py tests/research/test_lshape_amr_compare.py \
-  tests/poc/test_lshape_amr_compare_config.py tests/poc/test_lshape_amr_compare_scenario.py -v
+  tests/poc/test_lshape_amr_compare_config.py tests/poc/test_lshape_amr_compare_scenario.py \
+  tests/scripts/test_run_lshape_amr.py -v
 
 # Shared-code regression: baselines.py is on the SBIR P40 surface — must stay green
 pytest tests/research/test_baselines.py tests/research/test_baselines_2d.py \

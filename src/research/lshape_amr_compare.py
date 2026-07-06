@@ -507,6 +507,7 @@ def run_comparison(
     operator: PDEOperator,
     game_config: PDEGameConfig,
     params: ComparisonParams,
+    dorfler: ArmTrajectory | None = None,
 ) -> ComparisonResult:
     """Run both arms and assemble the :class:`ComparisonResult`.
 
@@ -515,6 +516,11 @@ def run_comparison(
         game_config: Config for :class:`LShapeAMRGame` (budget / winner
             thresholds / tolerance).
         params: All comparison tunables (fixed seed for reproducibility).
+        dorfler: Optional pre-computed Dörfler arm. The Dörfler arm is fully
+            deterministic and has **no** ``params.seed`` dependence, so a
+            multi-seed sweep can solve it once and reuse it across seeds
+            (:func:`run_multiseed_comparison`). When ``None`` it is computed
+            here — the historical behaviour, preserved for direct callers.
 
     Returns:
         The full comparison with both trajectories and the headline ratios.
@@ -529,7 +535,8 @@ def run_comparison(
         max_dof=params.max_dof,
         n_simulations=params.n_simulations,
     )
-    dorfler = run_dorfler_arm(operator, solve_fn, params)
+    if dorfler is None:
+        dorfler = run_dorfler_arm(operator, solve_fn, params)
     mcts = run_mcts_arm(operator, solve_fn, game_config, params)
 
     l2_ratio, epd_ratio, matched_dof, matched_t = compare_ratios(dorfler, mcts, params)
@@ -626,9 +633,22 @@ def run_multiseed_comparison(
 
     Seeds are derived from ``params.seed`` via :func:`resolved_seeds` so the run
     is fully reproducible. Each seed runs an independent :func:`run_comparison`.
+
+    The Dörfler arm is deterministic (no ``params.seed`` dependence), so it is
+    solved **once** here and reused across every seed — only the stochastic MCTS
+    arm re-runs per seed. This leaves the gated matched-DOF L2 ratio (a function
+    of ``n_dof``/``l2_error`` only) byte-identical while cutting the sweep cost of
+    the redundant sparse solves.
     """
     seeds = resolved_seeds(params.seed, params.n_seeds)
-    per_seed = [run_comparison(operator, game_config, replace(params, seed=s)) for s in seeds]
+    # Compute the seed-invariant Dörfler arm once and share it across seeds.
+    inside = lshape_inside_predicate(params.scale)
+    solve_fn = make_solve_fn(operator, inside)
+    dorfler = run_dorfler_arm(operator, solve_fn, params)
+    per_seed = [
+        run_comparison(operator, game_config, replace(params, seed=s), dorfler=dorfler)
+        for s in seeds
+    ]
     result = MultiSeedComparison(per_seed=per_seed, seeds=seeds)
     logger.info(
         "lshape_multiseed_done",

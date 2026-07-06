@@ -71,7 +71,8 @@ class GridSolveResult:
     Attributes:
         solution: Solution values over the full grid, shape ``(n_nodes,)``.
         grid: Node coordinates, shape ``(n_nodes, 2)``.
-        l2_error: RMS L2 error against the exact solution over in-domain nodes.
+        l2_error: Area-weighted (dual-cell) L2 error against the exact solution
+            over in-domain nodes.
         n_dof: Active (in-domain) node count — the matched DOF measure.
         indicators: Per-element residual indicators, shape
             ``(n_elem_x, n_elem_y)``; out-of-domain elements are zero.

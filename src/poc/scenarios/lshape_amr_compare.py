@@ -106,13 +106,17 @@ class LShapeAMRCompareScenario(BaseScenario):
     # Construction helpers                                                #
     # ------------------------------------------------------------------ #
 
-    def _build_operator(self) -> PDEOperator:
-        """Build the L-shaped Poisson operator at the configured scale."""
+    def _build_pde_config(self) -> Any:
+        """Build the shared L-shaped Poisson PDEConfig.
+
+        Single source of truth for the geometry/domain used by *both* the
+        operator and the MCTS game config, so the two arms cannot silently
+        drift apart and break the apples-to-apples comparison invariant.
+        """
         from src.pde.config import PDEConfig, PDEType
         from src.pde.geometry import GeometryConfig, GeometryType
-        from src.pde.operators import LShapedPoissonOperator
 
-        pde_config = PDEConfig(
+        return PDEConfig(
             name="lshape_amr_compare",
             pde_type=PDEType.POISSON,
             domain_dim=2,
@@ -121,25 +125,20 @@ class LShapeAMRCompareScenario(BaseScenario):
             advection_coeff=[0.0, 0.0],
             geometry=GeometryConfig(geometry_type=GeometryType.L_SHAPED, scale=self.config.scale),
         )
-        return LShapedPoissonOperator(pde_config)
+
+    def _build_operator(self) -> PDEOperator:
+        """Build the L-shaped Poisson operator at the configured scale."""
+        from src.pde.operators import LShapedPoissonOperator
+
+        return LShapedPoissonOperator(self._build_pde_config())
 
     def _build_game_config(self, operator: PDEOperator) -> Any:
         """Build the PDEGameConfig backing the MCTS arm's game."""
-        from src.pde.config import PDEConfig, PDEGameConfig, PDEType
-        from src.pde.geometry import GeometryConfig, GeometryType
+        from src.pde.config import PDEGameConfig
 
-        pde_config = PDEConfig(
-            name="lshape_amr_compare",
-            pde_type=PDEType.POISSON,
-            domain_dim=2,
-            domain_min=[-self.config.scale, -self.config.scale],
-            domain_max=[self.config.scale, self.config.scale],
-            advection_coeff=[0.0, 0.0],
-            geometry=GeometryConfig(geometry_type=GeometryType.L_SHAPED, scale=self.config.scale),
-        )
         return PDEGameConfig(
             name="lshape_amr_game",
-            pde_config=pde_config,
+            pde_config=self._build_pde_config(),
             game_mode="mesh_refinement",
             max_dof=self.config.max_dof,
             max_steps=self.config.max_steps,
@@ -194,10 +193,13 @@ class LShapeAMRCompareScenario(BaseScenario):
     ) -> None:
         """Write and register the committed CSV/PNG artifacts."""
         assert self._scenario_logger is not None
-        base = Path(self.config.output_dir) / self.config.artifact_basename
-        csv_path = export_csv(result, base.with_suffix(".csv"))
+        # Append extensions by string concatenation (not Path.with_suffix, which
+        # would truncate an internal dot in a custom artifact_basename, e.g.
+        # "lshape.v2" -> "lshape.csv").
+        base_str = str(Path(self.config.output_dir) / self.config.artifact_basename)
+        csv_path = export_csv(result, Path(f"{base_str}.csv"))
         self.record_artifact("csv", str(csv_path))
-        png_path = export_plot(result, base.with_suffix(".png"))
+        png_path = export_plot(result, Path(f"{base_str}.png"))
         if png_path is not None:
             self.record_artifact("png", str(png_path))
         else:

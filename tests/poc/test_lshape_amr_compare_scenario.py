@@ -73,12 +73,16 @@ class TestMicroRun:
         assert result.metrics["n_seeds"] == pytest.approx(2.0)
         assert 0.0 <= result.metrics["mcts_win_fraction"] <= 1.0
 
-        # CSV + PNG artifacts registered and written.
-        assert "csv" in result.artifacts
-        assert "png" in result.artifacts
+        # CSV artifact is always registered and written.
         from pathlib import Path
 
+        assert "csv" in result.artifacts
         assert Path(result.artifacts["csv"]).exists()
+
+        # PNG is only produced when matplotlib is available — export_plot()
+        # returns None without it and the scenario skips the "png" artifact.
+        pytest.importorskip("matplotlib", reason="matplotlib required for the PNG artifact")
+        assert "png" in result.artifacts
         assert Path(result.artifacts["png"]).exists()
 
     def test_per_arm_final_metrics_present(self, tmp_path) -> None:  # type: ignore[no-untyped-def]

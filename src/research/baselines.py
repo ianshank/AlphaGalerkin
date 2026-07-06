@@ -915,19 +915,34 @@ class DorflerAMRSolver(BaseSolver):
         u_grid = u.reshape(len(xs), len(ys))
         indicators = np.zeros((nx, ny), dtype=np.float64)
 
+        # Evaluate the domain predicate for every element centre in a single
+        # vectorised call (mirrors how _solve_on_grid_2d tests its nodes) instead
+        # of once per element. The centres are built through the identical
+        # float32 -> float64 round-trip used by the per-element ``mid`` below so
+        # the predicate input is byte-for-byte the same.
+        elem_inside: NDArray[np.bool_] | None = None
+        if inside is not None:
+            cx_all = 0.5 * (xs[:-1] + xs[1:])
+            cy_all = 0.5 * (ys[:-1] + ys[1:])
+            cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
+            centres = (
+                np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1)
+                .astype(np.float32)
+                .astype(np.float64)
+            )
+            elem_inside = np.asarray(inside(centres), dtype=bool).reshape(nx, ny)
+
         for i in range(nx):
             hx = xs[i + 1] - xs[i]
             for j in range(ny):
                 hy = ys[j + 1] - ys[j]
+                # Element wholly outside the physical domain: never refine it.
+                if elem_inside is not None and not elem_inside[i, j]:
+                    continue
                 mid = np.array(
                     [[(xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2]],
                     dtype=np.float32,
                 )
-                # Element wholly outside the physical domain: never refine it.
-                if inside is not None and not bool(
-                    np.asarray(inside(mid.astype(np.float64))).flat[0]
-                ):
-                    continue
                 f_mid = float(np.asarray(operator.source_term(mid)).flat[0])
 
                 # Approximate Laplacian at element center using surrounding values

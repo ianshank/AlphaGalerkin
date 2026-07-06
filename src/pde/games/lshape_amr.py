@@ -374,6 +374,25 @@ class LShapeAMRGame(PDEGame):
             return True
         return not self.get_valid_actions(state)
 
+    def _termination_reason(self, state: PDEState) -> str:
+        """Classify *why* an episode ended, mirroring :meth:`is_terminal`.
+
+        Distinguishes the terminal causes (converged / max DOF / max steps /
+        no legal actions) rather than collapsing them into a single
+        "budget_exhausted", matching the fidelity of the sibling
+        mesh_refinement / basis_selection games. Returns "running" for a
+        non-terminal state.
+        """
+        if state.error_estimate < self.config.error_tolerance:
+            return "converged"
+        if state.dof >= self.config.max_dof:
+            return "max_dof"
+        if state.step >= self.config.max_steps:
+            return "max_steps"
+        if not self.get_valid_actions(state):
+            return "no_legal_actions"
+        return "running"
+
     def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
         """Assemble a :class:`PDEResult` from the terminal state and history."""
         initial_error = error_history[0] if error_history else state.error_estimate
@@ -398,11 +417,7 @@ class LShapeAMRGame(PDEGame):
             best_error=best_error,
             average_error=avg_error,
             error_history=list(error_history),
-            termination_reason=(
-                "converged"
-                if state.error_estimate < self.config.error_tolerance
-                else "budget_exhausted"
-            ),
+            termination_reason=self._termination_reason(state),
             budget_used=float(state.dof),
         )
 

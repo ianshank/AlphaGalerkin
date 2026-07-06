@@ -229,6 +229,28 @@ class TestTermination:
         game.get_initial_state()
         assert not game.is_terminal(self._state(dof=10, step=1, error_estimate=1.0))
 
+    def test_termination_reason_distinguishes_causes(self) -> None:
+        # get_result must report the *specific* terminal cause (not a blanket
+        # "budget_exhausted"), mirroring is_terminal's branch order:
+        # converged -> max_dof -> max_steps -> no_legal_actions -> running.
+        game = _make_game()
+        game.get_initial_state()
+        assert game._termination_reason(self._state(error_estimate=1e-9)) == "converged"
+        assert game._termination_reason(self._state(dof=300, error_estimate=1.0)) == "max_dof"
+        assert (
+            game._termination_reason(self._state(step=12, dof=10, error_estimate=1.0))
+            == "max_steps"
+        )
+        assert (
+            game._termination_reason(self._state(dof=10, step=1, error_estimate=1.0)) == "running"
+        )
+        # With no refinable elements the episode ends on the no-actions branch.
+        game._last_indicators = np.zeros((1, 1), dtype=np.float64)
+        assert (
+            game._termination_reason(self._state(dof=10, step=1, error_estimate=1.0))
+            == "no_legal_actions"
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Bisect guard: non-bisectable elements are excluded from candidates            #

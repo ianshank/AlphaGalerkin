@@ -49,7 +49,7 @@ Pydantic `Field` — no hardcoded values. Key fields:
 
 Named module-level constants (numerical-stability literals):
 `src.pde.games.lshape_amr.DEFAULT_VALUE_SCALE`, `EPD_FLOOR`, `DEFAULT_MERGE_TOL`;
-`src.research.lshape_amr_compare.DEFAULT_N_MATCH_CHECKPOINTS`, `RATIO_FLOOR`.
+`src.research.lshape_amr_compare.RATIO_FLOOR`, `SEED_PRIME_STRIDE`.
 
 ## Acceptance Criteria
 

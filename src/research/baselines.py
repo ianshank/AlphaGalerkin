@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -28,6 +29,13 @@ from src.poc.device import resolve_device
 from src.research.gpu_profiler import GpuUtilizationProfiler
 
 logger = structlog.get_logger(__name__)
+
+# Optional geometry predicate for masked (non-rectangular) domains.  Given
+# node coordinates of shape ``(N, 2)`` it returns a boolean mask ``(N,)`` that
+# is True for nodes *inside* the physical domain.  ``None`` (the default on
+# every parameter below) means "full bounding box" — the historical behaviour,
+# so every existing caller and test is byte-for-byte unchanged.
+InsidePredicate = Callable[[NDArray[np.float64]], NDArray[np.bool_]]
 
 
 @dataclass
@@ -695,8 +703,25 @@ class DorflerAMRSolver(BaseSolver):
         operator: PDEOperator,
         sparse: Any,
         spsolve: Any,
+        inside: InsidePredicate | None = None,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Solve 2D Poisson-type PDE on a (possibly non-uniform) tensor-product grid."""
+        """Solve 2D Poisson-type PDE on a (possibly non-uniform) tensor-product grid.
+
+        Args:
+            xs: Grid node x-coordinates (monotone, includes both endpoints).
+            ys: Grid node y-coordinates (monotone, includes both endpoints).
+            operator: PDE operator supplying ``source_term`` and ``boundary_value``.
+            sparse: The ``scipy.sparse`` module.
+            spsolve: The ``scipy.sparse.linalg.spsolve`` callable.
+            inside: Optional geometry predicate for non-rectangular (e.g.
+                L-shaped) domains. When supplied, interior grid nodes whose
+                coordinates fall *outside* the physical domain are pinned to
+                their Dirichlet boundary value (identity row), which imposes
+                the reentrant-edge boundary condition one grid layer in. When
+                ``None`` (default) the full bounding box is solved — the
+                historical behaviour, unchanged byte-for-byte.
+
+        """
         nx = len(xs) - 2  # interior x points
         ny = len(ys) - 2  # interior y points
         if nx < 1 or ny < 1:
@@ -712,6 +737,13 @@ class DorflerAMRSolver(BaseSolver):
         yi = ys[1:-1]
         XX, YY = np.meshgrid(xi, yi, indexing="ij")
         coords_flat = np.stack([XX.ravel(), YY.ravel()], axis=-1).astype(np.float32)
+
+        # Per-interior-node domain membership (i-major, idx = i*ny + j to match
+        # the assembly loop below). All-True when no mask is supplied.
+        if inside is not None:
+            node_inside = np.asarray(inside(coords_flat.astype(np.float64)), dtype=bool).reshape(-1)
+        else:
+            node_inside = np.ones(nx * ny, dtype=bool)
 
         n_interior = nx * ny
 
@@ -735,6 +767,18 @@ class DorflerAMRSolver(BaseSolver):
                 hy_avg = (hy_l + hy_r) / 2.0
 
                 idx = i * ny + j
+
+                # Masked (out-of-domain) node: pin to its Dirichlet value via an
+                # identity row. Neighbouring in-domain equations still reference
+                # this column, so the pinned value acts as the interior boundary
+                # condition on the reentrant edge. The right-hand side entry is
+                # set *after* the ``rhs += f`` step below so the source term does
+                # not pollute it. No-op when ``inside is None``.
+                if not node_inside[idx]:
+                    rows.append(idx)
+                    cols.append(idx)
+                    vals.append(1.0)
+                    continue
 
                 cx = (1.0 / hx_l + 1.0 / hx_r) / hx_avg
                 cy = (1.0 / hy_l + 1.0 / hy_r) / hy_avg
@@ -800,6 +844,18 @@ class DorflerAMRSolver(BaseSolver):
         f = np.asarray(operator.source_term(coords_flat), dtype=np.float64).flatten()
         rhs += f
 
+        # Overwrite masked-node right-hand sides with their pinned Dirichlet
+        # value *after* the source term is applied, so neither ``f`` nor any
+        # boundary contribution above pollutes the identity rows. Vectorised —
+        # one ``boundary_value`` call for all masked nodes. No-op when unmasked.
+        if not node_inside.all():
+            masked = ~node_inside
+            masked_coords = coords_flat[masked].astype(np.float32)
+            masked_bvals = np.asarray(
+                operator.boundary_value(masked_coords), dtype=np.float64
+            ).reshape(-1)
+            rhs[masked] = masked_bvals
+
         u_inner = spsolve(A, rhs)
 
         # Build full grid including boundary
@@ -837,20 +893,52 @@ class DorflerAMRSolver(BaseSolver):
         ys: NDArray[np.float64],
         u: NDArray[np.float64],
         operator: PDEOperator,
+        inside: InsidePredicate | None = None,
     ) -> NDArray[np.float64]:
         """Compute element-wise residual error indicators on 2D grid.
 
         Returns a 2D array of shape (n_elem_x, n_elem_y) with residual indicators.
+
+        Args:
+            xs: Grid node x-coordinates.
+            ys: Grid node y-coordinates.
+            u: Flattened solution over the full ``(len(xs), len(ys))`` grid.
+            operator: PDE operator supplying ``source_term``.
+            inside: Optional geometry predicate. When supplied, elements whose
+                centre falls outside the physical domain get a zero indicator so
+                they are never marked for refinement. ``None`` (default) treats
+                the full bounding box as the domain — historical behaviour.
+
         """
         nx = len(xs) - 1
         ny = len(ys) - 1
         u_grid = u.reshape(len(xs), len(ys))
         indicators = np.zeros((nx, ny), dtype=np.float64)
 
+        # Evaluate the domain predicate for every element centre in a single
+        # vectorised call (mirrors how _solve_on_grid_2d tests its nodes) instead
+        # of once per element. The centres are built through the identical
+        # float32 -> float64 round-trip used by the per-element ``mid`` below so
+        # the predicate input is byte-for-byte the same.
+        elem_inside: NDArray[np.bool_] | None = None
+        if inside is not None:
+            cx_all = 0.5 * (xs[:-1] + xs[1:])
+            cy_all = 0.5 * (ys[:-1] + ys[1:])
+            cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
+            centres = (
+                np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1)
+                .astype(np.float32)
+                .astype(np.float64)
+            )
+            elem_inside = np.asarray(inside(centres), dtype=bool).reshape(nx, ny)
+
         for i in range(nx):
             hx = xs[i + 1] - xs[i]
             for j in range(ny):
                 hy = ys[j + 1] - ys[j]
+                # Element wholly outside the physical domain: never refine it.
+                if elem_inside is not None and not elem_inside[i, j]:
+                    continue
                 mid = np.array(
                     [[(xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2]],
                     dtype=np.float32,

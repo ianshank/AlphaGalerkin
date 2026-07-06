@@ -423,6 +423,16 @@ def load_config_from_dict(
 
         type_map["noyron_basis"] = NoyronBasisConfig
 
+    # Same lazy-resolution rationale: the lshape_amr_compare config is light but
+    # its scenario module pulls in the MCTS engine, the PDE registry, and scipy
+    # via the comparison harness, so resolve only the config class on demand.
+    if inferred_name == "lshape_amr_compare":
+        from src.poc.scenarios.lshape_amr_compare_config import (
+            LShapeAMRCompareConfig,
+        )
+
+        type_map["lshape_amr_compare"] = LShapeAMRCompareConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

@@ -234,15 +234,6 @@ jobs:
     timeout-minutes: 30
     needs: lint
 
-    # Force coverage.py's pure-Python tracer. The default C tracer SIGSEGVs
-    # (exit 139) when tracing torch imports under the current wheel, which
-    # crashed the dotted `--cov=src.<pkg>` per-module gates (scaling_law /
-    # research_loop). pytrace is the accurate reference tracer, so passing
-    # gates keep their numbers; the crashing ones now complete. Matches the
-    # local `COVERAGE_CORE=pytrace` workaround documented in CLAUDE.md.
-    env:
-      COVERAGE_CORE: pytrace
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

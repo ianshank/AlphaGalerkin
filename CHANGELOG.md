@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Single-agent MCTS backup (F0, correctness) + reward wiring (F1)
+
+- **F0 — single-agent backup.** `MCTSNode.backup` unconditionally negated the backed-up value at
+  every tree level (a two-player assumption), while `select_child` maximises `Q + exploration` at
+  every depth. For single-agent games (`n_players == 1`: every PDE / refinement game) this made the
+  search *minimise* value at odd depths. Fixed by routing the sign flip through a new
+  `src.mcts.search.SearchMode` (`SINGLE_AGENT` / `ZERO_SUM` / `LEGACY_ADVERSARIAL`);
+  `MCTSNode.backup(value, invert)` now takes the flag explicitly. **Backwards compatible:** the
+  `MCTS.__init__` default is `ZERO_SUM` (byte-for-byte the old two-player backup), so Go/chess are
+  unchanged; single-agent callers pass `SINGLE_AGENT`. `LEGACY_ADVERSARIAL` (deprecated, warns) exists
+  only to reproduce pre-fix results.
+- **L-shape headline corrected & republished.** The `lshape_amr_compare` MCTS arm now defaults to
+  `search_mode="single_agent"`. Re-running the canonical config over the same 5 seeds:
+  `legacy_adversarial` (pre-fix) → median L2 ratio **0.8896** (~11% win); `single_agent` (corrected)
+  → **0.9605** (~4% win), win fraction 0.80 in both. Still a win at matched DOF (primary gate passes),
+  but a **smaller, honest** one. `results/lshape_mcts_vs_dorfler.{csv,png}` regenerated under the
+  corrected mode; `specs/lshape_amr_compare.spec.md` AC3 documents both numbers.
+- **F1 — reward reachability.** `PDEGame.get_reward` (previously abstract with zero `src/` call sites)
+  is now reachable through MCTS behind an opt-in `MCTS(use_intermediate_rewards=...)` flag (default
+  `False` → unchanged behaviour): `_simulate` accumulates `R = Σ γ^t · get_last_reward()` along the
+  selection path and backs up `R + γ^d · V(leaf)`. `PDEGameAdapter` gained `get_last_reward()`
+  implementing the optional `SupportsStepReward` protocol.
+- **Tests.** `tests/mcts/test_backup_modes.py` (sign-by-mode, the anchor
+  `test_single_agent_search_prefers_higher_value_at_all_depths` which fails on the inverting modes,
+  deprecation + reward-discount validation, intermediate-reward accumulation),
+  `tests/pde/test_reward_reachability.py` (get_reward invoked iff enabled), and
+  `tests/pde/test_clone_isolation.py` (F3 clone isolation across every concrete PDE game).
+
 ### Added — Spec-driven agentic tooling + Noyron v2.2 (`specs/`, `.claude/`, `src/agents/`, `src/poc/scenarios/noyron_basis*`)
 
 Additive, backwards-compatible sprint across four workstreams:

@@ -44,6 +44,7 @@ Pydantic `Field` — no hardcoded values. Key fields:
 | `n_simulations` | `int` | `12` | `ge=1, le=4096` | MCTS simulations per accepted refinement. |
 | `value_scale` | `float` | `4.0` | `gt=0, le=100` | tanh steepness for the encoded leaf value. |
 | `c_puct` | `float` | `1.4` | `gt=0, le=10` | PUCT exploration constant. |
+| `search_mode` | `str` | `single_agent` | `∈ {single_agent, zero_sum, legacy_adversarial}` | MCTS backup semantics. L-shape AMR is single-agent, so `single_agent` is correct. `legacy_adversarial` reproduces the pre-fix two-player backup (see AC3 note). |
 | `max_l2_ratio_at_matched_dof` | `float` | `1.0` | `gt=0, le=10` | Primary gate value. |
 | `output_dir` / `artifact_basename` | `str` | `results` / `lshape_mcts_vs_dorfler` | — | Committed artifact location. |
 
@@ -74,6 +75,21 @@ Named module-level constants (numerical-stability literals):
 - **Then** the **median** `l2_error_ratio_at_matched_dof < 1.0` across `n_seeds` seeds (a single
   MCTS run is high-variance; the median is robust to an unlucky seed). Per-seed spread
   (`l2_ratio_seed_min/max/std`, `mcts_win_fraction`) is recorded for honesty.
+
+> **Corrected-backup note (2026-07-10).** The originally committed headline (~11–14% win,
+> median ratio ~0.89) was produced by MCTS running a **two-player adversarial backup on a
+> single-agent game** — the F0 defect in `MCTSNode.backup`. Re-running the *same* canonical
+> config under the corrected `search_mode="single_agent"` backup, over the same 5 seeds, gives:
+>
+> | Backup mode | Median L2 ratio @ matched DOF | Win fraction | Seed min / max |
+> |---|---|---|---|
+> | `legacy_adversarial` (pre-fix) | **0.8896** (≈11% win) | 0.80 | 0.7615 / 1.0299 |
+> | `single_agent` (**corrected, committed**) | **0.9605** (≈4% win) | 0.80 | 0.8166 / 1.1157 |
+>
+> The corrected search is **still a win** at matched DOF (median < 1.0, primary gate passes) but a
+> **smaller** one: ~4% rather than ~11%. The committed `results/lshape_mcts_vs_dorfler.{csv,png}`
+> and the default config now use `single_agent`; `legacy_adversarial` remains selectable purely to
+> reproduce the pre-fix number.
 
 ### AC4: Both comparisons are reported (honest dual metric)
 - **Given** a completed run

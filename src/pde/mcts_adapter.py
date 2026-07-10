@@ -24,8 +24,10 @@ Usage::
     pde_game = BasisSelectionGame(operator, game_config)
     adapter = PDEGameAdapter(pde_game)
 
-    evaluator = RandomEvaluator(action_size=pde_game.action_space_size)
-    mcts = MCTS(evaluator=evaluator, n_simulations=50)
+    evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+    # A PDE game is single-agent: pass ``adapter.search_mode`` so MCTS does not
+    # invert the value on backup (the MCTS default is the two-player ZERO_SUM).
+    mcts = MCTS(evaluator=evaluator, n_simulations=50, search_mode=adapter.search_mode)
     policy = mcts.search(adapter)
 """
 

@@ -535,6 +535,11 @@ class BatchMCTS(MCTS):
         # Per-path discounted intermediate-reward accumulator and the discount
         # factor gamma**d reached at the leaf, aligned with ``paths``.
         path_rewards: list[tuple[float, float]] = []
+        # Per-path index into ``leaves``/``results`` for non-terminal paths, or
+        # -1 for terminal paths. Terminal and non-terminal paths can interleave
+        # (virtual loss diverges the batch), so ``paths`` and ``leaves`` are not
+        # index-aligned — this map keeps the backup value assignment correct.
+        leaf_index_for_path: list[int] = []
 
         for _ in range(batch_size):
             game_copy = game.clone()
@@ -559,7 +564,10 @@ class BatchMCTS(MCTS):
                         cumulative_reward += discount * reward
                         discount *= self.reward_discount
 
-            if not game_copy.is_terminal():
+            if game_copy.is_terminal():
+                leaf_index_for_path.append(-1)
+            else:
+                leaf_index_for_path.append(len(leaves))
                 leaves.append((node, game_copy))
             paths.append(path)
             path_rewards.append((cumulative_reward, discount))
@@ -580,10 +588,11 @@ class BatchMCTS(MCTS):
 
         # Backup
         for i, path in enumerate(paths):
-            if i < len(leaves):
-                value = results[i].value
+            leaf_idx = leaf_index_for_path[i]
+            if leaf_idx >= 0:
+                value = results[leaf_idx].value
             else:
-                # Terminal state
+                # Terminal state — replay the path to recover the winner.
                 game_copy = game.clone()
                 for node in path[1:]:
                     if node.action is not None:

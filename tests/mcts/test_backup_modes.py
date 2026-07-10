@@ -174,6 +174,90 @@ class TestSingleAgentSearch:
 
 
 # --------------------------------------------------------------------------- #
+# BatchMCTS terminal/non-terminal interleaving (leaf-index mapping)           #
+# --------------------------------------------------------------------------- #
+
+
+class _MixedTerminalGame:
+    """Action 0 → immediate ``+1`` terminal; action 1 → a non-terminal leaf.
+
+    Within one BatchMCTS batch the two root actions produce a terminal and a
+    non-terminal path, which interleave in collection order. This exercises the
+    ``leaf_index_for_path`` mapping: a naive ``i < len(leaves)`` assumption
+    mis-assigns the batched evaluator value to the terminal path.
+    """
+
+    def __init__(self, history: list[int] | None = None) -> None:
+        self.history: list[int] = list(history) if history else []
+
+    def get_state(self) -> np.ndarray:
+        return np.array(
+            [float(self.history[0] + 1) if self.history else 0.0], dtype=np.float32
+        )
+
+    def get_legal_actions(self) -> list[int]:
+        if len(self.history) == 0:
+            return [0, 1]
+        if self.history == [1]:
+            return [0]
+        return []
+
+    def apply_action(self, action: int) -> None:
+        self.history.append(action)
+
+    def is_terminal(self) -> bool:
+        return self.history[:1] == [0] or len(self.history) >= 2
+
+    def get_winner(self) -> int:
+        if self.history[:1] == [0]:
+            return 1
+        return -1
+
+    def clone(self) -> _MixedTerminalGame:
+        return _MixedTerminalGame(self.history)
+
+
+class _StateValueEvaluator:
+    """Uniform policy; value ``-1`` for the action-1 leaf, ``0`` elsewhere."""
+
+    def evaluate(self, state: np.ndarray, legal_actions: list[int]):  # noqa: ANN001
+        from src.mcts.evaluator import EvaluationResult
+
+        value = -1.0 if float(state[0]) == 2.0 else 0.0
+        policy = np.full(2, 0.5, dtype=np.float32)
+        return EvaluationResult(policy=policy, value=value)
+
+    def evaluate_batch(self, states, legal_actions_batch):  # noqa: ANN001
+        return [
+            self.evaluate(s, la)
+            for s, la in zip(states, legal_actions_batch, strict=False)
+        ]
+
+
+class TestBatchTerminalInterleaving:
+    def test_batch_maps_values_across_interleaved_terminals(self) -> None:
+        """The +1 terminal must win over the -1 leaf under BatchMCTS.
+
+        With the buggy ``i < len(leaves)`` mapping the terminal path receives
+        the -1 evaluator value and the search prefers the wrong action.
+        """
+        from src.mcts.search import BatchMCTS
+
+        np.random.seed(0)
+        mcts = BatchMCTS(
+            evaluator=_StateValueEvaluator(),
+            batch_size=4,
+            n_simulations=64,
+            c_puct=1.0,
+            search_mode=SearchMode.SINGLE_AGENT,
+        )
+        action = mcts.get_action(
+            _MixedTerminalGame(), temperature=0.0, add_noise=False
+        )
+        assert action == 0
+
+
+# --------------------------------------------------------------------------- #
 # Backwards compatibility + deprecation                                       #
 # --------------------------------------------------------------------------- #
 

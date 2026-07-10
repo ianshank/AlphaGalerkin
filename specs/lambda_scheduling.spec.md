@@ -27,8 +27,16 @@ chooses windows + sample counts to minimise that under a budget. A `VarianceSurr
 
 | surrogate_bias | final ΔG-stderr ratio MCTS / greedy | verdict |
 |---|---|---|
-| 0.00 (perfect surrogate) | **2.00** | MCTS ~2× **worse** |
-| 0.25 (the binding gate) | **2.00** | MCTS ~2× **worse** — kill criterion **not met** |
+| 0.00 (perfect surrogate) | **2.05** | MCTS ~2× **worse** |
+| 0.25 (the binding gate) | **2.05** | MCTS ~2× **worse** — kill criterion **not met** |
+
+**Robustness to the reward-scale confound (checked, not assumed).** MCTS backs up
+`R + γ^d·V(leaf)`; the per-edge shaped reward `R` is order `1e-3` while a terminal `V` from
+`get_winner` is order `1`. To stop a non-converged terminal from swamping the shaped signal,
+`get_winner` returns **0** (neutral) unless the schedule actually converged (then `+1`), and the
+per-edge cost is keyed on the window-count delta (a split adds a window), not on a DOF side-effect.
+Re-running with this neutralised terminal leaves the verdict **unchanged** (ratio 2.00 → 2.05), so
+the negative result is driven by genuine over-splitting, not by a reward-scale artifact.
 
 **MCTS loses even with a perfect surrogate (bias 0).** Root cause: with a uniform-prior
 `RandomEvaluator` the search has no signal that splitting is usually harmful, so it splits to the

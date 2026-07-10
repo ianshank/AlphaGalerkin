@@ -26,14 +26,24 @@ tunable, and is documented here rather than surfaced as a config field.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+import structlog
 
 if TYPE_CHECKING:
     from src.thermo.config import HardnessProfileConfig
 
+logger = structlog.get_logger(__name__)
+
 # σ_i = c_i / n_i**BAR_VARIANCE_EXPONENT. Fixed by the central-limit scaling of a
 # Monte-Carlo standard error; see module docstring.
 BAR_VARIANCE_EXPONENT = 0.5
+
+# Default spatial frequency (in units of π·λ) of the deterministic shape noise the
+# MismatchedSurrogate adds; a mid-range value so the mismatch is neither flat nor
+# aliased against the window grid. Overridable per instance.
+DEFAULT_NOISE_FREQUENCY = 7.0
 
 
 @runtime_checkable
@@ -82,12 +92,18 @@ class MismatchedSurrogate:
         truth: AnalyticSurrogate,
         bias: float,
         noise_amplitude: float = 0.0,
-        noise_frequency: float = 7.0,
+        noise_frequency: float = DEFAULT_NOISE_FREQUENCY,
     ) -> None:
         self.truth = truth
         self.bias = bias
         self.noise_amplitude = noise_amplitude
         self.noise_frequency = noise_frequency
+        logger.debug(
+            "mismatched_surrogate_constructed",
+            bias=bias,
+            noise_amplitude=noise_amplitude,
+            noise_frequency=noise_frequency,
+        )
 
     def variance_coeff(self, lam_lo: float, lam_hi: float) -> float:
         base = self.truth.variance_coeff(lam_lo, lam_hi)
@@ -121,13 +137,14 @@ class OperatorSurrogate:
     ablation cannot silently fall back to a hand-tuned model.
     """
 
-    def __init__(self, predict_fn: object | None = None) -> None:
+    def __init__(self, predict_fn: Callable[[float, float], float] | None = None) -> None:
         if predict_fn is None:
             raise NotImplementedError(
                 "OperatorSurrogate needs a fitted c(λ) operator (P5); no default. "
                 "Pass a callable predict_fn(lo, hi) -> float."
             )
         self._predict_fn = predict_fn
+        logger.debug("operator_surrogate_constructed")
 
     def variance_coeff(self, lam_lo: float, lam_hi: float) -> float:
-        return max(float(self._predict_fn(lam_lo, lam_hi)), 0.0)  # type: ignore[operator]
+        return max(float(self._predict_fn(lam_lo, lam_hi)), 0.0)

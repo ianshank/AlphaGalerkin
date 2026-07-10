@@ -211,6 +211,17 @@ class TestPDEStateConverters:
         pde = PDEState.from_refinement(r, coords=coords)
         assert np.allclose(pde.coords, coords)
 
+    def test_from_refinement_empty_values(self) -> None:
+        """Zero-length values synthesise an empty (0, 1) coord grid, no crash."""
+        from src.pde.game import PDEState
+
+        r = RefinementState(
+            values=np.zeros(0, dtype=np.float32),
+            indicators=np.zeros(0, dtype=np.float32),
+        )
+        pde = PDEState.from_refinement(r)
+        assert pde.coords.shape == (0, 1)
+
 
 # --------------------------------------------------------------------------- #
 # RefinementGameConfig (generic; zero field loss)                             #
@@ -268,6 +279,19 @@ class TestRefinementGameAdapter:
 
         adapter = RefinementGameAdapter(_ToyRefinementGame())
         assert adapter.search_mode is SearchMode.SINGLE_AGENT
+
+    def test_get_state_converts_torch_tensor(self) -> None:
+        """A game whose to_tensor returns a torch.Tensor is converted to numpy."""
+        import torch
+
+        class _TorchTensorGame(_ToyRefinementGame):
+            def to_tensor(self, state: RefinementState) -> object:  # type: ignore[override]
+                return torch.zeros(self._n, dtype=torch.float32)
+
+        adapter = RefinementGameAdapter(_TorchTensorGame())
+        state = adapter.get_state()
+        assert isinstance(state, np.ndarray)
+        assert state.dtype == np.float32
 
     def test_action_space_size_delegates(self) -> None:
         adapter = RefinementGameAdapter(_ToyRefinementGame(n_actions=7))

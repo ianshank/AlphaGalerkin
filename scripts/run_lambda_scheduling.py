@@ -14,87 +14,42 @@ from __future__ import annotations
 
 import argparse
 import csv
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 
 from src.thermo.config import LambdaSchedulingConfig
-from src.thermo.game import LambdaSchedulingGame, total_stderr
-from src.thermo.outer_loop import resolved_seeds
+from src.thermo.outer_loop import (
+    RATIO_FLOOR,
+    iterate_greedy,
+    iterate_mcts,
+    iterate_uniform,
+    resolved_seeds,
+    score_true_stderr,
+)
 from src.thermo.surrogate import AnalyticSurrogate, MismatchedSurrogate, VarianceSurrogate
 
 if TYPE_CHECKING:
     from src.refinement.state import RefinementState
 
+logger = structlog.get_logger(__name__)
 
-def _true_stderr(state: RefinementState, truth: AnalyticSurrogate) -> float:
-    return total_stderr(state.values.astype(np.float64).reshape(-1, 3), truth)
+# Number of sample-budget grid points the trajectories are interpolated onto.
+BUDGET_GRID_POINTS = 20
 
 
-def _greedy_trajectory(
-    game: LambdaSchedulingGame, truth: AnalyticSurrogate
+def _trajectory(
+    states: Iterator[RefinementState], truth: AnalyticSurrogate
 ) -> list[tuple[int, float]]:
-    state = game.get_initial_state()
-    maxw = game.params.max_windows
-    traj = [(state.dof, _true_stderr(state, truth))]
-    while not game.is_terminal(state):
-        valid = [a for a in game.get_valid_actions(state) if a < maxw]
-        if not valid:
-            break
-        best = max(valid, key=lambda a: float(state.indicators[a]))
-        state = game.apply_action(state, best)
-        traj.append((state.dof, _true_stderr(state, truth)))
-    return traj
+    """(active DOF, true-scored ΔG stderr) at each step of a scheduler run.
 
-
-def _uniform_trajectory(
-    game: LambdaSchedulingGame, truth: AnalyticSurrogate
-) -> list[tuple[int, float]]:
-    state = game.get_initial_state()
-    maxw = game.params.max_windows
-    traj = [(state.dof, _true_stderr(state, truth))]
-    rr = 0
-    while not game.is_terminal(state):
-        valid = [a for a in game.get_valid_actions(state) if a < maxw]
-        if not valid:
-            break
-        state = game.apply_action(state, valid[rr % len(valid)])
-        rr += 1
-        traj.append((state.dof, _true_stderr(state, truth)))
-    return traj
-
-
-def _mcts_trajectory(
-    game: LambdaSchedulingGame,
-    truth: AnalyticSurrogate,
-    seed: int,
-    n_simulations: int,
-    c_puct: float,
-) -> list[tuple[int, float]]:
-    import torch
-
-    from src.mcts.evaluator import RandomEvaluator
-    from src.mcts.search import MCTS
-    from src.refinement.adapter import RefinementGameAdapter
-
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    adapter = RefinementGameAdapter(game)
-    mcts = MCTS(
-        evaluator=RandomEvaluator(n_actions=game.action_space_size),
-        n_simulations=n_simulations,
-        c_puct=c_puct,
-        search_mode=adapter.search_mode,
-        use_intermediate_rewards=True,
-    )
-    traj = [(adapter.state.dof, _true_stderr(adapter.state, truth))]
-    while not adapter.is_terminal() and adapter.get_legal_actions():
-        action = mcts.get_action(adapter, temperature=0.0, add_noise=True)
-        adapter.apply_action(action)
-        mcts.advance(action)
-        traj.append((adapter.state.dof, _true_stderr(adapter.state, truth)))
-    return traj
+    Reuses the shared ``iterate_*`` schedulers from ``outer_loop`` so the
+    trajectory logic is not duplicated here.
+    """
+    return [(state.dof, score_true_stderr(state, truth)) for state in states]
 
 
 def _final_stderr_by_budget(traj: list[tuple[int, float]], grid: np.ndarray) -> np.ndarray:
@@ -110,11 +65,25 @@ def _final_stderr_by_budget(traj: list[tuple[int, float]], grid: np.ndarray) -> 
 
 def run(config: LambdaSchedulingConfig, output_dir: Path) -> dict[str, float]:
     """Run the ablation and write CSV + PNG. Returns the headline metrics."""
+    from src.thermo.game import LambdaSchedulingGame
+
     output_dir.mkdir(parents=True, exist_ok=True)
     truth = AnalyticSurrogate(config.hardness)
     params = config.to_params()
     seeds = resolved_seeds(config.seed, config.n_seeds)
-    grid = np.linspace(params.n_initial_windows * params.batch_samples, params.sample_budget, 20)
+    grid = np.linspace(
+        params.n_initial_windows * params.batch_samples,
+        params.sample_budget,
+        BUDGET_GRID_POINTS,
+    )
+    logger.info(
+        "lambda_scheduling_run_start",
+        n_seeds=config.n_seeds,
+        n_simulations=config.n_simulations,
+        sample_budget=params.sample_budget,
+        primary_bias=config.primary_bias,
+        output_dir=str(output_dir),
+    )
 
     biases = [0.0, config.primary_bias]
     rows: list[dict[str, object]] = []
@@ -133,12 +102,12 @@ def run(config: LambdaSchedulingConfig, output_dir: Path) -> dict[str, float]:
         else:
             planner = MismatchedSurrogate(truth, bias=bias)
         game = LambdaSchedulingGame(params, planner)
-        greedy = _final_stderr_by_budget(_greedy_trajectory(game, truth), grid)
-        uniform = _final_stderr_by_budget(_uniform_trajectory(game, truth), grid)
+        greedy = _final_stderr_by_budget(_trajectory(iterate_greedy(game), truth), grid)
+        uniform = _final_stderr_by_budget(_trajectory(iterate_uniform(game), truth), grid)
         mcts_curves = np.array(
             [
                 _final_stderr_by_budget(
-                    _mcts_trajectory(game, truth, s, config.n_simulations, config.c_puct),
+                    _trajectory(iterate_mcts(game, s, config.n_simulations, config.c_puct), truth),
                     grid,
                 )
                 for s in seeds
@@ -157,8 +126,15 @@ def run(config: LambdaSchedulingConfig, output_dir: Path) -> dict[str, float]:
         ax.grid(True, alpha=0.3)
         ax.legend()
 
-        ratio = float(mcts_med[-1] / max(greedy[-1], 1e-12))
+        ratio = float(mcts_med[-1] / max(greedy[-1], RATIO_FLOOR))
         headline[f"final_ratio_mcts_over_greedy_bias_{bias:g}"] = ratio
+        logger.info(
+            "lambda_scheduling_bias_done",
+            bias=bias,
+            final_ratio_mcts_over_greedy=ratio,
+            final_greedy_stderr=float(greedy[-1]),
+            final_mcts_median_stderr=float(mcts_med[-1]),
+        )
         for i, b in enumerate(grid):
             rows.append(
                 {
@@ -200,14 +176,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--error-tolerance", type=float, default=0.05)
     args = parser.parse_args(argv)
 
-    overrides: dict[str, object] = {"error_tolerance": args.error_tolerance}
+    overrides: dict[str, object] = {
+        "name": "lambda_scheduling",
+        "error_tolerance": args.error_tolerance,
+    }
     if args.sample_budget is not None:
         overrides["sample_budget"] = args.sample_budget
     if args.n_seeds is not None:
         overrides["n_seeds"] = args.n_seeds
     if args.n_simulations is not None:
         overrides["n_simulations"] = args.n_simulations
-    config = LambdaSchedulingConfig(name="lambda_scheduling", **overrides)  # type: ignore[arg-type]
+    # model_validate accepts a dict, avoiding the **kwargs-unpack typing hole.
+    config = LambdaSchedulingConfig.model_validate(overrides)
 
     headline = run(config, Path(args.output_dir))
     for k, v in headline.items():

@@ -177,12 +177,57 @@ class TestGame:
         nxt = game.apply_action(state, valid[0])
         # Allocation reduces error → reward positive minus small cost.
         assert game.get_reward(nxt, state) > -1.0
-        assert game.get_winner(state) in (-1, 1)
+        # Non-converged terminal is neutral (0), not -1, so it does not swamp the
+        # shaped intermediate reward MCTS optimises.
+        assert game.get_winner(state) == 0
+
+    def test_winner_converged_and_terminal_tolerance_branch(self) -> None:
+        """A converged state wins (+1) and is terminal via the tolerance branch."""
+        game = _game(error_tolerance=0.9)  # trivially satisfiable
+        state = game.get_initial_state()
+        # Initial stderr is below the (loose) tolerance → converged + terminal.
+        assert state.error_estimate <= game.params.error_tolerance
+        assert game.get_winner(state) == 1
+        assert game.is_terminal(state)
+
+    def test_reward_cost_keys_on_split_not_dof(self) -> None:
+        """Split costs split_cost_ns; allocate costs batch_cost_ns.
+
+        Keyed on the window-count delta, independent of sample accounting.
+        """
+        game = _game(batch_cost_ns=10.0, split_cost_ns=1.0)
+        state = game.get_initial_state()
+        maxw = game.params.max_windows
+        alloc = next(a for a in game.get_valid_actions(state) if a < maxw)
+        split = next(a for a in game.get_valid_actions(state) if a >= maxw)
+        after_alloc = game.apply_action(state, alloc)
+        after_split = game.apply_action(state, split)
+        # Same-window-count → batch cost; +1 window → split cost.
+        assert after_alloc.values.shape[0] == state.values.shape[0]
+        assert after_split.values.shape[0] == state.values.shape[0] + 1
+        # The split-costed reward carries the (smaller) split cost term.
+        r_split = game.get_reward(after_split, state)
+        r_alloc = game.get_reward(after_alloc, state)
+        assert r_split == pytest.approx(
+            (state.error_estimate - after_split.error_estimate) - 1e-4 * 1.0
+        )
+        assert r_alloc == pytest.approx(
+            (state.error_estimate - after_alloc.error_estimate) - 1e-4 * 10.0
+        )
 
     def test_total_stderr_ignores_empty_windows(self) -> None:
         w = np.array([[0.0, 0.5, 0.0], [0.5, 1.0, 100.0]], dtype=np.float64)
         # Zero-sample window contributes nothing (no div-by-zero).
         assert total_stderr(w, _truth()) > 0.0
+
+    def test_variance_contributions_zero_window_is_infinite(self) -> None:
+        """A zero-sample window has infinite variance contribution (greedy target)."""
+        from src.thermo.game import variance_contributions
+
+        w = np.array([[0.0, 0.5, 0.0], [0.5, 1.0, 100.0]], dtype=np.float64)
+        contrib = variance_contributions(w, _truth())
+        assert np.isinf(contrib[0])
+        assert np.isfinite(contrib[1])
 
 
 # --------------------------------------------------------------------------- #
@@ -202,6 +247,20 @@ class TestConfig:
     def test_max_windows_consistency(self) -> None:
         with pytest.raises(ValueError):
             LambdaSchedulingConfig(name="c", n_initial_windows=10, max_windows=4)
+
+    def test_reward_discount_bounds(self) -> None:
+        with pytest.raises(ValueError):
+            LambdaSchedulingConfig(name="c", reward_discount=0.0)
+        with pytest.raises(ValueError):
+            LambdaSchedulingConfig(name="c", reward_discount=1.5)
+        # SchedulingParams (frozen dataclass) validates the same invariant.
+        with pytest.raises(ValueError):
+            SchedulingParams(reward_discount=0.0)
+        assert SchedulingParams(reward_discount=0.9).reward_discount == 0.9
+
+    def test_to_params_carries_reward_discount(self) -> None:
+        cfg = LambdaSchedulingConfig(name="c", reward_discount=0.95)
+        assert cfg.to_params().reward_discount == 0.95
 
     def test_to_params_and_thresholds(self) -> None:
         cfg = LambdaSchedulingConfig(name="c", primary_bias=0.25)

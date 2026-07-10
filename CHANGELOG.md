@@ -55,6 +55,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `results/lambda_scheduling.{png,csv}`; write-up in `specs/lambda_scheduling.spec.md`. CI gates the
   mechanics (85% branch), not the losing headline.
 
+### Changed — Tech-debt hardening on the refinement/thermo surface
+
+- **Reward-scale confound fixed & negative result revalidated.** The MCTS intermediate-reward
+  return `R + γ^d·V(leaf)` mixed the order-`1e-3` shaped reward with an order-`1` terminal winner.
+  `LambdaSchedulingGame.get_winner` now returns **0** (neutral) for a non-converged terminal
+  (was `-1`), and the per-edge cost is keyed on the **window-count delta** (a split adds a window),
+  not on a DOF side-effect. Re-running leaves the verdict unchanged (ratio 2.00 → 2.05), so the
+  negative result is genuine over-splitting, not a reward-scale artifact. Spec + committed
+  `results/lambda_scheduling.{png,csv}` updated.
+- **Structured logging** (`structlog`) added to `src/refinement/adapter.py`,
+  `src/thermo/{surrogate,outer_loop}.py`, and `scripts/run_lambda_scheduling.py`, mirroring the
+  repo's event-logging convention.
+- **Typing escape hatches removed:** `OperatorSurrogate.predict_fn` and `run_bias_sweep.make_planner`
+  are now `Callable`-typed; the CLI builds its config via `model_validate`; the dead
+  `replace_params` helper (which carried a `type: ignore`) is deleted. Zero avoidable `type: ignore`
+  remain in the new src surface.
+- **Reuse:** `iterate_greedy/uniform/mcts` generators + `score_true_stderr` extracted in
+  `outer_loop`; the plot CLI now consumes them instead of re-implementing the scheduler loops.
+- **No hardcoded values:** `DEFAULT_NOISE_FREQUENCY`, `MIN_SPLIT_CHILD_SAMPLES`, `BUDGET_GRID_POINTS`
+  named; `RATIO_FLOOR` reused; `reward_discount` surfaced as a typed `LambdaSchedulingConfig` /
+  `SchedulingParams` field with a `(0, 1]` validator.
+- **Coverage:** new tests for the converged-winner / tolerance-terminal branch, split-vs-allocate
+  cost keying, zero-window infinite variance, the adapter's torch-tensor `get_state` path, empty
+  `from_refinement`, and the `reward_discount` validators. `src/thermo` 95% / `src/refinement` 99%
+  branch. `ruff` + `mypy --strict` clean; abstraction-audit clean.
+
 ### Fixed — CI coverage job uses the pure-Python tracer
 
 - The installed torch wheel crashes coverage's default **C tracer** on `import torch._C`

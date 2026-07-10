@@ -51,6 +51,7 @@ class SchedulingParams:
     sample_split_credit: float = 0.5
     max_steps: int = 40
     error_tolerance: float = 0.1  # kcal/mol
+    reward_discount: float = 1.0  # gamma on shaped intermediate rewards in MCTS
 
     def __post_init__(self) -> None:
         """Validate the invariants direct harness callers must honour."""
@@ -62,6 +63,8 @@ class SchedulingParams:
             raise ValueError("sample_split_credit must be in (0, 1]")
         if self.batch_samples < 1:
             raise ValueError("batch_samples must be >= 1")
+        if not 0.0 < self.reward_discount <= 1.0:
+            raise ValueError("reward_discount must be in (0, 1]")
 
 
 class LambdaSchedulingConfig(BaseModuleConfig):
@@ -81,6 +84,12 @@ class LambdaSchedulingConfig(BaseModuleConfig):
     error_tolerance: float = Field(
         default=0.1,
         description="Convergence tolerance on ΔG standard error, in kcal/mol.",
+    )
+    reward_discount: float = Field(
+        default=1.0,
+        gt=0.0,
+        le=1.0,
+        description="Discount gamma on shaped intermediate rewards in the MCTS arm.",
     )
 
     # Surrogate / ablation knobs.
@@ -136,6 +145,7 @@ class LambdaSchedulingConfig(BaseModuleConfig):
             sample_split_credit=self.sample_split_credit,
             max_steps=self.max_steps,
             error_tolerance=self.error_tolerance,
+            reward_discount=self.reward_discount,
         )
 
     def get_default_thresholds(self) -> list[MetricThreshold]:

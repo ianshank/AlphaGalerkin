@@ -12,6 +12,7 @@ import copy
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
     from src.mcts.search import SearchMode
     from src.refinement.game import RefinementGame
     from src.refinement.state import RefinementState
+
+logger = structlog.get_logger(__name__)
 
 
 class RefinementGameAdapter:
@@ -36,6 +39,12 @@ class RefinementGameAdapter:
         self.state: RefinementState = game.get_initial_state()
         self.error_history: list[float] = [self.state.error_estimate]
         self._prev_state: RefinementState | None = None
+        logger.debug(
+            "refinement_adapter_created",
+            game_type=type(game).__name__,
+            initial_error=self.state.error_estimate,
+            action_space_size=game.action_space_size,
+        )
 
     @property
     def action_space_size(self) -> int:
@@ -67,9 +76,17 @@ class RefinementGameAdapter:
 
     def apply_action(self, action: int) -> None:
         """Apply ``action``, advancing the internal state."""
-        self._prev_state = self.state
+        prev_state = self.state
+        self._prev_state = prev_state
         self.state = self.game.apply_action(self.state, action)
         self.error_history.append(self.state.error_estimate)
+        logger.debug(
+            "refinement_action_applied",
+            action=action,
+            error_before=prev_state.error_estimate,
+            error_after=self.state.error_estimate,
+            step=self.state.step,
+        )
 
     def get_last_reward(self) -> float:
         """Per-edge reward for the last action (``SupportsStepReward``)."""

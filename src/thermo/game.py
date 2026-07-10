@@ -40,6 +40,11 @@ _LO, _HI, _N = 0, 1, 2
 # the reduction and cost terms are commensurate. Named, not a bare literal.
 COST_TO_ERROR_SCALE = 1e-4
 
+# Minimum samples a child window keeps after a split. A split conserves samples
+# (each child gets ``n * sample_split_credit``); this floor only bites for a
+# nearly-empty parent and guards against a zero-sample (infinite-variance) child.
+MIN_SPLIT_CHILD_SAMPLES = 1.0
+
 
 def total_stderr(windows: NDArray[np.float64], surrogate: VarianceSurrogate) -> float:
     """ΔG standard error ``sqrt(Σ c_i**2 / n_i)`` over the windows under a surrogate."""
@@ -117,7 +122,7 @@ class LambdaSchedulingGame(RefinementGame):
             i = action - maxw
             lo, hi, n = windows[i]
             mid = 0.5 * (lo + hi)
-            child_n = max(float(n) * self.params.sample_split_credit, 1.0)
+            child_n = max(float(n) * self.params.sample_split_credit, MIN_SPLIT_CHILD_SAMPLES)
             left = np.array([lo, mid, child_n], dtype=np.float64)
             right = np.array([mid, hi, child_n], dtype=np.float64)
             windows = np.vstack([windows[:i], left, right, windows[i + 1 :]])
@@ -134,14 +139,19 @@ class LambdaSchedulingGame(RefinementGame):
 
     def get_reward(self, state: RefinementState, prev_state: RefinementState) -> float:
         reduction = prev_state.error_estimate - state.error_estimate
-        # dof grows on allocate (samples added); a split leaves dof unchanged.
-        cost = (
-            self.params.batch_cost_ns if state.dof > prev_state.dof else self.params.split_cost_ns
-        )
+        # A split adds a window (allocate never does), so the window-count delta
+        # identifies the move type exactly — independent of the sample-accounting
+        # side-effect a dof-delta would rely on.
+        is_split = state.values.shape[0] > prev_state.values.shape[0]
+        cost = self.params.split_cost_ns if is_split else self.params.batch_cost_ns
         return reduction - COST_TO_ERROR_SCALE * cost
 
     def get_winner(self, state: RefinementState) -> int:
-        return 1 if state.error_estimate <= self.params.error_tolerance else -1
+        # Neutral (0) unless the schedule actually converged. Returning -1 for a
+        # non-converged terminal would be ~1e3× the per-edge shaped reward and
+        # would swamp the intermediate-reward signal MCTS optimises (the shaped
+        # variance reduction), confounding the comparison. See the spec.
+        return 1 if state.error_estimate <= self.params.error_tolerance else 0
 
     def to_tensor(self, state: RefinementState) -> NDArray[np.float32]:
         return state.values.astype(np.float32).reshape(-1)

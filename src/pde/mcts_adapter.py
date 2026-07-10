@@ -24,8 +24,10 @@ Usage::
     pde_game = BasisSelectionGame(operator, game_config)
     adapter = PDEGameAdapter(pde_game)
 
-    evaluator = RandomEvaluator(action_size=pde_game.action_space_size)
-    mcts = MCTS(evaluator=evaluator, n_simulations=50)
+    evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+    # A PDE game is single-agent: pass ``adapter.search_mode`` so MCTS does not
+    # invert the value on backup (the MCTS default is the two-player ZERO_SUM).
+    mcts = MCTS(evaluator=evaluator, n_simulations=50, search_mode=adapter.search_mode)
     policy = mcts.search(adapter)
 """
 
@@ -37,6 +39,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import structlog
 from numpy.typing import NDArray
+
+from src.mcts.search import SearchMode
 
 if TYPE_CHECKING:
     from src.pde.game import PDEGame, PDEState
@@ -54,6 +58,12 @@ class PDEGameAdapter:
     Error reduction is mapped to a ``[-1, 1]`` outcome for the
     ``get_winner`` method: convergence maps to +1, budget exhaustion
     with poor error maps to -1, and intermediate outcomes interpolate.
+
+    A PDE game is **single-agent**, so callers should construct MCTS with
+    ``search_mode=adapter.search_mode`` (``SearchMode.SINGLE_AGENT``) — the
+    ``MCTS`` default ``ZERO_SUM`` would invert the value at odd depths and make
+    the search minimise the objective (the F0 bug this surface exists to
+    prevent). This mirrors ``RefinementGameAdapter.search_mode``.
 
     Attributes
     ----------
@@ -86,6 +96,11 @@ class PDEGameAdapter:
             initial_error=self.state.error_estimate,
             action_space_size=pde_game.action_space_size,
         )
+
+    @property
+    def search_mode(self) -> SearchMode:
+        """The correct MCTS backup mode for a single-agent PDE game."""
+        return SearchMode.SINGLE_AGENT
 
     # ------------------------------------------------------------------ #
     # GameInterface protocol methods                                      #

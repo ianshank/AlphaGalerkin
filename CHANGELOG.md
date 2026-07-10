@@ -35,6 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/pde/test_reward_reachability.py` (get_reward invoked iff enabled), and
   `tests/pde/test_clone_isolation.py` (F3 clone isolation across every concrete PDE game).
 
+### Fixed — Post-merge review hardening (PR #95 follow-up)
+
+- **`PDEGameAdapter.search_mode` property.** Since `MCTS.__init__` defaults to `SearchMode.ZERO_SUM`
+  for back-compat, a caller wrapping a raw `PDEGameAdapter` who forgot to pass `search_mode` would
+  silently get the pre-fix (wrong-for-single-agent) backup. The adapter now exposes a `search_mode`
+  property returning `SearchMode.SINGLE_AGENT`, mirroring `RefinementGameAdapter.search_mode`, so PDE
+  callers can wire `MCTS(search_mode=adapter.search_mode)`. Additive; nothing merged was incorrect
+  (the production `lshape_amr_compare` path already plumbs `search_mode` explicitly).
+- **`MCTS._read_step_reward` contract check.** A game exposing `get_last_reward` as a non-callable
+  attribute (float / property value) now raises a clear `TypeError` at the source of the contract
+  violation instead of a cryptic `'... is not callable'` deeper in the search loop.
+
 ### Added — Domain-free refinement engine (`src/refinement/`) + λ-scheduling ablation (`src/thermo/`)
 
 - **`src/refinement/`** — the domain-agnostic `RefinementGame` engine (`RefinementState` +

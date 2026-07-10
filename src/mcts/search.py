@@ -357,10 +357,28 @@ class MCTS:
 
         Games that do not implement ``get_last_reward`` (e.g. board games)
         contribute zero intermediate reward.
+
+        Raises:
+            TypeError: If a game exposes ``get_last_reward`` as a non-callable
+                attribute (e.g. a float or property value), violating the
+                ``SupportsStepReward`` contract. Failing here gives a clear
+                message at the source rather than a cryptic ``'... is not
+                callable'`` deeper in the search loop.
+
         """
-        getter = getattr(game, "get_last_reward", None)
-        if getter is None:
+        # A unique sentinel distinguishes "attribute absent" (board games —
+        # contribute zero) from "attribute present but not a method" (a float or
+        # a property returning None — a contract violation). ``None`` as the
+        # default would conflate the two and silently swallow the latter.
+        sentinel = object()
+        getter = getattr(game, "get_last_reward", sentinel)
+        if getter is sentinel:
             return 0.0
+        if not callable(getter):
+            raise TypeError(
+                f"{type(game).__name__}.get_last_reward must be a callable method "
+                f"returning a float, got {type(getter).__name__}"
+            )
         return float(getter())
 
     def _expand_node(

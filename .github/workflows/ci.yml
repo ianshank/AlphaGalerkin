@@ -297,6 +297,12 @@ jobs:
         run: |
           pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
 
+      # Domain-free refinement engine (WS1). Branch coverage currently 96%.
+      - name: Per-module coverage gate (refinement)
+        if: always() && hashFiles('tests/refinement/') != ''
+        run: |
+          pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85 -q --no-header
+
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''
         run: |

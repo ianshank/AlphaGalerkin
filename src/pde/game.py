@@ -32,6 +32,7 @@ from torch import Tensor
 if TYPE_CHECKING:
     from src.pde.config import PDEGameConfig
     from src.pde.operators import PDEOperator
+    from src.refinement.state import RefinementState
 
 
 class GamePhase(str, Enum):
@@ -179,6 +180,55 @@ class PDEState:
             budget_remaining=data["budget_remaining"],
             phase=GamePhase(data["phase"]),
             history=data.get("history", []),
+        )
+
+    def to_refinement(self) -> RefinementState:
+        """Project onto the domain-free :class:`RefinementState`.
+
+        Maps ``solution`` → ``values`` and the absolute PDE ``residuals`` →
+        per-unit ``indicators`` (``PDEState`` has no dedicated indicator field —
+        residual magnitude is the natural refinement signal), and copies the four
+        MCTS scalars. Lossy: PDE-specific fields (coords, basis coefficients, mesh
+        levels, phase) are not carried, so this is a one-way projection for the
+        engine; use :meth:`from_refinement` only when those fields are not needed.
+        """
+        from src.refinement.state import RefinementState
+
+        return RefinementState(
+            values=self.solution.astype(np.float32).copy(),
+            indicators=np.abs(self.residuals).astype(np.float32),
+            error_estimate=float(self.error_estimate),
+            dof=int(self.dof),
+            step=int(self.step),
+            budget_remaining=float(self.budget_remaining),
+            history=list(self.history),
+        )
+
+    @classmethod
+    def from_refinement(
+        cls,
+        rstate: RefinementState,
+        coords: NDArray[np.float32] | None = None,
+    ) -> PDEState:
+        """Build a ``PDEState`` from a :class:`RefinementState`.
+
+        ``rstate.values`` becomes ``solution`` and ``rstate.indicators`` becomes
+        ``residuals``. ``coords`` is required geometric information that
+        ``RefinementState`` does not carry; when omitted a trivial ``(N, 1)``
+        index grid is synthesised so the result is a valid ``PDEState``.
+        """
+        n = int(rstate.values.shape[0]) if rstate.values.ndim >= 1 else 0
+        if coords is None:
+            coords = np.arange(n, dtype=np.float32).reshape(-1, 1)
+        return cls(
+            coords=np.asarray(coords, dtype=np.float32),
+            solution=rstate.values.astype(np.float32).copy(),
+            residuals=rstate.indicators.astype(np.float32).copy(),
+            error_estimate=float(rstate.error_estimate),
+            dof=int(rstate.dof),
+            step=int(rstate.step),
+            budget_remaining=float(rstate.budget_remaining),
+            history=list(rstate.history),
         )
 
 

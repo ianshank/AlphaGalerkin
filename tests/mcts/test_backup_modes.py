@@ -191,9 +191,7 @@ class _MixedTerminalGame:
         self.history: list[int] = list(history) if history else []
 
     def get_state(self) -> np.ndarray:
-        return np.array(
-            [float(self.history[0] + 1) if self.history else 0.0], dtype=np.float32
-        )
+        return np.array([float(self.history[0] + 1) if self.history else 0.0], dtype=np.float32)
 
     def get_legal_actions(self) -> list[int]:
         if len(self.history) == 0:
@@ -228,10 +226,7 @@ class _StateValueEvaluator:
         return EvaluationResult(policy=policy, value=value)
 
     def evaluate_batch(self, states, legal_actions_batch):  # noqa: ANN001
-        return [
-            self.evaluate(s, la)
-            for s, la in zip(states, legal_actions_batch, strict=False)
-        ]
+        return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]
 
 
 class TestBatchTerminalInterleaving:
@@ -251,9 +246,7 @@ class TestBatchTerminalInterleaving:
             c_puct=1.0,
             search_mode=SearchMode.SINGLE_AGENT,
         )
-        action = mcts.get_action(
-            _MixedTerminalGame(), temperature=0.0, add_noise=False
-        )
+        action = mcts.get_action(_MixedTerminalGame(), temperature=0.0, add_noise=False)
         assert action == 0
 
 

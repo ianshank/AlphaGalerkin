@@ -166,6 +166,13 @@ class MCTSNode:
         :class:`~src.mcts.search.SearchMode`. The default is ``True`` to
         preserve the historical behaviour of any direct caller.
 
+        Virtual loss is **not** touched here: it is added and removed by the
+        search loop (``add_virtual_loss`` during selection,
+        ``remove_virtual_loss(self.virtual_loss)`` before backup), which removes
+        the exact amount applied. Decrementing it again here (by a fixed 1 that
+        need not match the added amount) was redundant and would corrupt another
+        thread's bookkeeping under parallel search.
+
         Args:
             value: Value estimate from neural network or terminal state.
             invert: Whether to flip the sign at each level (zero-sum) or
@@ -178,8 +185,6 @@ class MCTSNode:
         while node is not None:
             node.visit_count += 1
             node.total_value += current_value
-            # Remove virtual loss if it was applied
-            node.virtual_loss = max(0, node.virtual_loss - 1)
             # Flip value for opponent's perspective (zero-sum only)
             if invert:
                 current_value = -current_value

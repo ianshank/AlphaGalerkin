@@ -32,8 +32,11 @@ python -m scripts.audit_abstractions src/mcts --fail-on-missing
 - Dunder / framework hooks (`__init__`, `__enter__`, …) are never flagged.
 
 The heuristic is deliberately simple so its output is trustworthy. It can miss a member accessed only
-via `getattr`, and it counts a call site anywhere in the tree (not just outside the defining module),
-so treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is reassurance.
+via `getattr`; it counts a call site anywhere in the tree (not just outside the defining module); and
+because the match is by member *name*, if two classes declare the same member name and only one has a
+caller, the tool credits both (a name-collision false negative). Findings are de-duplicated by the
+fully-qualified `(file, class, name)` key, so distinct declarations are each reported when flagged.
+Treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is reassurance.
 
 ## Policy
 

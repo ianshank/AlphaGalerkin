@@ -167,20 +167,25 @@ def audit(roots: list[Path]) -> AuditReport:
         pattern = r"\." + re.escape(f.name) + (r"\b" if f.is_property else r"\(")
         return bool(re.search(pattern, corpus))
 
+    # De-duplicate by the fully-qualified (file, class, name) declaration key,
+    # not by name alone: two different ABCs/Protocols may declare the same member
+    # name, and name-only de-dup would silently drop the second declaration.
     report = AuditReport()
-    seen_abstract: set[str] = set()
+    seen_abstract: set[tuple[str, str, str]] = set()
     for f in abstracts:
-        if f.name in seen_abstract:
+        key = (f.file, f.cls, f.name)
+        if key in seen_abstract:
             continue
-        seen_abstract.add(f.name)
+        seen_abstract.add(key)
         if not _has_use(f):
             report.abstract_missing.append(f)
 
-    seen_proto: set[str] = set()
+    seen_proto: set[tuple[str, str, str]] = set()
     for f in protocols:
-        if f.name in seen_proto:
+        key = (f.file, f.cls, f.name)
+        if key in seen_proto:
             continue
-        seen_proto.add(f.name)
+        seen_proto.add(key)
         if not _has_use(f):
             report.protocol_missing.append(f)
     return report

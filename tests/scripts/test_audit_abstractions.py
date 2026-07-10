@@ -49,6 +49,38 @@ def test_called_abstract_method_not_flagged(tmp_path: Path) -> None:
     assert not report.abstract_missing
 
 
+def test_dedup_reports_each_declaration_of_same_name(tmp_path: Path) -> None:
+    """Two dead abstract methods with the same name are both reported.
+
+    Name-only de-dup would drop the second declaration; the fully-qualified
+    (file, class, name) key reports each.
+    """
+    _write(
+        tmp_path,
+        "a.py",
+        (
+            "from abc import ABC, abstractmethod\n"
+            "class A(ABC):\n"
+            "    @abstractmethod\n"
+            "    def foo(self) -> None: ...\n"
+        ),
+    )
+    _write(
+        tmp_path,
+        "b.py",
+        (
+            "from abc import ABC, abstractmethod\n"
+            "class B(ABC):\n"
+            "    @abstractmethod\n"
+            "    def foo(self) -> None: ...\n"
+        ),
+    )
+    report = audit([tmp_path])
+    classes = {(f.cls, f.name) for f in report.abstract_missing}
+    assert ("A", "foo") in classes
+    assert ("B", "foo") in classes
+
+
 def test_abstract_property_read_not_flagged(tmp_path: Path) -> None:
     """A property read as an attribute (no parens) must not be flagged."""
     _write(

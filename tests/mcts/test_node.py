@@ -306,15 +306,24 @@ class TestBackup:
         assert child.total_value == -1.0
         assert root.total_value == 1.0
 
-    def test_backup_removes_virtual_loss(self):
-        """Test backup removes virtual loss."""
+    def test_backup_does_not_touch_virtual_loss(self):
+        """backup() propagates value only; virtual loss is the search loop's job.
+
+        Virtual loss is added (add_virtual_loss) and removed
+        (remove_virtual_loss, which subtracts the exact amount) by MCTS around
+        the backup. backup() must not decrement it again — doing so was
+        redundant and incorrect for parallel search.
+        """
         node = MCTSNode()
         node.virtual_loss = 3.0
 
         node.backup(0.5)
 
-        # Virtual loss reduced by 1
-        assert node.virtual_loss == 2.0
+        # Untouched by backup.
+        assert node.virtual_loss == 3.0
+        # remove_virtual_loss is the API that clears it, by the exact amount.
+        node.remove_virtual_loss(3.0)
+        assert node.virtual_loss == 0.0
 
 
 # --- Virtual Loss Tests ---

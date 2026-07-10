@@ -288,6 +288,15 @@ jobs:
         run: |
           pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
 
+      # First per-module gate for the MCTS engine (branch): it was previously
+      # covered only by the global --cov=src gate, and it is now known to have
+      # contained a correctness bug (single-agent backup, F0). Branch coverage
+      # is currently 96%.
+      - name: Per-module coverage gate (mcts)
+        if: always() && hashFiles('tests/mcts/') != ''
+        run: |
+          pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
+
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''
         run: |

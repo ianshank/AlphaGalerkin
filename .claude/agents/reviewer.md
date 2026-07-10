@@ -19,6 +19,13 @@ Checklist for every diff:
   test is said to pass, confirm it is not skipped and actually asserts the behavior.
 - **Coverage / regression**: the changed surface hits its `--cov-fail-under` gate (branch); the
   correct CLAUDE.md Regression-Surface rows are run and green; new surfaces add a new row.
+- **Every `@abstractmethod` has a call site.** An abstract method overridden by every subclass but
+  called by nothing is dead — a docstring describing an algorithm that does not run (this was F1:
+  `PDEGame.get_reward`). Run `/audit-abstractions` on the changed package; a zero-call-site abstract
+  method is a blocker unless the diff wires it up or removes it.
+- **Every `Protocol` member a caller declares is read by the callee.** A protocol member that is
+  declared and never read is a silent contract break (this was F0: `n_players` was declared and read
+  by zero code in `src/mcts/`). Check that new protocol members have a reader.
 - **Typing/lint**: `mypy --strict` and `ruff` clean on the changed files.
 
 Report findings most-severe first with `file:line` evidence and a concrete failure scenario.

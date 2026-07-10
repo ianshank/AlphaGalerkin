@@ -385,20 +385,32 @@ jobs:
           pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
             --cov=src/poc/baselines --cov-branch --cov-fail-under=85 -q --no-header
 
+      # NOTE: these two gates use the native coverage runner with path-glob
+      # --include rather than pytest-cov's dotted --cov=module.path. The dotted
+      # form makes coverage import the target module during tracer setup, which
+      # collides with the torch C extension (SystemError: bad call flags), even
+      # under COVERAGE_CORE=pytrace. The native runner with path globs measures
+      # the same modules without importing them for source discovery.
       - name: Per-module coverage gate (poc/scaling_law + centaur-common)
         if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
         run: |
-          pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
-            tests/poc/test_centaur_common.py \
-            --cov=src.poc.scenarios.scaling_law --cov=src.poc.scenarios.scaling_law_config \
-            --cov=src.poc.scenarios._centaur_common --cov-branch --cov-fail-under=85 -q --no-header
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
+            -m pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
+            tests/poc/test_centaur_common.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
+            --fail-under=85
 
       - name: Per-module coverage gate (agents/research_loop + config)
         if: always() && hashFiles('tests/agents/test_research_loop.py') != ''
         run: |
-          pytest tests/agents/test_research_loop.py tests/agents/test_config.py \
-            --cov=src.agents.research_loop --cov=src.agents.config \
-            --cov-branch --cov-fail-under=85 -q --no-header
+          python -m coverage run --branch \
+            --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
+            -m pytest tests/agents/test_research_loop.py tests/agents/test_config.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
+            --fail-under=85
 
       - name: Upload coverage to Codecov
         if: always()

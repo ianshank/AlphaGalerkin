@@ -39,6 +39,7 @@ import structlog
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
+    from src.mcts.search import SearchMode
     from src.pde.game import PDEGame, PDEState
 
 logger = structlog.get_logger(__name__)
@@ -54,6 +55,12 @@ class PDEGameAdapter:
     Error reduction is mapped to a ``[-1, 1]`` outcome for the
     ``get_winner`` method: convergence maps to +1, budget exhaustion
     with poor error maps to -1, and intermediate outcomes interpolate.
+
+    A PDE game is **single-agent**, so callers should construct MCTS with
+    ``search_mode=adapter.search_mode`` (``SearchMode.SINGLE_AGENT``) — the
+    ``MCTS`` default ``ZERO_SUM`` would invert the value at odd depths and make
+    the search minimise the objective (the F0 bug this surface exists to
+    prevent). This mirrors ``RefinementGameAdapter.search_mode``.
 
     Attributes
     ----------
@@ -86,6 +93,13 @@ class PDEGameAdapter:
             initial_error=self.state.error_estimate,
             action_space_size=pde_game.action_space_size,
         )
+
+    @property
+    def search_mode(self) -> SearchMode:
+        """The correct MCTS backup mode for a single-agent PDE game."""
+        from src.mcts.search import SearchMode
+
+        return SearchMode.SINGLE_AGENT
 
     # ------------------------------------------------------------------ #
     # GameInterface protocol methods                                      #

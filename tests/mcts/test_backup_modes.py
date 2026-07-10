@@ -364,3 +364,29 @@ class TestIntermediateRewards:
         assert c2.edge_reward == pytest.approx(0.5)
         discounted_return = c1.edge_reward + gamma * c2.edge_reward
         assert discounted_return == pytest.approx(0.5 + gamma * 0.5)
+
+
+class TestReadStepReward:
+    """Contract for the ``_read_step_reward`` step-reward seam."""
+
+    def test_missing_getter_contributes_zero(self) -> None:
+        class _NoReward:
+            pass
+
+        assert MCTS._read_step_reward(_NoReward()) == pytest.approx(0.0)  # type: ignore[arg-type]
+
+    def test_callable_getter_is_read(self) -> None:
+        class _HasReward:
+            def get_last_reward(self) -> float:
+                return 0.75
+
+        assert MCTS._read_step_reward(_HasReward()) == pytest.approx(0.75)  # type: ignore[arg-type]
+
+    def test_non_callable_getter_raises_typeerror(self) -> None:
+        """A float/property masquerading as the method fails clearly at source."""
+
+        class _BadReward:
+            get_last_reward = 0.5  # not a method — contract violation
+
+        with pytest.raises(TypeError, match="get_last_reward must be a callable"):
+            MCTS._read_step_reward(_BadReward())  # type: ignore[arg-type]

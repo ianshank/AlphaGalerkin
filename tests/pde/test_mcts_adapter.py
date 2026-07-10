@@ -65,6 +65,24 @@ class TestPDEGameAdapterProtocol:
         assert state.dtype == np.float32
         assert state.ndim >= 1
 
+    def test_search_mode_is_single_agent(self, adapter: PDEGameAdapter) -> None:
+        """A PDE game is single-agent; the adapter advertises the correct mode.
+
+        Mirrors ``RefinementGameAdapter.search_mode`` so PDE callers can wire
+        ``MCTS(search_mode=adapter.search_mode)`` instead of silently inheriting
+        the ``ZERO_SUM`` default (the F0 footgun for single-agent search).
+        """
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS, SearchMode
+
+        assert adapter.search_mode is SearchMode.SINGLE_AGENT
+        # Wiring it through MCTS disables backup inversion.
+        mcts = MCTS(
+            evaluator=RandomEvaluator(n_actions=adapter.pde_game.action_space_size),
+            search_mode=adapter.search_mode,
+        )
+        assert mcts._invert_backup is False
+
     def test_get_legal_actions_returns_list(self, adapter: PDEGameAdapter) -> None:
         """get_legal_actions() returns a non-empty list of ints."""
         actions = adapter.get_legal_actions()

@@ -390,3 +390,19 @@ class TestReadStepReward:
 
         with pytest.raises(TypeError, match="get_last_reward must be a callable"):
             MCTS._read_step_reward(_BadReward())  # type: ignore[arg-type]
+
+    def test_property_returning_none_raises_typeerror(self) -> None:
+        """A property returning None is a contract violation, not "absent".
+
+        The sentinel default on ``getattr`` distinguishes this from a game that
+        simply does not implement the method (which contributes 0.0). Without
+        it, ``None`` would be swallowed and silently return 0.0.
+        """
+
+        class _NonePropertyReward:
+            @property
+            def get_last_reward(self) -> None:
+                return None
+
+        with pytest.raises(TypeError, match="get_last_reward must be a callable"):
+            MCTS._read_step_reward(_NonePropertyReward())  # type: ignore[arg-type]

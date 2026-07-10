@@ -366,8 +366,13 @@ class MCTS:
                 callable'`` deeper in the search loop.
 
         """
-        getter = getattr(game, "get_last_reward", None)
-        if getter is None:
+        # A unique sentinel distinguishes "attribute absent" (board games —
+        # contribute zero) from "attribute present but not a method" (a float or
+        # a property returning None — a contract violation). ``None`` as the
+        # default would conflate the two and silently swallow the latter.
+        sentinel = object()
+        getter = getattr(game, "get_last_reward", sentinel)
+        if getter is sentinel:
             return 0.0
         if not callable(getter):
             raise TypeError(

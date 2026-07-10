@@ -38,8 +38,9 @@ import numpy as np
 import structlog
 from numpy.typing import NDArray
 
+from src.mcts.search import SearchMode
+
 if TYPE_CHECKING:
-    from src.mcts.search import SearchMode
     from src.pde.game import PDEGame, PDEState
 
 logger = structlog.get_logger(__name__)
@@ -97,8 +98,6 @@ class PDEGameAdapter:
     @property
     def search_mode(self) -> SearchMode:
         """The correct MCTS backup mode for a single-agent PDE game."""
-        from src.mcts.search import SearchMode
-
         return SearchMode.SINGLE_AGENT
 
     # ------------------------------------------------------------------ #

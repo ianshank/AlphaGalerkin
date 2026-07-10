@@ -35,6 +35,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/pde/test_reward_reachability.py` (get_reward invoked iff enabled), and
   `tests/pde/test_clone_isolation.py` (F3 clone isolation across every concrete PDE game).
 
+### Added — Domain-free refinement engine (`src/refinement/`) + λ-scheduling ablation (`src/thermo/`)
+
+- **`src/refinement/`** — the domain-agnostic `RefinementGame` engine (`RefinementState` +
+  `RefinementLike` protocol, `RefinementGameAdapter` → MCTS passing `SINGLE_AGENT`, generic
+  `RefinementGameConfig[TDomain]`, `@register_refinement_game`). `PDEState` gains additive
+  `to_refinement()`/`from_refinement()` converters (fields unchanged; existing PDE tests green).
+  85% branch gate; audit-clean.
+- **`src/thermo/`** — the first non-PDE `RefinementGame`: a λ-window (BAR/FEP) sample-scheduling
+  ablation. `LambdaSchedulingGame` (deterministic `apply_action`, monotone-under-allocate /
+  reachable-non-monotone-under-split), four `VarianceSurrogate`s (analytic / mismatched / recorded /
+  operator-stub), and a plan-in-surrogate / act-in-world comparison harness.
+- **NEGATIVE result (kill criterion triggered).** Untrained uniform-prior MCTS is **~2× worse** than
+  greedy variance-weighted allocation at every surrogate bias including zero — it over-splits and
+  fragments the sample budget. The thesis is falsified for this configuration; the code is retained
+  only as the falsification harness and **no capability is claimed**. Honest caveat: a purely
+  multiplicative surrogate bias is scale-invariant for allocation, so genuine mismatch needs shape
+  distortion — moot here since MCTS already loses at zero mismatch. Artifacts:
+  `results/lambda_scheduling.{png,csv}`; write-up in `specs/lambda_scheduling.spec.md`. CI gates the
+  mechanics (85% branch), not the losing headline.
+
+### Fixed — CI coverage job uses the pure-Python tracer
+
+- The installed torch wheel crashes coverage's default **C tracer** on `import torch._C`
+  (`ValueError: module functions cannot set METH_CLASS ...` / segfault), so the `Test Coverage` job
+  failed at collection. Set `COVERAGE_CORE=pytrace` on the coverage job (the remedy already
+  documented in CLAUDE.md) so the coverage gates actually run.
+
 ### Added — Spec-driven agentic tooling + Noyron v2.2 (`specs/`, `.claude/`, `src/agents/`, `src/poc/scenarios/noyron_basis*`)
 
 Additive, backwards-compatible sprint across four workstreams:

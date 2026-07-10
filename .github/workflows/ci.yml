@@ -233,6 +233,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint
+    # The installed torch wheel crashes coverage's default C tracer on import
+    # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
+    # pure-Python tracer, as documented in CLAUDE.md, so the coverage gates run.
+    env:
+      COVERAGE_CORE: pytrace
 
     steps:
       - name: Checkout repository
@@ -302,6 +307,14 @@ jobs:
         if: always() && hashFiles('tests/refinement/') != ''
         run: |
           pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85 -q --no-header
+
+      # λ-window scheduling ablation (first non-PDE RefinementGame). Gates the
+      # MECHANICS only — the MCTS-vs-greedy headline is a documented NEGATIVE
+      # result (specs/lambda_scheduling.spec.md). Branch coverage currently 94%.
+      - name: Per-module coverage gate (thermo)
+        if: always() && hashFiles('tests/thermo/') != ''
+        run: |
+          pytest tests/thermo/ --cov=src/thermo --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''

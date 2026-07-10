@@ -127,6 +127,11 @@ class ComparisonParams:
     value_scale: float = 4.0
     c_puct: float = 1.4
     add_noise: bool = True
+    # Backup semantics for the MCTS arm. L-shape AMR is a single-agent game,
+    # so ``"single_agent"`` is correct. ``"legacy_adversarial"`` reproduces the
+    # pre-fix two-player backup used to generate the originally committed
+    # results/lshape_mcts_vs_dorfler.csv.
+    search_mode: str = "single_agent"
     # Comparison
     n_seeds: int = 5
 
@@ -140,6 +145,11 @@ class ComparisonParams:
             raise ValueError(f"initial_side must be an even integer >= 2, got {self.initial_side}")
         if self.n_seeds < 1:
             raise ValueError(f"n_seeds must be >= 1, got {self.n_seeds}")
+        valid_modes = {"single_agent", "zero_sum", "legacy_adversarial"}
+        if self.search_mode not in valid_modes:
+            raise ValueError(
+                f"search_mode must be one of {sorted(valid_modes)}, got {self.search_mode!r}"
+            )
 
 
 @dataclass
@@ -385,7 +395,7 @@ def run_mcts_arm(
     """
     # Imported here so the module imports cleanly without the MCTS engine
     # available (e.g. for pure geometry / marker unit tests).
-    from src.mcts.search import MCTS
+    from src.mcts.search import MCTS, SearchMode
     from src.pde.mcts_adapter import PDEGameAdapter
 
     np.random.seed(params.seed)
@@ -400,7 +410,14 @@ def run_mcts_arm(
     )
     adapter = PDEGameAdapter(game)
     evaluator = EncodedValueEvaluator(n_actions=game.action_space_size)
-    mcts = MCTS(evaluator=evaluator, n_simulations=params.n_simulations, c_puct=params.c_puct)
+    # L-shape AMR is single-agent: SINGLE_AGENT is the correct backup. The
+    # legacy_adversarial escape hatch reproduces the pre-fix committed CSV.
+    mcts = MCTS(
+        evaluator=evaluator,
+        n_simulations=params.n_simulations,
+        c_puct=params.c_puct,
+        search_mode=SearchMode(params.search_mode),
+    )
 
     traj = ArmTrajectory(method="mcts")
     t0 = time.perf_counter()

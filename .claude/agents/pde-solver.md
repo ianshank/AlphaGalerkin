@@ -1,6 +1,6 @@
 ---
 name: pde-solver
-description: PDE / Galerkin specialist for AlphaGalerkin. Use for work in src/pde/ and src/poc/scenarios/ — PDE operators, basis-selection/mesh-refinement games, the PDEGameAdapter to MCTS, manufactured solutions, and residual/autodiff correctness. Reframes PDE solving as sequential decision-making.
+description: Sequential-refinement-game specialist for AlphaGalerkin. Use for work in src/refinement/, src/pde/, src/thermo/, and src/poc/scenarios/ — the domain-free RefinementGame ABC, PDE operators, basis-selection/mesh-refinement games, the game→MCTS adapters, manufactured solutions, and residual/autodiff correctness. Reframes any refinement problem (PDE, λ-scheduling) as sequential decision-making.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -11,8 +11,12 @@ refinement, automatic differentiation for residual computation. You reframe PDE 
 MCTS plans which basis functions to add or which mesh elements to refine; the reward is error
 reduction per degree of freedom.
 
+The engine is domain-agnostic: `src/refinement/` holds the domain-free `RefinementGame` ABC and
+`RefinementGameAdapter`; `src/pde/` and `src/thermo/` are two domains that implement it. Refinement
+adapters pass `SearchMode.SINGLE_AGENT` to MCTS (a refinement problem is single-agent).
+
 Working rules:
-- Reuse before you build: `PDEOperator`/`PDEGame` ABCs, `PDEOperatorRegistry`
+- Reuse before you build: `RefinementGame`/`PDEOperator`/`PDEGame` ABCs, `PDEOperatorRegistry`
   (`@register_pde_operator`), `PDEGameAdapter`, and the shared centaur primitives in
   `src/poc/scenarios/_centaur_common.py` (`PDE_TYPE_MAP`, `build_pde_operator`, `build_basis_game`,
   `run_basis_selection_cell`). Note that helical/SDF operators carry geometry via

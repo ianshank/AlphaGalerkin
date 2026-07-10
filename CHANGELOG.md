@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Single-agent MCTS backup (F0, correctness) + reward wiring (F1)
+
+- **F0 — single-agent backup.** `MCTSNode.backup` unconditionally negated the backed-up value at
+  every tree level (a two-player assumption), while `select_child` maximises `Q + exploration` at
+  every depth. For single-agent games (`n_players == 1`: every PDE / refinement game) this made the
+  search *minimise* value at odd depths. Fixed by routing the sign flip through a new
+  `src.mcts.search.SearchMode` (`SINGLE_AGENT` / `ZERO_SUM` / `LEGACY_ADVERSARIAL`);
+  `MCTSNode.backup(value, invert)` now takes the flag explicitly. **Backwards compatible:** the
+  `MCTS.__init__` default is `ZERO_SUM` (byte-for-byte the old two-player backup), so Go/chess are
+  unchanged; single-agent callers pass `SINGLE_AGENT`. `LEGACY_ADVERSARIAL` (deprecated, warns) exists
+  only to reproduce pre-fix results.
+- **L-shape headline corrected & republished.** The `lshape_amr_compare` MCTS arm now defaults to
+  `search_mode="single_agent"`. Re-running the canonical config over the same 5 seeds:
+  `legacy_adversarial` (pre-fix) → median L2 ratio **0.8896** (~11% win); `single_agent` (corrected)
+  → **0.9605** (~4% win), win fraction 0.80 in both. Still a win at matched DOF (primary gate passes),
+  but a **smaller, honest** one. `results/lshape_mcts_vs_dorfler.{csv,png}` regenerated under the
+  corrected mode; `specs/lshape_amr_compare.spec.md` AC3 documents both numbers.
+- **F1 — reward reachability.** `PDEGame.get_reward` (previously abstract with zero `src/` call sites)
+  is now reachable through MCTS behind an opt-in `MCTS(use_intermediate_rewards=...)` flag (default
+  `False` → unchanged behaviour): `_simulate` accumulates `R = Σ γ^t · get_last_reward()` along the
+  selection path and backs up `R + γ^d · V(leaf)`. `PDEGameAdapter` gained `get_last_reward()`
+  implementing the optional `SupportsStepReward` protocol.
+- **Tests.** `tests/mcts/test_backup_modes.py` (sign-by-mode, the anchor
+  `test_single_agent_search_prefers_higher_value_at_all_depths` which fails on the inverting modes,
+  deprecation + reward-discount validation, intermediate-reward accumulation),
+  `tests/pde/test_reward_reachability.py` (get_reward invoked iff enabled), and
+  `tests/pde/test_clone_isolation.py` (F3 clone isolation across every concrete PDE game).
+
+### Added — Domain-free refinement engine (`src/refinement/`) + λ-scheduling ablation (`src/thermo/`)
+
+- **`src/refinement/`** — the domain-agnostic `RefinementGame` engine (`RefinementState` +
+  `RefinementLike` protocol, `RefinementGameAdapter` → MCTS passing `SINGLE_AGENT`, generic
+  `RefinementGameConfig[TDomain]`, `@register_refinement_game`). `PDEState` gains additive
+  `to_refinement()`/`from_refinement()` converters (fields unchanged; existing PDE tests green).
+  85% branch gate; audit-clean.
+- **`src/thermo/`** — the first non-PDE `RefinementGame`: a λ-window (BAR/FEP) sample-scheduling
+  ablation. `LambdaSchedulingGame` (deterministic `apply_action`, monotone-under-allocate /
+  reachable-non-monotone-under-split), four `VarianceSurrogate`s (analytic / mismatched / recorded /
+  operator-stub), and a plan-in-surrogate / act-in-world comparison harness.
+- **NEGATIVE result (kill criterion triggered).** Untrained uniform-prior MCTS is **~2× worse** than
+  greedy variance-weighted allocation at every surrogate bias including zero — it over-splits and
+  fragments the sample budget. The thesis is falsified for this configuration; the code is retained
+  only as the falsification harness and **no capability is claimed**. Honest caveat: a purely
+  multiplicative surrogate bias is scale-invariant for allocation, so genuine mismatch needs shape
+  distortion — moot here since MCTS already loses at zero mismatch. Artifacts:
+  `results/lambda_scheduling.{png,csv}`; write-up in `specs/lambda_scheduling.spec.md`. CI gates the
+  mechanics (85% branch), not the losing headline.
+
+### Changed — Tech-debt hardening on the refinement/thermo surface
+
+- **Reward-scale confound fixed & negative result revalidated.** The MCTS intermediate-reward
+  return `R + γ^d·V(leaf)` mixed the order-`1e-3` shaped reward with an order-`1` terminal winner.
+  `LambdaSchedulingGame.get_winner` now returns **0** (neutral) for a non-converged terminal
+  (was `-1`), and the per-edge cost is keyed on the **window-count delta** (a split adds a window),
+  not on a DOF side-effect. Re-running leaves the verdict unchanged (ratio 2.00 → 2.05), so the
+  negative result is genuine over-splitting, not a reward-scale artifact. Spec + committed
+  `results/lambda_scheduling.{png,csv}` updated.
+- **Structured logging** (`structlog`) added to `src/refinement/adapter.py`,
+  `src/thermo/{surrogate,outer_loop}.py`, and `scripts/run_lambda_scheduling.py`, mirroring the
+  repo's event-logging convention.
+- **Typing escape hatches removed:** `OperatorSurrogate.predict_fn` and `run_bias_sweep.make_planner`
+  are now `Callable`-typed; the CLI builds its config via `model_validate`; the dead
+  `replace_params` helper (which carried a `type: ignore`) is deleted. Zero avoidable `type: ignore`
+  remain in the new src surface.
+- **Reuse:** `iterate_greedy/uniform/mcts` generators + `score_true_stderr` extracted in
+  `outer_loop`; the plot CLI now consumes them instead of re-implementing the scheduler loops.
+- **No hardcoded values:** `DEFAULT_NOISE_FREQUENCY`, `MIN_SPLIT_CHILD_SAMPLES`, `BUDGET_GRID_POINTS`
+  named; `RATIO_FLOOR` reused; `reward_discount` surfaced as a typed `LambdaSchedulingConfig` /
+  `SchedulingParams` field with a `(0, 1]` validator.
+- **Coverage:** new tests for the converged-winner / tolerance-terminal branch, split-vs-allocate
+  cost keying, zero-window infinite variance, the adapter's torch-tensor `get_state` path, empty
+  `from_refinement`, and the `reward_discount` validators. `src/thermo` 95% / `src/refinement` 99%
+  branch. `ruff` + `mypy --strict` clean; abstraction-audit clean.
+
+### Fixed — CI coverage job uses the pure-Python tracer
+
+- The installed torch wheel crashes coverage's default **C tracer** on `import torch._C`
+  (`ValueError: module functions cannot set METH_CLASS ...` / segfault), so the `Test Coverage` job
+  failed at collection. Set `COVERAGE_CORE=pytrace` on the coverage job (the remedy already
+  documented in CLAUDE.md) so the coverage gates actually run.
+
 ### Added — Spec-driven agentic tooling + Noyron v2.2 (`specs/`, `.claude/`, `src/agents/`, `src/poc/scenarios/noyron_basis*`)
 
 Additive, backwards-compatible sprint across four workstreams:

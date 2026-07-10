@@ -163,6 +163,7 @@ class LShapeAMRCompareScenario(BaseScenario):
             value_scale=self.config.value_scale,
             c_puct=self.config.c_puct,
             add_noise=self.config.add_noise,
+            search_mode=self.config.search_mode,
             n_seeds=self.config.n_seeds,
         )
 

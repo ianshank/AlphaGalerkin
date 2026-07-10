@@ -21,6 +21,8 @@ See ``specs/lshape_amr_compare.spec.md`` for the contract this config implements
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field, field_validator, model_validator
 
 from src.poc.config import BaseScenarioConfig, MetricThreshold
@@ -112,6 +114,14 @@ class LShapeAMRCompareConfig(BaseScenarioConfig):
     )
     add_noise: bool = Field(
         default=True, description="Add root Dirichlet exploration noise in MCTS."
+    )
+    search_mode: Literal["single_agent", "zero_sum", "legacy_adversarial"] = Field(
+        default="single_agent",
+        description=(
+            "MCTS backup semantics for the (single-agent) L-shape AMR game. "
+            "'single_agent' is correct; 'legacy_adversarial' reproduces the "
+            "pre-fix two-player backup that produced the originally committed CSV."
+        ),
     )
 
     # --- Acceptance + artifacts ---------------------------------------- #

@@ -40,6 +40,11 @@ class MCTSNode:
     total_value: float = 0.0
     virtual_loss: float = 0.0
 
+    # Immediate (per-edge) reward earned by applying ``action`` from the
+    # parent state. Zero unless intermediate-reward shaping is enabled on the
+    # search (see ``src.mcts.search.MCTS.use_intermediate_rewards``).
+    edge_reward: float = 0.0
+
     # Optional state storage (mainly for root)
     _state: NDArray[np.float32] | None = field(default=None, repr=False)
 
@@ -146,14 +151,32 @@ class MCTSNode:
     def backup(
         self,
         value: float,
+        invert: bool = True,
     ) -> None:
         """Backup value through the tree.
 
-        Propagates value from leaf to root, alternating sign
-        for two-player games.
+        Propagates value from leaf to root. For zero-sum two-player games
+        (Go, chess) the value is negated at each level so every node sees the
+        return from its own player's perspective (``invert=True``). For
+        single-agent games (PDE / refinement, ``n_players == 1``) the same
+        return is propagated unchanged (``invert=False``) — negating it would
+        make the search *minimise* value at odd depths.
+
+        The caller (``MCTS``) selects ``invert`` from its
+        :class:`~src.mcts.search.SearchMode`. The default is ``True`` to
+        preserve the historical behaviour of any direct caller.
+
+        Virtual loss is **not** touched here: it is added and removed by the
+        search loop (``add_virtual_loss`` during selection,
+        ``remove_virtual_loss(self.virtual_loss)`` before backup), which removes
+        the exact amount applied. Decrementing it again here (by a fixed 1 that
+        need not match the added amount) was redundant and would corrupt another
+        thread's bookkeeping under parallel search.
 
         Args:
             value: Value estimate from neural network or terminal state.
+            invert: Whether to flip the sign at each level (zero-sum) or
+                propagate unchanged (single-agent).
 
         """
         node: MCTSNode | None = self
@@ -162,10 +185,9 @@ class MCTSNode:
         while node is not None:
             node.visit_count += 1
             node.total_value += current_value
-            # Remove virtual loss if it was applied
-            node.virtual_loss = max(0, node.virtual_loss - 1)
-            # Flip value for opponent's perspective
-            current_value = -current_value
+            # Flip value for opponent's perspective (zero-sum only)
+            if invert:
+                current_value = -current_value
             node = node.parent
 
     def add_virtual_loss(

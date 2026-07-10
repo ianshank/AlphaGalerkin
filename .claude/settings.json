@@ -31,7 +31,9 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git branch:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git worktree:*)",
+      "Bash(python -m scripts.audit_abstractions:*)"
     ]
   }
 }

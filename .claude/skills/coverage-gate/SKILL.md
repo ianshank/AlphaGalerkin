@@ -8,25 +8,27 @@ description: Run the per-module coverage gate for an AlphaGalerkin package the w
 AlphaGalerkin gates coverage globally (85%) and per-module. This skill runs the correct gate for
 the package you changed.
 
-## Per-module thresholds (from `.github/workflows/ci.yml`)
+## Per-module thresholds — single source of truth is `.github/workflows/ci.yml`
 
-| Package | `--cov-fail-under` |
-|---|---|
-| `src/pde/` | 75 |
-| `src/physics/` | 75 |
-| `src/modeling/` | 85 |
-| `src/training/` | 85 |
-| `src/research/` | 85 |
-| `src/games/` | 80 |
-| `src/distributed/` | 60 |
-| Global (`src/`) | 85 |
+There is **no threshold table here** on purpose: two copies of the same numbers drift (that
+duplication is the mechanism by which `src/pde/game.py`'s docstring became a lie). Read the gate
+straight from CI:
 
-Scenario / integration packages use 85 via the CLAUDE.md Regression-Surface rows
-(e.g. `src/poc/scenarios/*`, `src/integrations/lm_studio`, `src/agents/*`).
+```bash
+# List every per-module coverage gate and its threshold, from ci.yml
+grep -nE "cov=src/|cov-fail-under=" .github/workflows/ci.yml
+```
+
+Each `Per-module coverage gate` step in `ci.yml` pairs a `--cov=src/<pkg>` with its
+`--cov-fail-under=<N>`. Scenario / integration packages (`src/poc/scenarios/*`,
+`src/integrations/*`, `src/agents/*`) are gated at 85 branch via their dedicated ci.yml steps and
+the CLAUDE.md Regression-Surface rows. A **new** package's gate is added to `ci.yml` in the same PR
+as the package.
 
 ## Steps
 
-1. Pick the package and its threshold. For a new scenario or agent, use 85 (branch coverage).
+1. Pick the package and read its threshold from `ci.yml` (command above). For a new scenario or
+   agent, use 85 (branch coverage).
 2. Run the gate, mirroring CI:
    ```bash
    pytest tests/<pkg>/ -m "not gpu_required" \

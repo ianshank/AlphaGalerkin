@@ -233,6 +233,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint
+    # The installed torch wheel crashes coverage's default C tracer on import
+    # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
+    # pure-Python tracer, as documented in CLAUDE.md, so the coverage gates run.
+    env:
+      COVERAGE_CORE: pytrace
 
     steps:
       - name: Checkout repository
@@ -287,6 +292,29 @@ jobs:
         if: always() && hashFiles('tests/pde/') != ''
         run: |
           pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
+
+      # First per-module gate for the MCTS engine (branch): it was previously
+      # covered only by the global --cov=src gate, and it is now known to have
+      # contained a correctness bug (single-agent backup, F0). Branch coverage
+      # is currently 96%.
+      - name: Per-module coverage gate (mcts)
+        if: always() && hashFiles('tests/mcts/') != ''
+        run: |
+          pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
+
+      # Domain-free refinement engine (WS1). Branch coverage currently 96%.
+      - name: Per-module coverage gate (refinement)
+        if: always() && hashFiles('tests/refinement/') != ''
+        run: |
+          pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85 -q --no-header
+
+      # λ-window scheduling ablation (first non-PDE RefinementGame). Gates the
+      # MECHANICS only — the MCTS-vs-greedy headline is a documented NEGATIVE
+      # result (specs/lambda_scheduling.spec.md). Branch coverage currently 94%.
+      - name: Per-module coverage gate (thermo)
+        if: always() && hashFiles('tests/thermo/') != ''
+        run: |
+          pytest tests/thermo/ --cov=src/thermo --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''
@@ -357,20 +385,32 @@ jobs:
           pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
             --cov=src/poc/baselines --cov-branch --cov-fail-under=85 -q --no-header
 
+      # NOTE: these two gates use the native coverage runner with path-glob
+      # --include rather than pytest-cov's dotted --cov=module.path. The dotted
+      # form makes coverage import the target module during tracer setup, which
+      # collides with the torch C extension (SystemError: bad call flags), even
+      # under COVERAGE_CORE=pytrace. The native runner with path globs measures
+      # the same modules without importing them for source discovery.
       - name: Per-module coverage gate (poc/scaling_law + centaur-common)
         if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
         run: |
-          pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
-            tests/poc/test_centaur_common.py \
-            --cov=src.poc.scenarios.scaling_law --cov=src.poc.scenarios.scaling_law_config \
-            --cov=src.poc.scenarios._centaur_common --cov-branch --cov-fail-under=85 -q --no-header
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
+            -m pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
+            tests/poc/test_centaur_common.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
+            --fail-under=85
 
       - name: Per-module coverage gate (agents/research_loop + config)
         if: always() && hashFiles('tests/agents/test_research_loop.py') != ''
         run: |
-          pytest tests/agents/test_research_loop.py tests/agents/test_config.py \
-            --cov=src.agents.research_loop --cov=src.agents.config \
-            --cov-branch --cov-fail-under=85 -q --no-header
+          python -m coverage run --branch \
+            --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
+            -m pytest tests/agents/test_research_loop.py tests/agents/test_config.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
+            --fail-under=85
 
       - name: Upload coverage to Codecov
         if: always()

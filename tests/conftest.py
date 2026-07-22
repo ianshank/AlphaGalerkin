@@ -23,9 +23,6 @@ hypothesis_settings.register_profile(
 )
 hypothesis_settings.load_profile("ci" if os.environ.get("CI") else "default")
 
-# Re-export video compression fixtures for test discovery
-pytest_plugins = ["tests.video_compression.video_fixtures"]
-
 # Optional torch import - not all tests need it
 try:
     import torch

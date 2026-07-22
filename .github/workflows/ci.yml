@@ -71,8 +71,8 @@ jobs:
         run: ruff format src/ tests/ --check
 
       - name: Run MyPy type checking
-        # Informational: pre-existing codebase has type errors in video_compression/,
-        # distributed/, modeling/ that require incremental refactoring.
+        # Informational: pre-existing codebase has type errors in distributed/,
+        # modeling/ that require incremental refactoring.
         # Ruff check + format are the hard quality gates.
         # Track progress: mypy errors should decrease over time.
         continue-on-error: true
@@ -125,10 +125,8 @@ jobs:
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \
-            --ignore=tests/video_compression/ \
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
-            --ignore=tests/vertex/ \
             --ignore=tests/distributed/test_multiprocess.py \
             --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
@@ -262,10 +260,8 @@ jobs:
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \
-            --ignore=tests/video_compression/ \
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
-            --ignore=tests/vertex/ \
             --ignore=tests/distributed/test_multiprocess.py \
             --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
@@ -308,14 +304,6 @@ jobs:
         run: |
           pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85 -q --no-header
 
-      # λ-window scheduling ablation (first non-PDE RefinementGame). Gates the
-      # MECHANICS only — the MCTS-vs-greedy headline is a documented NEGATIVE
-      # result (specs/lambda_scheduling.spec.md). Branch coverage currently 94%.
-      - name: Per-module coverage gate (thermo)
-        if: always() && hashFiles('tests/thermo/') != ''
-        run: |
-          pytest tests/thermo/ --cov=src/thermo --cov-branch --cov-fail-under=85 -q --no-header
-
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''
         run: |
@@ -345,16 +333,6 @@ jobs:
         if: always() && hashFiles('tests/physics/') != ''
         run: |
           pytest tests/physics/ --cov=src/physics --cov-fail-under=75 -q --no-header
-
-      - name: Per-module coverage gate (reentry)
-        if: hashFiles('tests/reentry/') != ''
-        run: |
-          pytest tests/reentry/ --cov=src/reentry --cov-fail-under=60 -q --no-header
-
-      - name: Per-module coverage gate (firefighting)
-        if: hashFiles('tests/firefighting/') != ''
-        run: |
-          pytest tests/firefighting/ --cov=src/firefighting --cov-fail-under=60 -q --no-header
 
       # Gates previously documented in CLAUDE.md's Regression Surface table but
       # never wired into CI. Each mirrors the documented Verification command.
@@ -484,38 +462,6 @@ jobs:
             -q
 
   # ============================================================
-  # Stage 7: Video Compression Tests (Optional - requires more resources)
-  # ============================================================
-  test-video:
-    name: Video Compression Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: test-fast
-    if: contains(github.event.head_commit.message, '[video-test]') || github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Run video compression tests
-        run: |
-          pytest tests/video_compression/ \
-            -m "not gpu_required" \
-            --tb=short \
-            -q
-
-  # ============================================================
   # Stage 8: Chess Pipeline Tests
   # ============================================================
   test-chess:
@@ -603,7 +549,6 @@ jobs:
         run: |
           pytest tests/deployment/test_export_onnx_integration.py \
             tests/integration/test_onnx_e2e.py \
-            tests/video_compression/unit/test_loss.py \
             --tb=short -q
 
   # ============================================================

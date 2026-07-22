@@ -19,8 +19,6 @@ You are an expert AI agent working on AlphaGalerkin — a system that replaces d
 │ modeling/   │ games/       │ training/                  │
 │ math_kernel/│ mcts/        │ distributed/               │
 │ pde/        │              │ deployment/                │
-│             │              │ vertex/                    │
-│             │              │ video_compression/         │
 ├─────────────┴──────────────┴────────────────────────────┤
 │  Frameworks: poc/ | templates/                          │
 └─────────────────────────────────────────────────────────┘
@@ -44,8 +42,6 @@ Each module has its own `AGENT.md` with detailed context. Use the appropriate mo
 | [`src/templates/`](src/templates/AGENT.md) | Infrastructure Builder | Reusable patterns: config, registry, logging, CLI |
 | [`src/distributed/`](src/distributed/AGENT.md) | Distributed Systems Engineer | DDP training, gradient sync, multi-node coordination |
 | [`src/deployment/`](src/deployment/AGENT.md) | Deployment Engineer | ONNX export, quantization, runtime inference |
-| [`src/vertex/`](src/vertex/AGENT.md) | Cloud ML Engineer | Vertex AI jobs, GCS checkpoints, spot instances, cost tracking |
-| [`src/video_compression/`](src/video_compression/AGENT.md) | Codec Engineer | Neural video codec, entropy coding, rate-distortion optimization |
 
 ## Cross-Cutting Design Patterns
 
@@ -112,18 +108,17 @@ When a task spans multiple modules, decompose it into module-specific sub-tasks:
 | Add a new game | games/ | mcts/, training/ |
 | Add a new PDE operator | pde/ | math_kernel/, training/ |
 | Improve model architecture | modeling/ | math_kernel/, training/ |
-| Set up cloud training | vertex/ | distributed/, training/ |
+| Set up distributed training | distributed/ | training/ |
 | Export for production | deployment/ | modeling/ |
 | Run validation experiments | poc/ | modeling/, training/ |
-| Add video compression feature | video_compression/ | modeling/, training/ |
 
 ### Dependency Flow
 
 ```
 math_kernel/ ──→ modeling/ ──→ training/ ──→ distributed/
-                    │              │              │
-                    ▼              ▼              ▼
-                 mcts/ ←── games/          vertex/
+                    │              │
+                    ▼              ▼
+                 mcts/ ←── games/
                     │
                     ▼
                   pde/ (via mcts_adapter)
@@ -131,7 +126,6 @@ math_kernel/ ──→ modeling/ ──→ training/ ──→ distributed/
 templates/ ──→ [all modules use config, registry, logging]
 poc/ ──→ [validates modeling, training, math_kernel]
 deployment/ ←── modeling/ (exports trained models)
-video_compression/ ←── modeling/ (reuses Galerkin + FNet)
 ```
 
 ## Global Constraints

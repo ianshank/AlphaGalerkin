@@ -46,6 +46,9 @@ from src.pde.games.lshape_amr import (
 )
 from src.research.baselines import AMRConfig, DorflerAMRSolver
 
+# Re-exported for backwards-compatible imports (callers import these from here).
+from src.research.seed_sweep import SEED_PRIME_STRIDE, resolved_seeds  # noqa: F401
+
 if TYPE_CHECKING:
     from src.pde.config import PDEGameConfig
     from src.pde.operators import PDEOperator
@@ -60,9 +63,8 @@ logger = structlog.get_logger(__name__)
 # stay finite even for a degenerate (single-point / zero-time) trajectory.
 RATIO_FLOOR: float = 1e-15
 
-# Prime stride decorrelating per-seed RNG streams in the multi-seed sweep
-# (mirrors the noyron_basis / scaling_law scenarios).
-SEED_PRIME_STRIDE: int = 7919
+# ``SEED_PRIME_STRIDE`` and ``resolved_seeds`` are imported from src.research.seed_sweep
+# (shared with transfer_baseline_compare) and re-exported above.
 
 
 # --------------------------------------------------------------------------- #
@@ -581,11 +583,6 @@ def run_comparison(
 # --------------------------------------------------------------------------- #
 # Multi-seed aggregation                                                      #
 # --------------------------------------------------------------------------- #
-
-
-def resolved_seeds(base_seed: int, n_seeds: int) -> list[int]:
-    """Deterministic, decorrelated per-seed RNG seeds for the sweep."""
-    return [base_seed + i * SEED_PRIME_STRIDE for i in range(n_seeds)]
 
 
 @dataclass

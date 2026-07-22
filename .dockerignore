@@ -96,8 +96,6 @@ desktop.ini
 *service-account*.json
 *service_account*.json
 
-# Video test materials
-Test_Video_Materals/
 validation_outputs/
 
 # Benchmark artifacts

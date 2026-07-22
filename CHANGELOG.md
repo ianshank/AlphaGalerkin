@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Honest zero-shot transfer benchmark (operator vs retrained CNN)
+
+- New CI-gated `transfer_baseline_compare` PoC scenario replacing the **fabricated**
+  "Zero-shot Transfer MSE 0.000209, 240× better than threshold" headline (a hardcoded
+  notebook markdown cell no code ever computed). `src/experiments/cnn_baseline.py`
+  (`DiscreteCNNBaseline` discrete foil), `src/research/transfer_baseline_compare.py`
+  (median-over-seeds harness), `src/poc/scenarios/transfer_baseline_compare{,_config}.py`,
+  `scripts/run_transfer_baseline_compare.py`, `specs/transfer_baseline_compare.spec.md`.
+- **Honest measured result** (committed `config/baselines/transfer_ci.json`,
+  `results/transfer_baseline_compare.{csv,png}`): the resolution-independent operator
+  transfers zero-shot (19×19 MSE ≈ 2.3e-3, trained only at 9×9) but a discrete CNN —
+  retrained *or even applied zero-shot* — is more accurate. The operator's value is
+  **zero-retraining (one model at any resolution), not peak accuracy**. The gated ratio is
+  committed as a regression ceiling, not a false `< 1` win claim.
+- Every headline number now comes from one real (median-ranked) seed, so dividing the
+  committed absolutes reproduces the committed ratio exactly. Shared
+  `src/research/seed_sweep.py` de-duplicates the seed-derivation between the transfer and
+  L-shape harnesses. Per-module branch coverage ≥ 92% (cnn 100%, harness 98%, config 98%,
+  scenario 92%); new `transfer-baseline-regression` CI job (soft-gated) diffs the tripwire
+  run against the committed baseline.
+
+### Removed — Cut to the research core (6 application modules, ~72k LOC)
+
+- `git rm` of `src/{video_compression,reentry,vertex,intercept,firefighting,thermo}` and
+  their test trees / scripts / configs / docs to refocus the repo on the Galerkin + MCTS
+  core (pre-cut tag `archive/pre-core-cut-2026-07-22`). All six were import-safe (nothing in
+  the keep-set imported them). The `thermo` λ-window negative-result ablation is preserved in
+  git history. Companion cleanup: removed the `video`/`requires_video` pytest markers, the
+  `vertex` packaging extra, the codec-perf CI workflow, and pruned the C4 architecture
+  diagrams, `AGENT.md`, and `CLAUDE.md` of the deleted subsystems.
+
+### Changed — Prior-art review + SBIR reframe
+
+- `docs/proposals/PRIOR_ART_REVIEW.md`: the narrow MCTS-Galerkin-basis-selection delta
+  survives, but the blanket "no MCTS + FEM" claim does **not** (TreeMesh, arXiv:2111.07613,
+  couples MCTS + RL with FE mesh generation). SBIR positioning reframed to the method delta
+  at matched wall-clock, not a demonstrated accuracy win.
+
 ### Fixed — Single-agent MCTS backup (F0, correctness) + reward wiring (F1)
 
 - **F0 — single-agent backup.** `MCTSNode.backup` unconditionally negated the backed-up value at
@@ -695,7 +733,7 @@ Key highlights of this release:
 ### Milestones Achieved
 
 - **Zero-Shot Transfer Validated**: Physics PoC demonstrated resolution-independence
-  - Trained on 9x9 grids, achieved MSE 0.000209 on 19x19 grids (240x better than 0.05 threshold)
+  - Trained on 9x9 grids, transfers zero-shot to 19x19 (measured MSE ≈ 0.00039). NOTE: the original "0.000209 / 240× better than threshold" was a fabricated notebook figure — corrected 2026-07-22; a CNN retrained at 19x19 is more accurate (see `specs/transfer_baseline_compare.spec.md`).
   - Validates core Galerkin approach for continuous operator learning
 
 - **Training Pipeline Operational**: End-to-end training with self-play working on GPU

@@ -1,9 +1,9 @@
 """Domain-free sequential-refinement engine.
 
 The ``RefinementGame`` abstraction and its MCTS adapter are the domain-agnostic
-core that ``src.pde`` (PDE basis/mesh refinement) and ``src.thermo`` (λ-window
-sample scheduling) both implement. It carries no PDE-specific types, so the same
-single-agent MCTS engine drives every refinement domain.
+core that ``src.pde`` (PDE basis/mesh refinement) implements. It carries no
+PDE-specific types, so the same single-agent MCTS engine can drive any refinement
+domain that reframes "reduce an error estimate under a budget" as a game.
 """
 
 from src.refinement.adapter import RefinementGameAdapter

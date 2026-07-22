@@ -47,7 +47,7 @@ Monitors LBB condition during training:
 - [2026-01-26]: PhysicsOperator neural network for influence field prediction.
 - [2026-01-26]: Zero-shot transfer validation: Train on 9x9 → Evaluate on 19x19.
 - [2026-01-26]: Success criterion: MSE < 0.05 on 19x19 without retraining.
-- [2026-01-26]: **MILESTONE ACHIEVED**: Zero-shot transfer MSE = 0.000209 (240x better than threshold)
+- [2026-01-26]: ~~**MILESTONE ACHIEVED**: Zero-shot transfer MSE = 0.000209 (240x better than threshold)~~ **CORRECTED (2026-07-22)**: the 0.000209/240× figure was a *fabricated* notebook markdown cell — no code computed it. Measured operator zero-shot MSE (9x9→19x19, 50 epochs) is ≈ **0.00039**. Against an honest baseline (a CNN retrained at 19x19) the operator *loses* — the value is zero-retraining (one model, any resolution), not peak accuracy. See `specs/transfer_baseline_compare.spec.md`.
 - [2026-01-26]: Added W&B integration for experiment tracking (--wandb flag).
 
 ## PoC Scenario Framework
@@ -59,7 +59,7 @@ Monitors LBB condition during training:
 - [2026-01-26]: Added comprehensive C4 architecture in Mermaid format (docs/architecture/c4_mermaid.md).
 
 ## Milestones
-- [2026-01-26]: **Zero-Shot Transfer Validated** - Physics PoC achieved MSE 0.000209 on 19x19 (trained on 9x9)
+- [2026-01-26]: **Zero-Shot Transfer Measured** - Physics PoC operator transfers to 19x19 at MSE ≈ 0.00039 (trained on 9x9); the earlier "0.000209" was a fabricated notebook cell (corrected 2026-07-22, `specs/transfer_baseline_compare.spec.md`). A retrained CNN is more accurate — the operator's edge is zero-retraining, not peak accuracy.
 - [2026-01-26]: **Training Pipeline Operational** - End-to-end GPU training with MCTS self-play working
 - [2026-02-01]: **CI/CD Pipeline Added** - GitHub Actions workflow with lint, type check, tests, coverage
 - [2026-02-01]: **Video Compression Hyperprior Fixed** - Proper z_bitstream encoding/decoding for entropy model
@@ -115,6 +115,7 @@ Monitors LBB condition during training:
 - [2026-06-12]: **Operationalising the Headline Runs (OpenAI-compatible LLM backends + PoC baseline harness)** — additive, backwards-compatible follow-up to PR #86 that turns the merged scaling-law / research-loop machinery into reproducible, regression-guarded results. **(WS1) Multi-backend LLM**: new `src/integrations/openai_compat/` backend-profile registry (`BackendProfile`, `register_backend`/`get_backend`/`apply_backend_defaults`) lets `LMStudioConfig.backend ∈ {lm_studio, vllm, llama_cpp}` auto-fill each server's endpoint/model/`vram_check_mode` for fields left unset (explicit YAML always wins; `lm_studio` profile == historical defaults so it is a guaranteed no-op). Two additive `LMStudioConfig` fields (`backend`, `vram_check_mode`); preflight skips the *local* free-VRAM probe when `vram_check_mode="off"` (remote server). All existing `LMStudio*` imports/configs unchanged. **(WS2) Baseline harness**: `src/poc/baselines/` mirrors the perf `BaselineRegistry` — schema-versioned (`POC_BASELINE_*_SCHEMA_VERSION`, `extra="ignore"`, `migrate_baseline_document`) record/load/save + direction-aware `compare` (per-entry higher/lower-better + tolerance, so one code path gates residual / `solved_fraction` / latency). New poc-CLI `record-baseline` / `diff` subcommands (diff exits non-zero on regression → CI-usable); research-loop result now persisted to `outputs/agents/research/<run_id>/result.json` via `agents.cli research --output-dir`. **(WS3) DRY**: duplicated `_median` extracted to `_centaur_common.median_of` (back-compat `_median` aliases kept). **(WS4) Docs**: tested-server matrix in `src/integrations/AGENT.md`; backend-switch + baseline sections in `docs/PR86_HEADLINE_RUNS.md`. **Coverage**: `openai_compat` 94%, `poc/baselines` 100%; 60+ new tests (backend registry 19, baseline harness 31, poc-CLI 7, research persistence 3) incl. Hypothesis migration property test; full integrations/poc/agents regression green; `ruff` + `ruff format` clean; `mypy --strict` zero new errors on the changed surface.
 - [2026-07-01]: **Spec-Driven Agentic Tooling + Noyron v2.2 (first MCTS-on-Noyron result)** — additive, backwards-compatible sprint across four workstreams. **(WS0) Spec-driven dev**: new markdown-only `specs/` tree (`README.md`, `TEMPLATE.spec.md`, per-feature specs) — thresholds reuse the canonical `src.poc.config.MetricThreshold` (no parallel schema; peer-review-corrected from an initially-proposed `src/spec/` package). **(WS1) Agentic layer**: new `.claude/` project scaffolding (SessionStart hook that bootstraps `pip install -e '.[dev]'` with the `SETUPTOOLS_USE_DISTUTILS=stdlib` antlr fix, `settings.json`, four skills, five persona subagents, three slash commands) **and** `src/agents/` hardening — new `src/agents/AGENT.md`, opt-in `BaseAgent` lifecycle hooks (`pre/post_setup`, `pre/post_step`, default no-ops), opt-in wall-clock timeout (`AgentConfig.enforce_timeout` default False → historical behaviour preserved; TIMEOUT terminal state), and a `python -m src.agents.cli scaffold` command backed by the reusable `src/agents/scaffold.py`. **(WS2) Noyron v2.2**: new `noyron_basis` PoC scenario (`@scenario("noyron_basis")`) drives MCTS Galerkin basis selection on the Leap 71 helical SDF operators via the existing `pde_basis_helical` path, reusing only the geometry-agnostic `_centaur_common` primitives (`build_arm_evaluator`, `run_basis_selection_cell`); a reusable `make_manufactured_operator` overlays a ∏sin target so the homogeneous helical operators yield a non-degenerate game. **Gap surfaced honestly**: the current candidate Galerkin basis library is poorly matched to 3D SDF geometry (~2–4 % best-case reduction even fitting every candidate), so the default thresholds assert the provable correctness property (`error_reduction_pct ≥ 0` monotone, bounded residual) and the 20 % headline is documented as an open research item. **(WS2b) OOD expansion**: shipped `llm_prior_{helmholtz,biharmonic}.yaml` OOD configs + AQA tests (operators already in the `ood_pde` Literal / `PDE_TYPE_MAP`). **Coverage**: `noyron_basis.py` 97%, `noyron_basis_config.py` 100%, `agents/base.py`/`config.py`/`scaffold.py` 100%; new tests: agents lifecycle/timeout 5, scaffold 16, noyron_basis 34, OOD 8. `ruff` + `ruff format` clean; `mypy --strict` clean on the changed surface. Note: coverage in this env requires `COVERAGE_CORE=pytrace` (a nightly torch wheel crashes the C tracer).
 - [2026-07-05]: **Competitive AMR Baseline — L-shaped Poisson MCTS vs Dörfler (thesis-resolving)** — built the missing *competitive* baseline on the standard L-shaped Poisson AMR benchmark (reentrant-corner singularity `u = r^(2/3)sin(2θ/3)`), replacing the `noyron_basis` monotone `≥0` non-test with a **comparative, falsifiable** gate. Both arms share the SAME masked finite-difference solver, residual estimator, geometry and active-DOF accounting — only the marking policy differs. **(1) Notch mask**: `DorflerAMRSolver._solve_on_grid_2d` / `_compute_indicators_2d` gained an optional `inside` predicate (default `None` == byte-for-byte the old full-box behaviour; SBIR P40 surface untouched) that pins out-of-L nodes to Dirichlet and zeroes out-of-L element indicators. **(2) Real-solve MCTS game**: `src/pde/games/lshape_amr.py::LShapeAMRGame(PDEGame)` refines one indicator-ranked element per action, calling the **real** injected masked solve in `apply_action`; driven through the existing `MCTS` + `PDEGameAdapter` engine with a bundled `EncodedValueEvaluator` (uniform prior + normalised lower-error-per-DOF leaf value — no trained net, `src/mcts` untouched). **(3) Harness**: `src/research/lshape_amr_compare.py` runs both arms (reusing `_dorfler_mark_2d`/`_refine_grid` verbatim), computes the **area-weighted (dual-cell) L2 norm** (`_area_weighted_l2` — a plain node-wise RMS over-weights the densely-refined singular region and would bias the ratio; peer-review correction), and sweeps `n_seeds` seeds gating on the **median** ratio (a single MCTS run is high-variance). Reports **two honest comparisons** — `l2_error_ratio_at_matched_dof` (policy quality, the primary gate `< 1.0`, median-over-seeds) and `error_per_dof_ratio_mcts_over_dorfler` (end-to-end matched wall-clock, recorded not gated since untrained MCTS pays `n_simulations` solves/step) — plus per-seed spread (`l2_ratio_seed_min/max/std`, `mcts_win_fraction`). **(4) Scenario/CLI**: `@scenario("lshape_amr_compare")` + `scripts/run_lshape_amr.py` writing the committed `results/lshape_mcts_vs_dorfler.{csv,png}` (median/representative seed). **Headline result (area-weighted L2, median of seeds)**: MCTS beats Dörfler by **~11–14% at matched DOF** (median ratio ~0.86–0.89, win fraction 0.8, seed spread 0.76–1.03 — an honest, robust win, not the ~22% a node-wise RMS flattered), and **~15–55× worse at matched wall-clock** (search overhead) — both reported; closing the wall-clock gap needs a trained evaluator (Out of Scope). Honest scope note: the shared discretisation refines by tensor-product x/y edges, so this is a *controlled same-discretisation* comparison, **not** the full quadtree AMR benchmark (v2.1). `ruff` + `ruff format` clean; `mypy --strict` clean on the changed surface. Spec: `specs/lshape_amr_compare.spec.md`.
+- [2026-07-22]: **Honest Transfer Benchmark + Cut-to-the-Core** — (1) Replaced the *fabricated* "zero-shot transfer MSE 0.000209 / 240× better than threshold" headline (a hardcoded notebook cell no code computed, backed by no artifact) with a committed, CI-gated, falsifiable benchmark: `transfer_baseline_compare` (`src/experiments/cnn_baseline.py`, `src/research/transfer_baseline_compare.py`, `src/poc/scenarios/transfer_baseline_compare{,_config}.py`, `scripts/run_transfer_baseline_compare.py`, `specs/transfer_baseline_compare.spec.md`). The operator trained only at 9×9 vs a discrete CNN retrained at 19×19, median-over-seeds ratio, mechanism-only smoke + a soft regression gate. **Honest result**: the operator transfers (19×19 MSE ≈ 4e-4, no retraining) but a retrained CNN is *more accurate* — the value is zero-retraining, not peak accuracy. Fabricated number corrected repo-wide; per-module coverage cnn 100 / harness 99 / config 98 / scenario 92. (2) Prior-art review (`docs/proposals/PRIOR_ART_REVIEW.md`): the narrow MCTS-Galerkin-basis delta survives, but the blanket "no MCTS+FEM" claim does not (TreeMesh, arXiv:2111.07613); SBIR docs reframed. (3) **Cut to the core**: removed `video_compression`, `reentry`, `vertex`, `intercept`, `firefighting`, `thermo` (~72k LOC incl. tests) to refocus on the Galerkin/MCTS core (pre-cut tag `archive/pre-core-cut-2026-07-22`). The `thermo` λ-window scheduling negative-result ablation is removed with them; its finding is preserved in git history.
 - [2026-06-07]: **AI-for-Physics Scaling Themes (OOD operators + scaling law + centaur research loop)** — three additive, backwards-compatible deliverables operationalising Adam Brown's "held-out generalisation / bitter-lesson scaling / billions of cloneable Einsteins" themes. (1) **OOD operators**: `HelmholtzOperator` (∇²u + k²u = f; oscillatory zeroth-order term, wavenumber resolves arg → `reaction_coeff` → `DEFAULT_HELMHOLTZ_WAVENUMBER`) and `BiharmonicOperator` (∇⁴u = f; fourth-order via two autodiff Laplacian passes) with manufactured `∏ sin(π x_d)` solutions, registered in `PDEOperatorRegistry` and added to `PDEType` + the `llm_prior_ablation` `ood_pde` Literal — held-out residual structures the FNet evaluator never trained on. (2) **Shared centaur primitives**: `src/poc/scenarios/_centaur_common.py` extracts the canonical `PDE_TYPE_MAP`, operator/game construction, arm evaluator factory (`build_arm_evaluator`), and the inner MCTS rollout (`run_basis_selection_cell`); `llm_prior_ablation` refactored to delegate (regression suite stays green). (3) **Scaling-law scenario**: `ScalingLawScenario` (`@scenario("scaling_law")`) sweeps MCTS-simulation budget and fits a log-log residual curve per arm (`residual_scaling_exponent`/`residual_fit_r2` thresholds), with a `StatisticalAnalyzer` arm-vs-arm comparison and HTML report. (4) **Centaur research-loop harness** extends `src/agents/` with `AgentType.RESEARCH`, `ResearchLoopConfig`/`ResearchProblemSpec`, and `ResearchLoopOrchestrator(BaseExecutable)` that sweeps MCTS+evaluator across a problem manifest (sequential or one-thread-per-problem) and aggregates a per-problem discovery ledger (`solved_fraction`, `arm_wins_*`); exposed via the agents CLI `research` subcommand. Every knob is a typed Pydantic field (no hardcoded budgets/tolerances/wavenumbers); arm gating mirrors `llm_prior_ablation` (preflight/checkpoint). Demo configs: `config/scenarios/scaling_law_demo.yaml`, `config/agents/research_loop_demo.yaml`. **Coverage**: `_centaur_common.py` 89%, `scaling_law.py` 86%, `scaling_law_config.py` 98%, `agents/config.py` 98%, `agents/research_loop.py` 86%; 100+ new tests (OOD operators 20, scaling-law 35, centaur-common 12, research-loop 16) plus 4 `gpu_required` real-server smoke tests; full pde/poc/agents/integrations/mcts regression green (1780 passed); `ruff` + `ruff format` clean; `mypy --strict` zero new errors on the changed surface.
 
 ## Next Steps (post-PR #58)
@@ -139,7 +140,7 @@ hardening of the HX path.
 | ~~**LLM-prior alternative backends**~~ ✅ **DONE (2026-06-12 / WS1)** | vLLM and llama.cpp profiles registered in `src/integrations/openai_compat/registry.py` (`LMStudioConfig.backend ∈ {lm_studio, vllm, llama_cpp}`, `apply_backend_defaults`). | Validates the `[lm-studio]` extra as the canonical OpenAI-compatible client; tested-server matrix in `src/integrations/AGENT.md`. |
 
 ## SBIR Positioning
-- **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement
+- **Novelty Gap (reviewed 2026-07-22, `docs/proposals/PRIOR_ART_REVIEW.md`)**: MCTS *multi-step look-ahead* for error-driven adaptive **refinement** and **Galerkin basis** selection is unpublished; the AMR-RL canon (Yang 2023, Foucart 2023, Huergo 2024, Freymuth/ASMR, MeshDQN) is uniformly *single-step* policy RL. **Do not** use the blanket "no MCTS+FEM" claim — TreeMesh (arXiv:2111.07613) already couples MCTS+RL with FE mesh *generation* (a distinct problem). Novelty is a *method* delta, not a demonstrated win: it needs an empirical advantage at matched wall-clock (see the `lshape_amr_compare` honest result).
 - **Target Solicitations**: Navy N252-088, DOE ASCR C59-01, NSF SBIR, AFWERX Open Topic
 - **TRL Level**: 3-4 (advancing to 5-6 with benchmark demonstrations)
 - **Key Differentiators**: Multi-step look-ahead (vs myopic RL), provable convergence (vs PINNs/FNO), no training data needed
@@ -177,18 +178,6 @@ hardening of the HX path.
 - [2026-01-26]: Statistical significance testing (t-test, Mann-Whitney, bootstrap).
 - [2026-01-26]: Effect size calculations (Cohen's d, Hedges' g, Cliff's delta).
 - [2026-01-26]: Multiple comparison corrections (Bonferroni, Holm, FDR).
-
-### Google Vertex AI Training (src/vertex/)
-- [2026-01-31]: Complete Vertex AI training integration for cloud-based training.
-- [2026-01-31]: Pydantic configuration schemas for machine types, regions, and accelerators.
-- [2026-01-31]: GCS checkpoint manager with local caching and atomic operations.
-- [2026-01-31]: Multi-node distributed training setup with automatic environment detection.
-- [2026-01-31]: Spot instance preemption handling with signal-based detection.
-- [2026-01-31]: Cost tracking and estimation with GCP pricing data.
-- [2026-01-31]: Vertex-aware trainer wrapper integrating all Vertex AI features.
-- [2026-01-31]: Docker container infrastructure for training jobs.
-- [2026-01-31]: CLI tools for job launching, monitoring, and management.
-- [2026-01-31]: Full test suite with 124 tests (100% passing).
 
 ## Module Development Templates (src/templates/)
 - [2026-01-27]: Reusable infrastructure for building new AlphaGalerkin modules.
@@ -232,27 +221,8 @@ hardening of the HX path.
 - [2026-01-27]: SpatialPositionalEncoding for 2D grid data.
 - [2026-01-27]: Configurable via Pydantic FourierFeaturesConfig.
 
-## Neural Video Compression (src/video_compression/)
-- [2026-01-30]: Resolution-independent neural video codec using Galerkin attention and FNet mixing.
-- [2026-01-30]: Analysis transform (encoder) with O(N) Galerkin attention and O(N log N) FFT mixing.
-- [2026-01-30]: Synthesis transform (decoder) with temporal cross-attention for P/B frames.
-- [2026-01-30]: Scale hyperprior entropy model (Ballé et al.) for learned compression.
-- [2026-01-30]: Differentiable quantization: noise, STE, and soft quantization modes.
-- [2026-01-30]: MCTS-based rate control for GOP-level bit allocation with MuZero-style learned models.
-- [2026-01-30]: Quality metrics: PSNR, SSIM, MS-SSIM, BD-rate computation.
-- [2026-01-30]: R-D training with MSE, MS-SSIM, and perceptual (VGG) losses.
-- [2026-01-30]: GOP manager for I/P/B frame scheduling and reference management.
-- [2026-01-30]: Range encoder/decoder for lossless entropy coding.
-
-### Key Architecture Decisions
-- **Resolution Independence**: All encoder/decoder layers accept arbitrary (H, W) divisible by downsample factor.
-- **Galerkin Attention**: Q(K^T V) formula with O(N) complexity, no softmax.
-- **FNet Mixing**: torch.fft.fft2() for O(N log N) spatial mixing, no learnable parameters.
-- **GDN/IGDN**: Generalized Divisive Normalization for density modeling.
-
 ## Known Issues
 - ~~SGF variation parsing skipped~~ **RESOLVED (2026-07-01)**: `tests/games/sgf/test_sgf.py::TestSGFParser::test_parse_variations` now parses tree-structured variations and passes (verified green); the parser supports branching game trees.
-- MCTS rate-control tests in `tests/video_compression/unit/test_mcts_rate_control.py` are skipped **by design** — they `pytest.skip` at runtime because (1) the MCTS rate controller is not enabled in the default codec path and (2) they need a trained MCTS model for meaningful results. This is deferred to **Milestone 10 Phase 3** (`docs/NEXT_STEPS_PLAN.md` — "MCTS Rate Control Integration"): the skips clear once a trained zoo checkpoint (Phase 2) is wired into `MCTSRateController` and the controller is activated in the codec. Not a defect; a documented phase gate.
 
 ## Regression Surface
 
@@ -267,10 +237,6 @@ When changing the AlphaGalerkin solver or evaluator wiring, the following test s
 | Per-module coverage | `pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85` | Coverage gate; current 94% |
 | Noyron HX scenario (SDF, domain, scenario) | `pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py -v` | `AnalyticalHelixSDF._nearest_t` grid-search fallback, `PicoGKDomain._project_to_surface` bisection fallback, `volume_accept_rate` property, voxel-FDM training supervision (not harmonic), `accept_rate`/`train_time_s`/`eval_time_s` metric round-trip, `_draw_pool_indices` helper, surfaced numerical-stability constants (`DEFAULT_TRANSFER_RATIO_FLOOR`, `DEFAULT_NORMALIZE_EXTENT_FLOOR`, `EVAL_SEED_STRIDE`) |
 | Noyron HX per-module coverage | `pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py --cov=src/pde/sdf --cov=src/pde/geometry_picogk --cov=src/poc/scenarios/noyron_hx --cov=src/poc/config_noyron --cov-fail-under=85` | Coverage gate on the Leap 71 v1 hardening surface; current sdf 100% / geometry_picogk 100% / config_noyron 100% / noyron_hx 97% |
-| Codec perf benchmark (Phase 0) | `pytest tests/video_compression/perf/ -v` | Guards the perf benchmark harness: config validation, metrics, baseline registry, device pinning, regression diffing, CLI, and GPU test execution. |
-| Decoder runtime backends (Phase 1) | `pytest tests/video_compression/perf/test_compiled_runtime.py tests/video_compression/perf/test_onnx_runtime.py tests/video_compression/perf/test_tensorrt_runtime.py tests/video_compression/perf/test_benchmark_dispatch.py tests/video_compression/runtime/ -v` | Guards the 4 decoder runtime backends: PyTorch eager, torch.compile, ONNX Runtime, TensorRT. Protocol compliance, lifecycle (prepare/decode/teardown), shape/hash validation, precision dispatch, metadata provenance. |
-| Codec model zoo (Phase 2-B) | `pytest tests/video_compression/zoo/ --cov=src/video_compression/zoo --cov-fail-under=85 -v` | Guards the dual-GPU R-D Lagrangian sweep: Pydantic schemas (entry / manifest / optimizer / scheduler), JSON+YAML manifest round-trip, `_migrate_manifest_document` versioning, four device-assignment strategies (`VRAM_AWARE` / `ROUND_ROBIN` / `SINGLE_DEVICE` / `MANUAL`), `_resolve_explicit_device` (bare-`cuda` / `cuda:N` / `cpu`), `VideoCodecZoo` filesystem registry, schema-versioned forward compat. Per-module coverage **100%** on `__init__.py` / `config.py` / `device_planner.py` / `manifest.py` / `storage.py`. |
-| Codec sweep orchestrator (Phase 2-D) | `pytest tests/video_compression/zoo/test_sweep.py tests/video_compression/zoo/test_sweep_parallel.py tests/video_compression/zoo/test_cli_helpers.py tests/scripts/test_train_compression_zoo.py tests/scripts/test_train_compression_zoo_entry.py tests/video_compression/training/test_zoo_trainer.py -v` | Guards the manifest-level sweep orchestrator and the multi-entry CLI: `ZooSweep.run()` + `run_parallel()` (per-device worker threads, manifest-order results), `default_entry_runner` + `make_subprocess_entry_runner` (`CUDA_VISIBLE_DEVICES` pinning + parent/child device-label translation, exit-code propagation, missing-checkpoint failure mode, `cuda_pinning="none"` pass-through), `_device_index` parser, `should_skip` hash gate, `train_compression_zoo` `dry-run`/`train` subcommands and `_only_entry_id` filter, `ZooTrainer` `train_wallclock_s` / `eval_wallclock_s` round-trip via `metrics.json`. CLI helpers (`load_dict` YAML/JSON/unsupported/empty/non-dict, `resolve_path` abs/cwd-relative/manifest-relative, `load_codec_config`, `resolve_entry` + KeyError, `resolve_codec_config_for_entry` ref-precedence + fallback + no-ref raise, `override_entry` short-circuit, `resolve_device` cascade). Zoo-subpackage coverage **98.44%** (cli_helpers 100%). |
 | SBIR P40 hardening surface | `pytest tests/research/test_baselines.py tests/research/test_pinn_device.py tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py tests/scripts/test_run_sbir_p40.py -v` | Guards every SBIR P40 fix: (a) `NavierStokesOperator.exact_solution` numpy/torch parity (cross-branch property test); (b) `AMRConfig` raised defaults + target-aware `_solve_amr_1d` n_start escape from the 18-DOF Burgers ceiling; (c) `PINNConfig.device` resolution including indexed `cuda:N`, `vector_pde` auto-detect for NS, `_build_network(output_dim=2)`; (d) `GpuUtilizationProfiler` lifecycle (`__enter__`/`__exit__`, terminate-timeout fallback to `kill()`, dmon parser, no-op when `nvidia-smi` is missing); (e) `PDEBenchmarkRunner(heavy=True)` opt-in extends `refinement_levels` with `heavy_refinement_levels`; (f) `scripts/run_sbir_p40.py` helper functions (`load_config`, `apply_overrides`, `apply_benchmark_overrides`, `filter_baselines`, `build_pinn_config`, `register_pinn_profiles`). |
 | SBIR P40 per-module coverage | `pytest tests/research/test_baselines.py tests/research/test_pinn_device.py tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py tests/scripts/test_run_sbir_p40.py --cov=src.research.gpu_profiler --cov=src.research.baselines --cov=src.research.pde_benchmarks --cov=src.poc.device --cov-fail-under=85` | Coverage gate on the SBIR P40 hardening surface; current `gpu_profiler.py` 96% / `baselines.py` 95% / `pde_benchmarks.py` 94% / `poc/device.py` 100% (overall 94.8%) |
 | LLM-prior MCTS basis selection (mocked CPU) | `pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py tests/poc/test_llm_prior_ablation_scenario.py -v -m "not gpu_required"` | Guards the LM Studio integration + `llm_prior_ablation` scenario: `LMStudioConfig` Pydantic validation, `LMStudioPolicyResponse` schema + typed exception hierarchy, deterministic `build_policy_prompt`/`prompt_hash`, `LMStudioClient` retry behaviour (JSON parse failure, action-size mismatch with corrective user-turn, `APIConnectionError`/`APITimeoutError` coercion, fallback-to-uniform on exhausted retries), evaluator protocol compliance + illegal-action masking + batch sequential equivalence + latency-sample collection, preflight (server unreachable / model missing / insufficient VRAM / passing), scenario gating (LLM-arm preflight failure / `lm_studio.enabled=False` / client-construction exception / missing trained checkpoint / `create_model_from_checkpoint` raises) and threshold-list mutation when arms drop, real-MCTS micro-run on Poisson with `RandomEvaluator`, and HTML report artifact emission. |
@@ -291,9 +257,9 @@ When changing the AlphaGalerkin solver or evaluator wiring, the following test s
 | L-shape AMR MCTS-vs-Dörfler baseline | `COVERAGE_CORE=pytrace pytest tests/research/test_lshape_notch_mask.py tests/pde/test_lshape_amr_game.py tests/research/test_lshape_amr_compare.py tests/poc/test_lshape_amr_compare_config.py tests/poc/test_lshape_amr_compare_scenario.py tests/scripts/test_run_lshape_amr.py -v` | Guards the thesis-critical head-to-head: the `inside=None` byte-for-byte no-op of `_solve_on_grid_2d`/`_compute_indicators_2d` (backwards-compat) + masked-node Dirichlet pinning + out-of-L zero indicators; `LShapeAMRGame` action space/validation, real-solve `apply_action`, error-per-DOF reward, terminal logic, `clone` isolation, `to_tensor` value in [-1,1], `EncodedValueEvaluator`; `lshape_inside_predicate`/`make_solve_fn`/`run_dorfler_arm`/`run_mcts_arm`/`compare_ratios`/`run_comparison`/`_interp_log` + `export_csv`/`export_plot`; `LShapeAMRCompareConfig` name-lock + basename validator + `_budget_consistency` + `get_default_thresholds()` (one `<` gate on `l2_error_ratio_at_matched_dof`, AQA spec↔config); scenario real CPU micro-run recording both ratios + CSV/PNG artifacts (no wall-clock-gated pass/fail); CLI helpers. **Shared-code regression (baselines.py on the SBIR P40 surface) must stay green**: `pytest tests/research/test_baselines.py tests/research/test_baselines_2d.py tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py -q`. |
 | MCTS backup semantics (F0) | `pytest tests/mcts/test_backup_modes.py tests/mcts/test_search.py -v` | Sign inversion iff `ZERO_SUM`/`LEGACY_ADVERSARIAL`, none iff `SINGLE_AGENT` (`invert_on_backup` mapping); the anchor `test_single_agent_search_prefers_higher_value_at_all_depths` (fails under the inverting modes — the pre-fix behaviour); default `MCTS.__init__` is `ZERO_SUM` (Go/chess byte-identical); `LEGACY_ADVERSARIAL` `DeprecationWarning`; `reward_discount ∈ (0,1]` validation; `BatchMCTS` `leaf_index_for_path` mapping under interleaved terminal/non-terminal paths. `src/mcts/` gates at **90** branch. |
 | Reward reachability (F1) + clone isolation (F3) | `pytest tests/pde/test_reward_reachability.py tests/pde/test_clone_isolation.py tests/pde/test_mcts_adapter.py -v` | `PDEGame.get_reward` reachable through MCTS iff `use_intermediate_rewards` (0 calls under default); `PDEGameAdapter.get_last_reward` (`SupportsStepReward`) matches `get_reward`; discounted `R + γ^d·V(leaf)` accumulation; `clone()` isolates state across every concrete PDE game (`basis_selection`/`mesh_refinement`/`lshape_amr`), stateful games deep-copy their mutable instance. |
-| Abstraction audit (F0/F1 screen) | `python -m scripts.audit_abstractions src/mcts --fail-on-missing && python -m scripts.audit_abstractions src/pde` | Every `@abstractmethod` has a call site and every `Protocol` member a reader on the refinement surfaces; `src/mcts`/`src/pde`/`src/refinement`/`src/thermo` must stay clean (`get_reward`/`n_players` now have call sites). Domain-PoC backlog (`reentry`/`intercept`/`backend`) is non-blocking report-only. |
+| Abstraction audit (F0/F1 screen) | `python -m scripts.audit_abstractions src/mcts --fail-on-missing && python -m scripts.audit_abstractions src/pde` | Every `@abstractmethod` has a call site and every `Protocol` member a reader on the refinement surfaces; `src/mcts`/`src/pde`/`src/refinement` must stay clean (`get_reward`/`n_players` now have call sites). Domain-PoC backlog (`backend`) is non-blocking report-only. |
 | Domain-free refinement engine (WS1, BC) | `pytest tests/refinement/ tests/pde/test_game.py tests/pde/test_mcts_adapter.py -v` | `RefinementState` clone/dict round-trip + `RefinementLike` protocol; `PDEState.to_refinement`/`from_refinement` converters (additive — `PDEState` fields unchanged, existing PDE tests green); generic `RefinementGameConfig[TDomain]` round-trip with **zero field loss** (Hypothesis); `RefinementGameAdapter` protocol + `search_mode == SINGLE_AGENT` + clone isolation (stateless & stateful games) + real single-agent MCTS micro-run; `RefinementGame` ABC default-clone-returns-self + abstract enforcement; `@register_refinement_game` registry. `src/refinement/` gates at **85** branch (currently 96%). |
-| λ-window scheduling ablation (mechanics; **negative result**) | `COVERAGE_CORE=pytrace pytest tests/thermo/ --cov=src/thermo --cov-branch --cov-fail-under=85 -v` | Guards the first non-PDE `RefinementGame`. **Mechanics only** — the MCTS-vs-greedy headline is a documented NEGATIVE result (MCTS ~2× worse; it over-splits and fragments the budget; kill criterion triggered — `specs/lambda_scheduling.spec.md`). Tests: deterministic `apply_action` (Hypothesis), monotone-under-allocate / reachable-non-monotone-under-split, `AnalyticSurrogate`/`MismatchedSurrogate`/`RecordedSurrogate`/`OperatorSurrogate` (raises without a fit), kcal/mol `error_tolerance` validator + `primary_bias ∈ sweep`, greedy/uniform budget respect + greedy ≥ uniform at matched full budget. `src/thermo/` gates at **85** branch (currently 94%). Artifacts: `results/lambda_scheduling.{png,csv}`. |
+| Honest zero-shot transfer (operator vs retrained CNN) | `COVERAGE_CORE=pytrace pytest tests/experiments/test_cnn_baseline.py tests/research/test_transfer_baseline_compare.py tests/poc/test_transfer_baseline_compare_config.py tests/poc/test_transfer_baseline_compare_scenario.py tests/scripts/test_run_transfer_baseline_compare.py -v` | Guards the benchmark that replaces the fabricated 0.000209/240× claim with a falsifiable operator-vs-retrained-CNN ratio. `DiscreteCNNBaseline` shapes/determinism/param-match; `TransferComparisonParams` validation, `resolved_seeds`, shared-eval-set invariant (AC2), single/multi-seed median + `alphagalerkin_win_fraction`, grad_steps matched-compute alias, CSV/PNG; `TransferBaselineCompareConfig` name-lock + odd-kernel + target>train validators + `get_default_thresholds()` AQA (single `<` gate on `transfer_mse_ratio_<t>x<t>`); scenario smoke (mechanism-only, direction-agnostic — green whoever wins) + honest FAILED path; CLI loading/overrides/record-baseline/diff. Per-module branch coverage gate at **85** (currently cnn_baseline 100% / harness 99% / config 98% / scenario 92%). Artifacts: `results/transfer_baseline_compare.{csv,png}`, `config/baselines/transfer_ci.json`. Spec: `specs/transfer_baseline_compare.spec.md`. **Honest result**: a retrained discrete CNN beats the operator's zero-shot MSE on this Poisson task — the operator transfers (19×19 MSE ≈ 4e-4, trained on 9×9) but does not beat a specialist; the value is zero-retraining, not peak accuracy. |
 
 The trained-evaluator path additionally depends on `src/training/checkpoint.py::create_model_from_checkpoint`, `src/modeling/model.py::AlphaGalerkinModel`, and `src/mcts/evaluator.py::FNetEvaluator` — changes there should run the *Trained evaluator* surface above as a smoke test.
 
@@ -483,55 +449,6 @@ torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \
 pytest tests/distributed/ -v
 ```
 
-## Vertex AI Training Commands
-```bash
-# Build and push training container to Artifact Registry
-./scripts/build_vertex_container.sh my-project us-central1
-
-# Launch training job on Vertex AI
-python -m scripts.train_vertex \
-    --project my-project \
-    --region us-central1 \
-    --bucket gs://my-training-bucket \
-    --machine-type a2-highgpu-1g \
-    --accelerator-type NVIDIA_TESLA_A100 \
-    --accelerator-count 1 \
-    --container-uri us-central1-docker.pkg.dev/my-project/alphagalerkin/trainer:latest
-
-# Launch spot (preemptible) training for cost savings
-python -m scripts.train_vertex \
-    --project my-project \
-    --bucket gs://my-training-bucket \
-    --spot
-
-# Launch multi-node distributed training
-python -m scripts.train_vertex \
-    --project my-project \
-    --bucket gs://my-training-bucket \
-    --machine-type a2-highgpu-8g \
-    --accelerator-type NVIDIA_TESLA_A100 \
-    --accelerator-count 8 \
-    --replica-count 4
-
-# List running Vertex AI jobs
-python -m scripts.vertex_jobs list --project my-project
-
-# Show job status
-python -m scripts.vertex_jobs show JOB_ID --project my-project
-
-# Wait for job completion
-python -m scripts.vertex_jobs wait JOB_ID --project my-project
-
-# Cancel a running job
-python -m scripts.vertex_jobs cancel JOB_ID --project my-project
-
-# View job logs
-python -m scripts.vertex_jobs logs JOB_ID --project my-project
-
-# Unit tests for Vertex AI module
-pytest tests/vertex/ -v
-```
-
 ## ONNX Export Commands
 ```bash
 # Export model to ONNX
@@ -651,30 +568,6 @@ analyzer = StatisticalAnalyzer()
 result = analyzer.compare_runs([0.05, 0.04, 0.06], [0.03, 0.02, 0.04])
 print(f'p-value: {result.p_value}, significant: {result.is_significant}')
 "
-```
-
-## Video Compression Commands
-```bash
-# Train compression model
-python scripts/train_compression.py --data-dir data/images --epochs 100
-
-# Train with specific lambda
-python scripts/train_compression.py --data-dir data/images --lambda-rd 0.01
-
-# Encode video
-python scripts/encode_video.py input.mp4 output.agk --qp 32
-
-# Encode with custom model
-python scripts/encode_video.py input.mp4 output.agk --model checkpoints/codec.pt
-
-# Run video compression tests
-pytest tests/video_compression/ -v
-
-# Test configuration validation
-pytest tests/video_compression/unit/test_config.py -v
-
-# Test encoder/decoder
-pytest tests/video_compression/unit/test_encoder.py tests/video_compression/unit/test_decoder.py -v
 ```
 
 ## PDE Game Commands
@@ -810,54 +703,19 @@ src/
     logging.py        - Structured logging with context binding
     base.py           - Base executable classes with result tracking
     cli.py            - CLI utilities with common options
-  video_compression/  - Neural video compression system
-    config.py         - Pydantic configuration schemas
-    models/           - Neural network models
-      encoder.py      - Analysis transform with FNet + Galerkin
-      decoder.py      - Synthesis transform
-      hyperprior.py   - Scale hyperprior entropy model
-      quantizer.py    - Differentiable quantization
-    codec/            - Codec implementation
-      codec.py        - Complete encode/decode pipeline
-      entropy_coder.py - Range encoder/decoder
-      gop_manager.py  - GOP and reference management
-    runtime/          - Decoder runtime backends (Phase 1)
-      protocol.py     - DecoderRuntime Protocol + DecoderRuntimeContext
-      registry.py     - @register_runtime + RuntimeRegistry
-      metadata.py     - CompiledArtifactMetadata provenance
-      pytorch_eager.py    - Baseline eager runtime
-      pytorch_compiled.py - torch.compile + inductor
-      onnx_runtime.py     - ONNX Runtime + CUDA EP
-      tensorrt_runtime.py - torch_tensorrt Dynamo IR
-    perf/             - Performance benchmark harness (Phase 0)
-    mcts/             - MCTS rate control
-      networks.py     - Policy, value, dynamics networks
-      rate_control.py - MCTS-based rate controller
-    metrics/          - Quality metrics
-      quality.py      - PSNR, SSIM, MS-SSIM
-      rd_curves.py    - BD-rate computation
-    training/         - Training utilities
-      loss.py         - R-D loss functions
-      trainer.py      - Compression trainer
   agents/       - Agentic layer (BaseAgent lifecycle, research-loop orchestrator, scaffold CLI)
   research/     - SBIR benchmark harness (PDE baselines, GPU profiler, PINN solvers)
-  vertex/       - Google Vertex AI cloud-training integration
   engines/      - UCI chess-engine interface for play evaluation (used by training/evaluation.py, training/trainer.py)
   tournament/   - Tournament scheduling & config (E2E-tested)
   backend/      - JAX/Torch backend abstraction (uses templates/)
   curriculum/   - Curriculum-learning scheduler (uses distributed/)
   analysis/     - Game code-analysis / auditing utilities (uses games/)
   demos/        - Benchmark & visualization demos (uses physics/, poc/, research/)
-  reentry/      - MCTS-guided hypersonic-reentry / compressible-flow domain PoC
-  firefighting/ - MCTS-guided wildfire-spread domain PoC
-  intercept/    - MCTS-guided missile-interception domain PoC
   prototyping/  - Fast-prototyping utilities (not imported by core src/ production paths; used by its own tests and the hf_space/ HuggingFace Space mirror)
   constants.py  - Centralized numerical constants (imported across training/pde/mcts/modeling)
 dashboard/      - Gradio web UI (uses mcts/, modeling/, physics/, poc/, tools/)
 
-# NOTE: reentry/, firefighting/, intercept/ are domain research PoCs gated behind
-# scenario configs (not production paths); their isolation from the core solver is
-# intentional. prototyping/ is not imported by core production paths — only by its own
+# NOTE: prototyping/ is not imported by core production paths — only by its own
 # tests and the hf_space/ HuggingFace Space mirror (hf_space/src/prototyping/).
 tests/
   math_kernel/  - Property-based tests for mathematical operators
@@ -885,13 +743,6 @@ tests/
     test_registry.py  - Registry pattern tests
     test_logging.py   - Logging utilities tests
     test_base.py      - Base executable tests
-  video_compression/  - Video compression tests
-    unit/             - Unit tests
-      test_config.py    - Configuration validation
-      test_encoder.py   - Encoder tests
-      test_decoder.py   - Decoder tests
-      test_quantizer.py - Quantizer tests
-      test_metrics.py   - Quality metrics tests
 config/         - Hydra/Pydantic configuration schemas
   train.yaml          - Default training config
   train_fast.yaml     - Fast test config
@@ -909,9 +760,4 @@ docs/           - Documentation
   PROMPT_TEMPLATE.md  - Agentic coding prompt template
 scripts/        - CLI entry points
   train.py            - Training CLI with Hydra
-  train_vertex.py     - Vertex AI training job launcher
-  vertex_jobs.py      - Vertex AI job management CLI
-  build_vertex_container.sh - Build and push training container
-docker/         - Container definitions
-  Dockerfile.vertex   - Vertex AI training container
 ```

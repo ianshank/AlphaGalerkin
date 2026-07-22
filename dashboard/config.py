@@ -159,10 +159,14 @@ class TransferMilestone(BaseModel):
         default=0.05, gt=0, description="Pass/fail MSE threshold from the PoC spec"
     )
     achieved_mse: dict[int, float] = Field(
-        default_factory=lambda: {9: 0.000041, 13: 0.000098, 19: 0.000209},
-        description="Achieved MSE values per evaluation resolution (from 2026-01-26 run)",
+        default_factory=lambda: {9: 0.0000025, 13: 0.000204, 19: 0.000393},
+        description=(
+            "Measured operator zero-shot MSE per resolution (scripts/demo_transfer.py, "
+            "9x9 train, 50 epochs). Supersedes the fabricated 0.000209 headline; the "
+            "honest operator-vs-retrained-CNN benchmark is specs/transfer_baseline_compare.spec.md"
+        ),
     )
-    milestone_date: str = Field(default="2026-01-26", description="Date milestone was achieved")
+    milestone_date: str = Field(default="2026-07-22", description="Date milestone was measured")
 
     @field_validator("achieved_mse")
     @classmethod
@@ -172,9 +176,7 @@ class TransferMilestone(BaseModel):
             raise ValueError("achieved_mse must contain at least one entry")
         non_positive = {k: val for k, val in v.items() if val <= 0}
         if non_positive:
-            raise ValueError(
-                f"achieved_mse values must be > 0; invalid entries: {non_positive}"
-            )
+            raise ValueError(f"achieved_mse values must be > 0; invalid entries: {non_positive}")
         return v
 
 
@@ -223,9 +225,7 @@ class TrainingConfig(BaseModel):
     default_policy_weight: float = Field(
         default=1.0, gt=0, description="Default policy loss weight"
     )
-    default_value_weight: float = Field(
-        default=1.0, gt=0, description="Default value loss weight"
-    )
+    default_value_weight: float = Field(default=1.0, gt=0, description="Default value loss weight")
     default_lbb_weight: float = Field(default=0.1, ge=0, description="Default LBB loss weight")
 
     # Simulated curve parameters (representative training dynamics)

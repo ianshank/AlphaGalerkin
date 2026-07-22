@@ -156,28 +156,6 @@ Model export and edge deployment.
 - **`runtime.py`** — ONNX Runtime inference wrapper with multi-provider support.
 - **`validate.py`** — `ModelValidator` against PyTorch outputs.
 
-### 5.2 Vertex AI (`src/vertex/`)
-
-Google Cloud training integration.
-
-- **`trainer.py`** — `VertexTrainer` wrapper.
-- **`launcher.py`** — `VertexLauncher`, job submission.
-- **`storage.py`** — `GCSCheckpointManager` with atomic operations.
-- **`preemption.py`** — `PreemptionHandler` with signal-based detection.
-- **`cost.py`** — `CostTracker` with GCP pricing data.
-- **`multi_node.py`** — `VertexDistributedSetup`.
-
-### 5.3 Video Compression (`src/video_compression/`)
-
-Resolution-independent neural video codec (experimental).
-
-- **`models/encoder.py`** — Analysis transform with FNet + Galerkin attention.
-- **`models/decoder.py`** — Synthesis transform with temporal cross-attention.
-- **`models/hyperprior.py`** — Scale hyperprior entropy model.
-- **`models/quantizer.py`** — Differentiable quantization (noise, STE, soft).
-- **`codec/codec.py`** — Complete encode/decode pipeline.
-- **`mcts/rate_control.py`** — MCTS-based GOP-level bit allocation.
-
 ---
 
 ## 6. Research & Validation
@@ -276,24 +254,6 @@ Rapid experimentation tools.
 - **`trainer.py`** — `QuickTrainer`, `TrainResult`.
 - **`evaluator.py`** — `QuickEvaluator`, `EvalResult`.
 - **`data.py`** — `DataGenerator`, `SyntheticData`.
-
----
-
-## 8. Defense & Simulation
-
-### 8.1 Intercept (`src/intercept/`)
-
-Missile defense and drone interception (GameInterface-compatible for MCTS search).
-
-- **`intercept_game.py`** — `InterceptGame` implementing the `GameInterface` protocol.
-- **`dynamics.py`** — Rigid body dynamics.
-- **`interceptor_dynamics.py`** — 6-DOF interceptor model.
-- **`guidance.py`** — `ProportionalNavigation` guidance commands.
-- **`tracking.py`** — `ExtendedKalmanFilter`, `TrackState`.
-- **`sensors.py`** — `RadarSensor`, `SensorFusion`.
-- **`assignment.py`** — `HungarianAssigner` for task assignment.
-- **`aero.py`** — `AeroModel`, `TabularAeroModel`.
-- **`atmosphere.py`** — `ISAAtmosphere`, `WindModel`.
 
 ---
 

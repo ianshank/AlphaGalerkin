@@ -39,10 +39,9 @@ class RefinementState:
     """State of a sequential-refinement episode.
 
     Attributes:
-        values: Domain field values (e.g. a PDE solution, or per-window
-            variance in the thermo domain). Shape is domain-defined.
-        indicators: Per-unit refinement indicators (per-element error, per-window
-            variance contribution). Drives which unit to refine next.
+        values: Domain field values (e.g. a PDE solution). Shape is domain-defined.
+        indicators: Per-unit refinement indicators (e.g. per-element error).
+            Drives which unit to refine next.
         error_estimate: Current global error/objective estimate MCTS optimises.
         dof: Active degrees of freedom (cost proxy).
         step: Number of actions applied so far.

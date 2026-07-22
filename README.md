@@ -7,7 +7,7 @@ AlphaGalerkin uses Galerkin Transformers and MCTS to solve two classes of proble
 1. **Board Games** (Go, Chess): Zero-shot transfer between board sizes (train 9x9, play 19x19)
 2. **PDE Solving**: MCTS-guided adaptive mesh refinement and basis selection for computational physics
 
-The core mathematical innovation — combining Monte Carlo Tree Search with Galerkin methods — has **no published precedent** (verified novelty gap), positioning AlphaGalerkin for SBIR funding and strategic acquisition in the $50B+ simulation M&A market.
+The core methodological delta — MCTS *multi-step look-ahead* for Galerkin basis selection and error-driven refinement — is unpublished (the AMR-RL literature is uniformly *single-step*; the only prior MCTS+finite-element work, TreeMesh, targets mesh *generation*, a distinct problem — see [`docs/proposals/PRIOR_ART_REVIEW.md`](docs/proposals/PRIOR_ART_REVIEW.md)), positioning AlphaGalerkin for SBIR funding in the $50B+ simulation market.
 
 ---
 
@@ -46,7 +46,7 @@ AlphaGalerkin treats any problem domain as a **continuous space** Omega = [0,1]^
 - **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection (not O(N^2) softmax)
 - **MCTS Planning**: Multi-step look-ahead for mesh refinement, basis selection, and move search
 - **LBB Stability**: Provable convergence via inf-sup condition monitoring during training
-- **Zero-Shot Transfer**: Train on 9x9, evaluate on 19x19 (MSE 0.000209, 240x better than threshold)
+- **Zero-Shot Transfer**: One model runs at any resolution — train on 9x9, evaluate zero-shot on 19x19 (measured MSE ~4e-4, no retraining). Honestly benchmarked against a CNN retrained at the target resolution (`specs/transfer_baseline_compare.spec.md`).
 - **FFT Mixing**: O(N log N) FNet blocks for fast MCTS rollouts (5x+ speedup)
 
 ---
@@ -148,8 +148,8 @@ See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for compr
 
 - Python 3.10+
 - PyTorch 2.0+ (CUDA 12.6 recommended for GPU backends)
-- CUDA 12.x+ (required for TensorRT and ONNX Runtime GPU)
-- Optional: `torch-tensorrt`, `onnxruntime`, `onnxscript` (for Phase 1 runtime backends)
+- Optional: CUDA 12.x+ for GPU training/inference
+- Optional: `onnxruntime`, `onnxscript` (for the ONNX export/runtime path in `src/deployment/`)
 
 ### From Source
 
@@ -566,111 +566,6 @@ config = OperatorConfig(
 
 ---
 
-## Video Compression
-
-### Codec Performance Benchmarking (Phase 0)
-
-GPU-primary perf harness for `src/video_compression/`. Phase 0 of the self-hosted neural transcoder roadmap; the headline measurement gates every later phase (Phase 1 runtime backends, Phase 2 model zoo, Phase 3 MCTS rate control, Phase 4+ daemon and plugins).
-
-The harness sweeps a Cartesian product of `{resolutions} × {batch_sizes} × {runtime_profiles} × {phases}`, captures per-cell throughput / latency-percentile / VRAM, and (optionally) compares against a recorded baseline with per-metric tolerance overrides.
-
-```bash
-# CPU smoke test (CI gate, ~10 s on a single core)
-python -m scripts.benchmark_codec run --config config/perf/smoke.yaml
-
-# Single-card headline on the 16 GB primary (RTX 5060 Ti at cuda:0)
-python -m scripts.benchmark_codec run \
-    --config config/perf/cuda0_headline.yaml \
-    --output reports/perf/headline_$(git rev-parse --short HEAD).json
-
-# Dual-card sweep across cuda:0 + cuda:1 (RTX 5060 Ti + RTX 5060)
-python -m scripts.benchmark_codec run \
-    --config config/perf/default.yaml \
-    --output reports/perf/dual_$(git rev-parse --short HEAD).json
-
-# Record a fresh baseline (commit to docs/perf/ — this is the regression-gate ground truth)
-python -m scripts.benchmark_codec record-baseline \
-    --config config/perf/default.yaml \
-    --output docs/perf/baseline_v1.json \
-    --hardware-tag rtx5060ti16-rtx5060-8
-
-# Compare a run against a baseline
-python -m scripts.benchmark_codec diff \
-    --baseline docs/perf/baseline_v1.json \
-    --report reports/perf/dual_$(git rev-parse --short HEAD).json
-```
-
-Baselines are JSON with explicit schema versioning (`PERF_BASELINE_DOCUMENT_SCHEMA_VERSION`); unversioned files migrate cleanly via `_migrate_baseline_document`. See [docs/perf/README.md](docs/perf/README.md) for the full recording / migration playbook.
-
-The harness is **GPU-primary by design**: `device_preference="cuda"` is the default, and per-profile `device: "cuda:N"` lets a single sweep cover both cards of the reference rig. Set `device_preference: "cpu"` only for CI smoke; the headline measurement requires GPU.
-
-### Phase 1 — Decoder Runtime Backends ✅ COMPLETE
-
-Four decoder runtime backends implemented as Protocol-compliant modules in `src/video_compression/runtime/`:
-
-| Backend | Registry Name | Key Feature | Precision |
-|---|---|---|---|
-| **PyTorch Eager** | `pytorch-eager` | Baseline, no compilation | FP32 |
-| **torch.compile** | `pytorch-compiled` | Inductor graph fusion, CUDA graphs | FP32/FP16/BF16 + autocast |
-| **ONNX Runtime** | `onnx-cuda` | In-memory ONNX export + CUDAExecutionProvider | FP32 |
-| **TensorRT** | `tensorrt` | torch_tensorrt Dynamo IR, max throughput | FP32/FP16 (BF16→FP16) |
-
-All backends register via `@register_runtime` decorator and are dispatched through the benchmark loop's `_runtime_name_for_profile()` mapping. No hardcoded values — optimization levels, opset versions, and compile modes are configurable, while precision support is backend-dependent and currently follows each runtime's implemented execution path.
-
-```bash
-# Run with TensorRT backend (requires CUDA + torch_tensorrt)
-python -m scripts.benchmark_codec run --config config/perf/cuda0_headline.yaml
-
-# Full runtime test suite (env-gated skips for missing deps)
-pytest tests/video_compression/perf/ tests/video_compression/runtime/ -v
-```
-
----
-
-### Phase 2 — Model Zoo (R-D Lagrangian Sweep) ✅ Phase 2-D COMPLETE
-
-Subpackage `src/video_compression/zoo/` orchestrates an R-D Lagrangian sweep across a heterogeneous-VRAM rig (e.g. `cuda:0=RTX 5060 Ti 16 GiB` + `cuda:1=RTX 5060 8 GiB`). Schedules an arbitrary λ-grid; ships an 8-point grid at [config/video_compression/zoo/lambda_grid.yaml](config/video_compression/zoo/lambda_grid.yaml).
-
-**Phase 2-B** — core zoo schemas, manifest I/O, device planner, filesystem registry.  
-**Phase 2-C** — `ZooTrainer` per-entry (fixed-λ, AMP, grad-clip, warmup, `parent_entry_id` warm-start).  
-**Phase 2-D** — manifest-level sweep orchestrator + parallel dispatch + subprocess runner.
-
-| Module | Responsibility | Coverage |
-|---|---|---|
-| `config.py` | Pydantic schemas (`ModelZooEntryConfig`, `ModelZooManifestConfig`, `OptimizerConfig`, `SchedulerConfig`) — zero hardcoded values | 100% |
-| `manifest.py` | JSON / YAML load / save dispatched by suffix; forward-compat migration via `_migrate_manifest_document` | 98% |
-| `device_planner.py` | `scan_devices()` + `assign_devices()` with four strategies: `VRAM_AWARE` (best-fit pack on current headroom), `ROUND_ROBIN`, `SINGLE_DEVICE`, `MANUAL` | 100% |
-| `storage.py` | Filesystem `VideoCodecZoo` registry (per-entry `checkpoint.pt` / `entry.json` / `metrics.json`); GCS backend gated for Phase D | 100% |
-| `cli_helpers.py` | Shared CLI primitives: `load_dict`, `resolve_path`, `load_codec_config`, `resolve_entry`, `resolve_codec_config_for_entry`, `override_entry`, `resolve_device` | 100% |
-| `sweep.py` | `ZooSweep.run()` (serial) + `run_parallel()` (one worker thread per device); `make_subprocess_entry_runner` with `CUDA_VISIBLE_DEVICES` pinning | 96% |
-
-```bash
-# Dry-run a manifest (no training, just plans the sweep)
-python -m scripts.train_compression_zoo dry-run \
-  --manifest config/video_compression/zoo/lambda_grid.yaml \
-  --storage-root /tmp/zoo
-
-# Train all entries in parallel (one worker per device)
-python -m scripts.train_compression_zoo train \
-  --manifest config/video_compression/zoo/lambda_grid.yaml \
-  --storage-root ./zoo_outputs \
-  --parallel
-
-# Train a single entry by ID
-python -m scripts.train_compression_zoo train \
-  --manifest config/video_compression/zoo/lambda_grid.yaml \
-  --storage-root ./zoo_outputs \
-  --only-entry-id lam_0016
-
-# Run the zoo subpackage tests + coverage gate
-pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py \
-  tests/scripts/test_train_compression_zoo_entry.py \
-  tests/video_compression/training/test_zoo_trainer.py \
-  --cov=src/video_compression/zoo --cov-fail-under=85 -v
-```
-
----
-
 ## Testing
 
 The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.
@@ -873,17 +768,6 @@ AlphaGalerkin/
 │   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
-│   ├── video_compression/ # Neural video compression
-│   │   ├── runtime/       # Decoder runtime backends (Phase 1)
-│   │   │   ├── protocol.py       # DecoderRuntime Protocol
-│   │   │   ├── registry.py       # @register_runtime + RuntimeRegistry
-│   │   │   ├── pytorch_eager.py  # Baseline eager runtime
-│   │   │   ├── pytorch_compiled.py # torch.compile + inductor
-│   │   │   ├── onnx_runtime.py   # ONNX Runtime + CUDA EP
-│   │   │   └── tensorrt_runtime.py # torch_tensorrt Dynamo IR
-│   │   ├── perf/          # Phase 0 benchmark harness
-│   │   ├── codec/         # Codec pipeline
-│   │   └── models/        # Encoder, decoder, hyperprior
 │   └── tools/             # Utilities (GTP, CLI)
 ├── tests/                 # 3000+ tests, 85% coverage gate
 │   ├── pde/               # PDE operators, geometry, time-stepping, swarm
@@ -902,8 +786,7 @@ AlphaGalerkin/
 │   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo (--heavy opt-in for 65 536-DOF Poisson)
 │   ├── run_sbir_p40.py    # Tesla P40 high-resolution PINN/NS-FDM comparison driver
 │   ├── train.py           # Training CLI with Hydra
-│   ├── train_chess.py     # Chess training CLI
-│   └── train_compression.py  # Video compression training
+│   └── train_chess.py     # Chess training CLI
 ├── docs/
 │   ├── architecture/      # C4 diagrams (Mermaid)
 │   └── proposals/         # SBIR templates, IP strategy, budgets, competitive analysis

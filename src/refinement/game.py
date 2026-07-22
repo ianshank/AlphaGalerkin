@@ -1,10 +1,9 @@
 """Domain-free abstract base for sequential refinement games.
 
-``RefinementGame`` is the engine-level abstraction that ``src.pde`` and
-``src.thermo`` both implement. It knows nothing about PDEs — a refinement game is
-any sequential decision problem where each action refines a discretisation
-(add a basis function, split a mesh element, allocate samples to a λ-window) and
-the objective is to reduce an error/variance estimate under a budget.
+``RefinementGame`` is the engine-level abstraction that ``src.pde`` implements. It
+knows nothing about PDEs — a refinement game is any sequential decision problem where
+each action refines a discretisation (add a basis function, split a mesh element) and
+the objective is to reduce an error estimate under a budget.
 
 It mirrors the shape of ``src.pde.game.PDEGame`` but over ``RefinementState`` and
 with no PDE-specific fields, so the same MCTS engine (via

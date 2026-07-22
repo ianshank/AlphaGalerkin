@@ -433,6 +433,16 @@ def load_config_from_dict(
 
         type_map["lshape_amr_compare"] = LShapeAMRCompareConfig
 
+    # Same lazy-resolution rationale: the transfer_baseline_compare config is light
+    # but its scenario module pulls in the PhysicsOperator, the CNN baseline, and the
+    # comparison harness (torch-heavy), so resolve only the config class on demand.
+    if inferred_name == "transfer_baseline_compare":
+        from src.poc.scenarios.transfer_baseline_compare_config import (
+            TransferBaselineCompareConfig,
+        )
+
+        type_map["transfer_baseline_compare"] = TransferBaselineCompareConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

@@ -6,8 +6,8 @@ direction and a per-metric tolerance. It lets a later run be regression-gated
 against a recorded headline (e.g. ``residual`` must not rise more than X%,
 ``solved_fraction`` must not drop more than Y%).
 
-This mirrors ``src/video_compression/perf`` (schema-versioned, forward-compat
-via ``extra="ignore"``, explicit migration) but the metric set is *data*, not
+It follows the same schema-versioned, forward-compatible pattern (``extra="ignore"``,
+explicit migration) as the other baseline registries, but the metric set is *data*, not
 code: the direction and tolerance live in the document, so the same registry
 handles residuals (lower-better), reduction-pct / solved-fraction
 (higher-better), and latency (lower-better) without metric-specific branches.

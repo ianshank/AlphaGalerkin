@@ -1,6 +1,6 @@
 ---
 name: pde-solver
-description: Sequential-refinement-game specialist for AlphaGalerkin. Use for work in src/refinement/, src/pde/, src/thermo/, and src/poc/scenarios/ — the domain-free RefinementGame ABC, PDE operators, basis-selection/mesh-refinement games, the game→MCTS adapters, manufactured solutions, and residual/autodiff correctness. Reframes any refinement problem (PDE, λ-scheduling) as sequential decision-making.
+description: Sequential-refinement-game specialist for AlphaGalerkin. Use for work in src/refinement/, src/pde/, and src/poc/scenarios/ — the domain-free RefinementGame ABC, PDE operators, basis-selection/mesh-refinement games, the game→MCTS adapters, manufactured solutions, and residual/autodiff correctness. Reframes any refinement problem as sequential decision-making.
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
@@ -12,7 +12,7 @@ MCTS plans which basis functions to add or which mesh elements to refine; the re
 reduction per degree of freedom.
 
 The engine is domain-agnostic: `src/refinement/` holds the domain-free `RefinementGame` ABC and
-`RefinementGameAdapter`; `src/pde/` and `src/thermo/` are two domains that implement it. Refinement
+`RefinementGameAdapter`; `src/pde/` is the domain that implements it. Refinement
 adapters pass `SearchMode.SINGLE_AGENT` to MCTS (a refinement problem is single-agent).
 
 Working rules:

@@ -26,7 +26,7 @@ submission_format:
 # Feasibility evidence (Phase I-equivalent results already achieved)
 feasibility_evidence:
   - claim: "Zero-shot resolution transfer"
-    result: "MSE 0.000209 on 19x19 (trained on 9x9, 240x better than threshold)"
+    result: "zero-shot MSE ~4e-4 on 19x19 (trained on 9x9, measured; a retrained CNN is more accurate -- edge is zero-retraining; see specs/transfer_baseline_compare.spec.md)"
     evidence_type: "benchmark"
     config_ref: "config/proposals/nsf_sbir.yaml"
 

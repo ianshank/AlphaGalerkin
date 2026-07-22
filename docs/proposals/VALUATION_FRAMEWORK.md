@@ -46,18 +46,18 @@ At Series A, the founder retains 100% equity with $6.6M in validated non-dilutiv
 
 | Driver | Impact | Evidence |
 |--------|--------|----------|
-| **Verified novelty gap** | High — defensible moat | No published MCTS + Galerkin papers |
+| **Novelty gap (narrow)** | Medium — defensible but not a blanket moat | MCTS+Galerkin basis / error-driven refinement unpublished; TreeMesh = MCTS+FE mesh *generation* (distinct). See PRIOR_ART_REVIEW.md |
 | **Provisional patents** (3 claims) | High — IP barrier | `docs/proposals/IP_STRATEGY.md` |
 | **Government validation** (SBIR) | High — de-risks technology | Agency endorsement = customer discovery |
 | **Revenue multiples** (10-16x) | Very high — simulation premium | M&A transactions 2024-2026 |
 | **Strategic acquirer demand** | Very high — active M&A cycle | Cadence, Siemens, Synopsys all acquiring |
-| **Zero-shot transfer** | Medium — unique technical capability | MSE 0.000209 (240x better than threshold) |
+| **Zero-shot transfer** | Medium — one model, any resolution | measured MSE ~4e-4; a retrained CNN is more accurate (edge is zero-retraining) |
 
 ## Key Risks to Valuation
 
 | Risk | Probability | Mitigation |
 |------|------------|------------|
-| Competitor publishes MCTS+Galerkin | Low (novelty verified) | File patents + publish strategically |
+| Competitor publishes MCTS+Galerkin | Low–Medium (narrow novelty) | File patents + publish strategically |
 | SBIR not reauthorized | Low (S.3971 passed House) | Diversify to VC if needed |
 | Technical risk (convergence issues) | Medium | LBB stability guard, benchmark suite |
 | Single-person team risk | High | Use SBIR to fund first hires |

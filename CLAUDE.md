@@ -139,7 +139,7 @@ hardening of the HX path.
 | ~~**LLM-prior alternative backends**~~ ✅ **DONE (2026-06-12 / WS1)** | vLLM and llama.cpp profiles registered in `src/integrations/openai_compat/registry.py` (`LMStudioConfig.backend ∈ {lm_studio, vllm, llama_cpp}`, `apply_backend_defaults`). | Validates the `[lm-studio]` extra as the canonical OpenAI-compatible client; tested-server matrix in `src/integrations/AGENT.md`. |
 
 ## SBIR Positioning
-- **Verified Novelty Gap**: No published papers combine MCTS with Galerkin methods for PDE/mesh refinement
+- **Novelty Gap (reviewed 2026-07-22, `docs/proposals/PRIOR_ART_REVIEW.md`)**: MCTS *multi-step look-ahead* for error-driven adaptive **refinement** and **Galerkin basis** selection is unpublished; the AMR-RL canon (Yang 2023, Foucart 2023, Huergo 2024, Freymuth/ASMR, MeshDQN) is uniformly *single-step* policy RL. **Do not** use the blanket "no MCTS+FEM" claim — TreeMesh (arXiv:2111.07613) already couples MCTS+RL with FE mesh *generation* (a distinct problem). Novelty is a *method* delta, not a demonstrated win: it needs an empirical advantage at matched wall-clock (see the `lshape_amr_compare` honest result).
 - **Target Solicitations**: Navy N252-088, DOE ASCR C59-01, NSF SBIR, AFWERX Open Topic
 - **TRL Level**: 3-4 (advancing to 5-6 with benchmark demonstrations)
 - **Key Differentiators**: Multi-step look-ahead (vs myopic RL), provable convergence (vs PINNs/FNO), no training data needed

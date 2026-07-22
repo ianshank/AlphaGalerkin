@@ -95,7 +95,7 @@ projection $Q(K^\top V)/n$ is an unbiased Monte Carlo estimator of the
 integral $\int_\Omega Q(x) K(y) V(y)\,d\mu(y)$ sampled uniformly at
 $n$ collocation points. This produces the $O(N)$ complexity
 advertised in CLAUDE.md and is central to the zero-shot
-resolution-transfer result (MSE 0.000209 on 19×19 from 9×9 training,
+resolution-transfer result (measured MSE ≈ 0.00039 on 19×19 from 9×9 training,
 CLAUDE.md milestone of 2026-01-26).
 
 **Fourier-feature positional encoding.** The choice of Fourier features

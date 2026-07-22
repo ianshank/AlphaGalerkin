@@ -1,0 +1,41 @@
+{
+  "description": "transfer_baseline_compare headline (stable metrics only)",
+  "entries": [
+    {
+      "direction": "lower_better",
+      "metric_name": "mse_alphagalerkin_zeroshot_19x19",
+      "scenario_name": "transfer_baseline_compare",
+      "schema_version": 1,
+      "tolerance_pct": 40.0,
+      "value": 0.003344238326159871
+    },
+    {
+      "direction": "lower_better",
+      "metric_name": "mse_cnn_retrained_19x19",
+      "scenario_name": "transfer_baseline_compare",
+      "schema_version": 1,
+      "tolerance_pct": 40.0,
+      "value": 0.00014339244514290975
+    },
+    {
+      "direction": "lower_better",
+      "metric_name": "mse_cnn_zeroshot_19x19",
+      "scenario_name": "transfer_baseline_compare",
+      "schema_version": 1,
+      "tolerance_pct": 40.0,
+      "value": 0.00031532637300253576
+    },
+    {
+      "direction": "lower_better",
+      "metric_name": "transfer_mse_ratio_19x19",
+      "scenario_name": "transfer_baseline_compare",
+      "schema_version": 1,
+      "tolerance_pct": 40.0,
+      "value": 18.6975472689403
+    }
+  ],
+  "git_sha": "e2f3a139d89a0dc2eadc51463a66faa43f6d70e4",
+  "hardware_tag": "",
+  "llm_backend": "",
+  "schema_version": 1
+}

@@ -1,0 +1,13 @@
+problem,seed,arm,resolution,mse,n_params,train_seconds,train_steps
+poisson_transfer,42,operator,9,1.88357165e-04,139585,230.357953,144
+poisson_transfer,42,operator,13,3.37010619e-03,139585,230.357953,144
+poisson_transfer,42,operator,19,3.34423833e-03,139585,230.357953,144
+poisson_transfer,42,cnn_retrained,19,1.43392445e-04,140307,99.342614,144
+poisson_transfer,42,cnn_zeroshot,19,3.15326373e-04,140307,1.593678,144
+poisson_transfer,42,cnn_matched_compute,19,1.43392445e-04,140307,99.342614,144
+poisson_transfer,7961,operator,9,9.65288682e-06,139585,7.402384,144
+poisson_transfer,7961,operator,13,7.76219294e-04,139585,7.402384,144
+poisson_transfer,7961,operator,19,1.40523192e-03,139585,7.402384,144
+poisson_transfer,7961,cnn_retrained,19,9.98543409e-05,140307,5.125551,144
+poisson_transfer,7961,cnn_zeroshot,19,5.43129682e-04,140307,1.628701,144
+poisson_transfer,7961,cnn_matched_compute,19,9.98543409e-05,140307,5.125551,144

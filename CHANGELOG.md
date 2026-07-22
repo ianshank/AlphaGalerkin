@@ -695,7 +695,7 @@ Key highlights of this release:
 ### Milestones Achieved
 
 - **Zero-Shot Transfer Validated**: Physics PoC demonstrated resolution-independence
-  - Trained on 9x9 grids, achieved MSE 0.000209 on 19x19 grids (240x better than 0.05 threshold)
+  - Trained on 9x9 grids, transfers zero-shot to 19x19 (measured MSE ≈ 0.00039). NOTE: the original "0.000209 / 240× better than threshold" was a fabricated notebook figure — corrected 2026-07-22; a CNN retrained at 19x19 is more accurate (see `specs/transfer_baseline_compare.spec.md`).
   - Validates core Galerkin approach for continuous operator learning
 
 - **Training Pipeline Operational**: End-to-end training with self-play working on GPU

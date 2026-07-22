@@ -1,0 +1,53 @@
+# Honest zero-shot transfer: AlphaGalerkin operator vs a retrained discrete CNN.
+#
+# CANONICAL / RUNBOOK configuration — the higher-fidelity headline (full operator, 5
+# seeds, wall-clock-matched CNN budget). Heavier than CI (~1 hour on CPU); run manually
+# or nightly, then record the committed baseline from THIS config so every published
+# number traces to one canonical run + git SHA.
+#
+# Run:
+#   python -m scripts.run_transfer_baseline_compare \
+#     --config config/scenarios/transfer_baseline_compare_full.yaml \
+#     --record-baseline config/baselines/transfer_headline.json --git-sha "$(git rev-parse HEAD)"
+#
+# Acceptance (primary, falsifiable): transfer_mse_ratio_19x19 < 1.0. The matched-compute
+# ratio (CNN retrained for the operator's wall-clock) is recorded but NOT gated.
+
+defaults:
+  seed: 42
+  timeout_seconds: 14400
+
+scenarios:
+  - name: transfer_baseline_compare
+    description: "Zero-shot transfer: operator vs retrained CNN (canonical headline)."
+    tier: integration
+    enabled: true
+    device: cpu
+    train_resolution: 9
+    target_resolution: 19
+    secondary_resolutions: [9, 13]
+    n_train_samples: 2000
+    n_eval_samples: 500
+    n_charges: 5
+    charge_std: 1.0
+    batch_size: 32
+    n_epochs: 50
+    learning_rate: 1.0e-3
+    n_seeds: 5
+    d_model: 128
+    n_heads: 4
+    n_layers: 4
+    n_fourier_features: 64
+    fourier_scale: 10.0
+    use_fnet: true
+    dropout: 0.1
+    cnn_n_layers: 6
+    cnn_kernel_size: 3
+    cnn_channels: null
+    cnn_use_batchnorm: true
+    cnn_dropout: 0.0
+    cnn_param_match_tolerance: 0.15
+    matched_budget_mode: wall_clock
+    transfer_ratio_pass_threshold: 1.0
+    output_dir: results
+    artifact_basename: transfer_baseline_compare

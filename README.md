@@ -46,7 +46,7 @@ AlphaGalerkin treats any problem domain as a **continuous space** Omega = [0,1]^
 - **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection (not O(N^2) softmax)
 - **MCTS Planning**: Multi-step look-ahead for mesh refinement, basis selection, and move search
 - **LBB Stability**: Provable convergence via inf-sup condition monitoring during training
-- **Zero-Shot Transfer**: Train on 9x9, evaluate on 19x19 (MSE 0.000209, 240x better than threshold)
+- **Zero-Shot Transfer**: One model runs at any resolution — train on 9x9, evaluate zero-shot on 19x19 (measured MSE ~4e-4, no retraining). Honestly benchmarked against a CNN retrained at the target resolution (`specs/transfer_baseline_compare.spec.md`).
 - **FFT Mixing**: O(N log N) FNet blocks for fast MCTS rollouts (5x+ speedup)
 
 ---

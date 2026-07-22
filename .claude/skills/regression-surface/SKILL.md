@@ -1,6 +1,6 @@
 ---
 name: regression-surface
-description: Run the correct AlphaGalerkin regression-surface test command block for a changed code path. Use after editing solver/evaluator/PDE/scenario/agent/codec code to run exactly the guarding test suites the CLAUDE.md Regression Surface table prescribes, instead of guessing which tests to run.
+description: Run the correct AlphaGalerkin regression-surface test command block for a changed code path. Use after editing solver/evaluator/PDE/scenario/agent code to run exactly the guarding test suites the CLAUDE.md Regression Surface table prescribes, instead of guessing which tests to run.
 ---
 
 # regression-surface — run the guarding tests for a change
@@ -19,7 +19,8 @@ command(s) that must stay green when it changes. This skill selects and runs the
      `src/pde/geometry_picogk.py` → Noyron HX scenario row.
    - `src/integrations/**` → LLM-prior (mocked CPU) + backend-registry rows.
    - `src/agents/**` → Centaur research-loop + agents coverage rows.
-   - `src/video_compression/**` → the relevant Phase 0/1/2 codec rows (separate coverage workflow).
+   - `src/research/transfer_baseline_compare.py`, `src/experiments/cnn_baseline.py`,
+     `src/poc/scenarios/transfer_baseline_compare*` → Honest zero-shot transfer row.
 2. **Run the block** with `-m "not gpu_required"` unless CUDA is available; the root `conftest.py`
    auto-skips GPU tests on CPU hosts.
 3. **Run the coverage gate** row if the change is non-trivial (`--cov-fail-under` per module).

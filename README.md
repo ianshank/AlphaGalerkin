@@ -148,8 +148,8 @@ See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for compr
 
 - Python 3.10+
 - PyTorch 2.0+ (CUDA 12.6 recommended for GPU backends)
-- CUDA 12.x+ (required for TensorRT and ONNX Runtime GPU)
-- Optional: `torch-tensorrt`, `onnxruntime`, `onnxscript` (for Phase 1 runtime backends)
+- Optional: CUDA 12.x+ for GPU training/inference
+- Optional: `onnxruntime`, `onnxscript` (for the ONNX export/runtime path in `src/deployment/`)
 
 ### From Source
 

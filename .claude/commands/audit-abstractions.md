@@ -13,8 +13,8 @@ python -m scripts.audit_abstractions ${ARGUMENTS:-src}
 
 Interpretation:
 - **Report mode is non-blocking** — triage the hits, don't batch-fix. Known pre-existing dead
-  abstractions live in the domain PoCs (`src/reentry`, `src/intercept`, `src/backend`).
-- The refinement surfaces **must stay clean**: `src/mcts`, `src/pde`, `src/refinement`, `src/thermo`.
+  abstractions live in the domain PoCs (`src/backend`).
+- The refinement surfaces **must stay clean**: `src/mcts`, `src/pde`, `src/refinement`.
   For those, run with `--fail-on-missing` and treat any hit as a blocker.
 - A hit is fixed by wiring the method to a call site, deleting it (and its docstring), or confirming
   the protocol member has a reader.

@@ -7,7 +7,7 @@
       "scenario_name": "transfer_baseline_compare",
       "schema_version": 1,
       "tolerance_pct": 40.0,
-      "value": 0.003344238326159871
+      "value": 0.0023006480750614915
     },
     {
       "direction": "lower_better",
@@ -15,7 +15,7 @@
       "scenario_name": "transfer_baseline_compare",
       "schema_version": 1,
       "tolerance_pct": 40.0,
-      "value": 0.00014339244514290975
+      "value": 0.00016295500863291882
     },
     {
       "direction": "lower_better",
@@ -23,7 +23,7 @@
       "scenario_name": "transfer_baseline_compare",
       "schema_version": 1,
       "tolerance_pct": 40.0,
-      "value": 0.00031532637300253576
+      "value": 7.656022369696494e-05
     },
     {
       "direction": "lower_better",
@@ -31,10 +31,10 @@
       "scenario_name": "transfer_baseline_compare",
       "schema_version": 1,
       "tolerance_pct": 40.0,
-      "value": 18.6975472689403
+      "value": 14.118302311554318
     }
   ],
-  "git_sha": "e2f3a139d89a0dc2eadc51463a66faa43f6d70e4",
+  "git_sha": "0eb441d2f5de21e84afc4c0ab790dd5c9cdbba8f",
   "hardware_tag": "",
   "llm_backend": "",
   "schema_version": 1

@@ -52,6 +52,9 @@ from src.experiments.cnn_baseline import DiscreteCNNBaseline, count_parameters, 
 from src.experiments.physics_model import PhysicsOperator
 from src.physics.poisson import PoissonDataset, PoissonSample
 
+# Re-exported for backwards-compatible imports (tests/callers import these from here).
+from src.research.seed_sweep import SEED_PRIME_STRIDE, resolved_seeds
+
 logger = structlog.get_logger(__name__)
 
 # --------------------------------------------------------------------------- #
@@ -62,9 +65,8 @@ logger = structlog.get_logger(__name__)
 # reaches (near) zero error on a trivial target.
 TRANSFER_RATIO_FLOOR: float = 1e-15
 
-# Prime stride decorrelating per-seed RNG streams in the multi-seed sweep (mirrors
-# lshape_amr_compare / scaling_law).
-SEED_PRIME_STRIDE: int = 7919
+# ``SEED_PRIME_STRIDE`` and ``resolved_seeds`` are imported from src.research.seed_sweep
+# (shared with lshape_amr_compare) and re-exported above.
 
 
 # --------------------------------------------------------------------------- #
@@ -137,6 +139,27 @@ class TransferComparisonParams:
             raise ValueError(
                 f"matched_budget_mode must be one of {sorted(valid_modes)}, "
                 f"got {self.matched_budget_mode!r}"
+            )
+        if self.d_model % self.n_heads != 0:
+            raise ValueError(
+                f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+            )
+        # AC2 fairness: the per-sample RNG seeds of every training set must stay disjoint
+        # from the held-out eval set's. PoissonDataset(seed=S, n) yields per-sample seeds
+        # [S, S+n); training sweeps seeds [seed + i*STRIDE, +n_train) for i in range(n_seeds),
+        # eval uses [eval_seed_base + res, +n_eval). If the highest training seed reaches the
+        # lowest eval seed, a training sample could coincide with an eval sample (identical
+        # seed -> identical PoissonSample) and silently contaminate the "held-out" score.
+        min_res = min([*self.secondary_resolutions, self.target_resolution])
+        highest_train_seed = (
+            self.seed + (self.n_seeds - 1) * SEED_PRIME_STRIDE + self.n_train_samples - 1
+        )
+        lowest_eval_seed = self.eval_seed_base + min_res
+        if highest_train_seed >= lowest_eval_seed:
+            raise ValueError(
+                "training and eval RNG seed ranges overlap (AC2 fairness): highest training "
+                f"seed {highest_train_seed} >= lowest eval seed {lowest_eval_seed}; raise "
+                "eval_seed_base or reduce n_seeds/n_train_samples."
             )
 
     @property
@@ -306,9 +329,10 @@ def _train_model(
     model.train()
     steps = 0
     t0 = time.perf_counter()
-    for _epoch in range(params.n_epochs):
+    for epoch in range(params.n_epochs):
         indices = np.arange(len(dataset))
         np.random.shuffle(indices)
+        last_loss: Tensor | None = None
         for start in range(0, len(indices), params.batch_size):
             batch_idx = indices[start : start + params.batch_size]
             samples = [dataset[int(i)] for i in batch_idx]
@@ -318,9 +342,20 @@ def _train_model(
             loss = torch.nn.functional.mse_loss(predictions, targets)
             loss.backward()
             optimizer.step()
+            last_loss = loss
             steps += 1
             if max_steps is not None and steps >= max_steps:
                 return time.perf_counter() - t0, steps
+        # One .item() sync per epoch (not per batch) keeps the long full-config run from
+        # being silent between the per-seed start/done events without slowing training.
+        if last_loss is not None:
+            logger.debug(
+                "transfer_train_epoch",
+                forward=forward,
+                epoch=epoch,
+                last_batch_loss=float(last_loss.detach().item()),
+                steps=steps,
+            )
         if max_seconds is not None and (time.perf_counter() - t0) >= max_seconds:
             break
     return time.perf_counter() - t0, steps
@@ -490,11 +525,6 @@ def run_transfer_comparison(params: TransferComparisonParams) -> TransferCompari
 # --------------------------------------------------------------------------- #
 
 
-def resolved_seeds(base_seed: int, n_seeds: int) -> list[int]:
-    """Deterministic, decorrelated per-seed RNG seeds for the sweep."""
-    return [base_seed + i * SEED_PRIME_STRIDE for i in range(n_seeds)]
-
-
 @dataclass
 class MultiSeedTransferComparison:
     """Aggregate of ``n_seeds`` single-seed comparisons.
@@ -520,24 +550,32 @@ class MultiSeedTransferComparison:
         return self.per_seed[order[len(order) // 2]]
 
     def metrics(self) -> dict[str, float]:
-        """Headline (median) metrics plus per-seed spread and win fraction.
+        """Headline metrics (all from the representative seed) plus per-seed spread.
 
-        The gated key ``transfer_mse_ratio_<t>x<t>`` is the **median** across seeds;
-        absolutes come from the representative (median) seed.
+        Every published number — the gated ``transfer_mse_ratio_<t>x<t>``, its
+        matched-compute variant, and every absolute MSE — comes from the **same**
+        representative (median-ranked) seed, so dividing the published absolutes
+        reproduces the published ratio exactly for *any* ``n_seeds`` parity. With an
+        odd ``n_seeds`` the representative is the true statistical median (identical to
+        ``transfer_ratio_seed_median`` below); with an even count it is the upper of the
+        two middle seeds. The full per-seed spread is recorded for honesty regardless.
+
+        Sourcing the headline from one real seed (rather than an interpolated
+        ``np.median`` that corresponds to no run) is what keeps the committed artifact
+        self-consistent — a reviewer who divides the two published absolutes gets the
+        published ratio back.
         """
-        t = self.representative.target_resolution
         ratios = np.array(self.ratios, dtype=np.float64)
-        ratios_mc = np.array(
-            [r.transfer_mse_ratio_matched_compute for r in self.per_seed], dtype=np.float64
-        )
+        # dict(self.representative.metrics()) already carries the representative seed's
+        # transfer_mse_ratio_<t>x<t> and ..._matched_compute; keep them (do NOT overwrite
+        # with a cross-seed median that would diverge from the absolutes).
         out = dict(self.representative.metrics())
         out.update(
             {
-                f"transfer_mse_ratio_{t}x{t}": float(np.median(ratios)),
-                f"transfer_mse_ratio_{t}x{t}_matched_compute": float(np.median(ratios_mc)),
                 "transfer_ratio_seed_min": float(np.min(ratios)),
                 "transfer_ratio_seed_max": float(np.max(ratios)),
                 "transfer_ratio_seed_std": float(np.std(ratios)),
+                "transfer_ratio_seed_median": float(np.median(ratios)),
                 "alphagalerkin_win_fraction": float(np.mean(ratios < 1.0)),
                 "n_seeds": float(len(self.per_seed)),
             }

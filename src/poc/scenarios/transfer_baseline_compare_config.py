@@ -134,9 +134,12 @@ class TransferBaselineCompareConfig(BaseScenarioConfig):
         gt=0.0,
         le=100.0,
         description=(
-            "Primary gate: operator-zero-shot / CNN-retrained MSE ratio at the target "
-            "resolution must be strictly below this (1.0 == operator zero-shot is at "
-            "least as good as a retrained CNN). Calibrate from a measured run."
+            "Primary gate ceiling: the operator-zero-shot / CNN-retrained MSE ratio at "
+            "the target resolution must be STRICTLY below this. A value of 1.0 encodes "
+            "the strong win claim (operator zero-shot strictly beats a retrained CNN); "
+            "when a measured run shows the operator loses, calibrate this to a regression "
+            "ceiling above the measured median (honest-loss handling, see the spec) so the "
+            "gate flags a regression rather than asserting a false win."
         ),
     )
     output_dir: str = Field(
@@ -191,6 +194,18 @@ class TransferBaselineCompareConfig(BaseScenarioConfig):
             )
         return self
 
+    @model_validator(mode="after")
+    def _attention_dims_divisible(self) -> TransferBaselineCompareConfig:
+        """d_model must be divisible by n_heads (GalerkinAttention splits heads evenly).
+
+        Caught here at config-validation time rather than deep inside the operator build.
+        """
+        if self.d_model % self.n_heads != 0:
+            raise ValueError(
+                f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads})"
+            )
+        return self
+
     # ------------------------------------------------------------------ #
     # Derived helpers                                                     #
     # ------------------------------------------------------------------ #
@@ -215,8 +230,10 @@ class TransferBaselineCompareConfig(BaseScenarioConfig):
                 value=self.transfer_ratio_pass_threshold,
                 description=(
                     "Operator-zero-shot / CNN-retrained MSE ratio at the target "
-                    f"resolution must be < {self.transfer_ratio_pass_threshold} "
-                    "(operator zero-shot at least as good as a retrained CNN)."
+                    f"resolution must be strictly < {self.transfer_ratio_pass_threshold}. "
+                    "At the 1.0 default this asserts the operator strictly beats a "
+                    "retrained CNN; when calibrated above a measured (losing) median it is "
+                    "a regression ceiling, not a win claim."
                 ),
             ),
         ]

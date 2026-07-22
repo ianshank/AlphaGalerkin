@@ -5,17 +5,19 @@ Uses tiny configs so the real training loops run in well under a second per mode
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 import numpy as np
 import pytest
 import structlog
 import torch
 
-# Keep the per-forward DEBUG logging out of the test output (and marginally faster).
-structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_CI_BASELINE = _REPO_ROOT / "config" / "baselines" / "transfer_ci.json"
 
-from src.research.transfer_baseline_compare import (  # noqa: E402
+from src.research.transfer_baseline_compare import (
     SEED_PRIME_STRIDE,
     MultiSeedTransferComparison,
     TransferComparisonParams,
@@ -29,6 +31,18 @@ from src.research.transfer_baseline_compare import (  # noqa: E402
     run_multiseed_transfer_comparison,
     run_transfer_comparison,
 )
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _quiet_structlog():  # type: ignore[no-untyped-def]
+    """Silence per-forward DEBUG logs without leaking global structlog config.
+
+    Configuring structlog at import time mutates process-global state that leaks into
+    unrelated tests; a module-scoped fixture with teardown keeps it contained.
+    """
+    structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
+    yield
+    structlog.reset_defaults()
 
 
 def _tiny(**overrides: object) -> TransferComparisonParams:
@@ -77,6 +91,15 @@ class TestParamsValidation:
     def test_all_resolutions_dedups_and_sorts(self) -> None:
         p = _tiny(target_resolution=19, secondary_resolutions=(13, 9, 19))
         assert p.all_resolutions == [9, 13, 19]
+
+    def test_rejects_indivisible_attention_dims(self) -> None:
+        with pytest.raises(ValueError, match="divisible by n_heads"):
+            _tiny(d_model=10, n_heads=4)
+
+    def test_rejects_train_eval_seed_overlap(self) -> None:
+        # Push the eval seed base down into the training seed range → AC2 fairness guard fires.
+        with pytest.raises(ValueError, match="seed ranges overlap"):
+            _tiny(seed=0, n_seeds=2, n_train_samples=64, eval_seed_base=100)
 
 
 class TestSeedDerivation:
@@ -152,6 +175,20 @@ class TestSingleSeed:
         r2 = run_transfer_comparison(_tiny(seed=3))
         assert r1.transfer_mse_ratio == pytest.approx(r2.transfer_mse_ratio)
 
+    def test_ac1_mechanism_both_arms_recorded_and_finite(self) -> None:
+        """Both CNN arms run and record finite, positive MSEs (AC1 mechanism, micro).
+
+        Direction is NOT asserted here: at tiny scale/short training the fixed-pixel-stencil
+        mismatch is dominated by noise (a tiny zero-shot CNN can get lucky), so the
+        directional question is left to the honestly-recorded committed artifact rather than
+        a flaky micro-assertion. See the spec's honest-result note.
+        """
+        result = run_transfer_comparison(_tiny(target_resolution=19, secondary_resolutions=(9,)))
+        assert result.cnn_zeroshot.mse_at_target > 0
+        assert result.cnn_retrained.mse_at_target > 0
+        assert np.isfinite(result.cnn_zeroshot.mse_at_target)
+        assert result.cnn_zeroshot.arm == "cnn_zeroshot"
+
 
 class TestMultiSeed:
     def test_median_and_spread(self) -> None:
@@ -160,7 +197,10 @@ class TestMultiSeed:
         assert comp.seeds == resolved_seeds(0, 3)
         m = comp.metrics()
         assert m["n_seeds"] == 3.0
+        # Odd n_seeds: the representative IS the statistical median, so the gated headline
+        # equals both the representative's ratio and the recorded seed-median.
         assert m["transfer_mse_ratio_13x13"] == pytest.approx(float(np.median(comp.ratios)))
+        assert m["transfer_ratio_seed_median"] == pytest.approx(float(np.median(comp.ratios)))
         assert 0.0 <= m["alphagalerkin_win_fraction"] <= 1.0
         assert m["transfer_ratio_seed_min"] <= m["transfer_ratio_seed_max"]
 
@@ -168,6 +208,24 @@ class TestMultiSeed:
         comp = run_multiseed_transfer_comparison(_tiny(n_seeds=3))
         rep = comp.representative
         assert rep in comp.per_seed
+
+    def test_headline_ratio_matches_published_absolutes(self) -> None:
+        """Finding-1 guard: dividing the published absolutes reproduces the published ratio.
+
+        The whole benchmark's thesis is reproducible committed numbers, so the headline
+        ratio and the headline absolutes must come from the same seed. Holds for BOTH
+        parities: the headline is sourced from the single representative seed.
+        """
+        for n_seeds in (2, 3):
+            comp = run_multiseed_transfer_comparison(_tiny(n_seeds=n_seeds))
+            m = comp.metrics()
+            t = comp.representative.target_resolution
+            ratio = m[f"transfer_mse_ratio_{t}x{t}"]
+            op = m[f"mse_alphagalerkin_zeroshot_{t}x{t}"]
+            cnn = m[f"mse_cnn_retrained_{t}x{t}"]
+            assert ratio == pytest.approx(op / cnn, rel=1e-6)
+            # And the gated headline is a real per-seed value, not an interpolated median.
+            assert ratio == pytest.approx(comp.representative.transfer_mse_ratio, rel=1e-9)
 
 
 class TestArtifacts:
@@ -192,3 +250,27 @@ class TestArtifacts:
         comp = run_multiseed_transfer_comparison(_tiny(n_seeds=2))
         assert isinstance(comp, MultiSeedTransferComparison)
         assert len(comp.ratios) == 2
+
+
+class TestCommittedArtifact:
+    """Guard the shipped headline numbers directly (real-scale, not a micro-run)."""
+
+    def test_committed_baseline_ratio_matches_absolutes(self) -> None:
+        """Finding-1 at rest: the committed ratio equals the committed absolutes' quotient.
+
+        This is the artifact-level invariant that makes the benchmark auditable — a
+        reviewer dividing the two published absolutes must recover the published ratio.
+        (The direction of the operator-vs-CNN result is honestly recorded, not asserted:
+        on this in-distribution Poisson task the CNN is more accurate whether retrained or
+        applied zero-shot — the operator's value is zero-retraining, not peak accuracy.)
+        """
+        if not _CI_BASELINE.exists():
+            pytest.skip("committed CI baseline not present")
+        entries = {
+            e["metric_name"]: e["value"] for e in json.loads(_CI_BASELINE.read_text())["entries"]
+        }
+        ratio = entries.get("transfer_mse_ratio_19x19")
+        op = entries.get("mse_alphagalerkin_zeroshot_19x19")
+        cnn = entries.get("mse_cnn_retrained_19x19")
+        assert ratio is not None and op is not None and cnn is not None
+        assert ratio == pytest.approx(op / cnn, rel=1e-3)

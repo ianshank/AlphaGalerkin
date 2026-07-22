@@ -10,17 +10,29 @@ from __future__ import annotations
 import logging
 import math
 
+import pytest
 import structlog
 
-structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
-
-from src.poc.config import ScenarioStatus  # noqa: E402
-from src.poc.scenarios.transfer_baseline_compare import (  # noqa: E402
+from src.poc.config import ScenarioStatus
+from src.poc.scenarios.transfer_baseline_compare import (
     TransferBaselineCompareScenario,
 )
-from src.poc.scenarios.transfer_baseline_compare_config import (  # noqa: E402
+from src.poc.scenarios.transfer_baseline_compare_config import (
     TransferBaselineCompareConfig,
 )
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _quiet_structlog():  # type: ignore[no-untyped-def]
+    """Silence per-forward DEBUG logs without leaking global structlog config.
+
+    Configuring structlog at import time mutates process-global state that would
+    persist into unrelated tests; scoping it to a fixture with teardown keeps the
+    mutation contained to this module.
+    """
+    structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
+    yield
+    structlog.reset_defaults()
 
 
 def _tiny_config(tmp_path, **overrides):  # type: ignore[no-untyped-def]

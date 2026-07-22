@@ -24,6 +24,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: jobs only need to read the repository (no writes to contents,
+# issues, PRs, etc.). Individual jobs can widen this if they ever need to.
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.11"
   PYTHONUNBUFFERED: "1"
@@ -120,7 +125,7 @@ jobs:
       - name: Run fast unit tests
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not video and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required" \
             --tb=short \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
@@ -256,7 +261,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not video and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required" \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \
@@ -511,8 +516,8 @@ jobs:
   # ------------------------------------------------------------
   # These suites used pytest.importorskip and skipped SILENTLY in the default
   # matrix because their deps are not in [dev]. Installing [test-extras] makes
-  # them actually execute (FEM baseline, ONNX export/validate, PettingZoo,
-  # torchvision perceptual loss) instead of masking those paths as "passing".
+  # them actually execute (FEM baseline, ONNX export/validate, PettingZoo)
+  # instead of masking those paths as "passing".
   # ============================================================
   test-extras:
     name: Optional-Dependency Suites
@@ -544,7 +549,7 @@ jobs:
       # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the
       # suites RUN and their result is visible, without gating the pipeline on a
       # torch-version-default until export_onnx.py pins the legacy path.
-      - name: Run ONNX export/validate + torchvision perceptual suites
+      - name: Run ONNX export/validate suites
         continue-on-error: true
         run: |
           pytest tests/deployment/test_export_onnx_integration.py \
@@ -597,11 +602,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: lint
+    permissions:
+      contents: read
     env:
       COVERAGE_CORE: pytrace
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:

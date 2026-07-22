@@ -65,6 +65,12 @@ class TestValidation:
         with pytest.raises(ValueError, match="target_resolution must exceed train_resolution"):
             _config(train_resolution=13, target_resolution=13)
 
+    def test_d_model_must_be_divisible_by_n_heads(self) -> None:
+        with pytest.raises(ValueError, match="divisible by n_heads"):
+            _config(d_model=10, n_heads=4)
+        # A divisible pair validates cleanly.
+        assert _config(d_model=12, n_heads=4).d_model == 12
+
     @pytest.mark.parametrize(
         ("field", "value"),
         [

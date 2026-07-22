@@ -22,15 +22,26 @@ benchmark against an honest baseline. The real claim is:
 > and applied zero-shot at `target_resolution` (19×19), matches or beats a discrete CNN
 > **retrained at** 19×19.
 
-A CNN cannot transfer: the Poisson discretisation uses grid spacing `h = 1/(n+1)`, so a
-fixed-pixel-radius stencil learned at 9×9 is at the wrong physical scale at 19×19. Being
-forced to retrain the CNN per resolution is exactly the limitation being measured.
+The discrete CNN is the honest *specialist* foil: the standard discrete workflow retrains
+it at each target resolution (the Poisson discretisation uses grid spacing `h = 1/(n+1)`, so
+a fixed-pixel-radius stencil learned at 9×9 sits at a different physical scale at 19×19), and
+that per-resolution retraining is exactly the workflow the operator claims to avoid. Whether
+the retraining actually *buys accuracy* is **measured, not assumed** — the benchmark records
+a retrained CNN AND a zero-shot CNN so the comparison is honest about whether the operator's
+resolution-independence is even necessary.
 
 **Measured operator zero-shot MSE** (spike, `scripts/demo_transfer.py`, d_model=128 /
 n_layers=4 / 2000 samples / 50 epochs / seed 42): 9×9 = 2.5e-6, 13×13 = 2.0e-4,
 **19×19 = 3.9e-4** — i.e. the operator *does* transfer (well under 0.05), but the honest
-19×19 number is ~1.9× the fabricated 0.000209. The operator-vs-CNN ratio is what this
-benchmark commits and regression-gates.
+19×19 number is ~1.9× the fabricated 0.000209.
+
+**Honest committed result (CI-tripwire run, 3 seeds, median seed).** On this in-distribution
+Poisson task the operator does **not** win on accuracy: its zero-shot 19×19 MSE (~2.3e-3) is
+~14× a retrained CNN's (~1.6e-4), and a *zero-shot* CNN (~7.7e-5) is more accurate still. The
+finding is real and reported faithfully — **the operator's value is zero-retraining (one
+model at any resolution), not peak accuracy.** The gated operator-vs-CNN ratio is therefore
+committed and regression-gated as a *ceiling* (a broken operator arm would blow past it), not
+as a `< 1` win claim.
 
 ## User Story
 
@@ -52,7 +63,7 @@ tunable is a typed Pydantic `Field` — no hardcoded values. Key fields:
 | `secondary_resolutions` | `list[int]` | `[9, 13]` | each `>= 3` | Extra resolutions for the operator's recorded zero-shot curve. |
 | `n_train_samples` | `int` | `5000` | `ge=64` | Training samples per arm (matched data volume). |
 | `n_eval_samples` | `int` | `500` | `ge=10` | Samples in the shared held-out eval set. |
-| `n_seeds` | `int` | `5` | `ge=1, le=64` | Seeds swept; the gated ratio is the **median** (a single run is high-variance). |
+| `n_seeds` | `int` | `5` | `ge=1, le=64` | Seeds swept; the headline (ratio + absolutes) is taken from the median-ranked seed (odd counts → the true median). |
 | `n_epochs` | `int` | `100` | `ge=1` | Training epochs per arm (matched training budget). |
 | `d_model` … `use_fnet` | — | 128/4/4/64/10.0/True | — | Operator architecture (mirrors `TransferScenarioConfig`). |
 | `cnn_n_layers` | `int` | `6` | `ge=0, le=32` | CNN residual blocks. |
@@ -60,7 +71,7 @@ tunable is a typed Pydantic `Field` — no hardcoded values. Key fields:
 | `cnn_channels` | `int \| None` | `None` | `ge=1` if set | CNN width; `None` auto-matches the operator's parameter count. |
 | `cnn_param_match_tolerance` | `float` | `0.15` | `gt=0, le=1` | Relative band for the CNN param-count match (secondary sanity). |
 | `matched_budget_mode` | `Literal["grad_steps","wall_clock"]` | `grad_steps` | — | Matched-compute CNN budget (grad_steps == primary arm; wall_clock retrains for the operator's seconds). |
-| `transfer_ratio_pass_threshold` | `float` | `1.0` | `gt=0, le=100` | Primary gate value (calibrate from a measured run). |
+| `transfer_ratio_pass_threshold` | `float` | `1.0` | `gt=0, le=100` | Primary gate ceiling (strictly `<`). Default 1.0 = strong win claim; calibrate to a regression ceiling above the measured median when the operator loses (CI config: 30.0). |
 | `output_dir` / `artifact_basename` | `str` | `results` / `transfer_baseline_compare` | — | Committed artifact location. |
 
 Named module-level constants (numerical-stability literals):
@@ -69,20 +80,25 @@ Named module-level constants (numerical-stability literals):
 
 ## Acceptance Criteria
 
-### AC1: The discrete CNN cannot transfer (mechanism)
+### AC1: Both CNN workflows are recorded so the retraining question is honest (mechanism)
 - **Given** a CNN trained at `train_resolution`
-- **When** it is evaluated at `target_resolution` and compared to the same CNN retrained at `target_resolution`
-- **Then** the zero-shot CNN is materially worse than the retrained CNN (`mse_cnn_zeroshot > mse_cnn_retrained`), encoding that the discrete baseline structurally must retrain.
+- **When** it is evaluated at `target_resolution` *and* the same CNN is separately retrained at `target_resolution`
+- **Then** both `mse_cnn_zeroshot` and `mse_cnn_retrained` are recorded, so whether the discrete baseline *needs* retraining is measured rather than assumed. **The direction is not asserted** — the earlier "the CNN cannot transfer / is materially worse zero-shot" claim was an over-statement: on the committed run the fully-convolutional CNN actually transfers *better* zero-shot than when retrained at this budget, and both beat the operator's zero-shot accuracy. The operator's advantage is architectural (zero-retraining), which AC4's dual metric records without a favourable-only headline.
 
 ### AC2: Both arms share the held-out eval set and ground truth (fairness)
 - **Given** a fixed target resolution and seed
 - **When** the operator and CNN arms are scored
 - **Then** both evaluate on the identical `PoissonDataset` (eval seed = `eval_seed_base + resolution`, a function of resolution only) over the identical `PoissonSample.potential` targets, and both train on matched data volume and matched training budget — the only difference is the model and its training resolution.
 
-### AC3: The gated ratio is the median over seeds
+### AC3: The gated ratio and the headline absolutes come from one real (median) seed
 - **Given** `n_seeds` seeds derived via `resolved_seeds`
 - **When** `run_multiseed_transfer_comparison` completes
-- **Then** the gated `transfer_mse_ratio_<t>x<t>` is the **median** across seeds; per-seed spread (`transfer_ratio_seed_min/max/std`, `alphagalerkin_win_fraction`) is recorded for honesty.
+- **Then** the gated `transfer_mse_ratio_<t>x<t>` **and** every headline absolute
+  (`mse_alphagalerkin_zeroshot`, `mse_cnn_retrained`, `mse_cnn_zeroshot`) come from the same
+  **representative (median-ranked) seed**, so dividing the published absolutes reproduces the
+  published ratio exactly — for any `n_seeds` parity. With an odd `n_seeds` (the CI config uses
+  3, the full config 5) the representative *is* the statistical median (`transfer_ratio_seed_median`).
+  Per-seed spread (`transfer_ratio_seed_min/max/std/median`, `alphagalerkin_win_fraction`) is recorded for honesty.
 
 ### AC4: Both comparisons are reported (honest dual metric)
 - **Given** a completed run
@@ -109,20 +125,23 @@ single source of truth; the AQA test asserts agreement):
 
 | Metric | Operator | Value | Meaning |
 |---|---|---|---|
-| `transfer_mse_ratio_<t>x<t>` | `<` | `transfer_ratio_pass_threshold` (1.0) | Operator zero-shot MSE is at least as low as a retrained CNN's at the target resolution. |
+| `transfer_mse_ratio_<t>x<t>` | `<` | `transfer_ratio_pass_threshold` (default 1.0; **CI config 30.0**) | Operator-zero-shot / CNN-retrained MSE ratio at the target resolution must be strictly below this. The 1.0 default is the strong win claim; the CI config calibrates it to a **regression ceiling** (see honest-loss handling). |
 
 The matched-compute ratio `transfer_mse_ratio_<t>x<t>_matched_compute` is **recorded but not
 gated**: in `wall_clock` mode it depends on machine speed, so gating it would test training
 throughput rather than architecture quality.
 
-**Honest-loss handling.** The gate value is calibrated from a measured run. If a measured run
-shows the operator does **not** beat a retrained CNN (ratio ≥ 1), the negative result is
-documented here (mirroring `specs/lambda_scheduling.spec.md`) and `transfer_ratio_pass_threshold`
-is set to the measured median so the scenario gate becomes a regression floor rather than a
-false `< 1` claim. Independently, the **CI regression gate** (`cli`-style `--baseline` diff in
+**Honest-loss handling (this benchmark loses on accuracy).** A measured CI run shows the
+operator does **not** beat a retrained CNN — the median ratio is ~14 (per-seed 14.1–23.3). The
+negative result is reported faithfully (mirroring `specs/lambda_scheduling.spec.md`) and
+`transfer_ratio_pass_threshold` is set to a **regression ceiling above the measured median**
+(30.0 in `transfer_baseline_compare_ci.yaml`) so the scenario gate flags a *broken operator
+arm* rather than asserting a false `< 1` win. A `<` operator against the median itself would be
+self-contradictory (`median < median` is false), which is why the ceiling carries drift/seed
+headroom. Independently, the **CI regression gate** (`--baseline` diff in
 `scripts/run_transfer_baseline_compare.py`) fails only on regression from the committed
-`config/baselines/transfer_ci.json`, so an honest loss is still a green CI run — it just shows
-in the recorded number.
+`config/baselines/transfer_ci.json` — the honest loss is a green CI run, it just shows in the
+recorded number.
 
 ## Regression Surface
 

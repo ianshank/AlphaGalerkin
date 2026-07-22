@@ -57,16 +57,14 @@ dev = [
 # Test-only dependencies for suites that previously used pytest.importorskip and
 # skipped silently in the default CI matrix because their deps were absent. The
 # dedicated `test-extras` CI job installs this group so those code paths (FEM
-# baseline, ONNX export/validate, PettingZoo adapter, torchvision perceptual
-# loss) actually execute rather than skipping. onnxscript is required by
-# torch>=2.x `torch.onnx.export` (dynamo path).
+# baseline, ONNX export/validate, PettingZoo adapter) actually execute rather than
+# skipping. onnxscript is required by torch>=2.x `torch.onnx.export` (dynamo path).
 test-extras = [
     "scikit-fem>=9.0",
     "onnx>=1.15",
     "onnxruntime>=1.17",
     "onnxscript>=0.1",
     "pettingzoo>=1.24",
-    "torchvision>=0.15",
 ]
 jax = [
     # Pins are intentionally narrow because flax 0.9 (the only release
@@ -219,7 +217,6 @@ module = [
     "google.*",
     "PIL.*",
     "cv2.*",
-    "torchvision.*",
     "numpy.*",
     "pytest.*",
     "jax.*",
@@ -233,8 +230,6 @@ module = [
     "typer.*",
     "rich",
     "rich.*",
-    "torch_tensorrt",
-    "torch_tensorrt.*",
     "onnxscript",
     "onnxscript.*",
     "dllist",
@@ -356,6 +351,7 @@ module = [
     "src.demos.benchmark_demo",
     "src.demos.visualizations",
     "src.poc.scenarios.transfer",
+    "src.research.transfer_baseline_compare",
 ]
 disable_error_code = ["assignment", "arg-type", "return-value", "operator", "union-attr",
                       "index", "dict-item", "attr-defined", "var-annotated", "call-arg",
@@ -374,7 +370,6 @@ markers = [
     "onnx_required: tests requiring ONNX",
     "jax: JAX-specific tests",
     "cross_backend: cross-backend equivalence tests",
-    "video: video compression tests",
     "integration: integration tests",
     "dashboard: dashboard UI tests",
 ]

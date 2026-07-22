@@ -41,9 +41,9 @@ Treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is
 ## Policy
 
 - **Now (one release): non-blocking report.** Run it, triage the hits, don't batch-fix. The current
-  `src/` baseline has known dead abstractions in domain PoCs (`src/reentry`, `src/intercept`,
-  `src/backend`) — those are pre-existing and out of scope for the refinement-engine work.
-- **`src/mcts`, `src/pde`, `src/refinement`, `src/thermo` must stay clean** (`--fail-on-missing`) —
+  `src/` baseline has known dead abstractions in domain PoCs (`src/backend`) — those are
+  pre-existing and out of scope for the refinement-engine work.
+- **`src/mcts`, `src/pde`, `src/refinement` must stay clean** (`--fail-on-missing`) —
   these are the surfaces the F0/F1 fixes touched.
 - **Then: blocking.** Once the domain-PoC backlog is triaged, wire `--fail-on-missing src` into CI.
 

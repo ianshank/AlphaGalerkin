@@ -2,13 +2,18 @@
 
 This module provides the *discrete* foil against which the resolution-independent
 :class:`~src.experiments.physics_model.PhysicsOperator` is measured. A plain
-convolutional network learns a **fixed-pixel-radius** stencil. Because the Poisson
-discretisation uses grid spacing ``h = 1 / (n + 1)`` (see
-:meth:`src.physics.poisson.PoissonSolver._solve_spectral`), the discrete Green's
-function is length-scale dependent: a stencil learned at ``9x9`` sits at the wrong
-physical scale on a ``19x19`` grid. The CNN therefore **cannot** transfer zero-shot
-and must be *retrained at the target resolution* — that mandatory retraining is
-exactly the limitation the benchmark quantifies.
+convolutional network learns a **fixed-pixel-radius** stencil, and the standard discrete
+workflow *retrains it at each target resolution* (the benchmark's ``cnn_retrained`` arm)
+— the per-resolution retraining the operator claims to avoid.
+
+The benchmark records BOTH a retrained CNN and a zero-shot CNN (trained at ``9x9`` and
+applied at ``19x19``) so the comparison is honest about whether retraining is even
+necessary. The measured result is deliberately *not* baked into a directional assumption
+here: on the committed in-distribution Poisson task the discrete CNN is in fact more
+accurate than the operator's zero-shot output whether it is retrained or applied
+zero-shot (the fully-convolutional net still *runs* at any resolution). The operator's
+value proposition is therefore **zero-retraining — one model at any resolution — not peak
+accuracy**; see ``specs/transfer_baseline_compare.spec.md``.
 
 The network is fully convolutional (no ``Linear`` layer tied to the grid size), so it
 is architecturally runnable at any resolution; the benchmark nonetheless retrains it

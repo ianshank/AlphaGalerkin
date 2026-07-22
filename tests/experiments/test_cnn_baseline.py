@@ -11,6 +11,7 @@ from src.experiments.cnn_baseline import (
     count_parameters,
     match_cnn_channels,
 )
+from src.physics.poisson import generate_influence_field
 
 
 class TestForward:
@@ -121,3 +122,34 @@ class TestParamMatching:
         # helper still returns the closest width (>=1) rather than raising.
         channels = match_cnn_channels(1, n_layers=8, kernel_size=3, tolerance=0.01)
         assert channels >= 1
+
+
+class TestPoissonSampleCoupling:
+    """Lock the C-order coupling between the CNN reshape and ``PoissonSample`` fields.
+
+    The CNN arm reshapes the flat charge vector to an image with ``view``; if
+    ``PoissonSample`` ever changed its ``.flatten()`` order or ``coords`` indexing, the
+    reshape would silently transpose the field while the shape-only tests stayed green.
+    """
+
+    def test_forward_matches_poisson_potential_shape(self) -> None:
+        sample = generate_influence_field(grid_size=9, n_charges=3, seed=0)
+        charges = torch.tensor(sample.charges, dtype=torch.float32).unsqueeze(0)
+        out = DiscreteCNNBaseline(n_layers=1, channels=4)(charges)
+        assert out.shape == (1, sample.potential.shape[0])
+
+    def test_flatten_ordering_is_row_major_and_matches_coords(self) -> None:
+        side = 9
+        sample = generate_influence_field(grid_size=side, n_charges=3, seed=1)
+        charges = torch.tensor(sample.charges, dtype=torch.float32)
+        # The strongest-magnitude charge cell pins a specific (i, j).
+        k = int(torch.argmax(torch.abs(charges)).item())
+        i, j = divmod(k, side)
+        # forward()'s (B, N) -> (B, 1, side, side) view must place flat index k at [i, j].
+        grid = charges.view(1, 1, side, side)
+        assert grid[0, 0, i, j].item() == pytest.approx(charges[k].item())
+        # coords must share the SAME C-order flattening: coords[k] == (x[i], y[j]),
+        # normalised to [0, 1] over meshgrid(indexing="ij").
+        coords = sample.coords
+        assert coords[k, 0] == pytest.approx(i / (side - 1), abs=1e-6)
+        assert coords[k, 1] == pytest.approx(j / (side - 1), abs=1e-6)

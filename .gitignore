@@ -88,16 +88,7 @@ wandb/
 nul
 
 # Temporary coverage configs (generated per-session, never committed)
-.coveragerc.zoo
 .coveragerc.*
-
-# Zoo / model-zoo runtime artifacts
-config/video_compression/zoo/*.lock
-zoo_outputs/
-
-# Vertex / GCS staging
-.vertex_staging/
-vertex_build/
 
 # Chess engine binaries and output
 stockfish*
@@ -124,8 +115,6 @@ gradio_cached_examples/
 dashboard/__pycache__/
 dashboard/tabs/__pycache__/
 
-# Video compression testing
-Test_Video_Materals/
 validation_outputs/
 
 # Credentials and secrets
@@ -245,26 +234,6 @@ outputs/poc/llm_prior_ablation/
 # (last matching pattern wins) so the committed .claude/settings.json is tracked.
 !.claude/settings.json
 
-# Codec performance benchmark artifacts (Phase 0)
-# Captures per-run benchmark reports keyed by git SHA + hardware tag.
-# Recorded baselines in docs/perf/baseline_*.json are committed
-# (they're the reproducibility ground truth); ad-hoc run reports under
-# reports/perf/ and outputs/perf/ are not.
-outputs/perf/
-reports/perf/
-
 # Coverage rcfiles emitted by CI workflow heredocs (regression-surface
-# and codec-perf gates). Not source-of-truth — written at job time.
-.coveragerc.codec-perf
+# gates). Not source-of-truth — written at job time.
 .coveragerc.noyron-hx
-
-# Codec model zoo storage roots (Phase 2-B)
-# `VideoCodecZoo` writes per-entry checkpoints, entry.json, and
-# metrics.json under the configured `storage_root`. The shipped
-# `config/video_compression/zoo/lambda_grid.yaml` defaults to
-# `checkpoints/video_compression/zoo/`; user-authored manifests can
-# point anywhere. `outputs/zoo/` and `zoo_storage/` are ignored as
-# additional conventional roots used by ad-hoc sweeps.
-checkpoints/video_compression/zoo/
-outputs/zoo/
-zoo_storage/

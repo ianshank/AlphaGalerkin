@@ -95,10 +95,6 @@ C4Container
 
         Container(deployment, "Deployment", "ONNX/PyTorch", "ONNX export, quantization, runtime inference wrapper for edge deployment")
 
-        Container(codec_perf, "Codec Perf Benchmark (Phase 0)", "Python/Pydantic", "GPU-primary perf harness for src/video_compression/. Per-profile cuda:N device pinning, Pydantic-validated PerfBenchmarkConfig with zero hardcoded values, BaselineRegistry with schema versioning + migration, regression diff with per-entry tolerance overrides, BenchmarkSubject Protocol for runtime backends.")
-
-        Container(decoder_runtime, "Decoder Runtime Backends (Phase 1)", "Python/PyTorch", "Protocol-based decoder runtime dispatch layer: pytorch-eager (baseline), pytorch-compiled (torch.compile with inductor), onnx-cuda (ONNX Runtime + CUDAExecutionProvider), tensorrt (torch_tensorrt Dynamo IR). Registry-based discovery via @register_runtime decorator. FP32/FP16/BF16 precision dispatch. CompiledArtifactMetadata provenance tracking.")
-
         Container(lm_studio_evaluator, "LM Studio Evaluator (LLM Prior)", "Python/openai-SDK", "Optional MCTS evaluator backed by an OpenAI-compatible local LLM (Qwen-14B in LM Studio by default). Implements src/mcts/evaluator.py::Evaluator structurally with illegal-action masking + temperature softmax. Bounded exponential-backoff retries split SDK errors into retryable (APIConnectionError / APITimeoutError / RateLimitError / InternalServerError) and non-retryable (Authentication / BadRequest / NotFound / etc.). Preflight checks server reachable + model in /v1/models + free-VRAM floor before accepting traffic. Gated behind the [lm-studio] optional extra; SDK imported lazily so the base install is unaffected.")
 
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
@@ -140,13 +136,6 @@ C4Container
 
     Rel(neural_operator, compute, "GPU execution")
 
-    Rel(cli, codec_perf, "Runs codec benchmarks")
-    Rel(codec_perf, decoder_runtime, "Dispatches to runtime backend")
-    Rel(decoder_runtime, neural_operator, "Wraps decoder for inference")
-    Rel(decoder_runtime, compute, "CUDA/TensorRT execution")
-    Rel(codec_perf, compute, "Per-profile cuda:N pinning")
-    Rel(codec_perf, results_store, "Records baselines + run reports")
-
     Rel(poc_framework, lm_studio_evaluator, "Selects LLM arm in llm_prior_ablation scenario")
     Rel(lm_studio_evaluator, mcts_engine, "Implements MCTS Evaluator protocol")
     Rel(lm_studio_evaluator, lm_studio_server, "JSON-mode chat.completions over HTTP", "OpenAI SDK")
@@ -173,7 +162,6 @@ C4Container
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
 | **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
 | **Deployment** | Model export and edge inference | ONNX, quantization, runtime wrapper |
-| **Codec Perf Benchmark** | GPU-primary perf gating for `src/video_compression/`; per-profile `cuda:N` pinning (RTX 5060 Ti + RTX 5060), Pydantic-validated config with no hardcoded values, BaselineRegistry with schema versioning + migration, regression diff (throughput / latency p50/p99 / VRAM) | Python, Pydantic, structlog, torch, argparse |
 
 ---
 

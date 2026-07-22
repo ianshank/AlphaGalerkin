@@ -41,9 +41,6 @@ from src.poc.scenarios.transfer_baseline_compare_config import (
     TransferBaselineCompareConfig,
 )
 
-# Metrics whose LARGER value is better (everything else is lower-better).
-HIGHER_BETTER_METRICS: tuple[str, ...] = ("alphagalerkin_win_fraction",)
-
 # Only these stable, meaningful metrics are recorded into a regression baseline. The
 # volatile spread metrics (win_fraction, seed_std/min/max) and provenance counts are
 # excluded so the regression gate flags gross breakage — not cross-environment BLAS
@@ -203,9 +200,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.record_baseline:
         stable = {SCENARIO_NAME: _stable_metrics(observed[SCENARIO_NAME])}
+        # Every recorded stable metric is lower-better: the win_fraction / seed-spread
+        # metrics (the only higher-better ones) are excluded by _stable_metrics above, so
+        # no higher-better override is needed here.
         registry = ScenarioBaselineRegistry.from_observed(
             stable,
-            higher_better_metrics=HIGHER_BETTER_METRICS,
+            higher_better_metrics=(),
             tolerance_pct=args.tolerance_pct,
             description="transfer_baseline_compare headline (stable metrics only)",
             git_sha=args.git_sha,

@@ -152,7 +152,7 @@ observed value in this section. Gates must never encode an unmeasured claim. Cal
 | `DEFAULT_MONOTONE_REL_TOL` | `1e-3` | max window-mean relative increase `2.8e-6` (500 steps, window 50, seeds 42) | `1e-3` (~350× headroom) |
 | `DEFAULT_LOSS_RATIO_GATE` | `0.9` | `final/initial = 0.950` (initial 0.6916 → final 0.65714) — the 0.9 placeholder was **unreachable**: a dt-scaled residual MDN starts near identity, so the closable NLL gap is small | `0.98` (recalibrated; the gap-closure gate below is the sharper criterion) |
 | `DEFAULT_LOSS_GAP_CLOSURE` *(added at calibration)* | — | oracle floor `0.65727`; trainer final `0.65714` → closure fraction `0.000` (floor reached) | `0.25` |
-| `DEFAULT_STOCHASTIC_MSE_GATE` | `1e-5` | *(record at commit 9)* | *(record at commit 9)* |
+| `DEFAULT_STOCHASTIC_MSE_GATE` | `1e-5` | `2.3e-8` (grid 32, strang_dt 0.1, demo budget); CI micro-budget grid 16: `2.06e-8` | `1e-6` (~40× headroom; recorded in `config/baselines/stochastic_galerkin_ci.json`) |
 
 ## Acceptance Criteria
 
@@ -237,7 +237,7 @@ Scenario gate — must equal
 
 | Metric | Operator | Value | Meaning |
 |---|---|---|---|
-| `stochastic_density_mse` | `<` | `DEFAULT_STOCHASTIC_MSE_GATE` (calibrated; placeholder `1e-5`) | The stochastic Galerkin arm reproduces the analytic Fokker-Planck density on the shared grid; the floor is set by grid-rendering discretization, not the moment solver |
+| `stochastic_density_mse` | `<` | `DEFAULT_STOCHASTIC_MSE_GATE = 1e-6` (calibrated; observed `2.3e-8`) | The stochastic Galerkin arm reproduces the analytic Fokker-Planck density on the shared grid; the floor is set by the Strang splitting error in the rendered density (rendering itself is exact evaluation) |
 
 Recorded, **ungated** (honesty rule — "novelty ≠ superiority", `docs/proposals/PRIOR_ART_REVIEW.md`):
 `deterministic_density_mse`, `stochastic_vs_deterministic_mse_ratio`, per-arm wall-clock and

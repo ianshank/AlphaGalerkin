@@ -162,6 +162,14 @@ class GaussianMixtureState:
             covariances=self.covariances.to(dtype),
         )
 
+    def to_device(self, device: torch.device | str) -> GaussianMixtureState:
+        """Return a copy of this state with all tensors moved to ``device``."""
+        return GaussianMixtureState(
+            weights=self.weights.to(device=device),
+            means=self.means.to(device=device),
+            covariances=self.covariances.to(device=device),
+        )
+
 
 class GaussianMixtureBasis(nn.Module):
     """Gaussian-mixture basis factory (config-or-kwargs idiom).
@@ -210,10 +218,11 @@ class GaussianMixtureBasis(nn.Module):
             msg = f"covariances must have shape ({k}, {d}, {d}); got {tuple(covariances.shape)}"
             raise StochasticConfigurationError(msg)
         dtype = self.config.torch_dtype
+        device = means.device
         if weights is None:
-            weights = torch.full((k,), 1.0 / k, dtype=dtype)
+            weights = torch.full((k,), 1.0 / k, dtype=dtype, device=device)
         return GaussianMixtureState(
-            weights=weights.to(dtype),
+            weights=weights.to(dtype=dtype, device=device),
             means=means.to(dtype),
-            covariances=covariances.to(dtype),
+            covariances=covariances.to(dtype=dtype, device=device),
         )

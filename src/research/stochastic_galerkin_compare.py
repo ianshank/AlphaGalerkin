@@ -87,6 +87,9 @@ class StochasticCompareParams:
     # Seeds
     seed: int = 42
     eval_seed_base: int = DEFAULT_EVAL_SEED_BASE
+    # Device ('cpu', 'cuda', 'cuda:N') — both arms honor it; resolve 'auto' via
+    # src.poc.device.resolve_device upstream (the scenario does).
+    device: str = "cpu"
 
     def __post_init__(self) -> None:
         if self.grid_n < 4:
@@ -255,21 +258,22 @@ def run_stochastic_arm(
     eval_targets: Tensor,
 ) -> StochasticArmResult:
     """Propagate every eval IC through the Strang composition and score."""
+    device = torch.device(params.device)
     stepper = build_stochastic_propagator(params)
-    coords = grid_coords(params)
+    coords = grid_coords(params).to(device)
     t0 = time.perf_counter()
     predictions = []
     for i in range(eval_means.shape[0]):
         state = GaussianMixtureState(
-            weights=torch.ones(1, dtype=F64),
-            means=eval_means[i : i + 1],
-            covariances=eval_covs[i : i + 1],
+            weights=torch.ones(1, dtype=F64, device=device),
+            means=eval_means[i : i + 1].to(device),
+            covariances=eval_covs[i : i + 1].to(device),
         )
         final, _t = stepper.propagate(state)[-1]
         predictions.append(final.density_on_grid(coords))
     stacked = torch.stack(predictions)
     wall = time.perf_counter() - t0
-    mse = float(torch.mean((stacked - eval_targets) ** 2))
+    mse = float(torch.mean((stacked - eval_targets.to(device)) ** 2))
     logger.info("stochastic_arm_done", density_mse=mse, wall_clock_s=wall)
     return StochasticArmResult(
         name="stochastic_galerkin", density_mse=mse, wall_clock_s=wall, n_params=0
@@ -296,16 +300,20 @@ def run_deterministic_arm(
     eval_targets: Tensor,
 ) -> StochasticArmResult:
     """Train the operator on seeded ICs and score on the SHARED eval set."""
-    device = torch.device("cpu")
+    device = torch.device(params.device)
     torch.manual_seed(train_seed)
     model = build_operator(params, device)
     n_params = sum(p.numel() for p in model.parameters())
 
     train_means, train_covs = sample_initial_conditions(params, params.n_train_samples, train_seed)
-    train_inputs = density_fields(params, train_means, train_covs).to(torch.float32)
+    train_inputs = density_fields(params, train_means, train_covs).to(
+        dtype=torch.float32, device=device
+    )
     final_means, final_covs = analytic_final_moments(params, train_means, train_covs)
-    train_targets = density_fields(params, final_means, final_covs).to(torch.float32)
-    coords_row = normalized_grid_coords(params).to(torch.float32)
+    train_targets = density_fields(params, final_means, final_covs).to(
+        dtype=torch.float32, device=device
+    )
+    coords_row = normalized_grid_coords(params).to(dtype=torch.float32, device=device)
 
     optimizer = AdamW(model.parameters(), lr=params.learning_rate)
     model.train()
@@ -327,10 +335,10 @@ def run_deterministic_arm(
 
     model.eval()
     with torch.no_grad():
-        eval_inputs32 = eval_inputs.to(torch.float32)
+        eval_inputs32 = eval_inputs.to(dtype=torch.float32, device=device)
         coords = coords_row.unsqueeze(0).expand(eval_inputs32.shape[0], -1, -1)
         predictions = model(coords, eval_inputs32)
-        mse = float(torch.mean((predictions.to(F64) - eval_targets) ** 2))
+        mse = float(torch.mean((predictions.to(F64) - eval_targets.to(device)) ** 2))
     wall = time.perf_counter() - t0
     logger.info("deterministic_arm_done", density_mse=mse, wall_clock_s=wall, n_params=n_params)
     return StochasticArmResult(

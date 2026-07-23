@@ -47,7 +47,7 @@ def _cubature_points(mean: Tensor, cov: Tensor) -> tuple[Tensor, float]:
     with uniform weight ``1/(2d)``.
     """
     d = mean.shape[0]
-    jitter = DEFAULT_COV_JITTER * torch.eye(d, dtype=mean.dtype)
+    jitter = DEFAULT_COV_JITTER * torch.eye(d, dtype=mean.dtype, device=mean.device)
     chol = torch.linalg.cholesky(cov + jitter)
     offsets = math.sqrt(float(d)) * chol.T  # rows are the scaled directions
     points = torch.cat([mean + offsets, mean - offsets], dim=0)  # (2d, d)
@@ -79,32 +79,38 @@ class GalerkinMomentProjection:
 
     def diffusion_flow(self, state: GaussianMixtureState, h: float) -> GaussianMixtureState:
         """Advance through the pure-diffusion flow over ``h``: P ← P + h·Q (exact)."""
-        q = self.generator.q_matrix.to(state.dtype)
+        q = self.generator.q_matrix.to(state.covariances)
         return GaussianMixtureState(
             weights=state.weights,
             means=state.means,
             covariances=state.covariances + h * q,
         )
 
-    def advection_flow_matrices(self, h: float, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
+    def advection_flow_matrices(
+        self,
+        h: float,
+        dtype: torch.dtype,
+        device: torch.device | str = "cpu",
+    ) -> tuple[Tensor, Tensor]:
         """Exact advection-flow operators ``(e^{Ah}, ∫₀ʰ e^{As} ds · b)``.
 
         Exposed so the batched parallel-in-time trainer can apply the same
         exact flow to stacked (B, K, …) moment tensors without constructing
-        per-slice states. Linear drift only.
+        per-slice states. Linear drift only. Device-agnostic: the operators
+        are built on ``device``.
         """
         drift = self.generator.linear_drift()
         d = self.generator.dim
-        a = drift.matrix.to(dtype)
-        b = drift.bias.to(dtype)
-        aug = torch.zeros(d + 1, d + 1, dtype=dtype)
+        a = drift.matrix.to(dtype=dtype, device=device)
+        b = drift.bias.to(dtype=dtype, device=device)
+        aug = torch.zeros(d + 1, d + 1, dtype=dtype, device=device)
         aug[:d, :d] = a
         aug[:d, d] = b
         phi_aug = torch.linalg.matrix_exp(aug * h)
         return phi_aug[:d, :d], phi_aug[:d, d]
 
     def _advection_flow_exact(self, state: GaussianMixtureState, h: float) -> GaussianMixtureState:
-        expm_a, shift = self.advection_flow_matrices(h, state.dtype)
+        expm_a, shift = self.advection_flow_matrices(h, state.dtype, state.means.device)
         means = state.means @ expm_a.T + shift
         covariances = expm_a @ state.covariances @ expm_a.T
         return GaussianMixtureState(
@@ -120,14 +126,14 @@ class GalerkinMomentProjection:
     def moment_rhs(self, state: GaussianMixtureState) -> tuple[Tensor, Tensor]:
         """Unsplit A+D moment derivatives ``(dm (K,d), dP (K,d,d))``."""
         dm_a, dp_a = self._advection_moment_derivatives(state)
-        q = self.generator.q_matrix.to(state.dtype)
+        q = self.generator.q_matrix.to(state.covariances)
         return dm_a, dp_a + q
 
     def _advection_moment_derivatives(self, state: GaussianMixtureState) -> tuple[Tensor, Tensor]:
         if self.generator.is_linear:
             drift = self.generator.linear_drift()
-            a = drift.matrix.to(state.dtype)
-            b = drift.bias.to(state.dtype)
+            a = drift.matrix.to(state.means)
+            b = drift.bias.to(state.means)
             dm = state.means @ a.T + b
             ap = a @ state.covariances
             dp = ap + ap.transpose(-1, -2)

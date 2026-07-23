@@ -52,8 +52,8 @@ class AnalyticCompoundPoissonMoments:
 
     def advance(self, state: GaussianMixtureState, dt: float) -> GaussianMixtureState:
         """Advance the mixture through the exact jump moment flow over ``dt``."""
-        shift = (self.rate * dt) * self._mu.to(state.dtype)
-        production = (self.rate * dt) * self._second_moment.to(state.dtype)
+        shift = (self.rate * dt) * self._mu.to(state.means)
+        production = (self.rate * dt) * self._second_moment.to(state.covariances)
         return GaussianMixtureState(
             weights=state.weights,
             means=state.means + shift,
@@ -180,7 +180,7 @@ class MDNJumpSemigroup(nn.Module):
             raise StochasticConfigurationError(msg)
         with torch.no_grad():
             packed32 = state.pack().to(torch.float32).unsqueeze(0)
-            dt32 = torch.tensor([[dt]], dtype=torch.float32)
+            dt32 = torch.tensor([[dt]], dtype=torch.float32, device=packed32.device)
             out = self.forward(packed32, dt32).squeeze(0).to(state.dtype)
         return GaussianMixtureState.unpack(out, state.n_components, state.dim)
 

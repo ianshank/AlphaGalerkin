@@ -18,6 +18,8 @@ Spec: specs/stochastic_galerkin_nke.spec.md (pinned toy problems).
 
 from __future__ import annotations
 
+import math
+
 import torch
 from torch import Tensor
 
@@ -58,11 +60,11 @@ def ou_mean(a_matrix: Tensor, bias: Tensor, m0: Tensor, t: float) -> Tensor:
     d = a.shape[0]
     b = _as_f64_vector(bias, d, "bias")
     m = _as_f64_vector(m0, d, "m0")
-    aug = torch.zeros(d + 1, d + 1, dtype=torch.float64)
+    aug = torch.zeros(d + 1, d + 1, dtype=torch.float64, device=a.device)
     aug[:d, :d] = a
     aug[:d, d] = b
     phi = torch.linalg.matrix_exp(aug * t)
-    state = torch.cat([m, torch.ones(1, dtype=torch.float64)])
+    state = torch.cat([m, torch.ones(1, dtype=torch.float64, device=a.device)])
     return (phi @ state)[:d]
 
 
@@ -88,7 +90,7 @@ def ou_covariance(a_matrix: Tensor, q_matrix: Tensor, p0: Tensor, t: float) -> T
     q = _as_f64_matrix(q_matrix, "q_matrix")
     p = _as_f64_matrix(p0, "p0")
     d = a.shape[0]
-    block = torch.zeros(2 * d, 2 * d, dtype=torch.float64)
+    block = torch.zeros(2 * d, 2 * d, dtype=torch.float64, device=a.device)
     block[:d, :d] = -a
     block[:d, d:] = q
     block[d:, d:] = a.T
@@ -157,5 +159,5 @@ def gaussian_density_on_grid(mean: Tensor, cov: Tensor, coords: Tensor) -> Tenso
     solved = torch.linalg.solve_triangular(chol, diff.T, upper=False)
     mahalanobis = solved.pow(2).sum(dim=0)
     log_det = torch.log(torch.diagonal(chol)).sum()
-    log_norm = -0.5 * d * torch.log(torch.tensor(2.0 * torch.pi, dtype=torch.float64))
+    log_norm = -0.5 * d * math.log(2.0 * math.pi)
     return torch.exp(log_norm - log_det - 0.5 * mahalanobis)

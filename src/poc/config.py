@@ -443,6 +443,17 @@ def load_config_from_dict(
 
         type_map["transfer_baseline_compare"] = TransferBaselineCompareConfig
 
+    # Same lazy-resolution rationale: the stochastic_galerkin_compare config is
+    # light but its scenario module pulls in the PhysicsOperator and the
+    # stochastic Galerkin layer (torch-heavy), so resolve only the config class
+    # on demand.
+    if inferred_name == "stochastic_galerkin_compare":
+        from src.poc.scenarios.stochastic_galerkin_compare_config import (
+            StochasticGalerkinCompareConfig,
+        )
+
+        type_map["stochastic_galerkin_compare"] = StochasticGalerkinCompareConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

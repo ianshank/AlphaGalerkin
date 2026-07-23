@@ -7,6 +7,10 @@ Lloyd's k-means (scikit-learn is deliberately not a dependency; k-means +
 per-cluster empirical moments is a documented crude v1 fit — spec Out of
 Scope for EM-quality fitting). Raw particles are retained as NLL targets.
 
+Device note: simulation/clustering run on CPU by design (seeded
+``torch.Generator`` determinism); the trainer moves the precomputed tensors
+to its configured device, so the pipeline as a whole is GPU/CPU agnostic.
+
 Spec: specs/stochastic_galerkin_nke.spec.md (trainer requirement, AC6).
 """
 

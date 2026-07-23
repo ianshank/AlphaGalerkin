@@ -127,27 +127,35 @@ class StrangParallelTrainer:
         self.dt = dt
         self._k = first.n_components
         self._d = first.dim
+        # Device-agnostic: everything trainable/batched lives on config.device
+        # ('cpu' default; 'cuda'/'cuda:N' supported — resolve 'auto' upstream).
+        self.device = torch.device(config.device)
+        self.mdn.to(self.device)
 
         # Precomputed, grad-free training tensors (float32 — the net's dtype).
         self._inputs = torch.stack([m.pack() for m in data.mixtures[:-1]]).to(
-            torch.float32
+            dtype=torch.float32, device=self.device
         )  # (B, P)
-        self._targets = data.particles[1:].to(torch.float32)  # (B, N, d)
-        self._dt_column = torch.full((self._inputs.shape[0], 1), dt, dtype=torch.float32)
+        self._targets = data.particles[1:].to(dtype=torch.float32, device=self.device)  # (B, N, d)
+        self._dt_column = torch.full(
+            (self._inputs.shape[0], 1), dt, dtype=torch.float32, device=self.device
+        )
         # Exact half-step advection operators and diffusion production.
-        expm_half, shift_half = projection.advection_flow_matrices(0.5 * dt, torch.float32)
+        expm_half, shift_half = projection.advection_flow_matrices(
+            0.5 * dt, torch.float32, self.device
+        )
         self._expm_half = expm_half
         self._shift_half = shift_half
-        self._q_half = (0.5 * dt) * generator.q_matrix.to(torch.float32)
+        self._q_half = (0.5 * dt) * generator.q_matrix.to(dtype=torch.float32, device=self.device)
         jump = generator.jump
         assert jump is not None  # has_jump guarantees this
-        mu = torch.tensor(jump.jump_mean, dtype=torch.float32)
-        sigma = torch.tensor(jump.jump_cov, dtype=torch.float32)
+        mu = torch.tensor(jump.jump_mean, dtype=torch.float32, device=self.device)
+        sigma = torch.tensor(jump.jump_cov, dtype=torch.float32, device=self.device)
         self._oracle_shift = (jump.rate * dt) * mu
         self._oracle_production = (jump.rate * dt) * (sigma + torch.outer(mu, mu))
         # Trapezoid-style interval weights dt·[½, 1, …, 1, ½].
         n_intervals = self._inputs.shape[0]
-        weights = torch.full((n_intervals,), dt, dtype=torch.float32)
+        weights = torch.full((n_intervals,), dt, dtype=torch.float32, device=self.device)
         weights[0] *= 0.5
         weights[-1] *= 0.5
         self._trapezoid_weights = weights

@@ -294,3 +294,12 @@ class StrangTrainerConfig(BaseModuleConfig):
         ge=1,
         description="Window length for the AC5 windowed-mean monotonicity check.",
     )
+    device: str = Field(
+        default="cpu",
+        description=(
+            "Torch device for the batched training pipeline (e.g. 'cpu', 'cuda', "
+            "'cuda:0'). The MDN and all precomputed tensors are moved here; callers "
+            "wanting GPU-preferred/CPU-fallback semantics resolve 'auto' via "
+            "src.poc.device.resolve_device before constructing the config."
+        ),
+    )

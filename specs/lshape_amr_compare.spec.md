@@ -103,10 +103,14 @@ Named module-level constants (numerical-stability literals):
 > **Measured control result (2026-07-23, matched-compute instrumentation).** Each trajectory
 > point now records the cumulative real-solve count (`n_solves`) — including the solves replayed
 > inside every MCTS simulation (`src/mcts/search.py` clones the game per simulation and re-solves
-> each edge of the descended path). On the committed demo run the matched-DOF win (median ratio
-> **0.96**, wins 4/5 seeds) **evaporates at matched compute**: median `l2_error_ratio_at_matched_solves`
-> = **1.21** and MCTS wins **0/5** seeds on quality-per-solve, because reaching ~1250 DOF costs the
-> MCTS arm **≈3509 real solves vs Dörfler's 10** (~350×). This is the honest *control/null* — on
+> each edge of the descended path). The matched-compute ratio reads each arm **stepwise** (the
+> last point reached at or before the matched solve budget), not interpolated: L2 is
+> piecewise-constant on the solve axis (it only drops when a refinement is *applied*, while solve
+> counts jump between points), so interpolation would credit an arm with an L2 it never achieved
+> at that budget. On the committed demo run the matched-DOF win (median ratio **0.96**, wins 4/5
+> seeds) **evaporates at matched compute**: median `l2_error_ratio_at_matched_solves` = **1.26**
+> and MCTS wins **0/5** seeds on quality-per-solve, because reaching ~1250 DOF costs the MCTS arm
+> **≈3509 real solves vs Dörfler's 10** (~350×). This is the honest *control/null* — on
 > local-elliptic L-shape Poisson, greedy residual marking is near-optimal, so a matched-compute
 > win is not expected here. The thesis's real test belongs on a substrate where greedy marking is
 > myopic (e.g. Burgers shock-driven AMR); see the next-steps plan.

@@ -24,6 +24,7 @@ from src.research.lshape_amr_compare import (
     TrajectoryPoint,
     _area_weighted_l2,
     _interp_log,
+    _step_read,
     _trapezoidal_weights,
     compare_ratios,
     export_csv,
@@ -207,8 +208,32 @@ class TestCompareRatios:
         assert l2_ratio < 1.0
 
 
+class TestStepRead:
+    def test_floor_semantics(self) -> None:
+        xs = np.array([1.0, 2.0, 8.0, 18.0])
+        ys = np.array([1.0, 0.9, 0.5, 0.25])
+        # Exact hit returns that point.
+        assert _step_read(2.0, xs, ys) == pytest.approx(0.9)
+        # Between points returns the LAST point at or before the query (floor),
+        # never an interpolated value the arm has not yet achieved.
+        assert _step_read(3.0, xs, ys) == pytest.approx(0.9)
+        assert _step_read(17.9, xs, ys) == pytest.approx(0.5)
+        # At/after the last point returns the last value.
+        assert _step_read(100.0, xs, ys) == pytest.approx(0.25)
+
+    def test_before_first_point_returns_first(self) -> None:
+        xs = np.array([5.0, 9.0])
+        ys = np.array([1.0, 0.5])
+        assert _step_read(1.0, xs, ys) == pytest.approx(1.0)
+
+    def test_handles_unsorted_input(self) -> None:
+        xs = np.array([8.0, 1.0, 2.0])
+        ys = np.array([0.5, 1.0, 0.9])
+        assert _step_read(3.0, xs, ys) == pytest.approx(0.9)
+
+
 class TestMatchedSolves:
-    def test_ratio_at_matched_solves(self) -> None:
+    def test_ratio_at_matched_solves_is_stepwise(self) -> None:
         # Dörfler reaches low error in few solves; MCTS spends more solves for
         # the same DOF/error curve -> at a matched solve budget MCTS trails.
         dorfler = _traj(
@@ -218,10 +243,12 @@ class TestMatchedSolves:
         ratio, matched = l2_ratio_at_matched_solves(dorfler, mcts)
         # Largest common solve count is 3 (Dörfler's max).
         assert matched == 3.0
-        assert np.isfinite(ratio) and ratio > 0.0
-        # At 3 solves Dörfler is already at ~0.25 while MCTS is barely past its
-        # first refinement -> MCTS is worse per solve (ratio > 1).
-        assert ratio > 1.0
+        # Stepwise (floor) read, NOT interpolation: at 3 solves Dörfler is at its
+        # exact recorded 0.25, while MCTS has only reached its solves=2 point
+        # (its next improvement lands at 8 solves) -> l2_mcts = 1.0. So the honest
+        # matched-compute ratio is exactly 1.0 / 0.25 = 4.0 (MCTS far worse per
+        # solve), not the softer value log-log interpolation would report.
+        assert ratio == pytest.approx(4.0)
 
 
 # --------------------------------------------------------------------------- #

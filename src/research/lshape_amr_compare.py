@@ -583,6 +583,32 @@ def compare_ratios(
     return l2_ratio, epd_ratio, matched_dof, matched_t
 
 
+def _step_read(
+    x_query: float,
+    xs: NDArray[np.float64],
+    ys: NDArray[np.float64],
+) -> float:
+    """Piecewise-constant 'last observed value at or before ``x_query``' read.
+
+    Unlike :func:`_interp_log`, this does **not** interpolate: it returns the
+    ``ys`` value of the last point whose ``xs`` is ``<= x_query`` (a step/floor
+    read). This is the faithful semantics for the **solve-count** compute axis,
+    where an arm's committed L2 error is piecewise-constant between recorded
+    points — it does not improve until a refinement step is *applied*, yet the
+    solve count jumps by large amounts between points (MCTS burns
+    ``n_simulations`` solves on clones per accepted step without improving the
+    committed error). Interpolating would credit the arm with an L2 it never
+    achieved at that budget. If ``x_query`` precedes the first point, the first
+    value is returned (the arm's initial, pre-refinement error).
+    """
+    order = np.argsort(xs)
+    xs_s = xs[order]
+    ys_s = ys[order]
+    idx = int(np.searchsorted(xs_s, x_query, side="right")) - 1
+    idx = max(0, min(idx, len(ys_s) - 1))
+    return float(ys_s[idx])
+
+
 def l2_ratio_at_matched_solves(
     dorfler: ArmTrajectory,
     mcts: ArmTrajectory,
@@ -593,12 +619,18 @@ def l2_ratio_at_matched_solves(
     same total number of real solves, so it is not confounded by wall-clock
     implementation cost. A value ``< 1`` means MCTS reaches a lower L2 error for
     the same solve budget. Returns ``(ratio, matched_solves)``.
+
+    The read is **stepwise** (:func:`_step_read`), not interpolated: the L2 error
+    is piecewise-constant on the solve-count axis (it only drops when a
+    refinement step is applied, while solve counts jump between recorded points),
+    so each arm is read at the last point it had actually reached within the
+    matched budget.
     """
     d_solves = dorfler.solve_counts()
     m_solves = mcts.solve_counts()
     matched = float(min(d_solves.max(), m_solves.max()))
-    l2_dorfler = _interp_log(matched, d_solves, dorfler.errors())
-    l2_mcts = _interp_log(matched, m_solves, mcts.errors())
+    l2_dorfler = _step_read(matched, d_solves, dorfler.errors())
+    l2_mcts = _step_read(matched, m_solves, mcts.errors())
     return l2_mcts / max(l2_dorfler, RATIO_FLOOR), matched
 
 

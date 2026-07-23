@@ -91,12 +91,29 @@ Named module-level constants (numerical-stability literals):
 > and the default config now use `single_agent`; `legacy_adversarial` remains selectable purely to
 > reproduce the pre-fix number.
 
-### AC4: Both comparisons are reported (honest dual metric)
+### AC4: All three comparisons are reported (honest triple metric)
 - **Given** a completed run
 - **When** metrics are recorded
-- **Then** both `l2_error_ratio_at_matched_dof` (matched DOF, policy quality) and
-  `error_per_dof_ratio_mcts_over_dorfler` (matched wall-clock, end-to-end) are present, plus
-  per-arm convergence exponents and final DOF/L2 — no favourable-only headline.
+- **Then** `l2_error_ratio_at_matched_dof` (matched DOF, policy quality),
+  `l2_error_ratio_at_matched_solves` (matched **compute** — the honest primary efficiency axis,
+  read at the largest common real-solve count), and `error_per_dof_ratio_mcts_over_dorfler`
+  (matched wall-clock, end-to-end) are all present, plus per-arm convergence exponents, final
+  DOF/L2 and final solve counts — no favourable-only headline.
+
+> **Measured control result (2026-07-23, matched-compute instrumentation).** Each trajectory
+> point now records the cumulative real-solve count (`n_solves`) — including the solves replayed
+> inside every MCTS simulation (`src/mcts/search.py` clones the game per simulation and re-solves
+> each edge of the descended path). The matched-compute ratio reads each arm **stepwise** (the
+> last point reached at or before the matched solve budget), not interpolated: L2 is
+> piecewise-constant on the solve axis (it only drops when a refinement is *applied*, while solve
+> counts jump between points), so interpolation would credit an arm with an L2 it never achieved
+> at that budget. On the committed demo run the matched-DOF win (median ratio **0.96**, wins 4/5
+> seeds) **evaporates at matched compute**: median `l2_error_ratio_at_matched_solves` = **1.26**
+> and MCTS wins **0/5** seeds on quality-per-solve, because reaching ~1250 DOF costs the MCTS arm
+> **≈3509 real solves vs Dörfler's 10** (~350×). This is the honest *control/null* — on
+> local-elliptic L-shape Poisson, greedy residual marking is near-optimal, so a matched-compute
+> win is not expected here. The thesis's real test belongs on a substrate where greedy marking is
+> myopic (e.g. Burgers shock-driven AMR); see the next-steps plan.
 
 ### AC5: Reproducible artifacts
 - **Given** a fixed seed
@@ -112,10 +129,12 @@ source of truth; the AQA test asserts agreement):
 |---|---|---|---|
 | `l2_error_ratio_at_matched_dof` | `<` | `max_l2_ratio_at_matched_dof` (1.0) | MCTS refinement policy is at least as good as Dörfler at matched DOF. |
 
-The matched-wall-clock ratio `error_per_dof_ratio_mcts_over_dorfler` is **recorded but not gated**:
-each MCTS refinement costs `n_simulations` real solves, so it is expected `> 1` for an untrained
-MCTS. Gating it would make the experiment a guaranteed failure that says nothing about policy
-quality. Closing the wall-clock gap with a trained evaluator is Out of Scope (below).
+The matched-compute ratio `l2_error_ratio_at_matched_solves` and the matched-wall-clock ratio
+`error_per_dof_ratio_mcts_over_dorfler` are **recorded but not gated**: each MCTS refinement costs
+`n_simulations` real solves (each re-solving the descended path), so both are expected `> 1` for an
+untrained MCTS. Gating either would make the experiment a guaranteed failure that says nothing about
+*policy quality* at matched DOF. Closing the matched-compute gap requires both a trained evaluator
+(fewer simulations) and a myopic-greedy substrate — Out of Scope here (see the next-steps plan).
 
 ## Regression Surface
 

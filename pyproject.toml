@@ -46,7 +46,10 @@ dev = [
     "pytest-cov>=4.0.0",
     "hypothesis>=6.0.0",
     "mypy>=1.10,<1.12",
-    "ruff>=0.1.0",
+    # Pinned: a newer ruff formats Markdown by default (graduated from preview),
+    # which reformats embedded code blocks in *.md docs and breaks the CI format
+    # gate on unrelated files. Keep aligned with the pin in .github/workflows/ci.yml.
+    "ruff==0.15.8",
     # Pin pydantic to align with lint step and avoid 2.10+ behavioural changes
     "pydantic>=2.7,<2.10",
     # Dashboard test dependencies

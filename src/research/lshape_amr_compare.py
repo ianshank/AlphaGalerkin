@@ -156,12 +156,22 @@ class ComparisonParams:
 
 @dataclass
 class TrajectoryPoint:
-    """One recorded (level, DOF, error, wall-clock) sample on an arm's curve."""
+    """One recorded (level, DOF, error, wall-clock, solve-count) sample.
+
+    ``n_solves`` is the *cumulative* number of real PDE solves the arm has
+    performed up to and including this point. For Dörfler this is ~1 per level;
+    for MCTS it also counts every ``apply_action`` solve replayed inside the
+    ``n_simulations`` tree descents (``src/mcts/search.py`` clones the game per
+    simulation and re-solves each edge of the selected path), so it is the
+    honest *matched-compute* axis — cleaner than wall-clock, which additionally
+    conflates growing linear-system size and Python/scipy overhead.
+    """
 
     level: int
     n_dof: int
     l2_error: float
     wall_time_seconds: float
+    n_solves: int = 0
 
     @property
     def error_per_dof(self) -> float:
@@ -188,6 +198,10 @@ class ArmTrajectory:
         """Cumulative wall-clock seconds along the trajectory."""
         return np.array([p.wall_time_seconds for p in self.points], dtype=np.float64)
 
+    def solve_counts(self) -> NDArray[np.float64]:
+        """Cumulative real-solve counts along the trajectory."""
+        return np.array([p.n_solves for p in self.points], dtype=np.float64)
+
     def convergence_exponent(self) -> float:
         """Least-squares slope of ``log(l2)`` vs ``log(dof)`` (negative)."""
         d = self.dofs()
@@ -212,13 +226,20 @@ class ComparisonResult:
     dorfler_convergence_exponent: float
     mcts_convergence_exponent: float
     seed: int
+    # Matched-compute (solve-count) comparison — the honest primary axis. A
+    # value < 1 means MCTS reaches lower L2 for the same number of real solves.
+    # Defaulted so existing positional/keyword constructions stay valid.
+    l2_error_ratio_at_matched_solves: float = float("nan")
+    matched_solves: float = 0.0
 
     def metrics(self) -> dict[str, float]:
         """Flat metric dict for the PoC scenario / baseline harness."""
         return {
             "l2_error_ratio_at_matched_dof": self.l2_error_ratio_at_matched_dof,
             "error_per_dof_ratio_mcts_over_dorfler": (self.error_per_dof_ratio_mcts_over_dorfler),
+            "l2_error_ratio_at_matched_solves": self.l2_error_ratio_at_matched_solves,
             "matched_dof": self.matched_dof,
+            "matched_solves": self.matched_solves,
             "matched_wall_time_seconds": self.matched_wall_time_seconds,
             "dorfler_convergence_exponent": self.dorfler_convergence_exponent,
             "mcts_convergence_exponent": self.mcts_convergence_exponent,
@@ -226,6 +247,8 @@ class ComparisonResult:
             "mcts_final_dof": float(self.mcts.points[-1].n_dof),
             "dorfler_final_l2": float(self.dorfler.points[-1].l2_error),
             "mcts_final_l2": float(self.mcts.points[-1].l2_error),
+            "dorfler_final_solves": float(self.dorfler.points[-1].n_solves),
+            "mcts_final_solves": float(self.mcts.points[-1].n_solves),
         }
 
 
@@ -333,6 +356,29 @@ def make_solve_fn(
 # --------------------------------------------------------------------------- #
 
 
+class _SolveCounter:
+    """Wraps a ``solve_fn``, counting every real solve it performs.
+
+    For the MCTS arm the *same* counter instance is handed to
+    :class:`LShapeAMRGame`, so it also tallies the solves replayed inside MCTS
+    tree descents (``src/mcts/search.py`` clones the game per simulation and
+    re-solves each edge on the selected path) — the true matched-compute cost.
+    Delegation is transparent: the wrapped callable's return value is passed
+    straight through.
+    """
+
+    def __init__(
+        self,
+        solve_fn: Callable[[NDArray[np.float64], NDArray[np.float64]], GridSolveResult],
+    ) -> None:
+        self._solve_fn = solve_fn
+        self.count = 0
+
+    def __call__(self, xs: NDArray[np.float64], ys: NDArray[np.float64]) -> GridSolveResult:
+        self.count += 1
+        return self._solve_fn(xs, ys)
+
+
 def run_dorfler_arm(
     operator: PDEOperator,
     solve_fn: Callable[[NDArray[np.float64], NDArray[np.float64]], GridSolveResult],
@@ -341,7 +387,10 @@ def run_dorfler_arm(
     """Run the classical Dörfler-marking arm, recording its trajectory.
 
     Reuses :meth:`DorflerAMRSolver._dorfler_mark_2d` / ``_refine_grid`` verbatim
-    so the marking is provably identical to the trusted baseline solver.
+    so the marking is provably identical to the trusted baseline solver. The
+    solve function is wrapped in a :class:`_SolveCounter` so each trajectory
+    point records the cumulative real-solve count (~1 per level) — the shared
+    matched-compute axis compared against the MCTS arm.
     """
     lo = float(np.asarray(operator.domain_min, dtype=np.float64)[0])
     hi = float(np.asarray(operator.domain_max, dtype=np.float64)[0])
@@ -358,16 +407,18 @@ def run_dorfler_arm(
     xs = np.linspace(lo, hi, params.initial_side + 1, dtype=np.float64)
     ys = np.linspace(lo_y, hi_y, params.initial_side + 1, dtype=np.float64)
 
+    counter = _SolveCounter(solve_fn)
     traj = ArmTrajectory(method="dorfler")
     t0 = time.perf_counter()
     for level in range(params.max_refinements + 1):
-        solve = solve_fn(xs, ys)
+        solve = counter(xs, ys)
         traj.points.append(
             TrajectoryPoint(
                 level=level,
                 n_dof=solve.n_dof,
                 l2_error=solve.l2_error,
                 wall_time_seconds=time.perf_counter() - t0,
+                n_solves=counter.count,
             )
         )
         if solve.n_dof >= params.max_dof or solve.l2_error < params.error_tolerance:
@@ -402,15 +453,17 @@ def run_mcts_arm(
 
     np.random.seed(params.seed)
 
+    # Count every real solve, including those replayed inside MCTS tree descents
+    # (the game receives the counter, not the raw solve_fn).
+    counter = _SolveCounter(solve_fn)
     game = LShapeAMRGame(
         operator,
         game_config,
-        solve_fn=solve_fn,
+        solve_fn=counter,
         initial_side=params.initial_side,
         n_candidate_elements=params.n_candidate_elements,
         value_scale=params.value_scale,
     )
-    adapter = PDEGameAdapter(game)
     evaluator = EncodedValueEvaluator(n_actions=game.action_space_size)
     # L-shape AMR is single-agent: SINGLE_AGENT is the correct backup. The
     # legacy_adversarial escape hatch reproduces the pre-fix committed CSV.
@@ -422,13 +475,20 @@ def run_mcts_arm(
     )
 
     traj = ArmTrajectory(method="mcts")
+    # Start the clock *before* PDEGameAdapter triggers the initial coarse solve,
+    # so the level-0 point counts that solve for both its wall-clock and its
+    # solve count — symmetric with the Dörfler arm (whose t0 precedes its first
+    # solve). Previously the adapter (and its solve) ran before t0, undercounting
+    # the MCTS arm's initial cost.
     t0 = time.perf_counter()
+    adapter = PDEGameAdapter(game)
     traj.points.append(
         TrajectoryPoint(
             level=0,
             n_dof=adapter.state.dof,
             l2_error=adapter.state.error_estimate,
             wall_time_seconds=time.perf_counter() - t0,
+            n_solves=counter.count,
         )
     )
     for level in range(1, params.max_steps + 1):
@@ -443,6 +503,7 @@ def run_mcts_arm(
                 n_dof=adapter.state.dof,
                 l2_error=adapter.state.error_estimate,
                 wall_time_seconds=time.perf_counter() - t0,
+                n_solves=counter.count,
             )
         )
         if adapter.state.dof >= params.max_dof:
@@ -522,6 +583,57 @@ def compare_ratios(
     return l2_ratio, epd_ratio, matched_dof, matched_t
 
 
+def _step_read(
+    x_query: float,
+    xs: NDArray[np.float64],
+    ys: NDArray[np.float64],
+) -> float:
+    """Piecewise-constant 'last observed value at or before ``x_query``' read.
+
+    Unlike :func:`_interp_log`, this does **not** interpolate: it returns the
+    ``ys`` value of the last point whose ``xs`` is ``<= x_query`` (a step/floor
+    read). This is the faithful semantics for the **solve-count** compute axis,
+    where an arm's committed L2 error is piecewise-constant between recorded
+    points — it does not improve until a refinement step is *applied*, yet the
+    solve count jumps by large amounts between points (MCTS burns
+    ``n_simulations`` solves on clones per accepted step without improving the
+    committed error). Interpolating would credit the arm with an L2 it never
+    achieved at that budget. If ``x_query`` precedes the first point, the first
+    value is returned (the arm's initial, pre-refinement error).
+    """
+    order = np.argsort(xs)
+    xs_s = xs[order]
+    ys_s = ys[order]
+    idx = int(np.searchsorted(xs_s, x_query, side="right")) - 1
+    idx = max(0, min(idx, len(ys_s) - 1))
+    return float(ys_s[idx])
+
+
+def l2_ratio_at_matched_solves(
+    dorfler: ArmTrajectory,
+    mcts: ArmTrajectory,
+) -> tuple[float, float]:
+    """L2-error ratio (mcts/dorfler) at the largest common real-solve count.
+
+    This is the honest *matched-compute* comparison: both arms are read at the
+    same total number of real solves, so it is not confounded by wall-clock
+    implementation cost. A value ``< 1`` means MCTS reaches a lower L2 error for
+    the same solve budget. Returns ``(ratio, matched_solves)``.
+
+    The read is **stepwise** (:func:`_step_read`), not interpolated: the L2 error
+    is piecewise-constant on the solve-count axis (it only drops when a
+    refinement step is applied, while solve counts jump between recorded points),
+    so each arm is read at the last point it had actually reached within the
+    matched budget.
+    """
+    d_solves = dorfler.solve_counts()
+    m_solves = mcts.solve_counts()
+    matched = float(min(d_solves.max(), m_solves.max()))
+    l2_dorfler = _step_read(matched, d_solves, dorfler.errors())
+    l2_mcts = _step_read(matched, m_solves, mcts.errors())
+    return l2_mcts / max(l2_dorfler, RATIO_FLOOR), matched
+
+
 def run_comparison(
     operator: PDEOperator,
     game_config: PDEGameConfig,
@@ -559,6 +671,7 @@ def run_comparison(
     mcts = run_mcts_arm(operator, solve_fn, game_config, params)
 
     l2_ratio, epd_ratio, matched_dof, matched_t = compare_ratios(dorfler, mcts, params)
+    l2_solve_ratio, matched_solves = l2_ratio_at_matched_solves(dorfler, mcts)
 
     result = ComparisonResult(
         dorfler=dorfler,
@@ -570,12 +683,16 @@ def run_comparison(
         dorfler_convergence_exponent=dorfler.convergence_exponent(),
         mcts_convergence_exponent=mcts.convergence_exponent(),
         seed=params.seed,
+        l2_error_ratio_at_matched_solves=l2_solve_ratio,
+        matched_solves=matched_solves,
     )
     logger.info(
         "lshape_comparison_done",
         l2_error_ratio_at_matched_dof=l2_ratio,
         error_per_dof_ratio_mcts_over_dorfler=epd_ratio,
+        l2_error_ratio_at_matched_solves=l2_solve_ratio,
         matched_dof=matched_dof,
+        matched_solves=matched_solves,
     )
     return result
 
@@ -609,6 +726,11 @@ class MultiSeedComparison:
         return [r.error_per_dof_ratio_mcts_over_dorfler for r in self.per_seed]
 
     @property
+    def solve_ratios(self) -> list[float]:
+        """Per-seed matched-solve-count L2 ratios (the matched-compute axis)."""
+        return [r.l2_error_ratio_at_matched_solves for r in self.per_seed]
+
+    @property
     def representative(self) -> ComparisonResult:
         """The per-seed result whose L2 ratio is the median — for the artifact."""
         ratios = self.l2_ratios
@@ -623,15 +745,18 @@ class MultiSeedComparison:
         """
         l2 = np.array(self.l2_ratios, dtype=np.float64)
         epd = np.array(self.epd_ratios, dtype=np.float64)
+        solve = np.array(self.solve_ratios, dtype=np.float64)
         out = dict(self.representative.metrics())
         out.update(
             {
                 "l2_error_ratio_at_matched_dof": float(np.median(l2)),
                 "error_per_dof_ratio_mcts_over_dorfler": float(np.median(epd)),
+                "l2_error_ratio_at_matched_solves": float(np.median(solve)),
                 "l2_ratio_seed_min": float(np.min(l2)),
                 "l2_ratio_seed_max": float(np.max(l2)),
                 "l2_ratio_seed_std": float(np.std(l2)),
                 "mcts_win_fraction": float(np.mean(l2 < 1.0)),
+                "mcts_solve_win_fraction": float(np.mean(solve < 1.0)),
                 "n_seeds": float(len(self.per_seed)),
             }
         )
@@ -682,8 +807,10 @@ def export_csv(result: ComparisonResult, output_path: str | Path) -> Path:
     """Write both arms' trajectories to CSV.
 
     Columns: ``problem, method, refinement_level, n_dof, l2_error,
-    wall_time_seconds, error_per_dof, seed``. The matched-comparison ratios are
-    recomputable from these raw rows, so the CSV is the reproducible record.
+    wall_time_seconds, n_solves, error_per_dof, seed``. ``n_solves`` is the
+    cumulative real-solve count (the matched-compute axis). The matched
+    comparisons are recomputable from these raw rows, so the CSV is the
+    reproducible record.
     """
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -697,6 +824,7 @@ def export_csv(result: ComparisonResult, output_path: str | Path) -> Path:
                 "n_dof",
                 "l2_error",
                 "wall_time_seconds",
+                "n_solves",
                 "error_per_dof",
                 "seed",
             ]
@@ -711,6 +839,7 @@ def export_csv(result: ComparisonResult, output_path: str | Path) -> Path:
                         p.n_dof,
                         f"{p.l2_error:.8e}",
                         f"{p.wall_time_seconds:.6f}",
+                        p.n_solves,
                         f"{p.error_per_dof:.8e}",
                         result.seed,
                     ]
@@ -720,10 +849,12 @@ def export_csv(result: ComparisonResult, output_path: str | Path) -> Path:
 
 
 def export_plot(result: ComparisonResult, output_path: str | Path) -> Path | None:
-    """Render the error-vs-wall-clock Pareto PNG (MCTS vs Dörfler).
+    """Render the error-vs-{DOF, solves, wall-clock} Pareto PNG (MCTS vs Dörfler).
 
-    Matplotlib is imported lazily (``Agg`` backend) so importing this module
-    never requires it. Returns ``None`` if matplotlib is unavailable.
+    The middle panel is the honest matched-*compute* axis (real-solve count),
+    unconfounded by wall-clock implementation cost. Matplotlib is imported lazily
+    (``Agg`` backend) so importing this module never requires it. Returns
+    ``None`` if matplotlib is unavailable.
     """
     try:
         import matplotlib
@@ -737,9 +868,10 @@ def export_plot(result: ComparisonResult, output_path: str | Path) -> Path | Non
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    fig, (ax_dof, ax_time) = plt.subplots(1, 2, figsize=(11, 4.5))
+    fig, (ax_dof, ax_solve, ax_time) = plt.subplots(1, 3, figsize=(16, 4.5))
     for arm, colour in ((result.dorfler, "#1f77b4"), (result.mcts, "#d62728")):
         ax_dof.plot(arm.dofs(), arm.errors(), "o-", color=colour, label=arm.method)
+        ax_solve.plot(arm.solve_counts(), arm.errors(), "o-", color=colour, label=arm.method)
         ax_time.plot(arm.wall_times(), arm.errors(), "o-", color=colour, label=arm.method)
 
     ax_dof.set_xscale("log")
@@ -752,6 +884,17 @@ def export_plot(result: ComparisonResult, output_path: str | Path) -> Path | Non
     )
     ax_dof.legend()
     ax_dof.grid(True, which="both", alpha=0.3)
+
+    ax_solve.set_xscale("log")
+    ax_solve.set_yscale("log")
+    ax_solve.set_xlabel("real solves (matched compute)")
+    ax_solve.set_ylabel("L2 error")
+    ax_solve.set_title(
+        f"Matched compute\nL2 ratio (mcts/dorfler) @ {result.matched_solves:.0f} solves = "
+        f"{result.l2_error_ratio_at_matched_solves:.3f}"
+    )
+    ax_solve.legend()
+    ax_solve.grid(True, which="both", alpha=0.3)
 
     ax_time.set_yscale("log")
     ax_time.set_xlabel("wall-clock (s)")

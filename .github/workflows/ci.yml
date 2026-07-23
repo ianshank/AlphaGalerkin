@@ -63,7 +63,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          # Pin ruff: an unpinned install pulls a newer ruff whose default
+          # `ruff format` now formats Markdown (the feature graduated from
+          # preview), reformatting embedded code blocks in *.md docs and
+          # breaking this gate on files unrelated to the change under review.
+          # Keep this aligned with the `ruff` pin in pyproject.toml [dev].
+          pip install "ruff==0.15.8"
           # Pin mypy + pydantic for plugin compatibility
           pip install "mypy>=1.10,<1.12" "pydantic>=2.7,<2.10"
           # Install minimal deps for type checking

@@ -1,0 +1,33 @@
+{
+  "description": "stochastic_galerkin_compare headline (stable metrics only)",
+  "entries": [
+    {
+      "direction": "lower_better",
+      "metric_name": "deterministic_density_mse",
+      "scenario_name": "stochastic_galerkin_compare",
+      "schema_version": 1,
+      "tolerance_pct": 25.0,
+      "value": 0.046178505714955895
+    },
+    {
+      "direction": "lower_better",
+      "metric_name": "deterministic_density_mse_median",
+      "scenario_name": "stochastic_galerkin_compare",
+      "schema_version": 1,
+      "tolerance_pct": 25.0,
+      "value": 0.046178505714955895
+    },
+    {
+      "direction": "lower_better",
+      "metric_name": "stochastic_density_mse",
+      "scenario_name": "stochastic_galerkin_compare",
+      "schema_version": 1,
+      "tolerance_pct": 25.0,
+      "value": 2.0589864521579712e-08
+    }
+  ],
+  "git_sha": "",
+  "hardware_tag": "",
+  "llm_backend": "",
+  "schema_version": 1
+}

@@ -184,6 +184,8 @@ class StrangParallelTrainer:
         ``use_oracle`` substitutes the exact compound-Poisson moment oracle
         for the MDN, giving the achievable-loss floor.
         """
+        if indices is not None:
+            indices = indices.to(device=self.device)
         packed = self._inputs if indices is None else self._inputs[indices]
         targets = self._targets if indices is None else self._targets[indices]
         dt_col = self._dt_column if indices is None else self._dt_column[indices]

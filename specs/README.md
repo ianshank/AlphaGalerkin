@@ -52,4 +52,5 @@ deliberately avoid that.
 | [`noyron_basis.spec.md`](noyron_basis.spec.md) | v2.2 MCTS basis selection on the Leap 71 helical operator | Draft |
 | [`llm_prior_ood.spec.md`](llm_prior_ood.spec.md) | LLM-prior OOD expansion (helmholtz / biharmonic) | Draft |
 | [`transfer_baseline_compare.spec.md`](transfer_baseline_compare.spec.md) | Honest zero-shot transfer — operator vs a retrained CNN | Implemented |
+| [`stochastic_galerkin_nke.spec.md`](stochastic_galerkin_nke.spec.md) | NKE stochastic Galerkin operator-splitting layer (additive) | Accepted |
 | [`headline_runs.spec.md`](headline_runs.spec.md) | GPU / hardware-gated headline runbooks | Runbook |

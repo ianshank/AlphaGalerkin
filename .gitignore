@@ -242,3 +242,4 @@ reports/perf/
 checkpoints/video_compression/zoo/
 outputs/zoo/
 zoo_storage/
+bd_rate_report.json

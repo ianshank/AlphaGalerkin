@@ -43,7 +43,7 @@ Each module has its own `AGENT.md` with detailed context. Use the appropriate mo
 | [`src/distributed/`](src/distributed/AGENT.md) | Distributed Systems Engineer | DDP training, gradient sync, multi-node coordination |
 | [`src/deployment/`](src/deployment/AGENT.md) | Deployment Engineer | ONNX export, quantization, runtime inference |
 | [`src/vertex/`](src/vertex/AGENT.md) | Cloud ML Engineer | Vertex AI jobs, GCS checkpoints, spot instances, cost tracking |
-| [`src/video_compression/`](src/video_compression/AGENT.md) | Codec Engineer | Neural video codec, entropy coding, rate-distortion optimization |
+| [`src/video_compression/`](src/video_compression/AGENT.md) | Codec Engineer | Neural video codec, entropy coding, rate-distortion optimization, numerical stability |
 
 ## Cross-Cutting Design Patterns
 

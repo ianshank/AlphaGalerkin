@@ -140,7 +140,7 @@ def test_zoo_trainer_run_persists_report(tmp_path: Path) -> None:
     assert report.tolerance_passed is True
     assert report.checkpoint_path.exists()
     metrics = zoo.load_metrics(entry.entry_id)
-    assert metrics["rate_bpp"] == pytest.approx(0.24)
+    assert metrics["bpp"] == pytest.approx(0.24)
     assert metrics["psnr_db"] == pytest.approx(35.2)
     bundle = zoo.load_state_dict(entry.entry_id)
     assert "model_state" in bundle

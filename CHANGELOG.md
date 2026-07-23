@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Codec Model Zoo Phase 2-D Structural Fixes (`src/video_compression/`)
+
+- **Monotonicity in Factorized Prior** — `FactorizedPrior` relies on a network using parameters `a` and `H` to estimate the CDF. Added `torch.nn.functional.softplus` to these parameters to enforce strict positivity, ensuring the CDF is monotonically increasing, preventing negative likelihoods and probability explosion (NaN loss).
+- **GDN Stability** — Generalized Divisive Normalization (`GDN`) and its inverse (`IGDN`) lacked positivity constraints on learnable parameters `beta` and `gamma`. Added `F.softplus` around both parameters in the `GDN.forward` function to ensure that `torch.sqrt` is never applied to a negative value.
+- **MS-SSIM Stability** — Multi-Scale SSIM computation occasionally produced NaNs due to fractional exponentiation of negative variances on uniform patches. Added `torch.relu` clamping in `compute_ms_ssim` to eliminate negative base NaNs.
+- **Structural Bug Fixes** — Implemented `FactorizedEntropyModel` wrapper; fixed BD-Rate metric key mismatch (`rate_bpp` vs `bpp`); updated deprecated `torch.cuda.amp.autocast` API to `torch.amp.autocast`.
+
 ### Added — Codec Model Zoo Phase 2-D (`src/video_compression/zoo/sweep.py`, `scripts/train_compression_zoo.py`)
 
 - **Manifest-level sweep orchestrator** — `ZooSweep` drives every entry in

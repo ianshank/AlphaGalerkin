@@ -6,11 +6,11 @@ Provides reusable plotting functions with configurable styling.
 from __future__ import annotations
 
 import logging
-from typing import Sequence, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-from numpy.typing import NDArray
 
 try:
     import structlog
@@ -20,12 +20,10 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    import matplotlib.pyplot as plt
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from matplotlib.image import AxesImage
 
-    from notebooks.utils.config import VisualizationConfig
 
 
 def _get_plt():
@@ -42,7 +40,7 @@ def plot_fourier_features(
     figsize: tuple[float, float] = (14, 6),
     cmaps: tuple[str, str] = ("RdBu", "viridis"),
     device: str = "cpu",
-) -> "Figure":
+) -> Figure:
     """Plot Fourier features at different resolutions.
 
     Args:
@@ -123,7 +121,7 @@ def plot_attention_comparison(
     board_labels: Sequence[str],
     figsize: tuple[float, float] = (10, 5),
     colors: tuple[str, str] = ("#2ecc71", "#e74c3c"),
-) -> "Figure":
+) -> Figure:
     """Plot attention speed comparison bar chart.
 
     Args:
@@ -206,7 +204,7 @@ def plot_poisson_samples(
     figsize: tuple[float, float] = (14, 6),
     charge_cmap: str = "RdBu",
     potential_cmap: str = "plasma",
-) -> "Figure":
+) -> Figure:
     """Plot Poisson equation samples (charges and potentials).
 
     Args:
@@ -277,7 +275,7 @@ def plot_poisson_samples(
 
 def plot_go_board(
     board: torch.Tensor,
-    ax: "Axes",
+    ax: Axes,
     stone_radius: float = 0.4,
     board_color: float = 0.82,
     grid_alpha: float = 0.5,
@@ -339,11 +337,11 @@ def plot_go_board(
 def plot_policy_heatmap(
     policy_logits: torch.Tensor,
     board_size: int,
-    ax: "Axes",
+    ax: Axes,
     top_k: int = 3,
     cmap: str = "Reds",
     marker_color: str = "blue",
-) -> "AxesImage":
+) -> AxesImage:
     """Plot policy heatmap with top-k moves marked.
 
     Args:
@@ -413,7 +411,7 @@ def plot_multi_board_visualization(
     board_sizes: Sequence[int],
     figsize: tuple[float, float] = (14, 4),
     title: str = "Board Visualization",
-) -> "Figure":
+) -> Figure:
     """Plot multiple Go boards side by side.
 
     Args:

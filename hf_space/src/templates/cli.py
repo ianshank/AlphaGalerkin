@@ -23,6 +23,7 @@ Example:
 
     if __name__ == "__main__":
         app()
+
 """
 
 from __future__ import annotations
@@ -30,8 +31,9 @@ from __future__ import annotations
 import functools
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 import structlog
 import typer
@@ -71,6 +73,7 @@ def create_cli_app(
             "My module CLI for doing things",
             version="1.0.0",
         )
+
     """
     app = typer.Typer(
         name=name,
@@ -117,6 +120,7 @@ def add_common_options(func: F) -> F:
         @add_common_options
         def my_command(verbose: bool, debug: bool, quiet: bool):
             pass
+
     """
 
     @functools.wraps(func)
@@ -179,6 +183,7 @@ def load_config_file(
 
     Raises:
         typer.Exit: If file not found or parsing fails.
+
     """
     import yaml
 
@@ -220,6 +225,7 @@ def print_result_table(
         title: Table title.
         results: List of dictionaries with result data.
         columns: Optional list of column names to show.
+
     """
     if not results:
         console.print("[yellow]No results to display.[/yellow]")
@@ -262,6 +268,7 @@ def print_status_panel(
         status: Status message.
         details: Optional details dictionary.
         success: If True, use green border; else red.
+
     """
     color = "green" if success else "red"
 
@@ -294,6 +301,7 @@ def create_progress_context(
             task = progress.add_task("Training model", total=100)
             for i in range(100):
                 progress.update(task, advance=1)
+
     """
     return Progress(
         SpinnerColumn(),
@@ -314,6 +322,7 @@ def confirm_action(
 
     Returns:
         True if confirmed, False otherwise.
+
     """
     return typer.confirm(message, default=default)
 
@@ -326,6 +335,7 @@ def handle_keyboard_interrupt(func: F) -> F:
         @handle_keyboard_interrupt
         def long_running_command():
             pass
+
     """
 
     @functools.wraps(func)
@@ -347,6 +357,7 @@ def with_error_handling(func: F) -> F:
         @with_error_handling
         def risky_command():
             pass
+
     """
 
     @functools.wraps(func)

@@ -218,10 +218,10 @@ def compute_ms_ssim(
 
         if scale < num_scales - 1:
             # Extract contrast-structure component (CS)
-            cs = ssim_val  # Simplified: use full SSIM as CS proxy
+            cs = torch.relu(ssim_val)  # Simplified: use full SSIM as CS proxy, clamped to non-negative
             cs_products.append(cs)
         else:
-            ssim_last = ssim_val
+            ssim_last = torch.relu(ssim_val)
 
     # Combine scales
     assert ssim_last is not None, "ssim_last should be set for at least 1 scale"

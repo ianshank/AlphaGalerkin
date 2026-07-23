@@ -99,6 +99,8 @@ C4Container
 
         Container(decoder_runtime, "Decoder Runtime Backends (Phase 1)", "Python/PyTorch", "Protocol-based decoder runtime dispatch layer: pytorch-eager (baseline), pytorch-compiled (torch.compile with inductor), onnx-cuda (ONNX Runtime + CUDAExecutionProvider), tensorrt (torch_tensorrt Dynamo IR). Registry-based discovery via @register_runtime decorator. FP32/FP16/BF16 precision dispatch. CompiledArtifactMetadata provenance tracking.")
 
+        Container(codec_zoo, "Codec Model Zoo (Phase 2)", "Python/PyTorch", "Dual-GPU model zoo for the R-D Lagrangian sweep. Pydantic schemas, device planner (VRAM_AWARE), ZooTrainer with fixed-lambda and warm starts, and manifest-level parallel sweep orchestrator. Includes structural stability fixes for FactorizedPrior, GDN, and MS-SSIM.")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }

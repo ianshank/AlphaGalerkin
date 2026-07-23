@@ -24,12 +24,14 @@ Example:
 
     # Retrieve registered class
     analyzer_cls = AnalyzerRegistry().get("statistical")
+
 """
 
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable, Generic, TypeVar
+from collections.abc import Callable
+from typing import Any, Generic, TypeVar
 
 import structlog
 
@@ -81,6 +83,7 @@ class BaseRegistry(Generic[T]):
 
         Raises:
             ValueError: If name is empty or already registered.
+
         """
         if not name or not name.strip():
             raise ValueError("Registration name cannot be empty")
@@ -108,6 +111,7 @@ class BaseRegistry(Generic[T]):
 
         Returns:
             True if item was unregistered, False if not found.
+
         """
         with self._lock:
             if name in self._items:
@@ -128,6 +132,7 @@ class BaseRegistry(Generic[T]):
 
         Returns:
             The registered class, or None if not found.
+
         """
         with self._lock:
             return self._items.get(name)
@@ -143,6 +148,7 @@ class BaseRegistry(Generic[T]):
 
         Raises:
             KeyError: If the item is not registered.
+
         """
         item = self.get(name)
         if item is None:
@@ -163,6 +169,7 @@ class BaseRegistry(Generic[T]):
 
         Returns:
             Instantiated item, or None if not found.
+
         """
         item_cls = self.get(name)
         if item_cls is None:
@@ -174,6 +181,7 @@ class BaseRegistry(Generic[T]):
 
         Returns:
             Sorted list of registered names.
+
         """
         with self._lock:
             return sorted(self._items.keys())
@@ -183,6 +191,7 @@ class BaseRegistry(Generic[T]):
 
         Returns:
             Copy of the internal registry dictionary.
+
         """
         with self._lock:
             return dict(self._items)
@@ -195,6 +204,7 @@ class BaseRegistry(Generic[T]):
 
         Returns:
             True if registered, False otherwise.
+
         """
         with self._lock:
             return name in self._items
@@ -264,8 +274,8 @@ def create_registry(
         # Usage
         processor_cls = ProcessorRegistry().get("fast")
         processor = processor_cls()
-    """
 
+    """
     # Create the registry class dynamically
     class_name = f"{name}Registry"
 
@@ -286,6 +296,7 @@ def create_registry(
 
         Returns:
             Decorator function.
+
         """
 
         def decorator(cls: type[T]) -> type[T]:
@@ -321,8 +332,8 @@ def create_typed_registry(
 
     Returns:
         Tuple of (RegistryClass, register_decorator).
-    """
 
+    """
     class_name = f"{name}Registry"
 
     registry_cls = type(

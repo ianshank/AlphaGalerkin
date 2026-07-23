@@ -17,7 +17,8 @@ from pathlib import Path
 import structlog
 import torch
 from torch import nn
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import autocast
+from torch.cuda.amp import GradScaler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -131,7 +132,7 @@ class VideoCompressionTrainer:
         self.loss_fn.rd_loss.lambda_rd = lambda_rd
 
         # Forward pass with optional mixed precision
-        with autocast(enabled=self.config.use_amp):
+        with autocast(device_type=self.device.type, enabled=self.config.use_amp):
             x_hat, rate, distortion = self.codec(batch)
             losses = self.loss_fn(x_hat, batch, rate)
             loss = losses["total"]

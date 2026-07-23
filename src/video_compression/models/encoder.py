@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 
 import torch
+import torch.nn.functional as F
 from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
@@ -67,10 +68,14 @@ class GDN(nn.Module):
             Normalized tensor (B, C, H, W).
 
         """
+        # Enforce positivity for stability (Ballé et al.)
+        beta = F.softplus(self.beta)
+        gamma = F.softplus(self.gamma)
+
         # Compute norm: beta + gamma * x^2
         x_sq = x**2
         # Sum over channels: (B, C, H, W) -> (B, C, H, W)
-        norm = self.beta.view(1, -1, 1, 1) + torch.einsum("cd,bdhw->bchw", self.gamma, x_sq)
+        norm = beta.view(1, -1, 1, 1) + torch.einsum("cd,bdhw->bchw", gamma, x_sq)
         norm = torch.sqrt(norm + self.epsilon)
 
         if self.inverse:

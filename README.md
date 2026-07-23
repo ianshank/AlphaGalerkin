@@ -569,7 +569,7 @@ Subpackage `src/video_compression/zoo/` orchestrates an R-D Lagrangian sweep acr
 
 **Phase 2-B** — core zoo schemas, manifest I/O, device planner, filesystem registry.  
 **Phase 2-C** — `ZooTrainer` per-entry (fixed-λ, AMP, grad-clip, warmup, `parent_entry_id` warm-start).  
-**Phase 2-D** — manifest-level sweep orchestrator + parallel dispatch + subprocess runner.
+**Phase 2-D** — manifest-level sweep orchestrator + parallel dispatch + subprocess runner. Includes structural numerical stability fixes (monotonic `FactorizedPrior` CDF, GDN positivity, NaN-stable MS-SSIM).
 
 | Module | Responsibility | Coverage |
 |---|---|---|

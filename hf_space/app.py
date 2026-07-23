@@ -20,20 +20,20 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.board import get_default_space_config
+from src.endgame import EndgameDetector
 from src.game_manager import GameManager, GameSession
 from src.rendering.board_renderer import BoardRenderer
 
 from config.schemas import AlphaGalerkinConfig
+from src.demos.architecture_demo import create_architecture_demo_tab
+from src.demos.benchmark_demo import create_benchmark_demo_tab
+
+# Demo modules from PR #20
+from src.demos.physics_demo import create_physics_demo_tab
 from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
 from src.tools.gtp import SimpleGoGame
-from src.endgame import EndgameDetector
-
-# Demo modules from PR #20
-from src.demos.physics_demo import create_physics_demo_tab
-from src.demos.benchmark_demo import create_benchmark_demo_tab
-from src.demos.architecture_demo import create_architecture_demo_tab
 
 # Configure structured logging
 structlog.configure(

@@ -134,9 +134,10 @@ class FactorizedPrior(nn.Module):
         logits = self.H[:, 0].view(param_shape)  # Initial term
 
         for k in range(self.a.shape[1]):
-            a_k = self.a[:, k].view(param_shape)
+            # Enforce strict positivity for a and H to ensure monotonic CDF
+            a_k = F.softplus(self.a[:, k]).view(param_shape)
             b_k = self.b[:, k].view(param_shape)
-            h_k = self.H[:, k + 1].view(param_shape)
+            h_k = F.softplus(self.H[:, k + 1]).view(param_shape)
             logits = logits + F.softplus(a_k * x_scaled + b_k) * h_k
 
         return torch.sigmoid(logits)
@@ -477,6 +478,98 @@ class HyperpriorEntropyModel(nn.Module):
         return y_symbols.float()
 
 
+class FactorizedEntropyModel(nn.Module):
+    """Wrapper for FactorizedPrior to match EntropyOutput interface."""
+
+    def __init__(self, config: EntropyConfig) -> None:
+        """Initialize factorized entropy model.
+
+        Args:
+            config: Entropy model configuration.
+
+        """
+        super().__init__()
+        self.config = config
+        self.prior = FactorizedPrior(
+            channels=config.num_filters,
+            num_filters=3,
+        )
+
+    def forward(
+        self,
+        y: Float[Tensor, "batch channels height width"],
+        training: bool | None = None,
+    ) -> EntropyOutput:
+        """Compute entropy model outputs.
+
+        Args:
+            y: Latent tensor (before quantization).
+            training: Override training mode.
+
+        Returns:
+            EntropyOutput with quantized values and rates.
+
+        """
+        is_training = training if training is not None else self.training
+
+        # Quantize latent
+        y_hat = y + torch.empty_like(y).uniform_(-0.5, 0.5) if is_training else torch.round(y)
+
+        # Compute likelihoods
+        _, rate = self.prior(y_hat)
+
+        # Compute likelihoods for backwards compatibility
+        y_likelihoods = torch.exp(-rate / (y.shape[1] * y.shape[2] * y.shape[3]))
+
+        # Empty tensors for hyperprior since it's not used
+        z_hat = torch.empty(0, device=y.device)
+        z_likelihoods = torch.empty(0, device=y.device)
+
+        return EntropyOutput(
+            y_hat=y_hat,
+            z_hat=z_hat,
+            y_likelihoods=y_likelihoods,
+            z_likelihoods=z_likelihoods,
+            rate=rate,
+        )
+
+    def compress(
+        self,
+        y: Float[Tensor, "batch channels height width"],
+    ) -> dict[str, Tensor]:
+        """Compress latent to bitstream (returns quantized symbols).
+
+        Args:
+            y: Latent tensor.
+
+        Returns:
+            Dictionary with quantized symbols for entropy coding.
+
+        """
+        y_hat = torch.round(y)
+        return {
+            "y_symbols": y_hat.to(torch.int16),
+            "scales": None,  # Factorized prior uses learned CDF directly
+        }
+
+    def decompress(
+        self,
+        y_symbols: Tensor,
+        z_symbols: Tensor | None = None,
+    ) -> Float[Tensor, "batch channels height width"]:
+        """Decompress from quantized symbols.
+
+        Args:
+            y_symbols: Quantized latent symbols.
+            z_symbols: Ignored for factorized prior.
+
+        Returns:
+            Reconstructed latent tensor.
+
+        """
+        return y_symbols.float()
+
+
 def create_entropy_model(config: EntropyConfig) -> nn.Module:
     """Factory function to create entropy model from config.
 
@@ -489,10 +582,7 @@ def create_entropy_model(config: EntropyConfig) -> nn.Module:
     """
     match config.model_type:
         case EntropyModelType.FACTORIZED:
-            return FactorizedPrior(
-                channels=config.num_filters,
-                num_filters=3,
-            )
+            return FactorizedEntropyModel(config)
         case EntropyModelType.HYPERPRIOR:
             return HyperpriorEntropyModel(config)
         case EntropyModelType.AUTOREGRESSIVE:

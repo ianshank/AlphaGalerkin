@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.board import SpaceConfig, get_default_space_config
 from src.game_manager import GameManager
 from src.rendering.board_renderer import BoardRenderer
+
 from src.tools.gtp import SimpleGoGame
 
 

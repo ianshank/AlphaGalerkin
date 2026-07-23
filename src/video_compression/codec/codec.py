@@ -330,7 +330,7 @@ class VideoCodec(nn.Module):
         y = self.encoder(x)
 
         # Entropy model (quantization + rate estimation)
-        entropy_output = self.entropy_model(y, training=self.training)
+        entropy_output = self.entropy_model(y)
 
         # Decode
         if reference is not None:

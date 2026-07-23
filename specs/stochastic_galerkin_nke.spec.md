@@ -1,6 +1,6 @@
 # Spec: Stochastic Galerkin Operator-Splitting Layer (NKE)
 
-> **Status:** Accepted
+> **Status:** Implemented
 > **Owner:** AlphaGalerkin core
 > **Primary module(s):** `src/pde/stochastic/` (subpackage), `src/research/stochastic_galerkin_compare.py`, `src/poc/scenarios/stochastic_galerkin_compare.py`
 > **Config class:** `src.poc.scenarios.stochastic_galerkin_compare_config.StochasticGalerkinCompareConfig` (scenario contract); `src.pde.stochastic.config.*` (layer contracts)

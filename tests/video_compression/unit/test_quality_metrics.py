@@ -191,7 +191,8 @@ class TestMSSSIM:
 
         # Create two identical completely uniform frames.
         # This causes variance to be 0, which can result in slightly negative
-        # values due to floating-point truncation, which causes NaNs when raised to a fractional power.
+        # values due to floating-point truncation, which causes NaNs when
+        # raised to a fractional power.
         frame = torch.zeros(1, 3, 256, 256)
 
         score = compute_ms_ssim(frame, frame)

@@ -18,20 +18,20 @@ class TestParseGcsUri:
     """The shared gs:// URI parser used by the GCS zoo backend."""
 
     def test_bucket_and_prefix(self) -> None:
-        from src.vertex.storage import parse_gcs_uri
+        from src.video_compression.zoo.storage import parse_gcs_uri
 
         assert parse_gcs_uri("gs://bucket/a/b") == ("bucket", "a/b")
         assert parse_gcs_uri("gs://bucket") == ("bucket", "")
         assert parse_gcs_uri("gs://bucket/a/b/") == ("bucket", "a/b")
 
     def test_rejects_non_gcs_uri(self) -> None:
-        from src.vertex.storage import parse_gcs_uri
+        from src.video_compression.zoo.storage import parse_gcs_uri
 
         with pytest.raises(ValueError, match="not a gs://"):
             parse_gcs_uri("/local/path")
 
     def test_rejects_missing_bucket(self) -> None:
-        from src.vertex.storage import parse_gcs_uri
+        from src.video_compression.zoo.storage import parse_gcs_uri
 
         with pytest.raises(ValueError, match="missing bucket"):
             parse_gcs_uri("gs://")

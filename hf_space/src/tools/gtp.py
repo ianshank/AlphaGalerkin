@@ -278,6 +278,7 @@ class SimpleGoGame:
 
         Returns:
             True if the move is legal, False otherwise.
+
         """
         # Must be empty
         if self.board[row, col] != self.EMPTY:

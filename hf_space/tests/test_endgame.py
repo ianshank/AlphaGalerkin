@@ -7,11 +7,9 @@ to properly end the game when human passes in endgame situations.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-
 from config.board import EndgameConfig
 from src.endgame import EndgameAnalysis, EndgameDetector
 
@@ -259,13 +257,13 @@ class TestEndgameIntegration:
     """Integration tests with real SimpleGoGame."""
 
     @pytest.fixture
-    def real_game(self) -> "SimpleGoGame":
+    def real_game(self) -> SimpleGoGame:
         """Create a real SimpleGoGame instance."""
         from src.tools.gtp import SimpleGoGame
 
         return SimpleGoGame(9)
 
-    def test_real_game_empty(self, real_game: "SimpleGoGame") -> None:
+    def test_real_game_empty(self, real_game: SimpleGoGame) -> None:
         """Test with real game - empty board."""
         config = EndgameConfig()
         detector = EndgameDetector(config)
@@ -275,7 +273,7 @@ class TestEndgameIntegration:
         assert analysis.should_ai_pass is False
         assert analysis.empty_count == 81
 
-    def test_real_game_consecutive_passes(self, real_game: "SimpleGoGame") -> None:
+    def test_real_game_consecutive_passes(self, real_game: SimpleGoGame) -> None:
         """Test with real game - consecutive passes."""
         config = EndgameConfig()
         detector = EndgameDetector(config)
@@ -288,7 +286,7 @@ class TestEndgameIntegration:
         assert real_game.passes == 1
 
     def test_real_game_terminal_after_two_passes(
-        self, real_game: "SimpleGoGame"
+        self, real_game: SimpleGoGame
     ) -> None:
         """Verify game is terminal after two passes."""
         real_game.play_pass()

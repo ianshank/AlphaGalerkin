@@ -69,6 +69,7 @@ def get_pde_operator(name: str) -> type[PDEOperator]:
 
     Raises:
         KeyError: If operator not registered.
+
     """
     return PDEOperatorRegistry().get_or_raise(name)
 
@@ -78,5 +79,6 @@ def list_pde_operators() -> list[str]:
 
     Returns:
         List of registered operator names.
+
     """
     return PDEOperatorRegistry().list_items()

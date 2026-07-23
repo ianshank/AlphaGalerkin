@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
@@ -24,7 +25,7 @@ except ImportError:
 if TYPE_CHECKING:
     from torch import nn
 
-    from notebooks.utils.config import DemoConfig, GoBoardConfig
+    from notebooks.utils.config import GoBoardConfig
 
 
 @dataclass
@@ -57,6 +58,7 @@ def setup_environment(
 
     """
     import random
+
     import numpy as np
 
     # Detect project root
@@ -173,7 +175,7 @@ def create_sample_board(
 
 def create_sample_board_from_config(
     size: int,
-    config: "GoBoardConfig",
+    config: GoBoardConfig,
     n_channels: int = 17,
     device: torch.device | str = "cpu",
 ) -> Tensor:
@@ -210,7 +212,7 @@ class ModelForwardResult:
 
 
 def safe_model_forward(
-    model: "nn.Module",
+    model: nn.Module,
     x: Tensor,
     return_lbb: bool = False,
 ) -> ModelForwardResult:
@@ -253,7 +255,7 @@ def safe_model_forward(
         )
 
 
-def format_model_summary(model: "nn.Module") -> str:
+def format_model_summary(model: nn.Module) -> str:
     """Format a model summary with parameter counts.
 
     Args:

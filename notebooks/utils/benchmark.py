@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 try:
     import structlog
@@ -22,7 +23,7 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from notebooks.utils.config import BenchmarkConfig
+    pass
 
 
 @dataclass

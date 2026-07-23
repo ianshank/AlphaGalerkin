@@ -237,3 +237,14 @@ outputs/poc/llm_prior_ablation/
 # Coverage rcfiles emitted by CI workflow heredocs (regression-surface
 # gates). Not source-of-truth — written at job time.
 .coveragerc.noyron-hx
+# Codec model zoo storage roots (Phase 2-B)
+# `VideoCodecZoo` writes per-entry checkpoints, entry.json, and
+# metrics.json under the configured `storage_root`. The shipped
+# `config/video_compression/zoo/lambda_grid.yaml` defaults to
+# `checkpoints/video_compression/zoo/`; user-authored manifests can
+# point anywhere. `outputs/zoo/` and `zoo_storage/` are ignored as
+# additional conventional roots used by ad-hoc sweeps.
+checkpoints/video_compression/zoo/
+outputs/zoo/
+zoo_storage/
+bd_rate_report.json

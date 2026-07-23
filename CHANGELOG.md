@@ -367,7 +367,6 @@ telemetry, hard-coded CPU PINN, no extreme-resolution Poisson level).
   `tests/pde/` + `tests/scripts/test_run_sbir_p40.py` with the global
   85% gate met (project total 94.84% on the changed module set).
   `ruff check` + `ruff format --check` clean on every edited file.
-
 ### Added — Codec Model Zoo Phase 2-D (`src/video_compression/zoo/sweep.py`, `scripts/train_compression_zoo.py`)
 
 - **Manifest-level sweep orchestrator** — `ZooSweep` drives every entry in

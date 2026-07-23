@@ -97,6 +97,8 @@ C4Container
 
         Container(lm_studio_evaluator, "LM Studio Evaluator (LLM Prior)", "Python/openai-SDK", "Optional MCTS evaluator backed by an OpenAI-compatible local LLM (Qwen-14B in LM Studio by default). Implements src/mcts/evaluator.py::Evaluator structurally with illegal-action masking + temperature softmax. Bounded exponential-backoff retries split SDK errors into retryable (APIConnectionError / APITimeoutError / RateLimitError / InternalServerError) and non-retryable (Authentication / BadRequest / NotFound / etc.). Preflight checks server reachable + model in /v1/models + free-VRAM floor before accepting traffic. Gated behind the [lm-studio] optional extra; SDK imported lazily so the base install is unaffected.")
 
+        Container(codec_zoo, "Codec Model Zoo (Phase 2)", "Python/PyTorch", "Dual-GPU model zoo for the R-D Lagrangian sweep. Pydantic schemas, device planner (VRAM_AWARE), ZooTrainer with fixed-lambda and warm starts, and manifest-level parallel sweep orchestrator. Includes structural stability fixes for FactorizedPrior, GDN, and MS-SSIM.")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }

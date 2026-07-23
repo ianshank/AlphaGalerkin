@@ -63,6 +63,7 @@ checkpoints/
 # Outputs and reports
 outputs/
 reports/
+bd_rate_report.json
 wandb/
 runs/
 lightning_logs/

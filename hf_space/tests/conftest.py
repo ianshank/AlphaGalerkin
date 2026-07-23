@@ -18,6 +18,7 @@ from config.board import (
 )
 from src.game_manager import GameManager
 from src.rendering.board_renderer import BoardRenderer
+
 from src.tools.gtp import SimpleGoGame
 
 

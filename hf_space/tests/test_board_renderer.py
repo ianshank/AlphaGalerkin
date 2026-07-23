@@ -9,8 +9,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.board import BoardRenderConfig, CoordinateLabelConfig, GTP_LETTERS
+from config.board import GTP_LETTERS, BoardRenderConfig, CoordinateLabelConfig
 from src.rendering.board_renderer import BoardRenderer, render_board
+
 from src.tools.gtp import SimpleGoGame
 
 

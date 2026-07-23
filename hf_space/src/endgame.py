@@ -13,6 +13,7 @@ import structlog
 
 if TYPE_CHECKING:
     from config.board import EndgameConfig
+
     from src.tools.gtp import SimpleGoGame
 
 logger = structlog.get_logger(__name__)

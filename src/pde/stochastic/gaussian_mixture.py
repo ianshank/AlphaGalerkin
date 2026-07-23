@@ -75,7 +75,11 @@ class GaussianMixtureState:
             raise StochasticConfigurationError(msg)
         # Validation reads are detached: states built from network outputs carry
         # grad, and scalar reads on grad tensors warn (the graph is untouched).
-        weight_sum = float(self.weights.detach().sum())
+        detached_weights = self.weights.detach()
+        if bool((detached_weights < -1e-12).any()):
+            msg = "mixture weights must be non-negative"
+            raise StochasticConfigurationError(msg)
+        weight_sum = float(detached_weights.sum())
         if abs(weight_sum - 1.0) > _WEIGHT_SUM_ATOL:
             msg = f"mixture weights must sum to 1 (got {weight_sum:.8f})"
             raise StochasticConfigurationError(msg)

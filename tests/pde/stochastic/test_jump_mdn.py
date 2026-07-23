@@ -66,7 +66,7 @@ def _train_mdn(n_steps: int = 300) -> tuple[MDNJumpSemigroup, list[float]]:
         loss = mdn.nll(out, target_batch)
         loss.backward()
         optimizer.step()
-        losses.append(float(loss))
+        losses.append(float(loss.detach()))
     return mdn, losses
 
 

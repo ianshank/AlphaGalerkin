@@ -321,7 +321,7 @@ def run_deterministic_arm(
     n = train_inputs.shape[0]
     order_gen = torch.Generator().manual_seed(train_seed)
     for _epoch in range(params.n_epochs):
-        order = torch.randperm(n, generator=order_gen)
+        order = torch.randperm(n, generator=order_gen).to(device)
         for start in range(0, n, params.batch_size):
             idx = order[start : start + params.batch_size]
             batch_inputs = train_inputs[idx]

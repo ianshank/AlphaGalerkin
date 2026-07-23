@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Stochastic Galerkin operator-splitting layer (NKE, `alphagalerkin-nke-integration`)
+
+- New additive subpackage `src/pde/stochastic/` implementing the Lagrangian Galerkin
+  projection of a Kolmogorov-forward generator `L = A + D + J` onto a Gaussian-mixture
+  basis (after NKE, arXiv:2607.19173 — implemented from the standard derivation with a
+  documented provenance caveat; see `specs/stochastic_galerkin_nke.spec.md` and
+  `docs/related-work.md`): exact expm advection/diffusion moment flows, a **trained MDN
+  jump semigroup** (residual, dt-scaled, identity at dt=0), symmetric Strang composition
+  (measured second-order: slopes 1.995–2.000), and a **parallel-in-time trainer** whose
+  M−1 interval losses evaluate in one batched forward pass over precomputed particle
+  clusters (no autoregressive rollout). GPU/CPU agnostic throughout.
+- Verified against independent van Loan closed forms: OU moment recovery < 1e-3
+  (Hypothesis stable-A sweeps); jump-OU with the exact compound-Poisson oracle < 1e-3;
+  trained-MDN trajectory errors 1.7e-2 / 7.4e-3 (gate 5e-2); trainer reaches the
+  oracle-achievable loss floor (gap closure 0.000). Every unmeasured gate was
+  calibrated from a pinned run and recorded in the spec.
+- A generator with a jump term but no jump model raises `JumpModelMissingError` — the
+  jump component is never silently dropped (change-doc requirement), with a
+  defense-in-depth re-check in the Strang composer.
+- New `stochastic_galerkin_compare` PoC scenario + CLI: deterministic Galerkin-attention
+  arm vs the stochastic moment-projection arm on a shared Fokker-Planck/OU density
+  benchmark with free analytic ground truth. The single gate is the stochastic arm's
+  absolute MSE (measured 2.3e-8, gate 1e-6); the deterministic arm's MSE and the ratio
+  are recorded **ungated** (novelty ≠ superiority). Committed artifacts:
+  `results/stochastic_galerkin_compare.{csv,png}`,
+  `config/baselines/stochastic_galerkin_ci.json`.
+- MCTS/self-play untouched, enforced twice: an AST import-isolation guard over the new
+  modules and the green MCTS/F0/F1 regression surfaces. The novelty-gap documentation
+  guard is executable (`tests/regression/test_related_work_guard.py`): every
+  `docs/related-work.md` entry must carry a "does NOT do" clause, and the retracted
+  blanket "no MCTS+Galerkin" claim is asserted absent from the README.
+
 ### Added — Honest zero-shot transfer benchmark (operator vs retrained CNN)
 
 - New CI-gated `transfer_baseline_compare` PoC scenario replacing the **fabricated**

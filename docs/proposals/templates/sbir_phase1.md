@@ -52,6 +52,13 @@ a distinct problem — so a blanket "no MCTS+FEM" claim is false. MCTS provides:
 - No training data requirement (operates directly on the PDE)
 - Integration with mathematical convergence theory (LBB stability)
 
+**Future work (not claimed for Phase I):** a stochastic Galerkin operator-splitting
+layer (Kolmogorov forward equations projected onto a Gaussian-mixture basis with a
+Strang-split parallel-in-time trainer, after NKE arXiv:2607.19173 — see
+`docs/related-work.md`) is implemented as an additive module (`src/pde/stochastic/`);
+it does not alter the MCTS/self-play core, is not part of the Phase I claim, and
+carries no LBB/inf-sup stability claims.
+
 ### 4. Technical Merit (Prior Results)
 **Zero-shot transfer**: Trained on 9x9 grid, transfers to 19x19 at measured MSE ~4e-4
 without retraining. (The earlier "0.000209 / 240x better than threshold" was a fabricated

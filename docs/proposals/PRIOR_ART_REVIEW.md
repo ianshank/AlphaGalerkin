@@ -82,3 +82,16 @@ myopic RL / greedy Dörfler marking" is a genuine, previously-unoccupied framing
    relevant honest data point: an *untrained* MCTS refinement policy beats Dörfler by a few
    percent at matched DOF but is far worse at matched wall-clock, so the compelling claim
    depends on a trained evaluator that closes the wall-clock gap (out of scope today).
+
+## Addendum (2026-07-23) — NKE and the stochastic Galerkin layer
+
+The Neural Kolmogorov Equations paper (arXiv:2607.19173) is now cited and partially
+reused as the basis of the additive stochastic Galerkin operator-splitting layer
+(`src/pde/stochastic/`, `specs/stochastic_galerkin_nke.spec.md`). Its novelty-boundary
+entry lives in `docs/related-work.md` (guard-tested): NKE does **not** do MCTS or
+planning of any kind, does **not** do adaptive basis or mesh selection, and makes **no**
+LBB/inf-sup claims — so it neither overlaps with nor undercuts the narrow delta above,
+and AlphaGalerkin claims no LBB properties for the stochastic layer either. Provenance
+caveat: the layer was implemented from the standard moment-Galerkin derivation because
+the paper was unreachable at implementation time; a paper-exact cross-check remains an
+open reviewer follow-up.

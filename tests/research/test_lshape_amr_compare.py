@@ -28,6 +28,7 @@ from src.research.lshape_amr_compare import (
     compare_ratios,
     export_csv,
     export_plot,
+    l2_ratio_at_matched_solves,
     lshape_inside_predicate,
     make_solve_fn,
     resolved_seeds,
@@ -175,10 +176,19 @@ class TestInterpLog:
 # --------------------------------------------------------------------------- #
 
 
-def _traj(method: str, dofs: list[int], errs: list[float], times: list[float]) -> ArmTrajectory:
+def _traj(
+    method: str,
+    dofs: list[int],
+    errs: list[float],
+    times: list[float],
+    solves: list[int] | None = None,
+) -> ArmTrajectory:
     traj = ArmTrajectory(method=method)
-    for level, (d, e, t) in enumerate(zip(dofs, errs, times, strict=True)):
-        traj.points.append(TrajectoryPoint(level=level, n_dof=d, l2_error=e, wall_time_seconds=t))
+    solves = solves if solves is not None else [i + 1 for i in range(len(dofs))]
+    for level, (d, e, t, s) in enumerate(zip(dofs, errs, times, solves, strict=True)):
+        traj.points.append(
+            TrajectoryPoint(level=level, n_dof=d, l2_error=e, wall_time_seconds=t, n_solves=s)
+        )
     return traj
 
 
@@ -195,6 +205,23 @@ class TestCompareRatios:
         assert matched_t == pytest.approx(0.2)
         # MCTS has lower error at matched DOF -> ratio < 1.
         assert l2_ratio < 1.0
+
+
+class TestMatchedSolves:
+    def test_ratio_at_matched_solves(self) -> None:
+        # Dörfler reaches low error in few solves; MCTS spends more solves for
+        # the same DOF/error curve -> at a matched solve budget MCTS trails.
+        dorfler = _traj(
+            "dorfler", [10, 40, 90], [1.0, 0.5, 0.25], [0.0, 0.1, 0.2], solves=[1, 2, 3]
+        )
+        mcts = _traj("mcts", [10, 40, 90], [1.0, 0.5, 0.25], [0.0, 0.3, 0.6], solves=[2, 8, 18])
+        ratio, matched = l2_ratio_at_matched_solves(dorfler, mcts)
+        # Largest common solve count is 3 (Dörfler's max).
+        assert matched == 3.0
+        assert np.isfinite(ratio) and ratio > 0.0
+        # At 3 solves Dörfler is already at ~0.25 while MCTS is barely past its
+        # first refinement -> MCTS is worse per solve (ratio > 1).
+        assert ratio > 1.0
 
 
 # --------------------------------------------------------------------------- #
@@ -221,7 +248,19 @@ class TestRunComparison:
         assert metrics["l2_error_ratio_at_matched_dof"] > 0.0
         assert np.isfinite(metrics["error_per_dof_ratio_mcts_over_dorfler"])
         assert metrics["error_per_dof_ratio_mcts_over_dorfler"] > 0.0
+        # Matched-compute (solve-count) metric is present, finite and positive.
+        assert np.isfinite(metrics["l2_error_ratio_at_matched_solves"])
+        assert metrics["l2_error_ratio_at_matched_solves"] > 0.0
+        assert metrics["matched_solves"] > 0.0
         assert result.dorfler.points and result.mcts.points
+        # Solve counts are cumulative (non-decreasing) and the MCTS arm, which
+        # replays solves inside every simulation, spends strictly more real
+        # solves per accepted step than Dörfler's one-solve-per-level.
+        for arm in (result.dorfler, result.mcts):
+            counts = arm.solve_counts()
+            assert np.all(np.diff(counts) >= 0)
+            assert counts[-1] >= len(arm.points)
+        assert result.mcts.points[-1].n_solves > result.dorfler.points[-1].n_solves
 
 
 # --------------------------------------------------------------------------- #
@@ -257,6 +296,7 @@ class TestArtifacts:
             "n_dof",
             "l2_error",
             "wall_time_seconds",
+            "n_solves",
             "error_per_dof",
             "seed",
         ]
@@ -357,8 +397,10 @@ class TestResolvedSeeds:
 # --------------------------------------------------------------------------- #
 
 
-def _stub_result(l2_ratio: float, epd_ratio: float, seed: int) -> ComparisonResult:
-    """A minimal ComparisonResult carrying the two headline ratios."""
+def _stub_result(
+    l2_ratio: float, epd_ratio: float, seed: int, solve_ratio: float = 1.0
+) -> ComparisonResult:
+    """A minimal ComparisonResult carrying the headline ratios."""
     dorfler = _traj("dorfler", [10, 40], [1.0, 0.5], [0.0, 0.1])
     mcts = _traj("mcts", [10, 40], [1.0, 0.4], [0.0, 0.2])
     return ComparisonResult(
@@ -371,6 +413,8 @@ def _stub_result(l2_ratio: float, epd_ratio: float, seed: int) -> ComparisonResu
         dorfler_convergence_exponent=-1.0,
         mcts_convergence_exponent=-1.0,
         seed=seed,
+        l2_error_ratio_at_matched_solves=solve_ratio,
+        matched_solves=10.0,
     )
 
 
@@ -378,21 +422,29 @@ class TestMultiSeedComparison:
     def test_metrics_median_and_win_fraction(self) -> None:
         l2 = [0.5, 2.0, 0.8]
         epd = [1.1, 3.0, 2.0]
+        solve = [1.5, 3.0, 0.9]
         seeds = [1, 2, 3]
-        per_seed = [_stub_result(a, b, s) for a, b, s in zip(l2, epd, seeds, strict=True)]
+        per_seed = [
+            _stub_result(a, b, s, solve_ratio=sr)
+            for a, b, s, sr in zip(l2, epd, seeds, solve, strict=True)
+        ]
         ms = MultiSeedComparison(per_seed=per_seed, seeds=seeds)
 
         assert ms.l2_ratios == l2
         assert ms.epd_ratios == epd
+        assert ms.solve_ratios == solve
 
         metrics = ms.metrics()
         assert metrics["l2_error_ratio_at_matched_dof"] == pytest.approx(np.median(l2))
         assert metrics["error_per_dof_ratio_mcts_over_dorfler"] == pytest.approx(np.median(epd))
+        assert metrics["l2_error_ratio_at_matched_solves"] == pytest.approx(np.median(solve))
         assert metrics["l2_ratio_seed_min"] == pytest.approx(min(l2))
         assert metrics["l2_ratio_seed_max"] == pytest.approx(max(l2))
         assert metrics["l2_ratio_seed_std"] == pytest.approx(float(np.std(l2)))
-        # Two of three seeds have ratio < 1.
+        # Two of three seeds have matched-DOF ratio < 1.
         assert metrics["mcts_win_fraction"] == pytest.approx(2.0 / 3.0)
+        # One of three seeds has matched-solve ratio < 1.
+        assert metrics["mcts_solve_win_fraction"] == pytest.approx(1.0 / 3.0)
         assert metrics["n_seeds"] == pytest.approx(3.0)
 
     def test_representative_is_median_ratio_seed(self) -> None:

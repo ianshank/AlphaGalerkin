@@ -86,17 +86,25 @@ class GalerkinMomentProjection:
             covariances=state.covariances + h * q,
         )
 
-    def _advection_flow_exact(self, state: GaussianMixtureState, h: float) -> GaussianMixtureState:
+    def advection_flow_matrices(self, h: float, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
+        """Exact advection-flow operators ``(e^{Ah}, ∫₀ʰ e^{As} ds · b)``.
+
+        Exposed so the batched parallel-in-time trainer can apply the same
+        exact flow to stacked (B, K, …) moment tensors without constructing
+        per-slice states. Linear drift only.
+        """
         drift = self.generator.linear_drift()
         d = self.generator.dim
-        a = drift.matrix.to(state.dtype)
-        b = drift.bias.to(state.dtype)
-        aug = torch.zeros(d + 1, d + 1, dtype=state.dtype)
+        a = drift.matrix.to(dtype)
+        b = drift.bias.to(dtype)
+        aug = torch.zeros(d + 1, d + 1, dtype=dtype)
         aug[:d, :d] = a
         aug[:d, d] = b
         phi_aug = torch.linalg.matrix_exp(aug * h)
-        expm_a = phi_aug[:d, :d]
-        shift = phi_aug[:d, d]
+        return phi_aug[:d, :d], phi_aug[:d, d]
+
+    def _advection_flow_exact(self, state: GaussianMixtureState, h: float) -> GaussianMixtureState:
+        expm_a, shift = self.advection_flow_matrices(h, state.dtype)
         means = state.means @ expm_a.T + shift
         covariances = expm_a @ state.covariances @ expm_a.T
         return GaussianMixtureState(

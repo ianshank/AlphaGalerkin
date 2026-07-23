@@ -63,6 +63,9 @@ DEFAULT_KMEANS_MAX_ITERS = 100
 DEFAULT_KMEANS_TOL = 1e-6
 """Relative centroid-shift convergence tolerance for Lloyd's iteration."""
 
+DEFAULT_CLUSTER_COV_FLOOR = 1e-6
+"""Diagonal floor on per-cluster empirical covariances (degenerate clusters)."""
+
 _SYMMETRY_ATOL = 1e-9
 """Absolute tolerance when validating covariance symmetry in configs."""
 
@@ -205,7 +208,7 @@ class MDNJumpConfig(BaseModuleConfig):
     n_components: int = Field(
         ge=1,
         le=_MAX_COMPONENTS,
-        description="Mixture size K (must equal the basis K; enforced at apply time).",
+        description="Mixture size K (must equal the basis K; enforced when advancing a state).",
     )
     hidden_dims: list[int] = Field(
         default_factory=lambda: [64, 64],

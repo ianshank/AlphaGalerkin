@@ -63,7 +63,7 @@ class TestOracle:
         oracle = AnalyticCompoundPoissonMoments(PINNED_JUMP)
         state = _initial_state()
         dt = 0.3
-        out = oracle.apply(state, dt)
+        out = oracle.advance(state, dt)
         # m += λ·dt·μ ; P += λ·dt·(Σ + μμᵀ)
         assert abs(float(out.means[0, 0]) - 2.0 * dt * 0.5) < 1e-14
         expected_p = 0.1 + 2.0 * dt * (0.04 + 0.25)
@@ -72,7 +72,7 @@ class TestOracle:
     def test_oracle_preserves_weights(self):
         oracle = AnalyticCompoundPoissonMoments(PINNED_JUMP)
         state = _initial_state()
-        torch.testing.assert_close(oracle.apply(state, 0.5).weights, state.weights)
+        torch.testing.assert_close(oracle.advance(state, 0.5).weights, state.weights)
 
 
 class TestAC3OracleJumpOu:
@@ -176,7 +176,7 @@ class TestStrangComposition:
             def __init__(self):
                 self.calls = 0
 
-            def apply(self, state, dt):
+            def advance(self, state, dt):
                 self.calls += 1
                 return state
 

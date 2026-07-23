@@ -46,7 +46,22 @@ from src.pde.stochastic.generator import (
     KolmogorovGenerator,
     LinearDrift,
 )
+from src.pde.stochastic.jump_mdn import (
+    AnalyticCompoundPoissonMoments,
+    MDNJumpSemigroup,
+    batched_mixture_nll,
+    pack_batch,
+    unpack_batch,
+)
+from src.pde.stochastic.particles import (
+    ParticleSimulationResult,
+    TimeSliceClusters,
+    cluster_time_slices,
+    sample_gaussian,
+    simulate_jump_diffusion,
+)
 from src.pde.stochastic.projection import GalerkinMomentProjection
+from src.pde.stochastic.strang import StrangSplitStep
 
 __all__ = [
     "DEFAULT_COV_JITTER",
@@ -60,6 +75,7 @@ __all__ = [
     "DEFAULT_STRANG_SLOPE_MAX",
     "DEFAULT_STRANG_SLOPE_MIN",
     "DEFAULT_TRAINED_MDN_MOMENT_TOL",
+    "AnalyticCompoundPoissonMoments",
     "DriftModel",
     "GalerkinMomentProjection",
     "GaussianMixtureBasis",
@@ -71,14 +87,24 @@ __all__ = [
     "KolmogorovGenerator",
     "LinearDrift",
     "MDNJumpConfig",
+    "MDNJumpSemigroup",
+    "ParticleSimulationResult",
     "StochasticConfigurationError",
     "StochasticGeneratorConfig",
+    "StrangSplitStep",
     "StrangSplittingConfig",
     "StrangTrainerConfig",
+    "TimeSliceClusters",
+    "batched_mixture_nll",
+    "cluster_time_slices",
     "gaussian_density_on_grid",
     "jump_ou_covariance",
     "jump_ou_mean",
     "ou_covariance",
     "ou_mean",
+    "pack_batch",
     "pack_moments",
+    "sample_gaussian",
+    "simulate_jump_diffusion",
+    "unpack_batch",
 ]

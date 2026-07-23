@@ -103,7 +103,7 @@ class TestAC2JumpConfigError:
 
     def test_jump_with_model_accepted(self):
         class _IdentityJump:
-            def apply(self, state: GaussianMixtureState, dt: float) -> GaussianMixtureState:
+            def advance(self, state: GaussianMixtureState, dt: float) -> GaussianMixtureState:
                 return state
 
         gen = KolmogorovGenerator(self._config_with_jump(rate=2.0), jump_semigroup=_IdentityJump())

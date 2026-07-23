@@ -35,7 +35,7 @@ class DriftModel(Protocol):
 class JumpSemigroup(Protocol):
     """Approximation of the jump semigroup ``e^{dt·J}`` on mixture states."""
 
-    def apply(self, state: GaussianMixtureState, dt: float) -> GaussianMixtureState:
+    def advance(self, state: GaussianMixtureState, dt: float) -> GaussianMixtureState:
         """Advance the mixture state through the jump flow over ``dt``."""
         ...
 

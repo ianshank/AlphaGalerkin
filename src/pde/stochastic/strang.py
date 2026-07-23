@@ -61,7 +61,7 @@ class StrangSplitStep:
         s = self.projection.advection_flow(state, half)
         s = self.projection.diffusion_flow(s, half)
         if self.jump_step is not None:
-            s = self.jump_step.apply(s, dt)
+            s = self.jump_step.advance(s, dt)
         s = self.projection.diffusion_flow(s, half)
         return self.projection.advection_flow(s, half)
 

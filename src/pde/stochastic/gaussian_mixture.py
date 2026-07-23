@@ -73,13 +73,14 @@ class GaussianMixtureState:
                 f"means K={k}, covariances {tuple(self.covariances.shape)}"
             )
             raise StochasticConfigurationError(msg)
-        weight_sum = float(self.weights.sum())
+        # Validation reads are detached: states built from network outputs carry
+        # grad, and scalar reads on grad tensors warn (the graph is untouched).
+        weight_sum = float(self.weights.detach().sum())
         if abs(weight_sum - 1.0) > _WEIGHT_SUM_ATOL:
             msg = f"mixture weights must sum to 1 (got {weight_sum:.8f})"
             raise StochasticConfigurationError(msg)
-        if not torch.allclose(
-            self.covariances, self.covariances.transpose(-1, -2), atol=1e-7, rtol=0.0
-        ):
+        detached_cov = self.covariances.detach()
+        if not torch.allclose(detached_cov, detached_cov.transpose(-1, -2), atol=1e-7, rtol=0.0):
             msg = "covariances must be symmetric"
             raise StochasticConfigurationError(msg)
 

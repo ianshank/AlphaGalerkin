@@ -147,7 +147,7 @@ observed value in this section. Gates must never encode an unmeasured claim. Cal
 
 | Constant | Placeholder | Observed (pinned run) | Shipped gate |
 |---|---|---|---|
-| `DEFAULT_TRAINED_MDN_MOMENT_TOL` | `5e-2` | *(record at commit 5)* | *(record at commit 5)* |
+| `DEFAULT_TRAINED_MDN_MOMENT_TOL` | `5e-2` | mean err `6.7e-3`, cov err `2.7e-2` (300 steps, seeds 42/7, NLL 0.803→0.727) | `5e-2` (≈1.8× headroom over the cov error) |
 | `DEFAULT_MONOTONE_REL_TOL` | `1e-3` | *(record at commit 6)* | *(record at commit 6)* |
 | `DEFAULT_LOSS_RATIO_GATE` | `0.9` | *(record at commit 6)* | *(record at commit 6)* |
 | `DEFAULT_STOCHASTIC_MSE_GATE` | `1e-5` | *(record at commit 9)* | *(record at commit 9)* |
@@ -176,7 +176,7 @@ observed value in this section. Gates must never encode an unmeasured claim. Cal
 - **Then** mean/covariance error vs `jump_ou_mean`/`jump_ou_covariance` is `< 1e-3`; and
 - **When** the MDN jump semigroup is trained on precomputed particle clusters (pinned seed)
 - **Then** its NLL strictly decreases and the propagated trajectory error is
-  `< DEFAULT_TRAINED_MDN_MOMENT_TOL` (calibrated); the float64↔float32 `apply()` boundary
+  `< DEFAULT_TRAINED_MDN_MOMENT_TOL` (calibrated); the float64↔float32 `advance()` boundary
   round-trips dtype and shape.
 
 ### AC4: Strang splitting is second-order

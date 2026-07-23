@@ -196,7 +196,7 @@ class SGFConverter:
             move_strs = []
             for (x, y), prob in top_moves:
                 coord = SGFMove(color="", x=x, y=y).to_gtp(node._board_size)
-                move_strs.append(f"{coord}:{prob*100:.1f}%")
+                move_strs.append(f"{coord}:{prob * 100:.1f}%")
             parts.append(f"Top moves: {', '.join(move_strs)}")
 
         # Add principal variation

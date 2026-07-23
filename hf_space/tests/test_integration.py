@@ -151,9 +151,7 @@ class TestCoordinateLabelIntegration:
         """Test rendering works with labels disabled."""
         from config.board import BoardRenderConfig, CoordinateLabelConfig
 
-        config = BoardRenderConfig(
-            coordinate_labels=CoordinateLabelConfig(show_labels=False)
-        )
+        config = BoardRenderConfig(coordinate_labels=CoordinateLabelConfig(show_labels=False))
         renderer = BoardRenderer(config)
 
         for size in [9, 13, 19]:

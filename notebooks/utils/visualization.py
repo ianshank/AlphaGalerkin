@@ -14,6 +14,7 @@ import torch
 
 try:
     import structlog
+
     logger = structlog.get_logger(__name__)
 except ImportError:
     # Fallback to standard logging if structlog not available
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from matplotlib.image import AxesImage
-
 
 
 def _get_plt():
@@ -148,8 +148,7 @@ def plot_attention_comparison(
         )
     if len(board_labels) != len(galerkin_times):
         raise ValueError(
-            f"Label count mismatch: labels={len(board_labels)}, "
-            f"data={len(galerkin_times)}"
+            f"Label count mismatch: labels={len(board_labels)}, data={len(galerkin_times)}"
         )
 
     plt = _get_plt()
@@ -262,8 +261,7 @@ def plot_poisson_samples(
     axes[1, 0].set_ylabel("Output\n(Potential φ)", fontsize=10)
 
     fig.suptitle(
-        "Poisson Equation: Same Physics, Different Resolutions\n"
-        "(Train on 9×9 → Evaluate on 19×19)",
+        "Poisson Equation: Same Physics, Different Resolutions\n(Train on 9×9 → Evaluate on 19×19)",
         fontsize=12,
         y=1.02,
     )
@@ -323,9 +321,7 @@ def plot_go_board(
                 circle = plt.Circle((c, r), stone_radius, color="black")
                 ax.add_patch(circle)
             elif white_stones[r, c] > 0:
-                circle = plt.Circle(
-                    (c, r), stone_radius, color="white", edgecolor="black"
-                )
+                circle = plt.Circle((c, r), stone_radius, color="white", edgecolor="black")
                 ax.add_patch(circle)
 
     ax.set_xlim(-0.5, size - 0.5)
@@ -396,9 +392,7 @@ def plot_policy_heatmap(
             markeredgecolor=marker_color,
             markeredgewidth=2,
         )
-        ax.text(
-            c, r, str(rank + 1), ha="center", va="center", fontsize=9, color=marker_color
-        )
+        ax.text(c, r, str(rank + 1), ha="center", va="center", fontsize=9, color=marker_color)
 
     ax.set_xticks([])
     ax.set_yticks([])

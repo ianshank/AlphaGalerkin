@@ -110,12 +110,24 @@ class MCTSConfig(BaseModel):
     """Configuration for Monte Carlo Tree Search."""
 
     # Search parameters
-    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.")
-    c_puct: float = Field(default=1.5, description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.")
+    n_simulations: int = Field(
+        default=800,
+        description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.",
+    )
+    c_puct: float = Field(
+        default=1.5,
+        description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.",
+    )
 
     # Dirichlet noise for root exploration
-    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.")
-    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.")
+    dirichlet_alpha: float = Field(
+        default=0.03,
+        description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.",
+    )
+    dirichlet_epsilon: float = Field(
+        default=0.25,
+        description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.",
+    )
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")

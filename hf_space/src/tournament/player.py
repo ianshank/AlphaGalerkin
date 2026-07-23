@@ -116,9 +116,7 @@ class Player:
     model_path: str | None = None
     stats: PlayerStats = field(default_factory=PlayerStats)
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def games_played(self) -> int:

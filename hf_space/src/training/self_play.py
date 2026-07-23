@@ -114,9 +114,9 @@ class SelfPlayWorker:
 
         # Default temperature schedule: high exploration early, low late
         self.temperature_schedule = temperature_schedule or {
-            0: 1.0,    # Moves 0-29: temperature 1.0
-            30: 0.5,   # Moves 30-59: temperature 0.5
-            60: 0.1,   # Moves 60+: temperature 0.1
+            0: 1.0,  # Moves 0-29: temperature 1.0
+            30: 0.5,  # Moves 30-59: temperature 0.5
+            60: 0.1,  # Moves 60+: temperature 0.1
         }
 
         # Create evaluator
@@ -211,7 +211,7 @@ class SelfPlayWorker:
             policy_dist = mcts.search(game, add_noise=add_noise and move_number == 0)
 
             # Convert visit distribution to full policy vector
-            n_actions = board_size ** 2 + 1  # +1 for pass
+            n_actions = board_size**2 + 1  # +1 for pass
             policy = np.zeros(n_actions, dtype=np.float32)
             for action, prob in policy_dist.items():
                 policy[action] = prob
@@ -237,7 +237,7 @@ class SelfPlayWorker:
             record.actions.append(action)
 
             # Apply action to game
-            if action == board_size ** 2:
+            if action == board_size**2:
                 game.play_pass()
             else:
                 row = action // board_size
@@ -359,9 +359,7 @@ class SelfPlayWorker:
             "games_played": self._games_played,
             "total_moves": self._total_moves,
             "avg_game_length": (
-                self._total_moves / self._games_played
-                if self._games_played > 0
-                else 0.0
+                self._total_moves / self._games_played if self._games_played > 0 else 0.0
             ),
             "outcomes": self._outcomes.copy(),
         }

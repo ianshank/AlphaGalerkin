@@ -131,8 +131,7 @@ class ScenarioRunner:
         scenario_cls = self.registry.get(scenario_name)
         if scenario_cls is None:
             raise ValueError(
-                f"Scenario '{scenario_name}' not found. "
-                f"Available: {self.registry.list_scenarios()}"
+                f"Scenario '{scenario_name}' not found. Available: {self.registry.list_scenarios()}"
             )
 
         self._logger.info(
@@ -359,9 +358,7 @@ class ScenarioRunner:
                 continue
             filtered.append((name, scenario_cls, config))
 
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.max_workers
-        ) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_info: dict[
                 concurrent.futures.Future[ScenarioResult],
                 tuple[str, BaseScenarioConfig],

@@ -17,6 +17,7 @@ from torch import Tensor
 
 try:
     import structlog
+
     logger = structlog.get_logger(__name__)
 except ImportError:
     # Fallback to standard logging if structlog not available
@@ -296,9 +297,7 @@ def validate_board_sizes(sizes: Sequence[int], min_size: int = 3, max_size: int 
         if not isinstance(size, int):
             raise ValueError(f"Board size must be int, got {type(size)}")
         if size < min_size or size > max_size:
-            raise ValueError(
-                f"Board size {size} out of range [{min_size}, {max_size}]"
-            )
+            raise ValueError(f"Board size {size} out of range [{min_size}, {max_size}]")
 
     logger.debug("validated_board_sizes", sizes=list(sizes))
     return True

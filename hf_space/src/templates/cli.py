@@ -198,9 +198,7 @@ def load_config_file(
             elif path.suffix == ".json":
                 data = json.load(f)
             else:
-                error_console.print(
-                    f"[red]Error:[/red] Unsupported config format: {path.suffix}"
-                )
+                error_console.print(f"[red]Error:[/red] Unsupported config format: {path.suffix}")
                 raise typer.Exit(1)
 
         # Apply overrides

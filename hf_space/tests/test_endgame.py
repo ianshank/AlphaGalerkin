@@ -195,9 +195,7 @@ class TestEndgameDetectorOverride:
         game.board.fill(1)  # Full board
 
         pass_action = 81  # 9*9
-        result = detector.should_override_to_pass(
-            game, pass_action, human_just_passed=True
-        )
+        result = detector.should_override_to_pass(game, pass_action, human_just_passed=True)
 
         assert result is False
 
@@ -211,9 +209,7 @@ class TestEndgameDetectorOverride:
         game.board.flat[:filled] = 1
 
         move_action = 40  # Some board position
-        result = detector.should_override_to_pass(
-            game, move_action, human_just_passed=True
-        )
+        result = detector.should_override_to_pass(game, move_action, human_just_passed=True)
 
         assert result is True
 
@@ -227,9 +223,7 @@ class TestEndgameDetectorOverride:
         game.board.flat[:filled] = 1
 
         move_action = 40
-        result = detector.should_override_to_pass(
-            game, move_action, human_just_passed=True
-        )
+        result = detector.should_override_to_pass(game, move_action, human_just_passed=True)
 
         assert result is False
 
@@ -285,9 +279,7 @@ class TestEndgameIntegration:
         assert analysis.reason == "consecutive_pass_detection"
         assert real_game.passes == 1
 
-    def test_real_game_terminal_after_two_passes(
-        self, real_game: SimpleGoGame
-    ) -> None:
+    def test_real_game_terminal_after_two_passes(self, real_game: SimpleGoGame) -> None:
         """Verify game is terminal after two passes."""
         real_game.play_pass()
         real_game.play_pass()

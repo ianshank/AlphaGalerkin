@@ -88,10 +88,7 @@ class EvaluationResult:
         """Convert to dictionary for serialization."""
         return {
             "win_rate": self.win_rate,
-            "best_moves": [
-                {"move": list(m), "probability": p}
-                for m, p in self.best_moves
-            ],
+            "best_moves": [{"move": list(m), "probability": p} for m, p in self.best_moves],
             "value": self.value,
             "depth": self.depth,
             "confidence": self.confidence,
@@ -284,9 +281,7 @@ class PositionEvaluator:
             value, policy = self._model_evaluator(board_state)
 
             # Convert to evaluation result
-            return self._process_model_output(
-                value, policy, board_size, legal_moves
-            )
+            return self._process_model_output(value, policy, board_size, legal_moves)
         except Exception as e:
             self._logger.warning("evaluation_failed", error=str(e))
             return self._create_dummy_result(board_size, legal_moves)
@@ -352,7 +347,7 @@ class PositionEvaluator:
             key=lambda x: x[1],
             reverse=True,
         )
-        best_moves = [(m, p) for m, p in sorted_moves[:self.config.max_variations + 1]]
+        best_moves = [(m, p) for m, p in sorted_moves[: self.config.max_variations + 1]]
 
         return EvaluationResult(
             win_rate=win_rate,

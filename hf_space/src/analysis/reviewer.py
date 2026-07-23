@@ -54,9 +54,7 @@ class MoveAnalysis:
     win_rate_change: float = 0.0
     best_move: tuple[int, int] | None = None
     is_best: bool = False
-    alternatives: list[tuple[tuple[int, int], float, str]] = field(
-        default_factory=list
-    )
+    alternatives: list[tuple[tuple[int, int], float, str]] = field(default_factory=list)
     comment: str = ""
 
     @property
@@ -121,9 +119,7 @@ class GameAnalysis:
     turning_points: list[int] = field(default_factory=list)
     opening_quality: float = 0.0
     endgame_quality: float = 0.0
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     config_hash: str = ""
 
     @property
@@ -134,18 +130,12 @@ class GameAnalysis:
     @property
     def black_mistakes(self) -> list[MoveAnalysis]:
         """Get black's mistakes."""
-        return [
-            m for m in self.move_analyses
-            if m.color == "B" and m.is_mistake
-        ]
+        return [m for m in self.move_analyses if m.color == "B" and m.is_mistake]
 
     @property
     def white_mistakes(self) -> list[MoveAnalysis]:
         """Get white's mistakes."""
-        return [
-            m for m in self.move_analyses
-            if m.color == "W" and m.is_mistake
-        ]
+        return [m for m in self.move_analyses if m.color == "W" and m.is_mistake]
 
     def get_move_at(self, move_number: int) -> MoveAnalysis | None:
         """Get analysis for a specific move number.
@@ -175,10 +165,7 @@ class GameAnalysis:
             List of matching move analyses.
 
         """
-        return [
-            m for m in self.move_analyses
-            if m.classification == classification
-        ]
+        return [m for m in self.move_analyses if m.classification == classification]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -368,7 +355,7 @@ class GameReviewer:
         # Generate alternatives
         alternatives = []
         if self.config.include_variations and not is_best:
-            for alt_move, prob in eval_before.best_moves[:self.config.max_variations]:
+            for alt_move, prob in eval_before.best_moves[: self.config.max_variations]:
                 if alt_move != move:
                     alt_desc = f"Better: {self._format_move(alt_move, board_size)}"
                     alternatives.append((alt_move, prob, alt_desc))
@@ -431,7 +418,7 @@ class GameReviewer:
 
         """
         x, y = move
-        col = chr(ord('A') + x + (1 if x >= 8 else 0))  # Skip 'I'
+        col = chr(ord("A") + x + (1 if x >= 8 else 0))  # Skip 'I'
         row = board_size - y
         return f"{col}{row}"
 
@@ -481,9 +468,15 @@ class GameReviewer:
             MoveClassification.EXCELLENT: "Excellent move!",
             MoveClassification.GOOD: "Good move.",
             MoveClassification.NEUTRAL: "",
-            MoveClassification.INACCURACY: f"Inaccuracy. Better: {self._format_move(best_move, board_size)}" if best_move else "Inaccuracy.",
-            MoveClassification.MISTAKE: f"Mistake. Better: {self._format_move(best_move, board_size)}" if best_move else "Mistake.",
-            MoveClassification.BLUNDER: f"Blunder! Better: {self._format_move(best_move, board_size)}" if best_move else "Blunder!",
+            MoveClassification.INACCURACY: f"Inaccuracy. Better: {self._format_move(best_move, board_size)}"
+            if best_move
+            else "Inaccuracy.",
+            MoveClassification.MISTAKE: f"Mistake. Better: {self._format_move(best_move, board_size)}"
+            if best_move
+            else "Mistake.",
+            MoveClassification.BLUNDER: f"Blunder! Better: {self._format_move(best_move, board_size)}"
+            if best_move
+            else "Blunder!",
         }
 
         return comments.get(classification, "")

@@ -245,10 +245,7 @@ class CurriculumStage:
             True if max games or steps are exceeded.
 
         """
-        if (
-            self.config.max_games is not None
-            and self.metrics.games_played >= self.config.max_games
-        ):
+        if self.config.max_games is not None and self.metrics.games_played >= self.config.max_games:
             return True
         if (
             self.config.max_steps is not None
@@ -290,9 +287,7 @@ class CurriculumStage:
             if value is None:
                 results.append(False)
                 continue
-            results.append(
-                criterion.is_satisfied(value, self.metrics.games_played)
-            )
+            results.append(criterion.is_satisfied(value, self.metrics.games_played))
 
         # Apply criteria mode
         if self.config.criteria_mode == "all":

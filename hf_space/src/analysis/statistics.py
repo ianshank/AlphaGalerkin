@@ -45,9 +45,7 @@ class GameStatistics:
     move_counts: dict[str, dict[str, int]] = field(default_factory=dict)
     win_rate_history: list[float] = field(default_factory=list)
     time_spent: list[float] = field(default_factory=list)
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def __post_init__(self) -> None:
         """Initialize move counts."""
@@ -132,10 +130,7 @@ class GameStatistics:
             "result": self.result,
             "black_player": self.black_player,
             "white_player": self.white_player,
-            "move_counts": {
-                color: dict(counts)
-                for color, counts in self.move_counts.items()
-            },
+            "move_counts": {color: dict(counts) for color, counts in self.move_counts.items()},
             "black_accuracy": self.get_accuracy("B"),
             "white_accuracy": self.get_accuracy("W"),
             "timestamp": self.timestamp,
@@ -264,8 +259,7 @@ class AggregateStatistics:
             "black_accuracy": self.get_overall_accuracy("B"),
             "white_accuracy": self.get_overall_accuracy("W"),
             "classification_totals": {
-                color: dict(counts)
-                for color, counts in self.classification_totals.items()
+                color: dict(counts) for color, counts in self.classification_totals.items()
             },
         }
 
@@ -376,10 +370,9 @@ class StatisticsCollector:
             if n_games == 0:
                 continue
 
-            avg_accuracy = sum(
-                (g.get_accuracy("B") + g.get_accuracy("W")) / 2
-                for g in games
-            ) / n_games
+            avg_accuracy = (
+                sum((g.get_accuracy("B") + g.get_accuracy("W")) / 2 for g in games) / n_games
+            )
 
             result[size] = {
                 "games": n_games,

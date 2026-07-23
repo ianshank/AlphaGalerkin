@@ -193,9 +193,7 @@ class PhysicsDemoConfig(BaseModel):
         """Ensure eval sizes don't exceed max_grid_size."""
         for size in self.eval_grid_sizes:
             if size > self.max_grid_size:
-                raise ValueError(
-                    f"Eval size {size} exceeds max_grid_size {self.max_grid_size}"
-                )
+                raise ValueError(f"Eval size {size} exceeds max_grid_size {self.max_grid_size}")
         return self
 
 

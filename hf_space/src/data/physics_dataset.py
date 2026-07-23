@@ -24,9 +24,9 @@ T = TypeVar("T", bound="PhysicsSample")
 
 class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
     """PyTorch Dataset for physics solver samples.
-    
+
     Wraps any DiffEqSolver to generate training data on-demand or from cache.
-    
+
     Example:
         >>> from src.physics.darcy import DarcyFlowSolver
         >>> solver = DarcyFlowSolver(resolution=16)
@@ -132,8 +132,12 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
 
         # Normalize if stats available
         if self.normalize and self._stats is not None:
-            input_field = (input_field - self._stats["input_mean"]) / (self._stats["input_std"] + 1e-8)
-            output_field = (output_field - self._stats["output_mean"]) / (self._stats["output_std"] + 1e-8)
+            input_field = (input_field - self._stats["input_mean"]) / (
+                self._stats["input_std"] + 1e-8
+            )
+            output_field = (output_field - self._stats["output_mean"]) / (
+                self._stats["output_std"] + 1e-8
+            )
 
         return {
             "input": torch.from_numpy(input_field),
@@ -145,7 +149,9 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
     def get_stats(self) -> dict[str, float]:
         """Return normalization statistics."""
         if self._stats is None:
-            raise ValueError("Statistics not computed. Set normalize=True or call _compute_stats().")
+            raise ValueError(
+                "Statistics not computed. Set normalize=True or call _compute_stats()."
+            )
         return self._stats
 
     @staticmethod

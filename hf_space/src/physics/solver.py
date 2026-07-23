@@ -126,9 +126,7 @@ def generate_random_field(
             field[i, j] += mag
     else:
         # Continuous random field
-        field = rng.normal(0, source_std, size=(grid_size, grid_size)).astype(
-            np.float32
-        )
+        field = rng.normal(0, source_std, size=(grid_size, grid_size)).astype(np.float32)
 
     if smooth:
         # Apply Gaussian smoothing

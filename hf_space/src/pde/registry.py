@@ -31,9 +31,7 @@ if TYPE_CHECKING:
     pass
 
 # Create the registry and decorator
-PDEOperatorRegistry, register_pde_operator = create_registry(
-    "PDEOperator", PDEOperator
-)
+PDEOperatorRegistry, register_pde_operator = create_registry("PDEOperator", PDEOperator)
 
 
 def _register_builtin_operators() -> None:

@@ -60,14 +60,14 @@ class SGFMove:
 
         # SGF uses lowercase letters a-s for 19x19
         # 'a' = 0, 'b' = 1, etc.
-        x = ord(coord[0].lower()) - ord('a')
-        y = ord(coord[1].lower()) - ord('a')
+        x = ord(coord[0].lower()) - ord("a")
+        y = ord(coord[1].lower()) - ord("a")
 
         # Handle boards larger than 19x19 (uses uppercase)
         if coord[0].isupper():
-            x = ord(coord[0]) - ord('A') + 26
+            x = ord(coord[0]) - ord("A") + 26
         if coord[1].isupper():
-            y = ord(coord[1]) - ord('A') + 26
+            y = ord(coord[1]) - ord("A") + 26
 
         return cls(color=color, x=x, y=y, sgf_coord=coord)
 
@@ -86,11 +86,11 @@ class SGFMove:
 
         # Standard SGF coordinates
         if self.x < 26 and self.y < 26:
-            return chr(ord('a') + self.x) + chr(ord('a') + self.y)
+            return chr(ord("a") + self.x) + chr(ord("a") + self.y)
 
         # Extended coordinates for larger boards
-        x_chr = chr(ord('A') + self.x - 26) if self.x >= 26 else chr(ord('a') + self.x)
-        y_chr = chr(ord('A') + self.y - 26) if self.y >= 26 else chr(ord('a') + self.y)
+        x_chr = chr(ord("A") + self.x - 26) if self.x >= 26 else chr(ord("a") + self.x)
+        y_chr = chr(ord("A") + self.y - 26) if self.y >= 26 else chr(ord("a") + self.y)
         return x_chr + y_chr
 
     def to_gtp(self, board_size: int = 19) -> str:
@@ -107,7 +107,7 @@ class SGFMove:
             return "pass"
 
         # GTP uses letters A-T (skipping I) for columns
-        col_letter = chr(ord('A') + self.x + (1 if self.x >= 8 else 0))
+        col_letter = chr(ord("A") + self.x + (1 if self.x >= 8 else 0))
         # GTP uses 1-indexed rows from bottom
         row_number = board_size - self.y
 

@@ -112,7 +112,9 @@ class MetricDefinition(BaseModel):
         passed = self.evaluate(value)
         status = "PASS" if passed else "FAIL"
         unit_str = f" {self.unit}" if self.unit else ""
-        return f"[{status}] {self.name}: {value:.6f}{unit_str} {self.operator.value} {self.threshold}"
+        return (
+            f"[{status}] {self.name}: {value:.6f}{unit_str} {self.operator.value} {self.threshold}"
+        )
 
 
 class BaseModuleConfig(BaseModel):
@@ -333,9 +335,7 @@ class BoardSizeConfig(BaseModel):
         """Ensure sizes are within min/max range."""
         for size in self.sizes:
             if size < self.min_size or size > self.max_size:
-                raise ValueError(
-                    f"Size {size} outside range [{self.min_size}, {self.max_size}]"
-                )
+                raise ValueError(f"Size {size} outside range [{self.min_size}, {self.max_size}]")
         return self
 
 

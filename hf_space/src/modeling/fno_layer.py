@@ -18,7 +18,7 @@ logger = structlog.get_logger(__name__)
 
 class SpectralConv2d(nn.Module):
     """2D Spectral Convolution via FFT.
-    
+
     Performs convolution in Fourier space by learning complex weights
     for the low-frequency modes. This enables resolution independence.
     """
@@ -60,7 +60,7 @@ class SpectralConv2d(nn.Module):
             "spectral_conv_initialized",
             in_channels=in_channels,
             out_channels=out_channels,
-            modes=(modes1, modes2)
+            modes=(modes1, modes2),
         )
 
     def compl_mul2d(
@@ -92,8 +92,12 @@ class SpectralConv2d(nn.Module):
 
         # Compute convolution for low-frequency modes
         out_ft = torch.zeros(
-            batchsize, self.out_channels, x.size(-2), x.size(-1) // 2 + 1,
-            dtype=torch.cfloat, device=x.device
+            batchsize,
+            self.out_channels,
+            x.size(-2),
+            x.size(-1) // 2 + 1,
+            dtype=torch.cfloat,
+            device=x.device,
         )
 
         # Dynamic modes (clamp to input resolution)
@@ -102,12 +106,10 @@ class SpectralConv2d(nn.Module):
 
         # Apply weights to low-frequency modes
         out_ft[:, :, :modes1, :modes2] = self.compl_mul2d(
-            x_ft[:, :, :modes1, :modes2],
-            self.weights1[:, :, :modes1, :modes2]
+            x_ft[:, :, :modes1, :modes2], self.weights1[:, :, :modes1, :modes2]
         )
         out_ft[:, :, -modes1:, :modes2] = self.compl_mul2d(
-            x_ft[:, :, -modes1:, :modes2],
-            self.weights2[:, :, :modes1, :modes2]
+            x_ft[:, :, -modes1:, :modes2], self.weights2[:, :, :modes1, :modes2]
         )
 
         # Transform back to spatial domain
@@ -118,7 +120,7 @@ class SpectralConv2d(nn.Module):
 
 class FNOBlock(nn.Module):
     """Fourier Neural Operator block.
-    
+
     Combines spectral convolution with a local linear transform
     and non-linearity.
     """
@@ -167,7 +169,7 @@ class FNOBlock(nn.Module):
 
 class FNO2d(nn.Module):
     """Full Fourier Neural Operator for 2D problems.
-    
+
     Maps input field a(x) -> output field u(x).
     Resolution-independent by design.
     """
@@ -205,10 +207,9 @@ class FNO2d(nn.Module):
         self.fc0 = nn.Linear(in_channels + 2, width)  # +2 for coordinates
 
         # FNO layers
-        self.layers = nn.ModuleList([
-            FNOBlock(width, modes1, modes2, activation)
-            for _ in range(n_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [FNOBlock(width, modes1, modes2, activation) for _ in range(n_layers)]
+        )
 
         # Project back to output channels
         self.fc1 = nn.Linear(width, 128)
@@ -251,7 +252,7 @@ class FNO2d(nn.Module):
             "fno2d_forward_start",
             batch_size=batch_size,
             input_resolution=(h, w),
-            coords_provided=coords is not None
+            coords_provided=coords is not None,
         )
 
         # Generate coordinates if not provided

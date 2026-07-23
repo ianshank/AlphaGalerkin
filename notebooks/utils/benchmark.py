@@ -17,6 +17,7 @@ from torch import Tensor, nn
 
 try:
     import structlog
+
     logger = structlog.get_logger(__name__)
 except ImportError:
     # Fallback to standard logging if structlog not available
@@ -309,8 +310,7 @@ def format_benchmark_table(
     # Validate labels if provided
     if board_labels is not None and len(board_labels) != len(galerkin_results):
         raise ValueError(
-            f"Label count mismatch: labels={len(board_labels)}, "
-            f"results={len(galerkin_results)}"
+            f"Label count mismatch: labels={len(board_labels)}, results={len(galerkin_results)}"
         )
 
     lines = []
@@ -321,9 +321,7 @@ def format_benchmark_table(
     for i, (g, s) in enumerate(zip(galerkin_results, softmax_results, strict=True)):
         speedup = s.time_ms / g.time_ms if g.time_ms > 0 else 0
         label = board_labels[i] if board_labels else str(g.seq_length)
-        lines.append(
-            f"{label:^10} | {g.time_ms:^14.3f} | {s.time_ms:^14.3f} | {speedup:^10.2f}x"
-        )
+        lines.append(f"{label:^10} | {g.time_ms:^14.3f} | {s.time_ms:^14.3f} | {speedup:^10.2f}x")
 
     return "\n".join(lines)
 
@@ -347,8 +345,6 @@ def format_throughput_table(
 
     for label, _size, full_tp, fast_tp in results:
         speedup = fast_tp / full_tp if full_tp > 0 else 0
-        lines.append(
-            f"{label:^10} | {full_tp:^15,.0f} | {fast_tp:^15,.0f} | {speedup:^10.2f}x"
-        )
+        lines.append(f"{label:^10} | {full_tp:^15,.0f} | {fast_tp:^15,.0f} | {speedup:^10.2f}x")
 
     return "\n".join(lines)

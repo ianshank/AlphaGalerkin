@@ -1,0 +1,71 @@
+# CI for the claude-code-platform marketplace.
+#
+# NOTE: while this project lives as a subtree of a host repo, GitHub only
+# executes workflows at the host-repo root — this file becomes active when
+# the subtree is extracted into its own repository. All steps are offline
+# (no API key): validate/lint/type/test plus the official CLI validator.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Pin the CLI so validator behavior is reproducible; bump deliberately.
+  CLAUDE_CODE_VERSION: "2.1.199"
+
+jobs:
+  gates:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dev harness
+        run: pip install -e '.[dev]'
+
+      - name: Lint
+        run: ruff check tools/ tests/ plugins/*/hooks/scripts
+
+      - name: Format check
+        run: ruff format --check tools/ tests/ plugins/*/hooks/scripts
+
+      # python -m mypy: a standalone mypy binary may live in an isolated
+      # tool venv without the project's deps and report spurious errors.
+      - name: Type-check (harness + tests)
+        run: python -m mypy tools/ tests/
+
+      - name: Type-check (hook scripts)
+        run: python -m mypy plugins/eng-standards/hooks/scripts/quality_scan.py
+
+      - name: Static validation gates
+        run: python -m tools.validate
+
+      - name: Vendored runtime parity
+        run: python -m tools.sync_runtime --check
+
+      - name: Catalog staleness
+        run: python -m tools.sync_catalog --check
+
+      # Coverage floor comes from [tool.coverage.report] fail_under in
+      # pyproject.toml (85% branch) — no threshold duplicated here.
+      - name: Unit + contract tests (coverage-gated)
+        run: pytest tests/unit/ -v --cov --cov-branch
+
+      - name: Install Claude Code CLI (pinned)
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
+
+      - name: Official plugin validation (e2e smoke)
+        run: pytest tests/e2e -v

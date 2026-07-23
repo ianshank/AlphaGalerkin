@@ -6,26 +6,24 @@ Provides reusable plotting functions with configurable styling.
 from __future__ import annotations
 
 import logging
-from typing import Sequence, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-from numpy.typing import NDArray
 
 try:
     import structlog
+
     logger = structlog.get_logger(__name__)
 except ImportError:
     # Fallback to standard logging if structlog not available
     logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    import matplotlib.pyplot as plt
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
     from matplotlib.image import AxesImage
-
-    from notebooks.utils.config import VisualizationConfig
 
 
 def _get_plt():
@@ -42,7 +40,7 @@ def plot_fourier_features(
     figsize: tuple[float, float] = (14, 6),
     cmaps: tuple[str, str] = ("RdBu", "viridis"),
     device: str = "cpu",
-) -> "Figure":
+) -> Figure:
     """Plot Fourier features at different resolutions.
 
     Args:
@@ -123,7 +121,7 @@ def plot_attention_comparison(
     board_labels: Sequence[str],
     figsize: tuple[float, float] = (10, 5),
     colors: tuple[str, str] = ("#2ecc71", "#e74c3c"),
-) -> "Figure":
+) -> Figure:
     """Plot attention speed comparison bar chart.
 
     Args:
@@ -150,8 +148,7 @@ def plot_attention_comparison(
         )
     if len(board_labels) != len(galerkin_times):
         raise ValueError(
-            f"Label count mismatch: labels={len(board_labels)}, "
-            f"data={len(galerkin_times)}"
+            f"Label count mismatch: labels={len(board_labels)}, data={len(galerkin_times)}"
         )
 
     plt = _get_plt()
@@ -206,7 +203,7 @@ def plot_poisson_samples(
     figsize: tuple[float, float] = (14, 6),
     charge_cmap: str = "RdBu",
     potential_cmap: str = "plasma",
-) -> "Figure":
+) -> Figure:
     """Plot Poisson equation samples (charges and potentials).
 
     Args:
@@ -264,8 +261,7 @@ def plot_poisson_samples(
     axes[1, 0].set_ylabel("Output\n(Potential φ)", fontsize=10)
 
     fig.suptitle(
-        "Poisson Equation: Same Physics, Different Resolutions\n"
-        "(Train on 9×9 → Evaluate on 19×19)",
+        "Poisson Equation: Same Physics, Different Resolutions\n(Train on 9×9 → Evaluate on 19×19)",
         fontsize=12,
         y=1.02,
     )
@@ -277,7 +273,7 @@ def plot_poisson_samples(
 
 def plot_go_board(
     board: torch.Tensor,
-    ax: "Axes",
+    ax: Axes,
     stone_radius: float = 0.4,
     board_color: float = 0.82,
     grid_alpha: float = 0.5,
@@ -325,9 +321,7 @@ def plot_go_board(
                 circle = plt.Circle((c, r), stone_radius, color="black")
                 ax.add_patch(circle)
             elif white_stones[r, c] > 0:
-                circle = plt.Circle(
-                    (c, r), stone_radius, color="white", edgecolor="black"
-                )
+                circle = plt.Circle((c, r), stone_radius, color="white", edgecolor="black")
                 ax.add_patch(circle)
 
     ax.set_xlim(-0.5, size - 0.5)
@@ -339,11 +333,11 @@ def plot_go_board(
 def plot_policy_heatmap(
     policy_logits: torch.Tensor,
     board_size: int,
-    ax: "Axes",
+    ax: Axes,
     top_k: int = 3,
     cmap: str = "Reds",
     marker_color: str = "blue",
-) -> "AxesImage":
+) -> AxesImage:
     """Plot policy heatmap with top-k moves marked.
 
     Args:
@@ -398,9 +392,7 @@ def plot_policy_heatmap(
             markeredgecolor=marker_color,
             markeredgewidth=2,
         )
-        ax.text(
-            c, r, str(rank + 1), ha="center", va="center", fontsize=9, color=marker_color
-        )
+        ax.text(c, r, str(rank + 1), ha="center", va="center", fontsize=9, color=marker_color)
 
     ax.set_xticks([])
     ax.set_yticks([])
@@ -413,7 +405,7 @@ def plot_multi_board_visualization(
     board_sizes: Sequence[int],
     figsize: tuple[float, float] = (14, 4),
     title: str = "Board Visualization",
-) -> "Figure":
+) -> Figure:
     """Plot multiple Go boards side by side.
 
     Args:

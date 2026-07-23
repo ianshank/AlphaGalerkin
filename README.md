@@ -7,7 +7,7 @@ AlphaGalerkin uses Galerkin Transformers and MCTS to solve two classes of proble
 1. **Board Games** (Go, Chess): Zero-shot transfer between board sizes (train 9x9, play 19x19)
 2. **PDE Solving**: MCTS-guided adaptive mesh refinement and basis selection for computational physics
 
-The core mathematical innovation — combining Monte Carlo Tree Search with Galerkin methods — has **no published precedent** (verified novelty gap), positioning AlphaGalerkin for SBIR funding and strategic acquisition in the $50B+ simulation M&A market.
+The core methodological delta — MCTS *multi-step look-ahead* for Galerkin basis selection and error-driven refinement — is unpublished (the AMR-RL literature is uniformly *single-step*; the only prior MCTS+finite-element work, TreeMesh, targets mesh *generation*, a distinct problem — see [`docs/proposals/PRIOR_ART_REVIEW.md`](docs/proposals/PRIOR_ART_REVIEW.md)), positioning AlphaGalerkin for SBIR funding in the $50B+ simulation market.
 
 ---
 
@@ -46,7 +46,7 @@ AlphaGalerkin treats any problem domain as a **continuous space** Omega = [0,1]^
 - **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection (not O(N^2) softmax)
 - **MCTS Planning**: Multi-step look-ahead for mesh refinement, basis selection, and move search
 - **LBB Stability**: Provable convergence via inf-sup condition monitoring during training
-- **Zero-Shot Transfer**: Train on 9x9, evaluate on 19x19 (MSE 0.000209, 240x better than threshold)
+- **Zero-Shot Transfer**: One model runs at any resolution — train on 9x9, evaluate zero-shot on 19x19 (measured MSE ~4e-4, no retraining). Honestly benchmarked against a CNN retrained at the target resolution (`specs/transfer_baseline_compare.spec.md`).
 - **FFT Mixing**: O(N log N) FNet blocks for fast MCTS rollouts (5x+ speedup)
 
 ---
@@ -91,6 +91,20 @@ Built on solid mathematical foundations:
 - **LBB Stability**: Guaranteed convergence via inf-sup condition monitoring
 - **Spectral Methods**: Proper anti-aliasing for resolution transfer
 
+### Spec-Driven Development & Agentic Tooling
+
+- **Specs before code** ([`specs/`](specs/README.md)): every feature starts as a markdown spec
+  (data contract + acceptance criteria + `MetricThreshold`s), then tests, then code.
+- **Claude Code project scaffolding** ([`.claude/`](.claude/)): a SessionStart bootstrap hook,
+  reusable skills (`spec-new`, `regression-surface`, `coverage-gate`, `new-pde-operator`),
+  persona subagents, and slash commands.
+- **Multi-physics agents** ([`src/agents/`](src/agents/AGENT.md)): lifecycle hooks, opt-in
+  timeouts, and `python -m src.agents.cli scaffold <name>` to generate a new agent from the spec
+  template.
+- **Noyron v2.2** ([`config/scenarios/noyron_basis_cpu.yaml`](config/scenarios/noyron_basis_cpu.yaml)):
+  MCTS-guided Galerkin basis selection on Leap 71 helical SDF geometries —
+  `python -m src.poc.cli run --config config/scenarios/noyron_basis_cpu.yaml`.
+
 ---
 
 ## Architecture
@@ -134,8 +148,8 @@ See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for compr
 
 - Python 3.10+
 - PyTorch 2.0+ (CUDA 12.6 recommended for GPU backends)
-- CUDA 12.x+ (required for TensorRT and ONNX Runtime GPU)
-- Optional: `torch-tensorrt`, `onnxruntime`, `onnxscript` (for Phase 1 runtime backends)
+- Optional: CUDA 12.x+ for GPU training/inference
+- Optional: `onnxruntime`, `onnxscript` (for the ONNX export/runtime path in `src/deployment/`)
 
 ### From Source
 
@@ -619,7 +633,7 @@ Subpackage `src/video_compression/zoo/` orchestrates an R-D Lagrangian sweep acr
 
 **Phase 2-B** — core zoo schemas, manifest I/O, device planner, filesystem registry.  
 **Phase 2-C** — `ZooTrainer` per-entry (fixed-λ, AMP, grad-clip, warmup, `parent_entry_id` warm-start).  
-**Phase 2-D** — manifest-level sweep orchestrator + parallel dispatch + subprocess runner.
+**Phase 2-D** — manifest-level sweep orchestrator + parallel dispatch + subprocess runner. Includes structural numerical stability fixes (monotonic `FactorizedPrior` CDF, GDN positivity, NaN-stable MS-SSIM).
 
 | Module | Responsibility | Coverage |
 |---|---|---|
@@ -656,7 +670,6 @@ pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py 
 ```
 
 ---
-
 ## Testing
 
 The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.
@@ -895,17 +908,6 @@ AlphaGalerkin/
 │   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
-│   ├── video_compression/ # Neural video compression
-│   │   ├── runtime/       # Decoder runtime backends (Phase 1)
-│   │   │   ├── protocol.py       # DecoderRuntime Protocol
-│   │   │   ├── registry.py       # @register_runtime + RuntimeRegistry
-│   │   │   ├── pytorch_eager.py  # Baseline eager runtime
-│   │   │   ├── pytorch_compiled.py # torch.compile + inductor
-│   │   │   ├── onnx_runtime.py   # ONNX Runtime + CUDA EP
-│   │   │   └── tensorrt_runtime.py # torch_tensorrt Dynamo IR
-│   │   ├── perf/          # Phase 0 benchmark harness
-│   │   ├── codec/         # Codec pipeline
-│   │   └── models/        # Encoder, decoder, hyperprior
 │   └── tools/             # Utilities (GTP, CLI)
 ├── tests/                 # 3000+ tests, 85% coverage gate
 │   ├── pde/               # PDE operators, geometry, time-stepping, swarm
@@ -924,8 +926,7 @@ AlphaGalerkin/
 │   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo (--heavy opt-in for 65 536-DOF Poisson)
 │   ├── run_sbir_p40.py    # Tesla P40 high-resolution PINN/NS-FDM comparison driver
 │   ├── train.py           # Training CLI with Hydra
-│   ├── train_chess.py     # Chess training CLI
-│   └── train_compression.py  # Video compression training
+│   └── train_chess.py     # Chess training CLI
 ├── docs/
 │   ├── architecture/      # C4 diagrams (Mermaid)
 │   └── proposals/         # SBIR templates, IP strategy, budgets, competitive analysis

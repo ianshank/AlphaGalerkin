@@ -307,8 +307,7 @@ def run_stability(
         summary = (
             f"Status: {result.status.value.upper()}\n"
             f"LBB training mean: {training_mean:.2e}  "
-            f"min: {training_min:.2e}  violations: {violations}\n"
-            + detail
+            f"min: {training_min:.2e}  violations: {violations}\n" + detail
         )
         logger.info(
             "stability_scenario_complete",
@@ -474,8 +473,11 @@ def create_poc_tab(cfg: PoCConfig | None = None) -> None:
                             32, 128, value=s.default_d_model, step=16, label="d_model"
                         )
                         s_steps = gr.Slider(
-                            100, 500, value=s.default_training_steps,
-                            step=50, label="Training steps",
+                            100,
+                            500,
+                            value=s.default_training_steps,
+                            step=50,
+                            label="Training steps",
                         )
                         s_run = gr.Button("Run Stability Check", variant="primary")
                     with gr.Column(scale=2):

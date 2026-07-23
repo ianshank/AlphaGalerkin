@@ -238,9 +238,9 @@ def synthetic_video_factory(tmp_path: Path):
                     for c in range(3):
                         # Create gradient based on frame index and channel
                         base_val = int(255 * (i / max(num_frames - 1, 1)))
-                        grad = np.linspace(0, 255, width).astype(np.uint8)
+                        grad = np.linspace(0, 255, width).astype(np.int32)
                         shift = (c * 85 + base_val) % 256
-                        frame[:, :, c] = (grad + shift) % 256
+                        frame[:, :, c] = ((grad + shift) % 256).astype(np.uint8)
 
                 elif pattern == "random":
                     # Random noise

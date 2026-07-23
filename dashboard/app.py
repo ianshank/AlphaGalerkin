@@ -79,7 +79,7 @@ Learning — Galerkin Transformers and FNet mixing — instead of discrete CNNs.
 | Galerkin attention | O(N) via Petrov-Galerkin projection (vs O(N²) softmax) |
 | FNet mixing | O(N log N) FFT token mixing for fast MCTS rollouts |
 | LBB stability | dim(Key) ≥ dim(Query) guarantees inf-sup condition β > 0 |
-| Physics PoC | Poisson MSE = 0.000209 on 19×19 (trained on 9×9) — 240× below threshold |
+| Physics PoC | Zero-shot Poisson MSE ≈ 4e-4 at 19×19 (from 9×9); a retrained CNN is more accurate |
 
 ### Architecture
 
@@ -200,15 +200,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--host", default=DEFAULT_CONFIG.app.host, help="Bind host")
+    parser.add_argument("--port", type=int, default=DEFAULT_CONFIG.app.port, help="Bind port")
     parser.add_argument(
-        "--port", type=int, default=DEFAULT_CONFIG.app.port, help="Bind port"
-    )
-    parser.add_argument(
-        "--share", action="store_true", default=DEFAULT_CONFIG.app.share,
+        "--share",
+        action="store_true",
+        default=DEFAULT_CONFIG.app.share,
         help="Create a public Gradio share link",
     )
     parser.add_argument(
-        "--debug", action="store_true", default=DEFAULT_CONFIG.app.debug,
+        "--debug",
+        action="store_true",
+        default=DEFAULT_CONFIG.app.debug,
         help="Enable Gradio debug mode",
     )
     return parser.parse_args(argv)

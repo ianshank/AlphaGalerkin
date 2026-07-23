@@ -18,7 +18,7 @@ benchmark_suite:
     train_sizes: [9]
     eval_sizes: [9, 13, 19, 25, 37]
     success_criterion: "MSE < 0.05 on all unseen sizes"
-    current_result: "MSE = 0.000209 on 19x19 (240x better than threshold)"
+    current_result: "zero-shot MSE ~4e-4 on 19x19 (measured; a retrained CNN is more accurate -- the edge is zero-retraining, not peak accuracy; see specs/transfer_baseline_compare.spec.md)"
 
   # Problem 2: Spectral bias comparison
   - name: spectral_bias_comparison

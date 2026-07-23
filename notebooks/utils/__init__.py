@@ -10,42 +10,42 @@ Features:
 - Error handling and logging support
 """
 
-from notebooks.utils.config import (
-    DemoConfig,
-    ModelConfig,
-    BenchmarkConfig,
-    VisualizationConfig,
-    PhysicsConfig,
-    GoBoardConfig,
-    create_demo_config,
-    get_default_board_sizes,
-    get_board_labels,
-)
 from notebooks.utils.benchmark import (
     BenchmarkResult,
-    benchmark_module,
     benchmark_attention,
     benchmark_model_throughput,
+    benchmark_module,
     format_benchmark_table,
     format_throughput_table,
 )
-from notebooks.utils.visualization import (
-    plot_fourier_features,
-    plot_attention_comparison,
-    plot_poisson_samples,
-    plot_go_board,
-    plot_policy_heatmap,
-    plot_multi_board_visualization,
+from notebooks.utils.config import (
+    BenchmarkConfig,
+    DemoConfig,
+    GoBoardConfig,
+    ModelConfig,
+    PhysicsConfig,
+    VisualizationConfig,
+    create_demo_config,
+    get_board_labels,
+    get_default_board_sizes,
 )
 from notebooks.utils.helpers import (
     EnvironmentInfo,
     ModelForwardResult,
-    setup_environment,
     create_sample_board,
     create_sample_board_from_config,
-    safe_model_forward,
     format_model_summary,
+    safe_model_forward,
+    setup_environment,
     validate_board_sizes,
+)
+from notebooks.utils.visualization import (
+    plot_attention_comparison,
+    plot_fourier_features,
+    plot_go_board,
+    plot_multi_board_visualization,
+    plot_poisson_samples,
+    plot_policy_heatmap,
 )
 
 __all__ = [

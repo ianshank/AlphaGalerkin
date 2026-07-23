@@ -158,8 +158,7 @@ class GameState:
             return False
 
         return (
-            np.array_equal(self.board, other.board)
-            and self.current_player == other.current_player
+            np.array_equal(self.board, other.board) and self.current_player == other.current_player
         )
 
     def to_dict(self) -> dict[str, Any]:

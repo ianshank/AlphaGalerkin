@@ -130,7 +130,7 @@ This entry was previously listed as "not started" — that was stale documentati
 
 **Files to modify:**
 - `tests/integration/test_distributed_multiprocess.py` — 4-process NCCL mock test
-- `tests/vertex/test_launcher.py` — fix 5 skipped tests with improved SDK mocking
+- ~~`tests/vertex/test_launcher.py` — fix 5 skipped tests~~ ✅ done (0 skip markers remain)
 - `src/distributed/trainer.py` — any fixes discovered during testing
 
 **Reuse:** Existing `src/distributed/` infrastructure, `torch.multiprocessing.spawn`

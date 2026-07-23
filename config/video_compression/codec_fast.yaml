@@ -47,13 +47,12 @@ quantizer:
 
 entropy:
   name: "entropy_fast"
-  model_type: "factorized"  # Factorized is faster than hyperprior
+  model_type: "hyperprior"
   hyper_channels: 128
   hyper_layers: 2
   num_filters: 128
   context_size: 3
   use_range_coder: true
-  precision: 14  # Lower precision for speed
 
 mcts:
   name: "mcts_fast"

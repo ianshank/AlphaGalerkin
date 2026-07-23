@@ -9,8 +9,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.board import BoardRenderConfig, CoordinateLabelConfig, GTP_LETTERS
+from config.board import GTP_LETTERS, BoardRenderConfig, CoordinateLabelConfig
 from src.rendering.board_renderer import BoardRenderer, render_board
+
 from src.tools.gtp import SimpleGoGame
 
 
@@ -140,9 +141,7 @@ class TestCoordinateLabelRendering:
 
     def test_labels_disabled(self) -> None:
         """Test rendering with labels disabled."""
-        config = BoardRenderConfig(
-            coordinate_labels=CoordinateLabelConfig(show_labels=False)
-        )
+        config = BoardRenderConfig(coordinate_labels=CoordinateLabelConfig(show_labels=False))
         renderer = BoardRenderer(config)
         game = SimpleGoGame(9)
 
@@ -153,9 +152,7 @@ class TestCoordinateLabelRendering:
 
     def test_numeric_labels(self) -> None:
         """Test rendering with numeric column labels."""
-        config = BoardRenderConfig(
-            coordinate_labels=CoordinateLabelConfig(label_style="numbers")
-        )
+        config = BoardRenderConfig(coordinate_labels=CoordinateLabelConfig(label_style="numbers"))
         renderer = BoardRenderer(config)
         game = SimpleGoGame(9)
 
@@ -165,9 +162,7 @@ class TestCoordinateLabelRendering:
 
     def test_custom_label_font_size(self) -> None:
         """Test rendering with custom label font size."""
-        config = BoardRenderConfig(
-            coordinate_labels=CoordinateLabelConfig(font_size=14)
-        )
+        config = BoardRenderConfig(coordinate_labels=CoordinateLabelConfig(font_size=14))
         renderer = BoardRenderer(config)
         game = SimpleGoGame(9)
 

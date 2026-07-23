@@ -15,6 +15,7 @@ import torch
 from src.video_compression.config import EntropyConfig, EntropyModelType
 from src.video_compression.models.hyperprior import (
     EntropyOutput,
+    FactorizedEntropyModel,
     FactorizedPrior,
     GaussianConditional,
     HyperAnalysis,
@@ -88,6 +89,22 @@ class TestFactorizedPrior:
 
             assert x_out.shape[0] == batch_size
             assert rate.shape[0] == batch_size
+
+    def test_factorized_prior_monotonicity(self, prior: FactorizedPrior) -> None:
+        """Test that the CDF is monotonically increasing, preventing negative likelihoods (NaN)."""
+        # Force a and H parameters to be negative to simulate adversarial optimization
+        with torch.no_grad():
+            prior.a.fill_(-10.0)
+            prior.H.fill_(-10.0)
+
+        x = torch.randn(2, 64, 8, 8) * 5.0
+
+        # Test CDF monotonicity
+        upper = prior._cdf(x + 0.5)
+        lower = prior._cdf(x - 0.5)
+
+        likelihood = upper - lower
+        assert (likelihood >= 0).all(), "Likelihood must be non-negative (CDF monotonic)"
 
 
 class TestGaussianConditional:
@@ -363,7 +380,7 @@ class TestCreateEntropyModel:
         )
         model = create_entropy_model(config)
 
-        assert isinstance(model, FactorizedPrior)
+        assert isinstance(model, FactorizedEntropyModel)
 
     def test_hyperprior_type(self) -> None:
         """Test creating hyperprior model."""

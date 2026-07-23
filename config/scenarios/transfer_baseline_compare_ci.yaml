@@ -1,0 +1,65 @@
+# Honest zero-shot transfer: AlphaGalerkin operator vs a retrained discrete CNN.
+#
+# CPU regression-tripwire configuration — small budgets so the head-to-head finishes
+# in ~1-2 minutes. This is NOT the published-headline config; it is a deterministic
+# baseline for the CI regression gate. Both arms train on matched data volume and a
+# matched training budget; the operator is trained only at train_resolution and applied
+# zero-shot at target_resolution, while the CNN is retrained AT target_resolution.
+#
+# Run (writes results/transfer_baseline_compare.{csv,png}):
+#   python -m scripts.run_transfer_baseline_compare --config config/scenarios/transfer_baseline_compare_ci.yaml
+# CI regression gate (exit 1 on regression from the committed baseline):
+#   python -m scripts.run_transfer_baseline_compare \
+#     --config config/scenarios/transfer_baseline_compare_ci.yaml \
+#     --baseline config/baselines/transfer_ci.json
+#
+# Acceptance: the primary gate is transfer_mse_ratio_19x19 < transfer_ratio_pass_threshold.
+# On this in-distribution Poisson task the operator does NOT beat a retrained specialist CNN
+# (the honest finding: value is zero-retraining, not peak accuracy), so the threshold below is
+# calibrated as a REGRESSION CEILING above the measured median rather than a false < 1.0 win
+# claim (see specs/transfer_baseline_compare.spec.md "Honest-loss handling"). The matched-
+# compute ratio is recorded but NOT gated. n_seeds is odd so the median is a real seed and the
+# committed absolutes divide to the committed ratio exactly.
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800
+
+scenarios:
+  - name: transfer_baseline_compare
+    description: "Zero-shot transfer: operator vs retrained CNN (CPU CI tripwire)."
+    tier: functional
+    enabled: true
+    device: cpu
+    train_resolution: 9
+    target_resolution: 19
+    secondary_resolutions: [9, 13]
+    n_train_samples: 384
+    n_eval_samples: 200
+    n_charges: 5
+    charge_std: 1.0
+    batch_size: 32
+    n_epochs: 12
+    learning_rate: 1.0e-3
+    n_seeds: 3
+    d_model: 64
+    n_heads: 4
+    n_layers: 2
+    n_fourier_features: 32
+    fourier_scale: 10.0
+    use_fnet: true
+    dropout: 0.1
+    cnn_n_layers: 4
+    cnn_kernel_size: 3
+    cnn_channels: null
+    cnn_use_batchnorm: true
+    cnn_dropout: 0.0
+    cnn_param_match_tolerance: 0.15
+    matched_budget_mode: grad_steps
+    # Regression ceiling (NOT a win claim): the measured median operator/CNN ratio is ~14
+    # (max seed ~23) — the operator loses on accuracy. 30.0 sits above that with headroom
+    # for seed/BLAS drift, so the scenario PASSES while a broken operator arm (ratio far
+    # above 30) still fails. The true number is committed in config/baselines/transfer_ci.json.
+    transfer_ratio_pass_threshold: 30.0
+    output_dir: results
+    artifact_basename: transfer_baseline_compare

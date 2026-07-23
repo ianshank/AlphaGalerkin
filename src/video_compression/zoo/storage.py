@@ -60,6 +60,21 @@ class EntryArtifacts:
     saved_at: str  # ISO-8601
 
 
+def parse_gcs_uri(uri_str: str) -> tuple[str, str]:
+    """Parse a gs:// URI into bucket and prefix."""
+    if not uri_str.startswith("gs://"):
+        raise ValueError(f"not a gs:// URI: {uri_str}")
+    stripped = uri_str[5:]
+    if not stripped:
+        raise ValueError("missing bucket")
+    parts = stripped.split("/", 1)
+    bucket = parts[0]
+    if not bucket:
+        raise ValueError("missing bucket")
+    prefix = parts[1] if len(parts) > 1 else ""
+    return bucket, prefix.rstrip("/")
+
+
 class VideoCodecZoo:
     """Filesystem-backed registry of trained zoo entries.
 
@@ -85,10 +100,6 @@ class VideoCodecZoo:
             self.root = Path(storage_root)
             self.root.mkdir(parents=True, exist_ok=True)
         elif backend is StorageBackend.GCS:
-            # ``src.vertex.storage`` is the canonical GCS module; reuse its
-            # ``parse_gcs_uri`` helper rather than re-rolling URI parsing.
-            from src.vertex.storage import parse_gcs_uri
-
             # Keep the original URI string verbatim. ``Path("gs://x/y")`` would
             # normalize the double-slash on POSIX, mangling the URI.
             uri = str(storage_root)

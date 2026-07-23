@@ -24,15 +24,16 @@ T = TypeVar("T", bound="PhysicsSample")
 
 class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
     """PyTorch Dataset for physics solver samples.
-    
+
     Wraps any DiffEqSolver to generate training data on-demand or from cache.
-    
+
     Example:
         >>> from src.physics.darcy import DarcyFlowSolver
         >>> solver = DarcyFlowSolver(resolution=16)
         >>> dataset = PhysicsDataset(solver, n_samples=1000, seed=42)
         >>> sample = dataset[0]
         >>> print(sample["input"].shape, sample["output"].shape)
+
     """
 
     def __init__(
@@ -53,16 +54,17 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
             cache: Whether to cache generated samples.
             cache_dir: Directory for caching (None = in-memory only).
             normalize: Whether to normalize input/output fields.
+
         """
         self.solver = solver
         self.n_samples = n_samples
         self.seed = seed
         self.normalize = normalize
         self.cache_dir = Path(cache_dir) if cache_dir else None
-        
+
         self._cache: list[PhysicsSample] | None = None
         self._stats: dict[str, tuple[float, float]] | None = None
-        
+
         if cache:
             self._generate_cache()
             if normalize:
@@ -80,12 +82,12 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
     def _generate_cache(self) -> None:
         """Generate and cache all samples."""
         logger.debug("generating_samples", n_samples=self.n_samples)
-        
+
         self._cache = []
         for i in range(self.n_samples):
             sample = self.solver.generate_sample(seed=self.seed + i)
             self._cache.append(sample)
-            
+
             if (i + 1) % 100 == 0:
                 logger.debug("generation_progress", completed=i + 1, total=self.n_samples)
 
@@ -93,17 +95,17 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
         """Compute normalization statistics from cached data."""
         if self._cache is None:
             return
-            
+
         inputs = np.stack([s.input_field for s in self._cache])
         outputs = np.stack([s.output_field for s in self._cache])
-        
+
         self._stats = {
             "input_mean": float(np.mean(inputs)),
             "input_std": float(np.std(inputs)),
             "output_mean": float(np.mean(outputs)),
             "output_std": float(np.std(outputs)),
         }
-        
+
         logger.debug("normalization_stats", **self._stats)
 
     def __len__(self) -> int:
@@ -118,20 +120,25 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
 
         Returns:
             Dictionary with keys: input, output, coords, grid_size.
+
         """
         if self._cache is not None:
             sample = self._cache[idx]
         else:
             sample = self.solver.generate_sample(seed=self.seed + idx)
-        
+
         input_field = sample.input_field.astype(np.float32)
         output_field = sample.output_field.astype(np.float32)
-        
+
         # Normalize if stats available
         if self.normalize and self._stats is not None:
-            input_field = (input_field - self._stats["input_mean"]) / (self._stats["input_std"] + 1e-8)
-            output_field = (output_field - self._stats["output_mean"]) / (self._stats["output_std"] + 1e-8)
-        
+            input_field = (input_field - self._stats["input_mean"]) / (
+                self._stats["input_std"] + 1e-8
+            )
+            output_field = (output_field - self._stats["output_mean"]) / (
+                self._stats["output_std"] + 1e-8
+            )
+
         return {
             "input": torch.from_numpy(input_field),
             "output": torch.from_numpy(output_field),
@@ -142,7 +149,9 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
     def get_stats(self) -> dict[str, float]:
         """Return normalization statistics."""
         if self._stats is None:
-            raise ValueError("Statistics not computed. Set normalize=True or call _compute_stats().")
+            raise ValueError(
+                "Statistics not computed. Set normalize=True or call _compute_stats()."
+            )
         return self._stats
 
     @staticmethod
@@ -153,7 +162,7 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
         n_test: int = 100,
         seed: int = 42,
         **kwargs,
-    ) -> tuple["PhysicsDataset", "PhysicsDataset", "PhysicsDataset"]:
+    ) -> tuple[PhysicsDataset, PhysicsDataset, PhysicsDataset]:
         """Create train/val/test splits with disjoint seeds.
 
         Args:
@@ -166,17 +175,18 @@ class PhysicsDataset(Dataset[dict[str, torch.Tensor]]):
 
         Returns:
             Tuple of (train_dataset, val_dataset, test_dataset).
+
         """
         # Use disjoint seed ranges
         train_ds = PhysicsDataset(solver, n_samples=n_train, seed=seed, **kwargs)
         val_ds = PhysicsDataset(solver, n_samples=n_val, seed=seed + n_train, **kwargs)
         test_ds = PhysicsDataset(solver, n_samples=n_test, seed=seed + n_train + n_val, **kwargs)
-        
+
         logger.info(
             "dataset_splits_created",
             train=n_train,
             val=n_val,
             test=n_test,
         )
-        
+
         return train_ds, val_ds, test_ds

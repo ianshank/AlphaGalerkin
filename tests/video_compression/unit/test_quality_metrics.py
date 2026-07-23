@@ -178,6 +178,28 @@ class TestSSIM:
 
 
 # ============================================================================
+# MS-SSIM Tests
+# ============================================================================
+
+
+class TestMSSSIM:
+    """Tests for MS-SSIM computation."""
+
+    def test_ms_ssim_nan_stability(self) -> None:
+        """Test MS-SSIM handles identical/uniform patches without producing NaNs."""
+        from src.video_compression.metrics.quality import compute_ms_ssim
+
+        # Create two identical completely uniform frames.
+        # This causes variance to be 0, which can result in slightly negative
+        # values due to floating-point truncation, which causes NaNs when
+        # raised to a fractional power.
+        frame = torch.zeros(1, 3, 256, 256)
+
+        score = compute_ms_ssim(frame, frame)
+        assert not torch.isnan(score).any(), "MS-SSIM produced NaN on uniform images"
+
+
+# ============================================================================
 # Integration Tests
 # ============================================================================
 

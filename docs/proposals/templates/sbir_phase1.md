@@ -40,19 +40,23 @@ AlphaZero - to discover optimal refinement strategies with multi-step look-ahead
 - FFT-based mixing for O(N log N) evaluation
 - Wall-clock comparison at equal error thresholds
 
-### 3. Key Innovation (Verified Novelty)
-No published papers combine MCTS with Galerkin methods for PDE solving or mesh
-refinement (verified via exhaustive literature search, March 2026). Existing RL-for-AMR
-approaches (Yang et al. AISTATS 2023, Foucart et al. JCP 2023, Freymuth et al. 2024)
-use standard policy gradient methods. MCTS provides:
+### 3. Key Innovation (Narrow, Verified Novelty)
+MCTS *multi-step look-ahead* applied to Galerkin basis selection and error-driven adaptive
+refinement is unpublished (prior-art review 2026-07-22, `docs/proposals/PRIOR_ART_REVIEW.md`).
+The RL-for-AMR canon (Yang et al. AISTATS 2023, Foucart et al. JCP 2023, Huergo et al. 2024,
+Freymuth et al. NeurIPS 2023) is uniformly *single-step* policy RL. **Do not overclaim**: the
+only prior MCTS+finite-element work, TreeMesh (arXiv:2111.07613), targets mesh *generation* —
+a distinct problem — so a blanket "no MCTS+FEM" claim is false. MCTS provides:
 - Multi-step look-ahead planning (vs. myopic RL policies)
 - Provable exploration guarantees (UCB bounds)
 - No training data requirement (operates directly on the PDE)
 - Integration with mathematical convergence theory (LBB stability)
 
 ### 4. Technical Merit (Prior Results)
-**Zero-shot transfer**: Trained on 9x9 grid, achieved MSE = 0.000209 on 19x19 grid
-(240x better than 0.05 threshold) without retraining.
+**Zero-shot transfer**: Trained on 9x9 grid, transfers to 19x19 at measured MSE ~4e-4
+without retraining. (The earlier "0.000209 / 240x better than threshold" was a fabricated
+notebook figure; an honest CNN-retrained baseline is more accurate — the value is
+zero-retraining, not peak accuracy. See `specs/transfer_baseline_compare.spec.md`.)
 
 **LBB stability**: Galerkin attention satisfies the inf-sup condition, providing
 mathematical convergence guarantees absent in PhysicsNeMo, PINNs, and FNO.

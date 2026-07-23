@@ -218,25 +218,6 @@ class BDRateAssemblyError(ValueError):
     """Raised when a BD-rate report cannot be assembled."""
 
 
-def _filter_to_metric(curve: RDCurve, metric: QualityMetric) -> RDCurve:
-    """Drop points missing the selected quality metric.
-
-    ``RDCurve.rates`` includes every point but ``RDCurve.psnrs`` /
-    ``RDCurve.ssims`` skip points whose corresponding field is ``None``.
-    The downstream BD-rate code interpolates ``rates`` against
-    ``qualities`` via ``np.interp`` and crashes when the two arrays
-    have different lengths. We pre-filter here so the rate / quality
-    arrays stay aligned by construction.
-    """
-    out = RDCurve(name=curve.name, points=[])
-    for p in curve.points:
-        value = p.psnr if metric == "psnr" else p.ssim
-        if value is None:
-            continue
-        out.add_point(p)
-    return out
-
-
 def _curve_to_points(curve: RDCurve) -> list[BDRatePoint]:
     """Adapt :class:`RDCurve` points to the report-friendly schema.
 
@@ -288,40 +269,26 @@ def _bd_rate_at_primary(
     primary_lambda_rd: float,
     metric: QualityMetric,
 ) -> float | None:
-    """BD-rate restricted to a 3-point lambda neighborhood around the primary λ.
+    """BD-rate restricted to a 3-point neighborhood around the primary λ.
 
-    Selection semantics: the test curve's points are sorted by
-    ``lambda_rd`` (ascending), the entry whose lambda is **nearest** to
-    ``primary_lambda_rd`` becomes the window center, and the ±1 lambda
-    neighbors are added if they exist. The neighborhood is then handed
-    back as a fresh :class:`RDCurve` (which re-sorts by rate, the
-    convention BD-rate expects).
-
-    Returns ``None`` when no test-curve point carries a ``lambda_rd``
-    value, or when the lambda-sorted neighborhood collapses to fewer
-    than 2 points.
-
-    Note: this is a **nearest-lambda** match, not an exact one — the
-    primary lambda from :class:`BDRateConfig` need not appear verbatim
-    in the manifest. A future tolerance-bounded mode can be added as a
-    Pydantic field if required; today's behavior is deterministic and
-    documented.
+    Returns ``None`` when the test curve has no point matching
+    ``primary_lambda_rd`` or when the neighborhood would have <2 points.
     """
-    candidates = [p for p in test.points if p.lambda_rd is not None]
+    # Find the test point whose lambda is closest to the primary value.
+    candidates = [(i, p) for i, p in enumerate(test.points) if p.lambda_rd is not None]
     if not candidates:
         return None
-    # Sort by lambda so the ±1 window is in lambda space, not the
-    # rate-sorted order from RDCurve.add_point. Without this, a curve
-    # where lambda_rd is non-monotone in rate could yield a window that
-    # spans the wrong R-D operating points.
-    lambda_sorted = sorted(candidates, key=lambda p: float(p.lambda_rd))  # type: ignore[arg-type]
-    nearest_pos = min(
-        range(len(lambda_sorted)),
-        key=lambda i: abs(float(lambda_sorted[i].lambda_rd) - primary_lambda_rd),  # type: ignore[arg-type]
+    nearest_idx, _ = min(
+        candidates,
+        key=lambda pair: abs(float(pair[1].lambda_rd) - primary_lambda_rd),  # type: ignore[arg-type]
     )
-    lo = max(0, nearest_pos - 1)
-    hi = min(len(lambda_sorted), nearest_pos + 2)
-    window_points = lambda_sorted[lo:hi]
+
+    # Take a 3-point window centered on the primary entry (or the largest
+    # window the curve supports). RDPoint isn't directly comparable, so
+    # we slice via list indices.
+    lo = max(0, nearest_idx - 1)
+    hi = min(len(test.points), nearest_idx + 2)
+    window_points = test.points[lo:hi]
     if len(window_points) < 2:
         return None
     # Insert via add_point so the resulting curve is rate-sorted, the
@@ -373,31 +340,25 @@ def compute_bd_rate_report(
         metric=cfg.metric,
     )
 
-    # Filter both curves to points that actually carry the selected
-    # metric so downstream np.interp doesn't get mismatched-length
-    # rates / qualities arrays. A curve mixing metric=present and
-    # metric=missing is otherwise a silent crash inside compute_bd_rate.
-    test_filtered = _filter_to_metric(test, cfg.metric)
-    reference_filtered = _filter_to_metric(reference, cfg.metric)
-
-    if len(test_filtered.points) < 2 or len(reference_filtered.points) < 2:
+    test_q = test.psnrs if cfg.metric == "psnr" else test.ssims
+    ref_q = reference.psnrs if cfg.metric == "psnr" else reference.ssims
+    if len(test_q) < 2 or len(ref_q) < 2:
         raise BDRateAssemblyError(
             f"both curves need >=2 points with metric={cfg.metric!r}; got "
-            f"test={len(test_filtered.points)} "
-            f"reference={len(reference_filtered.points)}",
+            f"test={len(test_q)} reference={len(ref_q)}",
         )
 
-    overlap = _quality_overlap_fraction(test_filtered, reference_filtered, cfg.metric)
-    bd_rate_pct = float(compute_bd_rate(reference_filtered, test_filtered, metric=cfg.metric))
+    overlap = _quality_overlap_fraction(test, reference, cfg.metric)
+    bd_rate_pct = float(compute_bd_rate(reference, test, metric=cfg.metric))
     bd_psnr_db: float | None = None
     if cfg.metric == "psnr":
-        bd_psnr_db = float(compute_bd_psnr(reference_filtered, test_filtered))
+        bd_psnr_db = float(compute_bd_psnr(reference, test))
 
     primary_bd_rate: float | None = None
     if cfg.primary_lambda_rd is not None:
         primary_bd_rate = _bd_rate_at_primary(
-            test_filtered,
-            reference_filtered,
+            test,
+            reference,
             primary_lambda_rd=cfg.primary_lambda_rd,
             metric=cfg.metric,
         )

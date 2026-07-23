@@ -172,22 +172,8 @@ class H265BaselineRegistry:
     """
 
     def __init__(self, document: H265BaselineDocument) -> None:
-        # Catch duplicate cell_key values up front. A dict comprehension
-        # would silently drop earlier entries, producing hard-to-debug
-        # missing points downstream. Surface the collision with the
-        # offending key so the operator can fix the source baseline file.
         self._document = document
-        seen: dict[str, H265BaselineEntry] = {}
-        duplicates: list[str] = []
-        for entry in document.entries:
-            if entry.cell_key in seen:
-                duplicates.append(entry.cell_key)
-            seen[entry.cell_key] = entry
-        if duplicates:
-            raise ValueError(
-                f"duplicate cell_key(s) in H265BaselineDocument: {sorted(set(duplicates))!r}",
-            )
-        self._by_key: dict[str, H265BaselineEntry] = seen
+        self._by_key: dict[str, H265BaselineEntry] = {e.cell_key: e for e in document.entries}
 
     @classmethod
     def load(cls, path: str | Path) -> H265BaselineRegistry:

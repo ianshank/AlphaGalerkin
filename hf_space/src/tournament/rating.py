@@ -33,6 +33,7 @@ class RatingChange:
         expected: Expected score.
         k_factor: K-factor used.
         timestamp: When change occurred.
+
     """
 
     player_id: str
@@ -44,9 +45,7 @@ class RatingChange:
     result: float
     expected: float
     k_factor: float
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -87,6 +86,7 @@ class EloRating:
         Args:
             change: Rating change amount.
             change_record: Optional change record for history.
+
         """
         self.rating += change
         self.games_played += 1
@@ -109,6 +109,7 @@ class EloRating:
 
         Returns:
             List of recent RatingChange records.
+
         """
         return self.history[-n:]
 
@@ -139,6 +140,7 @@ class RatingSystem:
         Args:
             config: Rating configuration.
             logger: Optional structured logger.
+
         """
         self.config = config or RatingConfig()
         self._logger = logger or structlog.get_logger(__name__)
@@ -152,6 +154,7 @@ class RatingSystem:
 
         Returns:
             Current rating.
+
         """
         if player_id in self._ratings:
             return self._ratings[player_id].rating
@@ -165,11 +168,10 @@ class RatingSystem:
 
         Returns:
             EloRating object (creates if not exists).
+
         """
         if player_id not in self._ratings:
-            self._ratings[player_id] = EloRating(
-                rating=self.config.initial_rating
-            )
+            self._ratings[player_id] = EloRating(rating=self.config.initial_rating)
         return self._ratings[player_id]
 
     def expected_score(
@@ -188,6 +190,7 @@ class RatingSystem:
 
         Returns:
             Expected score (0.0 to 1.0).
+
         """
         diff = opponent_rating - player_rating
         return 1 / (1 + math.pow(10, diff / 400))
@@ -204,6 +207,7 @@ class RatingSystem:
 
         Returns:
             K-factor value.
+
         """
         elo = self.get_elo_rating(player_id)
 
@@ -237,6 +241,7 @@ class RatingSystem:
 
         Returns:
             Tuple of (player_change, opponent_change).
+
         """
         if player_rating is None:
             player_rating = self.get_rating(player_id)
@@ -272,6 +277,7 @@ class RatingSystem:
 
         Returns:
             Tuple of RatingChange records for both players.
+
         """
         player_elo = self.get_elo_rating(player_id)
         opponent_elo = self.get_elo_rating(opponent_id)
@@ -289,12 +295,8 @@ class RatingSystem:
         )
 
         # Apply changes with bounds
-        new_player_rating = self._clamp_rating(
-            old_player_rating + player_change
-        )
-        new_opponent_rating = self._clamp_rating(
-            old_opponent_rating + opponent_change
-        )
+        new_player_rating = self._clamp_rating(old_player_rating + player_change)
+        new_opponent_rating = self._clamp_rating(old_opponent_rating + opponent_change)
 
         # Create change records
         player_record = RatingChange(
@@ -356,6 +358,7 @@ class RatingSystem:
 
         Returns:
             Clamped rating.
+
         """
         return max(
             self.config.min_rating,
@@ -368,6 +371,7 @@ class RatingSystem:
         Args:
             player_id: Player ID.
             rating: New rating value.
+
         """
         elo = self.get_elo_rating(player_id)
         elo.rating = self._clamp_rating(rating)
@@ -380,16 +384,14 @@ class RatingSystem:
 
         Returns:
             List of (player_id, rating) tuples.
+
         """
         sorted_players = sorted(
             self._ratings.items(),
             key=lambda x: x[1].rating,
             reverse=True,
         )
-        return [
-            (player_id, elo.rating)
-            for player_id, elo in sorted_players[:top_n]
-        ]
+        return [(player_id, elo.rating) for player_id, elo in sorted_players[:top_n]]
 
     def simulate_match_outcome(
         self,
@@ -406,6 +408,7 @@ class RatingSystem:
 
         Returns:
             Dictionary with win/draw/loss probabilities.
+
         """
         import random
 
@@ -436,13 +439,11 @@ class RatingSystem:
 
         Returns:
             Dictionary with all ratings.
+
         """
         return {
             "config": self.config.model_dump(),
-            "ratings": {
-                player_id: elo.to_dict()
-                for player_id, elo in self._ratings.items()
-            },
+            "ratings": {player_id: elo.to_dict() for player_id, elo in self._ratings.items()},
         }
 
 
@@ -460,6 +461,7 @@ def create_rating_system(
 
     Returns:
         RatingSystem instance.
+
     """
     config = RatingConfig(
         initial_rating=initial_rating,

@@ -190,8 +190,12 @@ class TestShowTransferMilestone:
         assert isinstance(summary, str)
 
     def test_summary_contains_milestone_date(self):
+        from dashboard.config import DEFAULT_CONFIG
+
         _, summary = show_transfer_milestone()
-        assert "2026-01-26" in summary
+        # Value-agnostic: assert the configured milestone date, not a literal, so
+        # correcting the measured number/date does not break the test.
+        assert DEFAULT_CONFIG.poc.transfer.milestone_date in summary
 
     def test_summary_contains_mse_values(self):
         _, summary = show_transfer_milestone()

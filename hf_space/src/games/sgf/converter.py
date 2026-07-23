@@ -5,7 +5,8 @@ Provides bidirectional conversion for integration with the game engine.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator
+from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -15,7 +16,7 @@ from src.games.sgf.parser import SGFParser
 from src.games.sgf.writer import SGFWriter
 
 if TYPE_CHECKING:
-    from src.games.state import GameState
+    pass
 
 logger = structlog.get_logger(__name__)
 
@@ -39,6 +40,7 @@ class SGFConverter:
 
         # Game states to SGF
         sgf_text = converter.from_states(states, game_info={...})
+
     """
 
     def __init__(self, config: SGFConfig | None = None) -> None:
@@ -46,6 +48,7 @@ class SGFConverter:
 
         Args:
             config: Configuration for parsing/writing
+
         """
         self.config = config or SGFConfig(name="sgf_converter")
         self._parser = SGFParser(config)
@@ -59,6 +62,7 @@ class SGFConverter:
 
         Returns:
             Parsed game tree
+
         """
         return self._parser.parse_file(path)
 
@@ -70,6 +74,7 @@ class SGFConverter:
 
         Returns:
             Parsed game tree
+
         """
         return self._parser.parse(sgf_text)
 
@@ -81,6 +86,7 @@ class SGFConverter:
 
         Returns:
             SGF format string
+
         """
         return self._writer.write(tree)
 
@@ -92,6 +98,7 @@ class SGFConverter:
 
         Yields:
             Tuples of (node, move_history) for each position
+
         """
         moves: list[SGFMove] = []
         for node in tree.mainline():
@@ -107,6 +114,7 @@ class SGFConverter:
 
         Returns:
             List of (color, x, y) tuples
+
         """
         moves = []
         for move in tree.mainline_moves():
@@ -131,6 +139,7 @@ class SGFConverter:
 
         Returns:
             New game tree
+
         """
         tree = SGFGameTree()
         tree.board_size = board_size
@@ -170,6 +179,7 @@ class SGFConverter:
             value: Position evaluation (-1 to 1, positive = black winning)
             principal_variation: Best move sequence
             comment: Text comment to add
+
         """
         parts = []
 
@@ -186,7 +196,7 @@ class SGFConverter:
             move_strs = []
             for (x, y), prob in top_moves:
                 coord = SGFMove(color="", x=x, y=y).to_gtp(node._board_size)
-                move_strs.append(f"{coord}:{prob*100:.1f}%")
+                move_strs.append(f"{coord}:{prob * 100:.1f}%")
             parts.append(f"Top moves: {', '.join(move_strs)}")
 
         # Add principal variation
@@ -218,6 +228,7 @@ class SGFConverter:
         Args:
             node: Node with the move
             quality: One of "good", "bad", "doubtful", "interesting", "tesuji"
+
         """
         quality_map = {
             "good": None,  # No special marking for good moves
@@ -244,6 +255,7 @@ class SGFConverter:
             x: X coordinate
             y: Y coordinate
             label: Label text
+
         """
         coord = SGFMove(color="", x=x, y=y).to_sgf(node._board_size)
         node.add_property_value("LB", f"{coord}:{label}")
@@ -284,6 +296,7 @@ class SGFConverter:
 
         Returns:
             New game tree with analysis
+
         """
         # Create a copy by writing and parsing
         sgf_text = self._writer.write(original)

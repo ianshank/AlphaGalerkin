@@ -72,6 +72,22 @@ class TestGDN:
         assert x.grad is not None
         assert x.grad.shape == x.shape
 
+    def test_gdn_stability(self) -> None:
+        """Test GDN stability with extreme/negative parameters."""
+        gdn = GDN(channels=32)
+
+        # Force parameters to be negative (simulate adversarial drift)
+        with torch.no_grad():
+            gdn.beta.fill_(-10.0)
+            gdn.gamma.fill_(-10.0)
+
+        x = torch.randn(2, 32, 16, 16)
+
+        # Should not produce NaNs due to softplus bounds on beta/gamma
+        y = gdn(x)
+        assert not torch.isnan(y).any(), "GDN produced NaNs with negative parameters"
+        assert not torch.isinf(y).any(), "GDN produced Infs with negative parameters"
+
 
 class TestGalerkinEncoderAttention:
     """Tests for Galerkin attention in encoder."""

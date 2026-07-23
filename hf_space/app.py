@@ -20,20 +20,20 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.board import get_default_space_config
+from src.endgame import EndgameDetector
 from src.game_manager import GameManager, GameSession
 from src.rendering.board_renderer import BoardRenderer
 
 from config.schemas import AlphaGalerkinConfig
+from src.demos.architecture_demo import create_architecture_demo_tab
+from src.demos.benchmark_demo import create_benchmark_demo_tab
+
+# Demo modules from PR #20
+from src.demos.physics_demo import create_physics_demo_tab
 from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
 from src.tools.gtp import SimpleGoGame
-from src.endgame import EndgameDetector
-
-# Demo modules from PR #20
-from src.demos.physics_demo import create_physics_demo_tab
-from src.demos.benchmark_demo import create_benchmark_demo_tab
-from src.demos.architecture_demo import create_architecture_demo_tab
 
 # Configure structured logging
 structlog.configure(
@@ -125,7 +125,6 @@ def load_model(path: Path) -> AlphaGalerkinModel | None:
     if not path.exists():
         logger.warning("checkpoint_not_found", path=str(path))
         return None
-
 
     try:
         checkpoint = torch.load(path, map_location=DEVICE, weights_only=False)
@@ -310,7 +309,6 @@ def update_game(
         history.append((ai_r, ai_c))
         ai_move_str = GAME_MANAGER.format_move(ai_r, ai_c, board_size)
         last_move_idx = action
-
 
     session.move_history = history
 
@@ -628,9 +626,7 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
     with gr.Tabs():
         # ===== TAB 1: Human vs AI =====
         with gr.TabItem("Play vs AI"):
-            gr.Markdown(
-                "### You are Black. Enter moves as `row,col` (0-indexed) or `PASS`"
-            )
+            gr.Markdown("### You are Black. Enter moves as `row,col` (0-indexed) or `PASS`")
 
             with gr.Row():
                 with gr.Column(scale=2):
@@ -644,9 +640,7 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
 
                     board_img = gr.Image(
                         label="Board",
-                        value=RENDERER.render(
-                            SimpleGoGame(SPACE_CONFIG.default_board_size)
-                        ),
+                        value=RENDERER.render(SimpleGoGame(SPACE_CONFIG.default_board_size)),
                         interactive=False,
                         height=480,
                     )
@@ -724,9 +718,7 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
 
                     ai_board_img = gr.Image(
                         label="Board",
-                        value=RENDERER.render(
-                            SimpleGoGame(SPACE_CONFIG.default_board_size)
-                        ),
+                        value=RENDERER.render(SimpleGoGame(SPACE_CONFIG.default_board_size)),
                         interactive=False,
                         height=480,
                     )
@@ -822,7 +814,6 @@ with gr.Blocks(title="AlphaGalerkin Go Demo") as demo:
 
         # ===== TAB 5: Architecture Demo (PR #20) =====
         create_architecture_demo_tab(model=MODEL, device=DEVICE)
-
 
         # ===== TAB 6: About =====
         with gr.TabItem("About"):

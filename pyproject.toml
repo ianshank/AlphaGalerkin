@@ -24,6 +24,7 @@ classifiers = [
 
 dependencies = [
     "torch>=2.0.0",
+    "torchvision>=0.15.0",
     "einops>=0.7.0",
     "jaxtyping>=0.2.25",
     "pydantic>=2.0.0",
@@ -48,13 +49,28 @@ dev = [
     "pytest-cov>=4.0.0",
     "hypothesis>=6.0.0",
     "mypy>=1.10,<1.12",
-    "ruff>=0.1.0",
+    # Pinned: a newer ruff formats Markdown by default (graduated from preview),
+    # which reformats embedded code blocks in *.md docs and breaks the CI format
+    # gate on unrelated files. Keep aligned with the pin in .github/workflows/ci.yml.
+    "ruff==0.15.8",
     # Pin pydantic to align with lint step and avoid 2.10+ behavioural changes
     "pydantic>=2.7,<2.10",
     # Dashboard test dependencies
     "gradio>=6.0.0",
     "matplotlib>=3.7.0",
     "Pillow>=10.0.0",
+]
+# Test-only dependencies for suites that previously used pytest.importorskip and
+# skipped silently in the default CI matrix because their deps were absent. The
+# dedicated `test-extras` CI job installs this group so those code paths (FEM
+# baseline, ONNX export/validate, PettingZoo adapter) actually execute rather than
+# skipping. onnxscript is required by torch>=2.x `torch.onnx.export` (dynamo path).
+test-extras = [
+    "scikit-fem>=9.0",
+    "onnx>=1.15",
+    "onnxruntime>=1.17",
+    "onnxscript>=0.1",
+    "pettingzoo>=1.24",
 ]
 jax = [
     # Pins are intentionally narrow because flax 0.9 (the only release
@@ -93,10 +109,6 @@ jax-gpu = [
     "optax>=0.2.0,<0.3",
     "orbax-checkpoint>=0.5.0,<0.10",
     "chex>=0.1.85,<0.1.91",
-]
-vertex = [
-    "google-cloud-aiplatform>=1.36.0",
-    "google-cloud-storage>=2.10.0",
 ]
 # Optional bridge to Leap 71's PicoGK voxel/SDF kernel for the Noyron HX
 # integration scenario. Not installed in CI; the analytical-helix SDF in
@@ -235,7 +247,6 @@ module = [
     "google.*",
     "PIL.*",
     "cv2.*",
-    "torchvision.*",
     "numpy.*",
     "pytest.*",
     "jax.*",
@@ -249,8 +260,6 @@ module = [
     "typer.*",
     "rich",
     "rich.*",
-    "torch_tensorrt",
-    "torch_tensorrt.*",
     "onnxscript",
     "onnxscript.*",
     "dllist",
@@ -310,7 +319,6 @@ disable_error_code = [
 module = [
     "src.physics.darcy",
     "src.backend.jax_backend",
-    "src.vertex.auth",
     "src.research.baselines",
 ]
 disable_error_code = ["no-untyped-call"]
@@ -360,28 +368,15 @@ module = [
     "src.deployment.export_onnx",
     "src.deployment.quantize",
     "src.deployment.validate",
-    "src.vertex.launcher",
-    "src.vertex.entrypoint",
     "src.poc.tuning.sampler",
     "src.poc.tuning.config",
     "src.poc.statistics.significance",
     "src.demos.config",
     "src.demos.architecture_demo",
-    "src.video_compression.metrics.rd_curves",
-    "src.video_compression.metrics.quality",
-    "src.video_compression.mcts.networks",
-    "src.video_compression.data.transforms",
-    "src.video_compression.data.dataset",
-    "src.video_compression.codec.entropy_coder",
-    "src.video_compression.codec.codec",
-    "src.video_compression.models.quantizer",
-    "src.video_compression.utils.logging",
     "src.distributed.trainer",
     "src.distributed.worker",
     "src.distributed.launcher",
     "src.distributed.gradient_sync",
-    "src.vertex.trainer",
-    "src.vertex.config",
     "src.analysis.config",
     "src.research.comparison",
     "src.research.benchmark",
@@ -389,6 +384,7 @@ module = [
     "src.demos.benchmark_demo",
     "src.demos.visualizations",
     "src.poc.scenarios.transfer",
+    "src.research.transfer_baseline_compare",
 ]
 disable_error_code = ["assignment", "arg-type", "return-value", "operator", "union-attr",
                       "index", "dict-item", "attr-defined", "var-annotated", "call-arg",
@@ -407,7 +403,6 @@ markers = [
     "onnx_required: tests requiring ONNX",
     "jax: JAX-specific tests",
     "cross_backend: cross-backend equivalence tests",
-    "video: video compression tests",
     "integration: integration tests",
     "dashboard: dashboard UI tests",
 ]
@@ -418,36 +413,15 @@ markers = [
 # 85% minimum and surfaces dead branches that line coverage misses.
 branch = true
 # Omit modules whose tests are excluded from CI coverage runs.
-# video_compression tests are ignored via --ignore=tests/video_compression/
 # backend tests cause JAX crashes on Windows CI and are skipped
 # demos tests are ignored via --ignore=tests/demos/
 # fem_baseline requires the optional ``fem`` extra (scikit-fem); its tests
 # use ``pytest.importorskip`` and skip cleanly in the default CI matrix,
 # so including it here would unfairly tank the global coverage gate.
 omit = [
-    # video_compression subpackages whose tests are excluded from the
-    # global CI run via --ignore=tests/video_compression/. Per-module
-    # coverage gates for perf/, runtime/, and zoo/ are enforced by
-    # dedicated workflows (codec-perf-coverage.yml and the upcoming
-    # phase2-zoo-validation.yml), so they are also omitted here to
-    # avoid double-counting and 0%-from-no-tests in the global gate.
-    "src/video_compression/__init__.py",
-    "src/video_compression/codec/*",
-    "src/video_compression/data/*",
-    "src/video_compression/demo/*",
-    "src/video_compression/mcts/*",
-    "src/video_compression/metrics/*",
-    "src/video_compression/models/*",
-    "src/video_compression/perf/*",
-    "src/video_compression/runtime/*",
-    "src/video_compression/training/*",
-    "src/video_compression/utils/*",
-    "src/video_compression/zoo/*",
-    "src/video_compression/config.py",
     "src/backend/*",
     "src/demos/*",
     "src/research/fem_baseline.py",
-    "src/vertex/*",
     # The eval-harness adapter requires the optional [eval-harness] git dependency
     # (langfuse-eval-harness, not on PyPI). Its tests use ``pytest.importorskip``
     # and skip cleanly in the default CI matrix, so it is omitted from the global

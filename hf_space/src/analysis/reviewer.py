@@ -23,7 +23,7 @@ from src.analysis.config import (
 from src.analysis.evaluator import EvaluationResult, PositionEvaluator
 
 if TYPE_CHECKING:
-    from src.games.sgf.node import SGFGameTree, SGFMove
+    from src.games.sgf.node import SGFGameTree
 
 
 @dataclass
@@ -42,6 +42,7 @@ class MoveAnalysis:
         is_best: Whether the played move is the best.
         alternatives: Alternative moves with analysis.
         comment: Generated comment for this move.
+
     """
 
     move_number: int
@@ -53,9 +54,7 @@ class MoveAnalysis:
     win_rate_change: float = 0.0
     best_move: tuple[int, int] | None = None
     is_best: bool = False
-    alternatives: list[tuple[tuple[int, int], float, str]] = field(
-        default_factory=list
-    )
+    alternatives: list[tuple[tuple[int, int], float, str]] = field(default_factory=list)
     comment: str = ""
 
     @property
@@ -111,6 +110,7 @@ class GameAnalysis:
         endgame_quality: Endgame phase assessment.
         timestamp: When analysis was performed.
         config_hash: Configuration hash for reproducibility.
+
     """
 
     move_analyses: list[MoveAnalysis] = field(default_factory=list)
@@ -119,9 +119,7 @@ class GameAnalysis:
     turning_points: list[int] = field(default_factory=list)
     opening_quality: float = 0.0
     endgame_quality: float = 0.0
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     config_hash: str = ""
 
     @property
@@ -132,18 +130,12 @@ class GameAnalysis:
     @property
     def black_mistakes(self) -> list[MoveAnalysis]:
         """Get black's mistakes."""
-        return [
-            m for m in self.move_analyses
-            if m.color == "B" and m.is_mistake
-        ]
+        return [m for m in self.move_analyses if m.color == "B" and m.is_mistake]
 
     @property
     def white_mistakes(self) -> list[MoveAnalysis]:
         """Get white's mistakes."""
-        return [
-            m for m in self.move_analyses
-            if m.color == "W" and m.is_mistake
-        ]
+        return [m for m in self.move_analyses if m.color == "W" and m.is_mistake]
 
     def get_move_at(self, move_number: int) -> MoveAnalysis | None:
         """Get analysis for a specific move number.
@@ -153,6 +145,7 @@ class GameAnalysis:
 
         Returns:
             MoveAnalysis or None if not found.
+
         """
         for analysis in self.move_analyses:
             if analysis.move_number == move_number:
@@ -170,11 +163,9 @@ class GameAnalysis:
 
         Returns:
             List of matching move analyses.
+
         """
-        return [
-            m for m in self.move_analyses
-            if m.classification == classification
-        ]
+        return [m for m in self.move_analyses if m.classification == classification]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -213,6 +204,7 @@ class GameReviewer:
             evaluator: Position evaluator instance.
             config: Analysis configuration.
             logger: Optional structured logger.
+
         """
         self.config = config or AnalysisConfig()
         self._evaluator = evaluator or PositionEvaluator(config=self.config)
@@ -233,6 +225,7 @@ class GameReviewer:
 
         Returns:
             Complete GameAnalysis.
+
         """
         self._logger.info(
             "review_started",
@@ -335,6 +328,7 @@ class GameReviewer:
 
         Returns:
             MoveAnalysis for this move.
+
         """
         # Create board state representation for evaluation
         # This is a placeholder - actual implementation would use game state
@@ -361,7 +355,7 @@ class GameReviewer:
         # Generate alternatives
         alternatives = []
         if self.config.include_variations and not is_best:
-            for alt_move, prob in eval_before.best_moves[:self.config.max_variations]:
+            for alt_move, prob in eval_before.best_moves[: self.config.max_variations]:
                 if alt_move != move:
                     alt_desc = f"Better: {self._format_move(alt_move, board_size)}"
                     alternatives.append((alt_move, prob, alt_desc))
@@ -397,6 +391,7 @@ class GameReviewer:
 
         Returns:
             2D list representing board state.
+
         """
         # Create empty board
         board = [[0] * board_size for _ in range(board_size)]
@@ -420,9 +415,10 @@ class GameReviewer:
 
         Returns:
             Formatted move string (e.g., "D4").
+
         """
         x, y = move
-        col = chr(ord('A') + x + (1 if x >= 8 else 0))  # Skip 'I'
+        col = chr(ord("A") + x + (1 if x >= 8 else 0))  # Skip 'I'
         row = board_size - y
         return f"{col}{row}"
 
@@ -447,6 +443,7 @@ class GameReviewer:
 
         Returns:
             Generated comment string.
+
         """
         level = self.config.annotation_level
 
@@ -471,9 +468,15 @@ class GameReviewer:
             MoveClassification.EXCELLENT: "Excellent move!",
             MoveClassification.GOOD: "Good move.",
             MoveClassification.NEUTRAL: "",
-            MoveClassification.INACCURACY: f"Inaccuracy. Better: {self._format_move(best_move, board_size)}" if best_move else "Inaccuracy.",
-            MoveClassification.MISTAKE: f"Mistake. Better: {self._format_move(best_move, board_size)}" if best_move else "Mistake.",
-            MoveClassification.BLUNDER: f"Blunder! Better: {self._format_move(best_move, board_size)}" if best_move else "Blunder!",
+            MoveClassification.INACCURACY: f"Inaccuracy. Better: {self._format_move(best_move, board_size)}"
+            if best_move
+            else "Inaccuracy.",
+            MoveClassification.MISTAKE: f"Mistake. Better: {self._format_move(best_move, board_size)}"
+            if best_move
+            else "Mistake.",
+            MoveClassification.BLUNDER: f"Blunder! Better: {self._format_move(best_move, board_size)}"
+            if best_move
+            else "Blunder!",
         }
 
         return comments.get(classification, "")
@@ -486,6 +489,7 @@ class GameReviewer:
 
         Returns:
             Quality score (0.0 to 1.0).
+
         """
         if not moves:
             return 0.5
@@ -509,6 +513,7 @@ class GameReviewer:
 
         Returns:
             Quality score (0.0 to 1.0).
+
         """
         return self._assess_opening(moves)  # Same logic for now
 
@@ -522,6 +527,7 @@ class GameReviewer:
         Args:
             game_tree: SGF game tree to annotate.
             analysis: Game analysis to add.
+
         """
         from src.games.sgf.converter import SGFConverter
 
@@ -558,6 +564,7 @@ def create_game_reviewer(
 
     Returns:
         Configured GameReviewer.
+
     """
     from src.analysis.config import create_analysis_config
     from src.analysis.evaluator import PositionEvaluator

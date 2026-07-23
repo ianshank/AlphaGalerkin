@@ -22,8 +22,9 @@ Supported PDEs:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import torch
@@ -42,6 +43,7 @@ class PDEResidual:
         l2_norm: L2 norm of residual.
         max_norm: Maximum absolute residual.
         derivatives: Dictionary of computed derivatives.
+
     """
 
     values: NDArray[np.float32] | Tensor
@@ -52,9 +54,7 @@ class PDEResidual:
     def to_numpy(self) -> PDEResidual:
         """Convert tensors to numpy arrays."""
         values = (
-            self.values.detach().cpu().numpy()
-            if isinstance(self.values, Tensor)
-            else self.values
+            self.values.detach().cpu().numpy() if isinstance(self.values, Tensor) else self.values
         )
         derivatives = {
             k: (v.detach().cpu().numpy() if isinstance(v, Tensor) else v)
@@ -95,6 +95,7 @@ class PDEOperator(ABC):
 
         Args:
             config: PDE configuration.
+
         """
         self.config = config
         self.dim = config.domain_dim
@@ -121,6 +122,7 @@ class PDEOperator(ABC):
 
         Returns:
             PDEResidual with values and norms.
+
         """
         raise NotImplementedError
 
@@ -138,6 +140,7 @@ class PDEOperator(ABC):
 
         Returns:
             Source term values (N,).
+
         """
         raise NotImplementedError
 
@@ -155,6 +158,7 @@ class PDEOperator(ABC):
 
         Returns:
             Boundary values (N_b,).
+
         """
         raise NotImplementedError
 
@@ -171,6 +175,7 @@ class PDEOperator(ABC):
 
         Returns:
             Exact solution values (N,), or None if unknown.
+
         """
         return None
 
@@ -185,6 +190,7 @@ class PDEOperator(ABC):
 
         Returns:
             Initial values (N,).
+
         """
         if isinstance(coords, Tensor):
             return torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
@@ -203,6 +209,7 @@ class PDEOperator(ABC):
 
         Returns:
             Boolean mask (N,) with True for boundary points.
+
         """
         if isinstance(coords, Tensor):
             on_boundary = torch.zeros(coords.shape[0], dtype=torch.bool, device=coords.device)
@@ -232,6 +239,7 @@ class PDEOperator(ABC):
 
         Returns:
             Dictionary with derivative tensors.
+
         """
         coords = coords.requires_grad_(True)
 
@@ -255,10 +263,13 @@ class PDEOperator(ABC):
             # Laplacian (second derivatives)
             laplacian = torch.zeros(coords.shape[0], dtype=coords.dtype, device=coords.device)
             for d in range(self.dim):
-                grad_d = grad[:, d:d+1]
+                grad_d = grad[:, d : d + 1]
                 grad2 = torch.autograd.grad(
-                    grad_d, coords, grad_outputs=torch.ones_like(grad_d),
-                    create_graph=True, allow_unused=True
+                    grad_d,
+                    coords,
+                    grad_outputs=torch.ones_like(grad_d),
+                    create_graph=True,
+                    allow_unused=True,
                 )[0]
                 if grad2 is not None:
                     derivatives[f"u_x{d}x{d}"] = grad2[:, d]
@@ -283,6 +294,7 @@ class PDEOperator(ABC):
 
         Returns:
             Collocation points (n_points, dim).
+
         """
         rng = np.random.default_rng(seed)
 
@@ -301,21 +313,18 @@ class PDEOperator(ABC):
                 points = points[indices]
         elif method == "random":
             # Random uniform sampling
-            points = rng.uniform(
-                self.domain_min, self.domain_max, size=(n_points, self.dim)
-            )
+            points = rng.uniform(self.domain_min, self.domain_max, size=(n_points, self.dim))
         elif method == "lhs":
             # Latin hypercube sampling
             try:
                 from scipy.stats import qmc
+
                 sampler = qmc.LatinHypercube(d=self.dim, seed=seed)
                 samples = sampler.random(n=n_points)
                 points = qmc.scale(samples, self.domain_min, self.domain_max)
             except ImportError:
                 # Fallback to random
-                points = rng.uniform(
-                    self.domain_min, self.domain_max, size=(n_points, self.dim)
-                )
+                points = rng.uniform(self.domain_min, self.domain_max, size=(n_points, self.dim))
         else:
             raise ValueError(f"Unknown sampling method: {method}")
 
@@ -334,6 +343,7 @@ class PDEOperator(ABC):
 
         Returns:
             Boundary points (N_boundary, dim).
+
         """
         rng = np.random.default_rng(seed)
         points = []
@@ -342,8 +352,7 @@ class PDEOperator(ABC):
             for boundary_val in [self.domain_min[d], self.domain_max[d]]:
                 # Generate random points on this face
                 face_points = rng.uniform(
-                    self.domain_min, self.domain_max,
-                    size=(n_points_per_face, self.dim)
+                    self.domain_min, self.domain_max, size=(n_points_per_face, self.dim)
                 )
                 face_points[:, d] = boundary_val
                 points.append(face_points)
@@ -396,6 +405,7 @@ class PoissonOperator(PDEOperator):
             config: PDE configuration.
             source_function: Custom source term function.
             exact_solution_function: Known exact solution (for testing).
+
         """
         super().__init__(config)
         self.diffusion = config.diffusion_coeff
@@ -420,7 +430,7 @@ class PoissonOperator(PDEOperator):
         # Residual: -∇²u - f = 0  =>  R = -∇²u - f
         residual_values = -self.diffusion * laplacian - source
 
-        l2_norm = float(torch.sqrt(torch.mean(residual_values ** 2)).item())
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
         max_norm = float(torch.max(torch.abs(residual_values)).item())
 
         return PDEResidual(
@@ -444,11 +454,11 @@ class PoissonOperator(PDEOperator):
             x = coords[:, 0]
             y = coords[:, 1] if self.dim > 1 else torch.zeros_like(x)
             # Source for solution u = sin(πx)sin(πy)
-            return 2 * (np.pi ** 2) * torch.sin(np.pi * x) * torch.sin(np.pi * y)
+            return 2 * (np.pi**2) * torch.sin(np.pi * x) * torch.sin(np.pi * y)
         else:
             x = coords[:, 0]
             y = coords[:, 1] if self.dim > 1 else np.zeros_like(x)
-            return 2 * (np.pi ** 2) * np.sin(np.pi * x) * np.sin(np.pi * y)
+            return 2 * (np.pi**2) * np.sin(np.pi * x) * np.sin(np.pi * y)
 
     def boundary_value(
         self,
@@ -459,8 +469,10 @@ class PoissonOperator(PDEOperator):
         if self.config.boundary_condition == BoundaryCondition.DIRICHLET:
             if isinstance(coords, Tensor):
                 return torch.full(
-                    (coords.shape[0],), self.config.boundary_value,
-                    dtype=coords.dtype, device=coords.device
+                    (coords.shape[0],),
+                    self.config.boundary_value,
+                    dtype=coords.dtype,
+                    device=coords.device,
                 )
             return np.full(coords.shape[0], self.config.boundary_value, dtype=np.float32)
 
@@ -523,6 +535,7 @@ class BurgersOperator(PDEOperator):
         Args:
             config: PDE configuration.
             viscosity: Kinematic viscosity (overrides config if provided).
+
         """
         super().__init__(config)
         self.viscosity = viscosity if viscosity is not None else config.diffusion_coeff
@@ -549,7 +562,7 @@ class BurgersOperator(PDEOperator):
         # Steady state: u·∇u = ν∇²u
         residual_values = advection - self.viscosity * laplacian
 
-        l2_norm = float(torch.sqrt(torch.mean(residual_values ** 2)).item())
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
         max_norm = float(torch.max(torch.abs(residual_values)).item())
 
         return PDEResidual(
@@ -629,12 +642,12 @@ class AdvectionDiffusionOperator(PDEOperator):
             config: PDE configuration.
             advection_velocity: Advection velocity vector.
             diffusion: Diffusion coefficient.
+
         """
         super().__init__(config)
         self.advection_velocity = np.array(
-            advection_velocity if advection_velocity is not None
-            else config.advection_coeff,
-            dtype=np.float32
+            advection_velocity if advection_velocity is not None else config.advection_coeff,
+            dtype=np.float32,
         )
         self.diffusion = diffusion if diffusion is not None else config.diffusion_coeff
         self.is_time_dependent = config.is_time_dependent
@@ -656,9 +669,7 @@ class AdvectionDiffusionOperator(PDEOperator):
 
         # Advection term: a · ∇u
         advection = torch.zeros_like(u.squeeze())
-        velocity = torch.tensor(
-            self.advection_velocity, dtype=coords.dtype, device=coords.device
-        )
+        velocity = torch.tensor(self.advection_velocity, dtype=coords.dtype, device=coords.device)
         for d in range(self.dim):
             du_dx = derivatives.get(f"u_x{d}", torch.zeros_like(u.squeeze()))
             advection = advection + velocity[d] * du_dx
@@ -666,7 +677,7 @@ class AdvectionDiffusionOperator(PDEOperator):
         # Steady state: a·∇u = ν∇²u + f
         residual_values = advection - self.diffusion * laplacian - source
 
-        l2_norm = float(torch.sqrt(torch.mean(residual_values ** 2)).item())
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
         max_norm = float(torch.max(torch.abs(residual_values)).item())
 
         return PDEResidual(
@@ -694,8 +705,10 @@ class AdvectionDiffusionOperator(PDEOperator):
         """Compute boundary values."""
         if isinstance(coords, Tensor):
             return torch.full(
-                (coords.shape[0],), self.config.boundary_value,
-                dtype=coords.dtype, device=coords.device
+                (coords.shape[0],),
+                self.config.boundary_value,
+                dtype=coords.dtype,
+                device=coords.device,
             )
         return np.full(coords.shape[0], self.config.boundary_value, dtype=np.float32)
 
@@ -710,10 +723,10 @@ class AdvectionDiffusionOperator(PDEOperator):
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
             dist_sq = torch.sum((coords - center_t) ** 2, dim=-1)
-            return torch.exp(-dist_sq / (2 * sigma ** 2))
+            return torch.exp(-dist_sq / (2 * sigma**2))
         else:
             dist_sq = np.sum((coords - center) ** 2, axis=-1)
-            return np.exp(-dist_sq / (2 * sigma ** 2)).astype(np.float32)
+            return np.exp(-dist_sq / (2 * sigma**2)).astype(np.float32)
 
     def exact_solution(
         self,
@@ -731,10 +744,10 @@ class AdvectionDiffusionOperator(PDEOperator):
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
             dist_sq = torch.sum((coords - center_t) ** 2, dim=-1)
-            return torch.exp(-dist_sq / (2 * sigma ** 2))
+            return torch.exp(-dist_sq / (2 * sigma**2))
         else:
             dist_sq = np.sum((coords - center) ** 2, axis=-1)
-            return np.exp(-dist_sq / (2 * sigma ** 2)).astype(np.float32)
+            return np.exp(-dist_sq / (2 * sigma**2)).astype(np.float32)
 
 
 class HeatOperator(PDEOperator):
@@ -768,6 +781,7 @@ class HeatOperator(PDEOperator):
         Args:
             config: PDE configuration.
             diffusivity: Thermal diffusivity κ.
+
         """
         super().__init__(config)
         self.diffusivity = diffusivity if diffusivity is not None else config.diffusion_coeff
@@ -790,7 +804,7 @@ class HeatOperator(PDEOperator):
         # Steady state: 0 = κ∇²u + f  =>  R = -κ∇²u - f
         residual_values = -self.diffusivity * laplacian - source
 
-        l2_norm = float(torch.sqrt(torch.mean(residual_values ** 2)).item())
+        l2_norm = float(torch.sqrt(torch.mean(residual_values**2)).item())
         max_norm = float(torch.max(torch.abs(residual_values)).item())
 
         return PDEResidual(
@@ -818,8 +832,10 @@ class HeatOperator(PDEOperator):
         """Compute boundary temperature."""
         if isinstance(coords, Tensor):
             return torch.full(
-                (coords.shape[0],), self.config.boundary_value,
-                dtype=coords.dtype, device=coords.device
+                (coords.shape[0],),
+                self.config.boundary_value,
+                dtype=coords.dtype,
+                device=coords.device,
             )
         return np.full(coords.shape[0], self.config.boundary_value, dtype=np.float32)
 
@@ -835,7 +851,7 @@ class HeatOperator(PDEOperator):
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
             dist_sq = torch.sum((coords - center_t) ** 2, dim=-1)
-            return torch.exp(-dist_sq / (2 * sigma ** 2))
+            return torch.exp(-dist_sq / (2 * sigma**2))
         else:
             dist_sq = np.sum((coords - center) ** 2, axis=-1)
-            return np.exp(-dist_sq / (2 * sigma ** 2)).astype(np.float32)
+            return np.exp(-dist_sq / (2 * sigma**2)).astype(np.float32)

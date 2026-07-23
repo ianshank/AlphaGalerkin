@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +40,7 @@ def generate_colab_notebook(
 
     logger.info("generating_colab_notebook", source=str(source), target=str(target))
 
-    with open(source, "r", encoding="utf-8") as f:
+    with open(source, encoding="utf-8") as f:
         notebook = json.load(f)
 
     # Define the setup cell
@@ -55,18 +54,18 @@ def generate_colab_notebook(
         "\n",
         "# 1. Clone Repository\n",
         "if 'google.colab' in sys.modules:\n",
-        "    repo_name = \"AlphaGalerkin\"\n",
-        "    repo_url = \"https://github.com/ianshank/AlphaGalerkin.git\"\n",
+        '    repo_name = "AlphaGalerkin"\n',
+        '    repo_url = "https://github.com/ianshank/AlphaGalerkin.git"\n',
         "    \n",
         "    if not Path(repo_name).exists():\n",
-        "        print(f\"Cloning {repo_name}...\")\n",
+        '        print(f"Cloning {repo_name}...")\n',
         "        !git clone {repo_url}\n",
         "    else:\n",
-        "        print(f\"{repo_name} already exists. Pulling latest changes...\")\n",
+        '        print(f"{repo_name} already exists. Pulling latest changes...")\n',
         "        !cd {repo_name} && git pull\n",
         "    \n",
         "    # 2. Install Dependencies\n",
-        "    print(\"Installing dependencies...\")\n",
+        '    print("Installing dependencies...")\n',
         "    !pip install -q einops jaxtyping pydantic hydra-core structlog wandb scipy\n",
         "    \n",
         "    # 3. Setup Path and Working Directory\n",
@@ -74,14 +73,14 @@ def generate_colab_notebook(
         "    \n",
         "    # Change dir to repo root so relative paths work\n",
         "    os.chdir(project_root)\n",
-        "    print(f\"Working directory changed to: {os.getcwd()}\")\n",
+        '    print(f"Working directory changed to: {os.getcwd()}")\n',
         "    \n",
         "    # Ensure src is in python path\n",
         "    if str(project_root) not in sys.path:\n",
         "        sys.path.insert(0, str(project_root))\n",
-        "        print(f\"Added {project_root} to sys.path\")\n",
+        '        print(f"Added {project_root} to sys.path")\n',
         "else:\n",
-        "    print(\"Not running in Colab. Skipping setup.\")",
+        '    print("Not running in Colab. Skipping setup.")',
     ]
 
     setup_cell = {
@@ -120,7 +119,7 @@ def _update_colab_badge(cells: list[dict[str, Any]], filename: str, repo_name: s
         if cell["cell_type"] == "markdown":
             markdown_cell = cell
             break
-    
+
     if not markdown_cell:
         return
 
@@ -142,7 +141,7 @@ def _update_colab_badge(cells: list[dict[str, Any]], filename: str, repo_name: s
 
     # Check if badge already exists
     has_badge = any("colab-badge.svg" in line for line in source)
-    
+
     if not has_badge:
         # Insert after title
         source.insert(1, badge_html)

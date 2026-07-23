@@ -7,6 +7,182 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<<<<<<< HEAD
+### Fixed — Codec Model Zoo Phase 2-D Structural Fixes (`src/video_compression/`)
+
+- **Monotonicity in Factorized Prior** — `FactorizedPrior` relies on a network using parameters `a` and `H` to estimate the CDF. Added `torch.nn.functional.softplus` to these parameters to enforce strict positivity, ensuring the CDF is monotonically increasing, preventing negative likelihoods and probability explosion (NaN loss).
+- **GDN Stability** — Generalized Divisive Normalization (`GDN`) and its inverse (`IGDN`) lacked positivity constraints on learnable parameters `beta` and `gamma`. Added `F.softplus` around both parameters in the `GDN.forward` function to ensure that `torch.sqrt` is never applied to a negative value.
+- **MS-SSIM Stability** — Multi-Scale SSIM computation occasionally produced NaNs due to fractional exponentiation of negative variances on uniform patches. Added `torch.relu` clamping in `compute_ms_ssim` to eliminate negative base NaNs.
+- **Structural Bug Fixes** — Implemented `FactorizedEntropyModel` wrapper; fixed BD-Rate metric key mismatch (`rate_bpp` vs `bpp`); updated deprecated `torch.cuda.amp.autocast` API to `torch.amp.autocast`.
+
+### Added — Honest zero-shot transfer benchmark (operator vs retrained CNN)
+
+- New CI-gated `transfer_baseline_compare` PoC scenario replacing the **fabricated**
+  "Zero-shot Transfer MSE 0.000209, 240× better than threshold" headline (a hardcoded
+  notebook markdown cell no code ever computed). `src/experiments/cnn_baseline.py`
+  (`DiscreteCNNBaseline` discrete foil), `src/research/transfer_baseline_compare.py`
+  (median-over-seeds harness), `src/poc/scenarios/transfer_baseline_compare{,_config}.py`,
+  `scripts/run_transfer_baseline_compare.py`, `specs/transfer_baseline_compare.spec.md`.
+- **Honest measured result** (committed `config/baselines/transfer_ci.json`,
+  `results/transfer_baseline_compare.{csv,png}`): the resolution-independent operator
+  transfers zero-shot (19×19 MSE ≈ 2.3e-3, trained only at 9×9) but a discrete CNN —
+  retrained *or even applied zero-shot* — is more accurate. The operator's value is
+  **zero-retraining (one model at any resolution), not peak accuracy**. The gated ratio is
+  committed as a regression ceiling, not a false `< 1` win claim.
+- Every headline number now comes from one real (median-ranked) seed, so dividing the
+  committed absolutes reproduces the committed ratio exactly. Shared
+  `src/research/seed_sweep.py` de-duplicates the seed-derivation between the transfer and
+  L-shape harnesses. Per-module branch coverage ≥ 92% (cnn 100%, harness 98%, config 98%,
+  scenario 92%); new `transfer-baseline-regression` CI job (soft-gated) diffs the tripwire
+  run against the committed baseline.
+
+### Removed — Cut to the research core (6 application modules, ~72k LOC)
+
+- `git rm` of `src/{video_compression,reentry,vertex,intercept,firefighting,thermo}` and
+  their test trees / scripts / configs / docs to refocus the repo on the Galerkin + MCTS
+  core (pre-cut tag `archive/pre-core-cut-2026-07-22`). All six were import-safe (nothing in
+  the keep-set imported them). The `thermo` λ-window negative-result ablation is preserved in
+  git history. Companion cleanup: removed the `video`/`requires_video` pytest markers, the
+  `vertex` packaging extra, the codec-perf CI workflow, and pruned the C4 architecture
+  diagrams, `AGENT.md`, and `CLAUDE.md` of the deleted subsystems.
+
+### Changed — Prior-art review + SBIR reframe
+
+- `docs/proposals/PRIOR_ART_REVIEW.md`: the narrow MCTS-Galerkin-basis-selection delta
+  survives, but the blanket "no MCTS + FEM" claim does **not** (TreeMesh, arXiv:2111.07613,
+  couples MCTS + RL with FE mesh generation). SBIR positioning reframed to the method delta
+  at matched wall-clock, not a demonstrated accuracy win.
+
+### Fixed — Single-agent MCTS backup (F0, correctness) + reward wiring (F1)
+
+- **F0 — single-agent backup.** `MCTSNode.backup` unconditionally negated the backed-up value at
+  every tree level (a two-player assumption), while `select_child` maximises `Q + exploration` at
+  every depth. For single-agent games (`n_players == 1`: every PDE / refinement game) this made the
+  search *minimise* value at odd depths. Fixed by routing the sign flip through a new
+  `src.mcts.search.SearchMode` (`SINGLE_AGENT` / `ZERO_SUM` / `LEGACY_ADVERSARIAL`);
+  `MCTSNode.backup(value, invert)` now takes the flag explicitly. **Backwards compatible:** the
+  `MCTS.__init__` default is `ZERO_SUM` (byte-for-byte the old two-player backup), so Go/chess are
+  unchanged; single-agent callers pass `SINGLE_AGENT`. `LEGACY_ADVERSARIAL` (deprecated, warns) exists
+  only to reproduce pre-fix results.
+- **L-shape headline corrected & republished.** The `lshape_amr_compare` MCTS arm now defaults to
+  `search_mode="single_agent"`. Re-running the canonical config over the same 5 seeds:
+  `legacy_adversarial` (pre-fix) → median L2 ratio **0.8896** (~11% win); `single_agent` (corrected)
+  → **0.9605** (~4% win), win fraction 0.80 in both. Still a win at matched DOF (primary gate passes),
+  but a **smaller, honest** one. `results/lshape_mcts_vs_dorfler.{csv,png}` regenerated under the
+  corrected mode; `specs/lshape_amr_compare.spec.md` AC3 documents both numbers.
+- **F1 — reward reachability.** `PDEGame.get_reward` (previously abstract with zero `src/` call sites)
+  is now reachable through MCTS behind an opt-in `MCTS(use_intermediate_rewards=...)` flag (default
+  `False` → unchanged behaviour): `_simulate` accumulates `R = Σ γ^t · get_last_reward()` along the
+  selection path and backs up `R + γ^d · V(leaf)`. `PDEGameAdapter` gained `get_last_reward()`
+  implementing the optional `SupportsStepReward` protocol.
+- **Tests.** `tests/mcts/test_backup_modes.py` (sign-by-mode, the anchor
+  `test_single_agent_search_prefers_higher_value_at_all_depths` which fails on the inverting modes,
+  deprecation + reward-discount validation, intermediate-reward accumulation),
+  `tests/pde/test_reward_reachability.py` (get_reward invoked iff enabled), and
+  `tests/pde/test_clone_isolation.py` (F3 clone isolation across every concrete PDE game).
+
+### Fixed — Post-merge review hardening (PR #95 follow-up)
+
+- **`PDEGameAdapter.search_mode` property.** Since `MCTS.__init__` defaults to `SearchMode.ZERO_SUM`
+  for back-compat, a caller wrapping a raw `PDEGameAdapter` who forgot to pass `search_mode` would
+  silently get the pre-fix (wrong-for-single-agent) backup. The adapter now exposes a `search_mode`
+  property returning `SearchMode.SINGLE_AGENT`, mirroring `RefinementGameAdapter.search_mode`, so PDE
+  callers can wire `MCTS(search_mode=adapter.search_mode)`. Additive; nothing merged was incorrect
+  (the production `lshape_amr_compare` path already plumbs `search_mode` explicitly).
+- **`MCTS._read_step_reward` contract check.** A game exposing `get_last_reward` as a non-callable
+  attribute (float / property value) now raises a clear `TypeError` at the source of the contract
+  violation instead of a cryptic `'... is not callable'` deeper in the search loop.
+
+### Added — Domain-free refinement engine (`src/refinement/`) + λ-scheduling ablation (`src/thermo/`)
+
+- **`src/refinement/`** — the domain-agnostic `RefinementGame` engine (`RefinementState` +
+  `RefinementLike` protocol, `RefinementGameAdapter` → MCTS passing `SINGLE_AGENT`, generic
+  `RefinementGameConfig[TDomain]`, `@register_refinement_game`). `PDEState` gains additive
+  `to_refinement()`/`from_refinement()` converters (fields unchanged; existing PDE tests green).
+  85% branch gate; audit-clean.
+- **`src/thermo/`** — the first non-PDE `RefinementGame`: a λ-window (BAR/FEP) sample-scheduling
+  ablation. `LambdaSchedulingGame` (deterministic `apply_action`, monotone-under-allocate /
+  reachable-non-monotone-under-split), four `VarianceSurrogate`s (analytic / mismatched / recorded /
+  operator-stub), and a plan-in-surrogate / act-in-world comparison harness.
+- **NEGATIVE result (kill criterion triggered).** Untrained uniform-prior MCTS is **~2× worse** than
+  greedy variance-weighted allocation at every surrogate bias including zero — it over-splits and
+  fragments the sample budget. The thesis is falsified for this configuration; the code is retained
+  only as the falsification harness and **no capability is claimed**. Honest caveat: a purely
+  multiplicative surrogate bias is scale-invariant for allocation, so genuine mismatch needs shape
+  distortion — moot here since MCTS already loses at zero mismatch. Artifacts:
+  `results/lambda_scheduling.{png,csv}`; write-up in `specs/lambda_scheduling.spec.md`. CI gates the
+  mechanics (85% branch), not the losing headline.
+
+### Changed — Tech-debt hardening on the refinement/thermo surface
+
+- **Reward-scale confound fixed & negative result revalidated.** The MCTS intermediate-reward
+  return `R + γ^d·V(leaf)` mixed the order-`1e-3` shaped reward with an order-`1` terminal winner.
+  `LambdaSchedulingGame.get_winner` now returns **0** (neutral) for a non-converged terminal
+  (was `-1`), and the per-edge cost is keyed on the **window-count delta** (a split adds a window),
+  not on a DOF side-effect. Re-running leaves the verdict unchanged (ratio 2.00 → 2.05), so the
+  negative result is genuine over-splitting, not a reward-scale artifact. Spec + committed
+  `results/lambda_scheduling.{png,csv}` updated.
+- **Structured logging** (`structlog`) added to `src/refinement/adapter.py`,
+  `src/thermo/{surrogate,outer_loop}.py`, and `scripts/run_lambda_scheduling.py`, mirroring the
+  repo's event-logging convention.
+- **Typing escape hatches removed:** `OperatorSurrogate.predict_fn` and `run_bias_sweep.make_planner`
+  are now `Callable`-typed; the CLI builds its config via `model_validate`; the dead
+  `replace_params` helper (which carried a `type: ignore`) is deleted. Zero avoidable `type: ignore`
+  remain in the new src surface.
+- **Reuse:** `iterate_greedy/uniform/mcts` generators + `score_true_stderr` extracted in
+  `outer_loop`; the plot CLI now consumes them instead of re-implementing the scheduler loops.
+- **No hardcoded values:** `DEFAULT_NOISE_FREQUENCY`, `MIN_SPLIT_CHILD_SAMPLES`, `BUDGET_GRID_POINTS`
+  named; `RATIO_FLOOR` reused; `reward_discount` surfaced as a typed `LambdaSchedulingConfig` /
+  `SchedulingParams` field with a `(0, 1]` validator.
+- **Coverage:** new tests for the converged-winner / tolerance-terminal branch, split-vs-allocate
+  cost keying, zero-window infinite variance, the adapter's torch-tensor `get_state` path, empty
+  `from_refinement`, and the `reward_discount` validators. `src/thermo` 95% / `src/refinement` 99%
+  branch. `ruff` + `mypy --strict` clean; abstraction-audit clean.
+
+### Fixed — CI coverage job uses the pure-Python tracer
+
+- The installed torch wheel crashes coverage's default **C tracer** on `import torch._C`
+  (`ValueError: module functions cannot set METH_CLASS ...` / segfault), so the `Test Coverage` job
+  failed at collection. Set `COVERAGE_CORE=pytrace` on the coverage job (the remedy already
+  documented in CLAUDE.md) so the coverage gates actually run.
+
+### Added — Spec-driven agentic tooling + Noyron v2.2 (`specs/`, `.claude/`, `src/agents/`, `src/poc/scenarios/noyron_basis*`)
+
+Additive, backwards-compatible sprint across four workstreams:
+
+- **Spec-driven development (`specs/`)** — a markdown-only spec tree (`README.md`,
+  `TEMPLATE.spec.md`, and per-feature specs) whose thresholds reuse the canonical
+  `src.poc.config.MetricThreshold` (no parallel schema). Spec → tests → code → AQA →
+  regression-surface entry is now the documented workflow.
+- **`.claude/` project scaffolding** — committed shared Claude Code config so web/CLI sessions
+  can run the repo's checks: a SessionStart hook that bootstraps `pip install -e '.[dev]'`
+  (including the `SETUPTOOLS_USE_DISTUTILS=stdlib` fix for `antlr4-python3-runtime`),
+  `settings.json`, four skills (`spec-new`, `regression-surface`, `coverage-gate`,
+  `new-pde-operator`), five persona subagents, and three slash commands. Local artifacts
+  (`.claude/plans/`, `settings.local.json`) stay gitignored.
+- **`src/agents/` hardening** — new `src/agents/AGENT.md`; opt-in `BaseAgent` lifecycle hooks
+  (`pre/post_setup`, `pre/post_step`, default no-ops); opt-in wall-clock timeout gated on
+  `AgentConfig.enforce_timeout` (default `False` preserves behaviour; enabled →
+  `ExecutionStatus.TIMEOUT`); reusable `src/agents/scaffold.py` + `agents.cli scaffold` command.
+- **Noyron v2.2 — first MCTS-on-Noyron result** — new `noyron_basis` PoC scenario driving MCTS
+  Galerkin basis selection on the Leap 71 helical SDF operators via the existing
+  `pde_basis_helical` path, reusing the geometry-agnostic `_centaur_common` primitives. A
+  reusable `make_manufactured_operator` overlays a product-of-sines target so the homogeneous
+  helical operators yield a non-degenerate game. The default thresholds assert the provable
+  correctness property (`error_reduction_pct ≥ 0` monotone, bounded residual); the reduction
+  *magnitude* on 3D SDF geometry is limited by the current candidate basis library (~2–4 %) and
+  documented as an open research item. Per-arm medians are always recorded so results are never
+  vacuous.
+- **LLM-prior OOD expansion** — shipped `config/scenarios/llm_prior_{helmholtz,biharmonic}.yaml`
+  + AQA tests (operators already in the `ood_pde` Literal / `PDE_TYPE_MAP`).
+- **Known-issue closure** — SGF variation parsing marked RESOLVED (verified green); MCTS
+  rate-control skips documented as a Milestone 10 Phase 3 gate.
+
+Coverage: `agents/base.py` `config.py` `scaffold.py` 100 %; `noyron_basis.py` 97 %,
+`noyron_basis_config.py` 100 %. `ruff` + `mypy --strict` clean on the changed surface.
+
+### Added — LLM-Prior MCTS Basis Selection (`src/integrations/lm_studio/`, `src/poc/scenarios/llm_prior_ablation.py`, `src/poc/scenarios/llm_prior_config.py`, `config/scenarios/llm_prior_demo.yaml`)
+
 ### Changed — Noyron HX headline calibrated to measured numbers (`src/poc/config_noyron.py`, `config/scenarios/noyron_hx.yaml`, `README.md`)
 
 End-to-end GPU verification on a Blackwell rig (RTX 5060 Ti) showed the previously documented YAML defaults could not hit the previously documented success criteria. Recalibrated to the measured achievable floor at the YAML-default surrogate size; the headline claim shifts from "tight absolute MSEs" to "essentially perfect resolution-independent transfer".
@@ -20,6 +196,81 @@ End-to-end GPU verification on a Blackwell rig (RTX 5060 Ti) showed the previous
 ### Decision — DDP wiring for `NoyronHXScenario` deferred (`docs/architecture/c4_mermaid.md`)
 
 - Recorded as a permanent architecture note in the C4 PoC Framework section: per-GPU utilization during the headline run is 1–10% on a Blackwell card. Bottleneck is per-step Adam overhead and Python/CUDA launch latency, not compute. Adding `DistributedDataParallel` would put NCCL all-reduce on the critical path of every step and slow training, not speed it up. Concrete revisit thresholds documented (`n_train_pts ≥ 100k`, `d_model ≥ 512`, or `batch_size ≥ 32`).
+
+- **NS-FDM Taylor-Green parity** — fixed numpy/torch asymmetry in
+  `NavierStokesOperator.exact_solution` (numpy branch had `cos(x)*cos(y)`
+  instead of `sin(x)*cos(y)` for `uy`). Single-line fix at
+  [src/pde/operators.py:1189](src/pde/operators.py:1189) corrects three
+  metrics simultaneously: the FDM IC, the FDM L2 reference, and the PINN
+  L2 evaluation (all routed through the numpy branch). The torch branch
+  was always correct, so PINN training was unaffected — only post-hoc
+  evaluation was corrupted. New
+  `tests/pde/test_taylor_green_invariants.py` asserts elementwise
+  numpy/torch agreement to guard against the drift recurring.
+- **Dörfler AMR escapes the 18-DOF ceiling** — `AMRConfig` defaults
+  raised so 1D refinement on smooth Burgers (Cole-Hopf shock indicator
+  is sharply concentrated) reaches meaningful DOF counts:
+  `marking_fraction` 0.3 → **0.5**, `max_refinements` 10 → **30**,
+  `max_initial_points_1d` 8 → **256**, `initial_dof_divisor` 4 → **2**.
+  The `_solve_amr_1d` `n_start` formula is now target-aware:
+  `n_start = max(min(n_dof // 2, max_initial_points_1d), min_initial_points)`.
+  New regression test
+  `TestDorflerAMRSolver.test_dorfler_amr_1d_reaches_meaningful_dof`
+  parametrised across `target_dof ∈ {128, 512, 2048}` ensures the
+  algorithm never collapses back to the 18-DOF bug and that n_dof
+  scales with the request.
+- **Canonical PINN respects `device` + auto-detects vector PDEs** —
+  `PINNConfig` gains `device: str = "auto"` (per CLAUDE.md GPU-preferred
+  policy) and `vector_pde: bool | None = None`.
+  `SimplePINNSolver.solve()` honours both: device resolution flows
+  through `src.poc.device.resolve_device` (extended to support
+  indexed `cuda:N` strings with bounds checking), and Navier-Stokes
+  operators auto-build a 2-channel network with per-component
+  Laplacian residual. The previous hard-coded
+  `device = torch.device("cpu")` is gone.
+  `_build_network(input_dim, output_dim=1)` now accepts an output
+  dimension. Metadata round-trip includes `device`, `vector_pde`,
+  `n_collocation`, and the new `gpu_profile` block.
+- **GPU utilisation profiler** — new
+  [src/research/gpu_profiler.py](src/research/gpu_profiler.py) provides
+  a `GpuUtilizationProfiler` context manager wrapping `nvidia-smi dmon`.
+  Spawns the dmon subprocess on `__enter__`, terminates and parses on
+  `__exit__`, returns a `GpuUtilizationReport` (mean SM-util %, mean
+  memory-util %, peak FB-memory MiB) which `SimplePINNSolver` embeds in
+  `SolverResult.metadata["gpu_profile"]`. Skips silently when
+  `nvidia-smi` is missing (CI on no-GPU hosts). All numerical literals
+  surfaced as named module constants
+  (`_DMON_COL_GPU=0`, `_DMON_COL_SM_PCT=4`, `_DMON_COL_MEM_PCT=5`,
+  `_DMON_COL_FB_MEM_MIB=8`, `_DMON_MIN_COLUMNS=6`,
+  `_DEFAULT_TERMINATE_TIMEOUT_S=5.0`); `terminate_timeout_s` is a
+  configurable constructor field.
+- **`PDEBenchmarkRunner` `--heavy` opt-in** — extra refinement levels
+  (e.g. 65 536-DOF Poisson for the P40's 24 GiB advantage) live under
+  `heavy_refinement_levels` in the YAML and are appended only when the
+  runner is constructed with `heavy=True` (or
+  `run_sbir_demo --heavy`). Default behaviour is unchanged so CI
+  smoke tests stay fast.
+- **`scripts/run_sbir_p40.py` rewritten as a config-driven CLI** — the
+  previous 260-line subclass-based fork is gone. New shape: small
+  argparse-driven driver that loads
+  `config/benchmarks/sbir_p40.yaml` (PINN profiles for `p40` and `cpu`
+  rows, baselines, benchmarks). Surfaced overrides:
+  `--config`, `--output-dir`, `--device`, `--n-epochs`,
+  `--n-collocation`, `--refinement-levels`, `--skip-cpu`,
+  `--require-cuda`. Helper functions (`load_config`, `apply_overrides`,
+  `apply_benchmark_overrides`, `filter_baselines`, `build_pinn_config`,
+  `register_pinn_profiles`, `_make_pinn_class`) are all individually
+  unit-tested via
+  `tests/scripts/test_run_sbir_p40.py`. Zero hardcoded numerics in the
+  script body.
+- **Coverage on the changed surface** — 95% branch+line coverage across
+  the four affected `src/` modules
+  (`gpu_profiler.py` 96%, `baselines.py` 95%, `pde_benchmarks.py` 94%,
+  `poc/device.py` 100%); 1131 tests pass on `tests/research/` +
+  `tests/pde/` + `tests/scripts/test_run_sbir_p40.py` with the global
+  85% gate met (project total 94.84% on the changed module set).
+  `ruff check` + `ruff format --check` clean on every edited file.
+### Added — Codec Model Zoo Phase 2-D (`src/video_compression/zoo/sweep.py`, `scripts/train_compression_zoo.py`)
 
 ### Fixed — Noyron HX YAML loader dispatch (`src/poc/config.py`)
 
@@ -298,7 +549,7 @@ Key highlights of this release:
 ### Milestones Achieved
 
 - **Zero-Shot Transfer Validated**: Physics PoC demonstrated resolution-independence
-  - Trained on 9x9 grids, achieved MSE 0.000209 on 19x19 grids (240x better than 0.05 threshold)
+  - Trained on 9x9 grids, transfers zero-shot to 19x19 (measured MSE ≈ 0.00039). NOTE: the original "0.000209 / 240× better than threshold" was a fabricated notebook figure — corrected 2026-07-22; a CNN retrained at 19x19 is more accurate (see `specs/transfer_baseline_compare.spec.md`).
   - Validates core Galerkin approach for continuous operator learning
 
 - **Training Pipeline Operational**: End-to-end training with self-play working on GPU

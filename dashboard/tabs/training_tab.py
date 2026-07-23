@@ -308,14 +308,26 @@ def show_loss_breakdown(
         )
         ax.add_patch(rect)
         ax.text(
-            cx, 0.82, title,
-            transform=ax.transAxes, ha="center", va="top",
-            fontsize=11, fontweight="bold", color=color,
+            cx,
+            0.82,
+            title,
+            transform=ax.transAxes,
+            ha="center",
+            va="top",
+            fontsize=11,
+            fontweight="bold",
+            color=color,
         )
         ax.text(
-            cx, 0.60, body,
-            transform=ax.transAxes, ha="center", va="top",
-            fontsize=9, color="#333333", multialignment="center",
+            cx,
+            0.60,
+            body,
+            transform=ax.transAxes,
+            ha="center",
+            va="top",
+            fontsize=9,
+            color="#333333",
+            multialignment="center",
         )
 
     for x in [0.30, 0.63]:
@@ -327,8 +339,16 @@ def show_loss_breakdown(
             textcoords="axes fraction",
             arrowprops={"arrowstyle": "->", "color": "#666666", "lw": 1.5},
         )
-        ax.text(x, 0.47, "+", transform=ax.transAxes,
-                ha="center", va="center", fontsize=16, color="#666666")
+        ax.text(
+            x,
+            0.47,
+            "+",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=16,
+            color="#666666",
+        )
 
     plt.tight_layout()
     img = fig_to_pil(fig, dpi=plot_dpi)
@@ -369,20 +389,31 @@ def create_training_tab(cfg: TrainingConfig | None = None) -> None:
                 with gr.Row():
                     with gr.Column(scale=1):
                         m_dmodel = gr.Slider(
-                            cfg.d_model_min, cfg.d_model_max,
-                            value=cfg.d_model_default, step=cfg.d_model_step, label="d_model",
+                            cfg.d_model_min,
+                            cfg.d_model_max,
+                            value=cfg.d_model_default,
+                            step=cfg.d_model_step,
+                            label="d_model",
                         )
                         m_galerkin = gr.Slider(
-                            cfg.galerkin_layers_min, cfg.galerkin_layers_max,
-                            value=cfg.galerkin_layers_default, step=1, label="Galerkin layers",
+                            cfg.galerkin_layers_min,
+                            cfg.galerkin_layers_max,
+                            value=cfg.galerkin_layers_default,
+                            step=1,
+                            label="Galerkin layers",
                         )
                         m_softmax = gr.Slider(
-                            cfg.softmax_layers_min, cfg.softmax_layers_max,
-                            value=cfg.softmax_layers_default, step=1, label="Softmax layers",
+                            cfg.softmax_layers_min,
+                            cfg.softmax_layers_max,
+                            value=cfg.softmax_layers_default,
+                            step=1,
+                            label="Softmax layers",
                         )
                         m_fourier = gr.Slider(
-                            cfg.fourier_min, cfg.fourier_max,
-                            value=cfg.fourier_default, step=cfg.fourier_step,
+                            cfg.fourier_min,
+                            cfg.fourier_max,
+                            value=cfg.fourier_default,
+                            step=cfg.fourier_step,
                             label="Fourier features",
                         )
                         m_btn = gr.Button("Compute Architecture Summary", variant="primary")
@@ -418,21 +449,33 @@ def create_training_tab(cfg: TrainingConfig | None = None) -> None:
                 with gr.Row():
                     with gr.Column(scale=1):
                         t_steps = gr.Slider(
-                            cfg.steps_min, cfg.steps_max,
-                            value=cfg.steps_default, step=cfg.steps_step, label="Total steps",
+                            cfg.steps_min,
+                            cfg.steps_max,
+                            value=cfg.steps_default,
+                            step=cfg.steps_step,
+                            label="Total steps",
                         )
                         t_lr = gr.Number(value=cfg.default_lr, label="Peak learning rate")
                         t_pw = gr.Slider(
-                            0.1, 2.0, value=cfg.default_policy_weight,
-                            step=0.1, label="Policy weight",
+                            0.1,
+                            2.0,
+                            value=cfg.default_policy_weight,
+                            step=0.1,
+                            label="Policy weight",
                         )
                         t_vw = gr.Slider(
-                            0.1, 2.0, value=cfg.default_value_weight,
-                            step=0.1, label="Value weight",
+                            0.1,
+                            2.0,
+                            value=cfg.default_value_weight,
+                            step=0.1,
+                            label="Value weight",
                         )
                         t_lw = gr.Slider(
-                            0.0, 1.0, value=cfg.default_lbb_weight,
-                            step=0.05, label="LBB weight",
+                            0.0,
+                            1.0,
+                            value=cfg.default_lbb_weight,
+                            step=0.05,
+                            label="LBB weight",
                         )
                         t_btn = gr.Button("Generate Training Curves", variant="primary")
                     with gr.Column(scale=2):

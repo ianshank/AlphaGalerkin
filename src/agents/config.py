@@ -130,6 +130,16 @@ class AgentConfig(BaseModuleConfig):
         lt=1.0,
         description="Relative error change below which a solver is considered stalled",
     )
+    enforce_timeout: bool = Field(
+        default=False,
+        description=(
+            "Opt-in wall-clock timeout enforcement in BaseAgent.run(). When "
+            "False (the backwards-compatible default) the run loop never checks "
+            "the clock, preserving historical behaviour. When True, a run that "
+            "exceeds 'timeout_seconds' (inherited from BaseModuleConfig) stops "
+            "with ExecutionStatus.TIMEOUT instead of running unbounded."
+        ),
+    )
 
 
 class SolverAgentConfig(AgentConfig):

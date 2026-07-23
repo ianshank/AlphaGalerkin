@@ -53,7 +53,9 @@ class ExperimentRun:
         for name, values in self.metrics.items():
             if values:
                 self.final_metrics[f"{name}_final"] = values[-1]
-                self.final_metrics[f"{name}_best"] = min(values) if "loss" in name.lower() else max(values)
+                self.final_metrics[f"{name}_best"] = (
+                    min(values) if "loss" in name.lower() else max(values)
+                )
                 self.final_metrics[f"{name}_mean"] = sum(values) / len(values)
 
     def fail(self, error: str) -> None:
@@ -298,7 +300,9 @@ class Experiment:
                 return run.final_metrics[f"{metric}_final"]
             return float("inf") if minimize else float("-inf")
 
-        return min(completed_runs, key=get_value) if minimize else max(completed_runs, key=get_value)
+        return (
+            min(completed_runs, key=get_value) if minimize else max(completed_runs, key=get_value)
+        )
 
     def save(self, path: Path | str | None = None) -> Path:
         """Save experiment state.

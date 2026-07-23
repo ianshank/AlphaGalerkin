@@ -24,7 +24,7 @@ The following are protected as trade secrets and should NOT be published:
 - **What**: Galerkin attention mechanism enabling zero-shot transfer between grid resolutions
 - **Key files**: `src/modeling/model.py`, `src/modeling/attention.py`
 - **Claims focus**: Q(K^T V) formulation with Monte Carlo normalization, LBB stability enforcement
-- **Supporting data**: MSE 0.000209 on 19x19 (trained on 9x9)
+- **Supporting data**: zero-shot MSE ≈ 4e-4 on 19x19 (trained on 9x9, measured; a retrained CNN is more accurate — the claim is zero-retraining transfer, not peak accuracy; `specs/transfer_baseline_compare.spec.md`)
 
 ### Claim 3: LBB-Stabilized Neural Attention Training
 **Title**: "Training Method for Neural Attention Networks with Inf-Sup Stability Guarantees"

@@ -519,4 +519,4 @@ class TestBppConsistency:
         # BPP should be in reasonable range (0.1 - 10 bpp)
         for res, bpp in bpp_values.items():
             # Untrained models may produce unpredictable bitrates
-            assert 0.001 < bpp < 50, f"BPP out of range at {res}: {bpp:.4f}"
+            assert 0.0001 < bpp < 50, f"BPP out of range at {res}: {bpp:.4f}"

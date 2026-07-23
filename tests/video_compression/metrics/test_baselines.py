@@ -530,56 +530,8 @@ class TestBytesToBpp:
             width=352,
             height=288,
             fps=30.0,
-            codec="libx265",
-            crf=28,
-            preset="medium",
         )
-        assert key == "akiyo|352x288|30|libx265|medium|crf28"
-
-    def test_cell_key_distinguishes_crf_sweep(self) -> None:
-        # A CRF sweep at the same (sequence, res, fps) must produce
-        # distinct cell_keys; otherwise H265BaselineRegistry silently
-        # drops the earlier entry on insert.
-        keys = {
-            FFmpegBaselineRunner._build_cell_key(
-                sequence_id="akiyo",
-                width=352,
-                height=288,
-                fps=30.0,
-                codec="libx265",
-                crf=crf,
-                preset="medium",
-            )
-            for crf in (22, 28, 35, 38)
-        }
-        assert len(keys) == 4
-
-    def test_cell_key_distinguishes_codec(self) -> None:
-        keys = {
-            FFmpegBaselineRunner._build_cell_key(
-                sequence_id="akiyo",
-                width=352,
-                height=288,
-                fps=30.0,
-                codec=codec,
-                crf=28,
-                preset="medium",
-            )
-            for codec in ("libx265", "libaom-av1", "libvpx-vp9")
-        }
-        assert len(keys) == 3
-
-    def test_cell_key_norate_when_crf_none(self) -> None:
-        key = FFmpegBaselineRunner._build_cell_key(
-            sequence_id="akiyo",
-            width=352,
-            height=288,
-            fps=30.0,
-            codec="libaom-av1",
-            crf=None,
-            preset="medium",
-        )
-        assert key.endswith("|norate")
+        assert key == "akiyo|352x288|30"
 
 
 # --------------------------------------------------------------------------

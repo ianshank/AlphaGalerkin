@@ -5,6 +5,11 @@
 .git/
 .github/
 
+# Developer tooling / docs not needed in the runtime image
+.claude/
+specs/
+docs/
+
 # Python caches
 __pycache__/
 *.py[cod]
@@ -58,6 +63,7 @@ checkpoints/
 # Outputs and reports
 outputs/
 reports/
+bd_rate_report.json
 wandb/
 runs/
 lightning_logs/
@@ -91,8 +97,6 @@ desktop.ini
 *service-account*.json
 *service_account*.json
 
-# Video test materials
-Test_Video_Materals/
 validation_outputs/
 
 # Benchmark artifacts

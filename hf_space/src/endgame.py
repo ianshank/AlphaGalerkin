@@ -13,6 +13,7 @@ import structlog
 
 if TYPE_CHECKING:
     from config.board import EndgameConfig
+
     from src.tools.gtp import SimpleGoGame
 
 logger = structlog.get_logger(__name__)
@@ -84,7 +85,7 @@ class EndgameDetector:
         """
         # Calculate board fill metrics
         empty_count = int((game.board == game.EMPTY).sum())
-        total = game.board_size ** 2
+        total = game.board_size**2
         fill_ratio = 1.0 - (empty_count / total) if total > 0 else 0.0
 
         should_pass = False
@@ -144,7 +145,7 @@ class EndgameDetector:
             True if mcts_action should be overridden to pass.
 
         """
-        pass_action = game.board_size ** 2
+        pass_action = game.board_size**2
 
         # If MCTS already chose pass, no override needed
         if mcts_action == pass_action:
@@ -174,4 +175,4 @@ class EndgameDetector:
             Action index representing pass.
 
         """
-        return board_size ** 2
+        return board_size**2

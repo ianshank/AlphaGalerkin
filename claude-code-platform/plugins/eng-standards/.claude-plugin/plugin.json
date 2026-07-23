@@ -1,0 +1,8 @@
+{
+  "name": "eng-standards",
+  "version": "0.1.0",
+  "description": "House engineering standards: Python DI/config/testing skills, standards-compliance review agents, and a warn-only quality hook.",
+  "author": {
+    "name": "Ian Shank"
+  }
+}

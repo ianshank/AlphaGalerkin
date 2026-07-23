@@ -275,6 +275,7 @@ class ModelBuilder:
         Creates a simple placeholder model for testing.
         Real implementations should override this.
         """
+
         # Create a simple mock model for prototyping
         class SimpleMockModel:
             def __init__(self, config: PrototypeConfig) -> None:

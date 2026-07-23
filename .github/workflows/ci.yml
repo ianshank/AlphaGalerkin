@@ -24,6 +24,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: jobs only need to read the repository (no writes to contents,
+# issues, PRs, etc.). Individual jobs can widen this if they ever need to.
+permissions:
+  contents: read
+
 env:
   PYTHON_VERSION: "3.11"
   PYTHONUNBUFFERED: "1"
@@ -59,7 +64,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff
+          # Pin ruff: an unpinned install pulls a newer ruff whose default
+          # `ruff format` now formats Markdown (the feature graduated from
+          # preview), reformatting embedded code blocks in *.md docs and
+          # breaking this gate on files unrelated to the change under review.
+          # Keep this aligned with the `ruff` pin in pyproject.toml [dev].
+          pip install "ruff==0.15.8"
           # Pin mypy + pydantic for plugin compatibility
           pip install "mypy>=1.10,<1.12" "pydantic>=2.7,<2.10"
           # Install minimal deps for type checking
@@ -72,8 +82,8 @@ jobs:
         run: ruff format src/ tests/ --check
 
       - name: Run MyPy type checking
-        # Informational: pre-existing codebase has type errors in video_compression/,
-        # distributed/, modeling/ that require incremental refactoring.
+        # Informational: pre-existing codebase has type errors in distributed/,
+        # modeling/ that require incremental refactoring.
         # Ruff check + format are the hard quality gates.
         # Track progress: mypy errors should decrease over time.
         continue-on-error: true
@@ -121,15 +131,13 @@ jobs:
       - name: Run fast unit tests
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not video and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required" \
             --tb=short \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \
-            --ignore=tests/video_compression/ \
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
-            --ignore=tests/vertex/ \
             --ignore=tests/distributed/test_multiprocess.py \
             --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
@@ -234,6 +242,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint
+    # The installed torch wheel crashes coverage's default C tracer on import
+    # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
+    # pure-Python tracer, as documented in CLAUDE.md, so the coverage gates run.
+    env:
+      COVERAGE_CORE: pytrace
 
     steps:
       - name: Checkout repository
@@ -254,14 +267,12 @@ jobs:
       - name: Run tests with coverage
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not video and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required" \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \
-            --ignore=tests/video_compression/ \
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
-            --ignore=tests/vertex/ \
             --ignore=tests/distributed/test_multiprocess.py \
             --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
@@ -288,6 +299,21 @@ jobs:
         if: always() && hashFiles('tests/pde/') != ''
         run: |
           pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
+
+      # First per-module gate for the MCTS engine (branch): it was previously
+      # covered only by the global --cov=src gate, and it is now known to have
+      # contained a correctness bug (single-agent backup, F0). Branch coverage
+      # is currently 96%.
+      - name: Per-module coverage gate (mcts)
+        if: always() && hashFiles('tests/mcts/') != ''
+        run: |
+          pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
+
+      # Domain-free refinement engine (WS1). Branch coverage currently 96%.
+      - name: Per-module coverage gate (refinement)
+        if: always() && hashFiles('tests/refinement/') != ''
+        run: |
+          pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (modeling)
         if: always() && hashFiles('tests/modeling/') != ''
@@ -319,20 +345,81 @@ jobs:
         run: |
           pytest tests/physics/ --cov=src/physics --cov-fail-under=75 -q --no-header
 
+      # Gates previously documented in CLAUDE.md's Regression Surface table but
+      # never wired into CI. Each mirrors the documented Verification command.
+      - name: Per-module coverage gate (alphagalerkin)
+        if: always() && hashFiles('tests/alphagalerkin/') != ''
+        run: |
+          pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85 -q --no-header
+
       - name: Per-module coverage gate (analysis)
         if: always() && hashFiles('tests/analysis/') != ''
         run: |
           pytest tests/analysis/ --cov=src/analysis --cov-fail-under=85 -q --no-header
 
-      - name: Per-module coverage gate (reentry)
-        if: hashFiles('tests/reentry/') != ''
+      - name: Per-module coverage gate (integrations/lm_studio)
+        if: always() && hashFiles('tests/integrations/') != ''
         run: |
-          pytest tests/reentry/ --cov=src/reentry --cov-fail-under=85 -q --no-header
+          pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
+            tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" \
+            --cov=src/integrations/lm_studio \
+            --cov=src/poc/scenarios/llm_prior_ablation.py \
+            --cov=src/poc/scenarios/llm_prior_config.py \
+            --cov-branch --cov-fail-under=85 -q --no-header
 
-      - name: Per-module coverage gate (firefighting)
-        if: hashFiles('tests/firefighting/') != ''
+      - name: Per-module coverage gate (integrations/openai_compat)
+        if: always() && hashFiles('tests/integrations/test_backend_registry.py') != ''
         run: |
-          pytest tests/firefighting/ --cov=src/firefighting --cov-fail-under=85 -q --no-header
+          pytest tests/integrations/test_backend_registry.py \
+            --cov=src/integrations/openai_compat --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (poc/baselines)
+        if: always() && hashFiles('tests/poc/test_scenario_baselines.py') != ''
+        run: |
+          pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
+            --cov=src/poc/baselines --cov-branch --cov-fail-under=85 -q --no-header
+
+      # NOTE: these two gates use the native coverage runner with path-glob
+      # --include rather than pytest-cov's dotted --cov=module.path. The dotted
+      # form makes coverage import the target module during tracer setup, which
+      # collides with the torch C extension (SystemError: bad call flags), even
+      # under COVERAGE_CORE=pytrace. The native runner with path globs measures
+      # the same modules without importing them for source discovery.
+      - name: Per-module coverage gate (poc/scaling_law + centaur-common)
+        if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
+            -m pytest tests/poc/test_scaling_law_config.py tests/poc/test_scaling_law_scenario.py \
+            tests/poc/test_centaur_common.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
+            --fail-under=85
+
+      - name: Per-module coverage gate (agents/research_loop + config)
+        if: always() && hashFiles('tests/agents/test_research_loop.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
+            -m pytest tests/agents/test_research_loop.py tests/agents/test_config.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
+            --fail-under=85
+
+      # Path-glob --include (not dotted --cov) to avoid the torch C-extension
+      # collision during tracer source discovery, matching the two gates above.
+      - name: Per-module coverage gate (transfer_baseline_compare)
+        if: always() && hashFiles('tests/research/test_transfer_baseline_compare.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/research/transfer_baseline_compare.py,*/src/experiments/cnn_baseline.py,*/src/poc/scenarios/transfer_baseline_compare.py,*/src/poc/scenarios/transfer_baseline_compare_config.py" \
+            -m pytest tests/research/test_transfer_baseline_compare.py \
+            tests/poc/test_transfer_baseline_compare_config.py \
+            tests/poc/test_transfer_baseline_compare_scenario.py \
+            tests/experiments/test_cnn_baseline.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/research/transfer_baseline_compare.py,*/src/experiments/cnn_baseline.py,*/src/poc/scenarios/transfer_baseline_compare.py,*/src/poc/scenarios/transfer_baseline_compare_config.py" \
+            --fail-under=85
 
       - name: Upload coverage to Codecov
         if: always()
@@ -391,38 +478,6 @@ jobs:
             -q
 
   # ============================================================
-  # Stage 7: Video Compression Tests (Optional - requires more resources)
-  # ============================================================
-  test-video:
-    name: Video Compression Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    needs: test-fast
-    if: contains(github.event.head_commit.message, '[video-test]') || github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-
-      - name: Run video compression tests
-        run: |
-          pytest tests/video_compression/ \
-            -m "not gpu_required" \
-            --tb=short \
-            -q
-
-  # ============================================================
   # Stage 8: Chess Pipeline Tests
   # ============================================================
   test-chess:
@@ -468,6 +523,51 @@ jobs:
             -v
 
   # ============================================================
+  # Stage 8: Optional-dependency test suites
+  # ------------------------------------------------------------
+  # These suites used pytest.importorskip and skipped SILENTLY in the default
+  # matrix because their deps are not in [dev]. Installing [test-extras] makes
+  # them actually execute (FEM baseline, ONNX export/validate, PettingZoo)
+  # instead of masking those paths as "passing".
+  # ============================================================
+  test-extras:
+    name: Optional-Dependency Suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test-fast
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,test-extras]"
+
+      # Verified green locally with scikit-fem + pettingzoo installed.
+      - name: Run FEM baseline + PettingZoo suites
+        run: |
+          pytest tests/research/test_fem_baseline.py \
+            tests/games/test_pettingzoo_adapter.py \
+            --tb=short -q
+
+      # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
+      # which these tracer-based tests do not target (src/deployment/export_onnx.py
+      # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the
+      # suites RUN and their result is visible, without gating the pipeline on a
+      # torch-version-default until export_onnx.py pins the legacy path.
+      - name: Run ONNX export/validate suites
+        continue-on-error: true
+        run: |
+          pytest tests/deployment/test_export_onnx_integration.py \
+            tests/integration/test_onnx_e2e.py \
+            --tb=short -q
+
+  # ============================================================
   # Performance Benchmark
   # ============================================================
   benchmark:
@@ -500,22 +600,75 @@ jobs:
           retention-days: 30
 
   # ============================================================
+  # Honest zero-shot transfer regression tripwire
+  # ============================================================
+  # Runs the CPU CI-tripwire config and diffs the stable headline metrics against the
+  # committed baseline (config/baselines/transfer_ci.json). The job goes red on a gross
+  # regression (direction-aware, 40% tolerance absorbs cross-runner BLAS drift), so a
+  # broken operator/CNN arm is visible. It is reported SOFTLY in ci-success (not a hard
+  # merge block) until its cross-runner stability is characterised — promote to a
+  # required gate afterwards.
+  transfer-baseline-regression:
+    name: Transfer Baseline Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lint
+    permissions:
+      contents: read
+    env:
+      COVERAGE_CORE: pytrace
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run CI-tripwire benchmark and diff vs committed baseline
+        run: |
+          python -m scripts.run_transfer_baseline_compare \
+            --config config/scenarios/transfer_baseline_compare_ci.yaml \
+            --baseline config/baselines/transfer_ci.json \
+            --output-dir outputs/transfer_ci --log-level WARNING
+      - name: Upload transfer benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transfer-baseline-results
+          path: results/transfer_baseline_compare.*
+          retention-days: 30
+
+  # ============================================================
   # Final Status Check
   # ============================================================
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage]
+    needs: [lint, test-fast, coverage, transfer-baseline-regression]
     if: always()
 
     steps:
       - name: Check required jobs passed
         run: |
           echo "=== CI Gate Results ==="
-          echo "  lint:      ${{ needs.lint.result }}"
-          echo "  test-fast: ${{ needs.test-fast.result }}"
-          echo "  coverage:  ${{ needs.coverage.result }}"
+          echo "  lint:                        ${{ needs.lint.result }}"
+          echo "  test-fast:                   ${{ needs.test-fast.result }}"
+          echo "  coverage:                    ${{ needs.coverage.result }}"
+          echo "  transfer-baseline (soft):    ${{ needs.transfer-baseline-regression.result }}"
           echo "======================="
+
+          # Soft (informational) gate: report but do not block on the transfer
+          # regression tripwire until its cross-runner stability is characterised.
+          if [[ "${{ needs.transfer-baseline-regression.result }}" != "success" ]]; then
+            echo "NOTE: transfer-baseline regression tripwire is non-green (soft, non-blocking)."
+          fi
 
           # Required gates: lint must pass
           if [[ "${{ needs.lint.result }}" != "success" ]]; then

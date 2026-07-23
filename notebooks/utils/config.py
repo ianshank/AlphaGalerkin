@@ -7,11 +7,12 @@ All demo parameters are configurable through DemoConfig.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 try:
     import structlog
+
     logger = structlog.get_logger(__name__)
 except ImportError:
     # Fallback to standard logging if structlog not available
@@ -102,6 +103,7 @@ class DemoConfig:
     Note:
         seq_lengths is auto-computed from board_sizes if not explicitly provided.
         If you provide custom seq_lengths, it must have the same length as board_sizes.
+
     """
 
     # Board sizes for demonstrations

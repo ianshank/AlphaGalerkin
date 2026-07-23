@@ -159,9 +159,7 @@ class PDEConfig(BaseModuleConfig):
             if lo >= hi:
                 raise ValueError(f"Domain dimension {i}: min ({lo}) >= max ({hi})")
         if self.is_time_dependent and self.time_start >= self.time_end:
-            raise ValueError(
-                f"time_start ({self.time_start}) >= time_end ({self.time_end})"
-            )
+            raise ValueError(f"time_start ({self.time_start}) >= time_end ({self.time_end})")
         return self
 
 

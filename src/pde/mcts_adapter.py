@@ -24,8 +24,10 @@ Usage::
     pde_game = BasisSelectionGame(operator, game_config)
     adapter = PDEGameAdapter(pde_game)
 
-    evaluator = RandomEvaluator(action_size=pde_game.action_space_size)
-    mcts = MCTS(evaluator=evaluator, n_simulations=50)
+    evaluator = RandomEvaluator(n_actions=pde_game.action_space_size)
+    # A PDE game is single-agent: pass ``adapter.search_mode`` so MCTS does not
+    # invert the value on backup (the MCTS default is the two-player ZERO_SUM).
+    mcts = MCTS(evaluator=evaluator, n_simulations=50, search_mode=adapter.search_mode)
     policy = mcts.search(adapter)
 """
 
@@ -37,6 +39,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import structlog
 from numpy.typing import NDArray
+
+from src.mcts.search import SearchMode
 
 if TYPE_CHECKING:
     from src.pde.game import PDEGame, PDEState
@@ -54,6 +58,12 @@ class PDEGameAdapter:
     Error reduction is mapped to a ``[-1, 1]`` outcome for the
     ``get_winner`` method: convergence maps to +1, budget exhaustion
     with poor error maps to -1, and intermediate outcomes interpolate.
+
+    A PDE game is **single-agent**, so callers should construct MCTS with
+    ``search_mode=adapter.search_mode`` (``SearchMode.SINGLE_AGENT``) — the
+    ``MCTS`` default ``ZERO_SUM`` would invert the value at odd depths and make
+    the search minimise the objective (the F0 bug this surface exists to
+    prevent). This mirrors ``RefinementGameAdapter.search_mode``.
 
     Attributes
     ----------
@@ -75,6 +85,10 @@ class PDEGameAdapter:
         self.pde_game = pde_game
         self.state: PDEState = pde_game.get_initial_state()
         self.error_history: list[float] = [self.state.error_estimate]
+        # State prior to the most recent ``apply_action``; used to compute the
+        # per-edge reward on demand (see ``get_last_reward``). ``None`` until
+        # the first action is applied.
+        self._prev_state: PDEState | None = None
 
         logger.debug(
             "pde_mcts_adapter_created",
@@ -82,6 +96,11 @@ class PDEGameAdapter:
             initial_error=self.state.error_estimate,
             action_space_size=pde_game.action_space_size,
         )
+
+    @property
+    def search_mode(self) -> SearchMode:
+        """The correct MCTS backup mode for a single-agent PDE game."""
+        return SearchMode.SINGLE_AGENT
 
     # ------------------------------------------------------------------ #
     # GameInterface protocol methods                                      #
@@ -128,6 +147,7 @@ class PDEGameAdapter:
         """
         prev_state = self.state
         self.state = self.pde_game.apply_action(self.state, action)
+        self._prev_state = prev_state
         self.error_history.append(self.state.error_estimate)
 
         logger.debug(
@@ -137,6 +157,24 @@ class PDEGameAdapter:
             error_after=self.state.error_estimate,
             step=self.state.step,
         )
+
+    def get_last_reward(self) -> float:
+        """Immediate reward for the most recently applied action.
+
+        Implements the optional ``SupportsStepReward`` protocol read by
+        :class:`~src.mcts.search.MCTS` when ``use_intermediate_rewards`` is
+        enabled. Delegates to :meth:`PDEGame.get_reward`, which is defined as
+        ``error_reduction - cost`` for the transition. Returns ``0.0`` before
+        any action has been applied.
+
+        Returns
+        -------
+            The per-edge reward ``get_reward(state, prev_state)``.
+
+        """
+        if self._prev_state is None:
+            return 0.0
+        return float(self.pde_game.get_reward(self.state, self._prev_state))
 
     def is_terminal(self) -> bool:
         """Check whether the PDE game has terminated.
@@ -217,6 +255,9 @@ class PDEGameAdapter:
         cloned.pde_game = self.pde_game.clone()
         cloned.state = copy.deepcopy(self.state)
         cloned.error_history = list(self.error_history)
+        cloned._prev_state = (
+            copy.deepcopy(self._prev_state) if self._prev_state is not None else None
+        )
         return cloned
 
     # ------------------------------------------------------------------ #
@@ -227,6 +268,7 @@ class PDEGameAdapter:
         """Reset the adapter to the initial state."""
         self.state = self.pde_game.get_initial_state()
         self.error_history = [self.state.error_estimate]
+        self._prev_state = None
 
     @property
     def current_error(self) -> float:

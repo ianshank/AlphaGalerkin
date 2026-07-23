@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 
 import torch
+import torch.nn.functional as F
 from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
@@ -67,10 +68,15 @@ class GDN(nn.Module):
             Normalized tensor (B, C, H, W).
 
         """
+        # Enforce positivity for stability (Ballé et al.)
+        beta = F.softplus(self.beta)
+        gamma = F.softplus(self.gamma)
+
         # Compute norm: beta + gamma * x^2
         x_sq = x**2
-        # Sum over channels: (B, C, H, W) -> (B, C, H, W)
-        norm = self.beta.view(1, -1, 1, 1) + torch.einsum("cd,bdhw->bchw", self.gamma, x_sq)
+        norm = beta.view(1, -1, 1, 1) + F.conv2d(
+            x_sq, gamma.view(gamma.size(0), gamma.size(1), 1, 1)
+        )
         norm = torch.sqrt(norm + self.epsilon)
 
         if self.inverse:
@@ -157,9 +163,10 @@ class FNetGalerkinBlock(nn.Module):
 
         """
         # FNet path: FFT mixing (no learnable parameters)
-        x_norm = self.norm_fft(x)
-        x_fft = self._fft_mixing(x_norm, height, width)
-        x = x + self.dropout(x_fft) * self.fnet_ratio
+        if self.fnet_ratio > 0.0:
+            x_norm = self.norm_fft(x)
+            x_fft = self._fft_mixing(x_norm, height, width)
+            x = x + self.dropout(x_fft) * self.fnet_ratio
 
         # Galerkin attention path
         x_norm = self.norm_attn(x)

@@ -2,14 +2,9 @@
 
 Phase 2-E (R-D curve + BD-rate gate): consume the per-entry
 ``metrics.json`` files written by :class:`VideoCodecZoo` during a Phase 2-D
-sweep and produce a single :class:`~src.video_compression.metrics.rd_curves.RDCurve`.
-The curve is **rate-sorted** (ascending bpp), matching the
-:class:`RDCurve.add_point` convention used by the BD-rate code; per-entry
-``lambda_rd`` is preserved on each :class:`RDPoint` so callers that need
-lambda-keyed access (e.g. the primary-lambda gate in
-:mod:`src.video_compression.zoo.bdrate`) can still find specific points.
-Downstream :mod:`src.video_compression.zoo.bdrate` consumes the curve to
-compute the BD-rate gate vs. an H.265 baseline.
+sweep and produce a single :class:`~src.video_compression.metrics.rd_curves.RDCurve`
+sorted in λ-order. Downstream :mod:`src.video_compression.zoo.bdrate`
+consumes the curve to compute the BD-rate gate vs. an H.265 baseline.
 
 Design notes
 ------------
@@ -93,15 +88,10 @@ class RDCurveFitConfig(BaseModuleConfig):
     fit_method: FitMethod = Field(
         default="linear_log",
         description=(
-            "Reserved for downstream interpolation policy. The "
-            "assembler itself does not fit anything — it returns the "
-            "raw rate-sorted points and lets BD-rate's own log-domain "
-            "trapezoidal/cubic interpolator do the integration. "
-            "'linear_log' is the only value the BD-rate path currently "
-            "honors; 'monotone_spline' is accepted, logged, and "
-            "treated identically (placeholder for a future scipy-PCHIP "
-            "interpolator). Setting this field does not change the "
-            "returned RDCurve."
+            "Curve fit. 'linear_log' interpolates linearly in log-rate "
+            "(matches the BD-rate convention). 'monotone_spline' applies "
+            "PCHIP via numpy/scipy when scipy is available, falling back "
+            "to log-linear when it is not."
         ),
     )
     enforce_monotone: bool = Field(

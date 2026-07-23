@@ -324,7 +324,7 @@ class ZooTrainer:
 
         persisted_metrics: dict[str, float] = {
             "loss": float(final_metrics.loss),
-            "rate_bpp": float(final_metrics.rate),
+            "bpp": float(final_metrics.rate),
             "distortion": float(final_metrics.distortion),
             "psnr_db": float(final_metrics.psnr),
             "bpp_relative_error": float(bpp_relative_error),

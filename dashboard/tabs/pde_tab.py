@@ -125,9 +125,7 @@ def _poisson_solve(charges: NDArray[np.float32]) -> NDArray[np.float32]:
     n = charges.shape[0]
     solver = PoissonSolver(resolution=n)
     result = solver.solve(charges)
-    pot2d: NDArray[np.float32] = (
-        result if result.ndim == 2 else result.reshape(n, n)
-    )
+    pot2d: NDArray[np.float32] = result if result.ndim == 2 else result.reshape(n, n)
     return pot2d.astype(np.float32)
 
 
@@ -336,24 +334,31 @@ def create_pde_tab(cfg: PDEConfig | None = None) -> None:
                     label="Grid Resolution (N×N)",
                 )
                 cx = gr.Slider(
-                    cfg.position_min, cfg.position_max,
-                    value=0.5, step=0.05, label="Charge X Position",
+                    cfg.position_min,
+                    cfg.position_max,
+                    value=0.5,
+                    step=0.05,
+                    label="Charge X Position",
                 )
                 cy = gr.Slider(
-                    cfg.position_min, cfg.position_max,
-                    value=0.5, step=0.05, label="Charge Y Position",
+                    cfg.position_min,
+                    cfg.position_max,
+                    value=0.5,
+                    step=0.05,
+                    label="Charge Y Position",
                 )
                 strength = gr.Slider(
-                    cfg.strength_min, cfg.strength_max,
-                    value=cfg.default_strength, step=0.1, label="Charge Strength",
+                    cfg.strength_min,
+                    cfg.strength_max,
+                    value=cfg.default_strength,
+                    step=0.1,
+                    label="Charge Strength",
                 )
                 solve_btn = gr.Button("Solve Poisson Equation", variant="primary")
 
             with gr.Column(scale=2):
                 solution_img = gr.Image(label="Charge Density & Potential Field")
-                metrics_box = gr.Textbox(
-                    label="Solution Metrics", lines=4, interactive=False
-                )
+                metrics_box = gr.Textbox(label="Solution Metrics", lines=4, interactive=False)
 
         gr.Markdown("---")
         gr.Markdown(
@@ -362,9 +367,7 @@ def create_pde_tab(cfg: PDEConfig | None = None) -> None:
             + ", ".join(f"{s}×{s}" for s in cfg.comparison_sizes)
             + " with identical physics to demonstrate resolution independence."
         )
-        compare_btn = gr.Button(
-            "Compare " + " / ".join(f"{s}×{s}" for s in cfg.comparison_sizes)
-        )
+        compare_btn = gr.Button("Compare " + " / ".join(f"{s}×{s}" for s in cfg.comparison_sizes))
         compare_img = gr.Image(label="Resolution Comparison")
         compare_status = gr.Textbox(label="", lines=1, interactive=False)
 

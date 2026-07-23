@@ -161,7 +161,9 @@ class SelfPlayWorker:
         # Update stats
         self._stats.games_completed += n_games
         self._stats.experiences_generated += len(experiences)
-        self._stats.average_time_per_game_ms = sum(game_times) / len(game_times) if game_times else 0
+        self._stats.average_time_per_game_ms = (
+            sum(game_times) / len(game_times) if game_times else 0
+        )
 
         self._logger.debug(
             "batch_generated",

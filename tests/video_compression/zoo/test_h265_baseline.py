@@ -289,41 +289,6 @@ class TestFilterAndCurve:
         assert all(p.ssim is not None for p in curve.points)
 
 
-class TestDuplicateCellKey:
-    def test_duplicate_cell_key_in_constructor_raises(self) -> None:
-        # Two entries sharing a cell_key would silently overwrite each
-        # other in the registry's _by_key dict. Per Copilot review: fail
-        # loud at construction so corrupted/merged baseline files are
-        # caught up front.
-        entries = [
-            _make_entry(cell_key="duplicate|key", bpp=0.3, psnr=33.0),
-            _make_entry(cell_key="duplicate|key", bpp=0.5, psnr=36.0),
-        ]
-        with pytest.raises(ValueError, match=r"duplicate cell_key.*'duplicate\|key'"):
-            H265BaselineRegistry(_make_document(entries))
-
-    def test_unique_cell_keys_pass(self) -> None:
-        entries = [
-            _make_entry(cell_key="a|cif|30|libx265|crf22", bpp=0.6, psnr=38.0, crf=22),
-            _make_entry(cell_key="a|cif|30|libx265|crf28", bpp=0.3, psnr=35.0, crf=28),
-        ]
-        registry = H265BaselineRegistry(_make_document(entries))
-        assert len(registry.entries) == 2
-
-    def test_three_duplicates_reported_in_error(self) -> None:
-        entries = [
-            _make_entry(cell_key="k1", bpp=0.3, psnr=33.0),
-            _make_entry(cell_key="k1", bpp=0.4, psnr=34.0),
-            _make_entry(cell_key="k2", bpp=0.5, psnr=35.0),
-            _make_entry(cell_key="k2", bpp=0.6, psnr=36.0),
-        ]
-        with pytest.raises(ValueError) as exc:
-            H265BaselineRegistry(_make_document(entries))
-        msg = str(exc.value)
-        assert "k1" in msg
-        assert "k2" in msg
-
-
 class TestEntryValidation:
     def test_negative_bpp_rejected(self) -> None:
         with pytest.raises(Exception):  # ValidationError

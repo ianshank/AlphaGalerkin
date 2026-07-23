@@ -197,9 +197,7 @@ class QuickTrainer:
                 # Warmup learning rate
                 if global_step < self.config.warmup_steps:
                     current_lr = (
-                        self.config.learning_rate
-                        * (global_step + 1)
-                        / self.config.warmup_steps
+                        self.config.learning_rate * (global_step + 1) / self.config.warmup_steps
                     )
 
                 # Training step

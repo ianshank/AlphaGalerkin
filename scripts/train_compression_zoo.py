@@ -308,10 +308,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--gate-pct",
         type=float,
         default=None,
-        help=(
-            "Override the BD-rate pass threshold (percent). "
-            "None keeps BDRateConfig's default."
-        ),
+        help=("Override the BD-rate pass threshold (percent). None keeps BDRateConfig's default."),
     )
     report_p.add_argument(
         "--allow-non-monotone",

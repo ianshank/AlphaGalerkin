@@ -418,6 +418,34 @@ def load_config_from_dict(
 
         type_map["scaling_law"] = ScalingLawConfig
 
+    # Same lazy-resolution rationale: the noyron_basis config is light but its
+    # scenario module pulls in the PDE registry + helical operators, so resolve
+    # only the config class, and only when this scenario is actually requested.
+    if inferred_name == "noyron_basis":
+        from src.poc.scenarios.noyron_basis_config import NoyronBasisConfig
+
+        type_map["noyron_basis"] = NoyronBasisConfig
+
+    # Same lazy-resolution rationale: the lshape_amr_compare config is light but
+    # its scenario module pulls in the MCTS engine, the PDE registry, and scipy
+    # via the comparison harness, so resolve only the config class on demand.
+    if inferred_name == "lshape_amr_compare":
+        from src.poc.scenarios.lshape_amr_compare_config import (
+            LShapeAMRCompareConfig,
+        )
+
+        type_map["lshape_amr_compare"] = LShapeAMRCompareConfig
+
+    # Same lazy-resolution rationale: the transfer_baseline_compare config is light
+    # but its scenario module pulls in the PhysicsOperator, the CNN baseline, and the
+    # comparison harness (torch-heavy), so resolve only the config class on demand.
+    if inferred_name == "transfer_baseline_compare":
+        from src.poc.scenarios.transfer_baseline_compare_config import (
+            TransferBaselineCompareConfig,
+        )
+
+        type_map["transfer_baseline_compare"] = TransferBaselineCompareConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

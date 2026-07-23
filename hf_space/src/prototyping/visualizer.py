@@ -233,8 +233,7 @@ class Visualizer:
                 end_loss = losses[-1]
                 improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
                 lines.append(
-                    f"  {result.model_id}: {start_loss:.4f} -> {end_loss:.4f} "
-                    f"({improvement:+.1f}%)"
+                    f"  {result.model_id}: {start_loss:.4f} -> {end_loss:.4f} ({improvement:+.1f}%)"
                 )
 
         plot_data = PlotData(

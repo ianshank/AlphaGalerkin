@@ -66,6 +66,7 @@ class PDEState:
         mesh_levels: Refinement level per element (for mesh refinement).
         polynomial_degrees: Polynomial degree per element (for p-refinement).
         history: Action history for this state.
+
     """
 
     # Core solution data
@@ -115,17 +116,11 @@ class PDEState:
             solution=self.solution.copy(),
             residuals=self.residuals.copy(),
             basis_coefficients=(
-                self.basis_coefficients.copy()
-                if self.basis_coefficients is not None
-                else None
+                self.basis_coefficients.copy() if self.basis_coefficients is not None else None
             ),
-            mesh_levels=(
-                self.mesh_levels.copy() if self.mesh_levels is not None else None
-            ),
+            mesh_levels=(self.mesh_levels.copy() if self.mesh_levels is not None else None),
             polynomial_degrees=(
-                self.polynomial_degrees.copy()
-                if self.polynomial_degrees is not None
-                else None
+                self.polynomial_degrees.copy() if self.polynomial_degrees is not None else None
             ),
             error_estimate=self.error_estimate,
             dof=self.dof,
@@ -142,17 +137,11 @@ class PDEState:
             "solution": self.solution.tolist(),
             "residuals": self.residuals.tolist(),
             "basis_coefficients": (
-                self.basis_coefficients.tolist()
-                if self.basis_coefficients is not None
-                else None
+                self.basis_coefficients.tolist() if self.basis_coefficients is not None else None
             ),
-            "mesh_levels": (
-                self.mesh_levels.tolist() if self.mesh_levels is not None else None
-            ),
+            "mesh_levels": (self.mesh_levels.tolist() if self.mesh_levels is not None else None),
             "polynomial_degrees": (
-                self.polynomial_degrees.tolist()
-                if self.polynomial_degrees is not None
-                else None
+                self.polynomial_degrees.tolist() if self.polynomial_degrees is not None else None
             ),
             "error_estimate": self.error_estimate,
             "dof": self.dof,
@@ -289,6 +278,7 @@ class PDEGame(ABC):
         Args:
             pde_operator: The PDE to solve.
             config: Game configuration.
+
         """
         self.pde_operator = pde_operator
         self.config = config
@@ -304,6 +294,7 @@ class PDEGame(ABC):
 
         Returns:
             Number of possible actions at any state.
+
         """
         raise NotImplementedError
 
@@ -314,6 +305,7 @@ class PDEGame(ABC):
 
         Returns:
             Number of feature planes in tensor encoding.
+
         """
         raise NotImplementedError
 
@@ -323,6 +315,7 @@ class PDEGame(ABC):
 
         Returns:
             Initial PDEState (typically zero solution or coarse mesh).
+
         """
         raise NotImplementedError
 
@@ -335,6 +328,7 @@ class PDEGame(ABC):
 
         Returns:
             List of legal action indices.
+
         """
         raise NotImplementedError
 
@@ -347,6 +341,7 @@ class PDEGame(ABC):
 
         Returns:
             Boolean mask with True for legal actions.
+
         """
         raise NotImplementedError
 
@@ -369,6 +364,7 @@ class PDEGame(ABC):
 
         Raises:
             ValueError: If action is illegal.
+
         """
         raise NotImplementedError
 
@@ -384,6 +380,7 @@ class PDEGame(ABC):
 
         Returns:
             Immediate reward value.
+
         """
         raise NotImplementedError
 
@@ -402,6 +399,7 @@ class PDEGame(ABC):
 
         Returns:
             True if game is over.
+
         """
         raise NotImplementedError
 
@@ -415,6 +413,7 @@ class PDEGame(ABC):
 
         Returns:
             PDEResult with final metrics.
+
         """
         raise NotImplementedError
 
@@ -427,6 +426,7 @@ class PDEGame(ABC):
 
         Returns:
             Dictionary with error metrics (l2, h1, linf, residual).
+
         """
         raise NotImplementedError
 
@@ -444,6 +444,7 @@ class PDEGame(ABC):
 
         Returns:
             Tensor of shape (channels, height, width) or (channels, n_points).
+
         """
         raise NotImplementedError
 
@@ -460,6 +461,7 @@ class PDEGame(ABC):
 
         Returns:
             Batched tensor.
+
         """
         tensors = [self.to_tensor(state) for state in states]
         return torch.stack(tensors).to(device)
@@ -480,6 +482,7 @@ class PDEGame(ABC):
 
         Returns:
             List of (transformed_state, transformed_policy) tuples.
+
         """
         return [(state, policy)]
 
@@ -491,6 +494,7 @@ class PDEGame(ABC):
 
         Returns:
             Current GamePhase.
+
         """
         if self.is_terminal(state):
             if state.error_estimate < self.config.error_tolerance:
@@ -524,6 +528,7 @@ class PDEGame(ABC):
 
         Returns:
             Human-readable action description.
+
         """
         return f"action_{action}"
 
@@ -536,6 +541,7 @@ class PDEGame(ABC):
 
         Returns:
             True if action is valid.
+
         """
         if action < 0 or action >= self.action_space_size:
             return False
@@ -546,6 +552,7 @@ class PDEGame(ABC):
 
         Returns:
             New instance of the game.
+
         """
         return type(self)(self.pde_operator, self.config)
 

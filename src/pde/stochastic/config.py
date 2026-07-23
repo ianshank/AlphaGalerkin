@@ -39,15 +39,26 @@ DEFAULT_MONOTONE_WINDOW = 50
 DEFAULT_MONOTONE_REL_TOL = 1e-3
 """AC5 relative tolerance for non-increasing window means.
 
-Placeholder until calibrated from the pinned jump-OU run (spec: Calibration
-procedure); the calibrated value is recorded in the spec table.
+Calibrated on the pinned jump-OU run (seeds 42): observed max window-mean
+increase 2.8e-6 — ~350× headroom.
 """
 
-DEFAULT_LOSS_RATIO_GATE = 0.9
+DEFAULT_LOSS_RATIO_GATE = 0.98
 """AC5 required ``final_loss / initial_loss`` ceiling.
 
-Placeholder until calibrated from the pinned jump-OU run (spec: Calibration
-procedure); the calibrated value is recorded in the spec table.
+Calibrated on the pinned jump-OU run (seeds 42): observed ratio 0.950 (the
+initial 0.9 placeholder was unreachable — a dt-scaled residual MDN starts
+near identity, so the closable NLL gap is inherently modest; the gap-closure
+gate below is the sharper criterion).
+"""
+
+DEFAULT_LOSS_GAP_CLOSURE = 0.25
+"""AC5 ceiling on the fraction of the (initial − oracle) loss gap left open.
+
+The trainer can evaluate its own loss with the exact compound-Poisson moment
+oracle substituted for the MDN — the achievable floor. Calibrated on the
+pinned jump-OU run (seeds 42): observed closure fraction 0.000 (the trainer
+reaches the oracle floor); 0.25 leaves generous headroom.
 """
 
 DEFAULT_TRAINED_MDN_MOMENT_TOL = 5e-2

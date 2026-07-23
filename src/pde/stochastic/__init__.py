@@ -62,6 +62,7 @@ from src.pde.stochastic.particles import (
 )
 from src.pde.stochastic.projection import GalerkinMomentProjection
 from src.pde.stochastic.strang import StrangSplitStep
+from src.pde.stochastic.trainer import StrangParallelTrainer, StrangTrainingResult
 
 __all__ = [
     "DEFAULT_COV_JITTER",
@@ -91,9 +92,11 @@ __all__ = [
     "ParticleSimulationResult",
     "StochasticConfigurationError",
     "StochasticGeneratorConfig",
+    "StrangParallelTrainer",
     "StrangSplitStep",
     "StrangSplittingConfig",
     "StrangTrainerConfig",
+    "StrangTrainingResult",
     "TimeSliceClusters",
     "batched_mixture_nll",
     "cluster_time_slices",

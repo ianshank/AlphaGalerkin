@@ -122,7 +122,8 @@ Named module-level constants (numerical-stability literals; no magic numbers):
 `DEFAULT_STRANG_SLOPE_MIN = 1.7`, `DEFAULT_STRANG_SLOPE_MAX = 2.3`,
 `DEFAULT_MONOTONE_WINDOW = 50`, `DEFAULT_MONOTONE_REL_TOL` (calibrated, see below),
 `DEFAULT_LOSS_RATIO_GATE` (calibrated), `DEFAULT_TRAINED_MDN_MOMENT_TOL` (calibrated),
-`DEFAULT_KMEANS_MAX_ITERS = 100`, `DEFAULT_KMEANS_TOL = 1e-6`,
+`DEFAULT_LOSS_GAP_CLOSURE` (calibrated), `DEFAULT_KMEANS_MAX_ITERS = 100`,
+`DEFAULT_KMEANS_TOL = 1e-6`, `DEFAULT_CLUSTER_COV_FLOOR = 1e-6`,
 `DEFAULT_STOCHASTIC_MSE_GATE` (calibrated, scenario gate).
 
 ### Pinned toy problems (gates are reproducible only against these)
@@ -147,9 +148,10 @@ observed value in this section. Gates must never encode an unmeasured claim. Cal
 
 | Constant | Placeholder | Observed (pinned run) | Shipped gate |
 |---|---|---|---|
-| `DEFAULT_TRAINED_MDN_MOMENT_TOL` | `5e-2` | mean err `6.7e-3`, cov err `2.7e-2` (300 steps, seeds 42/7, NLL 0.803→0.727) | `5e-2` (≈1.8× headroom over the cov error) |
-| `DEFAULT_MONOTONE_REL_TOL` | `1e-3` | *(record at commit 6)* | *(record at commit 6)* |
-| `DEFAULT_LOSS_RATIO_GATE` | `0.9` | *(record at commit 6)* | *(record at commit 6)* |
+| `DEFAULT_TRAINED_MDN_MOMENT_TOL` | `5e-2` | direct jump training: mean err `6.7e-3`, cov err `2.7e-2` (300 steps, seeds 42/7, NLL 0.803→0.727); full Strang-trained trajectory at T=1: mean err `1.7e-2`, cov err `7.4e-3` | `5e-2` (≈1.8× headroom over the worst observed error) |
+| `DEFAULT_MONOTONE_REL_TOL` | `1e-3` | max window-mean relative increase `2.8e-6` (500 steps, window 50, seeds 42) | `1e-3` (~350× headroom) |
+| `DEFAULT_LOSS_RATIO_GATE` | `0.9` | `final/initial = 0.950` (initial 0.6916 → final 0.65714) — the 0.9 placeholder was **unreachable**: a dt-scaled residual MDN starts near identity, so the closable NLL gap is small | `0.98` (recalibrated; the gap-closure gate below is the sharper criterion) |
+| `DEFAULT_LOSS_GAP_CLOSURE` *(added at calibration)* | — | oracle floor `0.65727`; trainer final `0.65714` → closure fraction `0.000` (floor reached) | `0.25` |
 | `DEFAULT_STOCHASTIC_MSE_GATE` | `1e-5` | *(record at commit 9)* | *(record at commit 9)* |
 
 ## Acceptance Criteria
@@ -191,8 +193,10 @@ observed value in this section. Gates must never encode an unmeasured claim. Cal
   configuration raises `StochasticConfigurationError`), full-batch mode, fixed seed
 - **When** `StrangParallelTrainer.train()` runs for ≤ 500 steps
 - **Then** `DEFAULT_MONOTONE_WINDOW`-step window means are non-increasing within
-  `DEFAULT_MONOTONE_REL_TOL` (calibrated) and `final_loss/initial_loss < DEFAULT_LOSS_RATIO_GATE`
-  (calibrated).
+  `DEFAULT_MONOTONE_REL_TOL` (calibrated), `final_loss/initial_loss < DEFAULT_LOSS_RATIO_GATE`
+  (calibrated), and the fraction of the (initial − oracle-achievable) loss gap left open is
+  `< DEFAULT_LOSS_GAP_CLOSURE` — the trainer computes the same batched loss with the exact
+  compound-Poisson oracle substituted for the MDN, which is the honest achievable floor.
 
 ### AC6: parallel-in-time independence (change-doc trainer scenario)
 - **Given** precomputed particle clusters on the pinned coarse grid

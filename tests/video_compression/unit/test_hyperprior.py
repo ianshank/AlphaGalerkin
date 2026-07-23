@@ -15,8 +15,8 @@ import torch
 from src.video_compression.config import EntropyConfig, EntropyModelType
 from src.video_compression.models.hyperprior import (
     EntropyOutput,
-    FactorizedPrior,
     FactorizedEntropyModel,
+    FactorizedPrior,
     GaussianConditional,
     HyperAnalysis,
     HyperpriorEntropyModel,

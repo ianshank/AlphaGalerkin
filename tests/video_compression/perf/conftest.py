@@ -39,6 +39,7 @@ def tiny_codec_config() -> CodecConfig:
             n_heads=2,
             d_ffn=128,
             downsample_factor=4,
+            use_fnet_mixing=False,
         ),
         decoder=DecoderConfig(
             name="dec",
@@ -49,6 +50,7 @@ def tiny_codec_config() -> CodecConfig:
             n_heads=2,
             d_ffn=128,
             upsample_factor=4,
+            use_fnet_mixing=False,
         ),
         quantizer=QuantizerConfig(name="q"),
         entropy=EntropyConfig(

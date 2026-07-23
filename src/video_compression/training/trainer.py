@@ -17,7 +17,7 @@ from pathlib import Path
 import structlog
 import torch
 from torch import nn
-from torch.amp import autocast
+from torch import autocast
 from torch.cuda.amp import GradScaler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR

@@ -218,7 +218,9 @@ def compute_ms_ssim(
 
         if scale < num_scales - 1:
             # Extract contrast-structure component (CS)
-            cs = torch.relu(ssim_val)  # Simplified: use full SSIM as CS proxy, clamped to non-negative
+            cs = torch.relu(
+                ssim_val
+            )  # Simplified: use full SSIM as CS proxy, clamped to non-negative
             cs_products.append(cs)
         else:
             ssim_last = torch.relu(ssim_val)

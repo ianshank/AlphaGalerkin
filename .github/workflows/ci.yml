@@ -415,6 +415,23 @@ jobs:
             --include="*/src/research/transfer_baseline_compare.py,*/src/experiments/cnn_baseline.py,*/src/poc/scenarios/transfer_baseline_compare.py,*/src/poc/scenarios/transfer_baseline_compare_config.py" \
             --fail-under=85
 
+      # Path-glob --include (not dotted --cov) to avoid the torch C-extension
+      # collision during tracer source discovery, matching the gates above.
+      - name: Per-module coverage gate (stochastic Galerkin / NKE layer)
+        if: always() && hashFiles('tests/pde/stochastic/') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
+            -m pytest tests/pde/stochastic \
+            tests/research/test_stochastic_galerkin_compare.py \
+            tests/poc/test_stochastic_galerkin_compare_config.py \
+            tests/poc/test_stochastic_galerkin_compare_scenario.py \
+            tests/scripts/test_run_stochastic_galerkin_compare.py \
+            tests/regression/test_related_work_guard.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
+            --fail-under=85
+
       - name: Upload coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v4

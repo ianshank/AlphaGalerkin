@@ -1,0 +1,39 @@
+# Stochastic Galerkin (NKE) comparison — demo budget (the calibration configuration).
+#
+# Same benchmark as the CI tripwire at the full default budget (grid 32, 40 epochs,
+# 3 deterministic-arm seeds; ~40 s on CPU). Produces the committed
+# results/stochastic_galerkin_compare.{csv,png} artifacts.
+#
+#   python -m scripts.run_stochastic_galerkin_compare \
+#     --config config/scenarios/stochastic_galerkin_compare_demo.yaml
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800
+
+scenarios:
+  - name: stochastic_galerkin_compare
+    description: "FP/OU density: Galerkin attention vs stochastic Galerkin (demo budget)."
+    tier: functional
+    enabled: true
+    device: cpu
+    grid_n: 32
+    domain_half_width: 2.0
+    t_end: 1.0
+    strang_dt: 0.1
+    n_train_samples: 64
+    n_eval_samples: 16
+    n_epochs: 40
+    learning_rate: 1.0e-3
+    batch_size: 8
+    n_seeds: 3
+    d_model: 32
+    n_heads: 2
+    n_layers: 2
+    n_fourier_features: 16
+    fourier_scale: 5.0
+    use_fnet: false
+    dropout: 0.0
+    stochastic_mse_gate: 1.0e-6
+    output_dir: results
+    artifact_basename: stochastic_galerkin_compare

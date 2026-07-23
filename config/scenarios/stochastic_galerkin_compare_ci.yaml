@@ -1,0 +1,51 @@
+# Stochastic Galerkin (NKE) comparison — deterministic Galerkin attention vs the
+# stochastic moment-projection layer on the shared 2D Fokker-Planck/OU benchmark.
+#
+# CPU regression-tripwire configuration — micro budgets so the run finishes in a few
+# seconds. NOT a headline config. The single gate is the stochastic arm's absolute
+# density MSE (stochastic_density_mse < stochastic_mse_gate); the deterministic arm's
+# MSE and the stochastic/deterministic ratio are recorded UNGATED (honesty rule —
+# on this benchmark the stochastic arm is near-exact by construction; see
+# specs/stochastic_galerkin_nke.spec.md, Thresholds).
+#
+# Run (writes results/stochastic_galerkin_compare.{csv,png}):
+#   python -m scripts.run_stochastic_galerkin_compare \
+#     --config config/scenarios/stochastic_galerkin_compare_ci.yaml
+# CI regression gate (exit 1 on regression from the committed baseline):
+#   python -m scripts.run_stochastic_galerkin_compare \
+#     --config config/scenarios/stochastic_galerkin_compare_ci.yaml \
+#     --baseline config/baselines/stochastic_galerkin_ci.json
+
+defaults:
+  seed: 42
+  timeout_seconds: 900
+
+scenarios:
+  - name: stochastic_galerkin_compare
+    description: "FP/OU density: Galerkin attention vs stochastic Galerkin (CPU CI tripwire)."
+    tier: functional
+    enabled: true
+    device: cpu
+    grid_n: 16
+    domain_half_width: 2.0
+    t_end: 1.0
+    strang_dt: 0.1
+    n_train_samples: 16
+    n_eval_samples: 8
+    n_epochs: 5
+    learning_rate: 1.0e-3
+    batch_size: 8
+    n_seeds: 1
+    d_model: 16
+    n_heads: 2
+    n_layers: 2
+    n_fourier_features: 8
+    fourier_scale: 5.0
+    use_fnet: false
+    dropout: 0.0
+    # Calibrated gate (spec Calibration procedure): observed stochastic MSE 2.3e-8 at
+    # the default budget; 1e-6 carries ~40x headroom and still fails on a broken
+    # moment solver.
+    stochastic_mse_gate: 1.0e-6
+    output_dir: results
+    artifact_basename: stochastic_galerkin_compare

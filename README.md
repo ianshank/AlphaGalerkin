@@ -901,7 +901,9 @@ AlphaGalerkin/
 
 ## SBIR Positioning
 
-AlphaGalerkin addresses a **verified novelty gap**: no published papers combine MCTS with Galerkin methods for PDE solving or mesh refinement. The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
+AlphaGalerkin addresses a **narrow, verified novelty gap**: MCTS *multi-step look-ahead* for error-driven adaptive refinement and Galerkin basis selection is unpublished — the RL-for-AMR canon is uniformly single-step policy RL, and the only prior MCTS+finite-element work (TreeMesh, arXiv:2111.07613) targets mesh *generation*, a distinct problem (see `docs/proposals/PRIOR_ART_REVIEW.md`; a blanket "no MCTS+FEM" claim would be false). The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
+
+The stochastic Galerkin operator-splitting extension (Kolmogorov forward equations on a Gaussian-mixture basis, `src/pde/stochastic/`; see `docs/related-work.md`) is **future work for proposal purposes** — an additive layer that does not alter the MCTS/self-play core and carries no LBB claims.
 
 | Solicitation | Agency | Phase | Funding | Config |
 |---|---|---|---|---|

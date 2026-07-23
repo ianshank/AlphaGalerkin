@@ -34,8 +34,9 @@ env:
   PYTHONUNBUFFERED: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PIP_NO_WARN_SCRIPT_LOCATION: "1"
-  # Disable W&B for CI to avoid API key requirements
-  WANDB_MODE: disabled
+  # Langfuse credentials are intentionally unset in CI; the tracker
+  # degrades to a no-op when LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+  # are absent, so no API keys are required.
   # Set matplotlib to non-interactive backend
   MPLBACKEND: Agg
   # Reproducible builds
@@ -350,6 +351,11 @@ jobs:
         if: always() && hashFiles('tests/alphagalerkin/') != ''
         run: |
           pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (analysis)
+        if: always() && hashFiles('tests/analysis/') != ''
+        run: |
+          pytest tests/analysis/ --cov=src/analysis --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (integrations/lm_studio)
         if: always() && hashFiles('tests/integrations/') != ''

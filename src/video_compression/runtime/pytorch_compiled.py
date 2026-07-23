@@ -143,6 +143,26 @@ class PyTorchCompiledRuntime(BaseDecoderRuntime):
                 mode=self._compile_mode,
                 fullgraph=actual_fullgraph,
             )
+            # torch.compile is lazy — it only compiles on the first forward.
+            # Force one pass here so compilation errors (e.g. a fullgraph
+            # break) surface during prepare() and hit the fallback below,
+            # instead of crashing the first decode().
+            dummy_input = torch.randn(
+                ctx.batch_size,
+                ctx.latent_channels,
+                ctx.latent_height,
+                ctx.latent_width,
+                device=device,
+            )
+            if self._autocast_dtype is not None:
+                with (
+                    torch.no_grad(),
+                    torch.autocast(device_type=device.type, dtype=self._autocast_dtype),
+                ):
+                    compiled(dummy_input)
+            else:
+                with torch.no_grad():
+                    compiled(dummy_input)
         except Exception:
             # Fallback: retry without fullgraph.
             actual_fullgraph = False

@@ -94,6 +94,33 @@ class HelicalHeatOperator(HeatOperator):
 
     The source term is zero by default (matching ``HeatOperator``); a
     user-supplied ``source_function`` is honored if provided.
+
+    .. warning::
+       **Trivial-solution caveat for ``inner_dirichlet`` mode.** With this
+       operator's defaults — ``inner_dirichlet`` boundary mode,
+       ``PDEConfig.boundary_value = 0.0``, no ``source_function`` — the
+       PDE ``-kappa * Laplacian(u) = 0`` with ``u = 0`` on the boundary
+       has the unique solution ``u = 0`` everywhere. Reference solvers
+       (e.g., the voxel-FDM Jacobi sweep) correctly converge to this
+       trivial solution at iteration 0, and any surrogate trained
+       against it learns "fit zero" — accurate by metric but vacuous as
+       a demonstration.
+
+       For a meaningful FDM/surrogate validation in ``inner_dirichlet``
+       mode, supply at least one of:
+         - a non-zero ``PDEConfig.boundary_value`` (uniform Dirichlet),
+         - a ``source_function`` returning non-zero values somewhere
+           (e.g., a localized Gaussian heat source),
+         - or switch to ``boundary_mode='hot_cold'`` which produces a
+           non-trivial linear-temperature gradient by construction.
+
+       The headline ``noyron_hx`` analytical-harmonic mode in
+       ``src/poc/scenarios/noyron_hx.py`` sidesteps this by overriding
+       the reference field with a non-trivial ``sin(k x) + sin(k y) +
+       sin(k z)`` harmonic, so the surrogate is graded against a
+       non-zero target. The scenario's ``ref_solver_kind='voxel_fdm'``
+       path, however, will produce the trivial solution unless the
+       caller customizes the operator as above.
     """
 
     name = "helical_heat"

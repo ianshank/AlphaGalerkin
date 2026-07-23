@@ -159,9 +159,9 @@ def parse_args() -> argparse.Namespace:
         help="Resume from checkpoint",
     )
     parser.add_argument(
-        "--wandb",
+        "--langfuse",
         action="store_true",
-        help="Enable Weights & Biases logging",
+        help="Enable Langfuse experiment tracking",
     )
     parser.add_argument(
         "-v",

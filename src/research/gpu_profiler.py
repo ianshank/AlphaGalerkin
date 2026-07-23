@@ -154,10 +154,13 @@ class GpuUtilizationProfiler:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        except FileNotFoundError:
+        except OSError as exc:
+            # FileNotFoundError (no nvidia-smi on PATH) plus PermissionError /
+            # driver-mismatch OSErrors that Popen can raise — all degrade to a
+            # disabled profiler rather than crashing the benchmark.
             logger.warning(
                 "gpu_profiler_disabled",
-                reason="nvidia-smi binary not found on PATH",
+                reason=f"failed to spawn nvidia-smi: {exc}",
                 gpu_indices=list(self.gpu_indices),
             )
             self._process = None

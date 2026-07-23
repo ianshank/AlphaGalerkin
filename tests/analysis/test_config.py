@@ -80,6 +80,26 @@ class TestAnalysisConfig:
         with pytest.raises(ValidationError):
             AnalysisConfig(excellent_threshold=1.5)
 
+    def test_model_evaluator_fields(self) -> None:
+        """Model/evaluator fields default safely and validate."""
+        config = AnalysisConfig()
+        assert config.model_checkpoint_path is None
+        assert config.device == "cpu"
+        assert config.evaluator_temperature == 1.0
+
+        config = AnalysisConfig(
+            model_checkpoint_path="/tmp/model.pt",
+            device="cuda",
+            evaluator_temperature=0.5,
+        )
+        assert config.model_checkpoint_path == "/tmp/model.pt"
+        assert config.device == "cuda"
+
+    def test_evaluator_temperature_must_be_positive(self) -> None:
+        """Temperature must be > 0."""
+        with pytest.raises(ValidationError):
+            AnalysisConfig(evaluator_temperature=0.0)
+
     def test_compute_hash(self, default_config: AnalysisConfig) -> None:
         """Test configuration hash computation."""
         hash1 = default_config.compute_hash()

@@ -153,6 +153,7 @@ def build_basis_game(
     max_basis_functions: int,
     n_candidate_bases: int,
     target_residual: float,
+    collocation_seed: int | None = None,
 ) -> BasisSelectionGame:
     """Build a :class:`BasisSelectionGame` around an operator.
 
@@ -162,6 +163,9 @@ def build_basis_game(
         max_basis_functions: Maximum bases the game may add before terminating.
         n_candidate_bases: Size of the candidate library (== action space).
         target_residual: Error tolerance that terminates the game.
+        collocation_seed: Optional seed for the game's collocation-point and
+            candidate-basis sampling. ``None`` (the default) preserves the prior
+            random behavior; pass a concrete seed for fully reproducible cells.
 
     Returns:
         A configured :class:`BasisSelectionGame`.
@@ -171,6 +175,7 @@ def build_basis_game(
         name=f"{pde_name}_basis",
         max_basis_functions=max_basis_functions,
         n_candidate_bases=n_candidate_bases,
+        seed=collocation_seed,
     )
     game_config = PDEGameConfig(
         name=f"{pde_name}_game",

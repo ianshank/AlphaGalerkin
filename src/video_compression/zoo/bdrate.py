@@ -291,11 +291,25 @@ def _bd_rate_at_primary(
     window_points = test.points[lo:hi]
     if len(window_points) < 2:
         return None
-    window_curve = RDCurve(
-        name=f"{test.name}_primary_window",
-        points=list(window_points),
-    )
-    return float(compute_bd_rate(reference, window_curve, metric=metric))
+    # Insert via add_point so the resulting curve is rate-sorted, the
+    # convention np.interp inside compute_bd_rate relies on. The
+    # RDCurve constructor accepts a points= list verbatim and would
+    # otherwise leave them in whatever order the lambda window had.
+    window_curve = RDCurve(name=f"{test.name}_primary_window", points=[])
+    for p in window_points:
+        window_curve.add_point(p)
+    try:
+        return float(compute_bd_rate(reference, window_curve, metric=metric))
+    except ValueError as exc:
+        # Non-overlapping quality ranges between the primary window and the
+        # reference make BD-rate undefined; degrade to "no primary number"
+        # rather than crashing the whole report.
+        logger.warning(
+            "bdrate.primary_window.failed",
+            primary_lambda_rd=primary_lambda_rd,
+            err=str(exc),
+        )
+        return None
 
 
 def compute_bd_rate_report(

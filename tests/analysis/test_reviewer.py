@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
-from src.analysis.config import AnnotationLevel, MoveClassification
+import numpy as np
+
+from src.analysis.config import AnalysisConfig, AnnotationLevel, MoveClassification
+from src.analysis.go_adapter import EMPTY_MARK
 from src.analysis.reviewer import (
     GameAnalysis,
     GameReviewer,
     MoveAnalysis,
     create_game_reviewer,
 )
+
+
+def _constant_model_evaluator(value: float):
+    """Build a model evaluator returning a fixed value + uniform legal policy."""
+
+    def _evaluate(board_state: list[list[int]]) -> tuple[float, np.ndarray]:
+        board_size = len(board_state)
+        n = board_size * board_size
+        policy = np.full(n, 1.0 / n, dtype=np.float32)
+        return value, policy
+
+    return _evaluate
 
 
 class TestMoveAnalysis:
@@ -264,6 +279,94 @@ class TestGameReviewer:
 
         assert analysis.total_moves == 0
         assert len(analysis.turning_points) == 0
+
+
+class TestGameReviewerModelWiring:
+    """The reviewer must produce real model signal when an evaluator is wired."""
+
+    def test_no_model_falls_back_to_dummy(
+        self,
+        game_reviewer: GameReviewer,
+        sample_game_moves: list[tuple[str, int, int]],
+    ) -> None:
+        # Without a model the evaluator yields the uniform dummy (win_rate=0.5).
+        assert game_reviewer._evaluator._model_evaluator is None
+        analysis = game_reviewer.review_game(moves=sample_game_moves, board_size=19)
+        win_rates = {
+            m.evaluation_before.win_rate
+            for m in analysis.move_analyses
+            if m.evaluation_before is not None
+        }
+        assert win_rates == {0.5}
+
+    def test_injected_model_evaluator_produces_real_signal(
+        self,
+        sample_game_moves: list[tuple[str, int, int]],
+    ) -> None:
+        reviewer = GameReviewer(
+            config=AnalysisConfig(),
+            model_evaluator=_constant_model_evaluator(value=0.6),
+        )
+        assert reviewer._evaluator._model_evaluator is not None
+
+        analysis = reviewer.review_game(moves=sample_game_moves, board_size=19)
+        # value=0.6 -> win_rate=(0.6+1)/2=0.8, distinct from the 0.5 dummy.
+        win_rates = {
+            m.evaluation_before.win_rate
+            for m in analysis.move_analyses
+            if m.evaluation_before is not None
+        }
+        assert win_rates == {0.8}
+
+    def test_factory_accepts_model_evaluator(self) -> None:
+        reviewer = create_game_reviewer(
+            mode="standard",
+            model_evaluator=_constant_model_evaluator(value=0.0),
+        )
+        assert reviewer._evaluator._model_evaluator is not None
+
+    def test_capture_reflected_in_review(self) -> None:
+        # White centre captured by surrounding black; the reconstructed board the
+        # reviewer feeds the evaluator must show the empty (captured) point.
+        captured_states: list[list[list[int]]] = []
+        reviewer = GameReviewer(
+            config=AnalysisConfig(),
+            model_evaluator=lambda bs: (captured_states.append(bs), (0.0, np.full(9, 1 / 9)))[1],
+        )
+        moves = [
+            ("W", 1, 1),
+            ("B", 0, 1),
+            ("B", 2, 1),
+            ("B", 1, 0),
+            ("B", 1, 2),
+            ("W", 0, 0),  # triggers an evaluation on the post-capture board
+        ]
+        reviewer.review_game(moves=moves, board_size=3)
+        # The last evaluated board (before W plays at 0,0) has the white centre gone.
+        last_board = captured_states[-1]
+        assert last_board[1][1] == EMPTY_MARK
+
+
+class TestGameReviewerCheckpointWiring:
+    """Checkpoint-backed wiring builds a model, with a graceful failure fallback."""
+
+    def test_checkpoint_load_failure_falls_back(self, tmp_path) -> None:
+        config = AnalysisConfig(model_checkpoint_path=str(tmp_path / "missing.pt"))
+        reviewer = GameReviewer(config=config)
+        # Load fails -> warning logged, dummy fallback retained.
+        assert reviewer._evaluator._model_evaluator is None
+
+    def test_checkpoint_path_wires_model(self, tmp_path, monkeypatch) -> None:
+        import src.analysis.go_adapter as go_adapter
+
+        def fake_builder(checkpoint_path, *, device="cpu", temperature=1.0):
+            return _constant_model_evaluator(value=0.2)
+
+        monkeypatch.setattr(go_adapter, "build_checkpoint_model_evaluator", fake_builder)
+
+        config = AnalysisConfig(model_checkpoint_path=str(tmp_path / "model.pt"))
+        reviewer = GameReviewer(config=config)
+        assert reviewer._evaluator._model_evaluator is not None
 
 
 class TestCreateGameReviewer:

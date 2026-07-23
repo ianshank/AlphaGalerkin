@@ -1,0 +1,75 @@
+# langfuse-eval-harness EvalConfig for AlphaGalerkin basis-selection evaluation.
+#
+# Run it via the AlphaGalerkin CLI (registers the AG plugins, picks the Langfuse
+# client, then chains the existing baseline gate):
+#
+#   python -m src.poc.cli eval-harness --config config/eval_harness/basis_eval.yaml --offline
+#
+# or via the harness's own console script (the [eval-harness] extra registers the
+# AG scorers/sink/dataset through the entry-point group):
+#
+#   eval-harness run --config config/eval_harness/basis_eval.yaml --offline
+#
+# Default arm is `random` so it runs end-to-end without an LLM. For the LLM-prior
+# evaluation set dataset.params.arm: llm and dataset.params.lm_studio.base_url,
+# then run --online with LANGFUSE_* env vars set.
+schema_version: "1.0"
+
+run:
+  name: basis_eval
+  seed: 0
+
+# Labelled dataset: one cell per (pde_family, seed); `expected` is the greedy
+# 1-step oracle ranking (myopic — see oracle.py). Swap to the built-in `jsonl`
+# dataset pointed at a build_dataset_jsonl() cache to avoid recomputing labels.
+dataset:
+  type: basis_oracle
+  params:
+    pde_families: [poisson, burgers]
+    seeds: [0, 1, 2]
+    arm: ${EVAL_ARM:-random}
+    max_basis_functions: 8
+    n_candidate_bases: 16
+    target_residual: ${TARGET_RESIDUAL:-1e-2}
+    max_rollouts: 256
+    n_simulations: 16
+    topk: 3
+
+target:
+  type: callable
+  params:
+    function: src.integrations.eval_harness.target:run_basis_cell
+
+scorers:
+  - type: final_residual
+    params:
+      target_residual: ${TARGET_RESIDUAL:-1e-2}
+  - type: policy_topk
+    params:
+      k: 3
+
+sinks:
+  - type: console
+    params:
+      verbose: false
+  - type: json_file
+    params:
+      path: ${EVAL_OUTPUT_DIR:-outputs/poc}/eval_harness_raw.json
+  # Bridges RunResult -> the PoC ScenarioResult layout the record-baseline/diff
+  # CLI reads (the single authoritative cross-run regression gate).
+  - type: scenario_result
+    params:
+      output_dir: ${EVAL_OUTPUT_DIR:-outputs/poc}
+  # No-op under --offline (NullLangfuseClient); live trace export under --online.
+  - type: langfuse
+    params: {}
+
+# In-run sanity gate (independent of the cross-run baseline gate).
+gate:
+  rules:
+    - score: final_residual
+      metric: mean
+      max: ${TARGET_RESIDUAL_GATE:-1.0}
+    - score: policy_topk
+      metric: pass_rate
+      min: ${POLICY_TOPK_MIN_PASS_RATE:-0.0}

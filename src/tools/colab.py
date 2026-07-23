@@ -66,7 +66,7 @@ def generate_colab_notebook(
         "    \n",
         "    # 2. Install Dependencies\n",
         '    print("Installing dependencies...")\n',
-        "    !pip install -q einops jaxtyping pydantic hydra-core structlog wandb scipy\n",
+        "    !pip install -q einops jaxtyping pydantic hydra-core structlog langfuse scipy\n",
         "    \n",
         "    # 3. Setup Path and Working Directory\n",
         "    project_root = Path(os.getcwd()) / repo_name\n",

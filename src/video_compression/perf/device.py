@@ -1,19 +1,14 @@
 """GPU-primary device resolution for the perf benchmark.
 
-Wraps the project-level ``src.poc.device.resolve_device`` to additionally
-accept indexed CUDA strings (``"cuda:0"``, ``"cuda:1"``, ...). The benchmark
-needs this because a multi-GPU workstation (e.g. RTX 5060 Ti 16 GB at
-cuda:0 + RTX 5060 8 GB at cuda:1) is the canonical home-lab setup we
-target — Phase 0 must measure both cards independently so later phases
-(daemon, multi-stream decode) can plan around their VRAM and throughput.
-
-The shared helper is left untouched to avoid breaking PoC scenarios that
-expect bare ``"cuda"``/``"cpu"``/``"auto"``.
+The benchmark targets a multi-GPU workstation (e.g. RTX 5060 Ti 16 GB at
+cuda:0 + RTX 5060 8 GB at cuda:1) and must measure both cards independently,
+so it needs indexed ``"cuda:N"`` resolution. ``src.poc.device.resolve_device``
+now accepts ``"cuda:N"`` directly (with identical RuntimeError/ValueError
+semantics), so this module delegates to it — one source of truth for device
+resolution and GPU-failure semantics across the PoC and perf paths.
 """
 
 from __future__ import annotations
-
-import re
 
 import structlog
 import torch
@@ -21,10 +16,6 @@ import torch
 from src.poc.device import resolve_device as _resolve_bare
 
 logger = structlog.get_logger(__name__)
-
-# Pattern for ``cuda:N`` strings. We do not accept whitespace or trailing
-# characters; the user must type the canonical form.
-_CUDA_INDEX_RE = re.compile(r"^cuda:(\d+)$")
 
 
 def list_cuda_devices() -> list[torch.device]:
@@ -56,39 +47,14 @@ def resolve_device(
 
     Raises
     ------
-        RuntimeError: indexed CUDA requested but the index is out of range
-            (or CUDA is unavailable).
+        RuntimeError: CUDA requested but unavailable, or an indexed CUDA
+            device is out of range.
         ValueError: ``preference`` is malformed.
 
     """
-    match = _CUDA_INDEX_RE.match(preference)
-    if match is None:
-        # Delegate the bare cases to the shared helper — keeps GPU-failure
-        # semantics identical across PoC and perf code.
-        return _resolve_bare(preference, context=context)
-
-    index = int(match.group(1))
-    if not torch.cuda.is_available():
-        raise RuntimeError(
-            f"{context} requested device={preference!r} but CUDA is not "
-            f"available. Set device='cpu' or run on a CUDA-capable host.",
-        )
-    n_devices = torch.cuda.device_count()
-    if index >= n_devices:
-        raise RuntimeError(
-            f"{context} requested device={preference!r} but only "
-            f"{n_devices} CUDA device(s) are present (indices 0.."
-            f"{n_devices - 1}).",
-        )
-    device = torch.device(f"cuda:{index}")
-    logger.debug(
-        "device_resolved.indexed",
-        context=context,
-        preference=preference,
-        device=str(device),
-        n_devices=n_devices,
-    )
-    return device
+    # The shared helper already validates bare and ``cuda:N`` forms with the
+    # exact GPU-failure semantics we want; delegate to avoid drift.
+    return _resolve_bare(preference, context=context)
 
 
 def device_label(device: torch.device) -> str:

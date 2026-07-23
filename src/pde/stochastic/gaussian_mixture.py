@@ -32,6 +32,19 @@ def _tril_size(dim: int) -> int:
     return dim * (dim + 1) // 2
 
 
+def pack_moments(weights: Tensor, means: Tensor, covariances: Tensor) -> Tensor:
+    """Pack raw moment tensors into the flat layout **without** state validation.
+
+    Used for moment *derivatives* (which are not valid states: the weight
+    derivative is zero and dP need not be PSD) so they can flow through the
+    ``rhs_fn(u, t)`` contract of ``src/pde/time_stepping.py``.
+    """
+    k, d = means.shape
+    rows, cols = torch.tril_indices(d, d, device=means.device)
+    tril = covariances[:, rows, cols].reshape(k * _tril_size(d))
+    return torch.cat([weights, means.reshape(k * d), tril])
+
+
 @dataclass(frozen=True)
 class GaussianMixtureState:
     """Immutable Gaussian-mixture moment state (weights, means, covariances).
@@ -92,10 +105,7 @@ class GaussianMixtureState:
         ``rhs_fn(u, t)`` contract of ``src/pde/time_stepping.py`` steppers and
         with the MDN input head.
         """
-        k, d = self.n_components, self.dim
-        rows, cols = torch.tril_indices(d, d, device=self.means.device)
-        tril = self.covariances[:, rows, cols].reshape(k * _tril_size(d))
-        return torch.cat([self.weights, self.means.reshape(k * d), tril])
+        return pack_moments(self.weights, self.means, self.covariances)
 
     @classmethod
     def unpack(cls, vec: Tensor, n_components: int, dim: int) -> GaussianMixtureState:

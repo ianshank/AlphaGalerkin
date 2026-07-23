@@ -35,7 +35,18 @@ from src.pde.stochastic.config import (
     StrangTrainerConfig,
 )
 from src.pde.stochastic.errors import JumpModelMissingError, StochasticConfigurationError
-from src.pde.stochastic.gaussian_mixture import GaussianMixtureBasis, GaussianMixtureState
+from src.pde.stochastic.gaussian_mixture import (
+    GaussianMixtureBasis,
+    GaussianMixtureState,
+    pack_moments,
+)
+from src.pde.stochastic.generator import (
+    DriftModel,
+    JumpSemigroup,
+    KolmogorovGenerator,
+    LinearDrift,
+)
+from src.pde.stochastic.projection import GalerkinMomentProjection
 
 __all__ = [
     "DEFAULT_COV_JITTER",
@@ -49,11 +60,16 @@ __all__ = [
     "DEFAULT_STRANG_SLOPE_MAX",
     "DEFAULT_STRANG_SLOPE_MIN",
     "DEFAULT_TRAINED_MDN_MOMENT_TOL",
+    "DriftModel",
+    "GalerkinMomentProjection",
     "GaussianMixtureBasis",
     "GaussianMixtureBasisConfig",
     "GaussianMixtureState",
     "JumpConfig",
     "JumpModelMissingError",
+    "JumpSemigroup",
+    "KolmogorovGenerator",
+    "LinearDrift",
     "MDNJumpConfig",
     "StochasticConfigurationError",
     "StochasticGeneratorConfig",
@@ -64,4 +80,5 @@ __all__ = [
     "jump_ou_mean",
     "ou_covariance",
     "ou_mean",
+    "pack_moments",
 ]

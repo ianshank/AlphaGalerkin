@@ -166,18 +166,23 @@ class MDNJumpSemigroup(nn.Module):
         return pack_batch(new_weights, new_means, new_covs)
 
     def advance(self, state: GaussianMixtureState, dt: float) -> GaussianMixtureState:
-        """``JumpSemigroup`` protocol: float64 state → float32 net → float64 state."""
+        """``JumpSemigroup`` protocol: float64 state → float32 net → float64 state.
+
+        Inference-only (``no_grad``): propagation/evaluation goes through this
+        path; the trainer differentiates through :meth:`forward` on packed
+        batches instead.
+        """
         if state.n_components != self.config.n_components or state.dim != self.config.dim:
             msg = (
                 f"MDN configured for K={self.config.n_components}, d={self.config.dim} "
                 f"but state has K={state.n_components}, d={state.dim}"
             )
             raise StochasticConfigurationError(msg)
-        packed32 = state.pack().to(torch.float32).unsqueeze(0)
-        dt32 = torch.tensor([[dt]], dtype=torch.float32)
-        out = self.forward(packed32, dt32).squeeze(0).to(state.dtype)
-        result = GaussianMixtureState.unpack(out, state.n_components, state.dim)
-        return result
+        with torch.no_grad():
+            packed32 = state.pack().to(torch.float32).unsqueeze(0)
+            dt32 = torch.tensor([[dt]], dtype=torch.float32)
+            out = self.forward(packed32, dt32).squeeze(0).to(state.dtype)
+        return GaussianMixtureState.unpack(out, state.n_components, state.dim)
 
     def nll(self, packed_out: Tensor, samples: Tensor) -> Tensor:
         """Mean mixture NLL of ``samples`` (B, S, d) under packed outputs (B, P)."""

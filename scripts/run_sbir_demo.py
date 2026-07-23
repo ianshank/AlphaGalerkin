@@ -79,6 +79,15 @@ Examples:
             "showing what a real run would produce. Completes in <5 seconds."
         ),
     )
+    parser.add_argument(
+        "--heavy",
+        action="store_true",
+        help=(
+            "Opt into each benchmark's `heavy_refinement_levels` (e.g. the "
+            "65 536-DOF Poisson level demonstrating the P40's 24 GiB VRAM "
+            "advantage). Default off so CI smoke tests stay fast."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -278,11 +287,13 @@ def run_dry_run(args: argparse.Namespace) -> int:
     ]
 
     # Top-level SBIR-specific summary metrics.
-    # transfer_mse: zero-shot transfer from 9x9→19x19 (physics PoC milestone)
+    # transfer_mse: measured zero-shot transfer 9x9->19x19 (scripts/demo_transfer.py,
+    #   50 epochs). Supersedes the fabricated 0.000209 headline. The honest
+    #   operator-vs-retrained-CNN comparison is specs/transfer_baseline_compare.spec.md.
     # complexity_timing: O(N) FNet throughput (tokens/s at N=361)
     # lbb_sigma_min: minimum singular value of Key projection (LBB condition)
     sbir_summary = {
-        "transfer_mse": 0.000209,
+        "transfer_mse": 0.000393,
         "complexity_timing": {
             "fnet_tokens_per_second": 48320.0,
             "softmax_tokens_per_second": 5210.0,
@@ -387,7 +398,7 @@ def run_demo(args: argparse.Namespace) -> int:
 
     # Initialize runner
     try:
-        runner = PDEBenchmarkRunner(config_path)
+        runner = PDEBenchmarkRunner(config_path, heavy=args.heavy)
     except FileNotFoundError:
         logger.error("config_not_found", path=str(config_path))
         return 1

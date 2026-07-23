@@ -144,14 +144,14 @@ CONSTRAINTS:
 
 ### Epic 2.2: SGF Parsing Completion
 
-**Story 2.2.1: Implement Variation/Tree Node Parsing**
+**Story 2.2.1: Implement Variation/Tree Node Parsing** — ✅ **RESOLVED (2026-07-01)**
 
 - **Task:** Fix skipped test for SGF variation parsing
-- **Location:** `tests/games/test_sgf.py`
+- **Location:** `tests/games/sgf/test_sgf.py::TestSGFParser::test_parse_variations` (passing)
 - **Acceptance Criteria:**
-  - [ ] Parse SGF files with variations
-  - [ ] Handle nested variations correctly
-  - [ ] Test with real KGS/IGS game files
+  - [x] Parse SGF files with variations
+  - [x] Handle nested variations correctly (branching game trees supported)
+  - [x] Test with real KGS/IGS game files
 - **Subagent:** Coder
 
 ---
@@ -262,14 +262,14 @@ CONSTRAINTS:
   - [x] No deadlocks or race conditions
 - **Subagent:** SQE
 
-**Story 5.1.2: Fix Skipped Vertex Launcher Tests**
+**Story 5.1.2: Fix Skipped Vertex Launcher Tests** — ✅ **RESOLVED**
 
 - **Task:** Improve SDK mocking for launcher tests
-- **Location:** `tests/vertex/test_launcher.py` (5 skipped)
+- **Location:** `tests/vertex/test_launcher.py` (0 skip markers; SDK interactions mocked)
 - **Acceptance Criteria:**
-  - [ ] All 5 tests enabled and passing
-  - [ ] SDK interactions properly mocked
-  - [ ] No external API calls in tests
+  - [x] All tests enabled and passing (no `pytest.skip`/`pytest.mark.skip` remain)
+  - [x] SDK interactions properly mocked
+  - [x] No external API calls in tests
 - **Subagent:** SQE
 
 ### Epic 5.2: Distributed Training Guide
@@ -353,18 +353,6 @@ CONSTRAINTS:
 **Goal:** Validate against external benchmarks.
 **Duration:** 2 weeks
 **Subagents:** SQE, Reviewer
-
-### Epic 7.1: Video Codec Benchmarking
-
-**Story 7.1.1: Compare Against H.265/VP9**
-
-- **Task:** Benchmark compression ratio vs. traditional codecs
-- **Metrics:** BD-rate, PSNR, encoding time
-- **Acceptance Criteria:**
-  - [ ] Test on standard video datasets (Xiph.org)
-  - [ ] Results documented with graphs
-  - [ ] Identify competitive/non-competitive scenarios
-- **Subagent:** SQE
 
 ### Epic 7.2: Go Engine Validation
 
@@ -458,54 +446,6 @@ CONSTRAINTS:
 
 ---
 
-## Milestone 10: Self-Hosted Neural Transcoder ⚠️ Phase 0+1 ✅
-
-**Goal:** Realtime-decode-on-consumer-hardware target for `src/video_compression/`. Every later phase is conditional on Phase 0's headline measurement.
-**Duration:** Phase 0+1 complete; Phases 2-4 estimated 4-8 weeks total
-**Priority:** P1 (gates self-hosted streaming-compression product line)
-
-**Status:** ⚠️ **Phase 0+1 COMPLETE** (2026-04-27 → 2026-04-30); Phases 2-4 NOT STARTED.
-
-### Phase 0 — Codec Performance Benchmark Harness ✅ (PR #75 + follow-up)
-
-GPU-primary perf harness in `src/video_compression/perf/`. **The gating measurement** for whether the project can target realtime decode on consumer hardware.
-
-**What was delivered:**
-
-- `PerfBenchmark(BaseExecutable)` with per-profile `cuda:N` device pinning so a single sweep covers both cards of the reference dual-GPU rig (RTX 5060 Ti 16 GB at `cuda:0` + RTX 5060 8 GB at `cuda:1`).
-- `PerfBenchmarkConfig` Pydantic schema with **zero hardcoded values** — every measurement-affecting knob (resolution / batch / phase / warmup / repeats / tolerance / track-VRAM / pattern / data-seed) is a validated field with bounds.
-- `BaselineRegistry` with explicit JSON schema versioning, `extra="ignore"` forward-compat, and `_migrate_baseline_document` hook (unversioned-to-v1 migration shipped).
-- `BenchmarkSubject` Protocol — runtime-agnostic. Phase-1+ runtime backends (ONNX Runtime, TensorRT, FP16, `torch.compile`) drop in without touching the benchmark loop. Extended docstring includes a runnable Phase-1 example.
-- Three YAML configs: `config/perf/smoke.yaml` (CPU CI), `cuda0_headline.yaml` (single-card), `default.yaml` (dual-card sweep).
-- CLI `scripts/benchmark_codec.py` with `run` / `record-baseline` / `diff` subcommands; structured `structlog` events bound to `benchmark_id` + `cell_key`.
-- **126 passing tests + 4 skipped (CPU-only paths skipping correctly on CUDA host); per-module coverage 98.42%** (gate at 85% via `.github/workflows/codec-perf-coverage.yml`).
-
-### Phase 1 — Decoder Runtime Backends ✅ (2026-04-30)
-
-Four decoder runtime backends implemented in `src/video_compression/runtime/`:
-
-- **Story 10.1.1:** `PyTorchCompiledRuntime` — `torch.compile` with inductor, CUDA graphs via `reduce-overhead` ✅
-- **Story 10.1.2:** `ONNXDecoderRuntime` — In-memory ONNX export + `CUDAExecutionProvider` ✅
-- **Story 10.1.3:** `TensorRTRuntime` — `torch_tensorrt.compile` with Dynamo IR, FP16 via `enabled_precisions` ✅
-- **Story 10.1.4:** FP16/BF16 activation — `NotImplementedError` gates removed, `_runtime_name_for_profile()` dispatch ✅
-
-**CUDA environment:** PyTorch 2.11.0+cu126, torch_tensorrt 2.11.0+cu126, GTX 1660 Ti.
-**Full regression:** 244 passed, 17 skipped, 0 failed.
-
-### Phase 2 — Pretrained Model Zoo (~2 weeks)
-
-Train + ship 8 model checkpoints across the declared λ rate-distortion points. Each checkpoint becomes a `RuntimeProfile` in the Phase 0 sweep.
-
-### Phase 3 — MCTS Rate Control (~3 weeks)
-
-Resolves the documented "Known Issue" in `CLAUDE.md` (rate-control tests skipped pending trained MCTS model). Wires `src/video_compression/mcts/` into the codec, enabling GOP-level bit allocation.
-
-### Phase 4 — FFmpeg Bridge → Library Daemon → Plugins (~2-3 weeks)
-
-External integration: FFmpeg encoder/decoder shim → background daemon for media-server consumption → Jellyfin / Plex plugins. Phase 4 only ships if Phases 1-3 produce a competitive codec.
-
----
-
 ## Implementation Priority Matrix
 
 | Priority | Milestone | Estimated Effort | Dependencies |
@@ -558,7 +498,7 @@ These can be completed without blocking dependencies:
 | SBIR Benchmarks | Benchmark runner | ✅ Yes (HTML reports) | Yes | PDEBenchmarkRunner + sbir_demo.py |
 | Distributed | Multi-node validation | ⚠️ Partial (35 tests) | Yes | Integration test passes |
 | PDE | Training integration | ✅ Yes | Yes | `config/train_pde.yaml` works |
-| Video Compression | Hyperprior complete | No | Yes | No TODO comments |
+| Video Compression | Hyperprior complete | ✅ Yes | Yes | z_bitstream encode/decode wired (`scripts/encode_video.py`, `scripts/decode_video.py`) |
 
 ---
 
@@ -566,10 +506,10 @@ These can be completed without blocking dependencies:
 
 | File | Line | Description | Priority | Status |
 |------|------|-------------|----------|--------|
-| `scripts/encode_video.py` | 261 | Add hyperprior z encoding | High | Open |
-| `scripts/decode_video.py` | 420 | Properly decode hyperprior z_data | High | Open |
+| ~~`scripts/encode_video.py`~~ | ~~261~~ | ~~Add hyperprior z encoding~~ | ~~High~~ | ✅ Fixed (z_bitstream captured, `encode_video.py:288-294`) |
+| ~~`scripts/decode_video.py`~~ | ~~420~~ | ~~Properly decode hyperprior z_data~~ | ~~High~~ | ✅ Fixed (z_bitstream reconstructed, `decode_video.py:430-470`) |
 | ~~`src/training/self_play.py`~~ | ~~419~~ | ~~True parallel generation~~ | ~~Medium~~ | ✅ Fixed (2026-02-04) |
-| `tests/games/test_sgf.py` | - | Variation parsing (skipped) | Medium | Open |
+| ~~`tests/games/sgf/test_sgf.py`~~ | ~~-~~ | ~~Variation parsing (skipped)~~ | ~~Medium~~ | ✅ Fixed (2026-07-01) |
 
 ---
 
@@ -577,8 +517,8 @@ These can be completed without blocking dependencies:
 
 | Module | Tests Skipped | Reason | Resolution Path |
 |--------|---------------|--------|-----------------|
-| Vertex Launcher | 5 | Complex SDK mocking | Improve mock strategy |
-| SGF Variation | 1 | Not implemented | Complete parser |
+| ~~Vertex Launcher~~ | ~~5~~ → 0 | ~~Complex SDK mocking~~ | ✅ Resolved — `tests/vertex/test_launcher.py` has no skip markers |
+| ~~SGF Variation~~ | ~~1~~ → 0 | ~~Not implemented~~ | ✅ Resolved (2026-07-01) — branching-tree parser + passing test |
 | CLI Module | 2 | Discovery issues | Fix import paths |
 
 ---
@@ -622,77 +562,3 @@ Orchestrator     → Integration, deployment, automation
 *Last Updated: 2026-04-10*
 *Version: 3.0.0*
 *Author: Claude Code Agent Investigation*
-
-
----
-
-
-## Milestone 11: Codec Model Zoo (R-D Lagrangian Sweep) - Phase 2-B COMPLETE
-
-**Goal:** Schedule the 8-point R-D Lagrangian sweep across the dual-GPU rig
-(`cuda:0=RTX 5060 Ti 16 GiB` + `cuda:1=RTX 5060 8 GiB`) and produce a
-reproducible BD-rate curve.
-**Duration:** Phase 2-B complete; Phases 2-C through 2-G estimated 3-5 weeks total
-**Priority:** P1 (gates the headline R-D number for the self-hosted transcoder)
-
-### Phase 2-B: Schemas, Manifest, Storage, Planner - COMPLETE (2026-05-01)
-
-Shipped in `src/video_compression/zoo/`:
-
-- `ModelZooEntryConfig` / `ModelZooManifestConfig` / `OptimizerConfig` /
-  `SchedulerConfig` - Pydantic v2, zero hardcoded values, schema-versioned.
-- `load_manifest` / `save_manifest` - JSON+YAML by suffix, forward-compat
-  migration via `_migrate_manifest_document`.
-- `scan_devices` / `assign_devices` - four strategies
-  (`VRAM_AWARE` / `ROUND_ROBIN` / `SINGLE_DEVICE` / `MANUAL`).
-- `VideoCodecZoo` filesystem registry with atomic writes (tempfile +
-  `Path.replace`); GCS backend gated for Phase 2-D.
-- `config/video_compression/zoo/lambda_grid.yaml` ships the 8-point grid.
-- 100 percent line + branch coverage across all five modules; 68 tests;
-  mypy `--strict` and `ruff` clean.
-
-### Phase 2-C: ZooTrainer (Per-Entry Composition) - NEXT
-
-- `src/video_compression/training/zoo_trainer.py::ZooTrainer` composes
-  `VideoCompressionTrainer` per entry with fixed-lambda + AMP + grad-clip
-  + warmup wired from `ModelZooEntryConfig`.
-- Warm-start via `parent_entry_id`: load checkpoint from parent entry,
-  re-init optimizer.
-- Structured logging bound to `entry_id` / `lambda_rd` / `device`.
-- Acceptance: an 8 GiB-friendly path on `cuda:1` (FP16/BF16 + grad
-  accumulation) trains a single entry to its `target_psnr_db`.
-
-### Phase 2-D: Subprocess Sweep Driver
-
-- `src/video_compression/zoo/sweep.py::ZooSweep(BaseExecutable)`.
-- Subprocess-per-device with `CUDA_VISIBLE_DEVICES` pinning so each entry
-  sees exactly one GPU and PyTorch never has to multiplex.
-- Manifest-hash resumability - re-running with the same manifest skips
-  entries whose `checkpoint.pt` + `entry.json` already match the
-  expected hash key.
-
-### Phase 2-E: Perf Harness Integration
-
-- `RuntimeProfile.zoo_entry_id: str | None` - links a perf cell back to
-  the entry that produced its weights.
-- `CodecForwardSubject.from_zoo_entry(...)` - perf benchmark loads
-  weights through the zoo registry.
-- `config/perf/zoo_grid.yaml` - runs all eight zoo entries through the
-  Phase 0 perf harness.
-
-### Phase 2-F: BD-rate Validation
-
-- `src/video_compression/metrics/rd_curves.py` ingests the per-entry
-  `metrics.json` files and produces a BD-rate report.
-- Nightly CI workflow `phase2-zoo-validation.yml` rebuilds the curve and
-  diffs against the committed baseline.
-
-### Phase 2-G: Planner Quality (Opportunistic)
-
-- The current `VRAM_AWARE` planner is correct but conservative on
-  asymmetric rigs: when one large entry takes the bigger card, subsequent
-  entries that exceed the smaller card's headroom over-commit on the
-  bigger card rather than using the smaller card's free VRAM. A
-  two-phase strategy (greedy by descending VRAM, then load-balance by
-  total headroom) would push more work onto `cuda:1`. Defer until
-  Phase 2-D shows the over-commit cost in wall-clock.

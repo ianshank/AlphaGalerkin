@@ -1,0 +1,38 @@
+# L-shaped Poisson AMR: MCTS refinement policy vs classical Dörfler marking.
+#
+# Headline (still CPU-only) configuration — larger budgets for the committed
+# results/lshape_mcts_vs_dorfler.{csv,png} artifacts. Runs in ~tens of seconds
+# on CPU; no GPU required (the solver is scipy sparse).
+#
+# Run:
+#   python -m scripts.run_lshape_amr --config config/scenarios/lshape_amr_compare_demo.yaml
+#
+# Acceptance (primary, falsifiable): l2_error_ratio_at_matched_dof < 1.0.
+# Secondary (recorded, not gated): error_per_dof_ratio_mcts_over_dorfler.
+
+defaults:
+  seed: 42
+  timeout_seconds: 1800
+
+scenarios:
+  - name: lshape_amr_compare
+    description: "L-shaped Poisson AMR: MCTS vs Dörfler (headline artifact run)."
+    tier: integration
+    enabled: true
+    device: cpu
+    scale: 1.0
+    initial_side: 4
+    max_dof: 1200
+    max_steps: 40
+    error_tolerance: 1.0e-6
+    marking_fraction: 0.5
+    max_refinements: 40
+    n_candidate_elements: 8
+    n_simulations: 16
+    n_seeds: 5
+    value_scale: 4.0
+    c_puct: 1.4
+    add_noise: true
+    max_l2_ratio_at_matched_dof: 1.0
+    output_dir: results
+    artifact_basename: lshape_mcts_vs_dorfler

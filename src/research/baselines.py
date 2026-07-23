@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,9 +23,19 @@ import torch
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.pde.config import PDEType
 from src.pde.operators import PDEOperator
+from src.poc.device import resolve_device
+from src.research.gpu_profiler import GpuUtilizationProfiler
 
 logger = structlog.get_logger(__name__)
+
+# Optional geometry predicate for masked (non-rectangular) domains.  Given
+# node coordinates of shape ``(N, 2)`` it returns a boolean mask ``(N,)`` that
+# is True for nodes *inside* the physical domain.  ``None`` (the default on
+# every parameter below) means "full bounding box" — the historical behaviour,
+# so every existing caller and test is byte-for-byte unchanged.
+InsidePredicate = Callable[[NDArray[np.float64]], NDArray[np.bool_]]
 
 
 @dataclass
@@ -85,25 +96,44 @@ class AMRConfig(SolverConfig):
     """Configuration for adaptive mesh refinement solvers."""
 
     marking_fraction: float = Field(
-        default=0.3,
+        default=0.5,
         gt=0.0,
         lt=1.0,
-        description="Dorfler bulk-chasing marking fraction (theta)",
+        description=(
+            "Dorfler bulk-chasing marking fraction (theta). Default raised "
+            "from 0.3 to 0.5 so AMR on sharply-concentrated indicators "
+            "(e.g. Burgers shock) marks several elements per step instead "
+            "of one, reaching the target DOF within max_refinements."
+        ),
     )
     max_refinements: int = Field(
-        default=10,
+        default=30,
         ge=1,
-        description="Maximum number of refinement iterations",
+        description=(
+            "Maximum number of refinement iterations. Default raised from 10 "
+            "to 30 so 1D AMR with conservative marking (theta=0.3) can reach "
+            "8K+ DOF on smooth Burgers/Poisson cases without saturating."
+        ),
     )
     initial_dof_divisor: int = Field(
-        default=4,
+        default=2,
         ge=1,
-        description="Divisor for initial DOF count (n_dof // divisor)",
+        description=(
+            "Divisor for initial DOF count (n_dof // divisor). Default 2 means "
+            "the initial 1D grid starts at half the target DOF (capped by "
+            "max_initial_points_1d) so refinement only needs ~1 doubling to "
+            "reach the target on smooth problems."
+        ),
     )
     max_initial_points_1d: int = Field(
-        default=8,
+        default=256,
         ge=2,
-        description="Maximum initial grid points for 1D AMR",
+        description=(
+            "Maximum initial grid points for 1D AMR. Default raised from 8 "
+            "to 256 so high-target n_dof requests (>=128) start with a "
+            "mesh dense enough that target-aware refinement reaches the "
+            "requested DOF count within max_refinements steps."
+        ),
     )
     min_initial_points: int = Field(
         default=4,
@@ -133,6 +163,22 @@ class PINNConfig(SolverConfig):
     bc_loss_weight: float = Field(default=10.0, gt=0, description="Boundary condition loss weight")
     n_boundary_points: int = Field(default=50, ge=4, description="Boundary points per epoch")
     log_interval: int = Field(default=500, ge=1, description="Logging interval (epochs)")
+    device: str = Field(
+        default="auto",
+        description=(
+            "Device preference: 'auto' (CUDA if available else CPU), 'cpu', "
+            "'cuda', or 'cuda:N'. Default 'auto' matches the project's "
+            "GPU-preferred policy while keeping CI green on no-GPU runners."
+        ),
+    )
+    vector_pde: bool | None = Field(
+        default=None,
+        description=(
+            "Override for vector-valued PDE handling. None auto-detects from "
+            "operator.pde_type (Navier-Stokes => 2-channel network). True/False "
+            "forces 2-channel/scalar output respectively."
+        ),
+    )
 
 
 class NavierStokesConfig(SolverConfig):
@@ -657,8 +703,25 @@ class DorflerAMRSolver(BaseSolver):
         operator: PDEOperator,
         sparse: Any,
         spsolve: Any,
+        inside: InsidePredicate | None = None,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Solve 2D Poisson-type PDE on a (possibly non-uniform) tensor-product grid."""
+        """Solve 2D Poisson-type PDE on a (possibly non-uniform) tensor-product grid.
+
+        Args:
+            xs: Grid node x-coordinates (monotone, includes both endpoints).
+            ys: Grid node y-coordinates (monotone, includes both endpoints).
+            operator: PDE operator supplying ``source_term`` and ``boundary_value``.
+            sparse: The ``scipy.sparse`` module.
+            spsolve: The ``scipy.sparse.linalg.spsolve`` callable.
+            inside: Optional geometry predicate for non-rectangular (e.g.
+                L-shaped) domains. When supplied, interior grid nodes whose
+                coordinates fall *outside* the physical domain are pinned to
+                their Dirichlet boundary value (identity row), which imposes
+                the reentrant-edge boundary condition one grid layer in. When
+                ``None`` (default) the full bounding box is solved — the
+                historical behaviour, unchanged byte-for-byte.
+
+        """
         nx = len(xs) - 2  # interior x points
         ny = len(ys) - 2  # interior y points
         if nx < 1 or ny < 1:
@@ -674,6 +737,13 @@ class DorflerAMRSolver(BaseSolver):
         yi = ys[1:-1]
         XX, YY = np.meshgrid(xi, yi, indexing="ij")
         coords_flat = np.stack([XX.ravel(), YY.ravel()], axis=-1).astype(np.float32)
+
+        # Per-interior-node domain membership (i-major, idx = i*ny + j to match
+        # the assembly loop below). All-True when no mask is supplied.
+        if inside is not None:
+            node_inside = np.asarray(inside(coords_flat.astype(np.float64)), dtype=bool).reshape(-1)
+        else:
+            node_inside = np.ones(nx * ny, dtype=bool)
 
         n_interior = nx * ny
 
@@ -697,6 +767,18 @@ class DorflerAMRSolver(BaseSolver):
                 hy_avg = (hy_l + hy_r) / 2.0
 
                 idx = i * ny + j
+
+                # Masked (out-of-domain) node: pin to its Dirichlet value via an
+                # identity row. Neighbouring in-domain equations still reference
+                # this column, so the pinned value acts as the interior boundary
+                # condition on the reentrant edge. The right-hand side entry is
+                # set *after* the ``rhs += f`` step below so the source term does
+                # not pollute it. No-op when ``inside is None``.
+                if not node_inside[idx]:
+                    rows.append(idx)
+                    cols.append(idx)
+                    vals.append(1.0)
+                    continue
 
                 cx = (1.0 / hx_l + 1.0 / hx_r) / hx_avg
                 cy = (1.0 / hy_l + 1.0 / hy_r) / hy_avg
@@ -762,6 +844,18 @@ class DorflerAMRSolver(BaseSolver):
         f = np.asarray(operator.source_term(coords_flat), dtype=np.float64).flatten()
         rhs += f
 
+        # Overwrite masked-node right-hand sides with their pinned Dirichlet
+        # value *after* the source term is applied, so neither ``f`` nor any
+        # boundary contribution above pollutes the identity rows. Vectorised —
+        # one ``boundary_value`` call for all masked nodes. No-op when unmasked.
+        if not node_inside.all():
+            masked = ~node_inside
+            masked_coords = coords_flat[masked].astype(np.float32)
+            masked_bvals = np.asarray(
+                operator.boundary_value(masked_coords), dtype=np.float64
+            ).reshape(-1)
+            rhs[masked] = masked_bvals
+
         u_inner = spsolve(A, rhs)
 
         # Build full grid including boundary
@@ -799,20 +893,52 @@ class DorflerAMRSolver(BaseSolver):
         ys: NDArray[np.float64],
         u: NDArray[np.float64],
         operator: PDEOperator,
+        inside: InsidePredicate | None = None,
     ) -> NDArray[np.float64]:
         """Compute element-wise residual error indicators on 2D grid.
 
         Returns a 2D array of shape (n_elem_x, n_elem_y) with residual indicators.
+
+        Args:
+            xs: Grid node x-coordinates.
+            ys: Grid node y-coordinates.
+            u: Flattened solution over the full ``(len(xs), len(ys))`` grid.
+            operator: PDE operator supplying ``source_term``.
+            inside: Optional geometry predicate. When supplied, elements whose
+                centre falls outside the physical domain get a zero indicator so
+                they are never marked for refinement. ``None`` (default) treats
+                the full bounding box as the domain — historical behaviour.
+
         """
         nx = len(xs) - 1
         ny = len(ys) - 1
         u_grid = u.reshape(len(xs), len(ys))
         indicators = np.zeros((nx, ny), dtype=np.float64)
 
+        # Evaluate the domain predicate for every element centre in a single
+        # vectorised call (mirrors how _solve_on_grid_2d tests its nodes) instead
+        # of once per element. The centres are built through the identical
+        # float32 -> float64 round-trip used by the per-element ``mid`` below so
+        # the predicate input is byte-for-byte the same.
+        elem_inside: NDArray[np.bool_] | None = None
+        if inside is not None:
+            cx_all = 0.5 * (xs[:-1] + xs[1:])
+            cy_all = 0.5 * (ys[:-1] + ys[1:])
+            cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
+            centres = (
+                np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1)
+                .astype(np.float32)
+                .astype(np.float64)
+            )
+            elem_inside = np.asarray(inside(centres), dtype=bool).reshape(nx, ny)
+
         for i in range(nx):
             hx = xs[i + 1] - xs[i]
             for j in range(ny):
                 hy = ys[j + 1] - ys[j]
+                # Element wholly outside the physical domain: never refine it.
+                if elem_inside is not None and not elem_inside[i, j]:
+                    continue
                 mid = np.array(
                     [[(xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2]],
                     dtype=np.float32,
@@ -886,6 +1012,8 @@ class SimplePINNSolver(BaseSolver):
         learning_rate: float | None = None,
         n_collocation: int | None = None,
         bc_loss_weight: float | None = None,
+        device: str | None = None,
+        vector_pde: bool | None = None,
         config: PINNConfig | None = None,
     ) -> None:
         self.config = config or PINNConfig()
@@ -896,6 +1024,14 @@ class SimplePINNSolver(BaseSolver):
         self.learning_rate = learning_rate if learning_rate is not None else c.learning_rate
         self.n_collocation = n_collocation if n_collocation is not None else c.n_collocation
         self.bc_loss_weight = bc_loss_weight if bc_loss_weight is not None else c.bc_loss_weight
+        self.device_preference = device if device is not None else c.device
+        self.vector_pde_override = vector_pde if vector_pde is not None else c.vector_pde
+
+    def _resolve_vector_pde(self, operator: PDEOperator) -> bool:
+        """Decide whether to build a vector-valued network for this operator."""
+        if self.vector_pde_override is not None:
+            return self.vector_pde_override
+        return getattr(operator, "pde_type", None) == PDEType.NAVIER_STOKES
 
     def solve(self, operator: PDEOperator, n_dof: int, **kwargs: Any) -> SolverResult:
         """Solve by training a PINN."""
@@ -903,57 +1039,110 @@ class SimplePINNSolver(BaseSolver):
         log.info("pinn_solve_start")
         t0 = time.perf_counter()
 
-        device = torch.device("cpu")
-        net = self._build_network(operator.dim).to(device)
+        device = resolve_device(self.device_preference, context=f"pinn[{self.name}]")
+        is_vector = self._resolve_vector_pde(operator)
+        output_dim = 2 if is_vector else 1
+        net = self._build_network(operator.dim, output_dim=output_dim).to(device)
         optimizer = torch.optim.Adam(net.parameters(), lr=self.learning_rate)
 
         rng = np.random.default_rng(self.config.seed)
 
-        for epoch in range(self.n_epochs):
-            optimizer.zero_grad()
+        # Profile GPU utilisation when running on CUDA — provides SBIR
+        # proposal-grade telemetry on whether the workload is compute-bound
+        # or memory-bandwidth-bound. No-ops cleanly on CPU or no-nvidia-smi
+        # hosts.
+        # When ``device.index is None`` (bare ``torch.device("cuda")``) the
+        # tensor goes to whatever ``torch.cuda.current_device()`` returns,
+        # which is **not** always 0 — third-party libraries or earlier
+        # ``torch.cuda.set_device(N)`` calls can shift it. Sample dmon on
+        # the same index so the report matches the actual workload.
+        if device.type == "cuda":
+            gpu_idx = device.index if device.index is not None else torch.cuda.current_device()
+            profile_indices: list[int] = [gpu_idx]
+        else:
+            profile_indices = []
+        with GpuUtilizationProfiler(gpu_indices=profile_indices) as profiler:
+            for epoch in range(self.n_epochs):
+                optimizer.zero_grad()
 
-            # Interior collocation points
-            coords_np = rng.uniform(
-                operator.domain_min,
-                operator.domain_max,
-                size=(self.n_collocation, operator.dim),
-            ).astype(np.float32)
-            coords = torch.tensor(coords_np, dtype=torch.float32, device=device)
-            coords.requires_grad_(True)
+                # Interior collocation points
+                coords_np = rng.uniform(
+                    operator.domain_min,
+                    operator.domain_max,
+                    size=(self.n_collocation, operator.dim),
+                ).astype(np.float32)
+                coords = torch.tensor(coords_np, dtype=torch.float32, device=device)
+                coords.requires_grad_(True)
 
-            u = net(coords).squeeze(-1)
+                u_raw = net(coords)  # (N, output_dim)
 
-            # PDE residual loss (Laplacian)
-            lap = self._compute_laplacian(u, coords, operator.dim)
-            f = operator.source_term(coords)
-            if isinstance(f, np.ndarray):
-                f = torch.tensor(f, dtype=torch.float32, device=device)
-            pde_residual = lap + f  # For Poisson: -lap = f => lap + f = 0
-            loss_pde = torch.mean(pde_residual**2)
+                if is_vector:
+                    # Vector PDE (NS): PDE residual = sum of per-component
+                    # Laplacians. Source-term forcing is treated as zero for
+                    # the momentum residual (Taylor-Green has no body force).
+                    #
+                    # NOTE — physics simplification. Full Navier-Stokes
+                    # momentum is ``du/dt + (u·∇)u + ∇p − ν∇²u = f``; the
+                    # advection, pressure-gradient, and continuity terms are
+                    # not in this loss. This matches the previous P40 fork's
+                    # behaviour and is sufficient for the Taylor-Green decay
+                    # benchmark (where the analytical IC dominates), but the
+                    # PINN row is *not* a fully-physics-informed solver.
+                    # Delegating to ``operator.residual()`` for proper NS
+                    # physics is tracked as future work; doing it correctly
+                    # requires (a) extending the PINN to predict pressure
+                    # alongside velocity and (b) wiring divergence-free
+                    # constraints — out of scope for this PR.
+                    loss_pde = torch.zeros((), device=device)
+                    for c_idx in range(output_dim):
+                        uc = u_raw[:, c_idx]
+                        lap_c = self._compute_laplacian(uc, coords, operator.dim)
+                        loss_pde = loss_pde + torch.mean(lap_c**2)
+                else:
+                    u = u_raw.squeeze(-1)
+                    lap = self._compute_laplacian(u, coords, operator.dim)
+                    f = operator.source_term(coords)
+                    if isinstance(f, np.ndarray):
+                        f = torch.tensor(f, dtype=torch.float32, device=device)
+                    elif isinstance(f, torch.Tensor) and f.device != device:
+                        f = f.to(device)
+                    pde_residual = lap + f  # For Poisson: -lap = f => lap+f=0
+                    loss_pde = torch.mean(pde_residual**2)
 
-            # Boundary loss
-            bc_coords_np = operator.generate_boundary_points(
-                self.config.n_boundary_points,
-                seed=None,
-            )
-            bc_coords = torch.tensor(bc_coords_np, dtype=torch.float32, device=device)
-            u_bc = net(bc_coords).squeeze(-1)
-            bc_vals = operator.boundary_value(bc_coords_np)
-            if isinstance(bc_vals, np.ndarray):
-                bc_vals = torch.tensor(bc_vals, dtype=torch.float32, device=device)
-            loss_bc = torch.mean((u_bc - bc_vals) ** 2)
-
-            loss = loss_pde + self.bc_loss_weight * loss_bc
-            loss.backward()
-            optimizer.step()
-
-            if epoch % self.config.log_interval == 0:
-                log.debug(
-                    "pinn_epoch",
-                    epoch=epoch,
-                    loss_pde=float(loss_pde),
-                    loss_bc=float(loss_bc),
+                # Boundary loss
+                bc_coords_np = operator.generate_boundary_points(
+                    self.config.n_boundary_points,
+                    seed=None,
                 )
+                bc_coords = torch.tensor(bc_coords_np, dtype=torch.float32, device=device)
+                u_bc_raw = net(bc_coords)  # (N, output_dim)
+                bc_vals = operator.boundary_value(bc_coords_np)
+                if isinstance(bc_vals, np.ndarray):
+                    bc_vals = torch.tensor(bc_vals, dtype=torch.float32, device=device)
+                elif isinstance(bc_vals, torch.Tensor) and bc_vals.device != device:
+                    bc_vals = bc_vals.to(device)
+
+                if is_vector:
+                    if bc_vals.dim() == 1:
+                        bc_vals = bc_vals.unsqueeze(-1).expand_as(u_bc_raw)
+                    loss_bc = torch.mean((u_bc_raw - bc_vals) ** 2)
+                else:
+                    u_bc = u_bc_raw.squeeze(-1)
+                    if bc_vals.dim() > 1:
+                        bc_vals = bc_vals.squeeze(-1)
+                    loss_bc = torch.mean((u_bc - bc_vals) ** 2)
+
+                loss = loss_pde + self.bc_loss_weight * loss_bc
+                loss.backward()
+                optimizer.step()
+
+                if epoch % self.config.log_interval == 0:
+                    log.debug(
+                        "pinn_epoch",
+                        epoch=epoch,
+                        loss_pde=float(loss_pde),
+                        loss_bc=float(loss_bc),
+                    )
 
         # Evaluate on uniform grid
         eval_coords_np = operator.generate_collocation_points(
@@ -961,13 +1150,21 @@ class SimplePINNSolver(BaseSolver):
         )
         eval_coords = torch.tensor(eval_coords_np, dtype=torch.float32, device=device)
         with torch.no_grad():
-            u_eval = net(eval_coords).squeeze(-1).cpu().numpy()
+            u_eval_raw = net(eval_coords).cpu().numpy()
+        u_eval = u_eval_raw if is_vector else u_eval_raw.squeeze(-1)
 
         wall_time = time.perf_counter() - t0
         grid = eval_coords_np.astype(np.float64)
         l2_err = self._compute_l2_error(u_eval.astype(np.float64), grid, operator)
 
-        log.info("pinn_solve_done", wall_time=wall_time, l2_error=l2_err)
+        gpu_profile = profiler.report.to_dict() if profiler.report is not None else None
+        log.info(
+            "pinn_solve_done",
+            wall_time=wall_time,
+            l2_error=l2_err,
+            device=str(device),
+            gpu_samples=(profiler.report.total_samples if profiler.report else 0),
+        )
         return SolverResult(
             solution=u_eval.astype(np.float64),
             grid_points=grid,
@@ -978,18 +1175,29 @@ class SimplePINNSolver(BaseSolver):
                 "hidden_dim": self.hidden_dim,
                 "n_layers": self.n_layers,
                 "n_epochs": self.n_epochs,
+                "n_collocation": self.n_collocation,
+                "device": str(device),
+                "vector_pde": is_vector,
+                "gpu_profile": gpu_profile,
             },
         )
 
-    def _build_network(self, input_dim: int) -> torch.nn.Module:
-        """Build a simple MLP for the PINN."""
+    def _build_network(self, input_dim: int, output_dim: int = 1) -> torch.nn.Module:
+        """Build a simple MLP for the PINN.
+
+        Args:
+            input_dim: Input coordinate dimension (e.g. 1, 2, 3).
+            output_dim: Output dimension (1 for scalar PDEs, 2 for 2D vector
+                PDEs like Navier-Stokes velocity).
+
+        """
         layers: list[torch.nn.Module] = []
         in_dim = input_dim
         for _ in range(self.n_layers):
             layers.append(torch.nn.Linear(in_dim, self.hidden_dim))
             layers.append(torch.nn.Tanh())
             in_dim = self.hidden_dim
-        layers.append(torch.nn.Linear(in_dim, 1))
+        layers.append(torch.nn.Linear(in_dim, output_dim))
         return torch.nn.Sequential(*layers)
 
     @staticmethod

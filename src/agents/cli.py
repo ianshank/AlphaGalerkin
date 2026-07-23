@@ -14,7 +14,9 @@ Example:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -152,6 +154,116 @@ def run(
     if not success and result.error:
         typer.echo(f"\nError: {result.error}")
         raise typer.Exit(code=1)
+
+
+_research_output_dir_option = typer.Option(
+    "outputs/agents/research",
+    "--output-dir",
+    "-o",
+    help="Directory to persist the research-loop result JSON under <dir>/<run_id>/result.json.",
+)
+
+
+def _persist_research_result(result: Any, output_dir: Path) -> Path:
+    """Write a research-loop ExecutionResult to ``<output_dir>/<run_id>/result.json``.
+
+    Mirrors ``src/poc/results.py`` persistence so research-loop runs are
+    durable and diffable by the baseline harness. Returns the written path.
+    """
+    run_dir = output_dir / result.run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "result.json"
+    path.write_text(json.dumps(result.to_dict(), indent=2, sort_keys=True, default=str))
+    return path
+
+
+@app.command()
+@add_common_options
+@with_error_handling
+def research(
+    config: Path = _config_option,
+    output_dir: Path = _research_output_dir_option,
+    verbose: bool = False,
+    debug: bool = False,
+    quiet: bool = False,
+    log_format: str = "text",
+) -> None:
+    """Run the centaur research-loop harness from a YAML configuration."""
+    from src.agents.config import ResearchLoopConfig
+    from src.agents.research_loop import ResearchLoopOrchestrator
+
+    loop_config = load_config_file(config, ResearchLoopConfig)
+    orchestrator = ResearchLoopOrchestrator(loop_config)
+    result = orchestrator.run()
+
+    result_path = _persist_research_result(result, output_dir)
+    typer.echo(f"Result written to {result_path}")
+
+    success = result.is_success()
+    print_status_panel(
+        title="Research-Loop Result",
+        status=result.status.value,
+        details={
+            "duration": f"{result.duration_seconds:.2f}s"
+            if result.duration_seconds is not None
+            else "N/A",
+            "n_problems": str(result.metrics.get("n_problems", 0)),
+            "solved_fraction": f"{result.metrics.get('solved_fraction', 0):.3f}",
+        },
+        success=success,
+    )
+
+    if result.metrics:
+        metric_results = [
+            {"metric": k, "value": f"{v:.6f}" if isinstance(v, float) else str(v)}
+            for k, v in sorted(result.metrics.items())
+        ]
+        print_result_table(
+            title="Metrics",
+            results=metric_results,
+            columns=["metric", "value"],
+        )
+
+    if not success and result.error:
+        typer.echo(f"\nError: {result.error}")
+        raise typer.Exit(code=1)
+
+
+_scaffold_root_option = typer.Option(
+    Path("."),
+    "--root",
+    help="Repository root the generated paths are resolved against.",
+)
+_scaffold_dry_run_option = typer.Option(
+    False,
+    "--dry-run",
+    help="Show the files that would be created without writing them.",
+)
+_scaffold_name_argument = typer.Argument(..., help="New agent name (snake_case; e.g. 'my_agent').")
+
+
+@app.command()
+@add_common_options
+@with_error_handling
+def scaffold(
+    name: str = _scaffold_name_argument,
+    root: Path = _scaffold_root_option,
+    dry_run: bool = _scaffold_dry_run_option,
+    verbose: bool = False,
+    debug: bool = False,
+    quiet: bool = False,
+    log_format: str = "text",
+) -> None:
+    """Scaffold a new agent type (spec + module + mirrored test)."""
+    from src.agents.scaffold import scaffold_agent
+
+    plan = scaffold_agent(name, root=root, dry_run=dry_run)
+    action = "Would create" if dry_run else "Created"
+    typer.echo(f"{action} agent {plan.class_name} ({plan.name}):")
+    for path in plan.paths:
+        typer.echo(f"  - {path}")
+    if dry_run:
+        typer.echo("\n(dry run — no files written)")
 
 
 def main() -> None:

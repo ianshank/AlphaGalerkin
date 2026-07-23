@@ -1,14 +1,14 @@
 # Competitive Landscape: AI-for-Simulation Market
 
 ## Overview
-The AI-for-simulation market is rapidly consolidating ($50B+ in M&A since 2024). AlphaGalerkin occupies a verified novelty gap: no published work combines MCTS with Galerkin methods for PDE solving or mesh refinement. This document maps the competitive landscape.
+The AI-for-simulation market is rapidly consolidating ($50B+ in M&A since 2024). AlphaGalerkin occupies a *narrow* novelty gap: MCTS multi-step look-ahead for Galerkin basis / error-driven refinement is unpublished (the AMR-RL canon is single-step policy RL; TreeMesh applies MCTS to FE mesh *generation*, a distinct problem — see `docs/proposals/PRIOR_ART_REVIEW.md`). This document maps the competitive landscape.
 
 ## Competitor Matrix
 
 | Company | Founded | Funding | Valuation | Core Approach | Complexity | Resolution Transfer | Convergence Guarantee | TRL | Key Customers | AlphaGalerkin Advantage |
 |---------|---------|---------|-----------|---------------|------------|--------------------|-----------------------|-----|---------------|------------------------|
 | **PhysicsX** | 2019 | $155M+ | ~$1B | ML surrogates for engineering simulation | O(1) inference | No (fixed geometry) | None (empirical) | 5-6 | Rio Tinto, Siemens, McLaren | Multi-step planning via MCTS; provable LBB stability |
-| **BeyondMath** | 2024 | $18.5M seed | ~$100M est. | Fourier Neural Operators (FNO) | O(N log N) | Limited (fixed arch) | None (empirical) | 4 | Honeywell | Zero-shot transfer (MSE 0.000209); no training data needed |
+| **BeyondMath** | 2024 | $18.5M seed | ~$100M est. | Fourier Neural Operators (FNO) | O(N log N) | Limited (fixed arch) | None (empirical) | 4 | Honeywell | Zero-shot transfer (measured MSE ~4e-4); no training data needed |
 | **Pasteur Labs** | 2023 | Undisclosed (acquired FOSAI) | N/A | Foundation models for physics | O(N²) attention | Partial | None | 3-4 | Space/defense | MCTS look-ahead vs single-pass inference |
 | **Godela** | 2025 | YC S2025 | Pre-seed | Geometry-native AI physics engine | Unknown | Geometry-specific | None | 2-3 | Early stage | Galerkin mathematical rigor; proven benchmarks |
 | **PhysicsNeMo** | 2023 (NVIDIA) | Open source | N/A (NVIDIA) | FNO + PINN toolkit | O(N log N) / O(N²) | No (retrain per resolution) | None | 5-6 | NVIDIA ecosystem | Resolution independence; no retraining needed |
@@ -46,7 +46,7 @@ The AI-for-simulation market is rapidly consolidating ($50B+ in M&A since 2024).
 |-----------|--------------|---------------|
 | **Multi-step planning** | MCTS with configurable search depth | Single-pass inference (myopic) |
 | **Convergence guarantee** | LBB inf-sup condition, provable via stability guard | Empirical only (hope it converges) |
-| **Resolution independence** | Zero-shot: train 9x9, eval 19x19 (MSE 0.000209) | Retrain per resolution |
+| **Resolution independence** | Zero-shot: train 9x9, eval 19x19 (measured MSE ~4e-4, no retraining) | Retrain per resolution |
 | **Training data** | None required (operates on PDE directly) | Large datasets from existing simulators |
 | **Computational complexity** | O(N log N) via Galerkin attention + FFT | O(N²) attention or O(1) fixed inference |
 | **Published prior art** | None (verified novelty gap) | Extensive published work |

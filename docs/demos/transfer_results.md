@@ -12,19 +12,24 @@ measure how MSE scales with resolution.
 
 ## Key Finding
 
-Milestone achieved [2026-01-26]: training on 9x9 grids yielded **MSE = 0.000209 on 19x19**
--- 240x better than the 0.05 threshold -- with no retraining.
+Measured [2026-07-22]: training a `PhysicsOperator` on 9x9 grids (50 epochs,
+`scripts/demo_transfer.py`) transfers zero-shot to larger grids **with no retraining**:
 
-In quick-mode (5 epochs, compact model), a representative run shows:
+| Grid Size | Measured MSE | Points | Below 0.05? |
+|-----------|--------------|--------|-------------|
+| 9x9 (train) | ~2.5e-6 | 81 | Yes |
+| 13x13 (unseen) | ~2.0e-4 | 169 | Yes |
+| 19x19 (unseen) | ~3.9e-4 | 361 | Yes |
 
-| Grid Size | MSE | RMSE | Points | Pass? |
-|-----------|-----|------|--------|-------|
-| 9x9 | ~0.000300 | ~0.017 | 81 | Yes |
-| 13x13 | ~0.005000 | ~0.071 | 169 | Yes |
-| 19x19 | ~0.005000 | ~0.071 | 361 | Yes |
-| 25x25 | ~0.006000 | ~0.078 | 625 | Yes |
-
-(All MSE values are well below the 0.05 success threshold.)
+> **Correction.** An earlier version reported "MSE 0.000209 on 19x19 — 240× better than the
+> 0.05 threshold." That figure was a **fabricated** notebook cell (no code computed it), and
+> "240× below a fixed threshold" is not a meaningful result. The numbers above are measured.
+> Being "below 0.05" is a weak bar: a discrete CNN **retrained at 19x19** is *more accurate*
+> than the operator's zero-shot result — see the honest, CI-gated benchmark
+> `specs/transfer_baseline_compare.spec.md`. The operator's real value is running **one model
+> at any resolution with no retraining**, not beating a resolution-specific specialist on
+> accuracy. (Small quick-mode models transfer worse, e.g. 19x19 ≈ 5e-3; use the full config
+> for the headline.)
 
 ## MSE vs Resolution Behavior
 

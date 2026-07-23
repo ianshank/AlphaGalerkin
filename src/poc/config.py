@@ -391,6 +391,58 @@ def load_config_from_dict(
         "stability": StabilityScenarioConfig,
     }
 
+    # Lazy import: `LLMPriorAblationConfig` itself is light (it only pulls
+    # in `LMStudioConfig`), but resolving it at module top would force the
+    # *scenario* module to load — and that pulls in `scipy.stats`, the
+    # MCTS engine, the PDE registry, and the LM Studio client. Loading
+    # that surface on every config-dispatch call is wasteful for runs
+    # that never touch the LLM-prior scenario, so we resolve it only on
+    # demand. The integration itself remains opt-in via the [lm-studio]
+    # extra.
+    inferred_name = scenario_type or data.get("name", "")
+    if inferred_name == "llm_prior_ablation":
+        from src.poc.scenarios.llm_prior_config import (
+            LLMPriorAblationConfig,
+        )
+
+        type_map["llm_prior_ablation"] = LLMPriorAblationConfig
+
+    # Same lazy-resolution rationale as llm_prior_ablation: the scaling-law
+    # scenario module pulls in the MCTS engine, PDE registry, and LM Studio
+    # client, so only resolve its (light) config class on demand.
+    if inferred_name == "scaling_law":
+        from src.poc.scenarios.scaling_law_config import ScalingLawConfig
+
+        type_map["scaling_law"] = ScalingLawConfig
+
+    # Same lazy-resolution rationale: the noyron_basis config is light but its
+    # scenario module pulls in the PDE registry + helical operators, so resolve
+    # only the config class, and only when this scenario is actually requested.
+    if inferred_name == "noyron_basis":
+        from src.poc.scenarios.noyron_basis_config import NoyronBasisConfig
+
+        type_map["noyron_basis"] = NoyronBasisConfig
+
+    # Same lazy-resolution rationale: the lshape_amr_compare config is light but
+    # its scenario module pulls in the MCTS engine, the PDE registry, and scipy
+    # via the comparison harness, so resolve only the config class on demand.
+    if inferred_name == "lshape_amr_compare":
+        from src.poc.scenarios.lshape_amr_compare_config import (
+            LShapeAMRCompareConfig,
+        )
+
+        type_map["lshape_amr_compare"] = LShapeAMRCompareConfig
+
+    # Same lazy-resolution rationale: the transfer_baseline_compare config is light
+    # but its scenario module pulls in the PhysicsOperator, the CNN baseline, and the
+    # comparison harness (torch-heavy), so resolve only the config class on demand.
+    if inferred_name == "transfer_baseline_compare":
+        from src.poc.scenarios.transfer_baseline_compare_config import (
+            TransferBaselineCompareConfig,
+        )
+
+        type_map["transfer_baseline_compare"] = TransferBaselineCompareConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

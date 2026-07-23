@@ -1,0 +1,42 @@
+# L-shaped Poisson AMR: MCTS refinement policy vs classical Dörfler marking.
+#
+# CPU smoke configuration — small budgets so the head-to-head finishes in a few
+# seconds. Both arms use the SAME masked finite-difference solver, residual
+# estimator, geometry and active-DOF accounting; only the marking policy differs.
+#
+# Run:
+#   python -m src.poc.cli run --config config/scenarios/lshape_amr_compare_cpu.yaml
+# or the dedicated artifact writer:
+#   python -m scripts.run_lshape_amr --config config/scenarios/lshape_amr_compare_cpu.yaml
+#
+# Acceptance (primary, falsifiable): l2_error_ratio_at_matched_dof < 1.0 — does
+# the MCTS refinement POLICY beat Dörfler at matched DOF? The matched-wall-clock
+# ratio (error_per_dof_ratio_mcts_over_dorfler) is recorded but NOT gated: it is
+# expected > 1 for an untrained MCTS whose search costs n_simulations solves.
+
+defaults:
+  seed: 42
+  timeout_seconds: 600
+
+scenarios:
+  - name: lshape_amr_compare
+    description: "L-shaped Poisson AMR: MCTS vs Dörfler (CPU smoke)."
+    tier: functional
+    enabled: true
+    device: cpu
+    scale: 1.0
+    initial_side: 4
+    max_dof: 300
+    max_steps: 12
+    error_tolerance: 1.0e-6
+    marking_fraction: 0.5
+    max_refinements: 12
+    n_candidate_elements: 6
+    n_simulations: 8
+    n_seeds: 3
+    value_scale: 4.0
+    c_puct: 1.4
+    add_noise: true
+    max_l2_ratio_at_matched_dof: 1.0
+    output_dir: results
+    artifact_basename: lshape_mcts_vs_dorfler

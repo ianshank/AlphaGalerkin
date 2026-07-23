@@ -9,7 +9,9 @@ Implements PUCT-based MCTS with:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+import warnings
+from enum import Enum
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -26,6 +28,54 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from src.mcts.evaluator import Evaluator
+
+
+class SearchMode(str, Enum):
+    """How MCTS backs up leaf values through the tree.
+
+    ``select_child`` always *maximises* ``Q + exploration`` at every depth.
+    Whether the backed-up value is negated per level therefore determines
+    whether odd-depth nodes are maximised or minimised:
+
+    * ``SINGLE_AGENT`` — no sign inversion. The correct mode for single-agent
+      games (``n_players == 1``: every PDE / refinement game), where the agent
+      maximises the same objective at every depth.
+    * ``ZERO_SUM`` — invert on backup. The correct mode for two-player
+      zero-sum games (Go, chess); byte-for-byte identical to the historical
+      unconditional inversion.
+    * ``LEGACY_ADVERSARIAL`` — invert on backup, **deprecated**. Behaviourally
+      identical to ``ZERO_SUM`` but named to flag that it is being applied to a
+      single-agent game *on purpose* — solely to reproduce results produced
+      before the single-agent backup was fixed (e.g. the committed
+      ``results/lshape_mcts_vs_dorfler.csv``). Emits a ``DeprecationWarning``.
+    """
+
+    SINGLE_AGENT = "single_agent"
+    ZERO_SUM = "zero_sum"
+    LEGACY_ADVERSARIAL = "legacy_adversarial"
+
+
+# Modes that negate the value at each backup level. ``SINGLE_AGENT`` is the
+# sole non-inverting mode.
+_INVERTING_MODES = frozenset({SearchMode.ZERO_SUM, SearchMode.LEGACY_ADVERSARIAL})
+
+
+def invert_on_backup(mode: SearchMode) -> bool:
+    """Return whether ``mode`` negates the value at each backup level."""
+    return mode in _INVERTING_MODES
+
+
+@runtime_checkable
+class SupportsStepReward(Protocol):
+    """Optional protocol: games that expose a per-edge immediate reward.
+
+    ``MCTS`` reads this only when ``use_intermediate_rewards`` is enabled; a
+    game that does not implement it contributes zero intermediate reward.
+    """
+
+    def get_last_reward(self) -> float:
+        """Immediate reward earned by the most recently applied action."""
+        ...
 
 
 class GameInterface(Protocol):
@@ -71,6 +121,9 @@ class MCTS:
         dirichlet_alpha: float = DEFAULT_DIRICHLET_ALPHA,
         dirichlet_epsilon: float = DEFAULT_DIRICHLET_EPSILON,
         virtual_loss: float = DEFAULT_VIRTUAL_LOSS,
+        search_mode: SearchMode = SearchMode.ZERO_SUM,
+        use_intermediate_rewards: bool = False,
+        reward_discount: float = 1.0,
     ) -> None:
         """Initialize MCTS.
 
@@ -81,14 +134,46 @@ class MCTS:
             dirichlet_alpha: Dirichlet noise concentration.
             dirichlet_epsilon: Dirichlet noise mixing weight.
             virtual_loss: Virtual loss for parallel search.
+            search_mode: Backup semantics — see :class:`SearchMode`. The
+                default ``ZERO_SUM`` preserves the historical two-player
+                backup, so existing board-game callers are unchanged.
+                Single-agent (PDE / refinement) callers must pass
+                ``SearchMode.SINGLE_AGENT``.
+            use_intermediate_rewards: When True, accumulate per-edge rewards
+                (``game.get_last_reward()``) along the selection path and back
+                up ``R + gamma**d * V(leaf)``. Default False reproduces the
+                historical bootstrap-from-leaf-value-only behaviour.
+            reward_discount: Discount factor ``gamma`` in ``(0, 1]`` applied to
+                intermediate rewards. Ignored unless
+                ``use_intermediate_rewards`` is True.
+
+        Raises:
+            ValueError: If ``reward_discount`` is outside ``(0, 1]``.
 
         """
+        if not 0.0 < reward_discount <= 1.0:
+            raise ValueError(f"reward_discount must be in (0, 1], got {reward_discount}")
+
+        if search_mode is SearchMode.LEGACY_ADVERSARIAL:
+            warnings.warn(
+                "SearchMode.LEGACY_ADVERSARIAL applies the pre-fix two-player "
+                "backup to a single-agent game and exists only to reproduce "
+                "pre-fix results. Use SearchMode.SINGLE_AGENT for correct "
+                "single-agent search.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.evaluator = evaluator
         self.c_puct = c_puct
         self.n_simulations = n_simulations
         self.dirichlet_alpha = dirichlet_alpha
         self.dirichlet_epsilon = dirichlet_epsilon
         self.virtual_loss = virtual_loss
+        self.search_mode = search_mode
+        self._invert_backup = invert_on_backup(search_mode)
+        self.use_intermediate_rewards = use_intermediate_rewards
+        self.reward_discount = reward_discount
 
         # Reusable root node (for tree reuse)
         self._root: MCTSNode | None = None
@@ -224,6 +309,9 @@ class MCTS:
         node = root
         path: list[MCTSNode] = [node]
 
+        cumulative_reward = 0.0
+        discount = 1.0
+
         # Selection: traverse tree to leaf
         while not node.is_leaf:
             node = node.select_child(self.c_puct)
@@ -236,6 +324,12 @@ class MCTS:
             if node.action is not None:
                 game.apply_action(node.action)
 
+                if self.use_intermediate_rewards:
+                    reward = self._read_step_reward(game)
+                    node.edge_reward = reward
+                    cumulative_reward += discount * reward
+                    discount *= self.reward_discount
+
         # Check for terminal state
         if game.is_terminal():
             value = float(game.get_winner())
@@ -243,14 +337,49 @@ class MCTS:
             # Expansion and evaluation
             value = self._expand_and_evaluate(node, game)
 
+        # Discounted return from the root: R + gamma**d * V(leaf). When
+        # intermediate rewards are disabled, discount == 1.0 and
+        # cumulative_reward == 0.0, so this is exactly ``value``.
+        total_return = cumulative_reward + discount * value
+
         # Backup: propagate value through path
         # Remove virtual loss and update values
         for n in reversed(path[1:]):  # Skip root
             n.remove_virtual_loss(self.virtual_loss)
 
-        node.backup(value)
+        node.backup(total_return, invert=self._invert_backup)
 
-        return value
+        return total_return
+
+    @staticmethod
+    def _read_step_reward(game: GameInterface) -> float:
+        """Read the immediate reward for the last applied action.
+
+        Games that do not implement ``get_last_reward`` (e.g. board games)
+        contribute zero intermediate reward.
+
+        Raises:
+            TypeError: If a game exposes ``get_last_reward`` as a non-callable
+                attribute (e.g. a float or property value), violating the
+                ``SupportsStepReward`` contract. Failing here gives a clear
+                message at the source rather than a cryptic ``'... is not
+                callable'`` deeper in the search loop.
+
+        """
+        # A unique sentinel distinguishes "attribute absent" (board games —
+        # contribute zero) from "attribute present but not a method" (a float or
+        # a property returning None — a contract violation). ``None`` as the
+        # default would conflate the two and silently swallow the latter.
+        sentinel = object()
+        getter = getattr(game, "get_last_reward", sentinel)
+        if getter is sentinel:
+            return 0.0
+        if not callable(getter):
+            raise TypeError(
+                f"{type(game).__name__}.get_last_reward must be a callable method "
+                f"returning a float, got {type(getter).__name__}"
+            )
+        return float(getter())
 
     def _expand_node(
         self,
@@ -421,11 +550,22 @@ class BatchMCTS(MCTS):
         # Collect leaves to evaluate
         leaves: list[tuple[MCTSNode, GameInterface]] = []
         paths: list[list[MCTSNode]] = []
+        # Per-path discounted intermediate-reward accumulator and the discount
+        # factor gamma**d reached at the leaf, aligned with ``paths``.
+        path_rewards: list[tuple[float, float]] = []
+        # Per-path index into ``leaves``/``results`` for non-terminal paths, or
+        # -1 for terminal paths. Terminal and non-terminal paths can interleave
+        # (virtual loss diverges the batch), so ``paths`` and ``leaves`` are not
+        # index-aligned — this map keeps the backup value assignment correct.
+        leaf_index_for_path: list[int] = []
 
         for _ in range(batch_size):
             game_copy = game.clone()
             node = root
             path = [node]
+
+            cumulative_reward = 0.0
+            discount = 1.0
 
             # Selection
             while not node.is_leaf:
@@ -436,9 +576,19 @@ class BatchMCTS(MCTS):
                 if node.action is not None:
                     game_copy.apply_action(node.action)
 
-            if not game_copy.is_terminal():
+                    if self.use_intermediate_rewards:
+                        reward = self._read_step_reward(game_copy)
+                        node.edge_reward = reward
+                        cumulative_reward += discount * reward
+                        discount *= self.reward_discount
+
+            if game_copy.is_terminal():
+                leaf_index_for_path.append(-1)
+            else:
+                leaf_index_for_path.append(len(leaves))
                 leaves.append((node, game_copy))
             paths.append(path)
+            path_rewards.append((cumulative_reward, discount))
 
         # Batch evaluate leaves
         if leaves:
@@ -456,19 +606,26 @@ class BatchMCTS(MCTS):
 
         # Backup
         for i, path in enumerate(paths):
-            if i < len(leaves):
-                value = results[i].value
+            leaf_idx = leaf_index_for_path[i]
+            if leaf_idx >= 0:
+                value = results[leaf_idx].value
             else:
-                # Terminal state
+                # Terminal state — replay the path to recover the winner.
                 game_copy = game.clone()
                 for node in path[1:]:
                     if node.action is not None:
                         game_copy.apply_action(node.action)
                 value = float(game_copy.get_winner())
 
+            # Combine accumulated intermediate rewards with the leaf value:
+            # R + gamma**d * V(leaf). With rewards disabled this is exactly
+            # ``value`` (cumulative == 0.0, discount == 1.0).
+            cumulative_reward, discount = path_rewards[i]
+            total_return = cumulative_reward + discount * value
+
             # Remove virtual loss
             for node in path[1:]:
                 node.remove_virtual_loss(self.virtual_loss)
 
             # Backup value
-            path[-1].backup(value)
+            path[-1].backup(total_return, invert=self._invert_backup)

@@ -23,9 +23,6 @@ hypothesis_settings.register_profile(
 )
 hypothesis_settings.load_profile("ci" if os.environ.get("CI") else "default")
 
-# Re-export video compression fixtures for test discovery
-pytest_plugins = ["tests.video_compression.video_fixtures"]
-
 # Optional torch import - not all tests need it
 try:
     import torch
@@ -53,13 +50,11 @@ except ImportError:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Configure pytest markers for video and other test categories."""
+    """Configure pytest markers for the test categories used across the suite."""
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
     config.addinivalue_line("markers", "e2e: end-to-end workflow tests")
-    config.addinivalue_line("markers", "video: video compression tests")
-    config.addinivalue_line("markers", "requires_video: tests requiring real video files")
     config.addinivalue_line("markers", "integration: integration tests")
     config.addinivalue_line("markers", "jax: JAX-specific tests")
     config.addinivalue_line("markers", "cross_backend: cross-backend equivalence tests")

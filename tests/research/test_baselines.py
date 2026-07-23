@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from src.pde.config import PDEConfig, PDEType
-from src.pde.operators import PoissonOperator
+from src.pde.operators import BurgersOperator, PoissonOperator
 from src.research.baselines import (
     AMRConfig,
     BaseSolver,
@@ -276,6 +276,62 @@ class TestDorflerAMRSolver:
         # New points should be sorted
         assert np.all(np.diff(x_new) > 0)
 
+    @pytest.mark.parametrize(
+        "target_dof,min_expected",
+        [
+            (128, 96),
+            (512, 256),
+            (2048, 256),
+        ],
+    )
+    def test_dorfler_amr_1d_reaches_meaningful_dof(
+        self, target_dof: int, min_expected: int
+    ) -> None:
+        """1D AMR on Burgers must escape the old 18-DOF ceiling.
+
+        Regression for the SBIR P40 bug where the solver returned n_dof=18
+        for every requested level (128, 8192, ...) because the initial mesh
+        was capped at 8 points and max_refinements=10 with theta=0.3 marked
+        only ~1 element per step on the sharply-concentrated shock indicator.
+
+        With raised defaults (max_initial_points_1d=256, max_refinements=30,
+        marking_fraction=0.5) the solver now starts at min(n_dof//2, 256)
+        and adds elements via bulk-chasing. Sparse marking on a single shock
+        still limits the per-step growth, so high target_dof requests are
+        bounded by n_start. The thresholds below reflect what's reachable
+        on this problem class — orders of magnitude better than the 18-DOF
+        bug.
+        """
+        cfg = PDEConfig(
+            name="test_burgers_1d",
+            pde_type=PDEType.BURGERS,
+            domain_dim=1,
+            domain_min=[0.0],
+            domain_max=[1.0],
+            advection_coeff=[0.0],
+        )
+        op = BurgersOperator(cfg, viscosity=0.01)
+        result = DorflerAMRSolver().solve(op, n_dof=target_dof)
+        assert result.n_dof >= min_expected, (
+            f"Dorfler AMR reached only {result.n_dof} DOF for target_dof="
+            f"{target_dof}, expected >= {min_expected}"
+        )
+        # Strong invariant: the bug had ALL target_dofs collapse to 18.
+        assert result.n_dof > 18, (
+            f"Dorfler AMR still produces only {result.n_dof} DOF "
+            "— matches the pre-fix ceiling. Default raise did not take effect."
+        )
+
+    def test_dorfler_amr_1d_n_dof_scales_with_target(self) -> None:
+        """Different target_dofs must produce different n_dofs (vs the old bug)."""
+        op = _make_poisson_1d()
+        small = DorflerAMRSolver().solve(op, n_dof=64)
+        large = DorflerAMRSolver().solve(op, n_dof=512)
+        assert large.n_dof > small.n_dof, (
+            f"n_dof should scale with requested target: small={small.n_dof}, "
+            f"large={large.n_dof}. The pre-fix bug returned the same 18 for both."
+        )
+
 
 # ---------------------------------------------------------------------------
 # SimplePINNSolver
@@ -292,9 +348,21 @@ class TestSimplePINNSolver:
         assert solver.n_epochs == 1
 
     def test_solve_smoke(self):
-        """Single epoch to verify it runs end-to-end without crashing."""
+        """Single epoch to verify it runs end-to-end without crashing.
+
+        Pinned to device='cpu' so the test is deterministic across hosts —
+        on a no-CUDA box auto would resolve to CPU naturally; on a Blackwell
+        rig (where the kernel image isn't yet shipped in stock PyTorch) auto
+        would error. The smoke test's job is to verify the loop runs, not
+        to exercise GPU.
+        """
         solver = SimplePINNSolver(
-            hidden_dim=8, n_layers=2, n_epochs=1, n_collocation=20, learning_rate=1e-3
+            hidden_dim=8,
+            n_layers=2,
+            n_epochs=1,
+            n_collocation=20,
+            learning_rate=1e-3,
+            device="cpu",
         )
         op = _make_poisson_1d()
         result = solver.solve(op, n_dof=20)
@@ -578,11 +646,19 @@ class TestPerSolverConfigs:
             FDMConfig(min_grid_points=0)  # ge=2
 
     def test_amr_config_defaults(self):
+        """Validate the post-SBIR-fix defaults.
+
+        Pre-fix the defaults were (marking_fraction=0.3, max_refinements=10,
+        initial_dof_divisor=4, max_initial_points_1d=8) and produced
+        n_dof=18 across all SBIR Burgers refinement levels. The defaults
+        below were raised so 1D AMR escapes the 18-DOF ceiling for typical
+        target_dof values; see TestDorflerAMRSolver.test_dorfler_amr_1d_*.
+        """
         config = AMRConfig()
-        assert config.marking_fraction == 0.3
-        assert config.max_refinements == 10
-        assert config.initial_dof_divisor == 4
-        assert config.max_initial_points_1d == 8
+        assert config.marking_fraction == 0.5
+        assert config.max_refinements == 30
+        assert config.initial_dof_divisor == 2
+        assert config.max_initial_points_1d == 256
         assert config.min_initial_points == 4
         assert config.initial_side_divisor_2d == 2
         assert config.min_initial_side_2d == 3

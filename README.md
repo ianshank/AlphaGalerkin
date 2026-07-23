@@ -7,7 +7,7 @@ AlphaGalerkin uses Galerkin Transformers and MCTS to solve two classes of proble
 1. **Board Games** (Go, Chess): Zero-shot transfer between board sizes (train 9x9, play 19x19)
 2. **PDE Solving**: MCTS-guided adaptive mesh refinement and basis selection for computational physics
 
-The core mathematical innovation — combining Monte Carlo Tree Search with Galerkin methods — has **no published precedent** (verified novelty gap), positioning AlphaGalerkin for SBIR funding and strategic acquisition in the $50B+ simulation M&A market.
+The core methodological delta — MCTS *multi-step look-ahead* for Galerkin basis selection and error-driven refinement — is unpublished (the AMR-RL literature is uniformly *single-step*; the only prior MCTS+finite-element work, TreeMesh, targets mesh *generation*, a distinct problem — see [`docs/proposals/PRIOR_ART_REVIEW.md`](docs/proposals/PRIOR_ART_REVIEW.md)), positioning AlphaGalerkin for SBIR funding in the $50B+ simulation market.
 
 ---
 
@@ -46,7 +46,7 @@ AlphaGalerkin treats any problem domain as a **continuous space** Omega = [0,1]^
 - **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection (not O(N^2) softmax)
 - **MCTS Planning**: Multi-step look-ahead for mesh refinement, basis selection, and move search
 - **LBB Stability**: Provable convergence via inf-sup condition monitoring during training
-- **Zero-Shot Transfer**: Train on 9x9, evaluate on 19x19 (MSE 0.000209, 240x better than threshold)
+- **Zero-Shot Transfer**: One model runs at any resolution — train on 9x9, evaluate zero-shot on 19x19 (measured MSE ~4e-4, no retraining). Honestly benchmarked against a CNN retrained at the target resolution (`specs/transfer_baseline_compare.spec.md`).
 - **FFT Mixing**: O(N log N) FNet blocks for fast MCTS rollouts (5x+ speedup)
 
 ---
@@ -91,6 +91,20 @@ Built on solid mathematical foundations:
 - **LBB Stability**: Guaranteed convergence via inf-sup condition monitoring
 - **Spectral Methods**: Proper anti-aliasing for resolution transfer
 
+### Spec-Driven Development & Agentic Tooling
+
+- **Specs before code** ([`specs/`](specs/README.md)): every feature starts as a markdown spec
+  (data contract + acceptance criteria + `MetricThreshold`s), then tests, then code.
+- **Claude Code project scaffolding** ([`.claude/`](.claude/)): a SessionStart bootstrap hook,
+  reusable skills (`spec-new`, `regression-surface`, `coverage-gate`, `new-pde-operator`),
+  persona subagents, and slash commands.
+- **Multi-physics agents** ([`src/agents/`](src/agents/AGENT.md)): lifecycle hooks, opt-in
+  timeouts, and `python -m src.agents.cli scaffold <name>` to generate a new agent from the spec
+  template.
+- **Noyron v2.2** ([`config/scenarios/noyron_basis_cpu.yaml`](config/scenarios/noyron_basis_cpu.yaml)):
+  MCTS-guided Galerkin basis selection on Leap 71 helical SDF geometries —
+  `python -m src.poc.cli run --config config/scenarios/noyron_basis_cpu.yaml`.
+
 ---
 
 ## Architecture
@@ -134,8 +148,8 @@ See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for compr
 
 - Python 3.10+
 - PyTorch 2.0+ (CUDA 12.6 recommended for GPU backends)
-- CUDA 12.x+ (required for TensorRT and ONNX Runtime GPU)
-- Optional: `torch-tensorrt`, `onnxruntime`, `onnxscript` (for Phase 1 runtime backends)
+- Optional: CUDA 12.x+ for GPU training/inference
+- Optional: `onnxruntime`, `onnxscript` (for the ONNX export/runtime path in `src/deployment/`)
 
 ### From Source
 
@@ -432,6 +446,56 @@ model_int8 = torch.quantization.quantize_dynamic(
 # Deploy on Raspberry Pi, Jetson, etc.
 ```
 
+### 9. LLM-Prior MCTS for Out-of-Distribution PDEs
+
+**Goal**: Guide MCTS basis selection with a *generalist* LLM (Qwen-14B
+served by LM Studio) so the search survives PDE families a
+domain-trained evaluator has never seen.
+
+**Why this is interesting**: the project's existing `FNetEvaluator`
+gives strong policy priors *inside* the training distribution and
+collapses outside it. A generalist LLM with no PDE-specific training
+won't beat the trained evaluator on Poisson, but it remains useful on
+Burgers / biharmonic / Helmholtz where the trained head is silent. The
+ablation scenario benchmarks all three arms (random / trained / LLM) on
+both ID and OOD PDEs and reports the rollout-budget reduction and the
+median final residual.
+
+```bash
+# 1. Install LM Studio and start the local server
+#    (https://lmstudio.ai → load qwen2.5-14b-instruct → Local Server tab)
+# 2. Install the optional [lm-studio] extra
+pip install -e '.[lm-studio]'
+
+# 3. Run the ablation (GPU-only — fails loud if CUDA is unavailable)
+python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml
+```
+
+The scenario is **GPU-only by policy**: `setup()` calls
+`src.poc.device.resolve_device(config.device, context=...)` which raises
+`RuntimeError` when CUDA is unavailable. Arm gating is graceful — when
+LM Studio preflight fails (server unreachable, model not loaded,
+insufficient VRAM) the LLM arm is dropped *with its acceptance
+thresholds removed* so the rest of the scenario can still pass. Same
+behaviour symmetrically when the trained-arm checkpoint is missing or
+when zero LLM-call latency samples are recorded.
+
+**Headline acceptance metrics** (Pydantic-thresholded, all configurable):
+
+| Metric | Threshold | Statistic |
+|---|---|---|
+| `id_rollout_reduction_pct` | ≥ 25% | Mann-Whitney U on per-seed rollouts (random vs LLM) |
+| `ood_llm_residual` | ≤ 1e-2 | Median final residual on the OOD PDE |
+| `ood_trained_residual` | > 1e-1 | Trained evaluator's *expected failure* threshold |
+| `llm_call_p95_latency_ms` | ≤ 3000 | 95th percentile of per-call wall-clock |
+
+CPU CI runs the mocked tests only (`tests/integrations/`,
+`tests/poc/test_llm_prior_ablation_*.py`). The GPU rig captures the
+headline numbers via `pytest -m gpu_required` against a live LM Studio
+endpoint with `LM_STUDIO_URL` set. See
+[CLAUDE.md → Regression Surface](CLAUDE.md#regression-surface) for the
+exact gates.
+
 ---
 
 ## API Reference
@@ -606,7 +670,6 @@ pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py 
 ```
 
 ---
-
 ## Testing
 
 The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.
@@ -809,17 +872,6 @@ AlphaGalerkin/
 │   ├── engines/           # External engine integration
 │   ├── math_kernel/       # Mathematical primitives
 │   ├── mcts/              # Monte Carlo Tree Search
-│   ├── video_compression/ # Neural video compression
-│   │   ├── runtime/       # Decoder runtime backends (Phase 1)
-│   │   │   ├── protocol.py       # DecoderRuntime Protocol
-│   │   │   ├── registry.py       # @register_runtime + RuntimeRegistry
-│   │   │   ├── pytorch_eager.py  # Baseline eager runtime
-│   │   │   ├── pytorch_compiled.py # torch.compile + inductor
-│   │   │   ├── onnx_runtime.py   # ONNX Runtime + CUDA EP
-│   │   │   └── tensorrt_runtime.py # torch_tensorrt Dynamo IR
-│   │   ├── perf/          # Phase 0 benchmark harness
-│   │   ├── codec/         # Codec pipeline
-│   │   └── models/        # Encoder, decoder, hyperprior
 │   └── tools/             # Utilities (GTP, CLI)
 ├── tests/                 # 3000+ tests, 85% coverage gate
 │   ├── pde/               # PDE operators, geometry, time-stepping, swarm
@@ -835,10 +887,10 @@ AlphaGalerkin/
 │   ├── proposals/         # SBIR configs (Navy, DOE, NSF, AFWERX, DARPA D2P2)
 │   └── benchmarks/        # sbir_suite.yaml
 ├── scripts/
-│   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo
+│   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo (--heavy opt-in for 65 536-DOF Poisson)
+│   ├── run_sbir_p40.py    # Tesla P40 high-resolution PINN/NS-FDM comparison driver
 │   ├── train.py           # Training CLI with Hydra
-│   ├── train_chess.py     # Chess training CLI
-│   └── train_compression.py  # Video compression training
+│   └── train_chess.py     # Chess training CLI
 ├── docs/
 │   ├── architecture/      # C4 diagrams (Mermaid)
 │   └── proposals/         # SBIR templates, IP strategy, budgets, competitive analysis
@@ -875,7 +927,23 @@ python -m scripts.run_sbir_demo --config config/benchmarks/sbir_suite.yaml
 
 # Custom output
 python -m scripts.run_sbir_demo --output-dir outputs/navy_demo --formats json latex markdown
+
+# Opt into heavy refinement levels (e.g. 65 536-DOF Poisson L-shaped)
+# to demonstrate the P40's 24 GiB VRAM advantage. Default keeps CI fast.
+python -m scripts.run_sbir_demo --heavy --output-dir outputs/sbir_demo_v2
+
+# Tesla P40 high-resolution PINN vs NS-FDM comparison.
+# Loads config/benchmarks/sbir_p40.yaml; every PINN parameter is
+# config-driven and overridable via CLI flags.
+python -m scripts.run_sbir_p40                              # default profile
+python -m scripts.run_sbir_p40 --device cuda:1              # pin to a different GPU
+python -m scripts.run_sbir_p40 --n-epochs 1000 --skip-cpu   # short GPU-only run
 ```
+
+The P40 driver embeds **GPU utilisation telemetry** (mean SM-util %, mean
+memory-util %, peak FB-MiB) in `SolverResult.metadata["gpu_profile"]`
+when `nvidia-smi` is on PATH. Skips silently on CI / no-GPU hosts so the
+same code path is safe everywhere.
 
 ---
 
@@ -885,9 +953,11 @@ python -m scripts.run_sbir_demo --output-dir outputs/navy_demo --formats json la
 - [x] ~~SBIR demo script~~ (`scripts/run_sbir_demo.py` with convergence plots, LaTeX/Markdown reports)
 - [x] ~~BaseTrainer consolidation~~ (`src/training/base_trainer.py` with AMP, gradient clipping, LR scheduling)
 - [x] ~~SBIR proposal infrastructure~~ (SAM guide, budgets, timeline, program offices, IP strategy)
+- [x] ~~SBIR P40 benchmark hardening~~ (`scripts/run_sbir_p40.py` config-driven driver, `GpuUtilizationProfiler`, AMR escapes 18-DOF ceiling, NS-FDM Taylor-Green parity, PINN device knob)
 - [ ] Multi-field PDE support (extending ModelOutput for vector fields)
 - [ ] Migrate Trainer and OperatorTrainer to BaseTrainer inheritance
 - [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals
+- [ ] Capture proposal-grade Tesla P40 numbers from `scripts/run_sbir_p40.py` once a sm_61-compatible PyTorch wheel is available
 
 ### Medium-Term (v0.5)
 - [ ] 3D tetrahedral domain geometry support

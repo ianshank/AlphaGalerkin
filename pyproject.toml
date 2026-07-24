@@ -5,12 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "alphagalerkin"
 version = "0.1.0"
-description = "Resolution-independent Go AI using Continuous Operator Learning"
+description = "Resolution-independent operator learning + MCTS for board games (Go, Chess) and PDE solving"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "AlphaGalerkin Team"}
+    {name = "Ian Cruickshank", email = "ianshank@gmail.com"}
+]
+keywords = [
+    "operator-learning",
+    "galerkin",
+    "monte-carlo-tree-search",
+    "partial-differential-equations",
+    "alphazero",
+    "resolution-invariant",
+    "scientific-machine-learning",
+    "fourier-neural-operator",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -20,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
 dependencies = [
@@ -34,6 +45,13 @@ dependencies = [
     "wandb>=0.16.0",
     "typer>=0.9.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ianshank/AlphaGalerkin"
+Repository = "https://github.com/ianshank/AlphaGalerkin"
+Documentation = "https://ianshank.github.io/AlphaGalerkin/"
+Issues = "https://github.com/ianshank/AlphaGalerkin/issues"
+Changelog = "https://github.com/ianshank/AlphaGalerkin/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # scikit-fem backs the hp-adaptive FEM classical baseline used for DOE
@@ -124,6 +142,15 @@ picogk = [
 # `chat.completions.create`.
 lm-studio = [
     "openai>=1.40,<2.0",
+]
+# Documentation site toolchain (MkDocs Material + API autodoc from docstrings).
+# Only needed to build/serve the docs site locally or in the docs CI workflow;
+# `mkdocstrings` imports the package, so a base install (torch etc.) is also
+# pulled in transitively.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+    "mkdocs-mermaid2-plugin>=1.1",
 ]
 
 [project.scripts]

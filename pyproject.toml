@@ -51,7 +51,7 @@ Homepage = "https://github.com/ianshank/AlphaGalerkin"
 Repository = "https://github.com/ianshank/AlphaGalerkin"
 Documentation = "https://ianshank.github.io/AlphaGalerkin/"
 Issues = "https://github.com/ianshank/AlphaGalerkin/issues"
-Changelog = "https://github.com/ianshank/AlphaGalerkin/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CHANGELOG.md"
 
 [project.optional-dependencies]
 # scikit-fem backs the hp-adaptive FEM classical baseline used for DOE

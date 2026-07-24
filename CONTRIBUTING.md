@@ -86,7 +86,7 @@ code needs tests that keep the changed module above its gate. The
   (`feat:`, `fix:`, `docs:`, `test:`, `refactor:`…), validated by Commitizen in
   the pre-commit hooks.
 - **Changelog:** add a bullet under `[Unreleased]` in [`CHANGELOG.md`](CHANGELOG.md).
-- **Branch:** work on a feature branch; open a PR against `main`.
+- **Branch:** work on a feature branch; open a PR against the repository's default branch.
 - **PR description:** fill in the [pull request template](.github/PULL_REQUEST_TEMPLATE.md).
   Keep PRs focused and reviewable.
 - **Releases:** see [`RELEASING.md`](RELEASING.md) for the versioning/release process.

@@ -430,7 +430,7 @@ C4Component
 
 **Single-device by design at the current model size.** During the headline GPU run (4096 collocation points, `d_model=64`, 3 Galerkin layers, batch_size=1, 200 epochs) per-GPU utilization was observed at 1–10% on a Blackwell-class card. The bottleneck is per-step Adam overhead and Python/CUDA launch latency, not compute. Adding `DistributedDataParallel` would put NCCL all-reduce on the critical path of every step and slow training, not speed it up.
 
-**Revisit DDP only if the surrogate grows materially**: `n_train_pts ≥ 100k`, `d_model ≥ 512`, or `batch_size ≥ 32`. The torchrun infrastructure in [src/distributed/launcher.py](src/distributed/launcher.py) and the GPU-strict resolver in [src/poc/device.py](src/poc/device.py) already exist if/when that threshold is crossed.
+**Revisit DDP only if the surrogate grows materially**: `n_train_pts ≥ 100k`, `d_model ≥ 512`, or `batch_size ≥ 32`. The torchrun infrastructure in [src/distributed/launcher.py](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/src/distributed/launcher.py) and the GPU-strict resolver in [src/poc/device.py](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/src/poc/device.py) already exist if/when that threshold is crossed.
 
 **Multi-GPU host strategy in the meantime**: run independent replicas (one per device) via `CUDA_VISIBLE_DEVICES=N`. Each replica trains its own model and produces an independent `ScenarioResult`; useful for seed-variance estimates or for running different `ref_solver_kind` modes side-by-side.
 

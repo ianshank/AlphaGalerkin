@@ -120,6 +120,18 @@ repos:
         args: [--max-line-length=100]
         files: \.rst$
 
+  # =============================================================
+  # Internal Markdown link check (offline, no network)
+  # =============================================================
+  - repo: local
+    hooks:
+      - id: check-doc-links
+        name: check internal doc links
+        entry: python scripts/check_doc_links.py
+        language: system
+        pass_filenames: false
+        files: \.md$
+
 # =============================================================
 # CI-only configuration
 # =============================================================

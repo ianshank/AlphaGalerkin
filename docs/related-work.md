@@ -18,7 +18,7 @@ summary notes at the end) are exempt from the guard.
 
 > **Scope:** this is the *repo-wide* novelty register. The DOE-Genesis research track keeps
 > its own, proposal-specific literature comparison in
-> [`doe_genesis/related_work.md`](doe_genesis/related_work.md) — consult that one for
+> [`doe_genesis/related_work.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/docs/doe_genesis/related_work.md) — consult that one for
 > DOE-ASCR-scoped citations.
 
 <!-- entries:start -->

@@ -57,7 +57,7 @@ python -m src.tools.verify_invariance --train-size 9 --infer-size 19
 
 CI enforces **85% branch coverage** globally plus per-module gates. Rather than
 running the whole suite, run the **Regression Surface** command block for your
-code path — the table is in [`CLAUDE.md`](../CLAUDE.md). Examples:
+code path — the table is in [`CLAUDE.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CLAUDE.md). Examples:
 
 ```bash
 # Coverage in this environment needs pytrace (a torch wheel crashes the C tracer)
@@ -88,6 +88,6 @@ pre-commit run --all-files
 
 ## Where to go next
 
-- [Architecture / repository map](../ARCHITECTURE.md)
-- [Contributing](../CONTRIBUTING.md) and [spec-driven development](../specs/README.md)
+- [Architecture / repository map](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/ARCHITECTURE.md)
+- [Contributing](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CONTRIBUTING.md) and [spec-driven development](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/specs/README.md)
 - [Glossary](GLOSSARY.md)

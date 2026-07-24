@@ -69,10 +69,10 @@ Terminology used across AlphaGalerkin's game-AI and PDE/scientific-computing cod
 
 - **Scenario** — A configuration-driven PoC experiment run by `src/poc/`.
 - **Spec** — A markdown contract (data contract + acceptance criteria +
-  thresholds) written *before* code. See [specs](../specs/README.md).
+  thresholds) written *before* code. See [specs](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/specs/README.md).
 - **`MetricThreshold`** — The canonical Pydantic threshold type
   (`src.poc.config.MetricThreshold`); specs reuse it rather than defining a parallel schema.
 - **AQA test** — Acceptance-Quality-Assurance test asserting a spec's thresholds
   match the config's `get_default_thresholds()`.
-- **Regression Surface** — The table in [`CLAUDE.md`](../CLAUDE.md) mapping each code
+- **Regression Surface** — The table in [`CLAUDE.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CLAUDE.md) mapping each code
   path to the exact test commands that guard it.

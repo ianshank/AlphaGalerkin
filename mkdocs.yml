@@ -1,0 +1,94 @@
+site_name: AlphaGalerkin
+site_description: Resolution-independent operator learning + MCTS for board games and PDE solving
+site_url: https://ianshank.github.io/AlphaGalerkin/
+repo_url: https://github.com/ianshank/AlphaGalerkin
+repo_name: ianshank/AlphaGalerkin
+docs_dir: docs
+
+# Prose / historical material is browsed on GitHub, not the API site. Excluding
+# it keeps `mkdocs build --strict` focused on product docs + the API reference.
+exclude_docs: |
+  /README.md
+  archive/
+  business/
+  doe_genesis/
+  prd/
+  demos/
+  templates/
+  IMPLEMENTATION_PLAN.md
+  NEXT_STEPS_PLAN.md
+  ROI_IMPLEMENTATION_PLAN.md
+  PROMPT_TEMPLATE.md
+  TRAINING_IMPLEMENTATION_TEMPLATE.md
+  TRAINING_DATA_SOURCES.md
+  training_summary.md
+  GALERKIN_FUSION_HEAD_PLAN.md
+  CHESS_ENGINE_BENCHMARKING.md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            filters: ["!^_"]
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture:
+      - Repository map (GitHub): https://github.com/ianshank/AlphaGalerkin/blob/HEAD/ARCHITECTURE.md
+      - C4 model: architecture/c4_mermaid.md
+      - PDE game C4: architecture/pde_game_c4.md
+      - Components: architecture/components.md
+      - Decision records: adr/README.md
+  - Reference:
+      - Glossary: GLOSSARY.md
+      - Mathematical foundation: mathematical-foundation.md
+      - Related work: related-work.md
+  - Use cases: use-cases.md
+  - API reference:
+      - MCTS: api/mcts.md
+      - PDE: api/pde.md
+      - Modeling: api/modeling.md
+      - Math kernel: api/math_kernel.md
+      - Refinement: api/refinement.md
+  - Contributing (GitHub): https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CONTRIBUTING.md

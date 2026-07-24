@@ -237,3 +237,6 @@ outputs/poc/llm_prior_ablation/
 # Coverage rcfiles emitted by CI workflow heredocs (regression-surface
 # gates). Not source-of-truth — written at job time.
 .coveragerc.noyron-hx
+
+# MkDocs build output
+/site/

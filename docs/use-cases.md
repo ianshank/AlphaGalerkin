@@ -1,7 +1,7 @@
 # Use Cases
 
 Illustrative applications of AlphaGalerkin across its two domains. Snippets are
-schematic — see the API docs and [`ARCHITECTURE.md`](../ARCHITECTURE.md) for exact
+schematic — see the API docs and [`ARCHITECTURE.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/ARCHITECTURE.md) for exact
 signatures.
 
 ## 1. Research: resolution-independent learning
@@ -67,4 +67,4 @@ python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml
 
 The scenario is GPU-only and gates the LLM arm gracefully when LM Studio's
 preflight fails. See the LLM-prior rows in the
-[Regression Surface](../CLAUDE.md#regression-surface) for the exact acceptance metrics.
+[Regression Surface](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CLAUDE.md#regression-surface) for the exact acceptance metrics.

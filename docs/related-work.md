@@ -10,11 +10,16 @@ mesh/basis selection, and LBB stability — unless the source paper demonstrably
 them. This rule is executable: `tests/regression/test_related_work_guard.py` parses the
 delimited entries region below and fails on any entry missing the clause. It exists to
 prevent inadvertent over- OR under-claiming of novelty (see
-`docs/proposals/PRIOR_ART_REVIEW.md` for the two standing honesty constraints: never the
+`docs/business/proposals/PRIOR_ART_REVIEW.md` for the two standing honesty constraints: never the
 blanket "no MCTS+FEM" claim — TreeMesh exists — and novelty ≠ superiority).
 
 Entries live between the markers below; sections outside the markers (this preamble, the
 summary notes at the end) are exempt from the guard.
+
+> **Scope:** this is the *repo-wide* novelty register. The DOE-Genesis research track keeps
+> its own, proposal-specific literature comparison in
+> [`doe_genesis/related_work.md`](doe_genesis/related_work.md) — consult that one for
+> DOE-ASCR-scoped citations.
 
 <!-- entries:start -->
 
@@ -58,7 +63,7 @@ research item is MCTS-guided selection *over* the stochastic layer's mixture bas
 
 - The comprehensive per-family comparison (PINNs, FNO/DeepONet, RL-for-AMR canon,
   TreeMesh) lives in `docs/doe_genesis/related_work.md` and
-  `docs/proposals/PRIOR_ART_REVIEW.md`; new entries here should cross-link rather than
+  `docs/business/proposals/PRIOR_ART_REVIEW.md`; new entries here should cross-link rather than
   duplicate.
 - When adding an entry, copy the NKE entry's section skeleton (**What it does** /
   **What it does NOT do** / **Complementarity**) and keep it inside the markers so the

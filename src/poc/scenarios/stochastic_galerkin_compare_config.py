@@ -6,7 +6,7 @@ Galerkin-attention path (a small ``PhysicsOperator`` trained supervised on
 density fields) versus the new stochastic Galerkin moment-projection path
 (Strang propagation + density rendering, no training).
 
-Honesty rule (spec Thresholds, ``docs/proposals/PRIOR_ART_REVIEW.md``
+Honesty rule (spec Thresholds, ``docs/business/proposals/PRIOR_ART_REVIEW.md``
 "novelty ≠ superiority"): the **only** gate is the stochastic arm's absolute
 density MSE — on this benchmark the stochastic path is near-exact by
 construction, so gating a stochastic-vs-deterministic ratio would be a

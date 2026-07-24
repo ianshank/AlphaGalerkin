@@ -77,7 +77,7 @@ Retrain AlphaGalerkin on chess via **pure self-play** (AlphaZero methodology), m
 | Task | Change |
 | --- | --- |
 | **E10.1** Resolve pre-existing mypy errors in shared modules | `attention.py`, `fnet.py`, `embeddings.py` etc. |
-| **E10.2** ADR table formatting | Fix MD060 warnings in `ADR-chess-self-play.md` |
+| **E10.2** ADR table formatting | Fix MD060 warnings in `docs/adr/0001-chess-self-play.md` |
 | **E10.3** Ruff format check | Ensure `ruff format --check` passes |
 
 ---

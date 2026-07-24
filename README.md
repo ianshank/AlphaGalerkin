@@ -7,7 +7,7 @@ AlphaGalerkin uses Galerkin Transformers and MCTS to solve two classes of proble
 1. **Board Games** (Go, Chess): Zero-shot transfer between board sizes (train 9x9, play 19x19)
 2. **PDE Solving**: MCTS-guided adaptive mesh refinement and basis selection for computational physics
 
-The core methodological delta — MCTS *multi-step look-ahead* for Galerkin basis selection and error-driven refinement — is unpublished (the AMR-RL literature is uniformly *single-step*; the only prior MCTS+finite-element work, TreeMesh, targets mesh *generation*, a distinct problem — see [`docs/proposals/PRIOR_ART_REVIEW.md`](docs/proposals/PRIOR_ART_REVIEW.md)), positioning AlphaGalerkin for SBIR funding in the $50B+ simulation market.
+The core methodological delta — MCTS *multi-step look-ahead* for Galerkin basis selection and error-driven refinement — is unpublished (the AMR-RL literature is uniformly *single-step*; the only prior MCTS+finite-element work, TreeMesh, targets mesh *generation*, a distinct problem — see [`docs/business/proposals/PRIOR_ART_REVIEW.md`](docs/business/proposals/PRIOR_ART_REVIEW.md)), positioning AlphaGalerkin for SBIR funding in the $50B+ simulation market.
 
 ---
 
@@ -138,7 +138,7 @@ Input (Discrete Board)
 └─────────────┘ └─────────────┘
 ```
 
-See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for comprehensive C4 architecture diagrams in Mermaid format, or [docs/architecture/C4_ARCHITECTURE.md](docs/architecture/C4_ARCHITECTURE.md) for ASCII-art versions.
+See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for comprehensive C4 architecture diagrams in Mermaid format, or [docs/archive/C4_ARCHITECTURE.md](docs/archive/C4_ARCHITECTURE.md) for ASCII-art versions.
 
 ---
 
@@ -797,7 +797,7 @@ AlphaGalerkin/
 
 ## SBIR Positioning
 
-AlphaGalerkin addresses a **narrow, verified novelty gap**: MCTS *multi-step look-ahead* for error-driven adaptive refinement and Galerkin basis selection is unpublished — the RL-for-AMR canon is uniformly single-step policy RL, and the only prior MCTS+finite-element work (TreeMesh, arXiv:2111.07613) targets mesh *generation*, a distinct problem (see `docs/proposals/PRIOR_ART_REVIEW.md`; a blanket "no MCTS+FEM" claim would be false). The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
+AlphaGalerkin addresses a **narrow, verified novelty gap**: MCTS *multi-step look-ahead* for error-driven adaptive refinement and Galerkin basis selection is unpublished — the RL-for-AMR canon is uniformly single-step policy RL, and the only prior MCTS+finite-element work (TreeMesh, arXiv:2111.07613) targets mesh *generation*, a distinct problem (see `docs/business/proposals/PRIOR_ART_REVIEW.md`; a blanket "no MCTS+FEM" claim would be false). The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
 
 The stochastic Galerkin operator-splitting extension (Kolmogorov forward equations on a Gaussian-mixture basis, `src/pde/stochastic/`; see `docs/related-work.md`) is **future work for proposal purposes** — an additive layer that does not alter the MCTS/self-play core and carries no LBB claims.
 
@@ -810,13 +810,13 @@ The stochastic Galerkin operator-splitting extension (Kolmogorov forward equatio
 | **DARPA Direct-to-Phase-II** | DARPA STO | II | $750K-$1.5M / 24mo | `config/proposals/darpa_d2p2.yaml` |
 
 ### Proposal Infrastructure
-- **Registration**: [SAM.gov Guide](docs/proposals/SAM_REGISTRATION_GUIDE.md) (UEI, CAGE, NAICS 541715)
-- **Timeline**: [Submission Calendar](docs/proposals/SUBMISSION_TIMELINE.md) with Gantt chart
-- **Contacts**: [Program Offices](docs/proposals/PROGRAM_OFFICES.md) (Tier 1 + Tier 2)
-- **Budgets**: [Budget Templates](docs/proposals/BUDGET_TEMPLATES.md) (DoD, NSF, AFWERX, DARPA)
-- **IP Protection**: [IP Strategy](docs/proposals/IP_STRATEGY.md) (3 provisional patents, trade secrets)
-- **Competitive Analysis**: [Landscape](docs/proposals/COMPETITIVE_LANDSCAPE.md) | [Differentiation](docs/proposals/DIFFERENTIATION_MATRIX.md)
-- **Valuation**: [Framework](docs/proposals/VALUATION_FRAMEWORK.md) | [M&A Landscape](docs/proposals/MA_LANDSCAPE.md)
+- **Registration**: [SAM.gov Guide](docs/business/proposals/SAM_REGISTRATION_GUIDE.md) (UEI, CAGE, NAICS 541715)
+- **Timeline**: [Submission Calendar](docs/business/proposals/SUBMISSION_TIMELINE.md) with Gantt chart
+- **Contacts**: [Program Offices](docs/business/proposals/PROGRAM_OFFICES.md) (Tier 1 + Tier 2)
+- **Budgets**: [Budget Templates](docs/business/proposals/BUDGET_TEMPLATES.md) (DoD, NSF, AFWERX, DARPA)
+- **IP Protection**: [IP Strategy](docs/business/proposals/IP_STRATEGY.md) (3 provisional patents, trade secrets)
+- **Competitive Analysis**: [Landscape](docs/business/proposals/COMPETITIVE_LANDSCAPE.md) | [Differentiation](docs/business/proposals/DIFFERENTIATION_MATRIX.md)
+- **Valuation**: [Framework](docs/business/proposals/VALUATION_FRAMEWORK.md) | [M&A Landscape](docs/business/proposals/MA_LANDSCAPE.md)
 
 ### Run SBIR Benchmarks
 ```bash

@@ -16,7 +16,7 @@ AlphaGalerkin frames discretization choice as a sequential decision problem and 
 
 ## Differentiation
 
-Unlike PINN, FNO, and DeepONet, AlphaGalerkin does not replace the numerical method with a surrogate — classical convergence guarantees are preserved because every rollout uses a bona-fide Galerkin solve. Unlike policy-gradient RL-for-AMR (Yang 2023, Foucart 2023, Freymuth 2024), AlphaGalerkin has AlphaZero-style multi-step look-ahead, provable UCB exploration bounds, and requires no training data — it operates directly on the PDE. To our knowledge, no published work applies MCTS multi-step look-ahead to Galerkin discretization/basis selection or error-driven refinement (prior-art review 2026-07-22, `docs/proposals/PRIOR_ART_REVIEW.md`); the only prior MCTS + finite-element work (TreeMesh, arXiv:2111.07613) targets mesh *generation*, a distinct problem, so we avoid the blanket "no MCTS+FEM" claim.
+Unlike PINN, FNO, and DeepONet, AlphaGalerkin does not replace the numerical method with a surrogate — classical convergence guarantees are preserved because every rollout uses a bona-fide Galerkin solve. Unlike policy-gradient RL-for-AMR (Yang 2023, Foucart 2023, Freymuth 2024), AlphaGalerkin has AlphaZero-style multi-step look-ahead, provable UCB exploration bounds, and requires no training data — it operates directly on the PDE. To our knowledge, no published work applies MCTS multi-step look-ahead to Galerkin discretization/basis selection or error-driven refinement (prior-art review 2026-07-22, `docs/business/proposals/PRIOR_ART_REVIEW.md`); the only prior MCTS + finite-element work (TreeMesh, arXiv:2111.07613) targets mesh *generation*, a distinct problem, so we avoid the blanket "no MCTS+FEM" claim.
 
 ## Preliminary evidence
 

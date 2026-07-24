@@ -1612,15 +1612,15 @@ C4Component
 
 | Component | Content | Key Files |
 |-----------|---------|-----------|
-| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/proposals/SAM_REGISTRATION_GUIDE.md` |
-| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/proposals/SUBMISSION_TIMELINE.md` |
-| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/proposals/PROGRAM_OFFICES.md` |
-| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/proposals/BUDGET_TEMPLATES.md` |
+| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/business/proposals/SAM_REGISTRATION_GUIDE.md` |
+| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/business/proposals/SUBMISSION_TIMELINE.md` |
+| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/business/proposals/PROGRAM_OFFICES.md` |
+| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/business/proposals/BUDGET_TEMPLATES.md` |
 | **Solicitation Configs** | YAML configs with benchmark suites per solicitation | `config/proposals/*.yaml` |
-| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/proposals/IP_STRATEGY.md` |
-| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/proposals/COMPETITIVE_LANDSCAPE.md` |
-| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
-| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/proposals/DIFFERENTIATION_MATRIX.md` |
+| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/business/proposals/IP_STRATEGY.md` |
+| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/business/proposals/COMPETITIVE_LANDSCAPE.md` |
+| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/business/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
+| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/business/proposals/DIFFERENTIATION_MATRIX.md` |
 | **SBIR Demo** | CLI script generating convergence plots + reports | `scripts/run_sbir_demo.py` |
 
 ---

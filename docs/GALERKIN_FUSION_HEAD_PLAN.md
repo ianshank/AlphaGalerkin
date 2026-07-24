@@ -4,7 +4,7 @@
 
 **Why this work:** Mouse-Droid-AGI currently fuses heterogeneous sensors (IMX500 camera features, HC-SR04 ultrasonic, ESP32 encoder ticks) through a hand-written adapter inside `sensing/`. The hypothesis is that a Galerkin-attention block — built from the resolution-independent operators already validated in AlphaGalerkin (zero-shot transfer, measured MSE ≈ 4e-4) — can replace that adapter and either (a) free RAM headroom on the Orin Nano's 8GB budget, (b) shorten frame latency tails, or (c) improve downstream RSSM/MCTS quality. Any one of those is a win; all three flat is a publishable negative result.
 
-**Why a cross-repo plan:** Mouse-Droid-AGI will consume AlphaGalerkin via **git submodule** (decided up front). That means this repo (AlphaGalerkin) needs a stable, importable surface for `GalerkinAttention`, `FNetBlock`, `MultiScaleFourierFeatures`, and `StabilityGuard`. Mouse-Droid-AGI's `sensing/galerkin_fusion.py` **must import only from the top-level package** (`from src.modeling import GalerkinAttention, FNetBlock, ...`) — not from the underlying `src.modeling.*` submodules. The re-export surface declared in `docs/architecture/ADR-mouse-droid-fusion-integration.md` is the stability contract; deep-submodule imports bypass it.
+**Why a cross-repo plan:** Mouse-Droid-AGI will consume AlphaGalerkin via **git submodule** (decided up front). That means this repo (AlphaGalerkin) needs a stable, importable surface for `GalerkinAttention`, `FNetBlock`, `MultiScaleFourierFeatures`, and `StabilityGuard`. Mouse-Droid-AGI's `sensing/galerkin_fusion.py` **must import only from the top-level package** (`from src.modeling import GalerkinAttention, FNetBlock, ...`) — not from the underlying `src.modeling.*` submodules. The re-export surface declared in `docs/adr/0002-mouse-droid-fusion-integration.md` is the stability contract; deep-submodule imports bypass it.
 
 **Outcome the plan must produce:** A merged feature-flagged PR in Mouse-Droid-AGI, four benchmark plots on Orin Nano, a 1000–3000 word technical note, and an ADR recorded in **both** repos by end of Day 10 — recording either "continue to Week 3 (ICM refinement + HJB)" or "redirect to SEAL SQE / AlphaGalerkin proper."
 
@@ -43,7 +43,7 @@ Small surface — just enough to make the submodule import path stable for two w
 ### Day 1 (parallel with Mouse-Droid-AGI Day 1)
 
 - **Edit** `src/modeling/__init__.py`: add `MultiScaleFourierFeatures` to the explicit re-exports (it's currently importable but not in `__all__`). Verify `GalerkinAttention`, `FNetBlock`, `StabilityGuard` are all listed.
-- **Add** `docs/architecture/ADR-mouse-droid-fusion-integration.md` documenting that Mouse-Droid-AGI consumes `src.modeling.*` as a submodule and that those four classes' constructor signatures are now considered a stable interface for the duration of this experiment.
+- **Add** `docs/adr/0002-mouse-droid-fusion-integration.md` documenting that Mouse-Droid-AGI consumes `src.modeling.*` as a submodule and that those four classes' constructor signatures are now considered a stable interface for the duration of this experiment.
 - **Additive hardening permitted** on the four target modules: new constructor parameters with defaults that preserve prior behaviour, structured logging, input validation, and new test coverage. Any such change must stay backwards compatible per the rules in the integration ADR. **Non-additive changes** (renaming params, changing defaults, altering forward signatures) are *not* allowed without bumping the ADR.
 - **No packaging changes** (git submodule does not need pyproject changes).
 
@@ -55,7 +55,7 @@ Small surface — just enough to make the submodule import path stable for two w
 ### Critical AlphaGalerkin files
 
 - `src/modeling/__init__.py` — edit to add `MultiScaleFourierFeatures` export
-- `docs/architecture/ADR-mouse-droid-fusion-integration.md` — new
+- `docs/adr/0002-mouse-droid-fusion-integration.md` — new
 - `docs/architecture/ADR-post-fusion-direction.md` — new on Day 10
 - `docs/benchmarks/galerkin_fusion/` — new directory with mirrored plots
 
@@ -192,7 +192,7 @@ python -c "from src.modeling import GalerkinAttention, FNetBlock, MultiScaleFour
 pytest tests/modeling/ -v
 
 # Day-1 ADR committed
-ls docs/architecture/ADR-mouse-droid-fusion-integration.md
+ls docs/adr/0002-mouse-droid-fusion-integration.md
 
 # Day-10 ADR (created after the decision gate — see §8; not expected to exist
 # on day 1 of the sprint, only after the benchmark results are in)

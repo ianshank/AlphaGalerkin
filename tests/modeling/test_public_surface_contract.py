@@ -1,6 +1,6 @@
 """Enforce the Mouse-Droid-AGI fusion-head integration ADR contract in CI.
 
-The ADR ``docs/architecture/ADR-mouse-droid-fusion-integration.md``
+The ADR ``docs/adr/0002-mouse-droid-fusion-integration.md``
 freezes 18 classes in ``src.modeling`` for the cross-repo integration
 window. Stability rule §1 says constructor signatures must stay
 backwards-compatible; §2 says ``forward`` signatures must stay stable.
@@ -47,7 +47,7 @@ _REMEDIATION = (
     "prior behaviour — positional-or-keyword or keyword-only, both are "
     "accepted by the additive rule), regenerate the golden via\n"
     "    python tests/modeling/gen_public_surface_golden.py\n"
-    "and update docs/architecture/ADR-mouse-droid-fusion-integration.md "
+    "and update docs/adr/0002-mouse-droid-fusion-integration.md "
     "'§Key signatures (frozen)' in the same PR. Non-additive changes "
     "(renames, reorders, default-value changes, forward-signature changes) "
     "require superseding the ADR."

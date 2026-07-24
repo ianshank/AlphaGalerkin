@@ -66,12 +66,12 @@ Results from `config/benchmarks/sbir_suite.yaml`:
 > 3. Zero-shot resolution transfer (no retraining)
 > 4. No training data requirement (operates directly on PDE)
 >
-> This combination (MCTS multi-step look-ahead + Galerkin basis / error-driven refinement) has **no published precedent** — a *narrow* gap. Note: TreeMesh (arXiv:2111.07613) applies MCTS to FE mesh *generation*, a distinct problem, so the blanket "no MCTS+FEM" claim is false. See `docs/proposals/PRIOR_ART_REVIEW.md`.
+> This combination (MCTS multi-step look-ahead + Galerkin basis / error-driven refinement) has **no published precedent** — a *narrow* gap. Note: TreeMesh (arXiv:2111.07613) applies MCTS to FE mesh *generation*, a distinct problem, so the blanket "no MCTS+FEM" claim is false. See `docs/business/proposals/PRIOR_ART_REVIEW.md`.
 
 ## References
 - Benchmark config: `config/benchmarks/sbir_suite.yaml`
 - Baseline solvers: `src/research/baselines.py`
 - Benchmark runner: `src/research/pde_benchmarks.py`
 - SBIR demo: `scripts/run_sbir_demo.py`
-- Competitive landscape: `docs/proposals/COMPETITIVE_LANDSCAPE.md`
-- IP strategy: `docs/proposals/IP_STRATEGY.md`
+- Competitive landscape: `docs/business/proposals/COMPETITIVE_LANDSCAPE.md`
+- IP strategy: `docs/business/proposals/IP_STRATEGY.md`

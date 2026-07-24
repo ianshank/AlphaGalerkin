@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use AlphaGalerkin in your research, please cite it as below."
+title: "AlphaGalerkin: Resolution-Independent AI for Games and PDE Solving via MCTS-Guided Galerkin Methods"
+abstract: >-
+  AlphaGalerkin uses Galerkin Transformers and Monte Carlo Tree Search to solve
+  board games (Go, Chess) and partial differential equations without retraining
+  across resolutions, via continuous operator learning and multi-step look-ahead
+  for adaptive mesh refinement and Galerkin basis selection.
+type: software
+authors:
+  - family-names: Cruickshank
+    given-names: Ian
+    email: ianshank@gmail.com
+repository-code: "https://github.com/ianshank/AlphaGalerkin"
+url: "https://github.com/ianshank/AlphaGalerkin"
+license: MIT
+year: 2026
+keywords:
+  - operator-learning
+  - galerkin
+  - monte-carlo-tree-search
+  - partial-differential-equations
+  - alphazero
+  - resolution-invariant
+  - scientific-machine-learning
+preferred-citation:
+  type: software
+  title: "AlphaGalerkin: Resolution-Independent AI for Games and PDE Solving via MCTS-Guided Galerkin Methods"
+  authors:
+    - family-names: Cruickshank
+      given-names: Ian
+  year: 2026
+  url: "https://github.com/ianshank/AlphaGalerkin"

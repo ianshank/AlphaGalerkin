@@ -3,7 +3,7 @@
 **Required for:** DOE ASCR SBIR (all DOE SBIR programs require a commercialization plan section).
 **Not required for:** DOE Genesis Mission Phase I (Genesis is a research solicitation, not SBIR).
 
-**Status of this document:** Draft scaffolding. Strategic revenue-model and customer decisions are `[HUMAN DECISION]`. IP strategy references the existing `/home/user/AlphaGalerkin/docs/business/proposals/IP_STRATEGY.md`.
+**Status of this document:** Draft scaffolding. Strategic revenue-model and customer decisions are `[HUMAN DECISION]`. IP strategy references the existing `docs/business/proposals/IP_STRATEGY.md`.
 
 ---
 
@@ -56,7 +56,7 @@ AlphaGalerkin's core capability — MCTS-guided selection among classical Galerk
 | **Neural operators (FNO, DeepONet, GNO)** | Academic/open-source | Differentiates: we do not replace the numerical method; no training-data dependency |
 | **RL-for-AMR (Yang 2023, Foucart 2023, Freymuth 2024)** | Research prototypes | Differentiates: AlphaZero-style look-ahead vs. myopic policy gradient |
 
-Full differentiation matrix is in `/home/user/AlphaGalerkin/docs/business/proposals/DIFFERENTIATION_MATRIX.md`.
+Full differentiation matrix is in `docs/business/proposals/DIFFERENTIATION_MATRIX.md`.
 
 ---
 
@@ -109,7 +109,7 @@ Pilot selection criteria:
 
 ## 5. Intellectual property
 
-See `/home/user/AlphaGalerkin/docs/business/proposals/IP_STRATEGY.md` for the full strategy. Summary:
+See `docs/business/proposals/IP_STRATEGY.md` for the full strategy. Summary:
 
 - **Trade secrets (already protected):** MCTS reward engineering, specific training hyperparameters, MCTS-Galerkin integration methodology, data augmentation strategies.
 - **Provisional patents (12-month window):**

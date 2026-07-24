@@ -3,12 +3,12 @@
 ## Supported Versions
 
 AlphaGalerkin is under active development and has not yet cut a tagged release.
-Security fixes are applied to the latest `main` branch.
+Security fixes are applied to the latest commit on the repository's default branch.
 
 | Version | Supported |
 | ------- | --------- |
-| `main` (latest) | :white_check_mark: |
-| older commits   | :x: |
+| Default branch (latest) | :white_check_mark: |
+| older commits           | :x: |
 
 ## Reporting a Vulnerability
 
@@ -31,7 +31,7 @@ Please include:
 - **Acknowledgement** within 5 business days.
 - A **remediation plan** or request for more information within 10 business days.
 - Public disclosure (crediting the reporter, unless anonymity is requested) once
-  a fix is merged to `main`.
+  a fix is merged to the default branch.
 
 ## Scope
 

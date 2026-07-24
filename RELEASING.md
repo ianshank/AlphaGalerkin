@@ -33,7 +33,7 @@ Every user-facing change adds a bullet under the `[Unreleased]` heading in
 
 ## Cutting a release
 
-1. Ensure `main` is green (CI: lint, fast tests on 3.10–3.12, 85% branch coverage).
+1. Ensure the default branch is green (CI: lint, fast tests on 3.10–3.12, 85% branch coverage).
 2. Decide the new version from the `[Unreleased]` entries (SemVer, above).
 3. In `CHANGELOG.md`, rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` and add a
    fresh empty `[Unreleased]` section on top.

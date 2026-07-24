@@ -1,5 +1,9 @@
 # Related Work and Honest Literature Comparison
 
+> **Scope:** this is the **DOE-Genesis-specific** literature comparison. For the
+> repo-wide novelty-boundary register (with the executable guard), see
+> [`../related-work.md`](../related-work.md).
+
 **Solicitation:** DE-FOA-0003612 (DOE Genesis Mission, Phase I)
 **Framing:** PINN/FNO/DeepONet learn *the solution*. MeshGraphNets and
 RL-for-AMR learn *the mesh*. AlphaGalerkin learns *the method* — an

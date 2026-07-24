@@ -17,11 +17,11 @@ Prioritized submission calendar for AlphaGalerkin SBIR targets. SBIR reauthoriza
 
 | Dependency | Required For | Status | Reference |
 |------------|-------------|--------|-----------|
-| SAM.gov registration (UEI + CAGE) | All submissions | Pending | `docs/proposals/SAM_REGISTRATION_GUIDE.md` |
+| SAM.gov registration (UEI + CAGE) | All submissions | Pending | `docs/business/proposals/SAM_REGISTRATION_GUIDE.md` |
 | SBIR.gov company registration | All submissions | Pending | SAM_REGISTRATION_GUIDE.md Step 6 |
 | Benchmark results generated | Navy, DOE, DARPA | Available | `config/benchmarks/sbir_suite.yaml` |
-| Provisional patent filed | DARPA D2P2, strengthen all | Pending | `docs/proposals/IP_STRATEGY.md` |
-| Budget prepared | All submissions | Pending | `docs/proposals/BUDGET_TEMPLATES.md` |
+| Provisional patent filed | DARPA D2P2, strengthen all | Pending | `docs/business/proposals/IP_STRATEGY.md` |
+| Budget prepared | All submissions | Pending | `docs/business/proposals/BUDGET_TEMPLATES.md` |
 
 ## Preparation Gantt (Weeks from Now)
 

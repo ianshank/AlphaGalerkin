@@ -47,7 +47,7 @@ At Series A, the founder retains 100% equity with $6.6M in validated non-dilutiv
 | Driver | Impact | Evidence |
 |--------|--------|----------|
 | **Novelty gap (narrow)** | Medium — defensible but not a blanket moat | MCTS+Galerkin basis / error-driven refinement unpublished; TreeMesh = MCTS+FE mesh *generation* (distinct). See PRIOR_ART_REVIEW.md |
-| **Provisional patents** (3 claims) | High — IP barrier | `docs/proposals/IP_STRATEGY.md` |
+| **Provisional patents** (3 claims) | High — IP barrier | `docs/business/proposals/IP_STRATEGY.md` |
 | **Government validation** (SBIR) | High — de-risks technology | Agency endorsement = customer discovery |
 | **Revenue multiples** (10-16x) | Very high — simulation premium | M&A transactions 2024-2026 |
 | **Strategic acquirer demand** | Very high — active M&A cycle | Cadence, Siemens, Synopsys all acquiring |
@@ -64,6 +64,6 @@ At Series A, the founder retains 100% equity with $6.6M in validated non-dilutiv
 | Market timing (M&A slowdown) | Medium | SBIR provides runway regardless |
 
 ## References
-- M&A landscape: `docs/proposals/MA_LANDSCAPE.md`
-- IP strategy: `docs/proposals/IP_STRATEGY.md`
-- Competitive landscape: `docs/proposals/COMPETITIVE_LANDSCAPE.md`
+- M&A landscape: `docs/business/proposals/MA_LANDSCAPE.md`
+- IP strategy: `docs/business/proposals/IP_STRATEGY.md`
+- Competitive landscape: `docs/business/proposals/COMPETITIVE_LANDSCAPE.md`

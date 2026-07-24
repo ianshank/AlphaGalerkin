@@ -4,7 +4,7 @@
 **Secondary track:** DOE ASCR SBIR Phase I (Release 2, TBD)
 **Filed with Phase I:** Phase II Letter of Intent (same-day filing)
 
-**Template note:** Download `phase_i_template.xlsx` (or current equivalent) from `science.osti.gov` before finalizing and check for the current amendment (Amendment 000003+ at time of writing `[VERIFY]`). Section names below mirror the user's Execution Plan (Track C.3) and the existing `docs/proposals/templates/sbir_phase1.md` skeleton.
+**Template note:** Download `phase_i_template.xlsx` (or current equivalent) from `science.osti.gov` before finalizing and check for the current amendment (Amendment 000003+ at time of writing `[VERIFY]`). Section names below mirror the user's Execution Plan (Track C.3) and the existing `docs/business/proposals/templates/sbir_phase1.md` skeleton.
 
 ---
 
@@ -25,7 +25,7 @@
 | 0 | Cover page / metadata | `[HUMAN WRITES]` | 1 | SAM.gov UEI, entity record |
 | 1 | Executive summary | `[HUMAN WRITES]` | 1 | Distillation of §2–§8 + concept_note.md |
 | 2 | Motivation / National S&T Challenge alignment | `[HUMAN DECISION]` + `Claude Code` | 1–2 | `[HUMAN DECISION]` pick 2–3 of 17 Genesis National S&T Challenges; then Claude drafts alignment |
-| 3 | Background + related work | `Claude Code` | 2 | `docs/doe_genesis/related_work.md` (Track B.5 deliverable); pulls from `IP_STRATEGY.md` and `docs/proposals/DIFFERENTIATION_MATRIX.md` |
+| 3 | Background + related work | `Claude Code` | 2 | `docs/doe_genesis/related_work.md` (Track B.5 deliverable); pulls from `IP_STRATEGY.md` and `docs/business/proposals/DIFFERENTIATION_MATRIX.md` |
 | 4 | Technical approach | `Claude Code` | 3–4 | `docs/doe_genesis/mdp_specification.md` (Track B.4); `src/pde/games/`, `src/pde/mcts_adapter.py`, `src/mcts/gumbel.py`, `src/modeling/attention.py` |
 | 5 | Preliminary results | `Claude Code` assembles | 2 | `benchmarks/results/headline_2026_04/` (Pareto plot, CSV, HTML report from Track B.6); zero-shot transfer result (measured MSE ≈ 4e-4; retrained-CNN baseline more accurate) from CLAUDE.md |
 | 6 | Phase I work plan (9 months × 3mo milestones) | `Claude Code` drafts, human approves | 2 | Execution plan Track B+C milestones |

@@ -239,7 +239,7 @@ Scenario gate — must equal
 |---|---|---|---|
 | `stochastic_density_mse` | `<` | `DEFAULT_STOCHASTIC_MSE_GATE = 1e-6` (calibrated; observed `2.3e-8`) | The stochastic Galerkin arm reproduces the analytic Fokker-Planck density on the shared grid; the floor is set by the Strang splitting error in the rendered density (rendering itself is exact evaluation) |
 
-Recorded, **ungated** (honesty rule — "novelty ≠ superiority", `docs/proposals/PRIOR_ART_REVIEW.md`):
+Recorded, **ungated** (honesty rule — "novelty ≠ superiority", `docs/business/proposals/PRIOR_ART_REVIEW.md`):
 `deterministic_density_mse`, `stochastic_vs_deterministic_mse_ratio`, per-arm wall-clock and
 parameter counts. On this benchmark the stochastic path is near-exact by construction; gating a
 ratio would be a self-serving benchmark.

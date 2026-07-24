@@ -94,6 +94,6 @@ IPO (if >$100M ARR, unlikely near-term)
 | $500K ARR | +$10-20M (revenue = real valuation basis) | 30-36 months |
 
 ## References
-- Valuation framework: `docs/proposals/VALUATION_FRAMEWORK.md`
-- IP strategy: `docs/proposals/IP_STRATEGY.md`
-- Competitive landscape: `docs/proposals/COMPETITIVE_LANDSCAPE.md`
+- Valuation framework: `docs/business/proposals/VALUATION_FRAMEWORK.md`
+- IP strategy: `docs/business/proposals/IP_STRATEGY.md`
+- Competitive landscape: `docs/business/proposals/COMPETITIVE_LANDSCAPE.md`

@@ -42,7 +42,7 @@ AlphaZero - to discover optimal refinement strategies with multi-step look-ahead
 
 ### 3. Key Innovation (Narrow, Verified Novelty)
 MCTS *multi-step look-ahead* applied to Galerkin basis selection and error-driven adaptive
-refinement is unpublished (prior-art review 2026-07-22, `docs/proposals/PRIOR_ART_REVIEW.md`).
+refinement is unpublished (prior-art review 2026-07-22, `docs/business/proposals/PRIOR_ART_REVIEW.md`).
 The RL-for-AMR canon (Yang et al. AISTATS 2023, Foucart et al. JCP 2023, Huergo et al. 2024,
 Freymuth et al. NeurIPS 2023) is uniformly *single-step* policy RL. **Do not overclaim**: the
 only prior MCTS+finite-element work, TreeMesh (arXiv:2111.07613), targets mesh *generation* —

@@ -122,5 +122,5 @@ For a single-person LLC with minimal facilities:
 
 ## References
 - SBIR/STTR Budget Guidelines: https://www.sbir.gov/tutorials/preparing-budget
-- Cost volume guidance: See `docs/proposals/templates/sbir_phase1.md` Section C
+- Cost volume guidance: See `docs/business/proposals/templates/sbir_phase1.md` Section C
 - Agency-specific configs: `config/proposals/*.yaml`

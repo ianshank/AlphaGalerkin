@@ -1,7 +1,7 @@
 """Source of truth for the Mouse-Droid-AGI fusion-head integration ADR.
 
 The 18 classes below make up the stable public surface of ``src.modeling``
-declared in ``docs/architecture/ADR-mouse-droid-fusion-integration.md``.
+declared in ``docs/adr/0002-mouse-droid-fusion-integration.md``.
 Each entry pairs the top-level class *name* with the canonical submodule
 path listed in the ADR table.
 

@@ -2,7 +2,7 @@
 
 Run locally when you intentionally add a backwards-compatible parameter
 to one of the 18 ADR-frozen classes **and** have updated
-``docs/architecture/ADR-mouse-droid-fusion-integration.md`` to reflect
+``docs/adr/0002-mouse-droid-fusion-integration.md`` to reflect
 the new signature.
 
 Usage::

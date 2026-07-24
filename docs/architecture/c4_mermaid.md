@@ -430,7 +430,7 @@ C4Component
 
 **Single-device by design at the current model size.** During the headline GPU run (4096 collocation points, `d_model=64`, 3 Galerkin layers, batch_size=1, 200 epochs) per-GPU utilization was observed at 1–10% on a Blackwell-class card. The bottleneck is per-step Adam overhead and Python/CUDA launch latency, not compute. Adding `DistributedDataParallel` would put NCCL all-reduce on the critical path of every step and slow training, not speed it up.
 
-**Revisit DDP only if the surrogate grows materially**: `n_train_pts ≥ 100k`, `d_model ≥ 512`, or `batch_size ≥ 32`. The torchrun infrastructure in [src/distributed/launcher.py](src/distributed/launcher.py) and the GPU-strict resolver in [src/poc/device.py](src/poc/device.py) already exist if/when that threshold is crossed.
+**Revisit DDP only if the surrogate grows materially**: `n_train_pts ≥ 100k`, `d_model ≥ 512`, or `batch_size ≥ 32`. The torchrun infrastructure in [src/distributed/launcher.py](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/src/distributed/launcher.py) and the GPU-strict resolver in [src/poc/device.py](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/src/poc/device.py) already exist if/when that threshold is crossed.
 
 **Multi-GPU host strategy in the meantime**: run independent replicas (one per device) via `CUDA_VISIBLE_DEVICES=N`. Each replica trains its own model and produces an independent `ScenarioResult`; useful for seed-variance estimates or for running different `ref_solver_kind` modes side-by-side.
 
@@ -1612,15 +1612,15 @@ C4Component
 
 | Component | Content | Key Files |
 |-----------|---------|-----------|
-| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/proposals/SAM_REGISTRATION_GUIDE.md` |
-| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/proposals/SUBMISSION_TIMELINE.md` |
-| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/proposals/PROGRAM_OFFICES.md` |
-| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/proposals/BUDGET_TEMPLATES.md` |
+| **SAM Guide** | Registration checklist with 7 steps and timeline | `docs/business/proposals/SAM_REGISTRATION_GUIDE.md` |
+| **Submission Timeline** | Gantt chart for AFWERX, NSF, Navy, DOE, DARPA | `docs/business/proposals/SUBMISSION_TIMELINE.md` |
+| **Program Offices** | Tier 1/2 POCs with engagement templates | `docs/business/proposals/PROGRAM_OFFICES.md` |
+| **Budget Templates** | 4 agency-specific budget breakdowns | `docs/business/proposals/BUDGET_TEMPLATES.md` |
 | **Solicitation Configs** | YAML configs with benchmark suites per solicitation | `config/proposals/*.yaml` |
-| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/proposals/IP_STRATEGY.md` |
-| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/proposals/COMPETITIVE_LANDSCAPE.md` |
-| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
-| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/proposals/DIFFERENTIATION_MATRIX.md` |
+| **IP Strategy** | 3 patent claims + trade secrets + publication plan | `docs/business/proposals/IP_STRATEGY.md` |
+| **Competitive Landscape** | 6 competitors with strengths/weaknesses matrix | `docs/business/proposals/COMPETITIVE_LANDSCAPE.md` |
+| **Valuation & M&A** | Stage-based valuation + top 5 acquirers | `docs/business/proposals/VALUATION_FRAMEWORK.md`, `MA_LANDSCAPE.md` |
+| **Differentiation Matrix** | Technical comparison across 10 criteria | `docs/business/proposals/DIFFERENTIATION_MATRIX.md` |
 | **SBIR Demo** | CLI script generating convergence plots + reports | `scripts/run_sbir_demo.py` |
 
 ---

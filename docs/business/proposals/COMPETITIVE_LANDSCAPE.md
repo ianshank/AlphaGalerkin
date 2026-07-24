@@ -1,7 +1,7 @@
 # Competitive Landscape: AI-for-Simulation Market
 
 ## Overview
-The AI-for-simulation market is rapidly consolidating ($50B+ in M&A since 2024). AlphaGalerkin occupies a *narrow* novelty gap: MCTS multi-step look-ahead for Galerkin basis / error-driven refinement is unpublished (the AMR-RL canon is single-step policy RL; TreeMesh applies MCTS to FE mesh *generation*, a distinct problem — see `docs/proposals/PRIOR_ART_REVIEW.md`). This document maps the competitive landscape.
+The AI-for-simulation market is rapidly consolidating ($50B+ in M&A since 2024). AlphaGalerkin occupies a *narrow* novelty gap: MCTS multi-step look-ahead for Galerkin basis / error-driven refinement is unpublished (the AMR-RL canon is single-step policy RL; TreeMesh applies MCTS to FE mesh *generation*, a distinct problem — see `docs/business/proposals/PRIOR_ART_REVIEW.md`). This document maps the competitive landscape.
 
 ## Competitor Matrix
 
@@ -62,6 +62,6 @@ The AI-for-simulation market is rapidly consolidating ($50B+ in M&A since 2024).
 | **Trade secrets** (reward functions, training recipes) | Strong | Indefinite | Never publish implementation details |
 
 ## References
-- IP protection strategy: `docs/proposals/IP_STRATEGY.md`
-- Differentiation matrix: `docs/proposals/DIFFERENTIATION_MATRIX.md`
+- IP protection strategy: `docs/business/proposals/IP_STRATEGY.md`
+- Differentiation matrix: `docs/business/proposals/DIFFERENTIATION_MATRIX.md`
 - Benchmark infrastructure: `config/benchmarks/sbir_suite.yaml`

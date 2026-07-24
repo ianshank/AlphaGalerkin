@@ -76,7 +76,7 @@ class TestReadmeNoveltyClaim:
         text = README.read_text(encoding="utf-8")
         assert RETRACTED_BLANKET_CLAIM not in text, (
             "README.md still carries the blanket 'no MCTS+Galerkin' claim that "
-            "docs/proposals/PRIOR_ART_REVIEW.md retracted (TreeMesh exists); use "
+            "docs/business/proposals/PRIOR_ART_REVIEW.md retracted (TreeMesh exists); use "
             "the narrow multi-step-look-ahead form"
         )
 

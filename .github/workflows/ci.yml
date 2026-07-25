@@ -81,10 +81,14 @@ jobs:
         run: ruff format src/ tests/ --check
 
       - name: Run MyPy type checking
-        # Informational: pre-existing codebase has type errors in distributed/,
-        # modeling/ that require incremental refactoring.
-        # Ruff check + format are the hard quality gates.
-        # Track progress: mypy errors should decrease over time.
+        # Informational gate (continue-on-error). mypy --strict currently reports
+        # only a small number of `unused-ignore` diagnostics in training/ +
+        # research/, and whether each fires depends on the installed torch version
+        # (this lint job pins a minimal dep set that can differ from a local
+        # .[dev] env). That makes a hard gate flaky across environments, so mypy
+        # stays non-blocking and shields CI from dependency drift; ruff check +
+        # format are the hard quality gates. Run `mypy src/ --strict` locally
+        # pre-merge (see CLAUDE.md).
         continue-on-error: true
         run: mypy src/ --strict --ignore-missing-imports
 

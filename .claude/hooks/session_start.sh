@@ -37,6 +37,19 @@ else
   fi
 fi
 
+# Install the pre-commit git hook so local commits run the same ruff lint/format
+# that CI enforces (config: .pre-commit-config.yaml). Non-fatal; pre-commit ships
+# in the dev extra installed above.
+if command -v pre-commit >/dev/null 2>&1; then
+  if pre-commit install >/dev/null 2>&1; then
+    echo "[session-start] pre-commit hook installed"
+  else
+    echo "[session-start] WARNING: 'pre-commit install' failed (non-fatal)"
+  fi
+else
+  echo "[session-start] pre-commit: NOT AVAILABLE (provided by pip install -e '.[dev]')"
+fi
+
 # Report toolchain availability (non-fatal).
 for tool in ruff mypy pytest; do
   if command -v "$tool" >/dev/null 2>&1; then

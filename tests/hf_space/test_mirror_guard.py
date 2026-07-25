@@ -53,8 +53,17 @@ def _py_files() -> list[Path]:
 
 
 def _app_module_imports() -> list[str]:
-    """Top-level ``src.*`` / ``config.*`` modules imported by ``hf_space/app.py``."""
-    tree = ast.parse((HF_SPACE / "app.py").read_text(encoding="utf-8"))
+    """Top-level ``src.*`` / ``config.*`` modules imported by ``hf_space/app.py``.
+
+    Runs at collection time (it feeds ``parametrize``), so it is defensive:
+    returns ``[]`` if ``app.py`` is missing or unparseable rather than raising
+    and erroring collection. Those conditions are reported as clean failures by
+    ``test_hf_space_mirror_present`` and ``test_all_mirror_files_parse`` instead.
+    """
+    try:
+        tree = ast.parse((HF_SPACE / "app.py").read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return []
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:

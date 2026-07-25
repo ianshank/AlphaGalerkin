@@ -27,6 +27,7 @@ from src.poc.config import (
 )
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
+from src.seeding import set_global_seeds
 
 if TYPE_CHECKING:
     pass
@@ -116,8 +117,7 @@ class TransferScenario(BaseScenario):
         assert self._scenario_logger is not None
 
         # Set seed for reproducibility
-        torch.manual_seed(self.config.seed)
-        np.random.seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
         # Phase 1: Train model
         self._scenario_logger.info(

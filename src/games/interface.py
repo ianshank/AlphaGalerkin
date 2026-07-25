@@ -224,7 +224,10 @@ class GameInterface(ABC):
     ) -> list[tuple[GameState, np.ndarray | Tensor]]:
         """Get symmetric transformations of state and policy.
 
-        Used for data augmentation during training.
+        Intended for data augmentation of training samples. This is a public
+        extension point implemented by the concrete games (Go/Chess/PDE) and
+        exercised by their test-suites; note the self-play loop
+        (``src/training/self_play.py``) does not yet consume it.
 
         Args:
             state: Game state.

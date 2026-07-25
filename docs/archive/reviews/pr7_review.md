@@ -1,5 +1,14 @@
 # PR #7 Code Review Analysis
 
+> **⚠️ Historical review — transfer figure corrected.** This archived analysis
+> cites a zero-shot transfer result of **MSE 0.000209 (240× better than
+> threshold)**. That number was later found to be **fabricated** (a hardcoded
+> notebook cell no code produced) and has been retracted repo-wide. The measured
+> operator zero-shot MSE (9×9 → 19×19) is **≈ 4e-4**, and a retrained CNN baseline
+> is more accurate — the operator's value is *zero-retraining*, not peak accuracy.
+> See `specs/transfer_baseline_compare.spec.md` and the 2026-07-22 correction in
+> `CLAUDE.md`. The body below is preserved unedited for provenance.
+
 **PR Title**: feat: Combined v2.0 infrastructure with W&B integration and zero-shot transfer
 **Branch**: claude/combined-v2-infrastructure → claude/alphagalerkin-implementation-4zGEN
 **Status**: OPEN

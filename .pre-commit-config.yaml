@@ -38,7 +38,10 @@ repos:
   # Python code formatting with Ruff
   # =============================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.0
+    # Keep aligned with the `ruff==0.15.8` pin in pyproject.toml [dev] and
+    # .github/workflows/ci.yml — otherwise pre-commit reformats code differently
+    # from the CI `ruff format --check` gate.
+    rev: v0.15.8
     hooks:
       # Run the Ruff linter (replaces flake8, isort, etc.)
       - id: ruff
@@ -52,7 +55,8 @@ repos:
   # Type checking with MyPy (optional, can be slow)
   # =============================================================
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
+    # Aligned with the `mypy>=1.10,<1.12` pin in pyproject.toml [dev] / ci.yml.
+    rev: v1.11.2
     hooks:
       - id: mypy
         args:
@@ -67,18 +71,6 @@ repos:
         # Only check staged files to keep it fast
         pass_filenames: true
         # Skip in CI (handled by dedicated job)
-        stages: [manual]
-
-  # =============================================================
-  # Security checks
-  # =============================================================
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.7
-    hooks:
-      - id: bandit
-        args: [-c, pyproject.toml, -r, src/]
-        additional_dependencies: ["bandit[toml]"]
-        # Skip in pre-commit, run in CI only
         stages: [manual]
 
   # =============================================================
@@ -142,4 +134,3 @@ ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   skip:
     - mypy  # Too slow for pre-commit.ci
-    - bandit  # Security checks in dedicated CI job

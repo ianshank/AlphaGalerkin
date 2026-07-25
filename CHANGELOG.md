@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Code hygiene (`code-hygiene-plan`)
+
+- **Enforcement tooling made truthful**: aligned the pre-commit `ruff` hook to the
+  repo-wide `0.15.8` pin (was `v0.3.0`, so pre-commit reformatted code differently
+  from CI) and the `mypy` hook to `1.11.x`; removed the dead `bandit` hook (it
+  referenced a non-existent `[tool.bandit]` section and a non-existent CI job, and
+  never ran); refreshed the now-stale CI `mypy` comment (kept `continue-on-error` —
+  the strict run is torch-version-sensitive). Added `pre-commit` to the `[dev]`
+  extra and a guarded `pre-commit install` to the session-start hook so the hooks
+  actually run.
+- **hf_space deploy mirror documented + guarded**: added `hf_space/AGENT.md`
+  describing the partial, drifted, independently-formatted `hf_space/src/` mirror
+  (and the Xet-tracked `checkpoint.pt` / intentionally-divergent `requirements.txt`),
+  plus `tests/hf_space/test_mirror_guard.py` — a floor guard asserting `app.py`'s
+  imports resolve in the mirror, every mirror file parses, and the cut modules and
+  retracted transfer figure stay scrubbed.
+- **Archived reviews corrected**: `docs/archive/reviews/pr6_review.md` and
+  `pr7_review.md` now carry a banner retracting the fabricated `0.000209 / 240×`
+  zero-shot-transfer figure (measured ≈ 4e-4).
+- **Bounded code-debt**: allowlisted three verified-live abstractions the AST audit
+  mis-flagged (`BaseEngine.is_ready`, `GameInterface.get_symmetries` /
+  `get_action_mask`) so `scripts/audit_abstractions.py` stays trustworthy; corrected
+  the `get_symmetries` docstring; extracted the duplicated
+  `np.random.seed; torch.manual_seed` idiom into `src/seeding.py::set_global_seeds`.
+
 ### Added — Stochastic Galerkin operator-splitting layer (NKE, `alphagalerkin-nke-integration`)
 
 - New additive subpackage `src/pde/stochastic/` implementing the Lagrangian Galerkin

@@ -39,6 +39,7 @@ from src.poc.scenarios.scaling_law_config import (
     ScalingLawConfig,
 )
 from src.poc.statistics.significance import SignificanceTest, StatisticalAnalyzer
+from src.seeding import set_global_seeds
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
@@ -273,8 +274,7 @@ class ScalingLawScenario(BaseScenario):
         cell_logger: ScenarioLogger,
     ) -> float:
         """Run one (arm, budget, seed) cell — return the final residual."""
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        set_global_seeds(seed)
 
         game = self._build_game(operator)
         evaluator = build_arm_evaluator(

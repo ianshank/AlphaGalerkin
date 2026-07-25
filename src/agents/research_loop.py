@@ -35,6 +35,7 @@ from src.poc.scenarios._centaur_common import (
     median_of,
     run_basis_selection_cell,
 )
+from src.seeding import set_global_seeds
 from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
 from src.templates.logging import create_logger_class
 
@@ -230,8 +231,7 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
         unsafely — the seeded solve stays atomic and deterministic.
         """
         with self._cell_lock:
-            np.random.seed(seed)
-            torch.manual_seed(seed)
+            set_global_seeds(seed)
             game = self._build_game(problem, operator)
             evaluator = build_arm_evaluator(
                 arm,

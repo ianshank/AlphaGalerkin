@@ -54,6 +54,7 @@ from src.physics.poisson import PoissonDataset, PoissonSample
 
 # Re-exported for backwards-compatible imports (tests/callers import these from here).
 from src.research.seed_sweep import SEED_PRIME_STRIDE, resolved_seeds
+from src.seeding import set_global_seeds
 
 logger = structlog.get_logger(__name__)
 
@@ -398,8 +399,7 @@ def evaluate_on_grid(
 
 def _seed_everything(seed: int) -> None:
     """Seed torch + numpy for a reproducible training run."""
-    torch.manual_seed(seed)
-    np.random.seed(seed)
+    set_global_seeds(seed)
 
 
 def run_transfer_comparison(params: TransferComparisonParams) -> TransferComparisonResult:

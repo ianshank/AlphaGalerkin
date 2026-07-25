@@ -29,6 +29,8 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from src.seeding import set_global_seeds
+
 try:
     import wandb
 
@@ -239,8 +241,7 @@ def train(config: TrainingConfig) -> dict[str, Any]:
 
     """
     # Setup
-    torch.manual_seed(config.seed)
-    np.random.seed(config.seed)
+    set_global_seeds(config.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("training_starting", device=str(device))

@@ -152,3 +152,45 @@ def test_mcts_and_pde_surfaces_clean() -> None:
     # get_reward now has a call site in the adapter (F1 resolved).
     pde_report = audit([Path("src/pde")])
     assert "get_reward" not in {f.name for f in pde_report.abstract_missing}
+
+
+def test_known_live_allowlist_suppresses_verified_public_apis(tmp_path: Path) -> None:
+    """Verified-live public APIs on their real classes are not flagged.
+
+    ``BaseEngine.is_ready`` / ``GameInterface.get_symmetries`` /
+    ``GameInterface.get_action_mask`` are exercised by tests or reached through
+    dynamic receivers the pure-AST heuristic cannot resolve, so they are
+    allowlisted by ``(class, name)`` to keep the tool's signal trustworthy.
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from abc import ABC, abstractmethod\n"
+            "class GameInterface(ABC):\n"
+            "    @abstractmethod\n"
+            "    def get_symmetries(self) -> None: ...\n"
+            "    @abstractmethod\n"
+            "    def get_action_mask(self) -> None: ...\n"
+            "class BaseEngine(ABC):\n"
+            "    @abstractmethod\n"
+            "    def is_ready(self) -> bool: ...\n"
+        ),
+    )
+    assert not audit([tmp_path]).abstract_missing
+
+
+def test_allowlist_is_class_scoped_not_name_only(tmp_path: Path) -> None:
+    """A same-named abstract method on a different class is still flagged."""
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from abc import ABC, abstractmethod\n"
+            "class Unrelated(ABC):\n"
+            "    @abstractmethod\n"
+            "    def is_ready(self) -> bool: ...\n"
+        ),
+    )
+    report = audit([tmp_path])
+    assert ("Unrelated", "is_ready") in {(f.cls, f.name) for f in report.abstract_missing}

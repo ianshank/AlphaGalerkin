@@ -59,6 +59,7 @@ from src.poc.scenarios.llm_prior_config import (
     SCENARIO_NAME,
     LLMPriorAblationConfig,
 )
+from src.seeding import set_global_seeds
 
 if TYPE_CHECKING:
     from src.mcts.evaluator import Evaluator
@@ -361,8 +362,7 @@ class LLMPriorAblationScenario(BaseScenario):
         # global RNGs before constructing the search. Kept here (before game
         # and evaluator construction) to preserve this scenario's historical
         # reproducibility contract.
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+        set_global_seeds(seed)
 
         game = self._build_game(pde_name, operator)
         evaluator = self._build_evaluator(

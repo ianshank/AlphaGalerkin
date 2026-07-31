@@ -5,7 +5,7 @@
 # See hf_space/AGENT.md.
 torch
 gradio==4.44.1
-huggingface_hub<0.25.0
+huggingface_hub<1.26.0
 structlog
 pydantic==2.10.6
 matplotlib

@@ -9,7 +9,7 @@ Structured comparison of AlphaGalerkin against competing approaches for PDE solv
 |-----------|--------------|-------|-----|---------------------------|-------------|----------|
 | **Computational Complexity** | O(N log N) | O(N) per iteration, O(N × epochs) total | O(N log N) | O(N) per refinement step | O(N log N) to O(N²) | O(1) inference |
 | **Accuracy Guarantee** | LBB inf-sup stability (provable) | None (empirical convergence) | None (empirical) | A posteriori error bounds | None (empirical) | None (surrogate fidelity) |
-| **Zero-Shot Resolution Transfer** | Yes (measured MSE ~4e-4, no retraining; a retrained CNN is more accurate) | No (retrain per domain) | Limited (fixed architecture) | N/A (no neural component) | No (retrain per resolution) | No (retrain per geometry) |
+| **Zero-Shot Resolution Transfer** | Yes (committed MSE ~2.3e-3, no retraining; a retrained CNN at ~1.6e-4 is ~14x more accurate) | No (retrain per domain) | Limited (fixed architecture) | N/A (no neural component) | No (retrain per resolution) | No (retrain per geometry) |
 | **Training Data Required** | None (operates directly on PDE) | None (self-supervised) | Large dataset from solver | N/A | Large dataset from solver | Large dataset from solver |
 | **Multi-Step Planning** | MCTS with configurable search depth | None (gradient descent) | None (single forward pass) | Myopic (single-step error indicator) | None (single forward pass) | None (single forward pass) |
 | **Convergence Guarantee** | Provable via LBB condition | Empirical (may diverge) | Empirical (spectral bias) | Provable (a posteriori) | Empirical | Empirical |

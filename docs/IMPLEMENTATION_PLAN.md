@@ -1,6 +1,10 @@
 # AlphaGalerkin Next-Phase Implementation Plan
 
 > **STATUS:** ✅ All phases COMPLETE as of April 2026. This document is preserved for historical reference. All 5 modules (distributed, deployment, games, mcts/gumbel, poc/tuning+statistics) are implemented and tested. See CLAUDE.md milestones for delivery details.
+>
+> **Correction (2026-07-31):** "complete" refers to the *library* modules. The planned launcher
+> `scripts/train_distributed.py` (referenced below) was never written and does not exist — the
+> distributed surface is library-only, exercised by `pytest tests/distributed/`.
 
 > **Design Principle:** This document treats prompting as constraint programming, not instruction writing. Define the feasible region, objective function, and search parameters—then let the agent solve.
 

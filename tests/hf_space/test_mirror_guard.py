@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.cut_modules import CUT_MODULES, FABRICATED_FIGURE
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HF_SPACE = REPO_ROOT / "hf_space"
 
@@ -41,11 +43,13 @@ HF_SPACE = REPO_ROOT / "hf_space"
 _MIRROR_IMPORT_ROOTS = frozenset({"src", "config"})
 
 # Packages removed in the 2026-07-22 "cut to the core"; must not resurface here.
-_CUT_MODULES = ("video_compression", "reentry", "vertex", "intercept", "firefighting", "thermo")
+# Defined once in tests/support/cut_modules.py so this guard and the charter's non-goal guard
+# cannot drift apart.
+_CUT_MODULES = CUT_MODULES
 
-# The retracted, fabricated zero-shot-transfer figure (corrected to ~4e-4; see
+# The retracted, fabricated zero-shot-transfer figure (the committed result is ~2.3e-3; see
 # specs/transfer_baseline_compare.spec.md and the WS3 review banners).
-_FABRICATED_FIGURE = "0.000209"
+_FABRICATED_FIGURE = FABRICATED_FIGURE
 
 
 def _py_files() -> list[Path]:

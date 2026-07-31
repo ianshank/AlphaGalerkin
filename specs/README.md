@@ -1,6 +1,11 @@
 # AlphaGalerkin Feature Specs
 
-This directory is the enterprise home for **spec-driven development** in AlphaGalerkin.
+This directory is the enterprise home for **per-feature spec-driven development** in AlphaGalerkin.
+
+> **Project-level scope** lives in the charter
+> ([`openspec/specs/project-charter/spec.md`](../openspec/specs/project-charter/spec.md)), which is
+> supreme. These specs own per-feature contracts (data contract, acceptance criteria,
+> `MetricThreshold` values); the charter owns what the project is and is not.
 
 A *spec* is a markdown contract written **before** the code. It names the data contract
 (the feature's Pydantic config class), the acceptance criteria (Given/When/Then), and the
@@ -50,7 +55,8 @@ deliberately avoid that.
 | Spec | Feature | Status |
 |---|---|---|
 | [`noyron_basis.spec.md`](noyron_basis.spec.md) | v2.2 MCTS basis selection on the Leap 71 helical operator | Draft |
-| [`llm_prior_ood.spec.md`](llm_prior_ood.spec.md) | LLM-prior OOD expansion (helmholtz / biharmonic) | Draft |
+| [`llm_prior_ood.spec.md`](llm_prior_ood.spec.md) | LLM-prior OOD expansion (helmholtz / biharmonic) | Implemented (CPU wiring) + Runbook (GPU headline) |
+| [`lshape_amr_compare.spec.md`](lshape_amr_compare.spec.md) | Competitive AMR baseline — L-shaped Poisson MCTS vs Dörfler | Implemented |
 | [`transfer_baseline_compare.spec.md`](transfer_baseline_compare.spec.md) | Honest zero-shot transfer — operator vs a retrained CNN | Implemented |
 | [`stochastic_galerkin_nke.spec.md`](stochastic_galerkin_nke.spec.md) | NKE stochastic Galerkin operator-splitting layer (additive) | Implemented |
 | [`headline_runs.spec.md`](headline_runs.spec.md) | GPU / hardware-gated headline runbooks | Runbook |

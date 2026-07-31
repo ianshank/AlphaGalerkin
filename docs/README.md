@@ -10,6 +10,7 @@ The docs are organized by **audience**. If you're new, start with
 | --- | --- |
 | [Getting Started](getting-started.md) | Clone → install → first run → run a module's tests. |
 | [Contributing](../CONTRIBUTING.md) | Workflow, quality gates, coding conventions. |
+| [Project charter](../openspec/specs/project-charter/spec.md) | **Supreme** — mission, scope, non-goals, evidence standard. |
 | [Architecture / repo map](../ARCHITECTURE.md) | Every package, the two-domain split, gotchas. |
 | [Glossary](GLOSSARY.md) | Galerkin / MCTS / PDE terminology. |
 | [Specs](../specs/README.md) | Spec-driven development (contract-before-code). |
@@ -42,7 +43,6 @@ The docs are organized by **audience**. If you're new, start with
 
 | Doc | Content |
 | --- | --- |
-| [Implementation plan](IMPLEMENTATION_PLAN.md) | Next-phase implementation plan. |
 | [Next steps plan](NEXT_STEPS_PLAN.md) | General roadmap. |
 | [ROI implementation plan](ROI_IMPLEMENTATION_PLAN.md) | Tiered next-steps plan with validation gates. |
 | [Prompt template](PROMPT_TEMPLATE.md) / [training implementation template](TRAINING_IMPLEMENTATION_TEMPLATE.md) | Agentic-coding templates. |
@@ -57,6 +57,7 @@ The docs are organized by **audience**. If you're new, start with
 
 Point-in-time material kept for provenance — **not** current reference:
 
+- [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — next-phase plan, **all phases COMPLETE (April 2026)**; preserved for provenance.
 - [`archive/`](archive/) — PR-specific runbooks (`PR86_HEADLINE_RUNS.md`), PR
   reviews, timestamped implementation plans, superseded architecture docs
   (`c4_model.md`, `C4_ARCHITECTURE.md`), and the old root `PLANNING.md`.

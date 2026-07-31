@@ -29,6 +29,7 @@ adapts its problem into that engine (`src/games/` via `GameInterface`,
 
 | Doc | Owns |
 | --- | --- |
+| [`openspec/specs/project-charter/spec.md`](openspec/specs/project-charter/spec.md) | **The charter — supreme.** Mission, scope, non-goals, the novelty claim, the evidence standard, accepted deviations. On any conflict with the documents below, the charter wins. It delegates *layout* to this file and asserts equality with the package map. |
 | [`README.md`](README.md) | Front door: value prop, install, quickstart, links out. |
 | **`ARCHITECTURE.md`** (this file) | The repository map — packages, layering, gotchas. Source of truth for layout. |
 | [`docs/README.md`](docs/README.md) | Index of the whole `docs/` tree by audience. |

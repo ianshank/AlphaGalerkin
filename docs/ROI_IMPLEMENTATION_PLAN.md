@@ -21,7 +21,7 @@ AlphaGalerkin (v0.3.0 → v0.4.0) is a mature resolution-independent AI system w
 - `src/training/trainer.py` — add `physics_informed` branch in training step
 - `src/training/losses/__init__.py` — ensure `CombinedAlphaGalerkinPhysicsLoss` is registered
 - `config/train.yaml` — add `training.physics_informed: bool = false` field
-- `src/training/config.py` — add Pydantic field for physics config
+- `src/training/losses/` + `src/training/physics_loss.py` — add Pydantic field for physics config
 
 **Reuse:**
 - `src/training/physics_loss.py` — `CombinedAlphaGalerkinPhysicsLoss` already implemented
@@ -48,7 +48,7 @@ AlphaGalerkin (v0.3.0 → v0.4.0) is a mature resolution-independent AI system w
 - `src/demos/sbir_demo.py` — create end-to-end demo script
 
 **Reuse:**
-- `src/physics/navier_stokes.py` — `NavierStokesOperator` with Taylor-Green vortex (exact analytical solution)
+- `src/pde/operators.py::NavierStokesOperator` — `NavierStokesOperator` with Taylor-Green vortex (exact analytical solution)
 - `src/pde/geometry.py` — `LShapedDomain` for AMR benchmarking
 - `src/research/reporter.py` — existing report generation
 

@@ -9,6 +9,7 @@
 .claude/
 specs/
 docs/
+openspec/
 
 # Python caches
 __pycache__/

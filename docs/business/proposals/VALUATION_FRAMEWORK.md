@@ -51,7 +51,7 @@ At Series A, the founder retains 100% equity with $6.6M in validated non-dilutiv
 | **Government validation** (SBIR) | High — de-risks technology | Agency endorsement = customer discovery |
 | **Revenue multiples** (10-16x) | Very high — simulation premium | M&A transactions 2024-2026 |
 | **Strategic acquirer demand** | Very high — active M&A cycle | Cadence, Siemens, Synopsys all acquiring |
-| **Zero-shot transfer** | Medium — one model, any resolution | measured MSE ~4e-4; a retrained CNN is more accurate (edge is zero-retraining) |
+| **Zero-shot transfer** | Medium — one model, any resolution | committed MSE ~2.3e-3; a retrained CNN at ~1.6e-4 is ~14x more accurate (edge is zero-retraining) |
 
 ## Key Risks to Valuation
 

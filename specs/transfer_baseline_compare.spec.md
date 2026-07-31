@@ -133,7 +133,7 @@ throughput rather than architecture quality.
 
 **Honest-loss handling (this benchmark loses on accuracy).** A measured CI run shows the
 operator does **not** beat a retrained CNN — the median ratio is ~14 (per-seed 14.1–23.3). The
-negative result is reported faithfully (mirroring `specs/lambda_scheduling.spec.md`) and
+negative result is reported faithfully and
 `transfer_ratio_pass_threshold` is set to a **regression ceiling above the measured median**
 (30.0 in `transfer_baseline_compare_ci.yaml`) so the scenario gate flags a *broken operator
 arm* rather than asserting a false `< 1` win. A `<` operator against the median itself would be

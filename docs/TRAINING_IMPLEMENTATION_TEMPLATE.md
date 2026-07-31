@@ -336,7 +336,7 @@ python -m src.tools.verify_invariance --train-size 9 --infer-size 19
 ```
 PHASE 1: Core Training Components (HIGH Priority)
 1. src/training/__init__.py - Package setup
-2. src/training/loss.py - AlphaGalerkinLoss class
+2. src/training/losses/alphagalerkin.py - AlphaGalerkinLoss class
 3. src/training/replay_buffer.py - ReplayBuffer with priority sampling
 4. tests/training/test_loss.py - Loss function tests
 5. tests/training/test_replay_buffer.py - Buffer tests
@@ -384,7 +384,7 @@ PHASE 5: Evaluation (LOW Priority)
 
 ## SECTION 7: COMPONENT SPECIFICATIONS
 
-### 7.1 Training Loss (`src/training/loss.py`)
+### 7.1 Training Loss (`src/training/losses/alphagalerkin.py`)
 
 ```python
 """

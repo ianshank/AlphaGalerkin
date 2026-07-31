@@ -60,7 +60,7 @@ it does not alter the MCTS/self-play core, is not part of the Phase I claim, and
 carries no LBB/inf-sup stability claims.
 
 ### 4. Technical Merit (Prior Results)
-**Zero-shot transfer**: Trained on 9x9 grid, transfers to 19x19 at measured MSE ~4e-4
+**Zero-shot transfer**: Trained on 9x9 grid, transfers to 19x19 at a committed MSE ~2.3e-3 (3-seed median; a retrained CNN at ~1.6e-4 is ~14x more accurate — the claim is zero-retraining, not peak accuracy)
 without retraining. (The earlier "0.000209 / 240x better than threshold" was a fabricated
 notebook figure; an honest CNN-retrained baseline is more accurate — the value is
 zero-retraining, not peak accuracy. See `specs/transfer_baseline_compare.spec.md`.)

@@ -1,7 +1,13 @@
 # AlphaGalerkin Next Steps Plan
 
 > **Investigation Date:** 2026-02-01
-> **Status:** Active — Milestones 1, 2, 3, 4, 6, 8 ✅ Complete; 5, 7, 9 Partial; **Learned PDE Evaluator ✅ Complete (2026-04-25, PR #54)**
+> **Status:** ⚠️ **HISTORICAL (superseded 2026-07-22)** — retained for provenance, not as a live
+> roadmap. Several epics below (notably *Epic 2.1: Video Compression Hyperprior* and every
+> reference to `scripts/encode_video.py`, `scripts/decode_video.py`, `src/video_compression/`,
+> and `tests/vertex/`) target modules **deleted** in the cut-to-the-core. For current scope see
+> the project charter (`openspec/specs/project-charter/spec.md`) and `CLAUDE.md` milestones.
+>
+> Original status line: Milestones 1, 2, 3, 4, 6, 8 ✅ Complete; 5, 7, 9 Partial; **Learned PDE Evaluator ✅ Complete (2026-04-25, PR #54)**
 > **Methodology:** Universal Dev Agent with Agentic Sub-Tasks
 > **Last Updated:** 2026-04-25
 
@@ -47,7 +53,7 @@ CONSTRAINTS:
 ### What Was Delivered
 - GitHub Actions CI workflow (`.github/workflows/ci.yml`) with 8 stages including chess pipeline
 - Coverage gates: 85% overall, 85% per-module (pde, modeling, training, research)
-- MyPy strict enforcement (`continue-on-error: false`)
+- MyPy runs as an informational gate (`continue-on-error: true`, see ci.yml:84-92)
 - Nightly schedule (`cron: '0 4 * * *'`) and performance benchmark job
 - Pre-commit hooks (`.pre-commit-config.yaml`) with ruff, mypy, trailing whitespace
 

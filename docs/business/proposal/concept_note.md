@@ -20,7 +20,7 @@ Unlike PINN, FNO, and DeepONet, AlphaGalerkin does not replace the numerical met
 
 ## Preliminary evidence
 
-Headline Pareto plot (L² error vs wall-clock) across L-shaped Poisson, viscous Burgers with shock formation, and 2D Navier-Stokes Taylor-Green vortex — comparing AlphaGalerkin against uniform refinement, Dörfler AMR, and scikit-fem hp-adaptive — is produced by the repository's benchmark suite and archived at `benchmarks/results/headline_2026_04/pareto_plot.png`. Artifact regeneration: `scripts/run_sbir_demo.py`. No numerical performance claim is made in this concept note that is not traceable to that artifact.
+Headline Pareto plot (L² error vs wall-clock) across L-shaped Poisson, viscous Burgers with shock formation, and 2D Navier-Stokes Taylor-Green vortex — comparing AlphaGalerkin against uniform refinement, Dörfler AMR, and scikit-fem hp-adaptive — is produced by the repository's benchmark suite via `scripts/run_sbir_demo.py`. **[PENDING — Track B.6] The headline artifact has not been generated yet**: `benchmarks/results/headline_2026_04/pareto_plot.png` does not exist in the repository. Do not circulate this note as evidence-backed, and do not send the partner outreach email, until that artifact is generated and committed (see `docs/business/partners/outreach_template.md`). No numerical performance claim is made in this concept note that is not traceable to a committed artifact.
 
 ## Team
 

@@ -31,6 +31,14 @@ Measured [2026-07-22]: training a `PhysicsOperator` on 9x9 grids (50 epochs,
 > accuracy. (Small quick-mode models transfer worse, e.g. 19x19 ≈ 5e-3; use the full config
 > for the headline.)
 
+> **These are spike numbers — do not quote them as the benchmark.** The table above comes from
+> the *uncommitted* `scripts/demo_transfer.py` spike (d_model=128 / n_layers=4 / 2000 samples /
+> 50 epochs / seed 42). The **committed, CI-gated** result is
+> `results/transfer_baseline_compare.csv` + `config/baselines/transfer_ci.json`: 19×19 zero-shot
+> MSE ≈ **2.3e-3** (3-seed median) against a retrained CNN at ≈1.6e-4. Quoting 3.9e-4 as "the
+> measured transfer MSE" is how `README.md` came to overstate the headline by ~6× (corrected
+> 2026-07-31).
+
 ## MSE vs Resolution Behavior
 
 MSE increases sub-linearly with grid size, consistent with O(N^{-alpha}) convergence

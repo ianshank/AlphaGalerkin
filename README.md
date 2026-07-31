@@ -27,6 +27,7 @@ targets mesh *generation*, a distinct problem (see
 | I want to… | Go to |
 | --- | --- |
 | Install and run something | [Getting Started](docs/getting-started.md) |
+| Know what's in scope (and what isn't) | [Project charter](openspec/specs/project-charter/spec.md) |
 | Understand the codebase layout | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Browse all documentation | [docs/](docs/README.md) |
 | Learn the terminology | [Glossary](docs/GLOSSARY.md) |
@@ -38,8 +39,11 @@ targets mesh *generation*, a distinct problem (see
 ## Key features
 
 - **Resolution independence** — one model runs at any resolution (train 9×9,
-  evaluate zero-shot at 19×19; measured MSE ≈ 4e-4, no retraining — honestly
-  benchmarked against a CNN retrained at the target resolution,
+  evaluate zero-shot at 19×19; committed benchmark MSE ≈ **2.3e-3**, no retraining —
+  honestly benchmarked against a CNN retrained at the target resolution, which is
+  ~14× *more* accurate; the operator's value is zero-retraining, not peak accuracy.
+  Artifacts: [`results/transfer_baseline_compare.csv`](results/transfer_baseline_compare.csv),
+  [`config/baselines/transfer_ci.json`](config/baselines/transfer_ci.json);
   [`specs/transfer_baseline_compare.spec.md`](specs/transfer_baseline_compare.spec.md)).
 - **O(N) attention** — Galerkin (Petrov-Galerkin projection) instead of O(N²) softmax.
 - **Fast MCTS rollouts** — FNet FFT mixing (O(N log N)) for batch leaf evaluation.
@@ -57,7 +61,7 @@ pip install -e ".[dev]"
 ```
 
 Requires Python 3.10+ and PyTorch 2.0+ (CUDA 12.x recommended for GPU paths).
-Optional extras: `test-extras`, `jax` / `jax-gpu`, `picogk`, `lm-studio`, `docs`
+Optional extras: `test-extras`, `fem`, `jax` / `jax-gpu`, `picogk`, `lm-studio`, `docs`
 (see [Getting Started](docs/getting-started.md#1-clone-and-install)).
 
 ## Quick start

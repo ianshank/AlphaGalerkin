@@ -27,6 +27,7 @@ Optional extras (install only what you need):
 | --- | --- |
 | `dev` | Test + lint toolchain (start here). |
 | `test-extras` | FEM baseline, ONNX export/validate, PettingZoo. |
+| `fem` | `scikit-fem` alone — the hp-adaptive FEM classical baseline (`src/research/fem_baseline.py`). |
 | `jax` / `jax-gpu` | JAX backend + cross-backend tests. |
 | `picogk` | Leap 71 PicoGK voxel/SDF kernel (Noyron HX). |
 | `lm-studio` | OpenAI-compatible local-LLM client (LLM-prior MCTS). |

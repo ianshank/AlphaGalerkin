@@ -9,7 +9,9 @@ The system supports three primary use cases:
 2. **PDE Solving**: MCTS-guided adaptive mesh refinement and Galerkin basis selection
 3. **SBIR Commercialization**: Benchmark infrastructure, proposal configs, IP strategy, and competitive positioning for $50B+ simulation market
 
-This architecture reflects v0.3.x including SBIR proposal infrastructure, classical solver baselines, domain geometry abstractions, time-stepping integration, and swarm planning.
+This architecture reflects v0.3.x (a planning-era milestone label, not the package version —
+`pyproject.toml` pins `0.1.0`) including SBIR proposal infrastructure, classical solver baselines,
+domain geometry abstractions, time-stepping integration, and swarm planning.
 
 ---
 

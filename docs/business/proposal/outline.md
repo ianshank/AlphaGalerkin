@@ -27,7 +27,7 @@
 | 2 | Motivation / National S&T Challenge alignment | `[HUMAN DECISION]` + `Claude Code` | 1–2 | `[HUMAN DECISION]` pick 2–3 of 17 Genesis National S&T Challenges; then Claude drafts alignment |
 | 3 | Background + related work | `Claude Code` | 2 | `docs/doe_genesis/related_work.md` (Track B.5 deliverable); pulls from `IP_STRATEGY.md` and `docs/business/proposals/DIFFERENTIATION_MATRIX.md` |
 | 4 | Technical approach | `Claude Code` | 3–4 | `docs/doe_genesis/mdp_specification.md` (Track B.4); `src/pde/games/`, `src/pde/mcts_adapter.py`, `src/mcts/gumbel.py`, `src/modeling/attention.py` |
-| 5 | Preliminary results | `Claude Code` assembles | 2 | `benchmarks/results/headline_2026_04/` (Pareto plot, CSV, HTML report from Track B.6); zero-shot transfer result (measured MSE ≈ 4e-4; retrained-CNN baseline more accurate) from CLAUDE.md |
+| 5 | Preliminary results | `Claude Code` assembles | 2 | `benchmarks/results/headline_2026_04/` **[PENDING — not yet generated]** (Pareto plot, CSV, HTML report from Track B.6); zero-shot transfer result (committed MSE ≈ 2.3e-3, 3-seed median; retrained-CNN baseline ~14x more accurate) from `specs/transfer_baseline_compare.spec.md` |
 | 6 | Phase I work plan (9 months × 3mo milestones) | `Claude Code` drafts, human approves | 2 | Execution plan Track B+C milestones |
 | 7 | Phase II transition plan | `[HUMAN DECISION]` + `Claude Code` | 1–2 | `[HUMAN DECISION]` specific scientific target (plasma turbulence FES / electronic structure BES / subsurface / other) |
 | 8 | Team & management | `[HUMAN WRITES]` | 1–2 | Biosketches from PI and co-PI(s); `partners/academic_candidates.md` shortlist |
@@ -65,9 +65,9 @@
 - Integration entry point: `src/alphagalerkin/solver.py` (Track B.1 deliverable).
 
 ### §5 Preliminary results
-- Headline figure: `benchmarks/results/headline_2026_04/pareto_plot.png` — L² error vs wall-clock on L-shaped Poisson, Burgers shock, Taylor-Green NS, comparing AlphaGalerkin to uniform FDM, Dörfler AMR, hp-adaptive scikit-fem.
+- Headline figure: `benchmarks/results/headline_2026_04/pareto_plot.png` **[PENDING — Track B.6, not yet generated]** — L² error vs wall-clock on L-shaped Poisson, Burgers shock, Taylor-Green NS, comparing AlphaGalerkin to uniform FDM, Dörfler AMR, hp-adaptive scikit-fem.
 - CSV with every run: `(problem, method, refinement_level, n_dof, l2_error, wall_time_seconds, seed)`.
-- Supplementary: zero-shot transfer measured MSE ≈ 4e-4 on 19×19 (trained on 9×9) per CLAUDE.md (the earlier "0.000209" was a fabricated notebook figure, corrected 2026-07-22). Framed honestly as *physics PoC validation* — the operator transfers with no retraining, but a retrained CNN is more accurate (`specs/transfer_baseline_compare.spec.md`) — not a Genesis benchmark result.
+- Supplementary: zero-shot transfer committed MSE ≈ 2.3e-3 on 19×19 (trained on 9×9), 3-seed median, artifacts `results/transfer_baseline_compare.csv` + `config/baselines/transfer_ci.json` (the earlier "0.000209" was a fabricated notebook figure, corrected 2026-07-22; "4e-4" was an uncommitted spike config, corrected 2026-07-31). Framed honestly as *physics PoC validation* — the operator transfers with no retraining, but a retrained CNN is more accurate (`specs/transfer_baseline_compare.spec.md`) — not a Genesis benchmark result.
 - **Go/no-go:** If AlphaGalerkin is not on the Pareto frontier on at least one benchmark, surface to PI *before* writing §4–§7 around a null result (per Execution Plan hard constraint).
 
 ### §6 Phase I work plan

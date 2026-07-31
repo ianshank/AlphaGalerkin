@@ -1,7 +1,7 @@
 # Spec: headline_runs — GPU / hardware-gated runbooks
 
 > **Status:** Runbook (manual, hardware-gated)
-> **Tracking:** CLAUDE.md Next-Steps table (GPU headline rows) + `docs/PR86_HEADLINE_RUNS.md`
+> **Tracking:** CLAUDE.md Next-Steps table (GPU headline rows) + `docs/archive/PR86_HEADLINE_RUNS.md`
 
 ## Context
 

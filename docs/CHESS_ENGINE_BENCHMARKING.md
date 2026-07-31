@@ -26,7 +26,7 @@ AlphaGalerkin is fundamentally different from existing neural chess engines (Alp
 
 4. **Fredholm Integral Formulation**: Board positions are treated as continuous functions, with pieces generating Green's function influence fields. This is a fundamentally different paradigm from treating chess as a grid-based pattern recognition problem.
 
-5. **Zero-Shot Resolution Transfer**: The physics PoC operator transfers to 19x19 at measured MSE ≈ 0.00039 (trained only on 9x9), with no retraining. (The earlier "0.000209 / 240× better than threshold" was a fabricated notebook figure; an honest CNN-retrained baseline is more accurate — see `specs/transfer_baseline_compare.spec.md`.) This architecture enables training on simplified positions and evaluating on full complexity without retraining.
+5. **Zero-Shot Resolution Transfer**: The physics PoC operator transfers to 19x19 at a committed MSE ≈ 2.3e-3 (3-seed median, trained only on 9x9), with no retraining. (The earlier "0.000209 / 240× better than threshold" was a fabricated notebook figure; an honest CNN-retrained baseline is more accurate — see `specs/transfer_baseline_compare.spec.md`.) This architecture enables training on simplified positions and evaluating on full complexity without retraining.
 
 ### Positions Per Second Comparison
 

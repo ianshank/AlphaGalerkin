@@ -22,7 +22,11 @@ pre-commit install
 See [`docs/getting-started.md`](docs/getting-started.md) for a clone-to-first-run
 walkthrough and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the repository map.
 
-## 2. Spec-driven development
+## 2. Scope and spec-driven development
+
+Before proposing a feature, check it is in scope: the project charter
+([`openspec/specs/project-charter/spec.md`](openspec/specs/project-charter/spec.md)) is the
+supreme authority on mission, non-goals, and the evidence standard every numeric claim must meet.
 
 Non-trivial features start as a **markdown spec** before any code:
 
@@ -60,7 +64,7 @@ pre-commit run --all-files
 ### Coverage
 
 CI enforces **85% branch coverage** globally, plus **per-module gates** (e.g.
-`mcts ≥ 90`, `refinement ≥ 85`, `pde ≥ 75`, `distributed ≥ 60`, chess `≥ 80`). New
+`mcts ≥ 90`, `refinement ≥ 85`, `pde ≥ 75`, `distributed ≥ 60`, games (Go + Chess) `≥ 80`). New
 code needs tests that keep the changed module above its gate. The
 [`coverage-gate`](.claude/) skill runs the exact per-module command for you.
 

@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Executable project charter (`project-charter-alignment`)
+
+- **New `openspec/` tree** ([OpenSpec](https://github.com/Fission-AI/OpenSpec) format):
+  `openspec/specs/project-charter/spec.md` is now the repository's **supreme** scope
+  document — mission, scope, non-goals, the novelty claim, the evidence standard, and an
+  accepted-deviation register. It is deliberately *thin and referential*: it asserts equality
+  with existing owners (`ARCHITECTURE.md` for layout, `ci.yml` for gates, the scenario registry
+  for capabilities) rather than copying them, so there is one place to edit when reality
+  changes. `openspec/project.md` states the precedence order; the change package under
+  `openspec/changes/project-charter-alignment/` carries the proposal, design, tasks, and delta.
+- **`tests/docs/test_charter_alignment.py`** — one guard per charter Requirement plus two
+  meta-guards (every region parses non-empty; every `### Requirement:` maps to a guard, checked
+  both directions). All nine were mutation-tested to confirm they fail when violated. The
+  capability guard reads `ScenarioRegistry().list_scenarios()` in a **subprocess**: the registry
+  is a process-wide singleton that `tests/poc/*` autouse fixtures `clear()` without teardown, so
+  an in-process read is order-dependent (measured: 10 scenarios under `pytest tests/poc
+  tests/docs`, 0 under a narrower selection).
+- **`tests/support/cut_modules.py`** — `CUT_MODULES` promoted to one shared definition so the
+  charter's non-goal guard and the `hf_space` mirror guard cannot drift apart.
+
+### Fixed — Claims contradicted by their own committed artifacts
+
+- **Retracted AMR headline corrected.** `CLAUDE.md` still advertised the pre-bugfix
+  `~11–14% win / ~15–55× wall-clock` L-shape AMR result that
+  `specs/lshape_amr_compare.spec.md` had already retracted (it came from the F0 two-player
+  adversarial backup on a single-agent game). Now states the committed figures: median L2 ratio
+  **0.9605** (~4% win) at matched DOF, **1.26** at matched compute with MCTS winning **0/5**
+  seeds at ~350× the solves. "Two honest comparisons" → three, per AC4.
+- **Zero-shot transfer MSE corrected repo-wide.** `README.md` advertised ≈4e-4 while citing a
+  spec whose committed artifacts (`results/transfer_baseline_compare.csv`,
+  `config/baselines/transfer_ci.json`) say **≈2.3e-3**; the favourable number came from an
+  uncommitted spike and had propagated into nine outward-facing SBIR documents plus the earlier
+  retraction banners. All corrected; `docs/demos/transfer_results.md` now states explicitly that
+  its table is spike output.
+- **Phantom headline artifact disclosed.** `docs/business/proposal/concept_note.md` asserted the
+  Pareto plot was *"archived at"* `benchmarks/results/headline_2026_04/pareto_plot.png` — a path
+  that does not exist — in the same sentence as *"no numerical performance claim … is not
+  traceable to that artifact."* Marked `[PENDING]`, matching `outreach_template.md`.
+- **Deleted subsystem no longer documented as live.** `CLAUDE.md`'s four `video_compression`
+  milestones and `docs/TRAINING_DATA_SOURCES.md` carried eight paths removed in the 2026-07-22
+  cut.
+- **Never-runnable commands removed.** Three documented `torchrun scripts/train_distributed.py`
+  invocations referenced a script that does not exist; `src/distributed/` has no entry point.
+- Smaller corrections: `specs/README.md` was missing `lshape_amr_compare` and mislabelled
+  `llm_prior_ood`; the undocumented `fem` extra; an inverted mypy-gate claim in
+  `NEXT_STEPS_PLAN.md`; `src/training/loss.py` → `losses/`; the moved `PR86_HEADLINE_RUNS.md`
+  path; stale operator/game snapshots in `docs/architecture/components.md`.
+- **`docs.yml` `paths:` widened** so a PR touching only `CLAUDE.md`, `README.md`, or `specs/**`
+  actually runs the internal-link checker — the gap that let a dangling
+  `specs/lambda_scheduling.spec.md` reference survive.
+
 ### Changed — Code hygiene (`code-hygiene-plan`)
 
 - **Enforcement tooling made truthful**: aligned the pre-commit `ruff` hook to the
@@ -25,7 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retracted transfer figure stay scrubbed.
 - **Archived reviews corrected**: `docs/archive/reviews/pr6_review.md` and
   `pr7_review.md` now carry a banner retracting the fabricated `0.000209 / 240×`
-  zero-shot-transfer figure (measured ≈ 4e-4).
+  zero-shot-transfer figure (committed benchmark ≈ 2.3e-3; the ≈4e-4 first written here
+  was an uncommitted spike config, corrected 2026-07-31).
 - **Bounded code-debt**: allowlisted three verified-live abstractions the AST audit
   mis-flagged (`BaseEngine.is_ready`, `GameInterface.get_symmetries` /
   `get_action_mask`) so `scripts/audit_abstractions.py` stays trustworthy; corrected

@@ -83,4 +83,15 @@
 
 - [x] 6.1 Prove every guard bites (one mutation each, then revert)
 - [x] 6.2 Order-independence: `pytest tests/poc tests/docs -q`
-- [ ] 6.3 Full CPU surface + `ruff check` / `ruff format --check`
+- [x] 6.3 Full CPU surface + `ruff check` / `ruff format --check`
+- [x] 6.4 Objective peer review (adversarial, separate pass from 6.1-6.2): found one real
+      parser bug — `_row_lines`'s no-separator fallback returned the bare header as a phantom
+      data row when a table had no rows left at all, which specifically defeated R7 (Accepted
+      Deviation Disclosure — the one register with no external cross-check). Fixed
+      (`table[1:] if len(table) > 1 else []`), and added 3 permanent unit tests exercising
+      `_row_lines` directly against synthetic input (normal table, header-only-no-separator,
+      wholly-empty region), verified to fail against the pre-fix logic and pass against the fix.
+      Also corrected `design.md`'s Parsing Strategy section, which documented an earlier,
+      abandoned backtick-first-cell approach that no longer matched the shipped code. Named the
+      one bare magic number (`_REGISTRY_SUBPROCESS_TIMEOUT_S`). R5/R6/brace-expansion/dead-code
+      all independently verified correct by the reviewer.

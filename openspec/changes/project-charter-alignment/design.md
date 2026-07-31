@@ -119,8 +119,20 @@ Pitfalls handled explicitly:
 
 - **Strip fenced code blocks first.** Otherwise an example table inside a fence parses as data.
 - **Anchor on the literal `^### Requirement:`** — `^###` also matches `####`.
-- **Require a backticked token in the first cell.** This skips the header row and the `| --- |`
-  separator for free (the idiom `_ROW_PACKAGE` already uses in `test_architecture_map.py`).
+- **Do not require a backticked token in the first cell.** An earlier draft did this (mirroring
+  `_ROW_PACKAGE` in `test_architecture_map.py`, which can afford to because every real row there
+  starts with a backticked package path) — but two of the six registers here (evidence,
+  deviations) key on a *prose* claim/deviation label with no backtick, and a parser that
+  silently skipped non-backticked rows would make exactly those two guards vacuous. Instead,
+  the header/separator row is dropped **structurally**: find the `| --- |` separator and take
+  everything after it; if no separator is present, the first row is a header and everything
+  after it is data — and if there is no "everything after it" (a table of only a header, every
+  real row deleted), that must return `[]`, not the header cells reinterpreted as data. An
+  earlier version of this fallback returned the header itself in that single-line case, which
+  would have let a fully-emptied `deviations` table pass R7 silently (that register has no
+  external source of truth to cross-check against, unlike scope/non-goals/capabilities/gates —
+  each of those would catch a phantom row as an unexpected "extra"). Fixed before merge; the
+  shipped `_row_lines` in `tests/docs/test_charter_alignment.py` implements this correctly.
 - **Brace expansion is single-level**, then assert no `{` remains — fail loudly rather than
   silently skipping. Order-agnostic: `CHANGELOG.md` writes `{png,csv}`, specs write `{csv,png}`.
 - **Reject absolute and `..` paths** before `exists()`.

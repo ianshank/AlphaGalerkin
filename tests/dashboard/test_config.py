@@ -159,6 +159,24 @@ class TestTransferMilestone:
         assert m.mse_threshold == 0.05
         assert all(v < m.mse_threshold for v in m.achieved_mse.values())
 
+    def test_requires_the_committed_target_resolution(self):
+        """The CNN baseline fields are 19x19-specific, so 19 must be present.
+
+        Without this, a config override could compare the operator at another
+        resolution against 19x19 baselines and label both `{target}x{target}` — the
+        mislabelled comparison this config exists to prevent.
+        """
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION
+
+        with pytest.raises(ValidationError, match=str(COMMITTED_TARGET_RESOLUTION)):
+            TransferMilestone(achieved_mse={9: 1.0e-4, 13: 2.0e-4})
+
+    def test_accepts_map_containing_target_resolution(self):
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION
+
+        m = TransferMilestone(achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 2.0e-3})
+        assert COMMITTED_TARGET_RESOLUTION in m.achieved_mse
+
     def test_baseline_fields_present_and_positive(self):
         m = TransferMilestone()
         assert m.cnn_retrained_mse_19x19 > 0

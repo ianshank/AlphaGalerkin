@@ -23,7 +23,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import structlog
 
-from dashboard.config import DEFAULT_CONFIG, ComplexityRunConfig, PoCConfig, StabilityRunConfig
+from dashboard.config import (
+    COMMITTED_TARGET_RESOLUTION,
+    DEFAULT_CONFIG,
+    ComplexityRunConfig,
+    PoCConfig,
+    StabilityRunConfig,
+)
 from dashboard.utils import fig_to_pil, format_exc
 
 if TYPE_CHECKING:
@@ -350,7 +356,10 @@ def show_transfer_milestone(
         cfg = DEFAULT_CONFIG.poc
     plot_dpi = DEFAULT_CONFIG.app.plot_dpi
     milestone = cfg.transfer
-    target = max(milestone.achieved_mse)
+    # Pinned, not derived: the baseline fields below are 19x19-specific, so deriving a
+    # target from achieved_mse would let a config override compare mismatched resolutions
+    # while labelling them the same. TransferMilestone validates that the key is present.
+    target = COMMITTED_TARGET_RESOLUTION
 
     logger.info(
         "transfer_benchmark_displayed",
@@ -423,8 +432,11 @@ def show_transfer_milestone(
 
     lines = [
         f"COMMITTED BENCHMARK  [{milestone.milestone_date}]",
-        "Source: results/transfer_baseline_compare.csv (3-seed median)",
+        "Source: results/transfer_baseline_compare.csv",
         "        config/baselines/transfer_ci.json",
+        "Provenance: representative (median-ranked) seed of a 3-seed run. The",
+        f"operator's {target}x{target} MSE is the 3-seed median; each baseline is that",
+        "same seed's paired value, so the ratio below is a within-seed ratio.",
         "",
         f"Operator trained at {milestone.train_resolution}×{milestone.train_resolution} only:",
     ]
@@ -538,7 +550,7 @@ def create_poc_tab(cfg: PoCConfig | None = None) -> None:
 
             # ── Transfer ────────────────────────────────────────────────────
             with gr.Tab("Zero-Shot Transfer (honest baseline)"):
-                _target = max(cfg.transfer.achieved_mse)
+                _target = COMMITTED_TARGET_RESOLUTION
                 gr.Markdown(
                     "Displays the **committed benchmark**: a model trained on "
                     f"{cfg.transfer.train_resolution}×{cfg.transfer.train_resolution} Poisson "

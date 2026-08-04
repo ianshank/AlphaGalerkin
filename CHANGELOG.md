@@ -12,9 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**
   `dashboard/config.py::TransferMilestone` shipped `{9: 2.5e-6, 13: 2.04e-4, 19: 3.93e-4}`,
   attributed to `scripts/demo_transfer.py` — a script that writes only to `outputs/`. The
-  committed benchmark says 19×19 ≈ 2.3e-3. Defaults now carry the committed 3-seed median from
-  `results/transfer_baseline_compare.csv`, plus the retrained-CNN (1.63e-4) and zero-shot-CNN
-  (7.66e-5) baselines and the 14.1× ratio from `config/baselines/transfer_ci.json`.
+  committed benchmark says 19×19 ≈ 2.3e-3. Defaults now carry the representative
+  (median-ranked) seed from `results/transfer_baseline_compare.csv` — the operator's 19×19 MSE
+  is the 3-seed median, and the retrained-CNN (1.63e-4) and zero-shot-CNN (7.66e-5) baselines
+  are that same seed's *paired* values, so the 14.1× ratio is within-seed. The baselines are
+  deliberately **not** described as medians: the per-metric CNN medians differ (1.43e-4 and
+  3.15e-4). `COMMITTED_TARGET_RESOLUTION` pins the comparison to 19×19, and `achieved_mse` now
+  validates that the key is present, so a config override cannot compare mismatched resolutions
+  under a single label.
 - **`show_transfer_milestone` rendered two retracted framings.** It printed
   `MILESTONE ACHIEVED` and annotated each bar `N× better` against an arbitrary 0.05 pass
   threshold (127× / 245× / **20000×**) — the self-comparison

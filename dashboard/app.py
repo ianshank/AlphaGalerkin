@@ -83,9 +83,11 @@ Learning — Galerkin Transformers and FNet mixing — instead of discrete CNNs.
 
 **On transfer:** a discrete CNN *retrained* at 19×19 reaches ≈1.6e-4, so the operator
 loses by ≈14×. What zero-shot transfer buys is **zero retraining — one model, any
-resolution — not peak accuracy**. Figures are 3-seed medians from
-`results/transfer_baseline_compare.csv` and `config/baselines/transfer_ci.json`;
-benchmark: `specs/transfer_baseline_compare.spec.md`.
+resolution — not peak accuracy**. Figures come from the representative (median-ranked)
+seed of a 3-seed run in `results/transfer_baseline_compare.csv`, pinned in
+`config/baselines/transfer_ci.json`: the operator's 19×19 MSE is the 3-seed median, and
+each baseline is that same seed's paired value (so the ratio is within-seed).
+Benchmark: `specs/transfer_baseline_compare.spec.md`.
 
 ### Architecture
 

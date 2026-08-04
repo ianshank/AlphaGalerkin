@@ -13,6 +13,11 @@ from typing import Final
 
 from pydantic import BaseModel, Field, field_validator
 
+# Evaluation resolution the committed transfer benchmark reports baselines for.
+# ``TransferMilestone``'s CNN baseline fields and ratio are specific to it, so the
+# UI must pin its comparison here rather than deriving a target from the MSE map.
+COMMITTED_TARGET_RESOLUTION: Final[int] = 19
+
 # ---------------------------------------------------------------------------
 # UI / Server
 # ---------------------------------------------------------------------------
@@ -159,6 +164,13 @@ class TransferMilestone(BaseModel):
     than a CNN retrained at the target resolution -- the value is zero retraining, not
     peak accuracy. See ``specs/transfer_baseline_compare.spec.md``.
 
+    **Provenance, stated precisely.** All arms come from the *representative
+    (median-ranked) seed* of the committed 3-seed run. The operator's
+    ``COMMITTED_TARGET_RESOLUTION`` MSE is itself the 3-seed median; each baseline is
+    that same seed's *paired* value, which is why ``transfer_ratio_19x19`` is an
+    honest within-seed ratio. The per-metric medians of the CNN arms differ (retrained
+    1.434e-04, zero-shot 3.153e-04) -- do **not** describe the baselines as medians.
+
     ``tests/dashboard/test_config.py`` and the charter's UI-claim guard both assert these
     defaults agree with ``config/baselines/transfer_ci.json``; update both together.
     """
@@ -180,10 +192,11 @@ class TransferMilestone(BaseModel):
             19: 2.30064808e-03,
         },
         description=(
-            "Operator zero-shot MSE per resolution, trained at 9x9 only. Committed 3-seed "
-            "median (representative seed 15880) from results/transfer_baseline_compare.csv; "
-            "the 19x19 entry equals mse_alphagalerkin_zeroshot_19x19 in "
-            "config/baselines/transfer_ci.json. Benchmark: "
+            "Operator zero-shot MSE per resolution, trained at 9x9 only. Representative "
+            "(median-ranked) seed from results/transfer_baseline_compare.csv; the "
+            "19x19 entry is also the 3-seed median and equals "
+            "mse_alphagalerkin_zeroshot_19x19 in config/baselines/transfer_ci.json. "
+            "Must contain COMMITTED_TARGET_RESOLUTION. Benchmark: "
             "specs/transfer_baseline_compare.spec.md"
         ),
     )
@@ -192,14 +205,16 @@ class TransferMilestone(BaseModel):
         gt=0,
         description=(
             "Discrete CNN retrained at 19x19 -- the honest baseline the operator is measured "
-            "against. From config/baselines/transfer_ci.json::mse_cnn_retrained_19x19"
+            "against. Representative seed's paired value (NOT the 3-seed median, which is "
+            "1.433924e-04). From config/baselines/transfer_ci.json::mse_cnn_retrained_19x19"
         ),
     )
     cnn_zeroshot_mse_19x19: float = Field(
         default=7.65602237e-05,
         gt=0,
         description=(
-            "Discrete CNN evaluated zero-shot at 19x19. From "
+            "Discrete CNN evaluated zero-shot at 19x19. Representative seed's paired value "
+            "(NOT the 3-seed median, which is 3.153264e-04). From "
             "config/baselines/transfer_ci.json::mse_cnn_zeroshot_19x19"
         ),
     )
@@ -207,9 +222,9 @@ class TransferMilestone(BaseModel):
         default=14.118302311554318,
         gt=0,
         description=(
-            "Operator zero-shot MSE divided by retrained-CNN MSE at 19x19. Greater than 1 "
-            "means the operator loses. From "
-            "config/baselines/transfer_ci.json::transfer_mse_ratio_19x19"
+            "Operator zero-shot MSE divided by retrained-CNN MSE at 19x19, computed "
+            "within the representative seed. Greater than 1 means the operator loses. "
+            "From config/baselines/transfer_ci.json::transfer_mse_ratio_19x19"
         ),
     )
     milestone_date: str = Field(
@@ -219,12 +234,25 @@ class TransferMilestone(BaseModel):
     @field_validator("achieved_mse")
     @classmethod
     def validate_achieved_mse(cls, v: dict[int, float]) -> dict[int, float]:
-        """Ensure the map is non-empty and all MSE values are strictly positive."""
+        """Validate the MSE map, including presence of the committed target resolution.
+
+        The baseline fields above are ``19x19``-specific by construction. If the map
+        could omit 19, the UI would compare the operator at some other resolution
+        against 19x19 baselines and label the result ``{target}x{target}`` -- exactly
+        the mislabelled comparison this config exists to prevent.
+        """
         if not v:
             raise ValueError("achieved_mse must contain at least one entry")
         non_positive = {k: val for k, val in v.items() if val <= 0}
         if non_positive:
             raise ValueError(f"achieved_mse values must be > 0; invalid entries: {non_positive}")
+        if COMMITTED_TARGET_RESOLUTION not in v:
+            raise ValueError(
+                f"achieved_mse must contain the committed target resolution "
+                f"{COMMITTED_TARGET_RESOLUTION}; the baseline fields "
+                f"(cnn_retrained_mse_19x19, cnn_zeroshot_mse_19x19, transfer_ratio_19x19) "
+                f"are specific to it. Got resolutions: {sorted(v)}"
+            )
         return v
 
 

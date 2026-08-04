@@ -172,10 +172,26 @@ class TestTransferMilestone:
             TransferMilestone(achieved_mse={9: 1.0e-4, 13: 2.0e-4})
 
     def test_accepts_map_containing_target_resolution(self):
+        """An override is accepted when the ratio is overridden consistently with it."""
         from dashboard.config import COMMITTED_TARGET_RESOLUTION
 
-        m = TransferMilestone(achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 2.0e-3})
+        m = TransferMilestone(
+            achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 2.0e-3},
+            cnn_retrained_mse_19x19=1.0e-4,
+            transfer_ratio_19x19=20.0,
+        )
         assert COMMITTED_TARGET_RESOLUTION in m.achieved_mse
+
+    def test_rejects_override_that_contradicts_the_ratio(self):
+        """Overriding the operator MSE alone leaves the displayed ratio wrong.
+
+        The tab renders the ratio next to both operands, so a silent mismatch would
+        show a quotient that contradicts the two numbers beside it.
+        """
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION
+
+        with pytest.raises(ValidationError, match="contradicts its own"):
+            TransferMilestone(achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 2.0e-3})
 
     def test_baseline_fields_present_and_positive(self):
         m = TransferMilestone()

@@ -103,7 +103,7 @@ loading a checkpoint into two demo tabs is genuinely WS4's job.
 
 ## Data Flow
 
-```
+```text
 config/baselines/transfer_ci.json ──┐
                                     ├─► AQA test (tests/dashboard/test_config.py)
 dashboard/config.py TransferMilestone┘         │

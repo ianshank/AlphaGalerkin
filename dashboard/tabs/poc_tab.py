@@ -481,8 +481,8 @@ def create_poc_tab(cfg: PoCConfig | None = None) -> None:
     with gr.Tab("PoC Scenarios"):
         gr.Markdown(
             "## Proof-of-Concept Scenario Runner\n"
-            "Three built-in scenarios validate AlphaGalerkin's core claims.\n"
-            "Complexity and Stability run **live**; Transfer shows the validated milestone."
+            "Three built-in scenarios. Complexity and Stability run **live**; "
+            "Transfer displays a committed benchmark."
         )
 
         with gr.Tabs():
@@ -566,8 +566,20 @@ def create_poc_tab(cfg: PoCConfig | None = None) -> None:
                     t_plot = gr.Image(label="Transfer Benchmark")
                     t_text = gr.Textbox(label="Benchmark Summary", lines=16, interactive=False)
 
+                def _render_transfer_benchmark(
+                    _cfg: PoCConfig = cfg,
+                ) -> tuple[PILImage.Image, str]:
+                    """Render the benchmark using *this tab's* config, not the default.
+
+                    The Markdown above reads from ``cfg``; calling
+                    ``show_transfer_milestone`` unbound would render
+                    ``DEFAULT_CONFIG.poc`` instead, so a custom ``PoCConfig`` could
+                    describe one benchmark and display another.
+                    """
+                    return show_transfer_milestone(cfg=_cfg)
+
                 t_show.click(
-                    show_transfer_milestone,
+                    _render_transfer_benchmark,
                     inputs=[],
                     outputs=[t_plot, t_text],
                 )

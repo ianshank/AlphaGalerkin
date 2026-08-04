@@ -42,8 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   seen by more people than any document. A number shown to a user is a claim.
 - **`test_ui_claims_match_committed_artifacts`** (registered in `_GUARDED`, so the charter's
   both-directions meta-guard covers it): bans the fabricated figure and the retracted blanket
-  claim across `dashboard/**/*.py`, and asserts every transfer figure agrees with
-  `config/baselines/transfer_ci.json` within that file's own `tolerance_pct`. It loads
+  claim across both interactive surfaces (`dashboard/**/*.py` and `hf_space/**/*.py`), asserts
+  the target-resolution figures agree with `config/baselines/transfer_ci.json` within that
+  file's own `tolerance_pct`, and cross-checks the remaining rendered resolutions (9×9, 13×13
+  — absent from the baseline JSON) against the representative seed's rows in
+  `results/transfer_baseline_compare.csv`. `TransferMilestone` additionally rejects an override
+  whose ratio contradicts its own operands. It loads
   `dashboard/config.py` standalone via `importlib` rather than importing the package, keeping
   gradio out of the charter guard. Mutation-tested against four regressions: a reintroduced
   spike figure, the retracted literal, a flipped comparison direction, and the restored

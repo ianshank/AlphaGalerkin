@@ -15,6 +15,9 @@ Gradio dashboard, which renders figures from Pydantic defaults and hardcoded mar
 which reaches more people than any document. A number shown to a user is a claim regardless of
 whether it appears in prose.
 
+The interactive surfaces this Requirement governs are `dashboard/` and `hf_space/` — the two
+roots the guard scans. Adding a third interactive surface SHALL extend that scan.
+
 This Requirement also bans the self-comparison framing the transfer benchmark retracts: a ratio
 against an arbitrary pass threshold is not a result. Where a committed baseline exists, the
 comparison SHALL be against that baseline, reported in whichever direction the artifacts

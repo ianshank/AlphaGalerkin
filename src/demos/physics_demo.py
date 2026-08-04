@@ -324,39 +324,48 @@ class PhysicsDemo:
             title="Zero-Shot Transfer: Train 9×9 → Evaluate Any Size",
         )
 
-        # Create MSE bar chart
+        # Create MSE bar chart. With no model loaded the bars are mean(ground_truth^2),
+        # so the pass/fail threshold line is meaningless and the title must not imply
+        # a measured model error.
         labels = [f"{size}×{size}" for size in results]
         mse_values = [result.mse for result in results.values()]
+        no_model = self.model is None
 
         mse_plot = self.chart_viz.render_mse_bar_chart(
             labels=labels,
             mse_values=mse_values,
-            threshold=self.config.mse_threshold,
-            title="MSE by Resolution (Lower is Better)",
+            threshold=None if no_model else self.config.mse_threshold,
+            title=(
+                "PLACEHOLDER — no model loaded (data statistics, not model error)"
+                if no_model
+                else "MSE by Resolution (Lower is Better)"
+            ),
         )
 
         # Build results text. With no model loaded, ``predict`` returns zeros, so every
         # "MSE" below is mean(ground_truth^2) -- a property of the data, not model error.
         # Say so up front rather than reporting it as a measurement.
         threshold = self.config.mse_threshold
-        no_model = self.model is None
         results_lines: list[str] = []
         if no_model:
             results_lines += [
                 "*** PLACEHOLDER -- NO MODEL LOADED ***",
                 "Predictions are all zeros, so the values below are",
-                "mean(ground_truth^2), NOT a measured model error.",
-                "They are not results and must not be quoted.",
+                "mean(ground_truth^2) -- statistics of the DATA, not a measured",
+                "model error. They are not results and must not be quoted.",
                 "",
             ]
         results_lines += ["Zero-Shot Transfer Results:", "=" * 40]
         for size, result in results.items():
-            status = "PASS" if result.mse < threshold else "FAIL"
-            label = "[n/a]" if no_model else f"[{status}]"
-            results_lines.append(
-                f"{size}×{size}: MSE={result.mse:.6f} {label} "
-                f"(inference: {result.inference_time_ms:.1f}ms)"
-            )
+            if no_model:
+                # No inference ran, so pass/fail and inference time are both meaningless.
+                results_lines.append(f"{size}×{size}: mean(ground_truth^2)={result.mse:.6f} [n/a]")
+            else:
+                status = "PASS" if result.mse < threshold else "FAIL"
+                results_lines.append(
+                    f"{size}×{size}: MSE={result.mse:.6f} [{status}] "
+                    f"(inference: {result.inference_time_ms:.1f}ms)"
+                )
         results_lines.append("=" * 40)
         results_lines.append(f"Threshold: {threshold}")
         if no_model:
@@ -402,19 +411,33 @@ class PhysicsDemo:
             show_difference=True,
         )
 
-        no_model_banner = (
-            ""
-            if self.model is not None
-            else (
-                "\n*** PLACEHOLDER -- NO MODEL LOADED ***\n"
-                "Predictions are all zeros, so the figures below are\n"
-                "mean(ground_truth^2), NOT a measured model error.\n"
-            )
-        )
-        explanation = f"""
+        if self.model is None:
+            # No inference ran. Report the figures as data statistics and draw no
+            # conclusion about the operator -- a capability claim here would be
+            # unsupported by anything that was actually computed.
+            explanation = f"""
 Resolution Independence Demonstration
 =====================================
-{no_model_banner}
+
+*** PLACEHOLDER -- NO MODEL LOADED ***
+No checkpoint is loaded, so predictions are all zeros and no inference ran.
+
+Training Resolution: {small_size}×{small_size}
+Evaluation Resolution: {large_size}×{large_size}
+
+Data statistics (NOT model error):
+- mean(ground_truth^2): {large_result.mse:.6f}
+- mean(|ground_truth|): {large_result.mae:.6f}
+
+These describe the generated Poisson fields, not the operator. No claim about
+resolution independence can be made from this run -- load a checkpoint to
+measure one.
+"""
+        else:
+            explanation = f"""
+Resolution Independence Demonstration
+=====================================
+
 Training Resolution: {small_size}×{small_size}
 Evaluation Resolution: {large_size}×{large_size}
 
@@ -423,13 +446,15 @@ Results:
 - MAE: {large_result.mae:.6f}
 - Inference Time: {large_result.inference_time_ms:.1f} ms
 
-This demonstrates the Galerkin neural operator's ability to generalize
-across resolutions without retraining. The model was trained ONLY on
-{small_size}×{small_size} grids but can accurately predict on {large_size}×{large_size}.
+The model was trained ONLY on {small_size}×{small_size} grids and evaluated on
+{large_size}×{large_size} without retraining. Note that on the project's committed
+benchmark a discrete CNN *retrained* at the target resolution is more accurate --
+what transfer buys is zero retraining, not peak accuracy. See
+specs/transfer_baseline_compare.spec.md.
 
-Key Insight: Traditional CNNs would fail this test because they encode
-position through discrete grid indices. Our approach uses continuous
-Fourier features, enabling true resolution independence.
+Key Insight: a discrete CNN cannot be evaluated at an unseen resolution at all,
+because it encodes position through grid indices. Continuous Fourier features
+make the operator resolution-independent.
 """
 
         comparison_plot.close()

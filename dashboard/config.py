@@ -11,12 +11,17 @@ from __future__ import annotations
 
 from typing import Final
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Evaluation resolution the committed transfer benchmark reports baselines for.
 # ``TransferMilestone``'s CNN baseline fields and ratio are specific to it, so the
 # UI must pin its comparison here rather than deriving a target from the MSE map.
 COMMITTED_TARGET_RESOLUTION: Final[int] = 19
+
+# Relative tolerance when checking that the displayed transfer ratio agrees with the
+# two displayed MSEs it is the quotient of. Loose enough to absorb the rounding in a
+# hand-copied committed figure, tight enough that a genuine override mismatch fails.
+RATIO_CONSISTENCY_RTOL: Final[float] = 1e-3
 
 # ---------------------------------------------------------------------------
 # UI / Server
@@ -254,6 +259,26 @@ class TransferMilestone(BaseModel):
                 f"are specific to it. Got resolutions: {sorted(v)}"
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_ratio_matches_operands(self) -> TransferMilestone:
+        """The rendered ratio must equal the rendered operands that produce it.
+
+        ``transfer_ratio_19x19`` is displayed beside ``achieved_mse[19]`` and
+        ``cnn_retrained_mse_19x19``. Overriding one without the others would render a
+        ratio that contradicts the two numbers printed next to it -- the same
+        label-disagrees-with-operands defect this config exists to prevent.
+        """
+        operator = self.achieved_mse[COMMITTED_TARGET_RESOLUTION]
+        derived = operator / self.cnn_retrained_mse_19x19
+        if abs(derived - self.transfer_ratio_19x19) > RATIO_CONSISTENCY_RTOL * derived:
+            raise ValueError(
+                f"transfer_ratio_19x19={self.transfer_ratio_19x19!r} contradicts its own "
+                f"operands: achieved_mse[{COMMITTED_TARGET_RESOLUTION}]={operator!r} / "
+                f"cnn_retrained_mse_19x19={self.cnn_retrained_mse_19x19!r} = {derived!r}. "
+                f"Override all three together, or none."
+            )
+        return self
 
 
 class PoCConfig(BaseModel):

@@ -197,6 +197,38 @@ class TestPhysicsDemo:
         assert mse_chart_img.ndim == 3
         assert "Zero-Shot Transfer Results" in results_text
 
+    def test_visualize_transfer_without_model_is_labelled_a_placeholder(
+        self, demo: PhysicsDemo
+    ) -> None:
+        """No model loaded => zeros => the figures are data statistics, not model error.
+
+        ``predict()`` returns zeros when ``self.model is None``, so an unlabelled MSE
+        here would report ``mean(ground_truth**2)`` as if it were measured error.
+        """
+        assert demo.model is None
+        _, _, results_text = demo.visualize_transfer(seed=42)
+
+        assert "PLACEHOLDER" in results_text
+        assert "NOT A MEASUREMENT" in results_text
+        # Pass/fail and inference timings are meaningless with no inference.
+        assert "[PASS]" not in results_text
+        assert "[FAIL]" not in results_text
+        assert "inference:" not in results_text
+
+    def test_resolution_independence_without_model_makes_no_capability_claim(
+        self, demo: PhysicsDemo
+    ) -> None:
+        """The no-model path must not assert the operator generalises."""
+        assert demo.model is None
+        _, explanation = demo.demonstrate_resolution_independence(
+            small_size=9, large_size=13, seed=42
+        )
+
+        assert "PLACEHOLDER" in explanation
+        assert "data statistics" in explanation.lower()
+        assert "can accurately predict" not in explanation
+        assert "Inference Time" not in explanation
+
     def test_demonstrate_resolution_independence(self, demo: PhysicsDemo) -> None:
         """Test resolution independence demonstration."""
         comparison_img, explanation = demo.demonstrate_resolution_independence(

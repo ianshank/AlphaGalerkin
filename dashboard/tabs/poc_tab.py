@@ -307,8 +307,7 @@ def run_stability(
         summary = (
             f"Status: {result.status.value.upper()}\n"
             f"LBB training mean: {training_mean:.2e}  "
-            f"min: {training_min:.2e}  violations: {violations}\n"
-            + detail
+            f"min: {training_min:.2e}  violations: {violations}\n" + detail
         )
         logger.info(
             "stability_scenario_complete",
@@ -330,56 +329,92 @@ def run_stability(
 def show_transfer_milestone(
     cfg: PoCConfig | None = None,
 ) -> tuple[PILImage.Image, str]:
-    """Render the validated zero-shot transfer milestone result (no live run).
+    """Render the committed zero-shot transfer benchmark (no live run).
+
+    Shows the honest comparison the benchmark actually supports: the operator trained
+    only at 9x9 against a discrete CNN retrained at 19x19. The operator loses on
+    accuracy; what it buys is zero retraining. Every figure comes from
+    ``config/baselines/transfer_ci.json`` via :class:`~dashboard.config.TransferMilestone`.
+
+    A ratio against the legacy 0.05 pass threshold is deliberately *not* rendered --
+    ``specs/transfer_baseline_compare.spec.md`` retracts that framing.
 
     Args:
         cfg: Optional PoCConfig override; uses ``DEFAULT_CONFIG.poc`` when *None*.
 
     Returns:
-        Tuple of (PIL Image, milestone summary text).
+        Tuple of (PIL Image, benchmark summary text).
 
     """
     if cfg is None:
         cfg = DEFAULT_CONFIG.poc
     plot_dpi = DEFAULT_CONFIG.app.plot_dpi
     milestone = cfg.transfer
+    target = max(milestone.achieved_mse)
 
-    logger.info("transfer_milestone_displayed", milestone_date=milestone.milestone_date)
+    logger.info(
+        "transfer_benchmark_displayed",
+        milestone_date=milestone.milestone_date,
+        target_resolution=target,
+        ratio=milestone.transfer_ratio_19x19,
+    )
 
     resolutions = sorted(milestone.achieved_mse.keys())
     mse_values = [milestone.achieved_mse[r] for r in resolutions]
-    threshold = milestone.mse_threshold
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
     fig.suptitle(
-        f"Zero-Shot Transfer Milestone  "
-        f"(Train {milestone.train_resolution}×{milestone.train_resolution}  →  Eval)",
-        fontsize=13,
+        f"Zero-Shot Transfer: operator (train {milestone.train_resolution}×"
+        f"{milestone.train_resolution}) vs. retrained CNN — committed benchmark",
+        fontsize=12,
     )
 
-    colors = ["#2ecc71" if v < threshold else "#e74c3c" for v in mse_values]
-    axes[0].bar([f"{r}×{r}" for r in resolutions], mse_values, color=colors, alpha=0.85)
-    axes[0].axhline(y=threshold, color="red", ls="--", lw=1.5, label=f"Threshold {threshold}")
+    # ── Left: the honest three-arm comparison at the target resolution ──────────
+    arm_labels = [
+        f"Operator\nzero-shot\n(train {milestone.train_resolution}×{milestone.train_resolution})",
+        f"CNN\nretrained\n({target}×{target})",
+        "CNN\nzero-shot",
+    ]
+    arm_values = [
+        milestone.achieved_mse[target],
+        milestone.cnn_retrained_mse_19x19,
+        milestone.cnn_zeroshot_mse_19x19,
+    ]
+    # Red marks the arm that loses; the operator is the one under test.
+    arm_colors = ["#e74c3c", "#2ecc71", "#3498db"]
+    axes[0].bar(arm_labels, arm_values, color=arm_colors, alpha=0.85)
     axes[0].set_ylabel("MSE")
-    axes[0].set_title("Transfer MSE (lower is better)")
     axes[0].set_yscale("log")
-    axes[0].legend(fontsize=9)
+    axes[0].set_title(f"MSE at {target}×{target} (lower is better)")
     axes[0].grid(True, alpha=0.3, axis="y")
-    for i, (_, mse) in enumerate(zip(resolutions, mse_values, strict=True)):
-        mse = max(mse, 1e-12)  # guard against zero/negative MSE
-        ratio = threshold / mse
-        axes[0].text(i, mse * 1.4, f"{ratio:.0f}×\nbetter", ha="center", va="bottom", fontsize=8)
-
-    rng = np.random.default_rng(7)
-    steps = np.arange(0, 101, 5)
-    loss = 0.8 * np.exp(-steps / 25.0) + 0.05 + 0.02 * rng.standard_normal(len(steps))
-    axes[1].plot(steps, np.clip(loss, 0.0, 1.0), "b-", lw=2, label="Train loss")
-    axes[1].axhline(y=threshold, color="green", ls="--", label="Convergence target")
-    axes[1].set_xlabel("Epoch")
-    axes[1].set_ylabel("MSE Loss")
-    axes[1].set_title(
-        f"Training curve ({milestone.train_resolution}×{milestone.train_resolution} Poisson data)"
+    for i, value in enumerate(arm_values):
+        axes[0].text(i, value * 1.15, f"{value:.2e}", ha="center", va="bottom", fontsize=8)
+    axes[0].text(
+        0.5,
+        0.95,
+        f"Operator loses to the retrained CNN by {milestone.transfer_ratio_19x19:.1f}×",
+        transform=axes[0].transAxes,
+        ha="center",
+        va="top",
+        fontsize=9,
+        bbox={"boxstyle": "round", "facecolor": "#fdf3e7", "alpha": 0.9},
     )
+
+    # ── Right: the operator's measured degradation across resolutions ───────────
+    axes[1].plot(resolutions, mse_values, "o-", color="#e74c3c", lw=2, label="Operator zero-shot")
+    axes[1].axhline(
+        y=milestone.cnn_retrained_mse_19x19,
+        color="#2ecc71",
+        ls="--",
+        lw=1.5,
+        label=f"CNN retrained @ {target}×{target}",
+    )
+    axes[1].set_xlabel("Evaluation resolution")
+    axes[1].set_ylabel("MSE")
+    axes[1].set_yscale("log")
+    axes[1].set_xticks(resolutions)
+    axes[1].set_xticklabels([f"{r}×{r}" for r in resolutions])
+    axes[1].set_title("Measured transfer, one model, no retraining")
     axes[1].legend(fontsize=9)
     axes[1].grid(True, alpha=0.3)
 
@@ -387,17 +422,27 @@ def show_transfer_milestone(
     img = fig_to_pil(fig, dpi=plot_dpi)
 
     lines = [
-        f"MILESTONE ACHIEVED  [{milestone.milestone_date}]",
-        f"Train resolution: {milestone.train_resolution}×{milestone.train_resolution}"
-        f"  |  MSE threshold: {threshold}",
+        f"COMMITTED BENCHMARK  [{milestone.milestone_date}]",
+        "Source: results/transfer_baseline_compare.csv (3-seed median)",
+        "        config/baselines/transfer_ci.json",
         "",
+        f"Operator trained at {milestone.train_resolution}×{milestone.train_resolution} only:",
     ]
     for r, mse in zip(resolutions, mse_values, strict=True):
-        ratio = threshold / mse
-        lines.append(f"  {r:>2}×{r:<2}  MSE = {mse:.6f}  ({ratio:.0f}× better than threshold)")
+        tag = "  (in-distribution)" if r == milestone.train_resolution else "  (zero-shot)"
+        lines.append(f"  {r:>2}×{r:<2}  MSE = {mse:.3e}{tag}")
     lines += [
         "",
-        "Key: same model weights evaluated at unseen resolution with no retraining.",
+        f"Baselines at {target}×{target}:",
+        f"  CNN retrained   MSE = {milestone.cnn_retrained_mse_19x19:.3e}",
+        f"  CNN zero-shot   MSE = {milestone.cnn_zeroshot_mse_19x19:.3e}",
+        "",
+        f"RESULT: the operator LOSES by {milestone.transfer_ratio_19x19:.1f}× to a CNN",
+        f"retrained at {target}×{target}. The operator transfers without retraining,",
+        "but it is not more accurate than a specialist. The value is zero",
+        "retraining -- one model, any resolution -- not peak accuracy.",
+        "",
+        "Benchmark spec: specs/transfer_baseline_compare.spec.md",
     ]
     summary = "\n".join(lines)
     return img, summary
@@ -474,8 +519,11 @@ def create_poc_tab(cfg: PoCConfig | None = None) -> None:
                             32, 128, value=s.default_d_model, step=16, label="d_model"
                         )
                         s_steps = gr.Slider(
-                            100, 500, value=s.default_training_steps,
-                            step=50, label="Training steps",
+                            100,
+                            500,
+                            value=s.default_training_steps,
+                            step=50,
+                            label="Training steps",
                         )
                         s_run = gr.Button("Run Stability Check", variant="primary")
                     with gr.Column(scale=2):
@@ -489,19 +537,22 @@ def create_poc_tab(cfg: PoCConfig | None = None) -> None:
                 )
 
             # ── Transfer ────────────────────────────────────────────────────
-            with gr.Tab("Zero-Shot Transfer"):
+            with gr.Tab("Zero-Shot Transfer (honest baseline)"):
+                _target = max(cfg.transfer.achieved_mse)
                 gr.Markdown(
-                    "Displays the **validated milestone** result: "
-                    f"a model trained on {cfg.transfer.train_resolution}×"
-                    f"{cfg.transfer.train_resolution} Poisson data generalises to larger grids "
-                    f"with MSE = {min(cfg.transfer.achieved_mse.values()):.6f} — "
-                    f"well below the {cfg.transfer.mse_threshold} threshold — "
-                    "without any retraining."
+                    "Displays the **committed benchmark**: a model trained on "
+                    f"{cfg.transfer.train_resolution}×{cfg.transfer.train_resolution} Poisson "
+                    f"data evaluated at {_target}×{_target} without retraining, with "
+                    f"MSE = {cfg.transfer.achieved_mse[_target]:.2e}. A discrete CNN retrained "
+                    f"at {_target}×{_target} reaches {cfg.transfer.cnn_retrained_mse_19x19:.2e}, "
+                    f"so **the operator loses by ≈{cfg.transfer.transfer_ratio_19x19:.0f}×**. "
+                    "The value is zero retraining — one model, any resolution — not peak "
+                    "accuracy. Source: `results/transfer_baseline_compare.csv`."
                 )
-                t_show = gr.Button("Show Milestone Result", variant="primary")
+                t_show = gr.Button("Show Benchmark Result", variant="primary")
                 with gr.Row():
-                    t_plot = gr.Image(label="Transfer Results")
-                    t_text = gr.Textbox(label="Milestone Summary", lines=12, interactive=False)
+                    t_plot = gr.Image(label="Transfer Benchmark")
+                    t_text = gr.Textbox(label="Benchmark Summary", lines=16, interactive=False)
 
                 t_show.click(
                     show_transfer_milestone,

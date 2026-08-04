@@ -335,19 +335,35 @@ class PhysicsDemo:
             title="MSE by Resolution (Lower is Better)",
         )
 
-        # Build results text
-        results_lines = ["Zero-Shot Transfer Results:", "=" * 40]
+        # Build results text. With no model loaded, ``predict`` returns zeros, so every
+        # "MSE" below is mean(ground_truth^2) -- a property of the data, not model error.
+        # Say so up front rather than reporting it as a measurement.
         threshold = self.config.mse_threshold
+        no_model = self.model is None
+        results_lines: list[str] = []
+        if no_model:
+            results_lines += [
+                "*** PLACEHOLDER -- NO MODEL LOADED ***",
+                "Predictions are all zeros, so the values below are",
+                "mean(ground_truth^2), NOT a measured model error.",
+                "They are not results and must not be quoted.",
+                "",
+            ]
+        results_lines += ["Zero-Shot Transfer Results:", "=" * 40]
         for size, result in results.items():
             status = "PASS" if result.mse < threshold else "FAIL"
+            label = "[n/a]" if no_model else f"[{status}]"
             results_lines.append(
-                f"{size}×{size}: MSE={result.mse:.6f} [{status}] "
+                f"{size}×{size}: MSE={result.mse:.6f} {label} "
                 f"(inference: {result.inference_time_ms:.1f}ms)"
             )
         results_lines.append("=" * 40)
         results_lines.append(f"Threshold: {threshold}")
-        all_passed = all(r.mse < threshold for r in results.values())
-        results_lines.append(f"Overall: {'ALL PASSED' if all_passed else 'SOME FAILED'}")
+        if no_model:
+            results_lines.append("Overall: NOT A MEASUREMENT (no model loaded)")
+        else:
+            all_passed = all(r.mse < threshold for r in results.values())
+            results_lines.append(f"Overall: {'ALL PASSED' if all_passed else 'SOME FAILED'}")
 
         # Clean up
         comparison_plot.close()
@@ -386,10 +402,19 @@ class PhysicsDemo:
             show_difference=True,
         )
 
+        no_model_banner = (
+            ""
+            if self.model is not None
+            else (
+                "\n*** PLACEHOLDER -- NO MODEL LOADED ***\n"
+                "Predictions are all zeros, so the figures below are\n"
+                "mean(ground_truth^2), NOT a measured model error.\n"
+            )
+        )
         explanation = f"""
 Resolution Independence Demonstration
 =====================================
-
+{no_model_banner}
 Training Resolution: {small_size}×{small_size}
 Evaluation Resolution: {large_size}×{large_size}
 

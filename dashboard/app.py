@@ -79,7 +79,13 @@ Learning — Galerkin Transformers and FNet mixing — instead of discrete CNNs.
 | Galerkin attention | O(N) via Petrov-Galerkin projection (vs O(N²) softmax) |
 | FNet mixing | O(N log N) FFT token mixing for fast MCTS rollouts |
 | LBB stability | dim(Key) ≥ dim(Query) guarantees inf-sup condition β > 0 |
-| Physics PoC | Zero-shot Poisson MSE ≈ 4e-4 at 19×19 (from 9×9); a retrained CNN is more accurate |
+| Physics PoC | Zero-shot Poisson MSE ≈2.3e-3 at 19×19, trained 9×9 |
+
+**On transfer:** a discrete CNN *retrained* at 19×19 reaches ≈1.6e-4, so the operator
+loses by ≈14×. What zero-shot transfer buys is **zero retraining — one model, any
+resolution — not peak accuracy**. Figures are 3-seed medians from
+`results/transfer_baseline_compare.csv` and `config/baselines/transfer_ci.json`;
+benchmark: `specs/transfer_baseline_compare.spec.md`.
 
 ### Architecture
 

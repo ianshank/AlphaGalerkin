@@ -152,21 +152,69 @@ class StabilityRunConfig(BaseModel):
 
 
 class TransferMilestone(BaseModel):
-    """Validated milestone data for the zero-shot transfer scenario."""
+    """Committed zero-shot transfer result, operator vs. a retrained CNN baseline.
+
+    Every value here is the committed benchmark figure, not a spike run. The operator
+    transfers without retraining but is roughly an order of magnitude *less* accurate
+    than a CNN retrained at the target resolution -- the value is zero retraining, not
+    peak accuracy. See ``specs/transfer_baseline_compare.spec.md``.
+
+    ``tests/dashboard/test_config.py`` and the charter's UI-claim guard both assert these
+    defaults agree with ``config/baselines/transfer_ci.json``; update both together.
+    """
 
     train_resolution: int = Field(default=9, description="Resolution used for training")
     mse_threshold: float = Field(
-        default=0.05, gt=0, description="Pass/fail MSE threshold from the PoC spec"
-    )
-    achieved_mse: dict[int, float] = Field(
-        default_factory=lambda: {9: 0.0000025, 13: 0.000204, 19: 0.000393},
+        default=0.05,
+        gt=0,
         description=(
-            "Measured operator zero-shot MSE per resolution (scripts/demo_transfer.py, "
-            "9x9 train, 50 epochs). Supersedes the fabricated 0.000209 headline; the "
-            "honest operator-vs-retrained-CNN benchmark is specs/transfer_baseline_compare.spec.md"
+            "Legacy PoC pass/fail MSE threshold. Retained for reference only -- a ratio "
+            "against this threshold is NOT a result and must not be rendered; the honest "
+            "comparison is against the retrained-CNN baseline below."
         ),
     )
-    milestone_date: str = Field(default="2026-07-22", description="Date milestone was measured")
+    achieved_mse: dict[int, float] = Field(
+        default_factory=lambda: {
+            9: 1.38227075e-04,
+            13: 1.85244250e-03,
+            19: 2.30064808e-03,
+        },
+        description=(
+            "Operator zero-shot MSE per resolution, trained at 9x9 only. Committed 3-seed "
+            "median (representative seed 15880) from results/transfer_baseline_compare.csv; "
+            "the 19x19 entry equals mse_alphagalerkin_zeroshot_19x19 in "
+            "config/baselines/transfer_ci.json. Benchmark: "
+            "specs/transfer_baseline_compare.spec.md"
+        ),
+    )
+    cnn_retrained_mse_19x19: float = Field(
+        default=1.62955009e-04,
+        gt=0,
+        description=(
+            "Discrete CNN retrained at 19x19 -- the honest baseline the operator is measured "
+            "against. From config/baselines/transfer_ci.json::mse_cnn_retrained_19x19"
+        ),
+    )
+    cnn_zeroshot_mse_19x19: float = Field(
+        default=7.65602237e-05,
+        gt=0,
+        description=(
+            "Discrete CNN evaluated zero-shot at 19x19. From "
+            "config/baselines/transfer_ci.json::mse_cnn_zeroshot_19x19"
+        ),
+    )
+    transfer_ratio_19x19: float = Field(
+        default=14.118302311554318,
+        gt=0,
+        description=(
+            "Operator zero-shot MSE divided by retrained-CNN MSE at 19x19. Greater than 1 "
+            "means the operator loses. From "
+            "config/baselines/transfer_ci.json::transfer_mse_ratio_19x19"
+        ),
+    )
+    milestone_date: str = Field(
+        default="2026-07-22", description="Date the committed benchmark was recorded"
+    )
 
     @field_validator("achieved_mse")
     @classmethod

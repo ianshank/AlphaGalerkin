@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
+
+- **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**
+  `dashboard/config.py::TransferMilestone` shipped `{9: 2.5e-6, 13: 2.04e-4, 19: 3.93e-4}`,
+  attributed to `scripts/demo_transfer.py` — a script that writes only to `outputs/`. The
+  committed benchmark says 19×19 ≈ 2.3e-3. Defaults now carry the committed 3-seed median from
+  `results/transfer_baseline_compare.csv`, plus the retrained-CNN (1.63e-4) and zero-shot-CNN
+  (7.66e-5) baselines and the 14.1× ratio from `config/baselines/transfer_ci.json`.
+- **`show_transfer_milestone` rendered two retracted framings.** It printed
+  `MILESTONE ACHIEVED` and annotated each bar `N× better` against an arbitrary 0.05 pass
+  threshold (127× / 245× / **20000×**) — the self-comparison
+  `specs/transfer_baseline_compare.spec.md` retracts — and plotted a `np.random.default_rng(7)`
+  curve titled *"Training curve (9×9 Poisson data)"* with no disclaimer. It now shows the
+  three-arm baseline comparison and the operator's real 9→13→19 degradation, and states the
+  honest result: the operator **loses by ≈14×** to a retrained CNN; the value is zero
+  retraining, not peak accuracy.
+- **The tab blurb reported the wrong number entirely** — `min(achieved_mse.values())`, the 9×9
+  *in-distribution* figure, presented as the zero-shot transfer result. Corrected, as was the
+  About table in `dashboard/app.py` and the transfer framing in `hf_space/app.py`.
+- **The physics demo reported `mean(ground_truth²)` as a model error.** `PhysicsDemo.predict()`
+  returns zeros when `model is None`, and both entry points construct the tab that way; the
+  output is now labelled a placeholder rather than a measurement.
+
+### Added — UI claim fidelity guard (`dashboard-uplift`)
+
+- **New charter Requirement *UI Claim Fidelity*** — the evidence standard reaches documents but
+  not the dashboard, which renders figures from Pydantic defaults and hardcoded markdown and is
+  seen by more people than any document. A number shown to a user is a claim.
+- **`test_ui_claims_match_committed_artifacts`** (registered in `_GUARDED`, so the charter's
+  both-directions meta-guard covers it): bans the fabricated figure and the retracted blanket
+  claim across `dashboard/**/*.py`, and asserts every transfer figure agrees with
+  `config/baselines/transfer_ci.json` within that file's own `tolerance_pct`. It loads
+  `dashboard/config.py` standalone via `importlib` rather than importing the package, keeping
+  gradio out of the charter guard. Mutation-tested against four regressions: a reintroduced
+  spike figure, the retracted literal, a flipped comparison direction, and the restored
+  "milestone achieved" framing.
+- One pre-existing dashboard test asserted `"better" in summary` — it encoded the retracted
+  framing as a requirement, and now asserts the baseline ratio instead.
+- The change package `openspec/changes/dashboard-uplift/` additionally designs four deferred
+  workstreams: un-shadowing the `hf_space` mirror (which needs module *relocation*, not a
+  `sys.path` reorder — root `src/` and `config/` are regular packages, so reordering alone
+  breaks the Go tab), a registry-driven scenario tab plus a Results tab over the committed
+  artifacts, a clickable Go board, and bringing `dashboard/` inside the CI quality gates.
+
 ### Added — Executable project charter (`project-charter-alignment`)
 
 - **New `openspec/` tree** ([OpenSpec](https://github.com/Fission-AI/OpenSpec) format):

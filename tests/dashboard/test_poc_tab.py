@@ -210,15 +210,54 @@ class TestShowTransferMilestone:
         for res in milestone.achieved_mse:
             assert str(res) in summary
 
+    def test_summary_free_of_retracted_framings(self):
+        """No 'milestone achieved' and no 'N× better than threshold' self-comparison.
+
+        specs/transfer_baseline_compare.spec.md retracts both. Guarded here as well as in
+        the charter's UI-claim guard because this is where the string is produced.
+        """
+        _, summary = show_transfer_milestone()
+        lowered = summary.lower()
+        assert "milestone achieved" not in lowered
+        assert "better than threshold" not in lowered
+        assert "× better" not in summary
+        assert "x better" not in lowered
+
+    def test_summary_reports_the_baseline_comparison(self):
+        """The honest result must be stated: the operator loses, and why that is still useful."""
+        from dashboard.config import DEFAULT_CONFIG
+
+        milestone = DEFAULT_CONFIG.poc.transfer
+        _, summary = show_transfer_milestone()
+        lowered = summary.lower()
+        assert "loses" in lowered
+        assert "zero" in lowered and "retraining" in lowered
+        # Both baseline arms are reported, not just the operator's own number.
+        assert f"{milestone.cnn_retrained_mse_19x19:.3e}" in summary
+        assert f"{milestone.cnn_zeroshot_mse_19x19:.3e}" in summary
+
+    def test_summary_cites_its_artifacts(self):
+        _, summary = show_transfer_milestone()
+        assert "results/transfer_baseline_compare.csv" in summary
+        assert "config/baselines/transfer_ci.json" in summary
+
     def test_custom_config(self, poc_cfg):
         img, summary = show_transfer_milestone(cfg=poc_cfg)
         assert img is not None
         assert summary
 
-    def test_improvement_ratio_shown(self):
+    def test_operator_vs_baseline_ratio_shown(self):
+        """The ratio is reported against the retrained-CNN baseline, not a pass threshold.
+
+        Replaces an earlier ``assert "better" in summary``, which encoded the
+        "N× better than threshold" framing that specs/transfer_baseline_compare.spec.md
+        retracts.
+        """
+        from dashboard.config import DEFAULT_CONFIG
+
+        milestone = DEFAULT_CONFIG.poc.transfer
         _, summary = show_transfer_milestone()
-        # Should show "X× better" for each resolution
-        assert "better" in summary
+        assert f"{milestone.transfer_ratio_19x19:.1f}×" in summary
 
     def test_image_dimensions_reasonable(self):
         img, _ = show_transfer_milestone()

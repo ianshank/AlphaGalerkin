@@ -48,6 +48,13 @@ Each module has its own `AGENT.md` with detailed context. Use the appropriate mo
 | [`src/distributed/`](src/distributed/AGENT.md) | Distributed Systems Engineer | DDP training, gradient sync, multi-node coordination |
 | [`src/deployment/`](src/deployment/AGENT.md) | Deployment Engineer | ONNX export, quantization, runtime inference |
 
+The table above covers `src/` packages. Two **user-facing surfaces** live outside it and have
+their own notes: [`dashboard/AGENT.md`](dashboard/AGENT.md) (the local Gradio app — claim-fidelity
+rules, the `sys.path` shadowing hazard, quality gates) and
+[`hf_space/AGENT.md`](hf_space/AGENT.md) (the HuggingFace Space deploy bundle and its mirror-drift
+caveats). Anything rendered by either is a claim under the charter's *UI Claim Fidelity*
+Requirement.
+
 ## Cross-Cutting Design Patterns
 
 These patterns are used consistently across the entire codebase. Agents working on any module must follow them.

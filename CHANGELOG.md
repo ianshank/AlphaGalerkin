@@ -35,6 +35,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns zeros when `model is None`, and both entry points construct the tab that way; the
   output is now labelled a placeholder rather than a measurement.
 
+### Added — `dashboard/` inside the CI quality gates (`dashboard-uplift` WS6)
+
+- **CI now lints `dashboard/`** (`ruff check` + `ruff format --check`), matching
+  `.pre-commit-config.yaml`, which runs ruff with no `files:` filter. The asymmetry was already
+  producing drift: `tabs/pde_tab.py` and `tabs/training_tab.py` were format-drifted at HEAD while
+  passing CI, and would have been rewritten by any contributor's commit hook. Fixed in a separate
+  mechanical commit so the gate commit stays reviewable. `hf_space/` remains excluded — deploy
+  bundle, older ruff/gradio pin, accepted charter deviation.
+- **New coverage gate**, `--cov=dashboard --cov-branch --cov-fail-under=84`. `dashboard/` sits
+  outside `--cov=src`, so its 214 tests ran while measuring nothing. Gated at **84** against a
+  measured 84.85% — deliberately not 85 (fails today) and not 80 (would permit a ~5pp regression).
+  The entire deficit is `tabs/game_tab.py` at ~53%, whose `_ensure_loaded` and AI-move paths are
+  unreachable while the `hf_space` shadowing forces `conftest.py` to mock them; **85 is recorded
+  as a WS3 task**, since relocating those modules is what makes that code testable.
+- **Charter gates register** gains `| \`dashboard\` | 84 |`, cross-checked by
+  `test_documented_gates_are_enforced_in_ci`. No guard change needed — it matches `--cov=<target>`
+  by string, with no `src/` prefix requirement.
+- **mypy posture decided rather than extended.** The override is wildcarded (`dashboard` +
+  `dashboard.*`; the bare wildcard does not match the package itself), replacing a hand-enumeration
+  under which a *new* dashboard module would silently inherit full `--strict`. The CI step stays
+  `src/`-only: it is `continue-on-error` and the dashboard override disables 13 error codes, so
+  extending it would add the appearance of type-checking without the substance. Rationale recorded
+  in the new `dashboard/AGENT.md` rather than the charter's deviation register, which is for
+  divergences between documentation and reality — no document claimed `dashboard/` was typed.
+- **New `dashboard/AGENT.md`** — layout, the claim-fidelity rules the charter guard enforces, the
+  `sys.path` shadowing hazard (including that `tests/dashboard/conftest.py` deliberately uses the
+  opposite order, so app and tests import different code for the same names), the Gradio ≥6 vs
+  Space 4.44.1 split, the gates, and the callback-binding / `interactive=False` gotchas. Root
+  `AGENT.md` gains a pointer to it and to `hf_space/AGENT.md`; the module index itself stays
+  `src/`-only.
+
 ### Added — UI claim fidelity guard (`dashboard-uplift`)
 
 - **New charter Requirement *UI Claim Fidelity*** — the evidence standard reaches documents but

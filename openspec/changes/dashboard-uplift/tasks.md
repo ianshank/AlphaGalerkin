@@ -1,8 +1,12 @@
 # Tasks: `dashboard-uplift`
 
-WS1 and WS2 land with this change. WS3–WS6 are designed in `design.md` and delivered
-separately; their tasks are recorded here so the sequencing and its charter consequences stay
-visible.
+WS1, WS2, and WS6 have landed. WS3–WS5 are designed in `design.md` and delivered separately;
+their tasks are recorded here so the sequencing and its charter consequences stay visible.
+
+WS6 was taken ahead of WS3–WS5 deliberately: it is the cheapest workstream and it protects
+everything the others will touch. One dependency runs the other way — the dashboard coverage gate
+is pinned at 84 rather than 85 because `tabs/game_tab.py` cannot be covered until WS3 removes the
+`hf_space` shadowing (see task 3.6).
 
 ## 1. WS1 — Claim fidelity (P0)
 
@@ -56,6 +60,9 @@ visible.
       `sys.path.insert` inside `get_model_summary`)
 - [ ] 3.5 Add a test that exercises the real import path, so the divergence between
       `dashboard/app.py` and `tests/dashboard/conftest.py` cannot recur
+- [ ] 3.6 Once 3.1–3.5 land, cover `tabs/game_tab.py::_ensure_loaded` and the AI-move paths
+      (~53% today, the entire dashboard coverage deficit) and raise the WS6 gate from 84 to 85
+      in both `.github/workflows/ci.yml` and the charter's gates register
 
 ## 4. WS4 — Registry-driven scenarios + Results tab (deferred)
 
@@ -80,14 +87,14 @@ visible.
 - [ ] 5.3 Set `interactive=False` on both board images in `dashboard/tabs/game_tab.py` — they
       currently accept uploads over the board
 
-## 6. WS6 — Quality gates + docs (deferred)
+## 6. WS6 — Quality gates + docs
 
-- [ ] 6.1 Add `dashboard/` to CI's `ruff check` and `ruff format --check` — pre-commit already
+- [x] 6.1 Add `dashboard/` to CI's `ruff check` and `ruff format --check` — pre-commit already
       lints it, so CI-green code can fail a contributor's commit hook today
-- [ ] 6.2 Add a `dashboard` coverage gate; record it in the charter's gates register only once
+- [x] 6.2 Add a `dashboard` coverage gate; record it in the charter's gates register only once
       CI enforces it (the charter⊆CI direction is what the gate guard checks)
-- [ ] 6.3 Author `dashboard/AGENT.md`, modelled on `hf_space/AGENT.md`
-- [ ] 6.4 Decide `mypy` posture for `dashboard/` — `pyproject.toml` currently relaxes strictness
+- [x] 6.3 Author `dashboard/AGENT.md`, modelled on `hf_space/AGENT.md`
+- [x] 6.4 Decide `mypy` posture for `dashboard/` — `pyproject.toml` currently relaxes strictness
       per-module for gradio's incomplete stubs
 
 ## 7. Verification

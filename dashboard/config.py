@@ -9,7 +9,7 @@ subclassing or by constructing with keyword overrides:
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Annotated, Final
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -190,7 +190,12 @@ class TransferMilestone(BaseModel):
             "comparison is against the retrained-CNN baseline below."
         ),
     )
-    achieved_mse: dict[int, float] = Field(
+    # allow_inf_nan=False on the *value* type: the validators below reject non-positive
+    # entries, but `nan <= 0` and `inf <= 0` are both False, so NaN and infinity would slip
+    # through and render as a benchmark figure. The scalar fields below are already covered
+    # by `gt=0` (both `nan > 0` and `inf > 0` fail pydantic's check for NaN); the constraint
+    # is repeated there to make the intent explicit rather than implicit.
+    achieved_mse: dict[int, Annotated[float, Field(allow_inf_nan=False)]] = Field(
         default_factory=lambda: {
             9: 1.38227075e-04,
             13: 1.85244250e-03,
@@ -208,6 +213,7 @@ class TransferMilestone(BaseModel):
     cnn_retrained_mse_19x19: float = Field(
         default=1.62955009e-04,
         gt=0,
+        allow_inf_nan=False,
         description=(
             "Discrete CNN retrained at 19x19 -- the honest baseline the operator is measured "
             "against. Representative seed's paired value (NOT the 3-seed median, which is "
@@ -217,6 +223,7 @@ class TransferMilestone(BaseModel):
     cnn_zeroshot_mse_19x19: float = Field(
         default=7.65602237e-05,
         gt=0,
+        allow_inf_nan=False,
         description=(
             "Discrete CNN evaluated zero-shot at 19x19. Representative seed's paired value "
             "(NOT the 3-seed median, which is 3.153264e-04). From "
@@ -226,6 +233,7 @@ class TransferMilestone(BaseModel):
     transfer_ratio_19x19: float = Field(
         default=14.118302311554318,
         gt=0,
+        allow_inf_nan=False,
         description=(
             "Operator zero-shot MSE divided by retrained-CNN MSE at 19x19, computed "
             "within the representative seed. Greater than 1 means the operator loses. "

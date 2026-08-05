@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The entire deficit is `tabs/game_tab.py` at ~53%, whose `_ensure_loaded` and AI-move paths are
   unreachable while the `hf_space` shadowing forces `conftest.py` to mock them; **85 is recorded
   as a WS3 task**, since relocating those modules is what makes that code testable.
-- **Charter gates register** gains `| \`dashboard\` | 84 |`, cross-checked by
+- **Charter gates register** gains the row `| dashboard | 84 |`, cross-checked by
   `test_documented_gates_are_enforced_in_ci`. No guard change needed — it matches `--cov=<target>`
   by string, with no `src/` prefix requirement.
 - **mypy posture decided rather than extended.** The override is wildcarded (`dashboard` +
@@ -85,11 +85,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "milestone achieved" framing.
 - One pre-existing dashboard test asserted `"better" in summary` — it encoded the retracted
   framing as a requirement, and now asserts the baseline ratio instead.
-- The change package `openspec/changes/dashboard-uplift/` additionally designs four deferred
+- The change package `openspec/changes/dashboard-uplift/` additionally designs three deferred
   workstreams: un-shadowing the `hf_space` mirror (which needs module *relocation*, not a
   `sys.path` reorder — root `src/` and `config/` are regular packages, so reordering alone
   breaks the Go tab), a registry-driven scenario tab plus a Results tab over the committed
-  artifacts, a clickable Go board, and bringing `dashboard/` inside the CI quality gates.
+  artifacts, and a clickable Go board. The fourth — bringing `dashboard/` inside the CI quality
+  gates — has since landed; see the WS6 entry above.
 
 ### Added — Executable project charter (`project-charter-alignment`)
 

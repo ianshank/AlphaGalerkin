@@ -367,10 +367,12 @@ class PhysicsDemo:
                     f"(inference: {result.inference_time_ms:.1f}ms)"
                 )
         results_lines.append("=" * 40)
-        results_lines.append(f"Threshold: {threshold}")
         if no_model:
+            # No threshold line: a pass/fail bar printed beside non-measurements invites
+            # exactly the comparison that cannot be made here.
             results_lines.append("Overall: NOT A MEASUREMENT (no model loaded)")
         else:
+            results_lines.append(f"Threshold: {threshold}")
             all_passed = all(r.mse < threshold for r in results.values())
             results_lines.append(f"Overall: {'ALL PASSED' if all_passed else 'SOME FAILED'}")
 

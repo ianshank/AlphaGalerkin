@@ -11,8 +11,10 @@ is pinned at 84 rather than 85 because `tabs/game_tab.py` cannot be covered unti
 ## 1. WS1 — Claim fidelity (P0)
 
 - [x] 1.1 `dashboard/config.py` — replace `TransferMilestone.achieved_mse` spike defaults
-      (`{9: 2.5e-6, 13: 2.04e-4, 19: 3.93e-4}`) with the committed 3-seed-median operator
-      figures from `results/transfer_baseline_compare.csv`
+      (`{9: 2.5e-6, 13: 2.04e-4, 19: 3.93e-4}`) with the committed operator figures from the
+      **representative (median-ranked) seed** of `results/transfer_baseline_compare.csv`. Only
+      the 19×19 value is *also* the 3-seed median; 9×9 and 13×13 are that same seed's paired
+      values and must not be described as medians
 - [x] 1.2 `dashboard/config.py` — add `cnn_retrained_mse_19x19`, `cnn_zeroshot_mse_19x19`, and
       `transfer_ratio_19x19`, each citing `config/baselines/transfer_ci.json`
 - [x] 1.3 `dashboard/config.py` — remove the `0.000209` literal from the `achieved_mse`

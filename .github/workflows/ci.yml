@@ -74,11 +74,16 @@ jobs:
           # Install minimal deps for type checking
           pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
+      # dashboard/ is included so CI matches .pre-commit-config.yaml, which runs ruff
+      # with no `files:` filter. Without it, dashboard code can be CI-green and still
+      # be rewritten by a contributor's commit hook. hf_space/ stays excluded: it is
+      # the deploy bundle, pinned to an older ruff/gradio, and an accepted charter
+      # deviation.
       - name: Run Ruff linting
-        run: ruff check src/ tests/ --output-format=github
+        run: ruff check src/ tests/ dashboard/ --output-format=github
 
       - name: Run Ruff formatting check
-        run: ruff format src/ tests/ --check
+        run: ruff format src/ tests/ dashboard/ --check
 
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports
@@ -435,6 +440,18 @@ jobs:
           python -m coverage report \
             --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
             --fail-under=85
+
+      # dashboard/ lives outside src/, so the --cov=src run above measures none of it
+      # even though the blanket `pytest tests/` executes its 214 tests. Gated at 84
+      # against a measured 84.85%: tabs/game_tab.py sits at 53% because _ensure_loaded
+      # is the hf_space-shadowed import path that tests/dashboard/conftest.py must mock.
+      # Raising this to 85 is tracked as a WS3 task -- relocating those modules is what
+      # makes that code testable. --cov-fail-under overrides [tool.coverage.report]
+      # fail_under=85 in pyproject.toml, as the src/distributed gate at 60 demonstrates.
+      - name: Per-module coverage gate (dashboard)
+        if: always() && hashFiles('tests/dashboard/') != ''
+        run: |
+          pytest tests/dashboard/ --cov=dashboard --cov-branch --cov-fail-under=84 -q --no-header
 
       - name: Upload coverage to Codecov
         if: always()

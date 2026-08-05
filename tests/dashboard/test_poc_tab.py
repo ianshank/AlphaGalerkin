@@ -210,15 +210,78 @@ class TestShowTransferMilestone:
         for res in milestone.achieved_mse:
             assert str(res) in summary
 
+    def test_summary_free_of_retracted_framings(self):
+        """No 'milestone achieved' and no 'N× better than threshold' self-comparison.
+
+        specs/transfer_baseline_compare.spec.md retracts both. Guarded here as well as in
+        the charter's UI-claim guard because this is where the string is produced.
+        """
+        _, summary = show_transfer_milestone()
+        lowered = summary.lower()
+        assert "milestone achieved" not in lowered
+        assert "better than threshold" not in lowered
+        # Normalize before checking: "× Better" / "× BETTER" must not slip past.
+        assert "× better" not in lowered
+        assert "x better" not in lowered
+        assert "validated milestone" not in lowered
+
+    def test_summary_reports_the_baseline_comparison(self):
+        """The honest result must be stated: the operator loses, and why that is still useful."""
+        from dashboard.config import DEFAULT_CONFIG
+
+        milestone = DEFAULT_CONFIG.poc.transfer
+        _, summary = show_transfer_milestone()
+        lowered = summary.lower()
+        assert "loses" in lowered
+        assert "zero" in lowered and "retraining" in lowered
+        # Both baseline arms are reported, not just the operator's own number.
+        assert f"{milestone.cnn_retrained_mse_19x19:.3e}" in summary
+        assert f"{milestone.cnn_zeroshot_mse_19x19:.3e}" in summary
+
+    def test_summary_cites_its_artifacts(self):
+        _, summary = show_transfer_milestone()
+        assert "results/transfer_baseline_compare.csv" in summary
+        assert "config/baselines/transfer_ci.json" in summary
+
+    def test_honours_a_non_default_config(self):
+        """A custom PoCConfig must drive the rendered figures.
+
+        Regression guard for the tab wiring: the Markdown blurb reads from the
+        injected ``cfg`` while the button previously called
+        ``show_transfer_milestone`` unbound, so a custom config could describe one
+        benchmark and display another.
+        """
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION, PoCConfig, TransferMilestone
+
+        custom = PoCConfig(
+            transfer=TransferMilestone(
+                achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 5.0e-3},
+                cnn_retrained_mse_19x19=1.0e-3,
+                transfer_ratio_19x19=5.0,
+            )
+        )
+        _, summary = show_transfer_milestone(cfg=custom)
+        assert "5.000e-03" in summary
+        assert "1.000e-03" in summary
+        assert "5.0×" in summary
+
     def test_custom_config(self, poc_cfg):
         img, summary = show_transfer_milestone(cfg=poc_cfg)
         assert img is not None
         assert summary
 
-    def test_improvement_ratio_shown(self):
+    def test_operator_vs_baseline_ratio_shown(self):
+        """The ratio is reported against the retrained-CNN baseline, not a pass threshold.
+
+        Replaces an earlier ``assert "better" in summary``, which encoded the
+        "N× better than threshold" framing that specs/transfer_baseline_compare.spec.md
+        retracts.
+        """
+        from dashboard.config import DEFAULT_CONFIG
+
+        milestone = DEFAULT_CONFIG.poc.transfer
         _, summary = show_transfer_milestone()
-        # Should show "X× better" for each resolution
-        assert "better" in summary
+        assert f"{milestone.transfer_ratio_19x19:.1f}×" in summary
 
     def test_image_dimensions_reasonable(self):
         img, _ = show_transfer_milestone()
@@ -227,19 +290,26 @@ class TestShowTransferMilestone:
         assert h > 100
 
     @pytest.mark.parametrize(
-        "mse_dict",
+        ("mse_dict", "cnn_retrained", "ratio"),
         [
-            {9: 0.001, 19: 0.002},
-            {13: 0.00098, 19: 0.00209},
+            # The three fields are rendered together, so an override must keep the
+            # ratio equal to its own operands (see TransferMilestone's model validator).
+            ({9: 0.001, 19: 0.002}, 0.001, 2.0),
+            ({13: 0.00098, 19: 0.00209}, 0.001, 2.09),
         ],
     )
-    def test_custom_mse_values(self, mse_dict):
+    def test_custom_mse_values(self, mse_dict, cnn_retrained, ratio):
         from dashboard.config import PoCConfig, TransferMilestone
 
-        milestone = TransferMilestone(achieved_mse=mse_dict)
+        milestone = TransferMilestone(
+            achieved_mse=mse_dict,
+            cnn_retrained_mse_19x19=cnn_retrained,
+            transfer_ratio_19x19=ratio,
+        )
         cfg = PoCConfig(transfer=milestone)
         img, summary = show_transfer_milestone(cfg=cfg)
         assert img is not None
+        assert summary
 
 
 # ---------------------------------------------------------------------------

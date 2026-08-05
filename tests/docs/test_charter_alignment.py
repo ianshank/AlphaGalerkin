@@ -35,6 +35,8 @@ Design notes (see ``openspec/changes/project-charter-alignment/design.md``):
 
 from __future__ import annotations
 
+import csv
+import json
 import re
 import subprocess
 import sys
@@ -49,6 +51,19 @@ CHARTER = REPO_ROOT / "openspec" / "specs" / "project-charter" / "spec.md"
 ARCHITECTURE = REPO_ROOT / "ARCHITECTURE.md"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 SRC = REPO_ROOT / "src"
+DASHBOARD = REPO_ROOT / "dashboard"
+HF_SPACE = REPO_ROOT / "hf_space"
+TRANSFER_BASELINE = REPO_ROOT / "config" / "baselines" / "transfer_ci.json"
+TRANSFER_CSV = REPO_ROOT / "results" / "transfer_baseline_compare.csv"
+
+# Every interactive surface the UI Claim Fidelity Requirement governs. `hf_space/` is
+# additionally covered by tests/hf_space/test_mirror_guard.py; the overlap is deliberate
+# defence in depth, and keeps this Requirement true as written rather than dashboard-only.
+INTERACTIVE_SURFACES = (DASHBOARD, HF_SPACE)
+
+# The committed figures are copied into Pydantic defaults by hand, so allow rounding at the
+# last decimal place but nothing that would change a rendered value.
+_CSV_TOLERANCE_PCT = 1.0
 
 # Delimited regions the charter exposes for machine reading.
 _REGIONS = ("scope", "non-goals", "evidence", "capabilities", "gates", "deviations")
@@ -77,6 +92,7 @@ _GUARDED: dict[str, str] = {
     "Scope Integrity": "test_scope_register_matches_architecture_map",
     "Non-Goal Exclusion": "test_non_goal_packages_do_not_exist",
     "Evidence-Backed Claims": "test_evidence_claims_cite_existing_artifacts",
+    "UI Claim Fidelity": "test_ui_claims_match_committed_artifacts",
     "Novelty Claim Discipline": "test_charter_free_of_retracted_claims",
     "Capability Register Accuracy": "test_capability_register_matches_scenario_registry",
     "Quality Gate Fidelity": "test_documented_gates_are_enforced_in_ci",
@@ -339,6 +355,144 @@ def test_evidence_claims_cite_existing_artifacts() -> None:
                     failures.append(f"{claim!r}: cited artifact does not exist: {candidate}")
     assert not failures, "charter claims citing missing artifacts:\n  " + "\n  ".join(
         sorted(failures)
+    )
+
+
+# --------------------------------------------------------------------------------------
+# R3b — UI Claim Fidelity
+# --------------------------------------------------------------------------------------
+
+
+def _load_dashboard_config() -> object:
+    """Execute ``dashboard/config.py`` standalone and return the module.
+
+    Deliberately *not* ``import dashboard.config``: ``dashboard/__init__.py`` imports
+    ``dashboard.app``, which pulls in gradio and every tab module. This guard keeps its own
+    import surface to pydantic, matching this module's stdlib-only discipline.
+    """
+    import importlib.util
+
+    path = DASHBOARD / "config.py"
+    spec = importlib.util.spec_from_file_location("_charter_dashboard_config_probe", path)
+    assert spec is not None and spec.loader is not None, f"cannot load {path}"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _within_tolerance(observed: float, expected: float, tolerance_pct: float) -> bool:
+    """True when ``observed`` is within ``tolerance_pct`` percent of ``expected``."""
+    if expected == 0.0:
+        return observed == 0.0
+    return abs(observed - expected) / abs(expected) * 100.0 <= tolerance_pct
+
+
+def _operator_rows_for_representative_seed(target_mse: float) -> dict[int, float]:
+    """Operator MSE per resolution, for the seed the committed baseline was taken from.
+
+    The baseline JSON pins one seed's *paired* values, so the correct cross-check for the
+    other resolutions is that same seed's rows -- not a per-resolution median, which would
+    mix seeds and defeat the pairing. The seed is identified by its target-resolution MSE
+    matching the baseline, so this needs no hardcoded seed number.
+    """
+    by_seed: dict[str, dict[int, float]] = {}
+    with TRANSFER_CSV.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            if row["arm"] != "operator":
+                continue
+            by_seed.setdefault(row["seed"], {})[int(row["resolution"])] = float(row["mse"])
+
+    for resolutions in by_seed.values():
+        observed = resolutions.get(19)
+        if observed is not None and _within_tolerance(observed, target_mse, _CSV_TOLERANCE_PCT):
+            return resolutions
+    return {}
+
+
+def test_ui_claims_match_committed_artifacts() -> None:
+    """UI surfaces may not carry retracted figures, and their numbers must be committed.
+
+    Two failure modes, one guard, because the charter maps one Requirement to one guard:
+
+    1. A retracted figure or claim reappears anywhere under ``dashboard/``. The ban is bare
+       here — unlike the charter's own retraction-marker excuse — because the dashboard has no
+       reason to *discuss* a retracted number, only to avoid stating one.
+    2. The dashboard's transfer figures drift from ``config/baselines/transfer_ci.json``.
+       That JSON carries its own per-entry ``tolerance_pct``; this reuses it rather than
+       inventing a second tolerance.
+    """
+    offenders: list[str] = []
+    for root in INTERACTIVE_SURFACES:
+        for path in sorted(root.rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            rel = path.relative_to(REPO_ROOT)
+            if FABRICATED_FIGURE in text:
+                offenders.append(
+                    f"{rel}: cites the fabricated transfer figure {FABRICATED_FIGURE!r}"
+                )
+            if RETRACTED_BLANKET_CLAIM.lower() in text.lower():
+                offenders.append(f"{rel}: states the retracted blanket 'no MCTS+Galerkin' claim")
+    assert not offenders, (
+        "UI surfaces must not state retracted claims; the committed transfer result is ~2.3e-3 "
+        "(results/transfer_baseline_compare.csv):\n  " + "\n  ".join(offenders)
+    )
+
+    baseline = json.loads(TRANSFER_BASELINE.read_text(encoding="utf-8"))
+    entries = {entry["metric_name"]: entry for entry in baseline["entries"]}
+    milestone = _load_dashboard_config().TransferMilestone()  # type: ignore[attr-defined]
+
+    # Dashboard field -> committed baseline metric, for the target resolution the
+    # committed benchmark reports baselines for.
+    checked: dict[str, float] = {
+        "mse_alphagalerkin_zeroshot_19x19": milestone.achieved_mse[19],
+        "mse_cnn_retrained_19x19": milestone.cnn_retrained_mse_19x19,
+        "mse_cnn_zeroshot_19x19": milestone.cnn_zeroshot_mse_19x19,
+        "transfer_mse_ratio_19x19": milestone.transfer_ratio_19x19,
+    }
+
+    mismatches: list[str] = []
+    for metric, observed in checked.items():
+        entry = entries.get(metric)
+        if entry is None:
+            mismatches.append(f"{metric}: absent from {TRANSFER_BASELINE.name}")
+            continue
+        expected = float(entry["value"])
+        tolerance = float(entry.get("tolerance_pct", 0.0))
+        if not _within_tolerance(float(observed), expected, tolerance):
+            mismatches.append(
+                f"{metric}: dashboard renders {observed!r}, committed value is {expected!r} "
+                f"(tolerance {tolerance}%)"
+            )
+    assert not mismatches, (
+        "dashboard figures disagree with the committed benchmark; a number shown to a user is a "
+        f"claim, and it must come from {TRANSFER_BASELINE.relative_to(REPO_ROOT)}:\n  "
+        + "\n  ".join(mismatches)
+    )
+
+    # The baseline JSON only declares the target resolution, but the UI renders every key
+    # in achieved_mse (9, 13, 19). Check the rest against the committed CSV, otherwise an
+    # unsupported 9x9 or 13x13 figure reaches users with CI green.
+    seed_rows = _operator_rows_for_representative_seed(
+        float(entries["mse_alphagalerkin_zeroshot_19x19"]["value"])
+    )
+    unbacked: list[str] = []
+    for resolution, observed in sorted(milestone.achieved_mse.items()):
+        expected = seed_rows.get(resolution)
+        if expected is None:
+            unbacked.append(
+                f"{resolution}x{resolution}: rendered as {observed!r} but the representative "
+                f"seed has no operator row at that resolution in {TRANSFER_CSV.name}"
+            )
+            continue
+        if not _within_tolerance(float(observed), expected, _CSV_TOLERANCE_PCT):
+            unbacked.append(
+                f"{resolution}x{resolution}: dashboard renders {observed!r}, committed CSV "
+                f"has {expected!r}"
+            )
+    assert not unbacked, (
+        "every rendered operator MSE must come from the representative seed of "
+        f"{TRANSFER_CSV.relative_to(REPO_ROOT)}, not only the target resolution:\n  "
+        + "\n  ".join(unbacked)
     )
 
 

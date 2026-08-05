@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -155,6 +158,87 @@ class TestTransferMilestone:
         assert m.train_resolution == 9
         assert m.mse_threshold == 0.05
         assert all(v < m.mse_threshold for v in m.achieved_mse.values())
+
+    def test_requires_the_committed_target_resolution(self):
+        """The CNN baseline fields are 19x19-specific, so 19 must be present.
+
+        Without this, a config override could compare the operator at another
+        resolution against 19x19 baselines and label both `{target}x{target}` — the
+        mislabelled comparison this config exists to prevent.
+        """
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION
+
+        with pytest.raises(ValidationError, match=str(COMMITTED_TARGET_RESOLUTION)):
+            TransferMilestone(achieved_mse={9: 1.0e-4, 13: 2.0e-4})
+
+    def test_accepts_map_containing_target_resolution(self):
+        """An override is accepted when the ratio is overridden consistently with it."""
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION
+
+        m = TransferMilestone(
+            achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 2.0e-3},
+            cnn_retrained_mse_19x19=1.0e-4,
+            transfer_ratio_19x19=20.0,
+        )
+        assert COMMITTED_TARGET_RESOLUTION in m.achieved_mse
+
+    def test_rejects_override_that_contradicts_the_ratio(self):
+        """Overriding the operator MSE alone leaves the displayed ratio wrong.
+
+        The tab renders the ratio next to both operands, so a silent mismatch would
+        show a quotient that contradicts the two numbers beside it.
+        """
+        from dashboard.config import COMMITTED_TARGET_RESOLUTION
+
+        with pytest.raises(ValidationError, match="contradicts its own"):
+            TransferMilestone(achieved_mse={9: 1.0e-4, COMMITTED_TARGET_RESOLUTION: 2.0e-3})
+
+    def test_baseline_fields_present_and_positive(self):
+        m = TransferMilestone()
+        assert m.cnn_retrained_mse_19x19 > 0
+        assert m.cnn_zeroshot_mse_19x19 > 0
+        assert m.transfer_ratio_19x19 > 0
+
+    def test_operator_loses_to_retrained_cnn(self):
+        """The honest direction: the operator is *less* accurate than a retrained CNN.
+
+        Guards against a future edit quietly flipping the comparison back to a
+        favourable framing. See specs/transfer_baseline_compare.spec.md.
+        """
+        m = TransferMilestone()
+        assert m.achieved_mse[19] > m.cnn_retrained_mse_19x19
+        assert m.transfer_ratio_19x19 > 1.0
+
+    def test_ratio_is_consistent_with_its_operands(self):
+        m = TransferMilestone()
+        derived = m.achieved_mse[19] / m.cnn_retrained_mse_19x19
+        assert derived == pytest.approx(m.transfer_ratio_19x19, rel=1e-3)
+
+    def test_agrees_with_committed_baseline(self):
+        """AQA: every rendered figure must match config/baselines/transfer_ci.json.
+
+        The charter's UI-claim guard asserts the same thing from the docs side; this is the
+        dashboard-side half, so a config edit fails here first with a clearer message.
+        """
+        baseline_path = (
+            Path(__file__).resolve().parents[2] / "config" / "baselines" / "transfer_ci.json"
+        )
+        entries = {
+            e["metric_name"]: e
+            for e in json.loads(baseline_path.read_text(encoding="utf-8"))["entries"]
+        }
+        m = TransferMilestone()
+        for metric, observed in (
+            ("mse_alphagalerkin_zeroshot_19x19", m.achieved_mse[19]),
+            ("mse_cnn_retrained_19x19", m.cnn_retrained_mse_19x19),
+            ("mse_cnn_zeroshot_19x19", m.cnn_zeroshot_mse_19x19),
+            ("transfer_mse_ratio_19x19", m.transfer_ratio_19x19),
+        ):
+            expected = entries[metric]["value"]
+            tolerance = entries[metric]["tolerance_pct"] / 100.0
+            assert observed == pytest.approx(expected, rel=tolerance), (
+                f"{metric}: dashboard renders {observed}, committed baseline is {expected}"
+            )
 
     def test_mse_threshold_positive(self):
         with pytest.raises(ValidationError):

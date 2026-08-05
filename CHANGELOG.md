@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
+
+- **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**
+  `dashboard/config.py::TransferMilestone` shipped `{9: 2.5e-6, 13: 2.04e-4, 19: 3.93e-4}`,
+  attributed to `scripts/demo_transfer.py` — a script that writes only to `outputs/`. The
+  committed benchmark says 19×19 ≈ 2.3e-3. Defaults now carry the representative
+  (median-ranked) seed from `results/transfer_baseline_compare.csv` — the operator's 19×19 MSE
+  is the 3-seed median, and the retrained-CNN (1.63e-4) and zero-shot-CNN (7.66e-5) baselines
+  are that same seed's *paired* values, so the 14.1× ratio is within-seed. The baselines are
+  deliberately **not** described as medians: the per-metric CNN medians differ (1.43e-4 and
+  3.15e-4). `COMMITTED_TARGET_RESOLUTION` pins the comparison to 19×19, and `achieved_mse` now
+  validates that the key is present, so a config override cannot compare mismatched resolutions
+  under a single label.
+- **`show_transfer_milestone` rendered two retracted framings.** It printed
+  `MILESTONE ACHIEVED` and annotated each bar `N× better` against an arbitrary 0.05 pass
+  threshold (127× / 245× / **20000×**) — the self-comparison
+  `specs/transfer_baseline_compare.spec.md` retracts — and plotted a `np.random.default_rng(7)`
+  curve titled *"Training curve (9×9 Poisson data)"* with no disclaimer. It now shows the
+  three-arm baseline comparison and the operator's real 9→13→19 degradation, and states the
+  honest result: the operator **loses by ≈14×** to a retrained CNN; the value is zero
+  retraining, not peak accuracy.
+- **The tab blurb reported the wrong number entirely** — `min(achieved_mse.values())`, the 9×9
+  *in-distribution* figure, presented as the zero-shot transfer result. Corrected, as was the
+  About table in `dashboard/app.py` and the transfer framing in `hf_space/app.py`.
+- **The physics demo reported `mean(ground_truth²)` as a model error.** `PhysicsDemo.predict()`
+  returns zeros when `model is None`, and both entry points construct the tab that way; the
+  output is now labelled a placeholder rather than a measurement.
+
+### Added — `dashboard/` inside the CI quality gates (`dashboard-uplift` WS6)
+
+- **CI now lints `dashboard/`** (`ruff check` + `ruff format --check`), matching
+  `.pre-commit-config.yaml`, which runs ruff with no `files:` filter. The asymmetry was already
+  producing drift: `tabs/pde_tab.py` and `tabs/training_tab.py` were format-drifted at HEAD while
+  passing CI, and would have been rewritten by any contributor's commit hook. Fixed in a separate
+  mechanical commit so the gate commit stays reviewable. `hf_space/` remains excluded — deploy
+  bundle, older ruff/gradio pin, accepted charter deviation.
+- **New coverage gate**, `--cov=dashboard --cov-branch --cov-fail-under=84`. `dashboard/` sits
+  outside `--cov=src`, so its 214 tests ran while measuring nothing. Gated at **84** against a
+  measured 84.85% — deliberately not 85 (fails today) and not 80 (would permit a ~5pp regression).
+  The entire deficit is `tabs/game_tab.py` at ~53%, whose `_ensure_loaded` and AI-move paths are
+  unreachable while the `hf_space` shadowing forces `conftest.py` to mock them; **85 is recorded
+  as a WS3 task**, since relocating those modules is what makes that code testable.
+- **Charter gates register** gains the row `| dashboard | 84 |`, cross-checked by
+  `test_documented_gates_are_enforced_in_ci`. No guard change needed — it matches `--cov=<target>`
+  by string, with no `src/` prefix requirement.
+- **mypy posture decided rather than extended.** The override is wildcarded (`dashboard` +
+  `dashboard.*`; the bare wildcard does not match the package itself), replacing a hand-enumeration
+  under which a *new* dashboard module would silently inherit full `--strict`. The CI step stays
+  `src/`-only: it is `continue-on-error` and the dashboard override disables 13 error codes, so
+  extending it would add the appearance of type-checking without the substance. Rationale recorded
+  in the new `dashboard/AGENT.md` rather than the charter's deviation register, which is for
+  divergences between documentation and reality — no document claimed `dashboard/` was typed.
+- **New `dashboard/AGENT.md`** — layout, the claim-fidelity rules the charter guard enforces, the
+  `sys.path` shadowing hazard (including that `tests/dashboard/conftest.py` deliberately uses the
+  opposite order, so app and tests import different code for the same names), the Gradio ≥6 vs
+  Space 4.44.1 split, the gates, and the callback-binding / `interactive=False` gotchas. Root
+  `AGENT.md` gains a pointer to it and to `hf_space/AGENT.md`; the module index itself stays
+  `src/`-only.
+
+### Added — UI claim fidelity guard (`dashboard-uplift`)
+
+- **New charter Requirement *UI Claim Fidelity*** — the evidence standard reaches documents but
+  not the dashboard, which renders figures from Pydantic defaults and hardcoded markdown and is
+  seen by more people than any document. A number shown to a user is a claim.
+- **`test_ui_claims_match_committed_artifacts`** (registered in `_GUARDED`, so the charter's
+  both-directions meta-guard covers it): bans the fabricated figure and the retracted blanket
+  claim across both interactive surfaces (`dashboard/**/*.py` and `hf_space/**/*.py`), asserts
+  the target-resolution figures agree with `config/baselines/transfer_ci.json` within that
+  file's own `tolerance_pct`, and cross-checks the remaining rendered resolutions (9×9, 13×13
+  — absent from the baseline JSON) against the representative seed's rows in
+  `results/transfer_baseline_compare.csv`. `TransferMilestone` additionally rejects an override
+  whose ratio contradicts its own operands. It loads
+  `dashboard/config.py` standalone via `importlib` rather than importing the package, keeping
+  gradio out of the charter guard. Mutation-tested against four regressions: a reintroduced
+  spike figure, the retracted literal, a flipped comparison direction, and the restored
+  "milestone achieved" framing.
+- One pre-existing dashboard test asserted `"better" in summary` — it encoded the retracted
+  framing as a requirement, and now asserts the baseline ratio instead.
+- The change package `openspec/changes/dashboard-uplift/` additionally designs three deferred
+  workstreams: un-shadowing the `hf_space` mirror (which needs module *relocation*, not a
+  `sys.path` reorder — root `src/` and `config/` are regular packages, so reordering alone
+  breaks the Go tab), a registry-driven scenario tab plus a Results tab over the committed
+  artifacts, and a clickable Go board. The fourth — bringing `dashboard/` inside the CI quality
+  gates — has since landed; see the WS6 entry above.
+
 ### Added — Executable project charter (`project-charter-alignment`)
 
 - **New `openspec/` tree** ([OpenSpec](https://github.com/Fission-AI/OpenSpec) format):

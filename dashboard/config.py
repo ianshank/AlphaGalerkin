@@ -9,9 +9,19 @@ subclassing or by constructing with keyword overrides:
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Annotated, Final
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+# Evaluation resolution the committed transfer benchmark reports baselines for.
+# ``TransferMilestone``'s CNN baseline fields and ratio are specific to it, so the
+# UI must pin its comparison here rather than deriving a target from the MSE map.
+COMMITTED_TARGET_RESOLUTION: Final[int] = 19
+
+# Relative tolerance when checking that the displayed transfer ratio agrees with the
+# two displayed MSEs it is the quotient of. Loose enough to absorb the rounding in a
+# hand-copied committed figure, tight enough that a genuine override mismatch fails.
+RATIO_CONSISTENCY_RTOL: Final[float] = 1e-3
 
 # ---------------------------------------------------------------------------
 # UI / Server
@@ -152,32 +162,131 @@ class StabilityRunConfig(BaseModel):
 
 
 class TransferMilestone(BaseModel):
-    """Validated milestone data for the zero-shot transfer scenario."""
+    """Committed zero-shot transfer result, operator vs. a retrained CNN baseline.
+
+    Every value here is the committed benchmark figure, not a spike run. The operator
+    transfers without retraining but is roughly an order of magnitude *less* accurate
+    than a CNN retrained at the target resolution -- the value is zero retraining, not
+    peak accuracy. See ``specs/transfer_baseline_compare.spec.md``.
+
+    **Provenance, stated precisely.** All arms come from the *representative
+    (median-ranked) seed* of the committed 3-seed run. The operator's
+    ``COMMITTED_TARGET_RESOLUTION`` MSE is itself the 3-seed median; each baseline is
+    that same seed's *paired* value, which is why ``transfer_ratio_19x19`` is an
+    honest within-seed ratio. The per-metric medians of the CNN arms differ (retrained
+    1.434e-04, zero-shot 3.153e-04) -- do **not** describe the baselines as medians.
+
+    ``tests/dashboard/test_config.py`` and the charter's UI-claim guard both assert these
+    defaults agree with ``config/baselines/transfer_ci.json``; update both together.
+    """
 
     train_resolution: int = Field(default=9, description="Resolution used for training")
     mse_threshold: float = Field(
-        default=0.05, gt=0, description="Pass/fail MSE threshold from the PoC spec"
-    )
-    achieved_mse: dict[int, float] = Field(
-        default_factory=lambda: {9: 0.0000025, 13: 0.000204, 19: 0.000393},
+        default=0.05,
+        gt=0,
         description=(
-            "Measured operator zero-shot MSE per resolution (scripts/demo_transfer.py, "
-            "9x9 train, 50 epochs). Supersedes the fabricated 0.000209 headline; the "
-            "honest operator-vs-retrained-CNN benchmark is specs/transfer_baseline_compare.spec.md"
+            "Legacy PoC pass/fail MSE threshold. Retained for reference only -- a ratio "
+            "against this threshold is NOT a result and must not be rendered; the honest "
+            "comparison is against the retrained-CNN baseline below."
         ),
     )
-    milestone_date: str = Field(default="2026-07-22", description="Date milestone was measured")
+    # allow_inf_nan=False on the *value* type: the validators below reject non-positive
+    # entries, but `nan <= 0` and `inf <= 0` are both False, so NaN and infinity would slip
+    # through and render as a benchmark figure. The scalar fields below are already covered
+    # by `gt=0` (both `nan > 0` and `inf > 0` fail pydantic's check for NaN); the constraint
+    # is repeated there to make the intent explicit rather than implicit.
+    achieved_mse: dict[int, Annotated[float, Field(allow_inf_nan=False)]] = Field(
+        default_factory=lambda: {
+            9: 1.38227075e-04,
+            13: 1.85244250e-03,
+            19: 2.30064808e-03,
+        },
+        description=(
+            "Operator zero-shot MSE per resolution, trained at 9x9 only. Representative "
+            "(median-ranked) seed from results/transfer_baseline_compare.csv; the "
+            "19x19 entry is also the 3-seed median and equals "
+            "mse_alphagalerkin_zeroshot_19x19 in config/baselines/transfer_ci.json. "
+            "Must contain COMMITTED_TARGET_RESOLUTION. Benchmark: "
+            "specs/transfer_baseline_compare.spec.md"
+        ),
+    )
+    cnn_retrained_mse_19x19: float = Field(
+        default=1.62955009e-04,
+        gt=0,
+        allow_inf_nan=False,
+        description=(
+            "Discrete CNN retrained at 19x19 -- the honest baseline the operator is measured "
+            "against. Representative seed's paired value (NOT the 3-seed median, which is "
+            "1.433924e-04). From config/baselines/transfer_ci.json::mse_cnn_retrained_19x19"
+        ),
+    )
+    cnn_zeroshot_mse_19x19: float = Field(
+        default=7.65602237e-05,
+        gt=0,
+        allow_inf_nan=False,
+        description=(
+            "Discrete CNN evaluated zero-shot at 19x19. Representative seed's paired value "
+            "(NOT the 3-seed median, which is 3.153264e-04). From "
+            "config/baselines/transfer_ci.json::mse_cnn_zeroshot_19x19"
+        ),
+    )
+    transfer_ratio_19x19: float = Field(
+        default=14.118302311554318,
+        gt=0,
+        allow_inf_nan=False,
+        description=(
+            "Operator zero-shot MSE divided by retrained-CNN MSE at 19x19, computed "
+            "within the representative seed. Greater than 1 means the operator loses. "
+            "From config/baselines/transfer_ci.json::transfer_mse_ratio_19x19"
+        ),
+    )
+    milestone_date: str = Field(
+        default="2026-07-22", description="Date the committed benchmark was recorded"
+    )
 
     @field_validator("achieved_mse")
     @classmethod
     def validate_achieved_mse(cls, v: dict[int, float]) -> dict[int, float]:
-        """Ensure the map is non-empty and all MSE values are strictly positive."""
+        """Validate the MSE map, including presence of the committed target resolution.
+
+        The baseline fields above are ``19x19``-specific by construction. If the map
+        could omit 19, the UI would compare the operator at some other resolution
+        against 19x19 baselines and label the result ``{target}x{target}`` -- exactly
+        the mislabelled comparison this config exists to prevent.
+        """
         if not v:
             raise ValueError("achieved_mse must contain at least one entry")
         non_positive = {k: val for k, val in v.items() if val <= 0}
         if non_positive:
             raise ValueError(f"achieved_mse values must be > 0; invalid entries: {non_positive}")
+        if COMMITTED_TARGET_RESOLUTION not in v:
+            raise ValueError(
+                f"achieved_mse must contain the committed target resolution "
+                f"{COMMITTED_TARGET_RESOLUTION}; the baseline fields "
+                f"(cnn_retrained_mse_19x19, cnn_zeroshot_mse_19x19, transfer_ratio_19x19) "
+                f"are specific to it. Got resolutions: {sorted(v)}"
+            )
         return v
+
+    @model_validator(mode="after")
+    def validate_ratio_matches_operands(self) -> TransferMilestone:
+        """The rendered ratio must equal the rendered operands that produce it.
+
+        ``transfer_ratio_19x19`` is displayed beside ``achieved_mse[19]`` and
+        ``cnn_retrained_mse_19x19``. Overriding one without the others would render a
+        ratio that contradicts the two numbers printed next to it -- the same
+        label-disagrees-with-operands defect this config exists to prevent.
+        """
+        operator = self.achieved_mse[COMMITTED_TARGET_RESOLUTION]
+        derived = operator / self.cnn_retrained_mse_19x19
+        if abs(derived - self.transfer_ratio_19x19) > RATIO_CONSISTENCY_RTOL * derived:
+            raise ValueError(
+                f"transfer_ratio_19x19={self.transfer_ratio_19x19!r} contradicts its own "
+                f"operands: achieved_mse[{COMMITTED_TARGET_RESOLUTION}]={operator!r} / "
+                f"cnn_retrained_mse_19x19={self.cnn_retrained_mse_19x19!r} = {derived!r}. "
+                f"Override all three together, or none."
+            )
+        return self
 
 
 class PoCConfig(BaseModel):

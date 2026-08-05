@@ -142,6 +142,36 @@ written in response to.
 - THEN this is a charter violation
 - AND the claim SHALL be either backed by a committed artifact or labelled a spike
 
+### Requirement: UI Claim Fidelity
+
+Every numeric figure an interactive surface renders SHALL be traceable to a committed artifact,
+and no interactive surface SHALL state a retracted claim as live.
+
+*Evidence-Backed Claims* governs what the project's documents may assert. It does not reach the
+Gradio dashboard, which renders figures from Pydantic defaults and hardcoded markdown — and which
+reaches more people than any document. A number shown to a user is a claim regardless of whether
+it appears in prose.
+
+The interactive surfaces this Requirement governs are `dashboard/` and `hf_space/` — the two
+roots the guard scans. Adding a third interactive surface SHALL extend that scan.
+
+This Requirement also bans the self-comparison framing the transfer benchmark retracts: a ratio
+against an arbitrary pass threshold is not a result. Where a committed baseline exists, the
+comparison SHALL be against that baseline, reported in whichever direction the artifacts support.
+`dashboard/config.py` holds the dashboard's figures; `config/baselines/transfer_ci.json` is the
+committed source they are checked against.
+
+#### Scenario: A spike figure is rendered by the dashboard
+- GIVEN `dashboard/config.py` declares a transfer MSE that no committed artifact contains
+- WHEN the UI claim guard runs
+- THEN it SHALL fail naming the metric and the committed value it disagrees with
+
+#### Scenario: A retracted figure reappears in a UI surface
+- GIVEN a file under `dashboard/` contains the fabricated transfer figure or the retracted
+  blanket novelty claim
+- WHEN the UI claim guard runs
+- THEN it SHALL fail naming the file
+
 ### Requirement: Novelty Claim Discipline
 
 The project's novelty SHALL be stated only in its narrow, defensible form: **MCTS multi-step
@@ -216,6 +246,7 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/pde` | 75 |
 | `src/physics` | 75 |
 | `src/distributed` | 60 |
+| `dashboard` | 84 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced

@@ -31,10 +31,18 @@ from src.pde.certificate.certificate import (
     migrate_certificate_document,
 )
 from src.pde.certificate.config import CertificateConfig
+from src.pde.certificate.debug import inspect_bound
+from src.pde.certificate.interface import ResidualVerifier
 from src.pde.certificate.logging import (
     CERTIFICATE_LOG_EVENTS,
     bind_certificate_logger,
     new_certificate_id,
+)
+from src.pde.certificate.registry import (
+    VerifierRegistry,
+    capture_hardware_meta,
+    get_verifier,
+    register_verifier,
 )
 from src.pde.certificate.stability import (
     StabilityConstantRegistry,
@@ -42,19 +50,53 @@ from src.pde.certificate.stability import (
     StabilitySource,
     register_stability,
 )
+from src.pde.certificate.types import (
+    BoundRigor,
+    CertificationBudget,
+    CertifiedModel,
+    CertifiedResidualBound,
+    Device,
+    DomainCoverage,
+    DomainKind,
+    DomainSpec,
+    Dtype,
+    HardwareMeta,
+    VerifierBackend,
+    VerifierUnavailableError,
+)
+from src.pde.certificate.verifiers import HeuristicGridResidualVerifier
 
 __all__ = [
+    "BoundRigor",
     "CERTIFICATE_DOCUMENT_SCHEMA_VERSION",
     "CERTIFICATE_LOG_EVENTS",
     "Certificate",
     "CertificateConfig",
+    "CertificationBudget",
+    "CertifiedModel",
+    "CertifiedResidualBound",
+    "Device",
+    "DomainCoverage",
+    "DomainKind",
+    "DomainSpec",
+    "Dtype",
+    "HardwareMeta",
+    "HeuristicGridResidualVerifier",
+    "ResidualVerifier",
     "RigorKind",
     "StabilityConstantRegistry",
     "StabilityEntry",
     "StabilitySource",
     "TrackKind",
+    "VerifierBackend",
+    "VerifierRegistry",
+    "VerifierUnavailableError",
     "bind_certificate_logger",
+    "capture_hardware_meta",
+    "get_verifier",
+    "inspect_bound",
     "migrate_certificate_document",
     "new_certificate_id",
     "register_stability",
+    "register_verifier",
 ]

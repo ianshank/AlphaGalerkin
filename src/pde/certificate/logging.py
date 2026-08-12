@@ -34,6 +34,15 @@ CERTIFICATE_LOG_EVENTS: frozenset[str] = frozenset(
         "certificate.budget_overrun",  # Track B exceeded budget
         "certificate.track_routed",  # spec §4 AC3 provenance-based routing
         "certificate.unbounded_operator",  # UNBOUNDED render path taken
+        # WS1 additions — verifier boundary lifecycle events.
+        "certificate.verifier_selected",  # get_verifier(...) dispatch
+        "certificate.verifier_replaced",  # register_verifier(replace=True)
+        "certificate.verifier_start",  # ResidualVerifier.certify(...) enter
+        "certificate.verifier_end",  # ResidualVerifier.certify(...) exit
+        "certificate.compile_start",  # JIT/graph compile begin
+        "certificate.compile_end",  # JIT/graph compile complete
+        "certificate.parity_check",  # AC2 Torch↔JAX parity comparison
+        "certificate.hardware_meta_captured",  # capture_hardware_meta(...)
     }
 )
 

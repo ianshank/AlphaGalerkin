@@ -49,8 +49,10 @@ class ResidualVerifier(Protocol):
                 ``model.backend`` values they cannot consume with
                 :class:`~src.pde.certificate.types.VerifierUnavailableError`.
             domain: The certification domain. Verifiers that cannot handle
-                the domain kind (e.g. rectangular-only) raise
-                :class:`ValueError`.
+                the domain kind (e.g. rectangular-only) **must not raise** —
+                they return a :class:`CertifiedResidualBound` with
+                ``rigor='failed'`` and a populated ``failure_reason``, per
+                the fail-closed contract in spec §4 AC1.
             budget: Wall-clock / memory ceilings. Overrun returns
                 ``rigor='failed'`` unless
                 :attr:`CertificationBudget.allow_heuristic_fallback` is True.

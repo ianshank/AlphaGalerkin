@@ -138,10 +138,13 @@ class HeuristicGridResidualVerifier:
         budget: CertificationBudget,
     ) -> CertifiedResidualBound:
         """Return a heuristic-tier bound (sample max) with cost accounting."""
-        # Local Dtype/Device — we always run this verifier in float64 on
-        # whatever the caller declared; the hardware_meta reflects that.
+        # WS1 scope: this verifier always evaluates on CPU in float64, even
+        # for torch/jax model backends (we materialize to numpy in
+        # ``_evaluate_model``). ``hardware_meta`` therefore records
+        # ``device='cpu'`` and ``dtype='float64'`` — not whatever the caller
+        # declared. The Track B PR that ships GPU/precision-aware verifiers
+        # will populate these from ``CertificateConfig.device`` / ``dtype``.
         dtype = "float64"
-        # Try to infer a device string from the model, else fall back to cpu.
         device: str = "cpu"
 
         t0 = time.perf_counter()

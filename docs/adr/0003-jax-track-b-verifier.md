@@ -1,9 +1,9 @@
-# ADR-0001: JAX at the Track B verifier and batched-evaluator boundaries only
+# ADR-0003: JAX at the Track B verifier and batched-evaluator boundaries only
 
 **Status:** Accepted
 **Date:** 2026-08-12
 **Deciders:** AlphaGalerkin core (certificate stream)
-**Related:** [`specs/jax_track_b_verifier.spec.md`](../../specs/jax_track_b_verifier.spec.md), [`specs/verified_error_certificate.spec.md`](../../specs/verified_error_certificate.spec.md)
+**Related:** [`specs/jax_track_b_verifier.spec.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/specs/jax_track_b_verifier.spec.md), [`specs/verified_error_certificate.spec.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/specs/verified_error_certificate.spec.md)
 
 ## Context
 

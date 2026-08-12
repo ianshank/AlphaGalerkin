@@ -99,9 +99,13 @@ class CertificateConfig(BaseModel):
         default=DEFAULT_TRACK_B_BUDGET_S_CPU,
         gt=0.0,
         description=(
-            "Maximum wall-clock seconds allowed for a single Track B "
-            "certification. Overruns emit a heuristic-tier certificate with "
-            "``notes='budget_exceeded'`` (fail-closed, per skill guardrail)."
+            "Default Track B wall-clock ceiling used to seed "
+            "``CertificationBudget.max_wall_s`` when a scenario does not "
+            "provide its own budget. Per-call limits (and the actual "
+            "fail-closed / heuristic-fallback behaviour) live on "
+            "``CertificateConfig.budget`` — this field is not consumed "
+            "directly by the WS1 verifier, kept here so the WS2 Track B PR "
+            "does not need to reshuffle the config schema."
         ),
     )
     heuristic_grid_resolution: int = Field(

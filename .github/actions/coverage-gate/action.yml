@@ -1,0 +1,124 @@
+# Composite action: per-module coverage gate.
+#
+# Extracts the ``pytest ... --cov=<module> --cov-fail-under=<N>`` pattern
+# that .github/workflows/ci.yml step 5 already runs for 12+ subsystems into
+# one reusable action. The action supports both coverage measurement styles
+# the repo has settled on:
+#
+#   1. Dotted-module ``--cov=`` for surfaces whose module path can be safely
+#      imported during pytest-cov's tracer setup (the default).
+#   2. Path-glob ``coverage run --include=`` for surfaces whose dotted import
+#      collides with the torch C-extension (SystemError: bad call flags). Set
+#      ``mode: native-include`` and pass a comma-separated ``include:`` glob.
+#
+# Rationale for the two modes is documented inline in ci.yml (search for
+# "torch C extension"). This action carries that same rationale so it can be
+# used from any workflow (regression-surface.yml, phase gates, etc.) without
+# duplicating the shell block.
+#
+# Referenced by CLAUDE.md's Regression Surface table under "coverage-gate"
+# skill/action wiring. New per-module gates should call this action rather
+# than repeating the pytest invocation.
+name: Coverage gate
+description: >-
+  Run a per-module pytest + coverage gate with either dotted-module --cov or
+  path-glob coverage-run --include, matching the two styles documented in
+  .github/workflows/ci.yml.
+
+inputs:
+  name:
+    description: Human-readable surface name (logged; also used as failure prefix).
+    required: true
+  mode:
+    description: >-
+      "pytest-cov" (default) uses ``pytest --cov=<module>``.
+      "native-include" uses ``python -m coverage run --include=<glob> ... -p no:cov``.
+    required: false
+    default: pytest-cov
+  tests:
+    description: Space-separated pytest node ids (files, dirs, or ::test ids).
+    required: true
+  cov-target:
+    description: >-
+      For mode=pytest-cov: a comma-separated list of ``--cov=`` targets
+      (dotted module or path). For mode=native-include: unused (see ``include``).
+    required: false
+    default: ""
+  include:
+    description: >-
+      For mode=native-include: comma-separated path globs passed to
+      ``coverage run/report --include=``. Ignored for mode=pytest-cov.
+    required: false
+    default: ""
+  fail-under:
+    description: Coverage percent gate. Passed to ``--cov-fail-under`` or ``coverage report --fail-under``.
+    required: true
+  branch:
+    description: Whether to enable branch coverage (``--cov-branch`` or ``coverage run --branch``).
+    required: false
+    default: "true"
+  pytest-args:
+    description: Extra pytest args (e.g. ``-m "not gpu_required"``). Appended verbatim.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Run coverage gate (${{ inputs.name }})
+      shell: bash
+      env:
+        # Some surfaces (stochastic, transfer-baseline) require the pytrace
+        # collector because a nightly torch wheel crashes the C tracer.
+        # Set via job env if you need to override.
+        COVERAGE_CORE: ${{ env.COVERAGE_CORE || 'pytrace' }}
+      run: |
+        set -euo pipefail
+        echo "::group::coverage gate: ${{ inputs.name }}"
+        case "${{ inputs.mode }}" in
+          pytest-cov)
+            if [[ -z "${{ inputs.cov-target }}" ]]; then
+              echo "::error::mode=pytest-cov requires 'cov-target' input"
+              exit 2
+            fi
+            branch_flag=""
+            if [[ "${{ inputs.branch }}" == "true" ]]; then
+              branch_flag="--cov-branch"
+            fi
+            # Split cov-target on commas into repeated --cov= flags.
+            IFS=',' read -r -a _cov <<< "${{ inputs.cov-target }}"
+            cov_args=()
+            for t in "${_cov[@]}"; do
+              cov_args+=("--cov=${t// /}")
+            done
+            # shellcheck disable=SC2086  # deliberate word-split on pytest-args
+            pytest ${{ inputs.tests }} \
+              "${cov_args[@]}" \
+              ${branch_flag} \
+              --cov-fail-under=${{ inputs['fail-under'] }} \
+              -q --no-header \
+              ${{ inputs.pytest-args }}
+            ;;
+          native-include)
+            if [[ -z "${{ inputs.include }}" ]]; then
+              echo "::error::mode=native-include requires 'include' input"
+              exit 2
+            fi
+            branch_flag=""
+            if [[ "${{ inputs.branch }}" == "true" ]]; then
+              branch_flag="--branch"
+            fi
+            # shellcheck disable=SC2086  # deliberate word-split
+            python -m coverage run ${branch_flag} \
+              --include="${{ inputs.include }}" \
+              -m pytest ${{ inputs.tests }} -q -p no:cov ${{ inputs.pytest-args }}
+            python -m coverage report \
+              --include="${{ inputs.include }}" \
+              --fail-under=${{ inputs['fail-under'] }}
+            ;;
+          *)
+            echo "::error::unknown mode: '${{ inputs.mode }}' (expected pytest-cov or native-include)"
+            exit 2
+            ;;
+        esac
+        echo "::endgroup::"

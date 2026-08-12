@@ -98,6 +98,37 @@ jobs:
         run: mypy src/ --strict --ignore-missing-imports
 
   # ============================================================
+  # Stage 1b: Secret scanning (gitleaks)
+  # ============================================================
+  # Repo-owned counterpart to GitHub's server-side native secret scanning.
+  # Configured by .gitleaks.toml (extends the default rule set, allowlists
+  # tests/, results/, hf_space/, claude-code-platform/, notebooks/). Also
+  # runs as a pre-commit hook (see .pre-commit-config.yaml) so contributors
+  # catch issues before push.
+  #
+  # `fetch-depth: 0` is required so gitleaks can walk the branch history
+  # rather than just the tip commit. `no-git: false` keeps the git-aware
+  # scan mode (respects .gitleaks.toml allowlist paths).
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # GITLEAKS_LICENSE is only required for org-level scanning; the
+          # per-repo action runs without a license for public/private OSS.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  # ============================================================
   # Stage 2: Unit Tests (Fast)
   # ============================================================
   test-fast:
@@ -301,8 +332,28 @@ jobs:
             --cov-fail-under=85 \
             -q
 
+      - name: Per-module coverage gate (pde/certificate)
+        if: always() && hashFiles('tests/pde/certificate/') != ''
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: pde/certificate
+          mode: pytest-cov
+          tests: tests/pde/certificate/
+          cov-target: src.pde.certificate
+          fail-under: "85"
+          branch: "true"
+
       # Per-module coverage gates — ratcheted up as part of tech-debt reduction.
       # Each gate ensures no single subsystem regresses below its threshold.
+      #
+      # The pde/certificate gate above is the proof-of-value retrofit onto
+      # .github/actions/coverage-gate. Existing charter-tracked gates
+      # (src/pde, src/mcts, src/refinement, ...) stay in inline `--cov=X` form
+      # because tests/docs/test_charter_alignment.py::test_documented_gates_are_enforced_in_ci
+      # greps for the literal `--cov=<target>` in the CI step body. Migrating
+      # those onto the composite action requires teaching that guard to also
+      # recognise `cov-target: X` inside a `uses: ./.github/actions/coverage-gate`
+      # step, which is deferred to its own PR.
       - name: Per-module coverage gate (pde)
         if: always() && hashFiles('tests/pde/') != ''
         run: |

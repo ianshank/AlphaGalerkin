@@ -17,9 +17,25 @@ export PYTHONHASHSEED="${PYTHONHASHSEED:-0}"    # reproducible builds
 
 # antlr4-python3-runtime==4.9.3 (transitive via hydra-core -> omegaconf) ships
 # sdist-only and its setup.py trips the Debian setuptools 'install_layout' bug
-# on some base images. Forcing stdlib distutils lets its wheel build. Harmless
-# where the bug is absent.
-export SETUPTOOLS_USE_DISTUTILS="${SETUPTOOLS_USE_DISTUTILS:-stdlib}"
+# on some base images. Forcing stdlib distutils lets its wheel build --- BUT
+# Python 3.12 removed the stdlib distutils module entirely (PEP 632), so the
+# override becomes fatal: setuptools.monkey imports distutils.filelist on load
+# and the whole `pip install -e '.[dev]'` fails before torch or anything else
+# can install. Only apply the override on interpreters that still ship distutils
+# (< 3.12). Callers can force either behaviour by exporting the variable
+# themselves before invoking the hook.
+if [[ -z "${SETUPTOOLS_USE_DISTUTILS-}" ]]; then
+  if python -c 'import sys; sys.exit(0 if sys.version_info < (3, 12) else 1)' >/dev/null 2>&1; then
+    export SETUPTOOLS_USE_DISTUTILS=stdlib
+    echo "[session-start] SETUPTOOLS_USE_DISTUTILS=stdlib (Python < 3.12)"
+  else
+    # On Python >= 3.12 rely on the modern setuptools build path
+    # (setuptools >= 68 vendors what distutils used to provide).
+    echo "[session-start] SETUPTOOLS_USE_DISTUTILS unset (Python >= 3.12; stdlib distutils removed by PEP 632)"
+  fi
+else
+  echo "[session-start] SETUPTOOLS_USE_DISTUTILS=${SETUPTOOLS_USE_DISTUTILS} (honouring caller override)"
+fi
 
 echo "[session-start] AlphaGalerkin environment bootstrap"
 

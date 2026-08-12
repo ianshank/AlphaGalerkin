@@ -1,0 +1,40 @@
+# gitleaks configuration for AlphaGalerkin.
+#
+# Purpose: catch accidentally-committed secrets (API keys, tokens, private
+# keys) before they land on the branch. Runs both as a pre-commit hook and
+# as a CI job (see .pre-commit-config.yaml and .github/workflows/ci.yml).
+#
+# We extend the default gitleaks ruleset rather than replacing it. Any custom
+# path allowlisting lives under [[allowlist]] below.
+[extend]
+useDefault = true
+
+# Global allowlist. Applies to every rule.
+[[allowlist]]
+description = "Benign test/results fixtures and vendored deploy bundle"
+paths = [
+  # Fixture strings under tests/ (deterministic PRNG seeds, sha256 truncations,
+  # hash-shaped IDs used in property tests, etc.) — these are not secrets.
+  '''^tests/''',
+  # Committed benchmark outputs — CSV rows and PNG binaries can look like
+  # base64 blobs to entropy heuristics.
+  '''^results/''',
+  # HuggingFace Space deploy bundle (its own pinned toolchain and pre-generated
+  # asset hashes). Gated separately from the main branch's ruff/mypy surface.
+  '''^hf_space/''',
+  # Vendored claude-code-platform subproject has its own pinned tooling and
+  # example strings for its plugins.
+  '''^claude-code-platform/''',
+  # notebooks/: nbstripout keeps outputs which contain base64 blobs.
+  '''^notebooks/''',
+]
+
+# Common false-positive strings across the repo.
+[[allowlist]]
+description = "Placeholder API endpoint documented as an example"
+regexTarget = "match"
+regexes = [
+  '''http://127\.0\.0\.1:1234/v1''',                # LM Studio local dev URL
+  '''http://localhost:\d+''',                       # local dev URLs
+  '''sk-[A-Za-z0-9]{4}\.\.\.'''                     # elided example keys
+]

@@ -1,0 +1,195 @@
+# Regression Surface workflow
+#
+# Enforces the four post-cut surfaces documented in CLAUDE.md's
+# "Regression Surface" table. Each surface has both a per-module coverage
+# gate wired into ci.yml (step 5) *and* a documented full-command in that
+# table; this workflow runs the table commands directly so the two stay
+# aligned. Failing here means CLAUDE.md and CI have drifted.
+#
+# Scope note: the pre-cut version of this workflow also covered
+# video_compression's phase 2-B/D zoo and the SBIR demo smoke. Those
+# surfaces were deleted from the repo on 2026-07-22 ("cut to the core");
+# their workflows (phase2-zoo-validation.yml, sbir-demo-smoke.yml) were
+# deleted with them. This file only covers surviving surfaces.
+#
+# Trigger cadence: on every push to master and on PRs that touch either
+# CLAUDE.md's Regression Surface table or any of the covered source paths.
+# Nightly at 05:00 UTC catches drift caused by upstream dep updates.
+
+name: Regression Surface
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+    paths:
+      - "CLAUDE.md"
+      - "src/pde/certificate/**"
+      - "src/pde/stochastic/**"
+      - "src/experiments/cnn_baseline.py"
+      - "src/research/transfer_baseline_compare.py"
+      - "src/research/stochastic_galerkin_compare.py"
+      - "src/research/lshape_amr_compare.py"
+      - "src/poc/scenarios/transfer_baseline_compare*.py"
+      - "src/poc/scenarios/stochastic_galerkin_compare*.py"
+      - "src/poc/scenarios/lshape_amr_compare*.py"
+      - "src/pde/games/lshape_amr.py"
+      - "tests/pde/certificate/**"
+      - "tests/pde/stochastic/**"
+      - "tests/research/test_transfer_baseline_compare.py"
+      - "tests/research/test_stochastic_galerkin_compare.py"
+      - "tests/research/test_lshape_amr_compare.py"
+      - ".github/workflows/regression-surface.yml"
+      - ".github/actions/coverage-gate/action.yml"
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: regression-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  WANDB_MODE: disabled
+  MPLBACKEND: Agg
+  PYTHONHASHSEED: "0"
+  # The stochastic-Galerkin and transfer-baseline surfaces use the pytrace
+  # collector because a nightly torch wheel crashes the coverage C tracer.
+  COVERAGE_CORE: pytrace
+
+jobs:
+  # ------------------------------------------------------------
+  # Certificate surface (foundation + WS0+WS1 verifier contract)
+  # ------------------------------------------------------------
+  certificate:
+    name: Regression / certificate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Certificate coverage gate
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: pde/certificate
+          mode: pytest-cov
+          tests: tests/pde/certificate/
+          cov-target: src.pde.certificate
+          fail-under: "85"
+          branch: "true"
+
+  # ------------------------------------------------------------
+  # Stochastic Galerkin (NKE) surface — untraced native-runner mode
+  # ------------------------------------------------------------
+  stochastic:
+    name: Regression / stochastic Galerkin (NKE)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Stochastic Galerkin coverage gate
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: stochastic-galerkin-nke
+          mode: native-include
+          tests: >-
+            tests/pde/stochastic
+            tests/research/test_stochastic_galerkin_compare.py
+            tests/poc/test_stochastic_galerkin_compare_config.py
+            tests/poc/test_stochastic_galerkin_compare_scenario.py
+            tests/scripts/test_run_stochastic_galerkin_compare.py
+            tests/regression/test_related_work_guard.py
+          include: >-
+            */src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py
+          fail-under: "85"
+          branch: "true"
+
+  # ------------------------------------------------------------
+  # Zero-shot transfer benchmark — honest operator vs retrained CNN
+  # ------------------------------------------------------------
+  transfer:
+    name: Regression / transfer baseline compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Transfer baseline coverage gate
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: transfer-baseline-compare
+          mode: native-include
+          tests: >-
+            tests/research/test_transfer_baseline_compare.py
+            tests/poc/test_transfer_baseline_compare_config.py
+            tests/poc/test_transfer_baseline_compare_scenario.py
+            tests/experiments/test_cnn_baseline.py
+          include: >-
+            */src/research/transfer_baseline_compare.py,*/src/experiments/cnn_baseline.py,*/src/poc/scenarios/transfer_baseline_compare.py,*/src/poc/scenarios/transfer_baseline_compare_config.py
+          fail-under: "85"
+          branch: "true"
+
+  # ------------------------------------------------------------
+  # L-shape AMR MCTS vs Dörfler comparative baseline (thesis-critical)
+  # ------------------------------------------------------------
+  lshape-amr:
+    name: Regression / L-shape AMR compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: L-shape AMR regression tests
+        # No coverage gate on this surface: many of its tests are seed-sweep
+        # micro-runs of real MCTS, which are already slow and would take the
+        # timeout past 20 minutes. Coverage of these paths is measured under
+        # the global --cov=src gate in ci.yml.
+        run: |
+          pytest \
+            tests/research/test_lshape_notch_mask.py \
+            tests/pde/test_lshape_amr_game.py \
+            tests/research/test_lshape_amr_compare.py \
+            tests/poc/test_lshape_amr_compare_config.py \
+            tests/poc/test_lshape_amr_compare_scenario.py \
+            tests/scripts/test_run_lshape_amr.py \
+            -q --no-header

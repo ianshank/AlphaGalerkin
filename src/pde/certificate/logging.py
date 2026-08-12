@@ -43,6 +43,12 @@ CERTIFICATE_LOG_EVENTS: frozenset[str] = frozenset(
         "certificate.compile_end",  # JIT/graph compile complete
         "certificate.parity_check",  # AC2 Torch↔JAX parity comparison
         "certificate.hardware_meta_captured",  # capture_hardware_meta(...)
+        # Emitted from ``registry._UnavailableVerifier.__init__`` immediately
+        # before it raises :class:`VerifierUnavailableError`. The exception is
+        # a clean fail-closed signal but has no telemetry footprint on its own;
+        # this event is what makes "operator asked for a backend that isn't
+        # installed" observable across the closed-set log vocabulary.
+        "certificate.verifier_unavailable",
     }
 )
 

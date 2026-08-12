@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — CI hygiene follow-up slice (peer-review G-1..G-12)
+
+- **`.github/workflows/regression-surface.yml` restored (slim).** CLAUDE.md's
+  30+ row Regression Surface table declares itself the CI-enforced contract for
+  each surviving PoC surface, but the workflow that ran those commands was
+  deleted with the 2026-07-22 cut. Restored covering the four post-cut surfaces
+  (`certificate`, `stochastic`, `transfer`, `l-shape AMR`); every job runs
+  through the new composite action so the diff stays reviewable. Triggers:
+  push to master, PRs that touch either CLAUDE.md's table or any covered
+  source path, nightly 05:00 UTC, and `workflow_dispatch`. (G-3)
+- **`.github/actions/coverage-gate/action.yml` — new reusable composite action.**
+  Extracts the `pytest ... --cov=<module> --cov-fail-under=<N>` pattern
+  already repeated 12× in `ci.yml` step 5 into one action. Supports both the
+  dotted-`--cov=` and the path-glob `coverage run --include=` modes the repo
+  has settled on (the second avoids the torch C-extension tracer collision).
+  First user: the new certificate gate in `ci.yml` and every job in
+  `regression-surface.yml`. Existing charter-tracked gates (`src/pde`,
+  `src/refinement`, `src/mcts`, ...) stay in inline `--cov=X` form for now
+  because `tests/docs/test_charter_alignment.py::test_documented_gates_are_enforced_in_ci`
+  greps for the literal `--cov=<target>` string in the CI step body;
+  migrating them onto the composite action requires teaching that guard to
+  also recognise `cov-target: X` inside a `uses:` step, which is deferred
+  to its own PR so the diff stays reviewable. (G-12)
+- **Certificate coverage gate wired into CI.** New step 5 job
+  `Per-module coverage gate (pde/certificate)` runs
+  `pytest tests/pde/certificate/ --cov=src.pde.certificate --cov-branch
+  --cov-fail-under=85` via the composite action. The gate was documented in
+  CLAUDE.md's Regression Surface table by the WS0+WS1 commit but was not
+  actually enforced by CI — the `test_documented_gates_are_enforced_in_ci`
+  guard the branch itself declares would have flagged this. (G-1, G-10)
+- **`gitleaks` secret scanning.** New pre-commit hook
+  (`gitleaks/gitleaks@v8.21.2`) and CI job `Secret scan (gitleaks)` running
+  `gitleaks/gitleaks-action@v2`. Configured by a new `.gitleaks.toml` that
+  extends the default ruleset and allowlists `tests/`, `results/`,
+  `hf_space/`, `claude-code-platform/`, and `notebooks/` (each has a
+  documented benign source of false positives — deterministic PRNG seeds,
+  benchmark CSV/PNG, deploy-bundle asset hashes, nbstripout output blobs).
+  Complements — does not replace — GitHub's server-side native secret
+  scanning; this one is repo-owned so it works on private forks and PRs
+  from external contributors alike. (G-4)
+- **Certificate `verifier_unavailable` telemetry event.** The fail-closed
+  path in `src/pde/certificate/registry.py::_UnavailableVerifier.__init__`
+  raised `VerifierUnavailableError` cleanly but left *no* trace under the
+  closed-set `CERTIFICATE_LOG_EVENTS` vocabulary — exactly the failure mode
+  the closed set is designed to prevent (CLAUDE.md 2026-07-22 fabrication
+  precedent). One-line `logger.warning("certificate.verifier_unavailable",
+  backend=..., extra=..., detail=...)` before the raise; the event is now a
+  member of `CERTIFICATE_LOG_EVENTS` (guarded by
+  `test_all_logged_events_are_documented`) and a parameterised
+  `test_sentinel_dispatch_emits_verifier_unavailable_event` asserts every
+  built-in sentinel (`autolirpa`, `delta_crown`, `jax_verify`, `dreal`)
+  emits it. (G-11)
+
+### Fixed — SessionStart hook broken on Python 3.12 (peer-review G-2)
+
+- `.claude/hooks/session_start.sh` exported `SETUPTOOLS_USE_DISTUTILS=stdlib`
+  unconditionally to work around a Debian-setuptools `install_layout` bug in
+  the `antlr4-python3-runtime==4.9.3` transitive dep (hydra-core →
+  omegaconf → antlr4). Python 3.12 removed the stdlib `distutils` module
+  entirely (PEP 632), so the override became fatal: `setuptools.monkey`
+  imports `distutils.filelist` on load and any `pip install -e '.[dev]'`
+  invocation dies before torch or anything else installs. Reproduced twice
+  in a fresh Python 3.12 sandbox. The hook now guards the export on
+  `sys.version_info < (3, 12)` and honours a caller-provided override
+  (`SETUPTOOLS_USE_DISTUTILS=…` set upstream of the hook). Modern
+  `setuptools ≥ 68` supplies its own vendored counterpart to the deleted
+  stdlib module on 3.12+.
+
 ### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
 
 - **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**

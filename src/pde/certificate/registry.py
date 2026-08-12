@@ -77,6 +77,17 @@ class _UnavailableVerifier:
     _detail: str = ""
 
     def __init__(self) -> None:
+        # Structured telemetry: the raised exception is clean for the caller
+        # but leaves no observable trace under the closed-set log vocabulary.
+        # Emit ``certificate.verifier_unavailable`` first so operators can
+        # correlate the failure with the WS2 install-extra it names. Event
+        # membership is enforced by ``tests/pde/certificate/test_logging.py``.
+        logger.warning(
+            "certificate.verifier_unavailable",
+            backend=str(self.backend_name),
+            extra=self._extra,
+            detail=self._detail,
+        )
         raise VerifierUnavailableError(
             backend=str(self.backend_name),
             extra=self._extra,

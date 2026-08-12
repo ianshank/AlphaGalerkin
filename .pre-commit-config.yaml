@@ -103,6 +103,20 @@ repos:
         files: \.ya?ml$
 
   # =============================================================
+  # Secret scanning with gitleaks
+  # =============================================================
+  # Catches accidentally-committed secrets (API keys, tokens, private keys)
+  # before they hit the branch. Configured by .gitleaks.toml at the repo
+  # root, which extends the default gitleaks ruleset and allowlists the
+  # tests/, results/, hf_space/, claude-code-platform/, and notebooks/
+  # directories (each has a documented benign source of false positives).
+  # Mirrored by the CI job in .github/workflows/ci.yml (Stage: Secret scan).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # =============================================================
   # Documentation
   # =============================================================
   - repo: https://github.com/PyCQA/doc8

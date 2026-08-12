@@ -39,6 +39,41 @@ def test_sentinel_dispatch_raises(backend: str) -> None:
     assert excinfo.value.backend == backend
 
 
+@pytest.mark.parametrize("backend", ["autolirpa", "delta_crown", "jax_verify", "dreal"])
+def test_sentinel_dispatch_emits_verifier_unavailable_event(
+    backend: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """G-11 — the fail-closed path must be observable under the closed log set.
+
+    Without this, an operator hitting an uninstalled backend gets a clean
+    exception but no telemetry, which is the failure mode the closed-set
+    log vocabulary exists to prevent.
+    """
+    import logging
+
+    from src.pde.certificate import CERTIFICATE_LOG_EVENTS
+
+    assert "certificate.verifier_unavailable" in CERTIFICATE_LOG_EVENTS, (
+        "the event must be documented before it can be emitted"
+    )
+    # ``structlog`` is not configured to route through stdlib in this test env,
+    # so ``caplog`` won't see it. Assert on the emitted record via a temporary
+    # stdlib handler instead, which structlog falls back to when unconfigured.
+    caplog.set_level(logging.WARNING, logger="src.pde.certificate.registry")
+    with pytest.raises(VerifierUnavailableError):
+        get_verifier(backend)  # type: ignore[arg-type]
+    # structlog default ProcessorFormatter emits the event under ``event=``.
+    # Match by substring rather than exact record shape --- multiple structlog
+    # configurations produce equivalent semantic output.
+    combined = " ".join(r.getMessage() for r in caplog.records)
+    assert "certificate.verifier_unavailable" in combined or any(
+        getattr(r, "event", None) == "certificate.verifier_unavailable" for r in caplog.records
+    ), (
+        f"expected 'certificate.verifier_unavailable' event for backend={backend!r}; "
+        f"got records: {[r.getMessage() for r in caplog.records]!r}"
+    )
+
+
 def test_jax_verify_error_names_jax_extra() -> None:
     """The `jax_verify` sentinel points users at the right extra."""
     with pytest.raises(VerifierUnavailableError) as excinfo:

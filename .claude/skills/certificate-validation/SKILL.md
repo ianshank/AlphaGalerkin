@@ -19,11 +19,11 @@ Every gate below is a command with a binary pass/fail — no judgment calls.
    `tracks/` (`track_a.py`, `track_b.py`), `run.py` (batch CLI).
 3. **Stability registry** keyed on `src.pde.config.PDEType`: per-operator
    `C0`/`beta` source in `{analytic, estimated, unbounded_with_warning}`.
-   Shared module — `operator_gate.spec.md` will import it.
+   Shared module — `specs/operator_gate.spec.md` will import it.
 4. **Track A audit first:** review `DorflerAMRSolver._compute_indicators_2d`
    (`src/research/baselines.py`) against rigorous-estimator constants before reuse.
    The SBIR P40 surface must stay green (Gate 8).
-5. **Sequencing:** land `operator_gate.spec.md` first if both are in flight; the gate
+5. **Sequencing:** land `specs/operator_gate.spec.md` first if both are in flight; the gate
    protects live `llm_prior_ablation` runs.
 
 ## Deterministic validation gates

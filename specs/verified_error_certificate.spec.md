@@ -5,7 +5,7 @@
 > **Primary module(s):** `src/pde/certificate/` (new subpackage), `src/research/baselines.py` (`DorflerAMRSolver` indicator machinery), `src/poc/scenarios/llm_prior_ablation.py`, `src/research/transfer_baseline_compare.py`
 > **Config class:** `src.pde.certificate.config.CertificateConfig` — thresholds **must reuse the canonical `src.poc.config.MetricThreshold`** (no parallel schema; per the spec-tree peer-review correction)
 > **Tracking:** CLAUDE.md Next-Steps row "Verified error certificates (two-track)"
-> **Origin:** Response to peer review of `docs/mathematical-superintelligence-x-alphagalerkin.md`. v2 corrections from evidence-verification pass: indicator machinery path fixed (`src/research/baselines.py`, not the game file), MetricThreshold reuse mandated, internal honesty precedent cited, exact certification cost figures, `PRIOR_ART_REVIEW.md` referenced rather than duplicated.
+> **Origin:** Response to peer review of the multi-agent Achim *Mathematical Superintelligence* × AlphaGalerkin mapping (internal review; document not committed to repo). v2 corrections from evidence-verification pass: indicator machinery path fixed (`src/research/baselines.py`, not the game file), MetricThreshold reuse mandated, internal honesty precedent cited, exact certification cost figures, `PRIOR_ART_REVIEW.md` referenced rather than duplicated.
 
 ---
 
@@ -160,7 +160,7 @@ rigorous in `results/` or business docs — the fabrication-precedent guard.
 - **Prior art:** extend `docs/business/proposals/PRIOR_ART_REVIEW.md` (already
   corrected the blanket "no MCTS+FEM" claim via TreeMesh / arXiv:2111.07613) with a
   certified-bounds-for-RL-AMR pass before any SBIR novelty claim.
-- **Interaction:** `operator_gate.spec.md` (LLM-prior verification) consumes the
+- **Interaction:** `specs/operator_gate.spec.md` (LLM-prior verification) consumes the
   stability registry — land it in a shared module both specs import. Gate lands
   first (days; protects live `llm_prior_ablation` runs), certificates second (weeks).
 
@@ -174,7 +174,7 @@ rigorous in `results/` or business docs — the fabrication-precedent guard.
 - Hillebrecht et al. 2025 — a posteriori bounds for PDE-defined PINNs.
   *(Distinct from arXiv:2509.26122 — peer review conflated them.)*
 - arXiv:2510.01346 — Aristotle (informal reasoner + Lean kernel; the architectural
-  template for `operator_gate.spec.md`).
+  template for `specs/operator_gate.spec.md`).
 - Repo: `docs/doe_genesis/theory.md` (inheritance argument); `CLAUDE.md` changelog
   2026-07-05 / 2026-07-10 / 2026-07-22 (F0 retraction; transfer-benchmark correction);
   `specs/lshape_amr_compare.spec.md`; `specs/transfer_baseline_compare.spec.md`;

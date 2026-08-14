@@ -21,6 +21,31 @@ import numpy as np
 import torch
 
 
+def derive_seeds(base_seed: int, n_seeds: int, stride: int) -> list[int]:
+    """Deterministic, decorrelated per-seed values for a multi-seed sweep.
+
+    Multiple PoC scenario configs and the agents research-loop config each
+    derive per-cell RNG seeds from a master seed via ``seed + i * stride``
+    for a scenario-local prime ``stride`` (values currently differ across
+    modules — 1009 in most PoC scenarios, 7919 in ``noyron_basis`` and
+    ``src/research/seed_sweep.py`` — so callers keep their own stride rather
+    than this helper choosing one). This function centralises the arithmetic
+    those call sites duplicated verbatim; it does not unify the stride
+    values, since doing so would change which seeds are derived and
+    invalidate results already committed to ``config/baselines/*.json``.
+
+    Args:
+        base_seed: The first seed; subsequent seeds are strided from it.
+        n_seeds: Number of seeds to derive (``>= 0``).
+        stride: Per-caller prime stride decorrelating successive seeds.
+
+    Returns:
+        ``[base_seed + i * stride for i in range(n_seeds)]``.
+
+    """
+    return [base_seed + i * stride for i in range(n_seeds)]
+
+
 def set_global_seeds(seed: int) -> None:
     """Seed the ``numpy`` and ``torch`` global RNGs for reproducibility.
 

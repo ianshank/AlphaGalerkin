@@ -9,6 +9,7 @@ from pydantic import Field, field_validator, model_validator
 
 from src.integrations.lm_studio.config import LMStudioConfig
 from src.poc.config import BaseScenarioConfig, MetricThreshold, ScenarioTier
+from src.seeding import derive_seeds
 
 SCENARIO_NAME = "llm_prior_ablation"
 """Canonical scenario id; YAML rows must use this string for dispatch."""
@@ -241,7 +242,7 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
         if self.seeds is not None:
             # dict.fromkeys preserves insertion order while deduplicating.
             return list(dict.fromkeys(self.seeds))
-        return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
+        return derive_seeds(self.seed, self.n_seeds, _SEED_PRIME_STRIDE)
 
     def get_default_thresholds(self) -> list[MetricThreshold]:
         """Acceptance thresholds derived from the headline fields.

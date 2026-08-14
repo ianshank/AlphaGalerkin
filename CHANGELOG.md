@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Code hygiene & modularity audit + quick wins
+
+- `docs/CODE_HYGIENE_AUDIT.md`: prioritized audit of `src/`/`tests/`/CI covering god
+  modules, duplicated `*_compare` scenario boilerplate, rejected internal standards
+  (registries/config/logging reimplemented instead of reusing `src/templates/`), the
+  `poc`↔`research` import cycle, and enforcement gaps (mypy, CI lint scope, the
+  CLAUDE.md Regression Surface table's drift from CI). 16 backlog items documented.
+- `mypy src/ --strict --ignore-missing-imports` now passes cleanly (was 3 stale
+  `unused-ignore` comments, not the "enforced nowhere" error volume both prior audit
+  passes assumed).
+- `RUF100` added to the ruff select list; 71 stale `noqa` comments removed; CI's lint
+  scope now matches pre-commit's in both directions (`scripts/`, `config/`,
+  `conftest.py`, `deploy_space.py` included; `hf_space/` excluded on both sides).
+- Removed the dead `benchmark` CI job (matched zero tests); added `--strict-markers`
+  to pytest addopts; deduplicated marker registration onto `pyproject.toml`.
+- `src/seeding.py::derive_seeds` replaces 6 duplicated seed-derivation bodies across
+  `src/agents/config.py`, 4 PoC scenario configs, and `src/research/seed_sweep.py`
+  (each module's stride value is unchanged, so no scenario's derived seeds change).
+- `tests/poc/conftest.py` adds a save/restore fixture around the `ScenarioRegistry`
+  singleton, closing the no-teardown gap `test_charter_alignment.py` previously
+  worked around with a subprocess.
+- The three classic PoC scenarios (`stability`, `transfer`, `complexity`) now resolve
+  their device via `src/poc/device.py::resolve_device` instead of a hardcoded inline
+  fallback; `llm_prior_ablation._median` is now a shim onto `_centaur_common.median_of`.
+- `src/constants.py`: wired `DEFAULT_LBB_THRESHOLD` and `DEFAULT_DROPOUT` to their
+  matching `src/modeling/` defaults; deleted 2 dead constants with no live consumer.
+- Logging added at 4 previously-silent exception-swallow sites (mesh-refinement
+  interpolator fallback, LM Studio VRAM probe, PoC CLI scenario listing, the SBIR
+  baseline-registry default fallback).
+- Deleted an unreferenced scenario config YAML; added a `viz` optional-dependency
+  extra for matplotlib; removed the dead `doc8` pre-commit hook (0 `.rst` files).
+
 ### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
 
 - **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**

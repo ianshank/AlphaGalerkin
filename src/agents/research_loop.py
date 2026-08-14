@@ -109,7 +109,7 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
             metrics, metadata = self._aggregate(results)
             status = self._status_from_metrics(metrics)
             return self._create_result(status=status, metrics=metrics, metadata=metadata)
-        except Exception as exc:  # noqa: BLE001 - surfaced as a FAILED result
+        except Exception as exc:
             self.logger.exception("research_loop_failed", error=str(exc))
             return self._create_result(status=ExecutionStatus.FAILED, error=str(exc))
         finally:

@@ -254,7 +254,7 @@ def train(config: TrainingConfig) -> dict[str, Any]:
         wandb.init(
             project=config.wandb_project,
             name=config.wandb_name
-            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",  # noqa: E501
+            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",
             config=vars(config),
             tags=["physics-poc", "zero-shot-transfer"],
         )

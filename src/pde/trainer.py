@@ -78,7 +78,7 @@ def _create_operator(pde_config: PDEConfig) -> PDEOperator:
         return PoissonOperator(pde_config)
 
     # Lazy imports for less-common operators to avoid top-level cost
-    from src.pde.operators import AdvectionDiffusionOperator, BurgersOperator  # noqa: PLC0415
+    from src.pde.operators import AdvectionDiffusionOperator, BurgersOperator
 
     if pde_type == PDEType.BURGERS:
         return BurgersOperator(pde_config)
@@ -339,8 +339,8 @@ class PDETrainer:
 
         # Build MCTS with random evaluator (no trained network required)
         # These imports are kept here so heavy PyTorch/numpy loads are deferred
-        from src.mcts.evaluator import RandomEvaluator  # noqa: PLC0415
-        from src.mcts.search import MCTS  # noqa: PLC0415
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS
 
         self._evaluator: RandomEvaluator = RandomEvaluator(
             n_actions=self._game.action_space_size,

@@ -11,14 +11,14 @@ import pytest
 # Skip entire module if torch not available
 torch = pytest.importorskip("torch")
 
-from pydantic import ValidationError  # noqa: E402
+from pydantic import ValidationError
 
-from src.modeling.galerkin_operator import (  # noqa: E402
+from src.modeling.galerkin_operator import (
     Galerkin2d,
     GalerkinOperatorBlock,
     GalerkinOperatorConfig,
 )
-from src.modeling.operator import NeuralOperator  # noqa: E402
+from src.modeling.operator import NeuralOperator
 
 
 def devices_equal(device1: torch.device, device2: torch.device) -> bool:

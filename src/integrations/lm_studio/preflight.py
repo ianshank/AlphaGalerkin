@@ -117,7 +117,7 @@ def _check_vram(min_free_gib: float) -> tuple[float | None, bool]:
 
     """
     try:
-        import torch  # noqa: PLC0415
+        import torch
     except ImportError:  # pragma: no cover - torch is a hard dep elsewhere
         return None, True
     if not torch.cuda.is_available():
@@ -128,7 +128,11 @@ def _check_vram(min_free_gib: float) -> tuple[float | None, bool]:
     for idx in range(n_devices):
         try:
             free_bytes, _total = torch.cuda.mem_get_info(idx)
-        except Exception:  # pragma: no cover - per-device probe failure
+        except Exception as exc:
+            # Covered by tests/integrations/test_lm_studio_preflight.py
+            # (``test_vram_probe_failure_*``), which monkeypatches
+            # ``torch.cuda.mem_get_info`` to raise.
+            logger.warning("vram_probe_failed", device_index=idx, error=str(exc))
             continue
         free_gib = float(free_bytes) / _BYTES_PER_GIB
         best_free_gib = max(best_free_gib, free_gib)
@@ -163,7 +167,7 @@ def check_lm_studio_server(
         # Lazy import keeps the base install (no ``openai`` installed)
         # from breaking when this module is imported transitively.
         try:
-            import openai  # noqa: PLC0415
+            import openai
         except ImportError as exc:
             return PreflightReport(
                 server_reachable=False,

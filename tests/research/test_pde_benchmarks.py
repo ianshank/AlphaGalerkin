@@ -323,6 +323,112 @@ class TestRunAll:
 
 
 # ---------------------------------------------------------------------------
+# _get_baselines
+# ---------------------------------------------------------------------------
+
+
+def _install_recording_log(runner: PDEBenchmarkRunner) -> list[tuple[str, dict[str, object]]]:
+    """Swap ``runner._log`` for a recorder and return its event list."""
+    recorded: list[tuple[str, dict[str, object]]] = []
+
+    class _RecordingLogger:
+        def _record(self, event: str, **kw: object) -> None:
+            recorded.append((event, kw))
+
+        warning = _record
+        error = _record
+        info = _record
+        debug = _record
+        exception = _record
+
+    runner._log = _RecordingLogger()
+    return recorded
+
+
+class TestGetBaselines:
+    """Baseline-solver resolution, including both failure arms."""
+
+    def test_configured_baseline_is_instantiated(self, minimal_config_yaml: Path):
+        """The happy path returns one solver for the single configured entry."""
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        solvers = runner._get_baselines()
+        assert len(solvers) == 1
+
+    def test_unavailable_baseline_is_skipped(self, tmp_path: Path):
+        """A name absent from the solver registry is dropped, not fatal."""
+        config = {
+            "suite_name": "unknown_baseline",
+            "benchmarks": [],
+            "baselines": [{"name": "no_such_solver"}],
+        }
+        path = tmp_path / "unknown_baseline.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        runner = PDEBenchmarkRunner(path)
+        # Falls through to the default-baseline path, which succeeds.
+        assert len(runner._get_baselines()) == 1
+
+    def test_empty_baselines_falls_back_to_uniform_fdm(self, empty_baselines_config: Path):
+        """An empty ``baselines`` list is backfilled with ``uniform_fdm``."""
+        runner = PDEBenchmarkRunner(empty_baselines_config)
+        solvers = runner._get_baselines()
+        assert len(solvers) == 1
+        assert "fdm" in type(solvers[0]).__name__.lower()
+
+    def test_default_baseline_failure_is_logged_and_survivable(
+        self, empty_baselines_config: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A broken default solver returns an empty list instead of raising.
+
+        Covers the defensive ``except`` on the ``uniform_fdm`` backfill: the
+        runner must not take down the whole benchmark suite when even the
+        default baseline cannot be constructed, and the swallowed error must
+        be logged with a traceback (``log.exception``) rather than vanishing.
+
+        The runner's bound logger is replaced rather than asserted through
+        ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+        (``src/poc/logging.py``) and ``configure_module_logging``
+        (``src/templates/logging.py``) both set
+        ``cache_logger_on_first_use=True``, so once any earlier test in the
+        session has called either, a bound logger stops consulting the global
+        processor chain and ``capture_logs`` silently records nothing.
+        """
+        import src.research.pde_benchmarks as pde_benchmarks
+
+        def _boom(name: str, **_: object) -> object:
+            raise RuntimeError(f"solver {name} unavailable")
+
+        monkeypatch.setattr(pde_benchmarks, "get_solver", _boom)
+        runner = PDEBenchmarkRunner(empty_baselines_config)
+        recorded = _install_recording_log(runner)
+
+        solvers = runner._get_baselines()
+
+        assert solvers == []
+        events = [kw for event, kw in recorded if event == "default_baseline_init_failed"]
+        assert len(events) == 1
+        assert events[0]["baseline"] == "uniform_fdm"
+
+    def test_configured_baseline_failure_is_logged(
+        self, minimal_config_yaml: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A registered-but-failing solver logs ``baseline_init_failed``."""
+        import src.research.pde_benchmarks as pde_benchmarks
+
+        def _boom(name: str, **_: object) -> object:
+            raise RuntimeError(f"solver {name} unavailable")
+
+        monkeypatch.setattr(pde_benchmarks, "get_solver", _boom)
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        recorded = _install_recording_log(runner)
+
+        solvers = runner._get_baselines()
+
+        assert solvers == []
+        assert any(event == "baseline_init_failed" for event, _ in recorded)
+        assert any(event == "default_baseline_init_failed" for event, _ in recorded)
+
+
+# ---------------------------------------------------------------------------
 # generate_report
 # ---------------------------------------------------------------------------
 

@@ -23,8 +23,8 @@ from src.research.lshape_amr_compare import lshape_inside_predicate
 
 scipy = pytest.importorskip("scipy", reason="scipy required for masked FD solve")
 
-from scipy import sparse  # noqa: E402
-from scipy.sparse.linalg import spsolve  # noqa: E402
+from scipy import sparse
+from scipy.sparse.linalg import spsolve
 
 
 def _operator() -> LShapedPoissonOperator:

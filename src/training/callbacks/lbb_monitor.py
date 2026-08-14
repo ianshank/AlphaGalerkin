@@ -199,7 +199,7 @@ class LBBStabilityCallback(Callback):
         if self.config.emit_html:
             try:
                 self._render_html(summary)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 self._log.warning(
                     "lbb_html_render_failed",
                     error=str(exc),
@@ -232,7 +232,7 @@ class LBBStabilityCallback(Callback):
 
     def _render_html(self, summary: dict[str, Any] | None) -> None:
         try:
-            import matplotlib  # noqa: F401
+            import matplotlib
 
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt

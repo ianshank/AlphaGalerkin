@@ -671,6 +671,98 @@ class TestMeshRefinementGameInterpolation:
         assert values.shape == (3,)
         assert np.all(np.isfinite(values))
 
+    @staticmethod
+    def _collinear_state() -> PDEState:
+        """A 2-D state whose points are collinear (Qhull cannot triangulate)."""
+        coords = np.array([[0.0, 0.0], [0.25, 0.25], [0.5, 0.5], [1.0, 1.0]], dtype=np.float32)
+        return PDEState(
+            coords=coords,
+            solution=np.array([0.0, 1.0, 2.0, 4.0], dtype=np.float32),
+            residuals=np.zeros(4, dtype=np.float32),
+            mesh_levels=None,
+            error_estimate=0.0,
+            dof=4,
+            step=0,
+            budget_remaining=1.0,
+            phase=GamePhase.INITIAL,
+            history=[],
+        )
+
+    def test_degenerate_triangulation_falls_back_to_nearest(self, game: MeshRefinementGame) -> None:
+        """A Delaunay failure must degrade, not crash.
+
+        ``LinearNDInterpolator.__init__`` runs Qhull on the source points and
+        raises on a degenerate (here: collinear) point set. The
+        ``except Exception`` arm sets ``linear=None``, which makes every value
+        NaN and routes the whole query through the nearest-neighbour fallback,
+        so the returned array is still finite and correctly shaped.
+        """
+        old_state = self._collinear_state()
+        query = np.array([[0.1, 0.1], [0.9, 0.9]], dtype=np.float32)
+
+        values = game._interpolate_solution(old_state, query)
+
+        assert values.shape == (2,)
+        assert values.dtype == np.float32
+        assert np.all(np.isfinite(values))
+        # Nearest-neighbour of each query point, taken from the source values.
+        np.testing.assert_allclose(values, [0.0, 4.0])
+
+    def test_degenerate_triangulation_is_logged(
+        self, game: MeshRefinementGame, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The swallowed Qhull error emits a structured warning.
+
+        Silently dropping to nearest-neighbour changes the interpolation order
+        (and therefore the error estimate driving refinement), so the event
+        must be visible with the point count and the underlying error text.
+
+        The module logger is replaced rather than asserted through
+        ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+        (``src/poc/logging.py``) sets ``cache_logger_on_first_use=True``, so
+        once any earlier test in the session has called it, this module's
+        ``logger`` proxy has cached a stdlib-backed bound logger and stops
+        consulting the global processor chain. ``capture_logs`` then silently
+        records nothing — the assertion would pass alone and fail in a full
+        run purely by collection order.
+        """
+        import src.pde.games.mesh_refinement as mesh_mod
+
+        recorded: list[tuple[str, dict[str, object]]] = []
+
+        class _RecordingLogger:
+            def warning(self, event: str, **kw: object) -> None:
+                recorded.append((event, kw))
+
+            def debug(self, event: str, **kw: object) -> None:
+                pass
+
+        monkeypatch.setattr(mesh_mod, "logger", _RecordingLogger())
+
+        old_state = self._collinear_state()
+        query = np.array([[0.1, 0.1]], dtype=np.float32)
+        game._interpolate_solution(old_state, query)
+
+        events = [kw for event, kw in recorded if event == "interpolator_build_failed"]
+        assert len(events) == 1
+        assert events[0]["n_points"] == 4
+        assert events[0]["error"]
+
+    def test_failed_interpolator_is_not_cached(self, game: MeshRefinementGame) -> None:
+        """A failed build must not poison the interpolator cache.
+
+        The ``try/except/else`` only populates ``_cached_interp_state`` on the
+        success path; if the failure were cached, a later good state reusing
+        the same identity would silently keep the nearest-neighbour path.
+        """
+        old_state = self._collinear_state()
+        query = np.array([[0.1, 0.1]], dtype=np.float32)
+
+        game._interpolate_solution(old_state, query)
+
+        assert game._cached_interp_state is not old_state
+        assert game._cached_interp_linear is None
+
 
 class TestMeshRefinementGameLogReward:
     """Tests for the proposal-form log reward on the mesh game."""

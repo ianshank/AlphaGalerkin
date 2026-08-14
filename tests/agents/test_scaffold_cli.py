@@ -81,7 +81,7 @@ class TestScaffoldAgent:
         module_src = plan.files[tmp_path / "src" / "agents" / "probe_agent.py"]
         namespace: dict[str, object] = {}
         # Execute the rendered module against the real package deps.
-        exec(compile(module_src, "probe_agent.py", "exec"), namespace)  # noqa: S102
+        exec(compile(module_src, "probe_agent.py", "exec"), namespace)
         build = namespace["build_default_config"]
         agent_cls = namespace["ProbeAgentAgent"]
         config = build()  # type: ignore[operator]

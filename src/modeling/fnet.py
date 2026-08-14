@@ -17,6 +17,8 @@ from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from src.constants import DEFAULT_DROPOUT
+
 logger = structlog.get_logger(__name__)
 
 # Default feed-forward expansion ratio (mirrors original FNet paper).
@@ -147,7 +149,7 @@ class FNetBlock(nn.Module):
         self,
         d_model: int,
         d_ffn: int | None = None,
-        dropout: float = 0.1,
+        dropout: float = DEFAULT_DROPOUT,
         use_2d_fft: bool = True,
     ) -> None:
         """Initialize FNet block.
@@ -233,7 +235,7 @@ class FNetStack(nn.Module):
         d_model: int,
         n_layers: int,
         d_ffn: int | None = None,
-        dropout: float = 0.1,
+        dropout: float = DEFAULT_DROPOUT,
         use_2d_fft: bool = True,
     ) -> None:
         """Initialize FNet stack.
@@ -286,7 +288,7 @@ class GalerkinFNetHybrid(nn.Module):
         d_model: int,
         n_heads: int,
         d_ffn: int | None = None,
-        dropout: float = 0.1,
+        dropout: float = DEFAULT_DROPOUT,
         fnet_ratio: float = 0.5,
     ) -> None:
         """Initialize hybrid layer.

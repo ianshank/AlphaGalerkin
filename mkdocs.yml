@@ -24,6 +24,7 @@ exclude_docs: |
   training_summary.md
   GALERKIN_FUSION_HEAD_PLAN.md
   CHESS_ENGINE_BENCHMARKING.md
+  CODE_HYGIENE_AUDIT.md
 
 theme:
   name: material

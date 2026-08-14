@@ -170,7 +170,7 @@ def benchmark_layer(
 
     # Warmup
     for _ in range(n_warmup):
-        if grid_size is not None:  # noqa: SIM108
+        if grid_size is not None:
             layer(x, grid_size)
         else:
             layer(x)
@@ -186,7 +186,7 @@ def benchmark_layer(
             torch.cuda.synchronize()
 
         start = time.perf_counter()
-        if grid_size is not None:  # noqa: SIM108
+        if grid_size is not None:
             layer(x, grid_size)
         else:
             layer(x)

@@ -18,8 +18,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_imports_succeed() -> None:
-    import src.agents.research_loop  # noqa: F401
-    import src.poc.scenarios._centaur_common  # noqa: F401
+    import src.agents.research_loop
+    import src.poc.scenarios._centaur_common
     import src.poc.scenarios.scaling_law  # noqa: F401
     from src.pde.operators import BiharmonicOperator, HelmholtzOperator  # noqa: F401
 

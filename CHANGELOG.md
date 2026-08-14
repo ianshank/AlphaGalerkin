@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Code hygiene & modularity audit + quick wins
+
+- `docs/CODE_HYGIENE_AUDIT.md`: prioritized audit of `src/`/`tests/`/CI covering god
+  modules, duplicated `*_compare` scenario boilerplate, rejected internal standards
+  (registries/config/logging reimplemented instead of reusing `src/templates/`), the
+  `poc`↔`research` import cycle, and enforcement gaps (mypy, CI lint scope, the
+  CLAUDE.md Regression Surface table's drift from CI). 16 backlog items documented.
+- `mypy src/ --strict --ignore-missing-imports` now passes cleanly (was 3 stale
+  `unused-ignore` comments, not the "enforced nowhere" error volume both prior audit
+  passes assumed).
+- `RUF100` added to the ruff select list; 71 stale `noqa` comments removed; CI's lint
+  scope now matches pre-commit's in both directions (`scripts/`, `config/`,
+  `conftest.py`, `deploy_space.py` included; `hf_space/`, `notebooks/` and
+  `claude-code-platform/` excluded on both sides, so every tracked `*.py` is linted by
+  exactly one of the two).
+- **pre-commit hook scope**: the `hf_space/` exclusion is applied **per-hook** (ruff,
+  ruff-format, yamllint), not as a top-level `exclude:`. An intermediate commit in this
+  PR used the top-level form, which is inherited by every hook and therefore also
+  disabled `detect-private-key` and `check-added-large-files` on the tree published to a
+  public HuggingFace Space (already carrying a 7.2 MB `checkpoint.pt`, 7x the
+  `--maxkb=1000` limit). Both guards are global again.
+- **Removed the `check-docstring-first` hook.** It rejects 21 modules repo-wide (20 under
+  `src/`) that use PEP 258 attribute docstrings — a string literal documenting the
+  assignment above it — which the hook misreads as "multiple module docstrings". The
+  idiom is the house style here, so the hook is the thing that does not fit.
+- Removed the dead `benchmark` CI job (matched zero tests); added `--strict-markers`
+  to pytest addopts; deduplicated marker registration onto `pyproject.toml`.
+- `src/seeding.py::derive_seeds` replaces 5 duplicated seed-derivation bodies across
+  `src/agents/config.py`, 3 PoC scenario configs, and `src/research/seed_sweep.py`
+  (each module's stride value is unchanged, so no scenario's derived seeds change).
+  `stochastic_galerkin_compare_config.py` was deliberately excluded after CI's
+  import-isolation guard for that layer's dependency surface caught the addition —
+  see `docs/CODE_HYGIENE_AUDIT.md` §6.
+- `tests/poc/conftest.py` adds a save/restore fixture around **structlog's global
+  configuration**, which `test_logging.py` mutates with no teardown — that leak
+  silently routed later `logger.warning(...)` calls into stdlib logging where
+  pytest swallows them. A `ScenarioRegistry` snapshot/restore fixture was
+  attempted alongside it and reverted before merge: measured against the live
+  registry it left fewer scenarios registered than no fixture at all. The
+  subprocess workaround in `test_charter_alignment.py` therefore stands; see
+  `docs/CODE_HYGIENE_AUDIT.md` §6 and backlog B16.
+- The three classic PoC scenarios (`stability`, `transfer`, `complexity`) now resolve
+  their device via `src/poc/device.py::resolve_device` instead of a hardcoded inline
+  fallback; `llm_prior_ablation._median` is now a shim onto `_centaur_common.median_of`.
+- `src/constants.py`: wired `DEFAULT_LBB_THRESHOLD` and `DEFAULT_DROPOUT` to their
+  matching `src/modeling/` defaults; deleted 2 dead constants with no live consumer.
+- Logging added at 4 previously-silent exception-swallow sites (mesh-refinement
+  interpolator fallback, LM Studio VRAM probe, PoC CLI scenario listing, the SBIR
+  baseline-registry default fallback).
+- Added a `viz` optional-dependency extra for matplotlib; removed the dead `doc8`
+  pre-commit hook (0 `.rst` files). (A scenario config YAML was deleted and then
+  restored after CI showed a parametrized test loads it by a constructed path a
+  literal grep can't see — see `docs/CODE_HYGIENE_AUDIT.md` §6.)
+
 ### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
 
 - **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**

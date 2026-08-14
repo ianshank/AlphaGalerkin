@@ -43,7 +43,7 @@ import structlog
 import torch
 from pydantic import Field
 from torch import Tensor
-from torch.amp import GradScaler, autocast  # type: ignore[attr-defined]
+from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import (
@@ -840,7 +840,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
                 continue
             try:
                 method(ctx)
-            except Exception as exc:  # noqa: BLE001 — callbacks must not abort training
+            except Exception as exc:
                 # ``event`` is renamed to ``hook`` because structlog
                 # reserves ``event`` for the message identifier.
                 self._log.warning(

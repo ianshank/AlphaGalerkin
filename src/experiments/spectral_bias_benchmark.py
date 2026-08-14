@@ -310,7 +310,7 @@ class SpectralBiasBenchmark:
                 durations.append(time.perf_counter() - t0)
                 last_error = result.l2_error
                 last_metadata = dict(result.metadata)
-            except Exception as exc:  # noqa: BLE001 — sweep continues
+            except Exception as exc:
                 last_exc = (type(exc).__name__, str(exc))
                 log.warning("spectral_bias_cell_failed", error=str(exc))
                 break

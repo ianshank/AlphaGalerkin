@@ -468,10 +468,13 @@ class PDEBenchmarkRunner:
         if not solvers:
             self._log.warning("no_baselines_available_using_defaults")
             # Provide defaults so the runner still works
-            import contextlib
-
-            with contextlib.suppress(Exception):
+            try:
                 solvers.append(get_solver("uniform_fdm"))
+            except Exception:
+                # Defensive: even the default baseline can fail to construct.
+                # Covered by tests/research/test_pde_benchmarks.py
+                # ``TestGetBaselines::test_default_baseline_failure_*``.
+                self._log.exception("default_baseline_init_failed", baseline="uniform_fdm")
 
         return solvers
 

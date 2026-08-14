@@ -59,6 +59,14 @@ Changelog = "https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CHANGELOG.md"
 fem = [
     "scikit-fem>=9.0",
 ]
+# matplotlib backs the CSV/PNG report artifacts: src/poc/visualization/
+# imports it at module level, and the *_compare research harnesses' plotting
+# helpers import it lazily with a graceful skip. Nothing in the base install
+# imports src/poc/visualization/ eagerly, so it stays out of core deps;
+# pull this extra in (or `dev`, which already includes it) to render plots.
+viz = [
+    "matplotlib>=3.7.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -167,7 +175,7 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "D", "UP", "ANN", "B", "C4", "SIM"]
+select = ["E", "F", "W", "I", "N", "D", "UP", "ANN", "B", "C4", "SIM", "RUF100"]
 ignore = [
     "D100",   # Missing docstring in public module
     "D102",   # Missing docstring in public method
@@ -180,8 +188,6 @@ ignore = [
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
-    "ANN101", # Missing type annotation for self (deprecated in ruff 0.3+)
-    "ANN102", # Missing type annotation for cls (deprecated in ruff 0.3+)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)
@@ -391,7 +397,7 @@ disable_error_code = ["assignment", "arg-type", "return-value", "operator", "uni
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: end-to-end integration tests",

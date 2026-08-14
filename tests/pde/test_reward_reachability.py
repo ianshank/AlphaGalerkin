@@ -54,7 +54,7 @@ class _RewardSpy:
         self.count = 0
         self._orig = adapter.pde_game.get_reward
 
-        def counting(state, prev_state):  # noqa: ANN001, ANN202
+        def counting(state, prev_state):
             self.count += 1
             return self._orig(state, prev_state)
 

@@ -54,7 +54,9 @@ CONSTRAINTS:
 - GitHub Actions CI workflow (`.github/workflows/ci.yml`) with 8 stages including chess pipeline
 - Coverage gates: 85% overall, 85% per-module (pde, modeling, training, research)
 - MyPy runs as an informational gate (`continue-on-error: true`, see ci.yml:84-92)
-- Nightly schedule (`cron: '0 4 * * *'`) and performance benchmark job
+- Nightly schedule (`cron: '0 4 * * *'`) and a performance benchmark job (the
+  latter removed in the code-hygiene pass: it matched zero tests — `benchmark`
+  was never a registered pytest marker — and swallowed its own exit code)
 - Pre-commit hooks (`.pre-commit-config.yaml`) with ruff, mypy, trailing whitespace
 
 ### Epic 1.1: GitHub Actions CI Pipeline

@@ -25,6 +25,7 @@ from src.poc.config import (
     ScenarioStatus,
     TransferScenarioConfig,
 )
+from src.poc.device import resolve_device
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
 from src.seeding import set_global_seeds
@@ -83,7 +84,7 @@ class TransferScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = resolve_device("auto", context=self.name)
         self._output_dir = Path("outputs/poc/transfer")
         self._output_dir.mkdir(parents=True, exist_ok=True)
 

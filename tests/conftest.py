@@ -49,17 +49,6 @@ except ImportError:
     pass
 
 
-def pytest_configure(config: pytest.Config) -> None:
-    """Configure pytest markers for the test categories used across the suite."""
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
-    )
-    config.addinivalue_line("markers", "e2e: end-to-end workflow tests")
-    config.addinivalue_line("markers", "integration: integration tests")
-    config.addinivalue_line("markers", "jax: JAX-specific tests")
-    config.addinivalue_line("markers", "cross_backend: cross-backend equivalence tests")
-
-
 @pytest.fixture(autouse=True)
 def set_random_seed() -> None:
     """Set random seed for reproducibility."""

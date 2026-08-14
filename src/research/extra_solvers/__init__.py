@@ -33,7 +33,7 @@ from __future__ import annotations
 # Import each solver module so its module-level registration runs.
 # Failures (missing optional deps) surface a stub that raises a clear
 # error at construction time; we never silently swallow them.
-from src.research.extra_solvers import (  # noqa: F401
+from src.research.extra_solvers import (
     multigrid,
     neural_op,
     supg_fem,

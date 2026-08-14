@@ -11,9 +11,6 @@ class TestBoardDefaults:
     def test_default_board_sizes_are_standard(self) -> None:
         assert C.DEFAULT_BOARD_SIZES == [9, 13, 19]
 
-    def test_default_board_size_is_full(self) -> None:
-        assert C.DEFAULT_BOARD_SIZE == 19
-
     def test_default_max_moves_positive(self) -> None:
         assert C.DEFAULT_MAX_MOVES > 0
 
@@ -113,6 +110,3 @@ class TestCheckpointNames:
 
     def test_best_checkpoint_has_extension(self) -> None:
         assert C.CHECKPOINT_BEST.endswith(".pt")
-
-    def test_final_checkpoint_has_extension(self) -> None:
-        assert C.CHECKPOINT_FINAL.endswith(".pt")

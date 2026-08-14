@@ -9,6 +9,8 @@ derivation never drift apart — mirroring the ``_centaur_common.median_of`` ext
 
 from __future__ import annotations
 
+from src.seeding import derive_seeds
+
 # Prime stride decorrelating per-seed RNG streams in a multi-seed sweep (mirrors the
 # noyron_basis / scaling_law scenarios). A prime keeps successive seed streams from
 # sharing low-order factors.
@@ -27,4 +29,4 @@ def resolved_seeds(base_seed: int, n_seeds: int) -> list[int]:
         ``[base_seed + i * SEED_PRIME_STRIDE for i in range(n_seeds)]``.
 
     """
-    return [base_seed + i * SEED_PRIME_STRIDE for i in range(n_seeds)]
+    return derive_seeds(base_seed, n_seeds, SEED_PRIME_STRIDE)

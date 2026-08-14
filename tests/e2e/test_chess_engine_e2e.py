@@ -54,7 +54,7 @@ class MultiMoveEngine:
             "readyok\n",
         ]
 
-    def _line_iter(self):  # noqa: ANN202
+    def _line_iter(self):
         """Yield startup lines then search lines on demand."""
         # Startup handshake
         yield from self._responses

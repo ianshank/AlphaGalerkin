@@ -11,20 +11,23 @@ Every gate below is a command with a binary pass/fail — no judgment calls.
 
 ## Kickoff checklist
 
-1. **Read the spec** (`specs/verified_error_certificate.spec.md`) end-to-end; confirm
-   Status and the CLAUDE.md Next-Steps row "Verified error certificates (two-track)".
+1. **Read the spec** (`specs/verified_error_certificate.spec.md`) end-to-end and confirm its
+   Status header. (Note: there is no corresponding CLAUDE.md Next-Steps row — the spec is the
+   only tracking surface for this work. Add a row if/when it lands.)
 2. **Scaffold the module** additively: `src/pde/certificate/` with `config.py`
    (`CertificateConfig` — thresholds reuse the canonical `src.poc.config.MetricThreshold`;
    no parallel schema), `certificate.py` (Pydantic `Certificate` artifact),
    `tracks/` (`track_a.py`, `track_b.py`), `run.py` (batch CLI).
 3. **Stability registry** keyed on `src.pde.config.PDEType`: per-operator
    `C0`/`beta` source in `{analytic, estimated, unbounded_with_warning}`.
-   Shared module — `specs/operator_gate.spec.md` will import it.
+   Intended as a shared module for a future operator-gate spec, which is **not yet written**
+   (`specs/` currently holds no `operator_gate.spec.md`) — so design the registry standalone and
+   do not block on it.
 4. **Track A audit first:** review `DorflerAMRSolver._compute_indicators_2d`
    (`src/research/baselines.py`) against rigorous-estimator constants before reuse.
    The SBIR P40 surface must stay green (Gate 8).
-5. **Sequencing:** land `specs/operator_gate.spec.md` first if both are in flight; the gate
-   protects live `llm_prior_ablation` runs.
+5. **Sequencing:** an operator-gate spec does not exist yet. If one is authored while this work
+   is in flight, land it first — the gate protects live `llm_prior_ablation` runs.
 
 ## Deterministic validation gates
 

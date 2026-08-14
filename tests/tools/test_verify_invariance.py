@@ -771,7 +771,7 @@ class TestModuleEntryPoint:
         with patch.object(module, "main", side_effect=SystemExit(0)) as mock_main:
             with pytest.raises(SystemExit):
                 # Simulate running as __main__
-                exec(  # noqa: S102
+                exec(
                     "if True:\n    main()",
                     {"main": mock_main, "__name__": "__main__"},
                 )

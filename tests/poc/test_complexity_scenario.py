@@ -28,6 +28,7 @@ from src.poc.config import (
     ComplexityScenarioConfig,
     ScenarioStatus,
 )
+from src.poc.logging import ScenarioLogger
 from src.poc.registry import ScenarioRegistry
 
 
@@ -353,18 +354,52 @@ class TestComplexityScenarioLifecycle:
         assert s._scenario_logger is not None
 
     def test_setup_warns_no_gpu(self, small_config: ComplexityScenarioConfig) -> None:
-        """setup() warns when GPU is not available."""
+        """setup() warns — and resolves a CPU device — when CUDA is absent.
+
+        Patches ``resolve_device`` (the single source the warning is now derived
+        from) rather than the module's ``torch``: patching only the latter used
+        to leave ``_device`` coming from real torch, so on a CUDA host the
+        scenario could report a cuda device *and* emit ``gpu_not_available``.
+        """
         from src.poc.scenarios.complexity import ComplexityScenario
 
-        with patch("src.poc.scenarios.complexity.torch") as mock_torch:
-            mock_torch.cuda.is_available.return_value = False
-            mock_torch.device = torch.device
-
+        with patch(
+            "src.poc.scenarios.complexity.resolve_device",
+            return_value=torch.device("cpu"),
+        ) as mock_resolve:
             s = ComplexityScenario(config=small_config)
-            # Need to provide a real ScenarioLogger so .warning() works
             s.setup()
 
-            # The scenario logger's warning would have been called
+            mock_resolve.assert_called_once()
+            assert s._device is not None
+            assert s._device.type == "cpu"
+            assert s._scenario_logger is not None
+
+    def test_setup_does_not_warn_on_cuda(self, small_config: ComplexityScenarioConfig) -> None:
+        """The no-GPU warning is suppressed when a CUDA device is resolved.
+
+        Runs on CPU hosts too: ``resolve_device`` is stubbed, so this asserts the
+        warning is keyed off the resolved device and not a second, independent
+        ``torch.cuda.is_available()`` probe.
+        """
+        from src.poc.scenarios.complexity import ComplexityScenario
+
+        s = ComplexityScenario(config=small_config)
+        with (
+            patch(
+                "src.poc.scenarios.complexity.resolve_device",
+                return_value=torch.device("cuda", 0),
+            ),
+            patch.object(ScenarioLogger, "warning") as mock_warning,
+        ):
+            s.setup()
+
+        assert s._device is not None
+        assert s._device.type == "cuda"
+        warned = [
+            c for c in mock_warning.call_args_list if c.args and c.args[0] == "gpu_not_available"
+        ]
+        assert warned == [], f"gpu_not_available emitted despite a CUDA device: {warned}"
 
     def test_teardown_without_gpu(self, small_config: ComplexityScenarioConfig) -> None:
         """teardown() runs without error on CPU."""

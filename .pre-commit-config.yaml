@@ -39,10 +39,14 @@ repos:
       - id: detect-private-key
       - id: mixed-line-ending
         args: [--fix=lf]
-      # check-docstring-first is deliberately absent: 21 modules (src/constants.py,
-      # the stochastic package, most scenario configs, ...) use PEP 258-style
-      # attribute docstrings — a string literal documenting the assignment above it —
-      # which the hook misreads as "multiple module docstrings" and rejects.
+      # check-docstring-first is deliberately absent: 21 modules repo-wide
+      # (20 under src/ — src/constants.py, the stochastic package, most scenario
+      # configs, ... — plus tests/e2e/test_chess_engine_e2e.py) use PEP 258-style
+      # attribute docstrings: a string literal documenting the assignment above
+      # it. The hook misreads those as "multiple module docstrings" and rejects
+      # the file. A per-file `exclude:` was considered but would need all 21
+      # paths enumerated and kept in sync; the idiom is the house style here, so
+      # the hook is the thing that does not fit.
       - id: debug-statements
       - id: check-ast
 

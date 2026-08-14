@@ -28,9 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `stochastic_galerkin_compare_config.py` was deliberately excluded after CI's
   import-isolation guard for that layer's dependency surface caught the addition —
   see `docs/CODE_HYGIENE_AUDIT.md` §6.
-- `tests/poc/conftest.py` adds a save/restore fixture around the `ScenarioRegistry`
-  singleton, closing the no-teardown gap `test_charter_alignment.py` previously
-  worked around with a subprocess.
+- `tests/poc/conftest.py` adds a save/restore fixture around **structlog's global
+  configuration**, which `test_logging.py` mutates with no teardown — that leak
+  silently routed later `logger.warning(...)` calls into stdlib logging where
+  pytest swallows them. A `ScenarioRegistry` snapshot/restore fixture was
+  attempted alongside it and reverted before merge: measured against the live
+  registry it left fewer scenarios registered than no fixture at all. The
+  subprocess workaround in `test_charter_alignment.py` therefore stands; see
+  `docs/CODE_HYGIENE_AUDIT.md` §6 and backlog B16.
 - The three classic PoC scenarios (`stability`, `transfer`, `complexity`) now resolve
   their device via `src/poc/device.py::resolve_device` instead of a hardcoded inline
   fallback; `llm_prior_ablation._median` is now a shim onto `_centaur_common.median_of`.

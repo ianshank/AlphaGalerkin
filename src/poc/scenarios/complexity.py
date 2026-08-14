@@ -78,11 +78,16 @@ class ComplexityScenario(BaseScenario):
             config_hash=self.config.compute_hash(),
         )
 
-        # Warn if not on GPU (timing will be less accurate)
-        if not torch.cuda.is_available():
+        # Warn if not on GPU (timing will be less accurate). Derived from the
+        # device actually resolved above rather than a second, independent
+        # torch.cuda.is_available() call — otherwise the two can disagree (a
+        # caller stubbing one but not the other gets a CUDA device *and* a
+        # "no GPU" warning at the same time).
+        if self._device.type != "cuda":
             self._scenario_logger.warning(
                 "gpu_not_available",
                 message="Timing results will be less accurate on CPU",
+                device=str(self._device),
             )
 
     def teardown(self) -> None:

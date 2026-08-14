@@ -28,13 +28,14 @@ Three headline findings drove this PR's priorities:
    backlog item around gate determinism, not a "ratchet").
 2. **The codebase is unusually clean** on markers, exception handling, and
    logging discipline: zero TODO/FIXME/HACK backlog outside a code
-   generator's template strings, zero bare `except:`, 155 modules on
-   structlog vs. 4 legitimate `logging.basicConfig` bootstraps, and 64
+   generator's template strings, zero bare `except:`, 149 modules on
+   structlog (`grep -rl structlog src/ --include=*.py`) vs. 3 legitimate
+   `logging.basicConfig` bootstraps in `src/` (6 including `scripts/`), and 64
    well-scoped `except ImportError` optional-dependency gates. The debt is
    concentrated in **enforcement gaps** (gates that exist but don't run),
    **duplicated boilerplate** (the same lifecycle/config/registry pattern
    reimplemented per-scenario instead of shared), and **layering drift**
-   (a `poc` ↔ `research` import cycle papered over by ~101 in-function
+   (a `poc` ↔ `research` import cycle papered over by 122 in-function
    imports).
 3. **Reproducibility hazard**: a per-seed derivation constant
    (`_SEED_PRIME_STRIDE`) exists under the identical private name in six
@@ -181,7 +182,7 @@ fixture does not reproduce, and a safe prune needs per-file analysis.
 ### 3.7 Docs & config
 
 12 of 26 `src/` packages have an `AGENT.md` (`ls src/*/AGENT.md | wc -l`
-vs. `ls -d src/*/ | wc -l`, 2026-08) despite the root `AGENT.md` describing
+vs. `ls -d src/*/ | grep -v __pycache__ | wc -l`, 2026-08) despite the root `AGENT.md` describing
 per-module documentation as universal. CLAUDE.md's own Next Steps table
 under-reported this gap, naming only 2 packages
 (`src/refinement`, `src/alphagalerkin`); this PR corrects that row to name
@@ -205,7 +206,7 @@ as a quick win (§6) in favor of flagging them in backlog B11.
 |---|---|---|
 | `chore(lint)` | Drop removed ruff rules `ANN101`/`ANN102`; add `RUF100` to select (autofixed 71 stale `noqa`); fix the 5 live errors the extended scope surfaced; extend CI + pre-commit to the same file scope in both directions | `ruff check`/`ruff format --check` over the full extended scope; `pytest tests/docs/` |
 | `types` | Fix the 3 measured `unused-ignore` errors; `mypy src/ --strict` now exits 0 | `mypy src/ --strict --ignore-missing-imports`; `pytest tests/training/test_base_trainer.py tests/research/test_baselines.py tests/research/test_ns_baseline.py` |
-| `test(poc)` | New `tests/poc/conftest.py` — additive snapshot/restore fixture around `ScenarioRegistry` | `pytest tests/poc`; the order-stress trio (`test_complexity_scenario.py test_registry.py test_cli_commands.py`); `pytest tests/docs/ tests/regression/test_related_work_guard.py tests/hf_space/` |
+| `test(poc)` | New `tests/poc/conftest.py` — a **structlog** global-config save/restore fixture. A `ScenarioRegistry` snapshot/restore fixture was also attempted here and **reverted before merge**: it made the end state strictly worse (see §6). | `pytest tests/poc`; the order-stress trio (`test_complexity_scenario.py test_registry.py test_cli_commands.py`); `pytest tests/docs/ tests/regression/test_related_work_guard.py tests/hf_space/` |
 | `chore(ci)` | Delete the dead `benchmark` job; add `--strict-markers`; delete 6 redundant marker registrations (5 in `tests/conftest.py`, 1 in `tests/dashboard/conftest.py`) | `pytest --collect-only`; `pytest tests/dashboard/`; `check_doc_links.py` |
 | `refactor(seeding)` | `derive_seeds(base_seed, n_seeds, stride)` in `src/seeding.py`; 4 config modules + `seed_sweep.py` delegate to it; **strides unchanged**. `stochastic_galerkin_compare_config.py` does **not** adopt it — see the CI-caught correction below | The config-test files asserting seed derivation |
 | `refactor(poc)` | `resolve_device("auto", ...)` in `stability.py`/`transfer.py`/`complexity.py` (byte-equivalent to the prior inline expression); `_median = median_of` shim in `llm_prior_ablation.py` | LLM-prior mocked-CPU surface + `test_centaur_regression.py`; `test_stability_scenario.py test_complexity_scenario.py test_runner.py test_device.py` |
@@ -232,7 +233,7 @@ Documented, not implemented. Ordered by suggested sequencing.
 
 | # | Item | Effort | Risk | Notes / guards |
 |---|---|---|---|---|
-| B1 | Break the `poc`↔`research` cycle: promote `src/poc/device.py` → `src/device.py` (re-export from the old path), migrate `baselines.py`/`comparison.py` and opportunistically the ~101 in-function imports | M | Low | Gate paths in `ci.yml`/CLAUDE.md cite `src.poc.device` at 100% coverage — update in lockstep |
+| B1 | Break the `poc`↔`research` cycle: promote `src/poc/device.py` → `src/device.py` (re-export from the old path), migrate `baselines.py`/`comparison.py` and opportunistically the 122 in-function imports (55 files) | M | Low | Gate paths in `ci.yml`/CLAUDE.md cite `src.poc.device` at 100% coverage — update in lockstep |
 | B2 | `CompareScenarioBase` + Config→Params + name-lock-validator unification across the three `*_compare` triplets | L | Med | The three per-scenario 85%-branch regression surfaces, run together |
 | B3 | Registry consolidation onto `src/templates/registry.py` (`ScenarioRegistry` last — most consumers) | L | Med | Charter capability guard (subprocess `ScenarioRegistry` read); PDE end-to-end; MCTS evaluator protocol |
 | B4 | God-module splits at the seams in §3.1 — one module per PR, import-compatible `__init__` re-exports mandatory | XL | High | Per-module coverage gates (pde 75, training 85, research 85, mcts 90 branch); mypy's per-module override block names old paths and must move in lockstep |
@@ -255,6 +256,29 @@ Documented, not implemented. Ordered by suggested sequencing.
 
 ## 6. Rejected or deferred, with reasons
 
+- **The `ScenarioRegistry` snapshot/restore fixture — attempted, measured,
+  reverted.** It was the headline "quick win" of the `test(poc)` commit and an
+  adversarial review found it was a *net regression*. Probing the live registry
+  immediately after `tests/poc/test_cli_commands.py`:
+
+  | teardown semantics | registry afterwards |
+  |---|---|
+  | no fixture (baseline) | 10 real scenarios |
+  | `clear()` + restore snapshot | `[]` — **empty for the rest of the process** |
+  | restore-only-what's-missing | `['alpha','beta']` — real scenarios lost |
+  | skip-restore-when-snapshot-empty | `['alpha','beta']` — same |
+
+  Root cause: several modules here also purge
+  `sys.modules['src.poc.scenarios*']` so their `@scenario` decorators re-fire on
+  re-import. A per-test snapshot taken *before* that re-import is empty or
+  partial, so restoring it deletes registrations the test legitimately created —
+  and with `sys.modules` repopulated the decorators cannot fire again. Three
+  different semantics each traded one failure mode for another; none beat doing
+  nothing. Removed, and the local fixtures left untouched. The genuine fix is to
+  rework those heterogeneous local fixtures (backlog **B16**); until then the
+  subprocess read in `test_charter_alignment.py` remains the right mitigation.
+  The structlog half of the same conftest is kept — it was probe-verified and
+  has no such interaction.
 - **Two errors that made it past local verification into CI, caught and
   fixed within minutes.** `git grep` for the literal filename
   `stochastic_galerkin_compare_demo.yaml` found nothing before deleting it

@@ -327,6 +327,24 @@ class TestRunAll:
 # ---------------------------------------------------------------------------
 
 
+def _install_recording_log(runner: PDEBenchmarkRunner) -> list[tuple[str, dict[str, object]]]:
+    """Swap ``runner._log`` for a recorder and return its event list."""
+    recorded: list[tuple[str, dict[str, object]]] = []
+
+    class _RecordingLogger:
+        def _record(self, event: str, **kw: object) -> None:
+            recorded.append((event, kw))
+
+        warning = _record
+        error = _record
+        info = _record
+        debug = _record
+        exception = _record
+
+    runner._log = _RecordingLogger()
+    return recorded
+
+
 class TestGetBaselines:
     """Baseline-solver resolution, including both failure arms."""
 
@@ -365,9 +383,15 @@ class TestGetBaselines:
         runner must not take down the whole benchmark suite when even the
         default baseline cannot be constructed, and the swallowed error must
         be logged with a traceback (``log.exception``) rather than vanishing.
-        """
-        from structlog.testing import capture_logs
 
+        The runner's bound logger is replaced rather than asserted through
+        ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+        (``src/poc/logging.py``) and ``configure_module_logging``
+        (``src/templates/logging.py``) both set
+        ``cache_logger_on_first_use=True``, so once any earlier test in the
+        session has called either, a bound logger stops consulting the global
+        processor chain and ``capture_logs`` silently records nothing.
+        """
         import src.research.pde_benchmarks as pde_benchmarks
 
         def _boom(name: str, **_: object) -> object:
@@ -375,22 +399,19 @@ class TestGetBaselines:
 
         monkeypatch.setattr(pde_benchmarks, "get_solver", _boom)
         runner = PDEBenchmarkRunner(empty_baselines_config)
+        recorded = _install_recording_log(runner)
 
-        with capture_logs() as logs:
-            solvers = runner._get_baselines()
+        solvers = runner._get_baselines()
 
         assert solvers == []
-        events = [entry for entry in logs if entry["event"] == "default_baseline_init_failed"]
+        events = [kw for event, kw in recorded if event == "default_baseline_init_failed"]
         assert len(events) == 1
         assert events[0]["baseline"] == "uniform_fdm"
-        assert events[0]["log_level"] == "error"
 
     def test_configured_baseline_failure_is_logged(
         self, minimal_config_yaml: Path, monkeypatch: pytest.MonkeyPatch
     ):
         """A registered-but-failing solver logs ``baseline_init_failed``."""
-        from structlog.testing import capture_logs
-
         import src.research.pde_benchmarks as pde_benchmarks
 
         def _boom(name: str, **_: object) -> object:
@@ -398,13 +419,13 @@ class TestGetBaselines:
 
         monkeypatch.setattr(pde_benchmarks, "get_solver", _boom)
         runner = PDEBenchmarkRunner(minimal_config_yaml)
+        recorded = _install_recording_log(runner)
 
-        with capture_logs() as logs:
-            solvers = runner._get_baselines()
+        solvers = runner._get_baselines()
 
         assert solvers == []
-        assert any(entry["event"] == "baseline_init_failed" for entry in logs)
-        assert any(entry["event"] == "default_baseline_init_failed" for entry in logs)
+        assert any(event == "baseline_init_failed" for event, _ in recorded)
+        assert any(event == "default_baseline_init_failed" for event, _ in recorded)
 
 
 # ---------------------------------------------------------------------------

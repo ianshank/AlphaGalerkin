@@ -241,18 +241,38 @@ def test_vram_probe_failure_is_logged_per_device(monkeypatch: pytest.MonkeyPatch
     A silent ``continue`` here previously made "GPU present but unreadable"
     indistinguishable from "no GPU". The event must name the device index and
     carry the driver error text.
-    """
-    from structlog.testing import capture_logs
 
+    The module logger is replaced rather than asserted through
+    ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+    (``src/poc/logging.py``) and ``configure_module_logging``
+    (``src/templates/logging.py``) both set ``cache_logger_on_first_use=True``,
+    so once any earlier test in the session has called either, this module's
+    ``logger`` proxy has cached a stdlib-backed bound logger and stops
+    consulting the global processor chain. ``capture_logs`` then silently
+    records nothing, making the assertion pass or fail by collection order.
+    """
+    import src.integrations.lm_studio.preflight as preflight_mod
+
+    recorded: list[tuple[str, dict[str, object]]] = []
+
+    class _RecordingLogger:
+        def warning(self, event: str, **kw: object) -> None:
+            recorded.append((event, kw))
+
+        def debug(self, event: str, **kw: object) -> None:
+            pass
+
+        def info(self, event: str, **kw: object) -> None:
+            pass
+
+    monkeypatch.setattr(preflight_mod, "logger", _RecordingLogger())
     _patch_cuda_with_raising_probe(monkeypatch, n_devices=2)
     config = LMStudioConfig()
-    with capture_logs() as logs:
-        check_lm_studio_server(config, sdk_client=_StubClient(_OkModels(ids=[config.model])))
+    check_lm_studio_server(config, sdk_client=_StubClient(_OkModels(ids=[config.model])))
 
-    events = [entry for entry in logs if entry["event"] == "vram_probe_failed"]
-    assert [entry["device_index"] for entry in events] == [0, 1]
-    assert all(entry["log_level"] == "warning" for entry in events)
-    assert all("CUDA driver error" in entry["error"] for entry in events)
+    events = [kw for event, kw in recorded if event == "vram_probe_failed"]
+    assert [kw["device_index"] for kw in events] == [0, 1]
+    assert all("CUDA driver error" in str(kw["error"]) for kw in events)
 
 
 def test_vram_probe_skips_only_the_failing_device(monkeypatch: pytest.MonkeyPatch) -> None:

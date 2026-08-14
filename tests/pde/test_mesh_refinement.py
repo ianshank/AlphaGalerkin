@@ -708,24 +708,43 @@ class TestMeshRefinementGameInterpolation:
         # Nearest-neighbour of each query point, taken from the source values.
         np.testing.assert_allclose(values, [0.0, 4.0])
 
-    def test_degenerate_triangulation_is_logged(self, game: MeshRefinementGame) -> None:
+    def test_degenerate_triangulation_is_logged(
+        self, game: MeshRefinementGame, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """The swallowed Qhull error emits a structured warning.
 
         Silently dropping to nearest-neighbour changes the interpolation order
         (and therefore the error estimate driving refinement), so the event
         must be visible with the point count and the underlying error text.
+
+        The module logger is replaced rather than asserted through
+        ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+        (``src/poc/logging.py``) sets ``cache_logger_on_first_use=True``, so
+        once any earlier test in the session has called it, this module's
+        ``logger`` proxy has cached a stdlib-backed bound logger and stops
+        consulting the global processor chain. ``capture_logs`` then silently
+        records nothing — the assertion would pass alone and fail in a full
+        run purely by collection order.
         """
-        from structlog.testing import capture_logs
+        import src.pde.games.mesh_refinement as mesh_mod
+
+        recorded: list[tuple[str, dict[str, object]]] = []
+
+        class _RecordingLogger:
+            def warning(self, event: str, **kw: object) -> None:
+                recorded.append((event, kw))
+
+            def debug(self, event: str, **kw: object) -> None:
+                pass
+
+        monkeypatch.setattr(mesh_mod, "logger", _RecordingLogger())
 
         old_state = self._collinear_state()
         query = np.array([[0.1, 0.1]], dtype=np.float32)
+        game._interpolate_solution(old_state, query)
 
-        with capture_logs() as logs:
-            game._interpolate_solution(old_state, query)
-
-        events = [entry for entry in logs if entry["event"] == "interpolator_build_failed"]
+        events = [kw for event, kw in recorded if event == "interpolator_build_failed"]
         assert len(events) == 1
-        assert events[0]["log_level"] == "warning"
         assert events[0]["n_points"] == 4
         assert events[0]["error"]
 

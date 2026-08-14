@@ -279,6 +279,22 @@ Documented, not implemented. Ordered by suggested sequencing.
   subprocess read in `test_charter_alignment.py` remains the right mitigation.
   The structlog half of the same conftest is kept — it was probe-verified and
   has no such interaction.
+- **`structlog.testing.capture_logs` is inert against this repo's module-level
+  loggers — the fourth ordering defect on this branch.** A test added here to
+  cover the new `interpolator_build_failed` warning asserted through
+  `capture_logs` and failed CI on all three Python versions with `assert 0 == 1`
+  — while the CI log's own "Captured stderr call" section showed the warning
+  being emitted. `capture_logs` swaps structlog's *global* processor chain, but
+  `src/poc/logging.py` sets `cache_logger_on_first_use=True`, so once any earlier
+  test calls `configure_logging`, a module's
+  `logger = structlog.get_logger(__name__)` proxy has cached a stdlib-backed
+  bound logger and never consults the chain again. Passes alone, fails in a full
+  run. Fixed by patching the module's `logger` attribute with a recording
+  double. Counting the two `sys.modules`-purge failures and the reverted
+  registry fixture, **four of this PR's own defects were global-singleton state
+  crossed with collection order** — all four invisible to per-file verification.
+  The three resulting rules are written into `tests/poc/conftest.py`'s docstring
+  rather than left as folklore.
 - **Two errors that made it past local verification into CI, caught and
   fixed within minutes.** `git grep` for the literal filename
   `stochastic_galerkin_compare_demo.yaml` found nothing before deleting it

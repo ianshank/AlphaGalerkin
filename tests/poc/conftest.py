@@ -51,6 +51,17 @@ failed in a full run):
    ``assert registry.get("transfer") is TransferScenario`` can fail with the
    memorably useless ``assert <class 'X'> is X``. Resolve both sides from the
    current ``sys.modules``.
+3. **``structlog.testing.capture_logs`` does not work on module-level loggers
+   here.** It swaps structlog's *global* processor chain, but
+   ``configure_logging`` (``src/poc/logging.py``) sets
+   ``cache_logger_on_first_use=True``. Once any earlier test has called it, a
+   module's ``logger = structlog.get_logger(__name__)`` proxy has already
+   cached a concrete stdlib-backed bound logger and never consults the chain
+   again — so ``capture_logs`` records nothing while the event still reaches
+   the stdlib handler (it shows up in captured stderr). The assertion passes
+   alone and fails in a full run. Patch the module's ``logger`` attribute with
+   a recording double instead; see
+   ``tests/pde/test_mesh_refinement.py::test_degenerate_triangulation_is_logged``.
 """
 
 from __future__ import annotations

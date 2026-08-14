@@ -7,13 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — CI enforcement (tech-debt Phase 1)
+
+- **CI never ran on pull requests**: `on.pull_request.branches: [main, develop]`
+  referenced branches that do not exist in this repository, so every PR merged with
+  zero checks. The branch filter is removed; `test-slow`'s `if:` condition had the
+  same dead branch names and now keys on `github.event.repository.default_branch`.
+- **Silently degraded llm_prior coverage gate repaired**: under coverage 7.x,
+  file-path `--cov=path/to/module.py` specs are dropped with only a warning, so the
+  gate's two file-level targets enforced nothing. They now run as a native-runner
+  (`coverage run --include=...`) step. With the gate unenforced,
+  `src/poc/scenarios/llm_prior_ablation.py` had drifted to a measured 77% branch
+  coverage (81% combined with its config) vs the documented 86%; the repaired gate
+  starts at 79 (measured − 2) with the ratchet back to 85+ tracked in
+  `docs/CODE_HYGIENE_AUDIT.md` §7.
+- **Unenforced regression surface re-enabled**: `tests/pde/test_mcts_adapter.py`
+  (a documented F1/F3 Regression Surface) had been `--ignore`d in every CI job since
+  the 2026-04 emergency triage despite passing at HEAD; the ignore and two
+  CUDA-deselects made redundant by in-source `skipif` markers are removed.
+
+### Added — CI gates (tech-debt Phase 1)
+
+- Three CLAUDE.md-documented per-module coverage gates that were never wired into
+  `ci.yml` (phantom gates, audit backlog B20) now exist, in native-runner form with
+  measured margins: `noyron_basis` (98% measured, gate 85), Noyron HX surface
+  (99% measured, gate 85), SBIR P40 surface (94% measured, gate 85).
+- Drift-alarm test `test_migration_defaults_match_v1_1_shipped_values`: the four
+  checkpoint-migration setdefault literals are intentionally frozen (a 1.0.0→1.1.0
+  migration must inject the defaults v1.1.0 shipped with, forever); the test fails
+  if a live default is retuned, forcing an explicit migration decision.
+- `docs/CODE_HYGIENE_AUDIT.md` §7: Phase-1 follow-up record — measured branch
+  coverage for 8 previously ungated packages, quantified mypy override debt
+  (207 masked errors), B10 dead-package reclassification (only 4 of 6 are dead;
+  `deployment` is CI-exercised, `demos` is a live dashboard dependency), and the
+  Phase 2–4 roadmap with the owner-decision register.
+
+### Changed — Hardcoded values surfaced (zero numeric change; tech-debt Phase 1)
+
+- LR-scheduler knobs `min_lr_ratio` / `warmup_start_factor` are now typed
+  `TrainingConfig` fields (defaults 0.1/0.1 — exactly the values `Trainer`
+  previously hardcoded) and named `BaseTrainer` module constants
+  (`DEFAULT_MIN_LR_RATIO` 0.01 / `DEFAULT_WARMUP_START_FACTOR` 1e-6) that both
+  `BaseTrainerConfig` field defaults and `_create_scheduler` parameter defaults
+  bind to. All three previous copies of these values are reconciled; no LR
+  trajectory changes.
+- Boundary tolerances named, deliberately not unified:
+  `src/pde/operators.py` now uses `DEFAULT_BOUNDARY_TOLERANCE` (1e-6, unchanged);
+  new `DEFAULT_PICOGK_BOUNDARY_TOLERANCE` (1e-5, unchanged) documents the
+  SDF-band semantic and the pre-existing picogk operator/domain divergence.
+- Gumbel MCTS epsilons split by semantic: `GUMBEL_NORMALIZATION_EPSILON`
+  (inert division guard) vs `GUMBEL_LOG_PRIOR_FLOOR` (algorithmic log floor);
+  `FNetEvaluator` softmax floor named `_SOFTMAX_NORMALIZER_FLOOR`, mirroring
+  `src/integrations/lm_studio/evaluator.py` by name. All values 1e-8, unchanged.
+- The 13 `[9, 13, 19]` board-size literal sites now derive from
+  `DEFAULT_BOARD_SIZES` via copies (`list(...)` / `default_factory`), never the
+  shared mutable module list.
+
+### Removed — Dead CI/code weight (tech-debt Phase 1)
+
+- Dead "Upload test results" step that archived `.pytest_cache/` (never found
+  files); `--no-cache-dir` flags that defeated the CI pip cache.
+- `BaseTrainer`'s three `@abstractmethod` decorators — a dead contract both
+  production trainers stubbed with `NotImplementedError`. The methods are now
+  concrete `step()`-loop hooks; subclass stubs and their exact messages are kept
+  (test-asserted, and they document each trainer's real entry points).
+
 ### Added — Code hygiene & modularity audit + quick wins
 
 - `docs/CODE_HYGIENE_AUDIT.md`: prioritized audit of `src/`/`tests/`/CI covering god
   modules, duplicated `*_compare` scenario boilerplate, rejected internal standards
   (registries/config/logging reimplemented instead of reusing `src/templates/`), the
   `poc`↔`research` import cycle, and enforcement gaps (mypy, CI lint scope, the
-  CLAUDE.md Regression Surface table's drift from CI). 16 backlog items documented.
+  CLAUDE.md Regression Surface table's drift from CI). 20 backlog items documented
+  (B1–B20; an earlier revision of this entry undercounted them as 16).
 - `mypy src/ --strict --ignore-missing-imports` now passes cleanly (was 3 stale
   `unused-ignore` comments, not the "enforced nowhere" error volume both prior audit
   passes assumed).

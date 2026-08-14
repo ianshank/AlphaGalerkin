@@ -12,7 +12,7 @@ import yaml
 
 structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
 
-from scripts.run_transfer_baseline_compare import (  # noqa: E402
+from scripts.run_transfer_baseline_compare import (
     SCENARIO_NAME,
     apply_overrides,
     build_config,

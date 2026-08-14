@@ -99,7 +99,7 @@ class PhysicsDemo:
         )
 
     @property
-    def solver(self) -> Any:  # noqa: ANN401 - PoissonSolver type varies by import
+    def solver(self) -> Any:
         """Get or create Poisson solver (lazy initialization)."""
         if self._solver is None:
             from src.physics.poisson import PoissonSolver
@@ -467,7 +467,7 @@ def create_physics_demo_tab(
     config: PhysicsDemoConfig | None = None,
     model: torch.nn.Module | None = None,
     device: str = "cpu",
-) -> Any:  # noqa: ANN401 - Gradio Tab has complex type
+) -> Any:
     """Create Gradio tab for physics demo.
 
     Args:

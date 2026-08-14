@@ -117,7 +117,7 @@ def _check_vram(min_free_gib: float) -> tuple[float | None, bool]:
 
     """
     try:
-        import torch  # noqa: PLC0415
+        import torch
     except ImportError:  # pragma: no cover - torch is a hard dep elsewhere
         return None, True
     if not torch.cuda.is_available():
@@ -163,7 +163,7 @@ def check_lm_studio_server(
         # Lazy import keeps the base install (no ``openai`` installed)
         # from breaking when this module is imported transitively.
         try:
-            import openai  # noqa: PLC0415
+            import openai
         except ImportError as exc:
             return PreflightReport(
                 server_reachable=False,

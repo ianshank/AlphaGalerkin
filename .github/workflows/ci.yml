@@ -74,16 +74,17 @@ jobs:
           # Install minimal deps for type checking
           pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
-      # dashboard/ is included so CI matches .pre-commit-config.yaml, which runs ruff
-      # with no `files:` filter. Without it, dashboard code can be CI-green and still
-      # be rewritten by a contributor's commit hook. hf_space/ stays excluded: it is
-      # the deploy bundle, pinned to an older ruff/gradio, and an accepted charter
-      # deviation.
+      # Scope matches .pre-commit-config.yaml, which runs ruff on every staged
+      # Python file (dashboard/, scripts/, config/, root-level modules included).
+      # Without parity, code can be CI-green and still be rewritten or rejected by
+      # a contributor's commit hook. hf_space/ stays excluded on BOTH sides
+      # (pre-commit `exclude: ^hf_space/`): it is the deploy bundle, pinned to an
+      # older ruff/gradio, and an accepted charter deviation.
       - name: Run Ruff linting
-        run: ruff check src/ tests/ dashboard/ --output-format=github
+        run: ruff check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --output-format=github
 
       - name: Run Ruff formatting check
-        run: ruff format src/ tests/ dashboard/ --check
+        run: ruff format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --check
 
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports

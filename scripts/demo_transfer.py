@@ -351,10 +351,7 @@ def _save_markdown_report(result: DemoResult, path: Path) -> None:
     for d in result.per_size_details:
         g = d["grid_size"]
         status = "Yes" if d["passed"] else "No"
-        rows.append(
-            f"| {g}x{g} | {d['mse']:.6f} | {d['rmse']:.6f}"
-            f" | {d['n_points']} | {status} |"
-        )
+        rows.append(f"| {g}x{g} | {d['mse']:.6f} | {d['rmse']:.6f} | {d['n_points']} | {status} |")
     footer = [
         "",
         "**All passed:** " + ("Yes" if result.all_passed else "No"),
@@ -398,9 +395,7 @@ def run_demo(cfg: DemoConfig, no_plots: bool = False) -> DemoResult:
     print(f"\nTraining for {cfg.n_epochs} epoch(s)...")
     t0 = time.time()
     for epoch in range(cfg.n_epochs):
-        loss_val = _train_epoch(
-            model, train_dataset, optimizer, loss_fn, device, cfg.batch_size
-        )
+        loss_val = _train_epoch(model, train_dataset, optimizer, loss_fn, device, cfg.batch_size)
         scheduler.step()
         if (epoch + 1) % cfg.log_interval == 0 or epoch == 0:
             elapsed = time.time() - t0
@@ -412,9 +407,7 @@ def run_demo(cfg: DemoConfig, no_plots: bool = False) -> DemoResult:
     training_time = time.time() - t0
     print(f"Training complete in {training_time:.1f}s")
 
-    print(
-        f"\nRunning inference on {len(cfg.target_sizes)} grid sizes: {cfg.target_sizes}"
-    )
+    print(f"\nRunning inference on {len(cfg.target_sizes)} grid sizes: {cfg.target_sizes}")
     metrics: list[SizeMetrics] = []
     for size in cfg.target_sizes:
         m = _run_inference(model, size, cfg, device)
@@ -457,63 +450,87 @@ def run_demo(cfg: DemoConfig, no_plots: bool = False) -> DemoResult:
 
 
 def _parse_args() -> tuple[DemoConfig, bool]:
-    parser = argparse.ArgumentParser(
-        description="AlphaGalerkin Zero-Shot Resolution Transfer Demo"
-    )
+    parser = argparse.ArgumentParser(description="AlphaGalerkin Zero-Shot Resolution Transfer Demo")
     parser.add_argument(
-        "--train-size", type=int, default=9,
+        "--train-size",
+        type=int,
+        default=9,
         help="Grid size used for training (default: 9)",
     )
     parser.add_argument(
-        "--eval-sizes", type=str, default="9,13,19,25",
+        "--eval-sizes",
+        type=str,
+        default="9,13,19,25",
         help="Comma-separated target grid sizes (default: 9,13,19,25)",
     )
     parser.add_argument(
-        "--n-epochs", type=int, default=50,
+        "--n-epochs",
+        type=int,
+        default=50,
         help="Number of training epochs (default: 50)",
     )
     parser.add_argument(
-        "--quick", action="store_true",
+        "--quick",
+        action="store_true",
         help="Fast mode: 5 epochs, smaller model, 500 training samples",
     )
     parser.add_argument(
-        "--output-dir", type=str, default="outputs/demo_transfer",
+        "--output-dir",
+        type=str,
+        default="outputs/demo_transfer",
         help="Output directory (default: outputs/demo_transfer)",
     )
     parser.add_argument(
-        "--no-plots", action="store_true",
+        "--no-plots",
+        action="store_true",
         help="Skip matplotlib figure generation",
     )
     parser.add_argument(
-        "--format", choices=["json", "markdown"], default="json",
+        "--format",
+        choices=["json", "markdown"],
+        default="json",
         help="Report format (default: json)",
     )
     parser.add_argument(
-        "--d-model", type=int, default=128,
+        "--d-model",
+        type=int,
+        default=128,
         help="Model hidden dim (default: 128)",
     )
     parser.add_argument(
-        "--n-layers", type=int, default=4,
+        "--n-layers",
+        type=int,
+        default=4,
         help="Galerkin layers (default: 4)",
     )
     parser.add_argument(
-        "--n-fourier-features", type=int, default=64,
+        "--n-fourier-features",
+        type=int,
+        default=64,
         help="Fourier features (default: 64)",
     )
     parser.add_argument(
-        "--learning-rate", type=float, default=1e-3,
+        "--learning-rate",
+        type=float,
+        default=1e-3,
         help="Learning rate (default: 1e-3)",
     )
     parser.add_argument(
-        "--batch-size", type=int, default=32,
+        "--batch-size",
+        type=int,
+        default=32,
         help="Training batch size (default: 32)",
     )
     parser.add_argument(
-        "--seed", type=int, default=42,
+        "--seed",
+        type=int,
+        default=42,
         help="Random seed (default: 42)",
     )
     parser.add_argument(
-        "--success-threshold", type=float, default=0.05,
+        "--success-threshold",
+        type=float,
+        default=0.05,
         help="MSE threshold for transfer success (default: 0.05)",
     )
 

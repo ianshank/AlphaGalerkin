@@ -33,7 +33,7 @@ from src.pde.config import BoundaryCondition, PDEConfig, PDEType
 
 
 @pytest.fixture(autouse=True)
-def _reset_registries() -> None:  # noqa: PT004
+def _reset_registries() -> None:
     """Reset singleton registries after each test for isolation."""
     yield  # type: ignore[misc]
     AgentRegistry().clear()

@@ -840,7 +840,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
                 continue
             try:
                 method(ctx)
-            except Exception as exc:  # noqa: BLE001 — callbacks must not abort training
+            except Exception as exc:
                 # ``event`` is renamed to ``hook`` because structlog
                 # reserves ``event`` for the message identifier.
                 self._log.warning(

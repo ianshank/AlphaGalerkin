@@ -241,7 +241,7 @@ def test_openai_sdk_signature_compat_sentinel() -> None:
     incompatible upgrades, not a hard import.
     """
     try:
-        import openai  # noqa: F401, PLC0415
+        import openai  # noqa: F401
     except ImportError:
         pytest.skip("openai SDK not installed; signature sentinel skipped")
     from openai import OpenAI

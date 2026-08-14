@@ -9,6 +9,12 @@ default_language_version:
 # Define shared settings
 default_stages: [pre-commit]
 
+# hf_space/ is the HuggingFace deploy bundle: a vendored mirror pinned to an
+# older ruff/gradio and an accepted charter deviation (see ci.yml lint job).
+# Excluding it keeps every hook aligned with the CI lint scope — otherwise
+# touching a mirrored file drowns the commit in ~600 unrelated violations.
+exclude: ^hf_space/
+
 repos:
   # =============================================================
   # General file quality
@@ -30,7 +36,10 @@ repos:
       - id: detect-private-key
       - id: mixed-line-ending
         args: [--fix=lf]
-      - id: check-docstring-first
+      # check-docstring-first is deliberately absent: 21 modules (src/constants.py,
+      # the stochastic package, most scenario configs, ...) use PEP 258-style
+      # attribute docstrings — a string literal documenting the assignment above it —
+      # which the hook misreads as "multiple module docstrings" and rejects.
       - id: debug-statements
       - id: check-ast
 

@@ -137,7 +137,7 @@ def test_list_models_rejects_unknown_response_shape(
 
     _patch_no_cuda(monkeypatch)
     sdk = MagicMock()
-    sdk.models.list.return_value = "not-a-list"  # noqa: ERA001
+    sdk.models.list.return_value = "not-a-list"
     config = LMStudioConfig()
     report = check_lm_studio_server(config, sdk_client=sdk)
     assert report.server_reachable is False

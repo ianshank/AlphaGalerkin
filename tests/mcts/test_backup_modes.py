@@ -37,13 +37,13 @@ class _ConstantEvaluator:
         self.n_actions = n_actions
         self.value = value
 
-    def evaluate(self, state: np.ndarray, legal_actions: list[int]):  # noqa: ANN001
+    def evaluate(self, state: np.ndarray, legal_actions: list[int]):
         from src.mcts.evaluator import EvaluationResult
 
         policy = np.full(self.n_actions, 1.0 / self.n_actions, dtype=np.float32)
         return EvaluationResult(policy=policy, value=self.value)
 
-    def evaluate_batch(self, states, legal_actions_batch):  # noqa: ANN001
+    def evaluate_batch(self, states, legal_actions_batch):
         return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]
 
 
@@ -218,14 +218,14 @@ class _MixedTerminalGame:
 class _StateValueEvaluator:
     """Uniform policy; value ``-1`` for the action-1 leaf, ``0`` elsewhere."""
 
-    def evaluate(self, state: np.ndarray, legal_actions: list[int]):  # noqa: ANN001
+    def evaluate(self, state: np.ndarray, legal_actions: list[int]):
         from src.mcts.evaluator import EvaluationResult
 
         value = -1.0 if float(state[0]) == 2.0 else 0.0
         policy = np.full(2, 0.5, dtype=np.float32)
         return EvaluationResult(policy=policy, value=value)
 
-    def evaluate_batch(self, states, legal_actions_batch):  # noqa: ANN001
+    def evaluate_batch(self, states, legal_actions_batch):
         return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]
 
 

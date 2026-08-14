@@ -17,9 +17,9 @@ from src.research.baselines import SOLVER_REGISTRY, BaseSolver, SolverResult
 
 pytest.importorskip("skfem", reason="scikit-fem required for FEM baseline tests")
 
-import numpy as np  # noqa: E402
+import numpy as np
 
-from src.research.fem_baseline import (  # noqa: E402
+from src.research.fem_baseline import (
     FEMConfig,
     ScikitFEMLShapedSolver,
     ScikitFEMPoissonSolver,

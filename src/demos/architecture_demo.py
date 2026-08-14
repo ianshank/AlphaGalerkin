@@ -513,7 +513,7 @@ def create_architecture_demo_tab(
     config: ArchitectureDemoConfig | None = None,
     model: nn.Module | None = None,
     device: str = "cpu",
-) -> Any:  # noqa: ANN401 - Gradio Tab has complex type
+) -> Any:
     """Create Gradio tab for architecture demo.
 
     Args:

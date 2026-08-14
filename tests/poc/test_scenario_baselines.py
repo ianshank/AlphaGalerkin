@@ -40,7 +40,7 @@ def test_entry_key_is_scenario_dot_metric() -> None:
 
 
 def test_entry_rejects_negative_tolerance() -> None:
-    with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError
+    with pytest.raises(Exception):
         ScenarioBaselineEntry(
             scenario_name="s",
             metric_name="m",

@@ -52,7 +52,7 @@ def _import_openai() -> Any:
     not have the ``[lm-studio]`` extra.
     """
     try:
-        import openai  # noqa: PLC0415
+        import openai
     except ImportError as e:  # pragma: no cover - import-time error path
         raise LMStudioError(
             "The 'openai' package is required for the LM Studio integration. "
@@ -118,7 +118,7 @@ class LMStudioClient:
         if config.preflight_on_construct:
             # Local import avoids a top-level cycle (preflight imports the
             # client indirectly via type-only references).
-            from src.integrations.lm_studio.preflight import (  # noqa: PLC0415
+            from src.integrations.lm_studio.preflight import (
                 check_lm_studio_server,
             )
 

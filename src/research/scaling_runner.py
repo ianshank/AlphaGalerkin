@@ -249,7 +249,7 @@ class WeakScalingRunner:
             html_path = self._maybe_render_html(report, output)
             if html_path is not None:
                 artefacts["html"] = html_path
-        except Exception as exc:  # noqa: BLE001 — never block save on rendering
+        except Exception as exc:
             self._log.warning(
                 "scaling_html_render_failed",
                 error=str(exc),
@@ -307,7 +307,7 @@ class WeakScalingRunner:
                 durations.append(float(duration))
                 last_error = result.l2_error
                 last_metadata = dict(result.metadata)
-            except Exception as exc:  # noqa: BLE001 — sweep must continue
+            except Exception as exc:
                 last_exc = (type(exc).__name__, str(exc))
                 log.warning("scaling_cell_failed", repeat=repeat_idx, error=str(exc))
                 break
@@ -379,7 +379,7 @@ class WeakScalingRunner:
         CSV + JSON artefacts are always emitted.
         """
         try:
-            import matplotlib  # noqa: F401
+            import matplotlib
 
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt

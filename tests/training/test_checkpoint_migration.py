@@ -212,3 +212,32 @@ class TestMigrateCheckpoint:
         data: dict[str, Any] = {}
         result = migrate_checkpoint(data, "1.1.0")
         assert result["version"] == "1.1.0"
+
+
+class TestMigrationDefaultFreeze:
+    """Drift alarm for the intentionally frozen v1.1.0 migration defaults.
+
+    The 1.0.0 -> 1.1.0 migration injects the training defaults that v1.1.0
+    shipped with, as frozen literals (see the freeze comment in
+    src/training/checkpoint_migration.py). This test asserts those literals
+    still equal the live defaults in config.schemas.TrainingConfig. If a live
+    default is ever retuned, this fails on purpose: decide explicitly whether
+    the retune needs a new migration step (old checkpoints keep the old
+    value) or the freeze comment should be updated (old checkpoints adopt
+    the new value). Do not silently re-point the migration at the live
+    constants — that would rewrite what historical checkpoints migrate to.
+    """
+
+    def test_migration_defaults_match_v1_1_shipped_values(self) -> None:
+        """Frozen migration literals equal today's TrainingConfig defaults."""
+        from config.schemas import TrainingConfig
+
+        data: dict[str, Any] = {"version": "1.0.0", "config": {"training": {}}}
+        migrated = migrate_checkpoint(data, "1.1.0")
+        injected = migrated["config"]["training"]
+
+        live = TrainingConfig()
+        assert injected["lbb_loss_weight"] == live.lbb_loss_weight
+        assert injected["lbb_target"] == live.lbb_target
+        assert injected["log_barrier_weight"] == live.log_barrier_weight
+        assert injected["label_smoothing"] == live.label_smoothing

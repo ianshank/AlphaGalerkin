@@ -32,6 +32,7 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
+from src.constants import DEFAULT_BOUNDARY_TOLERANCE
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
 from src.pde.geometry import (
     DomainGeometry,
@@ -208,7 +209,7 @@ class PDEOperator(ABC):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-6,
+        tolerance: float = DEFAULT_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         """Determine which points are on the boundary.
 
@@ -1431,7 +1432,7 @@ class LShapedPoissonOperator(PDEOperator):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-6,
+        tolerance: float = DEFAULT_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         """Determine which points are on the L-shaped boundary.
 

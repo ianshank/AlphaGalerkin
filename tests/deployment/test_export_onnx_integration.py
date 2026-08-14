@@ -177,7 +177,7 @@ class TestONNXExporterActualExport:
 
     def test_export_creates_file(self, tmp_path: Path) -> None:
         """Export produces a file at the specified path."""
-        onnx = pytest.importorskip("onnx")
+        pytest.importorskip("onnx")
         model = _make_model()
         sample = _sample_input()
         out = _export_to(tmp_path, model, sample)

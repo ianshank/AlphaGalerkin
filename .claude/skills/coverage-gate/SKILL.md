@@ -15,15 +15,28 @@ duplication is the mechanism by which `src/pde/game.py`'s docstring became a lie
 straight from CI:
 
 ```bash
-# List every per-module coverage gate and its threshold, from ci.yml
-grep -nE "cov=src/|cov-fail-under=" .github/workflows/ci.yml
+# List every per-module coverage gate and its threshold, from ci.yml.
+# BOTH invocation forms must be matched — see below.
+grep -nE "cov=src/|cov-fail-under=|--include=|--fail-under=" .github/workflows/ci.yml
 ```
 
-Each `Per-module coverage gate` step in `ci.yml` pairs a `--cov=src/<pkg>` with its
-`--cov-fail-under=<N>`. Scenario / integration packages (`src/poc/scenarios/*`,
-`src/integrations/*`, `src/agents/*`) are gated at 85 branch via their dedicated ci.yml steps and
-the CLAUDE.md Regression-Surface rows. A **new** package's gate is added to `ci.yml` in the same PR
-as the package.
+**There are two gate forms, and a grep for only the first silently misses four gates.**
+
+1. **pytest-cov form** (most gates): a `Per-module coverage gate` step pairing `--cov=src/<pkg>`
+   with `--cov-fail-under=<N>`.
+2. **Native-runner form** (`python -m coverage run --include=… ` + `python -m coverage report
+   --fail-under=<N>`): used by the `scaling_law` + `_centaur_common`, `agents/research_loop` +
+   `agents/config`, `transfer_baseline_compare` + `cnn_baseline`, and stochastic-Galerkin/NKE
+   gates. These exist because the dotted `--cov=module.path` form collides with the torch C
+   extension during source discovery (ci.yml documents this at the first such step). Grepping only
+   for `cov=src/` reports these four packages as ungated, which is wrong — they gate at 85.
+
+Scenario / integration packages (`src/poc/scenarios/*`, `src/integrations/*`, `src/agents/*`) are
+gated at 85 branch. A **new** package's gate is added to `ci.yml` in the same PR as the package.
+
+Note that branch coverage is already global via `pyproject.toml [tool.coverage.run] branch = true`,
+so passing `--cov-branch` explicitly (as the template below does, mirroring CI) is belt-and-braces
+rather than the thing that turns branch measurement on.
 
 ## Steps
 

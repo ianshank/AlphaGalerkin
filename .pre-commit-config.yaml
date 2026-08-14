@@ -9,11 +9,14 @@ default_language_version:
 # Define shared settings
 default_stages: [pre-commit]
 
-# hf_space/ is the HuggingFace deploy bundle: a vendored mirror pinned to an
-# older ruff/gradio and an accepted charter deviation (see ci.yml lint job).
-# Excluding it keeps every hook aligned with the CI lint scope — otherwise
-# touching a mirrored file drowns the commit in ~600 unrelated violations.
-exclude: ^hf_space/
+# NOTE: hf_space/ exclusions are applied PER-HOOK (ruff, ruff-format, yamllint),
+# not as a top-level `exclude:`. A top-level exclude is inherited by every hook,
+# which would also disable `detect-private-key` and `check-added-large-files` on
+# hf_space/ — the one tree in this repo that is published to a public
+# HuggingFace Space, and which already carries a 7.2 MB checkpoint.pt (7x the
+# --maxkb=1000 limit). Those two hooks must stay global; only the style/lint
+# hooks need the exclusion (the mirror is pinned to an older ruff/gradio and is
+# an accepted charter deviation — see the ci.yml lint job).
 
 repos:
   # =============================================================
@@ -56,9 +59,11 @@ repos:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
         types_or: [python, pyi]
+        exclude: ^(hf_space|notebooks|claude-code-platform)/
       # Run the Ruff formatter (replaces black)
       - id: ruff-format
         types_or: [python, pyi]
+        exclude: ^(hf_space|notebooks|claude-code-platform)/
 
   # =============================================================
   # Type checking with MyPy (optional, can be slow)
@@ -110,6 +115,7 @@ repos:
         args: [-c, .yamllint.yaml]
         # Only if .yamllint.yaml exists
         files: \.ya?ml$
+        exclude: ^hf_space/
 
   # =============================================================
   # Internal Markdown link check (offline, no network)

@@ -74,12 +74,17 @@ jobs:
           # Install minimal deps for type checking
           pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
-      # Scope matches .pre-commit-config.yaml, which runs ruff on every staged
-      # Python file (dashboard/, scripts/, config/, root-level modules included).
-      # Without parity, code can be CI-green and still be rewritten or rejected by
-      # a contributor's commit hook. hf_space/ stays excluded on BOTH sides
-      # (pre-commit `exclude: ^hf_space/`): it is the deploy bundle, pinned to an
-      # older ruff/gradio, and an accepted charter deviation.
+      # Scope is exactly the complement of pre-commit's ruff `exclude:`
+      # (^(hf_space|notebooks|claude-code-platform)/) — i.e. every tracked *.py
+      # is linted by exactly one of the two, with no file lintable by the commit
+      # hook but invisible to CI. Verify after changing either side with:
+      #   git ls-files '*.py' | grep -vE '^(src/|tests/|dashboard/|scripts/|config/)' \
+      #     | grep -vE '^(conftest|deploy_space)\.py$' \
+      #     | grep -vE '^(hf_space|notebooks|claude-code-platform)/'
+      # (must print nothing). Without parity, code can be CI-green and still be
+      # rewritten or rejected by a contributor's commit hook. The three excluded
+      # trees are the HF deploy bundle (pinned to an older ruff/gradio, an
+      # accepted charter deviation), notebook helpers, and vendored platform code.
       - name: Run Ruff linting
         run: ruff check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --output-format=github
 

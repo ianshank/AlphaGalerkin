@@ -43,7 +43,7 @@ import structlog
 import torch
 from pydantic import Field
 from torch import Tensor
-from torch.amp import GradScaler, autocast  # type: ignore[attr-defined]
+from torch.amp import GradScaler, autocast
 from torch.nn import Module
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import (

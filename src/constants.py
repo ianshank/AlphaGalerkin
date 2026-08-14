@@ -12,9 +12,6 @@ from __future__ import annotations
 DEFAULT_BOARD_SIZES: list[int] = [9, 13, 19]
 """Standard Go board sizes used for curriculum learning."""
 
-DEFAULT_BOARD_SIZE: int = 19
-"""Default single board size (full-size Go)."""
-
 DEFAULT_MAX_MOVES: int = 500
 """Maximum moves per game before declaring a draw."""
 
@@ -112,6 +109,3 @@ DEFAULT_BOUNDARY_TOLERANCE: float = 1e-6
 # ---------------------------------------------------------------------------
 CHECKPOINT_BEST: str = "best.pt"
 """Filename for best-model checkpoint."""
-
-CHECKPOINT_FINAL: str = "final.pt"
-"""Filename for final checkpoint."""

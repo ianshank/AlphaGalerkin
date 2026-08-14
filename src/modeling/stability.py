@@ -19,6 +19,8 @@ from einops import einsum, rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from src.constants import DEFAULT_LBB_THRESHOLD
+
 logger = structlog.get_logger(__name__)
 
 
@@ -33,7 +35,7 @@ class StabilityGuard(nn.Module):
 
     def __init__(
         self,
-        beta_threshold: float = 1e-6,
+        beta_threshold: float = DEFAULT_LBB_THRESHOLD,
         regularization_strength: float = 0.01,
         log_interval: int = 100,
         margin_multiplier: float = 10.0,

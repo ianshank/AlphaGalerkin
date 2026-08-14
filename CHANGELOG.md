@@ -19,7 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passes assumed).
 - `RUF100` added to the ruff select list; 71 stale `noqa` comments removed; CI's lint
   scope now matches pre-commit's in both directions (`scripts/`, `config/`,
-  `conftest.py`, `deploy_space.py` included; `hf_space/` excluded on both sides).
+  `conftest.py`, `deploy_space.py` included; `hf_space/`, `notebooks/` and
+  `claude-code-platform/` excluded on both sides, so every tracked `*.py` is linted by
+  exactly one of the two).
+- **pre-commit hook scope**: the `hf_space/` exclusion is applied **per-hook** (ruff,
+  ruff-format, yamllint), not as a top-level `exclude:`. An intermediate commit in this
+  PR used the top-level form, which is inherited by every hook and therefore also
+  disabled `detect-private-key` and `check-added-large-files` on the tree published to a
+  public HuggingFace Space (already carrying a 7.2 MB `checkpoint.pt`, 7x the
+  `--maxkb=1000` limit). Both guards are global again.
+- **Removed the `check-docstring-first` hook.** It rejects 21 modules repo-wide (20 under
+  `src/`) that use PEP 258 attribute docstrings — a string literal documenting the
+  assignment above it — which the hook misreads as "multiple module docstrings". The
+  idiom is the house style here, so the hook is the thing that does not fit.
 - Removed the dead `benchmark` CI job (matched zero tests); added `--strict-markers`
   to pytest addopts; deduplicated marker registration onto `pyproject.toml`.
 - `src/seeding.py::derive_seeds` replaces 5 duplicated seed-derivation bodies across

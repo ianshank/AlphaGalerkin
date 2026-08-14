@@ -389,7 +389,7 @@ disable_error_code = ["assignment", "arg-type", "return-value", "operator", "uni
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: end-to-end integration tests",

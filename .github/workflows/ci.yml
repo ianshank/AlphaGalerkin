@@ -601,38 +601,6 @@ jobs:
             --tb=short -q
 
   # ============================================================
-  # Performance Benchmark
-  # ============================================================
-  benchmark:
-    name: Performance Benchmark
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: test-fast
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-      - name: Run performance benchmarks
-        run: |
-          pytest tests/ -m "benchmark" --tb=short -q || true
-      - name: Upload benchmark results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results
-          path: benchmark_results/
-          retention-days: 30
-
-  # ============================================================
   # Honest zero-shot transfer regression tripwire
   # ============================================================
   # Runs the CPU CI-tripwire config and diffs the stable headline metrics against the

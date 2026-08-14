@@ -186,13 +186,18 @@ per-module documentation as universal. CLAUDE.md's own Next Steps table
 under-reported this gap, naming only 2 packages
 (`src/refinement`, `src/alphagalerkin`); this PR corrects that row to name
 all 14 (§4 commit 9). The largest undocumented package is `src/research`
-(≈9.9k LOC). `config/scenarios/` had at least one demo YAML with zero
-references anywhere in the repo (deleted in this PR); several hydra-
-addressable training configs (`train_5hr.yaml`, `train_experiment.yaml`,
-`config/presets/*`) have zero *textual* references but are reachable via
-`python -m scripts.train --config-name=...` and are mirrored into
-`hf_space/config/` — deleting them was evaluated and rejected as a quick
-win (§6) in favor of flagging them in backlog B11.
+(≈9.9k LOC). A grep for `config/scenarios/stochastic_galerkin_compare_demo.yaml`
+found zero literal references and it was deleted in an earlier commit in
+this PR — CI's `Unit Tests (Fast)` job then failed on all three Python
+versions: `tests/poc/test_stochastic_galerkin_compare_config.py` builds the
+path via an f-string (`f"stochastic_galerkin_compare_{basename}.yaml"` over
+`basename in ["ci", "demo"]`), which a literal grep cannot see. The file was
+restored byte-identical and the deletion dropped from this PR's quick wins;
+see §6. Several hydra-addressable training configs (`train_5hr.yaml`,
+`train_experiment.yaml`, `config/presets/*`) have zero *textual* references
+but are reachable via `python -m scripts.train --config-name=...` and are
+mirrored into `hf_space/config/` — deleting them was evaluated and rejected
+as a quick win (§6) in favor of flagging them in backlog B11.
 
 ## 4. Quick wins delivered in this PR
 
@@ -202,14 +207,24 @@ win (§6) in favor of flagging them in backlog B11.
 | `types` | Fix the 3 measured `unused-ignore` errors; `mypy src/ --strict` now exits 0 | `mypy src/ --strict --ignore-missing-imports`; `pytest tests/training/test_base_trainer.py tests/research/test_baselines.py tests/research/test_ns_baseline.py` |
 | `test(poc)` | New `tests/poc/conftest.py` — additive snapshot/restore fixture around `ScenarioRegistry` | `pytest tests/poc`; the order-stress trio (`test_complexity_scenario.py test_registry.py test_cli_commands.py`); `pytest tests/docs/ tests/regression/test_related_work_guard.py tests/hf_space/` |
 | `chore(ci)` | Delete the dead `benchmark` job; add `--strict-markers`; delete 6 redundant marker registrations (5 in `tests/conftest.py`, 1 in `tests/dashboard/conftest.py`) | `pytest --collect-only`; `pytest tests/dashboard/`; `check_doc_links.py` |
-| `refactor(seeding)` | `derive_seeds(base_seed, n_seeds, stride)` in `src/seeding.py`; 5 config modules + `seed_sweep.py` delegate to it; **strides unchanged** | The 6 config-test files asserting seed derivation |
+| `refactor(seeding)` | `derive_seeds(base_seed, n_seeds, stride)` in `src/seeding.py`; 4 config modules + `seed_sweep.py` delegate to it; **strides unchanged**. `stochastic_galerkin_compare_config.py` does **not** adopt it — see the CI-caught correction below | The config-test files asserting seed derivation |
 | `refactor(poc)` | `resolve_device("auto", ...)` in `stability.py`/`transfer.py`/`complexity.py` (byte-equivalent to the prior inline expression); `_median = median_of` shim in `llm_prior_ablation.py` | LLM-prior mocked-CPU surface + `test_centaur_regression.py`; `test_stability_scenario.py test_complexity_scenario.py test_runner.py test_device.py` |
 | `refactor(constants)` | Wire 2 exact concept+value twins (`DEFAULT_LBB_THRESHOLD`, `DEFAULT_DROPOUT`) to their call sites; delete 2 twinless dead constants + their test assertions | `tests/test_constants.py tests/modeling/` |
-| `chore(observability+config)` | Log 4 genuinely-silent exception swallows; delete 1 zero-reference YAML; add a `viz` optional-dependency extra; remove the dead `doc8` pre-commit hook | Mesh-refinement/preflight/CLI tests; SBIR P40 surface; the stochastic-galerkin script test |
+| `chore(observability+config)` | Log 4 genuinely-silent exception swallows; add a `viz` optional-dependency extra; remove the dead `doc8` pre-commit hook | Mesh-refinement/preflight/CLI tests; SBIR P40 surface |
 | `docs(audit)` | This document + `mkdocs.yml` exclude entry + CHANGELOG + CLAUDE.md milestone bullet + AGENT.md row correction | `check_doc_links.py`; `pytest tests/docs/` |
 
 Every commit above ran `mypy src/ --strict --ignore-missing-imports`
 (clean throughout) and the full extended ruff scope before landing.
+
+**A CI-caught correction, made after the commits above landed and after
+this document was first written**: the `chore(observability+config)`
+commit's YAML deletion and the `refactor(seeding)` commit's adoption in
+`stochastic_galerkin_compare_config.py` both turned out to be wrong, and
+both were caught by GitHub Actions' `Unit Tests (Fast)` job failing on all
+three Python versions within minutes of the PR opening — see §6 for the
+two root causes and the fixes. Left in the git history rather than
+squashed, since a hygiene PR silently self-correcting its own history
+would undercut the point.
 
 ## 5. Prioritized backlog
 
@@ -236,6 +251,29 @@ Documented, not implemented. Ordered by suggested sequencing.
 
 ## 6. Rejected or deferred, with reasons
 
+- **Two errors that made it past local verification into CI, caught and
+  fixed within minutes.** `git grep` for the literal filename
+  `stochastic_galerkin_compare_demo.yaml` found nothing before deleting it
+  as an orphan — but `tests/poc/test_stochastic_galerkin_compare_config.py`
+  builds that path from an f-string
+  (`f"stochastic_galerkin_compare_{basename}.yaml"` parametrized over
+  `["ci", "demo"]`), which a literal grep cannot find. Separately, adopting
+  `derive_seeds` in `stochastic_galerkin_compare_config.py` added
+  `src.seeding` as a new import, tripping
+  `tests/pde/stochastic/test_import_isolation.py`'s explicit, curated
+  allowlist of that layer's dependency surface (by design — its own error
+  message reads "extend the allowlist deliberately if this is intended").
+  Both were real regressions, both failed CI's `Unit Tests (Fast)` job on
+  all three Python versions, and both were fixed the same way they'd be
+  fixed in any PR: the YAML was restored byte-identical from git history,
+  and `stochastic_galerkin_compare_config.py`'s `resolved_seeds()` was
+  reverted to its original inline body rather than widening a guard that
+  exists specifically to keep this one module's dependencies narrow and
+  audited (CLAUDE.md documents that narrow surface explicitly). The lesson
+  for future work in this vein: a "zero references" grep is only as good
+  as its ability to see constructed paths, and any new import into
+  `src/poc/scenarios/stochastic_galerkin_compare*.py` specifically needs
+  the import-isolation test checked, not just the general test suite.
 - **`_PDE_TYPE_MAP` deletion** — considered dead (never read in
   `llm_prior_ablation.py`), but it is pinned by
   `tests/regression/test_centaur_regression.py`'s identity assertion

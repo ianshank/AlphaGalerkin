@@ -21,7 +21,6 @@ from __future__ import annotations
 from pydantic import Field, field_validator, model_validator
 
 from src.poc.config import BaseScenarioConfig, MetricThreshold
-from src.seeding import derive_seeds
 
 SCENARIO_NAME = "stochastic_galerkin_compare"
 """Registry / YAML dispatch key for the scenario."""
@@ -157,7 +156,7 @@ class StochasticGalerkinCompareConfig(BaseScenarioConfig):
 
     def resolved_seeds(self) -> list[int]:
         """Derived per-run training seeds: seed + i·stride (prime stride)."""
-        return derive_seeds(self.seed, self.n_seeds, _SEED_PRIME_STRIDE)
+        return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
 
     def get_default_thresholds(self) -> list[MetricThreshold]:
         """The single gated metric (spec Thresholds table; AQA-asserted)."""

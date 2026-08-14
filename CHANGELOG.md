@@ -22,9 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `conftest.py`, `deploy_space.py` included; `hf_space/` excluded on both sides).
 - Removed the dead `benchmark` CI job (matched zero tests); added `--strict-markers`
   to pytest addopts; deduplicated marker registration onto `pyproject.toml`.
-- `src/seeding.py::derive_seeds` replaces 6 duplicated seed-derivation bodies across
-  `src/agents/config.py`, 4 PoC scenario configs, and `src/research/seed_sweep.py`
+- `src/seeding.py::derive_seeds` replaces 5 duplicated seed-derivation bodies across
+  `src/agents/config.py`, 3 PoC scenario configs, and `src/research/seed_sweep.py`
   (each module's stride value is unchanged, so no scenario's derived seeds change).
+  `stochastic_galerkin_compare_config.py` was deliberately excluded after CI's
+  import-isolation guard for that layer's dependency surface caught the addition —
+  see `docs/CODE_HYGIENE_AUDIT.md` §6.
 - `tests/poc/conftest.py` adds a save/restore fixture around the `ScenarioRegistry`
   singleton, closing the no-teardown gap `test_charter_alignment.py` previously
   worked around with a subprocess.
@@ -36,8 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Logging added at 4 previously-silent exception-swallow sites (mesh-refinement
   interpolator fallback, LM Studio VRAM probe, PoC CLI scenario listing, the SBIR
   baseline-registry default fallback).
-- Deleted an unreferenced scenario config YAML; added a `viz` optional-dependency
-  extra for matplotlib; removed the dead `doc8` pre-commit hook (0 `.rst` files).
+- Added a `viz` optional-dependency extra for matplotlib; removed the dead `doc8`
+  pre-commit hook (0 `.rst` files). (A scenario config YAML was deleted and then
+  restored after CI showed a parametrized test loads it by a constructed path a
+  literal grep can't see — see `docs/CODE_HYGIENE_AUDIT.md` §6.)
 
 ### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
 

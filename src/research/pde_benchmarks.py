@@ -470,7 +470,10 @@ class PDEBenchmarkRunner:
             # Provide defaults so the runner still works
             try:
                 solvers.append(get_solver("uniform_fdm"))
-            except Exception:  # pragma: no cover - defensive fallback
+            except Exception:
+                # Defensive: even the default baseline can fail to construct.
+                # Covered by tests/research/test_pde_benchmarks.py
+                # ``TestGetBaselines::test_default_baseline_failure_*``.
                 self._log.exception("default_baseline_init_failed", baseline="uniform_fdm")
 
         return solvers

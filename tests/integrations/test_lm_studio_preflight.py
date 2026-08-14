@@ -194,3 +194,77 @@ def test_preflight_skips_vram_when_no_cuda(monkeypatch: pytest.MonkeyPatch) -> N
     assert report.free_vram_gib is None
     assert report.vram_sufficient is True
     assert report.passed is True
+
+
+def _patch_cuda_with_raising_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    n_devices: int,
+    *,
+    good_index: int | None = None,
+    free_bytes: int = 0,
+) -> None:
+    """Make ``mem_get_info`` raise for every device except ``good_index``."""
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: n_devices)
+
+    def _mem_get_info(idx: int = 0) -> tuple[int, int]:
+        if idx == good_index:
+            return free_bytes, free_bytes
+        raise RuntimeError(f"CUDA driver error on device {idx}")
+
+    monkeypatch.setattr(torch.cuda, "mem_get_info", _mem_get_info)
+
+
+def test_vram_probe_failure_on_every_device_skips_the_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A raising ``mem_get_info`` must not fail preflight.
+
+    Covers the ``except Exception`` arm of ``_check_vram``: when no device can
+    be inspected, ``inspected`` stays False and the check degrades to
+    "skipped" (``free_vram_gib=None``, ``vram_sufficient=True``) rather than
+    blocking a scenario on an un-introspectable GPU.
+    """
+    _patch_cuda_with_raising_probe(monkeypatch, n_devices=2)
+    config = LMStudioConfig(min_free_vram_gib=128.0)
+    report = check_lm_studio_server(config, sdk_client=_StubClient(_OkModels(ids=[config.model])))
+    assert report.free_vram_gib is None
+    assert report.vram_sufficient is True
+    assert report.passed is True
+
+
+def test_vram_probe_failure_is_logged_per_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The swallowed per-device probe failure emits a structured warning.
+
+    A silent ``continue`` here previously made "GPU present but unreadable"
+    indistinguishable from "no GPU". The event must name the device index and
+    carry the driver error text.
+    """
+    from structlog.testing import capture_logs
+
+    _patch_cuda_with_raising_probe(monkeypatch, n_devices=2)
+    config = LMStudioConfig()
+    with capture_logs() as logs:
+        check_lm_studio_server(config, sdk_client=_StubClient(_OkModels(ids=[config.model])))
+
+    events = [entry for entry in logs if entry["event"] == "vram_probe_failed"]
+    assert [entry["device_index"] for entry in events] == [0, 1]
+    assert all(entry["log_level"] == "warning" for entry in events)
+    assert all("CUDA driver error" in entry["error"] for entry in events)
+
+
+def test_vram_probe_skips_only_the_failing_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One bad device does not hide a healthy one.
+
+    Device 0 raises, device 1 reports 16 GiB free: the loop must ``continue``
+    past the failure and still report device 1's headroom as sufficient.
+    """
+    sixteen_gib = 16 * 1024**3
+    _patch_cuda_with_raising_probe(monkeypatch, n_devices=2, good_index=1, free_bytes=sixteen_gib)
+    config = LMStudioConfig(min_free_vram_gib=8.0)
+    report = check_lm_studio_server(config, sdk_client=_StubClient(_OkModels(ids=[config.model])))
+    assert report.free_vram_gib == pytest.approx(16.0)
+    assert report.vram_sufficient is True
+    assert report.passed is True

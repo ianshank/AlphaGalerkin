@@ -307,6 +307,42 @@ class TestComplexityScenarioLifecycle:
         assert s._device is not None
         assert s._device in (torch.device("cpu"), torch.device("cuda"))
 
+    def test_setup_delegates_to_resolve_device_with_auto(
+        self, small_config: ComplexityScenarioConfig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The device comes from the shared ``resolve_device('auto')`` policy.
+
+        Asserting the resolved value alone cannot distinguish the helper from
+        the inline ``torch.device("cuda" if ... else "cpu")`` it replaced —
+        both yield CPU here — so the call itself is asserted.
+        """
+        import src.poc.scenarios.complexity as complexity_mod
+        from src.poc.scenarios.complexity import ComplexityScenario
+
+        calls: list[tuple[str, str]] = []
+
+        def _spy(preference: str, *, context: str = "scenario") -> torch.device:
+            calls.append((preference, context))
+            return torch.device("cpu")
+
+        monkeypatch.setattr(complexity_mod, "resolve_device", _spy)
+        s = ComplexityScenario(config=small_config)
+        s.setup()
+
+        assert calls == [("auto", "complexity")]
+        assert s._device == torch.device("cpu")
+
+    def test_setup_does_not_raise_without_cuda(
+        self, small_config: ComplexityScenarioConfig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``"auto"`` falls back silently; ``"cuda"`` would raise on CPU CI."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        from src.poc.scenarios.complexity import ComplexityScenario
+
+        s = ComplexityScenario(config=small_config)
+        s.setup()
+        assert s._device == torch.device("cpu")
+
     def test_setup_sets_scenario_logger(self, small_config: ComplexityScenarioConfig) -> None:
         """setup() initializes the scenario logger."""
         from src.poc.scenarios.complexity import ComplexityScenario

@@ -323,6 +323,91 @@ class TestRunAll:
 
 
 # ---------------------------------------------------------------------------
+# _get_baselines
+# ---------------------------------------------------------------------------
+
+
+class TestGetBaselines:
+    """Baseline-solver resolution, including both failure arms."""
+
+    def test_configured_baseline_is_instantiated(self, minimal_config_yaml: Path):
+        """The happy path returns one solver for the single configured entry."""
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+        solvers = runner._get_baselines()
+        assert len(solvers) == 1
+
+    def test_unavailable_baseline_is_skipped(self, tmp_path: Path):
+        """A name absent from the solver registry is dropped, not fatal."""
+        config = {
+            "suite_name": "unknown_baseline",
+            "benchmarks": [],
+            "baselines": [{"name": "no_such_solver"}],
+        }
+        path = tmp_path / "unknown_baseline.yaml"
+        path.write_text(yaml.dump(config), encoding="utf-8")
+        runner = PDEBenchmarkRunner(path)
+        # Falls through to the default-baseline path, which succeeds.
+        assert len(runner._get_baselines()) == 1
+
+    def test_empty_baselines_falls_back_to_uniform_fdm(self, empty_baselines_config: Path):
+        """An empty ``baselines`` list is backfilled with ``uniform_fdm``."""
+        runner = PDEBenchmarkRunner(empty_baselines_config)
+        solvers = runner._get_baselines()
+        assert len(solvers) == 1
+        assert "fdm" in type(solvers[0]).__name__.lower()
+
+    def test_default_baseline_failure_is_logged_and_survivable(
+        self, empty_baselines_config: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A broken default solver returns an empty list instead of raising.
+
+        Covers the defensive ``except`` on the ``uniform_fdm`` backfill: the
+        runner must not take down the whole benchmark suite when even the
+        default baseline cannot be constructed, and the swallowed error must
+        be logged with a traceback (``log.exception``) rather than vanishing.
+        """
+        from structlog.testing import capture_logs
+
+        import src.research.pde_benchmarks as pde_benchmarks
+
+        def _boom(name: str, **_: object) -> object:
+            raise RuntimeError(f"solver {name} unavailable")
+
+        monkeypatch.setattr(pde_benchmarks, "get_solver", _boom)
+        runner = PDEBenchmarkRunner(empty_baselines_config)
+
+        with capture_logs() as logs:
+            solvers = runner._get_baselines()
+
+        assert solvers == []
+        events = [entry for entry in logs if entry["event"] == "default_baseline_init_failed"]
+        assert len(events) == 1
+        assert events[0]["baseline"] == "uniform_fdm"
+        assert events[0]["log_level"] == "error"
+
+    def test_configured_baseline_failure_is_logged(
+        self, minimal_config_yaml: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A registered-but-failing solver logs ``baseline_init_failed``."""
+        from structlog.testing import capture_logs
+
+        import src.research.pde_benchmarks as pde_benchmarks
+
+        def _boom(name: str, **_: object) -> object:
+            raise RuntimeError(f"solver {name} unavailable")
+
+        monkeypatch.setattr(pde_benchmarks, "get_solver", _boom)
+        runner = PDEBenchmarkRunner(minimal_config_yaml)
+
+        with capture_logs() as logs:
+            solvers = runner._get_baselines()
+
+        assert solvers == []
+        assert any(entry["event"] == "baseline_init_failed" for entry in logs)
+        assert any(entry["event"] == "default_baseline_init_failed" for entry in logs)
+
+
+# ---------------------------------------------------------------------------
 # generate_report
 # ---------------------------------------------------------------------------
 

@@ -229,6 +229,52 @@ class TestCmdList:
         assert "bad_scenario" in captured.out
         assert "(no description)" in captured.out
 
+    def test_list_logs_why_a_description_is_unavailable(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The swallowed construction error is reported, not silently hidden.
+
+        ``(no description)`` in the CLI output is indistinguishable from a
+        scenario that genuinely has no description, so the underlying
+        exception must reach the structured log with the scenario name.
+        """
+        from structlog.testing import capture_logs
+
+        from src.poc.cli import cmd_list
+
+        class BadScenario(BaseScenario):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                raise RuntimeError("config schema rejected the temp instance")
+
+            def execute(self) -> ScenarioResult:
+                raise NotImplementedError
+
+        ScenarioRegistry().register("bad_scenario_logged", BadScenario)
+
+        with patch("src.poc.cli.register_builtin_scenarios"), capture_logs() as logs:
+            assert cmd_list(argparse.Namespace()) == 0
+        capsys.readouterr()
+
+        events = [entry for entry in logs if entry["event"] == "scenario_description_unavailable"]
+        assert len(events) == 1
+        assert events[0]["name"] == "bad_scenario_logged"
+        assert events[0]["log_level"] == "warning"
+        assert "config schema rejected" in events[0]["error"]
+
+    def test_list_healthy_scenarios_log_nothing(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """No warning is emitted when every scenario constructs cleanly."""
+        from structlog.testing import capture_logs
+
+        from src.poc.cli import cmd_list
+
+        _register_dummy_scenario("healthy")
+
+        with patch("src.poc.cli.register_builtin_scenarios"), capture_logs() as logs:
+            assert cmd_list(argparse.Namespace()) == 0
+        capsys.readouterr()
+
+        assert not [entry for entry in logs if entry["event"] == "scenario_description_unavailable"]
+
 
 # ---------------------------------------------------------------------------
 # Tests for cmd_info

@@ -468,10 +468,10 @@ class PDEBenchmarkRunner:
         if not solvers:
             self._log.warning("no_baselines_available_using_defaults")
             # Provide defaults so the runner still works
-            import contextlib
-
-            with contextlib.suppress(Exception):
+            try:
                 solvers.append(get_solver("uniform_fdm"))
+            except Exception:  # pragma: no cover - defensive fallback
+                self._log.exception("default_baseline_init_failed", baseline="uniform_fdm")
 
         return solvers
 

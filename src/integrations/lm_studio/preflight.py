@@ -128,7 +128,8 @@ def _check_vram(min_free_gib: float) -> tuple[float | None, bool]:
     for idx in range(n_devices):
         try:
             free_bytes, _total = torch.cuda.mem_get_info(idx)
-        except Exception:  # pragma: no cover - per-device probe failure
+        except Exception as exc:  # pragma: no cover - per-device probe failure
+            logger.warning("vram_probe_failed", device_index=idx, error=str(exc))
             continue
         free_gib = float(free_bytes) / _BYTES_PER_GIB
         best_free_gib = max(best_free_gib, free_gib)

@@ -4,6 +4,9 @@ Generates self-contained, single-file HTML reports with embedded
 base64-encoded plot images and styled metrics tables. Uses Python
 string templates (no Jinja2 dependency) for minimal footprint.
 
+Requires the ``viz`` extra (``pip install -e '.[viz]'``); matplotlib is not
+a base dependency.
+
 Example:
     from src.poc.visualization.reports import HTMLReportGenerator, ReportSection
     from src.poc.visualization.config import VisualizationConfig

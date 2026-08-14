@@ -821,7 +821,12 @@ class MeshRefinementGame(PDEGame):
             t0 = time.perf_counter()
             try:
                 linear = LinearNDInterpolator(old_coords, old_solution, fill_value=np.nan)
-            except Exception:  # pragma: no cover - degenerate triangulation
+            except Exception as exc:  # pragma: no cover - degenerate triangulation
+                logger.warning(
+                    "interpolator_build_failed",
+                    n_points=len(old_coords),
+                    error=str(exc),
+                )
                 linear = None
             else:
                 self._cached_interp_state = old_state

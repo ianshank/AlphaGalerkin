@@ -55,8 +55,19 @@ class TestTransferScenarioInit:
     """Construction and registration."""
 
     def test_registered_under_transfer(self) -> None:
-        """The ``@scenario('transfer')`` decorator registered the class."""
-        assert ScenarioRegistry().get("transfer") is TransferScenario
+        """The ``@scenario('transfer')`` decorator registered the class.
+
+        Both sides are resolved from the *current* ``sys.modules`` rather than
+        the module-level import. Sibling files in this package purge
+        ``sys.modules['src.poc.scenarios*']`` to make the decorators re-fire, so
+        after they run the registry holds a freshly-imported class object while
+        the top-level ``TransferScenario`` still points at the original — two
+        distinct classes with identical names, which makes an ``is`` comparison
+        fail with the baffling ``assert <class 'X'> is X``.
+        """
+        import src.poc.scenarios.transfer as transfer_mod
+
+        assert ScenarioRegistry().get("transfer") is transfer_mod.TransferScenario
 
     def test_config_class_is_transfer_config(self) -> None:
         """The scenario declares its Pydantic config class."""
@@ -96,6 +107,14 @@ class TestTransferScenarioSetup:
         ``torch.device("cuda" if torch.cuda.is_available() else "cpu")`` would
         produce the same value on this box but never call ``resolve_device``,
         so asserting the value alone cannot catch a revert.
+
+        The scenario class is taken off ``transfer_mod`` rather than the
+        module-level import: sibling files in this package purge
+        ``sys.modules['src.poc.scenarios*']``, so after they run this re-import
+        yields a *different* module object than the one the top-level
+        ``TransferScenario`` was bound from. Patching one and instantiating the
+        other left the spy uninstalled on the class actually under test, which
+        made this assertion pass alone and fail in a full-package run.
         """
         import src.poc.scenarios.transfer as transfer_mod
 
@@ -106,7 +125,7 @@ class TestTransferScenarioSetup:
             return torch.device("cpu")
 
         monkeypatch.setattr(transfer_mod, "resolve_device", _spy)
-        s = TransferScenario(small_config)
+        s = transfer_mod.TransferScenario(small_config)
         s.setup()
 
         assert calls == [("auto", "transfer")]
@@ -124,6 +143,7 @@ class TestTransferScenarioSetup:
         monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
         s = TransferScenario(small_config)
         s.setup()  # must not raise
+        assert s._device is not None
         assert s._device.type == "cpu"
 
     def test_setup_creates_output_directory(

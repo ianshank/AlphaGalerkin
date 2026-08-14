@@ -34,6 +34,23 @@ Closing this properly means reworking those local fixtures (they are not
 homogeneous — two purge ``sys.modules``, two re-register for identity checks),
 which is tracked as **B16** in ``docs/CODE_HYGIENE_AUDIT.md``. Until then the
 subprocess workaround in the charter guard remains the correct mitigation.
+
+Writing a test in this package? Two rules follow from the ``sys.modules`` purge,
+and both were learned the hard way (each produced a test that passed alone and
+failed in a full run):
+
+1. **Patch and instantiate through the same module object.** A module-level
+   ``from src.poc.scenarios.transfer import TransferScenario`` binds the class
+   from the module object that existed at collection time. After a purge, a
+   later ``import src.poc.scenarios.transfer as m`` inside a test body yields a
+   *different* module, so ``monkeypatch.setattr(m, "resolve_device", spy)``
+   leaves the originally-bound class untouched and the spy never fires. Do
+   ``m.TransferScenario(...)``, not the top-level name.
+2. **Never compare classes across a purge with ``is``.** The purge produces two
+   live classes with the same ``__qualname__``, so
+   ``assert registry.get("transfer") is TransferScenario`` can fail with the
+   memorably useless ``assert <class 'X'> is X``. Resolve both sides from the
+   current ``sys.modules``.
 """
 
 from __future__ import annotations

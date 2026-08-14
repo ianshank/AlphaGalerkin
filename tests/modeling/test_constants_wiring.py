@@ -26,6 +26,7 @@ Validates:
 from __future__ import annotations
 
 import inspect
+from typing import cast
 
 import pytest
 import torch
@@ -65,7 +66,8 @@ class TestFNetDropoutWiring:
     def test_fnet_stack_default_dropout_matches_constant(self) -> None:
         """The stack propagates the same default into every block."""
         stack = FNetStack(d_model=16, n_layers=2)
-        assert [layer.dropout.p for layer in stack.layers] == [C.DEFAULT_DROPOUT] * 2
+        rates = [cast(FNetBlock, layer).dropout.p for layer in stack.layers]
+        assert rates == [C.DEFAULT_DROPOUT] * 2
 
     def test_hybrid_default_dropout_matches_constant(self) -> None:
         """The Galerkin/FNet hybrid shares the same default."""

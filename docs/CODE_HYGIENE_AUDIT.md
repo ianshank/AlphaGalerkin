@@ -496,6 +496,26 @@ rejected, it would add per-episode `compute_exact_error` solves).
 
 Gate-setting input for Phase 2c: gate at actual−2, ratchet toward 85.
 
+**[2026-08-15: 6 of 8 CLOSED.]** `src/agents`, `src/tools`, `src/experiments`,
+`src/curriculum`, `src/engines`, `src/data` are now gated in `ci.yml`'s `coverage`
+job at floor(re-measured branch %)−2 (capped at 85), mirrored into CLAUDE.md's
+Regression Surface and the charter gates register
+(`openspec/specs/project-charter/spec.md`). `src/templates` and `src/math_kernel`
+were re-measured and deliberately **not** gated — triage found a real gap in each
+rather than dead code: `src/templates/cli.py` measures 0% directly but is live
+production code (`src/agents/cli.py` imports it; exercised indirectly at ~66% via
+`tests/agents/test_cli.py` + `tests/e2e/test_centaur_e2e.py`) with no test in
+`tests/templates/` itself; `src/math_kernel` is uniformly low (55–64%) across
+`basis.py`/`integral.py`/`spectral.py`, driven almost entirely by the
+`HAS_JAX`-guarded `Jax*` classes that no test anywhere in the repo (including the
+dedicated `test-jax` CI job) exercises, plus a handful of untested
+input-validation branches. Both remain open Phase-2c candidates, now with a
+concrete test-writing scope instead of an unmeasured guess. This closes the
+`src/agents`/`src/tools`/`src/experiments`/`src/curriculum`/`src/engines`/`src/data`
+half of Phase 2c only — B20's own literal list (`src/poc/cli.py`,
+`src/poc/visualization/*`, the 3 classic scenarios, `src/constants.py`,
+`src/seeding.py`) is a separate set and remains untouched.
+
 | Package | Branch % | Tests | Notes |
 |---|---|---|---|
 | src/agents | 95.4 | 292 | path-form `--cov=src/agents` measures the whole package fine; the CI native-runner step gates only research_loop+config (85). `-p no:cov` there is the dotted-cov/torch workaround, NOT disabled coverage |

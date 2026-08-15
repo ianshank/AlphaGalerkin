@@ -366,3 +366,111 @@ class TestGumbelNodeEdgeCases:
         node.value_sum = -8.0
 
         assert node.value == -0.8
+
+
+# --- Named-constant site binding (static guard) ---
+
+
+class TestGumbelConstantSiteBinding:
+    """Static guard that the two 1e-8 constants sit at the sites they name.
+
+    ``GUMBEL_NORMALIZATION_EPSILON`` (inert division guard) and
+    ``GUMBEL_LOG_PRIOR_FLOOR`` (an algorithmic knob that shifts action
+    selection) share the same value today, so no purely numeric assertion can
+    detect a swap. These tests parse ``src/mcts/gumbel.py`` and check which
+    constant appears at which kind of expression, so swapping them -- or
+    reintroducing a bare ``1e-8`` -- fails loudly.
+    """
+
+    NORMALIZATION_NAME = "GUMBEL_NORMALIZATION_EPSILON"
+    LOG_PRIOR_NAME = "GUMBEL_LOG_PRIOR_FLOOR"
+    EXPECTED_NORMALIZATION_SITES = 3
+    EXPECTED_LOG_SITES = 3
+
+    @staticmethod
+    def _module_tree() -> ast.Module:
+        import ast
+        import inspect
+        from pathlib import Path
+
+        import src.mcts.gumbel as gumbel_module
+
+        return ast.parse(Path(inspect.getfile(gumbel_module)).read_text(encoding="utf-8"))
+
+    @classmethod
+    def _sum_normalizer_names(cls) -> list[str]:
+        """Names added to a ``<expr>.sum()`` call, i.e. denominators."""
+        import ast
+
+        names: list[str] = []
+        for node in ast.walk(cls._module_tree()):
+            if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Add):
+                continue
+            left = node.left
+            is_sum_call = (
+                isinstance(left, ast.Call)
+                and isinstance(left.func, ast.Attribute)
+                and left.func.attr == "sum"
+            )
+            if is_sum_call and isinstance(node.right, ast.Name):
+                names.append(node.right.id)
+        return names
+
+    @classmethod
+    def _log_argument_floor_names(cls) -> list[str]:
+        """Names added inside an ``np.log(... + <name>)`` argument."""
+        import ast
+
+        names: list[str] = []
+        for node in ast.walk(cls._module_tree()):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Attribute) and func.attr == "log"):
+                continue
+            if not node.args:
+                continue
+            arg = node.args[0]
+            if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+                if isinstance(arg.right, ast.Name):
+                    names.append(arg.right.id)
+        return names
+
+    def test_every_sum_normalizer_uses_the_normalization_constant(self) -> None:
+        """All `.sum() + X` denominators bind to GUMBEL_NORMALIZATION_EPSILON."""
+        names = self._sum_normalizer_names()
+        assert len(names) == self.EXPECTED_NORMALIZATION_SITES
+        assert set(names) == {self.NORMALIZATION_NAME}
+
+    def test_every_log_floor_uses_the_log_prior_constant(self) -> None:
+        """All `np.log(p + X)` floors bind to GUMBEL_LOG_PRIOR_FLOOR."""
+        names = self._log_argument_floor_names()
+        assert len(names) == self.EXPECTED_LOG_SITES
+        assert set(names) == {self.LOG_PRIOR_NAME}
+
+    def test_no_bare_epsilon_literal_remains(self) -> None:
+        """1e-8 appears only in the two constant definitions, never inline."""
+        import ast
+
+        tree = self._module_tree()
+        definition_names = {self.NORMALIZATION_NAME, self.LOG_PRIOR_NAME}
+        inline_literals = 0
+        for top in tree.body:
+            is_constant_def = (
+                isinstance(top, ast.AnnAssign)
+                and isinstance(top.target, ast.Name)
+                and top.target.id in definition_names
+            )
+            if is_constant_def:
+                continue
+            for node in ast.walk(top):
+                if isinstance(node, ast.Constant) and node.value == 1e-8:
+                    inline_literals += 1
+        assert inline_literals == 0
+
+    def test_both_constants_are_module_level_and_equal_today(self) -> None:
+        """Both exist as separate module attributes with the documented value."""
+        from src.mcts.gumbel import GUMBEL_LOG_PRIOR_FLOOR, GUMBEL_NORMALIZATION_EPSILON
+
+        assert GUMBEL_NORMALIZATION_EPSILON == 1e-8
+        assert GUMBEL_LOG_PRIOR_FLOOR == 1e-8

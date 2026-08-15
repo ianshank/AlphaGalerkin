@@ -22,6 +22,10 @@ Interpretation:
   python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
   ```
 
+- `src/training` has **one accepted baseline** (`BaseLoss.forward`,
+  `src/training/losses/base.py:40` — a Protocol member with no reader), recorded in
+  `docs/CODE_HYGIENE_AUDIT.md` §7.3. It is *not* in the blocking set; run it without
+  `--fail-on-missing` and treat anything beyond that one hit as a blocker.
 - A hit is fixed by wiring the method to a call site, deleting it (and its docstring), or confirming
   the protocol member has a reader. `PDEGame.get_result` (`docs/CODE_HYGIENE_AUDIT.md` **B17**) is
   the worked example of the delete path — and of extracting the one genuinely-wanted piece

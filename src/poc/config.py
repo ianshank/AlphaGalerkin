@@ -20,6 +20,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ScenarioTier(str, Enum):
     """Validation tier indicating depth of testing."""
@@ -131,7 +133,7 @@ class TransferScenarioConfig(BaseScenarioConfig):
         default=9, ge=3, le=25, description="Grid size for training (e.g., 9 for 9x9)"
     )
     eval_resolutions: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Grid sizes for evaluation",
     )
     primary_eval_resolution: int = Field(

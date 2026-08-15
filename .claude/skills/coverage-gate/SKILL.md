@@ -20,16 +20,27 @@ straight from CI:
 grep -nE "cov=src/|cov-fail-under=|--include=|--fail-under=" .github/workflows/ci.yml
 ```
 
-**There are two gate forms, and a grep for only the first silently misses four gates.**
+**There are three `--cov` spec forms and only two of them work. Picking the wrong one produces a
+gate that passes while measuring nothing — this is not hypothetical, it silently degraded the
+llm_prior gate until 2026-08 (see `docs/CODE_HYGIENE_AUDIT.md` §7.1).**
 
-1. **pytest-cov form** (most gates): a `Per-module coverage gate` step pairing `--cov=src/<pkg>`
-   with `--cov-fail-under=<N>`.
-2. **Native-runner form** (`python -m coverage run --include=… ` + `python -m coverage report
-   --fail-under=<N>`): used by the `scaling_law` + `_centaur_common`, `agents/research_loop` +
-   `agents/config`, `transfer_baseline_compare` + `cnn_baseline`, and stochastic-Galerkin/NKE
-   gates. These exist because the dotted `--cov=module.path` form collides with the torch C
-   extension during source discovery (ci.yml documents this at the first such step). Grepping only
-   for `cov=src/` reports these four packages as ungated, which is wrong — they gate at 85.
+| Spec form | Example | Verdict |
+|---|---|---|
+| **Directory** | `--cov=src/pde` | ✅ Works with pytest-cov. Use for whole-package gates. |
+| **File path** | `--cov=src/poc/scenarios/x.py` | ❌ **BANNED.** Under coverage 7.x / pytest-cov 7.x these are silently dropped with only a `CovReportWarning`. If any directory spec is present in the same command, the gate passes on that directory alone and the files enforce nothing; if it is the only spec, coverage reports `0` and the gate fails for the wrong reason. |
+| **Dotted module** | `--cov=src.poc.scenarios.x` | ❌ **BANNED.** Makes coverage import the target during tracer setup, colliding with the torch C extension (`SystemError: bad call flags`) even under `COVERAGE_CORE=pytrace`. |
+
+**To gate individual files, use the native runner** (`python -m coverage run --branch
+--include=<path globs>` + `python -m coverage report --include=<same globs> --fail-under=<N>`).
+Path globs are matched against collected data, not imported for discovery, so they dodge both
+failure modes.
+
+Do not hardcode which gates use which form — that list has gone stale twice. Derive it:
+
+```bash
+grep -c "coverage report" .github/workflows/ci.yml   # native-runner gates (minus 1 for the artifact-upload step name)
+grep -cE "cov-fail-under=" .github/workflows/ci.yml  # pytest-cov gates
+```
 
 Scenario / integration packages (`src/poc/scenarios/*`, `src/integrations/*`, `src/agents/*`) are
 gated at 85 branch. A **new** package's gate is added to `ci.yml` in the same PR as the package.
@@ -51,17 +62,22 @@ rather than the thing that turns branch measurement on.
    gaps — mirror the synthetic-harness pattern in `tests/poc/test_scaling_law_scenario.py`).
 4. Report the actual percentage; never claim a gate passed without running it.
 
-## Environment note — coverage tracer vs. some PyTorch wheels
+## Environment note — coverage tracer vs. the installed PyTorch wheel
 
-Certain nightly PyTorch CPU wheels crash on `import torch` while coverage's default **C tracer**
-is active (`SystemError: ... bad call flags`), so `pytest --cov` collects no data. When that
-happens, run coverage with the **pure-Python tracer** via the native runner (not the pytest-cov
-plugin):
+The installed PyTorch wheel crashes on `import torch` while coverage's default **C tracer** is
+active (`SystemError: ... bad call flags`), so `pytest --cov` can collect no data. **This affects
+CI too, not just local runs**: the `coverage` job sets `COVERAGE_CORE: pytrace` at job level
+(`.github/workflows/ci.yml`, `env:` on the job) precisely for this reason. Set it locally so your
+run matches CI:
 
 ```bash
 COVERAGE_CORE=pytrace python -m coverage run --branch \
   --include="*/<pkg>/*.py" -m pytest tests/<pkg>/ -m "not gpu_required" -q -p no:cov
-COVERAGE_CORE=pytrace python -m coverage report -m
+COVERAGE_CORE=pytrace python -m coverage report \
+  --include="*/<pkg>/*.py" --fail-under=<N>
 ```
 
-CI uses a stable wheel where the C tracer works, so this fallback is only needed locally.
+Note the second command carries `--fail-under=<N>` and repeats `--include`. Both are required:
+without `--fail-under` you get a report, not a gate; without the repeated `--include` the report
+covers everything coverage happened to record. `coverage run` erases prior data by default, so
+sequential gate steps in one job cannot contaminate each other.

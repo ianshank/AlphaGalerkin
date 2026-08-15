@@ -55,6 +55,15 @@ Treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is
   triage: the fix was *not* to wire the dead method up for its own sake — `PDEResult` carried
   six fields no caller read and lacked the fields the five real terminal paths need — but to
   delete it and extract the one part that something genuinely wanted.
+- **`src/training` has one accepted baseline** (recorded 2026-08, `docs/CODE_HYGIENE_AUDIT.md`
+  §7.3) — it is *not* in the blocking set. Run it without `--fail-on-missing` and expect exactly:
+
+      BaseLoss.forward  (src/training/losses/base.py:40)
+
+  Reported as a *Protocol member with no reader*, not an abstract method. Treat any hit beyond
+  this one as a blocker. (`BaseTrainer.compute_loss/generate_data/evaluate` used to be dead
+  `@abstractmethod`s here; they were demoted to concrete `step()` hooks, so they no longer
+  appear.)
 - **The rest of `src/` is report-only.** The same CI job runs `audit_abstractions src/` with
   `continue-on-error`, because the domain PoCs (`src/backend`) carry a known untriaged backlog.
   Treat its output as advisory.

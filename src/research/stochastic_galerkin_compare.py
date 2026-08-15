@@ -486,7 +486,10 @@ def export_plot(comparison: MultiSeedStochasticComparison, output_path: str | Pa
         (axes[1], target_field, f"analytic p(x, T={params.t_end})"),
         (axes[2], stochastic_field, "stochastic Galerkin prediction"),
     ]:
-        im = axis.imshow(field.numpy(), origin="lower", cmap="viridis")
+        # detach().cpu() is required, not defensive: the fields are built on the
+        # resolved device, so a CUDA run would raise "can't convert cuda:0 device
+        # type tensor to numpy" here. CPU-only tests cannot see this.
+        im = axis.imshow(field.detach().cpu().numpy(), origin="lower", cmap="viridis")
         axis.set_title(title, fontsize=10)
         fig.colorbar(im, ax=axis, fraction=0.046)
     metrics = comparison.metrics

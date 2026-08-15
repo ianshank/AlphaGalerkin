@@ -16,6 +16,14 @@ if TYPE_CHECKING:
 
     from src.modeling.model import AlphaGalerkinModel
 
+_SOFTMAX_NORMALIZER_FLOOR: float = 1e-8
+"""Lower bound added to the softmax denominator to avoid divide-by-zero.
+
+Same name and value as ``src/integrations/lm_studio/evaluator.py``, whose
+``LMStudioEvaluator`` documents that it mirrors ``FNetEvaluator._process_policy``
+— keep the two in sync.
+"""
+
 
 class EvaluationResult(NamedTuple):
     """Result from neural network evaluation."""
@@ -200,7 +208,7 @@ class FNetEvaluator:
 
         # Softmax
         exp_logits = np.exp(masked_logits - masked_logits.max())
-        policy = exp_logits / (exp_logits.sum() + 1e-8)
+        policy = exp_logits / (exp_logits.sum() + _SOFTMAX_NORMALIZER_FLOOR)
 
         return policy.astype(np.float32)
 

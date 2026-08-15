@@ -382,11 +382,38 @@ class BasisSelectionGame(PDEGame):
             target = source.astype(np.float32)
 
         try:
-            coeffs, residual_norm, _, _ = np.linalg.lstsq(Phi, target, rcond=None)
+            coeffs, residual_norm, rank, singular_vals = np.linalg.lstsq(Phi, target, rcond=None)
             new_state.basis_coefficients = coeffs.astype(np.float32)
-        except np.linalg.LinAlgError:
-            # Fallback to pseudo-inverse
-            coeffs = np.linalg.pinv(Phi) @ target
+            # Log rank deficiency if detected
+            if rank < Phi.shape[1]:
+                # Safely compute condition number (avoid division by zero/NaN)
+                if len(singular_vals) > 1 and singular_vals[-1] > 1e-15:
+                    condition_number = float(singular_vals[0] / singular_vals[-1])
+                else:
+                    condition_number = np.inf
+                logger.debug(
+                    "lstsq_rank_deficient",
+                    full_rank=Phi.shape[1],
+                    detected_rank=rank,
+                    condition_number=condition_number,
+                )
+        except np.linalg.LinAlgError as e:
+            # Fallback to pseudo-inverse when lstsq fails (rare)
+            logger.warning(
+                "lstsq_failed_using_pinv",
+                error=str(e),
+                n_basis=Phi.shape[1],
+                n_points=Phi.shape[0],
+            )
+            pinv_Phi = np.linalg.pinv(Phi)
+            condition_number = 1.0 / np.linalg.cond(Phi) if np.linalg.cond(Phi) > 0 else 0.0
+            logger.debug(
+                "pinv_condition_number",
+                rank=np.linalg.matrix_rank(Phi),
+                condition_number=np.linalg.cond(Phi),
+                rcond=np.finfo(float).eps * max(Phi.shape),
+            )
+            coeffs = pinv_Phi @ target
             new_state.basis_coefficients = coeffs.astype(np.float32)
 
         # Compute new solution (basis_coefficients is always set above)
@@ -548,6 +575,13 @@ class BasisSelectionGame(PDEGame):
             l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
             linf_error = float(np.max(np.abs(state.solution - exact)))
         else:
+            # CAUTION: exact solution unavailable; error is residual-based only.
+            # This does not measure actual solution error, only PDE residual magnitude.
+            # Results may pass on small residuals while solution is far from truth.
+            logger.warning(
+                "exact_solution_unavailable",
+                reason="operator has no analytical solution; using residual-based error metric",
+            )
             l2_error = float(np.sqrt(np.mean(state.residuals**2)))
             linf_error = float(np.max(np.abs(state.residuals)))
 

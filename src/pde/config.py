@@ -416,10 +416,6 @@ class PDEGameConfig(BaseModuleConfig):
         lt=1.0,
         description="Target error tolerance",
     )
-    error_metric: Literal["l2", "h1", "linf", "residual"] = Field(
-        default="l2",
-        description="Error metric for evaluation",
-    )
 
     # Reward shaping
     reward_per_error_reduction: float = Field(

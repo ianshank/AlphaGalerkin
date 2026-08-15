@@ -528,3 +528,71 @@ class TestCreateGumbelMCTS:
         state = _make_state()
         result = mcts.search(state)
         assert isinstance(result, GumbelSearchResult)
+
+
+# ---------------------------------------------------------------------------
+# TestGumbelConstantRuntimeBinding
+# ---------------------------------------------------------------------------
+
+
+class TestGumbelConstantRuntimeBinding:
+    """Runtime counterpart to the static site-binding guard in test_gumbel.py.
+
+    ``GUMBEL_NORMALIZATION_EPSILON`` and ``GUMBEL_LOG_PRIOR_FLOOR`` hold the
+    same value, so they can only be told apart by *role*. Inflating the
+    normalization epsilon must shrink the returned policy mass (it is the
+    denominator); inflating the log-prior floor must leave the policy
+    normalized (it only shifts Gumbel scores). If the two were swapped at any
+    site, one of these two assertions flips.
+    """
+
+    SEED = 1234
+
+    @classmethod
+    def _policy(cls, mcts: GumbelMCTS) -> np.ndarray:
+        np.random.seed(cls.SEED)
+        torch.manual_seed(cls.SEED)
+        return mcts.get_improved_policy(_make_state(), temperature=1.0)
+
+    @classmethod
+    def _visit_counts(cls, mcts: GumbelMCTS) -> np.ndarray:
+        np.random.seed(cls.SEED)
+        torch.manual_seed(cls.SEED)
+        return mcts.search(_make_state()).visit_counts
+
+    def test_baseline_policy_is_normalized(self, gumbel_mcts: GumbelMCTS) -> None:
+        """With the shipped 1e-8 epsilon the improved policy sums to 1."""
+        assert float(self._policy(gumbel_mcts).sum()) == pytest.approx(1.0, abs=1e-6)
+
+    def test_normalization_epsilon_is_the_policy_denominator(
+        self,
+        gumbel_mcts: GumbelMCTS,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Inflating it shrinks the policy mass to counts/(counts.sum() + eps)."""
+        import src.mcts.gumbel as gumbel_module
+
+        baseline_sum = float(self._policy(gumbel_mcts).sum())
+        inflated_eps = 1.0
+        monkeypatch.setattr(gumbel_module, "GUMBEL_NORMALIZATION_EPSILON", inflated_eps)
+
+        # Both calls run under the patched constant and the same seed, so the
+        # visit counts are identical and the only difference is the denominator.
+        counts = self._visit_counts(gumbel_mcts)
+        inflated = self._policy(gumbel_mcts)
+        total = float(counts.sum())
+
+        assert float(inflated.sum()) < baseline_sum
+        assert inflated == pytest.approx(counts / (total + inflated_eps))
+        assert float(inflated.sum()) == pytest.approx(total / (total + inflated_eps))
+
+    def test_log_prior_floor_does_not_denormalize_the_policy(
+        self,
+        gumbel_mcts: GumbelMCTS,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Inflating the log floor perturbs selection but never the normalizer."""
+        import src.mcts.gumbel as gumbel_module
+
+        monkeypatch.setattr(gumbel_module, "GUMBEL_LOG_PRIOR_FLOOR", 1.0)
+        assert float(self._policy(gumbel_mcts).sum()) == pytest.approx(1.0, abs=1e-6)

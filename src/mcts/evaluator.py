@@ -206,8 +206,16 @@ class FNetEvaluator:
         # Masked logits
         masked_logits = logits + mask
 
-        # Softmax
-        exp_logits = np.exp(masked_logits - masked_logits.max())
+        # Softmax. The shift must ignore -inf entries: with no legal actions
+        # every entry is -inf, so a plain .max() gives -inf and (-inf) - (-inf)
+        # is NaN — an all-NaN policy that silently poisons MCTS selection rather
+        # than failing loudly. Taking the max over finite entries only (with
+        # initial=0.0 for the all-masked case) degrades to an all-zero policy
+        # instead. This mirrors src/integrations/lm_studio/evaluator.py, which
+        # already guarded it; the two were documented as mirrors while differing
+        # in exactly this case.
+        shift = np.max(masked_logits[np.isfinite(masked_logits)], initial=0.0)
+        exp_logits = np.exp(masked_logits - shift)
         policy = exp_logits / (exp_logits.sum() + _SOFTMAX_NORMALIZER_FLOOR)
 
         return policy.astype(np.float32)

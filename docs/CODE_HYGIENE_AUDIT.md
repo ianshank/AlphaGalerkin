@@ -666,3 +666,52 @@ the charter guard's own docstring.
   `.pytest_cache/` is a dotted path — which is exactly why CI logged "No files were found". A local
   `ls` proving the directory exists was never evidence about the *action's* behaviour. The original
   claim stands; the deletion was correct for the stated reason.
+
+### 7.7.2 SQE pass — findings and dispositions (2026-08-15)
+
+A dedicated test-authoring pass added **91 tests across 9 files** for the Phase-1 surfaces and
+measured what the diff had actually left covered. Three findings were defects, not gaps.
+
+**Fixed here:**
+
+- **`COVERAGE_CORE=pytrace` was missing from the documented gate commands.** The failure mode is
+  silent *under-measurement*, not an error: the identical `src/training` gate reports **89.53%
+  (PASS) with pytrace and 82.45% (FAIL) without**, with `base_trainer.py` at 46% and
+  `checkpoint_migration.py` lines marked unexecuted while passing tests assert those exact values.
+  Anyone following the Regression Surface table locally got a spurious red that looks like a
+  coverage regression they caused. A warning now heads the table. (This also explains a confusing
+  82.85% reading during this work — a run whose tree was being mutated underneath it.)
+- **`FNetEvaluator._process_policy` returned an all-NaN policy for empty `legal_actions`.** Every
+  entry is `-inf`, so the softmax shift `masked.max()` is `-inf` and `(-inf) - (-inf)` is NaN — it
+  does not raise, it propagates into MCTS selection as silently corrupt priors. The
+  `lm_studio/evaluator.py` implementation that this method's own docstring calls a mirror
+  **already guarded it** (`np.max(masked[np.isfinite(masked)], initial=0.0)`), so the two differed
+  in exactly the degenerate case that matters. Now aligned; degrades to an all-zero policy. The
+  ordinary path is unchanged (verified: still sums to 1.0, illegal actions still 0.0).
+- The newly-named `_SOFTMAX_NORMALIZER_FLOOR` guards a divide-by-zero that is in fact
+  **unreachable** — `exp(x − max x)` always contains a 1, so the denominator is ≥ 1. It is kept
+  (harmless, and the mirror carries it) but it was never the protection it appeared to be; the real
+  degenerate case was the NaN above.
+
+**Open, recorded:**
+
+- **`config/` is under no coverage gate at all.** CI measures `--cov=src` and `--cov=dashboard`
+  only, so the two new `TrainingConfig` scheduler fields — and every other `config/schemas.py`
+  line — are structurally unmeasurable. Adding `--cov=config` (or a native-runner `--include`) is
+  a CI decision.
+- **`DEFAULT_BOARD_SIZES` is still a mutable `list`.** All 14 sites now copy, and tests prove it,
+  but `Final[tuple[int, ...]]` would make the aliasing hazard structurally impossible rather than
+  merely tested-against. Deferred because tests compare against list literals.
+- **The llm_prior gate ratcheted 85 → 79.** Honest (the old file-path spec enforced nothing, and
+  the surface had decayed to 81% unobserved), but a threshold reduction is an owner's call, not a
+  side effect of a repair.
+- Pre-existing and untouched: `src/training/operator_trainer.py` at 24%, `src/pde/operators.py`
+  at 64%.
+
+**Notable about the tests themselves:** the AST guards for the two Gumbel constants were
+mutation-checked out-of-tree — swapping the constant names flips every extracted site, and
+reintroducing one bare `1e-8` drops the sum-site count from 3 to 2, so both mutants die. Two tests
+failed while being written and were *fixed rather than weakened*: one assumed
+`visit_counts.sum() == n_simulations` (it isn't), and one built a second scheduler on an optimizer
+that already had one (`initial_lr` reuse plus cosine's recursive update) — it now reads the
+production `trainer.scheduler`.

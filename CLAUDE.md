@@ -240,6 +240,16 @@ hardening of the HX path.
 
 When changing the AlphaGalerkin solver or evaluator wiring, the following test surfaces must remain green:
 
+> ⚠️ **Prefix every coverage command below with `COVERAGE_CORE=pytrace`.** The installed torch
+> wheel crashes coverage's default C tracer, and the failure is *silent under-measurement*, not an
+> error — so the gate reports a number that is simply wrong. Measured on the `src/training` gate:
+> **89.53% with `pytrace` (PASS) vs 82.45% without (FAIL)**, with `base_trainer.py` reported at 46%
+> and `checkpoint_migration.py` lines marked unexecuted while passing tests assert those exact
+> values. CI sets `COVERAGE_CORE: pytrace` at job level on the `coverage` job, so the `pytrace`
+> figure is the CI-equivalent one; a local run without it produces a spurious red that looks like
+> a coverage regression you caused. (Only the L-shape row spells this out inline; it applies to
+> all of them.)
+
 | Surface | Command | What it guards |
 |---|---|---|
 | Solver wiring (config validation, dispatch) | `pytest tests/alphagalerkin/test_solver.py -v` | Pydantic field defaults/validators, evaluator Literal, mesh/basis dispatch |

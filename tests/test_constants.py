@@ -260,3 +260,21 @@ class TestBoardSizesCopySemantics:
 
         assert DEFAULT_EVAL_SIZES == self.EXPECTED
         assert DEFAULT_EVAL_SIZES is not C.DEFAULT_BOARD_SIZES
+
+    def test_alphagalerkin_config_board_sizes_copy_the_constant(self) -> None:
+        """``AlphaGalerkinConfig.board_sizes`` derives from the constant, by copy.
+
+        This site sits in ``config/`` rather than ``src/`` and was missed by the
+        original 13-site migration, so it could drift from the constant
+        silently. It now copies like every other site: equal in value, never the
+        same object, and independently mutable per instance.
+        """
+        from config.schemas import AlphaGalerkinConfig
+
+        first = AlphaGalerkinConfig()
+        assert first.board_sizes == C.DEFAULT_BOARD_SIZES
+        assert first.board_sizes is not C.DEFAULT_BOARD_SIZES
+
+        first.board_sizes.append(21)
+        assert AlphaGalerkinConfig().board_sizes == C.DEFAULT_BOARD_SIZES
+        assert C.DEFAULT_BOARD_SIZES == self.EXPECTED

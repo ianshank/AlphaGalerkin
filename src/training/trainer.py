@@ -394,7 +394,8 @@ class Trainer(BaseTrainer):
         )
 
     # ------------------------------------------------------------------
-    # Abstract method implementations (required by BaseTrainer ABC)
+    # step()-hook overrides (BaseTrainer no longer declares these abstract;
+    # these stubs document this trainer's real entry points)
     # ------------------------------------------------------------------
 
     def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:

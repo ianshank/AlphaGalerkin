@@ -149,3 +149,41 @@ class TestSoftmaxNormalizerFloor:
         import src.mcts.evaluator as evaluator_module
 
         assert evaluator_module._SOFTMAX_NORMALIZER_FLOOR == lm_evaluator._SOFTMAX_NORMALIZER_FLOOR
+
+
+class TestProcessPolicyDegenerateMask:
+    """``_process_policy`` must not emit NaN when no action is legal.
+
+    Regression test: the softmax shift used a plain ``masked_logits.max()``.
+    With an empty ``legal_actions`` every entry is ``-inf``, so the shift was
+    ``-inf`` and ``(-inf) - (-inf)`` produced an all-NaN policy — which does not
+    raise, and instead propagates into MCTS selection as silently corrupt
+    priors. ``src/integrations/lm_studio/evaluator.py`` already guarded this
+    while documenting itself as a mirror of this method, so the two differed in
+    exactly the case that matters.
+    """
+
+    @staticmethod
+    def _evaluator() -> FNetEvaluator:
+        evaluator = FNetEvaluator.__new__(FNetEvaluator)
+        evaluator.temperature = 1.0
+        return evaluator
+
+    def test_empty_legal_actions_yields_zeros_not_nan(self) -> None:
+        """No legal actions degrades to an all-zero policy, never NaN."""
+        logits = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+        policy = self._evaluator()._process_policy(logits, [])
+
+        assert not np.any(np.isnan(policy)), policy
+        assert np.array_equal(policy, np.zeros(3, dtype=np.float32))
+
+    def test_normal_masking_is_unchanged_by_the_shift_guard(self) -> None:
+        """The finite-max shift leaves the ordinary path exactly as before."""
+        logits = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+        policy = self._evaluator()._process_policy(logits, [0, 2])
+
+        assert policy[1] == 0.0
+        assert policy.sum() == pytest.approx(1.0)
+        assert policy[2] > policy[0]

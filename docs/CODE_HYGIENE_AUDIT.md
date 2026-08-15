@@ -372,7 +372,8 @@ implementation; all numbers below are measured at HEAD, not estimated.
   native-runner form — noyron_basis (measured 98% combined), Noyron HX surface
   (99%), SBIR P40 surface (94%).
 - **Degraded gate repaired**: coverage 7.x silently drops file-path
-  `--cov=path/to/module.py` specs (only a `CovReportWarning`); the llm_prior
+  `--cov=path/to/module.py` specs (only a `CoverageWarning`, slug
+  `module-not-imported`); the llm_prior
   gate passed on the `lm_studio` directory alone. The file-level pair now runs
   as a native-runner step. **Decay evidence**: with the gate unenforced,
   `llm_prior_ablation.py` drifted to a measured 77% branch (81% combined with
@@ -480,13 +481,13 @@ monolith), B3 registries, B7 composite action, B8, B15, B13.
 | 6 | Shim deprecation window | 2 minor releases |
 | 7 | Release cut (B13) | After Phase 2 |
 
-## 7.7 Post-Phase-1 peer review — findings and dispositions (2026-08-15)
+### 7.7 Post-Phase-1 peer review — findings and dispositions (2026-08-15)
 
 A four-lens review (adversarial diff review, SQE coverage/edge-cases, hygiene sweep with extended
 ruff rule sets, skills/reusability architecture) ran against the Phase-1 branch. Fixed-in-branch
 items are marked ✅; the rest are prioritized backlog with the evidence needed to act on them.
 
-### P0 — Flat MCTS reward on 3 of 8 PDE operators (degenerate acceptance criteria)
+#### P0-1 — Flat MCTS reward on 3 of 8 PDE operators (degenerate acceptance criteria)
 
 **Independently verified by execution, not inspection.** Three links, each confirmed:
 
@@ -525,7 +526,7 @@ reporting a constant as convergence; (3) re-run `llm_prior_demo.yaml` and re-der
 Re-measure the `noyron_basis` "~2–4% best-case reduction" open research item afterwards — it is
 plausibly a symptom of link 3 rather than of basis/geometry mismatch.
 
-### P1 — Silent failures in numeric paths (partially fixed)
+#### P1 — Silent failures in numeric paths (partially fixed)
 
 - ✅ `src/modeling/stability.py` — an SVD `RuntimeError` returned `beta = 0`, which is *exactly*
   the LBB-violation alarm value, making a numerical crash indistinguishable from a genuine
@@ -539,7 +540,7 @@ plausibly a symptom of link 3 rather than of basis/geometry mismatch.
   `src/experiments/physics_model.py`, `src/research/fem_baseline.py`,
   `src/training/loss_balancing.py`.
 
-### P1 — Reproducibility: two disjoint numpy RNG worlds
+#### P1 — Reproducibility: two disjoint numpy RNG worlds
 
 `src/seeding.py::set_global_seeds` seeds the **legacy** `np.random` global, but ~15 modules use the
 Generator API (`np.random.default_rng(None)`), which draws fresh OS entropy and is untouched by it —
@@ -549,7 +550,7 @@ helper; until then `src/seeding.py`'s docstring overstates its reach. Note the l
 deliberate (converting it would change derived seeds and invalidate committed baselines — same
 hazard as B9).
 
-### P1 — CUDA correctness (partially fixed)
+#### P1 — CUDA correctness (partially fixed)
 
 - ✅ `src/research/stochastic_galerkin_compare.py` — `field.numpy()` on a device tensor would raise
   on any CUDA run of the artifact path; CPU-only tests structurally cannot see it. Now
@@ -559,7 +560,7 @@ hazard as B9).
   codebase's own correct idiom (`PDEResidual.to_numpy`). Also `src/pde/operators.py`'s in-place
   `coords.requires_grad_(True)` mutates a caller-owned tensor that shares memory with a numpy array.
 
-### P2 — Config fields that are declared but never read
+#### P2 — Config fields that are declared but never read
 
 Wire or delete: `GumbelMCTSConfig.use_mixed_value` (the *defining* feature of Gumbel AlphaZero —
 setting it changes nothing), `GumbelMCTSConfig.discount` (gumbel search ignores its own discount),
@@ -568,7 +569,7 @@ scenarios, never checked — a `requires_gpu=True` scenario runs to completion o
 PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGameConfig.success_metrics`,
 `StrangTrainerConfig.n_particles`, `dt_min`/`dt_max`.
 
-### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
+#### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
 
 `TRY400` (18 `.error()`-in-`except` sites dropping tracebacks), `G201`, `DTZ` (18 naive
 `datetime.now()` written into persisted artifacts and checkpoint metadata), `T20` (13 real —
@@ -579,7 +580,7 @@ PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGam
 deliberate, see above), `TRY003`/`EM101`/`EM102` (810 findings, pure style; this repo's long
 contextual exception messages are a feature).
 
-### P2 — Next-tier hardcoded values
+#### P2 — Next-tier hardcoded values
 
 Ordered by blast radius, not count: the LBB regularization margin multiplier `* 10` in
 `src/modeling/galerkin_operator.py` (the same concept is already named **twice** in
@@ -589,7 +590,7 @@ policy-CE floor `clamp(min=-100.0)`; Cole-Hopf `n_terms = 50` and its `1e-10` de
 (the L2 reference for SBIR rows); `board_size = ... else 8` fallback in self-play (a silent wrong
 shape); the FNO projection head fixed at 128 while every sibling dimension is a parameter.
 
-### P2 — Zero-logging packages
+#### P2 — Zero-logging packages
 
 `src/pde/stochastic/` (all 11 modules, ~1.9k LOC — including a parallel-in-time trainer whose
 calibrated gates fail silently) and `src/mcts/search.py`/`node.py`/`evaluator.py` (~1.2k LOC — the
@@ -599,7 +600,7 @@ headline moved from 0.86 to 0.96 on that one boolean and there is no runtime rec
 ran. Note `src/pde/stochastic/` is guarded by an import-isolation allowlist; extend it deliberately
 in the same commit.
 
-### P3 — Reusability / BC (evidence recorded, no action taken)
+#### P3 — Reusability / BC (evidence recorded, no action taken)
 
 - **Two parallel threshold schemas with different semantics**: `poc/config.py::MetricThreshold`
   (no tolerance on `<=`/`>=`) vs `templates/config.py::MetricDefinition` (adds `1e-9`). The
@@ -620,3 +621,97 @@ in the same commit.
   copy-pasted lazy-import branches with a silent `BaseScenarioConfig` fallback (a typo'd scenario
   name parses instead of raising); basis-kind dispatch at 3 separate sites; 7 byte-identical
   backend-factory tails; `create_sampler` silently defaulting an unknown name to random.
+
+### 7.7.1 Adversarial review of the Phase-1 diff — dispositions (2026-08-15)
+
+A full adversarial pass re-ran every numeric claim in the Phase-1 diff to ground. **All of them
+reproduced exactly** (noyron_basis 98%, Noyron HX 99%, SBIR P40 94%, llm_prior pair 81%; every
+constant swap value-identical; `DEFAULT_BOARD_SIZES` never leaked by reference), and the
+highest-risk item — whether `Trainer.training_config` could ever lack the new fields — was traced
+through every construction path and cleared. Fixed in follow-up; remaining items below.
+
+**Fixed** (PR #123): fork-PR concurrency collision; `ci-success` failing on superseded runs; the
+v1.1.0 migration's orphan-dict no-op; the `coverage` job's 30-minute cap (measured 24m08s on a real
+runner = 80% utilisation, one slow runner from red → raised to 45); four stale "abstract"
+doc sites left by the `BaseTrainer` demotion; `evaluate()`'s docstring claiming a `step()` wiring
+that does not exist; the 14th `[9, 13, 19]` site in `config/schemas.py` (the original sweep covered
+`src/` and `dashboard/` but not `config/`); the `CoverageWarning` class name (it is
+`CoverageWarning`, slug `module-not-imported`, not `CovReportWarning`); a stale native-gate count in
+the charter guard's own docstring.
+
+**Open, with the evidence needed to act:**
+
+- **Gate duplication.** The Noyron/SBIR/llm_prior gate steps re-run files the job's main
+  `pytest tests/` sweep already covers (none of those tests carry `@pytest.mark.slow`), so each is
+  measured twice. Raising the timeout bought headroom; collapsing the duplication — `--ignore` the
+  gated files from the sweep, or split the two Noyron gates into their own job — is the real fix.
+- **`BaseTrainer.evaluate()` has zero call sites.** `step()` drives `generate_data` and
+  `compute_loss` only. Demoting it from `@abstractmethod` removed it from
+  `scripts/audit_abstractions`' view without resolving it — the F1 pattern one level down. Either
+  delete it plus both subclass stubs, or wire an evaluation cadence into `step()`. Its docstring now
+  states the truth in the meantime.
+- **`GUMBEL_LOG_PRIOR_FLOOR` is documented as an algorithmic knob but shipped as a module
+  constant.** By the project's own rule ("every knob a typed field; numerical-stability literals may
+  be constants") a value whose docstring says "retuning it changes action selection" belongs on
+  `GumbelMCTSConfig`. Promoting it is an API change and wants its own decision.
+- **`config.schemas.TrainingConfig` ↔ `BaseTrainerConfig` still declare the same two scheduler
+  knobs with different defaults.** Phase 1 collapsed 2→1 on the base-trainer side; the remaining
+  split is rooted in `Trainer.__init__` not calling `super().__init__()`. Value-preserving and
+  cross-documented, but it is a divergence waiting to be re-discovered.
+- ~~**The `.pytest_cache` removal rationale is imprecise.**~~ **RETRACTED 2026-08-15 — this
+  correction was itself wrong, and is kept as a worked example of the failure mode this audit
+  exists to catch.** The reasoning was: "pytest creates `.pytest_cache/`, therefore the step would
+  have found files, therefore 'never found files' is false." The premise is true and the conclusion
+  does not follow: `actions/upload-artifact@v4` excludes hidden files by default, and
+  `.pytest_cache/` is a dotted path — which is exactly why CI logged "No files were found". A local
+  `ls` proving the directory exists was never evidence about the *action's* behaviour. The original
+  claim stands; the deletion was correct for the stated reason.
+
+### 7.7.2 SQE pass — findings and dispositions (2026-08-15)
+
+A dedicated test-authoring pass added **91 tests across 9 files** for the Phase-1 surfaces and
+measured what the diff had actually left covered. Three findings were defects, not gaps.
+
+**Fixed here:**
+
+- **`COVERAGE_CORE=pytrace` was missing from the documented gate commands.** The failure mode is
+  silent *under-measurement*, not an error: the identical `src/training` gate reports **89.53%
+  (PASS) with pytrace and 82.45% (FAIL) without**, with `base_trainer.py` at 46% and
+  `checkpoint_migration.py` lines marked unexecuted while passing tests assert those exact values.
+  Anyone following the Regression Surface table locally got a spurious red that looks like a
+  coverage regression they caused. A warning now heads the table. (This also explains a confusing
+  82.85% reading during this work — a run whose tree was being mutated underneath it.)
+- **`FNetEvaluator._process_policy` returned an all-NaN policy for empty `legal_actions`.** Every
+  entry is `-inf`, so the softmax shift `masked.max()` is `-inf` and `(-inf) - (-inf)` is NaN — it
+  does not raise, it propagates into MCTS selection as silently corrupt priors. The
+  `lm_studio/evaluator.py` implementation that this method's own docstring calls a mirror
+  **already guarded it** (`np.max(masked[np.isfinite(masked)], initial=0.0)`), so the two differed
+  in exactly the degenerate case that matters. Now aligned; degrades to an all-zero policy. The
+  ordinary path is unchanged (verified: still sums to 1.0, illegal actions still 0.0).
+- The newly-named `_SOFTMAX_NORMALIZER_FLOOR` guards a divide-by-zero that is in fact
+  **unreachable** — `exp(x − max x)` always contains a 1, so the denominator is ≥ 1. It is kept
+  (harmless, and the mirror carries it) but it was never the protection it appeared to be; the real
+  degenerate case was the NaN above.
+
+**Open, recorded:**
+
+- **`config/` is under no coverage gate at all.** CI measures `--cov=src` and `--cov=dashboard`
+  only, so the two new `TrainingConfig` scheduler fields — and every other `config/schemas.py`
+  line — are structurally unmeasurable. Adding `--cov=config` (or a native-runner `--include`) is
+  a CI decision.
+- **`DEFAULT_BOARD_SIZES` is still a mutable `list`.** All 14 sites now copy, and tests prove it,
+  but `Final[tuple[int, ...]]` would make the aliasing hazard structurally impossible rather than
+  merely tested-against. Deferred because tests compare against list literals.
+- **The llm_prior gate ratcheted 85 → 79.** Honest (the old file-path spec enforced nothing, and
+  the surface had decayed to 81% unobserved), but a threshold reduction is an owner's call, not a
+  side effect of a repair.
+- Pre-existing and untouched: `src/training/operator_trainer.py` at 24%, `src/pde/operators.py`
+  at 64%.
+
+**Notable about the tests themselves:** the AST guards for the two Gumbel constants were
+mutation-checked out-of-tree — swapping the constant names flips every extracted site, and
+reintroducing one bare `1e-8` drops the sum-site count from 3 to 2, so both mutants die. Two tests
+failed while being written and were *fixed rather than weakened*: one assumed
+`visit_counts.sum() == n_simulations` (it isn't), and one built a second scheduler on an optimizer
+that already had one (`initial_lr` reuse plus cosine's recursive update) — it now reads the
+production `trainer.scheduler`.

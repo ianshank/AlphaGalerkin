@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.training.callbacks import CallbackSpec
 
 
@@ -514,7 +515,7 @@ class AlphaGalerkinConfig(BaseModel):
     checkpoint_dir: str = Field(default="checkpoints", description="Directory for checkpoints")
     log_interval: int = Field(default=100, description="Steps between console logging")
     board_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Board sizes to train on (resolution-independent)",
     )
 

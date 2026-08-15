@@ -303,22 +303,44 @@ class TestMigrationDefaultFreeze:
 
 
 class TestMigrationTrainingKeyAbsent:
-    """Characterisation of a pre-existing gap adjacent to the freeze comment.
+    """The 1.0.0 -> 1.1.0 migration when ``config`` has no ``training`` section.
 
-    ``_migrate_1_0_to_1_1`` does ``training = config.get("training", {})`` and
-    mutates that fallback dict *without assigning it back*, so a 1.0.0
-    checkpoint whose ``config`` has no ``training`` key is stamped 1.1.0 with
-    none of the frozen defaults injected. This documents today's behaviour so
-    a future fix is a deliberate, visible change rather than a silent one.
+    Contract: the section is created and the frozen v1.1.0 defaults are
+    injected, so a migrated checkpoint always carries the LBB parameters its
+    version claims. A non-dict ``training`` value is the one exception — it is
+    left untouched rather than overwritten, since replacing unrecognised data
+    is not this migration's job.
+
+    Both cases were previously broken by ``training = config.get("training", {})``,
+    which handed back an orphan dict that the ``setdefault`` calls populated and
+    then discarded while the version was still stamped 1.1.0.
     """
 
-    def test_defaults_are_dropped_when_training_key_is_absent(self) -> None:
-        """A config without a 'training' key gets versioned but not populated."""
+    def test_defaults_are_injected_when_training_key_is_absent(self) -> None:
+        """A config without a 'training' key still receives the v1.1.0 defaults.
+
+        Regression test: the migration previously read the section via
+        ``config.get("training", {})``, so an absent key produced an orphan dict
+        that the setdefault calls populated and then discarded — the checkpoint
+        was stamped 1.1.0 while carrying none of the LBB parameters the
+        migration exists to add.
+
+        The defect is the false version stamp, not a crash: a consumer loading
+        through ``AlphaGalerkinConfig`` gets a ``TrainingConfig`` from
+        ``default_factory`` regardless, so the missing section is silently
+        replaced by *current* defaults rather than the v1.1.0 ones the stamp
+        promises — which is precisely the drift the freeze exists to prevent.
+        """
         data: dict[str, Any] = {"version": "1.0.0", "config": {}}
         migrated = migrate_checkpoint(data, "1.1.0")
 
         assert migrated["version"] == "1.1.0"
-        assert migrated["config"] == {}
+        assert migrated["config"]["training"] == {
+            "lbb_loss_weight": 0.01,
+            "lbb_target": 0.1,
+            "log_barrier_weight": 0.1,
+            "label_smoothing": 0.0,
+        }
 
     def test_defaults_are_dropped_when_training_is_not_a_dict(self) -> None:
         """A non-dict 'training' value is left untouched (no crash)."""

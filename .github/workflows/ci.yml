@@ -22,14 +22,21 @@ on:
 
 # Cancel in-progress runs on new pushes to the same branch.
 #
-# Keyed on the HEAD BRANCH NAME, not github.ref, so that the push-triggered run
-# and the pull_request-triggered run for the same branch land in the same group
-# and dedupe. Without this, any branch matching the push globs above that also
-# has an open PR runs the entire pipeline twice per push (github.ref is
+# Keyed on HEAD REPO + HEAD BRANCH, not github.ref, so that the push-triggered
+# run and the pull_request-triggered run for the same branch land in the same
+# group and dedupe. Without this, any branch matching the push globs above that
+# also has an open PR runs the entire pipeline twice per push (github.ref is
 # refs/heads/<branch> for push but refs/pull/<n>/merge for pull_request, so the
 # two never collided).
+#
+# The head-repo half is what keeps fork PRs independent: two different forks can
+# each have a branch named e.g. "feature/foo", and keying on the branch name
+# alone would let unrelated fork runs cancel each other. For a same-repo PR,
+# head.repo.full_name equals github.repository, so the push/PR dedup above still
+# collapses to one run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 # Least privilege: jobs only need to read the repository (no writes to contents,
@@ -250,7 +257,14 @@ jobs:
   coverage:
     name: Test Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30: this job runs the whole test sweep under the pure-Python
+    # tracer plus ~20 per-module gates, and measured 24m08s on a GitHub runner
+    # after the Noyron/SBIR gates were added -- 80% of a 30-minute cap, close
+    # enough that one slow runner turns a green build red. Note several gate
+    # steps re-run files the sweep already covered; collapsing that duplication
+    # (so each file is measured once) is the real fix and is tracked in
+    # docs/CODE_HYGIENE_AUDIT.md §7.7.
+    timeout-minutes: 45
     needs: lint
     # The installed torch wheel crashes coverage's default C tracer on import
     # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
@@ -361,7 +375,8 @@ jobs:
 
       # CAUTION: never mix file-path --cov=path/to/module.py specs into a
       # pytest-cov invocation. Under coverage 7.x / pytest-cov 7.x, file-path
-      # specs are silently dropped (only a CovReportWarning), so the gate
+      # specs are silently dropped (only a CoverageWarning, slug
+      # module-not-imported), so the gate
       # passes on the remaining directory spec alone. This gate previously
       # carried two file specs that enforced nothing; they now run below as a
       # separate native-runner step (path-glob --include), the same pattern as

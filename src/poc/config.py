@@ -101,7 +101,7 @@ class BaseScenarioConfig(BaseModel):
         default_factory=list, description="Metrics that must pass"
     )
 
-    # Resource hints
+    # Resource hints (requires_gpu reserved for future use; currently not enforced/checked)
     requires_gpu: bool = Field(default=False, description="Whether GPU is required")
     estimated_duration_seconds: int = Field(
         default=60, ge=1, description="Estimated runtime for planning"

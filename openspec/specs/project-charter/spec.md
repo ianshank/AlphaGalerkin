@@ -247,6 +247,12 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/physics` | 75 |
 | `src/distributed` | 60 |
 | `dashboard` | 84 |
+| `src/agents` | 85 |
+| `src/tools` | 89 |
+| `src/experiments` | 87 |
+| `src/curriculum` | 87 |
+| `src/engines` | 82 |
+| `src/data` | 77 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced

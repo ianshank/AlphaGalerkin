@@ -169,6 +169,15 @@ def check_lm_studio_server(
         try:
             import openai
         except ImportError as exc:
+            logger.warning(
+                "lm_studio_preflight",
+                passed=False,
+                server_reachable=False,
+                model_available=False,
+                free_vram_gib=None,
+                vram_sufficient=True,
+                error=str(exc),
+            )
             return PreflightReport(
                 server_reachable=False,
                 model_available=False,

@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from src.pde.config import PDEConfig, PDEGameConfig, PDEType
-from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.game import GamePhase, PDEGame, PDEState
 from src.pde.operators import PoissonOperator
 
 
@@ -229,77 +229,6 @@ class TestPDEState:
         assert state.history == []
 
 
-class TestPDEResult:
-    """Tests for PDEResult dataclass."""
-
-    @pytest.fixture
-    def sample_result(self) -> PDEResult:
-        return PDEResult(
-            final_error=0.001,
-            final_dof=50,
-            n_steps=10,
-            converged=True,
-            l2_error=0.001,
-            h1_error=0.002,
-            linf_error=0.005,
-            residual_norm=0.0001,
-            error_reduction_rate=0.01,
-            dof_efficiency=0.0002,
-            compute_efficiency=0.001,
-            initial_error=1.0,
-            best_error=0.001,
-            average_error=0.1,
-            error_history=[1.0, 0.5, 0.1, 0.001],
-            termination_reason="converged",
-            budget_used=10.0,
-        )
-
-    def test_create_result(self, sample_result: PDEResult) -> None:
-        assert sample_result.converged is True
-        assert sample_result.final_error == 0.001
-        assert sample_result.final_dof == 50
-        assert sample_result.n_steps == 10
-
-    def test_result_fields(self, sample_result: PDEResult) -> None:
-        assert sample_result.l2_error == 0.001
-        assert sample_result.h1_error == 0.002
-        assert sample_result.linf_error == 0.005
-        assert sample_result.residual_norm == 0.0001
-        assert sample_result.termination_reason == "converged"
-
-    def test_to_dict(self, sample_result: PDEResult) -> None:
-        d = sample_result.to_dict()
-        assert d["final_error"] == 0.001
-        assert d["converged"] is True
-        assert d["termination_reason"] == "converged"
-        assert len(d["error_history"]) == 4
-        assert d["budget_used"] == 10.0
-
-    def test_to_dict_not_converged(self) -> None:
-        result = PDEResult(
-            final_error=0.01,
-            final_dof=20,
-            n_steps=5,
-            converged=False,
-            l2_error=0.01,
-            h1_error=0.02,
-            linf_error=0.05,
-            residual_norm=0.001,
-            error_reduction_rate=0.1,
-            dof_efficiency=0.005,
-            compute_efficiency=0.01,
-            initial_error=1.0,
-            best_error=0.01,
-            average_error=0.3,
-            error_history=[1.0, 0.5, 0.01],
-            termination_reason="max_steps",
-            budget_used=5.0,
-        )
-        d = result.to_dict()
-        assert d["converged"] is False
-        assert d["termination_reason"] == "max_steps"
-
-
 class TestPDEGameAbstract:
     """Tests for PDEGame abstract interface."""
 
@@ -326,7 +255,6 @@ class TestPDEGameAbstract:
             "apply_action",
             "get_reward",
             "is_terminal",
-            "get_result",
             "compute_exact_error",
             "to_tensor",
         }
@@ -376,27 +304,6 @@ class ConcretePDEGame(PDEGame):
 
     def is_terminal(self, state: PDEState) -> bool:
         return state.step >= 5 or state.error_estimate < 0.01
-
-    def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
-        return PDEResult(
-            final_error=state.error_estimate,
-            final_dof=state.dof,
-            n_steps=state.step,
-            converged=state.error_estimate < 0.01,
-            l2_error=state.error_estimate,
-            h1_error=state.error_estimate,
-            linf_error=state.error_estimate,
-            residual_norm=0.0,
-            error_reduction_rate=0.0,
-            dof_efficiency=0.0,
-            compute_efficiency=0.0,
-            initial_error=1.0,
-            best_error=state.error_estimate,
-            average_error=state.error_estimate,
-            error_history=error_history,
-            termination_reason="test",
-            budget_used=0.0,
-        )
 
     def compute_exact_error(self, state: PDEState) -> dict[str, float]:
         return {
@@ -506,9 +413,9 @@ class TestPDEGameConcreteMethods:
             error_history.append(state.error_estimate)
             assert reward >= 0  # error should decrease
 
-        result = game.get_result(state, error_history)
-        assert result.n_steps > 0
-        assert result.final_error < 1.0
+        assert state.step > 0
+        assert state.error_estimate < 1.0
+        assert len(error_history) == state.step + 1
 
     def test_game_loop_terminates(self, game: ConcretePDEGame) -> None:
         """Ensure the game eventually terminates."""
@@ -518,3 +425,64 @@ class TestPDEGameConcreteMethods:
             state = game.apply_action(state, 0)
             steps += 1
         assert game.is_terminal(state)
+
+
+class TestPDEGameTerminationReason:
+    """Tests for the shared termination-cause ladder on ``PDEGame``.
+
+    ``termination_reason`` replaced the never-called ``get_result``
+    abstraction (``docs/CODE_HYGIENE_AUDIT.md`` B17). Unlike its predecessor
+    it has a real consumer: ``AlphaGalerkinSolver`` records it under
+    ``METADATA_KEY_TERMINATION_REASON``. These tests pin the *base*
+    implementation, exercised here through a game that does not override
+    ``_capacity_reason`` (so the default no-cap branch is covered); each
+    concrete game's own capacity rung is tested in its own module.
+    """
+
+    @pytest.fixture
+    def game(self) -> ConcretePDEGame:
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(name="test", pde_config=pde_config)
+        operator = PoissonOperator(pde_config)
+        return ConcretePDEGame(operator, game_config)
+
+    def test_default_capacity_reason_is_none(self, game: ConcretePDEGame) -> None:
+        """A game with no capacity limit opts out by returning ``None``."""
+        assert game._capacity_reason(game.get_initial_state()) is None
+
+    def test_converged(self, game: ConcretePDEGame) -> None:
+        state = game.get_initial_state()
+        state.error_estimate = game.config.error_tolerance / 2
+        assert game.termination_reason(state) == "converged"
+
+    def test_budget_exhausted(self, game: ConcretePDEGame) -> None:
+        state = game.get_initial_state()
+        state.budget_remaining = 0.0
+        assert game.termination_reason(state) == "budget_exhausted"
+
+    def test_max_steps(self, game: ConcretePDEGame) -> None:
+        state = game.get_initial_state()
+        state.step = game.config.max_steps
+        assert game.termination_reason(state) == "max_steps"
+
+    def test_no_legal_actions(self, game: ConcretePDEGame, monkeypatch: pytest.MonkeyPatch) -> None:
+        state = game.get_initial_state()
+        monkeypatch.setattr(type(game), "get_valid_actions", lambda self, s: [])
+        assert game.termination_reason(state) == "no_legal_actions"
+
+    def test_running_when_nothing_has_stopped_it(self, game: ConcretePDEGame) -> None:
+        assert game.termination_reason(game.get_initial_state()) == "running"
+
+    def test_precedence_converged_beats_everything(self, game: ConcretePDEGame) -> None:
+        """Several conditions at once still yields the first ladder rung."""
+        state = game.get_initial_state()
+        state.error_estimate = game.config.error_tolerance / 2
+        state.budget_remaining = 0.0
+        state.step = game.config.max_steps
+        assert game.termination_reason(state) == "converged"
+
+    def test_precedence_budget_beats_steps(self, game: ConcretePDEGame) -> None:
+        state = game.get_initial_state()
+        state.budget_remaining = 0.0
+        state.step = game.config.max_steps
+        assert game.termination_reason(state) == "budget_exhausted"

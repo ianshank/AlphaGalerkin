@@ -106,6 +106,22 @@ jobs:
       - name: Run Ruff formatting check
         run: ruff format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --check
 
+      # F0/F1 screen: an @abstractmethod that every subclass overrides but
+      # nothing ever *calls* is dead code — a docstring describing an algorithm
+      # that does not run. That is exactly how `PDEGame.get_reward` (F1) and
+      # `PDEGame.get_result` (B17) survived. The audit is AST-only (stdlib
+      # imports, no torch/numpy), so it runs in this job's minimal dep set.
+      #
+      # The three refinement roots are clean and gated hard. Blocking the whole
+      # of src/ is not yet possible: `src/backend` carries a known domain-PoC
+      # backlog, so it runs report-only and its output is advisory.
+      - name: Audit abstractions (refinement surfaces)
+        run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+
+      - name: Audit abstractions (rest of src, report-only)
+        continue-on-error: true
+        run: python -m scripts.audit_abstractions src/
+
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports
         # only a small number of `unused-ignore` diagnostics in training/ +
@@ -516,6 +532,42 @@ jobs:
           python -m coverage report \
             --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
             --fail-under=85
+
+      # Phase-2c (B20 close-out, docs/CODE_HYGIENE_AUDIT.md §7.4): six packages
+      # that previously rode only the global 85% gate. Each threshold is
+      # floor(measured branch %) - 2, capped at 85 on first landing, per the
+      # add-coverage-gate skill. Measured 2026-08-15:
+      #   agents 95.42 -> 85 (capped) | tools 91.86 -> 89 | experiments 89.76 -> 87
+      #   curriculum 89.06 -> 87 | engines 84.26 -> 82 | data 79.81 -> 77
+      - name: Per-module coverage gate (agents)
+        if: always() && hashFiles('tests/agents/') != ''
+        run: |
+          pytest tests/agents/ --cov=src/agents --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (tools)
+        if: always() && hashFiles('tests/tools/') != ''
+        run: |
+          pytest tests/tools/ --cov=src/tools --cov-branch --cov-fail-under=89 -q --no-header
+
+      - name: Per-module coverage gate (experiments)
+        if: always() && hashFiles('tests/experiments/') != ''
+        run: |
+          pytest tests/experiments/ --cov=src/experiments --cov-branch --cov-fail-under=87 -q --no-header
+
+      - name: Per-module coverage gate (curriculum)
+        if: always() && hashFiles('tests/curriculum/') != ''
+        run: |
+          pytest tests/curriculum/ --cov=src/curriculum --cov-branch --cov-fail-under=87 -q --no-header
+
+      - name: Per-module coverage gate (engines)
+        if: always() && hashFiles('tests/engines/') != ''
+        run: |
+          pytest tests/engines/ --cov=src/engines --cov-branch --cov-fail-under=82 -q --no-header
+
+      - name: Per-module coverage gate (data)
+        if: always() && hashFiles('tests/data/') != ''
+        run: |
+          pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=77 -q --no-header
 
       # dashboard/ lives outside src/, so the --cov=src run above measures none of it
       # even though the blanket `pytest tests/` executes its 214 tests. Gated at 84

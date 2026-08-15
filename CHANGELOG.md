@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Dead `PDEGame.get_result` abstraction removed; abstraction audit gated in CI (audit B17 + B18)
+
+- **Removed `PDEGame.get_result` and the `PDEResult` dataclass.** `get_result` was declared
+  `@abstractmethod`, documented as lifecycle step 4, and implemented by every concrete game —
+  but nothing ever called the 2-arg `PDEGame` signature (the `get_result` call sites in
+  `src/training/evaluation.py` and `src/engines/match.py` are the unrelated 1-arg
+  `GameInterface.get_result`). It was **deleted rather than wired**: all five real
+  episode-terminal paths already build their own result object, and each needs a field
+  `PDEResult` lacks (`actions`, `solution`/`wall_time_seconds`, `rollouts_used`, `n_solves`),
+  while six of `PDEResult`'s seventeen fields had no reader anywhere in `src/`. Full evidence
+  in `docs/CODE_HYGIENE_AUDIT.md` §4.1.
+- **Added `PDEGame.termination_reason(state)`** — the termination-cause ladder that was inlined
+  in all three `get_result` overrides, promoted to the ABC with the one game-specific rung
+  behind a `_capacity_reason` hook (basis count for `basis_selection`; DOF compared with `>`
+  for `mesh_refinement` and `>=` for `lshape_amr`, each matching its own `is_terminal`).
+  It is **concrete, not abstract**, so no existing subclass breaks.
+  `lshape_amr._termination_reason` is superseded by it.
+- **`AlphaGalerkinSolver` metadata is more specific.** `METADATA_KEY_TERMINATION_REASON`
+  previously recorded the bare `"is_terminal"` whenever the game stopped the loop, collapsing
+  converged / max_dof / max_basis / budget_exhausted into one uninformative label; it now
+  records the game's own classification. **Breaking for consumers that string-match
+  `"is_terminal"`** in solver metadata.
+- **`SolverResult.h1_error` is now populated** by `AlphaGalerkinSolver`. The field existed and
+  `to_dict()` serialised it, but the solver never set it even though `compute_exact_error`
+  returns `h1` alongside the `l2` it did read — so the exported column was permanently null.
+- **`src/pde` is no longer exempt from the abstraction gate.** `python -m
+  scripts.audit_abstractions src/pde --fail-on-missing` now exits 0.
+- **CI gates the F0/F1 screen (B18).** The `lint` job runs
+  `audit_abstractions src/mcts src/refinement src/pde --fail-on-missing`, plus a
+  `continue-on-error` pass over all of `src/` (the `src/backend` domain-PoC backlog stays
+  advisory). The script is AST-only with stdlib imports, so it runs in that job's minimal
+  dependency set. CLAUDE.md's Regression Surface row, the `abstract-method-audit` skill and
+  the `/audit-abstractions` command are updated to match.
 ### Fixed — CI enforcement (tech-debt Phase 1)
 
 - **CI never ran on pull requests**: `on.pull_request.branches: [main, develop]`

@@ -221,8 +221,7 @@ class LMStudioClient:
             raw_content = self._extract_content(completion)
             try:
                 response = self._parse_response(raw_content)
-            except LMStudioParseError as exc:
-                last_error = exc
+            except LMStudioParseError:
                 if attempt >= self._config.max_retries:
                     self._emit_call_log(
                         log,
@@ -244,7 +243,6 @@ class LMStudioClient:
                 mismatch_error = LMStudioActionSpaceMismatchError(
                     f"logits length {len(response.logits)} != expected {expected_action_size}"
                 )
-                last_error = mismatch_error
                 if attempt >= self._config.max_retries:
                     self._emit_call_log(
                         log,

@@ -323,7 +323,13 @@ class TestMigrationTrainingKeyAbsent:
         ``config.get("training", {})``, so an absent key produced an orphan dict
         that the setdefault calls populated and then discarded — the checkpoint
         was stamped 1.1.0 while carrying none of the LBB parameters the
-        migration exists to add, and a downstream reader would KeyError.
+        migration exists to add.
+
+        The defect is the false version stamp, not a crash: a consumer loading
+        through ``AlphaGalerkinConfig`` gets a ``TrainingConfig`` from
+        ``default_factory`` regardless, so the missing section is silently
+        replaced by *current* defaults rather than the v1.1.0 ones the stamp
+        promises — which is precisely the drift the freeze exists to prevent.
         """
         data: dict[str, Any] = {"version": "1.0.0", "config": {}}
         migrated = migrate_checkpoint(data, "1.1.0")

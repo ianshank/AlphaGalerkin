@@ -481,13 +481,13 @@ monolith), B3 registries, B7 composite action, B8, B15, B13.
 | 6 | Shim deprecation window | 2 minor releases |
 | 7 | Release cut (B13) | After Phase 2 |
 
-## 7.7 Post-Phase-1 peer review — findings and dispositions (2026-08-15)
+### 7.7 Post-Phase-1 peer review — findings and dispositions (2026-08-15)
 
 A four-lens review (adversarial diff review, SQE coverage/edge-cases, hygiene sweep with extended
 ruff rule sets, skills/reusability architecture) ran against the Phase-1 branch. Fixed-in-branch
 items are marked ✅; the rest are prioritized backlog with the evidence needed to act on them.
 
-### P0 — Flat MCTS reward on 3 of 8 PDE operators (degenerate acceptance criteria)
+#### P0-1 — Flat MCTS reward on 3 of 8 PDE operators (degenerate acceptance criteria)
 
 **Independently verified by execution, not inspection.** Three links, each confirmed:
 
@@ -526,7 +526,7 @@ reporting a constant as convergence; (3) re-run `llm_prior_demo.yaml` and re-der
 Re-measure the `noyron_basis` "~2–4% best-case reduction" open research item afterwards — it is
 plausibly a symptom of link 3 rather than of basis/geometry mismatch.
 
-### P1 — Silent failures in numeric paths (partially fixed)
+#### P1 — Silent failures in numeric paths (partially fixed)
 
 - ✅ `src/modeling/stability.py` — an SVD `RuntimeError` returned `beta = 0`, which is *exactly*
   the LBB-violation alarm value, making a numerical crash indistinguishable from a genuine
@@ -540,7 +540,7 @@ plausibly a symptom of link 3 rather than of basis/geometry mismatch.
   `src/experiments/physics_model.py`, `src/research/fem_baseline.py`,
   `src/training/loss_balancing.py`.
 
-### P1 — Reproducibility: two disjoint numpy RNG worlds
+#### P1 — Reproducibility: two disjoint numpy RNG worlds
 
 `src/seeding.py::set_global_seeds` seeds the **legacy** `np.random` global, but ~15 modules use the
 Generator API (`np.random.default_rng(None)`), which draws fresh OS entropy and is untouched by it —
@@ -550,7 +550,7 @@ helper; until then `src/seeding.py`'s docstring overstates its reach. Note the l
 deliberate (converting it would change derived seeds and invalidate committed baselines — same
 hazard as B9).
 
-### P1 — CUDA correctness (partially fixed)
+#### P1 — CUDA correctness (partially fixed)
 
 - ✅ `src/research/stochastic_galerkin_compare.py` — `field.numpy()` on a device tensor would raise
   on any CUDA run of the artifact path; CPU-only tests structurally cannot see it. Now
@@ -560,7 +560,7 @@ hazard as B9).
   codebase's own correct idiom (`PDEResidual.to_numpy`). Also `src/pde/operators.py`'s in-place
   `coords.requires_grad_(True)` mutates a caller-owned tensor that shares memory with a numpy array.
 
-### P2 — Config fields that are declared but never read
+#### P2 — Config fields that are declared but never read
 
 Wire or delete: `GumbelMCTSConfig.use_mixed_value` (the *defining* feature of Gumbel AlphaZero —
 setting it changes nothing), `GumbelMCTSConfig.discount` (gumbel search ignores its own discount),
@@ -569,7 +569,7 @@ scenarios, never checked — a `requires_gpu=True` scenario runs to completion o
 PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGameConfig.success_metrics`,
 `StrangTrainerConfig.n_particles`, `dt_min`/`dt_max`.
 
-### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
+#### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
 
 `TRY400` (18 `.error()`-in-`except` sites dropping tracebacks), `G201`, `DTZ` (18 naive
 `datetime.now()` written into persisted artifacts and checkpoint metadata), `T20` (13 real —
@@ -580,7 +580,7 @@ PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGam
 deliberate, see above), `TRY003`/`EM101`/`EM102` (810 findings, pure style; this repo's long
 contextual exception messages are a feature).
 
-### P2 — Next-tier hardcoded values
+#### P2 — Next-tier hardcoded values
 
 Ordered by blast radius, not count: the LBB regularization margin multiplier `* 10` in
 `src/modeling/galerkin_operator.py` (the same concept is already named **twice** in
@@ -590,7 +590,7 @@ policy-CE floor `clamp(min=-100.0)`; Cole-Hopf `n_terms = 50` and its `1e-10` de
 (the L2 reference for SBIR rows); `board_size = ... else 8` fallback in self-play (a silent wrong
 shape); the FNO projection head fixed at 128 while every sibling dimension is a parameter.
 
-### P2 — Zero-logging packages
+#### P2 — Zero-logging packages
 
 `src/pde/stochastic/` (all 11 modules, ~1.9k LOC — including a parallel-in-time trainer whose
 calibrated gates fail silently) and `src/mcts/search.py`/`node.py`/`evaluator.py` (~1.2k LOC — the
@@ -600,7 +600,7 @@ headline moved from 0.86 to 0.96 on that one boolean and there is no runtime rec
 ran. Note `src/pde/stochastic/` is guarded by an import-isolation allowlist; extend it deliberately
 in the same commit.
 
-### P3 — Reusability / BC (evidence recorded, no action taken)
+#### P3 — Reusability / BC (evidence recorded, no action taken)
 
 - **Two parallel threshold schemas with different semantics**: `poc/config.py::MetricThreshold`
   (no tolerance on `<=`/`>=`) vs `templates/config.py::MetricDefinition` (adds `1e-9`). The
@@ -658,6 +658,11 @@ the charter guard's own docstring.
   knobs with different defaults.** Phase 1 collapsed 2→1 on the base-trainer side; the remaining
   split is rooted in `Trainer.__init__` not calling `super().__init__()`. Value-preserving and
   cross-documented, but it is a divergence waiting to be re-discovered.
-- **The `.pytest_cache` removal rationale is imprecise.** The step was correctly deleted (uploading
-  a cache directory is not a test result) and CI did log "No files were found", but pytest does
-  create the directory — so "never found files" is not a general truth about the tool.
+- ~~**The `.pytest_cache` removal rationale is imprecise.**~~ **RETRACTED 2026-08-15 — this
+  correction was itself wrong, and is kept as a worked example of the failure mode this audit
+  exists to catch.** The reasoning was: "pytest creates `.pytest_cache/`, therefore the step would
+  have found files, therefore 'never found files' is false." The premise is true and the conclusion
+  does not follow: `actions/upload-artifact@v4` excludes hidden files by default, and
+  `.pytest_cache/` is a dotted path — which is exactly why CI logged "No files were found". A local
+  `ls` proving the directory exists was never evidence about the *action's* behaviour. The original
+  claim stands; the deletion was correct for the stated reason.

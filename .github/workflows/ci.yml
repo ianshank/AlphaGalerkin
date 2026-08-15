@@ -20,9 +20,16 @@ on:
     - cron: '0 4 * * *'  # Run nightly at 4am UTC
   workflow_dispatch:
 
-# Cancel in-progress runs on new pushes to same branch
+# Cancel in-progress runs on new pushes to the same branch.
+#
+# Keyed on the HEAD BRANCH NAME, not github.ref, so that the push-triggered run
+# and the pull_request-triggered run for the same branch land in the same group
+# and dedupe. Without this, any branch matching the push globs above that also
+# has an open PR runs the entire pipeline twice per push (github.ref is
+# refs/heads/<branch> for push but refs/pull/<n>/merge for pull_request, so the
+# two never collided).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 # Least privilege: jobs only need to read the repository (no writes to contents,

@@ -479,3 +479,144 @@ monolith), B3 registries, B7 composite action, B8, B15, B13.
 | 5 | test-slow on PRs | Keep nightly + `[full-test]` opt-in |
 | 6 | Shim deprecation window | 2 minor releases |
 | 7 | Release cut (B13) | After Phase 2 |
+
+## 7.7 Post-Phase-1 peer review — findings and dispositions (2026-08-15)
+
+A four-lens review (adversarial diff review, SQE coverage/edge-cases, hygiene sweep with extended
+ruff rule sets, skills/reusability architecture) ran against the Phase-1 branch. Fixed-in-branch
+items are marked ✅; the rest are prioritized backlog with the evidence needed to act on them.
+
+### P0 — Flat MCTS reward on 3 of 8 PDE operators (degenerate acceptance criteria)
+
+**Independently verified by execution, not inspection.** Three links, each confirmed:
+
+1. `src/pde/operators.py` — `BurgersOperator.__init__` assigns
+   `self.is_time_dependent = config.is_time_dependent`, **overwriting** the class-level
+   `is_time_dependent = True`. `PDEConfig.is_time_dependent` defaults to `False` and
+   `_centaur_common.build_pde_operator` never overrides it. Measured: class-level `True`,
+   instance `False`. Same pattern in `AdvectionDiffusionOperator`.
+2. → `BurgersOperator.exact_solution` hits its `if not self.is_time_dependent: return None`
+   guard. Measured: Burgers → `None`, Poisson → `ndarray`.
+3. → `BasisSelectionGame.compute_exact_error` falls back to RMS of `state.residuals`, and those
+   residuals are structurally zero: `compute_derivatives` early-returns all-zero derivatives when
+   `u` is grad-free, and the caller always passes `torch.from_numpy(state.solution)` — grad-free
+   by construction. With a zero source term the error is identically 0.0.
+
+Measured per-operator error trajectories: `burgers`, `heat`, `advection_diffusion` → `[0.0, 0.0,
+0.0, 0.0]` (FLAT); `poisson`, `helmholtz`, `biharmonic` → non-degenerate.
+
+**Consequence**: `_centaur_common.run_basis_selection_cell` early-returns before constructing MCTS
+(`current_error <= target_residual`), so the Burgers OOD cell runs **zero rollouts on every arm and
+seed**. `config/scenarios/llm_prior_demo.yaml`'s headline OOD gates are therefore degenerate:
+`ood_llm_residual <= 1e-2` passes trivially and unfalsifiably (0 ≤ 0.01) while
+`ood_trained_residual > 1e-1` fails unconditionally. The shipped demo's OOD claim is evidence in
+neither direction. Helmholtz/Biharmonic carry manufactured solutions, which is why the
+OOD-expansion tests pass and this stayed invisible.
+
+**Why not fixed here**: the fix changes solver semantics and invalidates the shipped OOD
+thresholds, which must be re-derived from a real measurement. That is a dedicated PR, not a
+rider on a CI/constants change. Landed now: a `logger.debug("derivatives_skipped_u_disconnected", …)`
+at the zero-derivative branch, so the condition is diagnosable instead of silent.
+
+**Fix order when taken up**: (1) stop letting `config` silently downgrade a class-level
+`is_time_dependent = True` — honour the class default or raise on the contradiction; (2) make
+`compute_exact_error` refuse the residual fallback when `_exact_solution is None` rather than
+reporting a constant as convergence; (3) re-run `llm_prior_demo.yaml` and re-derive `ood_*`.
+Re-measure the `noyron_basis` "~2–4% best-case reduction" open research item afterwards — it is
+plausibly a symptom of link 3 rather than of basis/geometry mismatch.
+
+### P1 — Silent failures in numeric paths (partially fixed)
+
+- ✅ `src/modeling/stability.py` — an SVD `RuntimeError` returned `beta = 0`, which is *exactly*
+  the LBB-violation alarm value, making a numerical crash indistinguishable from a genuine
+  stability finding on the metric the novelty claim rests on. Now logs `lbb_svd_failed` with shape
+  and an explicit note.
+- ✅ `src/poc/tuning/sampler.py` — a missing `optuna` made `sampler="tpe"` silently run **random
+  search** while still reporting TPE. Now warns with a remedy; `optuna` is also now a declared
+  `[tuning]` extra rather than an undeclared import.
+- Open: `src/pde/games/basis_selection.py` (singular Galerkin system → pinv fallback; a singular
+  system is precisely the LBB inf-sup failure the project claims to detect),
+  `src/experiments/physics_model.py`, `src/research/fem_baseline.py`,
+  `src/training/loss_balancing.py`.
+
+### P1 — Reproducibility: two disjoint numpy RNG worlds
+
+`src/seeding.py::set_global_seeds` seeds the **legacy** `np.random` global, but ~15 modules use the
+Generator API (`np.random.default_rng(None)`), which draws fresh OS entropy and is untouched by it —
+including `PDEOperator.generate_collocation_points(seed=None)`, called inside the physics-loss
+training loop. Either thread explicit seeds into every `default_rng` call site or add a child-seed
+helper; until then `src/seeding.py`'s docstring overstates its reach. Note the legacy API itself is
+deliberate (converting it would change derived seeds and invalidate committed baselines — same
+hazard as B9).
+
+### P1 — CUDA correctness (partially fixed)
+
+- ✅ `src/research/stochastic_galerkin_compare.py` — `field.numpy()` on a device tensor would raise
+  on any CUDA run of the artifact path; CPU-only tests structurally cannot see it. Now
+  `.detach().cpu().numpy()`.
+- Open: 12 more bare `.numpy()` in `src/pde` (safe today only because `sample_interior` defaults to
+  CPU and no caller passes a device — the picogk/Noyron path is GPU-preferred). Normalise on the
+  codebase's own correct idiom (`PDEResidual.to_numpy`). Also `src/pde/operators.py`'s in-place
+  `coords.requires_grad_(True)` mutates a caller-owned tensor that shares memory with a numpy array.
+
+### P2 — Config fields that are declared but never read
+
+Wire or delete: `GumbelMCTSConfig.use_mixed_value` (the *defining* feature of Gumbel AlphaZero —
+setting it changes nothing), `GumbelMCTSConfig.discount` (gumbel search ignores its own discount),
+`PDEGameConfig.error_metric` (`h1` silently yields l2), `BaseScenarioConfig.requires_gpu` (set by 4
+scenarios, never checked — a `requires_gpu=True` scenario runs to completion on CPU and reports
+PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGameConfig.success_metrics`,
+`StrangTrainerConfig.n_particles`, `dt_min`/`dt_max`.
+
+### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
+
+`TRY400` (18 `.error()`-in-`except` sites dropping tracebacks), `G201`, `DTZ` (18 naive
+`datetime.now()` written into persisted artifacts and checkpoint metadata), `T20` (13 real —
+`ScenarioRunner._print_summary` prints from a *library* class, invisible to structlog and to
+`capture_logs`; the other 91 are legitimate CLI entry points needing per-file-ignores), `S301`
+(pickle over worker IPC), `S324` (md5 → `usedforsecurity=False`). Deliberately **not** recommended:
+`G004` (all 9 hits build dynamic structlog *event names* — idiomatic), `NPY002` (legacy RNG is
+deliberate, see above), `TRY003`/`EM101`/`EM102` (810 findings, pure style; this repo's long
+contextual exception messages are a feature).
+
+### P2 — Next-tier hardcoded values
+
+Ordered by blast radius, not count: the LBB regularization margin multiplier `* 10` in
+`src/modeling/galerkin_operator.py` (the same concept is already named **twice** in
+`src/modeling/stability.py` — three copies, one literal, and it shapes the training gradient);
+`min(batch_size * 10, replay_buffer_size // 10)` deciding when training starts; the triplicated
+policy-CE floor `clamp(min=-100.0)`; Cole-Hopf `n_terms = 50` and its `1e-10` denominator floor
+(the L2 reference for SBIR rows); `board_size = ... else 8` fallback in self-play (a silent wrong
+shape); the FNO projection head fixed at 128 while every sibling dimension is a parameter.
+
+### P2 — Zero-logging packages
+
+`src/pde/stochastic/` (all 11 modules, ~1.9k LOC — including a parallel-in-time trainer whose
+calibrated gates fail silently) and `src/mcts/search.py`/`node.py`/`evaluator.py` (~1.2k LOC — the
+core search engine, where the F0 defect lived, has no logger at all). Highest-value single line:
+recording `search_mode`/`invert_backup` at `MCTS.__init__` — the entire `lshape_amr_compare`
+headline moved from 0.86 to 0.96 on that one boolean and there is no runtime record of which mode
+ran. Note `src/pde/stochastic/` is guarded by an import-isolation allowlist; extend it deliberately
+in the same commit.
+
+### P3 — Reusability / BC (evidence recorded, no action taken)
+
+- **Two parallel threshold schemas with different semantics**: `poc/config.py::MetricThreshold`
+  (no tolerance on `<=`/`>=`) vs `templates/config.py::MetricDefinition` (adds `1e-9`). The
+  `spec-new` skill declares `MetricThreshold` "the single source of truth", yet `src/pde/config.py`
+  builds `success_metrics` from the other one. Migrating a `<=` threshold between them silently
+  flips pass/fail at the boundary.
+- **`FNetMixingLayer` declared twice** with identical bodies; one is labelled "alias for backward
+  compatibility" but is a full re-declaration. The O(N) complexity headline runs the copy that no
+  test covers.
+- **No deprecation convention**: only 2 of ~19 shims warn; `pyproject.toml` has no `filterwarnings`
+  at all, so `DeprecationWarning`s are neither errored nor tracked. `distributed/config.py` carries
+  a `.. deprecated::` docstring directive with no `warnings.warn` behind it. Owner decision #6 sets
+  a 2-release window; nothing implements it.
+- **`compute_hash()` re-implemented 6×** without the canonical volatile-field exclusion — no live
+  bug today (none of those configs has a timestamp field yet), but the first one added makes a
+  reproducibility hash non-reproducible.
+- **If-elif dispatch where the repo's own registry pattern fits**: `load_config_from_dict`'s 6
+  copy-pasted lazy-import branches with a silent `BaseScenarioConfig` fallback (a typo'd scenario
+  name parses instead of raising); basis-kind dispatch at 3 separate sites; 7 byte-identical
+  backend-factory tails; `create_sampler` silently defaulting an unknown name to random.

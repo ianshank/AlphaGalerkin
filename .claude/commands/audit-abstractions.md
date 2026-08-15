@@ -19,6 +19,9 @@ Interpretation:
 - `src/pde` has **one known baseline hit** (`PDEGame.get_result`, `src/pde/game.py:457`) and so
   is run *without* `--fail-on-missing`. Treat any hit beyond that one as a blocker. See the
   `abstract-method-audit` skill and `docs/CODE_HYGIENE_AUDIT.md` **B17**.
+- `src/training` likewise has **one accepted baseline** (`BaseLoss.forward`,
+  `src/training/losses/base.py:40` — a Protocol member with no reader), recorded in
+  `docs/CODE_HYGIENE_AUDIT.md` §7.3. Run without `--fail-on-missing`; anything beyond it blocks.
 - A hit is fixed by wiring the method to a call site, deleting it (and its docstring), or confirming
   the protocol member has a reader.
 

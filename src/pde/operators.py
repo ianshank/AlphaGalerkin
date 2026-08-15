@@ -262,6 +262,19 @@ class PDEOperator(ABC):
         # from coords in the computational graph — derivatives are undefined.
         # Return zeros so callers (e.g. PoissonOperator.residual) still work.
         if not u.requires_grad and u.grad_fn is None:
+            # This branch is silent by design but has real consequences: every
+            # derivative-bearing term vanishes, so a residual built from it
+            # collapses to the source term alone (and to exactly 0.0 when the
+            # source is zero). A caller that reads that as "converged" is
+            # measuring nothing. Logged so the condition is diagnosable rather
+            # than inferred. See docs/CODE_HYGIENE_AUDIT.md §7.7 (P0-1).
+            logger.debug(
+                "derivatives_skipped_u_disconnected",
+                operator=type(self).__name__,
+                n_points=n_points,
+                dim=self.dim,
+                consequence="all derivative terms are zero for this call",
+            )
             derivatives: dict[str, Tensor] = {}
             for d in range(self.dim):
                 derivatives[f"u_x{d}"] = torch.zeros(

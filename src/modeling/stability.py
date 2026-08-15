@@ -106,8 +106,19 @@ class StabilityGuard(nn.Module):
         try:
             singular_values = torch.linalg.svdvals(gram)
             beta = singular_values.min(dim=-1).values
-        except RuntimeError:
-            # Fallback for numerical issues
+        except RuntimeError as exc:
+            # A failed SVD is NOT the same as a measured LBB violation, but the
+            # zero fallback is indistinguishable from one downstream (beta == 0 is
+            # precisely the violation alarm value). Log loudly so a numerical
+            # failure can be told apart from a genuine stability finding.
+            logger.warning(
+                "lbb_svd_failed",
+                error=str(exc),
+                gram_shape=tuple(gram.shape),
+                batch=keys.shape[0],
+                fallback_beta=0.0,
+                note="beta=0 here means SVD failure, not a measured LBB violation",
+            )
             beta = torch.zeros(keys.shape[0], device=keys.device)
 
         return beta

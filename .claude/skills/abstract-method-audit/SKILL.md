@@ -59,6 +59,15 @@ Treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is
   `docs/CODE_HYGIENE_AUDIT.md`. Until then `src/pde` is run *without* `--fail-on-missing`
   (see the CLAUDE.md Regression Surface row), and a **new** dead abstraction there should
   still be treated as a blocker — compare against this known single baseline hit.
+- **`src/training` has one accepted baseline too** (recorded 2026-08, `docs/CODE_HYGIENE_AUDIT.md`
+  §7.3) — run it without `--fail-on-missing` and expect exactly:
+
+      BaseLoss.forward  (src/training/losses/base.py:40)
+
+  Reported as a *Protocol member with no reader*, not an abstract method. Treat any hit beyond
+  this one as a blocker. (`BaseTrainer.compute_loss/generate_data/evaluate` used to be dead
+  `@abstractmethod`s here; they were demoted to concrete `step()` hooks, so they no longer
+  appear.)
 - **Then: blocking.** Once the domain-PoC backlog is triaged, wire `--fail-on-missing src` into CI.
 
 When a hit is real, the fix is one of: wire the method to a call site (F1 → Option 1), delete it and

@@ -44,6 +44,11 @@ dependencies = [
     "scipy>=1.10.0",
     "wandb>=0.16.0",
     "typer>=0.9.0",
+    # Imported at module level by src/poc/runner.py and
+    # src/research/pde_benchmarks.py. It was previously satisfied only
+    # transitively via hydra-core -> omegaconf, so a hydra major bump would have
+    # broken `import src.poc.runner` outright. Declared directly.
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
@@ -54,6 +59,12 @@ Issues = "https://github.com/ianshank/AlphaGalerkin/issues"
 Changelog = "https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CHANGELOG.md"
 
 [project.optional-dependencies]
+# Optuna powers the TPE sampler in src/poc/tuning/sampler.py. Without it,
+# sampler="tpe" silently degrades to random search (the fallback now warns —
+# see TPESampler.sample), so the dependency is declared rather than implied.
+tuning = [
+    "optuna>=3.0",
+]
 # scikit-fem backs the hp-adaptive FEM classical baseline used for DOE
 # Genesis proposal benchmarks (see src/research/fem_baseline.py).
 fem = [

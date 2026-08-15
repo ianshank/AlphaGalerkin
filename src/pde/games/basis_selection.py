@@ -406,11 +406,11 @@ class BasisSelectionGame(PDEGame):
                 n_points=Phi.shape[0],
             )
             pinv_Phi = np.linalg.pinv(Phi)
-            condition_number = 1.0 / np.linalg.cond(Phi) if np.linalg.cond(Phi) > 0 else 0.0
+            condition_number = np.linalg.cond(Phi)
             logger.debug(
                 "pinv_condition_number",
                 rank=np.linalg.matrix_rank(Phi),
-                condition_number=np.linalg.cond(Phi),
+                condition_number=condition_number,
                 rcond=np.finfo(float).eps * max(Phi.shape),
             )
             coeffs = pinv_Phi @ target

@@ -8,10 +8,12 @@ Provides shared machinery that all concrete trainers can inherit:
 - LR scheduling (cosine / linear warmup / none)
 - Checkpoint save/load interface
 - Structured logging with step timing
-- Abstract hooks: compute_loss, generate_data, evaluate
+- Optional hooks: compute_loss, generate_data (driven by step()); evaluate
 
-Concrete trainers override the abstract methods and call super().__init__()
-to receive the shared setup.
+Concrete trainers override the hooks they need. Note that the production
+trainers (Trainer, DistributedTrainer) drive their own loops and deliberately
+do NOT call super().__init__(); the hooks exist for subclasses that want the
+generic step() loop.
 
 Usage::
 
@@ -187,7 +189,10 @@ class StepResult:
 
 
 class BaseTrainer(ABC, Generic[ConfigT]):
-    """Abstract base class for AlphaGalerkin trainers.
+    """Shared base class for AlphaGalerkin trainers.
+
+    Declares no abstract methods, so it is directly instantiable; the ABC base
+    is retained as a marker and for future abstract members.
 
     Provides shared infrastructure (AMP, gradient clipping, LR scheduling,
     checkpointing) that concrete trainers build on top of.
@@ -299,7 +304,12 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         )
 
     def evaluate(self) -> dict[str, float]:
-        """Run evaluation and return metrics (hook for the ``step()`` loop).
+        """Run evaluation and return metrics.
+
+        NOT called by ``step()`` (which drives only ``generate_data`` and
+        ``compute_loss``) and not called anywhere else in ``src/`` -- it is an
+        entry point for a subclass's own evaluation cadence. Removing it
+        entirely is tracked in docs/CODE_HYGIENE_AUDIT.md §7.7.
 
         Returns:
             Dictionary of evaluation metric name -> value.

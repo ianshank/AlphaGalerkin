@@ -257,7 +257,14 @@ jobs:
   coverage:
     name: Test Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30: this job runs the whole test sweep under the pure-Python
+    # tracer plus ~20 per-module gates, and measured 24m08s on a GitHub runner
+    # after the Noyron/SBIR gates were added -- 80% of a 30-minute cap, close
+    # enough that one slow runner turns a green build red. Note several gate
+    # steps re-run files the sweep already covered; collapsing that duplication
+    # (so each file is measured once) is the real fix and is tracked in
+    # docs/CODE_HYGIENE_AUDIT.md §7.7.
+    timeout-minutes: 45
     needs: lint
     # The installed torch wheel crashes coverage's default C tracer on import
     # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
@@ -368,7 +375,8 @@ jobs:
 
       # CAUTION: never mix file-path --cov=path/to/module.py specs into a
       # pytest-cov invocation. Under coverage 7.x / pytest-cov 7.x, file-path
-      # specs are silently dropped (only a CovReportWarning), so the gate
+      # specs are silently dropped (only a CoverageWarning, slug
+      # module-not-imported), so the gate
       # passes on the remaining directory spec alone. This gate previously
       # carried two file specs that enforced nothing; they now run below as a
       # separate native-runner step (path-glob --include), the same pattern as

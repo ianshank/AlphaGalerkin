@@ -372,7 +372,8 @@ implementation; all numbers below are measured at HEAD, not estimated.
   native-runner form — noyron_basis (measured 98% combined), Noyron HX surface
   (99%), SBIR P40 surface (94%).
 - **Degraded gate repaired**: coverage 7.x silently drops file-path
-  `--cov=path/to/module.py` specs (only a `CovReportWarning`); the llm_prior
+  `--cov=path/to/module.py` specs (only a `CoverageWarning`, slug
+  `module-not-imported`); the llm_prior
   gate passed on the `lm_studio` directory alone. The file-level pair now runs
   as a native-runner step. **Decay evidence**: with the gate unenforced,
   `llm_prior_ablation.py` drifted to a measured 77% branch (81% combined with
@@ -620,3 +621,43 @@ in the same commit.
   copy-pasted lazy-import branches with a silent `BaseScenarioConfig` fallback (a typo'd scenario
   name parses instead of raising); basis-kind dispatch at 3 separate sites; 7 byte-identical
   backend-factory tails; `create_sampler` silently defaulting an unknown name to random.
+
+### 7.7.1 Adversarial review of the Phase-1 diff — dispositions (2026-08-15)
+
+A full adversarial pass re-ran every numeric claim in the Phase-1 diff to ground. **All of them
+reproduced exactly** (noyron_basis 98%, Noyron HX 99%, SBIR P40 94%, llm_prior pair 81%; every
+constant swap value-identical; `DEFAULT_BOARD_SIZES` never leaked by reference), and the
+highest-risk item — whether `Trainer.training_config` could ever lack the new fields — was traced
+through every construction path and cleared. Fixed in follow-up; remaining items below.
+
+**Fixed** (PR #123): fork-PR concurrency collision; `ci-success` failing on superseded runs; the
+v1.1.0 migration's orphan-dict no-op; the `coverage` job's 30-minute cap (measured 24m08s on a real
+runner = 80% utilisation, one slow runner from red → raised to 45); four stale "abstract"
+doc sites left by the `BaseTrainer` demotion; `evaluate()`'s docstring claiming a `step()` wiring
+that does not exist; the 14th `[9, 13, 19]` site in `config/schemas.py` (the original sweep covered
+`src/` and `dashboard/` but not `config/`); the `CoverageWarning` class name (it is
+`CoverageWarning`, slug `module-not-imported`, not `CovReportWarning`); a stale native-gate count in
+the charter guard's own docstring.
+
+**Open, with the evidence needed to act:**
+
+- **Gate duplication.** The Noyron/SBIR/llm_prior gate steps re-run files the job's main
+  `pytest tests/` sweep already covers (none of those tests carry `@pytest.mark.slow`), so each is
+  measured twice. Raising the timeout bought headroom; collapsing the duplication — `--ignore` the
+  gated files from the sweep, or split the two Noyron gates into their own job — is the real fix.
+- **`BaseTrainer.evaluate()` has zero call sites.** `step()` drives `generate_data` and
+  `compute_loss` only. Demoting it from `@abstractmethod` removed it from
+  `scripts/audit_abstractions`' view without resolving it — the F1 pattern one level down. Either
+  delete it plus both subclass stubs, or wire an evaluation cadence into `step()`. Its docstring now
+  states the truth in the meantime.
+- **`GUMBEL_LOG_PRIOR_FLOOR` is documented as an algorithmic knob but shipped as a module
+  constant.** By the project's own rule ("every knob a typed field; numerical-stability literals may
+  be constants") a value whose docstring says "retuning it changes action selection" belongs on
+  `GumbelMCTSConfig`. Promoting it is an API change and wants its own decision.
+- **`config.schemas.TrainingConfig` ↔ `BaseTrainerConfig` still declare the same two scheduler
+  knobs with different defaults.** Phase 1 collapsed 2→1 on the base-trainer side; the remaining
+  split is rooted in `Trainer.__init__` not calling `super().__init__()`. Value-preserving and
+  cross-documented, but it is a divergence waiting to be re-discovered.
+- **The `.pytest_cache` removal rationale is imprecise.** The step was correctly deleted (uploading
+  a cache directory is not a test result) and CI did log "No files were found", but pytest does
+  create the directory — so "never found files" is not a general truth about the tool.

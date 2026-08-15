@@ -702,3 +702,43 @@ class TestGradientAccumulator:
         acc.accumulate(3.0)
         assert abs(acc.accumulated_loss - 7.0) < TOLERANCE
         assert acc._step_count == 3
+
+
+# =========================================================================
+# 7. step()-hook stubs (BaseTrainer demotion)
+# =========================================================================
+
+
+class TestDistributedTrainerStepHookStubs:
+    """DistributedTrainer's own NotImplementedError stubs must survive.
+
+    ``BaseTrainer.compute_loss`` / ``generate_data`` / ``evaluate`` were
+    demoted from ``@abstractmethod`` to concrete raising hooks, so deleting
+    these subclass stubs no longer breaks instantiation -- it silently swaps
+    the trainer-specific guidance ("uses train_step()") for the generic base
+    message. Nothing else asserts these messages.
+    """
+
+    @pytest.mark.parametrize(
+        ("hook", "args", "expected"),
+        [
+            ("compute_loss", (None,), "DistributedTrainer uses train_step"),
+            ("generate_data", (), "DistributedTrainer receives batches via train_step"),
+            ("evaluate", (), "DistributedTrainer evaluation is managed externally"),
+        ],
+    )
+    def test_stub_raises_with_trainer_specific_message(
+        self,
+        hook: str,
+        args: tuple[Any, ...],
+        expected: str,
+    ) -> None:
+        """Each stub keeps its own message rather than inheriting the base one."""
+        trainer = _make_trainer()
+        with pytest.raises(NotImplementedError, match=expected):
+            getattr(trainer, hook)(*args)
+
+    def test_stubs_are_defined_on_the_subclass_not_inherited(self) -> None:
+        """The stubs are the subclass's own attributes (deletion is detectable)."""
+        for hook in ("compute_loss", "generate_data", "evaluate"):
+            assert hook in vars(DistributedTrainer), hook

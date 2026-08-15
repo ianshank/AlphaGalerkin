@@ -186,7 +186,16 @@ def _migrate_1_0_to_1_1(data: dict[str, Any]) -> dict[str, Any]:
     """
     config = data.get("config")
     if isinstance(config, dict):
-        training = config.get("training", {})
+        # setdefault, not get(..., {}): the latter hands back an ORPHAN dict when
+        # "training" is absent, so the defaults below were written into a
+        # throwaway and discarded while the version was still bumped to 1.1.0 --
+        # producing a checkpoint that claims to carry the LBB parameters and does
+        # not. A non-dict "training" is still left untouched below rather than
+        # overwritten, since clobbering unrecognised data is not this migration's
+        # job.
+        if "training" not in config:
+            config["training"] = {}
+        training = config["training"]
         if isinstance(training, dict):
             # INTENTIONALLY FROZEN literals: a 1.0.0 -> 1.1.0 migration must
             # inject the defaults that v1.1.0 shipped with, forever. Do NOT

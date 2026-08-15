@@ -22,14 +22,21 @@ on:
 
 # Cancel in-progress runs on new pushes to the same branch.
 #
-# Keyed on the HEAD BRANCH NAME, not github.ref, so that the push-triggered run
-# and the pull_request-triggered run for the same branch land in the same group
-# and dedupe. Without this, any branch matching the push globs above that also
-# has an open PR runs the entire pipeline twice per push (github.ref is
+# Keyed on HEAD REPO + HEAD BRANCH, not github.ref, so that the push-triggered
+# run and the pull_request-triggered run for the same branch land in the same
+# group and dedupe. Without this, any branch matching the push globs above that
+# also has an open PR runs the entire pipeline twice per push (github.ref is
 # refs/heads/<branch> for push but refs/pull/<n>/merge for pull_request, so the
 # two never collided).
+#
+# The head-repo half is what keeps fork PRs independent: two different forks can
+# each have a branch named e.g. "feature/foo", and keying on the branch name
+# alone would let unrelated fork runs cancel each other. For a same-repo PR,
+# head.repo.full_name equals github.repository, so the push/PR dedup above still
+# collapses to one run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 # Least privilege: jobs only need to read the repository (no writes to contents,

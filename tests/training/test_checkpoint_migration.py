@@ -312,13 +312,25 @@ class TestMigrationTrainingKeyAbsent:
     a future fix is a deliberate, visible change rather than a silent one.
     """
 
-    def test_defaults_are_dropped_when_training_key_is_absent(self) -> None:
-        """A config without a 'training' key gets versioned but not populated."""
+    def test_defaults_are_injected_when_training_key_is_absent(self) -> None:
+        """A config without a 'training' key still receives the v1.1.0 defaults.
+
+        Regression test: the migration previously read the section via
+        ``config.get("training", {})``, so an absent key produced an orphan dict
+        that the setdefault calls populated and then discarded — the checkpoint
+        was stamped 1.1.0 while carrying none of the LBB parameters the
+        migration exists to add, and a downstream reader would KeyError.
+        """
         data: dict[str, Any] = {"version": "1.0.0", "config": {}}
         migrated = migrate_checkpoint(data, "1.1.0")
 
         assert migrated["version"] == "1.1.0"
-        assert migrated["config"] == {}
+        assert migrated["config"]["training"] == {
+            "lbb_loss_weight": 0.01,
+            "lbb_target": 0.1,
+            "log_barrier_weight": 0.1,
+            "label_smoothing": 0.0,
+        }
 
     def test_defaults_are_dropped_when_training_is_not_a_dict(self) -> None:
         """A non-dict 'training' value is left untouched (no crash)."""

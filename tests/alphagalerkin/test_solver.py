@@ -275,13 +275,50 @@ class TestAlphaGalerkinSolver:
         The solver propagates ``target_tolerance`` directly to
         ``PDEGameConfig.error_tolerance`` (so a ``target_tolerance``
         above the initial Galerkin residual makes the underlying game
-        terminal on the very first iteration), and the loop exits with
-        ``termination_reason == "is_terminal"``.
+        terminal on the very first iteration).
+
+        The recorded reason is the game's own classification — here
+        ``"converged"``, because the residual is under tolerance. It is
+        deliberately *not* the bare ``"is_terminal"`` this used to assert:
+        that label collapsed converged / max_dof / budget_exhausted into one
+        uninformative value (``docs/CODE_HYGIENE_AUDIT.md`` B17).
         """
         solver = AlphaGalerkinSolver(_fast_solver_config(target_tolerance=0.99))
         result = solver.solve(poisson_operator, n_dof=32)
-        assert result.metadata["termination_reason"] == "is_terminal"
+        assert result.metadata["termination_reason"] == "converged"
         assert result.metadata["n_actions_taken"] == 0
+
+    def test_solver_records_h1_error_alongside_l2(self, poisson_operator: PoissonOperator) -> None:
+        """``h1_error`` is populated, not left permanently null.
+
+        ``compute_exact_error`` returns h1 next to l2 and ``SolverResult``
+        both carries and serialises an ``h1_error`` field, so leaving it
+        ``None`` exported an always-empty column.
+        """
+        solver = AlphaGalerkinSolver(_fast_solver_config())
+        result = solver.solve(poisson_operator, n_dof=32)
+        assert result.h1_error is not None
+        assert result.h1_error >= 0.0
+        assert result.to_dict()["h1_error"] == result.h1_error
+
+    def test_termination_reason_is_a_known_game_label(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        """Whatever ends the run, the label comes from a known vocabulary."""
+        solver = AlphaGalerkinSolver(_fast_solver_config())
+        result = solver.solve(poisson_operator, n_dof=32)
+        assert result.metadata["termination_reason"] in {
+            # From PDEGame.termination_reason (game stopped us) ...
+            "converged",
+            "max_basis",
+            "max_dof",
+            "budget_exhausted",
+            "max_steps",
+            "no_legal_actions",
+            "running",
+            # ... or from the solver loop itself.
+            "empty_policy",
+        }
 
     def test_solver_deterministic_with_seed(
         self,

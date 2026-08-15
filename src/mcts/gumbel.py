@@ -333,8 +333,12 @@ class GumbelMCTS:
                 gumbel=gumbels[action],
             )
 
-        # Run sequential halving
-        selected_action, visit_counts = self._sequential_halving(
+        # Run sequential halving. The per-action visit-count dict returned
+        # here duplicates ``root.children[a].visit_count`` (both are
+        # incremented in lockstep inside ``_sequential_halving``); the final
+        # policy below is derived straight from the tree, so the dict itself
+        # is discarded.
+        selected_action, _ = self._sequential_halving(
             root,
             top_actions.tolist(),
             self.config.n_simulations,
@@ -455,6 +459,12 @@ class GumbelMCTS:
             return node._terminal_value
 
         if node.state is None:
+            # Defensive fallback: by construction the caller (sequential
+            # halving) sets ``child.state`` immediately before simulating it,
+            # so reaching this means ``game.apply_action`` returned ``None``
+            # — a game-contract violation. Logged because it silently returns
+            # a neutral value that would otherwise bias search with no trail.
+            self._logger.warning("gumbel_simulate_missing_state")
             return 0.0
 
         # Check for terminal state

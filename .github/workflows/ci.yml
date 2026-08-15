@@ -713,7 +713,13 @@ jobs:
     name: CI Success
     runs-on: ubuntu-latest
     needs: [lint, test-fast, coverage, transfer-baseline-regression]
-    if: always()
+    # !cancelled() rather than always(): a run superseded by the concurrency
+    # group (push + pull_request for the same branch, or a newer push) has its
+    # needed jobs cancelled, and under always() this job would still execute,
+    # see result=cancelled, and report a spurious red X for a run nobody was
+    # waiting on. Skipping on cancellation keeps the aggregate gate honest while
+    # still running -- and failing -- whenever a needed job genuinely fails.
+    if: ${{ !cancelled() }}
 
     steps:
       - name: Check required jobs passed

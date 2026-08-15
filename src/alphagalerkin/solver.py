@@ -407,6 +407,24 @@ class AlphaGalerkinSolver(BaseSolver):
             adapter.apply_action(action)
             mcts.advance(action)
             n_actions_taken += 1
+        else:
+            # Loop ran the step budget out without breaking. The *last* action
+            # may still have made the game terminal (converging on the final
+            # step is the common case), and the game's own cause is more
+            # accurate than the default "max_steps" in that situation. Guarded
+            # on is_terminal so a non-terminal exhaustion keeps "max_steps"
+            # rather than recording the game's "running". That guard is
+            # defensive rather than currently reachable: the game inherits this
+            # same max_steps (see _build_game above), so exhausting the budget
+            # always leaves the game terminal on its own step rung. It costs
+            # nothing and stops the invariant depending on that coupling.
+            if adapter.is_terminal():
+                termination_reason = pde_game.termination_reason(adapter.state)
+                log.debug(
+                    "terminated_on_step_budget",
+                    step=self.config.max_steps,
+                    reason=termination_reason,
+                )
 
         wall_time = time.perf_counter() - t0
 

@@ -315,10 +315,22 @@ class TestAlphaGalerkinSolver:
             "budget_exhausted",
             "max_steps",
             "no_legal_actions",
-            "running",
             # ... or from the solver loop itself.
             "empty_policy",
         }
+
+    def test_termination_reason_is_never_running(self, poisson_operator: PoissonOperator) -> None:
+        """The solver only classifies a state it has already found terminal.
+
+        ``"running"`` is `PDEGame.termination_reason`'s non-terminal label, so
+        recording it would mean ``is_terminal`` and the classifier disagree.
+        Both solver call sites are guarded on ``adapter.is_terminal()``, so it
+        must never reach the metadata — including when the step budget runs
+        out (the ``for``/``else`` path).
+        """
+        solver = AlphaGalerkinSolver(_fast_solver_config(target_tolerance=1e-12))
+        result = solver.solve(poisson_operator, n_dof=32)
+        assert result.metadata["termination_reason"] != "running"
 
     def test_solver_deterministic_with_seed(
         self,

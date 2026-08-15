@@ -993,14 +993,19 @@ class TestMeshRefinementGameMisc:
 
         assert state.step == steps
         assert len(error_history) == steps + 1
-        assert game.termination_reason(state) in {
-            "converged",
-            "max_dof",
-            "budget_exhausted",
-            "max_steps",
-            "no_legal_actions",
-            "running",
-        }
+        # The loop exits on either the game going terminal or the test-local
+        # `steps < 3` cutoff, so assert the invariant that covers both:
+        # "running" is returned for exactly the non-terminal states.
+        reason = game.termination_reason(state)
+        assert (reason == "running") is (not game.is_terminal(state))
+        if game.is_terminal(state):
+            assert reason in {
+                "converged",
+                "max_dof",
+                "budget_exhausted",
+                "max_steps",
+                "no_legal_actions",
+            }
 
     def test_mesh_quality_tracking(self, game: MeshRefinementGame) -> None:
         """Track mesh quality through refinement steps."""

@@ -691,12 +691,18 @@ class TestBasisSelectionGameLoop:
         assert state.step >= 0
         assert state.dof >= 0
         assert len(error_history) >= 1
-        # Whatever ended the episode, the classifier names a known cause.
-        assert game.termination_reason(state) in {
-            "converged",
-            "max_basis",
-            "budget_exhausted",
-            "max_steps",
-            "no_legal_actions",
-            "running",
-        }
+        # This loop can exit either because the game went terminal or because
+        # the test-local step bound was hit, so assert the *invariant* that
+        # holds in both cases: "running" is returned for exactly the
+        # non-terminal states. An allowlist spanning both would still pass if
+        # the classifier drifted out of step with is_terminal.
+        reason = game.termination_reason(state)
+        assert (reason == "running") is (not game.is_terminal(state))
+        if game.is_terminal(state):
+            assert reason in {
+                "converged",
+                "max_basis",
+                "budget_exhausted",
+                "max_steps",
+                "no_legal_actions",
+            }

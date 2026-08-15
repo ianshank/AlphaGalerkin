@@ -20,7 +20,7 @@ from src.pde.config import (
     PDEConfig,
     PDEGameConfig,
 )
-from src.pde.game import PDEGame, PDEResult, PDEState
+from src.pde.game import PDEGame, PDEState
 from src.pde.geometry import (
     CylinderFlowDomain,
     DomainGeometry,
@@ -53,7 +53,6 @@ __all__ = [
     # Core
     "PDEGame",
     "PDEState",
-    "PDEResult",
     # Geometry
     "DomainGeometry",
     "RectangularDomain",

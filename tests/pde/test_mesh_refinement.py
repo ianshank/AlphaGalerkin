@@ -854,52 +854,48 @@ class TestMeshRefinementGameTerminal:
         assert game.is_terminal(state) is True
 
 
-class TestMeshRefinementGameResult:
-    """Tests for game result generation."""
+class TestMeshRefinementTerminationReason:
+    """Tests for the termination-cause classifier.
 
-    def test_get_result(self, game: MeshRefinementGame) -> None:
-        state = game.get_initial_state()
-        actions = game.get_valid_actions(state)
-        state = game.apply_action(state, actions[0])
-        error_history = [1.0, state.error_estimate]
-        result = game.get_result(state, error_history)
-        assert result.n_steps == 1
-        assert result.final_dof > 0
-        assert len(result.error_history) == 2
+    ``termination_reason`` must mirror :meth:`is_terminal`'s ladder. This
+    game's capacity rung is the DOF count, compared with a strict ``>``.
+    """
 
-    def test_get_result_converged(self, game: MeshRefinementGame) -> None:
+    def test_converged(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
         state.error_estimate = 1e-6
-        result = game.get_result(state, [1.0, 1e-6])
-        assert result.converged is True
-        assert result.termination_reason == "converged"
+        assert game.termination_reason(state) == "converged"
 
-    def test_get_result_max_dof(self, game: MeshRefinementGame) -> None:
+    def test_max_dof_capacity_rung(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
-        state.dof = 10000
-        result = game.get_result(state, [1.0])
-        assert result.termination_reason == "max_dof"
+        state.error_estimate = 1.0
+        state.dof = game.config.max_dof + 1
+        assert game.termination_reason(state) == "max_dof"
 
-    def test_get_result_budget_exhausted(self, game: MeshRefinementGame) -> None:
+    def test_dof_exactly_at_cap_is_not_over_capacity(self, game: MeshRefinementGame) -> None:
+        """``is_terminal`` uses ``>``; the classifier must not drift to ``>=``."""
         state = game.get_initial_state()
+        state.error_estimate = 1.0
+        state.dof = game.config.max_dof
+        assert game.termination_reason(state) != "max_dof"
+
+    def test_budget_exhausted(self, game: MeshRefinementGame) -> None:
+        state = game.get_initial_state()
+        state.error_estimate = 1.0
         state.budget_remaining = 0
-        result = game.get_result(state, [1.0])
-        assert result.termination_reason == "budget_exhausted"
+        assert game.termination_reason(state) == "budget_exhausted"
 
-    def test_get_result_empty_history(self, game: MeshRefinementGame) -> None:
+    def test_max_steps(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
-        result = game.get_result(state, [])
-        assert result.error_reduction_rate == 0.0
+        state.error_estimate = 1.0
+        state.step = game.config.max_steps
+        assert game.termination_reason(state) == "max_steps"
 
-    def test_get_result_efficiency_metrics(self, game: MeshRefinementGame) -> None:
+    def test_running_for_non_terminal_state(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
-        actions = game.get_valid_actions(state)
-        state = game.apply_action(state, actions[0])
-        error_history = [1.0, state.error_estimate]
-        result = game.get_result(state, error_history)
-        assert isinstance(result.error_reduction_rate, float)
-        assert isinstance(result.dof_efficiency, float)
-        assert isinstance(result.compute_efficiency, float)
+        state.error_estimate = 1.0
+        assert game.is_terminal(state) is False
+        assert game.termination_reason(state) == "running"
 
 
 class TestMeshRefinementGameError:
@@ -995,8 +991,16 @@ class TestMeshRefinementGameMisc:
             steps += 1
             assert isinstance(reward, float)
 
-        result = game.get_result(state, error_history)
-        assert result.n_steps == steps
+        assert state.step == steps
+        assert len(error_history) == steps + 1
+        assert game.termination_reason(state) in {
+            "converged",
+            "max_dof",
+            "budget_exhausted",
+            "max_steps",
+            "no_legal_actions",
+            "running",
+        }
 
     def test_mesh_quality_tracking(self, game: MeshRefinementGame) -> None:
         """Track mesh quality through refinement steps."""

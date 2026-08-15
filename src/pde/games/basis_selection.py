@@ -24,7 +24,7 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from src.pde.config import BasisSelectionConfig, PDEGameConfig
-from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.game import GamePhase, PDEGame, PDEState
 from src.pde.reward import log_reward
 
 logger = structlog.get_logger(__name__)
@@ -520,65 +520,14 @@ class BasisSelectionGame(PDEGame):
         # Check no valid actions
         return len(self.get_valid_actions(state)) == 0
 
-    def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
-        """Get final game result.
+    def _capacity_reason(self, state: PDEState) -> str | None:
+        """Report ``"max_basis"`` once the basis-function cap is reached.
 
-        Args:
-            state: Terminal state.
-            error_history: Error values throughout game.
-
-        Returns:
-            PDEResult with metrics.
-
+        This game's capacity rung; mirrors :meth:`is_terminal`.
         """
-        errors = self.compute_exact_error(state)
-
-        converged = state.error_estimate < self.config.error_tolerance
-
-        # Compute efficiency metrics
-        if len(error_history) > 1:
-            error_reduction_rate = (error_history[0] - error_history[-1]) / len(error_history)
-            dof_efficiency = (error_history[0] - error_history[-1]) / max(1, state.dof)
-        else:
-            error_reduction_rate = 0.0
-            dof_efficiency = 0.0
-
-        budget_used = self.config.computational_budget - state.budget_remaining
-        compute_efficiency = (
-            (error_history[0] - error_history[-1]) / max(1, budget_used)
-            if len(error_history) > 1
-            else 0.0
-        )
-
-        termination_reason = (
-            "converged"
-            if converged
-            else "max_basis"
-            if state.n_basis >= self.basis_config.max_basis_functions
-            else "budget_exhausted"
-            if state.budget_remaining <= 0
-            else "max_steps"
-        )
-
-        return PDEResult(
-            final_error=state.error_estimate,
-            final_dof=state.dof,
-            n_steps=state.step,
-            converged=converged,
-            l2_error=errors["l2"],
-            h1_error=errors["h1"],
-            linf_error=errors["linf"],
-            residual_norm=errors["residual"],
-            error_reduction_rate=error_reduction_rate,
-            dof_efficiency=dof_efficiency,
-            compute_efficiency=compute_efficiency,
-            initial_error=error_history[0] if error_history else state.error_estimate,
-            best_error=min(error_history) if error_history else state.error_estimate,
-            average_error=float(np.mean(error_history)) if error_history else state.error_estimate,
-            error_history=error_history,
-            termination_reason=termination_reason,
-            budget_used=budget_used,
-        )
+        if state.n_basis >= self.basis_config.max_basis_functions:
+            return "max_basis"
+        return None
 
     def compute_exact_error(self, state: PDEState) -> dict[str, float]:
         """Compute error metrics against exact solution.

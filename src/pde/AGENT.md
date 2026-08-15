@@ -78,7 +78,7 @@ pytest tests/pde/test_mcts_adapter.py -v
 | File | Purpose | Key Classes |
 |------|---------|-------------|
 | `config.py` | Pydantic configuration | `PDEConfig`, `PDEGameConfig`, `BasisSelectionConfig`, `MeshRefinementConfig`, `PDEType`, `BoundaryCondition`, `RefinementStrategy`, `ActionSpace` |
-| `game.py` | Abstract PDE game interface | `PDEGame`, `PDEState`, `PDEResult`, `GamePhase` |
+| `game.py` | Abstract PDE game interface | `PDEGame`, `PDEState`, `GamePhase` |
 | `operators.py` | PDE operator definitions | `PDEOperator` (ABC), `PDEResidual`, `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator` |
 | `registry.py` | PDE operator registration | `PDEOperatorRegistry`, `@register_pde_operator()` |
 | `mcts_adapter.py` | PDE-to-MCTS bridge | `PDEGameAdapter` |

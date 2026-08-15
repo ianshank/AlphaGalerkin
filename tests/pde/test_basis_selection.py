@@ -518,44 +518,57 @@ class TestBasisSelectionGameTerminal:
             state = game.apply_action(state, i)
 
 
-class TestBasisSelectionGameResult:
-    """Tests for game result generation."""
+class TestBasisSelectionTerminationReason:
+    """Tests for the termination-cause classifier.
 
-    def test_get_result(self, game: BasisSelectionGame) -> None:
-        state = game.get_initial_state()
-        state = game.apply_action(state, 0)
-        error_history = [1.0, state.error_estimate]
-        result = game.get_result(state, error_history)
-        assert result.final_dof == 1
-        assert result.n_steps == 1
-        assert len(result.error_history) == 2
+    ``termination_reason`` must mirror :meth:`is_terminal`'s ladder, naming
+    *which* condition stopped the episode. This game's capacity rung is the
+    basis-function count, supplied via ``_capacity_reason``.
+    """
 
-    def test_get_result_termination_reason(self, game: BasisSelectionGame) -> None:
+    def test_converged(self, game: BasisSelectionGame) -> None:
         state = game.get_initial_state()
         state.error_estimate = 1e-6
-        result = game.get_result(state, [1.0, 1e-6])
-        assert result.converged is True
-        assert result.termination_reason == "converged"
+        assert game.termination_reason(state) == "converged"
 
-    def test_get_result_budget_exhausted(self, game: BasisSelectionGame) -> None:
+    def test_max_basis_capacity_rung(self, game: BasisSelectionGame) -> None:
+        """The basis cap outranks budget/steps, matching ``is_terminal``.
+
+        ``n_basis`` is derived from ``basis_coefficients``, so the cap is
+        reached by giving the state that many coefficients.
+        """
         state = game.get_initial_state()
+        state.error_estimate = 1.0
+        state.basis_coefficients = np.zeros(game.basis_config.max_basis_functions, dtype=np.float32)
+        assert state.n_basis == game.basis_config.max_basis_functions
+        assert game.termination_reason(state) == "max_basis"
+
+    def test_budget_exhausted(self, game: BasisSelectionGame) -> None:
+        state = game.get_initial_state()
+        state.error_estimate = 1.0
         state.budget_remaining = 0
-        result = game.get_result(state, [1.0])
-        assert result.termination_reason == "budget_exhausted"
+        assert game.termination_reason(state) == "budget_exhausted"
 
-    def test_get_result_empty_history(self, game: BasisSelectionGame) -> None:
+    def test_max_steps(self, game: BasisSelectionGame) -> None:
         state = game.get_initial_state()
-        result = game.get_result(state, [])
-        assert result.error_reduction_rate == 0.0
+        state.error_estimate = 1.0
+        state.step = game.config.max_steps
+        assert game.termination_reason(state) == "max_steps"
 
-    def test_get_result_efficiency_metrics(self, game: BasisSelectionGame) -> None:
+    def test_running_for_non_terminal_state(self, game: BasisSelectionGame) -> None:
+        """A fresh, non-terminal state is not labelled with a stop cause."""
         state = game.get_initial_state()
-        state = game.apply_action(state, 0)
-        error_history = [1.0, state.error_estimate]
-        result = game.get_result(state, error_history)
-        assert isinstance(result.error_reduction_rate, float)
-        assert isinstance(result.dof_efficiency, float)
-        assert isinstance(result.compute_efficiency, float)
+        state.error_estimate = 1.0
+        assert game.is_terminal(state) is False
+        assert game.termination_reason(state) == "running"
+
+    def test_converged_outranks_capacity(self, game: BasisSelectionGame) -> None:
+        """Tolerance is checked first, so convergence wins a tie."""
+        state = game.get_initial_state()
+        state.error_estimate = 1e-6
+        state.basis_coefficients = np.zeros(game.basis_config.max_basis_functions, dtype=np.float32)
+        state.budget_remaining = 0
+        assert game.termination_reason(state) == "converged"
 
 
 class TestBasisSelectionGameTensor:
@@ -675,6 +688,15 @@ class TestBasisSelectionGameLoop:
             error_history.append(state.error_estimate)
             assert isinstance(reward, float)
 
-        result = game.get_result(state, error_history)
-        assert result.n_steps >= 0
-        assert result.final_dof >= 0
+        assert state.step >= 0
+        assert state.dof >= 0
+        assert len(error_history) >= 1
+        # Whatever ended the episode, the classifier names a known cause.
+        assert game.termination_reason(state) in {
+            "converged",
+            "max_basis",
+            "budget_exhausted",
+            "max_steps",
+            "no_legal_actions",
+            "running",
+        }

@@ -45,8 +45,8 @@ Three headline findings drove this PR's priorities:
    already committed to `config/baselines/*.json`. The value decision is
    deliberately deferred (§5 B9).
 
-This PR lands 8 low-risk quick wins (§4) and documents 16 larger backlog
-items (§5) that were evaluated and intentionally not attempted here —
+This PR lands 8 low-risk quick wins (§4) and documents 20 larger backlog
+items (§5, B1–B20) that were evaluated and intentionally not attempted here —
 several because a first pass classified them as safe and a peer review
 subsequently found evidence they weren't (§6 explains each reversal).
 
@@ -238,11 +238,11 @@ Documented, not implemented. Ordered by suggested sequencing.
 | B3 | Registry consolidation onto `src/templates/registry.py` (`ScenarioRegistry` last — most consumers) | L | Med | Charter capability guard (subprocess `ScenarioRegistry` read); PDE end-to-end; MCTS evaluator protocol |
 | B4 | God-module splits at the seams in §3.1 — one module per PR, import-compatible `__init__` re-exports mandatory | XL | High | Per-module coverage gates (pde 75, training 85, research 85, mcts 90 branch); mypy's per-module override block names old paths and must move in lockstep |
 | B5 | `BaseScenarioConfig`/`BaseModuleConfig` + `poc`/`templates` logging unification | M | Med | Verify `compute_hash()` stability across the merge (it feeds artifact/log identity) |
-| B6 | Make the mypy gate deterministic, then flip `continue-on-error` off | L | Low | Decide a `warn_unused_ignores` policy first — the flakiness is torch-version-dependent, not volume-dependent (§1, §3.4) |
+| B6 | Make the mypy gate deterministic, then flip `continue-on-error` off | L | Low | Decide a `warn_unused_ignores` policy first — the flakiness is torch-version-dependent, not volume-dependent (§1, §3.4). **[2026-08-14 status: `mypy src/ --strict --ignore-missing-imports` is clean; the flip is an owner decision (§7 register #3), prereq = pin torch in the lint job]** |
 | B7 | CI composite action for the ×10 checkout/setup/install preamble + a shared `--ignore`/`--deselect` args file (currently duplicated verbatim between `test-fast` and `coverage`) + `COVERAGE_CORE` centralization | M | Low-Med | Preserve step names — the charter's Quality-Gate guard parses `ci.yml` by `- name:` |
 | B8 | Extend the drift guard in §3.4 to CLAUDE.md's Regression Surface table, not just the charter's | M | Med | New test under `tests/docs/`; don't conflict with the existing charter meta-guards |
 | B9 | Seed-stride value unification (1009 vs 7919) | S per scenario | Med | Requires re-recording `config/baselines/*.json` via the existing `record-baseline`/`diff` CLI, one scenario at a time |
-| B10 | Dead-package decisions: ~14k LOC (15% of `src/`) across `prototyping`, `tournament`, `analysis`, `curriculum`, `deployment`, `demos` have zero inbound `src/` references and are held alive only by their own tests | M each | Med | A cut needs the charter's scope register amended first; a keep-and-wire needs its own PR (e.g. `trainer.py`'s `_run_checkpoint_tournament` re-implements tournament logic instead of importing `src/tournament`) |
+| B10 | Dead-package decisions: ~14k LOC (15% of `src/`) across `prototyping`, `tournament`, `analysis`, `curriculum`, `deployment`, `demos` have zero inbound `src/` references and are held alive only by their own tests | M each | Med | A cut needs the charter's scope register amended first; a keep-and-wire needs its own PR (e.g. `trainer.py`'s `_run_checkpoint_tournament` re-implements tournament logic instead of importing `src/tournament`). **[2026-08-14 reclassification: only 4 of the 6 are actually dead (`prototyping`, `tournament`, `analysis`, `curriculum` — zero inbound refs, 2026 commits are repo-wide sweeps only). `deployment` is CI-exercised every run (test-extras ONNX suites, green) → keep or explicit-deprecate. `demos` is a live dashboard dependency (`dashboard/app.py:58-60` imports 3 demo tab factories; substantive Aug-2026 commits) → keep. Tournament-duplication claim verified.]** |
 | B11 | YAML dedup (the `lm_studio` block copy-pasted across 6 scenario configs; `llm_prior_*` triplets differing by 4/75 lines) plus a decision on the flagged-not-deleted hydra configs (`train_5hr.yaml`, `train_experiment.yaml`, `config/presets/*`, `darcy_poc.yaml`, `transfer_ablation.yaml`) with the `hf_space/config/` mirror in view | S | Low | Demo-YAML validation tests per scenario surface |
 | B12 | AGENT.md authoring for the 14 uncovered packages, starting with `src/research` (§3.7) | M | None | `check_doc_links.py` |
 | B13 | CLAUDE.md/CHANGELOG restructure — CHANGELOG's `[Unreleased]` section is the large majority of the file; cut a release. CLAUDE.md's milestone log is append-only by its own header, so this is about the drift guard (B8), not moving content | M | Med | `tests/docs/` suite, docs CI workflow |
@@ -252,7 +252,7 @@ Documented, not implemented. Ordered by suggested sequencing.
 | B17 | **Resolve the one known dead abstraction, `PDEGame.get_result`** (`src/pde/game.py:457`): declared `@abstractmethod`, documented as lifecycle step 4, implemented by every concrete game — and never called (the `get_result` call sites in `src/training/evaluation.py` / `src/engines/match.py` are the unrelated 1-arg `GameInterface.get_result`). Either wire it into the terminal path or delete it from the contract. It is why `src/pde` is run without `--fail-on-missing` | S-M | Med | `python -m scripts.audit_abstractions src/pde --fail-on-missing` should exit 0 afterwards; changing the `PDEGame` contract means re-running the PDE end-to-end + reward-reachability + clone-isolation surfaces |
 | B18 | **Wire the abstraction audit into CI.** `grep audit_abstractions .github/` returns nothing — the F0/F1 screen documented in the Regression Surface is a manual-only step, so a newly-introduced dead abstraction in `src/mcts` or `src/refinement` would not be caught by any automated gate. Add a lint-job step once B17 lands (or add it now gating only `src/mcts src/refinement`) | S | Low | The audit script's own tests (`tests/scripts/test_audit_abstractions.py`) |
 | B19 | **Document the 8 optional extras.** `fem`, `viz`, `dev`, `test-extras`, `jax`, `jax-gpu`, `picogk`, `lm-studio`, `docs` are undocumented in `README.md`, `CONTRIBUTING.md`, and `docs/getting-started.md`, all of which show only `pip install -e ".[dev]"`. Separately, `dashboard*` ships in the wheel (`pyproject.toml` `include`) but imports matplotlib **and** gradio at module level with no extra covering it — `pip install alphagalerkin && python -m dashboard.app` fails. Consider a `dashboard` extra | S | Low | None (packaging metadata + prose) |
-| B20 | **Add the missing per-module coverage gates.** `src/poc/cli.py`, `src/poc/visualization/*`, the 3 classic scenarios, `src/constants.py` and `src/seeding.py` are covered only by the global 85% gate. Note `CLAUDE.md` documents a `noyron_basis` gate (97%/100%) that **is not wired in `ci.yml`** — the charter guard passes because it asserts documented thresholds ⊆ CI values, not that the gate step exists | S-M | Low | `tests/docs/test_charter_alignment.py`; add the step or drop the claim |
+| B20 | **Add the missing per-module coverage gates.** `src/poc/cli.py`, `src/poc/visualization/*`, the 3 classic scenarios, `src/constants.py` and `src/seeding.py` are covered only by the global 85% gate. Note `CLAUDE.md` documents a `noyron_basis` gate (97%/100%) that **is not wired in `ci.yml`** — the charter guard passes because it asserts documented thresholds ⊆ CI values, not that the gate step exists | S-M | Low | `tests/docs/test_charter_alignment.py`; add the step or drop the claim. **[2026-08-14: CLOSED-WIDER — the phantom-gate class was 3 gates, not 1 (`noyron_basis`, Noyron HX per-module, SBIR P40 per-module: zero `noyron`/`geometry_picogk`/`gpu_profiler` mentions existed in `ci.yml`), plus a fourth, *degraded* gate: under coverage 7.x, file-path `--cov=path.py` specs are silently dropped, so the llm_prior file-level gates enforced nothing. All four wired/repaired in native-runner form; see §7. The `poc/cli`, `visualization`, classic-scenario, `constants`/`seeding` gates remain open (Phase 2c, gate at measured−2).]** |
 
 ## 6. Rejected or deferred, with reasons
 
@@ -354,3 +354,269 @@ Documented, not implemented. Ordered by suggested sequencing.
   this PR, but both actually *propagate* the caught error to their caller
   (`{"error": str(e)}` / appended to a returned `errors` list) rather than
   swallowing it silently. Not a defect; left unchanged.
+
+## 7. Phase-1 follow-up (2026-08-14, PR after #119)
+
+The tech-debt PR that consumed this audit's backlog landed the following. Every
+change was adversarially peer-reviewed by five parallel review passes before
+implementation; all numbers below are measured at HEAD, not estimated.
+
+### 7.1 CI enforcement fixes (the real "get CI green" work — CI was green but unenforced)
+
+- **CI never ran on pull requests**: `on.pull_request.branches: [main, develop]`
+  named branches that do not exist (the default branch is
+  `claude/alphagalerkin-implementation-4zGEN`), so all open PRs merged with zero
+  checks. The filter is removed; `test-slow`'s `if:` had the same dead branch
+  names and now keys on `github.event.repository.default_branch`.
+- **Phantom gates closed (B20)**: 3 documented-but-unwired gates added in
+  native-runner form — noyron_basis (measured 98% combined), Noyron HX surface
+  (99%), SBIR P40 surface (94%).
+- **Degraded gate repaired**: coverage 7.x silently drops file-path
+  `--cov=path/to/module.py` specs (only a `CovReportWarning`); the llm_prior
+  gate passed on the `lm_studio` directory alone. The file-level pair now runs
+  as a native-runner step. **Decay evidence**: with the gate unenforced,
+  `llm_prior_ablation.py` drifted to a measured 77% branch (81% combined with
+  its config) vs the documented 86%. Gated at 79 = measured − 2; ratcheting
+  back to 85+ is Phase-2c work. A CAUTION comment in `ci.yml` bans the
+  file-spec form.
+- **Unenforced guarded surface re-enabled**: `tests/pde/test_mcts_adapter.py`
+  (documented F1/F3 Regression Surface) ran in NO CI job since the 2026-04
+  triage — the `--ignore` is removed from both blocks (37 tests, green). The 2
+  CUDA deselects that duplicate in-source `skipif` markers are removed; the
+  remaining 9 deselects + 6 ignores all pass at HEAD (fixes landed on parallel
+  branches weeks after the triage — the list is stale, not broken) and are
+  Phase-2 staged deletions (matrix-verified, mcts pair last).
+- Dead `.pytest_cache/` artifact-upload step deleted; `--no-cache-dir` dropped
+  (it defeated the job's pip cache); Stage labels renumbered.
+
+### 7.2 Hardcoded-value fixes (zero numeric change, verified by assertion)
+
+- Boundary tolerances named, not unified: `DEFAULT_BOUNDARY_TOLERANCE` (1e-6)
+  now used by `operators.py`; new `DEFAULT_PICOGK_BOUNDARY_TOLERANCE` (1e-5)
+  documents the SDF-band semantic and the pre-existing picogk operator/domain
+  divergence. `is_boundary_point` has zero production call sites — the risk was
+  drift, not baselines.
+- LR scheduler had **three** copies of `min_lr_ratio`/`warmup_start_factor`:
+  `BaseTrainerConfig` fields (0.01/1e-6), `_create_scheduler` static defaults
+  (0.01/1e-6), and `Trainer`'s bare literals (0.1/0.1). The first two now bind
+  to `DEFAULT_MIN_LR_RATIO`/`DEFAULT_WARMUP_START_FACTOR`; the third is now two
+  typed `config.schemas.TrainingConfig` fields (defaults 0.1/0.1 — value-
+  preserving) that `Trainer` passes through; keys added to `config/train.yaml`.
+- Checkpoint-migration defaults (4 literals, `checkpoint_migration.py`) are
+  **intentionally frozen** — a v1.1.0 migration must inject v1.1.0's defaults
+  forever — with a drift-alarm test that fails if a live default is retuned.
+- Gumbel epsilons split by semantic: `GUMBEL_NORMALIZATION_EPSILON` (inert
+  division guard) vs `GUMBEL_LOG_PRIOR_FLOOR` (algorithmic — sets zero-prior
+  actions' ≈−18.4 score); `FNetEvaluator` gets `_SOFTMAX_NORMALIZER_FLOOR`,
+  mirroring `lm_studio/evaluator.py` by name as documented there.
+- `[9, 13, 19]` literals at 13 code sites → `list(DEFAULT_BOARD_SIZES)` /
+  `default_factory=lambda: list(...)` (never the bare mutable module list).
+
+### 7.3 Dead abstraction demoted
+
+`BaseTrainer.compute_loss/generate_data/evaluate` were `@abstractmethod`s that
+both production subclasses stubbed with `NotImplementedError` — a dead
+contract. Demoted to concrete `step()`-loop hooks that raise with guidance;
+subclass stubs KEPT (their messages are asserted by
+`tests/training/test_trainer_coverage.py` and document each trainer's real
+entry points). Pre-existing `audit_abstractions` baselines recorded:
+`src/training` → `BaseLoss.forward` (1 hit), `src/pde` → `PDEGame.get_result`
+(B17, resolution decided: demote + hoist the 3 near-verbatim implementations
+into a concrete base with a `termination_reason` hook — production wiring was
+rejected, it would add per-episode `compute_exact_error` solves).
+
+### 7.4 Coverage actuals for ungated packages (branch %, measured at HEAD)
+
+Gate-setting input for Phase 2c: gate at actual−2, ratchet toward 85.
+
+| Package | Branch % | Tests | Notes |
+|---|---|---|---|
+| src/agents | 95.4 | 292 | path-form `--cov=src/agents` measures the whole package fine; the CI native-runner step gates only research_loop+config (85). `-p no:cov` there is the dotted-cov/torch workaround, NOT disabled coverage |
+| src/tools | 91.9 | 171 | |
+| src/experiments | 89.8 | 153 | benchmark_fnet.py 61% |
+| src/curriculum | 89.0 | 128 | |
+| src/engines | 84.3 | 133 | match.py 68%, elo.py 73% |
+| src/data | 79.8 | 82 | physics_dataset.py 23% is the drag |
+| src/templates | 72.5 | 107 | **cli.py 0% (121 stmts)** — triage before gating |
+| src/math_kernel | 61.5 | 155 | uniform 55–64% — triage before gating |
+
+### 7.5 Mypy override debt (measured)
+
+8 override blocks in `pyproject.toml` (not ~10 as §1 estimated). The 51-module
+block masks **207 errors** (`arg-type` 90, `assignment` 48, `attr-defined` 17;
+tail: `pde/operators.py` 28, `training/evaluation.py` 18; 1 module already
+clean; 32 modules ≤3 errors). Ratchet plan: PR 0 = free trim (delete the
+0-error `math_kernel` decorator block, shrink the `no-untyped-call` block to
+`research.baselines` (1 error), drop clean `physics.solver` from the big
+list), then ~5 modules/PR; 49 of the 207 errors sit in B10-candidate packages
+— decide B10 first; `operators.py`'s 28 ride the B4 split.
+
+### 7.6 Follow-up roadmap and owner-decision register
+
+**Phase 2** (first PRs under enforced PR CI): 2a B1 device promotion
+(lockstep: the 2 `--cov=src.poc.device` citations AND the Trained-evaluator
+Regression-Surface row naming `_resolve_device_cached`); 2b seeding/layering
+dedup (stochastic layer EXCLUDED per §6); 2c coverage gates at actual−2
+(agents 93, tools 90, experiments 87, curriculum 87, engines 82, data 78),
+owner decisions #2/#3, mypy free-trim, staged deselect/ignore deletions,
+dependabot #103–#107 (all `mergeable_state: clean`).
+**Phase 3**: B10 batch (register #1), `src/backend/rng.py` + test-only plot
+types + `templates/cli.py` deletions, B17→B18 (audit tool extension rule:
+@abstractmethod-only, declaration-body excluded, "every concrete override
+raises" quantifier verbatim, `_KNOWN_LIVE` preserved), mypy ratchet,
+math_kernel/templates triage, B16/B19/B12.
+**Phase 4**: B4 splits (operators.py: registration stays centralized in
+`registry.py` — per-class decorators would cycle; `__init__` re-exports
+`DEFAULT_HELMHOLTZ_WAVENUMBER` + `PDEResidual`; hf_space mirror keeps its
+monolith), B3 registries, B7 composite action, B8, B15, B13.
+
+| # | Owner decision | Recommended default |
+|---|---|---|
+| 1 | B10: 4 dead packages + tournament wire-vs-delete | Delete prototyping/analysis/curriculum; tournament = owner's call; deployment deprecate-don't-delete; demos keep |
+| 2 | Gate integration/jax/chess/extras in `ci-success` | Yes — 13+ consecutive green default-branch runs; ONNX step stays step-level continue-on-error |
+| 3 | mypy flip to hard gate | Yes, after pinning torch in the lint job |
+| 4 | Coverage ratchet targets | actual−2 now, +2/quarter toward 85 |
+| 5 | test-slow on PRs | Keep nightly + `[full-test]` opt-in |
+| 6 | Shim deprecation window | 2 minor releases |
+| 7 | Release cut (B13) | After Phase 2 |
+
+## 7.7 Post-Phase-1 peer review — findings and dispositions (2026-08-15)
+
+A four-lens review (adversarial diff review, SQE coverage/edge-cases, hygiene sweep with extended
+ruff rule sets, skills/reusability architecture) ran against the Phase-1 branch. Fixed-in-branch
+items are marked ✅; the rest are prioritized backlog with the evidence needed to act on them.
+
+### P0 — Flat MCTS reward on 3 of 8 PDE operators (degenerate acceptance criteria)
+
+**Independently verified by execution, not inspection.** Three links, each confirmed:
+
+1. `src/pde/operators.py` — `BurgersOperator.__init__` assigns
+   `self.is_time_dependent = config.is_time_dependent`, **overwriting** the class-level
+   `is_time_dependent = True`. `PDEConfig.is_time_dependent` defaults to `False` and
+   `_centaur_common.build_pde_operator` never overrides it. Measured: class-level `True`,
+   instance `False`. Same pattern in `AdvectionDiffusionOperator`.
+2. → `BurgersOperator.exact_solution` hits its `if not self.is_time_dependent: return None`
+   guard. Measured: Burgers → `None`, Poisson → `ndarray`.
+3. → `BasisSelectionGame.compute_exact_error` falls back to RMS of `state.residuals`, and those
+   residuals are structurally zero: `compute_derivatives` early-returns all-zero derivatives when
+   `u` is grad-free, and the caller always passes `torch.from_numpy(state.solution)` — grad-free
+   by construction. With a zero source term the error is identically 0.0.
+
+Measured per-operator error trajectories: `burgers`, `heat`, `advection_diffusion` → `[0.0, 0.0,
+0.0, 0.0]` (FLAT); `poisson`, `helmholtz`, `biharmonic` → non-degenerate.
+
+**Consequence**: `_centaur_common.run_basis_selection_cell` early-returns before constructing MCTS
+(`current_error <= target_residual`), so the Burgers OOD cell runs **zero rollouts on every arm and
+seed**. `config/scenarios/llm_prior_demo.yaml`'s headline OOD gates are therefore degenerate:
+`ood_llm_residual <= 1e-2` passes trivially and unfalsifiably (0 ≤ 0.01) while
+`ood_trained_residual > 1e-1` fails unconditionally. The shipped demo's OOD claim is evidence in
+neither direction. Helmholtz/Biharmonic carry manufactured solutions, which is why the
+OOD-expansion tests pass and this stayed invisible.
+
+**Why not fixed here**: the fix changes solver semantics and invalidates the shipped OOD
+thresholds, which must be re-derived from a real measurement. That is a dedicated PR, not a
+rider on a CI/constants change. Landed now: a `logger.debug("derivatives_skipped_u_disconnected", …)`
+at the zero-derivative branch, so the condition is diagnosable instead of silent.
+
+**Fix order when taken up**: (1) stop letting `config` silently downgrade a class-level
+`is_time_dependent = True` — honour the class default or raise on the contradiction; (2) make
+`compute_exact_error` refuse the residual fallback when `_exact_solution is None` rather than
+reporting a constant as convergence; (3) re-run `llm_prior_demo.yaml` and re-derive `ood_*`.
+Re-measure the `noyron_basis` "~2–4% best-case reduction" open research item afterwards — it is
+plausibly a symptom of link 3 rather than of basis/geometry mismatch.
+
+### P1 — Silent failures in numeric paths (partially fixed)
+
+- ✅ `src/modeling/stability.py` — an SVD `RuntimeError` returned `beta = 0`, which is *exactly*
+  the LBB-violation alarm value, making a numerical crash indistinguishable from a genuine
+  stability finding on the metric the novelty claim rests on. Now logs `lbb_svd_failed` with shape
+  and an explicit note.
+- ✅ `src/poc/tuning/sampler.py` — a missing `optuna` made `sampler="tpe"` silently run **random
+  search** while still reporting TPE. Now warns with a remedy; `optuna` is also now a declared
+  `[tuning]` extra rather than an undeclared import.
+- Open: `src/pde/games/basis_selection.py` (singular Galerkin system → pinv fallback; a singular
+  system is precisely the LBB inf-sup failure the project claims to detect),
+  `src/experiments/physics_model.py`, `src/research/fem_baseline.py`,
+  `src/training/loss_balancing.py`.
+
+### P1 — Reproducibility: two disjoint numpy RNG worlds
+
+`src/seeding.py::set_global_seeds` seeds the **legacy** `np.random` global, but ~15 modules use the
+Generator API (`np.random.default_rng(None)`), which draws fresh OS entropy and is untouched by it —
+including `PDEOperator.generate_collocation_points(seed=None)`, called inside the physics-loss
+training loop. Either thread explicit seeds into every `default_rng` call site or add a child-seed
+helper; until then `src/seeding.py`'s docstring overstates its reach. Note the legacy API itself is
+deliberate (converting it would change derived seeds and invalidate committed baselines — same
+hazard as B9).
+
+### P1 — CUDA correctness (partially fixed)
+
+- ✅ `src/research/stochastic_galerkin_compare.py` — `field.numpy()` on a device tensor would raise
+  on any CUDA run of the artifact path; CPU-only tests structurally cannot see it. Now
+  `.detach().cpu().numpy()`.
+- Open: 12 more bare `.numpy()` in `src/pde` (safe today only because `sample_interior` defaults to
+  CPU and no caller passes a device — the picogk/Noyron path is GPU-preferred). Normalise on the
+  codebase's own correct idiom (`PDEResidual.to_numpy`). Also `src/pde/operators.py`'s in-place
+  `coords.requires_grad_(True)` mutates a caller-owned tensor that shares memory with a numpy array.
+
+### P2 — Config fields that are declared but never read
+
+Wire or delete: `GumbelMCTSConfig.use_mixed_value` (the *defining* feature of Gumbel AlphaZero —
+setting it changes nothing), `GumbelMCTSConfig.discount` (gumbel search ignores its own discount),
+`PDEGameConfig.error_metric` (`h1` silently yields l2), `BaseScenarioConfig.requires_gpu` (set by 4
+scenarios, never checked — a `requires_gpu=True` scenario runs to completion on CPU and reports
+PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGameConfig.success_metrics`,
+`StrangTrainerConfig.n_particles`, `dt_min`/`dt_max`.
+
+### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
+
+`TRY400` (18 `.error()`-in-`except` sites dropping tracebacks), `G201`, `DTZ` (18 naive
+`datetime.now()` written into persisted artifacts and checkpoint metadata), `T20` (13 real —
+`ScenarioRunner._print_summary` prints from a *library* class, invisible to structlog and to
+`capture_logs`; the other 91 are legitimate CLI entry points needing per-file-ignores), `S301`
+(pickle over worker IPC), `S324` (md5 → `usedforsecurity=False`). Deliberately **not** recommended:
+`G004` (all 9 hits build dynamic structlog *event names* — idiomatic), `NPY002` (legacy RNG is
+deliberate, see above), `TRY003`/`EM101`/`EM102` (810 findings, pure style; this repo's long
+contextual exception messages are a feature).
+
+### P2 — Next-tier hardcoded values
+
+Ordered by blast radius, not count: the LBB regularization margin multiplier `* 10` in
+`src/modeling/galerkin_operator.py` (the same concept is already named **twice** in
+`src/modeling/stability.py` — three copies, one literal, and it shapes the training gradient);
+`min(batch_size * 10, replay_buffer_size // 10)` deciding when training starts; the triplicated
+policy-CE floor `clamp(min=-100.0)`; Cole-Hopf `n_terms = 50` and its `1e-10` denominator floor
+(the L2 reference for SBIR rows); `board_size = ... else 8` fallback in self-play (a silent wrong
+shape); the FNO projection head fixed at 128 while every sibling dimension is a parameter.
+
+### P2 — Zero-logging packages
+
+`src/pde/stochastic/` (all 11 modules, ~1.9k LOC — including a parallel-in-time trainer whose
+calibrated gates fail silently) and `src/mcts/search.py`/`node.py`/`evaluator.py` (~1.2k LOC — the
+core search engine, where the F0 defect lived, has no logger at all). Highest-value single line:
+recording `search_mode`/`invert_backup` at `MCTS.__init__` — the entire `lshape_amr_compare`
+headline moved from 0.86 to 0.96 on that one boolean and there is no runtime record of which mode
+ran. Note `src/pde/stochastic/` is guarded by an import-isolation allowlist; extend it deliberately
+in the same commit.
+
+### P3 — Reusability / BC (evidence recorded, no action taken)
+
+- **Two parallel threshold schemas with different semantics**: `poc/config.py::MetricThreshold`
+  (no tolerance on `<=`/`>=`) vs `templates/config.py::MetricDefinition` (adds `1e-9`). The
+  `spec-new` skill declares `MetricThreshold` "the single source of truth", yet `src/pde/config.py`
+  builds `success_metrics` from the other one. Migrating a `<=` threshold between them silently
+  flips pass/fail at the boundary.
+- **`FNetMixingLayer` declared twice** with identical bodies; one is labelled "alias for backward
+  compatibility" but is a full re-declaration. The O(N) complexity headline runs the copy that no
+  test covers.
+- **No deprecation convention**: only 2 of ~19 shims warn; `pyproject.toml` has no `filterwarnings`
+  at all, so `DeprecationWarning`s are neither errored nor tracked. `distributed/config.py` carries
+  a `.. deprecated::` docstring directive with no `warnings.warn` behind it. Owner decision #6 sets
+  a 2-release window; nothing implements it.
+- **`compute_hash()` re-implemented 6×** without the canonical volatile-field exclusion — no live
+  bug today (none of those configs has a timestamp field yet), but the first one added makes a
+  reproducibility hash non-reproducible.
+- **If-elif dispatch where the repo's own registry pattern fits**: `load_config_from_dict`'s 6
+  copy-pasted lazy-import branches with a silent `BaseScenarioConfig` fallback (a typo'd scenario
+  name parses instead of raising); basis-kind dispatch at 3 separate sites; 7 byte-identical
+  backend-factory tails; `create_sampler` silently defaulting an unknown name to random.

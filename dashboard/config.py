@@ -13,6 +13,8 @@ from typing import Annotated, Final
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 # Evaluation resolution the committed transfer benchmark reports baselines for.
 # ``TransferMilestone``'s CNN baseline fields and ratio are specific to it, so the
 # UI must pin its comparison here rather than deriving a target from the MSE map.
@@ -49,7 +51,7 @@ class GameConfig(BaseModel):
     """Configuration for the Go Game tab."""
 
     board_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Available board sizes (9=training, larger=zero-shot transfer)",
     )
     default_board_size: int = Field(default=9, ge=5, description="Initially selected board size")
@@ -85,7 +87,7 @@ class PDEConfig(BaseModel):
     )
     default_grid_size: int = Field(default=9, ge=3, description="Initially selected grid size")
     comparison_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Grid sizes used in the resolution-comparison plot",
     )
     charge_patterns: list[str] = Field(

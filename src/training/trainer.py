@@ -389,8 +389,8 @@ class Trainer(BaseTrainer):
             scheduler_type=scheduler_type,
             warmup_steps=self.training_config.warmup_steps,
             total_steps=self.training_config.total_steps,
-            min_lr_ratio=0.1,
-            warmup_start_factor=0.1,
+            min_lr_ratio=self.training_config.min_lr_ratio,
+            warmup_start_factor=self.training_config.warmup_start_factor,
         )
 
     # ------------------------------------------------------------------

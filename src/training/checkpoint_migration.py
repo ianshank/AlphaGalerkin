@@ -188,6 +188,15 @@ def _migrate_1_0_to_1_1(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(config, dict):
         training = config.get("training", {})
         if isinstance(training, dict):
+            # INTENTIONALLY FROZEN literals: a 1.0.0 -> 1.1.0 migration must
+            # inject the defaults that v1.1.0 shipped with, forever. Do NOT
+            # replace these with the live constants in src/constants.py or
+            # config/schemas.py — retuning those must not change what old
+            # checkpoints migrate to. Guarded by
+            # tests/training/test_checkpoint_migration.py::
+            # test_migration_defaults_match_v1_1_shipped_values: if a live
+            # default is ever retuned, that test fails and forces an explicit
+            # decision (new migration step vs updating this freeze).
             training.setdefault("lbb_loss_weight", 0.01)
             training.setdefault("lbb_target", 0.1)
             training.setdefault("log_barrier_weight", 0.1)

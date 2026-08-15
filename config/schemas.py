@@ -161,6 +161,28 @@ class TrainingConfig(BaseModel):
     )
     warmup_steps: int = Field(default=1000, description="Number of warmup steps")
     total_steps: int = Field(default=100000, description="Total training steps")
+    min_lr_ratio: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Ratio of minimum LR to peak LR for cosine/linear schedules. "
+            "Default 0.1 preserves the value Trainer historically hardcoded; "
+            "the conservative BaseTrainer default is 0.01 "
+            "(src/training/base_trainer.py::DEFAULT_MIN_LR_RATIO)."
+        ),
+    )
+    warmup_start_factor: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Starting LR factor for warmup (lr * factor at step 0). "
+            "Default 0.1 preserves the value Trainer historically hardcoded; "
+            "the conservative BaseTrainer default is 1e-6 "
+            "(src/training/base_trainer.py::DEFAULT_WARMUP_START_FACTOR)."
+        ),
+    )
 
     # Self-play
     n_self_play_games: int = Field(default=100, description="Self-play games per iteration")

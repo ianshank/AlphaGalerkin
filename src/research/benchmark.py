@@ -18,6 +18,7 @@ from typing import Any
 
 import structlog
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.research.config import BenchmarkConfig
 
 
@@ -512,7 +513,7 @@ def create_benchmark(
     """
     config = BenchmarkConfig(
         name=name,
-        sizes=sizes or [9, 13, 19],
+        sizes=sizes or list(DEFAULT_BOARD_SIZES),
         **kwargs,
     )
     return Benchmark(config=config)

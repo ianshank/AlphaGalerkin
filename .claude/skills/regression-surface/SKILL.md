@@ -39,7 +39,8 @@ command(s) that must stay green when it changes. This skill selects and runs the
      import them (`tests/test_seeding.py`, `tests/test_constants.py`, plus every scenario config
      test asserting seed derivation).
 
-   The table has ~33 data rows; the list above is the high-traffic subset, not a complete
+   The table grows with every milestone (count it rather than trusting a number here:
+   `awk '/^\| Surface \|/,/^$/' CLAUDE.md | grep -c '^| '`); the list above is the high-traffic subset, not a complete
    index. When the changed path is not listed, read the table directly rather than assuming
    no row applies.
 2. **Run the block** with `-m "not gpu_required"` unless CUDA is available; the root `conftest.py`

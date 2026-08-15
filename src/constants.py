@@ -104,6 +104,20 @@ NUMERIC_EPSILON: float = 1e-6
 DEFAULT_BOUNDARY_TOLERANCE: float = 1e-6
 """Tolerance for boundary point detection in PDE geometry."""
 
+DEFAULT_PICOGK_BOUNDARY_TOLERANCE: float = 1e-5
+"""Boundary-classification band for SDF-based (PicoGK) operators.
+
+Deliberately looser than ``DEFAULT_BOUNDARY_TOLERANCE``: this is a band on a
+*signed-distance* value (|sdf(x)| < tol on a Newton-projected surface), a
+semantically different test from the axis-aligned coordinate compare the
+analytic operators use. Note the pre-existing intra-stack divergence: the
+helical operators classify at 1e-5 while ``PicoGKDomain.is_boundary`` defaults
+to ``DEFAULT_BOUNDARY_TOLERANCE`` (1e-6). Numerically equal to — but unrelated
+to — ``DEFAULT_BOUNDARY_PROJECTION_TOL`` in ``src/pde/geometry_picogk.py``,
+which is a Newton-projection *convergence* tolerance, not a classification
+band. Do not merge them.
+"""
+
 # ---------------------------------------------------------------------------
 # Checkpoint naming
 # ---------------------------------------------------------------------------

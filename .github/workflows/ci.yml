@@ -13,15 +13,23 @@ name: CI
 on:
   push:
     branches: [main, develop, "feature/*", "claude/*"]
+  # No branches filter: the repo's default branch is not main/develop, so a
+  # [main, develop] filter silently disabled CI for every pull request.
   pull_request:
-    branches: [main, develop]
   schedule:
     - cron: '0 4 * * *'  # Run nightly at 4am UTC
   workflow_dispatch:
 
-# Cancel in-progress runs on new pushes to same branch
+# Cancel in-progress runs on new pushes to the same branch.
+#
+# Keyed on the HEAD BRANCH NAME, not github.ref, so that the push-triggered run
+# and the pull_request-triggered run for the same branch land in the same group
+# and dedupe. Without this, any branch matching the push globs above that also
+# has an open PR runs the entire pipeline twice per push (github.ref is
+# refs/heads/<branch> for push but refs/pull/<n>/merge for pull_request, so the
+# two never collided).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 # Least privilege: jobs only need to read the repository (no writes to contents,
@@ -130,12 +138,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+          pip install -e ".[dev]" || pip install -e ".[dev]"
           # Safety-net: ensure core scientific/ML deps are present even if
           # the editable install partially failed (can happen with complex
           # dependency graphs on older pip resolvers).
           python -c "import einops, jaxtyping, gradio" 2>/dev/null || \
-            pip install --no-cache-dir "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
+            pip install "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
 
       - name: Show installed package versions
         run: |
@@ -153,7 +161,6 @@ jobs:
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
             --ignore=tests/distributed/test_multiprocess.py \
-            --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
@@ -162,8 +169,6 @@ jobs:
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
             --deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
             --deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_device \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_torch_device \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
             -q 2>&1 | tee /tmp/pytest-output.txt; exit ${PIPESTATUS[0]}
 
@@ -175,24 +180,15 @@ jobs:
           path: /tmp/pytest-output.txt
           retention-days: 7
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-fast-py${{ matrix.python-version }}
-          path: |
-            .pytest_cache/
-          retention-days: 7
-
   # ============================================================
-  # Stage 3: Unit Tests (Slow) - Only on main/develop or explicit
+  # Stage 3: Unit Tests (Slow) - Only on the default branch, nightly, or explicit
   # ============================================================
   test-slow:
     name: Unit Tests (Slow)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: test-fast
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule'
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule'
 
     steps:
       - name: Checkout repository
@@ -288,7 +284,6 @@ jobs:
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
             --ignore=tests/distributed/test_multiprocess.py \
-            --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
@@ -297,8 +292,6 @@ jobs:
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
             --deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
             --deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_device \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_torch_device \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
             --cov=src \
             --cov-report=xml \
@@ -366,15 +359,37 @@ jobs:
         run: |
           pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85 -q --no-header
 
+      # CAUTION: never mix file-path --cov=path/to/module.py specs into a
+      # pytest-cov invocation. Under coverage 7.x / pytest-cov 7.x, file-path
+      # specs are silently dropped (only a CovReportWarning), so the gate
+      # passes on the remaining directory spec alone. This gate previously
+      # carried two file specs that enforced nothing; they now run below as a
+      # separate native-runner step (path-glob --include), the same pattern as
+      # the scaling_law/agents/transfer/stochastic gates.
       - name: Per-module coverage gate (integrations/lm_studio)
         if: always() && hashFiles('tests/integrations/') != ''
         run: |
           pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
             tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" \
             --cov=src/integrations/lm_studio \
-            --cov=src/poc/scenarios/llm_prior_ablation.py \
-            --cov=src/poc/scenarios/llm_prior_config.py \
             --cov-branch --cov-fail-under=85 -q --no-header
+
+      # Gated at 79, not 85: with the file specs silently dropped, this surface
+      # decayed unenforced — measured today at 81 combined branch
+      # (llm_prior_ablation.py 77, llm_prior_config.py 100) vs the documented 86,
+      # which is not reproducible under branch measurement with the documented
+      # test selection. 79 = measured − 2. Ratcheting back toward 85+ is tracked
+      # in docs/CODE_HYGIENE_AUDIT.md.
+      - name: Per-module coverage gate (poc/llm_prior scenario modules)
+        if: always() && hashFiles('tests/poc/test_llm_prior_ablation_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/llm_prior_ablation.py,*/src/poc/scenarios/llm_prior_config.py" \
+            -m pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
+            tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/llm_prior_ablation.py,*/src/poc/scenarios/llm_prior_config.py" \
+            --fail-under=79
 
       - name: Per-module coverage gate (integrations/openai_compat)
         if: always() && hashFiles('tests/integrations/test_backend_registry.py') != ''
@@ -447,6 +462,46 @@ jobs:
             --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
             --fail-under=85
 
+      # The three gates below were documented in CLAUDE.md's Regression Surface
+      # table but never wired into CI (phantom gates, audit backlog B20). All use
+      # the native runner: their documented commands carry file-path or dotted
+      # --cov specs, both of which fail under the installed coverage stack (see
+      # the CAUTION note on the lm_studio gate and the torch-collision note above).
+      - name: Per-module coverage gate (noyron_basis v2.2)
+        if: always() && hashFiles('tests/poc/test_noyron_basis_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/noyron_basis.py,*/src/poc/scenarios/noyron_basis_config.py" \
+            -m pytest tests/poc/test_noyron_basis_config.py \
+            tests/poc/test_noyron_basis_scenario.py -m "not gpu_required" -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/noyron_basis.py,*/src/poc/scenarios/noyron_basis_config.py" \
+            --fail-under=85
+
+      - name: Per-module coverage gate (Noyron HX surface)
+        if: always() && hashFiles('tests/poc/test_noyron_hx_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/pde/sdf.py,*/src/pde/geometry_picogk.py,*/src/poc/scenarios/noyron_hx.py,*/src/poc/config_noyron.py" \
+            -m pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py \
+            tests/poc/test_noyron_hx_scenario.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/pde/sdf.py,*/src/pde/geometry_picogk.py,*/src/poc/scenarios/noyron_hx.py,*/src/poc/config_noyron.py" \
+            --fail-under=85
+
+      - name: Per-module coverage gate (SBIR P40 surface)
+        if: always() && hashFiles('tests/scripts/test_run_sbir_p40.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
+            -m pytest tests/research/test_baselines.py tests/research/test_pinn_device.py \
+            tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py \
+            tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py \
+            tests/scripts/test_run_sbir_p40.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
+            --fail-under=85
+
       # dashboard/ lives outside src/, so the --cov=src run above measures none of it
       # even though the blanket `pytest tests/` executes its 214 tests. Gated at 84
       # against a measured 84.85%: tabs/game_tab.py sits at 53% because _ensure_loaded
@@ -516,7 +571,7 @@ jobs:
             -q
 
   # ============================================================
-  # Stage 8: Chess Pipeline Tests
+  # Stage 7: Chess Pipeline Tests
   # ============================================================
   test-chess:
     name: Chess Pipeline Tests
@@ -658,7 +713,13 @@ jobs:
     name: CI Success
     runs-on: ubuntu-latest
     needs: [lint, test-fast, coverage, transfer-baseline-regression]
-    if: always()
+    # !cancelled() rather than always(): a run superseded by the concurrency
+    # group (push + pull_request for the same branch, or a newer push) has its
+    # needed jobs cancelled, and under always() this job would still execute,
+    # see result=cancelled, and report a spurious red X for a run nobody was
+    # waiting on. Skipping on cancellation keeps the aggregate gate honest while
+    # still running -- and failing -- whenever a needed job genuinely fails.
+    if: ${{ !cancelled() }}
 
     steps:
       - name: Check required jobs passed

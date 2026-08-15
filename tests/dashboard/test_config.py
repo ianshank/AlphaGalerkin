@@ -311,3 +311,41 @@ class TestDashboardConfig:
         reloaded = DashboardConfig.model_validate_json(json_str)
         assert reloaded.app.port == cfg.app.port
         assert reloaded.pde.default_grid_size == cfg.pde.default_grid_size
+
+
+# ---------------------------------------------------------------------------
+# DEFAULT_BOARD_SIZES adoption (copy semantics)
+# ---------------------------------------------------------------------------
+
+
+class TestBoardSizesConstantAdoption:
+    """dashboard configs default to src.constants.DEFAULT_BOARD_SIZES.
+
+    The constant is a mutable module-level list, so each ``default_factory``
+    must hand out a copy. A shared reference would let one config's in-place
+    edit retune every other config in the process -- and corrupt the constant
+    for the whole ``src/`` tree.
+    """
+
+    def test_defaults_equal_the_constant(self):
+        from src.constants import DEFAULT_BOARD_SIZES
+
+        assert GameConfig().board_sizes == DEFAULT_BOARD_SIZES
+        assert PDEConfig().comparison_sizes == DEFAULT_BOARD_SIZES
+
+    def test_defaults_do_not_alias_the_constant(self):
+        from src.constants import DEFAULT_BOARD_SIZES
+
+        assert GameConfig().board_sizes is not DEFAULT_BOARD_SIZES
+        assert PDEConfig().comparison_sizes is not DEFAULT_BOARD_SIZES
+
+    def test_instances_hold_independent_lists(self):
+        from src.constants import DEFAULT_BOARD_SIZES
+
+        first = GameConfig()
+        second = GameConfig()
+        first.board_sizes.append(25)
+
+        assert 25 not in second.board_sizes
+        assert 25 not in DEFAULT_BOARD_SIZES
+        assert 25 not in PDEConfig().comparison_sizes

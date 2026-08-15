@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ColorScheme(str, Enum):
     """Available color schemes for visualizations."""
@@ -128,7 +130,7 @@ class PhysicsDemoConfig(BaseModel):
         description="Grid size for training visualization",
     )
     eval_grid_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Grid sizes for zero-shot transfer evaluation",
     )
     max_grid_size: int = Field(

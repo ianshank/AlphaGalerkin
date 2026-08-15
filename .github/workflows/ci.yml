@@ -91,6 +91,22 @@ jobs:
       - name: Run Ruff formatting check
         run: ruff format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --check
 
+      # F0/F1 screen: an @abstractmethod that every subclass overrides but
+      # nothing ever *calls* is dead code — a docstring describing an algorithm
+      # that does not run. That is exactly how `PDEGame.get_reward` (F1) and
+      # `PDEGame.get_result` (B17) survived. The audit is AST-only (stdlib
+      # imports, no torch/numpy), so it runs in this job's minimal dep set.
+      #
+      # The three refinement roots are clean and gated hard. Blocking the whole
+      # of src/ is not yet possible: `src/backend` carries a known domain-PoC
+      # backlog, so it runs report-only and its output is advisory.
+      - name: Audit abstractions (refinement surfaces)
+        run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+
+      - name: Audit abstractions (rest of src, report-only)
+        continue-on-error: true
+        run: python -m scripts.audit_abstractions src/
+
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports
         # only a small number of `unused-ignore` diagnostics in training/ +

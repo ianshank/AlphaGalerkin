@@ -227,6 +227,73 @@ two root causes and the fixes. Left in the git history rather than
 squashed, since a hygiene PR silently self-correcting its own history
 would undercut the point.
 
+### 4.1 Follow-up PR: B17 (dead abstraction) + B18 (CI gate)
+
+Landed after the merge of the PR above, on a branch restarted from the
+updated default. Two backlog items, closed together because B18's gate
+cannot be turned on for `src/pde` until B17 clears it.
+
+**B17 — `PDEGame.get_result` deleted, not wired.** The audit deferred this
+item precisely because "wire it or delete it" is a contract change that
+wants evidence rather than taste. The evidence came out one-sided:
+
+* **No caller, and the shape fits none of the five that exist.** Five
+  independent episode-terminal paths (`src/pde/trainer.py::_run_episode`,
+  `src/alphagalerkin/solver.py::solve`,
+  `_centaur_common.run_basis_selection_cell`,
+  `lshape_amr_compare.run_mcts_arm`, `src/agents/solver.py`) each build
+  their own result object, and **every one needs a field `PDEResult` does
+  not carry** — `actions`, `solution`/`grid_points`/`wall_time_seconds`,
+  `rollouts_used`, `n_solves`. Wiring `get_result` could not have replaced
+  any of them; it could only have run *in addition*, to hand back a struct
+  the caller then destructures for 2–3 values it already holds.
+* **Six of its seventeen fields had no reader anywhere in `src/`** —
+  `compute_efficiency`, `dof_efficiency`, `error_reduction_rate`,
+  `best_error`, `average_error`, `residual_norm`.
+* **Everything real was already reachable.** Error norms via
+  `compute_exact_error` (a sibling abstract method that *does* have a call
+  site, `solver.py:423`); the trajectory via `PDEGameAdapter.error_history`
+  (consumed at `solver.py` as `METADATA_KEY_ERROR_HISTORY`); the rest off
+  `PDEState`.
+* **The sibling precedent argues the other way, not the same way.** F1 wired
+  `get_reward` up because the engine consumes its *semantics* — `MCTS._simulate`
+  accumulates `R + γ^d·V(leaf)`, and wiring it moved committed numbers
+  (the L-shape median ratio 0.8896 → 0.9605). `get_result` changes no
+  algorithm, no search, no number. It is reporting, not mechanism.
+* **It documented a flow that never executed.** `docs/architecture/pde_game_c4.md`
+  showed `MCTS->>PDEGame: get_result(final_state, history)`. MCTS has never
+  called it. That sequence diagram is corrected in this PR (the terminal
+  calls belong to `AlphaGalerkinSolver`, not MCTS).
+
+**What was kept.** Deleting `get_result` would have orphaned
+`lshape_amr._termination_reason` — a genuinely useful classifier whose only
+production consumer was the dead method — and the same ladder was inlined a
+third and fourth time inside the two other `get_result` overrides. So the
+ladder was promoted to `PDEGame.termination_reason`, with the one
+game-specific rung behind a `_capacity_reason` hook (basis count for
+`basis_selection`; DOF with `>` for `mesh_refinement`, `>=` for
+`lshape_amr`, each matching its own `is_terminal`). It is **concrete, not
+abstract**, so no existing subclass breaks.
+
+It now has a real consumer: `AlphaGalerkinSolver` records it under
+`METADATA_KEY_TERMINATION_REASON`, which previously read `"is_terminal"` —
+a label that collapsed converged / max_dof / budget_exhausted into one
+uninformative value. While in that call site, `SolverResult.h1_error` was
+also populated: the field existed, `to_dict()` serialised it, and
+`compute_exact_error` had been returning `h1` next to `l2` all along, so the
+exported column was permanently null for no reason.
+
+Net: −17-field struct and 3 overrides (~150 lines), +1 shared ladder and 3
+four-line hooks; the ladder gained coverage it never had (`max_basis` and
+the `>` vs `>=` boundary were untested under `get_result`).
+
+**B18 — the gate.** `lint` now runs
+`audit_abstractions src/mcts src/refinement src/pde --fail-on-missing`, plus a
+`continue-on-error` pass over the whole of `src/` (the `src/backend` domain-PoC
+backlog is untriaged, so it stays advisory). The script is AST-only with
+stdlib imports, so it runs inside that job's deliberately minimal dependency
+set. Promoting the report-only step to blocking is what remains.
+
 ## 5. Prioritized backlog
 
 Documented, not implemented. Ordered by suggested sequencing.
@@ -249,8 +316,8 @@ Documented, not implemented. Ordered by suggested sequencing.
 | B14 | `hf_space/` single-sourcing | — | — | Out of scope for this effort; owned by `tests/hf_space/test_mirror_guard.py`'s tracked follow-up |
 | B15 | `scripts/run_{lshape_amr,transfer_baseline_compare,stochastic_galerkin_compare}.py` duplicate CLI/config-loading/baseline-diff boilerplate that `src/poc/cli.py` and `src/templates/cli.py` already provide but no script imports | M | Med | Each script has a dedicated `tests/scripts/` file; shrinks after the dedup |
 | B16 | Prune the `tests/poc/` local registry-clear fixtures now that a save/restore wrapper exists (needs per-file analysis of the `sys.modules`-purging ones, §3.6); unify the drifted helix-geometry test fixture; a deprecation-timeline policy for the repo's ~19 back-compat shims; a config-driven `device` field (fail-loud default) for the 3 classic PoC scenarios | S-M | Low-Med | Respective module test suites |
-| B17 | **Resolve the one known dead abstraction, `PDEGame.get_result`** (`src/pde/game.py:457`): declared `@abstractmethod`, documented as lifecycle step 4, implemented by every concrete game — and never called (the `get_result` call sites in `src/training/evaluation.py` / `src/engines/match.py` are the unrelated 1-arg `GameInterface.get_result`). Either wire it into the terminal path or delete it from the contract. It is why `src/pde` is run without `--fail-on-missing` | S-M | Med | `python -m scripts.audit_abstractions src/pde --fail-on-missing` should exit 0 afterwards; changing the `PDEGame` contract means re-running the PDE end-to-end + reward-reachability + clone-isolation surfaces |
-| B18 | **Wire the abstraction audit into CI.** `grep audit_abstractions .github/` returns nothing — the F0/F1 screen documented in the Regression Surface is a manual-only step, so a newly-introduced dead abstraction in `src/mcts` or `src/refinement` would not be caught by any automated gate. Add a lint-job step once B17 lands (or add it now gating only `src/mcts src/refinement`) | S | Low | The audit script's own tests (`tests/scripts/test_audit_abstractions.py`) |
+| ~~B17~~ ✅ **DONE** | **Resolved the dead abstraction `PDEGame.get_result`** — see §4.1 below. Deleted (not wired), and replaced by the genuinely-consumed `PDEGame.termination_reason` | S-M | Med | `python -m scripts.audit_abstractions src/pde --fail-on-missing` now exits 0; PDE end-to-end + reward-reachability + clone-isolation surfaces re-run green |
+| ~~B18~~ ✅ **DONE** | **Wired the abstraction audit into CI** — see §4.1 below. `lint` job now gates `src/mcts src/refinement src/pde --fail-on-missing`, with the rest of `src/` report-only | S | Low | The audit script's own tests (`tests/scripts/test_audit_abstractions.py`) |
 | B19 | **Document the 8 optional extras.** `fem`, `viz`, `dev`, `test-extras`, `jax`, `jax-gpu`, `picogk`, `lm-studio`, `docs` are undocumented in `README.md`, `CONTRIBUTING.md`, and `docs/getting-started.md`, all of which show only `pip install -e ".[dev]"`. Separately, `dashboard*` ships in the wheel (`pyproject.toml` `include`) but imports matplotlib **and** gradio at module level with no extra covering it — `pip install alphagalerkin && python -m dashboard.app` fails. Consider a `dashboard` extra | S | Low | None (packaging metadata + prose) |
 | B20 | **Add the missing per-module coverage gates.** `src/poc/cli.py`, `src/poc/visualization/*`, the 3 classic scenarios, `src/constants.py` and `src/seeding.py` are covered only by the global 85% gate. Note `CLAUDE.md` documents a `noyron_basis` gate (97%/100%) that **is not wired in `ci.yml`** — the charter guard passes because it asserts documented thresholds ⊆ CI values, not that the gate step exists | S-M | Low | `tests/docs/test_charter_alignment.py`; add the step or drop the claim |
 

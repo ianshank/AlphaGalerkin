@@ -78,7 +78,7 @@ Tournament management and rating.
 
 PDE solving as sequential decision-making for MCTS-guided Galerkin approximation.
 
-- **`game.py`** — `PDEGame`, `PDEState`, `PDEResult` abstractions.
+- **`game.py`** — `PDEGame`, `PDEState` abstractions.
 - **`operators.py`** — `PoissonOperator`, `BurgersOperator`, `NavierStokesOperator`, `AdvectionDiffusionOperator`, `HeatOperator`, `LShapedPoissonOperator`, `HelmholtzOperator`, `BiharmonicOperator`. Plus `operators_picogk.py` — `HelicalHeatOperator`, `HelicalStokesOperator`, `HelicalMagnetostaticsOperator`. (Registry keys, enumerated at runtime: `advection_diffusion, biharmonic, burgers, heat, helical_heat, helical_magnetostatics, helical_stokes, helmholtz, navier_stokes, poisson, poisson_lshaped`.)
 - **`geometry.py`** — `RectangularDomain`, `LShapedDomain`, `CylinderFlowDomain` with rejection sampling.
 - **`time_stepping.py`** — `ForwardEuler`, `RK4`, `CrankNicolson` with factory pattern.

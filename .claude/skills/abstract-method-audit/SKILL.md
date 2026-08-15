@@ -40,26 +40,26 @@ Treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is
 
 ## Policy
 
-- **Now (one release): non-blocking report.** Run it, triage the hits, don't batch-fix. The current
-  `src/` baseline has known dead abstractions in domain PoCs (`src/backend`) — those are
-  pre-existing and out of scope for the refinement-engine work.
-- **`src/mcts` and `src/refinement` are clean and must stay clean** (`--fail-on-missing`) —
-  these are surfaces the F0/F1 fixes touched. Verified 2026-08: both exit 0.
-- **`src/pde` is NOT clean today** — do not assert that it is. `--fail-on-missing` exits 1 on:
+- **`src/mcts`, `src/refinement` and `src/pde` are clean and must stay clean.** All three are
+  gated with `--fail-on-missing` **in CI** (`.github/workflows/ci.yml`, `lint` job), so a newly
+  dead abstraction on these surfaces fails the build:
 
-      PDEGame.get_result  (src/pde/game.py:457)
+      python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
 
-  `get_result` is declared `@abstractmethod`, documented as lifecycle step 4 in the
-  `PDEGame` class docstring, and implemented by every concrete game — but nothing calls
-  the 2-arg `PDEGame` signature. (The `get_result` calls in `src/training/evaluation.py`
-  and `src/engines/match.py` are the unrelated 1-arg `GameInterface.get_result`.) This is
-  exactly the F1 shape this skill screens for, sitting inside the skill's own protected
-  surface. Fixing it means either wiring it into the terminal path or deleting it from
-  the contract — a `PDEGame`-contract change that wants its own PR, tracked as **B17** in
-  `docs/CODE_HYGIENE_AUDIT.md`. Until then `src/pde` is run *without* `--fail-on-missing`
-  (see the CLAUDE.md Regression Surface row), and a **new** dead abstraction there should
-  still be treated as a blocker — compare against this known single baseline hit.
-- **Then: blocking.** Once the domain-PoC backlog is triaged, wire `--fail-on-missing src` into CI.
+  `src/mcts`/`src/refinement` were cleared by the F0/F1 fixes (`get_reward`, `n_players` gained
+  call sites). `src/pde` was cleared by **B17**: `PDEGame.get_result` — declared abstract,
+  documented as lifecycle step 4, implemented by every concrete game, called by nothing — was
+  deleted along with its `PDEResult` struct. It was replaced by `PDEGame.termination_reason`,
+  which has a real consumer (`AlphaGalerkinSolver` records it under
+  `METADATA_KEY_TERMINATION_REASON`). That is the canonical worked example of this skill's
+  triage: the fix was *not* to wire the dead method up for its own sake — `PDEResult` carried
+  six fields no caller read and lacked the fields the five real terminal paths need — but to
+  delete it and extract the one part that something genuinely wanted.
+- **The rest of `src/` is report-only.** The same CI job runs `audit_abstractions src/` with
+  `continue-on-error`, because the domain PoCs (`src/backend`) carry a known untriaged backlog.
+  Treat its output as advisory.
+- **Then: fully blocking.** Once that backlog is triaged, promote the report-only step to
+  `--fail-on-missing src`.
 
 When a hit is real, the fix is one of: wire the method to a call site (F1 → Option 1), delete it and
 rewrite the docstring, or (for a protocol member) confirm the callee reads it.

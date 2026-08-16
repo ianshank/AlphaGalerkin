@@ -405,6 +405,10 @@ markers = [
     "cross_backend: cross-backend equivalence tests",
     "integration: integration tests",
     "dashboard: dashboard UI tests",
+    "regression: regression invariant and bug-fix tests",
+    "security: security, injection, and fuzzing tests",
+    "benchmark: performance and scaling benchmark tests",
+    "sanity: import and config schema smoke tests",
 ]
 
 [tool.coverage.run]

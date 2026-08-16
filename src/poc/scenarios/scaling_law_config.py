@@ -10,7 +10,7 @@ field — no hardcoded budgets, tolerances, or thresholds.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
@@ -35,6 +35,10 @@ PDEName = Literal[
     "biharmonic",
 ]
 SignificanceTestType = Literal["t_test", "mann_whitney", "bootstrap", "permutation"]
+
+
+def _default_arms() -> list[ArmName]:
+    return ["random"]
 
 
 class ScalingLawConfig(BaseScenarioConfig):
@@ -76,7 +80,7 @@ class ScalingLawConfig(BaseScenarioConfig):
 
     # Sweep axes
     arms: list[ArmName] = Field(
-        default_factory=lambda: ["random"],
+        default_factory=_default_arms,
         description=(
             "Evaluator arms to sweep. The first arm is the primary arm whose "
             "scaling exponent drives the headline thresholds."

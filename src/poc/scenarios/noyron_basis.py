@@ -91,7 +91,7 @@ def make_manufactured_operator(operator: PDEOperator, wavenumber: int) -> PDEOpe
         field = np.prod(np.sin(wavenumber * np.pi * normalized), axis=-1)
         return field.astype(np.float32)
 
-    class _ManufacturedOperator(base_cls):  # type: ignore[valid-type,misc]
+    class _ManufacturedOperator(base_cls):  # type: ignore[valid-type]
         """Concrete operator with a manufactured exact solution."""
 
         def exact_solution(

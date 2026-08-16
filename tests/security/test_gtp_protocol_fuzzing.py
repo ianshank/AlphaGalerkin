@@ -12,6 +12,7 @@ from src.tools.gtp import GTPEngine
 
 pytestmark = pytest.mark.security
 
+
 @pytest.fixture
 def engine() -> GTPEngine:
     """Create a mock GTPEngine instance for fuzzing.
@@ -21,7 +22,10 @@ def engine() -> GTPEngine:
     # GTPEngine typically expects a model, board_size, device
     return GTPEngine(model=None, board_size=19, device="cpu")
 
-@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+
+@settings(
+    max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
 @given(
     input_str=st.text(
         alphabet=st.characters(blacklist_categories=("Cs",)),  # avoid surrogates
@@ -38,10 +42,11 @@ def test_gtp_engine_text_fuzzing(engine: GTPEngine, input_str: str) -> None:
     except Exception as e:
         pytest.fail(f"GTP engine crashed on text input: {e}")
 
-@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(
-    binary_data=st.binary(min_size=1, max_size=10000)
+
+@settings(
+    max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
+@given(binary_data=st.binary(min_size=1, max_size=10000))
 def test_gtp_engine_binary_fuzzing(engine: GTPEngine, binary_data: bytes) -> None:
     """Fuzz the GTP engine with random binary data.
 
@@ -56,10 +61,13 @@ def test_gtp_engine_binary_fuzzing(engine: GTPEngine, binary_data: bytes) -> Non
     except Exception as e:
         pytest.fail(f"GTP engine crashed on binary input: {e}")
 
-@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+
+@settings(
+    max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
 @given(
     command=st.sampled_from(["play", "genmove", "known_command", "boardsize", "clear_board"]),
-    args=st.lists(st.text(), min_size=0, max_size=50)
+    args=st.lists(st.text(), min_size=0, max_size=50),
 )
 def test_gtp_engine_command_injection_fuzzing(
     engine: GTPEngine, command: str, args: list[str]

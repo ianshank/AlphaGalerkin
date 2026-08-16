@@ -98,7 +98,8 @@ def lshape_inside_predicate(
     12545 DOF) instead of converging. Removing the **closed** quadrant restores
     the textbook rate for the reentrant-corner singularity: measured
     :math:`O(h^{1.31})`, i.e. :math:`O(N^{-0.65}) \approx O(N^{-2/3})`, taking the
-    same 12545-DOF grid to 2.59e-4 (444x lower).
+    same n=128 grid resolution to 2.59e-4 at 12416 DOF (12545 DOF pre-fix --
+    the fix pins 129 more nodes as Dirichlet) -- 444x lower.
 
     Guarded by ``tests/research/test_lshape_convergence_gate.py``.
 

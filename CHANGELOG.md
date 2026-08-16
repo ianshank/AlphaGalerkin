@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the slit edge at `(0.75, 0.0)`, far from the corner, growing 0.357 → 0.519 → 0.634 as `h`
   halved. Removing the **closed** quadrant (`>=` / `<=`) restores the textbook rate for the
   reentrant-corner singularity: measured **O(h^1.31)** ≈ O(N^-0.65) ≈ O(N^-2/3), taking the same
-  12545-DOF grid to 2.59e-4 (444× lower).
+  n=128 grid resolution to 2.59e-4 at 12416 DOF (12545 DOF pre-fix — the fix pins 129 more nodes
+  as Dirichlet) — 444× lower.
 
 - **`LShapedDomain.contains_point` is deliberately unchanged.** Closed-domain *membership* (where
   a slit-edge point *is* a member) and interior-*unknown* selection (where it is not) are

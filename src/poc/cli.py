@@ -123,6 +123,12 @@ def register_builtin_scenarios() -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     """Run scenarios."""
+    import logging
+
+    if getattr(args, "demo", False):
+        if args.log_level not in ["DEBUG", "WARNING"]:
+            logging.getLogger().setLevel(logging.ERROR)
+
     register_builtin_scenarios()
 
     runner = ScenarioRunner(
@@ -145,6 +151,66 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         # Run all scenarios
         results = runner.run_all(filter_tier=args.tier)
+
+    if getattr(args, "demo", False):
+        TABLE_WIDTH = 80
+        NAME_WIDTH = 30
+        STATUS_WIDTH = 8
+        DUR_WIDTH = 12
+
+        print("\n" + "=" * TABLE_WIDTH)
+        header = (
+            f"{'Scenario Name':<{NAME_WIDTH}} | "
+            f"{'Status':<{STATUS_WIDTH}} | "
+            f"{'Duration (s)':<{DUR_WIDTH}} | Metrics"
+        )
+        print(header)
+        print("-" * TABLE_WIDTH)
+        for r in results:
+            status = "✅ PASS" if r.passed else "❌ FAIL"
+            duration = f"{r.duration_seconds:.2f}"
+            metrics = ", ".join(f"{k}={v:.4g}" for k, v in r.metrics.items())
+            if len(metrics) > 22:
+                metrics = metrics[:19] + "..."
+            row_str = (
+                f"{r.scenario_name:<{NAME_WIDTH}} | "
+                f"{status:<{STATUS_WIDTH}} | "
+                f"{duration:<{DUR_WIDTH}} | {metrics}"
+            )
+            print(row_str)
+        print("=" * TABLE_WIDTH)
+
+    export_path_str = getattr(args, "export_results", None)
+    if export_path_str:
+        import csv
+        path = Path(export_path_str)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix.lower() == ".csv":
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                metric_keys: list[str] = []
+                for r in results:
+                    for k in r.metrics:
+                        if k not in metric_keys:
+                            metric_keys.append(k)
+                headers = ["scenario_name", "passed", "duration_seconds"]
+                headers.extend(f"metric_{k}" for k in metric_keys)
+                writer.writerow(headers)
+                for r in results:
+                    row = [r.scenario_name, r.passed, r.duration_seconds]
+                    row.extend(r.metrics.get(k, "") for k in metric_keys)
+                    writer.writerow(row)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump([
+                    {
+                        "scenario_name": r.scenario_name,
+                        "passed": r.passed,
+                        "duration_seconds": r.duration_seconds,
+                        "metrics": r.metrics
+                    }
+                    for r in results
+                ], f, indent=2)
 
     # Return exit code based on results
     if all(r.passed for r in results):
@@ -382,6 +448,16 @@ def main() -> int:
 
     # Run command
     run_parser = subparsers.add_parser("run", help="Run scenarios")
+    run_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Enable presentation-ready output mode",
+    )
+    run_parser.add_argument(
+        "--export-results",
+        type=str,
+        help="Export results to JSON or CSV file",
+    )
     run_parser.add_argument(
         "--scenario",
         type=str,

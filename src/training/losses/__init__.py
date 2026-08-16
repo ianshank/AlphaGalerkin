@@ -17,13 +17,13 @@ from typing import Any
 from torch import nn
 
 # -- AlphaGalerkin losses ----------------------------------------------------
-from src.training.losses.alphagalerkin import (  # noqa: F401
+from src.training.losses.alphagalerkin import (
     AlphaGalerkinLoss,
     EntropyRegularizer,
 )
 
 # -- base types --------------------------------------------------------------
-from src.training.losses.base import (  # noqa: F401
+from src.training.losses.base import (
     BaseLoss,
     LossOutput,
     LossRegistry,
@@ -31,14 +31,14 @@ from src.training.losses.base import (  # noqa: F401
 )
 
 # -- Operator learning losses ------------------------------------------------
-from src.training.losses.operator import (  # noqa: F401
+from src.training.losses.operator import (
     H1Loss,
     L2RelativeLoss,
     MSELoss,
 )
 
 # -- Physics-informed losses -------------------------------------------------
-from src.training.losses.physics import (  # noqa: F401
+from src.training.losses.physics import (
     BoundaryLoss,
     CombinedAlphaGalerkinPhysicsLoss,
     ConservationLoss,

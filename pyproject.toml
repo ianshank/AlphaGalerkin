@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alphagalerkin"
-version = "0.1.0"
-description = "Resolution-independent Go AI using Continuous Operator Learning"
+version = "0.4.0-dev"
+description = "Resolution-independent AI for Games and PDE Solving using Continuous Operator Learning"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -13,7 +13,7 @@ authors = [
     {name = "AlphaGalerkin Team"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",

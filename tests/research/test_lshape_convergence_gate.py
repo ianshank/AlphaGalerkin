@@ -30,8 +30,7 @@ from src.research.lshape_amr_compare import (
     run_dorfler_arm,
 )
 
-sparse = pytest.importorskip("scipy.sparse")
-spsolve = pytest.importorskip("scipy.sparse.linalg").spsolve
+pytest.importorskip("scipy", reason="scipy required for the masked FD solve")
 
 SCALE = 1.0
 

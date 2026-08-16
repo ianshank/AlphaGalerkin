@@ -5,10 +5,28 @@ All notable changes to AlphaGalerkin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0-dev] - 2026-08-16
 
-<<<<<<< HEAD
-### Fixed — Codec Model Zoo Phase 2-D Structural Fixes (`src/video_compression/`)
+### Added
+- **SBIR Presentation Demo CLI** — Added `--demo` (formatted output tables, noise suppression) and `--export-results` (JSON/CSV exports) to `src/poc/cli.py`.
+- **7-Tier Test Pyramid Expansion**:
+  - `tests/sanity/`: Dynamic public module import smoke tests (337+ tests), config schema validation, and CLI `--help` entrypoint tests.
+  - `tests/security/`: YAML injection defenses, malicious checkpoint safety checks (`weights_only=True`), and Hypothesis property-based fuzzing on GTP engine.
+  - `tests/benchmarks/`: $O(N)$ Galerkin linear attention scaling, MCTS search throughput benchmarking, and FNet vs MultiheadAttention speedup profiling.
+  - `tests/regression/`: Mathematical invariant regression suite including single-agent vs zero-sum MCTS backup signs, transfer ratio floor protection ($\le 1.5$), and dashboard claims.
+  - `tests/e2e/`: User journey end-to-end tests for Go training lifecycle, Poisson PDE solving, and zero-shot resolution transfer ($9\times 9 \to 19\times 19$).
+- **Core Abstractions & Protocols (`src/core/`)** — Added `@runtime_checkable` protocols (`EvaluatorProtocol`, `GameProtocol`, `OperatorProtocol`, `SolverProtocol`) and generic thread-safe `Registry[T]`.
+- **Agent Lifecycle Hooks & Skills (`src/agents/`)** — Added `src/agents/lifecycle_hooks.py` (`HookManager`, `LoggingHook`, `MetricsCollectorHook`, `EarlyStoppingHook`) and declarative agent skills in `src/agents/skills/` (`BenchmarkSkill`, `SelfPlaySkill`).
+- **Domain Constants** — Partitioned domain constants into `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` while maintaining 100% backward compatibility via `src/constants.py`.
+
+### Changed
+- **Version Bump** — Bumped version to `0.4.0-dev` with Beta development status in `pyproject.toml`.
+- **Coverage Omissions** — Added `src/video_compression/*` to `pyproject.toml` coverage omit list.
+- **Code Hygiene** — Replaced raw `# noqa` comments with `__all__` in `src/training/losses/__init__.py`, audited type ignores, and ensured cross-platform temp paths via `tempfile.gettempdir()`.
+
+## [0.3.0] - 2026-07-22
+
+### Added — Honest zero-shot transfer benchmark (operator vs retrained CNN)
 
 - **Monotonicity in Factorized Prior** — `FactorizedPrior` relies on a network using parameters `a` and `H` to estimate the CDF. Added `torch.nn.functional.softplus` to these parameters to enforce strict positivity, ensuring the CDF is monotonically increasing, preventing negative likelihoods and probability explosion (NaN loss).
 - **GDN Stability** — Generalized Divisive Normalization (`GDN`) and its inverse (`IGDN`) lacked positivity constraints on learnable parameters `beta` and `gamma`. Added `F.softplus` around both parameters in the `GDN.forward` function to ensure that `torch.sqrt` is never applied to a negative value.

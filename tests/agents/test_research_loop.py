@@ -273,9 +273,13 @@ def test_real_random_arm_micro_run_completes() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_execute_returns_failed_on_device_error() -> None:
-    # device='cuda' on a CPU box makes resolve_device raise; execute() must
-    # catch it and return a FAILED result (not propagate).
+def test_execute_returns_failed_on_device_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # resolve_device error must be caught by execute() and return a FAILED result.
+    monkeypatch.setattr(
+        research_module,
+        "resolve_device",
+        MagicMock(side_effect=RuntimeError("Requested device 'cuda' not available")),
+    )
     config = _cpu_config(device="cuda")
     result = ResearchLoopOrchestrator(config).run()
     assert result.status == ExecutionStatus.FAILED

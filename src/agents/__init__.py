@@ -48,10 +48,26 @@ from src.agents.orchestrator import AgentOrchestrator
 from src.agents.registry import AgentRegistry, get_agent, list_agents, register_agent
 from src.agents.solver import SolverAgent
 
+from src.agents.lifecycle_hooks import (
+    BaseLifecycleHook,
+    EarlyStoppingHook,
+    HookManager,
+    LifecycleHook,
+    LoggingHook,
+    MetricsCollectorHook,
+)
+
 __all__ = [
     # Base
     "AgentState",
     "BaseAgent",
+    # Hooks
+    "LifecycleHook",
+    "BaseLifecycleHook",
+    "LoggingHook",
+    "MetricsCollectorHook",
+    "EarlyStoppingHook",
+    "HookManager",
     # Configs
     "AgentConfig",
     "AgentType",

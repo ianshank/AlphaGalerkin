@@ -432,6 +432,8 @@ omit = [
     # gate (like fem_baseline); per-module coverage is enforced by the dedicated
     # "Eval-harness adapter" Regression Surface command when the extra is present.
     "src/integrations/eval_harness/*",
+    # Retired sub-projects excluded from the active AlphaGalerkin physics charter
+    "src/video_compression/*",
 ]
 
 [tool.coverage.report]

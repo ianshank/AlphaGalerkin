@@ -27,12 +27,14 @@ def mock_results() -> list[ScenarioResult]:
 
     return [res1, res2]
 
+
 @pytest.fixture
 def mock_runner(mock_results: list[ScenarioResult]):
     with patch("src.poc.cli.ScenarioRunner") as MockRunner:
         instance = MockRunner.return_value
         instance.run_all.return_value = mock_results
         yield instance
+
 
 @pytest.fixture
 def default_args() -> argparse.Namespace:
@@ -48,6 +50,7 @@ def default_args() -> argparse.Namespace:
     args.log_level = "INFO"
     return args
 
+
 def test_demo_flag(mock_runner, default_args, capsys):
     default_args.demo = True
     cmd_run(default_args)
@@ -59,6 +62,7 @@ def test_demo_flag(mock_runner, default_args, capsys):
     assert "✅ PASS" in captured.out
     assert "❌ FAIL" in captured.out
     assert "1.23" in captured.out
+
 
 def test_export_results_json(mock_runner, default_args, tmp_path):
     export_file = tmp_path / "results.json"
@@ -74,6 +78,7 @@ def test_export_results_json(mock_runner, default_args, tmp_path):
     assert data[0]["scenario_name"] == "scenario_a"
     assert data[0]["passed"] is True
     assert data[0]["metrics"]["score"] == 0.95
+
 
 def test_export_results_csv(mock_runner, default_args, tmp_path):
     export_file = tmp_path / "results.csv"
@@ -97,6 +102,7 @@ def test_export_results_csv(mock_runner, default_args, tmp_path):
     assert rows[1]["metric_score"] == "0.1"
     assert rows[1]["metric_error"] == ""
 
+
 def test_both_flags(mock_runner, default_args, tmp_path, capsys):
     export_file = tmp_path / "results.json"
     default_args.demo = True
@@ -107,6 +113,7 @@ def test_both_flags(mock_runner, default_args, tmp_path, capsys):
     captured = capsys.readouterr()
     assert "Scenario Name" in captured.out
     assert export_file.exists()
+
 
 def test_empty_results(mock_runner, default_args, tmp_path, capsys):
     mock_runner.run_all.return_value = []
@@ -125,6 +132,7 @@ def test_empty_results(mock_runner, default_args, tmp_path, capsys):
         assert len(rows) == 1
         assert rows[0] == ["scenario_name", "passed", "duration_seconds"]
 
+
 def test_all_pass(mock_runner, default_args):
     # Fix the mock results to all pass
     res1 = MagicMock()
@@ -136,6 +144,7 @@ def test_all_pass(mock_runner, default_args):
 
     exit_code = cmd_run(default_args)
     assert exit_code == 0
+
 
 def test_all_fail(mock_runner, default_args):
     # Fix the mock results to all fail

@@ -68,6 +68,8 @@ def test_mcts_throughput(benchmark_timer: BenchmarkTimerProtocol) -> None:
 
     # Verify throughput is strictly positive and finite (>50 sims/sec on CPU)
     for budget in simulation_budgets:
-        assert throughputs[budget] > 50.0, f"Throughput {throughputs[budget]:.1f} too low for budget {budget}"
+        assert throughputs[budget] > 50.0, (
+            f"Throughput {throughputs[budget]:.1f} too low for budget {budget}"
+        )
         assert times[budget] > 0.0
         assert np.isfinite(throughputs[budget])

@@ -183,6 +183,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     export_path_str = getattr(args, "export_results", None)
     if export_path_str:
         import csv
+
         path = Path(export_path_str)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.suffix.lower() == ".csv":
@@ -202,15 +203,19 @@ def cmd_run(args: argparse.Namespace) -> int:
                     writer.writerow(row)
         else:
             with open(path, "w", encoding="utf-8") as f:
-                json.dump([
-                    {
-                        "scenario_name": r.scenario_name,
-                        "passed": r.passed,
-                        "duration_seconds": r.duration_seconds,
-                        "metrics": r.metrics
-                    }
-                    for r in results
-                ], f, indent=2)
+                json.dump(
+                    [
+                        {
+                            "scenario_name": r.scenario_name,
+                            "passed": r.passed,
+                            "duration_seconds": r.duration_seconds,
+                            "metrics": r.metrics,
+                        }
+                        for r in results
+                    ],
+                    f,
+                    indent=2,
+                )
 
     # Return exit code based on results
     if all(r.passed for r in results):

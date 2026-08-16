@@ -224,4 +224,3 @@ class TestHookManagerAndStandardHooks:
         hook.on_post_step(2, None, {"reward": 0.8})
         assert hook.should_stop
         assert hook.wait_count == 2
-

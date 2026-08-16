@@ -865,71 +865,39 @@ Spectral methods enable zero-shot transfer:
 ```
 AlphaGalerkin/
 ├── src/
-│   ├── modeling/          # Neural network components
-│   │   ├── attention.py   # Galerkin & Softmax attention
-│   │   ├── embeddings.py  # Continuous embedding
-│   │   ├── fnet.py        # FFT mixing blocks
-│   │   ├── stability.py   # LBB stability guard
-│   │   ├── model.py       # Full model + ChessPolicyHead
-│   │   └── multiscale_fourier.py  # Multi-scale Fourier features
-│   ├── games/             # Game implementations
-│   │   ├── chess.py       # Chess (119ch, 4672 actions)
-│   │   ├── go.py          # Go (resolution-independent)
-│   │   ├── wrapper.py     # StatefulGameWrapper
-│   │   ├── interface.py   # GameInterface protocol
-│   │   └── pettingzoo_adapter.py  # PettingZoo multi-agent adapter
-│   ├── pde/               # PDE Game Framework
-│   │   ├── operators.py   # Poisson, Burgers, NavierStokes, Heat, L-shaped
-│   │   ├── geometry.py    # Rectangular, L-shaped, CylinderFlow domains
-│   │   ├── time_stepping.py  # ForwardEuler, RK4, CrankNicolson
-│   │   ├── config.py      # Pydantic PDE configuration schemas
-│   │   ├── game.py        # Abstract PDEGame base class
-│   │   ├── registry.py    # PDE operator registry
-│   │   ├── mcts_adapter.py  # PDE-to-MCTS bridge
-│   │   └── games/
-│   │       ├── basis_selection.py   # Galerkin basis selection
-│   │       ├── mesh_refinement.py   # Adaptive mesh refinement
-│   │       └── swarm_planning.py    # Multi-agent swarm control
-│   ├── research/          # SBIR benchmarking infrastructure
-│   │   ├── baselines.py   # FDM, Dorfler AMR, PINN solvers
-│   │   └── pde_benchmarks.py  # PDEBenchmarkRunner + reports
-│   ├── training/          # Training pipeline
-│   │   ├── trainer.py     # Main loop + engine eval
-│   │   ├── base_trainer.py  # Shared BaseTrainer ABC
-│   │   ├── losses/        # Unified loss package (LossRegistry)
-│   │   │   ├── alphagalerkin.py  # Policy CE + Value MSE + LBB
-│   │   │   ├── operator.py      # L2Relative, H1, MSE
-│   │   │   └── physics.py       # Residual + boundary + conservation
-│   │   ├── checkpoint.py         # CheckpointManager
-│   │   ├── checkpoint_migration.py  # Version-aware migration
-│   │   ├── loss_balancing.py     # ReLoBRaLo, GradNorm, etc.
-│   │   ├── self_play.py          # Game-agnostic self-play
-│   │   └── evaluation.py         # Evaluator + engine eval
-│   ├── engines/           # External engine integration
-│   ├── math_kernel/       # Mathematical primitives
-│   ├── mcts/              # Monte Carlo Tree Search
-│   └── tools/             # Utilities (GTP, CLI)
-├── tests/                 # 3000+ tests, 85% coverage gate
-│   ├── pde/               # PDE operators, geometry, time-stepping, swarm
-│   ├── research/          # Baselines, benchmarks
+│   ├── core/              # Runtime protocols (Evaluator, Game, Operator, Solver) & Registry[T]
+│   ├── modeling/          # Neural network components (GalerkinAttention, FNet, FNO, Stability)
+│   ├── agents/            # Multi-physics agents, Lifecycle Hooks & Reusable Skills
+│   │   ├── lifecycle_hooks.py # HookManager, LoggingHook, MetricsCollector, EarlyStopping
+│   │   └── skills/        # BenchmarkSkill, SelfPlaySkill
+│   ├── games/             # Game implementations (Chess, Go, PettingZoo)
+│   ├── pde/               # PDE Game Framework & Operators (Poisson, Burgers, Navier-Stokes)
+│   ├── research/          # SBIR benchmarking infrastructure & baseline solvers
+│   ├── training/          # Training pipeline, checkpointing, ReLoBRaLo, constants
+│   ├── engines/           # External engine integration (UCI, Match, Elo)
+│   ├── math_kernel/       # Mathematical basis primitives (Fourier, Chebyshev)
+│   ├── mcts/              # Monte Carlo Tree Search, Evaluators, Gumbel MCTS, constants
+│   └── tools/             # Utilities (GTP, CLI, Colab)
+├── tests/                 # 7-Tier Test Pyramid (3,000+ tests, >= 85% branch coverage gate)
+│   ├── sanity/            # Dynamic public module import smoke & CLI help checks
+│   ├── security/          # YAML injection defenses, weights_only checks, GTP fuzzing
+│   ├── benchmarks/        # O(N) attention scaling, MCTS throughput, FNet speedup
+│   ├── regression/        # Mathematical invariants, backup sign checks, transfer ratio floors
+│   ├── core/              # Core protocol conformance & generic registry unit tests
+│   ├── pde/               # PDE operators, geometry, time-stepping
 │   ├── training/          # Trainer, loss properties, numerical stability
 │   ├── modeling/          # Attention properties, Fourier features
 │   ├── games/             # Chess, Go, PettingZoo adapter
 │   ├── engines/           # UCI, match, Elo tests
-│   ├── security/          # Security tests
-│   └── e2e/               # End-to-end smoke tests
+│   └── e2e/               # User journey end-to-end workflows
 ├── config/
 │   ├── schemas.py         # Pydantic configs
 │   ├── proposals/         # SBIR configs (Navy, DOE, NSF, AFWERX, DARPA D2P2)
 │   └── benchmarks/        # sbir_suite.yaml
-├── scripts/
-│   ├── run_sbir_demo.py   # End-to-end SBIR benchmark demo (--heavy opt-in for 65 536-DOF Poisson)
-│   ├── run_sbir_p40.py    # Tesla P40 high-resolution PINN/NS-FDM comparison driver
-│   ├── train.py           # Training CLI with Hydra
-│   └── train_chess.py     # Chess training CLI
 ├── docs/
-│   ├── architecture/      # C4 diagrams (Mermaid)
-│   └── proposals/         # SBIR templates, IP strategy, budgets, competitive analysis
+│   ├── architecture/      # C4 diagrams, gap analysis, hardening reports
+│   ├── migration/         # v0.3 to v0.4 migration guide
+│   └── proposals/         # SBIR templates, IP strategy, budgets
 └── pyproject.toml
 ```
 

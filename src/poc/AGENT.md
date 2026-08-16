@@ -17,6 +17,7 @@ This module provides a configuration-driven framework for running Proof-of-Conce
 @scenario("transfer")
 class TransferScenario(BaseScenario):
     config_class = TransferScenarioConfig
+
     def execute(self) -> ScenarioResult: ...
 ```
 Auto-registration via decorator. No central registration file. Thread-safe singleton registry.

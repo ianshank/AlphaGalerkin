@@ -10,7 +10,7 @@ field — no hardcoded budgets, tolerances, or thresholds.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 

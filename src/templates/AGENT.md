@@ -23,8 +23,10 @@ Subclasses only implement `execute()`. Error handling and timing are automatic. 
 ```python
 Registry, register = create_registry("Name", BaseClass)
 
+
 @register("impl")
 class Impl(BaseClass): ...
+
 
 instance = Registry().get_instance("impl")
 ```
@@ -119,6 +121,7 @@ pytest tests/templates/test_base.py -v
 from src.templates.config import BaseModuleConfig
 from pydantic import Field
 
+
 class MyModuleConfig(BaseModuleConfig):
     param_a: int = Field(default=64, ge=1, le=1024, description="Parameter A")
     param_b: float = Field(default=0.01, gt=0, lt=1, description="Learning rate")
@@ -134,14 +137,19 @@ class MyModuleConfig(BaseModuleConfig):
 ```python
 from src.templates.registry import create_registry
 
+
 class BaseHandler:
-    def handle(self, data): raise NotImplementedError
+    def handle(self, data):
+        raise NotImplementedError
+
 
 HandlerRegistry, register_handler = create_registry("Handler", BaseHandler)
 
+
 @register_handler("fast")
 class FastHandler(BaseHandler):
-    def handle(self, data): return process_fast(data)
+    def handle(self, data):
+        return process_fast(data)
 ```
 
 ### Creating a Logger

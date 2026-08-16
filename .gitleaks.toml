@@ -1,0 +1,20 @@
+# Gitleaks configuration for AlphaGalerkin
+title = "AlphaGalerkin Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowed non-secret test vectors and mock artifacts"
+paths = [
+    '''tests/.*''',
+    '''config/baselines/.*''',
+    '''docs/.*''',
+    '''\.hypothesis/.*''',
+    '''\.git/.*''',
+]
+regexes = [
+    '''dummy-[a-zA-Z0-9_-]+''',
+    '''mock-[a-zA-Z0-9_-]+''',
+    '''test-key-[a-zA-Z0-9_-]+''',
+]

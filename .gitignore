@@ -248,3 +248,11 @@ checkpoints/video_compression/zoo/
 outputs/zoo/
 zoo_storage/
 bd_rate_report.json
+
+# Local workspace scratch & tooling
+master_clone/
+Test_Video_Materals/
+.claude/agents/
+.github/.claude/
+config/board.py
+

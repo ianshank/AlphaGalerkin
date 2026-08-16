@@ -83,19 +83,32 @@ def _game_config(scale: float = 1.0, **overrides: object) -> PDEGameConfig:
 
 class TestPredicate:
     def test_excludes_removed_quadrant(self) -> None:
+        """The predicate selects interior *unknowns*, so it removes the CLOSED quadrant.
+
+        The two reentrant edges bound the notch and carry the Dirichlet condition
+        ``u = 0``; treating them as interior unknowns leaves that condition
+        unimposed and makes the discretisation diverge under refinement (see
+        ``tests/research/test_lshape_convergence_gate.py`` and the
+        ``lshape_inside_predicate`` docstring). Closed-domain *membership* --
+        where these edge points are members -- is a different question, answered
+        by ``LShapedDomain.contains_point``.
+        """
         inside = lshape_inside_predicate(1.0)
         pts = np.array(
             [
-                [0.5, -0.5],  # removed quadrant -> False
+                [0.5, -0.5],  # notch interior -> False
                 [-0.5, -0.5],  # keep
                 [0.5, 0.5],  # keep
                 [-0.5, 0.5],  # keep
-                [0.0, -0.5],  # on axis x=0, not strictly > 0 -> keep
+                [0.0, -0.5],  # reentrant edge {x=0, y<0} -> Dirichlet, not an unknown
+                [0.5, 0.0],  # reentrant edge {y=0, x>0} -> Dirichlet, not an unknown
+                [0.0, 0.0],  # reentrant corner -> Dirichlet
+                [-0.5, 0.0],  # y=0 on the non-slit side -> genuine interior, keep
             ],
             dtype=np.float64,
         )
         mask = inside(pts)
-        np.testing.assert_array_equal(mask, [False, True, True, True, True])
+        np.testing.assert_array_equal(mask, [False, True, True, True, False, False, False, True])
 
 
 # --------------------------------------------------------------------------- #

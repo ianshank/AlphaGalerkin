@@ -90,6 +90,64 @@ Named module-level constants (numerical-stability literals):
 > **smaller** one: ~4% rather than ~11%. The committed `results/lshape_mcts_vs_dorfler.{csv,png}`
 > and the default config now use `single_agent`; `legacy_adversarial` remains selectable purely to
 > reproduce the pre-fix number.
+>
+> ⚠️ **Both rows in the table above are retracted (2026-08-16).** They were measured on a substrate
+> that did not converge — see the reentrant-edge note below. The `single_agent` correction stands
+> as a *code* fix; the *numbers* it produced do not.
+
+> **Reentrant-edge boundary-condition defect — retraction and re-measurement (2026-08-16).**
+> `lshape_inside_predicate` removed the **open** quadrant `x>0 and y<0`. The L-shaped domain is
+> `[-1,1]² \ [0,1]×[-1,0]`, whose boundary *includes* the two reentrant edges `{y=0, x≥0}` and
+> `{x=0, y≤0}`, where `u = r^(2/3)sin(2θ/3)` is identically zero. Strict inequalities classified
+> every node **on** those edges as an interior unknown, so their `u=0` Dirichlet condition was
+> never imposed and the 5-point stencil coupled straight across the slit into the analytic
+> continuation pinned inside the notch — discretising a different, inconsistent problem.
+>
+> The defect is visible with **no marking policy involved at all**. Under uniform refinement the
+> L2 error *grew* with DOF:
+>
+> | grid | DOF | L2 (open quadrant, defective) | L2 (closed quadrant, fixed) |
+> |---|---|---|---|
+> | 8×8 | 65 / 56 | 5.00e-2 | 8.48e-3 |
+> | 32×32 | 833 / 800 | 9.10e-2 | 1.56e-3 |
+> | 128×128 | 12545 / 12416 | **1.15e-1** | **2.59e-4** |
+> | observed rate | | **−0.09** (diverging) | **O(h^1.31)** |
+>
+> `O(h^1.31)` ≈ `O(N^-0.65)` ≈ `O(N^-2/3)` is the textbook L2 rate for the r^(2/3) reentrant-corner
+> singularity. Re-running the canonical 5-seed demo config on the fixed substrate:
+>
+> | Metric | Retracted (defective) | **Committed (fixed)** |
+> |---|---|---|
+> | `l2_error_ratio_at_matched_dof` | 0.9605 (≈4% win) | **1.0996** (MCTS loses ≈10%) |
+> | `mcts_win_fraction` | 0.80 | **0.20** (1/5 seeds) |
+> | seed min / max / std | 0.8166 / 1.1157 | **0.7714 / 1.1490 / 0.1360** |
+> | `l2_error_ratio_at_matched_solves` | 1.26 (0/5) | **2.04** (0/5) |
+> | Dörfler final L2 @ ~1300 DOF | 9.04e-2 | **8.40e-3** |
+>
+> **The matched-DOF win does not survive the fix.** The primary acceptance threshold
+> (`l2_error_ratio_at_matched_dof < 1.0`) now *fails*, which is the gate working as designed.
+> Guarded by `tests/research/test_lshape_convergence_gate.py`, which asserts monotone error
+> reduction and the O(h^4/3) rate band under uniform refinement, and fails on the pre-fix
+> predicate (7 of 11 tests red).
+
+> **Second defect, now unmasked: tensor-product refinement (2026-08-16).** With the BC defect
+> removed, adaptive Dörfler marking converges at only −0.125 (least-squares log-log slope) while
+> *uniform* refinement on the identical substrate achieves −0.65. Compared at matched DOF, adaptive
+> marking is **worse than doing nothing adaptive at all**:
+>
+> | DOF | uniform L2 | adaptive-Dörfler L2 | Dörfler penalty |
+> |---|---|---|---|
+> | ~450 | 2.24e-3 | 1.26e-2 (438 DOF) | 5.6× worse |
+> | ~800 | 1.56e-3 | 8.29e-3 (873 DOF) | 5.3× worse |
+> | ~1300–1800 | 9.26e-4 (1776) | 8.40e-3 (1316) | **9.1× worse** |
+>
+> The gap widens with DOF. Cause is the one recorded in the scope note below: `_dorfler_mark_2d`
+> projects element-wise marks onto the x and y axes and `_refine_grid` is applied separately to
+> `xs` and `ys`, so marking one element near the corner inserts full grid *lines* spanning the
+> whole domain. The refinement budget is spent on a plus-shaped smear across empty domain rather
+> than at the singularity. **Until refinement is element-local, no marking-policy comparison on
+> this substrate measures refinement quality** — this is the blocking prerequisite for the v2.1
+> element-local (skfem / quadtree) work, not an optional upgrade.
 
 ### AC4: All three comparisons are reported (honest triple metric)
 - **Given** a completed run
@@ -107,10 +165,12 @@ Named module-level constants (numerical-stability literals):
 > last point reached at or before the matched solve budget), not interpolated: L2 is
 > piecewise-constant on the solve axis (it only drops when a refinement is *applied*, while solve
 > counts jump between points), so interpolation would credit an arm with an L2 it never achieved
-> at that budget. On the committed demo run the matched-DOF win (median ratio **0.96**, wins 4/5
-> seeds) **evaporates at matched compute**: median `l2_error_ratio_at_matched_solves` = **1.26**
-> and MCTS wins **0/5** seeds on quality-per-solve, because reaching ~1250 DOF costs the MCTS arm
-> **≈3509 real solves vs Dörfler's 10** (~350×). This is the honest *control/null* — on
+> at that budget. On the committed demo run (**re-measured 2026-08-16** on the fixed substrate;
+> the superseded figures were median 0.96 / 4-of-5 seeds and matched-compute 1.26) MCTS loses on
+> *both* axes: median `l2_error_ratio_at_matched_dof` = **1.0996** (wins 1/5 seeds) and median
+> `l2_error_ratio_at_matched_solves` = **2.04** with MCTS winning **0/5** seeds on
+> quality-per-solve, because reaching 1200 DOF costs the MCTS arm **3057 real solves vs Dörfler's
+> 9** (~340×). This is the honest *control/null* — on
 > local-elliptic L-shape Poisson, greedy residual marking is near-optimal, so a matched-compute
 > win is not expected here. The thesis's real test belongs on a substrate where greedy marking is
 > myopic (e.g. Burgers shock-driven AMR); see the next-steps plan.

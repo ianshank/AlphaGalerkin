@@ -75,26 +75,49 @@ RATIO_FLOOR: float = 1e-15
 def lshape_inside_predicate(
     scale: float = 1.0,
 ) -> Callable[[NDArray[np.float64]], NDArray[np.bool_]]:
-    r"""Return the L-shape membership predicate for ``[-s,s]^2 \ (0,s]x[-s,0)``.
+    r"""Return the L-shape *interior-unknown* predicate for ``[-s,s]^2 \ [0,s]x[-s,0]``.
 
-    Mirrors :meth:`src.pde.geometry.LShapedDomain.contains_point`: a point is
-    inside unless it lies in the removed bottom-right quadrant ``x>0 and y<0``.
-    The bounding box is already enforced by the grid, so only the notch is
-    excluded here.
+    This answers "is this node an unknown the solver must solve for?", which is
+    **not** the same question as :meth:`src.pde.geometry.LShapedDomain.contains_point`
+    ("is this point in the closed domain :math:`\bar\Omega`?"). The two differ
+    exactly on the reentrant edges, and conflating them is a correctness bug:
+
+    * ``contains_point`` removes the **open** quadrant ``x>0 and y<0``, so the
+      slit edges ``{y=0, x>=0}`` and ``{x=0, y<=0}`` are *members* of the closed
+      domain. That is right for a membership test.
+    * A finite-difference solver must treat those same edges as **Dirichlet
+      boundary**, not as interior unknowns. On them the benchmark solution
+      :math:`u = r^{2/3}\sin(2\theta/3)` is identically zero (``sin(0) = 0`` at
+      :math:`\theta=0` and ``sin(pi) = 0`` at :math:`\theta=3\pi/2`).
+
+    Using the open-quadrant rule here gave slit-edge nodes a full Laplacian row,
+    so their ``u=0`` boundary condition was never imposed and the stencil coupled
+    straight across the slit into the analytic continuation pinned inside the
+    notch. That discretises a *different, inconsistent* problem: under uniform
+    refinement the L2 error **grew** with DOF (5.0e-2 at 65 DOF to 1.15e-1 at
+    12545 DOF) instead of converging. Removing the **closed** quadrant restores
+    the textbook rate for the reentrant-corner singularity: measured
+    :math:`O(h^{1.31})`, i.e. :math:`O(N^{-0.65}) \approx O(N^{-2/3})`, taking the
+    same 12545-DOF grid to 2.59e-4 (444x lower).
+
+    Guarded by ``tests/research/test_lshape_convergence_gate.py``.
 
     Args:
         scale: Domain half-width ``s`` (accepted for API symmetry; the notch
             rule is scale-independent).
 
     Returns:
-        A vectorised predicate mapping ``(N, 2)`` coords to an ``(N,)`` mask.
+        A vectorised predicate mapping ``(N, 2)`` coords to an ``(N,)`` mask that
+        is ``True`` for interior unknowns and ``False`` on the notch *and* on the
+        two reentrant edges bounding it.
 
     """
 
     def _inside(points: NDArray[np.float64]) -> NDArray[np.bool_]:
         x = points[:, 0]
         y = points[:, 1]
-        removed = (x > 0.0) & (y < 0.0)
+        # Closed quadrant: `>=` / `<=` pin the reentrant edges as Dirichlet.
+        removed = (x >= 0.0) & (y <= 0.0)
         return ~removed
 
     return _inside

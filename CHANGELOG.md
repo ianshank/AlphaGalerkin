@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — L-shape AMR reentrant-edge Dirichlet BC never imposed (headline retracted)
+
+- **`lshape_inside_predicate` removed the *open* fourth quadrant instead of the *closed* one.**
+  The L-shaped domain is `[-1,1]² \ [0,1]×[-1,0]`; its boundary *includes* the two reentrant
+  edges `{y=0, x≥0}` and `{x=0, y≤0}`, where the benchmark solution
+  `u = r^(2/3)sin(2θ/3)` is identically zero. The strict inequalities `(x > 0) & (y < 0)`
+  classified every node **on** those edges as an interior unknown, so its `u=0` Dirichlet
+  condition was never imposed and the 5-point stencil coupled straight across the slit into the
+  analytic continuation pinned inside the notch. The solver was discretising a different,
+  inconsistent problem.
+
+- **Diagnosed with no marking policy involved.** Under *uniform* refinement the L2 error **grew**
+  with DOF — 5.0e-2 at 65 DOF rising to 1.15e-1 at 12545 DOF (rate −0.09) — and the peak error sat
+  on the slit edge at `(0.75, 0.0)`, far from the corner, growing 0.357 → 0.519 → 0.634 as `h`
+  halved. Removing the **closed** quadrant (`>=` / `<=`) restores the textbook rate for the
+  reentrant-corner singularity: measured **O(h^1.31)** ≈ O(N^-0.65) ≈ O(N^-2/3), taking the same
+  12545-DOF grid to 2.59e-4 (444× lower).
+
+- **`LShapedDomain.contains_point` is deliberately unchanged.** Closed-domain *membership* (where
+  a slit-edge point *is* a member) and interior-*unknown* selection (where it is not) are
+  different questions; conflating them was the bug. The distinction is documented on both.
+
+### Changed — L-shape MCTS-vs-Dörfler headline retracted and re-measured
+
+- Re-running the canonical 5-seed demo config on the fixed substrate **flips the result**:
+
+  | Metric | Retracted (defective) | Committed (fixed) |
+  |---|---|---|
+  | `l2_error_ratio_at_matched_dof` | 0.9605 (≈4% win) | **1.0996** (MCTS loses ≈10%) |
+  | `mcts_win_fraction` | 0.80 | **0.20** (1/5 seeds) |
+  | `l2_error_ratio_at_matched_solves` | 1.26 (0/5) | **2.04** (0/5) |
+  | Dörfler final L2 @ ~1300 DOF | 9.04e-2 | **8.40e-3** |
+
+  The primary acceptance threshold (`l2_error_ratio_at_matched_dof < 1.0`) now **fails** — the
+  falsifiable gate working as designed. Regenerated `results/lshape_mcts_vs_dorfler.{csv,png}`;
+  corrected the charter claims register, `specs/lshape_amr_compare.spec.md`, and `CLAUDE.md`.
+
+- **Second defect unmasked: tensor-product refinement.** With the BC fixed, adaptive Dörfler
+  converges at only −0.125 while *uniform* refinement on the identical substrate achieves −0.65.
+  At matched DOF adaptive marking is **5–9× worse than uniform** (9.1× at ~1300–1800 DOF), gap
+  widening. `_dorfler_mark_2d` projects element-wise marks onto the x and y axes and `_refine_grid`
+  runs separately on `xs`/`ys`, so marking one element near the corner inserts full grid *lines*
+  spanning the whole domain. Element-local refinement (v2.1) is therefore a **blocking
+  prerequisite** for any marking-policy comparison on this benchmark, not an optional upgrade.
+
+### Added — L-shape convergence gate
+
+- `tests/research/test_lshape_convergence_gate.py` (11 tests, ~1.2 s) asserts the substrate
+  converges *before* any policy comparison is read: monotone L2 reduction under uniform
+  refinement, an O(h^4/3) rate band, an absolute finest-grid anchor, reentrant-edge pinning, and
+  that the **Dörfler arm alone** reduces error with DOF. Mutation-tested — 7 of the 11 fail on the
+  pre-fix predicate. Added to the `CLAUDE.md` Regression Surface row for this benchmark.
+
 ### Changed — Dead `PDEGame.get_result` abstraction removed; abstraction audit gated in CI (audit B17 + B18)
 
 - **Removed `PDEGame.get_result` and the `PDEResult` dataclass.** `get_result` was declared

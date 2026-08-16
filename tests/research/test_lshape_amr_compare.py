@@ -35,6 +35,7 @@ from src.research.lshape_amr_compare import (
     resolved_seeds,
     run_comparison,
     run_dorfler_arm,
+    run_mcts_arm,
     run_multiseed_comparison,
 )
 
@@ -112,6 +113,28 @@ class TestPredicate:
 
 
 # --------------------------------------------------------------------------- #
+# ComparisonParams.__post_init__                                               #
+# --------------------------------------------------------------------------- #
+
+
+class TestComparisonParamsValidation:
+    """Each documented invariant in ``__post_init__`` must actually raise."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"initial_side": 3}, "initial_side must be an even integer"),
+            ({"initial_side": 0}, "initial_side must be an even integer"),
+            ({"n_seeds": 0}, "n_seeds must be >= 1"),
+            ({"search_mode": "bogus"}, "search_mode must be one of"),
+        ],
+    )
+    def test_invalid_field_raises(self, kwargs: dict[str, object], match: str) -> None:
+        with pytest.raises(ValueError, match=match):
+            ComparisonParams(**kwargs)  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
 # Masked solve function                                                        #
 # --------------------------------------------------------------------------- #
 
@@ -151,6 +174,59 @@ class TestDorflerArm:
         assert traj.points[-1].l2_error <= traj.points[0].l2_error * 1.5
         assert traj.points[-1].n_dof >= traj.points[0].n_dof
         assert np.isfinite(traj.convergence_exponent())
+
+    def test_exhausts_max_refinements_without_early_exit(self) -> None:
+        """Neither exit condition reachable, so the loop runs out the budget.
+
+        Terminates cleanly after exactly ``max_refinements + 1`` solves (the
+        "ran out of budget" path), as opposed to always breaking early. Both
+        the DOF cap and the error tolerance are set unreachable so the ``for``
+        loop falls through normally rather than via the early ``break``.
+        """
+        op = _operator()
+        solve = make_solve_fn(op, lshape_inside_predicate(1.0))
+        params = ComparisonParams(
+            initial_side=4, max_dof=1_000_000, max_refinements=1, error_tolerance=1e-300
+        )
+        traj = run_dorfler_arm(op, solve, params)
+        assert len(traj.points) == params.max_refinements + 1
+
+
+# --------------------------------------------------------------------------- #
+# run_mcts_arm                                                                 #
+# --------------------------------------------------------------------------- #
+
+
+class TestRunMctsArm:
+    def test_stops_immediately_once_dof_cap_is_crossed(self) -> None:
+        """The loop's own ``params.max_dof`` check breaks the same step it fires.
+
+        Breaking the same step a refinement crosses the cap (rather than
+        continuing to ``max_steps``) is independent of the game's own
+        ``is_terminal`` DOF check (driven by ``game_config.max_dof``, set
+        generously high here) -- the harness loop has its own budget
+        accounting for the matched-DOF comparison.
+        """
+        op = _operator()
+        solve = make_solve_fn(op, lshape_inside_predicate(1.0))
+        xs = np.linspace(-1.0, 1.0, 5, dtype=np.float64)
+        ys = np.linspace(-1.0, 1.0, 5, dtype=np.float64)
+        initial_dof = solve(xs, ys).n_dof
+        game_config = _game_config(max_dof=10_000, error_tolerance=1e-12)
+        params = ComparisonParams(
+            seed=1,
+            initial_side=4,
+            max_dof=initial_dof + 1,
+            max_steps=3,
+            error_tolerance=1e-12,
+            n_candidate_elements=2,
+            n_simulations=1,
+            add_noise=False,
+        )
+        traj = run_mcts_arm(op, solve, game_config, params)
+        # Broke right after the DOF-crossing step, not at max_steps.
+        assert len(traj.points) < params.max_steps + 1
+        assert traj.points[-1].n_dof >= params.max_dof
 
 
 # --------------------------------------------------------------------------- #
@@ -389,6 +465,26 @@ class TestAreaWeightedL2:
         ys = np.linspace(0.0, 1.0, 3, dtype=np.float64)
         in_mask = np.zeros(9, dtype=bool)
         assert np.isnan(_area_weighted_l2(np.array([], dtype=np.float64), xs, ys, in_mask))
+
+    def test_all_masked_out_with_nonempty_diff_is_nan(self) -> None:
+        """Defensive-only: the ``total <= 0.0`` guard on a nonempty ``diff``.
+
+        Every ``_trapezoidal_weights`` entry is strictly positive on a
+        strictly-increasing axis, so ``total <= 0.0`` is only reachable when
+        ``in_mask.sum() == 0`` -- and the real caller (``make_solve_fn``)
+        always builds ``diff = whatever[in_mask]``, so a real all-masked-out
+        call already has ``diff.size == 0`` and hits the earlier guard first.
+        This test deliberately violates the documented "``diff`` is length
+        ``in_mask.sum()``" precondition to prove the guard still fails safe
+        (returns nan) rather than raising, protecting future callers that
+        might not maintain that invariant -- not a state ``make_solve_fn``
+        itself can produce today.
+        """
+        xs = np.linspace(0.0, 1.0, 3, dtype=np.float64)
+        ys = np.linspace(0.0, 1.0, 3, dtype=np.float64)
+        diff = np.array([1.0, 2.0], dtype=np.float64)
+        in_mask = np.zeros(9, dtype=bool)
+        assert np.isnan(_area_weighted_l2(diff, xs, ys, in_mask))
 
     def test_constant_field_on_uniform_grid_recovers_constant(self) -> None:
         # On a uniform grid a constant error field returns exactly that constant,

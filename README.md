@@ -348,13 +348,13 @@ AlphaGalerkin addresses a **verified novelty gap**: no published papers combine 
 | **DARPA Direct-to-Phase-II** | DARPA STO | II | $750K-$1.5M / 24mo | `config/proposals/darpa_d2p2.yaml` |
 
 ### Proposal Infrastructure
-- **Registration**: [SAM.gov Guide](docs/proposals/SAM_REGISTRATION_GUIDE.md) (UEI, CAGE, NAICS 541715)
-- **Timeline**: [Submission Calendar](docs/proposals/SUBMISSION_TIMELINE.md) with Gantt chart
-- **Contacts**: [Program Offices](docs/proposals/PROGRAM_OFFICES.md) (Tier 1 + Tier 2)
-- **Budgets**: [Budget Templates](docs/proposals/BUDGET_TEMPLATES.md) (DoD, NSF, AFWERX, DARPA)
-- **IP Protection**: [IP Strategy](docs/proposals/IP_STRATEGY.md) (3 provisional patents, trade secrets)
-- **Competitive Analysis**: [Landscape](docs/proposals/COMPETITIVE_LANDSCAPE.md) | [Differentiation](docs/proposals/DIFFERENTIATION_MATRIX.md)
-- **Valuation**: [Framework](docs/proposals/VALUATION_FRAMEWORK.md) | [M&A Landscape](docs/proposals/MA_LANDSCAPE.md)
+- **Registration**: [SAM.gov Guide](docs/business/proposals/SAM_REGISTRATION_GUIDE.md) (UEI, CAGE, NAICS 541715)
+- **Timeline**: [Submission Calendar](docs/business/proposals/SUBMISSION_TIMELINE.md) with Gantt chart
+- **Contacts**: [Program Offices](docs/business/proposals/PROGRAM_OFFICES.md) (Tier 1 + Tier 2)
+- **Budgets**: [Budget Templates](docs/business/proposals/BUDGET_TEMPLATES.md) (DoD, NSF, AFWERX, DARPA)
+- **IP Protection**: [IP Strategy](docs/business/proposals/IP_STRATEGY.md) (3 provisional patents, trade secrets)
+- **Competitive Analysis**: [Landscape](docs/business/proposals/COMPETITIVE_LANDSCAPE.md) | [Differentiation](docs/business/proposals/DIFFERENTIATION_MATRIX.md)
+- **Valuation**: [Framework](docs/business/proposals/VALUATION_FRAMEWORK.md) | [M&A Landscape](docs/business/proposals/MA_LANDSCAPE.md)
 
 ### Run SBIR Benchmarks
 ```bash

@@ -15,7 +15,7 @@ import pytest
 pytest.importorskip("torch")
 pytest.importorskip("eval_harness")
 
-from src.integrations.eval_harness.runner import run_eval  # noqa: E402
+from src.integrations.eval_harness.runner import run_eval
 
 
 def _config(results_dir: Path) -> dict[str, object]:

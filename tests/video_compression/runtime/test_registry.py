@@ -161,7 +161,7 @@ class TestRegisterDecorator:
             with pytest.raises(ValueError, match="already registered"):
 
                 @register_runtime("double-register-test")
-                class _B(BaseDecoderRuntime):  # noqa: F841
+                class _B(BaseDecoderRuntime):
                     runtime_name = "double-register-test"
 
                     def prepare(self, *, ctx: DecoderRuntimeContext) -> None:

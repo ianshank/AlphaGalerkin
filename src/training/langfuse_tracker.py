@@ -171,7 +171,7 @@ class LangfuseTracker:
                 tags=self._tags or None,
                 metadata={"project": self._project, "training_config": self._training_config},
             )
-        except Exception as e:  # noqa: BLE001 - any SDK/transport failure degrades to no-op
+        except Exception as e:
             logger.warning(
                 "langfuse_init_failed",
                 error=str(e),
@@ -261,7 +261,7 @@ class LangfuseTracker:
                     continue
                 if isinstance(value, int | float):
                     self._trace.score(name=key, value=float(value))
-        except Exception as e:  # noqa: BLE001 - tracking is best-effort
+        except Exception as e:
             logger.debug("langfuse_record_failed", error=str(e), name=name)
 
     def log_training_step(self, metrics: TrainingMetrics, commit: bool = True) -> None:
@@ -377,7 +377,7 @@ class LangfuseTracker:
                 },
             )
             logger.info("langfuse_artifact_recorded", name=name, path=str(checkpoint_path))
-        except Exception as e:  # noqa: BLE001 - best-effort
+        except Exception as e:
             logger.debug("langfuse_artifact_failed", error=str(e))
 
     def log_config_update(self, config_updates: dict[str, Any]) -> None:
@@ -386,7 +386,7 @@ class LangfuseTracker:
             return
         try:
             self._trace.update(metadata={"config_update": config_updates})
-        except Exception as e:  # noqa: BLE001 - best-effort
+        except Exception as e:
             logger.debug("langfuse_config_update_failed", error=str(e))
 
     def log_summary(self, summary: dict[str, Any]) -> None:
@@ -395,7 +395,7 @@ class LangfuseTracker:
             return
         try:
             self._trace.update(output=summary)
-        except Exception as e:  # noqa: BLE001 - best-effort
+        except Exception as e:
             logger.debug("langfuse_summary_failed", error=str(e))
 
     def log_table(
@@ -410,7 +410,7 @@ class LangfuseTracker:
             return
         try:
             self._trace.event(name=key, metadata={"columns": columns, "data": data})
-        except Exception as e:  # noqa: BLE001 - best-effort
+        except Exception as e:
             logger.debug("langfuse_table_failed", error=str(e), key=key)
 
     def define_metric(
@@ -429,7 +429,7 @@ class LangfuseTracker:
             return
         try:
             self._trace.event(name="alert", metadata={"title": title, "text": text, "level": level})
-        except Exception as e:  # noqa: BLE001 - best-effort
+        except Exception as e:
             logger.debug("langfuse_alert_failed", error=str(e), title=title)
 
     def finish(self) -> None:
@@ -444,7 +444,7 @@ class LangfuseTracker:
             if self._client is not None:
                 try:
                     self._client.flush()
-                except Exception as e:  # noqa: BLE001 - best-effort
+                except Exception as e:
                     logger.debug("langfuse_flush_error", error=str(e))
                 self._trace = None
                 self._initialized = False

@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip("torch")
 
-from src.integrations.eval_harness.target import run_basis_cell  # noqa: E402
+from src.integrations.eval_harness.target import run_basis_cell
 
 _CELL = {
     "pde_family": "poisson",

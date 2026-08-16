@@ -31,7 +31,7 @@ from src.video_compression.runtime.metadata import (
 # Side-effect import: registers PYTORCH_EAGER_RUNTIME_NAME.
 # Iteration 2/4/5 add their modules here so registration runs at
 # import time. Order is alphabetical to keep diffs minimal.
-from src.video_compression.runtime.onnx_runtime import (  # noqa: F401
+from src.video_compression.runtime.onnx_runtime import (
     ONNX_RUNTIME_NAME,
     ONNXDecoderRuntime,
 )
@@ -39,11 +39,11 @@ from src.video_compression.runtime.protocol import (
     DecoderRuntime,
     DecoderRuntimeContext,
 )
-from src.video_compression.runtime.pytorch_compiled import (  # noqa: F401
+from src.video_compression.runtime.pytorch_compiled import (
     PYTORCH_COMPILED_RUNTIME_NAME,
     PyTorchCompiledRuntime,
 )
-from src.video_compression.runtime.pytorch_eager import (  # noqa: F401
+from src.video_compression.runtime.pytorch_eager import (
     PYTORCH_EAGER_RUNTIME_NAME,
     PyTorchEagerRuntime,
 )
@@ -53,7 +53,7 @@ from src.video_compression.runtime.registry import (
     create_runtime,
     register_runtime,
 )
-from src.video_compression.runtime.tensorrt_runtime import (  # noqa: F401
+from src.video_compression.runtime.tensorrt_runtime import (
     TENSORRT_RUNTIME_NAME,
     TensorRTRuntime,
 )

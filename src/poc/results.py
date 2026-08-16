@@ -354,7 +354,7 @@ class ResultCollector:
             # fallback. `pandas-stubs` is not in the project requirements
             # so mypy can't type-check the return; the local-import shape
             # makes that acceptable here.
-            import pandas as pd  # type: ignore[import-untyped]
+            import pandas as pd
 
             return pd.DataFrame(rows)
         except ImportError:

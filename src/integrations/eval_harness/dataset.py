@@ -37,7 +37,7 @@ class BasisOracleDataset(DatasetSource):  # eval_harness ships no stubs; mypy 'm
 
     def __init__(self, **params: Any) -> None:
         """Validate the ``basis_oracle`` dataset params (an OracleDatasetParams dump)."""
-        from src.integrations.eval_harness.config import OracleDatasetParams  # noqa: PLC0415
+        from src.integrations.eval_harness.config import OracleDatasetParams
 
         self._params = OracleDatasetParams.model_validate(params)
 
@@ -48,11 +48,11 @@ class BasisOracleDataset(DatasetSource):  # eval_harness ships no stubs; mypy 'm
 
 def _build_items(params: OracleDatasetParams) -> list[EvalItem]:
     """Construct one labelled :class:`EvalItem` per ``(pde_family, seed)`` cell."""
-    import numpy as np  # noqa: PLC0415
-    import torch  # noqa: PLC0415
+    import numpy as np
+    import torch
 
-    from src.integrations.eval_harness.oracle import greedy_basis_oracle  # noqa: PLC0415
-    from src.poc.scenarios._centaur_common import (  # noqa: PLC0415
+    from src.integrations.eval_harness.oracle import greedy_basis_oracle
+    from src.poc.scenarios._centaur_common import (
         build_basis_game,
         build_pde_operator,
     )

@@ -35,14 +35,14 @@ def _maybe_register(
 
 def register_all() -> None:
     """Register the AlphaGalerkin scorers, sink, and dataset (idempotent)."""
-    from eval_harness.plugins import DATASETS, SCORERS, SINKS  # noqa: PLC0415
+    from eval_harness.plugins import DATASETS, SCORERS, SINKS
 
-    from src.integrations.eval_harness.dataset import BasisOracleDataset  # noqa: PLC0415
-    from src.integrations.eval_harness.scorers import (  # noqa: PLC0415
+    from src.integrations.eval_harness.dataset import BasisOracleDataset
+    from src.integrations.eval_harness.scorers import (
         FinalResidualScorer,
         PolicyTopKScorer,
     )
-    from src.integrations.eval_harness.sink import ScenarioResultSink  # noqa: PLC0415
+    from src.integrations.eval_harness.sink import ScenarioResultSink
 
     _maybe_register(SCORERS, "final_residual", FinalResidualScorer)
     _maybe_register(SCORERS, "policy_topk", PolicyTopKScorer)

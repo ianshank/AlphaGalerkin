@@ -30,7 +30,7 @@ def _inductor_compiler_available() -> bool:
         from torch._inductor.cpp_builder import get_cpp_compiler
 
         compiler = get_cpp_compiler()
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             [compiler, "--version"],
             capture_output=True,
             timeout=5,

@@ -157,7 +157,7 @@ def _run_subprocess(
     decide how to handle non-zero exits (we want failures surfaced as
     ``BaselineRunResult.status == "failed"``, not as exceptions).
     """
-    return subprocess.run(  # noqa: S603 - intentional subprocess
+    return subprocess.run(
         cmd,
         check=False,
         capture_output=True,

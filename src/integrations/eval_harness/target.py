@@ -41,12 +41,12 @@ def run_basis_cell(inputs: dict[str, Any]) -> dict[str, Any]:
         ``seed`` — the fields the scorers consume.
 
     """
-    import numpy as np  # noqa: PLC0415
-    import torch  # noqa: PLC0415
+    import numpy as np
+    import torch
 
-    from src.integrations.eval_harness.config import BasisCellParams  # noqa: PLC0415
-    from src.pde.mcts_adapter import PDEGameAdapter  # noqa: PLC0415
-    from src.poc.scenarios._centaur_common import (  # noqa: PLC0415
+    from src.integrations.eval_harness.config import BasisCellParams
+    from src.pde.mcts_adapter import PDEGameAdapter
+    from src.poc.scenarios._centaur_common import (
         build_basis_game,
         build_pde_operator,
         enumerate_basis_descriptions,
@@ -118,7 +118,7 @@ def _build_evaluator(
     device: torch.device | None,
 ) -> Evaluator:
     """Construct the arm evaluator via the shared centaur factory."""
-    from src.poc.scenarios._centaur_common import build_arm_evaluator  # noqa: PLC0415
+    from src.poc.scenarios._centaur_common import build_arm_evaluator
 
     return build_arm_evaluator(
         params.arm,
@@ -139,7 +139,7 @@ def _query_root_policy(
     topk: int,
 ) -> tuple[int | None, list[int], float]:
     """Return ``(chosen_action, topk_actions, value)`` from one policy evaluation."""
-    import numpy as np  # noqa: PLC0415
+    import numpy as np
 
     if not legal_actions:
         return None, [], 0.0
@@ -153,8 +153,8 @@ def _build_lm_client(params: BasisCellParams) -> LMStudioClient | None:  # pragm
     """Build an ``LMStudioClient`` for the LLM arm, else ``None`` (live server only)."""
     if params.arm != "llm":
         return None
-    from src.integrations.lm_studio.client import LMStudioClient  # noqa: PLC0415
-    from src.integrations.lm_studio.config import LMStudioConfig  # noqa: PLC0415
+    from src.integrations.lm_studio.client import LMStudioClient
+    from src.integrations.lm_studio.config import LMStudioConfig
 
     return LMStudioClient(LMStudioConfig(**(params.lm_studio or {})))
 
@@ -167,8 +167,8 @@ def _load_trained_model(  # pragma: no cover - trained arm needs a checkpoint (i
         return None, None
     if not params.checkpoint_path:
         raise ValueError("arm='trained' requires checkpoint_path")
-    from src.poc.device import resolve_device  # noqa: PLC0415
-    from src.training.checkpoint import create_model_from_checkpoint  # noqa: PLC0415
+    from src.poc.device import resolve_device
+    from src.training.checkpoint import create_model_from_checkpoint
 
     device = resolve_device("auto", context="eval_harness_target")
     model, _config = create_model_from_checkpoint(

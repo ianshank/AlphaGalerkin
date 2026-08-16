@@ -146,7 +146,7 @@ def _persisted_entry_hash(zoo: VideoCodecZoo, entry_id: str) -> str | None:
         return None
     try:
         rehydrated = ModelZooEntryConfig.model_validate(raw)
-    except Exception:  # noqa: BLE001 — defensive: stale schema -> retrain
+    except Exception:
         return None
     return rehydrated.compute_hash()
 
@@ -488,8 +488,8 @@ def make_subprocess_entry_runner(
         entry: ModelZooEntryConfig,
         device: str,
         zoo: VideoCodecZoo,
-        codec_config: CodecConfig,  # noqa: ARG001 — child re-resolves from manifest
-        output_root_arg: Path,  # noqa: ARG001 — closure value wins for cross-proc consistency
+        codec_config: CodecConfig,
+        output_root_arg: Path,
     ) -> ZooTrainingReport:
         env = os.environ.copy()
         child_device = device

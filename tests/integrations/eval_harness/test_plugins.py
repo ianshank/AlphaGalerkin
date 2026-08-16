@@ -8,9 +8,9 @@ import pytest
 
 pytest.importorskip("eval_harness")
 
-from eval_harness.plugins import DATASETS, SCORERS, SINKS  # noqa: E402
+from eval_harness.plugins import DATASETS, SCORERS, SINKS
 
-from src.integrations.eval_harness.plugins import register_all  # noqa: E402
+from src.integrations.eval_harness.plugins import register_all
 
 
 def test_register_all_registers_adapters() -> None:

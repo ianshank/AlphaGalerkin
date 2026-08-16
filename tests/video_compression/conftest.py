@@ -19,7 +19,7 @@ from torch import Tensor
 # Re-export fixtures from video_fixtures for test discovery.
 # NOTE: pytest 9.x disallows pytest_plugins in non-top-level conftest files.
 # Direct import achieves the same fixture registration effect.
-from tests.video_compression.video_fixtures import *  # noqa: F401, F403
+from tests.video_compression.video_fixtures import *  # noqa: F403
 
 # --------------------------------------------------------------------------
 # Core Fixtures

@@ -114,7 +114,7 @@ class TestCommands:
             realized_psnr_db: float
 
         class _FakeZooTrainer:
-            def __init__(self, entry, zoo, *, codec_config, device, output_root) -> None:  # noqa: ANN001
+            def __init__(self, entry, zoo, *, codec_config, device, output_root) -> None:
                 observed["entry_id"] = entry.entry_id
                 observed["train_steps"] = entry.train_steps
                 observed["device"] = device

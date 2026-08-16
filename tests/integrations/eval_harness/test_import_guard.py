@@ -8,7 +8,7 @@ import pytest
 
 pytest.importorskip("eval_harness")
 
-from src.integrations.eval_harness import _import_harness  # noqa: E402
+from src.integrations.eval_harness import _import_harness
 
 
 def test_import_eval_harness_returns_module_when_present() -> None:

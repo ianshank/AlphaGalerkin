@@ -421,8 +421,8 @@ class PicoGKSDFEvaluator:
             # are gated behind the optional [picogk] extra so neither
             # has a stub package available in CI; the import is purely
             # a presence-check and we re-raise as ImportError below.
-            import PicoGK  # type: ignore[import-not-found]  # noqa: F401  # pragma: no cover
-            import pythonnet  # type: ignore[import-not-found]  # noqa: F401  # pragma: no cover
+            import PicoGK  # noqa: F401  # pragma: no cover
+            import pythonnet  # noqa: F401  # pragma: no cover
         except ImportError as exc:
             raise ImportError(
                 "PicoGKSDFEvaluator requires the optional [picogk] extra. "

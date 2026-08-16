@@ -10,8 +10,8 @@ import pytest
 pytest.importorskip("torch")
 pytest.importorskip("eval_harness")
 
-from src.integrations.eval_harness.config import OracleDatasetParams  # noqa: E402
-from src.integrations.eval_harness.dataset import (  # noqa: E402
+from src.integrations.eval_harness.config import OracleDatasetParams
+from src.integrations.eval_harness.dataset import (
     BasisOracleDataset,
     build_dataset_jsonl,
 )

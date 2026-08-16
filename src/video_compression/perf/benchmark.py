@@ -331,7 +331,7 @@ class PerfBenchmark(BaseExecutable[PerfBenchmarkConfig]):
                     key=key,
                     reason=f"not implemented: {exc}",
                 )
-            except Exception as exc:  # noqa: BLE001 - benchmark must not abort the suite
+            except Exception as exc:
                 if self.config.fail_fast:
                     raise
                 n_failed += 1

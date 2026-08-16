@@ -16,10 +16,10 @@ import pytest
 
 pytest.importorskip("eval_harness")
 
-from eval_harness.core.types import RunResult, ScoreAggregate  # noqa: E402
+from eval_harness.core.types import RunResult, ScoreAggregate
 
-from src.integrations.eval_harness.sink import ScenarioResultSink  # noqa: E402
-from src.poc.baselines.registry import (  # noqa: E402
+from src.integrations.eval_harness.sink import ScenarioResultSink
+from src.poc.baselines.registry import (
     ScenarioBaselineRegistry,
     observed_from_result_dicts,
 )

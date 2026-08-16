@@ -13,8 +13,8 @@ import pytest
 
 pytest.importorskip("eval_harness")
 
-from eval_harness.core import interfaces, types  # noqa: E402
-from eval_harness.plugins import DATASETS, SCORERS, SINKS, TARGETS  # noqa: E402
+from eval_harness.core import interfaces, types
+from eval_harness.plugins import DATASETS, SCORERS, SINKS, TARGETS
 
 
 def _field_names(cls: type) -> set[str]:
@@ -74,7 +74,7 @@ def test_callable_target_passes_inputs_dict() -> None:
 def test_eval_config_requires_schema_version() -> None:
     from eval_harness.config.models import EvalConfig
 
-    with pytest.raises(Exception):  # noqa: B017 - any validation error is acceptable
+    with pytest.raises(Exception):
         EvalConfig(
             schema_version="0.0",
             dataset={"type": "inline", "params": {}},

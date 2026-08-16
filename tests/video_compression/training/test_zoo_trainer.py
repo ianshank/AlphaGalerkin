@@ -45,7 +45,7 @@ class _FakeCodec(nn.Module):
 
 
 class _FakeTrainer:
-    def __init__(self, codec: nn.Module, config, output_dir: Path) -> None:  # noqa: ANN001
+    def __init__(self, codec: nn.Module, config, output_dir: Path) -> None:
         self.codec = codec
         self.config = config
         self.output_dir = output_dir

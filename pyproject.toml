@@ -314,6 +314,12 @@ module = [
     "eval_harness.*",
     "langfuse",
     "langfuse.*",
+    "PicoGK",
+    "PicoGK.*",
+    "pythonnet",
+    "pythonnet.*",
+    "pandas",
+    "pandas.*",
 ]
 ignore_missing_imports = true
 

@@ -40,11 +40,11 @@ def run_eval(
         The harness ``RunResult``.
 
     """
-    from eval_harness.config import load_config  # noqa: PLC0415
-    from eval_harness.engine import EvalEngine  # noqa: PLC0415
-    from eval_harness.langfuse_client import NullLangfuseClient  # noqa: PLC0415
+    from eval_harness.config import load_config
+    from eval_harness.engine import EvalEngine
+    from eval_harness.langfuse_client import NullLangfuseClient
 
-    from src.integrations.eval_harness.plugins import register_all  # noqa: PLC0415
+    from src.integrations.eval_harness.plugins import register_all
 
     register_all()
     eval_config = load_config(
@@ -56,7 +56,7 @@ def run_eval(
     if offline:
         client = NullLangfuseClient()
     else:  # pragma: no cover - live Langfuse needs LANGFUSE_* keys (integration only)
-        from eval_harness.langfuse_client import SDKLangfuseClient  # noqa: PLC0415
+        from eval_harness.langfuse_client import SDKLangfuseClient
 
         client = SDKLangfuseClient()
     engine = EvalEngine.from_config(eval_config, langfuse_client=client)

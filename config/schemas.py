@@ -133,7 +133,6 @@ class MCTSConfig(BaseModel):
         description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls "
         "exploration vs exploitation at root node.",
     )
-    )
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")

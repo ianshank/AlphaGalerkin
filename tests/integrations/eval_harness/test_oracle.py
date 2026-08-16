@@ -6,8 +6,8 @@ import pytest
 
 pytest.importorskip("torch")
 
-from src.integrations.eval_harness.oracle import greedy_basis_oracle  # noqa: E402
-from src.poc.scenarios._centaur_common import (  # noqa: E402
+from src.integrations.eval_harness.oracle import greedy_basis_oracle
+from src.poc.scenarios._centaur_common import (
     build_basis_game,
     build_pde_operator,
 )

@@ -184,6 +184,42 @@ class TestStabilityScenarioLifecycle:
         # In CI without GPU, should be CPU
         assert s._device == torch.device("cpu") or s._device == torch.device("cuda")
 
+    def test_setup_delegates_to_resolve_device_with_auto(
+        self, small_config: StabilityScenarioConfig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The device comes from the shared ``resolve_device('auto')`` policy.
+
+        Asserting the resolved value alone cannot distinguish the helper from
+        the inline ``torch.device("cuda" if ... else "cpu")`` it replaced —
+        both yield CPU here — so the call itself is asserted.
+        """
+        import src.poc.scenarios.stability as stability_mod
+        from src.poc.scenarios.stability import StabilityScenario
+
+        calls: list[tuple[str, str]] = []
+
+        def _spy(preference: str, *, context: str = "scenario") -> torch.device:
+            calls.append((preference, context))
+            return torch.device("cpu")
+
+        monkeypatch.setattr(stability_mod, "resolve_device", _spy)
+        s = StabilityScenario(config=small_config)
+        s.setup()
+
+        assert calls == [("auto", "stability")]
+        assert s._device == torch.device("cpu")
+
+    def test_setup_does_not_raise_without_cuda(
+        self, small_config: StabilityScenarioConfig, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``"auto"`` falls back silently; ``"cuda"`` would raise on CPU CI."""
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+        from src.poc.scenarios.stability import StabilityScenario
+
+        s = StabilityScenario(config=small_config)
+        s.setup()
+        assert s._device == torch.device("cpu")
+
     def test_setup_sets_scenario_logger(self, small_config: StabilityScenarioConfig) -> None:
         """setup() initializes the scenario logger."""
         from src.poc.scenarios.stability import StabilityScenario

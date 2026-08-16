@@ -33,6 +33,407 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **MS-SSIM Stability** — Multi-Scale SSIM computation occasionally produced NaNs due to fractional exponentiation of negative variances on uniform patches. Added `torch.relu` clamping in `compute_ms_ssim` to eliminate negative base NaNs.
 - **Structural Bug Fixes** — Implemented `FactorizedEntropyModel` wrapper; fixed BD-Rate metric key mismatch (`rate_bpp` vs `bpp`); updated deprecated `torch.cuda.amp.autocast` API to `torch.amp.autocast`.
 
+### Fixed — L-shape AMR reentrant-edge Dirichlet BC never imposed (headline retracted)
+
+- **`lshape_inside_predicate` removed the *open* fourth quadrant instead of the *closed* one.**
+  The L-shaped domain is `[-1,1]² \ [0,1]×[-1,0]`; its boundary *includes* the two reentrant
+  edges `{y=0, x≥0}` and `{x=0, y≤0}`, where the benchmark solution
+  `u = r^(2/3)sin(2θ/3)` is identically zero. The strict inequalities `(x > 0) & (y < 0)`
+  classified every node **on** those edges as an interior unknown, so its `u=0` Dirichlet
+  condition was never imposed and the 5-point stencil coupled straight across the slit into the
+  analytic continuation pinned inside the notch. The solver was discretising a different,
+  inconsistent problem.
+
+- **Diagnosed with no marking policy involved.** Under *uniform* refinement the L2 error **grew**
+  with DOF — 5.0e-2 at 65 DOF rising to 1.15e-1 at 12545 DOF (rate −0.09) — and the peak error sat
+  on the slit edge at `(0.75, 0.0)`, far from the corner, growing 0.357 → 0.519 → 0.634 as `h`
+  halved. Removing the **closed** quadrant (`>=` / `<=`) restores the textbook rate for the
+  reentrant-corner singularity: measured **O(h^1.31)** ≈ O(N^-0.65) ≈ O(N^-2/3), taking the same
+  n=128 grid resolution to 2.59e-4 at 12416 DOF (12545 DOF pre-fix — the fix pins 129 more nodes
+  as Dirichlet) — 444× lower.
+
+- **`LShapedDomain.contains_point` is deliberately unchanged.** Closed-domain *membership* (where
+  a slit-edge point *is* a member) and interior-*unknown* selection (where it is not) are
+  different questions; conflating them was the bug. The distinction is documented on both.
+
+### Changed — L-shape MCTS-vs-Dörfler headline retracted and re-measured
+
+- Re-running the canonical 5-seed demo config on the fixed substrate **flips the result**:
+
+  | Metric | Retracted (defective) | Committed (fixed) |
+  |---|---|---|
+  | `l2_error_ratio_at_matched_dof` | 0.9605 (≈4% win) | **1.0996** (MCTS loses ≈10%) |
+  | `mcts_win_fraction` | 0.80 | **0.20** (1/5 seeds) |
+  | `l2_error_ratio_at_matched_solves` | 1.26 (0/5) | **2.04** (0/5) |
+  | Dörfler final L2 @ ~1300 DOF | 9.04e-2 | **8.40e-3** |
+
+  The primary acceptance threshold (`l2_error_ratio_at_matched_dof < 1.0`) now **fails** — the
+  falsifiable gate working as designed. Regenerated `results/lshape_mcts_vs_dorfler.{csv,png}`;
+  corrected the charter claims register, `specs/lshape_amr_compare.spec.md`, and `CLAUDE.md`.
+
+- **Second defect unmasked: tensor-product refinement.** With the BC fixed, adaptive Dörfler
+  converges at only −0.125 while *uniform* refinement on the identical substrate achieves −0.65.
+  At matched DOF adaptive marking is **5–9× worse than uniform** (9.1× at ~1300–1800 DOF), gap
+  widening. `_dorfler_mark_2d` projects element-wise marks onto the x and y axes and `_refine_grid`
+  runs separately on `xs`/`ys`, so marking one element near the corner inserts full grid *lines*
+  spanning the whole domain. Element-local refinement (v2.1) is therefore a **blocking
+  prerequisite** for any marking-policy comparison on this benchmark, not an optional upgrade.
+
+### Added — L-shape convergence gate
+
+- `tests/research/test_lshape_convergence_gate.py` (11 tests, ~1.2 s) asserts the substrate
+  converges *before* any policy comparison is read: monotone L2 reduction under uniform
+  refinement, an O(h^4/3) rate band, an absolute finest-grid anchor, reentrant-edge pinning, and
+  that the **Dörfler arm alone** reduces error with DOF. Mutation-tested — 7 of the 11 fail on the
+  pre-fix predicate. Added to the `CLAUDE.md` Regression Surface row for this benchmark.
+
+### Changed — Dead `PDEGame.get_result` abstraction removed; abstraction audit gated in CI (audit B17 + B18)
+
+- **Removed `PDEGame.get_result` and the `PDEResult` dataclass.** `get_result` was declared
+  `@abstractmethod`, documented as lifecycle step 4, and implemented by every concrete game —
+  but nothing ever called the 2-arg `PDEGame` signature (the `get_result` call sites in
+  `src/training/evaluation.py` and `src/engines/match.py` are the unrelated 1-arg
+  `GameInterface.get_result`). It was **deleted rather than wired**: all five real
+  episode-terminal paths already build their own result object, and each needs a field
+  `PDEResult` lacks (`actions`, `solution`/`wall_time_seconds`, `rollouts_used`, `n_solves`),
+  while six of `PDEResult`'s seventeen fields had no reader anywhere in `src/`. Full evidence
+  in `docs/CODE_HYGIENE_AUDIT.md` §4.1.
+- **Added `PDEGame.termination_reason(state)`** — the termination-cause ladder that was inlined
+  in all three `get_result` overrides, promoted to the ABC with the one game-specific rung
+  behind a `_capacity_reason` hook (basis count for `basis_selection`; DOF compared with `>`
+  for `mesh_refinement` and `>=` for `lshape_amr`, each matching its own `is_terminal`).
+  It is **concrete, not abstract**, so no existing subclass breaks.
+  `lshape_amr._termination_reason` is superseded by it.
+- **`AlphaGalerkinSolver` metadata is more specific.** `METADATA_KEY_TERMINATION_REASON`
+  previously recorded the bare `"is_terminal"` whenever the game stopped the loop, collapsing
+  converged / max_dof / max_basis / budget_exhausted into one uninformative label; it now
+  records the game's own classification. **Breaking for consumers that string-match
+  `"is_terminal"`** in solver metadata.
+- **`SolverResult.h1_error` is now populated** by `AlphaGalerkinSolver`. The field existed and
+  `to_dict()` serialised it, but the solver never set it even though `compute_exact_error`
+  returns `h1` alongside the `l2` it did read — so the exported column was permanently null.
+- **`src/pde` is no longer exempt from the abstraction gate.** `python -m
+  scripts.audit_abstractions src/pde --fail-on-missing` now exits 0.
+- **CI gates the F0/F1 screen (B18).** The `lint` job runs
+  `audit_abstractions src/mcts src/refinement src/pde --fail-on-missing`, plus a
+  `continue-on-error` pass over all of `src/` (the `src/backend` domain-PoC backlog stays
+  advisory). The script is AST-only with stdlib imports, so it runs in that job's minimal
+  dependency set. CLAUDE.md's Regression Surface row, the `abstract-method-audit` skill and
+  the `/audit-abstractions` command are updated to match.
+### Fixed — CI enforcement (tech-debt Phase 1)
+
+- **CI never ran on pull requests**: `on.pull_request.branches: [main, develop]`
+  referenced branches that do not exist in this repository, so every PR merged with
+  zero checks. The branch filter is removed; `test-slow`'s `if:` condition had the
+  same dead branch names and now keys on `github.event.repository.default_branch`.
+- **Silently degraded llm_prior coverage gate repaired**: under coverage 7.x,
+  file-path `--cov=path/to/module.py` specs are dropped with only a warning, so the
+  gate's two file-level targets enforced nothing. They now run as a native-runner
+  (`coverage run --include=...`) step. With the gate unenforced,
+  `src/poc/scenarios/llm_prior_ablation.py` had drifted to a measured 77% branch
+  coverage (81% combined with its config) vs the documented 86%; the repaired gate
+  starts at 79 (measured − 2) with the ratchet back to 85+ tracked in
+  `docs/CODE_HYGIENE_AUDIT.md` §7.
+- **Unenforced regression surface re-enabled**: `tests/pde/test_mcts_adapter.py`
+  (a documented F1/F3 Regression Surface) had been `--ignore`d in every CI job since
+  the 2026-04 emergency triage despite passing at HEAD; the ignore and two
+  CUDA-deselects made redundant by in-source `skipif` markers are removed.
+
+### Added — CI gates (tech-debt Phase 1)
+
+- Three CLAUDE.md-documented per-module coverage gates that were never wired into
+  `ci.yml` (phantom gates, audit backlog B20) now exist, in native-runner form with
+  measured margins: `noyron_basis` (98% measured, gate 85), Noyron HX surface
+  (99% measured, gate 85), SBIR P40 surface (94% measured, gate 85).
+- Drift-alarm test `test_migration_defaults_match_v1_1_shipped_values`: the four
+  checkpoint-migration setdefault literals are intentionally frozen (a 1.0.0→1.1.0
+  migration must inject the defaults v1.1.0 shipped with, forever); the test fails
+  if a live default is retuned, forcing an explicit migration decision.
+- `docs/CODE_HYGIENE_AUDIT.md` §7: Phase-1 follow-up record — measured branch
+  coverage for 8 previously ungated packages, quantified mypy override debt
+  (207 masked errors), B10 dead-package reclassification (only 4 of 6 are dead;
+  `deployment` is CI-exercised, `demos` is a live dashboard dependency), and the
+  Phase 2–4 roadmap with the owner-decision register.
+
+### Changed — Hardcoded values surfaced (zero numeric change; tech-debt Phase 1)
+
+- LR-scheduler knobs `min_lr_ratio` / `warmup_start_factor` are now typed
+  `TrainingConfig` fields (defaults 0.1/0.1 — exactly the values `Trainer`
+  previously hardcoded) and named `BaseTrainer` module constants
+  (`DEFAULT_MIN_LR_RATIO` 0.01 / `DEFAULT_WARMUP_START_FACTOR` 1e-6) that both
+  `BaseTrainerConfig` field defaults and `_create_scheduler` parameter defaults
+  bind to. All three previous copies of these values are reconciled; no LR
+  trajectory changes.
+- Boundary tolerances named, deliberately not unified:
+  `src/pde/operators.py` now uses `DEFAULT_BOUNDARY_TOLERANCE` (1e-6, unchanged);
+  new `DEFAULT_PICOGK_BOUNDARY_TOLERANCE` (1e-5, unchanged) documents the
+  SDF-band semantic and the pre-existing picogk operator/domain divergence.
+- Gumbel MCTS epsilons split by semantic: `GUMBEL_NORMALIZATION_EPSILON`
+  (inert division guard) vs `GUMBEL_LOG_PRIOR_FLOOR` (algorithmic log floor);
+  `FNetEvaluator` softmax floor named `_SOFTMAX_NORMALIZER_FLOOR`, mirroring
+  `src/integrations/lm_studio/evaluator.py` by name. All values 1e-8, unchanged.
+- The 13 `[9, 13, 19]` board-size literal sites now derive from
+  `DEFAULT_BOARD_SIZES` via copies (`list(...)` / `default_factory`), never the
+  shared mutable module list.
+
+### Removed — Dead CI/code weight (tech-debt Phase 1)
+
+- Dead "Upload test results" step that archived `.pytest_cache/` (never found
+  files); `--no-cache-dir` flags that defeated the CI pip cache.
+- `BaseTrainer`'s three `@abstractmethod` decorators — a dead contract both
+  production trainers stubbed with `NotImplementedError`. The methods are now
+  concrete `step()`-loop hooks; subclass stubs and their exact messages are kept
+  (test-asserted, and they document each trainer's real entry points).
+
+### Added — Code hygiene & modularity audit + quick wins
+
+- `docs/CODE_HYGIENE_AUDIT.md`: prioritized audit of `src/`/`tests/`/CI covering god
+  modules, duplicated `*_compare` scenario boilerplate, rejected internal standards
+  (registries/config/logging reimplemented instead of reusing `src/templates/`), the
+  `poc`↔`research` import cycle, and enforcement gaps (mypy, CI lint scope, the
+  CLAUDE.md Regression Surface table's drift from CI). 20 backlog items documented
+  (B1–B20; an earlier revision of this entry undercounted them as 16).
+- `mypy src/ --strict --ignore-missing-imports` now passes cleanly (was 3 stale
+  `unused-ignore` comments, not the "enforced nowhere" error volume both prior audit
+  passes assumed).
+- `RUF100` added to the ruff select list; 71 stale `noqa` comments removed; CI's lint
+  scope now matches pre-commit's in both directions (`scripts/`, `config/`,
+  `conftest.py`, `deploy_space.py` included; `hf_space/`, `notebooks/` and
+  `claude-code-platform/` excluded on both sides, so every tracked `*.py` is linted by
+  exactly one of the two).
+- **pre-commit hook scope**: the `hf_space/` exclusion is applied **per-hook** (ruff,
+  ruff-format, yamllint), not as a top-level `exclude:`. An intermediate commit in this
+  PR used the top-level form, which is inherited by every hook and therefore also
+  disabled `detect-private-key` and `check-added-large-files` on the tree published to a
+  public HuggingFace Space (already carrying a 7.2 MB `checkpoint.pt`, 7x the
+  `--maxkb=1000` limit). Both guards are global again.
+- **Removed the `check-docstring-first` hook.** It rejects 21 modules repo-wide (20 under
+  `src/`) that use PEP 258 attribute docstrings — a string literal documenting the
+  assignment above it — which the hook misreads as "multiple module docstrings". The
+  idiom is the house style here, so the hook is the thing that does not fit.
+- Removed the dead `benchmark` CI job (matched zero tests); added `--strict-markers`
+  to pytest addopts; deduplicated marker registration onto `pyproject.toml`.
+- `src/seeding.py::derive_seeds` replaces 5 duplicated seed-derivation bodies across
+  `src/agents/config.py`, 3 PoC scenario configs, and `src/research/seed_sweep.py`
+  (each module's stride value is unchanged, so no scenario's derived seeds change).
+  `stochastic_galerkin_compare_config.py` was deliberately excluded after CI's
+  import-isolation guard for that layer's dependency surface caught the addition —
+  see `docs/CODE_HYGIENE_AUDIT.md` §6.
+- `tests/poc/conftest.py` adds a save/restore fixture around **structlog's global
+  configuration**, which `test_logging.py` mutates with no teardown — that leak
+  silently routed later `logger.warning(...)` calls into stdlib logging where
+  pytest swallows them. A `ScenarioRegistry` snapshot/restore fixture was
+  attempted alongside it and reverted before merge: measured against the live
+  registry it left fewer scenarios registered than no fixture at all. The
+  subprocess workaround in `test_charter_alignment.py` therefore stands; see
+  `docs/CODE_HYGIENE_AUDIT.md` §6 and backlog B16.
+- The three classic PoC scenarios (`stability`, `transfer`, `complexity`) now resolve
+  their device via `src/poc/device.py::resolve_device` instead of a hardcoded inline
+  fallback; `llm_prior_ablation._median` is now a shim onto `_centaur_common.median_of`.
+- `src/constants.py`: wired `DEFAULT_LBB_THRESHOLD` and `DEFAULT_DROPOUT` to their
+  matching `src/modeling/` defaults; deleted 2 dead constants with no live consumer.
+- Logging added at 4 previously-silent exception-swallow sites (mesh-refinement
+  interpolator fallback, LM Studio VRAM probe, PoC CLI scenario listing, the SBIR
+  baseline-registry default fallback).
+- Added a `viz` optional-dependency extra for matplotlib; removed the dead `doc8`
+  pre-commit hook (0 `.rst` files). (A scenario config YAML was deleted and then
+  restored after CI showed a parametrized test loads it by a constructed path a
+  literal grep can't see — see `docs/CODE_HYGIENE_AUDIT.md` §6.)
+
+### Fixed — Dashboard figures contradicted by their own committed artifacts (`dashboard-uplift`)
+
+- **The Gradio dashboard rendered uncommitted-spike numbers as validated results.**
+  `dashboard/config.py::TransferMilestone` shipped `{9: 2.5e-6, 13: 2.04e-4, 19: 3.93e-4}`,
+  attributed to `scripts/demo_transfer.py` — a script that writes only to `outputs/`. The
+  committed benchmark says 19×19 ≈ 2.3e-3. Defaults now carry the representative
+  (median-ranked) seed from `results/transfer_baseline_compare.csv` — the operator's 19×19 MSE
+  is the 3-seed median, and the retrained-CNN (1.63e-4) and zero-shot-CNN (7.66e-5) baselines
+  are that same seed's *paired* values, so the 14.1× ratio is within-seed. The baselines are
+  deliberately **not** described as medians: the per-metric CNN medians differ (1.43e-4 and
+  3.15e-4). `COMMITTED_TARGET_RESOLUTION` pins the comparison to 19×19, and `achieved_mse` now
+  validates that the key is present, so a config override cannot compare mismatched resolutions
+  under a single label.
+- **`show_transfer_milestone` rendered two retracted framings.** It printed
+  `MILESTONE ACHIEVED` and annotated each bar `N× better` against an arbitrary 0.05 pass
+  threshold (127× / 245× / **20000×**) — the self-comparison
+  `specs/transfer_baseline_compare.spec.md` retracts — and plotted a `np.random.default_rng(7)`
+  curve titled *"Training curve (9×9 Poisson data)"* with no disclaimer. It now shows the
+  three-arm baseline comparison and the operator's real 9→13→19 degradation, and states the
+  honest result: the operator **loses by ≈14×** to a retrained CNN; the value is zero
+  retraining, not peak accuracy.
+- **The tab blurb reported the wrong number entirely** — `min(achieved_mse.values())`, the 9×9
+  *in-distribution* figure, presented as the zero-shot transfer result. Corrected, as was the
+  About table in `dashboard/app.py` and the transfer framing in `hf_space/app.py`.
+- **The physics demo reported `mean(ground_truth²)` as a model error.** `PhysicsDemo.predict()`
+  returns zeros when `model is None`, and both entry points construct the tab that way; the
+  output is now labelled a placeholder rather than a measurement.
+
+### Added — `dashboard/` inside the CI quality gates (`dashboard-uplift` WS6)
+
+- **CI now lints `dashboard/`** (`ruff check` + `ruff format --check`), matching
+  `.pre-commit-config.yaml`, which runs ruff with no `files:` filter. The asymmetry was already
+  producing drift: `tabs/pde_tab.py` and `tabs/training_tab.py` were format-drifted at HEAD while
+  passing CI, and would have been rewritten by any contributor's commit hook. Fixed in a separate
+  mechanical commit so the gate commit stays reviewable. `hf_space/` remains excluded — deploy
+  bundle, older ruff/gradio pin, accepted charter deviation.
+- **New coverage gate**, `--cov=dashboard --cov-branch --cov-fail-under=84`. `dashboard/` sits
+  outside `--cov=src`, so its 214 tests ran while measuring nothing. Gated at **84** against a
+  measured 84.85% — deliberately not 85 (fails today) and not 80 (would permit a ~5pp regression).
+  The entire deficit is `tabs/game_tab.py` at ~53%, whose `_ensure_loaded` and AI-move paths are
+  unreachable while the `hf_space` shadowing forces `conftest.py` to mock them; **85 is recorded
+  as a WS3 task**, since relocating those modules is what makes that code testable.
+- **Charter gates register** gains the row `| dashboard | 84 |`, cross-checked by
+  `test_documented_gates_are_enforced_in_ci`. No guard change needed — it matches `--cov=<target>`
+  by string, with no `src/` prefix requirement.
+- **mypy posture decided rather than extended.** The override is wildcarded (`dashboard` +
+  `dashboard.*`; the bare wildcard does not match the package itself), replacing a hand-enumeration
+  under which a *new* dashboard module would silently inherit full `--strict`. The CI step stays
+  `src/`-only: it is `continue-on-error` and the dashboard override disables 13 error codes, so
+  extending it would add the appearance of type-checking without the substance. Rationale recorded
+  in the new `dashboard/AGENT.md` rather than the charter's deviation register, which is for
+  divergences between documentation and reality — no document claimed `dashboard/` was typed.
+- **New `dashboard/AGENT.md`** — layout, the claim-fidelity rules the charter guard enforces, the
+  `sys.path` shadowing hazard (including that `tests/dashboard/conftest.py` deliberately uses the
+  opposite order, so app and tests import different code for the same names), the Gradio ≥6 vs
+  Space 4.44.1 split, the gates, and the callback-binding / `interactive=False` gotchas. Root
+  `AGENT.md` gains a pointer to it and to `hf_space/AGENT.md`; the module index itself stays
+  `src/`-only.
+
+### Added — UI claim fidelity guard (`dashboard-uplift`)
+
+- **New charter Requirement *UI Claim Fidelity*** — the evidence standard reaches documents but
+  not the dashboard, which renders figures from Pydantic defaults and hardcoded markdown and is
+  seen by more people than any document. A number shown to a user is a claim.
+- **`test_ui_claims_match_committed_artifacts`** (registered in `_GUARDED`, so the charter's
+  both-directions meta-guard covers it): bans the fabricated figure and the retracted blanket
+  claim across both interactive surfaces (`dashboard/**/*.py` and `hf_space/**/*.py`), asserts
+  the target-resolution figures agree with `config/baselines/transfer_ci.json` within that
+  file's own `tolerance_pct`, and cross-checks the remaining rendered resolutions (9×9, 13×13
+  — absent from the baseline JSON) against the representative seed's rows in
+  `results/transfer_baseline_compare.csv`. `TransferMilestone` additionally rejects an override
+  whose ratio contradicts its own operands. It loads
+  `dashboard/config.py` standalone via `importlib` rather than importing the package, keeping
+  gradio out of the charter guard. Mutation-tested against four regressions: a reintroduced
+  spike figure, the retracted literal, a flipped comparison direction, and the restored
+  "milestone achieved" framing.
+- One pre-existing dashboard test asserted `"better" in summary` — it encoded the retracted
+  framing as a requirement, and now asserts the baseline ratio instead.
+- The change package `openspec/changes/dashboard-uplift/` additionally designs three deferred
+  workstreams: un-shadowing the `hf_space` mirror (which needs module *relocation*, not a
+  `sys.path` reorder — root `src/` and `config/` are regular packages, so reordering alone
+  breaks the Go tab), a registry-driven scenario tab plus a Results tab over the committed
+  artifacts, and a clickable Go board. The fourth — bringing `dashboard/` inside the CI quality
+  gates — has since landed; see the WS6 entry above.
+
+### Added — Executable project charter (`project-charter-alignment`)
+
+- **New `openspec/` tree** ([OpenSpec](https://github.com/Fission-AI/OpenSpec) format):
+  `openspec/specs/project-charter/spec.md` is now the repository's **supreme** scope
+  document — mission, scope, non-goals, the novelty claim, the evidence standard, and an
+  accepted-deviation register. It is deliberately *thin and referential*: it asserts equality
+  with existing owners (`ARCHITECTURE.md` for layout, `ci.yml` for gates, the scenario registry
+  for capabilities) rather than copying them, so there is one place to edit when reality
+  changes. `openspec/project.md` states the precedence order; the change package under
+  `openspec/changes/project-charter-alignment/` carries the proposal, design, tasks, and delta.
+- **`tests/docs/test_charter_alignment.py`** — one guard per charter Requirement plus two
+  meta-guards (every region parses non-empty; every `### Requirement:` maps to a guard, checked
+  both directions). All nine were mutation-tested to confirm they fail when violated. The
+  capability guard reads `ScenarioRegistry().list_scenarios()` in a **subprocess**: the registry
+  is a process-wide singleton that `tests/poc/*` autouse fixtures `clear()` without teardown, so
+  an in-process read is order-dependent (measured: 10 scenarios under `pytest tests/poc
+  tests/docs`, 0 under a narrower selection).
+- **`tests/support/cut_modules.py`** — `CUT_MODULES` promoted to one shared definition so the
+  charter's non-goal guard and the `hf_space` mirror guard cannot drift apart.
+
+### Fixed — Claims contradicted by their own committed artifacts
+
+- **Retracted AMR headline corrected.** `CLAUDE.md` still advertised the pre-bugfix
+  `~11–14% win / ~15–55× wall-clock` L-shape AMR result that
+  `specs/lshape_amr_compare.spec.md` had already retracted (it came from the F0 two-player
+  adversarial backup on a single-agent game). Now states the committed figures: median L2 ratio
+  **0.9605** (~4% win) at matched DOF, **1.26** at matched compute with MCTS winning **0/5**
+  seeds at ~350× the solves. "Two honest comparisons" → three, per AC4.
+- **Zero-shot transfer MSE corrected repo-wide.** `README.md` advertised ≈4e-4 while citing a
+  spec whose committed artifacts (`results/transfer_baseline_compare.csv`,
+  `config/baselines/transfer_ci.json`) say **≈2.3e-3**; the favourable number came from an
+  uncommitted spike and had propagated into nine outward-facing SBIR documents plus the earlier
+  retraction banners. All corrected; `docs/demos/transfer_results.md` now states explicitly that
+  its table is spike output.
+- **Phantom headline artifact disclosed.** `docs/business/proposal/concept_note.md` asserted the
+  Pareto plot was *"archived at"* `benchmarks/results/headline_2026_04/pareto_plot.png` — a path
+  that does not exist — in the same sentence as *"no numerical performance claim … is not
+  traceable to that artifact."* Marked `[PENDING]`, matching `outreach_template.md`.
+- **Deleted subsystem no longer documented as live.** `CLAUDE.md`'s four `video_compression`
+  milestones and `docs/TRAINING_DATA_SOURCES.md` carried eight paths removed in the 2026-07-22
+  cut.
+- **Never-runnable commands removed.** Three documented `torchrun scripts/train_distributed.py`
+  invocations referenced a script that does not exist; `src/distributed/` has no entry point.
+- Smaller corrections: `specs/README.md` was missing `lshape_amr_compare` and mislabelled
+  `llm_prior_ood`; the undocumented `fem` extra; an inverted mypy-gate claim in
+  `NEXT_STEPS_PLAN.md`; `src/training/loss.py` → `losses/`; the moved `PR86_HEADLINE_RUNS.md`
+  path; stale operator/game snapshots in `docs/architecture/components.md`.
+- **`docs.yml` `paths:` widened** so a PR touching only `CLAUDE.md`, `README.md`, or `specs/**`
+  actually runs the internal-link checker — the gap that let a dangling
+  `specs/lambda_scheduling.spec.md` reference survive.
+
+### Changed — Code hygiene (`code-hygiene-plan`)
+
+- **Enforcement tooling made truthful**: aligned the pre-commit `ruff` hook to the
+  repo-wide `0.15.8` pin (was `v0.3.0`, so pre-commit reformatted code differently
+  from CI) and the `mypy` hook to `1.11.x`; removed the dead `bandit` hook (it
+  referenced a non-existent `[tool.bandit]` section and a non-existent CI job, and
+  never ran); refreshed the now-stale CI `mypy` comment (kept `continue-on-error` —
+  the strict run is torch-version-sensitive). Added `pre-commit` to the `[dev]`
+  extra and a guarded `pre-commit install` to the session-start hook so the hooks
+  actually run.
+- **hf_space deploy mirror documented + guarded**: added `hf_space/AGENT.md`
+  describing the partial, drifted, independently-formatted `hf_space/src/` mirror
+  (and the Xet-tracked `checkpoint.pt` / intentionally-divergent `requirements.txt`),
+  plus `tests/hf_space/test_mirror_guard.py` — a floor guard asserting `app.py`'s
+  imports resolve in the mirror, every mirror file parses, and the cut modules and
+  retracted transfer figure stay scrubbed.
+- **Archived reviews corrected**: `docs/archive/reviews/pr6_review.md` and
+  `pr7_review.md` now carry a banner retracting the fabricated `0.000209 / 240×`
+  zero-shot-transfer figure (committed benchmark ≈ 2.3e-3; the ≈4e-4 first written here
+  was an uncommitted spike config, corrected 2026-07-31).
+- **Bounded code-debt**: allowlisted three verified-live abstractions the AST audit
+  mis-flagged (`BaseEngine.is_ready`, `GameInterface.get_symmetries` /
+  `get_action_mask`) so `scripts/audit_abstractions.py` stays trustworthy; corrected
+  the `get_symmetries` docstring; extracted the duplicated
+  `np.random.seed; torch.manual_seed` idiom into `src/seeding.py::set_global_seeds`.
+
+### Added — Stochastic Galerkin operator-splitting layer (NKE, `alphagalerkin-nke-integration`)
+
+- New additive subpackage `src/pde/stochastic/` implementing the Lagrangian Galerkin
+  projection of a Kolmogorov-forward generator `L = A + D + J` onto a Gaussian-mixture
+  basis (after NKE, arXiv:2607.19173 — implemented from the standard derivation with a
+  documented provenance caveat; see `specs/stochastic_galerkin_nke.spec.md` and
+  `docs/related-work.md`): exact expm advection/diffusion moment flows, a **trained MDN
+  jump semigroup** (residual, dt-scaled, identity at dt=0), symmetric Strang composition
+  (measured second-order: slopes 1.995–2.000), and a **parallel-in-time trainer** whose
+  M−1 interval losses evaluate in one batched forward pass over precomputed particle
+  clusters (no autoregressive rollout). GPU/CPU agnostic throughout.
+- Verified against independent van Loan closed forms: OU moment recovery < 1e-3
+  (Hypothesis stable-A sweeps); jump-OU with the exact compound-Poisson oracle < 1e-3;
+  trained-MDN trajectory errors 1.7e-2 / 7.4e-3 (gate 5e-2); trainer reaches the
+  oracle-achievable loss floor (gap closure 0.000). Every unmeasured gate was
+  calibrated from a pinned run and recorded in the spec.
+- A generator with a jump term but no jump model raises `JumpModelMissingError` — the
+  jump component is never silently dropped (change-doc requirement), with a
+  defense-in-depth re-check in the Strang composer.
+- New `stochastic_galerkin_compare` PoC scenario + CLI: deterministic Galerkin-attention
+  arm vs the stochastic moment-projection arm on a shared Fokker-Planck/OU density
+  benchmark with free analytic ground truth. The single gate is the stochastic arm's
+  absolute MSE (measured 2.3e-8, gate 1e-6); the deterministic arm's MSE and the ratio
+  are recorded **ungated** (novelty ≠ superiority). Committed artifacts:
+  `results/stochastic_galerkin_compare.{csv,png}`,
+  `config/baselines/stochastic_galerkin_ci.json`.
+- MCTS/self-play untouched, enforced twice: an AST import-isolation guard over the new
+  modules and the green MCTS/F0/F1 regression surfaces. The novelty-gap documentation
+  guard is executable (`tests/regression/test_related_work_guard.py`): every
+  `docs/related-work.md` entry must carry a "does NOT do" clause, and the retracted
+  blanket "no MCTS+Galerkin" claim is asserted absent from the README.
+
 ### Added — Honest zero-shot transfer benchmark (operator vs retrained CNN)
 
 - New CI-gated `transfer_baseline_compare` PoC scenario replacing the **fabricated**

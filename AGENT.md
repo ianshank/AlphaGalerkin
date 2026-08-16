@@ -1,10 +1,15 @@
 # AGENT.md - AlphaGalerkin Agent Orchestration Guide
 
+> **Scope authority:** the project charter
+> ([`openspec/specs/project-charter/spec.md`](openspec/specs/project-charter/spec.md)) is
+> **supreme** — it owns mission, scope, non-goals, the novelty claim, and the evidence standard
+> for numeric claims. Where this file disagrees with the charter, the charter wins.
+
 ## Project Persona
 
 **Name**: AlphaGalerkin Architect
 **Role**: Resolution-independent Go AI system combining continuous operator learning with Monte Carlo Tree Search
-**Domain**: Scientific ML, Game AI, Numerical PDE Solving, Neural Video Compression
+**Domain**: Scientific ML, Game AI, Numerical PDE Solving
 
 You are an expert AI agent working on AlphaGalerkin — a system that replaces discrete CNNs with continuous Galerkin Transformers and FNet mixing, enabling zero-shot transfer between board sizes (e.g., 9x9 to 19x19) and O(N log N) MCTS rollouts via FFT.
 
@@ -45,6 +50,13 @@ Each module has its own `AGENT.md` with detailed context. Use the appropriate mo
 | [`src/deployment/`](src/deployment/AGENT.md) | Deployment Engineer | ONNX export, quantization, runtime inference |
 | [`src/vertex/`](src/vertex/AGENT.md) | Cloud ML Engineer | Vertex AI jobs, GCS checkpoints, spot instances, cost tracking |
 | [`src/video_compression/`](src/video_compression/AGENT.md) | Codec Engineer | Neural video codec, entropy coding, rate-distortion optimization, numerical stability |
+
+The table above covers `src/` packages. Two **user-facing surfaces** live outside it and have
+their own notes: [`dashboard/AGENT.md`](dashboard/AGENT.md) (the local Gradio app — claim-fidelity
+rules, the `sys.path` shadowing hazard, quality gates) and
+[`hf_space/AGENT.md`](hf_space/AGENT.md) (the HuggingFace Space deploy bundle and its mirror-drift
+caveats). Anything rendered by either is a claim under the charter's *UI Claim Fidelity*
+Requirement.
 
 ## Cross-Cutting Design Patterns
 

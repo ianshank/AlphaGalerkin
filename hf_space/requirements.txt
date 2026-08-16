@@ -1,6 +1,11 @@
+# HuggingFace Space runtime pins — intentionally independent of pyproject.toml.
+# gradio is pinned to the Space SDK version declared in README.md frontmatter
+# (sdk_version: 4.44.1); pydantic tracks the Space runtime. These may diverge
+# from the main project's pins; align only when re-testing the deployed Space.
+# See hf_space/AGENT.md.
 torch
 gradio==4.44.1
-huggingface_hub<0.25.0
+huggingface_hub<1.26.0
 structlog
 pydantic==2.10.6
 matplotlib

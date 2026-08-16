@@ -24,6 +24,10 @@
       "Bash(ruff format:*)",
       "Bash(mypy:*)",
       "Bash(pytest:*)",
+      "Bash(python -m mypy:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python -m coverage:*)",
+      "Bash(pre-commit run:*)",
       "Bash(python -m src.poc.cli:*)",
       "Bash(python -m src.agents.cli:*)",
       "Bash(python -m src.tools.verify_invariance:*)",
@@ -33,7 +37,12 @@
       "Bash(git branch:*)",
       "Bash(git add:*)",
       "Bash(git worktree:*)",
-      "Bash(python -m scripts.audit_abstractions:*)"
+      "Bash(python -m scripts.audit_abstractions:*)",
+      "Bash(python -m scripts.run_lshape_amr:*)",
+      "Bash(python -m scripts.run_transfer_baseline_compare:*)",
+      "Bash(python -m scripts.run_stochastic_galerkin_compare:*)",
+      "Bash(python -m scripts.run_sbir_p40:*)",
+      "Bash(python -m scripts.run_sbir_demo:*)"
     ]
   }
 }

@@ -35,6 +35,7 @@ from src.poc.scenarios._centaur_common import (
     median_of,
     run_basis_selection_cell,
 )
+from src.seeding import set_global_seeds
 from src.templates.base import BaseExecutable, ExecutionResult, ExecutionStatus
 from src.templates.logging import create_logger_class
 
@@ -108,7 +109,7 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
             metrics, metadata = self._aggregate(results)
             status = self._status_from_metrics(metrics)
             return self._create_result(status=status, metrics=metrics, metadata=metadata)
-        except Exception as exc:  # noqa: BLE001 - surfaced as a FAILED result
+        except Exception as exc:
             self.logger.exception("research_loop_failed", error=str(exc))
             return self._create_result(status=ExecutionStatus.FAILED, error=str(exc))
         finally:
@@ -230,8 +231,7 @@ class ResearchLoopOrchestrator(BaseExecutable["ResearchLoopConfig"]):
         unsafely — the seeded solve stays atomic and deterministic.
         """
         with self._cell_lock:
-            np.random.seed(seed)
-            torch.manual_seed(seed)
+            set_global_seeds(seed)
             game = self._build_game(problem, operator)
             evaluator = build_arm_evaluator(
                 arm,

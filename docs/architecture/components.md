@@ -78,14 +78,16 @@ Tournament management and rating.
 
 PDE solving as sequential decision-making for MCTS-guided Galerkin approximation.
 
-- **`game.py`** — `PDEGame`, `PDEState`, `PDEResult` abstractions.
-- **`operators.py`** — `PoissonOperator`, `BurgersOperator`, `NavierStokesOperator`, `AdvectionDiffusionOperator`, `LShapedPoissonOperator`.
+- **`game.py`** — `PDEGame`, `PDEState` abstractions.
+- **`operators.py`** — `PoissonOperator`, `BurgersOperator`, `NavierStokesOperator`, `AdvectionDiffusionOperator`, `HeatOperator`, `LShapedPoissonOperator`, `HelmholtzOperator`, `BiharmonicOperator`. Plus `operators_picogk.py` — `HelicalHeatOperator`, `HelicalStokesOperator`, `HelicalMagnetostaticsOperator`. (Registry keys, enumerated at runtime: `advection_diffusion, biharmonic, burgers, heat, helical_heat, helical_magnetostatics, helical_stokes, helmholtz, navier_stokes, poisson, poisson_lshaped`.)
 - **`geometry.py`** — `RectangularDomain`, `LShapedDomain`, `CylinderFlowDomain` with rejection sampling.
 - **`time_stepping.py`** — `ForwardEuler`, `RK4`, `CrankNicolson` with factory pattern.
 - **`game_interface.py`** — `PDEGameInterface` bridging PDE games to `GameRegistry`.
 - **`register_games.py`** — Auto-registration of `pde_basis` and `pde_mesh` games.
 - **`games/basis_selection.py`** — Galerkin basis selection game.
 - **`games/mesh_refinement.py`** — Adaptive h/p-refinement game.
+- **`games/lshape_amr.py`** — `LShapeAMRGame`, the real-solve L-shaped Poisson AMR game used by the MCTS-vs-Dörfler baseline.
+- **`games/swarm_planning.py`** — Swarm-planning refinement game.
 
 ### 3.2 Physics (`src/physics/`)
 

@@ -1,0 +1,30 @@
+# Code owners for AlphaGalerkin.
+# These owners are requested for review automatically when a PR touches
+# matching paths. See https://docs.github.com/articles/about-code-owners
+#
+# Per-module developer guides live in each package's AGENT.md.
+
+# Default owner for everything in the repo.
+*                       @ianshank
+
+# Core solver / search surface
+/src/mcts/              @ianshank
+/src/pde/               @ianshank
+/src/refinement/        @ianshank
+/src/alphagalerkin/     @ianshank
+/src/modeling/          @ianshank
+/src/math_kernel/       @ianshank
+/src/training/          @ianshank
+
+# Integrations (optional-extra gated)
+/src/integrations/      @ianshank
+
+# Docs, specs, and governance
+/docs/                  @ianshank
+/specs/                 @ianshank
+/ARCHITECTURE.md        @ianshank
+/CLAUDE.md              @ianshank
+
+# CI / tooling
+/.github/               @ianshank
+/pyproject.toml         @ianshank

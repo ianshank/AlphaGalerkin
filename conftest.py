@@ -13,7 +13,7 @@ except ImportError:
     _HAS_TORCH = False
 
 
-def pytest_collection_modifyitems(config, items):  # noqa: ARG001
+def pytest_collection_modifyitems(config, items) -> None:
     """Auto-skip tests marked gpu_required when CUDA is not available."""
     if _HAS_TORCH and _torch.cuda.is_available():
         return

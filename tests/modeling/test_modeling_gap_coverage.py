@@ -82,7 +82,7 @@ def test_class_is_in_public_all(cls: type) -> None:
 
     assert cls.__name__ in mod.__all__, (
         f"{cls.__name__} must be re-exported via src.modeling.__all__ "
-        "per ADR-mouse-droid-fusion-integration.md"
+        "per docs/adr/0002-mouse-droid-fusion-integration.md"
     )
 
 

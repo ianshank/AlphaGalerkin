@@ -16,6 +16,7 @@ from typing import Any
 
 import structlog
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.research.config import TransferConfig
 
 
@@ -462,7 +463,7 @@ def create_transfer_validator(
     """
     config = TransferConfig(
         source_size=source_size,
-        target_sizes=target_sizes or [9, 13, 19],
+        target_sizes=target_sizes or list(DEFAULT_BOARD_SIZES),
         mse_threshold=mse_threshold,
         **kwargs,
     )

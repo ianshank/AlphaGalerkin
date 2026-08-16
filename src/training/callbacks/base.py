@@ -104,7 +104,7 @@ class Callback:
     logged but do not abort training.
     """
 
-    def on_train_start(self, ctx: CallbackContext) -> None:  # noqa: B027
+    def on_train_start(self, ctx: CallbackContext) -> None:
         """Called once before the first training step.
 
         Args:
@@ -112,7 +112,7 @@ class Callback:
 
         """
 
-    def on_step_end(self, ctx: CallbackContext) -> None:  # noqa: B027
+    def on_step_end(self, ctx: CallbackContext) -> None:
         """Called after each training step.
 
         Args:
@@ -121,7 +121,7 @@ class Callback:
 
         """
 
-    def on_evaluation(self, ctx: CallbackContext) -> None:  # noqa: B027
+    def on_evaluation(self, ctx: CallbackContext) -> None:
         """Called after an evaluation pass.
 
         Args:
@@ -130,7 +130,7 @@ class Callback:
 
         """
 
-    def on_checkpoint(self, ctx: CallbackContext) -> None:  # noqa: B027
+    def on_checkpoint(self, ctx: CallbackContext) -> None:
         """Called after a checkpoint is saved.
 
         Args:
@@ -139,7 +139,7 @@ class Callback:
 
         """
 
-    def on_train_end(self, ctx: CallbackContext) -> None:  # noqa: B027
+    def on_train_end(self, ctx: CallbackContext) -> None:
         """Called once after the final training step.
 
         Args:

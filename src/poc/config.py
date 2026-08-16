@@ -20,6 +20,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ScenarioTier(str, Enum):
     """Validation tier indicating depth of testing."""
@@ -99,7 +101,7 @@ class BaseScenarioConfig(BaseModel):
         default_factory=list, description="Metrics that must pass"
     )
 
-    # Resource hints
+    # Resource hints (requires_gpu reserved for future use; currently not enforced/checked)
     requires_gpu: bool = Field(default=False, description="Whether GPU is required")
     estimated_duration_seconds: int = Field(
         default=60, ge=1, description="Estimated runtime for planning"
@@ -131,7 +133,7 @@ class TransferScenarioConfig(BaseScenarioConfig):
         default=9, ge=3, le=25, description="Grid size for training (e.g., 9 for 9x9)"
     )
     eval_resolutions: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Grid sizes for evaluation",
     )
     primary_eval_resolution: int = Field(
@@ -445,6 +447,17 @@ def load_config_from_dict(
         )
 
         type_map["transfer_baseline_compare"] = TransferBaselineCompareConfig
+
+    # Same lazy-resolution rationale: the stochastic_galerkin_compare config is
+    # light but its scenario module pulls in the PhysicsOperator and the
+    # stochastic Galerkin layer (torch-heavy), so resolve only the config class
+    # on demand.
+    if inferred_name == "stochastic_galerkin_compare":
+        from src.poc.scenarios.stochastic_galerkin_compare_config import (
+            StochasticGalerkinCompareConfig,
+        )
+
+        type_map["stochastic_galerkin_compare"] = StochasticGalerkinCompareConfig
 
     # Determine type
     if scenario_type:

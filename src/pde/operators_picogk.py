@@ -34,6 +34,7 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
+from src.constants import DEFAULT_PICOGK_BOUNDARY_TOLERANCE
 from src.pde.config import PDEConfig, PDEType
 from src.pde.geometry import DomainGeometry, GeometryType, create_geometry
 from src.pde.operators import HeatOperator, PDEOperator, PDEResidual
@@ -157,7 +158,7 @@ class HelicalHeatOperator(HeatOperator):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-5,
+        tolerance: float = DEFAULT_PICOGK_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         """Determine which points lie on the helical tube surface."""
         if isinstance(coords, Tensor):
@@ -287,7 +288,7 @@ class HelicalStokesOperator(PDEOperator):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-5,
+        tolerance: float = DEFAULT_PICOGK_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         if isinstance(coords, Tensor):
             return self.geometry.is_boundary(coords, tol=tolerance)
@@ -423,7 +424,7 @@ class HelicalMagnetostaticsOperator(PDEOperator):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-5,
+        tolerance: float = DEFAULT_PICOGK_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         if isinstance(coords, Tensor):
             return self.geometry.is_boundary(coords, tol=tolerance)

@@ -36,11 +36,6 @@ from src.integrations.lm_studio.config import VramCheckMode
 if TYPE_CHECKING:
     from src.integrations.lm_studio.config import LMStudioConfig
 
-# Fields that :func:`apply_backend_defaults` may fill from a profile. Each is
-# a config field whose sensible value depends on the backend rather than on
-# the user's intent.
-_PROFILE_FILLED_FIELDS: tuple[str, ...] = ("base_url", "model", "vram_check_mode")
-
 
 class BackendProfile(BaseModel):
     """Default endpoint/model/VRAM policy for one OpenAI-compatible backend.

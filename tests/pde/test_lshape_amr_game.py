@@ -230,26 +230,33 @@ class TestTermination:
         assert not game.is_terminal(self._state(dof=10, step=1, error_estimate=1.0))
 
     def test_termination_reason_distinguishes_causes(self) -> None:
-        # get_result must report the *specific* terminal cause (not a blanket
-        # "budget_exhausted"), mirroring is_terminal's branch order:
+        # termination_reason must report the *specific* terminal cause (not a
+        # blanket "budget_exhausted"), mirroring is_terminal's branch order:
         # converged -> max_dof -> max_steps -> no_legal_actions -> running.
+        # The ladder now lives on PDEGame; this game supplies only the
+        # max_dof capacity rung via _capacity_reason.
         game = _make_game()
         game.get_initial_state()
-        assert game._termination_reason(self._state(error_estimate=1e-9)) == "converged"
-        assert game._termination_reason(self._state(dof=300, error_estimate=1.0)) == "max_dof"
+        assert game.termination_reason(self._state(error_estimate=1e-9)) == "converged"
+        assert game.termination_reason(self._state(dof=300, error_estimate=1.0)) == "max_dof"
         assert (
-            game._termination_reason(self._state(step=12, dof=10, error_estimate=1.0))
-            == "max_steps"
+            game.termination_reason(self._state(step=12, dof=10, error_estimate=1.0)) == "max_steps"
         )
-        assert (
-            game._termination_reason(self._state(dof=10, step=1, error_estimate=1.0)) == "running"
-        )
+        assert game.termination_reason(self._state(dof=10, step=1, error_estimate=1.0)) == "running"
         # With no refinable elements the episode ends on the no-actions branch.
         game._last_indicators = np.zeros((1, 1), dtype=np.float64)
         assert (
-            game._termination_reason(self._state(dof=10, step=1, error_estimate=1.0))
+            game.termination_reason(self._state(dof=10, step=1, error_estimate=1.0))
             == "no_legal_actions"
         )
+
+    def test_capacity_rung_uses_inclusive_dof_comparison(self) -> None:
+        """Caps with ``>=`` here, where ``mesh_refinement`` uses ``>``."""
+        game = _make_game()
+        game.get_initial_state()
+        max_dof = game.config.max_dof
+        assert game.termination_reason(self._state(dof=max_dof, error_estimate=1.0)) == "max_dof"
+        assert game._capacity_reason(self._state(dof=max_dof - 1, error_estimate=1.0)) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -314,11 +321,9 @@ class TestEncodingAndClone:
         assert clone._xs.size >= original_xs.size
         np.testing.assert_array_equal(game._xs, original_xs)
 
-    def test_get_result_and_exact_error(self) -> None:
+    def test_exact_error_keys(self) -> None:
         game = _make_game()
         state = game.get_initial_state()
-        result = game.get_result(state, [state.error_estimate])
-        assert result.final_dof == state.dof
         errs = game.compute_exact_error(state)
         assert set(errs) == {"l2", "h1", "linf", "residual"}
 

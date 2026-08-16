@@ -2,11 +2,14 @@
 
 ## Context
 
-AlphaGalerkin currently generates **all training data synthetically** (Poisson, Darcy, Heat solvers) with no external dataset downloads. The project has three major domains that could benefit from real-world training data:
+AlphaGalerkin currently generates **all training data synthetically** (Poisson, Darcy, Heat solvers) with no external dataset downloads. The project has two major domains that could benefit from real-world training data:
 
 1. **Game AI** (Go, Chess) — self-play + supervised pre-training
 2. **PDE/Scientific Computing** — neural operator benchmarks
-3. **Neural Video Compression** — image/video codec training
+
+> **Scope note (2026-07-22).** A third domain, neural video compression, was removed from the
+> repository in the cut-to-the-core. `src/video_compression/` no longer exists. Section 4 below
+> is retained as a historical dataset survey only — it is **not** a live integration path.
 
 Adding external datasets would enable supervised pre-training, benchmarking against published baselines, and training on real-world distributions rather than synthetic-only data.
 
@@ -59,7 +62,7 @@ Adding external datasets would enable supervised pre-training, benchmarking agai
 
 ---
 
-## 4. Video/Image Compression Datasets
+## 4. Video/Image Compression Datasets  ⚠️ [HISTORICAL — module removed 2026-07-22]
 
 | Dataset | Type | Size | License | URL |
 |---------|------|------|---------|-----|
@@ -69,7 +72,7 @@ Adding external datasets would enable supervised pre-training, benchmarking agai
 | **PE Video Dataset** (Meta) | Video | 1M videos | Open | https://ai.meta.com/datasets/pe-video/ |
 | **CompressAI** | Framework + datasets | Integrated | Apache 2.0 | https://interdigitalinc.github.io/CompressAI/ |
 
-**Integration**: Video compression data loader (`src/video_compression/data/dataset.py`) expects images (.jpg/.png/.bmp/.webp) as `(C, H, W)` tensors in [0,1], or `VideoClip` objects with `(T, C, H, W)` frames. Datasets like Vimeo-90K and Kodak can be used directly.
+**Integration**: none — the video-compression data loader was removed with `src/video_compression/` on 2026-07-22. This table is a historical dataset survey; re-adding it would require re-introducing the module, which is a charter non-goal.
 
 **Recommendation**: **Kodak** (standard eval benchmark, tiny), **CLIC** (modern compression benchmark), and **Vimeo-90K** (large-scale training). These are the standard datasets used in all learned compression papers.
 
@@ -85,7 +88,6 @@ A dataset download and loading module with:
 2. **Format converters** per domain:
    - SGF/PGN → `Experience` objects (game data)
    - HDF5 → `PhysicsSample` objects (PDE data)
-   - Image/video folders → existing `ImageDataset`/`VideoClip` format
 3. **Registry** — declarative dataset catalog with metadata (URL, size, format, license)
 4. **CLI command** — `python -m src.data.download --dataset pdebench-burgers`
 
@@ -93,10 +95,8 @@ A dataset download and loading module with:
 
 1. **PDEBench** — immediate benchmarking value, enables published baseline comparison
 2. **SGF Go datasets** (PAGE/CWI) — parser already exists, enables supervised pre-training
-3. **Kodak + CLIC** — standard compression eval, tiny download
-4. **Vimeo-90K** — large-scale video compression training
-5. **Chess PGN** — requires new PGN parser, lower priority
-6. **Lichess/KataGo** — massive scale, only needed later
+3. **Chess PGN** — requires new PGN parser, lower priority
+4. **Lichess/KataGo** — massive scale, only needed later
 
 ### Verification
 

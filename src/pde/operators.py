@@ -32,6 +32,7 @@ import torch
 from numpy.typing import NDArray
 from torch import Tensor
 
+from src.constants import DEFAULT_BOUNDARY_TOLERANCE
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
 from src.pde.geometry import (
     DomainGeometry,
@@ -111,6 +112,9 @@ class PDEOperator(ABC):
         self.domain_min = np.array(config.domain_min, dtype=np.float32)
         self.domain_max = np.array(config.domain_max, dtype=np.float32)
         self.domain_size = self.domain_max - self.domain_min
+        # One-shot latch for the grad-disconnected debug log in
+        # compute_derivatives, which sits on the MCTS per-node path.
+        self._logged_disconnected_u = False
 
     @abstractmethod
     def residual(
@@ -208,7 +212,7 @@ class PDEOperator(ABC):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-6,
+        tolerance: float = DEFAULT_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         """Determine which points are on the boundary.
 
@@ -261,6 +265,29 @@ class PDEOperator(ABC):
         # from coords in the computational graph — derivatives are undefined.
         # Return zeros so callers (e.g. PoissonOperator.residual) still work.
         if not u.requires_grad and u.grad_fn is None:
+            # This branch is silent by design but has real consequences: every
+            # derivative-bearing term vanishes, so a residual built from it
+            # collapses to the source term alone (and to exactly 0.0 when the
+            # source is zero). A caller that reads that as "converged" is
+            # measuring nothing. Logged so the condition is diagnosable rather
+            # than inferred. See the P0 entry in docs/CODE_HYGIENE_AUDIT.md §7.7.
+            #
+            # Emitted once per operator instance, not once per call: this runs on
+            # the MCTS per-node path (once per apply_action, so ~n_simulations
+            # times per move), where a per-call event would flood the log and pay
+            # event-dict construction on every node. The condition is a property
+            # of how the caller builds `u`, so the first occurrence carries all
+            # the diagnostic value.
+            if not self._logged_disconnected_u:
+                self._logged_disconnected_u = True
+                logger.debug(
+                    "derivatives_skipped_u_disconnected",
+                    operator=type(self).__name__,
+                    n_points=n_points,
+                    dim=self.dim,
+                    consequence="all derivative terms are zero for this call",
+                    note="logged once per operator instance; suppressing repeats",
+                )
             derivatives: dict[str, Tensor] = {}
             for d in range(self.dim):
                 derivatives[f"u_x{d}"] = torch.zeros(
@@ -1469,7 +1496,7 @@ class LShapedPoissonOperator(PDEOperator):
     def is_boundary_point(
         self,
         coords: NDArray[np.float32] | Tensor,
-        tolerance: float = 1e-6,
+        tolerance: float = DEFAULT_BOUNDARY_TOLERANCE,
     ) -> NDArray[np.bool_] | Tensor:
         """Determine which points are on the L-shaped boundary.
 

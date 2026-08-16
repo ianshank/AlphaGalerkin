@@ -243,7 +243,8 @@ def cmd_list(args: argparse.Namespace) -> int:
             scenario = scenario_cls(name=name, description="temp")
             desc = scenario.config.description
             tier = scenario.config.tier.value
-        except Exception:
+        except Exception as exc:
+            logger.warning("scenario_description_unavailable", name=name, error=str(exc))
             desc = "(no description)"
             tier = "unknown"
 

@@ -33,16 +33,6 @@ except (ImportError, Exception):
 
 
 # ---------------------------------------------------------------------------
-# Pytest markers
-# ---------------------------------------------------------------------------
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Register dashboard-specific markers."""
-    config.addinivalue_line("markers", "dashboard: dashboard UI tests")
-
-
-# ---------------------------------------------------------------------------
 # Config fixtures
 # ---------------------------------------------------------------------------
 

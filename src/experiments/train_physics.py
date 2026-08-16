@@ -29,6 +29,15 @@ import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from src.seeding import set_global_seeds
+
+try:
+    import wandb
+
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
 from src.experiments.physics_model import PhysicsLoss, PhysicsOperator
 from src.physics.poisson import PoissonDataset
 from src.training.langfuse_tracker import LangfuseTracker, create_tracker
@@ -232,14 +241,23 @@ def train(config: TrainingConfig) -> dict[str, Any]:
 
     """
     # Setup
-    torch.manual_seed(config.seed)
-    np.random.seed(config.seed)
+    set_global_seeds(config.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("training_starting", device=str(device))
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize W&B if enabled
+    if config.wandb_enabled and WANDB_AVAILABLE and wandb is not None:
+        wandb.init(
+            project=config.wandb_project,
+            name=config.wandb_name
+            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",
+            config=vars(config),
+            tags=["physics-poc", "zero-shot-transfer"],
+        )
 
     # Initialize Langfuse experiment tracker (no-op without LANGFUSE_* env keys)
     tracker: LangfuseTracker | None = None

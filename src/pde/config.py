@@ -17,7 +17,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 
 from src.pde.geometry import GeometryConfig
 from src.templates.config import BaseModuleConfig, MetricDefinition, ThresholdOperator
@@ -138,13 +138,6 @@ class PDEConfig(BaseModuleConfig):
         gt=0.0,
         description="End time for time-dependent PDEs",
     )
-
-    @field_validator("domain_min", "domain_max", "advection_coeff")
-    @classmethod
-    def validate_list_length(cls, v: list[float], info) -> list[float]:
-        """Ensure lists have consistent length."""
-        # Note: Full validation requires cross-field check in model_validator
-        return v
 
     @model_validator(mode="after")
     def validate_domain(self) -> PDEConfig:
@@ -415,10 +408,6 @@ class PDEGameConfig(BaseModuleConfig):
         gt=0.0,
         lt=1.0,
         description="Target error tolerance",
-    )
-    error_metric: Literal["l2", "h1", "linf", "residual"] = Field(
-        default="l2",
-        description="Error metric for evaluation",
     )
 
     # Reward shaping

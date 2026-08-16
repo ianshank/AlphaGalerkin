@@ -1,11 +1,15 @@
-# Git
+# Git & Tooling
 .git
 .gitignore
+.claude/
+specs/
+openspec/
 
 # Python caches and bytecode
-__pycache__
-*.pyc
-*.pyo
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 *.pyd
 .pytest_cache
 .mypy_cache
@@ -15,6 +19,15 @@ __pycache__
 htmlcov/
 coverage.xml
 .hypothesis
+
+# Packaging & Distribution
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+sdist/
+wheels/
 
 # Virtual Environments
 .venv/
@@ -32,9 +45,6 @@ Thumbs.db
 *.swo
 
 # Local build artifacts and logs
-dist/
-build/
-*.egg-info/
 *.log
 results/
 tmp/

@@ -1,0 +1,3 @@
+row,train_seed,stochastic_density_mse,deterministic_density_mse,mse_ratio,stochastic_wall_clock_s,deterministic_wall_clock_s,deterministic_n_params
+seed,42,2.05898645e-08,4.61785057e-02,4.458755e-07,0.0534,0.2105,6977
+median,-,2.05898645e-08,4.61785057e-02,4.458755e-07,0.0534,0.2105,6977

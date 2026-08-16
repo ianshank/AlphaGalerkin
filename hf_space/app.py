@@ -831,13 +831,19 @@ Continuous Operator Learning with Galerkin Transformers and FNet.
 
 The model achieves zero-shot resolution transfer by learning the underlying
 dynamics of Go rather than memorizing discrete board positions. A network
-trained on 9x9 boards generalizes directly to 13x13 and 19x19 without retraining.
+trained on 9x9 boards runs directly on 13x13 and 19x19 without retraining.
 
 | Board Size | Type | Komi |
 |------------|------|------|
 | 9x9 | Training size | 5.5 |
 | 13x13 | Zero-shot transfer | 6.5 |
 | 19x19 | Zero-shot transfer | 7.5 |
+
+What transfer buys is **zero retraining -- one model, any resolution -- not peak
+accuracy**. On the project's committed physics benchmark, the operator transfers to
+19x19 at MSE 2.3e-3 while a discrete CNN retrained at that resolution reaches 1.6e-4,
+so a retrained specialist is roughly 14x more accurate. See
+`specs/transfer_baseline_compare.spec.md` in the main repository.
 
 ### Technical Architecture
 

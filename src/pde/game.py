@@ -2,7 +2,6 @@
 
 This module adapts AlphaZero's game interface for PDE solving:
 - PDEState: Represents current approximation/mesh state
-- PDEResult: Final outcome with error metrics
 - PDEGame: Abstract base class for PDE-based games
 
 The key insight is that PDE solving can be framed as a sequential
@@ -232,66 +231,6 @@ class PDEState:
         )
 
 
-@dataclass
-class PDEResult:
-    """Result of a completed PDE game.
-
-    Contains final metrics and trajectory information for:
-    - Evaluating solution quality
-    - Computing rewards for training
-    - Analyzing algorithm performance
-    """
-
-    # Final state metrics
-    final_error: float
-    final_dof: int
-    n_steps: int
-    converged: bool
-
-    # Error components
-    l2_error: float
-    h1_error: float
-    linf_error: float
-    residual_norm: float
-
-    # Efficiency metrics
-    error_reduction_rate: float  # Error per step
-    dof_efficiency: float  # Error reduction per DOF
-    compute_efficiency: float  # Error reduction per FLOP
-
-    # Trajectory statistics
-    initial_error: float
-    best_error: float
-    average_error: float
-    error_history: list[float]
-
-    # Termination info
-    termination_reason: str
-    budget_used: float
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "final_error": self.final_error,
-            "final_dof": self.final_dof,
-            "n_steps": self.n_steps,
-            "converged": self.converged,
-            "l2_error": self.l2_error,
-            "h1_error": self.h1_error,
-            "linf_error": self.linf_error,
-            "residual_norm": self.residual_norm,
-            "error_reduction_rate": self.error_reduction_rate,
-            "dof_efficiency": self.dof_efficiency,
-            "compute_efficiency": self.compute_efficiency,
-            "initial_error": self.initial_error,
-            "best_error": self.best_error,
-            "average_error": self.average_error,
-            "error_history": self.error_history,
-            "termination_reason": self.termination_reason,
-            "budget_used": self.budget_used,
-        }
-
-
 class PDEGame(ABC):
     """Abstract base class for PDE-based games.
 
@@ -311,7 +250,12 @@ class PDEGame(ABC):
        - get_valid_actions() -> legal moves
        - apply_action() -> new state
        - get_reward() -> immediate reward
-    4. get_result() -> final metrics
+    4. compute_exact_error() / termination_reason() -> final metrics
+
+    Callers assemble their own terminal-result object from those two plus
+    the state and their own trajectory bookkeeping; the shapes differ too
+    much between callers for a shared struct to fit (see
+    ``docs/CODE_HYGIENE_AUDIT.md`` B17).
     """
 
     # Class-level attributes (override in subclasses)
@@ -453,19 +397,60 @@ class PDEGame(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
-        """Get game result from terminal state.
+    def _capacity_reason(self, state: PDEState) -> str | None:
+        """Name this game's capacity limit if *state* has reached it.
+
+        The one rung of the termination ladder that is genuinely
+        game-specific: ``basis_selection`` caps basis functions,
+        ``mesh_refinement`` and ``lshape_amr`` cap degrees of freedom (with
+        different comparison operators). Everything else in
+        :meth:`termination_reason` is shared.
 
         Args:
-            state: Terminal PDE state.
-            error_history: Error values throughout the game.
+            state: State to classify.
 
         Returns:
-            PDEResult with final metrics.
+            A reason string (e.g. ``"max_dof"``) when the cap is reached,
+            else ``None``. The default has no cap.
 
         """
-        raise NotImplementedError
+        return None
+
+    def termination_reason(self, state: PDEState) -> str:
+        """Classify *why* an episode ended, mirroring :meth:`is_terminal`.
+
+        Callers that only need a boolean use :meth:`is_terminal`; this
+        distinguishes the *cause* so a run's metadata can tell "hit the DOF
+        ceiling" apart from "converged" — see
+        :class:`~src.alphagalerkin.solver.AlphaGalerkinSolver`, which records
+        it under ``METADATA_KEY_TERMINATION_REASON``.
+
+        Precedence follows the order the concrete ``is_terminal`` ladders
+        check their conditions, so when several conditions hold at once the
+        label matches the reason that game would have stopped for. Override
+        :meth:`_capacity_reason` (not this method) to add a game-specific cap.
+
+        Args:
+            state: State to classify — need not be terminal.
+
+        Returns:
+            One of ``"converged"``, the game's capacity reason,
+            ``"budget_exhausted"``, ``"max_steps"``, ``"no_legal_actions"``,
+            or ``"running"`` for a non-terminal state.
+
+        """
+        if state.error_estimate < self.config.error_tolerance:
+            return "converged"
+        capacity = self._capacity_reason(state)
+        if capacity is not None:
+            return capacity
+        if state.budget_remaining <= 0:
+            return "budget_exhausted"
+        if state.step >= self.config.max_steps:
+            return "max_steps"
+        if not self.get_valid_actions(state):
+            return "no_legal_actions"
+        return "running"
 
     @abstractmethod
     def compute_exact_error(self, state: PDEState) -> dict[str, float]:

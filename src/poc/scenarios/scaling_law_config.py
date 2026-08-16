@@ -16,6 +16,7 @@ from pydantic import Field, field_validator, model_validator
 
 from src.integrations.lm_studio.config import LMStudioConfig
 from src.poc.config import BaseScenarioConfig, MetricThreshold, ScenarioTier
+from src.seeding import derive_seeds
 
 SCALING_SCENARIO_NAME = "scaling_law"
 """Canonical scenario id; YAML rows must use this string for dispatch."""
@@ -256,7 +257,7 @@ class ScalingLawConfig(BaseScenarioConfig):
         """Per-cell seeds (explicit deduped, or derived via prime stride)."""
         if self.seeds is not None:
             return list(dict.fromkeys(self.seeds))
-        return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
+        return derive_seeds(self.seed, self.n_seeds, _SEED_PRIME_STRIDE)
 
     @property
     def primary_arm(self) -> str:

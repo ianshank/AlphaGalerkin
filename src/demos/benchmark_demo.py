@@ -569,7 +569,7 @@ reserving Softmax attention only for the final tactical head.
 
 def create_benchmark_demo_tab(
     config: BenchmarkDemoConfig | None = None,
-) -> Any:  # noqa: ANN401 - Gradio Tab has complex type
+) -> Any:
     """Create Gradio tab for benchmark demo.
 
     Args:

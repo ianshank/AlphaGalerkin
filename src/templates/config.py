@@ -37,6 +37,8 @@ from typing import Any, TypeVar, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ThresholdOperator(str, Enum):
     """Operators for metric threshold evaluation."""
@@ -333,7 +335,7 @@ class BoardSizeConfig(BaseModel):
         description="Maximum board size",
     )
     sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Specific board sizes to use",
     )
 

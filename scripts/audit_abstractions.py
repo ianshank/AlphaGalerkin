@@ -49,6 +49,29 @@ _IMPLICIT = frozenset(
     }
 )
 
+# Members the pure-AST heuristic flags but which are verified LIVE by hand, keyed
+# by ``(class, name)``. The ``.name(`` heuristic only sees call sites inside the
+# scanned roots, so it mis-reports two situations: (a) public protocol methods
+# whose only callers live under ``tests/`` (never in a ``src`` scan), and (b)
+# dynamic receivers it cannot resolve. Each entry records where the real use
+# lives so the allowlist stays auditable; removing a real caller is a genuine
+# regression that should prompt removing the entry, not extending it.
+_KNOWN_LIVE: frozenset[tuple[str, str]] = frozenset(
+    {
+        # UCI engine protocol handshake; exercised by tests/engines/test_uci.py
+        # and called by any concrete engine driver. Public API.
+        ("BaseEngine", "is_ready"),
+        # Data-augmentation hook implemented by Go/Chess/PDE games and exercised
+        # by tests/games/ and tests/pde/. Public extension point (see docstring).
+        ("GameInterface", "get_symmetries"),
+        # Real dynamic call site the AST cannot resolve:
+        # ``self.game.get_action_mask(...)`` in src/mcts/gumbel.py and
+        # src/pde/game_interface.py. Flagged only on a narrow (e.g. src/games)
+        # scan where those callers are out of corpus.
+        ("GameInterface", "get_action_mask"),
+    }
+)
+
 
 @dataclass
 class Finding:
@@ -177,6 +200,8 @@ def audit(roots: list[Path]) -> AuditReport:
         if key in seen_abstract:
             continue
         seen_abstract.add(key)
+        if (f.cls, f.name) in _KNOWN_LIVE:
+            continue
         if not _has_use(f):
             report.abstract_missing.append(f)
 
@@ -186,6 +211,8 @@ def audit(roots: list[Path]) -> AuditReport:
         if key in seen_proto:
             continue
         seen_proto.add(key)
+        if (f.cls, f.name) in _KNOWN_LIVE:
+            continue
         if not _has_use(f):
             report.protocol_missing.append(f)
     return report

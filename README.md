@@ -1,570 +1,104 @@
 # AlphaGalerkin
 
-**Resolution-Independent AI for Games and PDE Solving using Continuous Operator Learning**
+**Resolution-independent operator learning + MCTS for board games (Go, Chess) and PDE solving.**
 
-AlphaGalerkin uses Galerkin Transformers and MCTS to solve two classes of problems without retraining across resolutions:
+[![CI](https://github.com/ianshank/AlphaGalerkin/actions/workflows/ci.yml/badge.svg)](https://github.com/ianshank/AlphaGalerkin/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ianshank/AlphaGalerkin/graph/badge.svg)](https://codecov.io/gh/ianshank/AlphaGalerkin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen)](.pre-commit-config.yaml)
 
-1. **Board Games** (Go, Chess): Zero-shot transfer between board sizes (train 9x9, play 19x19)
-2. **PDE Solving**: MCTS-guided adaptive mesh refinement and basis selection for computational physics
+AlphaGalerkin uses **Galerkin Transformers** and **Monte Carlo Tree Search** to
+solve two classes of problems without retraining across resolutions:
 
-The core methodological delta — MCTS *multi-step look-ahead* for Galerkin basis selection and error-driven refinement — is unpublished (the AMR-RL literature is uniformly *single-step*; the only prior MCTS+finite-element work, TreeMesh, targets mesh *generation*, a distinct problem — see [`docs/proposals/PRIOR_ART_REVIEW.md`](docs/proposals/PRIOR_ART_REVIEW.md)), positioning AlphaGalerkin for SBIR funding in the $50B+ simulation market.
+1. **Board games** (Go, Chess) — zero-shot transfer between board sizes (train 9×9, play 19×19).
+2. **PDE solving** — MCTS-guided adaptive mesh refinement and Galerkin basis selection for computational physics.
 
----
+The two domains share one abstraction: **MCTS** (`src/mcts/`), adapted per domain
+via `GameInterface` (games) and `src/pde/mcts_adapter.py` (PDEs). The methodological
+delta — MCTS *multi-step look-ahead* for basis selection and error-driven refinement —
+is unpublished: the AMR-RL literature is uniformly *single-step*, and the only prior
+MCTS + finite-element work, **TreeMesh** ([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)),
+targets mesh *generation*, a distinct problem (see
+[`docs/business/proposals/PRIOR_ART_REVIEW.md`](docs/business/proposals/PRIOR_ART_REVIEW.md)).
 
-## Table of Contents
+## What's here
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Use Cases](#use-cases)
-- [API Reference](#api-reference)
-- [Configuration](#configuration)
-- [Testing](#testing)
-- [Mathematical Foundation](#mathematical-foundation)
-- [Performance](#performance)
-- [Contributing](#contributing)
-- [License](#license)
+| I want to… | Go to |
+| --- | --- |
+| Install and run something | [Getting Started](docs/getting-started.md) |
+| Know what's in scope (and what isn't) | [Project charter](openspec/specs/project-charter/spec.md) |
+| Understand the codebase layout | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Browse all documentation | [docs/](docs/README.md) |
+| Learn the terminology | [Glossary](docs/GLOSSARY.md) |
+| Read the math | [Mathematical Foundation](docs/mathematical-foundation.md) |
+| See applications | [Use Cases](docs/use-cases.md) |
+| Contribute | [CONTRIBUTING.md](CONTRIBUTING.md) · [specs/](specs/README.md) |
+| Track changes | [CHANGELOG.md](CHANGELOG.md) |
 
----
+## Key features
 
-## Overview
-
-### The Problem
-
-Both game AI and computational physics face a **resolution lock-in** problem:
-
-- **Game AI**: A model trained on 19x19 Go cannot play 9x9 without retraining. CNNs are tied to fixed grid sizes.
-- **PDE Solvers**: Mesh refinement is myopic (single-step error indicators). No multi-step planning exists for optimal mesh/basis selection.
-- **Industry**: The $50B simulation software market lacks AI-guided adaptive methods with mathematical convergence guarantees.
-
-### Our Solution
-
-AlphaGalerkin treats any problem domain as a **continuous space** Omega = [0,1]^d, then applies:
-
-- **Galerkin Attention**: O(N) complexity via Petrov-Galerkin projection (not O(N^2) softmax)
-- **MCTS Planning**: Multi-step look-ahead for mesh refinement, basis selection, and move search
-- **LBB Stability**: Provable convergence via inf-sup condition monitoring during training
-- **Zero-Shot Transfer**: One model runs at any resolution — train on 9x9, evaluate zero-shot on 19x19 (measured MSE ~4e-4, no retraining). Honestly benchmarked against a CNN retrained at the target resolution (`specs/transfer_baseline_compare.spec.md`).
-- **FFT Mixing**: O(N log N) FNet blocks for fast MCTS rollouts (5x+ speedup)
-
----
-
-## Key Features
-
-### Resolution Independence
-
-```python
-# Train on 9x9
-model.fit(board_9x9_dataset)
-
-# Play on 19x19 without retraining
-model.adapt_resolution(source_size=9, target_size=19)
-move = model.predict(board_19x19)
-```
-
-### O(N) Attention Complexity
-
-Traditional attention is O(N²). Galerkin attention achieves O(N) through Petrov-Galerkin projection:
-
-```
-Standard:  O(361² × d) = O(130,321 × d)  for 19x19
-Galerkin:  O(361 × d²) = O(361 × d²)     for 19x19
-```
-
-### Fast MCTS Rollouts
-
-FNet mixing replaces attention with FFT operations:
-
-```
-Softmax Attention: O(N²)
-FNet Mixing:       O(N log N)
-Speedup:           ~5x for leaf evaluation
-```
-
-### Mathematical Rigor
-
-Built on solid mathematical foundations:
-
-- **Fredholm Integral Equations**: Model influence as Green's function solutions
-- **LBB Stability**: Guaranteed convergence via inf-sup condition monitoring
-- **Spectral Methods**: Proper anti-aliasing for resolution transfer
-
-### Spec-Driven Development & Agentic Tooling
-
-- **Specs before code** ([`specs/`](specs/README.md)): every feature starts as a markdown spec
-  (data contract + acceptance criteria + `MetricThreshold`s), then tests, then code.
-- **Claude Code project scaffolding** ([`.claude/`](.claude/)): a SessionStart bootstrap hook,
-  reusable skills (`spec-new`, `regression-surface`, `coverage-gate`, `new-pde-operator`),
-  persona subagents, and slash commands.
-- **Multi-physics agents** ([`src/agents/`](src/agents/AGENT.md)): lifecycle hooks, opt-in
-  timeouts, and `python -m src.agents.cli scaffold <name>` to generate a new agent from the spec
-  template.
-- **Noyron v2.2** ([`config/scenarios/noyron_basis_cpu.yaml`](config/scenarios/noyron_basis_cpu.yaml)):
-  MCTS-guided Galerkin basis selection on Leap 71 helical SDF geometries —
-  `python -m src.poc.cli run --config config/scenarios/noyron_basis_cpu.yaml`.
-
----
-
-## Architecture
-
-```
-Input (Discrete Board)
-        │
-        ▼
-┌───────────────────┐
-│ Continuous        │  Maps grid to Fourier features on [0,1]²
-│ Embedding         │
-└───────────────────┘
-        │
-        ▼
-┌───────────────────┐
-│ Strategy Body     │  Galerkin Attention + FNet Mixing
-│ (Global Influence)│  O(N) complexity
-└───────────────────┘
-        │
-        ▼
-┌───────────────────┐
-│ Tactical Head     │  Softmax Attention (preserves injectivity)
-│ (Local Reading)   │  For life & death calculations
-└───────────────────┘
-        │
-        ├──────────────┐
-        ▼              ▼
-┌─────────────┐ ┌─────────────┐
-│ Policy Head │ │ Value Head  │
-│ (Move Dist) │ │ (Eval)      │
-└─────────────┘ └─────────────┘
-```
-
-See [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md) for comprehensive C4 architecture diagrams in Mermaid format, or [docs/architecture/C4_ARCHITECTURE.md](docs/architecture/C4_ARCHITECTURE.md) for ASCII-art versions.
-
----
+- **Resolution independence** — one model runs at any resolution (train 9×9,
+  evaluate zero-shot at 19×19; committed benchmark MSE ≈ **2.3e-3**, no retraining —
+  honestly benchmarked against a CNN retrained at the target resolution, which is
+  ~14× *more* accurate; the operator's value is zero-retraining, not peak accuracy.
+  Artifacts: [`results/transfer_baseline_compare.csv`](results/transfer_baseline_compare.csv),
+  [`config/baselines/transfer_ci.json`](config/baselines/transfer_ci.json);
+  [`specs/transfer_baseline_compare.spec.md`](specs/transfer_baseline_compare.spec.md)).
+- **O(N) attention** — Galerkin (Petrov-Galerkin projection) instead of O(N²) softmax.
+- **Fast MCTS rollouts** — FNet FFT mixing (O(N log N)) for batch leaf evaluation.
+- **Provable stability** — LBB / inf-sup condition monitored during training.
+- **Spec-driven & agentic tooling** — every feature starts as a
+  [spec](specs/README.md); [`.claude/`](.claude/) ships hooks, skills, and subagents.
 
 ## Installation
-
-### Prerequisites
-
-- Python 3.10+
-- PyTorch 2.0+ (CUDA 12.6 recommended for GPU backends)
-- Optional: CUDA 12.x+ for GPU training/inference
-- Optional: `onnxruntime`, `onnxscript` (for the ONNX export/runtime path in `src/deployment/`)
-
-### From Source
 
 ```bash
 git clone https://github.com/ianshank/AlphaGalerkin.git
 cd AlphaGalerkin
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or: venv\Scripts\activate  # Windows
-
-# Install dependencies
+python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### Dependencies
+Requires Python 3.10+ and PyTorch 2.0+ (CUDA 12.x recommended for GPU paths).
+Optional extras: `test-extras`, `fem`, `jax` / `jax-gpu`, `picogk`, `lm-studio`, `docs`
+(see [Getting Started](docs/getting-started.md#1-clone-and-install)).
 
-```
-torch>=2.0.0
-einops>=0.7.0
-jaxtyping>=0.2.25
-pydantic>=2.0.0
-hydra-core>=1.3.0
-structlog>=23.0.0
-numpy>=1.24.0
-```
-
----
-
-## Quick Start
-
-### Playing a Game via GTP
-
-```bash
-# Start GTP engine (connects to Go GUIs like Sabaki)
-python -m src.tools.cli gtp --board-size 19
-
-# Or with a trained model
-python -m src.tools.cli gtp --model checkpoints/model.pt --board-size 19
-```
-
-### Using the Model in Python
+## Quick start
 
 ```python
 import torch
 from config.schemas import OperatorConfig
 from src.modeling.model import AlphaGalerkinModel
 
-# Create model
-config = OperatorConfig(
-    d_model=256,
-    n_heads=8,
-    n_galerkin_layers=6,
-    n_softmax_layers=2,
-)
+config = OperatorConfig(d_model=256, n_heads=8, n_galerkin_layers=6, n_softmax_layers=2)
 model = AlphaGalerkinModel(config)
 
-# Create random board state (batch=1, channels=17, height=19, width=19)
-board = torch.randn(1, 17, 19, 19)
-
-# Get policy and value
+board = torch.randn(1, 17, 19, 19)          # (batch, planes, H, W)
 output = model(board)
-print(f"Policy shape: {output.policy_logits.shape}")  # (1, 362) - 361 moves + pass
-print(f"Value: {output.value.item()}")  # [-1, 1]
+print(output.policy_logits.shape)            # (1, 362) — 361 moves + pass
+print(output.value.item())                   # value in [-1, 1]
 ```
 
-### Resolution Transfer
-
-```python
-# Train on 9x9
-model.training_resolution = 9
-# ... training loop on 9x9 data ...
-
-# Switch to 19x19 for inference (zero-shot!)
-model.eval()
-model.adapt_resolution(source_size=9, target_size=19)
-
-# Now use on 19x19 board
-board_19x19 = torch.randn(1, 17, 19, 19)
-output = model(board_19x19)
-```
-
-### Running MCTS
-
-```python
-from src.mcts.search import MCTS
-from src.mcts.evaluator import ModelEvaluator
-
-# Create evaluator and search
-evaluator = ModelEvaluator(model, device="cuda")
-mcts = MCTS(
-    evaluator=evaluator,
-    n_simulations=800,
-    c_puct=1.5,
-)
-
-# Run search
-action_probs = mcts.search(game_state)
-best_move = mcts.get_action(game_state, temperature=0)
-```
-
-### Chess Self-Play Training
+Run a configuration-driven PoC scenario (CPU-safe):
 
 ```bash
-# Train chess model (AlphaZero methodology)
-python -m scripts.train_chess training.total_steps=1000 mcts.n_simulations=100
-
-# Enable Stockfish benchmark evaluation
-python -m scripts.train_chess \
-  training.engine_eval_enabled=true \
-  training.engine_eval_path=/path/to/stockfish \
-  training.engine_eval_depth=5
+python -m src.poc.cli list                                       # list scenarios
+python -m src.poc.cli run --config config/scenarios/poc_quick.yaml
 ```
 
-```python
-from config.schemas import OperatorConfig
-from src.modeling.model import AlphaGalerkinModel
+More: [Getting Started](docs/getting-started.md) · [Use Cases](docs/use-cases.md).
 
-# Chess model: 119-channel input, 4672-action policy
-config = OperatorConfig(
-    d_model=256,
-    n_heads=8,
-    n_galerkin_layers=6,
-    n_softmax_layers=2,
-    input_channels=119,
-    game_type="chess",
-    action_space_size=4672,
-)
-model = AlphaGalerkinModel(config)
-```
+## Architecture
 
----
+A continuous embedding maps the discrete board to Fourier features on `[0,1]²`; a
+Galerkin+FNet **strategy body** models global influence in O(N); a softmax
+**tactical head** preserves injectivity for local reading; policy and value heads
+produce the outputs.
 
-## Use Cases
-
-### 1. Research: Resolution-Independent Learning
-
-**Goal**: Study how Go knowledge transfers across board sizes.
-
-```python
-# Train on small boards (faster iteration)
-train_sizes = [5, 7, 9]
-for size in train_sizes:
-    model.training_resolution = size
-    train(model, get_dataset(size))
-
-# Evaluate on all sizes including unseen ones
-test_sizes = [5, 7, 9, 13, 19]
-for size in test_sizes:
-    model.adapt_resolution(train_sizes[-1], size)
-    evaluate(model, get_dataset(size))
-```
-
-**Research Questions**:
-
-- Does influence understanding transfer from 9x9 to 19x19?
-- What's the minimum training size for effective 19x19 play?
-- How does spectral filtering affect transfer quality?
-
-### 2. Education: Learn Go Fundamentals on Small Boards
-
-**Goal**: Teaching tool that demonstrates concepts learned on any board size.
-
-```bash
-# Start teaching mode on 9x9
-python -m src.tools.cli gtp --board-size 9 --model teacher_model.pt
-
-# Switch to 13x13 for intermediate lessons
-python -m src.tools.cli gtp --board-size 13 --model teacher_model.pt
-
-# Full 19x19 for advanced play
-python -m src.tools.cli gtp --board-size 19 --model teacher_model.pt
-```
-
-### 3. Fast Prototyping: Accelerated MCTS
-
-**Goal**: Rapid game analysis and move generation.
-
-```python
-from src.modeling.model import AlphaGalerkinFast
-
-# Use FNet-only model for fast rollouts
-fast_model = AlphaGalerkinFast(config, n_layers=4)
-
-# 5x faster inference for MCTS leaf evaluation
-fast_evaluator = ModelEvaluator(fast_model, device="cuda")
-mcts = MCTS(evaluator=fast_evaluator, n_simulations=1600)
-
-# More simulations in same time budget
-move = mcts.get_action(game_state)
-```
-
-### 4. Hybrid Systems: Combine with Traditional Engines
-
-**Goal**: Use AlphaGalerkin for global strategy, traditional engines for tactics.
-
-```python
-def hybrid_move_selection(game_state):
-    # AlphaGalerkin for global influence assessment
-    global_policy = alpha_galerkin.get_policy(game_state)
-
-    # Traditional engine for local tactical verification
-    tactical_moves = traditional_engine.get_tactical_moves(game_state)
-
-    # Combine: prefer tactically sound moves with good global influence
-    combined_scores = global_policy * tactical_weights
-    return combined_scores.argmax()
-```
-
-### 5. Tournament Play: GTP-Compatible Engine
-
-**Goal**: Compete in computer Go tournaments.
-
-```bash
-# Configure for tournament
-python -m src.tools.cli gtp \
-    --model tournament_model.pt \
-    --board-size 19 \
-    --device cuda \
-    --simulations 1600
-
-# GTP commands work with standard Go GUIs
-# - Sabaki
-# - GoGui
-# - Lizzie
-# - KaTrain
-```
-
-### 6. Analysis: Position Evaluation
-
-**Goal**: Analyze professional games with influence visualization.
-
-```python
-def analyze_position(sgf_path):
-    game = load_sgf(sgf_path)
-
-    for move_num, position in enumerate(game.positions):
-        output = model(position.tensor)
-
-        # Policy shows likely next moves
-        top_moves = output.policy_logits.topk(5)
-
-        # Value shows winning probability
-        win_prob = (output.value.item() + 1) / 2
-
-        # LBB constant shows model confidence
-        _, _, lbb = model(position.tensor, return_lbb=True)
-
-        print(f"Move {move_num}: Win={win_prob:.1%}, LBB={lbb:.4f}")
-```
-
-### 7. Curriculum Learning: Progressive Board Sizes
-
-**Goal**: Train efficiently by starting small and scaling up.
-
-```python
-curriculum = [
-    (5, 1000),   # 5x5 for 1000 games
-    (7, 2000),   # 7x7 for 2000 games
-    (9, 5000),   # 9x9 for 5000 games
-    (13, 10000), # 13x13 for 10000 games
-    (19, 50000), # 19x19 for 50000 games
-]
-
-for board_size, n_games in curriculum:
-    model.training_resolution = board_size
-    self_play(model, n_games, board_size)
-
-# Model learns progressively more complex positions
-```
-
-### 8. Embedded Systems: Lightweight Inference
-
-**Goal**: Run on edge devices with limited compute.
-
-```python
-# Use minimal configuration
-config = OperatorConfig(
-    d_model=64,
-    n_heads=4,
-    n_galerkin_layers=2,
-    n_softmax_layers=1,
-    use_fnet_mixing=True,  # Faster than attention
-)
-
-model = AlphaGalerkinFast(config)
-
-# Quantize for edge deployment
-model_int8 = torch.quantization.quantize_dynamic(
-    model, {torch.nn.Linear}, dtype=torch.qint8
-)
-
-# Deploy on Raspberry Pi, Jetson, etc.
-```
-
-### 9. LLM-Prior MCTS for Out-of-Distribution PDEs
-
-**Goal**: Guide MCTS basis selection with a *generalist* LLM (Qwen-14B
-served by LM Studio) so the search survives PDE families a
-domain-trained evaluator has never seen.
-
-**Why this is interesting**: the project's existing `FNetEvaluator`
-gives strong policy priors *inside* the training distribution and
-collapses outside it. A generalist LLM with no PDE-specific training
-won't beat the trained evaluator on Poisson, but it remains useful on
-Burgers / biharmonic / Helmholtz where the trained head is silent. The
-ablation scenario benchmarks all three arms (random / trained / LLM) on
-both ID and OOD PDEs and reports the rollout-budget reduction and the
-median final residual.
-
-```bash
-# 1. Install LM Studio and start the local server
-#    (https://lmstudio.ai → load qwen2.5-14b-instruct → Local Server tab)
-# 2. Install the optional [lm-studio] extra
-pip install -e '.[lm-studio]'
-
-# 3. Run the ablation (GPU-only — fails loud if CUDA is unavailable)
-python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml
-```
-
-The scenario is **GPU-only by policy**: `setup()` calls
-`src.poc.device.resolve_device(config.device, context=...)` which raises
-`RuntimeError` when CUDA is unavailable. Arm gating is graceful — when
-LM Studio preflight fails (server unreachable, model not loaded,
-insufficient VRAM) the LLM arm is dropped *with its acceptance
-thresholds removed* so the rest of the scenario can still pass. Same
-behaviour symmetrically when the trained-arm checkpoint is missing or
-when zero LLM-call latency samples are recorded.
-
-**Headline acceptance metrics** (Pydantic-thresholded, all configurable):
-
-| Metric | Threshold | Statistic |
-|---|---|---|
-| `id_rollout_reduction_pct` | ≥ 25% | Mann-Whitney U on per-seed rollouts (random vs LLM) |
-| `ood_llm_residual` | ≤ 1e-2 | Median final residual on the OOD PDE |
-| `ood_trained_residual` | > 1e-1 | Trained evaluator's *expected failure* threshold |
-| `llm_call_p95_latency_ms` | ≤ 3000 | 95th percentile of per-call wall-clock |
-
-CPU CI runs the mocked tests only (`tests/integrations/`,
-`tests/poc/test_llm_prior_ablation_*.py`). The GPU rig captures the
-headline numbers via `pytest -m gpu_required` against a live LM Studio
-endpoint with `LM_STUDIO_URL` set. See
-[CLAUDE.md → Regression Surface](CLAUDE.md#regression-surface) for the
-exact gates.
-
----
-
-## API Reference
-
-### Core Classes
-
-#### `AlphaGalerkinModel`
-
-Main model combining all components.
-
-```python
-model = AlphaGalerkinModel(config: OperatorConfig)
-output = model(x: Tensor, return_lbb: bool = False) -> ModelOutput
-```
-
-#### `GalerkinAttention`
-
-O(N) attention via Petrov-Galerkin projection.
-
-```python
-attn = GalerkinAttention(d_model: int, n_heads: int, ...)
-out = attn(x: Tensor, return_lbb: bool = False)
-```
-
-#### `MCTS`
-
-Monte Carlo Tree Search with neural guidance.
-
-```python
-mcts = MCTS(evaluator, n_simulations=800, c_puct=1.5, ...)
-action_dist = mcts.search(game: GameInterface)
-action = mcts.get_action(game, temperature=1.0)
-```
-
-#### `GTPEngine`
-
-Go Text Protocol interface.
-
-```python
-engine = GTPEngine(model, board_size=19)
-response = engine.process_command("genmove black")
-```
-
-### Configuration
-
-```python
-from config.schemas import OperatorConfig
-
-config = OperatorConfig(
-    # Model dimensions
-    d_model=256,            # Hidden dimension
-    n_heads=8,              # Attention heads
-    d_ffn=1024,             # FFN dimension
-
-    # Architecture
-    n_galerkin_layers=6,    # Global influence layers
-    n_softmax_layers=2,     # Local tactical layers
-    use_fnet_mixing=True,   # Enable FFT mixing
-
-    # Stability
-    lbb_beta_threshold=1e-6,  # LBB stability threshold
-
-    # Input
-    input_channels=17,      # Board feature planes
-    n_fourier_features=64,  # Positional encoding size
-)
-```
-
----
+- Repository map and layering: [ARCHITECTURE.md](ARCHITECTURE.md)
+- C4 diagrams (Mermaid): [docs/architecture/c4_mermaid.md](docs/architecture/c4_mermaid.md)
+- The math: [docs/mathematical-foundation.md](docs/mathematical-foundation.md)
 
 ## Video Compression
 
@@ -672,128 +206,26 @@ pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py 
 ---
 ## Testing
 
-The project has **2,700+** passing tests across unit, integration, E2E, property-based, and security categories.
-
-### Run All Tests
-
-```bash
-# Full test suite
-pytest tests/ -v
-
-# Chess pipeline (78 tests with coverage gate)
-pytest tests/games/test_chess*.py tests/training/test_*chess*.py \
-  tests/security/test_chess_security.py tests/e2e/test_chess*.py \
-  --cov=src/games/chess --cov-fail-under=80 -v
-
-# Engine integration tests
-pytest tests/engines/ -v
-
-# Math kernel tests (property-based)
-pytest tests/math_kernel/ -v
-
-# Training tests
-pytest tests/training/ -v
-```
-
-### Verify Resolution Invariance
+The project ships an extensive suite (**7,000+ test functions** across unit,
+integration, property-based, E2E, and security categories) with an **85% branch
+coverage** gate enforced in CI, plus per-module gates (e.g. `mcts ≥ 90`,
+`refinement ≥ 85`, `pde ≥ 75`).
 
 ```bash
-# Test 9x9 -> 19x19 transfer
-python -m src.tools.verify_invariance --train-size 9 --infer-size 19
-
-# FNet benchmark (complexity verification)
-python -m src.experiments.benchmark_fnet --sizes 81,169,361 --device cpu
+export COVERAGE_CORE=pytrace          # a torch wheel crashes the default C tracer
+pytest -m "not gpu_required"          # CPU-only default surface
+ruff check src/ && ruff format --check src/
 ```
 
-### PoC Scenario Framework
+Which tests guard which code path is documented in the **Regression Surface**
+table in [`CLAUDE.md`](CLAUDE.md#regression-surface). See [CONTRIBUTING.md](CONTRIBUTING.md)
+for the full workflow.
 
-```bash
-# Quick validation suite (~5 min)
-python -m src.poc.cli run --config config/scenarios/poc_quick.yaml
+## Project status
 
-# Full validation suite (~30 min)
-python -m src.poc.cli run --config config/scenarios/poc_full.yaml
-
-# List available scenarios
-python -m src.poc.cli list
-```
-
-### Noyron HX — Zero-Shot 3D Heat-Transfer Demo (Leap 71 integration)
-
-Train an `AlphaGalerkin` PINN-style surrogate at low collocation-point density on
-an SDF-bounded helical heat exchanger that mirrors Leap 71's downloadable Noyron
-HX, then evaluate zero-shot at 4× density. The demo runs entirely on the
-analytical helical-tube SDF (no `.NET` / PicoGK runtime required); the optional
-`[picogk]` extra is reserved for runs against a downloaded Leap 71 STL.
-
-The analytical reference is `u(p) = sin(k x) + sin(k y) + sin(k z)` with
-default `k = π` (one full period across the unit cube). This is the
-**headline resolution-independence demo**: at `k = π` the measured
-`transfer_ratio = mse_high / mse_low = 1.00 ± 0.01` on a Blackwell-class
-GPU — eval at 4× training point density gives the same MSE as eval at
-training density, which is the central claim for resolution-independent
-operator learning.
-
-Raising `harmonic_wave_number` to `2π` or `4π` exercises the Fourier-feature
-surrogate at higher frequencies — both absolute MSE and the transfer ratio
-degrade. Reaching tighter absolute MSEs (e.g. `1e-3`) at any frequency
-requires growing the surrogate beyond the YAML defaults: `d_model ≥ 128`,
-`n_train_pts ≥ 16k`, or `n_epochs ≥ 1000`.
-
-```bash
-# CPU smoke test (analytical reference, ~30 s)
-python -m src.poc.cli run --scenario noyron_hx \
-    --config config/scenarios/noyron_hx.yaml \
-    scenarios.0.device=cpu
-
-# GPU headline run (analytical reference, ~7 min on a Blackwell GPU)
-python -m src.poc.cli run --scenario noyron_hx \
-    --config config/scenarios/noyron_hx.yaml
-
-# Voxel-FDM reference run (~15-30 min on GPU)
-# NOTE: the YAML defaults (zero source, zero Dirichlet boundary) make
-# the unique steady-state solution u=0 everywhere, and the FDM solver
-# correctly converges to that at iteration 0. A surrogate trained
-# against it learns "fit zero" — accurate by metric but vacuous as a
-# demonstration. For a meaningful FDM validation, switch the operator
-# to a non-zero boundary_value or boundary_mode='hot_cold' (or supply
-# a non-zero source_function). See the warning in
-# src/pde/operators_picogk.py::HelicalHeatOperator for details.
-python -m src.poc.cli run --scenario noyron_hx \
-    --config config/scenarios/noyron_hx.yaml \
-    scenarios.0.ref_solver_kind=voxel_fdm
-```
-
-**Success criteria at YAML defaults** (4096 colloc, `d_model=64`, 32 Fourier
-features, 200 epochs, `k = π`):
-
-| Metric                                   | Threshold | Measured     |
-| ---------------------------------------- | --------- | ------------ |
-| `transfer_ratio = mse_high / mse_low`    | < 1.5     | 1.00 ± 0.01  |
-| `mse_low` (eval at training density)     | < 2e-2    | ~1.6e-2      |
-| `mse_high` (eval at 4× training density) | < 2e-2    | ~1.6e-2      |
-
-The transfer-ratio threshold is tight because that is the **headline
-resolution-independence claim**. The MSE thresholds are calibrated ~30%
-above the measured floor at the YAML-default surrogate size — they are not
-intended as a tight accuracy claim, only as a regression guard. Operators
-who need tighter absolute MSEs should grow the surrogate per the guidance
-above and tighten the thresholds in their per-scenario YAML accordingly.
-
-The scenario also records `accept_rate` (interior-bbox sampling efficiency),
-`train_time_s`, and `eval_time_s` in `ScenarioResult.metrics`.
-
-### Code Quality
-
-```bash
-# Linting
-ruff check src/
-
-# Type checking
-mypy src/ --strict
-```
-
----
+Active development (`0.4.0-dev`, pre-release). Shipped work and milestones are in
+[`CHANGELOG.md`](CHANGELOG.md); the release process is in [`RELEASING.md`](RELEASING.md).
+SBIR/commercialization material lives in [`docs/business/`](docs/business/README.md).
 
 ## Mathematical Foundation
 
@@ -978,60 +410,38 @@ same code path is safe everywhere.
 - [ ] Publication: "MCTS-Guided Galerkin Methods for Adaptive PDE Solving" (NeurIPS ML4PhysicalSciences)
 
 ---
+=======
+Active development (`0.1.0`, pre-release). Shipped work and milestones are in
+[`CHANGELOG.md`](CHANGELOG.md); the release process is in [`RELEASING.md`](RELEASING.md).
+SBIR/commercialization material lives in [`docs/business/`](docs/business/README.md).
+>>>>>>> origin/claude/alphagalerkin-implementation-4zGEN
 
 ## Contributing
 
-We welcome contributions! Please see our guidelines:
-
-1. **Code Style**: Follow Google Python Style Guide
-2. **Types**: Use strict typing with jaxtyping
-3. **Tests**: Add property-based tests for mathematical operators
-4. **Docs**: Update CLAUDE.md with architectural decisions
-
-### Development Setup
-
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run tests before committing
-pytest tests/ -v
-ruff check src/
-mypy src/ --strict
-```
-
----
-
-## Created by
-
-Ian Cruickshank
-
----
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), the
+[Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md) for
+vulnerability reporting. Questions: [SUPPORT.md](SUPPORT.md).
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
+MIT — see [LICENSE](LICENSE).
 
 ## Citation
 
-If you use AlphaGalerkin in your research, please cite:
+If you use AlphaGalerkin in your research, please cite it (see
+[`CITATION.cff`](CITATION.cff)):
 
 ```bibtex
 @software{alphagalerkin2026,
-  title = {AlphaGalerkin: Resolution-Independent AI for Games and PDE Solving via MCTS-Guided Galerkin Methods},
+  title  = {AlphaGalerkin: Resolution-Independent AI for Games and PDE Solving via MCTS-Guided Galerkin Methods},
   author = {Cruickshank, Ian},
-  year = {2026},
-  url = {https://github.com/ianshank/AlphaGalerkin}
+  year   = {2026},
+  url    = {https://github.com/ianshank/AlphaGalerkin}
 }
 ```
 
----
-
 ## Acknowledgments
 
-- AlphaGo/AlphaZero teams at DeepMind for foundational work
-- Galerkin Transformer paper authors for the mathematical framework
-- FNet paper authors for FFT mixing insights
-- The Go AI research community
+- AlphaGo / AlphaZero teams at DeepMind for foundational work
+- The Galerkin Transformer and FNet authors for the mathematical framework
+- The Go and scientific-ML research communities

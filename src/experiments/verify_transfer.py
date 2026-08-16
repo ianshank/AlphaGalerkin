@@ -26,6 +26,7 @@ import structlog
 import torch
 from numpy.typing import NDArray
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.experiments.physics_model import PhysicsOperator
 from src.physics.poisson import PoissonDataset
 
@@ -40,7 +41,7 @@ DEFAULT_EVAL_SEED_OFFSET: int = 50000
 
 # Default resolutions for zero-shot transfer testing
 # 9x9 is typical training size, 19x19 is standard Go board
-DEFAULT_EVAL_SIZES: list[int] = [9, 13, 19]
+DEFAULT_EVAL_SIZES: list[int] = list(DEFAULT_BOARD_SIZES)
 DEFAULT_RESOLUTION_TEST_SIZES: list[int] = [9, 13, 19, 25]
 
 # Charge position bounds (fraction of grid)

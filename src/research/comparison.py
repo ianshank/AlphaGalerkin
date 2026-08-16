@@ -16,6 +16,7 @@ from typing import Any
 
 import structlog
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.research.config import ComparisonConfig
 
 
@@ -371,7 +372,7 @@ def create_comparison(
     config = ComparisonConfig(
         model_paths=model_paths or [],
         model_names=model_names or [],
-        eval_sizes=eval_sizes or [9, 13, 19],
+        eval_sizes=eval_sizes or list(DEFAULT_BOARD_SIZES),
         **kwargs,
     )
     return ModelComparison(config=config)

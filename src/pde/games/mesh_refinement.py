@@ -34,7 +34,7 @@ from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 from torch import Tensor
 
 from src.pde.config import MeshRefinementConfig, PDEGameConfig, RefinementStrategy
-from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.game import GamePhase, PDEGame, PDEState
 from src.pde.reward import log_reward
 
 if TYPE_CHECKING:
@@ -821,7 +821,16 @@ class MeshRefinementGame(PDEGame):
             t0 = time.perf_counter()
             try:
                 linear = LinearNDInterpolator(old_coords, old_solution, fill_value=np.nan)
-            except Exception:  # pragma: no cover - degenerate triangulation
+            except Exception as exc:
+                # Degenerate triangulation (e.g. collinear source points).
+                # Covered by tests/pde/test_mesh_refinement.py
+                # ``TestMeshRefinementGameInterpolation::
+                # test_degenerate_triangulation_*``.
+                logger.warning(
+                    "interpolator_build_failed",
+                    n_points=len(old_coords),
+                    error=str(exc),
+                )
                 linear = None
             else:
                 self._cached_interp_state = old_state
@@ -941,63 +950,15 @@ class MeshRefinementGame(PDEGame):
             return True
         return len(self.get_valid_actions(state)) == 0
 
-    def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
-        """Get game result.
+    def _capacity_reason(self, state: PDEState) -> str | None:
+        """Report ``"max_dof"`` once the DOF cap is exceeded.
 
-        Args:
-            state: Terminal state.
-            error_history: Error history.
-
-        Returns:
-            PDEResult.
-
+        Uses the same strict ``>`` as :meth:`is_terminal`: a state sitting
+        exactly on ``max_dof`` is at capacity but not yet over it.
         """
-        errors = self.compute_exact_error(state)
-        converged = state.error_estimate < self.config.error_tolerance
-
-        if len(error_history) > 1:
-            error_reduction_rate = (error_history[0] - error_history[-1]) / len(error_history)
-            dof_efficiency = (error_history[0] - error_history[-1]) / max(1, state.dof)
-        else:
-            error_reduction_rate = 0.0
-            dof_efficiency = 0.0
-
-        budget_used = self.config.computational_budget - state.budget_remaining
-        compute_efficiency = (
-            (error_history[0] - error_history[-1]) / max(1, budget_used)
-            if len(error_history) > 1
-            else 0.0
-        )
-
-        termination_reason = (
-            "converged"
-            if converged
-            else "max_dof"
-            if state.dof > self.config.max_dof
-            else "budget_exhausted"
-            if state.budget_remaining <= 0
-            else "max_steps"
-        )
-
-        return PDEResult(
-            final_error=state.error_estimate,
-            final_dof=state.dof,
-            n_steps=state.step,
-            converged=converged,
-            l2_error=errors["l2"],
-            h1_error=errors["h1"],
-            linf_error=errors["linf"],
-            residual_norm=errors["residual"],
-            error_reduction_rate=error_reduction_rate,
-            dof_efficiency=dof_efficiency,
-            compute_efficiency=compute_efficiency,
-            initial_error=error_history[0] if error_history else state.error_estimate,
-            best_error=min(error_history) if error_history else state.error_estimate,
-            average_error=float(np.mean(error_history)) if error_history else state.error_estimate,
-            error_history=error_history,
-            termination_reason=termination_reason,
-            budget_used=budget_used,
-        )
+        if state.dof > self.config.max_dof:
+            return "max_dof"
+        return None
 
     def compute_exact_error(self, state: PDEState) -> dict[str, float]:
         """Compute error metrics.

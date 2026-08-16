@@ -180,8 +180,6 @@ class SwarmPlanningGame:
             dtype=np.float64,
         )
 
-        self._rng = np.random.default_rng(config.seed)
-
         logger.info(
             "swarm_game_initialized",
             n_agents=config.n_agents,

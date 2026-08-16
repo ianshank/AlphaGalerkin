@@ -6,6 +6,7 @@ functions that upgrade checkpoint data between versions.
 
 from __future__ import annotations
 
+import textwrap
 from typing import Any
 
 import pytest
@@ -212,3 +213,139 @@ class TestMigrateCheckpoint:
         data: dict[str, Any] = {}
         result = migrate_checkpoint(data, "1.1.0")
         assert result["version"] == "1.1.0"
+
+
+class TestMigrationDefaultFreeze:
+    """Drift alarm for the intentionally frozen v1.1.0 migration defaults.
+
+    The 1.0.0 -> 1.1.0 migration injects the training defaults that v1.1.0
+    shipped with, as frozen literals (see the freeze comment in
+    src/training/checkpoint_migration.py). This test asserts those literals
+    still equal the live defaults in config.schemas.TrainingConfig. If a live
+    default is ever retuned, this fails on purpose: decide explicitly whether
+    the retune needs a new migration step (old checkpoints keep the old
+    value) or the freeze comment should be updated (old checkpoints adopt
+    the new value). Do not silently re-point the migration at the live
+    constants — that would rewrite what historical checkpoints migrate to.
+    """
+
+    def test_migration_defaults_match_v1_1_shipped_values(self) -> None:
+        """Frozen migration literals equal today's TrainingConfig defaults."""
+        from config.schemas import TrainingConfig
+
+        data: dict[str, Any] = {"version": "1.0.0", "config": {"training": {}}}
+        migrated = migrate_checkpoint(data, "1.1.0")
+        injected = migrated["config"]["training"]
+
+        live = TrainingConfig()
+        assert injected["lbb_loss_weight"] == live.lbb_loss_weight
+        assert injected["lbb_target"] == live.lbb_target
+        assert injected["log_barrier_weight"] == live.log_barrier_weight
+        assert injected["label_smoothing"] == live.label_smoothing
+
+    # -- Additions: the drift alarm above compares the migration against the
+    # -- *live* defaults, so it cannot detect (a) both sides being retuned in
+    # -- one commit, or (b) the literals being re-pointed at the live config,
+    # -- which is precisely what the freeze comment forbids. The two tests
+    # -- below close those holes.
+
+    V1_1_SHIPPED_DEFAULTS = {
+        "lbb_loss_weight": 0.01,
+        "lbb_target": 0.1,
+        "log_barrier_weight": 0.1,
+        "label_smoothing": 0.0,
+    }
+
+    def test_migration_injects_the_v1_1_shipped_literals(self) -> None:
+        """Pin the frozen values themselves, independent of any live config.
+
+        Changing a migration literal *and* the matching live default in one
+        commit keeps ``test_migration_defaults_match_v1_1_shipped_values``
+        green while silently rewriting what historical checkpoints migrate
+        to. This test is the actual freeze.
+        """
+        data: dict[str, Any] = {"version": "1.0.0", "config": {"training": {}}}
+        migrated = migrate_checkpoint(data, "1.1.0")
+
+        assert migrated["config"]["training"] == self.V1_1_SHIPPED_DEFAULTS
+
+    def test_migration_defaults_are_source_literals_not_live_references(self) -> None:
+        """The setdefault values must be inline constants, per the freeze comment.
+
+        A static check, because re-pointing the literals at
+        ``config.schemas.TrainingConfig`` / ``src.constants`` is behaviourally
+        invisible today (the values agree) yet breaks the freeze.
+        """
+        import ast
+        import inspect
+
+        import src.training.checkpoint_migration as migration_module
+
+        source = inspect.getsource(migration_module._migrate_1_0_to_1_1)
+        tree = ast.parse(textwrap.dedent(source))
+
+        setdefault_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "setdefault"
+        ]
+        assert len(setdefault_calls) == len(self.V1_1_SHIPPED_DEFAULTS)
+
+        for call in setdefault_calls:
+            key, value = call.args
+            assert isinstance(key, ast.Constant), ast.dump(key)
+            assert isinstance(value, ast.Constant), (
+                f"{key.value}'s default must stay an inline literal, not {ast.dump(value)}"
+            )
+            assert value.value == self.V1_1_SHIPPED_DEFAULTS[key.value]
+
+
+class TestMigrationTrainingKeyAbsent:
+    """The 1.0.0 -> 1.1.0 migration when ``config`` has no ``training`` section.
+
+    Contract: the section is created and the frozen v1.1.0 defaults are
+    injected, so a migrated checkpoint always carries the LBB parameters its
+    version claims. A non-dict ``training`` value is the one exception — it is
+    left untouched rather than overwritten, since replacing unrecognised data
+    is not this migration's job.
+
+    Both cases were previously broken by ``training = config.get("training", {})``,
+    which handed back an orphan dict that the ``setdefault`` calls populated and
+    then discarded while the version was still stamped 1.1.0.
+    """
+
+    def test_defaults_are_injected_when_training_key_is_absent(self) -> None:
+        """A config without a 'training' key still receives the v1.1.0 defaults.
+
+        Regression test: the migration previously read the section via
+        ``config.get("training", {})``, so an absent key produced an orphan dict
+        that the setdefault calls populated and then discarded — the checkpoint
+        was stamped 1.1.0 while carrying none of the LBB parameters the
+        migration exists to add.
+
+        The defect is the false version stamp, not a crash: a consumer loading
+        through ``AlphaGalerkinConfig`` gets a ``TrainingConfig`` from
+        ``default_factory`` regardless, so the missing section is silently
+        replaced by *current* defaults rather than the v1.1.0 ones the stamp
+        promises — which is precisely the drift the freeze exists to prevent.
+        """
+        data: dict[str, Any] = {"version": "1.0.0", "config": {}}
+        migrated = migrate_checkpoint(data, "1.1.0")
+
+        assert migrated["version"] == "1.1.0"
+        assert migrated["config"]["training"] == {
+            "lbb_loss_weight": 0.01,
+            "lbb_target": 0.1,
+            "log_barrier_weight": 0.1,
+            "label_smoothing": 0.0,
+        }
+
+    def test_defaults_are_dropped_when_training_is_not_a_dict(self) -> None:
+        """A non-dict 'training' value is left untouched (no crash)."""
+        data: dict[str, Any] = {"version": "1.0.0", "config": {"training": None}}
+        migrated = migrate_checkpoint(data, "1.1.0")
+
+        assert migrated["version"] == "1.1.0"
+        assert migrated["config"]["training"] is None

@@ -28,7 +28,7 @@ from src.training.self_play import SelfPlayWorker
 _move_counter: int = 0
 
 
-def _fast_mcts_search(self, game, add_noise=True):  # noqa: ANN001, ANN202, ARG001
+def _fast_mcts_search(self, game, add_noise=True):
     """Return a uniform policy over legal actions instantly (no tree search).
 
     This replaces ``MCTS.search`` so that self-play games complete in
@@ -42,7 +42,7 @@ def _fast_mcts_search(self, game, add_noise=True):  # noqa: ANN001, ANN202, ARG0
     return dict.fromkeys(legal, prob)
 
 
-def _make_early_termination_wrapper(game_instance, max_moves=4):  # noqa: ANN001, ANN202
+def _make_early_termination_wrapper(game_instance, max_moves=4):
     """Create a wrapper that forces early termination of chess games.
 
     Forces termination after *max_moves* calls that returned False.
@@ -55,7 +55,7 @@ def _make_early_termination_wrapper(game_instance, max_moves=4):  # noqa: ANN001
     real_is_terminal = type(game_instance).is_terminal
     call_count = 0
 
-    def _wrapper(state):  # noqa: ANN001, ANN202
+    def _wrapper(state):
         nonlocal call_count
         if real_is_terminal(game_instance, state):
             return True

@@ -2,7 +2,7 @@
 
 Run locally when you intentionally add a backwards-compatible parameter
 to one of the 18 ADR-frozen classes **and** have updated
-``docs/architecture/ADR-mouse-droid-fusion-integration.md`` to reflect
+``docs/adr/0002-mouse-droid-fusion-integration.md`` to reflect
 the new signature.
 
 Usage::
@@ -33,10 +33,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import structlog  # noqa: E402
+import structlog
 
-from tests.modeling._public_surface_adr import PUBLIC_SURFACE  # noqa: E402
-from tests.modeling._signature_utils import (  # noqa: E402
+from tests.modeling._public_surface_adr import PUBLIC_SURFACE
+from tests.modeling._signature_utils import (
     forward_entries,
     init_entries,
     resolve_class,

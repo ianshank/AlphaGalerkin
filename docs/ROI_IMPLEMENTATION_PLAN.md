@@ -49,7 +49,7 @@ This entry was previously listed as "not started" — that was stale documentati
 - `src/demos/sbir_demo.py` — create end-to-end demo script
 
 **Reuse:**
-- `src/physics/navier_stokes.py` — `NavierStokesOperator` with Taylor-Green vortex (exact analytical solution)
+- `src/pde/operators.py::NavierStokesOperator` — `NavierStokesOperator` with Taylor-Green vortex (exact analytical solution)
 - `src/pde/geometry.py` — `LShapedDomain` for AMR benchmarking
 - `src/research/reporter.py` — existing report generation
 

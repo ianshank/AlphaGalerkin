@@ -4,6 +4,9 @@ Provides a registry-based system for creating matplotlib figures from
 structured data. Each registered plot type accepts a data dictionary
 and a VisualizationConfig, returning a matplotlib Figure.
 
+Requires the ``viz`` extra (``pip install -e '.[viz]'``); matplotlib is not
+a base dependency.
+
 Example:
     from src.poc.visualization.plots import create_plot
     from src.poc.visualization.config import VisualizationConfig

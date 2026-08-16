@@ -3,7 +3,7 @@
 Public re-export surface. External consumers (e.g. Mouse-Droid-AGI's
 sensor fusion head) import from this module rather than the underlying
 files. Constructor signatures listed in
-`docs/architecture/ADR-mouse-droid-fusion-integration.md` are
+`docs/adr/0002-mouse-droid-fusion-integration.md` are
 considered stable for the duration of the integration window.
 """
 

@@ -353,7 +353,7 @@ def gate_llm_client(
     # Resolve backend-specific endpoint/model/VRAM defaults for any field the
     # user left unset. No-op for the default ``lm_studio`` backend; for
     # ``vllm`` / ``llama_cpp`` this fills the canonical port/model/VRAM policy.
-    from src.integrations.openai_compat.registry import (  # noqa: PLC0415
+    from src.integrations.openai_compat.registry import (
         apply_backend_defaults,
     )
 

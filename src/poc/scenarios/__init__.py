@@ -14,6 +14,9 @@ This module contains the core PoC scenarios for AlphaGalerkin:
       refinement policy vs classical Dörfler marking on a shared solver.
     - TransferBaselineCompareScenario: Honest zero-shot transfer — the
       AlphaGalerkin operator (zero-shot) vs a retrained discrete CNN.
+    - StochasticGalerkinCompareScenario: Fokker-Planck/OU density benchmark —
+      deterministic Galerkin attention vs the stochastic Galerkin
+      moment-projection layer (NKE).
 """
 
 from src.poc.scenarios.complexity import ComplexityScenario
@@ -23,6 +26,7 @@ from src.poc.scenarios.noyron_basis import NoyronBasisScenario
 from src.poc.scenarios.noyron_hx import NoyronHXScenario
 from src.poc.scenarios.scaling_law import ScalingLawScenario
 from src.poc.scenarios.stability import StabilityScenario
+from src.poc.scenarios.stochastic_galerkin_compare import StochasticGalerkinCompareScenario
 from src.poc.scenarios.transfer import TransferScenario
 from src.poc.scenarios.transfer_baseline_compare import TransferBaselineCompareScenario
 
@@ -34,6 +38,7 @@ __all__ = [
     "NoyronHXScenario",
     "ScalingLawScenario",
     "StabilityScenario",
+    "StochasticGalerkinCompareScenario",
     "TransferBaselineCompareScenario",
     "TransferScenario",
 ]

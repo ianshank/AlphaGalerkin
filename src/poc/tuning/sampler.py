@@ -204,6 +204,15 @@ class TPESampler(BaseSampler):
         try:
             return self._sample_tpe(search_space)
         except ImportError:
+            # optuna is an undeclared optional dependency: without it this silently
+            # runs RANDOM search while the run still reports sampler="tpe". Warn so
+            # the results are not mistaken for TPE.
+            logger.warning(
+                "tpe_unavailable_falling_back_to_random",
+                trial_number=trial_number,
+                reason="optuna is not installed",
+                remedy="pip install -e '.[tuning]'",
+            )
             return self._fallback.sample(search_space, trial_number)
 
     def _sample_tpe(

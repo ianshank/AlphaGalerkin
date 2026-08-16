@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.training.callbacks import CallbackSpec
 
 
@@ -112,21 +113,26 @@ class MCTSConfig(BaseModel):
     # Search parameters
     n_simulations: int = Field(
         default=800,
-        description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.",
+        description="Number of MCTS simulations per move. AlphaZero uses 800 for "
+        "competition play. Lower values (200-400) for training speed.",
     )
     c_puct: float = Field(
         default=1.5,
-        description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.",
+        description="PUCT exploration constant (AlphaZero default=1.5). Higher values "
+        "encourage exploration. See Silver et al. 2017, Appendix A.",
     )
 
     # Dirichlet noise for root exploration
     dirichlet_alpha: float = Field(
         default=0.03,
-        description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.",
+        description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for "
+        "Chess. Inversely proportional to approximate game branching factor.",
     )
     dirichlet_epsilon: float = Field(
         default=0.25,
-        description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.",
+        description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls "
+        "exploration vs exploitation at root node.",
+    )
     )
 
     # Temperature for move selection
@@ -157,6 +163,28 @@ class TrainingConfig(BaseModel):
     )
     warmup_steps: int = Field(default=1000, description="Number of warmup steps")
     total_steps: int = Field(default=100000, description="Total training steps")
+    min_lr_ratio: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Ratio of minimum LR to peak LR for cosine/linear schedules. "
+            "Default 0.1 preserves the value Trainer historically hardcoded; "
+            "the conservative BaseTrainer default is 0.01 "
+            "(src/training/base_trainer.py::DEFAULT_MIN_LR_RATIO)."
+        ),
+    )
+    warmup_start_factor: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Starting LR factor for warmup (lr * factor at step 0). "
+            "Default 0.1 preserves the value Trainer historically hardcoded; "
+            "the conservative BaseTrainer default is 1e-6 "
+            "(src/training/base_trainer.py::DEFAULT_WARMUP_START_FACTOR)."
+        ),
+    )
 
     # Self-play
     n_self_play_games: int = Field(default=100, description="Self-play games per iteration")
@@ -479,7 +507,7 @@ class AlphaGalerkinConfig(BaseModel):
     checkpoint_dir: str = Field(default="checkpoints", description="Directory for checkpoints")
     log_interval: int = Field(default=100, description="Steps between console logging")
     board_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Board sizes to train on (resolution-independent)",
     )
 

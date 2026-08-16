@@ -29,6 +29,7 @@ from src.poc.config_noyron import NoyronHXScenarioConfig
 from src.poc.device import resolve_device as _resolve_device
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
+from src.seeding import set_global_seeds
 
 logger = structlog.get_logger(__name__)
 
@@ -165,8 +166,7 @@ class NoyronHXScenario(BaseScenario):
         assert self._scenario_logger is not None
         assert self._operator is not None
 
-        torch.manual_seed(self.config.seed)
-        np.random.seed(self.config.seed)
+        set_global_seeds(self.config.seed)
 
         model = PhysicsOperator(
             d_model=self.config.d_model,

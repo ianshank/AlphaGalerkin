@@ -74,12 +74,10 @@ Three config classes with 50+ validated fields:
 pytest tests/distributed/ -v
 pytest tests/training/test_distributed_context.py -v
 
-# Launch distributed training
-torchrun --nproc_per_node=4 scripts/train_distributed.py
-
-# Multi-node training
-torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \
-    --master_addr=<MASTER_IP> scripts/train_distributed.py
+# NOTE: there is no launcher script. `scripts/train_distributed.py` does not exist and
+# `src/distributed/` has no `__main__`; DistributedTrainer is a library class only.
+# The previously documented `torchrun ... scripts/train_distributed.py` commands were never
+# runnable. Writing the launcher is tracked work.
 ```
 
 ## Key Files

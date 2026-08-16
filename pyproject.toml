@@ -10,7 +10,17 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "AlphaGalerkin Team"}
+    {name = "Ian Cruickshank", email = "ianshank@gmail.com"}
+]
+keywords = [
+    "operator-learning",
+    "galerkin",
+    "monte-carlo-tree-search",
+    "partial-differential-equations",
+    "alphazero",
+    "resolution-invariant",
+    "scientific-machine-learning",
+    "fourier-neural-operator",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
 dependencies = [
@@ -36,18 +47,47 @@ dependencies = [
     # the eval-harness usage; the tracker no-ops without LANGFUSE_* credentials.
     "langfuse>=2,<3",
     "typer>=0.9.0",
+    # Imported at module level by src/poc/runner.py and
+    # src/research/pde_benchmarks.py. It was previously satisfied only
+    # transitively via hydra-core -> omegaconf, so a hydra major bump would have
+    # broken `import src.poc.runner` outright. Declared directly.
+    "pyyaml>=6.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ianshank/AlphaGalerkin"
+Repository = "https://github.com/ianshank/AlphaGalerkin"
+Documentation = "https://ianshank.github.io/AlphaGalerkin/"
+Issues = "https://github.com/ianshank/AlphaGalerkin/issues"
+Changelog = "https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CHANGELOG.md"
+
 [project.optional-dependencies]
+# Optuna powers the TPE sampler in src/poc/tuning/sampler.py. Without it,
+# sampler="tpe" silently degrades to random search (the fallback now warns —
+# see TPESampler.sample), so the dependency is declared rather than implied.
+tuning = [
+    "optuna>=3.0",
+]
 # scikit-fem backs the hp-adaptive FEM classical baseline used for DOE
 # Genesis proposal benchmarks (see src/research/fem_baseline.py).
 fem = [
     "scikit-fem>=9.0",
 ]
+# matplotlib backs the CSV/PNG report artifacts: src/poc/visualization/
+# imports it at module level, and the *_compare research harnesses' plotting
+# helpers import it lazily with a graceful skip. Nothing in the base install
+# imports src/poc/visualization/ eagerly, so it stays out of core deps;
+# pull this extra in (or `dev`, which already includes it) to render plots.
+viz = [
+    "matplotlib>=3.7.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "hypothesis>=6.0.0",
+    # pre-commit runs the ruff lint/format hooks locally so commits match the CI
+    # gate. Install the git hook with `pre-commit install` (see CONTRIBUTING.md).
+    "pre-commit>=3.5",
     "mypy>=1.10,<1.12",
     # Pinned: a newer ruff formats Markdown by default (graduated from preview),
     # which reformats embedded code blocks in *.md docs and breaks the CI format
@@ -145,6 +185,14 @@ eval-harness = [
 eval-harness-langfuse = [
     "langfuse>=2,<3",
 ]
+# Documentation site toolchain (MkDocs Material + API autodoc from docstrings).
+# Only needed to build/serve the docs site locally or in the docs CI workflow;
+# `mkdocstrings` imports the package, so a base install (torch etc.) is also
+# pulled in transitively.
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+]
 
 [project.scripts]
 alphagalerkin = "src.tools.cli:main"
@@ -166,7 +214,7 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "D", "UP", "ANN", "B", "C4", "SIM"]
+select = ["E", "F", "W", "I", "N", "D", "UP", "ANN", "B", "C4", "SIM", "RUF100"]
 ignore = [
     "D100",   # Missing docstring in public module
     "D102",   # Missing docstring in public method
@@ -179,8 +227,6 @@ ignore = [
     "ANN001", # Missing type annotation for function argument (use mypy instead)
     "ANN002", # Missing type annotation for *args
     "ANN003", # Missing type annotation for **kwargs (intentional Any)
-    "ANN101", # Missing type annotation for self (deprecated in ruff 0.3+)
-    "ANN102", # Missing type annotation for cls (deprecated in ruff 0.3+)
     "ANN202", # Missing return type for private function
     "ANN204", # Missing return type for special method
     "F722",   # Syntax error in forward annotation (jaxtyping)
@@ -293,18 +339,15 @@ module = "config.*"
 disallow_untyped_decorators = false
 disable_error_code = ["misc"]
 
-# Dashboard uses Gradio which has incomplete stubs; relax strict checks
+# Dashboard uses Gradio which has incomplete stubs; relax strict checks.
+# Wildcarded deliberately: the previous hand-enumeration meant a NEW dashboard module
+# silently inherited full --strict while every existing one was exempt. Both entries are
+# required -- "dashboard.*" does not match the "dashboard" package itself.
+# The CI mypy step stays scoped to src/ (see dashboard/AGENT.md for why).
 [[tool.mypy.overrides]]
 module = [
     "dashboard",
-    "dashboard.app",
-    "dashboard.config",
-    "dashboard.utils",
-    "dashboard.tabs",
-    "dashboard.tabs.game_tab",
-    "dashboard.tabs.pde_tab",
-    "dashboard.tabs.poc_tab",
-    "dashboard.tabs.training_tab",
+    "dashboard.*",
 ]
 disallow_untyped_defs = false
 disallow_untyped_decorators = false
@@ -395,7 +438,7 @@ disable_error_code = ["assignment", "arg-type", "return-value", "operator", "uni
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: end-to-end integration tests",

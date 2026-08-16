@@ -376,12 +376,17 @@ class AlphaGalerkinSolver(BaseSolver):
         # underlying game's ``is_terminal`` already converges on the same
         # threshold and ``adapter.is_terminal()`` fires first. The break
         # reason is captured in ``termination_reason`` so metadata
-        # distinguishes e.g. ``no_legal_actions`` from ``max_steps``.
+        # distinguishes e.g. ``no_legal_actions`` from ``max_steps``; when the
+        # game itself stops us, ``PDEGame.termination_reason`` supplies the
+        # finer cause (``converged`` vs ``max_dof`` vs ``budget_exhausted``).
         n_actions_taken = 0
         termination_reason = "max_steps"
         for step in range(self.config.max_steps):
             if adapter.is_terminal():
-                termination_reason = "is_terminal"
+                # The game classifies *why* it is terminal (converged /
+                # max_dof / max_basis / budget_exhausted / ...); a bare
+                # "is_terminal" would collapse those into one useless label.
+                termination_reason = pde_game.termination_reason(adapter.state)
                 log.debug("terminated_early", step=step, reason=termination_reason)
                 break
 
@@ -402,6 +407,24 @@ class AlphaGalerkinSolver(BaseSolver):
             adapter.apply_action(action)
             mcts.advance(action)
             n_actions_taken += 1
+        else:
+            # Loop ran the step budget out without breaking. The *last* action
+            # may still have made the game terminal (converging on the final
+            # step is the common case), and the game's own cause is more
+            # accurate than the default "max_steps" in that situation. Guarded
+            # on is_terminal so a non-terminal exhaustion keeps "max_steps"
+            # rather than recording the game's "running". That guard is
+            # defensive rather than currently reachable: the game inherits this
+            # same max_steps (see _build_game above), so exhausting the budget
+            # always leaves the game terminal on its own step rung. It costs
+            # nothing and stops the invariant depending on that coupling.
+            if adapter.is_terminal():
+                termination_reason = pde_game.termination_reason(adapter.state)
+                log.debug(
+                    "terminated_on_step_budget",
+                    step=self.config.max_steps,
+                    reason=termination_reason,
+                )
 
         wall_time = time.perf_counter() - t0
 
@@ -424,6 +447,10 @@ class AlphaGalerkinSolver(BaseSolver):
         l2_error = errors.get("l2")
         if l2_error is None and solution_available:
             l2_error = self._compute_l2_error(solution_arr, grid_arr, operator)
+        # ``compute_exact_error`` computes h1 alongside l2, and ``SolverResult``
+        # carries (and serialises) an ``h1_error`` field, so read it here rather
+        # than exporting a permanently-null column.
+        h1_error = errors.get("h1")
 
         # ``final_state.dof`` is the authoritative DOF count (basis functions
         # selected for basis_selection, mesh nodes for mesh_refinement).
@@ -445,6 +472,7 @@ class AlphaGalerkinSolver(BaseSolver):
             n_dof=n_dof_final,
             wall_time_seconds=wall_time,
             l2_error=float(l2_error) if l2_error is not None else None,
+            h1_error=float(h1_error) if h1_error is not None else None,
             metadata={
                 METADATA_KEY_SOLVER: self.name,
                 # Determinism-affecting fields - surfaced explicitly so

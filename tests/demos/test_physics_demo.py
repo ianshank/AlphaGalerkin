@@ -197,6 +197,56 @@ class TestPhysicsDemo:
         assert mse_chart_img.ndim == 3
         assert "Zero-Shot Transfer Results" in results_text
 
+    def test_visualize_transfer_without_model_is_labelled_a_placeholder(
+        self, demo: PhysicsDemo
+    ) -> None:
+        """No model loaded => zeros => the figures are data statistics, not model error.
+
+        ``predict()`` returns zeros when ``self.model is None``, so an unlabelled MSE
+        here would report ``mean(ground_truth**2)`` as if it were measured error.
+        """
+        assert demo.model is None
+        _, _, results_text = demo.visualize_transfer(seed=42)
+
+        assert "PLACEHOLDER" in results_text
+        assert "NOT A MEASUREMENT" in results_text
+        # Pass/fail, the threshold bar, and inference timings are all meaningless with
+        # no inference — none may appear beside numbers that are data statistics.
+        assert "[PASS]" not in results_text
+        assert "[FAIL]" not in results_text
+        assert "inference:" not in results_text
+        assert "Threshold:" not in results_text
+
+    def test_resolution_independence_without_model_makes_no_capability_claim(
+        self, demo: PhysicsDemo
+    ) -> None:
+        """The no-model path must not assert the operator generalises."""
+        assert demo.model is None
+        _, explanation = demo.demonstrate_resolution_independence(
+            small_size=9, large_size=13, seed=42
+        )
+
+        # Collapse whitespace as well as case: the explanation is hard-wrapped, so a
+        # phrase check against the raw text would break the moment a line rewraps.
+        normalized = " ".join(explanation.split()).casefold()
+        assert "placeholder" in normalized
+        assert "data statistics" in normalized
+        # Assert the disclaimer *positively*: banning one phrase would let the text
+        # regress to any other capability claim and still pass.
+        assert "no claim about resolution independence can be made" in normalized
+        # And reject the loaded-model wording specifically. Note the hyphenated
+        # "resolution-independent" is the model-only phrasing; the no-model text says
+        # "resolution independence" (unhyphenated) in its disclaimer, so this does not
+        # collide with the assertion above.
+        for banned in (
+            "can accurately predict",
+            "resolution-independent",
+            "continuous fourier features",
+            "key insight:",
+            "inference time",
+        ):
+            assert banned not in normalized, f"no-model explanation must not claim {banned!r}"
+
     def test_demonstrate_resolution_independence(self, demo: PhysicsDemo) -> None:
         """Test resolution independence demonstration."""
         comparison_img, explanation = demo.demonstrate_resolution_independence(
@@ -247,13 +297,21 @@ class TestPhysicsDemoCustomConfig:
         assert 11 in results
         assert 15 in results
 
-    def test_mse_threshold_in_output(self) -> None:
-        """Test MSE threshold appears in output."""
+    def test_mse_threshold_suppressed_without_a_model(self) -> None:
+        """The threshold line is emitted only when a model actually ran.
+
+        Previously asserted the opposite (``"Threshold: 0.01" in results_text``) with no
+        model loaded — but predictions are all zeros there, so a pass/fail bar printed
+        beside them invites exactly the comparison that cannot be made. The threshold is
+        now confined to the loaded-model branch; ``TestPhysicsDemo`` covers its presence.
+        """
         config = PhysicsDemoConfig(mse_threshold=0.01)
         demo = PhysicsDemo(config)
+        assert demo.model is None
 
         _, _, results_text = demo.visualize_transfer(seed=42)
-        assert "Threshold: 0.01" in results_text
+        assert "Threshold:" not in results_text
+        assert "NOT A MEASUREMENT" in results_text
 
 
 class TestPhysicsDemoEdgeCases:

@@ -237,7 +237,7 @@ class TournamentConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_swiss_rounds(self) -> "TournamentConfig":
+    def validate_swiss_rounds(self) -> TournamentConfig:
         """Validate Swiss rounds configuration."""
         if self.format == TournamentFormat.SWISS and self.rounds < 1:
             raise ValueError("Swiss tournament requires at least 1 round")
@@ -248,6 +248,7 @@ class TournamentConfig(BaseModel):
 
         Returns:
             Hexadecimal hash string.
+
         """
         data = self.model_dump(mode="json")
         json_str = json.dumps(data, sort_keys=True)
@@ -272,6 +273,7 @@ def create_tournament_config(
 
     Returns:
         TournamentConfig instance.
+
     """
     match_config = MatchConfig(
         board_size=board_size,

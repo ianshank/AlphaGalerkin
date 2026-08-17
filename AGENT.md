@@ -35,15 +35,16 @@ Each module has its own `AGENT.md` with detailed context. Use the appropriate mo
 
 | Module | Agent Persona | Primary Concern |
 |--------|--------------|-----------------|
+| [`src/core/`](src/core/) | Core Systems Engineer | Structural protocols (Evaluator, Game, Operator, Solver), generic Registry[T] |
 | [`src/modeling/`](src/modeling/AGENT.md) | Neural Architect | Attention mechanisms, Fourier features, model composition |
 | [`src/math_kernel/`](src/math_kernel/AGENT.md) | Numerical Analyst | Basis functions, integral approximation, spectral methods |
-| [`src/mcts/`](src/mcts/AGENT.md) | Search Strategist | Tree search, leaf evaluation, Gumbel sampling |
-| [`src/training/`](src/training/AGENT.md) | Training Engineer | Loss functions, replay buffers, self-play, checkpointing |
+| [`src/mcts/`](src/mcts/AGENT.md) | Search Strategist | Tree search, leaf evaluation, Gumbel sampling, search constants |
+| [`src/training/`](src/training/AGENT.md) | Training Engineer | Loss functions, replay buffers, self-play, checkpointing, training constants |
 | [`src/games/`](src/games/AGENT.md) | Game Designer | Game abstractions, Go/Chess rules, symmetry augmentation |
-| [`src/pde/`](src/pde/AGENT.md) | PDE Solver | PDE operators, basis selection, mesh refinement as games |
-| [`src/agents/`](src/agents/AGENT.md) | Orchestration Engineer | Multi-physics agents, lifecycle hooks, opt-in timeout, research loop, scaffolding |
+| [`src/pde/`](src/pde/AGENT.md) | PDE Solver | PDE operators, basis selection, mesh refinement as games, physics constants |
+| [`src/agents/`](src/agents/AGENT.md) | Orchestration Engineer | Multi-physics agents, HookManager, BenchmarkSkill, SelfPlaySkill, research loop |
 | [`src/integrations/`](src/integrations/AGENT.md) | Integration Engineer | OpenAI-compatible LLM clients, preflight, optional-dependency gating |
-| [`src/poc/`](src/poc/AGENT.md) | Validation Scientist | Scenario framework (incl. `noyron_basis` v2.2), statistical testing, tuning |
+| [`src/poc/`](src/poc/AGENT.md) | Validation Scientist | Scenario framework (incl. `--demo`, `--export-results`), statistical testing, tuning |
 | [`src/templates/`](src/templates/AGENT.md) | Infrastructure Builder | Reusable patterns: config, registry, logging, CLI |
 | [`src/distributed/`](src/distributed/AGENT.md) | Distributed Systems Engineer | DDP training, gradient sync, multi-node coordination |
 | [`src/deployment/`](src/deployment/AGENT.md) | Deployment Engineer | ONNX export, quantization, runtime inference |

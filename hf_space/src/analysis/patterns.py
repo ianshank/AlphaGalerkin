@@ -39,6 +39,7 @@ class Pattern:
         description: Human-readable description.
         variations: Named variations of this pattern.
         tags: Tags for categorization.
+
     """
 
     name: str
@@ -69,6 +70,7 @@ class Pattern:
 
         Returns:
             True if pattern matches.
+
         """
         board_size = len(board)
 
@@ -105,6 +107,7 @@ class Pattern:
 
         Returns:
             Transformed (dx, dy).
+
         """
         if flip:
             dx = -dx
@@ -130,7 +133,7 @@ class Pattern:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Pattern":
+    def from_dict(cls, data: dict[str, Any]) -> Pattern:
         """Create from dictionary."""
         stones = {}
         for key, color in data.get("stones", {}).items():
@@ -158,6 +161,7 @@ class PatternMatch:
         rotation: Rotation applied.
         flipped: Whether horizontally flipped.
         confidence: Match confidence (0-1).
+
     """
 
     pattern: Pattern
@@ -196,6 +200,7 @@ class PatternLibrary:
 
         Args:
             logger: Optional structured logger.
+
         """
         self._logger = logger or structlog.get_logger(__name__)
         self._patterns: dict[str, Pattern] = {}
@@ -207,6 +212,7 @@ class PatternLibrary:
 
         Args:
             pattern: Pattern to add.
+
         """
         self._patterns[pattern.name] = pattern
         self._by_type[pattern.pattern_type].append(pattern.name)
@@ -226,6 +232,7 @@ class PatternLibrary:
 
         Returns:
             Pattern or None if not found.
+
         """
         return self._patterns.get(name)
 
@@ -237,11 +244,9 @@ class PatternLibrary:
 
         Returns:
             List of patterns.
+
         """
-        return [
-            self._patterns[name]
-            for name in self._by_type.get(pattern_type, [])
-        ]
+        return [self._patterns[name] for name in self._by_type.get(pattern_type, [])]
 
     def get_by_tag(self, tag: str) -> list[Pattern]:
         """Get patterns by tag.
@@ -251,17 +256,16 @@ class PatternLibrary:
 
         Returns:
             List of matching patterns.
+
         """
-        return [
-            self._patterns[name]
-            for name in self._by_tag.get(tag, [])
-        ]
+        return [self._patterns[name] for name in self._by_tag.get(tag, [])]
 
     def list_patterns(self) -> list[str]:
         """List all pattern names.
 
         Returns:
             List of pattern names.
+
         """
         return list(self._patterns.keys())
 
@@ -270,6 +274,7 @@ class PatternLibrary:
 
         Returns:
             List of pattern types.
+
         """
         return [t for t in PatternType if self._by_type.get(t)]
 
@@ -278,6 +283,7 @@ class PatternLibrary:
 
         Returns:
             List of tags.
+
         """
         return list(self._by_tag.keys())
 
@@ -289,6 +295,7 @@ class PatternLibrary:
 
         Returns:
             True if pattern was removed.
+
         """
         if name not in self._patterns:
             return False
@@ -311,13 +318,14 @@ class PatternLibrary:
 
         Returns:
             Dictionary with all patterns.
+
         """
         return {
             "patterns": [p.to_dict() for p in self._patterns.values()],
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PatternLibrary":
+    def from_dict(cls, data: dict[str, Any]) -> PatternLibrary:
         """Create library from dictionary.
 
         Args:
@@ -325,6 +333,7 @@ class PatternLibrary:
 
         Returns:
             PatternLibrary instance.
+
         """
         library = cls()
         for pattern_data in data.get("patterns", []):
@@ -352,6 +361,7 @@ class PatternMatcher:
         Args:
             library: Pattern library to use.
             logger: Optional structured logger.
+
         """
         self._library = library or PatternLibrary()
         self._logger = logger or structlog.get_logger(__name__)
@@ -380,6 +390,7 @@ class PatternMatcher:
 
         Returns:
             List of pattern matches.
+
         """
         matches: list[PatternMatch] = []
 
@@ -399,13 +410,15 @@ class PatternMatcher:
                     for rotation in rotations:
                         for flip in flips:
                             if pattern.matches(board, x, y, rotation, flip):
-                                matches.append(PatternMatch(
-                                    pattern=pattern,
-                                    x=x,
-                                    y=y,
-                                    rotation=rotation,
-                                    flipped=flip,
-                                ))
+                                matches.append(
+                                    PatternMatch(
+                                        pattern=pattern,
+                                        x=x,
+                                        y=y,
+                                        rotation=rotation,
+                                        flipped=flip,
+                                    )
+                                )
 
         return matches
 
@@ -426,6 +439,7 @@ class PatternMatcher:
 
         Returns:
             List of matches for this pattern.
+
         """
         pattern = self._library.get_pattern(pattern_name)
         if pattern is None:
@@ -441,13 +455,15 @@ class PatternMatcher:
                 for rotation in rotations:
                     for flip in flips:
                         if pattern.matches(board, x, y, rotation, flip):
-                            matches.append(PatternMatch(
-                                pattern=pattern,
-                                x=x,
-                                y=y,
-                                rotation=rotation,
-                                flipped=flip,
-                            ))
+                            matches.append(
+                                PatternMatch(
+                                    pattern=pattern,
+                                    x=x,
+                                    y=y,
+                                    rotation=rotation,
+                                    flipped=flip,
+                                )
+                            )
 
         return matches
 
@@ -464,6 +480,7 @@ class PatternMatcher:
 
         Returns:
             List of patterns to check.
+
         """
         if pattern_types is None and tags is None:
             return list(self._library._patterns.values())
@@ -495,6 +512,7 @@ class PatternMatcher:
 
         Returns:
             List of patterns matching at this position.
+
         """
         matches: list[PatternMatch] = []
 
@@ -502,13 +520,15 @@ class PatternMatcher:
             for rotation in [0, 90, 180, 270]:
                 for flip in [False, True]:
                     if pattern.matches(board, x, y, rotation, flip):
-                        matches.append(PatternMatch(
-                            pattern=pattern,
-                            x=x,
-                            y=y,
-                            rotation=rotation,
-                            flipped=flip,
-                        ))
+                        matches.append(
+                            PatternMatch(
+                                pattern=pattern,
+                                x=x,
+                                y=y,
+                                rotation=rotation,
+                                flipped=flip,
+                            )
+                        )
 
         return matches
 
@@ -518,59 +538,68 @@ def create_basic_library() -> PatternLibrary:
 
     Returns:
         PatternLibrary with common patterns.
+
     """
     library = PatternLibrary()
 
     # Empty triangle (bad shape)
-    library.add_pattern(Pattern(
-        name="empty_triangle",
-        pattern_type=PatternType.SHAPE,
-        stones={
-            (0, 0): "B",
-            (1, 0): "B",
-            (0, 1): "B",
-        },
-        description="Empty triangle - inefficient shape",
-        tags=["bad_shape", "beginner"],
-        difficulty=1,
-    ))
+    library.add_pattern(
+        Pattern(
+            name="empty_triangle",
+            pattern_type=PatternType.SHAPE,
+            stones={
+                (0, 0): "B",
+                (1, 0): "B",
+                (0, 1): "B",
+            },
+            description="Empty triangle - inefficient shape",
+            tags=["bad_shape", "beginner"],
+            difficulty=1,
+        )
+    )
 
     # Tiger's mouth
-    library.add_pattern(Pattern(
-        name="tigers_mouth",
-        pattern_type=PatternType.SHAPE,
-        stones={
-            (0, 0): "B",
-            (2, 0): "B",
-            (1, 1): "B",
-        },
-        description="Tiger's mouth - flexible shape with eye potential",
-        tags=["good_shape", "connection"],
-        difficulty=2,
-    ))
+    library.add_pattern(
+        Pattern(
+            name="tigers_mouth",
+            pattern_type=PatternType.SHAPE,
+            stones={
+                (0, 0): "B",
+                (2, 0): "B",
+                (1, 1): "B",
+            },
+            description="Tiger's mouth - flexible shape with eye potential",
+            tags=["good_shape", "connection"],
+            difficulty=2,
+        )
+    )
 
     # Star point opening
-    library.add_pattern(Pattern(
-        name="star_point",
-        pattern_type=PatternType.OPENING,
-        stones={
-            (3, 3): "B",  # 4-4 point
-        },
-        description="Star point opening - influence-oriented",
-        tags=["opening", "fuseki"],
-        difficulty=1,
-    ))
+    library.add_pattern(
+        Pattern(
+            name="star_point",
+            pattern_type=PatternType.OPENING,
+            stones={
+                (3, 3): "B",  # 4-4 point
+            },
+            description="Star point opening - influence-oriented",
+            tags=["opening", "fuseki"],
+            difficulty=1,
+        )
+    )
 
     # 3-4 point
-    library.add_pattern(Pattern(
-        name="komoku",
-        pattern_type=PatternType.OPENING,
-        stones={
-            (2, 3): "B",  # 3-4 point
-        },
-        description="Komoku (3-4 point) - balanced territory and influence",
-        tags=["opening", "fuseki"],
-        difficulty=1,
-    ))
+    library.add_pattern(
+        Pattern(
+            name="komoku",
+            pattern_type=PatternType.OPENING,
+            stones={
+                (2, 3): "B",  # 3-4 point
+            },
+            description="Komoku (3-4 point) - balanced territory and influence",
+            tags=["opening", "fuseki"],
+            difficulty=1,
+        )
+    )
 
     return library

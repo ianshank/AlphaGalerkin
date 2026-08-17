@@ -534,12 +534,58 @@ class GalerkinAttention(nn.Module):
 
 ---
 
+## Level 3: Component Diagram - Core Protocols & Agent Framework (v0.4.0)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       CORE PROTOCOLS & AGENT SYSTEM                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                      Runtime Checkable Protocols                     │
+    │                                                                     │
+    │   ┌─────────────────────┐                 ┌─────────────────────┐   │
+    │   │  EvaluatorProtocol  │                 │    GameProtocol     │   │
+    │   │  evaluate(), batch  │                 │ get_state, clone()  │   │
+    │   └──────────┬──────────┘                 └──────────┬──────────┘   │
+    │              │                                       │              │
+    │              ▼                                       ▼              │
+    │   ┌─────────────────────┐                 ┌─────────────────────┐   │
+    │   │   OperatorProtocol  │                 │    SolverProtocol   │   │
+    │   │ forward, residual() │                 │ solve(), get_metrics│   │
+    │   └─────────────────────┘                 └─────────────────────┘   │
+    └──────────────────────────────────┬──────────────────────────────────┘
+                                       │
+                                       ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                    Thread-Safe Generic Registry                     │
+    │                                                                     │
+    │   Registry[T]: thread locking, alias resolution, deprecation warnings │
+    └──────────────────────────────────┬──────────────────────────────────┘
+                                       │
+                                       ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                      Agent Lifecycle & Skills                       │
+    │                                                                     │
+    │   ┌─────────────────────────────────────────────────────────────┐   │
+    │   │ HookManager: on_init, pre_step, post_step, on_error, complete│   │
+    │   │ Built-in: LoggingHook, MetricsCollectorHook, EarlyStoppingHook │
+    │   └──────────────────────────────┬──────────────────────────────┘   │
+    │                                  │                                  │
+    │   ┌──────────────────────────────┴──────────────────────────────┐   │
+    │   │ Declarative Skills: BenchmarkSkill, SelfPlaySkill           │   │
+    │   └─────────────────────────────────────────────────────────────┘   │
+    └─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Quality Attributes
 
 | Attribute | Approach |
 |-----------|----------|
 | **Performance** | O(N) Galerkin attention, O(N log N) FNet mixing, batch MCTS |
 | **Scalability** | Resolution-independent architecture, distributed training |
-| **Maintainability** | Strict typing (jaxtyping), einops for dimension clarity |
-| **Testability** | Property-based tests (Hypothesis), mathematical invariant checks |
-| **Reliability** | LBB stability monitoring, gradient clipping, spectral filtering |
+| **Maintainability** | Strict typing (jaxtyping), einops for dimension clarity, core protocols |
+| **Testability** | 7-tier test pyramid: sanity, security, benchmarks, regression, unit, integration, e2e |
+| **Reliability** | LBB stability monitoring, gradient clipping, spectral filtering, lifecycle hooks |

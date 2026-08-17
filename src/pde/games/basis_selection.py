@@ -134,11 +134,14 @@ class BasisSelectionGame(PDEGame):
         # Generate candidate basis functions
         self._candidate_bases = self._generate_candidates()
 
-        # Cache collocation points (use configurable count)
+        # Cache collocation points (use configurable count). Forward the config
+        # seed so point sampling is reproducible per seed; ``seed=None`` (the
+        # default for every existing caller) preserves the prior random behavior.
         n_collocation = self.basis_config.n_collocation_points
         self._collocation_points = pde_operator.generate_collocation_points(
             n_points=n_collocation,
             method="lhs",
+            seed=self.basis_config.seed,
         )
 
         # Cache boundary points (use configurable count)

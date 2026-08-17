@@ -314,6 +314,35 @@ class TestLoadConfigFromDict:
 
         assert isinstance(config, BaseScenarioConfig)
 
+    def test_load_noyron_hx_config(self) -> None:
+        """Loader must dispatch noyron_hx YAML to NoyronHXScenarioConfig.
+
+        Regression for a bug where ``load_config_from_dict`` only knew about
+        transfer/complexity/stability and silently fell back to
+        ``BaseScenarioConfig`` for ``name="noyron_hx"``. With ``extra="forbid"``
+        on the base, this raised 24 Pydantic validation errors at runtime
+        when the headline YAML was loaded via the CLI runner.
+        """
+        from src.poc.config_noyron import NoyronHXScenarioConfig
+
+        data = {
+            "name": "noyron_hx",
+            "description": "regression",
+            "helix_R_major": 0.05,
+            "helix_r_minor": 0.012,
+            "helix_pitch": 0.02,
+            "helix_n_turns": 5,
+            "n_train_pts": 4096,
+            "n_eval_pts": 16384,
+            "device": "cpu",
+        }
+
+        config = load_config_from_dict(data)
+
+        assert isinstance(config, NoyronHXScenarioConfig)
+        assert config.helix_R_major == 0.05
+        assert config.n_eval_pts == 16384
+
 
 class TestConfigSerialization:
     """Tests for config serialization/deserialization."""

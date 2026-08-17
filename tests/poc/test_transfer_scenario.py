@@ -5,18 +5,6 @@ only indirectly (registry listings, CLI journeys). This module covers the
 lifecycle surface, and in particular the ``setup()`` device resolution that was
 changed from an inline ``torch.device("cuda" if ... else "cpu")`` to the shared
 ``resolve_device`` policy helper.
-
-Validates:
-    - ``setup()`` resolves the device through ``src.poc.device.resolve_device``
-      with the ``"auto"`` preference (silent CPU fallback), not a hardcoded
-      ternary, and lands on CPU on a CPU-only box.
-    - ``setup()`` creates the output directory and the scenario logger.
-    - Sibling scenarios (``complexity``, ``stability``) use the same policy.
-    - ``teardown()`` releases the model.
-    - Registration and config defaults.
-
-``execute()`` is deliberately not run: it trains a PhysicsOperator for
-``n_epochs`` and is covered by the scenario-runner/e2e surfaces.
 """
 
 from __future__ import annotations

@@ -48,6 +48,7 @@ DEFAULT_HIGHER_BETTER_SUFFIXES: tuple[str, ...] = (
     "solved_fraction",
     "_reduction_pct",
     "accept_rate",
+    "_pass_rate",
 )
 
 
@@ -122,6 +123,12 @@ def register_builtin_scenarios() -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     """Run scenarios."""
+    import logging
+
+    if getattr(args, "demo", False):
+        if args.log_level not in ["DEBUG", "WARNING"]:
+            logging.getLogger().setLevel(logging.ERROR)
+
     register_builtin_scenarios()
 
     runner = ScenarioRunner(
@@ -144,6 +151,71 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         # Run all scenarios
         results = runner.run_all(filter_tier=args.tier)
+
+    if getattr(args, "demo", False):
+        TABLE_WIDTH = 80
+        NAME_WIDTH = 30
+        STATUS_WIDTH = 8
+        DUR_WIDTH = 12
+
+        print("\n" + "=" * TABLE_WIDTH)
+        header = (
+            f"{'Scenario Name':<{NAME_WIDTH}} | "
+            f"{'Status':<{STATUS_WIDTH}} | "
+            f"{'Duration (s)':<{DUR_WIDTH}} | Metrics"
+        )
+        print(header)
+        print("-" * TABLE_WIDTH)
+        for r in results:
+            status = "✅ PASS" if r.passed else "❌ FAIL"
+            duration = f"{r.duration_seconds:.2f}"
+            metrics = ", ".join(f"{k}={v:.4g}" for k, v in r.metrics.items())
+            if len(metrics) > 22:
+                metrics = metrics[:19] + "..."
+            row_str = (
+                f"{r.scenario_name:<{NAME_WIDTH}} | "
+                f"{status:<{STATUS_WIDTH}} | "
+                f"{duration:<{DUR_WIDTH}} | {metrics}"
+            )
+            print(row_str)
+        print("=" * TABLE_WIDTH)
+
+    export_path_str = getattr(args, "export_results", None)
+    if export_path_str:
+        import csv
+
+        path = Path(export_path_str)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.suffix.lower() == ".csv":
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                metric_keys: list[str] = []
+                for r in results:
+                    for k in r.metrics:
+                        if k not in metric_keys:
+                            metric_keys.append(k)
+                headers = ["scenario_name", "passed", "duration_seconds"]
+                headers.extend(f"metric_{k}" for k in metric_keys)
+                writer.writerow(headers)
+                for r in results:
+                    row = [r.scenario_name, r.passed, r.duration_seconds]
+                    row.extend(r.metrics.get(k, "") for k in metric_keys)
+                    writer.writerow(row)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(
+                    [
+                        {
+                            "scenario_name": r.scenario_name,
+                            "passed": r.passed,
+                            "duration_seconds": r.duration_seconds,
+                            "metrics": r.metrics,
+                        }
+                        for r in results
+                    ],
+                    f,
+                    indent=2,
+                )
 
     # Return exit code based on results
     if all(r.passed for r in results):
@@ -322,6 +394,42 @@ def cmd_diff(args: argparse.Namespace) -> int:
     return 1 if report.has_regressions else 0
 
 
+def cmd_eval_harness(args: argparse.Namespace) -> int:
+    """Run a langfuse-eval-harness EvalConfig and optionally gate against a baseline.
+
+    Registers the AlphaGalerkin scorers/sink/dataset, runs the harness engine
+    (offline by default; ``--online`` enables live Langfuse), prints the per-score
+    aggregates, and — when ``--baseline`` is given — diffs the emitted metrics
+    against it using the existing baseline gate (non-zero exit on regression).
+    """
+    import os
+
+    from src.integrations.eval_harness.runner import run_eval
+
+    # Make the scenario_result sink and the baseline reader agree on the dir.
+    os.environ.setdefault("EVAL_OUTPUT_DIR", args.output_dir)
+    result = run_eval(args.config, offline=not args.online)
+
+    print(f"\neval-harness run {result.run_id} ({result.config_name})")
+    print("=" * 60)
+    for name, agg in sorted(result.aggregate.items()):
+        pass_rate = "n/a" if agg.pass_rate is None else f"{agg.pass_rate:.3f}"
+        print(f"  {name}: mean={agg.mean:.6g} pass_rate={pass_rate} (n={agg.count})")
+
+    if not args.baseline:
+        return 0
+
+    from src.poc.baselines import ScenarioBaselineRegistry, observed_from_result_dicts
+
+    registry = ScenarioBaselineRegistry.load(args.baseline)
+    result_dicts = _load_run_result_dicts(args.output_dir, result.run_id)
+    observed = observed_from_result_dicts(result_dicts)
+    report = registry.compare(observed, baseline_path=str(args.baseline))
+    print("=" * 60)
+    print(f"{len(report.regressions)} regression(s) vs {args.baseline}")
+    return 1 if report.has_regressions else 0
+
+
 def _split_csv(value: str | None) -> list[str]:
     """Split a comma-separated CLI value into a trimmed, non-empty list."""
     if not value:
@@ -346,6 +454,16 @@ def main() -> int:
 
     # Run command
     run_parser = subparsers.add_parser("run", help="Run scenarios")
+    run_parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Enable presentation-ready output mode",
+    )
+    run_parser.add_argument(
+        "--export-results",
+        type=str,
+        help="Export results to JSON or CSV file",
+    )
     run_parser.add_argument(
         "--scenario",
         type=str,
@@ -439,6 +557,27 @@ def main() -> int:
         "--output-dir", type=str, default="outputs/poc", help="Results directory"
     )
 
+    # Eval-harness command
+    eh_parser = subparsers.add_parser(
+        "eval-harness",
+        help="Run a langfuse-eval-harness EvalConfig (LLM-prior tracing + scoring)",
+    )
+    eh_parser.add_argument("--config", type=str, required=True, help="Harness EvalConfig YAML path")
+    eh_parser.add_argument(
+        "--online",
+        action="store_true",
+        help="Use the live Langfuse SDK client (needs LANGFUSE_* env); default is offline.",
+    )
+    eh_parser.add_argument(
+        "--baseline",
+        type=str,
+        default="",
+        help="Optional baseline JSON to diff the run against (non-zero exit on regression).",
+    )
+    eh_parser.add_argument(
+        "--output-dir", type=str, default="outputs/poc", help="Results directory"
+    )
+
     args = parser.parse_args()
 
     # Configure logging
@@ -457,6 +596,8 @@ def main() -> int:
         return cmd_record_baseline(args)
     elif args.command == "diff":
         return cmd_diff(args)
+    elif args.command == "eval-harness":
+        return cmd_eval_harness(args)
     else:
         parser.print_help()
         return 0

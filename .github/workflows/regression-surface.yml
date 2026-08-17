@@ -1,0 +1,284 @@
+# AlphaGalerkin Regression Surface
+#
+# Targeted CI that runs the test commands enumerated in the CLAUDE.md
+# "Regression Surface" table (search the file for `## Regression Surface`).
+# These surfaces guard the load-bearing wiring around the AlphaGalerkin
+# solver, the trained PDE evaluator, the PDE end-to-end self-play loop,
+# the MCTS evaluator protocol, and the Noyron HX scenario.
+#
+# This workflow exists alongside ci.yml — not as a replacement. ci.yml
+# runs the broad fast/slow/integration matrix on every push; this
+# workflow is **path-filtered** so it only runs when files that the
+# regression surfaces are documented to depend on actually change. The
+# narrow scope keeps the feedback loop fast for surface-affecting PRs.
+#
+# Maintenance: when CLAUDE.md's regression-surface table gains or loses
+# a row, update this workflow's `paths:` filter and `jobs:` accordingly.
+# A drift between CLAUDE.md and this workflow is itself a regression to
+# call out in review.
+
+name: Regression Surface
+
+on:
+  push:
+    branches: [master, "claude/*", "feature/*", develop]
+    paths:
+      # AlphaGalerkin solver + trained evaluator
+      - "src/alphagalerkin/**"
+      - "tests/alphagalerkin/**"
+      # MCTS evaluator protocol
+      - "src/mcts/evaluator.py"
+      - "tests/mcts/test_evaluator.py"
+      # PDE end-to-end (game registration + self-play)
+      - "src/pde/register_games.py"
+      - "src/pde/mcts_adapter.py"
+      - "src/pde/games/**"
+      - "tests/integration/test_pde_e2e.py"
+      # Noyron HX surface (sdf, picogk domain, scenario, YAML loader dispatch)
+      - "src/pde/sdf.py"
+      - "src/pde/geometry_picogk.py"
+      - "src/pde/operators_picogk.py"
+      - "src/poc/config.py"
+      - "src/poc/config_noyron.py"
+      - "src/poc/scenarios/noyron_hx.py"
+      - "tests/pde/test_sdf.py"
+      - "tests/pde/test_picogk_domain.py"
+      - "tests/poc/test_noyron_hx_scenario.py"
+      - "tests/poc/test_config.py"
+      # The workflow itself + the source-of-truth doc
+      - ".github/workflows/regression-surface.yml"
+      - "CLAUDE.md"
+  pull_request:
+    branches: [master, develop]
+    paths:
+      - "src/alphagalerkin/**"
+      - "tests/alphagalerkin/**"
+      - "src/mcts/evaluator.py"
+      - "tests/mcts/test_evaluator.py"
+      - "src/pde/register_games.py"
+      - "src/pde/mcts_adapter.py"
+      - "src/pde/games/**"
+      - "tests/integration/test_pde_e2e.py"
+      - "src/pde/sdf.py"
+      - "src/pde/geometry_picogk.py"
+      - "src/pde/operators_picogk.py"
+      - "src/poc/config.py"
+      - "src/poc/config_noyron.py"
+      - "src/poc/scenarios/noyron_hx.py"
+      - "tests/pde/test_sdf.py"
+      - "tests/pde/test_picogk_domain.py"
+      - "tests/poc/test_noyron_hx_scenario.py"
+      - "tests/poc/test_config.py"
+      - ".github/workflows/regression-surface.yml"
+      - "CLAUDE.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  WANDB_MODE: disabled
+  MPLBACKEND: Agg
+  PYTHONHASHSEED: "0"
+
+jobs:
+  alphagalerkin-solver:
+    name: AlphaGalerkin solver wiring
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run solver wiring tests
+        # Source: CLAUDE.md "Regression Surface" — Solver wiring row.
+        run: pytest tests/alphagalerkin/test_solver.py -v --tb=short
+
+  trained-evaluator:
+    name: Trained PDE evaluator
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run trained-evaluator tests
+        # Source: CLAUDE.md "Regression Surface" — Trained evaluator row.
+        # The GPU smoke sub-test in this file is auto-skipped on CI per
+        # conftest.py's gpu_required marker (CI runners lack CUDA).
+        run: pytest tests/alphagalerkin/test_trained_evaluator.py -v --tb=short
+
+  pde-end-to-end:
+    name: PDE end-to-end (self-play + trainer)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run PDE end-to-end tests
+        # Source: CLAUDE.md "Regression Surface" — PDE end-to-end row.
+        run: pytest tests/integration/test_pde_e2e.py -v --tb=short
+
+  mcts-evaluator-protocol:
+    name: MCTS evaluator protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run MCTS evaluator tests
+        # Source: CLAUDE.md "Regression Surface" — MCTS evaluator protocol row.
+        run: pytest tests/mcts/test_evaluator.py -v --tb=short
+
+  alphagalerkin-coverage-gate:
+    name: AlphaGalerkin per-module coverage (>= 85%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run alphagalerkin coverage gate
+        # Source: CLAUDE.md "Regression Surface" — Per-module coverage row.
+        # 85% is the project default coverage gate; src/alphagalerkin/ runs
+        # at ~94% currently, so the gate is a real regression guard.
+        run: |
+          pytest tests/alphagalerkin/ \
+            --cov=src/alphagalerkin \
+            --cov-report=term-missing \
+            --cov-fail-under=85 \
+            -q --tb=short
+
+  noyron-hx-surface:
+    name: Noyron HX scenario (SDF, domain, scenario, YAML loader)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run Noyron HX surface tests
+        # Source: CLAUDE.md "Regression Surface" — Noyron HX scenario row.
+        # Includes the loader-dispatch regression test (TestLoadConfigFromDict).
+        # The CUDA-fail-loud test in test_noyron_hx_scenario.py is auto-skipped
+        # on CI per conftest.py's gpu_required marker (CI runners lack CUDA).
+        run: |
+          pytest tests/pde/test_sdf.py \
+                 tests/pde/test_picogk_domain.py \
+                 tests/poc/test_noyron_hx_scenario.py \
+                 tests/poc/test_config.py::TestLoadConfigFromDict \
+                 -v --tb=short
+
+  noyron-hx-coverage-gate:
+    name: Noyron HX per-module coverage (>= 85%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run Noyron HX coverage gate
+        # Source: CLAUDE.md "Regression Surface" — Noyron HX per-module
+        # coverage row. Current achieved coverage: sdf 100%, geometry_picogk
+        # 100%, config_noyron 100%, noyron_hx 97% — gate at 85% is a hard
+        # floor. Promote to 90% if the achieved numbers stay there for a
+        # full release cycle.
+        #
+        # Why an inline coveragerc with `include = ...` rather than per-file
+        # `--cov=...` args: coverage's `--cov` flag treats each value as a
+        # package or directory. File paths like `--cov=src/pde/sdf` (no .py)
+        # are matched as packages and produce "Module ... was never
+        # imported" warnings (verified on CI run 25015389586). The
+        # documented way to scope coverage to a specific file list is the
+        # `[run] include = ...` config option, which accepts glob patterns.
+        run: |
+          cat > .coveragerc.noyron-hx <<'COVEOF'
+          [run]
+          include =
+              src/pde/sdf.py
+              src/pde/geometry_picogk.py
+              src/poc/scenarios/noyron_hx.py
+              src/poc/config_noyron.py
+          branch = true
+
+          [report]
+          show_missing = true
+          fail_under = 85
+          COVEOF
+          pytest tests/pde/test_sdf.py \
+                 tests/pde/test_picogk_domain.py \
+                 tests/poc/test_noyron_hx_scenario.py \
+                 --cov \
+                 --cov-config=.coveragerc.noyron-hx \
+                 --cov-report=term-missing \
+                 -q --tb=short
+
+  surface-success:
+    name: Regression Surface (gate)
+    runs-on: ubuntu-latest
+    needs:
+      - alphagalerkin-solver
+      - trained-evaluator
+      - pde-end-to-end
+      - mcts-evaluator-protocol
+      - alphagalerkin-coverage-gate
+      - noyron-hx-surface
+      - noyron-hx-coverage-gate
+    if: always()
+    steps:
+      - name: Verify all regression-surface jobs passed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" == "true" ] \
+             || [ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]; then
+            echo "::error::At least one regression-surface job failed or was cancelled"
+            exit 1
+          fi
+          echo "All regression-surface jobs passed"

@@ -568,6 +568,10 @@ class ResearchProblemSpec(BaseModuleConfig):
         return list(dict.fromkeys(v))
 
 
+def _default_research_arms() -> list[ResearchArm]:
+    return ["random"]
+
+
 class ResearchLoopConfig(BaseModuleConfig):
     """Configuration for the centaur research-loop harness.
 
@@ -588,7 +592,7 @@ class ResearchLoopConfig(BaseModuleConfig):
         description="Manifest of problems to sweep.",
     )
     default_arms: list[ResearchArm] = Field(
-        default_factory=lambda: ["random"],
+        default_factory=_default_research_arms,
         description="Default evaluator arms for problems that don't override.",
     )
 

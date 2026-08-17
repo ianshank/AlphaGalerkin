@@ -25,28 +25,28 @@ Usage:
     MyLogger = create_logger_class("MyModule")
 """
 
+from src.templates.base import (
+    BaseExecutable,
+    ExecutionResult,
+    ExecutionStatus,
+)
 from src.templates.config import (
     BaseModuleConfig,
     MetricDefinition,
     ThresholdOperator,
     create_config_class,
 )
-from src.templates.registry import (
-    BaseRegistry,
-    create_registry,
-)
 from src.templates.logging import (
     BaseModuleLogger,
     DebugContext,
     configure_module_logging,
     create_logger_class,
-    log_timing,
     log_call,
+    log_timing,
 )
-from src.templates.base import (
-    BaseExecutable,
-    ExecutionResult,
-    ExecutionStatus,
+from src.templates.registry import (
+    BaseRegistry,
+    create_registry,
 )
 
 __all__ = [

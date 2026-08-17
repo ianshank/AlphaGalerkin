@@ -7,10 +7,10 @@ import torch
 
 from config.schemas import (
     AlphaGalerkinConfig,
+    LangfuseConfig,
     MCTSConfig,
     OperatorConfig,
     TrainingConfig,
-    WandbConfig,
 )
 from src.modeling.model import AlphaGalerkinModel
 from src.training.replay_buffer import Experience
@@ -69,15 +69,12 @@ def mcts_config() -> MCTSConfig:
 
 
 @pytest.fixture
-def wandb_config() -> WandbConfig:
-    """Create disabled W&B config for testing."""
-    return WandbConfig(
+def langfuse_config() -> LangfuseConfig:
+    """Create disabled Langfuse config for testing."""
+    return LangfuseConfig(
         enabled=False,
         project="test-project",
-        mode="disabled",
-        log_code=False,
         log_model=False,
-        watch_model=False,
     )
 
 
@@ -86,14 +83,14 @@ def full_config(
     small_config: OperatorConfig,
     training_config: TrainingConfig,
     mcts_config: MCTSConfig,
-    wandb_config: WandbConfig,
+    langfuse_config: LangfuseConfig,
 ) -> AlphaGalerkinConfig:
     """Create full config for testing."""
     return AlphaGalerkinConfig(
         operator=small_config,
         training=training_config,
         mcts=mcts_config,
-        wandb=wandb_config,
+        langfuse=langfuse_config,
         experiment_name="test",
         seed=42,
         device="cpu",

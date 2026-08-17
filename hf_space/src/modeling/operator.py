@@ -20,11 +20,11 @@ logger = structlog.get_logger(__name__)
 
 class NeuralOperator(nn.Module):
     """Resolution-independent neural operator for PDE solving.
-    
+
     Supports multiple backends:
     - 'fno': Fourier Neural Operator
     - 'galerkin': Galerkin Attention based (using existing AlphaGalerkin blocks)
-    
+
     Example:
         >>> model = NeuralOperator(in_channels=1, out_channels=1, width=64)
         >>> x = torch.randn(4, 1, 16, 16)  # Train resolution

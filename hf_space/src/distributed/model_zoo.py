@@ -248,14 +248,18 @@ class ModelZoo:
         )
 
         # Check if best
-        metric_value = metrics.get(primary_metric, float("inf") if lower_is_better else float("-inf"))
+        metric_value = metrics.get(
+            primary_metric, float("inf") if lower_is_better else float("-inf")
+        )
         is_best = False
 
-        if self._best_metric is None:
-            is_best = True
-        elif lower_is_better and metric_value < self._best_metric:
-            is_best = True
-        elif not lower_is_better and metric_value > self._best_metric:
+        if (
+            self._best_metric is None
+            or lower_is_better
+            and metric_value < self._best_metric
+            or not lower_is_better
+            and metric_value > self._best_metric
+        ):
             is_best = True
 
         if is_best:

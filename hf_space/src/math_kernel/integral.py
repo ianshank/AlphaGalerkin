@@ -218,9 +218,7 @@ class PetrovGalerkinProjection(nn.Module):
 
         # LBB stability requires dim(trial) >= dim(test)
         if d_trial < d_test:
-            raise ValueError(
-                f"LBB violation: d_trial ({d_trial}) must be >= d_test ({d_test})"
-            )
+            raise ValueError(f"LBB violation: d_trial ({d_trial}) must be >= d_test ({d_test})")
 
         # Projections
         self.to_query = nn.Linear(d_model, d_test)

@@ -1,0 +1,23 @@
+"""Physics and PDE operator constants for AlphaGalerkin."""
+
+from __future__ import annotations
+
+from src.constants import (
+    DEFAULT_BOUNDARY_TOLERANCE,
+    DEFAULT_LBB_EPS,
+    DEFAULT_LBB_TARGET,
+    DEFAULT_LBB_THRESHOLD,
+    DEFAULT_LBB_WEIGHT,
+    DEFAULT_POISSON_RHS,
+    DEFAULT_TRANSFER_RATIO_FLOOR,
+)
+
+__all__ = [
+    "DEFAULT_BOUNDARY_TOLERANCE",
+    "DEFAULT_LBB_EPS",
+    "DEFAULT_LBB_TARGET",
+    "DEFAULT_LBB_THRESHOLD",
+    "DEFAULT_LBB_WEIGHT",
+    "DEFAULT_POISSON_RHS",
+    "DEFAULT_TRANSFER_RATIO_FLOOR",
+]

@@ -13,6 +13,7 @@ Note:
     The current Mesh implementation supports 2D quadrilateral elements only.
     For 1D (intervals), 3D (hexahedra), or higher dimensions, a specialized
     mesh class would be required. This limitation is validated at runtime.
+
 """
 
 from __future__ import annotations
@@ -50,6 +51,7 @@ class MeshElement:
         polynomial_degree: Polynomial degree for p-refinement.
         parent: Parent element index (None for initial elements).
         children: Child element indices (empty if not refined).
+
     """
 
     index: int
@@ -79,6 +81,7 @@ class Mesh:
     Note:
         Dimensions 4+ are theoretically supported but not practically tested.
         For most PDE applications, 1D-3D covers the relevant cases.
+
     """
 
     # Supported dimensions with vertex counts per element
@@ -100,6 +103,7 @@ class Mesh:
 
         Raises:
             ValueError: If dimension is not supported (>4).
+
         """
         self.domain_min = domain_min
         self.domain_max = domain_max
@@ -141,33 +145,38 @@ class Mesh:
         idx = 0
         for corner_indices in element_corners:
             # Compute element minimum corner
-            corner = np.array([
-                self.domain_min[d] + corner_indices[d] * dx[d]
-                for d in range(self.dim)
-            ], dtype=np.float32)
+            corner = np.array(
+                [self.domain_min[d] + corner_indices[d] * dx[d] for d in range(self.dim)],
+                dtype=np.float32,
+            )
 
             # Generate all vertices of the hypercube element
             # For dim=2: 4 vertices; for dim=3: 8 vertices
             vertex_offsets = list(itertools.product(*[[0, 1]] * self.dim))
-            vertices = np.array([
-                corner + np.array([offset[d] * dx[d] for d in range(self.dim)])
-                for offset in vertex_offsets
-            ], dtype=np.float32)
+            vertices = np.array(
+                [
+                    corner + np.array([offset[d] * dx[d] for d in range(self.dim)])
+                    for offset in vertex_offsets
+                ],
+                dtype=np.float32,
+            )
 
             # Compute center
             center = corner + dx / 2
 
             # Compute element size (diagonal length)
-            size = float(np.sqrt(np.sum(dx ** 2)))
+            size = float(np.sqrt(np.sum(dx**2)))
 
-            self.elements.append(MeshElement(
-                index=idx,
-                vertices=vertices,
-                center=center,
-                size=size,
-                level=0,
-                polynomial_degree=1,
-            ))
+            self.elements.append(
+                MeshElement(
+                    index=idx,
+                    vertices=vertices,
+                    center=center,
+                    size=size,
+                    level=0,
+                    polynomial_degree=1,
+                )
+            )
             idx += 1
 
         logger.debug(
@@ -192,10 +201,7 @@ class Mesh:
 
         For polynomial degree p in dim dimensions, DOFs = (p+1)^dim.
         """
-        return sum(
-            (e.polynomial_degree + 1) ** self.dim
-            for e in self.leaf_elements
-        )
+        return sum((e.polynomial_degree + 1) ** self.dim for e in self.leaf_elements)
 
     def refine_element(
         self,
@@ -210,6 +216,7 @@ class Mesh:
 
         Returns:
             Indices of new/modified elements.
+
         """
         element = self.elements[element_idx]
 
@@ -246,9 +253,9 @@ class Mesh:
 
         # Generate child corners: each child occupies one "quadrant" of the parent
         # Child corners are at parent center ± child_half_size in each dimension
-        child_half_extents = np.array([
-            element.vertices[0, d] - c[d] for d in range(self.dim)
-        ], dtype=np.float32) / 2
+        child_half_extents = (
+            np.array([element.vertices[0, d] - c[d] for d in range(self.dim)], dtype=np.float32) / 2
+        )
 
         # Generate all 2^dim child corner offset patterns
         # For dim=2: [(-1,-1), (-1,+1), (+1,-1), (+1,+1)]
@@ -257,20 +264,23 @@ class Mesh:
         children = []
         for signs in sign_patterns:
             # Child center is parent center + signed offset
-            child_center = c + np.array([
-                signs[d] * abs(child_half_extents[d])
-                for d in range(self.dim)
-            ], dtype=np.float32)
+            child_center = c + np.array(
+                [signs[d] * abs(child_half_extents[d]) for d in range(self.dim)], dtype=np.float32
+            )
 
             # Generate child vertices (hypercube corners around child_center)
             vertex_offsets = list(itertools.product(*[[-1, 1]] * self.dim))
-            child_vertices = np.array([
-                child_center + np.array([
-                    offset[d] * abs(child_half_extents[d])
-                    for d in range(self.dim)
-                ], dtype=np.float32)
-                for offset in vertex_offsets
-            ], dtype=np.float32)
+            child_vertices = np.array(
+                [
+                    child_center
+                    + np.array(
+                        [offset[d] * abs(child_half_extents[d]) for d in range(self.dim)],
+                        dtype=np.float32,
+                    )
+                    for offset in vertex_offsets
+                ],
+                dtype=np.float32,
+            )
 
             child = MeshElement(
                 index=len(self.elements),
@@ -328,12 +338,11 @@ class MeshRefinementGame(PDEGame):
         Args:
             pde_operator: PDE operator to solve.
             config: Game configuration.
+
         """
         super().__init__(pde_operator, config)
 
-        self.mesh_config = config.mesh_config or MeshRefinementConfig(
-            name="default_mesh"
-        )
+        self.mesh_config = config.mesh_config or MeshRefinementConfig(name="default_mesh")
 
         # Initialize mesh
         self.mesh = Mesh(
@@ -357,8 +366,8 @@ class MeshRefinementGame(PDEGame):
         # Initial elements: resolution^dim, each refinement creates 2^dim children
         dim = self.mesh.dim
         max_elements = (
-            self.mesh_config.initial_resolution ** dim *
-            (2 ** dim) ** self.mesh_config.max_refinement_level
+            self.mesh_config.initial_resolution**dim
+            * (2**dim) ** self.mesh_config.max_refinement_level
         )
         return min(max_elements, self.mesh_config.n_candidate_elements)
 
@@ -372,6 +381,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Initial PDEState.
+
         """
         # Reset mesh to initial state
         self.mesh = Mesh(
@@ -394,7 +404,7 @@ class MeshRefinementGame(PDEGame):
         residuals = -source.astype(np.float32)
 
         # Initial error
-        error = float(np.sqrt(np.mean(residuals ** 2)))
+        error = float(np.sqrt(np.mean(residuals**2)))
 
         # Mesh info
         mesh_levels = np.array([e.level for e in self.mesh.leaf_elements], dtype=np.int32)
@@ -420,6 +430,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             List of valid element indices to refine.
+
         """
         valid = []
         for i, element in enumerate(self.mesh.leaf_elements):
@@ -434,7 +445,7 @@ class MeshRefinementGame(PDEGame):
             valid.append(i)
 
         # Limit to candidate count
-        return valid[:self.mesh_config.n_candidate_elements]
+        return valid[: self.mesh_config.n_candidate_elements]
 
     def get_action_mask(self, state: PDEState) -> NDArray[np.bool_]:
         """Get boolean mask for valid actions.
@@ -444,6 +455,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Boolean mask.
+
         """
         mask = np.zeros(self.action_space_size, dtype=bool)
         valid = self.get_valid_actions(state)
@@ -461,6 +473,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             New state after refinement.
+
         """
         # Get leaf element to refine
         leaf_elements = self.mesh.leaf_elements
@@ -498,7 +511,7 @@ class MeshRefinementGame(PDEGame):
             residuals = residual_result.values.astype(np.float32)
 
         # Compute error
-        error = float(np.sqrt(np.mean(residuals ** 2)))
+        error = float(np.sqrt(np.mean(residuals**2)))
 
         # Mesh info
         mesh_levels = np.array([e.level for e in self.mesh.leaf_elements], dtype=np.int32)
@@ -519,9 +532,7 @@ class MeshRefinementGame(PDEGame):
         # Update phase
         if new_state.error_estimate < self.config.error_tolerance:
             new_state.phase = GamePhase.CONVERGED
-        elif new_state.budget_remaining <= 0:
-            new_state.phase = GamePhase.BUDGET_EXHAUSTED
-        elif new_state.dof > self.config.max_dof:
+        elif new_state.budget_remaining <= 0 or new_state.dof > self.config.max_dof:
             new_state.phase = GamePhase.BUDGET_EXHAUSTED
 
         return new_state
@@ -539,6 +550,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Interpolated solution.
+
         """
         # Simple nearest-neighbor interpolation
         from scipy.spatial import cKDTree
@@ -557,6 +569,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Reward value.
+
         """
         # Error reduction
         error_reduction = prev_state.error_estimate - state.error_estimate
@@ -600,6 +613,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             True if terminal.
+
         """
         if state.error_estimate < self.config.error_tolerance:
             return True
@@ -622,6 +636,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             PDEResult.
+
         """
         errors = self.compute_exact_error(state)
         converged = state.error_estimate < self.config.error_tolerance
@@ -636,13 +651,17 @@ class MeshRefinementGame(PDEGame):
         budget_used = self.config.computational_budget - state.budget_remaining
         compute_efficiency = (
             (error_history[0] - error_history[-1]) / max(1, budget_used)
-            if len(error_history) > 1 else 0.0
+            if len(error_history) > 1
+            else 0.0
         )
 
         termination_reason = (
-            "converged" if converged
-            else "max_dof" if state.dof > self.config.max_dof
-            else "budget_exhausted" if state.budget_remaining <= 0
+            "converged"
+            if converged
+            else "max_dof"
+            if state.dof > self.config.max_dof
+            else "budget_exhausted"
+            if state.budget_remaining <= 0
             else "max_steps"
         )
 
@@ -674,6 +693,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Error dictionary.
+
         """
         # Get exact solution if available
         exact = self.pde_operator.exact_solution(state.coords)
@@ -684,11 +704,11 @@ class MeshRefinementGame(PDEGame):
             l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
             linf_error = float(np.max(np.abs(state.solution - exact)))
         else:
-            l2_error = float(np.sqrt(np.mean(state.residuals ** 2)))
+            l2_error = float(np.sqrt(np.mean(state.residuals**2)))
             linf_error = float(np.max(np.abs(state.residuals)))
 
         h1_error = l2_error  # Approximation
-        residual_norm = float(np.sqrt(np.mean(state.residuals ** 2)))
+        residual_norm = float(np.sqrt(np.mean(state.residuals**2)))
 
         return {
             "l2": l2_error,
@@ -697,7 +717,7 @@ class MeshRefinementGame(PDEGame):
             "residual": residual_norm,
         }
 
-    def to_tensor(self, state: PDEState) -> Float[Tensor, "..."]:
+    def to_tensor(self, state: PDEState) -> Float[Tensor, ...]:
         """Convert state to neural network input.
 
         Args:
@@ -708,6 +728,7 @@ class MeshRefinementGame(PDEGame):
             - 1D: (channels, resolution)
             - 2D: (channels, height, width)
             - 3D: (channels, depth, height, width)
+
         """
         from scipy.interpolate import griddata
 
@@ -718,11 +739,8 @@ class MeshRefinementGame(PDEGame):
         domain_min = self.pde_operator.domain_min
         domain_max = self.pde_operator.domain_max
 
-        axes = [
-            np.linspace(domain_min[d], domain_max[d], grid_size)
-            for d in range(dim)
-        ]
-        grids = np.meshgrid(*axes, indexing='ij')
+        axes = [np.linspace(domain_min[d], domain_max[d], grid_size) for d in range(dim)]
+        grids = np.meshgrid(*axes, indexing="ij")
         grid_points = np.stack([g.flatten() for g in grids], axis=-1)
 
         # Grid shape for reshaping
@@ -730,19 +748,22 @@ class MeshRefinementGame(PDEGame):
 
         # Interpolate solution
         solution_grid = griddata(
-            state.coords, state.solution, grid_points, method='linear', fill_value=0
+            state.coords, state.solution, grid_points, method="linear", fill_value=0
         ).reshape(grid_shape)
 
         # Interpolate residuals
         residual_grid = griddata(
-            state.coords, np.abs(state.residuals), grid_points, method='linear', fill_value=0
+            state.coords, np.abs(state.residuals), grid_points, method="linear", fill_value=0
         ).reshape(grid_shape)
 
         # Refinement level indicator
         if state.mesh_levels is not None:
             level_grid = griddata(
-                state.coords, state.mesh_levels.astype(np.float32),
-                grid_points, method='nearest', fill_value=0
+                state.coords,
+                state.mesh_levels.astype(np.float32),
+                grid_points,
+                method="nearest",
+                fill_value=0,
             ).reshape(grid_shape)
         else:
             level_grid = np.zeros(grid_shape)
@@ -765,6 +786,7 @@ class MeshRefinementGame(PDEGame):
 
         Returns:
             Action description.
+
         """
         if action < len(self.mesh.leaf_elements):
             element = self.mesh.leaf_elements[action]

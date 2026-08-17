@@ -17,7 +17,12 @@ Public API::
 
 from __future__ import annotations
 
-from dashboard.app import build_app, main
+try:
+    from dashboard.app import build_app, main
+except ImportError:
+    build_app = None  # type: ignore[assignment]
+    main = None  # type: ignore[assignment]
+
 from dashboard.config import DEFAULT_CONFIG, DashboardConfig
 
 __all__ = [

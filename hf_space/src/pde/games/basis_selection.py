@@ -37,6 +37,7 @@ class BasisFunction:
         type: Basis type ('fourier', 'polynomial', 'rbf').
         params: Parameters defining the basis function.
         index: Index in the candidate set.
+
     """
 
     type: str
@@ -54,6 +55,7 @@ class BasisFunction:
 
         Returns:
             Basis function values (N,).
+
         """
         if self.type == "fourier":
             k_x = self.params.get("k_x", 1)
@@ -72,7 +74,7 @@ class BasisFunction:
             x = coords[:, 0]
             y = coords[:, 1] if coords.shape[1] > 1 else np.ones_like(x)
 
-            return (x ** degree_x * y ** degree_y).astype(np.float32)
+            return (x**degree_x * y**degree_y).astype(np.float32)
 
         elif self.type == "rbf":
             center_x = self.params.get("center_x", 0.5)
@@ -83,7 +85,7 @@ class BasisFunction:
             y = coords[:, 1] if coords.shape[1] > 1 else np.zeros_like(x)
 
             r_sq = (x - center_x) ** 2 + (y - center_y) ** 2
-            return np.exp(-r_sq / (2 * sigma ** 2)).astype(np.float32)
+            return np.exp(-r_sq / (2 * sigma**2)).astype(np.float32)
 
         else:
             raise ValueError(f"Unknown basis type: {self.type}")
@@ -119,12 +121,11 @@ class BasisSelectionGame(PDEGame):
         Args:
             pde_operator: PDE operator to solve.
             config: Game configuration.
+
         """
         super().__init__(pde_operator, config)
 
-        self.basis_config = config.basis_config or BasisSelectionConfig(
-            name="default_basis"
-        )
+        self.basis_config = config.basis_config or BasisSelectionConfig(name="default_basis")
 
         # Generate candidate basis functions
         self._candidate_bases = self._generate_candidates()
@@ -150,6 +151,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             List of candidate BasisFunction objects.
+
         """
         candidates = []
         basis_type = self.basis_config.basis_type
@@ -165,11 +167,13 @@ class BasisSelectionGame(PDEGame):
                         continue  # Skip DC component (or add separately)
 
                     for phase in [0.0, np.pi / 2]:  # sin and cos
-                        candidates.append(BasisFunction(
-                            type="fourier",
-                            params={"k_x": k_x, "k_y": k_y, "phase": phase},
-                            index=idx,
-                        ))
+                        candidates.append(
+                            BasisFunction(
+                                type="fourier",
+                                params={"k_x": k_x, "k_y": k_y, "phase": phase},
+                                index=idx,
+                            )
+                        )
                         idx += 1
 
                         if len(candidates) >= n_candidates:
@@ -181,11 +185,14 @@ class BasisSelectionGame(PDEGame):
 
             # Add DC component if configured
             if self.basis_config.include_dc_component:
-                candidates.insert(0, BasisFunction(
-                    type="fourier",
-                    params={"k_x": 0, "k_y": 0, "phase": 0.0},
-                    index=len(candidates),
-                ))
+                candidates.insert(
+                    0,
+                    BasisFunction(
+                        type="fourier",
+                        params={"k_x": 0, "k_y": 0, "phase": 0.0},
+                        index=len(candidates),
+                    ),
+                )
 
         elif basis_type == "polynomial":
             # Generate polynomial basis up to certain degree
@@ -194,11 +201,13 @@ class BasisSelectionGame(PDEGame):
             for deg in range(max_deg + 1):
                 for dx in range(deg + 1):
                     dy = deg - dx
-                    candidates.append(BasisFunction(
-                        type="polynomial",
-                        params={"degree_x": dx, "degree_y": dy},
-                        index=idx,
-                    ))
+                    candidates.append(
+                        BasisFunction(
+                            type="polynomial",
+                            params={"degree_x": dx, "degree_y": dy},
+                            index=idx,
+                        )
+                    )
                     idx += 1
 
                     if len(candidates) >= n_candidates:
@@ -212,15 +221,17 @@ class BasisSelectionGame(PDEGame):
             scale_lo, scale_hi = self.basis_config.basis_scale_range
 
             for idx in range(n_candidates):
-                candidates.append(BasisFunction(
-                    type="rbf",
-                    params={
-                        "center_x": rng.uniform(0, 1),
-                        "center_y": rng.uniform(0, 1),
-                        "sigma": rng.uniform(scale_lo, scale_hi),
-                    },
-                    index=idx,
-                ))
+                candidates.append(
+                    BasisFunction(
+                        type="rbf",
+                        params={
+                            "center_x": rng.uniform(0, 1),
+                            "center_y": rng.uniform(0, 1),
+                            "sigma": rng.uniform(scale_lo, scale_hi),
+                        },
+                        index=idx,
+                    )
+                )
 
         return candidates[:n_candidates]
 
@@ -246,6 +257,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Initial PDEState.
+
         """
         n_points = len(self._collocation_points)
         dim = self._collocation_points.shape[1]
@@ -267,7 +279,7 @@ class BasisSelectionGame(PDEGame):
                 exact = self._exact_solution
             error = float(np.sqrt(np.mean((solution - exact) ** 2)))
         else:
-            error = float(np.sqrt(np.mean(residuals ** 2)))
+            error = float(np.sqrt(np.mean(residuals**2)))
 
         return PDEState(
             coords=self._collocation_points.copy(),
@@ -290,6 +302,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             List of valid action indices.
+
         """
         # All bases not yet selected
         selected = set(state.history)
@@ -309,6 +322,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Boolean mask array.
+
         """
         mask = np.ones(self.action_space_size, dtype=bool)
 
@@ -334,6 +348,7 @@ class BasisSelectionGame(PDEGame):
 
         Raises:
             ValueError: If action is invalid.
+
         """
         if action in state.history:
             raise ValueError(f"Basis {action} already selected")
@@ -418,6 +433,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Matrix Phi where Phi[i,j] = phi_j(x_i).
+
         """
         n_points = len(coords)
         n_basis = len(basis_funcs)
@@ -437,6 +453,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Reward value.
+
         """
         # Error reduction
         error_reduction = prev_state.error_estimate - state.error_estimate
@@ -462,6 +479,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             True if terminal.
+
         """
         # Check error tolerance
         if state.error_estimate < self.config.error_tolerance:
@@ -494,6 +512,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             PDEResult with metrics.
+
         """
         errors = self.compute_exact_error(state)
 
@@ -510,13 +529,17 @@ class BasisSelectionGame(PDEGame):
         budget_used = self.config.computational_budget - state.budget_remaining
         compute_efficiency = (
             (error_history[0] - error_history[-1]) / max(1, budget_used)
-            if len(error_history) > 1 else 0.0
+            if len(error_history) > 1
+            else 0.0
         )
 
         termination_reason = (
-            "converged" if converged
-            else "max_basis" if state.n_basis >= self.basis_config.max_basis_functions
-            else "budget_exhausted" if state.budget_remaining <= 0
+            "converged"
+            if converged
+            else "max_basis"
+            if state.n_basis >= self.basis_config.max_basis_functions
+            else "budget_exhausted"
+            if state.budget_remaining <= 0
             else "max_steps"
         )
 
@@ -548,6 +571,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Dictionary with error metrics.
+
         """
         # L2 error
         if self._exact_solution is not None:
@@ -558,14 +582,14 @@ class BasisSelectionGame(PDEGame):
             l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
             linf_error = float(np.max(np.abs(state.solution - exact)))
         else:
-            l2_error = float(np.sqrt(np.mean(state.residuals ** 2)))
+            l2_error = float(np.sqrt(np.mean(state.residuals**2)))
             linf_error = float(np.max(np.abs(state.residuals)))
 
         # H1 error (would need gradient computation)
         h1_error = l2_error  # Approximation
 
         # Residual norm
-        residual_norm = float(np.sqrt(np.mean(state.residuals ** 2)))
+        residual_norm = float(np.sqrt(np.mean(state.residuals**2)))
 
         return {
             "l2": l2_error,
@@ -582,12 +606,13 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Tensor encoding of state.
+
         """
         n_points = state.n_points
 
         # Assume square grid (simplification)
         grid_size = int(np.sqrt(n_points))
-        if grid_size ** 2 != n_points:
+        if grid_size**2 != n_points:
             # Non-square: use 1D representation
             grid_size = n_points
             n_channels = self.state_channels
@@ -629,6 +654,7 @@ class BasisSelectionGame(PDEGame):
 
         Returns:
             Description of basis function.
+
         """
         if action < 0 or action >= len(self._candidate_bases):
             return f"invalid_action_{action}"

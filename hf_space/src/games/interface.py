@@ -246,7 +246,7 @@ class GameInterface(ABC):
             return GamePhase.TERMINAL
 
         # Default heuristic based on move count
-        total_moves = state.board_size ** 2
+        total_moves = state.board_size**2
         progress = state.move_number / total_moves
 
         if progress < 0.1:
@@ -276,8 +276,8 @@ class GameInterface(ABC):
         col = action % board_size
 
         # Use letter for column (skip 'I')
-        col_letter = chr(ord('A') + col)
-        if col_letter >= 'I':
+        col_letter = chr(ord("A") + col)
+        if col_letter >= "I":
             col_letter = chr(ord(col_letter) + 1)
 
         return f"{col_letter}{board_size - row}"
@@ -303,8 +303,8 @@ class GameInterface(ABC):
         row_num = int(move_str[1:])
 
         # Convert letter to column index (skip 'I')
-        col = ord(col_letter) - ord('A')
-        if col_letter > 'I':
+        col = ord(col_letter) - ord("A")
+        if col_letter > "I":
             col -= 1
 
         row = board_size - row_num

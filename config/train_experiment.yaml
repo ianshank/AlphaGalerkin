@@ -31,16 +31,14 @@ training:
   # Enable curriculum
   curriculum_enabled: true
 
-# Enable W&B logging
-wandb:
+# Langfuse experiment tracking (credentials via LANGFUSE_* env)
+langfuse:
   enabled: true
   project: alphagalerkin
-  mode: online
   tags:
     - experiment
     - small-run
   log_model: true
-  log_code: true
 
 # Use GPU if available
 device: auto

@@ -167,6 +167,7 @@ class TransferTemplate(ExperimentTemplate):
 
         """
         import time
+
         start_time = time.time()
 
         target_sizes = target_sizes or [9, 13, 19]
@@ -195,11 +196,13 @@ class TransferTemplate(ExperimentTemplate):
 
         # Default functions
         if train_fn is None:
+
             def train_fn(m: Any, batch: Any) -> float:
                 # Mock training
                 return 0.1 * (1 - len(batch) / n_train_samples)
 
         if predict_fn is None:
+
             def predict_fn(m: Any, inp: Any) -> Any:
                 # Mock prediction
                 return [0.0] * len(inp)
@@ -295,6 +298,7 @@ class AblationTemplate(ExperimentTemplate):
 
         """
         import time
+
         start_time = time.time()
 
         param_values = param_values or [32, 64, 128]
@@ -312,10 +316,12 @@ class AblationTemplate(ExperimentTemplate):
 
         # Default functions
         if train_fn is None:
+
             def train_fn(m: Any, batch: Any) -> float:
                 return 0.1
 
         if predict_fn is None:
+
             def predict_fn(m: Any, inp: Any) -> Any:
                 return [0.0]
 
@@ -411,6 +417,7 @@ class BenchmarkTemplate(ExperimentTemplate):
 
         """
         import time
+
         start_time = time.time()
 
         board_sizes = board_sizes or [9, 13, 19]
@@ -584,7 +591,9 @@ def register_template(name: str) -> Callable[[type[ExperimentTemplate]], type[Ex
         Decorator function.
 
     """
+
     def decorator(cls: type[ExperimentTemplate]) -> type[ExperimentTemplate]:
         TemplateRegistry().register(name, cls)
         return cls
+
     return decorator

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alphagalerkin"
-version = "0.1.0"
-description = "Resolution-independent operator learning + MCTS for board games (Go, Chess) and PDE solving"
+version = "0.4.0-dev"
+description = "Resolution-independent AI for Games and PDE Solving using Continuous Operator Learning"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -23,7 +23,7 @@ keywords = [
     "fourier-neural-operator",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.10",
@@ -35,6 +35,7 @@ classifiers = [
 
 dependencies = [
     "torch>=2.0.0",
+    "torchvision>=0.15.0",
     "einops>=0.7.0",
     "jaxtyping>=0.2.25",
     "pydantic>=2.0.0",
@@ -42,7 +43,9 @@ dependencies = [
     "structlog>=23.0.0",
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "wandb>=0.16.0",
+    # Langfuse experiment tracking (replaces Weights & Biases). v2 pin matches
+    # the eval-harness usage; the tracker no-ops without LANGFUSE_* credentials.
+    "langfuse>=2,<3",
     "typer>=0.9.0",
     # Imported at module level by src/poc/runner.py and
     # src/research/pde_benchmarks.py. It was previously satisfied only
@@ -165,6 +168,23 @@ picogk = [
 lm-studio = [
     "openai>=1.40,<2.0",
 ]
+# LLM-evaluation harness (github.com/ianshank/Agents, package `langfuse-eval-harness`)
+# used by `src/integrations/eval_harness/` to trace + score the LLM-prior MCTS
+# layer. It is NOT published on PyPI, so it is pinned to a COMMIT SHA (not a
+# moving tag) via a PEP 508 direct reference. The harness's own deps are light
+# (pyyaml + pydantic); `langfuse` is intentionally NOT pulled here — CI runs the
+# dependency-free `NullLangfuseClient` (`--offline`). The base install never
+# imports `eval_harness`; `src/integrations/eval_harness/` imports it lazily.
+eval-harness = [
+    "langfuse-eval-harness @ git+https://github.com/ianshank/Agents@1dd95fffbfedf7134b76b2c73493e4354ddc0688",
+]
+# Live Langfuse trace export (opt-in). The harness's `SDKLangfuseClient` calls
+# the v2-style score API (`Langfuse(secret_key=...)` + `log_score`), which the
+# OpenTelemetry-based v3/v4 SDK renamed/removed — so pin `<3` explicitly rather
+# than inherit the harness's looser `langfuse>=2`. Requires LANGFUSE_* env vars.
+eval-harness-langfuse = [
+    "langfuse>=2,<3",
+]
 # Documentation site toolchain (MkDocs Material + API autodoc from docstrings).
 # Only needed to build/serve the docs site locally or in the docs CI workflow;
 # `mkdocstrings` imports the package, so a base install (torch etc.) is also
@@ -176,6 +196,14 @@ docs = [
 
 [project.scripts]
 alphagalerkin = "src.tools.cli:main"
+
+# Register the AlphaGalerkin scorers/sink/dataset with the harness so the
+# harness's own `eval-harness run --config` CLI discovers them. The target is a
+# torch-free shim whose import registers (see `_entrypoint`), so the global
+# entry-point discovery that fires on any `eval_harness.bootstrap()` never pulls
+# AlphaGalerkin's heavy import graph.
+[project.entry-points."eval_harness.plugins"]
+alphagalerkin = "src.integrations.eval_harness._entrypoint"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -219,6 +247,9 @@ ignore = [
     "E741",   # Ambiguous variable name (e.g., I for Intra frame)
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["src", "config", "dashboard"]
+
 [tool.ruff.lint.per-file-ignores]
 # Test files have more relaxed linting
 "tests/**/*.py" = [
@@ -254,7 +285,6 @@ module = [
     "einops.*",
     "hydra.*",
     "hypothesis.*",
-    "wandb.*",
     "scipy.*",
     "jaxtyping.*",
     "pydantic.*",
@@ -283,6 +313,16 @@ module = [
     "onnxscript.*",
     "dllist",
     "dllist.*",
+    "eval_harness",
+    "eval_harness.*",
+    "langfuse",
+    "langfuse.*",
+    "PicoGK",
+    "PicoGK.*",
+    "pythonnet",
+    "pythonnet.*",
+    "pandas",
+    "pandas.*",
 ]
 ignore_missing_imports = true
 
@@ -368,7 +408,6 @@ module = [
     "src.training.evaluation",
     "src.training.loss_balancing",
     "src.training.losses.physics",
-    "src.training.wandb_logger",
     "src.experiments.train_physics",
     "src.experiments.verify_transfer",
     "src.experiments.benchmark_fnet",
@@ -418,6 +457,11 @@ markers = [
     "cross_backend: cross-backend equivalence tests",
     "integration: integration tests",
     "dashboard: dashboard UI tests",
+    "regression: regression invariant and bug-fix tests",
+    "security: security, injection, and fuzzing tests",
+    "benchmark: performance and scaling benchmark tests",
+    "sanity: import and config schema smoke tests",
+    "video: video compression codec and benchmark tests",
 ]
 
 [tool.coverage.run]
@@ -435,6 +479,14 @@ omit = [
     "src/backend/*",
     "src/demos/*",
     "src/research/fem_baseline.py",
+    # The eval-harness adapter requires the optional [eval-harness] git dependency
+    # (langfuse-eval-harness, not on PyPI). Its tests use ``pytest.importorskip``
+    # and skip cleanly in the default CI matrix, so it is omitted from the global
+    # gate (like fem_baseline); per-module coverage is enforced by the dedicated
+    # "Eval-harness adapter" Regression Surface command when the extra is present.
+    "src/integrations/eval_harness/*",
+    # Retired sub-projects excluded from the active AlphaGalerkin physics charter
+    "src/video_compression/*",
 ]
 
 [tool.coverage.report]

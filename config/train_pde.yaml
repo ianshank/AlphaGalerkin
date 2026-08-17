@@ -54,10 +54,9 @@ training:
   physics_n_boundary_points: 100
   physics_use_adaptive_weights: true
 
-# W&B logging
-wandb:
+# Langfuse experiment tracking (disabled for this config)
+langfuse:
   enabled: false
-  mode: disabled
 
 # Experiment settings
 experiment_name: alphagalerkin_pde_basis

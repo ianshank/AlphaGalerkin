@@ -164,14 +164,8 @@ class LossTerms:
 
     def to_dict(self) -> dict[str, float]:
         """Convert to dictionary of scalar values."""
-        result = {
-            f"loss_{name}": loss.item()
-            for name, loss in self.losses.items()
-        }
-        result.update({
-            f"weight_{name}": weight
-            for name, weight in self.weights.items()
-        })
+        result = {f"loss_{name}": loss.item() for name, loss in self.losses.items()}
+        result.update({f"weight_{name}": weight for name, weight in self.weights.items()})
         result["total"] = self.weighted_sum.item()
         return result
 
@@ -257,9 +251,7 @@ class LossBalancer(ABC):
 
         # Compute weighted sum (only for present losses)
         total = sum(
-            self._weights[name] * losses[name]
-            for name in self.loss_names
-            if name in losses
+            self._weights[name] * losses[name] for name in self.loss_names if name in losses
         )
 
         return LossTerms(
@@ -296,9 +288,7 @@ class ReLoBRaLo(LossBalancer):
 
         # Running loss averages
         self._running_losses: dict[str, float] = {}
-        self._loss_history: dict[str, list[float]] = {
-            name: [] for name in loss_names
-        }
+        self._loss_history: dict[str, list[float]] = {name: [] for name in loss_names}
 
     def update(self, losses: dict[str, Tensor]) -> dict[str, float]:
         """Update weights using ReLoBRaLo formula."""
@@ -371,8 +361,7 @@ class ReLoBRaLo(LossBalancer):
                 if name in exp_rel:
                     raw_weight = exp_rel[name] / sum_exp * self.n_losses
                     weights[name] = max(
-                        self.config.min_weight,
-                        min(self.config.max_weight, raw_weight)
+                        self.config.min_weight, min(self.config.max_weight, raw_weight)
                     )
                 else:
                     weights[name] = 1.0
@@ -417,10 +406,9 @@ class GradNorm(LossBalancer):
         self.model = model
 
         # Learnable weights (log-space for stability)
-        self._log_weights = nn.ParameterDict({
-            name: nn.Parameter(torch.tensor(0.0))
-            for name in loss_names
-        })
+        self._log_weights = nn.ParameterDict(
+            {name: nn.Parameter(torch.tensor(0.0)) for name in loss_names}
+        )
 
         # Initial loss values for relative training rate
         self._initial_losses: dict[str, float] = {}
@@ -437,10 +425,7 @@ class GradNorm(LossBalancer):
         for name in self.loss_names:
             if name in self._log_weights:
                 raw_weight = torch.exp(self._log_weights[name]).item()
-                weights[name] = max(
-                    self.config.min_weight,
-                    min(self.config.max_weight, raw_weight)
-                )
+                weights[name] = max(self.config.min_weight, min(self.config.max_weight, raw_weight))
             else:
                 weights[name] = 1.0
 
@@ -473,12 +458,9 @@ class GradNorm(LossBalancer):
             # Get gradients w.r.t. shared layer
             try:
                 grads = torch.autograd.grad(
-                    loss, shared_layer.parameters(),
-                    retain_graph=True, allow_unused=True
+                    loss, shared_layer.parameters(), retain_graph=True, allow_unused=True
                 )
-                grad_norm = sum(
-                    g.norm() ** 2 for g in grads if g is not None
-                ) ** 0.5
+                grad_norm = sum(g.norm() ** 2 for g in grads if g is not None) ** 0.5
                 grad_norms[name] = grad_norm
             except RuntimeError as e:
                 logger.warning(
@@ -513,9 +495,7 @@ class GradNorm(LossBalancer):
                 (rel_rates.get(name, 1.0) / avg_rel_rate) ** self.config.alpha
             )
             weight = torch.exp(self._log_weights[name])
-            gradnorm_loss = gradnorm_loss + torch.abs(
-                weight * grad_norm - target_norm
-            )
+            gradnorm_loss = gradnorm_loss + torch.abs(weight * grad_norm - target_norm)
 
         return gradnorm_loss
 
@@ -537,10 +517,9 @@ class UncertaintyWeighting(LossBalancer):
         super().__init__(config, loss_names)
 
         # Learnable log-variance parameters
-        self._log_vars = nn.ParameterDict({
-            name: nn.Parameter(torch.tensor(0.0))
-            for name in loss_names
-        })
+        self._log_vars = nn.ParameterDict(
+            {name: nn.Parameter(torch.tensor(0.0)) for name in loss_names}
+        )
 
     @property
     def log_vars(self) -> nn.ParameterDict:
@@ -555,10 +534,7 @@ class UncertaintyWeighting(LossBalancer):
                 # Weight = 1 / (2 * exp(log_var)) = exp(-log_var) / 2
                 log_var = self._log_vars[name]
                 raw_weight = (0.5 * torch.exp(-log_var)).item()
-                weights[name] = max(
-                    self.config.min_weight,
-                    min(self.config.max_weight, raw_weight)
-                )
+                weights[name] = max(self.config.min_weight, min(self.config.max_weight, raw_weight))
             else:
                 weights[name] = 1.0
 
@@ -608,9 +584,7 @@ class SoftAdapt(LossBalancer):
         super().__init__(config, loss_names)
 
         # Loss history for rate computation (use configurable window size)
-        self._loss_history: dict[str, list[float]] = {
-            name: [] for name in loss_names
-        }
+        self._loss_history: dict[str, list[float]] = {name: [] for name in loss_names}
         self._window_size = config.softadapt_window_size
 
     def update(self, losses: dict[str, Tensor]) -> dict[str, float]:
@@ -625,7 +599,7 @@ class SoftAdapt(LossBalancer):
             loss_val = losses[name].detach().item()
             self._loss_history[name].append(loss_val)
             if len(self._loss_history[name]) > self._window_size:
-                self._loss_history[name] = self._loss_history[name][-self._window_size:]
+                self._loss_history[name] = self._loss_history[name][-self._window_size :]
 
         # Compute improvement rates
         rates = {}
@@ -657,8 +631,7 @@ class SoftAdapt(LossBalancer):
                 if name in exp_rates:
                     raw_weight = exp_rates[name] / sum_exp * self.n_losses
                     weights[name] = max(
-                        self.config.min_weight,
-                        min(self.config.max_weight, raw_weight)
+                        self.config.min_weight, min(self.config.max_weight, raw_weight)
                     )
                 else:
                     weights[name] = 1.0
@@ -697,10 +670,7 @@ class StaticWeighting(LossBalancer):
         super().__init__(config, loss_names)
 
         if initial_weights:
-            self._weights = {
-                name: initial_weights.get(name, 1.0)
-                for name in loss_names
-            }
+            self._weights = {name: initial_weights.get(name, 1.0) for name in loss_names}
 
     def update(self, losses: dict[str, Tensor]) -> dict[str, float]:
         """No update for static weighting."""

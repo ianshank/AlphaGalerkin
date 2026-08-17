@@ -88,6 +88,19 @@ class TimeSteppingConfig(BaseModuleConfig):
         ge=1,
         description="Save solution every N steps.",
     )
+    t_end_epsilon: float = Field(
+        default=1e-12,
+        gt=0.0,
+        description=(
+            "Absolute tolerance subtracted from ``t_end`` in the integration "
+            "loop's stopping predicate ``t < t_end - epsilon``. Prevents an "
+            "infinite final step when accumulated float-summation error makes "
+            "``t`` land just-below ``t_end`` after the intended last step. "
+            "Default ``1e-12`` is conservative for float64; raise for float32 "
+            "or for very large simulation times where epsilon should scale "
+            "with ``t_end`` rather than being absolute."
+        ),
+    )
 
 
 class TimeStepper(ABC):
@@ -156,7 +169,9 @@ class TimeStepper(ABC):
             dt=self.dt,
         )
 
-        while t < self.config.t_end - 1e-12 and step_count < self.config.max_steps:
+        while (
+            t < self.config.t_end - self.config.t_end_epsilon and step_count < self.config.max_steps
+        ):
             # Ensure we don't overshoot t_end
             dt_actual = min(self.dt, self.config.t_end - t)
             old_dt = self.dt

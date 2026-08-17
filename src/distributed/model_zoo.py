@@ -105,7 +105,7 @@ class ModelMetadata:
         """Convert to dictionary."""
         return {
             "version": self.version,
-            "path": str(self.path),
+            "path": self.path.as_posix(),
             "step": self.step,
             "timestamp": self.timestamp,
             "metrics": self.metrics,

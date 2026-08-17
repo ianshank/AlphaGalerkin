@@ -38,6 +38,10 @@ PDEName = Literal[
 SignificanceTestType = Literal["t_test", "mann_whitney", "bootstrap", "permutation"]
 
 
+def _default_arms() -> list[ArmName]:
+    return ["random"]
+
+
 class ScalingLawConfig(BaseScenarioConfig):
     """Sweep MCTS-simulation budget and fit a residual scaling curve.
 
@@ -77,7 +81,7 @@ class ScalingLawConfig(BaseScenarioConfig):
 
     # Sweep axes
     arms: list[ArmName] = Field(
-        default_factory=lambda: ["random"],
+        default_factory=_default_arms,
         description=(
             "Evaluator arms to sweep. The first arm is the primary arm whose "
             "scaling exponent drives the headline thresholds."

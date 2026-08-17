@@ -82,9 +82,7 @@ class TransferScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._output_dir = Path("outputs/poc/transfer")
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -337,9 +335,7 @@ class TransferScenario(BaseScenario):
 
         with torch.no_grad():
             for i in range(0, len(dataset), self.config.batch_size):
-                batch_indices = list(
-                    range(i, min(i + self.config.batch_size, len(dataset)))
-                )
+                batch_indices = list(range(i, min(i + self.config.batch_size, len(dataset))))
                 samples = [dataset[j] for j in batch_indices]
 
                 coords = torch.tensor(

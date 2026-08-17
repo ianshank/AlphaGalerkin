@@ -28,8 +28,8 @@ from omegaconf import DictConfig, OmegaConf  # noqa: E402
 from config.schemas import AlphaGalerkinConfig  # noqa: E402
 from src.games.chess import ChessGame  # noqa: E402
 from src.modeling.model import AlphaGalerkinModel  # noqa: E402
+from src.training.langfuse_tracker import create_tracker  # noqa: E402
 from src.training.trainer import Trainer  # noqa: E402
-from src.training.wandb_logger import create_wandb_logger  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -131,24 +131,24 @@ def main(cfg: DictConfig) -> None:
     # Resume path
     resume_from = cfg_dict.get("resume", None)
 
-    # Initialize W&B logger
-    wandb_logger = None
-    wandb_config = cfg_dict.get("wandb", {})
-    if wandb_config.get("enabled", True):
-        if wandb_config.get("name") is None:
-            wandb_config["name"] = config.experiment_name
+    # Initialize Langfuse experiment tracker
+    tracker = None
+    langfuse_config = cfg_dict.get("langfuse", {})
+    if langfuse_config.get("enabled", True):
+        if langfuse_config.get("run_name") is None:
+            langfuse_config["run_name"] = config.experiment_name
 
-        existing_tags = wandb_config.get("tags") or []
+        existing_tags = langfuse_config.get("tags") or []
         tags = list(existing_tags) if existing_tags else []
         tags.append("chess")
         tags.append(f"actions:{config.operator.action_space_size}")
-        wandb_config["tags"] = tags
+        langfuse_config["tags"] = tags
 
-        wandb_logger = create_wandb_logger(
-            wandb_config=wandb_config,
+        tracker = create_tracker(
+            langfuse_config=langfuse_config,
             training_config=cfg_dict,
         )
-        logger.info("wandb_logger_created", enabled=wandb_logger.is_enabled)
+        logger.info("tracker_created", enabled=tracker.is_enabled)
 
     # Create trainer with chess game injected
     trainer = Trainer(
@@ -156,7 +156,7 @@ def main(cfg: DictConfig) -> None:
         config=config,
         device=device,
         checkpoint_dir=checkpoint_dir,
-        wandb_logger=wandb_logger,
+        tracker=tracker,
         game=chess_game,
     )
 
@@ -187,8 +187,8 @@ def main(cfg: DictConfig) -> None:
         trainer.save_checkpoint()
         raise
     finally:
-        if wandb_logger is not None:
-            wandb_logger.finish()
+        if tracker is not None:
+            tracker.finish()
 
     logger.info("chess_training_complete")
 

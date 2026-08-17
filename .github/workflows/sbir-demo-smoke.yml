@@ -1,0 +1,142 @@
+# AlphaGalerkin SBIR Demo Smoke
+#
+# Closes Section 4.2 of docs/PLAN_2026-04-27.md.
+#
+# The SBIR benchmark demo (src/demos/sbir_demo.py) is the artifact the
+# project's SBIR proposals (Navy N252-088, DOE ASCR, NSF, AFWERX) point
+# to as the comparative-baselines deliverable. It produces HTML + JSON +
+# Markdown reports and Pareto / convergence plots from the benchmark
+# suite.
+#
+# tests/demos/test_sbir_demo.py exercises SBIRDemo end-to-end with a
+# tiny in-tmp YAML config, but ci.yml currently `--ignore=tests/demos/`
+# in the fast unit-test pass — so the demo's plumbing has had no CI
+# guard since v0.3.0. This workflow runs that test class on every PR
+# that touches the demo, the runner, the baselines, the visualization
+# registry, or this workflow itself.
+#
+# Path-filtered to keep the feedback loop fast on PRs that don't
+# affect the demo.
+
+name: SBIR Demo Smoke
+
+on:
+  push:
+    branches: [master, "claude/*", "feature/*", develop]
+    paths:
+      - "src/demos/sbir_demo.py"
+      - "src/demos/config.py"
+      - "src/research/baselines.py"
+      - "src/research/pde_benchmarks.py"
+      - "src/research/reporter.py"
+      - "src/poc/visualization/**"
+      - "tests/demos/test_sbir_demo.py"
+      - ".github/workflows/sbir-demo-smoke.yml"
+      - "pyproject.toml"
+  pull_request:
+    branches: [master, develop]
+    paths:
+      - "src/demos/sbir_demo.py"
+      - "src/demos/config.py"
+      - "src/research/baselines.py"
+      - "src/research/pde_benchmarks.py"
+      - "src/research/reporter.py"
+      - "src/poc/visualization/**"
+      - "tests/demos/test_sbir_demo.py"
+      - ".github/workflows/sbir-demo-smoke.yml"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  WANDB_MODE: disabled
+  MPLBACKEND: Agg
+  PYTHONHASHSEED: "0"
+
+jobs:
+  sbir-demo-end-to-end:
+    name: SBIR Demo end-to-end (HTML + JSON + Markdown + plots)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+
+      - name: Show installed package versions
+        run: |
+          python -c "import sys; print('Python', sys.version)"
+          pip list --format=columns | grep -E "typer|matplotlib|pyyaml|pydantic|torch|numpy"
+
+      - name: Run SBIRDemo end-to-end smoke
+        # Tests in tests/demos/test_sbir_demo.py::TestSBIRDemo run the full
+        # demo lifecycle (run -> JSON -> HTML -> Markdown -> Pareto and
+        # convergence plots) against a tiny in-tmp YAML config. They are
+        # `--ignore=`d in ci.yml's fast pass; this workflow is the only
+        # guard for the SBIR-deliverable plumbing.
+        run: |
+          pytest tests/demos/test_sbir_demo.py -v --tb=short
+
+      - name: Upload demo output artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbir-demo-failure-output
+          path: |
+            outputs/
+            /tmp/pytest-*.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
+  sbir-html-report-only:
+    # Lighter-weight job that exercises the HTML report generator alone
+    # without spinning up the full benchmark runner. Provides a fast-fail
+    # signal when the HTML template changes break rendering, separate
+    # from the longer end-to-end job.
+    name: SBIR HTML report generator
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+      - name: Run HTML report tests
+        run: |
+          pytest tests/demos/test_sbir_demo.py::TestSBIRHTMLReportGenerator \
+                 -v --tb=short
+
+  smoke-success:
+    name: SBIR Demo Smoke (gate)
+    runs-on: ubuntu-latest
+    needs:
+      - sbir-demo-end-to-end
+      - sbir-html-report-only
+    if: always()
+    steps:
+      - name: Verify all SBIR-demo jobs passed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" == "true" ] \
+             || [ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]; then
+            echo "::error::At least one SBIR-demo job failed or was cancelled"
+            exit 1
+          fi
+          echo "All SBIR-demo jobs passed"

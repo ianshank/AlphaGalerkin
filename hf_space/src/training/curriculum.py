@@ -41,9 +41,7 @@ class CurriculumStage:
             # Normalize weights
             total = sum(self.size_weights)
             if total <= 0:
-                raise ValueError(
-                    f"size_weights must sum to a positive value, got {total}"
-                )
+                raise ValueError(f"size_weights must sum to a positive value, got {total}")
             self.size_weights = [w / total for w in self.size_weights]
 
 
@@ -81,9 +79,7 @@ class BoardSizeCurriculum:
         logger.info(
             "curriculum_initialized",
             n_stages=len(self.stages),
-            stages=[
-                {"step": s.start_step, "sizes": s.board_sizes} for s in self.stages
-            ],
+            stages=[{"step": s.start_step, "sizes": s.board_sizes} for s in self.stages],
         )
 
     @classmethod
@@ -102,8 +98,7 @@ class BoardSizeCurriculum:
 
         """
         stages = [
-            CurriculumStage(start_step=step, board_sizes=sizes)
-            for step, sizes in schedule.items()
+            CurriculumStage(start_step=step, board_sizes=sizes) for step, sizes in schedule.items()
         ]
         return cls(stages)
 

@@ -130,9 +130,7 @@ class ContinuousEmbedding(nn.Module):
         # Input projection
         # Combines input channels with Fourier features
         fourier_dim = self.fourier_features.output_dim
-        self.input_projection = nn.Linear(
-            input_channels + fourier_dim, d_model
-        )
+        self.input_projection = nn.Linear(input_channels + fourier_dim, d_model)
 
         # Optional learnable position embedding (for baseline comparison)
         if use_learnable_positions:
@@ -159,10 +157,7 @@ class ContinuousEmbedding(nn.Module):
             return torch.zeros(1, n_positions, self.d_model, device=device)
 
         # Create or resize position embedding
-        if (
-            self._position_embedding is None
-            or self._position_embedding_size != n_positions
-        ):
+        if self._position_embedding is None or self._position_embedding_size != n_positions:
             # Create new embedding
             self._position_embedding = nn.Parameter(
                 torch.randn(1, n_positions, self.d_model) * 0.02

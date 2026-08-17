@@ -27,6 +27,35 @@ Retrain AlphaGalerkin on chess via **pure self-play** (AlphaZero methodology), m
 
 ---
 
+## Neural Transcoder Roadmap — Phase 2 Model Zoo (Self-Hosted Transcoder)
+
+| Phase | Status | Scope |
+|---|---|---|
+| **Phase 2-B** | ✅ COMPLETE | Core zoo schemas, manifest I/O, device planner (`VRAM_AWARE` / `ROUND_ROBIN` / `SINGLE_DEVICE` / `MANUAL`), `VideoCodecZoo` filesystem registry. 100% coverage on all 5 modules. |
+| **Phase 2-C** | ✅ COMPLETE | `ZooTrainer` per-entry training loop (fixed-λ, AMP, grad-clip, configurable warmup, `parent_entry_id` warm-start chain). Entry schema v2 with `OptimizerConfig` + `SchedulerConfig`. `DatasetSpec` registry. |
+| **Phase 2-D** | ✅ COMPLETE (this PR) | Manifest-level sweep orchestrator (`ZooSweep.run()` + `run_parallel()`), `make_subprocess_entry_runner`, multi-entry CLI (`train_compression_zoo.py`). **Includes critical structural fixes:** enforced GDN/IGDN parameter positivity, strictly monotonic `FactorizedPrior` CDF, and NaN-stable MS-SSIM computation to prevent training divergence. 165 tests, 98.44% coverage, ruff + mypy clean. |
+| **Phase 2-E** | 🔲 NEXT | **R-D curve evaluation + BD-rate reporting.** After a full zoo run completes, compute the Bj øntegaard Delta Rate curve across the 8 λ-points and write `bd_rate_report.json` into `storage_root`. Gate: BD-rate vs. H.265 ≤ −15% at the primary (lambda_rd=0.015) operating point. |
+| **Phase 2-F** | 🔲 PLANNED | **GCS / remote storage backend.** Wire the `StorageBackend.GCS` path in `VideoCodecZoo` (currently raises `NotImplementedError`). Needed for Vertex AI training runs. Gated by Phase D infra. |
+| **Phase 3** | 🔲 PLANNED | **MCTS rate control integration.** Wire the trained zoo checkpoint from Phase 2 into the `MCTSRateController` as the value/policy prior for QP selection. Currently `MCTSRateController` uses a random prior. |
+
+### Phase 2-E Detail — R-D Curve + BD-Rate (next milestone)
+
+**Goal**: Given a completed zoo run (all 8 λ-entries trained), produce a BD-rate curve vs. H.265 and report it as structured JSON.
+
+**Scope**:
+- `src/video_compression/zoo/rdcurve.py` — `compute_rd_curve(zoo, manifest) -> RDCurve` that reads `metrics.json` per entry, assembles `(bpp, psnr_db)` pairs in λ-order, and fits a monotone spline.
+- `src/video_compression/zoo/bdrate.py` — `bd_rate(test_curve, ref_curve) -> float` (Bjøntegaard Delta Rate). Reference curve from a shipped H.265 baseline JSON `config/video_compression/zoo/h265_baseline.json`.
+- CLI extension: `train_compression_zoo report --manifest … --storage-root …` subcommand that runs both and writes `bd_rate_report.json`.
+- Coverage gate: ≥ 85% on both new modules.
+- No hardcoded bpp/psnr values: all thresholds as Pydantic fields or CLI args.
+
+**Acceptance criteria**:
+- `bd_rate_report.json` round-trips through Pydantic.
+- `pytest tests/video_compression/zoo/test_rdcurve.py tests/video_compression/zoo/test_bdrate.py` all green.
+- `mypy --strict` + `ruff` clean on new modules.
+
+---
+
 ## Sprint 2 (Current): Testing, Coverage & Evaluation
 
 ### Epic 6: Reach 80% Test Coverage (L) — Priority 1

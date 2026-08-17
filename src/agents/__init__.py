@@ -42,6 +42,14 @@ from src.agents.config import (
 )
 from src.agents.coupling import CouplingAgent
 from src.agents.decomposition import DecompositionAgent, SubproblemSpec
+from src.agents.lifecycle_hooks import (
+    BaseLifecycleHook,
+    EarlyStoppingHook,
+    HookManager,
+    LifecycleHook,
+    LoggingHook,
+    MetricsCollectorHook,
+)
 from src.agents.message import AgentMessage, MessageBus
 from src.agents.meta import MetaAgent
 from src.agents.orchestrator import AgentOrchestrator
@@ -52,6 +60,13 @@ __all__ = [
     # Base
     "AgentState",
     "BaseAgent",
+    # Hooks
+    "LifecycleHook",
+    "BaseLifecycleHook",
+    "LoggingHook",
+    "MetricsCollectorHook",
+    "EarlyStoppingHook",
+    "HookManager",
     # Configs
     "AgentConfig",
     "AgentType",

@@ -57,6 +57,7 @@ def __getattr__(name: str) -> Any:  # noqa: ANN401
             TransferResult,
             create_physics_demo_tab,
         )
+
         return {
             "PhysicsDemo": PhysicsDemo,
             "TransferResult": TransferResult,
@@ -71,6 +72,7 @@ def __getattr__(name: str) -> Any:  # noqa: ANN401
             BenchmarkSuite,
             create_benchmark_demo_tab,
         )
+
         return {
             "BenchmarkDemo": BenchmarkDemo,
             "BenchmarkResult": BenchmarkResult,
@@ -84,6 +86,7 @@ def __getattr__(name: str) -> Any:  # noqa: ANN401
             ArchitectureDemo,
             create_architecture_demo_tab,
         )
+
         return {
             "ArchitectureDemo": ArchitectureDemo,
             "create_architecture_demo_tab": create_architecture_demo_tab,

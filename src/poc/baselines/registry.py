@@ -119,7 +119,11 @@ def observed_from_result_dicts(
         scenario = str(raw.get("scenario_name") or raw.get("name") or "").strip()
         if not scenario:
             continue
-        metrics = raw.get("metrics") or {}
+        metrics = raw.get("metrics")
+        if not isinstance(metrics, dict):
+            # A malformed/absent ``metrics`` (None, list, str, ...) is skipped
+            # defensively rather than crashing on ``.items()``.
+            continue
         bucket = observed.setdefault(scenario, {})
         for name, value in metrics.items():
             try:

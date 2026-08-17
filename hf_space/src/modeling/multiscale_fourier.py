@@ -20,7 +20,6 @@ Reference:
 
 from __future__ import annotations
 
-import math
 from typing import Literal
 
 import numpy as np
@@ -59,6 +58,7 @@ class FourierFeaturesConfig(BaseModuleConfig):
         learnable: Whether frequencies are learnable.
         include_input: Whether to include raw coordinates.
         encoding_type: Type of encoding ('positional', 'random', 'gaussian').
+
     """
 
     n_features: int = Field(
@@ -124,6 +124,7 @@ class MultiScaleFourierFeatures(nn.Module):
             scales: Frequency scales (if config not provided).
             learnable: Whether frequencies are learnable.
             include_input: Whether to include raw coordinates.
+
         """
         super().__init__()
 
@@ -145,12 +146,9 @@ class MultiScaleFourierFeatures(nn.Module):
         # Initialize frequency matrices for each scale
         # B ~ N(0, σ²) where σ is the scale
         if learnable:
-            self.frequency_matrices = nn.ParameterList([
-                nn.Parameter(
-                    torch.randn(input_dim, n_features) * scale
-                )
-                for scale in scales
-            ])
+            self.frequency_matrices = nn.ParameterList(
+                [nn.Parameter(torch.randn(input_dim, n_features) * scale) for scale in scales]
+            )
         else:
             for i, scale in enumerate(scales):
                 B = torch.randn(input_dim, n_features) * scale
@@ -179,11 +177,10 @@ class MultiScaleFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match expected.
+
         """
         if x.shape[-1] != self.input_dim:
-            raise ValueError(
-                f"Expected input_dim={self.input_dim}, got {x.shape[-1]}"
-            )
+            raise ValueError(f"Expected input_dim={self.input_dim}, got {x.shape[-1]}")
 
         original_shape = x.shape[:-1]
         x_flat = x.reshape(-1, self.input_dim)
@@ -229,6 +226,7 @@ class MultiScaleFourierFeatures(nn.Module):
 
         Returns:
             Features from specified scale.
+
         """
         if scale_idx < 0 or scale_idx >= self.n_scales:
             raise ValueError(f"Invalid scale index: {scale_idx}")
@@ -242,10 +240,13 @@ class MultiScaleFourierFeatures(nn.Module):
             B = getattr(self, f"B_{scale_idx}")
 
         projected = x_flat @ B
-        features = torch.cat([
-            torch.sin(TWO_PI * projected),
-            torch.cos(TWO_PI * projected),
-        ], dim=-1)
+        features = torch.cat(
+            [
+                torch.sin(TWO_PI * projected),
+                torch.cos(TWO_PI * projected),
+            ],
+            dim=-1,
+        )
 
         return features.reshape(*original_shape, 2 * self.n_features)
 
@@ -285,19 +286,15 @@ class AdaptiveFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If scale_range is invalid.
+
         """
         super().__init__()
 
         # Validate scale_range
         if scale_range[0] >= scale_range[1]:
-            raise ValueError(
-                f"scale_range[0] must be < scale_range[1], "
-                f"got {scale_range}"
-            )
+            raise ValueError(f"scale_range[0] must be < scale_range[1], got {scale_range}")
         if scale_range[0] <= 0:
-            raise ValueError(
-                f"scale_range values must be positive, got {scale_range}"
-            )
+            raise ValueError(f"scale_range values must be positive, got {scale_range}")
 
         self.input_dim = input_dim
         self.n_features = n_features
@@ -313,10 +310,9 @@ class AdaptiveFourierFeatures(nn.Module):
         scales = torch.exp(log_scales)
 
         # Learnable frequency matrices
-        self.frequency_matrices = nn.ParameterList([
-            nn.Parameter(torch.randn(input_dim, n_features) * scale)
-            for scale in scales
-        ])
+        self.frequency_matrices = nn.ParameterList(
+            [nn.Parameter(torch.randn(input_dim, n_features) * scale) for scale in scales]
+        )
 
         # Attention network for weighting frequencies
         if use_attention:
@@ -357,11 +353,10 @@ class AdaptiveFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match expected.
+
         """
         if x.shape[-1] != self.input_dim:
-            raise ValueError(
-                f"Expected input_dim={self.input_dim}, got {x.shape[-1]}"
-            )
+            raise ValueError(f"Expected input_dim={self.input_dim}, got {x.shape[-1]}")
 
         # Handle arbitrary input shapes
         original_shape = x.shape[:-1]
@@ -371,10 +366,13 @@ class AdaptiveFourierFeatures(nn.Module):
         bank_features = []
         for B in self.frequency_matrices:
             projected = torch.matmul(x_flat, B)  # (N, n_features)
-            features = torch.cat([
-                torch.sin(TWO_PI * projected),
-                torch.cos(TWO_PI * projected),
-            ], dim=-1)  # (N, 2*n_features)
+            features = torch.cat(
+                [
+                    torch.sin(TWO_PI * projected),
+                    torch.cos(TWO_PI * projected),
+                ],
+                dim=-1,
+            )  # (N, 2*n_features)
             bank_features.append(features)
 
         # Stack: (N, n_banks, 2*n_features)
@@ -436,6 +434,7 @@ class ProgressiveFourierFeatures(nn.Module):
             learnable: Whether frequencies are learnable.
             gate_steepness: Steepness of sigmoid gate activation (higher = sharper).
                 Controls how quickly frequencies are activated during curriculum.
+
         """
         super().__init__()
 
@@ -450,10 +449,9 @@ class ProgressiveFourierFeatures(nn.Module):
 
         # Initialize frequency matrices
         if learnable:
-            self.frequency_matrices = nn.ParameterList([
-                nn.Parameter(torch.randn(input_dim, n_features) * scale)
-                for scale in scales
-            ])
+            self.frequency_matrices = nn.ParameterList(
+                [nn.Parameter(torch.randn(input_dim, n_features) * scale) for scale in scales]
+            )
         else:
             for i, scale in enumerate(scales):
                 self.register_buffer(f"B_{i}", torch.randn(input_dim, n_features) * scale)
@@ -489,6 +487,7 @@ class ProgressiveFourierFeatures(nn.Module):
         Args:
             progress: Value in [0, 1] indicating training progress.
                      0 = only lowest frequency, 1 = all frequencies.
+
         """
         progress = max(0.0, min(1.0, progress))
         self._progress.fill_(progress)
@@ -499,9 +498,7 @@ class ProgressiveFourierFeatures(nn.Module):
 
         # Vectorized computation on the correct device to avoid device mismatch
         # Thresholds: [0/n, 1/n, 2/n, ...] for each scale
-        thresholds = torch.arange(
-            self.n_scales, device=device, dtype=dtype
-        ) / float(self.n_scales)
+        thresholds = torch.arange(self.n_scales, device=device, dtype=dtype) / float(self.n_scales)
 
         # Compute sigmoid gate values: 1 / (1 + exp(-k * (progress - threshold)))
         delta = progress - thresholds
@@ -535,11 +532,10 @@ class ProgressiveFourierFeatures(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match expected.
+
         """
         if x.shape[-1] != self.input_dim:
-            raise ValueError(
-                f"Expected input_dim={self.input_dim}, got {x.shape[-1]}"
-            )
+            raise ValueError(f"Expected input_dim={self.input_dim}, got {x.shape[-1]}")
 
         original_shape = x.shape[:-1]
         x_flat = x.reshape(-1, self.input_dim)
@@ -590,6 +586,7 @@ class PositionalEncoding(nn.Module):
             d_model: Encoding dimension.
             max_len: Maximum sequence length.
             temperature: Base for frequency computation.
+
         """
         super().__init__()
 
@@ -597,9 +594,7 @@ class PositionalEncoding(nn.Module):
 
         # Compute positional encodings
         position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2) * (-np.log(temperature) / d_model)
-        )
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(temperature) / d_model))
 
         pe = torch.zeros(max_len, d_model)
         pe[:, 0::2] = torch.sin(position * div_term)
@@ -621,12 +616,11 @@ class PositionalEncoding(nn.Module):
 
         Raises:
             ValueError: If input dimension doesn't match d_model.
+
         """
         if x.size(-1) != self.d_model:
-            raise ValueError(
-                f"Expected d_model={self.d_model}, got {x.size(-1)}"
-            )
-        return x + self.pe[:, :x.size(1)]
+            raise ValueError(f"Expected d_model={self.d_model}, got {x.size(-1)}")
+        return x + self.pe[:, : x.size(1)]
 
 
 class SpatialPositionalEncoding(nn.Module):
@@ -648,6 +642,7 @@ class SpatialPositionalEncoding(nn.Module):
             d_model: Encoding dimension (must be divisible by 4).
             max_size: Maximum grid size.
             temperature: Base for frequency computation.
+
         """
         super().__init__()
 
@@ -659,9 +654,7 @@ class SpatialPositionalEncoding(nn.Module):
 
         # Compute 1D encodings for x and y
         position = torch.arange(max_size).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_half, 2) * (-np.log(temperature) / d_half)
-        )
+        div_term = torch.exp(torch.arange(0, d_half, 2) * (-np.log(temperature) / d_half))
 
         pe_x = torch.zeros(max_size, d_half)
         pe_x[:, 0::2] = torch.sin(position * div_term)
@@ -688,11 +681,10 @@ class SpatialPositionalEncoding(nn.Module):
 
         Raises:
             ValueError: If input is not 4D tensor.
+
         """
         if x.dim() != 4:
-            raise ValueError(
-                f"Expected 4D input (batch, channels, height, width), got {x.dim()}D"
-            )
+            raise ValueError(f"Expected 4D input (batch, channels, height, width), got {x.dim()}D")
         _, _, h, w = x.shape
 
         # Get encodings for this size
@@ -700,23 +692,23 @@ class SpatialPositionalEncoding(nn.Module):
         pe_y = self.pe_y[:h].unsqueeze(1)  # (h, 1, d/2)
 
         # Broadcast to (h, w, d)
-        pe = torch.cat([
-            pe_x.expand(h, -1, -1),
-            pe_y.expand(-1, w, -1),
-        ], dim=-1)
+        pe = torch.cat(
+            [
+                pe_x.expand(h, -1, -1),
+                pe_y.expand(-1, w, -1),
+            ],
+            dim=-1,
+        )
 
         # Rearrange to (1, d, h, w) and broadcast to batch
         pe = rearrange(pe, "h w d -> 1 d h w")
 
         # Truncate to match input channels or expand
         if pe.size(1) > x.size(1):
-            pe = pe[:, :x.size(1)]
+            pe = pe[:, : x.size(1)]
         elif pe.size(1) < x.size(1):
             # Pad with zeros
-            padding = torch.zeros(
-                1, x.size(1) - pe.size(1), h, w,
-                device=pe.device, dtype=pe.dtype
-            )
+            padding = torch.zeros(1, x.size(1) - pe.size(1), h, w, device=pe.device, dtype=pe.dtype)
             pe = torch.cat([pe, padding], dim=1)
 
         return x + pe

@@ -276,11 +276,11 @@ class ScikitFEMPoissonSolver(BaseSolver):
 
         basis = skfem.Basis(mesh, element)
 
-        @BilinearForm
+        @BilinearForm  # type: ignore[untyped-decorator]
         def a_form(u: Any, v: Any, _: Any) -> Any:
             return dot(grad(u), grad(v))
 
-        @LinearForm
+        @LinearForm  # type: ignore[untyped-decorator]
         def l_form(v: Any, w: Any) -> Any:
             x = w.x  # quadrature point coordinates (dim, n_q, n_elements)
             pts = np.stack([x[0].ravel(), x[1].ravel()], axis=-1).astype(np.float32)

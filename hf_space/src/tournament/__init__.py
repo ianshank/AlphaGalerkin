@@ -10,16 +10,16 @@ Provides:
 from __future__ import annotations
 
 from src.tournament.config import (
-    TournamentConfig,
-    TournamentFormat,
     MatchConfig,
     RatingConfig,
+    TournamentConfig,
+    TournamentFormat,
 )
+from src.tournament.manager import TournamentManager, TournamentState
 from src.tournament.match import Match, MatchResult, MatchStatus
 from src.tournament.player import Player, PlayerRegistry
 from src.tournament.rating import EloRating, RatingSystem
 from src.tournament.scheduler import TournamentScheduler
-from src.tournament.manager import TournamentManager, TournamentState
 
 __all__ = [
     # Configuration

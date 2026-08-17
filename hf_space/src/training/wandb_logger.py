@@ -646,9 +646,7 @@ class WandbLogger:
             return
 
         try:
-            alert_level = getattr(
-                self._wandb.AlertLevel, level, self._wandb.AlertLevel.INFO
-            )
+            alert_level = getattr(self._wandb.AlertLevel, level, self._wandb.AlertLevel.INFO)
             self._wandb.alert(title=title, text=text, level=alert_level)
         except Exception as e:
             logger.debug("wandb_alert_failed", error=str(e), title=title)

@@ -71,9 +71,7 @@ class ComplexityScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._scenario_logger = ScenarioLogger(
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),
@@ -148,20 +146,14 @@ class ComplexityScenario(BaseScenario):
             self.record_metric(f"fnet_time_ms_n{result.n_tokens}", result.mean_time_ms)
 
         for result in softmax_results:
-            self.record_metric(
-                f"softmax_time_ms_n{result.n_tokens}", result.mean_time_ms
-            )
+            self.record_metric(f"softmax_time_ms_n{result.n_tokens}", result.mean_time_ms)
 
         for result in galerkin_results:
-            self.record_metric(
-                f"galerkin_time_ms_n{result.n_tokens}", result.mean_time_ms
-            )
+            self.record_metric(f"galerkin_time_ms_n{result.n_tokens}", result.mean_time_ms)
 
         # Evaluate thresholds
         threshold_results = {
-            "fnet_scaling_exponent": (
-                fnet_exponent < self.config.fnet_scaling_exponent_max
-            ),
+            "fnet_scaling_exponent": (fnet_exponent < self.config.fnet_scaling_exponent_max),
             "softmax_scaling_exponent": (
                 softmax_exponent > self.config.softmax_scaling_exponent_min
             ),

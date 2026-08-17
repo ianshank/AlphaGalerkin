@@ -229,30 +229,36 @@ class ONNXExporter:
             passes = []
 
             if self.config.optimization_level in ("basic", "extended", "full"):
-                passes.extend([
-                    "eliminate_identity",
-                    "eliminate_nop_dropout",
-                    "eliminate_nop_pad",
-                    "eliminate_nop_transpose",
-                    "eliminate_unused_initializer",
-                    "fuse_bn_into_conv",
-                    "fuse_consecutive_squeezes",
-                    "fuse_consecutive_transposes",
-                ])
+                passes.extend(
+                    [
+                        "eliminate_identity",
+                        "eliminate_nop_dropout",
+                        "eliminate_nop_pad",
+                        "eliminate_nop_transpose",
+                        "eliminate_unused_initializer",
+                        "fuse_bn_into_conv",
+                        "fuse_consecutive_squeezes",
+                        "fuse_consecutive_transposes",
+                    ]
+                )
 
             if self.config.optimization_level in ("extended", "full"):
-                passes.extend([
-                    "fuse_add_bias_into_conv",
-                    "fuse_matmul_add_bias_into_gemm",
-                    "fuse_transpose_into_gemm",
-                ])
+                passes.extend(
+                    [
+                        "fuse_add_bias_into_conv",
+                        "fuse_matmul_add_bias_into_gemm",
+                        "fuse_transpose_into_gemm",
+                    ]
+                )
 
             if self.config.optimization_level == "full":
-                passes.extend([
-                    "fuse_consecutive_concats",
-                    "fuse_consecutive_log_softmax",
-                    "fuse_consecutive_reduce_unsqueeze",
-                ])
+                passes.extend(
+                    [
+                        "fuse_consecutive_concats",
+                        "fuse_consecutive_log_softmax",
+                        "fuse_consecutive_reduce_unsqueeze",
+                    ]
+                )
 
             if passes:
                 optimized_model = optimizer.optimize(model, passes)

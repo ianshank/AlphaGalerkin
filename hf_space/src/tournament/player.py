@@ -8,10 +8,11 @@ Provides:
 
 from __future__ import annotations
 
+import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterator
-import uuid
+from typing import Any
 
 import structlog
 
@@ -66,6 +67,7 @@ class PlayerStats:
             drawn: Whether the game was drawn.
             as_black: Whether player was black.
             points: Points for this game.
+
         """
         self.games_played += 1
 
@@ -114,9 +116,7 @@ class Player:
     model_path: str | None = None
     stats: PlayerStats = field(default_factory=PlayerStats)
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def games_played(self) -> int:
@@ -142,6 +142,7 @@ class Player:
             drawn: Whether the game was drawn.
             as_black: Whether player was black.
             rating_change: Rating change from this game.
+
         """
         self.stats.record_result(won, drawn, as_black)
         self.rating += rating_change
@@ -160,7 +161,7 @@ class Player:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Player":
+    def from_dict(cls, data: dict[str, Any]) -> Player:
         """Create from dictionary."""
         stats_data = data.get("stats", {})
         stats = PlayerStats(
@@ -208,6 +209,7 @@ class PlayerRegistry:
 
         Args:
             logger: Optional structured logger.
+
         """
         self._logger = logger or structlog.get_logger(__name__)
         self._players: dict[str, Player] = {}
@@ -218,6 +220,7 @@ class PlayerRegistry:
 
         Args:
             player: Player to register.
+
         """
         if player.player_id in self._players:
             self._logger.warning(
@@ -254,6 +257,7 @@ class PlayerRegistry:
 
         Returns:
             Newly created Player.
+
         """
         player = Player(
             name=name,
@@ -273,6 +277,7 @@ class PlayerRegistry:
 
         Returns:
             Player or None if not found.
+
         """
         return self._players.get(player_id)
 
@@ -284,6 +289,7 @@ class PlayerRegistry:
 
         Returns:
             Player or None if not found.
+
         """
         player_id = self._by_name.get(name.lower())
         if player_id:
@@ -298,6 +304,7 @@ class PlayerRegistry:
 
         Returns:
             True if player was removed.
+
         """
         if player_id not in self._players:
             return False
@@ -314,6 +321,7 @@ class PlayerRegistry:
 
         Returns:
             List of players.
+
         """
         return list(self._players.values())
 
@@ -325,6 +333,7 @@ class PlayerRegistry:
 
         Returns:
             Sorted list of players.
+
         """
         if by == "rating":
             return sorted(
@@ -357,6 +366,7 @@ class PlayerRegistry:
 
         Yields:
             Player instances.
+
         """
         yield from self._players.values()
 
@@ -371,13 +381,14 @@ class PlayerRegistry:
 
         Returns:
             Dictionary with all players.
+
         """
         return {
             "players": [p.to_dict() for p in self._players.values()],
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PlayerRegistry":
+    def from_dict(cls, data: dict[str, Any]) -> PlayerRegistry:
         """Create registry from dictionary.
 
         Args:
@@ -385,6 +396,7 @@ class PlayerRegistry:
 
         Returns:
             PlayerRegistry instance.
+
         """
         registry = cls()
         for player_data in data.get("players", []):

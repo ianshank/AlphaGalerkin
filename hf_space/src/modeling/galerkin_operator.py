@@ -137,13 +137,9 @@ class GalerkinOperatorConfig(BaseModuleConfig):
     def validate_dimensions(self) -> GalerkinOperatorConfig:
         """Validate that width is compatible with n_heads."""
         if self.width < self.n_heads:
-            raise ValueError(
-                f"width ({self.width}) must be >= n_heads ({self.n_heads})"
-            )
+            raise ValueError(f"width ({self.width}) must be >= n_heads ({self.n_heads})")
         if self.width % self.n_heads != 0:
-            raise ValueError(
-                f"width ({self.width}) must be divisible by n_heads ({self.n_heads})"
-            )
+            raise ValueError(f"width ({self.width}) must be divisible by n_heads ({self.n_heads})")
         return self
 
 
@@ -167,10 +163,7 @@ def _get_activation(name: str) -> nn.Module:
         "tanh": nn.Tanh,
     }
     if name.lower() not in activations:
-        raise ValueError(
-            f"Unknown activation '{name}'. "
-            f"Available: {list(activations.keys())}"
-        )
+        raise ValueError(f"Unknown activation '{name}'. Available: {list(activations.keys())}")
     return activations[name.lower()]()
 
 
@@ -209,13 +202,9 @@ class GalerkinOperatorBlock(nn.Module):
 
         # Validate dimensions for proper attention head splitting
         if d_model < n_heads:
-            raise ValueError(
-                f"d_model ({d_model}) must be >= n_heads ({n_heads})"
-            )
+            raise ValueError(f"d_model ({d_model}) must be >= n_heads ({n_heads})")
         if d_model % n_heads != 0:
-            raise ValueError(
-                f"d_model ({d_model}) must be divisible by n_heads ({n_heads})"
-            )
+            raise ValueError(f"d_model ({d_model}) must be divisible by n_heads ({n_heads})")
 
         self.d_model = d_model
         self.n_heads = n_heads
@@ -379,17 +368,19 @@ class Galerkin2d(nn.Module):
         self.lifting = nn.Linear(in_channels + fourier_dim, width)
 
         # Galerkin blocks
-        self.blocks = nn.ModuleList([
-            GalerkinOperatorBlock(
-                d_model=width,
-                n_heads=n_heads,
-                d_ffn=d_ffn,
-                dropout=dropout,
-                normalize_features=normalize_features,
-                activation=activation,
-            )
-            for _ in range(n_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                GalerkinOperatorBlock(
+                    d_model=width,
+                    n_heads=n_heads,
+                    d_ffn=d_ffn,
+                    dropout=dropout,
+                    normalize_features=normalize_features,
+                    activation=activation,
+                )
+                for _ in range(n_layers)
+            ]
+        )
 
         # Final normalization
         self.final_norm = nn.LayerNorm(width)

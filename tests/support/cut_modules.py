@@ -1,7 +1,8 @@
 """The 2026-07-22 "cut to the core" module list — one definition, several guards.
 
-Six subsystems were removed from the repository on 2026-07-22 to refocus on the
-Galerkin/MCTS core. Two independent guards need that list:
+Five subsystems were removed from the repository on 2026-07-22 to refocus on the
+Galerkin/MCTS core (`video_compression` was later re-scoped and reinstated as part
+of the Codec Model-Zoo work). Two independent guards need that list:
 
 * ``tests/hf_space/test_mirror_guard.py`` — the deploy mirror must stay scrubbed of them.
 * ``tests/docs/test_charter_alignment.py`` — the charter's non-goal register must match, and
@@ -23,8 +24,8 @@ from __future__ import annotations
 from typing import Final
 
 #: Packages removed in the 2026-07-22 "cut to the core". Must not resurface.
+#: ``video_compression`` was later reinstated (Codec Model-Zoo) and is no longer cut.
 CUT_MODULES: Final[tuple[str, ...]] = (
-    "video_compression",
     "reentry",
     "vertex",
     "intercept",

@@ -84,8 +84,7 @@ class FNetMixing(nn.Module):
         if n_freq < n:
             # Pad with zeros
             padding = torch.zeros(
-                x.shape[0], n - n_freq, x.shape[2],
-                device=x.device, dtype=x.dtype
+                x.shape[0], n - n_freq, x.shape[2], device=x.device, dtype=x.dtype
             )
             x_mixed = torch.cat([x_mixed, padding], dim=1)
         elif n_freq > n:
@@ -122,10 +121,7 @@ class FNetMixing(nn.Module):
 
         # Inverse FFT to get back to spatial domain
         # Note: irfft2 needs the original spatial size
-        x_mixed = torch.fft.irfft2(
-            x_mixed_freq.to(torch.complex64),
-            s=(board_size, board_size)
-        )
+        x_mixed = torch.fft.irfft2(x_mixed_freq.to(torch.complex64), s=(board_size, board_size))
 
         # Reshape back to sequence format
         x_out = rearrange(x_mixed, "b d h w -> b (h w) d")
@@ -230,10 +226,9 @@ class FNetStack(nn.Module):
 
         """
         super().__init__()
-        self.layers = nn.ModuleList([
-            FNetBlock(d_model, d_ffn, dropout, use_2d_fft)
-            for _ in range(n_layers)
-        ])
+        self.layers = nn.ModuleList(
+            [FNetBlock(d_model, d_ffn, dropout, use_2d_fft) for _ in range(n_layers)]
+        )
 
     def forward(
         self,
@@ -363,9 +358,7 @@ class FNetMixingLayer(nn.Module):
 
         # 2D FFT mixing (real-valued for efficiency)
         x_freq = torch.fft.rfft2(x_grid, dim=(1, 2), norm="ortho")
-        x_mixed = torch.fft.irfft2(
-            x_freq, s=(grid_size, grid_size), dim=(1, 2), norm="ortho"
-        )
+        x_mixed = torch.fft.irfft2(x_freq, s=(grid_size, grid_size), dim=(1, 2), norm="ortho")
 
         # Reshape back
         x_mixed = x_mixed.view(batch, n_tokens, d)

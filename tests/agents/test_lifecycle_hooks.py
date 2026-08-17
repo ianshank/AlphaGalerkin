@@ -140,3 +140,87 @@ class TestTimeoutEnforcement:
         assert agent.events.count("step") == 1
         # is_terminal must recognise TIMEOUT as terminal (status consistency).
         assert agent.is_terminal
+
+
+class TestHookManagerAndStandardHooks:
+    """Tests for HookManager, LoggingHook, MetricsCollectorHook, EarlyStoppingHook."""
+
+    def test_hook_manager_registration_and_dispatch(self) -> None:
+        from src.agents.lifecycle_hooks import (
+            HookManager,
+            LoggingHook,
+            MetricsCollectorHook,
+        )
+
+        manager = HookManager()
+        logging_hook = LoggingHook(name="TestLoop")
+        metrics_hook = MetricsCollectorHook()
+
+        manager.register(logging_hook)
+        manager.register(metrics_hook)
+
+        # Dispatch init
+        manager.trigger_init({"experiment": "test_exp"})
+
+        # Dispatch steps
+        for step in range(3):
+            manager.trigger_pre_step(step, {"loss": 0.5 - 0.1 * step})
+            manager.trigger_post_step(step, "ok", {"loss": 0.5 - 0.1 * step, "residual": 0.01})
+
+        assert len(metrics_hook.step_times) == 3
+        assert len(metrics_hook.metrics_history) == 3
+        assert metrics_hook.metrics_history[0]["step"] == 0
+        assert metrics_hook.metrics_history[0]["loss"] == 0.5
+        assert metrics_hook.total_duration_s >= 0.0
+        assert metrics_hook.mean_step_duration_s >= 0.0
+
+        # Dispatch error and complete
+        manager.trigger_error(3, ValueError("Test error"), {"loss": 0.2})
+        manager.trigger_complete(3, {"status": "done"})
+
+        # Test unregister
+        manager.unregister(logging_hook)
+        assert len(manager._hooks) == 1
+
+    def test_early_stopping_hook_min_mode(self) -> None:
+        from src.agents.lifecycle_hooks import EarlyStoppingHook
+
+        hook = EarlyStoppingHook(metric_key="residual", patience=2, min_delta=1e-3, mode="min")
+        hook.on_init({})
+
+        # Step 0: Initial best
+        hook.on_post_step(0, None, {"residual": 1.0})
+        assert not hook.should_stop
+        assert hook.best_score == 1.0
+
+        # Step 1: Improved
+        hook.on_post_step(1, None, {"residual": 0.5})
+        assert not hook.should_stop
+        assert hook.best_score == 0.5
+
+        # Step 2: No improvement (patience 1/2)
+        hook.on_post_step(2, None, {"residual": 0.5001})
+        assert not hook.should_stop
+        assert hook.wait_count == 1
+
+        # Step 3: No improvement (patience 2/2 -> stop triggered)
+        hook.on_post_step(3, None, {"residual": 0.5002})
+        assert hook.should_stop
+        assert hook.wait_count == 2
+
+    def test_early_stopping_hook_max_mode(self) -> None:
+        from src.agents.lifecycle_hooks import EarlyStoppingHook
+
+        hook = EarlyStoppingHook(metric_key="reward", patience=2, min_delta=0.1, mode="max")
+        hook.on_init({})
+
+        hook.on_post_step(0, None, {"reward": 1.0})
+        assert hook.best_score == 1.0
+
+        hook.on_post_step(1, None, {"reward": 0.9})
+        assert not hook.should_stop
+        assert hook.wait_count == 1
+
+        hook.on_post_step(2, None, {"reward": 0.8})
+        assert hook.should_stop
+        assert hook.wait_count == 2

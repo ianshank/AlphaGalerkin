@@ -1,0 +1,21 @@
+"""MCTS domain constants for AlphaGalerkin."""
+
+from __future__ import annotations
+
+from src.constants import (
+    DEFAULT_DIRICHLET_ALPHA,
+    DEFAULT_DIRICHLET_EPSILON,
+    DEFAULT_MCTS_SIMULATIONS,
+    DEFAULT_PUCT_CONSTANT,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_VIRTUAL_LOSS,
+)
+
+__all__ = [
+    "DEFAULT_DIRICHLET_ALPHA",
+    "DEFAULT_DIRICHLET_EPSILON",
+    "DEFAULT_MCTS_SIMULATIONS",
+    "DEFAULT_PUCT_CONSTANT",
+    "DEFAULT_TEMPERATURE",
+    "DEFAULT_VIRTUAL_LOSS",
+]

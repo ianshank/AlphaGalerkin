@@ -92,6 +92,8 @@ code not on the production import path.
 | `src/experiments/` | pde | experimental | Physics PoC experiments (Poisson supervised training, zero-shot transfer, FNet benchmark, CNN baseline). |
 | `src/demos/` | shared | experimental | Interactive demos for the HF Space. |
 | `src/prototyping/` | shared | experimental | Fast-prototyping utilities — **not** imported by core production paths (only its own tests + `hf_space/`). |
+| `src/core/` | shared | core | Cross-cutting protocols (`Evaluator`, `GameInterface`) and component registry. |
+| `src/video_compression/` | video | experimental | Learned video codec: MCTS rate-control, hyperprior entropy model, encoder/decoder, RD-curve analysis, ONNX/TensorRT runtime. |
 <!-- package-map:end -->
 
 Plus three root-level modules: `src/constants.py` (centralized numerical constants),

@@ -458,6 +458,7 @@ markers = [
     "security: security, injection, and fuzzing tests",
     "benchmark: performance and scaling benchmark tests",
     "sanity: import and config schema smoke tests",
+    "video: video compression codec and benchmark tests",
 ]
 
 [tool.coverage.run]

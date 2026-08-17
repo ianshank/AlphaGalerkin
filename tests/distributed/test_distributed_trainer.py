@@ -236,7 +236,8 @@ class TestDistributedTrainerInit:
         assert trainer.global_step == 0
         assert not trainer._is_initialized
 
-    def test_setup_device_returns_cpu_when_no_cuda(self) -> None:
+    @patch("torch.cuda.is_available", return_value=False)
+    def test_setup_device_returns_cpu_when_no_cuda(self, _mock_cuda) -> None:
         """_setup_device returns CPU device when CUDA is unavailable."""
         trainer = _make_trainer()
         assert trainer.device == torch.device("cpu")
@@ -287,7 +288,8 @@ class TestDistributedTrainerInit:
         trainer = _make_trainer(model=model, optimizer=optimizer, scheduler=scheduler)
         assert trainer.scheduler is scheduler
 
-    def test_amp_disabled_on_cpu(self) -> None:
+    @patch("torch.cuda.is_available", return_value=False)
+    def test_amp_disabled_on_cpu(self, _mock_cuda) -> None:
         """AMP is disabled even if config says use_amp=True when device is CPU."""
         dist_config = _make_distributed_config(use_amp=True)
         trainer = _make_trainer(distributed_config=dist_config)

@@ -89,6 +89,11 @@ class TrainingConfig:
     langfuse_project: str = "alphagalerkin-physics-poc"
     langfuse_run_name: str | None = None
 
+    # Weights & Biases experiment tracking
+    wandb_enabled: bool = False
+    wandb_project: str = "alphagalerkin-physics-poc"
+    wandb_name: str | None = None
+
 
 def train_epoch(
     model: PhysicsOperator,

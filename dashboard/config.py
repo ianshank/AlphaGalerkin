@@ -390,6 +390,13 @@ class DashboardConfig(BaseModel):
     training: TrainingConfig = Field(default_factory=TrainingConfig)
 
 
+# Resolve forward references created by ``from __future__ import annotations``.
+# Pydantic v2 defers annotation evaluation; without this, ``DashboardConfig()``
+# raises ``PydanticUserError: not fully defined``.
+TransferMilestone.model_rebuild()
+PoCConfig.model_rebuild()
+DashboardConfig.model_rebuild()
+
 # Module-level singleton — import and use directly in tab modules.
 DEFAULT_CONFIG: Final[DashboardConfig] = DashboardConfig()
 

@@ -337,7 +337,13 @@ AlphaGalerkin/
 
 ## SBIR Positioning
 
-AlphaGalerkin addresses a **verified novelty gap**: no published papers combine MCTS with Galerkin methods for PDE solving or mesh refinement. The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
+AlphaGalerkin addresses a **verified novelty gap**: the methodological
+delta — MCTS *multi-step look-ahead* for basis selection and error-driven refinement —
+is unpublished: the AMR-RL literature is uniformly *single-step*, and the only prior
+MCTS + finite-element work, **TreeMesh** ([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)),
+targets mesh *generation*, a distinct problem (see
+[`docs/business/proposals/PRIOR_ART_REVIEW.md`](docs/business/proposals/PRIOR_ART_REVIEW.md)).
+The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
 
 | Solicitation | Agency | Phase | Funding | Config |
 |---|---|---|---|---|
@@ -409,12 +415,9 @@ same code path is safe everywhere.
 - [ ] Multi-physics coupling (fluid-structure interaction)
 - [ ] Publication: "MCTS-Guided Galerkin Methods for Adaptive PDE Solving" (NeurIPS ML4PhysicalSciences)
 
----
-=======
 Active development (`0.1.0`, pre-release). Shipped work and milestones are in
 [`CHANGELOG.md`](CHANGELOG.md); the release process is in [`RELEASING.md`](RELEASING.md).
 SBIR/commercialization material lives in [`docs/business/`](docs/business/README.md).
->>>>>>> origin/claude/alphagalerkin-implementation-4zGEN
 
 ## Contributing
 

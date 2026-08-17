@@ -10,9 +10,11 @@ write guarantee.
 
 from __future__ import annotations
 
+import sys
+import types
 from collections.abc import Iterator
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -65,5 +67,22 @@ def fake_gcs(gcs_store: dict[str, bytes]) -> Iterator[dict[str, bytes]]:
 
     Yields the underlying object store so tests can assert on raw blob keys.
     """
-    with patch("google.cloud.storage.Client", return_value=_FakeClient(gcs_store)):
+    fake_client = _FakeClient(gcs_store)
+    mock_storage = types.ModuleType("google.cloud.storage")
+    mock_storage.Client = MagicMock(return_value=fake_client)  # type: ignore[attr-defined]
+
+    mock_cloud = types.ModuleType("google.cloud")
+    mock_cloud.storage = mock_storage  # type: ignore[attr-defined]
+
+    mock_google = types.ModuleType("google")
+    mock_google.cloud = mock_cloud  # type: ignore[attr-defined]
+
+    with patch.dict(
+        sys.modules,
+        {
+            "google": mock_google,
+            "google.cloud": mock_cloud,
+            "google.cloud.storage": mock_storage,
+        },
+    ):
         yield gcs_store

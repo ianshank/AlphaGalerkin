@@ -198,7 +198,7 @@ jobs:
 
       - name: Upload pytest output
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-output-py${{ matrix.python-version }}
           path: /tmp/pytest-output.txt
@@ -595,7 +595,7 @@ jobs:
 
       - name: Upload coverage report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: htmlcov/
@@ -768,7 +768,7 @@ jobs:
             --output-dir outputs/transfer_ci --log-level WARNING
       - name: Upload transfer benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: transfer-baseline-results
           path: results/transfer_baseline_compare.*

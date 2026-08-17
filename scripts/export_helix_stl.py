@@ -28,7 +28,7 @@ import numpy as np
 
 
 def _build_vertices(
-    R_major: float,
+    r_major: float,
     r_minor: float,
     pitch: float,
     n_turns: int,
@@ -43,14 +43,14 @@ def _build_vertices(
     """
     # Centerline parameter (open interval is fine: tube is open-ended).
     t = np.linspace(0.0, 2.0 * np.pi * n_turns, n_t + 1)
-    cx = R_major * np.cos(t)
-    cy = R_major * np.sin(t)
+    cx = r_major * np.cos(t)
+    cy = r_major * np.sin(t)
     cz = pitch * t / (2.0 * np.pi)
     centerline = np.stack([cx, cy, cz], axis=-1)  # (n_t+1, 3)
 
     # Tangent along centerline (analytical derivative).
-    tx = -R_major * np.sin(t)
-    ty = R_major * np.cos(t)
+    tx = -r_major * np.sin(t)
+    ty = r_major * np.cos(t)
     tz = np.full_like(t, pitch / (2.0 * np.pi))
     tangent = np.stack([tx, ty, tz], axis=-1)
     tangent /= np.linalg.norm(tangent, axis=-1, keepdims=True)
@@ -75,7 +75,9 @@ def _build_vertices(
         norm = np.linalg.norm(n_curr)
         if norm < 1e-12:
             # Degenerate; fall back to arbitrary perpendicular.
-            arbitrary = np.array([0.0, 0.0, 1.0]) if abs(t_curr[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+            arbitrary = (
+                np.array([0.0, 0.0, 1.0]) if abs(t_curr[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+            )
             n_curr = arbitrary - np.dot(arbitrary, t_curr) * t_curr
             norm = np.linalg.norm(n_curr)
         normals[i] = n_curr / norm
@@ -89,10 +91,8 @@ def _build_vertices(
 
     # Tube vertices: c(t) + r_minor * (cos(theta) * normal + sin(theta) * binormal).
     # Shape: (n_t+1, n_theta, 3)
-    verts = (
-        centerline[:, None, :]
-        + r_minor * (cos_th[None, :, None] * normals[:, None, :]
-                     + sin_th[None, :, None] * binormals[:, None, :])
+    verts = centerline[:, None, :] + r_minor * (
+        cos_th[None, :, None] * normals[:, None, :] + sin_th[None, :, None] * binormals[:, None, :]
     )
     return verts
 
@@ -146,9 +146,20 @@ def _write_binary_stl(path: Path, verts: np.ndarray, tris: np.ndarray) -> None:
 
 
 def main() -> int:
+    """Export the Noyron HX helical-tube geometry as a binary STL file."""
     parser = argparse.ArgumentParser(description="Export Noyron HX helix as STL")
-    parser.add_argument("--R-major", type=float, default=0.05, help="Helix radius (m)")
-    parser.add_argument("--r-minor", type=float, default=0.012, help="Tube cross-section radius (m)")
+    parser.add_argument(
+        "--R-major",
+        type=float,
+        default=0.05,
+        help="Helix radius (m)",
+    )
+    parser.add_argument(
+        "--r-minor",
+        type=float,
+        default=0.012,
+        help="Tube cross-section radius (m)",
+    )
     parser.add_argument("--pitch", type=float, default=0.02, help="Vertical rise per turn (m)")
     parser.add_argument("--n-turns", type=int, default=5, help="Number of helical revolutions")
     parser.add_argument(
@@ -175,7 +186,7 @@ def main() -> int:
         raise SystemExit("r_minor must be < R_major (else the tube self-intersects)")
 
     verts = _build_vertices(
-        R_major=args.R_major,
+        r_major=args.R_major,
         r_minor=args.r_minor,
         pitch=args.pitch,
         n_turns=args.n_turns,

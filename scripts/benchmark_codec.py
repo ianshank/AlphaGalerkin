@@ -226,6 +226,7 @@ def _cmd_diff(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser for the codec benchmark tool."""
     parser = argparse.ArgumentParser(
         prog="benchmark_codec",
         description="AlphaGalerkin video codec performance benchmark",
@@ -290,6 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse CLI arguments and dispatch to the requested subcommand."""
     parser = build_parser()
     args = parser.parse_args(argv)
 

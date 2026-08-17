@@ -67,6 +67,8 @@ single failure.
 | `src/experiments/` | pde |
 | `src/demos/` | shared |
 | `src/prototyping/` | shared |
+| `src/core/` | shared |
+| `src/video_compression/` | video |
 <!-- charter:scope:end -->
 
 #### Scenario: A new package is added without charter update
@@ -89,7 +91,6 @@ that requires amending this charter first.
 <!-- charter:non-goals:start -->
 | Removed package | Removed | Why it is a non-goal |
 | --- | --- | --- |
-| `src/video_compression/` | 2026-07-22 | Neural codec work — unrelated to the Galerkin/MCTS thesis |
 | `src/reentry/` | 2026-07-22 | Domain PoC; not on the core solver path |
 | `src/vertex/` | 2026-07-22 | Cloud-training launcher; infrastructure, not thesis |
 | `src/intercept/` | 2026-07-22 | Domain PoC; not on the core solver path |

@@ -247,6 +247,9 @@ ignore = [
     "E741",   # Ambiguous variable name (e.g., I for Intra frame)
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["src", "config", "dashboard"]
+
 [tool.ruff.lint.per-file-ignores]
 # Test files have more relaxed linting
 "tests/**/*.py" = [

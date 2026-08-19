@@ -5,6 +5,11 @@ All notable changes to AlphaGalerkin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Next Steps Review (2026-08-18)** — Added `docs/NEXT_STEPS_REVIEW_2026-08-18.md`, a peer-reviewed, evidence-based case for the highest-leverage next engineering steps (P0-1 OOD-reward defect scope, the JAX/`src/backend` keep-or-cut decision, PR #118/#57 salvage triage, and a re-scoped, effort-estimated plan for the `lshape_amr_compare` AMR novelty-claim fork).
+
 ## [0.4.0-dev] - 2026-08-16
 
 ### Added

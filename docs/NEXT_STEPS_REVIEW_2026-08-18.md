@@ -22,7 +22,7 @@
 ## Framing
 
 AlphaGalerkin is CI-green with real recent hardening investment, excellent TODO
-hygiene (3 hits repo-wide, all trivial), zero unconditional test skips, and an
+hygiene in production code (3 hits in `src/`, all trivial), zero unconditional test skips, and an
 unusual, genuine strength: it self-reports negative results — two prior
 fabricated-number incidents were caught and retracted in-repo rather than left to
 stand. Current green was reached via active firefighting in the commits immediately
@@ -136,8 +136,8 @@ shipped.
 7. **The JAX/backend question is bigger than "some untested classes" — it's a whole
    unconsumed abstraction layer.** The seven `Jax*`-suffixed classes in
    `src/math_kernel/{basis,spectral,integral}.py` (~1900 combined LOC) have zero
-   exercised call sites in any CI job — confirmed by three independent checks in this
-   review. Going further: `src/backend/interface.py::BackendInterface`, a 67-method
+   call sites in production code — confirmed by three independent checks in this
+   review (CI has a dedicated `test-jax` job exercising them, but nothing in `src/` outside the backend itself calls them). Going further: `src/backend/interface.py::BackendInterface`, a 67-method
    `Protocol` apparently meant to unify the Torch/JAX backends, is referenced *only*
    within `src/backend/` itself (`jax_backend.py`, `torch_backend.py`, `__init__.py`)
    — nothing in `training/`, `modeling/`, `pde/`, or anywhere else in `src/` consumes

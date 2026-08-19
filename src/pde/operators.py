@@ -625,7 +625,19 @@ class BurgersOperator(PDEOperator):
         """
         super().__init__(config)
         self.viscosity = viscosity if viscosity is not None else config.diffusion_coeff
-        self.is_time_dependent = config.is_time_dependent
+        # PDEConfig.is_time_dependent defaults to False, and unconditionally
+        # assigning it here silently downgraded every caller that never
+        # mentioned the flag (e.g. _centaur_common.build_pde_operator) from
+        # the class-level `is_time_dependent = True` default to False, which
+        # made exact_solution() return None unconditionally (the flat-reward
+        # defect tracked as P0-1 in docs/CODE_HYGIENE_AUDIT.md). Only honour
+        # config.is_time_dependent when the caller actually set it — either
+        # explicitly at construction (``PDEConfig(..., is_time_dependent=...)``)
+        # or via a later mutation — so an explicit False still disables the
+        # Cole-Hopf solution (see test_steady_returns_none) while an unset
+        # config keeps Burgers' true default of being time-dependent.
+        if "is_time_dependent" in config.model_fields_set:
+            self.is_time_dependent = config.is_time_dependent
         self.shock_position = shock_position if shock_position is not None else 0.5
         self.shock_width = shock_width if shock_width is not None else 10.0
 

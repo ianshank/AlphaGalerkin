@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **P0-1 Burgers OOD-reward defect** — `BurgersOperator.__init__` (`src/pde/operators.py`) now checks `config.model_fields_set` before overriding the class-level `is_time_dependent = True` default, so an unset config keeps a real `exact_solution()` instead of silently returning `None`; explicit `True`/`False` still honored exactly as before. Surfaced a new, more urgent finding in the process: the Cole-Hopf approximation is numerically degenerate at the now-reachable `t=0` (magnitude ~1e10-1e13), live on the default config of the shipped `llm_prior_ablation` scenario — see `docs/CODE_HYGIENE_REVIEW_2026-08-19.md`.
+- **MCTS crashed on a terminal-at-root game state** — `mcts.get_action()` now guards this case with a clear error instead of an unhandled `ValueError`/unhelpful failure.
+- **MCTS/PDE NaN propagation** — evaluator output is now checked for finiteness with structured-log detection (`src/mcts/search.py`, `evaluator.py`); a NaN from a diverging PDE solve previously resolved to the *best possible* MCTS leaf value via Python's NaN-comparison semantics (`EncodedValueEvaluator` in `src/pde/games/lshape_amr.py`) and now falls back to neutral.
+- **LM Studio preflight crashed on a broken CUDA driver** — `torch.cuda.is_available()`/`device_count()` raising (distinct from "no GPU") now degrades gracefully instead of propagating an uncaught `RuntimeError`.
+
 ### Added
 - **Next Steps Review (2026-08-18)** — Added `docs/NEXT_STEPS_REVIEW_2026-08-18.md`, a peer-reviewed, evidence-based case for the highest-leverage next engineering steps (P0-1 OOD-reward defect scope, the JAX/`src/backend` keep-or-cut decision, PR #118/#57 salvage triage, and a re-scoped, effort-estimated plan for the `lshape_amr_compare` AMR novelty-claim fork).
+- **Code Hygiene & Correctness Review (2026-08-19)** — Added `docs/CODE_HYGIENE_REVIEW_2026-08-19.md`: a hands-on, execution-verified pass across `src/mcts/`, `src/pde/`, `src/refinement/`, `src/integrations/`, and `src/data/` by four repo-specific specialist agents plus an adversarial verification pass. Coverage raised on `src/data/physics_dataset.py` (23%→100%), `src/refinement` (96%→100%), `src/mcts` (96.29%→96.95%), `src/integrations/lm_studio` (94.77%→95.62%). ~130 new/extended tests. Also surfaces (report-only, not fixed): a stale `video_compression`-was-deleted claim at `CLAUDE.md:115` (4 of 5 named paths actually exist, 28 undocumented `mypy --strict` errors and no coverage gate on that package), several hardcoded-value findings in `src/pde/games/`, a broken `make demo` target and a silently-drifted `make test-stoch` coverage command, and an unbounded self-play buffer-fill loop with no SIGINT/SIGTERM handling anywhere in the training stack.
 
 ## [0.4.0-dev] - 2026-08-16
 

@@ -206,10 +206,10 @@ class LMStudioClient:
                         error=type(last_error).__name__,
                     )
                     raise last_error
-                self._sleep_backoff(attempt)
                 self._emit_retry_log(
                     log, prompt_hash_str, attempt, reason=type(last_error).__name__
                 )
+                self._sleep_backoff(attempt)
                 attempt += 1
                 continue
 

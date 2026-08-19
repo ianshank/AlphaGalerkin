@@ -517,6 +517,58 @@ class TestBasisSelectionGameTerminal:
                 break
             state = game.apply_action(state, i)
 
+    def test_terminal_reachable_at_real_initial_state(self) -> None:
+        """A loose ``error_tolerance`` can make the real zero-DOF initial state terminal.
+
+        Unlike ``test_terminal_low_error`` (which synthetically overwrites
+        ``state.error_estimate``), this builds the game from a real config and
+        calls ``get_initial_state()`` unmodified: ``error_tolerance`` is
+        deliberately looser than the manufactured Poisson solution's
+        zero-solution RMS error (~0.5), so the *actual* dof=0 state already
+        satisfies convergence. Also proves ``PDEGameAdapter`` and a real MCTS
+        micro-run tolerate a terminal-at-construction game without crashing.
+        """
+        pde_config = PDEConfig(name="loose_tol_poisson", pde_type=PDEType.POISSON)
+        operator = PoissonOperator(pde_config)
+        game_config = PDEGameConfig(
+            name="loose_tol_game",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            error_tolerance=0.999,  # near the Pydantic ceiling (< 1.0)
+            basis_config=BasisSelectionConfig(
+                name="loose_tol_basis",
+                basis_type="fourier",
+                max_basis_functions=4,
+                n_candidate_bases=8,
+                max_frequency=2,
+                n_collocation_points=25,
+                seed=7,
+            ),
+        )
+        loose_game = BasisSelectionGame(operator, game_config)
+        state = loose_game.get_initial_state()
+
+        assert state.dof == 0
+        assert state.error_estimate < game_config.error_tolerance
+        assert loose_game.is_terminal(state) is True
+
+        from src.pde.mcts_adapter import PDEGameAdapter
+
+        adapter = PDEGameAdapter(loose_game)
+        assert adapter.is_terminal() is True
+
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS
+
+        mcts = MCTS(
+            evaluator=RandomEvaluator(n_actions=loose_game.action_space_size),
+            n_simulations=4,
+            search_mode=adapter.search_mode,
+        )
+        # A terminal-at-the-root search must not raise.
+        action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
+        assert 0 <= action < loose_game.action_space_size
+
 
 class TestBasisSelectionTerminationReason:
     """Tests for the termination-cause classifier.

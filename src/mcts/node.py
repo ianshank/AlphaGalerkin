@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from src.constants import DEFAULT_TEMPERATURE
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -219,7 +221,7 @@ class MCTSNode:
 
     def get_visit_distribution(
         self,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> dict[int, float]:
         """Get action probability distribution based on visit counts.
 

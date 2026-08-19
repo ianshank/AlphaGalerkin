@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 import numpy as np
 import torch
 
+from src.constants import DEFAULT_TEMPERATURE
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -82,7 +84,7 @@ class FNetEvaluator:
         model: AlphaGalerkinModel,
         device: torch.device | str = "cpu",
         use_fast_path: bool = True,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> None:
         """Initialize evaluator.
 

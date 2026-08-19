@@ -853,6 +853,52 @@ class TestMeshRefinementGameTerminal:
         state.step = game.config.max_steps
         assert game.is_terminal(state) is True
 
+    def test_terminal_reachable_at_real_initial_state(
+        self, poisson_operator: PoissonOperator, mesh_config: MeshRefinementConfig
+    ) -> None:
+        """A tight ``max_dof`` can make the real coarse mesh terminal before any refinement.
+
+        Unlike ``test_terminal_max_dof`` (which synthetically overwrites
+        ``state.dof``), this builds the game from a real config and calls
+        ``get_initial_state()`` unmodified: ``initial_resolution=2`` in 2D
+        always produces a 4-element, 16-DOF coarse mesh, so ``max_dof=10``
+        (the Pydantic floor) is already exceeded at construction. Also proves
+        ``PDEGameAdapter`` and a real MCTS micro-run tolerate a
+        terminal-at-construction game without crashing.
+        """
+        tight_config = PDEGameConfig(
+            name="tight_dof_game",
+            pde_config=PDEConfig(name="tight_dof_poisson", pde_type=PDEType.POISSON),
+            game_mode="mesh_refinement",
+            mesh_config=mesh_config,
+            max_steps=10,
+            max_dof=10,  # Pydantic floor; below the coarse mesh's 16 DOF.
+            error_tolerance=1e-4,
+        )
+        tight_game = MeshRefinementGame(poisson_operator, tight_config)
+        state = tight_game.get_initial_state()
+
+        assert state.dof == 16
+        assert state.dof > tight_config.max_dof
+        assert tight_game.is_terminal(state) is True
+
+        from src.pde.mcts_adapter import PDEGameAdapter
+
+        adapter = PDEGameAdapter(tight_game)
+        assert adapter.is_terminal() is True
+
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS
+
+        mcts = MCTS(
+            evaluator=RandomEvaluator(n_actions=tight_game.action_space_size),
+            n_simulations=4,
+            search_mode=adapter.search_mode,
+        )
+        # A terminal-at-the-root search must not raise.
+        action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
+        assert 0 <= action < tight_game.action_space_size
+
 
 class TestMeshRefinementTerminationReason:
     """Tests for the termination-cause classifier.

@@ -12,7 +12,8 @@ import pytest
 
 numpy = pytest.importorskip("numpy")
 
-from src.mcts.evaluator import RandomEvaluator
+import src.mcts.search as search_module
+from src.mcts.evaluator import EvaluationResult, RandomEvaluator
 from src.mcts.search import MCTS, BatchMCTS
 
 # --- Mock Game Implementation ---
@@ -485,3 +486,368 @@ class TestMCTSIntegration:
 
         distribution = large_mcts.search(large_game)
         assert len(distribution) > 0
+
+
+# --- Single Legal Action Tests ---
+
+
+class _SingleActionGame:
+    """Game with exactly one legal action at every non-terminal step.
+
+    Exercises ``select_child``/``get_visit_distribution`` with a trivial
+    (size-1) policy: no other action ever competes for the PUCT score, so
+    this is the degenerate case where a division-by-zero or a malformed
+    single-element softmax would first surface.
+    """
+
+    def __init__(self, moves_remaining: int = 3) -> None:
+        self.moves_remaining = moves_remaining
+
+    def get_state(self) -> numpy.ndarray:
+        return numpy.zeros(1, dtype=numpy.float32)
+
+    def get_legal_actions(self) -> list[int]:
+        return [] if self.moves_remaining <= 0 else [0]
+
+    def apply_action(self, action: int) -> None:
+        self.moves_remaining -= 1
+
+    def is_terminal(self) -> bool:
+        return self.moves_remaining <= 0
+
+    def get_winner(self) -> int:
+        return 1
+
+    def clone(self) -> _SingleActionGame:
+        return _SingleActionGame(self.moves_remaining)
+
+
+class TestSingleLegalAction:
+    """Edge case: every node in the tree has exactly one legal action."""
+
+    def test_search_assigns_full_mass_to_the_sole_action(self) -> None:
+        evaluator = RandomEvaluator(n_actions=1)
+        mcts = MCTS(evaluator=evaluator, n_simulations=10, c_puct=1.5)
+
+        distribution = mcts.search(_SingleActionGame(), add_noise=False)
+
+        assert distribution == {0: pytest.approx(1.0)}
+
+    def test_get_action_returns_the_sole_action_at_every_temperature(self) -> None:
+        evaluator = RandomEvaluator(n_actions=1)
+        mcts = MCTS(evaluator=evaluator, n_simulations=10, c_puct=1.5)
+
+        for temperature in (0.0, 1.0, 5.0):
+            mcts.reset()
+            action = mcts.get_action(_SingleActionGame(), temperature=temperature, add_noise=False)
+            assert action == 0
+
+
+# --- Terminal-At-Root Observability Tests ---
+
+
+class TestTerminalAtRoot:
+    """A root that is already terminal before any simulation runs.
+
+    ``search()`` must return sanely (empty distribution, no crash);
+    ``get_action()`` must fail with a clear, actionable error rather than a
+    low-level one (previously an unguarded ``numpy.random.choice`` on an
+    empty array: ``ValueError: 'a' cannot be empty unless no samples are
+    taken`` at temperature != 0, or a bare "no children" from
+    ``get_best_action()`` at temperature == 0 -- neither names the actual
+    cause).
+    """
+
+    def test_search_returns_empty_distribution(self) -> None:
+        evaluator = RandomEvaluator(n_actions=10)
+        mcts = MCTS(evaluator=evaluator, n_simulations=5, c_puct=1.5)
+        terminal_game = MockGame(terminal_after=0)
+
+        distribution = mcts.search(terminal_game)
+
+        assert distribution == {}
+        assert mcts._root is not None
+        assert mcts._root.children == {}
+
+    def test_get_action_raises_clear_error_at_default_temperature(self) -> None:
+        evaluator = RandomEvaluator(n_actions=10)
+        mcts = MCTS(evaluator=evaluator, n_simulations=5, c_puct=1.5)
+        terminal_game = MockGame(terminal_after=0)
+
+        with pytest.raises(ValueError, match="already-terminal"):
+            mcts.get_action(terminal_game)
+
+    def test_get_action_raises_clear_error_at_temperature_zero(self) -> None:
+        """The deterministic (argmax) branch hits the same guard."""
+        evaluator = RandomEvaluator(n_actions=10)
+        mcts = MCTS(evaluator=evaluator, n_simulations=5, c_puct=1.5)
+        terminal_game = MockGame(terminal_after=0)
+
+        with pytest.raises(ValueError, match="already-terminal"):
+            mcts.get_action(terminal_game, temperature=0.0)
+
+
+# --- c_puct / Temperature Boundary Value Tests ---
+
+
+class TestExtremeSearchParameters:
+    """c_puct and temperature at their documented boundary values."""
+
+    def test_search_with_zero_c_puct_is_pure_exploitation(
+        self,
+        random_evaluator: RandomEvaluator,
+        mock_game: MockGame,
+    ):
+        """c_puct=0.0 must not crash; the exploration term always vanishes."""
+        mcts = MCTS(evaluator=random_evaluator, c_puct=0.0, n_simulations=20)
+
+        distribution = mcts.search(mock_game, add_noise=False)
+
+        assert len(distribution) > 0
+        assert all(numpy.isfinite(p) for p in distribution.values())
+        assert abs(sum(distribution.values()) - 1.0) < 1e-6
+
+    def test_search_with_very_large_c_puct_stays_finite(
+        self,
+        random_evaluator: RandomEvaluator,
+        mock_game: MockGame,
+    ):
+        mcts = MCTS(evaluator=random_evaluator, c_puct=1e6, n_simulations=20)
+
+        distribution = mcts.search(mock_game, add_noise=False)
+
+        assert len(distribution) > 0
+        assert all(numpy.isfinite(p) for p in distribution.values())
+        assert abs(sum(distribution.values()) - 1.0) < 1e-6
+
+    def test_get_action_with_very_large_temperature_stays_finite(
+        self,
+        mcts: MCTS,
+        mock_game: MockGame,
+    ):
+        """1/temperature -> 0 as temperature grows; must not produce NaN."""
+        action = mcts.get_action(mock_game, temperature=1e6, add_noise=False)
+        assert action in mock_game.get_legal_actions()
+
+    def test_get_visit_distribution_with_very_large_temperature(
+        self,
+        mcts: MCTS,
+        mock_game: MockGame,
+    ):
+        mcts.search(mock_game, add_noise=False)
+        distribution = mcts._root.get_visit_distribution(temperature=1e6)
+
+        assert len(distribution) > 0
+        assert all(numpy.isfinite(p) for p in distribution.values())
+        assert abs(sum(distribution.values()) - 1.0) < 1e-6
+
+
+# --- Observability: non-finite evaluator output (never silent) ---
+
+
+class _NonFiniteValueEvaluator:
+    """Uniform, finite policy paired with a NaN value.
+
+    A stand-in for a value head that diverged during training.
+    """
+
+    def __init__(self, n_actions: int) -> None:
+        self.n_actions = n_actions
+
+    def evaluate(self, state: numpy.ndarray, legal_actions: list[int]) -> EvaluationResult:
+        policy = numpy.zeros(self.n_actions, dtype=numpy.float32)
+        if legal_actions:
+            for a in legal_actions:
+                policy[a] = 1.0 / len(legal_actions)
+        return EvaluationResult(policy=policy, value=float("nan"))
+
+    def evaluate_batch(
+        self,
+        states: list[numpy.ndarray],
+        legal_actions_batch: list[list[int]],
+    ) -> list[EvaluationResult]:
+        return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]
+
+
+class _NonFinitePolicyEvaluator:
+    """Finite value paired with an Inf-poisoned policy entry."""
+
+    def __init__(self, n_actions: int) -> None:
+        self.n_actions = n_actions
+
+    def evaluate(self, state: numpy.ndarray, legal_actions: list[int]) -> EvaluationResult:
+        policy = numpy.zeros(self.n_actions, dtype=numpy.float32)
+        if legal_actions:
+            policy[legal_actions[0]] = float("inf")
+        return EvaluationResult(policy=policy, value=0.0)
+
+    def evaluate_batch(
+        self,
+        states: list[numpy.ndarray],
+        legal_actions_batch: list[list[int]],
+    ) -> list[EvaluationResult]:
+        return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]
+
+
+class _RecordingLogger:
+    """Minimal structlog-shaped stand-in that records ``warning``/``debug`` calls.
+
+    Replaces the module-level ``logger`` directly instead of using
+    ``structlog.testing.capture_logs``: ``tests/pde/test_mesh_refinement.py``
+    documents that ``capture_logs`` can silently record nothing once any
+    earlier test in the session has called
+    ``src.poc.logging.configure_logging`` (it caches a stdlib-backed bound
+    logger that stops consulting the patched processor chain) -- a failure
+    mode that depends on collection order across the whole session.
+    Replacing the proxy object outright is robust regardless of what ran
+    before this test.
+    """
+
+    def __init__(self) -> None:
+        self.warnings: list[tuple[str, dict]] = []
+        self.debugs: list[tuple[str, dict]] = []
+
+    def warning(self, event: str, **kwargs: object) -> None:
+        self.warnings.append((event, kwargs))
+
+    def debug(self, event: str, **kwargs: object) -> None:
+        self.debugs.append((event, kwargs))
+
+
+class TestNonFiniteEvaluationObservability:
+    """A NaN/Inf evaluator output must leave a log trail, not fail silently.
+
+    ``MCTS._check_finite_evaluation`` is the sole guard against a value
+    network (or a broken test double) silently poisoning every ancestor's
+    ``total_value`` with NaN -- these tests exercise both call sites
+    (``_expand_node`` for ``MCTS``, the batch leaf-expansion loop for
+    ``BatchMCTS``) and confirm the ordinary path stays silent (no false
+    positives).
+    """
+
+    def test_expand_logs_non_finite_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_game: MockGame,
+    ) -> None:
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(search_module, "logger", recorder)
+
+        mcts = MCTS(evaluator=_NonFiniteValueEvaluator(9), n_simulations=1, c_puct=1.0)
+        mcts.search(mock_game, add_noise=False)
+
+        events = [event for event, _ in recorder.warnings]
+        assert "mcts_evaluator_non_finite_value" in events
+
+    def test_expand_logs_non_finite_policy(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_game: MockGame,
+    ) -> None:
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(search_module, "logger", recorder)
+
+        mcts = MCTS(evaluator=_NonFinitePolicyEvaluator(9), n_simulations=1, c_puct=1.0)
+        mcts.search(mock_game, add_noise=False)
+
+        events = [event for event, _ in recorder.warnings]
+        assert "mcts_evaluator_non_finite_policy" in events
+
+    def test_normal_evaluation_does_not_warn(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        random_evaluator: RandomEvaluator,
+        mock_game: MockGame,
+    ) -> None:
+        """No false positives: the ordinary RandomEvaluator path stays silent."""
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(search_module, "logger", recorder)
+
+        mcts = MCTS(evaluator=random_evaluator, n_simulations=10, c_puct=1.5)
+        mcts.search(mock_game, add_noise=False)
+
+        assert recorder.warnings == []
+
+    def test_batch_expand_logs_non_finite_value(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        mock_game: MockGame,
+    ) -> None:
+        """The batched leaf-expansion path (not just root expansion) is checked.
+
+        Asserts on ``context="batch_expand"`` specifically, since root
+        expansion alone (shared with ``MCTS``) would already emit a
+        ``context="expand"`` warning regardless of this call site.
+        """
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(search_module, "logger", recorder)
+
+        batch_mcts = BatchMCTS(
+            evaluator=_NonFiniteValueEvaluator(9),
+            batch_size=4,
+            n_simulations=8,
+            c_puct=1.0,
+        )
+        batch_mcts.search(mock_game, add_noise=False)
+
+        batch_contexts = [
+            kwargs.get("context")
+            for event, kwargs in recorder.warnings
+            if event == "mcts_evaluator_non_finite_value"
+        ]
+        assert "batch_expand" in batch_contexts
+
+
+# --- Observability: game-contract violation (non-terminal, no legal actions) ---
+
+
+class _StuckAfterFirstMoveGame:
+    """Reports zero legal actions from a state that claims to be non-terminal.
+
+    A deliberate game-contract inconsistency (``is_terminal()`` always
+    returns False): exercises the one degenerate case
+    ``BatchMCTS._simulate_batch`` does not treat as terminal-like, unlike the
+    single-simulation ``_expand_node`` path.
+    """
+
+    def __init__(self, moved: bool = False) -> None:
+        self.moved = moved
+
+    def get_state(self) -> numpy.ndarray:
+        return numpy.zeros(1, dtype=numpy.float32)
+
+    def get_legal_actions(self) -> list[int]:
+        return [] if self.moved else [0, 1]
+
+    def apply_action(self, action: int) -> None:
+        self.moved = True
+
+    def is_terminal(self) -> bool:
+        return False
+
+    def get_winner(self) -> int:
+        return 0
+
+    def clone(self) -> _StuckAfterFirstMoveGame:
+        return _StuckAfterFirstMoveGame(self.moved)
+
+
+class TestBatchLeafMissingLegalActionsObservability:
+    def test_batch_expand_logs_when_leaf_has_no_legal_actions(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(search_module, "logger", recorder)
+
+        evaluator = RandomEvaluator(n_actions=2)
+        batch_mcts = BatchMCTS(
+            evaluator=evaluator,
+            batch_size=4,
+            n_simulations=4,
+            c_puct=1.0,
+        )
+        batch_mcts.search(_StuckAfterFirstMoveGame(), add_noise=False)
+
+        events = [event for event, _ in recorder.warnings]
+        assert "mcts_batch_leaf_no_legal_actions" in events

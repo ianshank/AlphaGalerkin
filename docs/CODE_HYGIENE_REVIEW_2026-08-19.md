@@ -1,0 +1,383 @@
+# Code Hygiene & Correctness Review — 2026-08-19
+
+> **What this is:** a hands-on, execution-verified senior-engineering pass across
+> `src/mcts/`, `src/pde/`, `src/refinement/`, `src/integrations/`, and `src/data/` —
+> real commands run, real bugs found and fixed, real coverage gaps closed with new
+> tests. This is a companion to `docs/CODE_HYGIENE_AUDIT.md` (2026-08-14, backlog/
+> triage-oriented) and `docs/NEXT_STEPS_REVIEW_2026-08-18.md` (strategic/tiered); this
+> doc records what was actually *done* in one pass, not just recommended.
+>
+> **Method:** four of this repo's own specialist subagents (`mcts-engineer`,
+> `pde-solver`, `integration-engineer`, `sqe`) independently audited disjoint,
+> non-overlapping subsystems in parallel — each ran its own regression surface,
+> wrote and verified new tests, and fixed narrow, well-tested bugs in-scope while
+> flagging (not unilaterally resolving) ambiguous design questions. A fifth agent
+> (`reviewer`) then ran an adversarial pass over the combined diff, specifically
+> trying to break the four highest-stakes correctness claims. I independently
+> verified lint/format/type-check/test results across the aggregate before writing
+> this document; no number below is taken from a subagent's self-report without an
+> independent re-run.
+
+## Headline: four real bugs fixed, one root-cause fix landed, one new critical defect surfaced
+
+1. **MCTS crashed on a terminal-at-root game state.** `mcts.get_action()` raised an
+   unhandled `ValueError` (temperature ≠ 0) or an unhelpful failure (temperature = 0)
+   whenever `search()` was called on a game that was already terminal at the root —
+   e.g. a degenerate PDE config whose initial state already satisfies the termination
+   condition. Now guarded with a clear, actionable error. (`src/mcts/search.py`)
+2. **A NaN/Inf value from a broken evaluator silently corrupted the search tree,
+   with zero observability.** Neither the single-simulation nor the batch path
+   checked evaluator output for finiteness before backing it up. **Detection was
+   added** (a shared `_check_finite_evaluation` helper on both paths, emitting a
+   structured warning) — the adversarial review pass confirmed this is accurately
+   scoped as detection-only, not a value fix: `_check_finite_evaluation`'s own
+   docstring states neither field is sanitized, and `MCTSNode.backup()` still adds
+   `total_value` unconditionally with no finiteness guard, so a NaN still poisons
+   every ancestor's value — it is now just visible in the logs while doing so,
+   rather than silent. (`src/mcts/search.py`, `evaluator.py`)
+3. **NaN from a diverging PDE solve resolved to the *best possible* MCTS leaf value.**
+   `EncodedValueEvaluator.evaluate` (`src/pde/games/lshape_amr.py`) clamped its output
+   via `max(-1.0, min(1.0, value))`; because NaN comparisons are always `False` in
+   Python, `value=nan` resolved through the clamp to exactly `+1.0` — the single best
+   score a leaf can have — which would have actively steered MCTS search *toward* a
+   computational failure rather than away from it. Fixed with an explicit
+   `np.isfinite` guard (neutral `0.0` fallback + warning).
+4. **A broken CUDA driver crashed LM Studio preflight instead of degrading
+   gracefully.** `torch.cuda.mem_get_info()` failures were already caught per-device,
+   but `torch.cuda.is_available()`/`device_count()` themselves raising (a present-
+   but-broken driver, distinct from "no GPU") propagated a raw `RuntimeError`,
+   contradicting the function's own documented "skip cleanly" contract. Fixed with the
+   same try/except pattern already used for the per-device probe.
+   (`src/integrations/lm_studio/preflight.py`)
+
+Plus one narrow, mechanical fix: a retry-branch log/sleep ordering inconsistency in
+`src/integrations/lm_studio/client.py` (one of three retry branches slept before
+logging, delaying the diagnostic event relative to the other two).
+
+**Root-cause fix landed**: the Tier-0 P0-1 Burgers OOD-reward defect
+(`docs/CODE_HYGIENE_AUDIT.md:576-614`, previously scoped in
+`docs/NEXT_STEPS_REVIEW_2026-08-18.md` item 1 as "2-4 engineer-days, not yet done")
+is now fixed. `BurgersOperator.__init__` (`src/pde/operators.py`) now checks
+`"is_time_dependent" in config.model_fields_set` before overriding the class-level
+default, so an unset config keeps `is_time_dependent = True` (and a real
+`exact_solution()`) while an explicit `True` or `False` is still honored exactly as
+before — `tests/pde/test_operators.py::test_steady_returns_none` (the test that
+proved the naive "just honor the class default" fix would have broken something
+real) passes unmodified.
+
+**Critical finding, surfaced by fixing the above — live today, not hypothetical.**
+Making `BurgersOperator.exact_solution()` reachable at the default `t=0` exposed a
+**pre-existing, separate defect** in the Cole-Hopf approximation itself. At `t=0`,
+the truncated-series formula evaluates `phi ≈ -0.5` (negative), which the
+`clamp(min=1e-10)` guard floors up — producing solution magnitudes of order
+**1e10–1e13** (large but finite, not NaN/Inf, so nothing currently catches it).
+
+This was initially reported by `pde-solver` with appropriate caution ("must be
+resolved before anyone re-derives thresholds"), but the adversarial review pass
+traced the actual call chain and found it is **not a future concern — it is live on
+the default configuration of the shipped scenario right now**:
+`src/poc/scenarios/llm_prior_config.py`'s default `ood_pde` is `"burgers"`, exactly
+matching `config/scenarios/llm_prior_demo.yaml` — CLAUDE.md's own documented
+headline GPU command. Directly measured: `build_pde_operator("burgers")` +
+`build_basis_game(...)` → `get_initial_state().error_estimate = 4.29e12`, with the
+same tensor serving as both the RMS baseline *and* the literal least-squares
+regression target for every basis-fit action in the game.
+
+**The regression test added alongside the fix was itself silently vacuous**: it
+only asserted `torch.isfinite(...).all()`, which trivially passes on a
+~3e10-magnitude nonsense value — exactly the "test doesn't test what it claims"
+failure mode this whole pass was watching for, caught by the adversarial pass one
+level up rather than by the original author. **Closed in this pass**: added
+`test_cole_hopf_t0_magnitude_is_a_known_defect_not_a_correctness_claim` right next
+to it, which pins the magnitude as a documented, tracked defect (`u.abs().max() >
+1e6` — the opposite assertion direction from what a "this works" test would assert)
+so a future reader can't mistake "isfinite passes" for "this is fine," and so a real
+fix has an explicit regression target to flip.
+
+**Practical consequence, not yet acted on**: the next real run of
+`python -m src.poc.cli run --config config/scenarios/llm_prior_demo.yaml` will
+compute `ood_llm_residual`/`ood_trained_residual` against this numerically
+meaningless ~1e12 "ground truth" instead of either the old flat-zero or a
+physically meaningful solution — very likely flipping the documented
+`ood_llm_residual ≤ 1e-2` threshold to FAIL for reasons that have nothing to do with
+LLM quality. **This needs an explicit decision before that command is next run for
+real** — options include patching the Cole-Hopf floor, having the basis-selection
+game avoid querying at exactly `t=0`, or gating the headline rerun until resolved.
+None of those were chosen unilaterally here: this is genuinely Cole-Hopf-math work
+(same category of decision as the explicitly out-of-scope Heat/AdvectionDiffusion
+operators), not a hygiene-pass fix. This revises
+`docs/NEXT_STEPS_REVIEW_2026-08-18.md` item 1's stated next step and should be read
+before that item's "re-derive thresholds" instruction is acted on.
+
+## Documentation drift found (independent of the four subsystem audits)
+
+**`CLAUDE.md:115` currently states a false claim.** Its banner says the
+`video_compression` subsystem "was deleted from the repository" and that
+`src/video_compression/**`, `scripts/benchmark_codec.py`,
+`scripts/train_compression_zoo*.py`, and `config/video_compression/**` "no longer
+exist." Verified directly: **four of the five named paths exist and are under active
+development** (the Self-Hosted Transcoder Phase 0-2D milestones, already documented
+*elsewhere* in the same file, reinstated it after the 2026-07-22 cut).
+`tests/support/cut_modules.py`'s own docstring already correctly documents the
+reinstatement — only the CLAUDE.md:115 banner itself is stale. This is a distinct
+failure class from the numeric-fabrication incidents CLAUDE.md already tracks (a
+stale *existence* claim, not a stale *number*) and was independently confirmed by two
+different findings in this pass:
+
+- `mypy --strict` surfaces **28 previously-undocumented real type errors**, all in
+  `src/video_compression/` (operator-type mismatches, `Tensor`-vs-`Module` confusion,
+  ndarray dtype-parameter errors) — not mentioned in CLAUDE.md's mypy discussion or
+  any CI comment, because the file claiming the package doesn't exist makes it
+  invisible to the tooling that would normally track this.
+- `src/video_compression` has **no per-module coverage gate** anywhere in
+  `.github/workflows/ci.yml`'s coverage job or CLAUDE.md's Regression Surface table,
+  despite running in CI's plain `pytest tests/` — it is structurally excluded from
+  the repo's own quality-gate discipline.
+
+This is flagged for a follow-up fix (correct the CLAUDE.md:115 banner, decide whether
+`video_compression` gets a coverage gate) — not fixed in this pass, since it's a
+documentation/governance call, not a code bug in the four audited subsystems.
+
+## Coverage improvements (measured, not estimated)
+
+| Module/package | Before | After | Gate |
+|---|---|---|---|
+| `src/data/physics_dataset.py` | 23% branch | **100%** branch | — |
+| `src/data` (package) | 79.81% | **98.14%** | 77% |
+| `src/refinement` | 96% | **100%** | 85% |
+| `src/mcts` | 96.29% | **96.95%** | 90% |
+| `src/pde` | (baseline not re-measured pre-fix) | **92.72%** | 85% |
+| `src/integrations/lm_studio` | 94.77% | **95.62%** | 85% |
+
+All gates verified passing with the exact CLAUDE.md-documented commands
+(`COVERAGE_CORE=pytrace` prefix where required).
+
+## Hardcoded values — fixed
+
+- **`src/mcts/{search,node,gumbel,evaluator}.py`**: 7 call sites hardcoded the
+  literal `1.0` instead of using the already-defined `DEFAULT_TEMPERATURE` constant
+  (which had zero consumers before this fix). Pure value-preserving substitution,
+  verified via full regression before/after.
+
+## Hardcoded values — found, flagged for follow-up (not fixed; each needs a config-shape decision beyond this pass's scope)
+
+- `src/pde/operators.py`: Cole-Hopf `n_terms=50` and the `1e-10` clamp epsilon are
+  duplicated across tensor/numpy branches, not named constants or config fields —
+  the same epsilon implicated in the Cole-Hopf t=0 finding above.
+- `src/pde/operators.py:903,924,1031`: `sigma = 0.1 * np.mean(self.domain_size)` (the
+  synthetic Gaussian-pulse width fraction) is duplicated verbatim across three
+  operators, not a config field.
+- `src/pde/games/basis_selection.py:235-236`: RBF candidate-basis centers are sampled
+  via `rng.uniform(0, 1)`, hardcoding a `[0,1]` domain assumption regardless of the
+  operator's actual `domain_min`/`domain_max` — silently wrong for any non-unit-square
+  domain (e.g. `LShapedPoissonOperator`'s `[-1,1]²`).
+- `src/pde/games/basis_selection.py:445` and `src/pde/games/mesh_refinement.py:749`:
+  `cost = 1.0` per action decrements `budget_remaining` (seeded from
+  `computational_budget`, default `1e6`), completely decoupled from the config's own
+  `cost_per_dof` field used elsewhere — at default scale, `BUDGET_EXHAUSTED` is
+  practically unreachable.
+- `src/pde/games/basis_selection.py:453`: a hardcoded, non-scale-normalized
+  EXPLORING/REFINING phase threshold — notably, `PDEGame.get_phase()`
+  (`src/pde/game.py:524-556`) **already implements this correctly** (config-driven,
+  scale-normalized), but neither `BasisSelectionGame` nor `MeshRefinementGame` calls
+  it; each hand-rolls its own (worse, in basis_selection's case) inline version.
+  Diagnostic-only impact today (only read by serialization, not reward/termination).
+- `src/pde/games/mesh_refinement.py:257`: a hardcoded `level < 2` hp-refinement
+  switchover, unlike its sibling `max_refinement_level`/`max_polynomial_degree`
+  config fields.
+- `src/pde/games/swarm_planning.py:440`: obstacle-distance floor hardcoded to `0.1`
+  despite a docstring claiming it uses the config's own `obstacle_radius` field.
+
+`src/pde/games/lshape_amr.py` and all of `src/refinement/*.py` were checked and are
+already clean (named constants / Pydantic fields throughout) — no findings there.
+
+## Design ambiguities flagged for a human decision (correctly not unilaterally resolved)
+
+- **`fallback_to_uniform_on_parse_error` doesn't cover permanent SDK errors.** A
+  non-retryable SDK failure (auth revoked mid-run, model unloaded) surfaces as the
+  bare `LMStudioError` parent, which isn't caught by the evaluator's fallback
+  except-tuple — so it always propagates uncaught rather than degrading to
+  uniform-random, unlike parse/mismatch/connection failures. A one-line broadening to
+  `except LMStudioError` would make this symmetric, but the field's name specifically
+  says "parse_error," so this is a real product-behavior call, not a bug. Regression
+  tests were added locking in the *current* contract either way.
+- **`src/mcts/constants.py` (and its `src/physics/`, `src/training/` siblings) is
+  dead re-export scaffolding** — nothing imports from any of the three; every real
+  consumer imports `src.constants` directly. Resolving this is a cross-cutting,
+  three-package architectural call, out of scope for a single-subsystem audit.
+- **`MCTSNode.select_child` raises a misleadingly-labeled error when every child's
+  Q-value is NaN** (`"node has no children to select from"` when it does have
+  children — NaN comparisons are always `False`, so no child ever wins the
+  selection). The real fix is catching NaN at its source (the evaluator-output guard
+  added in this pass reduces how often this can happen, but doesn't structurally
+  prevent it). Locked in via a test documenting the current message rather than
+  silently changed.
+
+## Edge cases closed with new tests (representative highlights, not exhaustive — see full diff)
+
+- MCTS: empty/single legal actions at the full-tree level (evaluator-level was
+  already covered); `c_puct`/temperature boundary values (0.0, very large);
+  `reward_discount` just-above-zero; `BatchMCTS` homogeneous all-terminal/
+  all-non-terminal batches (only the interleaved case existed before).
+- PDE/refinement: repeated/nested clone isolation (`clone().clone()` — relevant
+  because MCTS clones along every simulation path, so a depth->1 tree walk clones a
+  clone, and no existing test went beyond one level); zero-DOF terminal states
+  reachable from a real, unmodified `get_initial_state()` (not just a synthetically
+  mutated state) for all three PDE games, each additionally proven not to crash a
+  real `MCTS.get_action()` micro-run; zero-measure/degenerate domain rejection at the
+  Pydantic validation boundary (`>=` not just `>`); `RefinementGameAdapter.error_
+  reduction`'s zero-division guard (previously unexercised, now `src/refinement` is
+  at 100% branch coverage).
+- Integrations: a real multi-failure retry sequence (transient-recovers /
+  permanent-fails-fast / transient-exhausts) asserting exact call counts and sleep
+  values, **mutation-tested** by temporarily forcing `_retryable` to always return
+  `True` to confirm the new tests actually fail under the bug they guard against, then
+  reverting; structured log event field assertions (`lm_studio_retry`/`lm_studio_
+  call`) that previously took a fixture but never read it.
+- Data: `PhysicsDataset`'s `cache=False` on-demand path, the `_compute_stats()` /
+  `get_stats()` normalize-without-cache silent-no-op gotcha, `n_samples=0`'s
+  previously-undocumented `ValueError` crash under the default `normalize=True`, and
+  a dtype-casting asymmetry (`coords` is never cast to float32, unlike input/output).
+
+## Untested-code findings (report-only, not fixed — outside the four subsystems' scope)
+
+- `src/games/go.py`: illegal-move rejection, White-stone-counting/White-territory
+  scoring branches, and `get_winner`'s mid-game guard are all never exercised by any
+  test.
+- `src/games/chess.py`: queenside castling is claimed tested by a docstring but only
+  the kingside path and queenside's *initial flag* are actually driven end-to-end;
+  threefold-repetition is claimed tested by two file docstrings but no test actually
+  drives the repetition counter.
+- `src/games/sgf/converter.py`'s `create_analysis_tree` has zero test references.
+- `src/deployment/quantize.py::CalibrationDataReader` — pure Python/numpy, no
+  optional-dependency gating needed, yet untested (unlike the rest of the package,
+  which is legitimately `importorskip`-gated on absent `onnx`/`onnxruntime`).
+- `src/distributed/worker.py` — the entire file (`SelfPlayWorker`,
+  `SelfPlayCoordinator`) has zero test references, despite not requiring a live
+  `torch.distributed` process group to construct or exercise (confirmed by reading
+  `__init__`). Sharpest example: `_serialize_experiences`/`_deserialize_experiences`
+  is plain `pickle.dumps`/`loads` with no distributed dependency at all.
+
+## Skills, hooks, and loops — findings
+
+**Existing inventory confirmed healthy**: 9 skills, 5 subagents, 4 slash commands
+under `.claude/`. The `new-pde-operator` skill convention referenced by two specs
+(`llm_prior_ood.spec.md`, `verified_error_certificate.spec.md`) is verified real and
+correctly wired — not a dangling reference.
+
+**Verified, concrete tooling bugs**:
+- `Makefile`'s `test-stoch` target has **silently drifted** from what CI/CLAUDE.md
+  actually gate — it omits 3 of 4 required `--include=` paths and 5 of 6 required
+  test paths, so `make test-stoch` reports a different (likely inflated) number than
+  the real gate.
+- `make demo` is **currently broken** — it references a scenario name
+  (`transfer_darcy_to_poisson`) that was never registered; it only ever existed as an
+  illustrative placeholder in a migration doc, copy-pasted into the Makefile without
+  being run.
+- `make lint` is narrower than CI (missing `dashboard/ scripts/ config/ conftest.py
+  deploy_space.py`), and `make check`/`pre-pr` never invoke any coverage gate at all
+  — a green `make check` asserts nothing about the 85% global gate or ~20 per-module
+  gates the PR checklist requires.
+- The PR template's checklist item "`pre-commit run --all-files` is green (ruff,
+  ruff-format, yamllint, commitizen…)" is slightly inaccurate — `commitizen` only
+  runs at the `commit-msg` git-hook stage, never on `--all-files`.
+
+**SessionStart hook verified present, correct, and doing more than documented**
+(also runs `pre-commit install` and prints tool-version banners, not just the
+documented `pip install -e '.[dev]'`).
+
+**Fabricated/stale-claim lint-hook feasibility**: a general "suspiciously precise
+number" regex was already prototyped and abandoned elsewhere in this repo (105 false
+positives across 21 files, per CLAUDE.md's own Next-Steps table) — not tractable. But
+a **narrow, mechanical existence-claim checker is tractable and would have caught the
+CLAUDE.md:115 finding above**: extend `scripts/check_doc_links.py`'s existing
+backtick-path-stripping primitives to flag a path near phrases like "no longer
+exist"/"REMOVED"/"deleted" whose existence-on-disk contradicts the claimed direction.
+Recommended as a follow-up, not built in this pass.
+
+**Loop audit** (excluding the four already-audited subsystems): `src/training/
+trainer.py:602`'s `_fill_buffer` while-loop has no iteration cap or wall-clock bound
+— if self-play ever nets zero new experiences per call, it hot-loops indefinitely
+(logged, but not bounded). **No SIGINT/SIGTERM handling exists anywhere in the
+training stack** — the only exception handlers are `except Exception`, which does not
+catch `KeyboardInterrupt`, so a killed run has no emergency-checkpoint path and zero
+test coverage of that scenario. `checkpoint_migration.py:87`'s migration-path search
+loop has no runtime guard that each step strictly advances version — currently
+dormant (today's 2 registrations are both correctly forward) but would spin silently
+forever under a future mis-registration. Everything else checked (self-play move
+bounds, distributed comms, checkpoint atomicity, `BaseAgent`'s opt-in timeout
+enforcement) was verified already-correct.
+
+## Adversarial review pass — what it broke, what it confirmed
+
+A fifth agent (`reviewer`) independently re-derived and tried to break the four
+highest-stakes correctness claims above, with direct code execution rather than
+trusting descriptions:
+
+- **Burgers sentinel fix (item 1 above): verified sound**, including two specific
+  attack angles that could have broken it — confirmed Pydantic's `model_fields_set`
+  correctly distinguishes "explicit `False`" from "never set" (not just "differs
+  from default"), and confirmed YAML-sourced (`model_validate`) construction tracks
+  fields-set identically to direct kwargs, so the fix behaves the same regardless of
+  config-loading path.
+- **Cole-Hopf t=0 finding: confirmed and escalated** — see above; this is the one
+  place the adversarial pass found the original finding understated the severity,
+  and it directly caught a vacuous test that the fix-author's own verification had
+  missed.
+- **MCTS NaN/Inf detection (item 2 above): confirmed correctly scoped**, with the
+  precision correction now reflected above (detection, not sanitization).
+- **`EncodedValueEvaluator` NaN-to-neutral fix (item 3 above): verified sound**,
+  including direct reproduction of the underlying Python quirk being fixed
+  (`max(-1.0, min(1.0, float('nan'))) == 1.0`) and confirmation that `±inf` was
+  already handled correctly pre-fix (only NaN misbehaves under `min`/`max`), so the
+  fix is precisely targeted rather than overclaimed.
+- **Scope-boundary integrity: verified sound** — no two agents touched the same
+  file; `src/constants.py` itself (source of `DEFAULT_TEMPERATURE`) was untouched by
+  this diff, so the 7 substitutions carry zero collision risk.
+- **Test-quality spot checks across all four subsystems: verified sound** — every
+  spot-checked test constructs real objects and asserts real behavior; the new
+  `tests/data/test_physics_dataset.py` suite was independently re-run (21/21 pass,
+  100% branch coverage independently re-measured, matching the claimed figures).
+
+## Verification (independently re-run, not taken from subagent self-reports)
+
+```
+ruff check <all touched src+tests>           → All checks passed!
+ruff format --check <all touched src+tests>  → clean
+mypy --strict --ignore-missing-imports <all touched src>  → Success: no issues found in 8 source files
+
+pytest tests/mcts/ tests/pde/ tests/refinement/ tests/integrations/ tests/data/ \
+       tests/poc/test_llm_prior_ablation_config.py tests/poc/test_llm_prior_ablation_scenario.py \
+       -m "not gpu_required"
+  → 1505 passed, 11 skipped, 8 deselected, 0 failed  (20.6s)
+
+pytest tests/training/test_losses_physics.py tests/training/test_physics_integration.py \
+       tests/training/test_trainer_physics.py
+  → 101 passed, 0 failed
+
+python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+  → OK: every abstract method / protocol member has a call site.
+```
+
+No file was touched by more than one agent — confirmed via `git diff --stat`
+(23 modified + 1 new file, cleanly partitioned by subsystem).
+
+## Environment note (affects anyone reproducing these commands)
+
+Bare `mypy`/`pytest` on `$PATH` in this sandbox resolve to isolated `uv tool` shims
+missing `pydantic`/`hypothesis`/`pytest-cov` — they fail immediately with confusing
+import errors unrelated to any real code issue. Use `python3 -m mypy ...` /
+`python3 -m pytest ...` instead; all numbers in this document were produced that way.
+
+## What this pass deliberately did not do
+
+- Did not fix the Cole-Hopf t=0 defect itself (only added a regression-lock test
+  pinning it as a known, tracked defect — see above), the Heat/AdvectionDiffusion
+  P0-1 slices, the `fallback_to_uniform_on_parse_error` scope question, the
+  `constants.py` dead re-export, the CLAUDE.md:115 stale-existence-claim, the
+  Makefile drift/breakage, or any of the report-only untested-code findings — each
+  is flagged above with enough specificity to act on, but each also needs either a
+  design decision or a larger-than-hygiene-pass change.
+- Did not touch `src/video_compression/`'s 28 real mypy errors — real, newly
+  surfaced tech debt, but a subsystem none of the four dispatched agents were scoped
+  to and too large for an unplanned addition to this pass.

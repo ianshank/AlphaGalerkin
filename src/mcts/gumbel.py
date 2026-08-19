@@ -29,6 +29,7 @@ from src.constants import (
     DEFAULT_DIRICHLET_ALPHA,
     DEFAULT_DIRICHLET_EPSILON,
     DEFAULT_MCTS_SIMULATIONS,
+    DEFAULT_TEMPERATURE,
 )
 
 if TYPE_CHECKING:
@@ -512,7 +513,7 @@ class GumbelMCTS:
     def get_improved_policy(
         self,
         root_state: GameState,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> np.ndarray:
         """Get improved policy from search.
 

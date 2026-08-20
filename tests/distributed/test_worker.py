@@ -238,22 +238,19 @@ class TestSelfPlayWorkerGenerateBatch:
         assert stats.average_time_per_game_ms == 0.0
         assert stats.games_completed == 0
 
-    def test_stop_before_generate_batch_skips_games_but_overcounts_games_completed(
+    def test_stop_before_generate_batch_records_zero_games_completed(
         self,
         tiny_model: _TinyModel,
         mcts_config_stub: SimpleNamespace,
         fake_inner_spw: type,
     ) -> None:
-        """Documents observed behaviour; NOT a fix (out of scope for this wave).
+        """``games_completed`` counts games that ran, not games that were requested.
 
-        ``generate_batch``'s stats update
-        (``src/distributed/worker.py:162``, ``self._stats.games_completed +=
-        n_games``) unconditionally adds the *requested* game count, not the
-        number of loop iterations actually executed before the
-        ``_should_stop`` early ``break`` (worker.py:142-143). With the worker
-        stopped before any game runs, zero games are generated
-        (``experiences_generated == 0``, correct) but ``games_completed``
-        still reports the full request. See the SQE report for this wave.
+        ``generate_batch``'s loop breaks out on the ``_should_stop`` check
+        before doing any work, so a worker stopped ahead of the call produces
+        no experiences *and* must record no completed games. Both stats are
+        derived from what the loop actually did, so they agree: a request for
+        five games that runs none leaves the counter at zero.
         """
         config = SelfPlayDistributedConfig(num_workers=1)
         worker = SelfPlayWorker(0, tiny_model, mcts_config_stub, config, device="cpu")
@@ -264,8 +261,53 @@ class TestSelfPlayWorkerGenerateBatch:
         assert experiences == []
         assert fake_inner_spw.call_log == []  # loop body never ran
         stats = worker.get_stats()
-        assert stats.experiences_generated == 0  # correct
-        assert stats.games_completed == 5  # BUG: claims 5 despite 0 actual games
+        assert stats.experiences_generated == 0
+        assert stats.games_completed == 0  # not the 5 requested
+
+    def test_stop_midway_counts_only_the_games_that_actually_ran(
+        self,
+        tiny_model: _TinyModel,
+        mcts_config_stub: SimpleNamespace,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A partially-completed batch reports its iteration count.
+
+        This is the case that separates "count loop iterations" from the
+        weaker "report zero when stopped, else the full request": the worker
+        is signalled to stop from *inside* its second game, so exactly two of
+        the five requested games run to completion.
+        """
+        config = SelfPlayDistributedConfig(num_workers=1)
+        worker = SelfPlayWorker(0, tiny_model, mcts_config_stub, config, device="cpu")
+
+        class _StopAfterSecondGame:
+            """Inner-SPW double that trips the worker's stop event mid-batch."""
+
+            n_calls: ClassVar[int] = 0
+
+            def __init__(
+                self, model: object, mcts_config: object, device: object, board_sizes: list[int]
+            ) -> None:
+                self.board_sizes = board_sizes
+
+            def generate_experiences(self, n_games: int) -> list[dict]:
+                _StopAfterSecondGame.n_calls += 1
+                if _StopAfterSecondGame.n_calls == 2:
+                    worker.stop()
+                return [{"board_size": self.board_sizes[0]} for _ in range(n_games)]
+
+        monkeypatch.setattr("src.training.self_play.SelfPlayWorker", _StopAfterSecondGame)
+
+        experiences = worker.generate_batch(n_games=5, board_sizes=[9])
+
+        # Games 1 and 2 run (the stop event is only checked at the top of the
+        # loop); game 3 hits the break.
+        assert _StopAfterSecondGame.n_calls == 2
+        assert len(experiences) == 2
+        stats = worker.get_stats()
+        assert stats.games_completed == 2  # not the 5 requested
+        assert stats.experiences_generated == 2
+        assert stats.average_time_per_game_ms > 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +439,50 @@ class TestSelfPlayCoordinatorGenerateExperiences:
         assert len(experiences) == 7
         per_worker = sorted(w.get_stats().games_completed for w in coordinator.workers)
         assert per_worker == [2, 2, 3]
+
+    def test_stopped_workers_do_not_inflate_total_games(
+        self, make_coordinator, fake_inner_spw: type
+    ) -> None:
+        """``CoordinatorState.total_games`` counts completions, not the request.
+
+        The coordinator accumulates ``total_games`` on its own line rather
+        than reading it back off the workers, so it needs its own guard: with
+        every worker already shut down, each batch loop breaks immediately and
+        the requested six games must not be booked as run.
+        """
+        coordinator = make_coordinator(num_workers=2)
+        coordinator.shutdown()
+
+        experiences = coordinator.generate_experiences(total_games=6)
+
+        assert experiences == []
+        assert fake_inner_spw.call_log == []
+        assert all(w.get_stats().games_completed == 0 for w in coordinator.workers)
+        state = coordinator.get_state()
+        assert state.total_games == 0  # not the 6 requested
+        assert state.total_experiences == 0
+
+    def test_total_games_sums_actual_per_worker_completions(
+        self, make_coordinator, fake_inner_spw: type
+    ) -> None:
+        """With one of two workers stopped, only the live worker's games count.
+
+        Pins the *summation* semantics rather than an all-or-nothing rule: 6
+        games split 3/3, one worker stopped, so the coordinator must report 3
+        -- matching what ``get_worker_stats()`` shows for the same run.
+        """
+        coordinator = make_coordinator(num_workers=2)
+        coordinator.workers[0].stop()
+
+        experiences = coordinator.generate_experiences(total_games=6)
+
+        assert coordinator.workers[0].get_stats().games_completed == 0
+        assert coordinator.workers[1].get_stats().games_completed == 3
+        assert len(experiences) == 3
+
+        state = coordinator.get_state()
+        assert state.total_games == 3  # not the 6 requested
+        assert state.total_games == sum(s.games_completed for s in coordinator.get_worker_stats())
 
 
 # ---------------------------------------------------------------------------

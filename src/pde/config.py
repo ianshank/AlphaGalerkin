@@ -296,6 +296,16 @@ class MeshRefinementConfig(BaseModuleConfig):
         le=20,
         description="Maximum refinement level per element",
     )
+    hp_switchover_level: int = Field(
+        default=2,
+        ge=0,
+        description=(
+            "Refinement level threshold for HP_REFINEMENT's h-vs-p choice: "
+            "elements below this level are h-refined (subdivided); at or "
+            "above it they are p-refined (polynomial degree increased) "
+            "instead."
+        ),
+    )
 
     # Polynomial degree (for p-refinement)
     initial_polynomial_degree: int = Field(

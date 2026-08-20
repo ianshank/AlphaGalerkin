@@ -184,7 +184,7 @@ def _load_y4m_to_tensor(
     can decide whether to treat it as a hard failure.
     """
     try:
-        import av  # type: ignore[import-not-found]
+        import av
     except ImportError:
         logger.info(
             "baseline.decode.pyav_missing",

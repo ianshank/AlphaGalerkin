@@ -253,9 +253,40 @@ class TestMesh:
             domain_max=np.array([1.0, 1.0], dtype=np.float32),
             initial_resolution=2,
         )
-        # Level 0 element -> h-refinement (level < 2)
+        # Level 0 element -> h-refinement (level < default hp_switchover_level=2)
         result = mesh.refine_element(0, RefinementStrategy.HP_REFINEMENT)
         assert len(result) == 4  # h-refinement for level < 2
+
+    def test_hp_refinement_default_switchover_level_is_2(self) -> None:
+        """``Mesh``'s own default mirrors ``MeshRefinementConfig.hp_switchover_level``."""
+        mesh = Mesh(
+            domain_min=np.array([0.0, 0.0], dtype=np.float32),
+            domain_max=np.array([1.0, 1.0], dtype=np.float32),
+            initial_resolution=2,
+        )
+        assert mesh.hp_switchover_level == 2
+
+    def test_hp_refinement_custom_switchover_level(self) -> None:
+        """A custom ``hp_switchover_level`` changes the h-vs-p decision.
+
+        With the threshold lowered to 0, even a level-0 element is at or
+        above the switchover level, so HP_REFINEMENT p-refines (polynomial
+        degree bump, element count unchanged) instead of h-refining
+        (subdividing into 4 children) -- the opposite of the default-level-2
+        behavior exercised by ``test_hp_refinement`` above.
+        """
+        mesh = Mesh(
+            domain_min=np.array([0.0, 0.0], dtype=np.float32),
+            domain_max=np.array([1.0, 1.0], dtype=np.float32),
+            initial_resolution=2,
+            hp_switchover_level=0,
+        )
+        original_degree = mesh.elements[0].polynomial_degree
+        original_count = mesh.n_elements
+        result = mesh.refine_element(0, RefinementStrategy.HP_REFINEMENT)
+        assert result == [0]  # p-refinement returns the same element index
+        assert mesh.elements[0].polynomial_degree == original_degree + 1
+        assert mesh.n_elements == original_count
 
     def test_h_refinement_updates_level(self) -> None:
         mesh = Mesh(
@@ -386,6 +417,34 @@ class TestMeshRefinementGameInit:
         assert game.mesh is not None
         assert game.mesh.dim == 2
 
+    def test_mesh_hp_switchover_level_threads_from_config(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        """``MeshRefinementConfig.hp_switchover_level`` reaches ``Mesh``.
+
+        Both ``__init__`` and ``get_initial_state`` construct a fresh
+        ``Mesh``; a non-default value must survive both construction sites.
+        """
+        custom_mesh_config = MeshRefinementConfig(
+            name="test_mesh_custom_switchover",
+            initial_resolution=2,
+            hp_switchover_level=5,
+        )
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(
+            name="test_game_custom_switchover",
+            pde_config=pde_config,
+            game_mode="mesh_refinement",
+            mesh_config=custom_mesh_config,
+        )
+        game = MeshRefinementGame(poisson_operator, game_config)
+        assert game.mesh.hp_switchover_level == 5
+
+        # get_initial_state() rebuilds self.mesh; the custom value must
+        # survive that reconstruction too.
+        game.get_initial_state()
+        assert game.mesh.hp_switchover_level == 5
+
 
 class TestMeshRefinementGameInitialState:
     """Tests for initial state."""
@@ -489,6 +548,38 @@ class TestMeshRefinementGameActions:
         actions = game.get_valid_actions(state)
         new_state = game.apply_action(state, actions[0])
         assert new_state.budget_remaining < initial_budget
+
+    def test_apply_action_budget_cost_matches_cost_per_dof(
+        self, poisson_operator: PoissonOperator, mesh_config: MeshRefinementConfig
+    ) -> None:
+        """Budget decrement equals ``cost_per_dof * dof_added``, not a flat unit cost.
+
+        Regression test: the budget-decrement path previously used a
+        hardcoded ``cost = 1`` per action, decoupled from
+        ``PDEGameConfig.cost_per_dof`` (which the reward path already
+        honours via the identical ``cost_per_dof * dof_added`` formula).
+        """
+        custom_cost_per_dof = 0.37
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(
+            name="test_cost",
+            pde_config=pde_config,
+            game_mode="mesh_refinement",
+            mesh_config=mesh_config,
+            cost_per_dof=custom_cost_per_dof,
+        )
+        custom_game = MeshRefinementGame(poisson_operator, game_config)
+        state = custom_game.get_initial_state()
+        initial_budget = state.budget_remaining
+        actions = custom_game.get_valid_actions(state)
+
+        new_state = custom_game.apply_action(state, actions[0])
+
+        dof_added = new_state.dof - state.dof
+        assert dof_added > 0  # h-refinement strictly increases DOF here
+        assert (initial_budget - new_state.budget_remaining) == pytest.approx(
+            custom_cost_per_dof * dof_added
+        )
 
     def test_apply_action_updates_coords(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()

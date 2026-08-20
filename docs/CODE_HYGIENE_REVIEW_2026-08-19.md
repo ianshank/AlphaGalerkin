@@ -205,6 +205,11 @@ already clean (named constants / Pydantic fields throughout) — no findings the
   dead re-export scaffolding** — nothing imports from any of the three; every real
   consumer imports `src.constants` directly. Resolving this is a cross-cutting,
   three-package architectural call, out of scope for a single-subsystem audit.
+  **Resolved (2026-08-19, follow-up hygiene wave):** re-verified zero-consumer status
+  repo-wide (`src/`, `tests/`, `dashboard/`) and deleted all three files. No dedicated
+  test files existed for them (`tests/mcts/`, `tests/physics/`, `tests/training/` had no
+  `test_constants.py`), so no test deletions were needed. `src/constants.py` is
+  unaffected and remains the canonical module every consumer already imported from.
 - **`MCTSNode.select_child` raises a misleadingly-labeled error when every child's
   Q-value is NaN** (`"node has no children to select from"` when it does have
   children — NaN comparisons are always `False`, so no child ever wins the
@@ -381,3 +386,166 @@ import errors unrelated to any real code issue. Use `python3 -m mypy ...` /
 - Did not touch `src/video_compression/`'s 28 real mypy errors — real, newly
   surfaced tech debt, but a subsystem none of the four dispatched agents were scoped
   to and too large for an unplanned addition to this pass.
+
+---
+
+# Round 2 — same day, broader sweep
+
+> **What changed since the section above:** round 1 covered 5 of ~25 `src/` packages
+> and deliberately left a list of things flagged-but-unfixed. Round 2 executed that
+> list plus the packages round 1 never reached, using 8 parallel agent waves on
+> disjoint file scopes. **Most of round 1's "did not do" list above is now done** —
+> the `constants.py` dead re-export, the `CLAUDE.md:115` stale-existence claim, the
+> Makefile drift, and `src/video_compression`'s mypy debt all landed here.
+>
+> **Verification note:** three agent waves were killed mid-run by an API spend limit.
+> All three had already finished their edits and died during final reporting, not
+> mid-edit — confirmed by re-running every gate independently rather than trusting
+> any agent's self-report. Every number below was produced by a command run after all
+> waves stopped.
+
+## What round 2 fixed
+
+**Real defects**
+
+1. **Thread-safety bug** — `src/prototyping/templates.py`'s `TemplateRegistry.__new__`
+   copied `src/templates/registry.py::BaseRegistry`'s double-checked-locking singleton
+   pattern but **omitted the lock entirely**, so concurrent first-access could
+   construct more than one "singleton." Fixed to mirror the working pattern exactly.
+   Honest caveat on the test: a raw N-thread timing race could *not* be made to fail
+   reliably against the pre-fix code (the racy window is a few bytecodes, well under
+   CPython's GIL switch granularity), so a second, deterministic lock-presence test
+   was added alongside it — that one does fail against the bug.
+2. **Unbounded self-play loop** — `Trainer._fill_buffer` had no iteration or
+   wall-clock bound; if self-play ever netted zero usable experiences per call it
+   would re-invoke full MCTS generation forever. Now bounded by a new, documented
+   `TrainingConfig.max_buffer_fill_iterations` field (no hardcoded literal) and
+   raises a typed `BufferFillError` with an actionable message rather than silently
+   training on an under-filled buffer.
+3. **`src/distributed/worker.py` `games_completed` over-count** — found by the
+   first-ever test of that file, **reported not fixed** (the wave that found it was
+   test-only by design): `SelfPlayWorker.generate_batch` adds the *requested* game
+   count unconditionally, ignoring the `_should_stop` early `break`, so calling
+   `stop()` before a batch yields `experiences_generated == 0` but
+   `games_completed == 5`. Characterized by a test that pins current behavior rather
+   than silently normalizing it.
+
+**Hardcoded values eliminated** (all value-preserving unless noted)
+
+- `basis_selection.py` RBF candidate centers were sampled from a hardcoded `[0,1]`
+  unit square regardless of the operator's real domain — wrong for any non-unit
+  domain (e.g. `LShapedPoissonOperator`'s `[-1,1]²`, where centers landed partly
+  outside the domain). Now sampled from the operator's actual `domain_min`/`domain_max`,
+  with explicit 1D handling.
+- **Behavior-changing, deliberately:** `basis_selection.py` / `mesh_refinement.py`
+  decremented the budget by a flat `cost = 1.0` while the *reward* path in the same
+  files already computed `cost_per_dof * dof_added`. The budget path now mirrors the
+  reward path. Note the direction: at the default `cost_per_dof=0.01` the old flat
+  cost exhausted the budget ~100× faster than the cost the reward was accounting for
+  — reusing the existing correct pattern (rather than naively substituting
+  `cost_per_dof` alone) was the load-bearing detail here.
+- `basis_selection.py` hand-rolled a hardcoded, non-scale-normalized EXPLORING/
+  REFINING phase threshold while `PDEGame.get_phase()` already implemented it
+  correctly (config-driven, scale-normalized). Now delegates to the base class.
+- `mesh_refinement.py`'s `level < 2` h-vs-p switchover became a typed
+  `hp_switchover_level` config field; `swarm_planning.py`'s obstacle-distance floor
+  and `operators.py`'s duplicated Cole-Hopf `n_terms`/clamp-epsilon and
+  `sigma = 0.1 * domain_size` became named constants.
+- 7 call sites across `src/mcts/` hardcoded `1.0` instead of the already-defined
+  `DEFAULT_TEMPERATURE` (which had zero consumers).
+
+**Dead and duplicated code removed**
+
+- `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` —
+  three re-export modules added in a prior sprint to fix hardcoded-value hygiene, but
+  with **zero consumers** (every real call site imports flat `src.constants`
+  directly). Deleted after verifying zero-consumer status per file. A migration guide
+  that actively recommended these as the "preferred v0.4+" import path was corrected.
+- `BaseTrainer.evaluate()` and both concrete stubs (`Trainer.evaluate`,
+  `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere,
+  each subclass stubbing it with `NotImplementedError`. Deleted, with an explanatory
+  comment left at the removal site.
+- `FNetMixingLayer` was declared twice with identical bodies; `benchmark_fnet.py` now
+  imports the canonical `src.modeling.fnet` version. Verified first that no committed
+  doc cites a specific number this benchmark produces.
+- `select_child`'s error message claimed the node "has no children" when the real
+  cause is all-NaN child scores (NaN comparisons are always `False`). Message
+  corrected; selection semantics deliberately unchanged.
+
+**Type safety** — `mypy --strict` on `src/`: **31 → 8 errors**. The 23 fixed were all
+in `src/video_compression/` (missing `register_buffer` companion annotations, a
+systemic `np.ndarray[np.int32, ...]` shape/dtype type-parameter typo, list/dict
+annotations, a return type needing narrowing, a stale ignore). The 8 remaining are
+the 5 `codec/codec.py` errors that need real interface design (a factory returning
+bare `nn.Module` where a Protocol over the real variants is needed) plus 3
+pre-existing torch-version-dependent `unused-ignore`s CI already documents as
+accepted.
+
+**Coverage and tooling gates**
+
+- `src/video_compression` had **no coverage gate at all** despite 933 tests running
+  in CI — because `pyproject.toml` still omits it from `--cov=src` (a leftover from
+  when the package was believed retired). Now gated at 83 against a measured 85.43%,
+  using the same inline-coveragerc technique `phase2-zoo-validation.yml` already uses
+  for the same collision. Charter gates register updated.
+- `src/distributed` coverage rose 68.91% → 82.34% (`worker.py` specifically 22% → 99%).
+- `make test-stoch` had silently drifted to 1 of 4 required `--include=` paths and 1
+  of 6 test paths — it reported a different, inflated number than the gate it claims
+  to mirror. `make demo` was outright broken (referenced a scenario name that was
+  never registered). `make lint` was narrower than CI. `make check`/`pre-pr` never
+  invoked any coverage gate. All fixed and each verified by actually running it.
+- `CLAUDE.md:115`'s claim that `video_compression` "no longer exists" was false for 4
+  of the 5 paths it named; corrected, along with a second copy of the same false claim
+  elsewhere in the file. Only `config/perf/*` is genuinely gone.
+
+**Tests added** for previously-unexercised reachable code: Go illegal-move rejection,
+`get_result()`'s White/draw branches and `get_winner()`; Chess queenside-castling
+*execution* and threefold-repetition (both claimed by docstrings but never actually
+driven); `CalibrationDataReader`; and all of `src/distributed/worker.py`.
+
+## Verification (all re-run independently after every wave stopped)
+
+```
+ruff check  src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py  → clean
+ruff format --check  (same paths)                                                → 895 files formatted
+mypy src/ --strict --ignore-missing-imports                                      → 8 errors (from 31)
+audit_abstractions src/mcts src/refinement src/pde --fail-on-missing             → clean
+
+pytest tests/pde/ tests/refinement/                                → 1045 passed
+pytest tests/training/ tests/distributed/                          → 1167 passed,  3 skipped
+pytest tests/video_compression/                                    →  962 passed, 24 skipped
+pytest tests/mcts tests/games tests/deployment tests/prototyping \
+       tests/experiments tests/modeling tests/physics tests/data \
+       tests/docs                                                  → 1844 passed, 33 skipped
+                                                                     ────────────────────────
+                                                                     ~5,018 passed, 0 failed
+```
+
+## Still open after round 2
+
+- **The Cole-Hopf t=0 defect from round 1 is unchanged** and remains the most
+  urgent item in this document — see the round-1 section above. Round 2 did not
+  touch it (it is PDE-math work, not hygiene).
+- `src/distributed/worker.py`'s `games_completed` over-count (new, above).
+- A **pre-existing, unrelated** failing test surfaced while wiring `make check`:
+  `tests/security/test_checkpoint_safety.py::test_checkpoint_path_validation`
+  (`UnpicklingError: unpickling stack underflow`). Not caused by any round-2 change
+  and deliberately left untouched, but it currently halts the `make check`
+  prerequisite chain.
+- `codec/codec.py`'s 5 remaining mypy errors (need a Protocol/Union over the entropy
+  model variants).
+- Deferred by explicit decision: SIGINT/SIGTERM handling for the training stack
+  (`self_play.py` uses `torch.multiprocessing.Pool`, so a flag-check handler would
+  not cover an interrupt arriving mid-self-play — needs a design spike, not a quick
+  add); the `B10` package deletions; `tests/demos/` CI wiring (verified passing
+  151/151 but invisible to every CI job); `src/backend`'s dual exclusion from both
+  coverage and the abstraction gate.
+
+## Process note
+
+Round 1's adversarial `reviewer` agent pass caught a real severity understatement
+(the Cole-Hopf finding) and a vacuous test. Round 2 substituted a **targeted
+self-review of the highest-risk diff** (the training control-flow changes) plus the
+full empirical re-verification above, because the spend limit that killed three
+waves made another full reviewer-agent pass a poor trade. That is the one quality
+step consciously traded away this round, recorded here rather than left implicit.

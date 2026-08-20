@@ -249,6 +249,7 @@ class ValueNetwork(nn.Module):
         # Support for categorical distribution
         support = torch.linspace(-support_size // 2, support_size // 2, support_size)
         self.register_buffer("support", support)
+        self.support: Tensor
 
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
@@ -338,6 +339,7 @@ class PredictionNetwork(nn.Module):
         # Support for categorical value
         support = torch.linspace(-support_size // 2, support_size // 2, support_size)
         self.register_buffer("support", support)
+        self.support: Tensor
 
     def forward(
         self,

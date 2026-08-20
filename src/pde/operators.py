@@ -586,6 +586,18 @@ class PoissonOperator(PDEOperator):
             return np.sin(np.pi * x) * np.sin(np.pi * y)
 
 
+COLE_HOPF_N_TERMS: int = 50
+"""Number of Fourier-series terms retained by ``BurgersOperator.exact_solution``'s
+Cole-Hopf series (shared verbatim by the torch and numpy branches)."""
+
+COLE_HOPF_CLAMP_EPS: float = 1e-10
+"""Floor applied to the Cole-Hopf denominator (``phi``) in
+``BurgersOperator.exact_solution`` to avoid division by zero/near-zero when
+computing ``u = -2*nu*dphi/phi``. Value-preserving: this does not change the
+known t=0 magnitude defect tracked by
+``tests/pde/test_operators.py::test_cole_hopf_t0_magnitude_is_a_known_defect_not_a_correctness_claim``."""
+
+
 class BurgersOperator(PDEOperator):
     """Burgers equation operator: u_t + u·∇u = ν∇²u.
 
@@ -743,7 +755,7 @@ class BurgersOperator(PDEOperator):
         if isinstance(coords, Tensor):
             x = coords[:, 0]
             # Fourier series approximation (N_terms for convergence)
-            n_terms = 50
+            n_terms = COLE_HOPF_N_TERMS
             phi = torch.ones_like(x) * 0.5  # a_0/2 term
             dphi = torch.zeros_like(x)
 
@@ -754,11 +766,11 @@ class BurgersOperator(PDEOperator):
                 phi = phi + decay * torch.cos(n * np.pi * x)
                 dphi = dphi - n * np.pi * decay * torch.sin(n * np.pi * x)
 
-            u = -2.0 * nu * dphi / phi.clamp(min=1e-10)
+            u = -2.0 * nu * dphi / phi.clamp(min=COLE_HOPF_CLAMP_EPS)
             return u
         else:
             x = coords[:, 0]
-            n_terms = 50
+            n_terms = COLE_HOPF_N_TERMS
             phi = np.ones_like(x) * 0.5
             dphi = np.zeros_like(x)
 
@@ -767,7 +779,7 @@ class BurgersOperator(PDEOperator):
                 phi = phi + decay * np.cos(n * np.pi * x)
                 dphi = dphi - n * np.pi * decay * np.sin(n * np.pi * x)
 
-            u = -2.0 * nu * dphi / np.clip(phi, a_min=1e-10, a_max=None)
+            u = -2.0 * nu * dphi / np.clip(phi, a_min=COLE_HOPF_CLAMP_EPS, a_max=None)
             return u.astype(np.float32)
 
     def convergence_rate(self, h_values: list[float], errors: list[float]) -> float:
@@ -789,6 +801,14 @@ class BurgersOperator(PDEOperator):
         # Linear regression: log(e) = p * log(h) + C
         coeffs = np.polyfit(log_h, log_e, 1)
         return float(coeffs[0])
+
+
+GAUSSIAN_PULSE_WIDTH_FRACTION: float = 0.1
+"""Fraction of the mean domain extent used as the Gaussian-pulse standard
+deviation (``sigma = GAUSSIAN_PULSE_WIDTH_FRACTION * np.mean(domain_size)``).
+Shared verbatim by ``AdvectionDiffusionOperator.initial_condition``,
+``AdvectionDiffusionOperator.exact_solution``, and
+``HeatOperator.initial_condition``."""
 
 
 class AdvectionDiffusionOperator(PDEOperator):
@@ -900,7 +920,7 @@ class AdvectionDiffusionOperator(PDEOperator):
     ) -> NDArray[np.float32] | Tensor:
         """Compute initial condition (Gaussian pulse)."""
         center = (self.domain_min + self.domain_max) / 2
-        sigma = 0.1 * np.mean(self.domain_size)
+        sigma = GAUSSIAN_PULSE_WIDTH_FRACTION * np.mean(self.domain_size)
 
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
@@ -921,7 +941,9 @@ class AdvectionDiffusionOperator(PDEOperator):
 
         # Advected center
         center = (self.domain_min + self.domain_max) / 2 + self.advection_velocity * time
-        sigma = 0.1 * np.mean(self.domain_size) + np.sqrt(2 * self.diffusion * time)
+        sigma = GAUSSIAN_PULSE_WIDTH_FRACTION * np.mean(self.domain_size) + np.sqrt(
+            2 * self.diffusion * time
+        )
 
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)
@@ -1028,7 +1050,7 @@ class HeatOperator(PDEOperator):
         """Compute initial temperature distribution."""
         # Hot spot in center
         center = (self.domain_min + self.domain_max) / 2
-        sigma = 0.1 * np.mean(self.domain_size)
+        sigma = GAUSSIAN_PULSE_WIDTH_FRACTION * np.mean(self.domain_size)
 
         if isinstance(coords, Tensor):
             center_t = torch.tensor(center, dtype=coords.dtype, device=coords.device)

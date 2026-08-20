@@ -81,6 +81,15 @@ class BasisFunction:
             return (x**degree_x * y**degree_y).astype(np.float32)
 
         elif self.type == "rbf":
+            # ``BasisFunction`` is a pure evaluator with no reference to the
+            # owning ``PDEOperator``'s domain, so these ``.get(...)`` defaults
+            # cannot be derived from the actual domain bounds; they are a
+            # defensive fallback for a ``params`` dict missing keys, not a
+            # claim that 0.5 is "the domain center". In practice this path is
+            # unreachable for candidates produced by
+            # ``BasisSelectionGame._generate_candidates``, which always
+            # supplies ``center_x``/``center_y`` sampled from the operator's
+            # real ``domain_min``/``domain_max`` (see below).
             center_x = self.params.get("center_x", 0.5)
             center_y = self.params.get("center_y", 0.5)
             sigma = self.params.get("sigma", 0.1)
@@ -223,17 +232,32 @@ class BasisSelectionGame(PDEGame):
                     break
 
         elif basis_type == "rbf":
-            # Generate RBF basis with various centers
+            # Generate RBF basis with various centers, sampled from the
+            # operator's *actual* domain bounds rather than a hardcoded
+            # [0, 1] unit square. A flat [0, 1) sample is wrong for any
+            # non-unit-square domain (e.g. LShapedPoissonOperator's
+            # [-1, 1]^2), where it would place centers partly, or wholly,
+            # outside the real domain.
             rng = np.random.default_rng(self.basis_config.seed)
             scale_lo, scale_hi = self.basis_config.basis_scale_range
+            domain_min = self.pde_operator.domain_min
+            domain_max = self.pde_operator.domain_max
+            x_lo, x_hi = float(domain_min[0]), float(domain_max[0])
+            if len(domain_min) > 1:
+                y_lo, y_hi = float(domain_min[1]), float(domain_max[1])
+            else:
+                # 1D domain: BasisFunction.evaluate never reads center_y in
+                # this case (coords has no second column), so any finite
+                # range is inert; reuse the x-range for a well-defined draw.
+                y_lo, y_hi = x_lo, x_hi
 
             for idx in range(n_candidates):
                 candidates.append(
                     BasisFunction(
                         type="rbf",
                         params={
-                            "center_x": rng.uniform(0, 1),
-                            "center_y": rng.uniform(0, 1),
+                            "center_x": rng.uniform(x_lo, x_hi),
+                            "center_y": rng.uniform(y_lo, y_hi),
                             "sigma": rng.uniform(scale_lo, scale_hi),
                         },
                         index=idx,
@@ -440,20 +464,22 @@ class BasisSelectionGame(PDEGame):
         errors = self.compute_exact_error(new_state)
         new_state.error_estimate = errors["l2"]
 
-        # Update DOF and budget
+        # Update DOF and budget. Cost is config-driven (``cost_per_dof``),
+        # mirroring the reward path's ``cost = self.config.cost_per_dof *
+        # dof_added`` in ``get_reward`` below. (Previously this used a flat
+        # unit cost of 1.0, decoupled from ``cost_per_dof`` -- at the
+        # default ``cost_per_dof=0.01`` that exhausted the budget ~100x
+        # faster than the cost the reward path was actually accounting for.)
         new_state.dof = len(new_state.history)
-        cost = 1.0  # Unit cost per basis function
+        dof_added = new_state.dof - state.dof
+        cost = self.config.cost_per_dof * dof_added
         new_state.budget_remaining -= cost
 
-        # Update phase
-        if new_state.error_estimate < self.config.error_tolerance:
-            new_state.phase = GamePhase.CONVERGED
-        elif new_state.budget_remaining <= 0:
-            new_state.phase = GamePhase.BUDGET_EXHAUSTED
-        elif new_state.error_estimate > 0.1:
-            new_state.phase = GamePhase.EXPLORING
-        else:
-            new_state.phase = GamePhase.REFINING
+        # Update phase: delegate to the base class's config-driven,
+        # scale-normalized phase detection (PDEGame.get_phase) instead of
+        # hand-rolling a hardcoded, non-scale-normalized EXPLORING/REFINING
+        # threshold here.
+        new_state.phase = self.get_phase(new_state)
 
         return new_state
 

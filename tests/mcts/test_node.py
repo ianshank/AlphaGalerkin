@@ -644,14 +644,16 @@ class TestSelectChildNonFiniteQValues:
     evaluator boundary, before a NaN value can ever reach this state via a
     real search. ``select_child`` itself is intentionally unchanged by this
     audit: NaN comparisons are always False in Python, so ``score >
-    best_score`` never fires for any child, and the "no child selected"
-    branch -- whose message literally says the node has no children -- fires
-    even though it does. Locking in this behaviour here means a future
-    change to the comparison logic (e.g. NaN-aware tie-breaking) is a
-    deliberate, visible diff instead of an unnoticed regression.
+    best_score`` never fires for any child, and the "no best child found"
+    branch fires even though the node does have children. That branch's
+    error message now names the actual cause (non-finite scores) instead of
+    the earlier, misleading "no children" framing. Locking in this behaviour
+    here means a future change to the comparison logic (e.g. NaN-aware
+    tie-breaking) is a deliberate, visible diff instead of an unnoticed
+    regression.
     """
 
-    def test_all_nan_q_values_raises_misleadingly_labelled_error(self):
+    def test_all_nan_q_values_raises_error_naming_non_finite_scores(self):
         root = MCTSNode()
         root.expand({0: 0.5, 1: 0.5})
         root.visit_count = 5
@@ -661,8 +663,9 @@ class TestSelectChildNonFiniteQValues:
 
         # The node does have children -- unlike the genuinely-childless case
         # (``test_select_child_raises_on_leaf``, a ValueError with an
-        # accurate message), this raises the RuntimeError fallback whose
-        # message inaccurately claims there are none.
+        # accurate message), this raises the RuntimeError fallback. Its
+        # message correctly identifies the non-finite scores as the cause
+        # rather than claiming the node has no children.
         assert len(root.children) == 2
-        with pytest.raises(RuntimeError, match="No child selected"):
+        with pytest.raises(RuntimeError, match="non-finite"):
             root.select_child(c_puct=1.5)

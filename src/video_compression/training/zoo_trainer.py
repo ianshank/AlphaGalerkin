@@ -361,7 +361,7 @@ class ZooTrainer:
             final_loss=float(final_metrics.loss),
             step_count=trainer.state.step,
             device=self.device,
-            checkpoint_path=artifacts.checkpoint_path,
+            checkpoint_path=Path(artifacts.checkpoint_path),
             tolerance_passed=tolerance_passed,
             bpp_relative_error=float(bpp_relative_error),
             psnr_absolute_error_db=float(psnr_absolute_error_db),

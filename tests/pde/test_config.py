@@ -228,6 +228,39 @@ class TestMeshRefinementConfig:
                 max_polynomial_degree=10,
             )
 
+    def test_hp_switchover_above_max_refinement_level_rejected(self) -> None:
+        """Switchover level above the refinement cap makes p-refinement unreachable."""
+        with pytest.raises(ValidationError, match="p-refinement branch"):
+            MeshRefinementConfig(
+                name="test",
+                hp_switchover_level=8,
+                max_refinement_level=5,
+            )
+
+    def test_hp_switchover_equal_to_max_refinement_level_rejected(self) -> None:
+        """Equality is degenerate too: the p-refinement level window is empty."""
+        with pytest.raises(ValidationError, match="p-refinement branch"):
+            MeshRefinementConfig(
+                name="test",
+                hp_switchover_level=5,
+                max_refinement_level=5,
+            )
+
+    def test_hp_switchover_one_below_max_refinement_level_accepted(self) -> None:
+        """The tightest non-degenerate case keeps exactly one p-refinable level."""
+        config = MeshRefinementConfig(
+            name="test",
+            hp_switchover_level=4,
+            max_refinement_level=5,
+        )
+        assert config.hp_switchover_level == 4
+        assert config.max_refinement_level == 5
+
+    def test_hp_switchover_upper_bound(self) -> None:
+        """hp_switchover_level carries the same standalone bound as its sibling."""
+        with pytest.raises(ValidationError):
+            MeshRefinementConfig(name="test", hp_switchover_level=21)
+
 
 class TestPDEGameConfig:
     """Tests for PDEGameConfig."""

@@ -299,11 +299,13 @@ class MeshRefinementConfig(BaseModuleConfig):
     hp_switchover_level: int = Field(
         default=2,
         ge=0,
+        le=20,
         description=(
             "Refinement level threshold for HP_REFINEMENT's h-vs-p choice: "
             "elements below this level are h-refined (subdivided); at or "
             "above it they are p-refined (polynomial degree increased) "
-            "instead."
+            "instead. Must be strictly less than max_refinement_level, "
+            "otherwise no element ever reaches the p-refinement branch."
         ),
     )
 
@@ -359,6 +361,23 @@ class MeshRefinementConfig(BaseModuleConfig):
             raise ValueError(
                 f"initial_polynomial_degree ({self.initial_polynomial_degree}) > "
                 f"max_polynomial_degree ({self.max_polynomial_degree})"
+            )
+        # Deliberately `>=`, unlike the two `>` checks above: equality is itself
+        # degenerate here, not merely the boundary of a valid range. Elements are
+        # h-refined while `level < hp_switchover_level` and p-refined at or above
+        # it (Mesh.refine_element), but refinement stops entirely once
+        # `level >= max_refinement_level` (MeshRefinementGame._refine_eligible),
+        # so the p-branch is only reachable on the level window
+        # [hp_switchover_level, max_refinement_level - 1] -- empty at `==`.
+        if self.hp_switchover_level >= self.max_refinement_level:
+            raise ValueError(
+                f"hp_switchover_level ({self.hp_switchover_level}) >= "
+                f"max_refinement_level ({self.max_refinement_level}): the "
+                f"p-refinement branch of HP_REFINEMENT would be unreachable "
+                f"(it applies only on levels [{self.hp_switchover_level}, "
+                f"{self.max_refinement_level - 1}], which is empty), silently "
+                f"degenerating hp-refinement into pure h-refinement. Use "
+                f"hp_switchover_level < max_refinement_level"
             )
         return self
 

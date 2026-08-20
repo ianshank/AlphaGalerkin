@@ -749,13 +749,23 @@ class MeshRefinementGame(PDEGame):
 
         # Cost is config-driven (``cost_per_dof``), mirroring the reward
         # path's ``cost = self.config.cost_per_dof * dof_added`` in
-        # ``get_reward`` below. (Previously this used a flat unit cost of 1,
-        # decoupled from ``cost_per_dof`` -- at the default
-        # ``cost_per_dof=0.01`` that exhausted the budget ~100x faster than
-        # the cost the reward path was actually accounting for.) DOF can
-        # decrease under coarsening, so ``dof_added`` -- and thus ``cost`` --
-        # may be negative; this matches the existing reward-path semantics,
-        # which already treat a coarsening step as a (partial) budget refund.
+        # ``get_reward`` below, instead of the flat unit cost of 1 this used
+        # previously (which was decoupled from ``cost_per_dof`` entirely).
+        #
+        # The direction of the change is dimension-dependent, not a fixed
+        # ratio: ``n_dof`` sums ``(p+1)**dim`` per element, so one 2D h-refine
+        # at p=1 adds 12 DOF -> cost 0.12 (cheaper than the old 1.0), while a
+        # 3D h-refine at p=3 adds 448 DOF -> cost 4.48 (more expensive). Budget
+        # exhaustion is unreachable at every shipped config either way, since
+        # ``max_steps`` (<=100) caps the episode long before
+        # ``computational_budget`` (>=1e4) is spent.
+        #
+        # DOF can decrease under coarsening, so ``dof_added`` -- and thus
+        # ``cost`` -- may be negative, matching the reward path's treatment of
+        # coarsening as a partial refund. Note this gives up the strict
+        # monotonicity the old ``- 1`` had: a refine/coarsen oscillation can
+        # hold ``budget_remaining`` steady, so it is no longer a liveness
+        # bound. ``max_steps`` remains the actual episode bound.
         new_dof = self.mesh.n_dof
         dof_added = new_dof - state.dof
         cost = self.config.cost_per_dof * dof_added

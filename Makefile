@@ -58,7 +58,7 @@ lint:
 	$(RUFF) format --check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
 
 format:
-	$(RUFF) format src/ tests/
+	$(RUFF) format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
 
 # ---------------------------------------------------------------------------
 # Type Checking (informational — not a blocking gate)

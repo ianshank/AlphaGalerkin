@@ -549,3 +549,75 @@ self-review of the highest-risk diff** (the training control-flow changes) plus 
 full empirical re-verification above, because the spend limit that killed three
 waves made another full reviewer-agent pass a poor trade. That is the one quality
 step consciously traded away this round, recorded here rather than left implicit.
+
+## Round-2 adversarial review — and what it caught
+
+The round-2 section above initially shipped *without* the adversarial `reviewer`
+pass (an API spend limit had just killed three agent waves, and a targeted
+self-review was substituted). That pass was run afterward, on the pushed diff. It
+was worth it — it found a **real regression introduced by the round-2 work itself**,
+which the ~5,018 green tests did not catch.
+
+**Confirmed defect, now fixed: `Path()` coercion corrupted GCS checkpoint URIs.**
+One of the 23 "behavior-preserving" `mypy` annotation fixes wrapped
+`artifacts.checkpoint_path` in `Path(...)` at `zoo_trainer.py:364`. But
+`EntryArtifacts.checkpoint_path` is `Path | str` by design — the filesystem backend
+returns a `Path`, and `GCSZooStorage` returns a `gs://` URI *string* (GCS objects
+have no filesystem path, and `storage.py`'s own docstring says so). `Path()`
+collapses the double slash, so `gs://bucket/…` silently became
+`gs:/bucket/…` — a value `parse_gcs_uri` rejects outright and
+`scripts/train_compression_zoo_entry.py` writes straight into `metrics.json`. Every
+existing test uses the filesystem backend, where `Path(Path)` is a no-op, which is
+exactly why it stayed green. Fixed by widening `ZooTrainingReport.checkpoint_path`
+to `Path | str` to match, and passing the value through unchanged. A regression test
+was added and **mutation-tested** (it fails when the `Path()` wrap is reintroduced).
+
+**Three comments that were factually wrong — corrected.** All three claimed more
+than the code delivered, which is the specific failure mode this whole exercise
+exists to prevent:
+
+- The 1D RBF branch claimed `BasisFunction.evaluate` "never reads `center_y`" for 1D
+  coords. It does: `evaluate` substitutes `y = 0`, so `r_sq` becomes
+  `(x - center_x)² + center_y²` and any nonzero `center_y` multiplies the entire
+  basis column by a constant `exp(-center_y²/2σ²)`. At σ=0.1 a `center_y` of 0.7
+  scales the column by ~2e-11, which `lstsq` then discards as rank-deficient —
+  silently shrinking the effective basis on every 1D problem (Burgers included).
+  **Fixed properly rather than just re-worded**: `center_y` is now pinned to 0 for 1D
+  domains, making the candidate a true 1D Gaussian. The draw is still taken so the
+  RNG stream stays aligned and seeded 2D results remain bit-identical.
+- The phase-delegation comment (and its test docstring) claimed the change bought
+  "config-driven, scale-normalized" phase detection. `PDEGame.get_phase` normalizes
+  by `self._initial_error`, which `BasisSelectionGame` never sets — so it falls back
+  to `1.0` and the comparison is exactly as absolute as the literal it replaced. The
+  real win is one code path instead of two. Corrected, along with the two genuine
+  behavior deltas delegation introduces (`INITIAL` for the first few steps; *any*
+  non-converged terminal reported as `BUDGET_EXHAUSTED`).
+- The mesh-refinement cost comment claimed a flat "~100× slower budget drain." The
+  ratio is dimension-dependent and can invert: 2D at p=1 gives cost 0.12 (cheaper
+  than the old 1.0), but 3D at p=3 gives 4.48 (more expensive). Corrected, and the
+  lost strict-monotonicity of `budget_remaining` under coarsening is now noted
+  explicitly (`max_steps`, not budget, is the real episode bound).
+
+**Also fixed:** `CLAUDE.md`'s 2026-08-16 milestone still listed the three deleted
+`constants.py` modules as a delivered capability — the same class of stale claim
+round 2 corrected in three *other* files, missed in the file that matters most.
+`make format` was still narrower than the widened `make lint`, so
+`make format && make lint` could fail on a file `format` never touched.
+
+**Verified sound by the same pass** (checked, not assumed): `dof_added` has no
+off-by-one at either budget site; `BUDGET_EXHAUSTED` was already unreachable at every
+shipped config *before* the change, so nothing regressed; `budget_remaining` reaches
+no committed artifact; the RBF change is bit-identical for the default unit square;
+the buffer-fill counter is unconditional and its bound is unreachable-by-accident at
+all shipped configs; all three `constants.py` deletions and the `evaluate()` removal
+are genuinely consumer-free (including dynamic/string imports and `dashboard/`,
+`hf_space/`, `scripts/`); the two `FNetMixingLayer` copies were byte-identical apart
+from inert jaxtyping annotations; and the new coverage gate measures 85.43% under
+CI's exact conditions with `.coveragerc.*` already gitignored.
+
+**Open, tracked, not fixed here:** `hp_switchover_level` has a lower bound but no
+upper bound or cross-validation against `max_refinement_level`;
+`POTENTIAL_FIELD_MIN_DISTANCE` is a domain-scale length masquerading as a module
+constant and belongs on the config; and `tests/distributed/test_worker.py`
+deliberately pins the `games_completed` over-count, so whoever fixes that bug must
+update the test rather than read its failure as a regression.

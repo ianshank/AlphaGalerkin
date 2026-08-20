@@ -350,10 +350,17 @@ class TestBasisSelectionGameActions:
     ) -> None:
         """``apply_action`` delegates phase computation to ``PDEGame.get_phase``.
 
-        Regression test: the phase update previously hand-rolled a
-        hardcoded, non-scale-normalized ``error_estimate > 0.1``
-        EXPLORING/REFINING threshold instead of using the config-driven,
-        scale-normalized base-class implementation.
+        Regression test: the phase update previously hand-rolled a second,
+        hardcoded ``error_estimate > 0.1`` EXPLORING/REFINING threshold
+        instead of reusing the base-class implementation.
+
+        Scope note (the assertion below is a delegation check, not a
+        correctness check): ``get_phase`` divides by ``self._initial_error``,
+        which ``BasisSelectionGame`` never sets, so it falls back to 1.0 and
+        the comparison is just as absolute as the literal it replaced. The
+        win is one code path instead of two. ``phase`` is diagnostic only --
+        read by ``clone()``/``to_dict()``, never by the reward or termination
+        path -- so this is reporting, not search behaviour.
         """
         state = game.get_initial_state()
         new_state = game.apply_action(state, 0)

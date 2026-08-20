@@ -714,11 +714,16 @@ class TestGradientAccumulator:
 class TestDistributedTrainerStepHookStubs:
     """DistributedTrainer's own NotImplementedError stubs must survive.
 
-    ``BaseTrainer.compute_loss`` / ``generate_data`` / ``evaluate`` were
-    demoted from ``@abstractmethod`` to concrete raising hooks, so deleting
-    these subclass stubs no longer breaks instantiation -- it silently swaps
-    the trainer-specific guidance ("uses train_step()") for the generic base
+    ``BaseTrainer.compute_loss`` / ``generate_data`` were demoted from
+    ``@abstractmethod`` to concrete raising hooks, so deleting these
+    subclass stubs no longer breaks instantiation -- it silently swaps the
+    trainer-specific guidance ("uses train_step()") for the generic base
     message. Nothing else asserts these messages.
+
+    A third stub, ``evaluate``, was deleted outright (2026-08-19) along
+    with ``BaseTrainer.evaluate`` itself: it had zero call sites anywhere
+    in the codebase (see docs/CODE_HYGIENE_AUDIT.md §7.7), so there is no
+    longer a method here to cover.
     """
 
     @pytest.mark.parametrize(
@@ -726,7 +731,6 @@ class TestDistributedTrainerStepHookStubs:
         [
             ("compute_loss", (None,), "DistributedTrainer uses train_step"),
             ("generate_data", (), "DistributedTrainer receives batches via train_step"),
-            ("evaluate", (), "DistributedTrainer evaluation is managed externally"),
         ],
     )
     def test_stub_raises_with_trainer_specific_message(
@@ -742,5 +746,5 @@ class TestDistributedTrainerStepHookStubs:
 
     def test_stubs_are_defined_on_the_subclass_not_inherited(self) -> None:
         """The stubs are the subclass's own attributes (deletion is detectable)."""
-        for hook in ("compute_loss", "generate_data", "evaluate"):
+        for hook in ("compute_loss", "generate_data"):
             assert hook in vars(DistributedTrainer), hook

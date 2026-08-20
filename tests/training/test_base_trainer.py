@@ -60,9 +60,6 @@ class ConcreteTrainer(BaseTrainer[MinimalConfig]):
         self._batch_count += 1
         return x, y
 
-    def evaluate(self) -> dict[str, float]:
-        return {"eval_loss": 0.0}
-
 
 def _make_model() -> nn.Module:
     return nn.Sequential(nn.Linear(2, 4), nn.ReLU(), nn.Linear(4, 2))
@@ -685,11 +682,13 @@ class TestInheritance:
 
 
 class HookLessTrainer(BaseTrainer[MinimalConfig]):
-    """Subclass that overrides *none* of the three ``step()`` hooks.
+    """Subclass that overrides *none* of the two ``step()`` hooks.
 
     Instantiating this at all is the regression under test: while
-    ``compute_loss`` / ``generate_data`` / ``evaluate`` were ``@abstractmethod``
-    this class could not be constructed (``TypeError`` at instantiation).
+    ``compute_loss`` / ``generate_data`` were ``@abstractmethod`` this class
+    could not be constructed (``TypeError`` at instantiation). A third hook,
+    ``evaluate``, was also demoted alongside these two but has since been
+    deleted entirely (zero call sites; docs/CODE_HYGIENE_AUDIT.md §7.7).
     """
 
 
@@ -704,10 +703,13 @@ class PartialTrainer(BaseTrainer[MinimalConfig]):
 class TestStepHookContract:
     """Guards the @abstractmethod -> concrete-raising-hook demotion.
 
-    The three hooks must (a) no longer be abstract, so a subclass that drives
-    its own loop is constructible, and (b) still fail loudly -- with the
-    documented, class-name-carrying message -- if the generic ``step()`` loop
-    is used without overriding them.
+    The two remaining hooks (``compute_loss``, ``generate_data``) must (a)
+    no longer be abstract, so a subclass that drives its own loop is
+    constructible, and (b) still fail loudly -- with the documented,
+    class-name-carrying message -- if the generic ``step()`` loop is used
+    without overriding them. (A third hook, ``evaluate``, was demoted
+    alongside these two but has since been deleted outright -- see
+    docs/CODE_HYGIENE_AUDIT.md §7.7.)
     """
 
     def test_no_abstract_methods_remain(self) -> None:
@@ -729,7 +731,6 @@ class TestStepHookContract:
         [
             ("compute_loss", (object(),)),
             ("generate_data", ()),
-            ("evaluate", ()),
         ],
     )
     def test_hook_raises_not_implemented_with_documented_message(
@@ -777,7 +778,7 @@ class TestStepHookContract:
         assert trainer.global_step == 0
 
     def test_overriding_subclass_runs_through_step(self, tmp_path: Path) -> None:
-        """A subclass that overrides all three hooks still drives step() end-to-end."""
+        """A subclass that overrides both hooks still drives step() end-to-end."""
         trainer = _make_trainer(tmp_path)
         before = trainer.global_step
         result = trainer.step()
@@ -785,7 +786,6 @@ class TestStepHookContract:
         assert trainer.global_step == before + 1
         assert torch.isfinite(torch.tensor(result.loss))
         assert "l2" in result.metrics
-        assert trainer.evaluate() == {"eval_loss": 0.0}
 
     def test_subclass_overrides_take_precedence_over_raising_hooks(
         self,

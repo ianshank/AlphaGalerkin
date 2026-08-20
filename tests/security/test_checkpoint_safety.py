@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 import torch
 
-from src.training.checkpoint import CheckpointManager
+from src.training.checkpoint import CHECKPOINT_VERSION, CheckpointManager
 
 pytestmark = pytest.mark.security
 
@@ -56,3 +56,42 @@ def test_checkpoint_path_validation(tmp_path: Path) -> None:
     manager = CheckpointManager(checkpoint_dir=str(tmp_path))
     with pytest.raises((ValueError, FileNotFoundError, PermissionError, RuntimeError)):
         manager.load(path="../../../etc/shadow")
+
+
+def test_traversal_rejected_even_when_target_is_readable(tmp_path: Path) -> None:
+    """Traversal is refused by path policy, not by an incidental read failure.
+
+    ``test_checkpoint_path_validation`` above passes for the right reason only if
+    the rejection is independent of file permissions: as root, ``/etc/shadow`` is
+    readable and the pre-fix code reached ``torch.load``. Here the traversal target
+    is a real, world-readable, perfectly loadable checkpoint, so the only thing that
+    can reject it is the containment check.
+    """
+    root = tmp_path / "ckpts"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / "trusted_looking.pt"
+    torch.save({"model_state_dict": {}, "step": 0, "version": CHECKPOINT_VERSION}, target)
+    assert target.is_file()
+
+    manager = CheckpointManager(checkpoint_dir=root)
+
+    with pytest.raises(ValueError, match="outside checkpoint directory"):
+        manager.load(path=f"../outside/{target.name}")
+    with pytest.raises(ValueError, match="outside checkpoint directory"):
+        manager.load(path=target)
+
+
+def test_external_load_requires_explicit_opt_in(tmp_path: Path) -> None:
+    """A checkpoint outside the managed directory loads only with allow_external."""
+    root = tmp_path / "ckpts"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    target = outside / "resume.pt"
+    torch.save({"model_state_dict": {}, "step": 11, "version": CHECKPOINT_VERSION}, target)
+
+    manager = CheckpointManager(checkpoint_dir=root)
+
+    with pytest.raises(ValueError):
+        manager.load(path=target)
+    assert manager.load(path=target, allow_external=True).step == 11

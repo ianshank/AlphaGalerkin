@@ -14,6 +14,12 @@ Security Note:
 
     **Only load checkpoints from trusted sources.**
 
+    `CheckpointManager.load()` therefore bounds *which* files can reach that
+    unpickle: a caller-supplied path is resolved against `checkpoint_dir` and
+    must stay inside it, so an untrusted path (e.g. `"../../../etc/shadow"`)
+    raises `ValueError` instead of being opened. Loading a checkpoint from
+    elsewhere is an explicit opt-in via `allow_external=True`.
+
     For loading untrusted model weights only, use `load_model_only()` with
     proper validation, or implement signature verification for checkpoint files.
 """
@@ -212,19 +218,34 @@ class CheckpointManager:
         self,
         path: Path | str | None = None,
         load_best: bool = False,
+        allow_external: bool = False,
     ) -> CheckpointState:
         """Load a checkpoint.
 
+        The path is resolved against ``self.checkpoint_dir`` (relative paths are
+        interpreted relative to it, not to the process CWD) and must resolve to a
+        location inside that directory. This bounds which files can reach the
+        ``weights_only=False`` unpickle below, so an untrusted ``path`` such as
+        ``"../../../etc/shadow"`` is rejected rather than opened.
+
         Args:
-            path: Specific checkpoint path (None for latest).
+            path: Specific checkpoint path (None for latest). Relative paths are
+                resolved against ``checkpoint_dir``.
             load_best: Whether to load best checkpoint.
+            allow_external: Permit a checkpoint outside ``checkpoint_dir`` (the
+                explicit resume-from-elsewhere workflow). Only pass ``True`` for
+                paths supplied by a trusted operator, never for attacker-influenced
+                input.
 
         Returns:
             CheckpointState with loaded data.
 
         Raises:
             FileNotFoundError: If no checkpoint found.
-            ValueError: If checkpoint version incompatible.
+            ValueError: If the path escapes ``checkpoint_dir`` while
+                ``allow_external`` is False, or the checkpoint version is
+                incompatible.
+            RuntimeError: If the checkpoint cannot be deserialized.
 
         """
         if load_best:
@@ -235,12 +256,40 @@ class CheckpointManager:
         if path is None:
             raise FileNotFoundError("No checkpoint found")
 
-        path = Path(path)
+        # Relative paths belong to this manager's directory, not the CWD.
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.checkpoint_dir / candidate
+
+        # Path.resolve() is non-strict, so containment can be (and is) checked
+        # before existence: a missing *in-dir* checkpoint still raises
+        # FileNotFoundError, while an escaping path never reaches torch.load.
+        resolved = candidate.resolve()
+        root = self.checkpoint_dir.resolve()
+        if not allow_external and not resolved.is_relative_to(root):
+            logger.error(
+                "checkpoint_path_outside_directory",
+                path=str(resolved),
+                checkpoint_dir=str(root),
+            )
+            raise ValueError(
+                f"Checkpoint path {resolved} is outside checkpoint directory {root}. "
+                "Pass allow_external=True to load a checkpoint from another location."
+            )
+        path = resolved
+
         if not path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-        # Load checkpoint
-        data = torch.load(path, map_location="cpu", weights_only=False)
+        # Load checkpoint. weights_only=False is required for full training state;
+        # the containment check above is what limits which files get here. Failures
+        # are normalised to RuntimeError so callers see one deterministic type
+        # instead of a platform/format-dependent pickle error.
+        try:
+            data = torch.load(path, map_location="cpu", weights_only=False)
+        except Exception as e:
+            logger.error("checkpoint_load_failed", path=str(path), error=str(e))
+            raise RuntimeError(f"Failed to load checkpoint: {e}") from e
 
         # Check version compatibility
         version = data.get("version", "0.0.0")
@@ -269,6 +318,7 @@ class CheckpointManager:
         path: Path | str | None = None,
         load_best: bool = False,
         strict: bool = True,
+        allow_external: bool = False,
     ) -> int:
         """Restore model and optimizer from checkpoint.
 
@@ -278,15 +328,18 @@ class CheckpointManager:
             model: Model to restore.
             optimizer: Optimizer to restore.
             scheduler: Scheduler to restore.
-            path: Specific checkpoint path.
+            path: Specific checkpoint path (relative paths resolve against
+                ``checkpoint_dir``).
             load_best: Whether to load best checkpoint.
             strict: Whether to require exact model state match.
+            allow_external: Permit a checkpoint outside ``checkpoint_dir``.
+                Forwarded to :meth:`load` — see its security note.
 
         Returns:
             Training step from checkpoint.
 
         """
-        state = self.load(path=path, load_best=load_best)
+        state = self.load(path=path, load_best=load_best, allow_external=allow_external)
 
         # Restore model
         model.load_state_dict(state.model_state_dict, strict=strict)

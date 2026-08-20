@@ -410,6 +410,134 @@ class TestCheckpointManager:
         assert manager.get_all_checkpoints() == []
 
 
+class TestCheckpointPathContainment:
+    """Tests for path resolution and containment in CheckpointManager.load.
+
+    ``load()`` funnels into ``torch.load(..., weights_only=False)``, so the path
+    it accepts decides which files can be unpickled. These tests pin both halves
+    of the contract: paths resolve against ``checkpoint_dir`` (not the CWD), and
+    escaping it requires the explicit ``allow_external`` opt-in.
+    """
+
+    @staticmethod
+    def _saved(root: Path, model: nn.Module, step: int = 100) -> Path:
+        """Save a real checkpoint into ``root`` and return its path."""
+        return CheckpointManager(root).save(step=step, model=model)
+
+    def test_relative_path_resolves_against_checkpoint_dir(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A bare filename resolves inside checkpoint_dir, not the process CWD."""
+        root = tmp_path / "ckpts"
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        manager = CheckpointManager(root)
+        manager.save(step=100, model=small_model)
+
+        # Run from an unrelated CWD: the old behaviour resolved against it and
+        # raised FileNotFoundError.
+        monkeypatch.chdir(elsewhere)
+        state = manager.load(path="checkpoint_00000100.pt")
+
+        assert state.step == 100
+
+    def test_traversal_to_readable_file_rejected(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """A ``..`` traversal to a real, readable file is rejected by policy."""
+        root = tmp_path / "ckpts"
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        # A genuine, loadable checkpoint — so rejection cannot be a read error.
+        target = self._saved(outside, small_model)
+        manager = CheckpointManager(root)
+
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path=f"../outside/{target.name}")
+
+    def test_absolute_external_path_rejected(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """An absolute path outside checkpoint_dir is rejected by default."""
+        root = tmp_path / "ckpts"
+        target = self._saved(tmp_path / "outside", small_model)
+        manager = CheckpointManager(root)
+
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path=target)
+
+    def test_containment_is_checked_before_existence(self, tmp_path: Path) -> None:
+        """A nonexistent escaping path raises ValueError, an in-dir one FileNotFoundError."""
+        root = tmp_path / "ckpts"
+        manager = CheckpointManager(root)
+
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path=tmp_path / "outside" / "missing.pt")
+
+        with pytest.raises(FileNotFoundError, match="Checkpoint not found"):
+            manager.load(path=root / "missing.pt")
+
+    def test_allow_external_permits_outside_path(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """allow_external=True supports the resume-from-elsewhere workflow."""
+        root = tmp_path / "ckpts"
+        target = self._saved(tmp_path / "outside", small_model, step=42)
+        manager = CheckpointManager(root)
+
+        state = manager.load(path=target, allow_external=True)
+
+        assert state.step == 42
+
+    def test_restore_forwards_allow_external(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """restore() threads allow_external through to load()."""
+        root = tmp_path / "ckpts"
+        target = self._saved(tmp_path / "outside", small_model, step=77)
+        manager = CheckpointManager(root)
+
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.restore(model=small_model, path=target)
+
+        assert manager.restore(model=small_model, path=target, allow_external=True) == 77
+
+    def test_in_dir_save_load_round_trip_still_works(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """The normal in-directory workflow is unaffected by the containment check."""
+        root = tmp_path / "ckpts"
+        manager = CheckpointManager(root)
+        saved = manager.save(step=5, model=small_model, metrics={"loss": 0.5})
+
+        assert manager.load(path=saved).step == 5
+        assert manager.load().step == 5
+        assert manager.load(load_best=True).step == 5
+
+    def test_unreadable_checkpoint_raises_runtime_error(self, tmp_path: Path) -> None:
+        """Deserialization failures surface as RuntimeError, not a pickle error."""
+        root = tmp_path / "ckpts"
+        manager = CheckpointManager(root)
+        corrupt = root / "checkpoint_00000001.pt"
+        corrupt.write_bytes(b"not a torch checkpoint")
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            manager.load(path=corrupt)
+
+
 class TestSaveLoadModelOnly:
     """Tests for save/load model only functions."""
 

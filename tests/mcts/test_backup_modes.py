@@ -406,3 +406,222 @@ class TestReadStepReward:
 
         with pytest.raises(TypeError, match="get_last_reward must be a callable"):
             MCTS._read_step_reward(_NonePropertyReward())  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# reward_discount boundary: (0, 1] -- "just above 0" and exactly 1.0          #
+# --------------------------------------------------------------------------- #
+
+
+class TestRewardDiscountBoundaryValues:
+    """Reward discount boundary values, beyond construction-time validity.
+
+    ``test_reward_discount_bounds`` above only proves construction-time
+    validity at the boundaries (0.0 rejected, 1.5 rejected, 1.0 accepted).
+    These prove the open-at-0 side is genuinely open (not off-by-one to some
+    hidden epsilon) and that both boundaries produce the *functionally*
+    correct discounting, using the same ``_RewardGame`` harness as
+    ``TestIntermediateRewards`` above (fixed 0.5 reward per edge, two edges).
+    """
+
+    def test_just_above_zero_is_a_valid_construction(self) -> None:
+        mcts = MCTS(evaluator=_ConstantEvaluator(1), reward_discount=1e-9)
+        assert mcts.reward_discount == pytest.approx(1e-9)
+
+    def test_discount_one_applies_no_discount(self) -> None:
+        """Gamma=1.0 applies no discount.
+
+        The discounted return equals the raw undiscounted sum of edge
+        rewards (0.5 + 1.0*0.5 = 1.0).
+        """
+        np.random.seed(0)
+        mcts = MCTS(
+            evaluator=_ConstantEvaluator(1, value=0.0),
+            n_simulations=100,
+            search_mode=SearchMode.SINGLE_AGENT,
+            use_intermediate_rewards=True,
+            reward_discount=1.0,
+        )
+        mcts.search(_RewardGame(), add_noise=False)
+
+        root = mcts._root
+        assert root is not None
+        c1 = root.children[0]
+        c2 = c1.children[0]
+        assert c1.edge_reward == pytest.approx(0.5)
+        assert c2.edge_reward == pytest.approx(0.5)
+        discounted_return = c1.edge_reward + mcts.reward_discount * c2.edge_reward
+        assert discounted_return == pytest.approx(1.0)
+
+    def test_discount_just_above_zero_heavily_discounts_later_rewards(self) -> None:
+        """Gamma just above 0 heavily discounts later rewards.
+
+        The second edge's contribution is negligible, so the discounted
+        return is dominated by the first edge alone.
+        """
+        np.random.seed(0)
+        gamma = 1e-9
+        mcts = MCTS(
+            evaluator=_ConstantEvaluator(1, value=0.0),
+            n_simulations=100,
+            search_mode=SearchMode.SINGLE_AGENT,
+            use_intermediate_rewards=True,
+            reward_discount=gamma,
+        )
+        mcts.search(_RewardGame(), add_noise=False)
+
+        root = mcts._root
+        assert root is not None
+        c1 = root.children[0]
+        c2 = c1.children[0]
+        discounted_return = c1.edge_reward + gamma * c2.edge_reward
+        assert discounted_return == pytest.approx(0.5, abs=1e-6)
+
+
+# --------------------------------------------------------------------------- #
+# BatchMCTS homogeneous batches: all-terminal / all-non-terminal extremes     #
+# --------------------------------------------------------------------------- #
+
+
+class _TwoTerminalActionsGame:
+    """Both root actions terminate in a single move, with different winners.
+
+    Forces every leaf collected within a ``_simulate_batch`` call to be
+    terminal: ``leaves`` stays empty and ``leaf_index_for_path`` is all
+    ``-1`` for every path -- the homogeneous extreme opposite
+    ``test_batch_maps_values_across_interleaved_terminals`` above (which
+    mixes one terminal and one non-terminal path in the same batch).
+    """
+
+    def __init__(self, history: list[int] | None = None) -> None:
+        self.history: list[int] = list(history) if history else []
+
+    def get_state(self) -> np.ndarray:
+        return np.zeros(1, dtype=np.float32)
+
+    def get_legal_actions(self) -> list[int]:
+        return [] if self.history else [0, 1]
+
+    def apply_action(self, action: int) -> None:
+        self.history.append(action)
+
+    def is_terminal(self) -> bool:
+        return len(self.history) >= 1
+
+    def get_winner(self) -> int:
+        return 1 if self.history[:1] == [0] else -1
+
+    def clone(self) -> _TwoTerminalActionsGame:
+        return _TwoTerminalActionsGame(self.history)
+
+
+class _AlwaysDeepGame:
+    """Never reports terminal.
+
+    Every leaf collected in every batch is non-terminal, covering the
+    identity-mapping extreme of ``leaf_index_for_path`` (no ``-1`` entries
+    at all, in any batch).
+    """
+
+    def __init__(self, history: list[int] | None = None) -> None:
+        self.history: list[int] = list(history) if history else []
+
+    def get_state(self) -> np.ndarray:
+        first = float(self.history[0] + 1) if self.history else 0.0
+        return np.array([first], dtype=np.float32)
+
+    def get_legal_actions(self) -> list[int]:
+        return [0, 1]
+
+    def apply_action(self, action: int) -> None:
+        self.history.append(action)
+
+    def is_terminal(self) -> bool:
+        return False
+
+    def get_winner(self) -> int:
+        return 0
+
+    def clone(self) -> _AlwaysDeepGame:
+        return _AlwaysDeepGame(self.history)
+
+
+class _FirstActionValueEvaluator:
+    """Value keyed to the root-level branch.
+
+    +1 under action 0, -1 under action 1, 0 at the (state-less) root itself.
+    """
+
+    def evaluate(self, state: np.ndarray, legal_actions: list[int]):
+        from src.mcts.evaluator import EvaluationResult
+
+        first = float(state[0])
+        value = 1.0 if first == 1.0 else (-1.0 if first == 2.0 else 0.0)
+        policy = np.full(2, 0.5, dtype=np.float32)
+        return EvaluationResult(policy=policy, value=value)
+
+    def evaluate_batch(self, states, legal_actions_batch):
+        return [self.evaluate(s, la) for s, la in zip(states, legal_actions_batch, strict=False)]
+
+
+class TestBatchTerminalHomogeneousExtremes:
+    """Homogeneous all-terminal / all-non-terminal batches (F3 companions).
+
+    ``TestBatchTerminalInterleaving`` above already covers the mixed case;
+    these cover the two extremes it does not.
+    """
+
+    def test_all_terminal_batch_uses_cached_winners_not_evaluator(self) -> None:
+        """Every leaf in the batch is terminal.
+
+        Q must match the exact cached winner, proving no cross-path value
+        contamination even though the (empty) evaluator batch call is never
+        needed to produce one.
+        """
+        from src.mcts.search import BatchMCTS
+
+        np.random.seed(0)
+        mcts = BatchMCTS(
+            evaluator=_ConstantEvaluator(2, value=0.0),
+            batch_size=8,
+            n_simulations=32,
+            c_puct=1.0,
+            search_mode=SearchMode.SINGLE_AGENT,
+        )
+        mcts.search(_TwoTerminalActionsGame(), add_noise=False)
+
+        root = mcts._root
+        assert root is not None
+        assert root.children[0].visit_count > 0
+        assert root.children[1].visit_count > 0
+        # Every visit to action 0 always resolves to the same terminal
+        # winner (+1); every visit to action 1 resolves to -1. A corrupted
+        # leaf_index_for_path mapping would blend these means.
+        assert root.children[0].q_value == pytest.approx(1.0)
+        assert root.children[1].q_value == pytest.approx(-1.0)
+
+    def test_all_non_terminal_batch_maps_results_by_identity(self) -> None:
+        """Every leaf in the batch is non-terminal.
+
+        The trivial identity mapping (leaf_index_for_path has no -1 entries
+        at all) must still route each evaluator result back to the correct
+        path.
+        """
+        from src.mcts.search import BatchMCTS
+
+        np.random.seed(0)
+        mcts = BatchMCTS(
+            evaluator=_FirstActionValueEvaluator(),
+            batch_size=8,
+            n_simulations=32,
+            c_puct=1.0,
+            search_mode=SearchMode.SINGLE_AGENT,
+        )
+        mcts.search(_AlwaysDeepGame(), add_noise=False)
+
+        root = mcts._root
+        assert root is not None
+        assert root.children[0].visit_count > 0
+        assert root.children[1].visit_count > 0
+        assert root.children[0].q_value == pytest.approx(1.0)
+        assert root.children[1].q_value == pytest.approx(-1.0)

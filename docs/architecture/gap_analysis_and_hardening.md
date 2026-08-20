@@ -35,11 +35,15 @@ Core Branch Coverage:     91.80% (Gate: >= 85%)
 ## 2. Architectural Decoupling & Core Protocols
 
 ### Domain-Specific Constants
-To eliminate circular dependencies and ensure clean domain boundaries, constants were partitioned into dedicated domain files while maintaining 100% backwards compatibility:
-- `src/mcts/constants.py`: Search parameters, PUCT values, exploration constants.
-- `src/physics/constants.py`: LBB thresholds, Inf-Sup stability limits, transfer ratio floors.
-- `src/training/constants.py`: Learning schedules, checkpoint labels, temperature decays.
-- `src/constants.py`: Canonical backwards-compatible root re-exporter.
+An earlier pass introduced `src/mcts/constants.py`, `src/physics/constants.py`, and
+`src/training/constants.py` as package-level re-exports intended to give each domain its
+own constants entry point. **Correction (2026-08-19):** every real consumer in `src/mcts/`,
+`src/physics/`, and `src/training/` continued to import directly from the flat
+`src/constants.py` module, so the three re-export files had zero consumers and sat at 0%
+coverage. They were confirmed dead (verified via repo-wide grep across `src/`, `tests/`,
+`dashboard/`) and removed as part of the codebase hygiene pass. `src/constants.py` remains
+the single canonical constants module — this is not a regression, it is the same
+consumer-import pattern that was already in effect everywhere.
 
 ### Structural Protocols (`src/core/protocols.py`)
 All core components conform to `@runtime_checkable` Python Protocols:

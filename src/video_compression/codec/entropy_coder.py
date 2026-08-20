@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 
 import numpy as np
+import numpy.typing as npt
 import torch
 from torch import Tensor
 
@@ -219,7 +220,7 @@ class RangeDecoder:
 
     def decode_symbol(
         self,
-        cdf: np.ndarray[np.int32, np.dtype[np.int32]],
+        cdf: npt.NDArray[np.int32],
     ) -> int:
         """Decode a single symbol.
 
@@ -257,8 +258,8 @@ class RangeDecoder:
     def decode_symbols(
         self,
         num_symbols: int,
-        cdfs: np.ndarray[np.int32, np.dtype[np.int32]],
-    ) -> np.ndarray[np.int32, np.dtype[np.int32]]:
+        cdfs: npt.NDArray[np.int32],
+    ) -> npt.NDArray[np.int32]:
         """Decode multiple symbols.
 
         Args:

@@ -268,6 +268,7 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/curriculum` | 87 |
 | `src/engines` | 82 |
 | `src/data` | 77 |
+| `src/video_compression` | 83 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced

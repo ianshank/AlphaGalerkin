@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from src.constants import DEFAULT_TEMPERATURE
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -127,7 +129,9 @@ class MCTSNode:
                 best_child = child
 
         if best_child is None:
-            raise RuntimeError("No child selected - node has no children to select from")
+            raise RuntimeError(
+                "All child scores are non-finite (NaN/Inf) - cannot select a best child"
+            )
         return best_child
 
     def expand(
@@ -219,7 +223,7 @@ class MCTSNode:
 
     def get_visit_distribution(
         self,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> dict[int, float]:
         """Get action probability distribution based on visit counts.
 

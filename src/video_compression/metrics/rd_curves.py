@@ -17,7 +17,7 @@ import numpy as np
 try:
     _trapezoid = np.trapezoid  # numpy >= 2.0
 except AttributeError:
-    _trapezoid = np.trapz  # numpy < 2.0
+    _trapezoid = np.trapz  # type: ignore[attr-defined]  # numpy < 2.0
 
 
 @dataclass

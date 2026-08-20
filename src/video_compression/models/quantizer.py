@@ -184,6 +184,7 @@ class SoftQuantizer(Quantizer):
         # Register bin centers
         bins = torch.arange(-(num_bins // 2), num_bins // 2 + 1).float()
         self.register_buffer("bins", bins)
+        self.bins: Tensor
 
     def forward(
         self,

@@ -21,6 +21,7 @@ from src.constants import (
     DEFAULT_DIRICHLET_EPSILON,
     DEFAULT_MCTS_SIMULATIONS,
     DEFAULT_PUCT_CONSTANT,
+    DEFAULT_TEMPERATURE,
     DEFAULT_VIRTUAL_LOSS,
 )
 from src.mcts.node import MCTSNode
@@ -208,12 +209,12 @@ class MCTS:
             self._simulate(root, game.clone())
 
         # Return visit distribution
-        return root.get_visit_distribution(temperature=1.0)
+        return root.get_visit_distribution(temperature=DEFAULT_TEMPERATURE)
 
     def get_action(
         self,
         game: GameInterface,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
         add_noise: bool = True,
     ) -> int:
         """Run MCTS and select an action.
@@ -236,10 +237,23 @@ class MCTS:
         if self._root is None:
             raise RuntimeError("Root node is None after search - internal error")
 
+        if not self._root.children:
+            # No legal actions were available to expand (e.g. get_action() was
+            # called on an already-terminal game state). Without this guard the
+            # temperature==0 branch fails inside get_best_action() ("no children")
+            # and every other temperature fails inside np.random.choice() with an
+            # opaque "'a' cannot be empty" — neither names the actual cause.
+            raise ValueError(
+                "Cannot select an action: the root has no children (no legal "
+                "actions were available to search). This usually means "
+                "get_action() was called on an already-terminal game state — "
+                "check game.is_terminal() before calling get_action()."
+            )
+
         # Get visit distribution with temperature
         distribution = (
             distribution_at_one
-            if temperature == 1.0
+            if temperature == DEFAULT_TEMPERATURE
             else self._root.get_visit_distribution(temperature)
         )
 
@@ -391,6 +405,43 @@ class MCTS:
             )
         return float(getter())
 
+    @staticmethod
+    def _check_finite_evaluation(
+        value: float,
+        policy: NDArray[np.float32],
+        *,
+        context: str,
+    ) -> None:
+        """Warn (never raise) when an evaluator returns a non-finite value/policy.
+
+        Neither field is sanitized here — a NaN or +/-inf leaf value is backed
+        up as-is and silently poisons every ancestor's ``total_value`` from
+        that point on. That corruption does not surface at the source: it
+        resurfaces, much later and far more confusingly, as
+        ``MCTSNode.select_child`` raising "no child selected" even though the
+        node has children (NaN comparisons are always False in Python, so a
+        NaN-scored child can never win ``score > best_score``, and if every
+        child is NaN-scored none ever does). The evaluator's own degenerate-
+        mask guard (``FNetEvaluator._process_policy``) only covers the empty-
+        ``legal_actions`` case, not a genuinely unstable network emitting NaN
+        logits directly, so this is the sole observability point for that
+        failure mode — checked at every expansion rather than left to
+        whichever downstream symptom happens to surface first.
+
+        Args:
+            value: The scalar value returned by the evaluator for this leaf.
+            policy: The full policy array returned by the evaluator.
+            context: Short label identifying the call site (``"expand"`` for
+                the single-simulation path, ``"batch_expand"`` for
+                ``BatchMCTS``), so a log line alone identifies which engine
+                path produced the anomaly.
+
+        """
+        if not np.isfinite(value):
+            logger.warning("mcts_evaluator_non_finite_value", context=context, value=value)
+        if not np.isfinite(policy).all():
+            logger.warning("mcts_evaluator_non_finite_policy", context=context)
+
     def _expand_node(
         self,
         node: MCTSNode,
@@ -421,6 +472,7 @@ class MCTS:
 
         # Get neural network evaluation
         result = self.evaluator.evaluate(state, legal_actions)
+        self._check_finite_evaluation(result.value, result.policy, context="expand")
 
         # Create action priors
         action_priors = {a: float(result.policy[a]) for a in legal_actions}
@@ -547,7 +599,7 @@ class BatchMCTS(MCTS):
             self._simulate_batch(root, game, batch_size)
             remaining -= batch_size
 
-        return root.get_visit_distribution(temperature=1.0)
+        return root.get_visit_distribution(temperature=DEFAULT_TEMPERATURE)
 
     def _simulate_batch(
         self,
@@ -626,6 +678,15 @@ class BatchMCTS(MCTS):
             for (node, _game_state), result, la in zip(
                 leaves, results, legal_actions, strict=False
             ):
+                self._check_finite_evaluation(result.value, result.policy, context="batch_expand")
+                if not la:
+                    # A non-terminal leaf with zero legal actions is a game-contract
+                    # inconsistency the single-simulation path (_expand_node) treats
+                    # as a terminal-like leaf via an early return; this batched path
+                    # has no such fallback -- node.expand({}) leaves the node a leaf
+                    # forever, so the next simulation reselects and re-expands it
+                    # identically. Only observable today via this warning.
+                    logger.warning("mcts_batch_leaf_no_legal_actions", node_action=node.action)
                 action_priors = {a: float(result.policy[a]) for a in la}
                 node.expand(action_priors)
 

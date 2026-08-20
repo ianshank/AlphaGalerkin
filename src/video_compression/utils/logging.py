@@ -234,7 +234,7 @@ def configure_codec_logging(
 
     """
     # Configure structlog
-    processors = [
+    processors: list[structlog.types.Processor] = [
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,

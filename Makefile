@@ -54,11 +54,11 @@ STOCH_COV_THRESHOLD    ?= 85
 # Lint & Format
 # ---------------------------------------------------------------------------
 lint:
-	$(RUFF) check src/ tests/
-	$(RUFF) format --check src/ tests/
+	$(RUFF) check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
+	$(RUFF) format --check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
 
 format:
-	$(RUFF) format src/ tests/
+	$(RUFF) format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
 
 # ---------------------------------------------------------------------------
 # Type Checking (informational — not a blocking gate)
@@ -108,10 +108,12 @@ test-cert:
 
 test-stoch:
 	$(COV) run --branch \
-		--include="*/src/pde/stochastic/*" \
-		-m pytest tests/pde/stochastic/ -q -p no:cov
+		--include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
+		-m pytest tests/pde/stochastic tests/research/test_stochastic_galerkin_compare.py \
+		tests/poc/test_stochastic_galerkin_compare_config.py tests/poc/test_stochastic_galerkin_compare_scenario.py \
+		tests/scripts/test_run_stochastic_galerkin_compare.py tests/regression/test_related_work_guard.py -q -p no:cov
 	$(COV) report \
-		--include="*/src/pde/stochastic/*" \
+		--include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
 		--fail-under=$(STOCH_COV_THRESHOLD)
 
 test-all:
@@ -134,7 +136,7 @@ coverage:
 # Demo
 # ---------------------------------------------------------------------------
 demo:
-	$(PYTHON) -m src.poc.cli run --scenario transfer_darcy_to_poisson --demo
+	$(PYTHON) -m src.poc.cli run --config config/scenarios/stochastic_galerkin_compare_ci.yaml --demo
 
 # ---------------------------------------------------------------------------
 # GPU Validation
@@ -173,8 +175,8 @@ clean:
 	rm -rf htmlcov/ .coverage.* coverage.xml 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Pre-PR Comprehensive Gate (lint + mypy + sanity + security + regression + benchmarks + core + fast)
+# Pre-PR Comprehensive Gate (lint + mypy + sanity + security + regression +
+# benchmarks + core + agents + e2e + fast + coverage[85% global gate])
 # ---------------------------------------------------------------------------
-pre-pr: lint mypy test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-fast
+pre-pr: lint mypy test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-fast coverage
 check: pre-pr
-

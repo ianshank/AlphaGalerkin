@@ -570,6 +570,34 @@ jobs:
         run: |
           pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=77 -q --no-header
 
+      # src/video_compression is globally omitted from the whole-repo --cov=src
+      # gate above (`[tool.coverage.run] omit` in pyproject.toml) -- that omit
+      # predates this package's current active status in the charter's scope
+      # register (openspec/specs/project-charter/spec.md lists it under domain
+      # "video") and was never revisited. A `--cov=src/video_compression` run
+      # under the unmodified repo config would silently measure 0% ("Module
+      # src/video_compression was never imported"), which is exactly the
+      # false-pass failure mode a coverage gate must not have. The
+      # inline-generated coveragerc override below is the same technique
+      # .github/workflows/phase2-zoo-validation.yml already uses to solve the
+      # identical collision for src/video_compression/zoo/ alone: it drops the
+      # omit for this step only, leaving pyproject.toml and the global gate's
+      # measured percentage untouched. Measured branch coverage 85.43%;
+      # gated at 83 (floor(measured)-2).
+      - name: Per-module coverage gate (video_compression)
+        if: always() && hashFiles('tests/video_compression/') != ''
+        run: |
+          cat > .coveragerc.video-compression <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/video_compression/ -m "not gpu_required" \
+            --cov=src/video_compression --cov-config=.coveragerc.video-compression \
+            --cov-branch --cov-fail-under=83 -q --no-header
+
       # dashboard/ lives outside src/, so the --cov=src run above measures none of it
       # even though the blanket `pytest tests/` executes its 214 tests. Gated at 84
       # against a measured 84.85%: tabs/game_tab.py sits at 53% because _ensure_loaded

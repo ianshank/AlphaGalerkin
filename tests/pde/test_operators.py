@@ -396,6 +396,109 @@ class TestBurgersOperatorColeHopf:
         coords = torch.tensor([[0.5, 0.0]], dtype=torch.float32)
         assert op.exact_solution(coords, time=0.5) is None
 
+    def test_default_config_keeps_class_default_time_dependent(self) -> None:
+        """P0-1 regression: an unset ``is_time_dependent`` must keep the class default.
+
+        Before the fix, ``BurgersOperator.__init__`` unconditionally assigned
+        ``self.is_time_dependent = config.is_time_dependent``, and
+        ``PDEConfig.is_time_dependent`` defaults to ``False`` -- so every caller
+        that built a Burgers config without mentioning the flag (e.g.
+        ``_centaur_common.build_pde_operator``, ``PDETrainer``) silently got a
+        "steady" Burgers operator whose ``exact_solution()`` always returned
+        ``None``, making the Burgers OOD reward structurally flat/zero
+        (docs/CODE_HYGIENE_AUDIT.md P0-1). This is the previously-broken case.
+        """
+        config = PDEConfig(
+            name="burgers_unset_time_flag",
+            pde_type=PDEType.BURGERS,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.01,
+            # is_time_dependent deliberately omitted: this is exactly the
+            # construction pattern _centaur_common.build_pde_operator uses.
+        )
+        assert "is_time_dependent" not in config.model_fields_set
+
+        op = BurgersOperator(config)
+
+        # The class-level default (True) must survive, not config's False default.
+        assert op.is_time_dependent is True
+
+        coords = torch.tensor([[0.3, 0.0], [0.5, 0.0], [0.7, 0.0]], dtype=torch.float32)
+        u = op.exact_solution(coords)
+        assert u is not None
+        assert isinstance(u, torch.Tensor)
+        assert torch.isfinite(u).all()
+
+    def test_cole_hopf_t0_magnitude_is_a_known_defect_not_a_correctness_claim(self) -> None:
+        """KNOWN DEFECT (tracked, not fixed): the Cole-Hopf series is degenerate at t=0.
+
+        Fixing the P0-1 sentinel above (unset ``is_time_dependent`` keeping the
+        class default) makes ``exact_solution()`` reachable at the implicit
+        ``t=0.0`` default -- exactly the call `BasisSelectionGame.__init__` makes,
+        via ``_centaur_common.build_pde_operator``, for the *default* OOD arm of
+        the shipped ``llm_prior_ablation`` scenario
+        (``src/poc/scenarios/llm_prior_config.py``'s default ``ood_pde="burgers"``,
+        ``config/scenarios/llm_prior_demo.yaml``).
+
+        At t=0 the truncated 50-term Cole-Hopf denominator ``phi`` evaluates
+        negative; the ``clamp(min=1e-10)`` guard (operators.py Cole-Hopf branches)
+        floors it up, and the resulting solution has magnitude ~1e10-1e13 --
+        large but finite, so ``torch.isfinite`` (the sibling test above) passes
+        on a numerically meaningless value. This test pins that magnitude as a
+        documented, tracked defect rather than letting the sibling isfinite-only
+        test read as a correctness claim. See
+        docs/CODE_HYGIENE_REVIEW_2026-08-19.md for the traced call chain and the
+        consequence for the documented llm_prior_ablation headline GPU run.
+
+        If this ever starts failing because the magnitude dropped to a sane
+        range, that's progress: tighten or delete this test rather than loosen
+        the bound.
+        """
+        config = PDEConfig(
+            name="burgers_unset_time_flag",
+            pde_type=PDEType.BURGERS,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.01,
+        )
+        op = BurgersOperator(config)
+        coords = torch.tensor([[0.3, 0.0], [0.5, 0.0], [0.7, 0.0]], dtype=torch.float32)
+
+        u = op.exact_solution(coords)  # implicit t=0.0
+
+        assert u is not None
+        assert torch.isfinite(u).all()
+        # A physically-sane Burgers solution on this domain/diffusion is O(1)-O(10).
+        # A value here in the billions+ range is the tracked defect, not a bug in
+        # this test's bound -- do not raise this threshold to make it pass.
+        assert u.abs().max() > 1.0e6, (
+            "Cole-Hopf t=0 magnitude dropped below the tracked-defect threshold -- "
+            "if this is a real fix, replace this test with a sane-magnitude assertion "
+            "and update docs/CODE_HYGIENE_REVIEW_2026-08-19.md, don't just loosen the bound."
+        )
+
+    def test_explicit_true_still_time_dependent(self) -> None:
+        """An explicit ``is_time_dependent=True`` is honoured (unchanged by the fix)."""
+        config = PDEConfig(
+            name="burgers_explicit_true",
+            pde_type=PDEType.BURGERS,
+            domain_dim=2,
+            domain_min=[0.0, 0.0],
+            domain_max=[1.0, 1.0],
+            diffusion_coeff=0.01,
+            is_time_dependent=True,
+        )
+        assert "is_time_dependent" in config.model_fields_set
+
+        op = BurgersOperator(config)
+        assert op.is_time_dependent is True
+
+        coords = torch.tensor([[0.3, 0.0]], dtype=torch.float32)
+        assert op.exact_solution(coords) is not None
+
     def test_tensor_path_returns_finite_tensor(self, time_dep_burgers: BurgersOperator) -> None:
         coords = torch.linspace(0.05, 0.95, 11).unsqueeze(-1)
         coords = torch.cat([coords, torch.zeros_like(coords)], dim=-1)

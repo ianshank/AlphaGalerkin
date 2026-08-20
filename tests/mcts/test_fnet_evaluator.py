@@ -187,3 +187,45 @@ class TestProcessPolicyDegenerateMask:
         assert policy[1] == 0.0
         assert policy.sum() == pytest.approx(1.0)
         assert policy[2] > policy[0]
+
+
+class TestFNetEvaluatorProtocolCompliance:
+    """``FNetEvaluator`` must structurally satisfy ``src.mcts.evaluator.Evaluator``.
+
+    ``Evaluator`` is a plain (non-``runtime_checkable``) ``Protocol``, so
+    ``isinstance(evaluator, Evaluator)`` is not available at runtime here --
+    mypy --strict already proves structural conformance statically wherever
+    an ``Evaluator``-typed parameter is passed a concrete evaluator (e.g.
+    ``MCTS.__init__(self, evaluator: Evaluator, ...)``). This duck-typing
+    check mirrors ``tests/mcts/test_evaluator.py::TestEvaluatorIntegration::
+    test_evaluator_protocol_compliance``, which only covers
+    ``RandomEvaluator`` -- closing that asymmetry for ``FNetEvaluator``.
+    """
+
+    def test_fnet_evaluator_exposes_the_evaluator_protocol_methods(self) -> None:
+        model = _FakeModel(n_actions=4)
+        evaluator = FNetEvaluator(model)
+
+        assert hasattr(evaluator, "evaluate")
+        assert callable(evaluator.evaluate)
+        assert hasattr(evaluator, "evaluate_batch")
+        assert callable(evaluator.evaluate_batch)
+
+    def test_fnet_evaluator_output_matches_the_evaluationresult_shape(self) -> None:
+        """The two methods do not just exist.
+
+        Their return values satisfy the same ``EvaluationResult`` contract
+        ``RandomEvaluator`` does.
+        """
+        model = _FakeModel(n_actions=4)
+        evaluator = FNetEvaluator(model)
+
+        single = evaluator.evaluate(_state(), legal_actions=[0, 1])
+        assert hasattr(single, "policy")
+        assert hasattr(single, "value")
+        assert single.policy.shape == (4,)
+        assert isinstance(single.value, float)
+
+        batch = evaluator.evaluate_batch([_state(), _state()], [[0], [1]])
+        assert len(batch) == 2
+        assert all(hasattr(r, "policy") and hasattr(r, "value") for r in batch)

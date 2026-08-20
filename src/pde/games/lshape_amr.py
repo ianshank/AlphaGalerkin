@@ -135,7 +135,19 @@ class EncodedValueEvaluator:
                 policy[action] = uniform
         flat = np.asarray(state, dtype=np.float32).reshape(-1)
         value = float(flat[0]) if flat.size else 0.0
-        value = max(-1.0, min(1.0, value))
+        if np.isfinite(value):
+            value = max(-1.0, min(1.0, value))
+        else:
+            # A NaN/Inf leaf value means the injected solve_fn diverged (e.g. a
+            # singular masked solve). Python's min/max resolve NaN via the
+            # *first* operand under CPython's nan-comparison semantics, so the
+            # naive `max(-1.0, min(1.0, value))` clamp below silently turns a
+            # NaN into +1.0 -- the best possible leaf value for what is
+            # actually a computational failure, which would actively steer
+            # MCTS toward the broken branch instead of away from it. Fall back
+            # to a neutral value instead.
+            logger.warning("encoded_value_non_finite", raw_value=value)
+            value = 0.0
         return EvaluationResult(policy=policy, value=value)
 
     def evaluate_batch(

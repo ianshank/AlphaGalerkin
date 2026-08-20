@@ -8,7 +8,7 @@ Provides shared machinery that all concrete trainers can inherit:
 - LR scheduling (cosine / linear warmup / none)
 - Checkpoint save/load interface
 - Structured logging with step timing
-- Optional hooks: compute_loss, generate_data (driven by step()); evaluate
+- Optional hooks: compute_loss, generate_data (driven by step())
 
 Concrete trainers override the hooks they need. Note that the production
 trainers (Trainer, DistributedTrainer) drive their own loops and deliberately
@@ -23,9 +23,6 @@ Usage::
 
         def generate_data(self):
             return my_data_generator()
-
-        def evaluate(self):
-            return my_eval_fn()
 
 The existing ``Trainer`` and ``DistributedTrainer`` inherit from this
 base class, using the shared AMP, gradient clipping, LR scheduling,
@@ -271,9 +268,15 @@ class BaseTrainer(ABC, Generic[ConfigT]):
     # Deliberately NOT @abstractmethod: both production trainers (Trainer,
     # DistributedTrainer) drive their own loops (_training_step / train_step)
     # and never route through step(), so forcing every subclass to implement
-    # these was a dead contract — each production subclass stubbed all three
+    # these was a dead contract — each production subclass stubbed both
     # with NotImplementedError. Subclasses that want the generic step() loop
     # override these; ones that don't may leave them and step() will raise.
+    #
+    # A third hook, evaluate(), was removed entirely (2026-08-19): it was
+    # never called by step() (which drives only generate_data and
+    # compute_loss) or anywhere else in src/, and both concrete subclass
+    # stubs (Trainer.evaluate, DistributedTrainer.evaluate) were themselves
+    # dead. See docs/CODE_HYGIENE_AUDIT.md §7.7.
 
     def compute_loss(self, batch: Any) -> tuple[Tensor, dict[str, float]]:
         """Compute loss for a training batch (hook for the ``step()`` loop).
@@ -300,23 +303,6 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not implement generate_data(); "
-            "override it to use the generic BaseTrainer.step() loop."
-        )
-
-    def evaluate(self) -> dict[str, float]:
-        """Run evaluation and return metrics.
-
-        NOT called by ``step()`` (which drives only ``generate_data`` and
-        ``compute_loss``) and not called anywhere else in ``src/`` -- it is an
-        entry point for a subclass's own evaluation cadence. Removing it
-        entirely is tracked in docs/CODE_HYGIENE_AUDIT.md §7.7.
-
-        Returns:
-            Dictionary of evaluation metric name -> value.
-
-        """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not implement evaluate(); "
             "override it to use the generic BaseTrainer.step() loop."
         )
 

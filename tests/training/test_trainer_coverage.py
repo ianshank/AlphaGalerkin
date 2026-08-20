@@ -184,7 +184,13 @@ class TestTrainingMetricsPhysics:
 
 
 class TestAbstractMethodStubs:
-    """Cover compute_loss, generate_data, evaluate which raise NotImplementedError."""
+    """Cover compute_loss, generate_data which raise NotImplementedError.
+
+    A third stub, ``evaluate``, was deleted outright (2026-08-19): it had
+    zero call sites anywhere in the codebase (see
+    docs/CODE_HYGIENE_AUDIT.md §7.7), so there is no longer a method here
+    to cover.
+    """
 
     def test_compute_loss_raises(self, small_model, small_config, checkpoint_dir) -> None:
         trainer = _make_trainer(small_model, small_config, checkpoint_dir)
@@ -195,11 +201,6 @@ class TestAbstractMethodStubs:
         trainer = _make_trainer(small_model, small_config, checkpoint_dir)
         with pytest.raises(NotImplementedError, match="Trainer uses _sample_batch"):
             trainer.generate_data()
-
-    def test_evaluate_raises(self, small_model, small_config, checkpoint_dir) -> None:
-        trainer = _make_trainer(small_model, small_config, checkpoint_dir)
-        with pytest.raises(NotImplementedError, match="Trainer uses _run_evaluation"):
-            trainer.evaluate()
 
 
 # ===========================================================================

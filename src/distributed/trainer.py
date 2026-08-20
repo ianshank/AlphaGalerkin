@@ -385,10 +385,6 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
         """Not used directly -- DistributedTrainer manages data externally."""
         raise NotImplementedError("DistributedTrainer receives batches via train_step().")
 
-    def evaluate(self) -> dict[str, float]:
-        """Not used directly -- evaluation is handled externally."""
-        raise NotImplementedError("DistributedTrainer evaluation is managed externally.")
-
     def _get_lr(self) -> float:
         """Get current learning rate.
 

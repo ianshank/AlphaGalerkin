@@ -103,21 +103,58 @@ class FakeOpenAIClient:
 
 
 class _FakeAPIConnectionError(Exception):
-    """Exception type matching ``openai.APIConnectionError``."""
+    """Exception type matching ``openai.APIConnectionError`` (retryable)."""
 
 
 class _FakeAPITimeoutError(Exception):
-    """Exception type matching ``openai.APITimeoutError``."""
+    """Exception type matching ``openai.APITimeoutError`` (retryable)."""
+
+
+class _FakeRateLimitError(Exception):
+    """Exception type matching ``openai.RateLimitError`` (retryable, 429)."""
+
+
+class _FakeInternalServerError(Exception):
+    """Exception type matching ``openai.InternalServerError`` (retryable, 5xx)."""
+
+
+class _FakeAuthenticationError(Exception):
+    """Exception type matching ``openai.AuthenticationError`` (non-retryable, 401)."""
+
+
+class _FakeNotFoundError(Exception):
+    """Exception type matching ``openai.NotFoundError`` (non-retryable, 404)."""
+
+
+class _FakeBadRequestError(Exception):
+    """Exception type matching ``openai.BadRequestError`` (non-retryable, 400)."""
 
 
 class FakeOpenAIModule:
-    """Module-shaped fake exposing the exact symbols ``client.py`` imports."""
+    """Module-shaped fake exposing the exact symbols ``client.py`` imports.
+
+    Carries one representative fake exception type per entry in both
+    ``LMStudioClient._RETRYABLE_SDK_ATTRS`` (``APIConnectionError``,
+    ``APITimeoutError``, ``RateLimitError``, ``InternalServerError``) and
+    ``LMStudioClient._NON_RETRYABLE_SDK_ATTRS`` (a representative subset:
+    ``AuthenticationError``, ``NotFoundError``, ``BadRequestError``) so
+    tests can exercise the permanent-vs-transient retry distinction against
+    a fake module shaped like the real ``openai`` package rather than an
+    unclassified generic exception.
+    """
 
     def __init__(self, *, available_models: Iterable[str] = ("qwen2.5-14b-instruct",)) -> None:
         self._available_models = list(available_models)
         self.last_client: FakeOpenAIClient | None = None
+        # Retryable (transient transport / 429 / 5xx) — see _RETRYABLE_SDK_ATTRS.
         self.APIConnectionError = _FakeAPIConnectionError
         self.APITimeoutError = _FakeAPITimeoutError
+        self.RateLimitError = _FakeRateLimitError
+        self.InternalServerError = _FakeInternalServerError
+        # Non-retryable (permanent auth / 4xx) — see _NON_RETRYABLE_SDK_ATTRS.
+        self.AuthenticationError = _FakeAuthenticationError
+        self.NotFoundError = _FakeNotFoundError
+        self.BadRequestError = _FakeBadRequestError
 
     def OpenAI(  # noqa: N802 - matches openai SDK casing
         self,

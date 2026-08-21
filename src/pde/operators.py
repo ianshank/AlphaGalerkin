@@ -862,9 +862,21 @@ class BurgersOperator(PDEOperator):
         laplacian = derivatives.get("laplacian", torch.zeros_like(u))
 
         # Nonlinear advection term: u · ∇u
-        advection = torch.zeros_like(u)
+        #
+        # ``u.squeeze()`` on the accumulator as well as the operand, matching
+        # ``AdvectionDiffusionOperator`` (which already does this) and the
+        # ``(N,)``/``(N, 1)`` contract in :meth:`PDEOperator.residual`'s
+        # docstring. Accumulating into ``zeros_like(u)`` instead broadcast a
+        # ``(N, 1)`` input against the ``(N,)`` derivative and produced an
+        # ``(N, N)`` residual -- silently, because ``zeros_like(u)`` makes every
+        # row identical, so ``l2_norm`` and ``max_norm`` still came out right.
+        # What was wrong was ``PDEResidual.values``: N=500 yielded 250 000
+        # entries where callers document and reshape ``(N,)``
+        # (``basis_selection.py`` assigns it to ``PDEState.residuals`` and then
+        # reshapes to a square grid), plus an O(N^2) allocation.
+        advection = torch.zeros_like(u.squeeze())
         for d in range(self.dim):
-            du_dx = derivatives.get(f"u_x{d}", torch.zeros_like(u))
+            du_dx = derivatives.get(f"u_x{d}", torch.zeros_like(u.squeeze()))
             advection = advection + u.squeeze() * du_dx
 
         # Steady state: u·∇u = ν∇²u

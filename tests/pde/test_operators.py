@@ -384,6 +384,72 @@ class TestDerivativeComputation:
 # ---------------------------------------------------------------------------
 
 
+class TestBurgersResidualShape:
+    """The ``(N,)`` / ``(N, 1)`` contract on ``BurgersOperator.residual``.
+
+    ``PDEOperator.residual``'s docstring accepts either shape, and every sibling
+    honours it -- ``AdvectionDiffusionOperator`` squeezes its accumulator,
+    ``HelmholtzOperator`` reshapes (and is the only one that had a test for it).
+    Burgers accumulated the advection term into ``zeros_like(u)``, so a column
+    input broadcast against the ``(N,)`` derivative and returned ``(N, N)``.
+
+    The reason this needs a *shape* assertion and not just a norm one: every row
+    of that ``(N, N)`` matrix was identical, so ``l2_norm`` and ``max_norm``
+    came out numerically correct. Only ``PDEResidual.values`` was wrong -- and
+    that is the field ``BasisSelectionGame`` assigns to ``PDEState.residuals``
+    (documented ``(N,)``) before reshaping it to a square grid, and the one that
+    turned N=500 into a 250 000-element allocation.
+    """
+
+    @staticmethod
+    def _operator() -> BurgersOperator:
+        config = PDEConfig(
+            name="burgers_shape",
+            pde_type=PDEType.BURGERS,
+            domain_dim=1,
+            domain_min=[0.0],
+            domain_max=[1.0],
+            advection_coeff=[1.0],
+        )
+        return BurgersOperator(config)
+
+    @pytest.mark.parametrize("u_shape", ["1d", "2d"])
+    def test_residual_shape_stable_for_column_u(self, u_shape: str) -> None:
+        operator = self._operator()
+        n_points = 37
+        coords = torch.tensor(
+            np.linspace(0.05, 0.95, n_points, dtype=np.float32).reshape(-1, 1),
+            requires_grad=True,
+        )
+        # u must be a real function of coords, or autograd yields no derivatives
+        # and the advection term is trivially zero -- which would pass whatever
+        # the broadcasting did.
+        u = torch.sin(np.pi * coords[:, 0])
+        if u_shape == "2d":
+            u = u.reshape(-1, 1)
+
+        residual = operator.residual(u, coords)
+
+        assert residual.values.shape == (n_points,)
+
+    def test_norms_agree_across_both_input_shapes(self) -> None:
+        """Same problem, two spellings of the input, same numbers out."""
+        operator = self._operator()
+        norms = []
+        for as_column in (False, True):
+            coords = torch.tensor(
+                np.linspace(0.05, 0.95, 37, dtype=np.float32).reshape(-1, 1),
+                requires_grad=True,
+            )
+            u = torch.sin(np.pi * coords[:, 0])
+            if as_column:
+                u = u.reshape(-1, 1)
+            residual = operator.residual(u, coords)
+            norms.append((residual.l2_norm, residual.max_norm))
+
+        assert norms[0] == pytest.approx(norms[1], rel=1e-6)
+
+
 class TestBurgersOperatorColeHopf:
     """Cover BurgersOperator.exact_solution Cole-Hopf branches (lines 698-732)."""
 

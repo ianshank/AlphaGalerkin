@@ -730,3 +730,140 @@ upper bound or cross-validation against `max_refinement_level`;
 constant and belongs on the config; and `tests/distributed/test_worker.py`
 deliberately pins the `games_completed` over-count, so whoever fixes that bug must
 update the test rather than read its failure as a regression.
+
+---
+
+## Round 6 — Gap analysis, hygiene, coverage-gate enforcement (2026-08-21)
+
+A senior-dev/QA/architect pass over the branch: gap analysis, adversarial peer review of
+the 18-commit diff, tech debt, coverage gates, missed edge cases, lint/type/numpy checks,
+hardcoded values, logging, and a check that everything is wired.
+
+Scope was agreed up front as **fix defects + missing coverage gates + security/correctness
+gaps; report the larger refactors** rather than executing them, to keep the diff reviewable.
+
+### Verified baseline before any change
+
+| Check | Result |
+|---|---|
+| `ruff check` + `ruff format --check`, full CI file list | clean, 898 files |
+| `mypy --strict --ignore-missing-imports src/` | 8 errors in 3 files — exactly the documented baseline |
+| mypy version | local `python3 -m mypy` = **1.11.2**, matching CI's `>=1.10,<1.12` pin |
+
+Two hypotheses of mine were checked and **rejected**; recorded so they are not re-raised.
+CI's mypy pin does *not* differ from what this session has been running (the shell banner's
+`1.19.1` is a broken uv-tool PATH shim). And the `torch>=2.6.0` floor does **not** make the
+three `unused-ignore`s removable — `skfem` is absent in this environment, so
+`fem_baseline.py:279,283` are genuinely environment-dependent, exactly as CI's comment claims.
+
+### Fixed
+
+Nine defects, from an adversarial review pass that surfaced nine and a follow-on
+investigation that widened two of them. Each was reproduced before it was acted on; the two
+that did not reproduce are listed under *Not adjudicated* below.
+
+1. **1-D Poisson posed `u ≡ 0`, so the AMR baseline measured nothing** (`84c1a56`).
+   `PoissonOperator`'s manufactured solution was `sin(pi*x)*sin(pi*y)` with `y = 0` at
+   `dim == 1`, so both `source_term` and `exact_solution` returned identically zero. Measured
+   consequence: Dörfler AMR on 1-D Poisson reported `max_indicator == 0.0` at *every* step —
+   bulk marking, the thing Dörfler is, never fired once — and `l2_error` was `0.0` at every
+   DOF count, so no error-vs-DOF assertion could have failed. `dim >= 3` was silently
+   truncated to the 2-D expression by the same guard.
+
+   This is the same defect class as the 2026-08-16 L-shape retraction, and it is the real
+   cause behind the Burgers AMR note asking for "a non-degenerate steady problem": Poisson
+   was not one either. Fix is dimension-general (`u = prod_d sin(pi*x_d)`), extracted into a
+   shared helper so source and solution cannot drift apart. At `dim == 2` it is the old
+   expression re-associated — measured deviation **1 ULP** (9.7e-8 relative to amplitude at
+   float32, 1.8e-16 at float64), `exact_solution` bitwise identical — and every scenario path
+   defaults to `domain_dim=2`, so no calibrated threshold or reported figure moves.
+
+2. **`load_codec` could not read any checkpoint this repo writes** (`a4d60a8`). Three
+   defects in one function, each invisible because every fixture covering it wrote the one
+   shape no in-repo trainer produces. Reproduced end to end: a byte-for-byte
+   `VideoCompressionTrainer` checkpoint raised `ValidationError` (22 errors), because
+   `checkpoint["config"]` is a `TrainingConfig` dump — a *sub*-config of `CodecConfig`.
+   Weights were read only from `"model_state_dict"` while both real writers use
+   `"model_state"`, so `load_state_dict(..., strict=False)` matched **nothing** and returned
+   an *untrained* codec with no error at all. And `use_mcts` was probed as
+   `"rate_controller" in checkpoint["model_state_dict"]`, which can never be True —
+   `MCTSRateController` is not an `nn.Module`, so it contributes no state-dict entries under
+   any key, and `CodecConfig.mcts.rate_control_mode` has no MCTS member either.
+
+   The impossible probe is replaced by an explicit keyword-only parameter defaulting to the
+   `False` that line always produced, so behaviour is unchanged for every existing caller and
+   the other branch merely becomes reachable. This is what made `scripts/decode_video.py`'s
+   reduced fallback the ordinary path rather than the exception.
+
+3. **The legacy-checkpoint escape hatch reached only one of three loaders**
+   (`f10f5c4`, `6091ad8`). `src/training/checkpoint.py`'s module docstring promises that
+   unrestricted deserialization is reachable only by an explicit per-call opt-in. That was
+   true of the chokepoint but unreachable from `operator_trainer.py`,
+   `video_compression/training/trainer.py` and `distributed/trainer.py`, so a checkpoint
+   written before the routing landed was simply unreadable with no documented recovery. All
+   three now take the same keyword-only `allow_unsafe_pickle`, defaulting to `False`.
+
+4. **Two guards were green for reasons unrelated to what they guard** (`f6b9345`). The AST
+   pickle guard was named `no_unrestricted_pickle_load_outside_the_opt_in` but matched only
+   the literal `torch.load(...)` attribute form; `from torch import load` and `import torch
+   as t` — ordinary style, not adversarial tricks — bound the same function to a name the
+   walk ignored. It now resolves each module's own import bindings (verified against all four
+   call forms, with `json.load`/`yaml.load` as negative controls: four caught, no false
+   positives) and is renamed to what it asserts. Its docstring now states what stays
+   uncovered: `getattr`, a kwargs splat, and `pickle.loads` — see *Reported, not fixed*.
+
+   The CLI-flag test built its own two-argument `ArgumentParser` and asserted against that,
+   which is true no matter what `scripts/inspect_checkpoint.py` does; it would have stayed
+   green with the flag deleted from the script. `build_parser()` was extracted there — the
+   convention six other scripts already follow — and the test now calls it.
+
+5. **Two justification comments no longer matched the code they justify** (`26d73db`).
+   `ci.yml`'s security-suite step claimed "33 tests, <1s"; measured, it is **71 tests in
+   7.12s**. `pyproject.toml`'s torch-floor comment cited three loaders that "pass no
+   `weights_only` at all", two of which this same branch had already routed through the
+   chokepoint. Both are the same failure mode as the three doc claims corrected in `0a4bd70`:
+   a stale justification argues for keeping something on grounds already fixed.
+
+Every new guard was **mutation-tested**: restoring the defect fails a *named* test. Five
+mutations run, five named failures.
+
+### Reported, not fixed
+
+Each was verified to exist; none is a defect fix, so all were left for a scoped follow-up
+rather than widening this diff.
+
+- **`pickle.loads` on peer-rank bytes** — `src/distributed/worker.py:429,464` unpickle data
+  arriving over `torch.distributed.all_gather`. This is transport, not checkpoint loading,
+  and the right fix is a schema'd serialization format rather than an allowlist. The AST
+  guard's docstring now names it explicitly so its scope cannot be read as covering it.
+- **`_create_operator` silently drops YAML parameters** — `src/research/pde_benchmarks.py`
+  reads `params` but pulls only `advection_coeff`. Unchanged from round 5; still needs a
+  decision about what those rows should measure, because honouring `viscosity` as written
+  pushes the benchmark below `COLE_HOPF_MIN_RESOLVED_VISCOSITY`.
+- **AMR-on-Burgers stays degenerate by construction** — zero source *and* zero Dirichlet data
+  give exact `u == 0`. Unlike Poisson this is not a bug to fix in the operator; the bulk
+  marking guard was pointed at Poisson instead, and the Burgers docstring now says so.
+- **Reusability**: two allowlist tuples with near-identical derivation
+  (`SAFE_CHECKPOINT_GLOBALS`, `SAFE_CODEC_GLOBALS`, `SAFE_DISTRIBUTED_GLOBALS`) and five
+  identical `--allow-unsafe-pickle` argparse blocks. Consolidating either is a refactor
+  across security-sensitive files; the *shape* helpers extracted in `a4d60a8`
+  (`codec_config_from_checkpoint`, `codec_state_dict_from_checkpoint`) are the reusable piece
+  that was actually load-bearing, and `scripts/decode_video.py` / `scripts/encode_video.py`
+  can now drop their local workarounds onto them.
+- **`Mesh.__init__` takes an unvalidated `hp_switchover_level`** — carried from round 3; a
+  config validator cannot reach direct `Mesh(...)` construction.
+
+### Not adjudicated
+
+Stated plainly rather than resolved either way, because a wrong answer here is worse than an
+open question.
+
+- The adversarial review reported that three figures in this document's own 2026-08-21
+  correction block do not reproduce (it measured the `nu=0.009` error region at `x <= 0.2325`
+  against the recorded `0.15`). Attempting to re-measure it, **my own arbitrary-precision
+  reference had a sign error** — it returned a max error of 2.0 on a function bounded by 1,
+  the signature of the `+sin` convention against this code's `-sin`. Rather than publish a
+  third number derived from a reference I had just caught being wrong, the figures stand as
+  recorded and the dispute stands open. Whoever settles it should build the mpmath reference
+  from `u(x,0) = -sin(pi*x)` and verify it reproduces that initial condition before trusting
+  any error it reports.

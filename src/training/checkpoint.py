@@ -539,10 +539,28 @@ class CheckpointManager:
         path = Path(path)
 
         if caller_supplied:
-            # Relative paths belong to this manager's directory, not the CWD.
+            # Relative paths belong to this manager's directory, not the CWD --
+            # but only join when the path is not ALREADY expressed relative to
+            # that directory. Joining unconditionally breaks the round trip
+            # ``manager.load(path=manager.save(...))`` whenever ``checkpoint_dir``
+            # is itself relative: ``save`` returns ``ckpts/checkpoint_...`` and
+            # the join turned it into ``ckpts/ckpts/checkpoint_...``, so the
+            # manager could not read back a path it had just handed out.
+            #
+            # The prefix test is PURE PATH semantics -- no filesystem probe --
+            # so behaviour does not depend on what happens to exist. Resolving
+            # "does either interpretation exist?" would be ambiguous and would
+            # silently change which file is loaded as the directory fills up.
+            #
+            # Containment is unaffected: the resolve + is_relative_to check
+            # below still runs on whichever candidate this picks, so a path that
+            # merely *starts* with the directory name and then escapes
+            # (``ckpts/../../etc/shadow``) skips the join and is still rejected.
             candidate = path
             if not candidate.is_absolute():
-                candidate = self.checkpoint_dir / candidate
+                dir_parts = self.checkpoint_dir.parts
+                if candidate.parts[: len(dir_parts)] != dir_parts:
+                    candidate = self.checkpoint_dir / candidate
 
             # Path.resolve() is non-strict, so containment can be (and is) checked
             # before existence: a missing *in-dir* checkpoint still raises

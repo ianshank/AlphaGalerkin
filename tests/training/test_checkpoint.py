@@ -431,6 +431,74 @@ class TestCheckpointPathContainment:
         """Save a real checkpoint into ``root`` and return its path."""
         return CheckpointManager(root).save(step=step, model=model)
 
+    def test_round_trip_of_a_relative_manager_path(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``load(path=save(...))`` must work when ``checkpoint_dir`` is relative.
+
+        The containment fix originally joined ``checkpoint_dir`` onto *every*
+        non-absolute caller path. With a relative ``checkpoint_dir``, ``save()``
+        returns ``ckpts/checkpoint_...`` -- already relative to that directory --
+        so the join produced ``ckpts/ckpts/checkpoint_...`` and the manager could
+        not read back a path it had just handed out. Reported by review on #127.
+        """
+        monkeypatch.chdir(tmp_path)
+        manager = CheckpointManager("ckpts")
+        saved = manager.save(step=7, model=small_model)
+
+        assert not Path(saved).is_absolute(), "fixture assumes save() returns a relative path"
+        assert manager.load(path=saved).step == 7
+
+    def test_prefixed_path_is_not_double_joined(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The prefix test is pure path semantics, not a filesystem probe.
+
+        Asserted directly rather than only through the round trip above, because
+        the round trip would also pass under an existence-based "try both"
+        implementation -- which would be ambiguous and could change *which* file
+        loads as the directory fills up.
+        """
+        monkeypatch.chdir(tmp_path)
+        manager = CheckpointManager("ckpts")
+        manager.save(step=8, model=small_model)
+
+        # Same file named three ways; all must reach it.
+        assert manager.load(path="checkpoint_00000008.pt").step == 8
+        assert manager.load(path="ckpts/checkpoint_00000008.pt").step == 8
+        assert manager.load(path=(tmp_path / "ckpts/checkpoint_00000008.pt")).step == 8
+
+    def test_prefixed_traversal_is_still_rejected(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Skipping the join must not open an escape hatch.
+
+        A path that merely *starts* with the directory name and then climbs out
+        (``ckpts/../../etc/...``) takes the no-join branch, so it is the case
+        where a weaker containment check would leak. Containment runs on the
+        resolved path either way.
+        """
+        monkeypatch.chdir(tmp_path)
+        outside = tmp_path / "outside.pt"
+        torch.save({"model_state_dict": {}, "version": CHECKPOINT_VERSION}, outside)
+        manager = CheckpointManager("ckpts")
+
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path="ckpts/../outside.pt")
+
+        # And the plain form, which takes the join branch, stays rejected too.
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path="../outside.pt")
+
     def test_relative_path_resolves_against_checkpoint_dir(
         self,
         small_model: nn.Module,

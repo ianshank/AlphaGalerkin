@@ -834,6 +834,8 @@ def load_codec(
     checkpoint_path: Path | str,
     config: CodecConfig | None = None,
     device: str = "cpu",
+    *,
+    allow_unsafe_pickle: bool = False,
 ) -> VideoCodec:
     """Load codec from checkpoint.
 
@@ -841,6 +843,12 @@ def load_codec(
         checkpoint_path: Path to model checkpoint.
         config: Optional config override.
         device: Device for computation.
+        allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only for a
+            file whose provenance an operator has established. Exposed here so a
+            caller opting in reaches this, the *primary* load path -- otherwise
+            the opt-in would only take effect on a caller's fallback, silently
+            downgrading a legacy file to whatever reduced load that fallback
+            performs.
 
     Returns:
         Loaded VideoCodec instance.
@@ -862,6 +870,7 @@ def load_codec(
     checkpoint = load_torch_checkpoint(
         checkpoint_path,
         map_location=device,
+        allow_unsafe_pickle=allow_unsafe_pickle,
         extra_safe_globals=SAFE_CODEC_GLOBALS,
     )
 

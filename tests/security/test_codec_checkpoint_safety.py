@@ -121,6 +121,35 @@ class TestSafeCodecGlobals:
             f"stale={set(SAFE_CODEC_GLOBALS) - defined}"
         )
 
+    def test_covers_every_enum_actually_reachable_in_a_checkpoint(self) -> None:
+        """Walk the real payload, not just the module namespace.
+
+        The reflection test above filters on ``obj.__module__``, so an enum that
+        reaches ``CodecConfig`` from *another* module would escape it — narrower
+        than the promise made where ``SAFE_CODEC_GLOBALS`` is defined. This walks
+        the nested ``model_dump()`` a checkpoint actually stores, so the
+        assertion matches the claim regardless of where a type is declared.
+
+        (All three are same-module today, so this is currently redundant with the
+        reflection test. It is here for the case that stops being true.)
+        """
+        found: set[type] = set()
+
+        def walk(node: object) -> None:
+            if isinstance(node, dict):
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+            elif isinstance(node, enum.Enum):
+                found.add(type(node))
+
+        walk(CodecConfig(name="reachability").model_dump())
+        assert found, "no enum found in the dump — the walk is not exercising anything"
+        missing = found - set(SAFE_CODEC_GLOBALS)
+        assert not missing, f"enums reachable in a checkpoint but not allowlisted: {missing}"
+
     def test_every_entry_is_a_pure_data_enum(self) -> None:
         """The allowlist rule is 'pure data constructors only'.
 

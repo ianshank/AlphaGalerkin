@@ -42,28 +42,61 @@ Security Note:
     checkpoint needs it, and it cannot be reached by a checkpoint's own
     contents.
 
-    As of 2026-08-21 that holds for every first-party checkpoint loader in
-    `src/` and `scripts/`, not just this module. Each routes through
-    :func:`load_torch_checkpoint`: `src/training/base_trainer.py`,
+    As of 2026-08-21 the *repo-wide* property is narrower than "everything
+    routes through here", and is stated as what was actually verified: **no
+    `torch.load(..., weights_only=False)` call remains anywhere in `src/`,
+    `scripts/` or `dashboard/` except the explicit hatch in this module.**
+    Re-check it with
+
+        grep -rn -A3 "torch\\.load(" --include=*.py src/ scripts/ dashboard/ \\
+            | grep "weights_only=False"
+
+    which returns exactly one line: :func:`load_torch_checkpoint`'s own opt-in
+    branch. (Grepping for the bare string instead matches a dozen docstrings and
+    help texts that merely *describe* the flag, which makes the check look
+    failed when it has not -- hence the `torch.load(`-anchored form.)
+
+    An earlier revision of this note claimed every first-party loader "routes
+    through" this function. That was false -- five did not -- and the wrong claim
+    was not merely cosmetic: writing it required *assuming* an enumeration
+    instead of performing one, and a real enumeration turned up two loaders that
+    could not read back checkpoints they had themselves written
+    (`operator_trainer.py`, `distributed/trainer.py`; both now fixed). Prefer the
+    grep above to any list, including this one.
+
+    Loaders that DO route through here, and therefore get the full policy
+    (normalised errors, the allowlist, the lock): `src/training/base_trainer.py`,
+    `src/training/operator_trainer.py`, `src/distributed/trainer.py`,
     `src/video_compression/codec/codec.py` (`load_codec`),
-    `src/video_compression/training/trainer.py`, and the four CLI entry points
-    that take a model path straight from an argument --
+    `src/video_compression/training/trainer.py`, and the five CLI entry points
+    that take a checkpoint path straight from an argument --
     `src/experiments/verify_transfer.py`, `scripts/play_engine.py`,
-    `scripts/encode_video.py` and `scripts/decode_video.py`, which each expose
-    the hatch as `--allow-unsafe-pickle` so it is a deliberate operator action
-    rather than a source edit.
+    `scripts/encode_video.py`, `scripts/decode_video.py` and
+    `scripts/inspect_checkpoint.py` -- which each expose the hatch as
+    `--allow-unsafe-pickle`, so unpickling an untrusted file is a deliberate
+    operator action rather than a source edit.
 
-    Two caveats keep this honest rather than absolute:
+    Loaders that call `torch.load` directly and set their own policy. These are
+    safe (none passes `weights_only=False`) but they do not inherit this
+    module's error normalisation or allowlist, so a config gaining a
+    non-primitive field would break them the way it broke the two above:
 
-    - `src/video_compression/zoo/storage.py` sets its own policy, documented
-      in place: it deserializes bundles under a `storage_root` it controls.
-    - `hf_space/src/training/checkpoint.py` is a vendored snapshot excluded
-      from CI. It carried this module's original fallback verbatim and has had
-      the same fix ported by hand; it mirrors this policy rather than importing
-      it, so the two must be kept in step manually.
+    - `src/training/evaluation.py`, `src/distributed/model_zoo.py`,
+      `dashboard/tabs/game_tab.py` -- verified by round-trip against what each
+      one's writer actually saves.
+    - `src/video_compression/zoo/storage.py` -- documented in place; note its
+      GCS backend deserializes bytes fetched from a remote bucket, not a local
+      root, so "under a `storage_root` it controls" describes only the
+      filesystem backend.
+    - `hf_space/**` -- a vendored snapshot excluded from CI, covered below.
 
-    A loader added later that calls `torch.load` directly sets its own policy
-    and is not covered by this note.
+    The `hf_space` bundle mirrors this policy rather than importing it (it must
+    stand alone), and the two are *deliberately* not identical: it has no
+    `extra_safe_globals`, no `_SAFE_GLOBALS_LOCK` (no threaded caller exists
+    there), no `allow_unsafe_pickle` on its `load_model_only`, and no path
+    containment on its `CheckpointManager.load`. Nothing enforces that they stay
+    in step -- `tests/hf_space/test_mirror_guard.py` checks only that files parse
+    and imports resolve -- so treat divergence as expected and re-verify by hand.
 
     `CheckpointManager.load()` additionally bounds *which* files can be opened
     at all: a caller-supplied path is resolved against `checkpoint_dir` and
@@ -138,6 +171,22 @@ UNSAFE_PICKLE_HINT = (
 #    a caller widening the window widens it for every concurrent load too, so
 #    the pure-data rule is a property of the whole allowlist, not just of
 #    ``SAFE_CHECKPOINT_GLOBALS``.
+# 1b. Narrowing leak, the mirror image and the less obvious one: ``__exit__``
+#    calls ``_remove_safe_globals(self.safe_globals)``, which removes BY VALUE
+#    rather than restoring the previous set. So any global registered
+#    process-wide *before* this window opened, that also appears IN the window,
+#    is permanently unregistered when the window closes -- a load here can
+#    silently break an unrelated caller's ``add_safe_globals`` registration.
+#    ``extra_safe_globals`` makes that clobberable set caller-controlled, which
+#    is another reason to pass only what a payload needs.
+#
+#    Demonstrated rather than theorised: registering ``DistributedBackend``
+#    process-wide, then running one ``load_torch_checkpoint`` with
+#    ``extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS``, leaves it unregistered.
+#    That is precisely why no test module may rely on a module-level
+#    ``add_safe_globals`` -- it is not merely bad practice, it does not reliably
+#    survive a single load through this function.
+#
 # 2. Race (fixed by this lock): two overlapping windows tear each other down.
 #    The first ``__exit__`` removes the globals while the other load is still
 #    unpickling, and that load dies with ``UnpicklingError`` -> ``RuntimeError:

@@ -357,7 +357,11 @@ def main() -> int:
         logger.info("loading_codec", path=str(args.checkpoint))
         try:
             # Try using the load_codec utility first
-            codec = load_codec(args.checkpoint, device=device)
+            codec = load_codec(
+                args.checkpoint,
+                device=device,
+                allow_unsafe_pickle=args.allow_unsafe_pickle,
+            )
         except Exception as e:
             logger.warning("load_codec_failed", error=str(e), message="Retrying with manual load")
             # Fallback: manual loading for robustness.

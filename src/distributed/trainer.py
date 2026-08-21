@@ -29,9 +29,14 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 
-from src.distributed.config import DistributedInfraConfig, _get_env_rank_info
+from src.distributed.config import (
+    SAFE_DISTRIBUTED_GLOBALS,
+    DistributedInfraConfig,
+    _get_env_rank_info,
+)
 from src.distributed.gradient_sync import GradientAccumulator, GradientSynchronizer
 from src.training.base_trainer import BaseTrainer
+from src.training.checkpoint import load_torch_checkpoint
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
@@ -501,7 +506,17 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
 
         """
         path = Path(path)
-        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+        # ``SAFE_DISTRIBUTED_GLOBALS`` is load-bearing: ``save_checkpoint``
+        # stores ``distributed_config.model_dump()``, whose ``backend`` stays an
+        # enum member, and a bare ``weights_only=True`` load rejected it -- this
+        # trainer could not read back its own checkpoint. The test suite passed
+        # only because a module-level ``add_safe_globals`` in its test file
+        # registered the enum process-wide.
+        checkpoint = load_torch_checkpoint(
+            path,
+            map_location=self.device,
+            extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS,
+        )
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

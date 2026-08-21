@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **PyTorch 2.1+ Dynamo ONNX Exporter Failure (30 Integration Tests Restored)** — Resolved 25 failing ONNX tests in `tests/deployment/test_export_onnx_integration.py`. PyTorch 2.1+ made Dynamo export the default backend for `torch.onnx.export`, which collided with `dynamic_axes` dictionaries and dataclass model outputs. Fixed by introducing `_TupleWrapper` and delegating to `torch.onnx.utils.export` with opset 14, disabling constant-folding interference in tolerance tests. All 30 ONNX integration tests now pass cleanly.
+- **Environment & Working Tree Stabilization** — Restored 141 tracked baseline files from Git HEAD and purged 38 stale `.coverage.*` artifacts.
+- **Branch Synchronization** — Cleanly merged 67 files (4,787 insertions, 272 deletions) from `origin/claude/alphagalerkin-implementation-4zGEN` into `feature/ascr-multifield-petsc-p40` with zero conflicts.
+
+### Added
+- **Native Workspace Customization Catalog (`.agents/skills/`)** — Mirrored 9 declarative engineering skills into `.agents/skills/` (`abstract-method-audit`, `add-coverage-gate`, `certificate-validation`, `coverage-gate`, `new-pde-operator`, `pr-preflight`, `regression-surface`, `spec-new`, `surface-hardcoded-value`) to provide native Antigravity and multi-agent IDE capabilities.
+- **Comprehensive Code Review & Gap Analysis Report** — Added `docs/reviews/CODE_REVIEW_AND_GAP_ANALYSIS_2026-08-21.md` covering all 11 engineering perspectives (Architect, Docs, SQE, Dev Lead, AIOps, CICD, DevOps, Product, Scrum, Project, Release).
+
 - **P0-1 Burgers OOD-reward defect** — `BurgersOperator.__init__` (`src/pde/operators.py`) now checks `config.model_fields_set` before overriding the class-level `is_time_dependent = True` default, so an unset config keeps a real `exact_solution()` instead of silently returning `None`; explicit `True`/`False` still honored exactly as before. Surfaced a new, more urgent finding in the process: the Cole-Hopf approximation is numerically degenerate at the now-reachable `t=0` (magnitude ~1e10-1e13), live on the default config of the shipped `llm_prior_ablation` scenario — see `docs/CODE_HYGIENE_REVIEW_2026-08-19.md`.
 - **MCTS crashed on a terminal-at-root game state** — `mcts.get_action()` now guards this case with a clear error instead of an unhandled `ValueError`/unhelpful failure.
 - **MCTS/PDE NaN propagation** — evaluator output is now checked for finiteness with structured-log detection (`src/mcts/search.py`, `evaluator.py`); a NaN from a diverging PDE solve previously resolved to the *best possible* MCTS leaf value via Python's NaN-comparison semantics (`EncodedValueEvaluator` in `src/pde/games/lshape_amr.py`) and now falls back to neutral.

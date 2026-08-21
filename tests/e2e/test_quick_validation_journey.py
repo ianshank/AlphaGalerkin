@@ -65,6 +65,15 @@ def test_train_physics_minimal(cli_runner: CLIRunnerType, temp_output_dir: Path)
             "5",
             "--eval-size",
             "7",
+            # Without these the run is NOT minimal: --train-size is the grid
+            # (5 -> 5x5), not the sample count, so this built the default 5000
+            # samples / 157 batches and needed ~1.7 h for its 2 epochs. It failed
+            # under every timeout because no timeout was ever the problem --
+            # `returncode in [0, 1]` cannot hold for a run that does not finish.
+            "--n-train-samples",
+            "16",
+            "--n-eval-samples",
+            "8",
         ],
         timeout=E2E_TRAINING_TIMEOUT_S,
     )

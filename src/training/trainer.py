@@ -71,6 +71,22 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
+class BufferFillError(RuntimeError):
+    """Raised when the replay buffer cannot be filled within the call budget.
+
+    Raised by :meth:`Trainer._fill_buffer` when it cannot reach the target
+    replay-buffer size within ``TrainingConfig.max_buffer_fill_iterations``
+    calls to ``SelfPlayWorker.generate_experiences``.
+
+    This guards the self-play buffer-fill loop against hot-looping
+    indefinitely when self-play stops yielding usable experiences (e.g. a
+    game-length or self-play configuration bug): a buffer that never fills
+    is a real configuration/environment problem the caller needs to know
+    about, not something to silently give up on and continue training with
+    an under-filled buffer.
+    """
+
+
 @dataclass
 class TrainingMetrics:
     """Metrics collected during training."""
@@ -410,12 +426,6 @@ class Trainer(BaseTrainer):
             "Trainer uses _sample_batch(); use that method or the train() loop."
         )
 
-    def evaluate(self) -> dict[str, float]:
-        """Not used directly -- Trainer uses _run_evaluation instead."""
-        raise NotImplementedError(
-            "Trainer uses _run_evaluation(); use that method or the train() loop."
-        )
-
     # ------------------------------------------------------------------
     # Physics loss, loss balancer, curriculum, stability
     # ------------------------------------------------------------------
@@ -592,20 +602,52 @@ class Trainer(BaseTrainer):
     def _fill_buffer(self, min_size: int) -> None:
         """Fill replay buffer to minimum size.
 
+        Bounded by ``training_config.max_buffer_fill_iterations`` self-play
+        generation calls. Without this bound, a self-play call that nets
+        zero (or too few) usable experiences -- e.g. from a game-length or
+        configuration bug -- would make this loop re-invoke full MCTS
+        self-play generation forever.
+
         Args:
             min_size: Minimum number of experiences needed.
+
+        Raises:
+            BufferFillError: If the buffer still has not reached
+                ``min_size`` after ``max_buffer_fill_iterations`` self-play
+                generation calls.
 
         """
         fill_start = time.time()
         initial_size = len(self.buffer)
+        max_iterations = self.training_config.max_buffer_fill_iterations
+        iterations = 0
 
         while len(self.buffer) < min_size:
+            if iterations >= max_iterations:
+                elapsed = time.time() - fill_start
+                raise BufferFillError(
+                    f"_fill_buffer did not reach the minimum buffer size of "
+                    f"{min_size} experiences after {iterations} self-play "
+                    f"generation call(s) ({elapsed:.1f}s elapsed): buffer "
+                    f"holds {len(self.buffer)} experiences (started at "
+                    f"{initial_size}). generate_experiences() is likely "
+                    "yielding zero or too few usable experiences per call "
+                    "-- check the self-play/game configuration (board size, "
+                    "game-length limits, curriculum settings) or the "
+                    "self-play worker for a bug before retrying. Raise "
+                    "TrainingConfig.max_buffer_fill_iterations (currently "
+                    f"{max_iterations}) if more self-play iterations are "
+                    "genuinely expected to be needed."
+                )
+            iterations += 1
             n_games = self.training_config.n_self_play_games
             logger.info(
                 "generating_self_play_games",
                 n_games=n_games,
                 buffer_size=len(self.buffer),
                 target_size=min_size,
+                iteration=iterations,
+                max_iterations=max_iterations,
             )
 
             # Generate games (use curriculum board size if enabled)
@@ -647,6 +689,7 @@ class Trainer(BaseTrainer):
             experiences_added=experiences_added,
             fill_time_seconds=round(fill_time, 2),
             fill_rate_per_second=round(fill_rate, 1),
+            iterations=iterations,
         )
 
         # Log buffer fill summary to W&B

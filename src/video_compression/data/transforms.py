@@ -201,6 +201,8 @@ class Normalize(nn.Module):
         super().__init__()
         self.register_buffer("mean", torch.tensor(mean).view(-1, 1, 1))
         self.register_buffer("std", torch.tensor(std).view(-1, 1, 1))
+        self.mean: Tensor
+        self.std: Tensor
 
     def forward(self, x: Tensor) -> Tensor:
         """Apply normalization.
@@ -254,7 +256,7 @@ class CompressionTransforms(nn.Module):
         super().__init__()
         self.training_mode = training
 
-        transforms = []
+        transforms: list[nn.Module] = []
 
         # Spatial cropping
         if training and random_crop:

@@ -6,6 +6,7 @@ scenarios in AlphaGalerkin research.
 
 from __future__ import annotations
 
+import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -502,18 +503,23 @@ class TemplateRegistry:
     """
 
     _instance: TemplateRegistry | None = None
+    _lock: threading.Lock = threading.Lock()
     _templates: dict[str, type[ExperimentTemplate]] = {}
 
     def __new__(cls) -> TemplateRegistry:
-        """Singleton pattern."""
+        """Singleton pattern (thread-safe via double-checked locking)."""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            # Register built-in templates
-            cls._templates = {
-                "transfer": TransferTemplate,
-                "ablation": AblationTemplate,
-                "benchmark": BenchmarkTemplate,
-            }
+            with cls._lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    instance = super().__new__(cls)
+                    # Register built-in templates
+                    cls._templates = {
+                        "transfer": TransferTemplate,
+                        "ablation": AblationTemplate,
+                        "benchmark": BenchmarkTemplate,
+                    }
+                    cls._instance = instance
         return cls._instance
 
     def register(

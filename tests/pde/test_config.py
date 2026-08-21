@@ -76,6 +76,32 @@ class TestPDEConfig:
                 domain_max=[0.0, 1.0],
             )
 
+    def test_zero_measure_domain_rejected(self) -> None:
+        """A degenerate (zero-measure / single-point) domain must be rejected.
+
+        ``validate_domain`` uses ``lo >= hi`` (not strict ``>``), so
+        ``domain_min == domain_max`` in any dimension -- collapsing that axis
+        to a single point -- must raise, not just the strictly-inverted case
+        already covered by ``test_domain_min_max_validation``.
+        """
+        with pytest.raises(ValidationError):
+            PDEConfig(
+                name="test",
+                pde_type=PDEType.POISSON,
+                domain_min=[0.0, 0.0],
+                domain_max=[0.0, 1.0],  # x-axis collapses to a single point
+            )
+
+    def test_fully_degenerate_domain_rejected(self) -> None:
+        """Every axis collapsed to a point (domain_min == domain_max) is rejected."""
+        with pytest.raises(ValidationError):
+            PDEConfig(
+                name="test",
+                pde_type=PDEType.POISSON,
+                domain_min=[0.5, 0.5],
+                domain_max=[0.5, 0.5],
+            )
+
     def test_time_validation(self) -> None:
         """Test time range validation."""
         with pytest.raises(ValidationError):

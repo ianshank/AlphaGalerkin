@@ -114,6 +114,7 @@ class Mesh:
         domain_min: NDArray[np.float32],
         domain_max: NDArray[np.float32],
         initial_resolution: int,
+        hp_switchover_level: int = 2,
     ) -> None:
         """Initialize mesh.
 
@@ -121,6 +122,11 @@ class Mesh:
             domain_min: Domain minimum coordinates.
             domain_max: Domain maximum coordinates.
             initial_resolution: Initial elements per dimension.
+            hp_switchover_level: Refinement level threshold used by
+                :meth:`refine_element`'s ``HP_REFINEMENT`` branch to choose
+                h- vs p-refinement. Defaults to 2, matching
+                ``MeshRefinementConfig.hp_switchover_level``'s default;
+                callers driven by that config should pass it explicitly.
 
         Raises:
             ValueError: If dimension is not supported (>4).
@@ -131,6 +137,7 @@ class Mesh:
         self.domain_size = domain_max - domain_min
         self.dim = len(domain_min)
         self.initial_resolution = initial_resolution
+        self.hp_switchover_level = hp_switchover_level
 
         # Validate dimension
         if self.dim > self.MAX_SUPPORTED_DIM:
@@ -254,7 +261,7 @@ class Mesh:
         elif strategy == RefinementStrategy.HP_REFINEMENT:
             # hp-refinement: choose based on element properties
             # Simple heuristic: p if smooth, h if not
-            if element.level < 2:
+            if element.level < self.hp_switchover_level:
                 return self._subdivide_element_indices(element)
             else:
                 element.polynomial_degree += 1
@@ -436,6 +443,7 @@ class MeshRefinementGame(PDEGame):
             domain_min=np.array(pde_operator.config.domain_min, dtype=np.float32),
             domain_max=np.array(pde_operator.config.domain_max, dtype=np.float32),
             initial_resolution=self.mesh_config.initial_resolution,
+            hp_switchover_level=self.mesh_config.hp_switchover_level,
         )
 
         # Action space: refine element i with strategy s
@@ -534,6 +542,7 @@ class MeshRefinementGame(PDEGame):
             domain_min=np.array(self.pde_operator.config.domain_min, dtype=np.float32),
             domain_max=np.array(self.pde_operator.config.domain_max, dtype=np.float32),
             initial_resolution=self.mesh_config.initial_resolution,
+            hp_switchover_level=self.mesh_config.hp_switchover_level,
         )
 
         # Get element centers for collocation
@@ -738,15 +747,38 @@ class MeshRefinementGame(PDEGame):
         # Mesh info
         mesh_levels = np.array([e.level for e in self.mesh.leaf_elements], dtype=np.int32)
 
+        # Cost is config-driven (``cost_per_dof``), mirroring the reward
+        # path's ``cost = self.config.cost_per_dof * dof_added`` in
+        # ``get_reward`` below, instead of the flat unit cost of 1 this used
+        # previously (which was decoupled from ``cost_per_dof`` entirely).
+        #
+        # The direction of the change is dimension-dependent, not a fixed
+        # ratio: ``n_dof`` sums ``(p+1)**dim`` per element, so one 2D h-refine
+        # at p=1 adds 12 DOF -> cost 0.12 (cheaper than the old 1.0), while a
+        # 3D h-refine at p=3 adds 448 DOF -> cost 4.48 (more expensive). Budget
+        # exhaustion is unreachable at every shipped config either way, since
+        # ``max_steps`` (<=100) caps the episode long before
+        # ``computational_budget`` (>=1e4) is spent.
+        #
+        # DOF can decrease under coarsening, so ``dof_added`` -- and thus
+        # ``cost`` -- may be negative, matching the reward path's treatment of
+        # coarsening as a partial refund. Note this gives up the strict
+        # monotonicity the old ``- 1`` had: a refine/coarsen oscillation can
+        # hold ``budget_remaining`` steady, so it is no longer a liveness
+        # bound. ``max_steps`` remains the actual episode bound.
+        new_dof = self.mesh.n_dof
+        dof_added = new_dof - state.dof
+        cost = self.config.cost_per_dof * dof_added
+
         new_state = PDEState(
             coords=coords,
             solution=solution,
             residuals=residuals,
             mesh_levels=mesh_levels,
             error_estimate=error,
-            dof=self.mesh.n_dof,
+            dof=new_dof,
             step=state.step + 1,
-            budget_remaining=state.budget_remaining - 1,
+            budget_remaining=state.budget_remaining - cost,
             phase=state.phase,
             history=[*state.history, action],
         )

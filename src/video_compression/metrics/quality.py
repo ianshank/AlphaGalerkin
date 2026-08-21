@@ -389,7 +389,7 @@ class PerceptualLoss(nn.Module):
         # Lazy initialization of VGG
         self._vgg = None
 
-    def _get_vgg(self, device: torch.device) -> nn.Module:
+    def _get_vgg(self, device: torch.device) -> nn.Sequential:
         """Get or create VGG feature extractor.
 
         Args:

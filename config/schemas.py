@@ -188,6 +188,20 @@ class TrainingConfig(BaseModel):
     # Self-play
     n_self_play_games: int = Field(default=100, description="Self-play games per iteration")
     replay_buffer_size: int = Field(default=500000, description="Replay buffer capacity")
+    max_buffer_fill_iterations: int = Field(
+        default=50,
+        ge=1,
+        description=(
+            "Maximum number of self-play generation calls "
+            "Trainer._fill_buffer will make while trying to reach the "
+            "minimum buffer size before training starts. Guards against an "
+            "infinite loop if generate_experiences() ever yields zero (or "
+            "too few) usable experiences per call -- e.g. a game-length or "
+            "self-play configuration bug -- by raising "
+            "src.training.trainer.BufferFillError once the cap is exceeded "
+            "instead of hot-looping self-play MCTS generation forever."
+        ),
+    )
 
     # Loss weights
     policy_loss_weight: float = Field(default=1.0, description="Weight for policy loss")

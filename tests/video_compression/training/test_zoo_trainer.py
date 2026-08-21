@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -197,3 +198,53 @@ def test_default_loader_factory_rejects_invalid_split() -> None:
     factory = make_default_loader_factory()
     with pytest.raises(ValueError, match="split"):
         factory(_entry(), "test")
+
+
+def test_zoo_trainer_run_preserves_gcs_uri_checkpoint_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``gs://`` checkpoint URI must survive into the report verbatim.
+
+    Regression test. ``EntryArtifacts.checkpoint_path`` is ``Path | str``: the
+    filesystem backend returns a real ``Path``, but ``GCSZooStorage`` returns a
+    ``gs://`` URI *string* (GCS objects have no filesystem path). A previous
+    type-annotation cleanup wrapped it in ``Path(...)``, which collapses the
+    ``//`` and silently produced ``gs:/bucket/...`` -- a value that
+    ``parse_gcs_uri`` then rejects, and that
+    ``scripts/train_compression_zoo_entry.py`` writes into ``metrics.json``.
+
+    The existing end-to-end test only exercises the filesystem backend, where
+    ``Path(Path)`` is a no-op, so it could not catch this.
+    """
+    gcs_uri = "gs://bucket/zoo/lambda_0.0016/checkpoint.pt"
+
+    entry = _entry(parent_entry_id=None)
+    zoo = VideoCodecZoo(tmp_path / "zoo")
+    trainer = ZooTrainer(
+        entry,
+        zoo,
+        codec_config=CodecConfig(name="codec"),
+        device="cpu",
+        output_root=tmp_path / "outputs",
+        codec_factory=_codec_factory,
+        loader_factory=_loader_factory,
+        trainer_factory=_FakeTrainer,
+        max_eval_batches=2,
+    )
+
+    real_save_entry = zoo.save_entry
+
+    def _save_entry_returning_gcs_uri(*args: object, **kwargs: object) -> object:
+        # Keep the real filesystem write (so load_metrics/load_state_dict still
+        # work) but return artifacts shaped like the GCS backend's.
+        artifacts = real_save_entry(*args, **kwargs)  # type: ignore[arg-type]
+        return replace(artifacts, checkpoint_path=gcs_uri)
+
+    monkeypatch.setattr(zoo, "save_entry", _save_entry_returning_gcs_uri)
+
+    report = trainer.run()
+
+    assert report.checkpoint_path == gcs_uri
+    assert isinstance(report.checkpoint_path, str)
+    # The specific corruption this guards against.
+    assert str(report.checkpoint_path) != "gs:/bucket/zoo/lambda_0.0016/checkpoint.pt"

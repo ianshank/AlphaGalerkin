@@ -118,6 +118,14 @@ class TestGoGame:
         assert state.board[1, 1] == EMPTY
         assert state.metadata.get("captured_white", 0) == 1
 
+    def test_apply_action_occupied_position_raises_value_error(self, small_game: GoGame) -> None:
+        """Applying a move to an already-occupied position raises ValueError."""
+        state = small_game.initial_state(board_size=9)
+        state = small_game.apply_action(state, 40)  # Black plays center (4, 4)
+
+        with pytest.raises(ValueError, match="occupied"):
+            small_game.apply_action(state, 40)  # White attempts the same square
+
     def test_suicide_illegal(self, small_game: GoGame) -> None:
         """Test that suicide moves are illegal."""
         state = small_game.initial_state(board_size=9)
@@ -235,6 +243,109 @@ class TestGoGame:
                     break
 
         assert small_game.get_phase(state) in [GamePhase.OPENING, GamePhase.MIDGAME]
+
+
+class TestGoResultWinner:
+    """Explicit assertions on GoGame.get_result().winner for each outcome branch.
+
+    ``test_get_result`` above only checks the numeric scores; these tests
+    drive each of the three winner branches in ``go.py`` (BLACK / WHITE /
+    draw) and assert the ``winner`` field by name.
+    """
+
+    def test_get_result_winner_is_black_when_black_scores_more(self) -> None:
+        """Black scoring strictly more than white resolves winner to BLACK."""
+        game = GoGame(komi=0.0)
+        game._board_size = 9
+        board = np.zeros((9, 9), dtype=np.int8)
+        board[4, 4] = BLACK
+        state = GameState(
+            board=board,
+            current_player=WHITE,
+            move_number=1,
+            move_history=[40],
+            metadata={"komi": 0.0, "consecutive_passes": 2},
+        )
+
+        result = game.get_result(state)
+
+        assert result.score_black > result.score_white
+        assert result.winner == BLACK
+
+    def test_get_result_winner_is_white_when_white_scores_more(self) -> None:
+        """White scoring strictly more than black resolves winner to WHITE."""
+        game = GoGame(komi=0.0)
+        game._board_size = 9
+        board = np.zeros((9, 9), dtype=np.int8)
+        board[4, 4] = WHITE
+        state = GameState(
+            board=board,
+            current_player=BLACK,
+            move_number=1,
+            move_history=[40],
+            metadata={"komi": 0.0, "consecutive_passes": 2},
+        )
+
+        result = game.get_result(state)
+
+        assert result.score_white > result.score_black
+        assert result.winner == WHITE
+
+    def test_get_result_winner_is_none_on_equal_score_draw(self) -> None:
+        """Equal black/white scores (zero komi, neutral shared territory) draw.
+
+        One black and one white stone, otherwise empty: the entire remaining
+        board is a single flood-filled empty region bordering *both* colors,
+        so it is scored neutral (owner=EMPTY) and does not add to either
+        side. With komi=0.0 both sides score exactly 1 (their own stone).
+        """
+        game = GoGame(komi=0.0)
+        game._board_size = 9
+        board = np.zeros((9, 9), dtype=np.int8)
+        board[2, 2] = BLACK
+        board[6, 6] = WHITE
+        state = GameState(
+            board=board,
+            current_player=BLACK,
+            move_number=2,
+            move_history=[],
+            metadata={"komi": 0.0, "consecutive_passes": 2},
+        )
+
+        result = game.get_result(state)
+
+        assert result.score_black == result.score_white
+        assert result.winner is None
+
+
+class TestGoGetWinner:
+    """Tests for GoGame.get_winner(), which is never called elsewhere in this file."""
+
+    @pytest.fixture
+    def small_game(self) -> GoGame:
+        """Create small board Go game for faster tests."""
+        game = GoGame()
+        game._board_size = 9
+        return game
+
+    def test_get_winner_returns_none_for_non_terminal_state(self, small_game: GoGame) -> None:
+        """get_winner returns None while the game has not ended (go.py:326-327 guard)."""
+        state = small_game.initial_state(board_size=9)
+        state = small_game.apply_action(state, 40)  # single move, game still in progress
+
+        assert not small_game.is_terminal(state)
+        assert small_game.get_winner(state) is None
+
+    def test_get_winner_matches_get_result_on_terminal_state(self, small_game: GoGame) -> None:
+        """get_winner on a terminal state returns the same winner as get_result()."""
+        state = small_game.initial_state(board_size=9)
+        state = small_game.apply_action(state, 40)  # Black center
+        state = small_game.apply_action(state, 81)  # White pass
+        state = small_game.apply_action(state, 81)  # Black pass -> terminal
+
+        assert small_game.is_terminal(state)
+        assert small_game.get_winner(state) == small_game.get_result(state).winner
+        assert small_game.get_winner(state) == BLACK  # 1 stone + full territory vs komi 7.5
 
 
 class TestGameState:

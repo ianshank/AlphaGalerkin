@@ -18,7 +18,7 @@ from config.schemas import (
     TrainingConfig,
 )
 from src.modeling.model import AlphaGalerkinModel
-from src.training.trainer import Trainer, TrainingMetrics, create_trainer
+from src.training.trainer import BufferFillError, Trainer, TrainingMetrics, create_trainer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -386,6 +386,45 @@ class TestTrainerFillBuffer:
         ):
             trainer._fill_buffer(min_size=10)
         assert trainer.total_games_generated > 0
+
+    def test_fill_buffer_raises_when_self_play_yields_nothing(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """A self-play worker that never yields experiences must not hang.
+
+        Regression test for the unbounded ``_fill_buffer`` loop: previously,
+        if ``generate_experiences()`` ever netted zero new usable
+        experiences per call (e.g. a game-length or config bug), the loop
+        had no iteration cap and no wall-clock bound, so it would re-invoke
+        full self-play MCTS generation forever. It must now raise
+        ``BufferFillError`` after exactly
+        ``max_buffer_fill_iterations`` self-play calls instead of hanging.
+        """
+        small_config.training.max_buffer_fill_iterations = 3
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        with patch.object(
+            trainer.self_play_worker,
+            "generate_experiences",
+            return_value=[],
+        ) as mock_generate:
+            with pytest.raises(
+                BufferFillError,
+                match="did not reach the minimum buffer size",
+            ):
+                trainer._fill_buffer(min_size=10)
+
+        # Bounded: exactly max_buffer_fill_iterations calls were made --
+        # proof the loop terminated instead of hanging indefinitely.
+        assert mock_generate.call_count == 3
+        assert len(trainer.buffer) == 0
 
 
 class TestTrainerStabilityMonitor:

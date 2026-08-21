@@ -536,7 +536,7 @@ class FactorizedEntropyModel(nn.Module):
     def compress(
         self,
         y: Float[Tensor, "batch channels height width"],
-    ) -> dict[str, Tensor]:
+    ) -> dict[str, Tensor | None]:
         """Compress latent to bitstream (returns quantized symbols).
 
         Args:

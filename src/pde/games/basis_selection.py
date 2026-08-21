@@ -81,6 +81,15 @@ class BasisFunction:
             return (x**degree_x * y**degree_y).astype(np.float32)
 
         elif self.type == "rbf":
+            # ``BasisFunction`` is a pure evaluator with no reference to the
+            # owning ``PDEOperator``'s domain, so these ``.get(...)`` defaults
+            # cannot be derived from the actual domain bounds; they are a
+            # defensive fallback for a ``params`` dict missing keys, not a
+            # claim that 0.5 is "the domain center". In practice this path is
+            # unreachable for candidates produced by
+            # ``BasisSelectionGame._generate_candidates``, which always
+            # supplies ``center_x``/``center_y`` sampled from the operator's
+            # real ``domain_min``/``domain_max`` (see below).
             center_x = self.params.get("center_x", 0.5)
             center_y = self.params.get("center_y", 0.5)
             sigma = self.params.get("sigma", 0.1)
@@ -223,17 +232,41 @@ class BasisSelectionGame(PDEGame):
                     break
 
         elif basis_type == "rbf":
-            # Generate RBF basis with various centers
+            # Generate RBF basis with various centers, sampled from the
+            # operator's *actual* domain bounds rather than a hardcoded
+            # [0, 1] unit square. A flat [0, 1) sample is wrong for any
+            # non-unit-square domain (e.g. LShapedPoissonOperator's
+            # [-1, 1]^2), where it would place centers partly, or wholly,
+            # outside the real domain.
             rng = np.random.default_rng(self.basis_config.seed)
             scale_lo, scale_hi = self.basis_config.basis_scale_range
+            domain_min = self.pde_operator.domain_min
+            domain_max = self.pde_operator.domain_max
+            x_lo, x_hi = float(domain_min[0]), float(domain_max[0])
+            if len(domain_min) > 1:
+                y_lo, y_hi = float(domain_min[1]), float(domain_max[1])
+            else:
+                # 1D domain: pin center_y to 0. ``BasisFunction.evaluate`` does
+                # NOT ignore center_y here -- it substitutes ``y = 0`` (see the
+                # ``coords.shape[1] > 1`` branch), so r_sq becomes
+                # ``(x - center_x)**2 + center_y**2`` and any nonzero center_y
+                # multiplies the whole column by a constant
+                # ``exp(-center_y**2 / (2*sigma**2))``. At sigma=0.1 a center_y
+                # of 0.7 scales the column by ~2e-11, which ``np.linalg.lstsq``
+                # then discards as rank-deficient -- silently shrinking the
+                # effective basis. Pinning to 0 makes the 1D candidate a true
+                # 1D Gaussian. The draw is still taken (rather than skipped) so
+                # the RNG stream stays aligned with the ``sigma`` draw below,
+                # keeping seeded 2D results bit-identical.
+                y_lo, y_hi = 0.0, 0.0
 
             for idx in range(n_candidates):
                 candidates.append(
                     BasisFunction(
                         type="rbf",
                         params={
-                            "center_x": rng.uniform(0, 1),
-                            "center_y": rng.uniform(0, 1),
+                            "center_x": rng.uniform(x_lo, x_hi),
+                            "center_y": rng.uniform(y_lo, y_hi),
                             "sigma": rng.uniform(scale_lo, scale_hi),
                         },
                         index=idx,
@@ -440,20 +473,34 @@ class BasisSelectionGame(PDEGame):
         errors = self.compute_exact_error(new_state)
         new_state.error_estimate = errors["l2"]
 
-        # Update DOF and budget
+        # Update DOF and budget. Cost is config-driven (``cost_per_dof``),
+        # mirroring the reward path's ``cost = self.config.cost_per_dof *
+        # dof_added`` in ``get_reward`` below. (Previously this used a flat
+        # unit cost of 1.0, decoupled from ``cost_per_dof`` -- at the
+        # default ``cost_per_dof=0.01`` that exhausted the budget ~100x
+        # faster than the cost the reward path was actually accounting for.)
         new_state.dof = len(new_state.history)
-        cost = 1.0  # Unit cost per basis function
+        dof_added = new_state.dof - state.dof
+        cost = self.config.cost_per_dof * dof_added
         new_state.budget_remaining -= cost
 
-        # Update phase
-        if new_state.error_estimate < self.config.error_tolerance:
-            new_state.phase = GamePhase.CONVERGED
-        elif new_state.budget_remaining <= 0:
-            new_state.phase = GamePhase.BUDGET_EXHAUSTED
-        elif new_state.error_estimate > 0.1:
-            new_state.phase = GamePhase.EXPLORING
-        else:
-            new_state.phase = GamePhase.REFINING
+        # Update phase: delegate to the base class (PDEGame.get_phase) rather
+        # than hand-rolling a second, hardcoded EXPLORING/REFINING threshold
+        # here. ``phase`` is diagnostic only -- it is read by clone()/to_dict()
+        # and nothing in the reward or termination path -- so this changes
+        # reporting, not search behaviour.
+        #
+        # Two honest caveats on what delegation does and does not buy:
+        #   * get_phase reports INITIAL while step < early_phase_step_threshold
+        #     (default 5) and maps *any* non-converged terminal to
+        #     BUDGET_EXHAUSTED, so a state terminal via max_basis_functions now
+        #     reports BUDGET_EXHAUSTED with budget still remaining.
+        #   * It is NOT yet scale-normalized for this game: get_phase divides by
+        #     ``self._initial_error``, which BasisSelectionGame never sets, so
+        #     it falls back to 1.0 and the comparison is as absolute as the
+        #     literal it replaced. The win here is one code path instead of two,
+        #     not normalization.
+        new_state.phase = self.get_phase(new_state)
 
         return new_state
 

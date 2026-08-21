@@ -315,6 +315,57 @@ class TestBasisSelectionGameActions:
         new_state = game.apply_action(state, 0)
         assert new_state.budget_remaining < initial_budget
 
+    def test_apply_action_budget_cost_matches_cost_per_dof(
+        self, poisson_operator: PoissonOperator, small_basis_config: BasisSelectionConfig
+    ) -> None:
+        """Budget decrement equals ``cost_per_dof * dof_added``, not a flat unit cost.
+
+        Regression test: the budget-decrement path previously used a
+        hardcoded ``cost = 1.0`` per action, decoupled from
+        ``PDEGameConfig.cost_per_dof`` (which the reward path already
+        honours). One basis function is added per action here, so
+        ``dof_added == 1`` and the expected cost is exactly
+        ``cost_per_dof``.
+        """
+        custom_cost_per_dof = 0.37
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(
+            name="test_cost",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            basis_config=small_basis_config,
+            cost_per_dof=custom_cost_per_dof,
+        )
+        custom_game = BasisSelectionGame(poisson_operator, game_config)
+        state = custom_game.get_initial_state()
+        initial_budget = state.budget_remaining
+
+        new_state = custom_game.apply_action(state, 0)
+
+        assert new_state.dof - state.dof == 1
+        assert (initial_budget - new_state.budget_remaining) == pytest.approx(custom_cost_per_dof)
+
+    def test_apply_action_phase_matches_base_class_get_phase(
+        self, game: BasisSelectionGame
+    ) -> None:
+        """``apply_action`` delegates phase computation to ``PDEGame.get_phase``.
+
+        Regression test: the phase update previously hand-rolled a second,
+        hardcoded ``error_estimate > 0.1`` EXPLORING/REFINING threshold
+        instead of reusing the base-class implementation.
+
+        Scope note (the assertion below is a delegation check, not a
+        correctness check): ``get_phase`` divides by ``self._initial_error``,
+        which ``BasisSelectionGame`` never sets, so it falls back to 1.0 and
+        the comparison is just as absolute as the literal it replaced. The
+        win is one code path instead of two. ``phase`` is diagnostic only --
+        read by ``clone()``/``to_dict()``, never by the reward or termination
+        path -- so this is reporting, not search behaviour.
+        """
+        state = game.get_initial_state()
+        new_state = game.apply_action(state, 0)
+        assert new_state.phase == game.get_phase(new_state)
+
 
 class TestBasisSelectionGameErrorReduction:
     """Tests for error estimation and reduction."""
@@ -517,6 +568,58 @@ class TestBasisSelectionGameTerminal:
                 break
             state = game.apply_action(state, i)
 
+    def test_terminal_reachable_at_real_initial_state(self) -> None:
+        """A loose ``error_tolerance`` can make the real zero-DOF initial state terminal.
+
+        Unlike ``test_terminal_low_error`` (which synthetically overwrites
+        ``state.error_estimate``), this builds the game from a real config and
+        calls ``get_initial_state()`` unmodified: ``error_tolerance`` is
+        deliberately looser than the manufactured Poisson solution's
+        zero-solution RMS error (~0.5), so the *actual* dof=0 state already
+        satisfies convergence. Also proves ``PDEGameAdapter`` and a real MCTS
+        micro-run tolerate a terminal-at-construction game without crashing.
+        """
+        pde_config = PDEConfig(name="loose_tol_poisson", pde_type=PDEType.POISSON)
+        operator = PoissonOperator(pde_config)
+        game_config = PDEGameConfig(
+            name="loose_tol_game",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            error_tolerance=0.999,  # near the Pydantic ceiling (< 1.0)
+            basis_config=BasisSelectionConfig(
+                name="loose_tol_basis",
+                basis_type="fourier",
+                max_basis_functions=4,
+                n_candidate_bases=8,
+                max_frequency=2,
+                n_collocation_points=25,
+                seed=7,
+            ),
+        )
+        loose_game = BasisSelectionGame(operator, game_config)
+        state = loose_game.get_initial_state()
+
+        assert state.dof == 0
+        assert state.error_estimate < game_config.error_tolerance
+        assert loose_game.is_terminal(state) is True
+
+        from src.pde.mcts_adapter import PDEGameAdapter
+
+        adapter = PDEGameAdapter(loose_game)
+        assert adapter.is_terminal() is True
+
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS
+
+        mcts = MCTS(
+            evaluator=RandomEvaluator(n_actions=loose_game.action_space_size),
+            n_simulations=4,
+            search_mode=adapter.search_mode,
+        )
+        # A terminal-at-the-root search must not raise.
+        action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
+        assert 0 <= action < loose_game.action_space_size
+
 
 class TestBasisSelectionTerminationReason:
     """Tests for the termination-cause classifier.
@@ -644,6 +747,59 @@ class TestBasisTypes:
         assert game.action_space_size == 10
         state = game.apply_action(state, 0)
         assert state.n_basis == 1
+
+    def test_rbf_candidates_sampled_from_actual_domain_bounds(self) -> None:
+        """RBF candidate centers must come from the operator's real domain.
+
+        Regression test: candidate generation previously sampled centers via
+        ``rng.uniform(0, 1)`` unconditionally, which is wrong for any
+        non-unit-square domain (e.g. a domain like LShapedPoissonOperator's
+        [-1, 1]^2) -- RBF candidates would land partly, or wholly, outside
+        the real domain. On a [-1, 1]^2 domain every center must stay within
+        [-1, 1], and (given the fixed seed below) at least one center must
+        fall outside [0, 1] -- something the old hardcoded-[0, 1] sampler
+        could never produce.
+        """
+        pde_config = PDEConfig(
+            name="test_domain",
+            pde_type=PDEType.POISSON,
+            domain_dim=2,
+            domain_min=[-1.0, -1.0],
+            domain_max=[1.0, 1.0],
+        )
+        operator = PoissonOperator(pde_config)
+        basis_config = BasisSelectionConfig(
+            name="rbf_domain",
+            basis_type="rbf",
+            max_basis_functions=5,
+            n_candidate_bases=30,
+            n_collocation_points=25,
+            n_boundary_points_per_face=5,
+            seed=42,
+        )
+        game_config = PDEGameConfig(
+            name="test",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            basis_config=basis_config,
+        )
+        game = BasisSelectionGame(operator, game_config)
+
+        centers_x = np.array([b.params["center_x"] for b in game._candidate_bases])
+        centers_y = np.array([b.params["center_y"] for b in game._candidate_bases])
+
+        # All centers must respect the real domain bounds.
+        assert np.all(centers_x >= -1.0) and np.all(centers_x <= 1.0)
+        assert np.all(centers_y >= -1.0) and np.all(centers_y <= 1.0)
+
+        # At least one center must fall outside [0, 1] -- proof the sampler
+        # is domain-aware, not hardcoded to the unit square.
+        outside_unit_square = np.any(centers_x < 0.0) or np.any(centers_y < 0.0)
+        assert outside_unit_square, (
+            "expected at least one RBF center outside [0, 1] on a [-1, 1]^2 "
+            "domain -- got all centers inside the unit square, which is the "
+            "hardcoded-[0,1]-sampler regression"
+        )
 
     def test_fourier_basis_game(self, poisson_operator: PoissonOperator) -> None:
         basis_config = BasisSelectionConfig(

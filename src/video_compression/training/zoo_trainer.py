@@ -76,7 +76,12 @@ class ZooTrainingReport:
     final_loss: float
     step_count: int
     device: str
-    checkpoint_path: Path
+    # Mirrors EntryArtifacts.checkpoint_path (zoo/storage.py): a local Path for
+    # the filesystem backend, but a ``gs://`` URI *string* for the GCS backend
+    # (GCS objects have no filesystem path). Must NOT be coerced with Path() --
+    # that collapses the "//" and yields an unusable "gs:/bucket/..." which
+    # parse_gcs_uri then rejects.
+    checkpoint_path: Path | str
     tolerance_passed: bool
     bpp_relative_error: float
     psnr_absolute_error_db: float

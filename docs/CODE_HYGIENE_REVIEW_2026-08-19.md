@@ -102,13 +102,49 @@ real) passes unmodified.
 >
 > Known limitation, documented rather than hidden: the Fourier-Bessel
 > representation is intrinsically ill-conditioned as `nu -> 0` (`phi` spans
-> `[exp(-2R), 1]`, so significance is lost near `x=0` once `exp(-2R)` reaches
-> float64 round-off, i.e. `nu <~ 0.009`). This is a property of the representation,
-> not of the implementation — `ive` itself is only float64-accurate, so no
-> summation scheme recovers the lost digits. Surfaced as
+> `[exp(-2R), 1]`, so significance is lost once `exp(-2R)` reaches float64
+> round-off, i.e. `nu <~ 0.009`). This is a property of the representation, not of
+> the implementation — `ive` itself is only float64-accurate, so no summation
+> scheme recovers the lost digits. Surfaced as
 > `COLE_HOPF_MIN_RESOLVED_VISCOSITY` with a `cole_hopf_underresolved` structlog
 > warning, and pinned by
 > `tests/pde/test_operators.py::TestBurgersColeHopf::test_under_resolved_viscosity_stays_bounded`.
+>
+> ⚠️ **Two corrections to the above, from the adversarial review pass (2026-08-21).**
+> Both were claims made in the fixing commit that the review disproved — recorded
+> here rather than quietly amended, per this repo's own convention.
+>
+> 1. **The affected region is far larger than "near `x = 0`".** Measured against a
+>    `dps=400` mpmath reference, the region with error `> 1e-3` is: none at
+>    `nu=0.01` (max 3.8e-4); `x <= 0.15` at `nu=0.009`; `x <= 0.50` at `nu=0.005`;
+>    and `x <= 0.7975` at `nu=0.001` — i.e. **78.8% of the domain**, with `u`
+>    clamped to ~0 where the true solution is O(1). "Near `x=0`" would lead a
+>    reader to trust `x=0.5`, which is wrong below `nu ~ 0.005`.
+> 2. **`config/benchmarks/sbir_suite.yaml`'s `nu=0.001` row is not reachable**, so
+>    the commit's warning that "that row cannot be trusted near x=0 even now" is
+>    moot. `src/research/pde_benchmarks.py:416-422` builds its `PDEConfig` reading
+>    only `advection_coeff` from `params` — it never reads `parameters.viscosity`,
+>    so the operator is always constructed at the bare `PDEConfig` default of
+>    `nu=1.0`. The commit's own evidence contradicted its warning: the reported
+>    `0.7016464` is the RMS of `sin(pi x)`, which only holds at `nu=1.0`.
+>
+> The **real** finding underneath correction 2, which nobody flagged at the time and
+> which is *pre-existing rather than introduced here*: `sbir_suite.yaml`'s
+> `parameters.viscosity: [0.01, 0.005, 0.001]` is **silently dropped**, so the SBIR
+> "Burgers shock" benchmark has never run at a shock-forming viscosity. Deliberately
+> **not** wired through as part of this pass: given correction 1, doing so would push
+> the benchmark straight into the unresolvable regime and make the reported numbers
+> worse, not better. It needs its own scoping.
+>
+> Also recorded, a shipped consequence of homogenising the BC that the fixing commit
+> flagged as a degeneracy but did not follow through on: the Burgers AMR baseline is
+> now **non-convergent** — l2_error 0.5789 at 94 DOF versus 0.6677 at 286 DOF, and
+> identical at 286 for both `target_dof` 512 and 2048. That feeds
+> `_attach_convergence_rates` and the SBIR report as a *negative* convergence rate.
+> The degeneracy itself is real and correctly diagnosed (zero source + zero Dirichlet
+> gives exact `u == 0`, so every residual indicator is zero and bulk marking never
+> fires); what was missing is that the shipped number now moves the wrong way with
+> refinement.
 
 **Critical finding, surfaced by fixing the above — live today, not hypothetical.**
 Making `BurgersOperator.exact_solution()` reachable at the default `t=0` exposed a

@@ -366,9 +366,20 @@ class TestBenchmarkDemoSpeedupCalculation:
         suite = demo.run_benchmark()
 
         result = suite.results[0]
-        # FNet should generally be faster (speedup > 1)
-        # Allow for some variance on CPU
-        assert result.speedup > 0.5  # Conservative threshold
+        # The name of this test is the claim, so the threshold has to be able to
+        # falsify it. `> 0.5` could not: it passes when FNet is 2x SLOWER, the
+        # exact opposite. Measured at this config (64, batch 8, CPU) across three
+        # trials on a loaded machine: 1.626, 2.336, 1.627 -- so `> 1.0` is the
+        # semantic claim with ~60% margin at the observed low end.
+        #
+        # This is a wall-clock ratio on a shared runner and could flake. That is
+        # accepted deliberately: if a runner cannot reproduce FNet being faster
+        # AT ALL, that is a real signal about the claim rather than noise to
+        # paper over. Widen it back only with a measurement, never to get green.
+        assert result.speedup > 1.0, (
+            f"FNet measured slower than softmax (speedup={result.speedup:.3f}); "
+            "this test's name asserts the opposite"
+        )
 
 
 class TestBenchmarkDemoInvalidInput:

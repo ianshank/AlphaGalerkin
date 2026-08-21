@@ -196,10 +196,14 @@ jobs:
       # "Run fast unit tests" step below does collect tests/security/, but only
       # while every file there stays free of the slow/e2e markers it filters out,
       # and a failure there is buried among ~9000 tests. Running the directory on
-      # its own keeps the signal legible and pins the suite in place: 71 tests,
-      # ~7s, no GPU, no network, no optional dependencies. (Measured 2026-08-21;
+      # its own keeps the signal legible and pins the suite in place: 69 tests,
+      # ~52s, no GPU, no network, no optional dependencies. (Measured 2026-08-21;
       # the "33 tests, <1s" this replaced was written before rounds 3-4 more than
-      # doubled the suite, and was never re-measured.)
+      # doubled the suite, and was never re-measured. The count went 71 -> 69 when
+      # test_security_model.py was deleted: its three tests patched torch.load,
+      # called it in the test body, and asserted the mock recorded the arguments
+      # the test had just passed -- zero src imports, verified green in a
+      # directory containing no src/ at all.)
       - name: Run security test suite
         run: |
           pytest tests/security/ \

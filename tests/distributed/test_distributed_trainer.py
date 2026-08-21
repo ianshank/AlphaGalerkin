@@ -27,12 +27,25 @@ import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import StepLR
 
-from src.distributed.config import DistributedBackend, DistributedInfraConfig
+from src.distributed.config import (
+    SAFE_DISTRIBUTED_GLOBALS,
+    DistributedBackend,
+    DistributedInfraConfig,
+)
 from src.distributed.gradient_sync import GradientAccumulator
 from src.distributed.trainer import DistributedMetrics, DistributedTrainer
+from src.training.checkpoint import load_torch_checkpoint
 
-# Allow DistributedBackend enum to be deserialized with weights_only=True
-torch.serialization.add_safe_globals([DistributedBackend])
+# NO module-level ``add_safe_globals`` here, deliberately. Until 2026-08-21 this
+# file registered ``DistributedBackend`` process-wide at import, which kept the
+# suite green while ``DistributedTrainer.load_checkpoint`` was in fact unable to
+# read a checkpoint it had just written. A test-only registration that hides a
+# production failure is worse than no test: the loader now allowlists the enum
+# itself via ``SAFE_DISTRIBUTED_GLOBALS``, and re-adding a global registration
+# here would re-mask any future regression. The tests that inspect a saved
+# checkpoint directly go through ``load_torch_checkpoint`` with the same
+# allowlist the production loader uses, so they exercise the real path
+# instead of a hand-rolled one that can drift from it.
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -338,7 +351,7 @@ class TestDistributedTrainerCheckpoint:
         ckpt_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(ckpt_path, metrics={"test": True})
 
-        checkpoint = torch.load(ckpt_path, weights_only=True)
+        checkpoint = load_torch_checkpoint(ckpt_path, extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS)
         assert "model_state_dict" in checkpoint
         assert "optimizer_state_dict" in checkpoint
         assert "step" in checkpoint
@@ -354,7 +367,7 @@ class TestDistributedTrainerCheckpoint:
         ckpt_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(ckpt_path)
 
-        checkpoint = torch.load(ckpt_path, weights_only=True)
+        checkpoint = load_torch_checkpoint(ckpt_path, extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS)
         assert "scheduler_state_dict" in checkpoint
 
     def test_load_checkpoint_restores_state(self, tmp_path: Path) -> None:
@@ -569,7 +582,7 @@ def _checkpoint_coordination_worker(
         torch.distributed.barrier()
 
         if rank == 1:
-            loaded = torch.load(ckpt_path, weights_only=True)
+            loaded = load_torch_checkpoint(ckpt_path, extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS)
 
             # Verify step
             assert loaded["step"] == 10, f"Step mismatch: {loaded['step']}"

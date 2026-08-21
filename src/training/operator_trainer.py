@@ -11,7 +11,7 @@ Provides a complete training loop with:
 from __future__ import annotations
 
 from collections.abc import Sized
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,6 +23,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
 from torch.utils.data import DataLoader
 
 from src.constants import CHECKPOINT_BEST
+from src.training.checkpoint import load_torch_checkpoint
 from src.training.losses import get_loss
 
 logger = structlog.get_logger(__name__)
@@ -61,6 +62,18 @@ class TrainingConfig:
         self.checkpoint_dir = Path(self.checkpoint_dir)
         if self.device == "auto":
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _config_to_plain_data(config: TrainingConfig) -> dict[str, Any]:
+    """Render a :class:`TrainingConfig` as primitives only, for checkpointing.
+
+    ``weights_only=True`` accepts tensors, plain scalars/strings and
+    ``dict``/``list`` and nothing else, so any non-primitive left in the payload
+    becomes a blocked global at load time -- which is how this trainer ended up
+    unable to read its own checkpoints. Converting here rather than allowlisting
+    at load time means the stored format needs no special handling at all.
+    """
+    return {k: str(v) if isinstance(v, Path) else v for k, v in asdict(config).items()}
 
 
 class OperatorTrainer:
@@ -321,7 +334,14 @@ class OperatorTrainer:
             "optimizer_state_dict": self.optimizer.state_dict(),
             "best_val_loss": self.best_val_loss,
             "history": self.history,
-            "config": self.config,
+            # Plain data, not the dataclass instance. Storing the object pickles
+            # a reference to ``operator_trainer.TrainingConfig``, and ``asdict``
+            # alone still leaves ``checkpoint_dir`` as a ``PosixPath`` -- both of
+            # which ``weights_only=True`` rejects, so this class could not read
+            # back a checkpoint it had just written. Stringifying the Path keeps
+            # the payload allowlist-free, which is strictly better than admitting
+            # a first-party class or ``pathlib`` to a process-global window.
+            "config": _config_to_plain_data(self.config),
         }
 
         torch.save(checkpoint, path)
@@ -337,7 +357,7 @@ class OperatorTrainer:
 
         """
         path = Path(path)
-        checkpoint = torch.load(path, map_location=self.config.device)
+        checkpoint = load_torch_checkpoint(path, map_location=self.config.device)
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

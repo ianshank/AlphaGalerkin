@@ -16,9 +16,10 @@ import torch
 from jaxtyping import Float
 from torch import Tensor, nn
 
+from src.training.checkpoint import load_torch_checkpoint
 from src.video_compression.codec.entropy_coder import EncodedBitstream, EntropyCoder
 from src.video_compression.codec.gop_manager import FrameInfo, FrameType, GOPManager
-from src.video_compression.config import CodecConfig
+from src.video_compression.config import SAFE_CODEC_GLOBALS, CodecConfig
 from src.video_compression.mcts.networks import (
     DynamicsNetwork,
     PredictionNetwork,
@@ -833,6 +834,8 @@ def load_codec(
     checkpoint_path: Path | str,
     config: CodecConfig | None = None,
     device: str = "cpu",
+    *,
+    allow_unsafe_pickle: bool = False,
 ) -> VideoCodec:
     """Load codec from checkpoint.
 
@@ -840,6 +843,12 @@ def load_codec(
         checkpoint_path: Path to model checkpoint.
         config: Optional config override.
         device: Device for computation.
+        allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only for a
+            file whose provenance an operator has established. Exposed here so a
+            caller opting in reaches this, the *primary* load path -- otherwise
+            the opt-in would only take effect on a caller's fallback, silently
+            downgrading a legacy file to whatever reduced load that fallback
+            performs.
 
     Returns:
         Loaded VideoCodec instance.
@@ -852,7 +861,18 @@ def load_codec(
 
     logger.info("codec_loading", checkpoint_path=str(checkpoint_path))
 
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # Routed through the shared chokepoint rather than a bare ``torch.load``:
+    # from torch 2.6 that defaults to ``weights_only=True``, which rejects the
+    # ``CodecConfig`` enums every genuine checkpoint carries, so this call
+    # failed on valid input and pushed callers onto an unsafe fallback (see
+    # ``scripts/decode_video.py``). ``SAFE_CODEC_GLOBALS`` makes the safe path
+    # the working path.
+    checkpoint = load_torch_checkpoint(
+        checkpoint_path,
+        map_location=device,
+        allow_unsafe_pickle=allow_unsafe_pickle,
+        extra_safe_globals=SAFE_CODEC_GLOBALS,
+    )
 
     # Get config from checkpoint or use provided
     if config is None:

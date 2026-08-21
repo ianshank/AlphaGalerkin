@@ -1233,7 +1233,7 @@ C4Deployment
 
 ```python
 # Core dependencies
-torch >= 2.0.0          # Deep learning framework
+torch >= 2.6.0          # Deep learning framework
 einops >= 0.7.0         # Tensor operations
 jaxtyping >= 0.2.25     # Type annotations for arrays
 pydantic >= 2.0.0       # Data validation

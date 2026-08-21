@@ -22,6 +22,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.constants import CHECKPOINT_BEST
+from src.training.checkpoint import load_torch_checkpoint
 from src.video_compression.codec.codec import VideoCodec
 from src.video_compression.config import TrainingConfig
 from src.video_compression.training.loss import CompressionLoss
@@ -334,7 +335,20 @@ class VideoCompressionTrainer:
             path: Path to checkpoint.
 
         """
-        checkpoint = torch.load(path, map_location=self.device)
+        # No ``extra_safe_globals`` here, and that is deliberate. ``self.config``
+        # is ``video_compression.config.TrainingConfig``, NOT ``CodecConfig``:
+        # walking its ``model_dump()`` shows exactly one non-primitive,
+        # ``created_at: datetime``, which the base ``SAFE_CHECKPOINT_GLOBALS``
+        # already covers. Passing ``SAFE_CODEC_GLOBALS`` would be pure
+        # belt-and-braces and would widen a process-global window for globals
+        # this payload never contains -- against the rule stated on
+        # ``load_torch_checkpoint``'s own parameter.
+        #
+        # The routing itself is still load-bearing: under torch >= 2.6 the bare
+        # ``torch.load`` this replaced defaulted to ``weights_only=True`` and
+        # rejected that ``datetime``, so resuming a codec run raised
+        # ``UnpicklingError`` on a checkpoint this class had just written.
+        checkpoint = load_torch_checkpoint(path, map_location=self.device)
 
         self.state.step = checkpoint["step"]
         self.state.epoch = checkpoint["epoch"]

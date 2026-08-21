@@ -36,19 +36,71 @@ Security Note:
     automatic fallback anywhere in this module any more: a checkpoint that
     fails the safe load is rejected with `RuntimeError`.
 
-    **Within this module** unrestricted pickle deserialization is reachable only
-    by an explicit, per-call `allow_unsafe_pickle=True` -- for a genuinely legacy
-    or third-party file whose provenance the *operator* has established. No
-    first-party checkpoint needs it, and it cannot be reached by a checkpoint's
-    own contents. That is a statement about `src/training/checkpoint.py` and
-    `src/training/base_trainer.py`, which route through
-    :func:`load_torch_checkpoint`; it is **not** a repo-wide claim. Loaders that
-    call `torch.load` directly set their own policy, and at least three still
-    pass `weights_only=False` on an operator-supplied path:
-    `src/experiments/verify_transfer.py` (`--model-path`, a command documented
-    in `CLAUDE.md`), `scripts/play_engine.py` and `scripts/encode_video.py`
-    (both `--model`). Those are the same unrestricted-pickle shape this module
-    closed and are tracked separately -- do not read this note as covering them.
+    Unrestricted pickle deserialization is reachable only by an explicit,
+    per-call `allow_unsafe_pickle=True` -- for a genuinely legacy or third-party
+    file whose provenance the *operator* has established. No first-party
+    checkpoint needs it, and it cannot be reached by a checkpoint's own
+    contents.
+
+    As of 2026-08-21 the *repo-wide* property is narrower than "everything
+    routes through here", and is stated as what was actually verified: **no
+    unrestricted-pickle `torch.load` call remains anywhere in `src/`, `scripts/`
+    or `dashboard/` except the explicit hatch in this function.**
+
+    That is enforced, not asserted:
+    `tests/security/test_checkpoint_roundtrip.py::test_no_unrestricted_pickle_load_outside_the_opt_in`
+    walks the AST of every module under those roots and fails if a second one
+    appears. Trust it over any prose here, including the paragraphs below.
+
+    It is deliberately a test rather than a documented grep. Two greps were
+    written for this note and *both* were wrong -- one matched the dozen
+    docstrings and `--help` strings that merely describe the flag, the other
+    matched this very paragraph -- each making the check look failed, or pass
+    with the wrong count, while the property itself held. A claim a reader
+    cannot cheaply verify is worse than no claim, and prose that describes code
+    is exactly the thing greps cannot tell apart from the code.
+
+    An earlier revision of this note claimed every first-party loader "routes
+    through" this function. That was false -- five did not -- and the wrong claim
+    was not merely cosmetic: writing it required *assuming* an enumeration
+    instead of performing one, and a real enumeration turned up two loaders that
+    could not read back checkpoints they had themselves written
+    (`operator_trainer.py`, `distributed/trainer.py`; both now fixed). Prefer the
+    test named above to any list, including this one.
+
+    Loaders that DO route through here, and therefore get the full policy
+    (normalised errors, the allowlist, the lock): `src/training/base_trainer.py`,
+    `src/training/operator_trainer.py`, `src/distributed/trainer.py`,
+    `src/video_compression/codec/codec.py` (`load_codec`),
+    `src/video_compression/training/trainer.py`, and the five CLI entry points
+    that take a checkpoint path straight from an argument --
+    `src/experiments/verify_transfer.py`, `scripts/play_engine.py`,
+    `scripts/encode_video.py`, `scripts/decode_video.py` and
+    `scripts/inspect_checkpoint.py` -- which each expose the hatch as
+    `--allow-unsafe-pickle`, so unpickling an untrusted file is a deliberate
+    operator action rather than a source edit.
+
+    Loaders that call `torch.load` directly and set their own policy. These are
+    safe (none passes `weights_only=False`) but they do not inherit this
+    module's error normalisation or allowlist, so a config gaining a
+    non-primitive field would break them the way it broke the two above:
+
+    - `src/training/evaluation.py`, `src/distributed/model_zoo.py`,
+      `dashboard/tabs/game_tab.py` -- verified by round-trip against what each
+      one's writer actually saves.
+    - `src/video_compression/zoo/storage.py` -- documented in place; note its
+      GCS backend deserializes bytes fetched from a remote bucket, not a local
+      root, so "under a `storage_root` it controls" describes only the
+      filesystem backend.
+    - `hf_space/**` -- a vendored snapshot excluded from CI, covered below.
+
+    The `hf_space` bundle mirrors this policy rather than importing it (it must
+    stand alone), and the two are *deliberately* not identical: it has no
+    `extra_safe_globals`, no `_SAFE_GLOBALS_LOCK` (no threaded caller exists
+    there), no `allow_unsafe_pickle` on its `load_model_only`, and no path
+    containment on its `CheckpointManager.load`. Nothing enforces that they stay
+    in step -- `tests/hf_space/test_mirror_guard.py` checks only that files parse
+    and imports resolve -- so treat divergence as expected and re-verify by hand.
 
     `CheckpointManager.load()` additionally bounds *which* files can be opened
     at all: a caller-supplied path is resolved against `checkpoint_dir` and
@@ -62,6 +114,7 @@ from __future__ import annotations
 import json
 import shutil
 import threading
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -115,9 +168,29 @@ UNSAFE_PICKLE_HINT = (
 # here:
 #
 # 1. Leak (inherent to the torch API, not fixable from this module): during the
-#    window an unrelated load elsewhere in the process also accepts the three
-#    globals. Blast radius is bounded by ``SAFE_CHECKPOINT_GLOBALS`` being pure
-#    data constructors -- "a datetime deserializes that otherwise would not".
+#    window an unrelated load elsewhere in the process also accepts whatever the
+#    window admits. Blast radius is bounded by everything in that window being a
+#    pure data constructor -- "a datetime deserializes that otherwise would not".
+#    That bound is what the ``extra_safe_globals`` contract exists to preserve:
+#    a caller widening the window widens it for every concurrent load too, so
+#    the pure-data rule is a property of the whole allowlist, not just of
+#    ``SAFE_CHECKPOINT_GLOBALS``.
+# 1b. Narrowing leak, the mirror image and the less obvious one: ``__exit__``
+#    calls ``_remove_safe_globals(self.safe_globals)``, which removes BY VALUE
+#    rather than restoring the previous set. So any global registered
+#    process-wide *before* this window opened, that also appears IN the window,
+#    is permanently unregistered when the window closes -- a load here can
+#    silently break an unrelated caller's ``add_safe_globals`` registration.
+#    ``extra_safe_globals`` makes that clobberable set caller-controlled, which
+#    is another reason to pass only what a payload needs.
+#
+#    Demonstrated rather than theorised: registering ``DistributedBackend``
+#    process-wide, then running one ``load_torch_checkpoint`` with
+#    ``extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS``, leaves it unregistered.
+#    That is precisely why no test module may rely on a module-level
+#    ``add_safe_globals`` -- it is not merely bad practice, it does not reliably
+#    survive a single load through this function.
+#
 # 2. Race (fixed by this lock): two overlapping windows tear each other down.
 #    The first ``__exit__`` removes the globals while the other load is still
 #    unpickling, and that load dies with ``UnpicklingError`` -> ``RuntimeError:
@@ -144,6 +217,7 @@ def load_torch_checkpoint(
     *,
     map_location: str | torch.device = "cpu",
     allow_unsafe_pickle: bool = False,
+    extra_safe_globals: Sequence[type] | None = None,
 ) -> Any:
     """Deserialize a checkpoint file, safe by default.
 
@@ -166,6 +240,22 @@ def load_torch_checkpoint(
             deserialization time. Never derive this from untrusted input, and
             never set it in response to a safe-load failure you did not
             diagnose.
+        extra_safe_globals: Additional constructors to admit **alongside**
+            ``SAFE_CHECKPOINT_GLOBALS`` for this call only, for a payload whose
+            config carries types this module cannot know about without importing
+            its package (which would invert the dependency direction --
+            ``src/training`` must not import ``src/video_compression``).
+
+            This widens the allowlist, so it carries the same rule that admitted
+            the datetime trio: **pure data constructors only** -- a type that
+            builds a value from its arguments and cannot invoke anything else.
+            ``enum.Enum`` subclasses qualify (deserialization is a member
+            lookup). A class with a custom ``__reduce__``, ``__setstate__`` or
+            import-time side effects does **not**, and must not be passed here
+            to make a stubborn checkpoint load; that is what
+            ``allow_unsafe_pickle`` is for, with its warning and its audit
+            trail. Enumerate what a payload actually needs by walking the
+            blocked-global errors, rather than allowlisting a package wholesale.
 
     Returns:
         The deserialized checkpoint object.
@@ -195,7 +285,15 @@ def load_torch_checkpoint(
         # ``_SAFE_GLOBALS_LOCK``), so it is held under the lock for the whole
         # ``torch.load``: releasing earlier would let a concurrent load's
         # ``__exit__`` strip the globals out from under this one.
-        with _SAFE_GLOBALS_LOCK, torch.serialization.safe_globals(list(SAFE_CHECKPOINT_GLOBALS)):
+        # Annotated as torch declares the parameter rather than as ``list[type]``:
+        # ``list`` is invariant, so the narrower element type does not satisfy
+        # ``list[Callable[..., Any] | tuple[Callable[..., Any], str]]`` even
+        # though every class is callable.
+        allowlist: list[Callable[..., Any] | tuple[Callable[..., Any], str]] = [
+            *SAFE_CHECKPOINT_GLOBALS,
+            *(extra_safe_globals or ()),
+        ]
+        with _SAFE_GLOBALS_LOCK, torch.serialization.safe_globals(allowlist):
             return torch.load(path, map_location=map_location, weights_only=True)
     except OSError:
         # A missing or unreadable file is an I/O failure, not a deserialization

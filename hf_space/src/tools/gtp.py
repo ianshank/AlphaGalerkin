@@ -11,12 +11,12 @@ from collections.abc import Callable
 from typing import TextIO
 
 import numpy as np
-import torch
 
 from config.schemas import OperatorConfig
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
+from src.training.checkpoint import load_torch_checkpoint
 
 
 def coord_to_gtp(row: int, col: int, board_size: int) -> str:
@@ -635,7 +635,7 @@ def main() -> None:
     if args.model:
         config = OperatorConfig()
         model = AlphaGalerkinModel(config)
-        model.load_state_dict(torch.load(args.model, map_location=args.device))
+        model.load_state_dict(load_torch_checkpoint(args.model, map_location=args.device))
         model.eval()
 
     # Create and run engine

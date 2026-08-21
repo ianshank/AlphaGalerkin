@@ -69,7 +69,7 @@ all generated moves are legal, checkpoint restoration is byte-identical.
 ```
 - Language/Runtime: Python 3.10+
 - Required Dependencies (from existing pyproject.toml):
-  - torch>=2.0.0
+  - torch>=2.6.0
   - einops>=0.7.0
   - jaxtyping>=0.2.25
   - pydantic>=2.0.0

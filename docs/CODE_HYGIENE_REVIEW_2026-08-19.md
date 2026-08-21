@@ -114,12 +114,33 @@ real) passes unmodified.
 > Both were claims made in the fixing commit that the review disproved — recorded
 > here rather than quietly amended, per this repo's own convention.
 >
-> 1. **The affected region is far larger than "near `x = 0`".** Measured against a
->    `dps=400` mpmath reference, the region with error `> 1e-3` is: none at
->    `nu=0.01` (max 3.8e-4); `x <= 0.15` at `nu=0.009`; `x <= 0.50` at `nu=0.005`;
->    and `x <= 0.7975` at `nu=0.001` — i.e. **78.8% of the domain**, with `u`
->    clamped to ~0 where the true solution is O(1). "Near `x=0`" would lead a
->    reader to trust `x=0.5`, which is wrong below `nu ~ 0.005`.
+> 1. **The affected region is far larger than "near `x = 0`".** The region with
+>    error `> 1e-3` reaches `x <= 0.52` at `nu=0.005` and `x <= 0.80` at
+>    `nu=0.001` — **79.6% of the domain** — with `u` clamped to ~0 where the true
+>    solution is O(1). "Near `x=0`" would lead a reader to trust `x=0.5`, which is
+>    wrong below `nu ~ 0.005`.
+>
+>    ⚠️ **Figures corrected 2026-08-21 (round 6).** This block originally read
+>    "none at `nu=0.01` (max 3.8e-4); `x <= 0.15` at `nu=0.009`; … `x <= 0.7975`
+>    at `nu=0.001` — i.e. 78.8%". Those three numbers do not reproduce. The
+>    canonical table is the one in `src/pde/operators.py`
+>    (`COLE_HOPF_MIN_RESOLVED_VISCOSITY`'s docstring), which gives `x <= 0.23`
+>    (20.2%) at `nu=0.009`, `x <= 0.52` (50.4%) at `nu=0.005`, and `x <= 0.80`
+>    (79.6%) at `nu=0.001`. Three independent measurements agree with the code
+>    table and not with the original figures: the code's own recorded run, an
+>    adversarial review pass (0.2325 / 79.6%), and a re-measurement on a
+>    401-point grid (0.2400 / 21.4%, 0.5225 / 51.4%, 0.8000 / 79.6%) — the
+>    sub-percent spread between those three is grid resolution, not disagreement.
+>
+>    Two notes on measurement basis, since they explain apparent mismatches that
+>    are **not** errors. At `t=0` the exact solution is just `-sin(pi*x)`, so this
+>    needs no arbitrary-precision reference at all — comparing to
+>    `initial_condition()` directly is exact, and an earlier attempt to re-derive
+>    it via mpmath produced a max error of 2.0 on a function bounded by 1, the
+>    signature of a `+sin` reference against this code's `-sin`. And the code
+>    table's `nu >= 0.1` rows read ~1e-15 because they are taken on float64
+>    internals *before* the float32 return cast; measured through the public
+>    method they are ~3e-8, which is float32 epsilon, not a discrepancy.
 > 2. **`config/benchmarks/sbir_suite.yaml`'s `nu=0.001` row is not reachable**, so
 >    the commit's warning that "that row cannot be trusted near x=0 even now" is
 >    moot. `src/research/pde_benchmarks.py:416-422` builds its `PDEConfig` reading
@@ -859,11 +880,14 @@ Stated plainly rather than resolved either way, because a wrong answer here is w
 open question.
 
 - The adversarial review reported that three figures in this document's own 2026-08-21
-  correction block do not reproduce (it measured the `nu=0.009` error region at `x <= 0.2325`
-  against the recorded `0.15`). Attempting to re-measure it, **my own arbitrary-precision
-  reference had a sign error** — it returned a max error of 2.0 on a function bounded by 1,
-  the signature of the `+sin` convention against this code's `-sin`. Rather than publish a
-  third number derived from a reference I had just caught being wrong, the figures stand as
-  recorded and the dispute stands open. Whoever settles it should build the mpmath reference
-  from `u(x,0) = -sin(pi*x)` and verify it reproduces that initial condition before trusting
-  any error it reports.
+  correction block do not reproduce. **Adjudicated and corrected** — see the ⚠️ note in that
+  block. The doc's figures were wrong and `src/pde/operators.py`'s table was right; three
+  independent measurements agree with the code.
+
+  Recorded because the route there is the lesson: my first attempt to settle it built an
+  mpmath reference that returned a max error of **2.0 on a function bounded by 1** — the
+  signature of a `+sin` reference against this code's `-sin` — and I reported the dispute as
+  unadjudicable rather than publish a third number from a reference I had just caught being
+  wrong. That was the right call at the time and the wrong stopping point: at `t = 0` the
+  exact solution *is* `-sin(pi*x)`, so the measurement needs no arbitrary-precision reference
+  whatsoever. The elaborate tool was not merely broken, it was unnecessary.

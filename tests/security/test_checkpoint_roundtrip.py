@@ -328,3 +328,69 @@ def test_cited_test_paths_exist() -> None:
                 missing.append(f"{py.relative_to(REPO_ROOT)} cites missing {cited}")
 
     assert not missing, "source comments cite test files that do not exist:\n" + "\n".join(missing)
+
+
+def test_every_extra_safe_globals_value_is_pure_data() -> None:
+    """`extra_safe_globals` reaches the same execution primitive as the opt-in.
+
+    A constructor named in the allowlist is *called* by the unpickler with
+    attacker-chosen arguments under `weights_only=True`. Demonstrated: a class
+    that merely writes a file in `__init__` type-checks perfectly against
+    `Sequence[type]` and executes its side effect when named here -- so the
+    parameter's "pure data constructors only" docstring rule is, on its own,
+    documentation rather than a check.
+
+    `allow_unsafe_pickle=True` is machine-checked repo-wide by
+    `test_only_the_audited_opt_in_passes_weights_only_false` and by
+    `tests/scripts/test_cli_pickle_flags.py`. This is the equivalent for the
+    quieter parameter: resolve every value passed anywhere in `src/` and require
+    each element to be an `Enum` subclass or one of the three `datetime`
+    constructors already audited in `SAFE_CHECKPOINT_GLOBALS`.
+
+    Enums qualify because their members are constructed by lookup, not by
+    running user code. A new allowlist entry that is a plain class -- however
+    innocuous it looks -- fails here and has to be argued for explicitly.
+    """
+    import datetime as _dt
+    import enum
+    import importlib
+
+    allowed_non_enum = {_dt.datetime, _dt.timezone, _dt.timedelta}
+    names: set[str] = set()
+
+    for py in (REPO_ROOT / "src").rglob("*.py"):
+        tree = ast.parse(py.read_text(), filename=str(py))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg != "extra_safe_globals":
+                    continue
+                assert isinstance(kw.value, ast.Name), (
+                    f"{py.relative_to(REPO_ROOT)} passes extra_safe_globals as "
+                    f"{type(kw.value).__name__}; use a module-level named constant so "
+                    "this guard can resolve and check its contents"
+                )
+                names.add(kw.value.id)
+
+    assert names, "no extra_safe_globals call sites found -- has the parameter been removed?"
+
+    modules = {
+        "SAFE_CODEC_GLOBALS": "src.video_compression.config",
+        "SAFE_DISTRIBUTED_GLOBALS": "src.distributed.trainer",
+    }
+    unresolved = names - set(modules)
+    assert not unresolved, (
+        f"new extra_safe_globals constant(s) {sorted(unresolved)} are not registered here; "
+        "add the defining module so their contents are checked, do not delete this assertion"
+    )
+
+    for name in sorted(names):
+        constant = getattr(importlib.import_module(modules[name]), name)
+        for entry in constant:
+            is_enum = isinstance(entry, type) and issubclass(entry, enum.Enum)
+            assert is_enum or entry in allowed_non_enum, (
+                f"{name} admits {entry!r}, which is neither an Enum nor an audited "
+                "datetime constructor. The unpickler CALLS it with arguments from the "
+                "file, so anything with a side effect in __init__ is an execution primitive."
+            )

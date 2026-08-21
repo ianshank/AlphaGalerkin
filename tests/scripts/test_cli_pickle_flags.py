@@ -143,3 +143,69 @@ def test_inspect_checkpoint_parses_and_defaults_safely() -> None:
 
     params = inspect.signature(inspect_checkpoint.inspect).parameters
     assert params[DEST].default is False
+
+
+def _flag_argument_nodes(rel_path: str) -> list[ast.expr]:
+    """Every value node passed as the ``allow_unsafe_pickle=`` keyword in a file."""
+    tree = ast.parse((REPO_ROOT / rel_path).read_text())
+    return [
+        kw.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for kw in node.keywords
+        if kw.arg == DEST
+    ]
+
+
+@pytest.mark.parametrize("rel_path", CLI_ENTRY_POINTS)
+def test_the_flag_value_flows_from_the_parsed_arguments(rel_path: str) -> None:
+    """Closes failure mode 2 in this module's docstring, which was NOT covered.
+
+    `test_flag_is_threaded_to_a_loader` only asserts that the identifier appears
+    as *some* keyword in *some* call, so `f(allow_unsafe_pickle=True)` satisfies
+    it; `test_inspect_checkpoint_parses_and_defaults_safely` asserts on the
+    parser, not on what `main` does with the parsed value. Mutation-verified
+    before this test existed: hardcoding `allow_unsafe_pickle=True` at every one
+    of these call sites left the whole suite green -- 94 passed -- while the
+    safe default was gone. `verify_transfer.py` was at 99% line coverage and the
+    mutation still survived, which is what coverage without a value assertion
+    buys you.
+
+    So assert the *shape* of the value: it must flow from a variable
+    (`args.allow_unsafe_pickle`, or a parameter threaded down from it), never a
+    literal. A constant here means the operator's choice has been overridden in
+    source -- in the unsafe direction if `True`, and if `False`, the flag is
+    inert and the operator has no way through at all.
+    """
+    values = _flag_argument_nodes(rel_path)
+    assert values, f"{rel_path} passes {DEST} to nothing"
+
+    literals = [v for v in values if isinstance(v, ast.Constant)]
+    assert not literals, (
+        f"{rel_path} hardcodes {DEST}="
+        f"{[v.value for v in literals]} instead of passing the parsed value; "
+        "the operator's choice is overridden in source"
+    )
+    for value in values:
+        assert isinstance(value, ast.Name | ast.Attribute), (
+            f"{rel_path} passes {DEST} as {type(value).__name__}, which this guard "
+            "cannot prove flows from the CLI; use the parsed value directly"
+        )
+
+
+def test_no_source_file_hardcodes_the_opt_in_on(tmp_path: Path) -> None:
+    """Repo-wide, not just the five entry points.
+
+    The same drift can land on any of the loaders that now take the keyword
+    (`OperatorTrainer`, `VideoCompressionTrainer`, `DistributedTrainer`,
+    `load_codec`), none of which are CLI entry points and so none of which the
+    parametrized guard above reaches.
+    """
+    offenders: list[str] = []
+    for root in ("src", "scripts", "dashboard"):
+        for py in (REPO_ROOT / root).rglob("*.py"):
+            for value in _flag_argument_nodes(str(py.relative_to(REPO_ROOT))):
+                if isinstance(value, ast.Constant) and value.value is True:
+                    offenders.append(str(py.relative_to(REPO_ROOT)))
+
+    assert not offenders, f"{DEST}=True is hardcoded in: {sorted(set(offenders))}"

@@ -293,6 +293,19 @@ def load_torch_checkpoint(
             *SAFE_CHECKPOINT_GLOBALS,
             *(extra_safe_globals or ()),
         ]
+        if extra_safe_globals:
+            # ``allow_unsafe_pickle=True`` logs before it widens; this parameter
+            # reaches the same execution primitive (a constructor named here is
+            # *called* by the unpickler with attacker-chosen arguments) and until
+            # now widened in silence. An audit trail is the minimum, since the
+            # only other check is the static one in
+            # ``tests/security/test_checkpoint_roundtrip.py`` asserting that every
+            # value passed anywhere in ``src/`` is pure data.
+            logger.debug(
+                "checkpoint_allowlist_widened",
+                path=str(path),
+                extra=[getattr(g, "__qualname__", repr(g)) for g in extra_safe_globals],
+            )
         with _SAFE_GLOBALS_LOCK, torch.serialization.safe_globals(allowlist):
             return torch.load(path, map_location=map_location, weights_only=True)
     except OSError:

@@ -619,10 +619,75 @@ jobs:
         run: |
           pytest tests/engines/ --cov=src/engines --cov-branch --cov-fail-under=82 -q --no-header
 
+      # Raised 77 -> 85 (2026-08-21). The 77 was set against a documented 79.81%
+      # whose stated drag was physics_dataset.py at 23%; that file now measures
+      # 100% and the package measures 97.83%, so 77 had 20 points of slack and
+      # would not have caught a large regression.
       - name: Per-module coverage gate (data)
         if: always() && hashFiles('tests/data/') != ''
         run: |
-          pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=77 -q --no-header
+          pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=85 -q --no-header
+
+      # Five packages that had no gate at all. Measured 2026-08-21 with
+      # COVERAGE_CORE=pytrace (mandatory -- the installed torch wheel crashes
+      # coverage's default C tracer and the failure is silent UNDER-measurement,
+      # so a gate set without it is simply wrong). --cov-branch is redundant with
+      # pyproject.toml's `[tool.coverage.run] branch = true` and is kept only for
+      # symmetry with the gates above.
+      #
+      # Gated at floor(measured)-2 capped at 85, the convention documented on the
+      # src/agents row in CLAUDE.md. The cap is deliberate for a NEW gate: its job
+      # is to stop a package falling below the repo's global standard, not to
+      # freeze it at today's number, where an unrelated change would ratchet it
+      # red. (src/tools at 89 is the standing exception, not the rule.)
+      #
+      #   src/poc          89.57%  -> 85   (4011 stmts, the largest ungated surface;
+      #                                     its seven per-file gates cover 17 of 41
+      #                                     files -- runner.py, cli.py, results.py and
+      #                                     scenarios/transfer.py at 25% had none)
+      #   src/analysis     91.08%  -> 85
+      #   src/tournament   92.91%  -> 85
+      #   src/prototyping  93.16%  -> 85
+      #   src/demos        83.28%  -> 81   (below the cap, so floor(measured)-2 applies)
+      - name: Per-module coverage gate (poc)
+        if: always() && hashFiles('tests/poc/') != ''
+        run: |
+          pytest tests/poc/ -m "not gpu_required" \
+            --cov=src/poc --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (analysis)
+        if: always() && hashFiles('tests/analysis/') != ''
+        run: |
+          pytest tests/analysis/ --cov=src/analysis --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (tournament)
+        if: always() && hashFiles('tests/tournament/') != ''
+        run: |
+          pytest tests/tournament/ --cov=src/tournament --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (prototyping)
+        if: always() && hashFiles('tests/prototyping/') != ''
+        run: |
+          pytest tests/prototyping/ --cov=src/prototyping --cov-branch --cov-fail-under=85 -q --no-header
+
+      # src/demos hits the same pyproject.toml `[tool.coverage.run] omit` collision
+      # that src/video_compression needed a workaround for: a bare --cov=src/demos
+      # reports 0.00% with `CoverageWarning: No data was collected`, which is the
+      # false-pass failure mode a gate must not have. Same inline-coveragerc
+      # technique, dropping the omit for this step only.
+      - name: Per-module coverage gate (demos)
+        if: always() && hashFiles('tests/demos/') != ''
+        run: |
+          cat > .coveragerc.demos <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/demos/ \
+            --cov=src/demos --cov-config=.coveragerc.demos \
+            --cov-branch --cov-fail-under=81 -q --no-header
 
       # src/video_compression is globally omitted from the whole-repo --cov=src
       # gate above (`[tool.coverage.run] omit` in pyproject.toml) -- that omit

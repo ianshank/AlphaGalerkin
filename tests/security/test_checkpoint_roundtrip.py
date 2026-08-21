@@ -25,6 +25,7 @@ Add a case here whenever a class gains a ``save_checkpoint``.
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -264,3 +265,29 @@ class TestVideoCompressionTrainerRoundTrip:
             if not isinstance(v, str | int | float | bool | type(None) | list | dict)
         }
         assert non_primitive == {"created_at": "datetime"}
+
+
+def test_cited_test_paths_exist() -> None:
+    """A comment naming the test that guards it must name one that exists.
+
+    Twice in this series a source comment pointed at a guard test by path and the
+    path was wrong -- `tests/video_compression/test_safe_codec_globals.py` and
+    `tests/distributed/test_distributed_checkpoint_safety.py`, neither of which
+    was ever created. Both said "completeness is asserted by X", which is exactly
+    the kind of claim a maintainer relies on without checking: the next person to
+    add an enum goes looking for the wrong file, finds nothing, and concludes
+    there is no guard.
+
+    So the citation is now itself checked. Any `tests/...py` path appearing in a
+    module under `src/` must resolve, whether it is in a comment or a docstring.
+    Cheap, and it closes a failure mode that produced two defects.
+    """
+    pattern = re.compile(r"tests/[\w./]*\.py")
+    missing: list[str] = []
+
+    for py in (REPO_ROOT / "src").rglob("*.py"):
+        for cited in set(pattern.findall(py.read_text())):
+            if not (REPO_ROOT / cited).exists():
+                missing.append(f"{py.relative_to(REPO_ROOT)} cites missing {cited}")
+
+    assert not missing, "source comments cite test files that do not exist:\n" + "\n".join(missing)

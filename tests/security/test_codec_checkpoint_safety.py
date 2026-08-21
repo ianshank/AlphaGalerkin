@@ -54,10 +54,17 @@ class CodecMarkerPickle:
 
 @pytest.fixture
 def genuine_codec_checkpoint(tmp_path: Path) -> Path:
-    """A checkpoint with the exact payload ``VideoCompressionTrainer`` writes.
+    """A checkpoint shaped the way ``load_codec`` expects to read one.
 
-    Field-for-field from ``VideoCompressionTrainer.save_checkpoint``; the
-    ``config`` entry is what makes this non-trivial to load safely.
+    The ``config`` entry is a ``CodecConfig`` dump, because that is what
+    ``load_codec`` reconstructs (``CodecConfig(**checkpoint["config"])``), and
+    its enum members are what make this non-trivial to load safely.
+
+    Corrected after review: this said "field-for-field from
+    ``VideoCompressionTrainer.save_checkpoint``". It is not -- that trainer
+    writes a ``TrainingConfig`` dump under different keys, and its round trip is
+    covered separately in
+    ``tests/security/test_checkpoint_roundtrip.py::TestVideoCompressionTrainerRoundTrip``.
     """
     path = tmp_path / "genuine.pt"
     torch.save(

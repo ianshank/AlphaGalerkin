@@ -41,7 +41,8 @@ class DistributedBackend(str, Enum):
 #
 # ``str``-valued ``Enum`` subclasses deserialize by looking up a member and can
 # invoke nothing else, so they qualify as pure data. Completeness is asserted by
-# reflection in ``tests/distributed/test_distributed_checkpoint_safety.py``.
+# reflection in ``tests/security/test_checkpoint_roundtrip.py::
+# TestDistributedTrainerRoundTrip::test_safe_distributed_globals_is_complete``.
 SAFE_DISTRIBUTED_GLOBALS: tuple[type, ...] = (DistributedBackend,)
 
 

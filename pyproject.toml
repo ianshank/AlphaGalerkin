@@ -40,11 +40,14 @@ dependencies = [
     # (#124331/#124330/#127808), so 2.4 is not sufficient -- on any torch in
     # [2.0, 2.5) every checkpoint load raised `AttributeError: module
     # 'torch.serialization' has no attribute 'safe_globals'`.
-    # >=2.6.0 is the floor actually declared, because the loaders that pass no
-    # `weights_only` at all (src/training/evaluation.py,
-    # src/training/operator_trainer.py, src/video_compression/codec/codec.py)
-    # are safe-by-default only from 2.6, where `torch.load` flipped its default
-    # to `weights_only=True`. Below that they silently unpickle.
+    # >=2.6.0 is the floor actually declared, because a loader that passes no
+    # `weights_only` at all is safe-by-default only from 2.6, where `torch.load`
+    # flipped its default to `weights_only=True`. Below that it silently
+    # unpickles. `src/training/evaluation.py` is the one such loader left in the
+    # tree; `operator_trainer.py` and `video_compression/codec/codec.py` were
+    # cited here too until they were routed through
+    # `src/training/checkpoint.py::load_torch_checkpoint`, which passes
+    # `weights_only` explicitly and so no longer depends on the default.
     "torch>=2.6.0",
     "torchvision>=0.15.0",
     "einops>=0.7.0",

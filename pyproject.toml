@@ -45,7 +45,7 @@ dependencies = [
     "scipy>=1.10.0",
     # Langfuse experiment tracking (replaces Weights & Biases). v2 pin matches
     # the eval-harness usage; the tracker no-ops without LANGFUSE_* credentials.
-    "langfuse>=2,<3",
+    "langfuse>=2,<5",
     "typer>=0.9.0",
     # Imported at module level by src/poc/runner.py and
     # src/research/pde_benchmarks.py. It was previously satisfied only
@@ -183,7 +183,7 @@ eval-harness = [
 # OpenTelemetry-based v3/v4 SDK renamed/removed — so pin `<3` explicitly rather
 # than inherit the harness's looser `langfuse>=2`. Requires LANGFUSE_* env vars.
 eval-harness-langfuse = [
-    "langfuse>=2,<3",
+    "langfuse>=2,<5",
 ]
 # Documentation site toolchain (MkDocs Material + API autodoc from docstrings).
 # Only needed to build/serve the docs site locally or in the docs CI workflow;

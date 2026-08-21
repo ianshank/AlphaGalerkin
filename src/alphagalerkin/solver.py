@@ -174,10 +174,13 @@ class AlphaGalerkinConfig(SolverConfig):
             "validated by the post-construction ``_validate_trained_checkpoint`` "
             "model validator so misconfigurations fail at config construction "
             "rather than at solve time. **Security note:** loading goes through "
-            "``create_model_from_checkpoint`` which calls ``torch.load(..., "
-            "weights_only=False)`` (pickle-based deserialization) — only load "
-            "checkpoints from trusted sources, since a malicious file can "
-            "execute arbitrary code at deserialization time."
+            "``create_model_from_checkpoint``, which routes to "
+            "``src.training.checkpoint.load_torch_checkpoint`` and deserializes "
+            "with ``weights_only=True``. A checkpoint carrying arbitrary pickled "
+            "objects is rejected with ``RuntimeError`` rather than executed; "
+            "there is no automatic fallback. This field therefore does not "
+            "itself open a deserialization hole, though a checkpoint still "
+            "determines the weights you run, so prefer trusted sources."
         ),
     )
     device: str = Field(

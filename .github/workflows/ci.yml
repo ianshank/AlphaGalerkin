@@ -192,6 +192,34 @@ jobs:
           python -c "import sys; print('Python', sys.version)"
           pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
 
+      # .gitleaks.toml has existed since the repo was set up, and `make gitleaks`
+      # has existed alongside it -- but NOTHING ever invoked either. A secret
+      # scanner that never runs is worse than none: its presence in the tree
+      # reads as coverage. This is the first step that actually executes it.
+      #
+      # Note the config's allowlist is broad (all of tests/, docs/ and
+      # config/baselines/), so this catches secrets in src/, scripts/ and
+      # workflows and deliberately not in fixtures. Narrowing it is tracked
+      # separately -- widening the scan and wiring it in the same change would
+      # make a first run's failures impossible to triage.
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+      # The .claude/ harness -- 9 skills, 5 subagents, 4 slash commands, a
+      # SessionStart hook and settings.json -- is executable configuration with
+      # no tests until now. A skill citing a deleted path, an agent declaring a
+      # tool that does not exist, or a permission naming a renamed module all
+      # fail at the moment someone relies on them. Hermetic and deterministic:
+      # no network, no model calls, ~0.25s.
+      - name: Validate .claude harness
+        run: |
+          pytest tests/claude/ \
+            --tb=short \
+            -q
+
       # Explicit, named gate for the whole security suite. The broad
       # "Run fast unit tests" step below does collect tests/security/, but only
       # while every file there stays free of the slow/e2e markers it filters out,

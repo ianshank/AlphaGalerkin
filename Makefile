@@ -22,7 +22,7 @@
 .PHONY: lint format mypy test-fast test-cert test-stoch test-all coverage \
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
-        test-regression test-sanity test-security
+        test-regression test-sanity test-security test-demos test-claude
 
 # ---------------------------------------------------------------------------
 # Tool resolution — prefer venv binaries, fall back to system
@@ -110,6 +110,20 @@ test-fast:
 test-sanity:
 	$(PYTEST) tests/sanity/ -v
 
+# Mirrors ci.yml's "Run demo and notebook suites" step. These 226 tests are
+# --ignore'd from test-fast (see CI_TEST_EXCLUDES) because they are slower than
+# a unit test, so without this target `make pre-pr` is NARROWER than CI -- which
+# is the drift that let them go unexecuted in CI for months in the first place.
+test-demos:
+	$(PYTEST) tests/demos/ tests/notebooks/ \
+		-m "not gpu_required" \
+		-q --no-header
+
+# Mirrors ci.yml's "Validate .claude harness" step: deterministic, hermetic
+# validation of the 9 skills / 5 subagents / 4 commands / hook / settings.json.
+test-claude:
+	$(PYTEST) tests/claude/ -q --no-header
+
 test-security:
 	$(PYTEST) tests/security/ -v
 
@@ -175,8 +189,19 @@ gpu-smoke:
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
+# Chained into `pre-pr`, so it must not hard-fail on a machine without the
+# binary -- but it must not pass QUIETLY either. A skipped scan reported as
+# success is the "check described but not executed" failure mode this repo has
+# had to correct repeatedly; the notice below names CI as the enforcing copy.
 gitleaks:
-	gitleaks detect --config .gitleaks.toml --verbose
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		gitleaks detect --config .gitleaks.toml --verbose; \
+	else \
+		echo "SKIPPED: gitleaks is not installed -- this scan did NOT run."; \
+		echo "         Install it (https://github.com/gitleaks/gitleaks) or rely"; \
+		echo "         on the 'Secret scan (gitleaks)' step in ci.yml, which is"; \
+		echo "         the enforcing copy."; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Pre-commit (all hooks)
@@ -206,5 +231,5 @@ clean:
 # Pre-PR Comprehensive Gate (lint + mypy + sanity + security + regression +
 # benchmarks + core + agents + e2e + fast + coverage[85% global gate])
 # ---------------------------------------------------------------------------
-pre-pr: lint mypy test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-fast coverage
+pre-pr: lint mypy gitleaks test-claude test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-demos test-fast coverage
 check: pre-pr

@@ -43,8 +43,15 @@ def inspect(path: str, *, allow_unsafe_pickle: bool = False) -> None:
         print("Not a dict, type:", type(data))
 
 
-def main() -> None:
-    """Parse arguments and inspect the named checkpoint."""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser.
+
+    Split out of ``main`` -- matching the ``build_parser()`` convention six other
+    scripts here already follow -- so a test can assert the *real* parser's
+    defaults. The test that covers this used to rebuild an equivalent parser of
+    its own and assert against that, which passes no matter what this script
+    does: it would still have been green with the flag deleted from here.
+    """
     parser = argparse.ArgumentParser(description="Inspect a checkpoint file's structure")
     parser.add_argument("path", help="Path to the checkpoint file")
     parser.add_argument(
@@ -56,7 +63,12 @@ def main() -> None:
             "have established."
         ),
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    """Parse arguments and inspect the named checkpoint."""
+    args = build_parser().parse_args()
     inspect(args.path, allow_unsafe_pickle=args.allow_unsafe_pickle)
 
 

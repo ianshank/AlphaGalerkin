@@ -47,7 +47,38 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_UNSAFE_LOAD_FILE = "src/training/checkpoint.py"
 
 
-def test_no_unrestricted_pickle_load_outside_the_opt_in() -> None:
+def _torch_load_names(tree: ast.Module) -> tuple[set[str], set[str]]:
+    """Names in this module that resolve to `torch` and to `torch.load`.
+
+    Resolving imports rather than hardcoding the literal `torch.load` closes the
+    two evasions a fixed match misses: `from torch import load` binds the
+    function to a bare name, and `import torch as t` / `from torch import load as
+    _l` rebind either one. Both are ordinary style, not adversarial tricks -- a
+    guard that a routine refactor can silently disarm is not a guard.
+    """
+    modules = {"torch"}
+    functions: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name == "torch":
+                    modules.add(a.asname or a.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "torch":
+            for a in node.names:
+                if a.name == "load":
+                    functions.add(a.asname or a.name)
+    return modules, functions
+
+
+def _is_torch_load(func: ast.expr, names: tuple[set[str], set[str]]) -> bool:
+    """True if `func` denotes `torch.load` under this module's import bindings."""
+    modules, functions = names
+    if isinstance(func, ast.Attribute) and func.attr == "load":
+        return isinstance(func.value, ast.Name) and func.value.id in modules
+    return isinstance(func, ast.Name) and func.id in functions
+
+
+def test_only_the_audited_opt_in_passes_weights_only_false() -> None:
     """The repo-wide claim in `checkpoint.py`'s Security Note, machine-checked.
 
     That note documents a grep for a reader to run. A documented grep is a claim
@@ -59,6 +90,15 @@ def test_no_unrestricted_pickle_load_outside_the_opt_in() -> None:
     Parsed with `ast` rather than grepped, so docstrings and `--help` strings
     that merely *describe* the flag do not count -- there are a dozen of those,
     and a substring grep makes the check look failed when it has not.
+
+    Scope, stated precisely so the name cannot overclaim: this covers calls that
+    reach `torch.load` through the `torch` module object, through a
+    `from torch import load` binding, and through an alias of either. It does
+    NOT cover `getattr(torch, "load")(...)`, a `**kwargs` splat carrying
+    `weights_only=False`, or `pickle.loads` -- which is a different function
+    with different call sites (`src/distributed/worker.py` unpickles peer-rank
+    bytes off `all_gather`; that is transport, not checkpoint loading, and needs
+    a schema'd format rather than an allowlist).
     """
     roots = ("src", "scripts", "dashboard")
     offenders: list[str] = []
@@ -69,10 +109,7 @@ def test_no_unrestricted_pickle_load_outside_the_opt_in() -> None:
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
-                func = node.func
-                if not (isinstance(func, ast.Attribute) and func.attr == "load"):
-                    continue
-                if not (isinstance(func.value, ast.Name) and func.value.id == "torch"):
+                if not _is_torch_load(node.func, _torch_load_names(tree)):
                     continue
                 for kw in node.keywords:
                     if kw.arg == "weights_only" and (

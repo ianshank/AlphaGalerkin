@@ -20,7 +20,6 @@ real checkpoints and, for the video pair, real bitstreams.
 
 from __future__ import annotations
 
-import argparse
 import ast
 import inspect
 from pathlib import Path
@@ -128,12 +127,16 @@ def test_load_codec_exposes_the_opt_in_on_the_primary_path() -> None:
 
 
 def test_inspect_checkpoint_parses_and_defaults_safely() -> None:
-    """The one entry point small enough to exercise its parser directly."""
+    """Exercises the script's OWN parser, via `build_parser`.
+
+    This previously constructed a local `ArgumentParser` with the same two
+    arguments and asserted against that -- a tautology that stayed green
+    independent of the script, and would have passed with the flag removed from
+    it entirely. `build_parser` exists so the assertion has a real subject.
+    """
     from scripts import inspect_checkpoint
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path")
-    parser.add_argument(FLAG, action="store_true")
+    parser = inspect_checkpoint.build_parser()
 
     assert parser.parse_args(["some.pt"]).allow_unsafe_pickle is False
     assert parser.parse_args(["some.pt", FLAG]).allow_unsafe_pickle is True

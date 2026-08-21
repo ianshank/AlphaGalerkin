@@ -3,9 +3,15 @@
 import numpy as np
 import pytest
 import torch
+from numpy.typing import NDArray
+from scipy.special import ive
 
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
 from src.pde.operators import (
+    COLE_HOPF_CLAMP_EPS,
+    COLE_HOPF_MAX_TERMS,
+    COLE_HOPF_MIN_RESOLVED_VISCOSITY,
+    COLE_HOPF_N_TERMS,
     AdvectionDiffusionOperator,
     BurgersOperator,
     HeatOperator,
@@ -13,6 +19,7 @@ from src.pde.operators import (
     NavierStokesOperator,
     PDEResidual,
     PoissonOperator,
+    _cole_hopf_coefficients,
 )
 
 
@@ -185,20 +192,32 @@ class TestBurgersOperator:
         assert burgers_operator.is_linear is False
         assert burgers_operator.viscosity == 0.01
 
-    def test_boundary_value_shock_profile(self, burgers_operator: BurgersOperator) -> None:
-        """Test shock-like boundary profile."""
+    def test_boundary_value_homogeneous_dirichlet(
+        self,
+        burgers_operator: BurgersOperator,
+    ) -> None:
+        """Test homogeneous Dirichlet boundary values u(0, t) = u(1, t) = 0.
+
+        Previously asserted a decreasing tanh shock profile (u(0, t) = 1), which
+        contradicted both the initial condition and the Cole-Hopf exact solution
+        this operator implements.
+        """
         coords = np.array([[0.0, 0.5], [0.5, 0.5], [1.0, 0.5]], dtype=np.float32)
         boundary = burgers_operator.boundary_value(coords)
-        # Profile should transition from ~1 to ~0
-        assert boundary[0] > boundary[2]  # Decreasing
+        np.testing.assert_array_equal(boundary, np.zeros(3, dtype=np.float32))
 
     def test_initial_condition(self, burgers_operator: BurgersOperator) -> None:
-        """Test sinusoidal initial condition."""
+        """Test the -sin(pi*x) Cole-Hopf benchmark initial condition.
+
+        Previously asserted sin(2*pi*x), which is not the profile that
+        ``exact_solution`` propagates and is incompatible with homogeneous
+        Dirichlet data at x = 0.5.
+        """
         coords = np.array([[0.0, 0.0], [0.25, 0.0], [0.5, 0.0]], dtype=np.float32)
         ic = burgers_operator.initial_condition(coords)
-        # sin(2πx) at y=0
-        expected = np.sin(2 * np.pi * coords[:, 0])
-        np.testing.assert_allclose(ic, expected, rtol=1e-5)
+        # -sin(pi*x) at y=0
+        expected = -np.sin(np.pi * coords[:, 0])
+        np.testing.assert_allclose(ic, expected, atol=1e-6)
 
 
 class TestAdvectionDiffusionOperator:
@@ -431,30 +450,29 @@ class TestBurgersOperatorColeHopf:
         assert isinstance(u, torch.Tensor)
         assert torch.isfinite(u).all()
 
-    def test_cole_hopf_t0_magnitude_is_a_known_defect_not_a_correctness_claim(self) -> None:
-        """KNOWN DEFECT (tracked, not fixed): the Cole-Hopf series is degenerate at t=0.
+    def test_cole_hopf_t0_magnitude_is_physically_sane(self) -> None:
+        """FIXED DEFECT (was: magnitude ~1e10-1e13 at t=0). Inverted assertion.
 
         Fixing the P0-1 sentinel above (unset ``is_time_dependent`` keeping the
         class default) makes ``exact_solution()`` reachable at the implicit
-        ``t=0.0`` default -- exactly the call `BasisSelectionGame.__init__` makes,
-        via ``_centaur_common.build_pde_operator``, for the *default* OOD arm of
-        the shipped ``llm_prior_ablation`` scenario
+        ``t=0.0`` default -- exactly the call ``BasisSelectionGame.__init__``
+        makes, via ``_centaur_common.build_pde_operator``, for the *default* OOD
+        arm of the shipped ``llm_prior_ablation`` scenario
         (``src/poc/scenarios/llm_prior_config.py``'s default ``ood_pde="burgers"``,
         ``config/scenarios/llm_prior_demo.yaml``).
 
-        At t=0 the truncated 50-term Cole-Hopf denominator ``phi`` evaluates
-        negative; the ``clamp(min=1e-10)`` guard (operators.py Cole-Hopf branches)
-        floors it up, and the resulting solution has magnitude ~1e10-1e13 --
-        large but finite, so ``torch.isfinite`` (the sibling test above) passes
-        on a numerically meaningless value. This test pins that magnitude as a
-        documented, tracked defect rather than letting the sibling isfinite-only
-        test read as a correctness claim. See
-        docs/CODE_HYGIENE_REVIEW_2026-08-19.md for the traced call chain and the
-        consequence for the documented llm_prior_ablation headline GPU run.
+        Historically every Fourier coefficient of the Cole-Hopf series was
+        hardcoded to 1 -- the transform of a Dirac comb, not of a sinusoid -- so
+        the truncated denominator ``phi`` went negative over roughly half the
+        domain, the ``clamp(min=1e-10)`` guard floored it, and ``|u|`` reached
+        ~1e13 at ``nu=1.0`` / ~5e11 at ``nu=0.01``: large but finite, so an
+        ``isfinite``-only assertion passed on a meaningless value. This test used
+        to *pin* that magnitude (``u.abs().max() > 1.0e6``) and its docstring
+        authorised inverting it once the number became sane.
 
-        If this ever starts failing because the magnitude dropped to a sane
-        range, that's progress: tighten or delete this test rather than loosen
-        the bound.
+        The coefficients are now the correct ``2*(-1)^n*ive(n, R)`` and ``u`` is
+        the true ``-sin(pi*x)`` profile, bounded by the maximum principle. See
+        ``TestBurgersColeHopf`` below for the full correctness surface.
         """
         config = PDEConfig(
             name="burgers_unset_time_flag",
@@ -471,13 +489,21 @@ class TestBurgersOperatorColeHopf:
 
         assert u is not None
         assert torch.isfinite(u).all()
-        # A physically-sane Burgers solution on this domain/diffusion is O(1)-O(10).
-        # A value here in the billions+ range is the tracked defect, not a bug in
-        # this test's bound -- do not raise this threshold to make it pass.
-        assert u.abs().max() > 1.0e6, (
-            "Cole-Hopf t=0 magnitude dropped below the tracked-defect threshold -- "
-            "if this is a real fix, replace this test with a sane-magnitude assertion "
-            "and update docs/CODE_HYGIENE_REVIEW_2026-08-19.md, don't just loosen the bound."
+        # The viscous Burgers maximum principle bounds |u(.,t)| by max|u(.,0)| = 1
+        # for the -sin(pi*x) initial condition, for every t >= 0.
+        assert u.abs().max() <= 1.0 + 1.0e-3, (
+            f"Cole-Hopf t=0 magnitude {float(u.abs().max())} violates the maximum "
+            "principle bound |u| <= max|u(.,0)| = 1 -- do not loosen this bound."
+        )
+        # This fixture uses nu=0.01, i.e. exactly COLE_HOPF_MIN_RESOLVED_VISCOSITY,
+        # where the float64 series has ~3 significant digits left near x=0
+        # (measured max error 1e-3 over the full grid, 5e-6 at these points).
+        # TestBurgersColeHopf asserts the 1e-6 profile at well-conditioned nu.
+        torch.testing.assert_close(
+            u,
+            -torch.sin(torch.pi * coords[:, 0]),
+            atol=1.0e-4,
+            rtol=1.0e-4,
         )
 
     def test_explicit_true_still_time_dependent(self) -> None:
@@ -525,6 +551,359 @@ class TestBurgersOperatorColeHopf:
         assert isinstance(u_t, torch.Tensor)
         assert isinstance(u_t0, torch.Tensor)
         assert torch.allclose(u_t, u_t0)
+
+
+# ---------------------------------------------------------------------------
+# Cole-Hopf correctness surface.
+#
+# The historical implementation hardcoded every Fourier coefficient to 1, which
+# is the Cole-Hopf image of a Dirac comb rather than of a sinusoid, and made
+# BurgersOperator describe three mutually inconsistent problems at once
+# (initial_condition = sin(2*pi*x), boundary_value = a tanh shock,
+# exact_solution's docstring = -sin(pi*x)). All three now describe the standard
+# Basdevant / Cole-Hopf benchmark: u(x,0) = -sin(pi*x) on [0,1] with
+# homogeneous Dirichlet data.
+# ---------------------------------------------------------------------------
+
+# Viscosities at/above COLE_HOPF_MIN_RESOLVED_VISCOSITY, where the float64
+# series resolves u across the whole domain (1.0 is the shipped default from a
+# bare PDEConfig; 0.01 is the value used by this file's other fixtures).
+WELL_CONDITIONED_VISCOSITIES = [1.0, 0.5, 0.1, 0.05]
+# The full acceptance sweep, including the deliberately under-resolved 0.001
+# (R = 1/(2*pi*nu) = 159, where phi's dynamic range exp(-2R) = 5.8e-139 is far
+# below float64 resolution near x = 0).
+ACCEPTANCE_VISCOSITIES = [1.0, 0.01, 0.001]
+TIME_SWEEP = [0.0, 0.05, 0.2, 1.0]
+
+
+def _burgers(viscosity: float, dim: int = 2) -> BurgersOperator:
+    """Time-dependent Burgers operator on the unit box at a given viscosity."""
+    config = PDEConfig(
+        name="burgers_cole_hopf",
+        pde_type=PDEType.BURGERS,
+        domain_dim=dim,
+        domain_min=[0.0] * dim,
+        domain_max=[1.0] * dim,
+        advection_coeff=[0.0] * dim,
+        diffusion_coeff=viscosity,
+        is_time_dependent=True,
+    )
+    return BurgersOperator(config)
+
+
+def _grid(n_points: int = 201, dim: int = 2) -> NDArray[np.float32]:
+    """Uniform x-grid over [0, 1] padded with zeros in the trailing dimensions."""
+    x = np.linspace(0.0, 1.0, n_points, dtype=np.float32)
+    columns = [x] + [np.zeros_like(x) for _ in range(dim - 1)]
+    return np.column_stack(columns).astype(np.float32)
+
+
+class TestBurgersColeHopfCoefficients:
+    """The Fourier-Bessel coefficients themselves (the site of the defect)."""
+
+    @pytest.mark.parametrize("viscosity", [1.0, 0.1, 0.01])
+    def test_coefficients_are_bessel_not_unity(self, viscosity: float) -> None:
+        """a_n must be 2*(-1)^n*ive(n, R), not the historical constant 1."""
+        c0, n, coefficients = _cole_hopf_coefficients(viscosity)
+        r = 1.0 / (2.0 * np.pi * viscosity)
+
+        assert c0 == pytest.approx(float(ive(0.0, r)))
+        np.testing.assert_allclose(coefficients, 2.0 * ((-1.0) ** n) * ive(n, r), rtol=1e-12)
+        # The defect: every coefficient equal to 1 (and no alternating sign).
+        assert not np.allclose(np.abs(coefficients), 1.0)
+        # The alternating sign is what selects -sin(pi*x) over +sin(pi*x).
+        assert np.all(coefficients[::2] < 0.0), "odd n must carry a negative sign"
+        assert np.all(coefficients[1::2] > 0.0), "even n must carry a positive sign"
+
+    @pytest.mark.parametrize("viscosity", [1.0, 0.1, 0.01, 0.001])
+    def test_scaled_coefficients_have_unit_l1_norm(self, viscosity: float) -> None:
+        """``e^-R*(I_0(R) + 2*sum I_n(R)) == 1`` -- the property COLE_HOPF_CLAMP_EPS rests on.
+
+        It is what makes an *absolute* denominator floor simultaneously a
+        *relative* one, and it bounds ``phi`` above by 1.
+        """
+        c0, _, coefficients = _cole_hopf_coefficients(viscosity)
+        assert c0 + float(np.abs(coefficients).sum()) == pytest.approx(1.0, abs=1e-12)
+
+    def test_term_count_adapts_to_viscosity_and_is_capped(self) -> None:
+        """Fewer terms suffice at large nu; the count grows as nu shrinks, bounded."""
+        counts = [len(_cole_hopf_coefficients(nu)[1]) for nu in (1.0, 0.01, 0.001, 1e-5)]
+        assert counts[0] == COLE_HOPF_N_TERMS  # floor honoured
+        assert counts == sorted(counts), f"term count must be monotone in 1/nu, got {counts}"
+        assert counts[-1] > COLE_HOPF_N_TERMS
+        assert len(_cole_hopf_coefficients(1e-9)[1]) == COLE_HOPF_MAX_TERMS
+
+    def test_coefficients_are_cached_per_viscosity(self) -> None:
+        """Coefficients are time-independent, so they are computed once per nu."""
+        first = _cole_hopf_coefficients(0.25)
+        second = _cole_hopf_coefficients(0.25)
+        assert first[1] is second[1]
+        assert first[2] is second[2]
+
+    @pytest.mark.parametrize("viscosity", [0.0, -1.0])
+    def test_non_positive_viscosity_raises(self, viscosity: float) -> None:
+        """R = 1/(2*pi*nu) is undefined for nu <= 0."""
+        with pytest.raises(ValueError, match="strictly positive viscosity"):
+            _cole_hopf_coefficients(viscosity)
+
+
+class TestBurgersColeHopf:
+    """Acceptance surface for the corrected Cole-Hopf exact solution."""
+
+    @pytest.mark.parametrize("viscosity", WELL_CONDITIONED_VISCOSITIES)
+    def test_exact_solution_at_t0_matches_initial_condition(self, viscosity: float) -> None:
+        """LOAD-BEARING: exact_solution(t=0) == initial_condition, both branches.
+
+        This is the self-consistency property the operator previously failed in
+        three different ways at once. Mirrors the precedent at
+        ``tests/pde/test_taylor_green_invariants.py::test_initial_condition_matches_exact_at_t0``.
+        """
+        operator = _burgers(viscosity)
+        coords_np = _grid()
+        coords_torch = torch.from_numpy(coords_np)
+
+        np.testing.assert_allclose(
+            np.asarray(operator.exact_solution(coords_np, time=0.0)),
+            np.asarray(operator.initial_condition(coords_np)),
+            atol=1e-6,
+        )
+        torch.testing.assert_close(
+            operator.exact_solution(coords_torch, time=0.0),
+            operator.initial_condition(coords_torch),
+            atol=1e-6,
+            rtol=1e-6,
+        )
+        # ...and both equal the analytic profile, so neither can drift together.
+        np.testing.assert_allclose(
+            np.asarray(operator.exact_solution(coords_np, time=0.0)),
+            -np.sin(np.pi * coords_np[:, 0].astype(np.float64)),
+            atol=1e-6,
+        )
+
+    @pytest.mark.parametrize("viscosity", ACCEPTANCE_VISCOSITIES)
+    @pytest.mark.parametrize("time", TIME_SWEEP)
+    def test_denominator_is_strictly_positive_across_viscosities(
+        self,
+        viscosity: float,
+        time: float,
+    ) -> None:
+        """The divisor must be strictly positive at every t, including t=0.
+
+        The historical denominator was negative over roughly half the domain at
+        t=0 for *every* viscosity, which the clamp converted into a finite but
+        meaningless ~1e13 solution. Two distinct claims are checked:
+
+        1. the value actually divided by is strictly positive (always, by the
+           :data:`COLE_HOPF_CLAMP_EPS` floor); and
+        2. at or above :data:`COLE_HOPF_MIN_RESOLVED_VISCOSITY` the *raw* series
+           is already strictly positive, i.e. the floor is never load-bearing
+           in the regime where the representation is well conditioned.
+        """
+        operator = _burgers(viscosity)
+        coords = _grid(401)
+
+        phi, _ = operator.cole_hopf_potential(coords, time=time)
+        divisor = np.maximum(phi, COLE_HOPF_CLAMP_EPS)
+
+        assert np.all(divisor > 0.0)
+        assert np.all(np.isfinite(np.asarray(operator.exact_solution(coords, time=time))))
+
+        if viscosity >= COLE_HOPF_MIN_RESOLVED_VISCOSITY:
+            assert phi.min() > 0.0, (
+                f"raw Cole-Hopf denominator went non-positive ({phi.min():.3e}) at "
+                f"nu={viscosity}, t={time}, where the series is well conditioned"
+            )
+            np.testing.assert_array_equal(divisor, phi)
+
+    @pytest.mark.parametrize("viscosity", ACCEPTANCE_VISCOSITIES)
+    @pytest.mark.parametrize("time", TIME_SWEEP)
+    def test_float32_output_is_finite_and_order_one(
+        self,
+        viscosity: float,
+        time: float,
+    ) -> None:
+        """Finite is not enough: the old failure mode was finite-but-meaningless.
+
+        The viscous Burgers maximum principle gives ``max|u(.,t)| <= max|u(.,0)|``
+        = 1 for the ``-sin(pi*x)`` datum, so a genuine solution is O(1). The old
+        implementation returned finite float32 values of magnitude ~1e10-1e13,
+        which no ``isfinite`` check catches.
+        """
+        operator = _burgers(viscosity)
+        coords = _grid(401)
+
+        u_np = np.asarray(operator.exact_solution(coords, time=time))
+        u_torch = operator.exact_solution(torch.from_numpy(coords), time=time)
+
+        assert u_np.dtype == np.float32
+        assert np.isfinite(u_np).all()
+        assert torch.isfinite(u_torch).all()
+        # 1e-3 slack absorbs float64 round-off in the under-resolved regime.
+        assert np.abs(u_np).max() <= 1.0 + 1e-3
+        assert float(u_torch.abs().max()) <= 1.0 + 1e-3
+
+    @pytest.mark.parametrize("viscosity", WELL_CONDITIONED_VISCOSITIES)
+    @pytest.mark.parametrize("time", TIME_SWEEP)
+    def test_numpy_and_torch_branches_agree(self, viscosity: float, time: float) -> None:
+        """Numpy and torch implementations must produce identical fields.
+
+        Mirrors ``tests/pde/test_taylor_green_invariants.py::
+        test_numpy_and_torch_branches_agree`` (atol=rtol=1e-6).
+        """
+        operator = _burgers(viscosity)
+        coords_np = _grid(97)
+
+        out_np = np.asarray(operator.exact_solution(coords_np, time=time))
+        out_torch = (
+            operator.exact_solution(torch.from_numpy(coords_np), time=time).detach().cpu().numpy()
+        )
+
+        np.testing.assert_allclose(out_np, out_torch, atol=1e-6, rtol=1e-6)
+
+    @pytest.mark.parametrize("viscosity", [1.0, 0.1, 0.01])
+    def test_solution_decays_in_time(self, viscosity: float) -> None:
+        """Viscous Burgers dissipates: the L2 norm decreases monotonically."""
+        operator = _burgers(viscosity)
+        coords = _grid(401)
+
+        norms = [
+            float(np.sqrt(np.mean(np.asarray(operator.exact_solution(coords, time=t)) ** 2)))
+            for t in (0.0, 0.25, 0.5, 1.0, 2.0)
+        ]
+
+        assert norms == sorted(norms, reverse=True), f"L2 norm must decay, got {norms}"
+        assert norms[0] == pytest.approx(np.sqrt(0.5), abs=1e-2)  # RMS of sin(pi*x)
+        assert norms[-1] < norms[0]
+
+    def test_under_resolved_viscosity_stays_bounded(self) -> None:
+        """Below COLE_HOPF_MIN_RESOLVED_VISCOSITY: degraded, but never unbounded.
+
+        Honest documentation of an intrinsic limit of the Fourier-Bessel
+        representation (not of this implementation): ``phi`` spans
+        ``[exp(-2R), 1]``, so once ``exp(-2R)`` falls under float64 round-off the
+        series loses all significance near ``x = 0``. Accuracy survives in the
+        far field, and the magnitude stays physical everywhere.
+        """
+        operator = _burgers(0.001)
+        coords = _grid(401)
+        x = coords[:, 0].astype(np.float64)
+
+        u = np.asarray(operator.exact_solution(coords, time=0.0), dtype=np.float64)
+        error = np.abs(u + np.sin(np.pi * x))
+
+        assert np.abs(u).max() <= 1.0 + 1e-3, "must stay bounded even when under-resolved"
+        assert error[x >= 0.9].max() < 1e-3, "far field must remain accurate"
+        assert error.max() > 1e-2, (
+            "nu=0.001 is expected to be under-resolved near x=0; if this now "
+            "passes accurately, raise the documented COLE_HOPF_MIN_RESOLVED_VISCOSITY"
+        )
+
+    @pytest.mark.parametrize(
+        "viscosity,time,n_points",
+        [(1.0, 0.05, 101), (0.1, 0.1, 101)],
+    )
+    def test_matches_independent_finite_difference_march(
+        self,
+        viscosity: float,
+        time: float,
+        n_points: int,
+    ) -> None:
+        """Independent verification of the *time evolution*, not just t=0.
+
+        Marches the nonlinear PDE ``u_t = -u*u_x + nu*u_xx`` forward from
+        ``u(x,0) = -sin(pi*x)`` with homogeneous Dirichlet data using an explicit
+        central-difference scheme -- a method that shares no code, no
+        coefficients and no Bessel functions with the Cole-Hopf series -- and
+        compares the result against ``exact_solution(t)``.
+
+        This is what pins the whole derivation end to end: the alternating
+        ``(-1)^n`` sign, the ``exp(-n^2*pi^2*nu*t)`` modal decay, and consistency
+        with the *nonlinear* advection term. A t=0 identity alone could not
+        detect a wrong decay rate. The tolerance is set by the scheme's own
+        O(dx^2) truncation error (measured 1.3e-5 and 4.9e-5 for these two
+        cases; a finer march at nx=401 converges to 8.8e-7 at nu=1.0).
+        """
+        x = np.linspace(0.0, 1.0, n_points)
+        dx = float(x[1] - x[0])
+        u = -np.sin(np.pi * x)
+        # Explicit stability: diffusive dx^2/(2*nu) and advective dx/max|u|.
+        dt = 0.2 * min(dx * dx / (2.0 * viscosity), dx / max(float(np.abs(u).max()), 1e-12))
+        n_steps = int(np.ceil(time / dt))
+        dt = time / n_steps
+
+        for _ in range(n_steps):
+            u_x = np.zeros_like(u)
+            u_xx = np.zeros_like(u)
+            u_x[1:-1] = (u[2:] - u[:-2]) / (2.0 * dx)
+            u_xx[1:-1] = (u[2:] - 2.0 * u[1:-1] + u[:-2]) / (dx * dx)
+            u = u + dt * (-u * u_x + viscosity * u_xx)
+            u[0] = 0.0
+            u[-1] = 0.0
+
+        operator = _burgers(viscosity, dim=1)
+        exact = np.asarray(
+            operator.exact_solution(x.reshape(-1, 1).astype(np.float32), time=time),
+            dtype=np.float64,
+        )
+
+        np.testing.assert_allclose(u, exact, atol=1e-3)
+        # The profile must actually have evolved, or this would be a t=0 retest.
+        assert np.abs(exact).max() < 0.999
+
+    def test_gradients_flow_through_coords(self) -> None:
+        """float64 assembly must not sever autograd on the torch branch."""
+        coords = torch.tensor(
+            [[0.3, 0.0], [0.5, 0.0], [0.7, 0.0]],
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        operator = _burgers(1.0)
+
+        u = operator.exact_solution(coords)
+        assert isinstance(u, torch.Tensor)
+        u.sum().backward()
+
+        assert coords.grad is not None
+        # d/dx of -sin(pi*x) is -pi*cos(pi*x).
+        expected = -np.pi * np.cos(np.pi * np.array([0.3, 0.5, 0.7]))
+        np.testing.assert_allclose(coords.grad[:, 0].numpy(), expected, atol=1e-4)
+
+    def test_initial_condition_is_negative_sine(self) -> None:
+        """u(x, 0) = -sin(pi*x), matching exact_solution (was sin(2*pi*x))."""
+        operator = _burgers(1.0, dim=1)
+        coords = np.array([[0.0], [0.25], [0.5], [0.75], [1.0]], dtype=np.float32)
+
+        expected = -np.sin(np.pi * coords[:, 0].astype(np.float64))
+        np.testing.assert_allclose(
+            np.asarray(operator.initial_condition(coords)),
+            expected,
+            atol=1e-6,
+        )
+        np.testing.assert_allclose(
+            operator.initial_condition(torch.from_numpy(coords)).numpy(),
+            expected,
+            atol=1e-6,
+        )
+
+    def test_boundary_value_is_homogeneous_dirichlet(self) -> None:
+        """u(0, t) = u(1, t) = 0 (was a tanh shock giving u(0, t) = 1)."""
+        operator = _burgers(1.0, dim=1)
+        coords = np.array([[0.0], [1.0]], dtype=np.float32)
+
+        np.testing.assert_array_equal(
+            np.asarray(operator.boundary_value(coords)),
+            np.zeros(2, dtype=np.float32),
+        )
+        torch_out = operator.boundary_value(torch.from_numpy(coords))
+        assert isinstance(torch_out, torch.Tensor)
+        assert torch.equal(torch_out, torch.zeros(2))
+        # ...and it agrees with the exact solution's own boundary trace.
+        for time in TIME_SWEEP:
+            np.testing.assert_allclose(
+                np.asarray(operator.exact_solution(coords, time=time)),
+                np.zeros(2),
+                atol=1e-6,
+            )
 
 
 class TestAdvectionDiffusionOperatorResidual:

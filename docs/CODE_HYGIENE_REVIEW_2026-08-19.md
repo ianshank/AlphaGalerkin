@@ -65,6 +65,51 @@ before — `tests/pde/test_operators.py::test_steady_returns_none` (the test tha
 proved the naive "just honor the class default" fix would have broken something
 real) passes unmodified.
 
+> ✅ **RESOLVED (2026-08-21).** The Cole-Hopf defect described in this section is
+> fixed in `src/pde/operators.py`. Root cause was narrower and more serious than
+> "the truncated series is degenerate at t=0": **every Fourier coefficient of the
+> series was hardcoded to 1**, which is the Cole-Hopf image of a *Dirac comb*, not
+> of a sinusoid — a valid solution to the wrong problem. The correct coefficients
+> are `a_n = 2*(-1)^n*I_n(R)` with `R = 1/(2*pi*nu)` (modified Bessel, computed via
+> the exponentially-scaled `scipy.special.ive` so `R = 159` at `nu = 0.001` does not
+> overflow; the `e^-R` factor cancels between numerator and denominator). The
+> code's own docstring and an inline comment had claimed Bessel coefficients all
+> along — nothing numeric ever computed them.
+>
+> This was **not** a t=0 edge case: the denominator stayed negative-somewhere for
+> all `nu*t <~ 0.02`. Measured `max|u|` at `t=0`, before → after:
+> `nu=1.0` **5.0e13 → 1.000**; `nu=0.01` **5.0e11 → 1.000**; `nu=0.001`
+> **5.0e10 → 0.605**. The bound is the viscous-Burgers maximum principle
+> (`max|u(.,t)| <= max|u(.,0)| = 1`), now asserted.
+>
+> The operator previously described *three different problems at once*
+> (`initial_condition` = `sin(2*pi*x)`, `boundary_value` = a tanh shock with
+> `u(0,t) = 1`, `exact_solution`'s docstring = `-sin(pi*x)`). All three now describe
+> the standard Basdevant / Cole-Hopf benchmark: `u(x,0) = -sin(pi*x)` on `[0,1]`,
+> homogeneous Dirichlet. `exact_solution(coords, time=0.0)` now reproduces
+> `initial_condition(coords)` to 2e-7 (float32 epsilon) — the load-bearing
+> self-consistency property that was previously false three ways over.
+>
+> Consequences recorded elsewhere in this section are correspondingly closed: the
+> basis-game initial error for the shipped `ood_pde="burgers"` arm went
+> **4.20e12 → 0.7071**, and the second live consumer,
+> `src/research/baselines.py::BaseSolver._compute_l2_error` (feeding the
+> `burgers_shock` row of `config/benchmarks/sbir_suite.yaml`), went
+> **3.33e12 → 0.7016** (the exact RMS of `sin(pi*x)` against a zero trial solution).
+> The `ood_llm_residual`/`ood_trained_residual` thresholds are **still not
+> re-derived** — that needs the real GPU run — but they are now measured against a
+> physically meaningful ground truth instead of a 1e12 artifact.
+>
+> Known limitation, documented rather than hidden: the Fourier-Bessel
+> representation is intrinsically ill-conditioned as `nu -> 0` (`phi` spans
+> `[exp(-2R), 1]`, so significance is lost near `x=0` once `exp(-2R)` reaches
+> float64 round-off, i.e. `nu <~ 0.009`). This is a property of the representation,
+> not of the implementation — `ive` itself is only float64-accurate, so no
+> summation scheme recovers the lost digits. Surfaced as
+> `COLE_HOPF_MIN_RESOLVED_VISCOSITY` with a `cole_hopf_underresolved` structlog
+> warning, and pinned by
+> `tests/pde/test_operators.py::TestBurgersColeHopf::test_under_resolved_viscosity_stays_bounded`.
+
 **Critical finding, surfaced by fixing the above — live today, not hypothetical.**
 Making `BurgersOperator.exact_solution()` reachable at the default `t=0` exposed a
 **pre-existing, separate defect** in the Cole-Hopf approximation itself. At `t=0`,
@@ -82,6 +127,13 @@ headline GPU command. Directly measured: `build_pde_operator("burgers")` +
 `build_basis_game(...)` → `get_initial_state().error_estimate = 4.29e12`, with the
 same tensor serving as both the RMS baseline *and* the literal least-squares
 regression target for every basis-fit action in the game.
+
+*(Resolved 2026-08-21 — see the banner at the head of this section. The
+`test_cole_hopf_t0_magnitude_is_a_known_defect_not_a_correctness_claim` test named
+below has been inverted to
+`test_cole_hopf_t0_magnitude_is_physically_sane`, exactly as its own docstring
+authorised, and now asserts the maximum-principle bound plus the `-sin(pi*x)`
+profile.)*
 
 **The regression test added alongside the fix was itself silently vacuous**: it
 only asserted `torch.isfinite(...).all()`, which trivially passes on a
@@ -164,6 +216,15 @@ All gates verified passing with the exact CLAUDE.md-documented commands
 - `src/pde/operators.py`: Cole-Hopf `n_terms=50` and the `1e-10` clamp epsilon are
   duplicated across tensor/numpy branches, not named constants or config fields —
   the same epsilon implicated in the Cole-Hopf t=0 finding above.
+  ✅ **Closed (2026-08-21).** Both are named module constants
+  (`COLE_HOPF_N_TERMS`, `COLE_HOPF_CLAMP_EPS`), joined by
+  `COLE_HOPF_MAX_TERMS`, `COLE_HOPF_TERM_TOLERANCE`,
+  `COLE_HOPF_MIN_RESOLVED_VISCOSITY` and `COLE_HOPF_COEFFICIENT_CACHE_SIZE`.
+  `n_terms` is now a *floor* on an adaptive count (the coefficient envelope widens
+  as `nu` shrinks), and the clamp epsilon was **retuned 1e-10 → 1e-14**: `1e-10`
+  would have clipped the legitimate `phi = 1.5e-14` minimum at `nu = 0.01`,
+  destroying ~35% of the domain. The new value is derived from the exact
+  normalisation `c_0 + sum|c_n| == 1` that the scaled coefficients satisfy.
 - `src/pde/operators.py:903,924,1031`: `sigma = 0.1 * np.mean(self.domain_size)` (the
   synthetic Gaussian-pulse width fraction) is duplicated verbatim across three
   operators, not a config field.
@@ -377,7 +438,9 @@ import errors unrelated to any real code issue. Use `python3 -m mypy ...` /
 ## What this pass deliberately did not do
 
 - Did not fix the Cole-Hopf t=0 defect itself (only added a regression-lock test
-  pinning it as a known, tracked defect — see above), the Heat/AdvectionDiffusion
+  pinning it as a known, tracked defect — see above; ✅ **the defect itself was
+  fixed on 2026-08-21** and that regression-lock test inverted), the
+  Heat/AdvectionDiffusion
   P0-1 slices, the `fallback_to_uniform_on_parse_error` scope question, the
   `constants.py` dead re-export, the CLAUDE.md:115 stale-existence-claim, the
   Makefile drift/breakage, or any of the report-only untested-code findings — each
@@ -523,9 +586,19 @@ pytest tests/mcts tests/games tests/deployment tests/prototyping \
 
 ## Still open after round 2
 
-- **The Cole-Hopf t=0 defect from round 1 is unchanged** and remains the most
+- ~~**The Cole-Hopf t=0 defect from round 1 is unchanged** and remains the most
   urgent item in this document — see the round-1 section above. Round 2 did not
-  touch it (it is PDE-math work, not hygiene).
+  touch it (it is PDE-math work, not hygiene).~~ ✅ **RESOLVED (2026-08-21)** as
+  dedicated PDE-math work: the Fourier coefficients are now the correct
+  `2*(-1)^n*ive(n, R)` rather than a hardcoded 1, and `BurgersOperator`'s initial
+  condition / boundary values / exact solution were unified onto the single
+  Basdevant benchmark `u(x,0) = -sin(pi*x)`, Dirichlet. See the resolution banner
+  in the round-1 section. Still open, and explicitly *not* done there: re-deriving
+  the `ood_llm_residual` / `ood_trained_residual` thresholds (needs the real GPU
+  run), and the fact that `DorflerAMRSolver` on `BurgersOperator` is now a
+  degenerate baseline (zero source + zero boundary data ⇒ `u == 0`, so every
+  residual indicator is 0 and bulk marking never triggers — it was previously
+  propped up by the inconsistent tanh BC).
 - `src/distributed/worker.py`'s `games_completed` over-count (new, above).
 - A **pre-existing, unrelated** failing test surfaced while wiring `make check`:
   `tests/security/test_checkpoint_safety.py::test_checkpoint_path_validation`

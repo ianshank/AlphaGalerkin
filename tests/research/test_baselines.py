@@ -279,7 +279,7 @@ class TestDorflerAMRSolver:
     @pytest.mark.parametrize(
         "target_dof,min_expected",
         [
-            (128, 96),
+            (128, 94),
             (512, 256),
             (2048, 256),
         ],
@@ -296,11 +296,23 @@ class TestDorflerAMRSolver:
 
         With raised defaults (max_initial_points_1d=256, max_refinements=30,
         marking_fraction=0.5) the solver now starts at min(n_dof//2, 256)
-        and adds elements via bulk-chasing. Sparse marking on a single shock
-        still limits the per-step growth, so high target_dof requests are
-        bounded by n_start. The thresholds below reflect what's reachable
-        on this problem class — orders of magnitude better than the 18-DOF
-        bug.
+        and adds elements per refinement step. The thresholds below reflect
+        what's reachable on this problem class — orders of magnitude better
+        than the 18-DOF bug.
+
+        The 128 case was recalibrated 96 -> 94 when ``BurgersOperator`` was
+        pinned to the Cole-Hopf benchmark: ``boundary_value`` became
+        homogeneous Dirichlet (it previously returned an inconsistent
+        ``0.5*(1 - tanh(10*(x - 0.5)))`` shock giving ``u(0) = 1``). The steady
+        problem this solver poses for Burgers has zero source *and* zero
+        boundary data, so its exact solution is ``u == 0``; every residual
+        indicator is therefore 0 and Dorfler marking degenerates to the
+        +1-element-per-step fallback, giving a deterministic
+        ``65 start + 29 refinements = 94`` DOF (measured 124 under the old,
+        physically meaningless BC). The regression this test exists for --
+        the 18-DOF ceiling -- is unaffected, but note that AMR-on-Burgers no
+        longer exercises bulk marking; that guard wants a non-degenerate
+        steady problem (e.g. PoissonOperator, which has a real source term).
         """
         cfg = PDEConfig(
             name="test_burgers_1d",

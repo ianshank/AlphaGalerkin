@@ -95,7 +95,8 @@ In addition, the Python agent skills in `src/agents/skills/` provide declarative
 | :--- | :--- | :--- | :--- |
 | **Ruff Lint** | `ruff check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py` | 0 errors across 896 files | ✅ PASS |
 | **Ruff Format** | `ruff format --check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py` | 896 files formatted | ✅ PASS |
-| **Abstraction Audit** | `python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing` | 100% call-site coverage | ✅ PASS |
+| **Fast Unit Test Suite** | `pytest tests/ -m "not slow and not e2e and not gpu_required" ...` | **9,114 passed**, 0 failed (224.50s) | ✅ PASS |
+| **AST Abstraction Audit** | `python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing` | 100% call-site coverage | ✅ PASS |
 | **ONNX Integration** | `pytest tests/deployment/test_export_onnx_integration.py` | 30 / 30 tests passed | ✅ PASS |
 | **Go AI Journey** | `pytest tests/e2e/test_user_journey_go_training.py` | 1 / 1 tests passed | ✅ PASS |
 | **Agent Skills** | `pytest tests/agents/test_agent_skills.py tests/agents/test_lifecycle_hooks.py` | 10 / 10 tests passed | ✅ PASS |

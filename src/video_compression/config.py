@@ -38,6 +38,33 @@ class RateControlMode(str, Enum):
     CRF = "crf"  # Constant rate factor (quality-based)
 
 
+# Every ``Enum`` this module defines, in one tuple, for allowlisting when a
+# checkpoint is deserialized under ``weights_only=True``.
+#
+# Why this exists: ``CodecConfig.model_dump()`` is stored verbatim in every
+# checkpoint ``VideoCompressionTrainer.save_checkpoint`` writes, and it keeps
+# these three as *enum members* rather than plain strings. From torch 2.6
+# ``torch.load`` defaults to ``weights_only=True``, whose unpickler rejects any
+# global it was not told about -- so a bare load of a genuine codec checkpoint
+# fails on ``QuantizationMode`` before it ever reaches the weights. Passing this
+# tuple as ``load_torch_checkpoint(..., extra_safe_globals=SAFE_CODEC_GLOBALS)``
+# is what makes the safe load succeed, which is the whole point: a loader whose
+# safe path cannot work is a loader whose unsafe path becomes routine.
+#
+# These qualify under that function's pure-data rule: ``str``-valued ``Enum``
+# subclasses deserialize by looking up a member, and can invoke nothing else.
+#
+# Keep in sync when adding an enum here -- the tuple is asserted complete by
+# ``tests/security/test_codec_checkpoint_safety.py::TestSafeCodecGlobals``,
+# which reflects over this module rather than restating the list, so a new enum
+# fails that test rather than silently reintroducing the bare-load failure.
+SAFE_CODEC_GLOBALS: tuple[type, ...] = (
+    QuantizationMode,
+    EntropyModelType,
+    RateControlMode,
+)
+
+
 class EncoderConfig(BaseModuleConfig):
     """Configuration for the analysis transform (encoder).
 

@@ -22,8 +22,9 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from src.constants import CHECKPOINT_BEST
+from src.training.checkpoint import load_torch_checkpoint
 from src.video_compression.codec.codec import VideoCodec
-from src.video_compression.config import TrainingConfig
+from src.video_compression.config import SAFE_CODEC_GLOBALS, TrainingConfig
 from src.video_compression.training.loss import CompressionLoss
 
 logger = structlog.get_logger(__name__)
@@ -334,7 +335,18 @@ class VideoCompressionTrainer:
             path: Path to checkpoint.
 
         """
-        checkpoint = torch.load(path, map_location=self.device)
+        # ``SAFE_CODEC_GLOBALS`` is load-bearing, not belt-and-braces: the
+        # payload written by :meth:`save_checkpoint` embeds
+        # ``CodecConfig.model_dump()``, whose ``created_at`` is a ``datetime``
+        # and whose mode fields are enums. Under torch >= 2.6 the bare
+        # ``torch.load`` this replaced defaulted to ``weights_only=True`` and
+        # rejected both, so resuming a codec run raised ``UnpicklingError`` on
+        # a checkpoint this class had just written.
+        checkpoint = load_torch_checkpoint(
+            path,
+            map_location=self.device,
+            extra_safe_globals=SAFE_CODEC_GLOBALS,
+        )
 
         self.state.step = checkpoint["step"]
         self.state.epoch = checkpoint["epoch"]

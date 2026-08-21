@@ -29,6 +29,8 @@ from src.templates.logging import (
     configure_module_logging,
     create_logger_class,
 )
+from src.training.checkpoint import load_torch_checkpoint
+from src.video_compression.config import SAFE_CODEC_GLOBALS
 
 # Configure logging
 configure_module_logging(level="INFO")
@@ -101,6 +103,15 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Validate bitstream without decoding",
+    )
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help=(
+            "Load --checkpoint with weights_only=False. Executes arbitrary code if "
+            "the checkpoint is malicious; use only for a file whose provenance "
+            "you have established."
+        ),
     )
 
     return parser.parse_args()
@@ -349,13 +360,33 @@ def main() -> int:
             codec = load_codec(args.checkpoint, device=device)
         except Exception as e:
             logger.warning("load_codec_failed", error=str(e), message="Retrying with manual load")
-            # Fallback: manual loading for robustness
+            # Fallback: manual loading for robustness.
+            #
+            # This retry used to be an arbitrary-code-execution path, and a
+            # routinely-reached one. ``load_codec`` deserialized with a bare
+            # ``torch.load``, which from torch 2.6 means ``weights_only=True``;
+            # that rejects the ``CodecConfig`` enums every real checkpoint
+            # carries, so the ``except`` above fired on *valid* input and this
+            # branch -- then ``weights_only=False`` -- ran as the normal path.
+            # A malicious checkpoint was therefore executed precisely because it
+            # failed the safe check, the same inversion removed from
+            # ``CheckpointManager.load_model_only``.
+            #
+            # Both halves are now fixed: ``load_codec`` allowlists those enums so
+            # it succeeds on real input, and this branch goes through the same
+            # safe chokepoint, so falling back can no longer escalate privilege.
+            # It now means what its comment always claimed -- a second attempt at
+            # an unusual checkpoint *layout*, not a second attempt with the
+            # safety off.
             try:
                 from src.video_compression.codec.codec import create_codec
                 from src.video_compression.config import CodecConfig
 
-                checkpoint_data = torch.load(
-                    args.checkpoint, map_location=device, weights_only=False
+                checkpoint_data = load_torch_checkpoint(
+                    args.checkpoint,
+                    map_location=device,
+                    allow_unsafe_pickle=args.allow_unsafe_pickle,
+                    extra_safe_globals=SAFE_CODEC_GLOBALS,
                 )
 
                 # Try to reconstruct config from checkpoint, fallback to default

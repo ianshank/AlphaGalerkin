@@ -349,15 +349,31 @@ class OperatorTrainer:
 
         return path
 
-    def load_checkpoint(self, path: Path | str) -> None:
+    def load_checkpoint(self, path: Path | str, *, allow_unsafe_pickle: bool = False) -> None:
         """Load model checkpoint.
 
         Args:
             path: Path to checkpoint file.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only for
+                a file whose provenance the operator has established.
+
+                Needed because ``save_checkpoint`` changed what it *writes*: it
+                used to store the ``TrainingConfig`` dataclass instance (and a
+                ``PosixPath`` inside it), which ``weights_only=True`` rejects. A
+                checkpoint written by that earlier version therefore raises
+                ``RuntimeError`` here, and without this flag there would be no
+                way to read one back -- the same escape hatch the four CLI
+                loaders already expose, on the loader that needs it most. It is
+                keyword-only and defaults to ``False``, so every existing caller
+                is unaffected and stays on the safe path.
 
         """
         path = Path(path)
-        checkpoint = load_torch_checkpoint(path, map_location=self.config.device)
+        checkpoint = load_torch_checkpoint(
+            path,
+            map_location=self.config.device,
+            allow_unsafe_pickle=allow_unsafe_pickle,
+        )
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

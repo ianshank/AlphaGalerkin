@@ -44,17 +44,21 @@ Security Note:
 
     As of 2026-08-21 the *repo-wide* property is narrower than "everything
     routes through here", and is stated as what was actually verified: **no
-    `torch.load(..., weights_only=False)` call remains anywhere in `src/`,
-    `scripts/` or `dashboard/` except the explicit hatch in this module.**
-    Re-check it with
+    unrestricted-pickle `torch.load` call remains anywhere in `src/`, `scripts/`
+    or `dashboard/` except the explicit hatch in this function.**
 
-        grep -rn -A3 "torch\\.load(" --include=*.py src/ scripts/ dashboard/ \\
-            | grep "weights_only=False"
+    That is enforced, not asserted:
+    `tests/security/test_checkpoint_roundtrip.py::test_no_unrestricted_pickle_load_outside_the_opt_in`
+    walks the AST of every module under those roots and fails if a second one
+    appears. Trust it over any prose here, including the paragraphs below.
 
-    which returns exactly one line: :func:`load_torch_checkpoint`'s own opt-in
-    branch. (Grepping for the bare string instead matches a dozen docstrings and
-    help texts that merely *describe* the flag, which makes the check look
-    failed when it has not -- hence the `torch.load(`-anchored form.)
+    It is deliberately a test rather than a documented grep. Two greps were
+    written for this note and *both* were wrong -- one matched the dozen
+    docstrings and `--help` strings that merely describe the flag, the other
+    matched this very paragraph -- each making the check look failed, or pass
+    with the wrong count, while the property itself held. A claim a reader
+    cannot cheaply verify is worse than no claim, and prose that describes code
+    is exactly the thing greps cannot tell apart from the code.
 
     An earlier revision of this note claimed every first-party loader "routes
     through" this function. That was false -- five did not -- and the wrong claim
@@ -62,7 +66,7 @@ Security Note:
     instead of performing one, and a real enumeration turned up two loaders that
     could not read back checkpoints they had themselves written
     (`operator_trainer.py`, `distributed/trainer.py`; both now fixed). Prefer the
-    grep above to any list, including this one.
+    test named above to any list, including this one.
 
     Loaders that DO route through here, and therefore get the full policy
     (normalised errors, the allowlist, the lock): `src/training/base_trainer.py`,

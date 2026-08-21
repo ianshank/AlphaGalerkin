@@ -314,10 +314,12 @@ class TestDorflerAMRSolver:
         reaches the requested 128 the loop never breaks early, so all
         ``max_refinements = 30`` steps run at +1 element each (measured 124
         under the old, physically meaningless BC). The regression this test
-        exists for -- the 18-DOF ceiling -- is unaffected, but note that
-        AMR-on-Burgers no longer exercises bulk marking; that guard wants a
-        non-degenerate steady problem (e.g. PoissonOperator, which has a real
-        source term).
+        exists for -- the 18-DOF ceiling -- is unaffected, but
+        AMR-on-Burgers does not exercise bulk marking. That guard is
+        ``test_dorfler_bulk_marking_fires_on_a_non_degenerate_problem`` below,
+        on 1D Poisson -- which only became a valid host once
+        ``PoissonOperator``'s manufactured solution stopped collapsing to zero
+        at ``dim == 1``.
         """
         cfg = PDEConfig(
             name="test_burgers_1d",
@@ -337,6 +339,54 @@ class TestDorflerAMRSolver:
         assert result.n_dof > 18, (
             f"Dorfler AMR still produces only {result.n_dof} DOF "
             "— matches the pre-fix ceiling. Default raise did not take effect."
+        )
+
+    def test_dorfler_bulk_marking_fires_on_a_non_degenerate_problem(self) -> None:
+        """Dorfler bulk marking must mark more than one element on a real problem.
+
+        This is the assertion the 1D suite lacked entirely. Every 1D operator it
+        exercised posed a degenerate problem -- Burgers by construction (zero
+        source *and* zero Dirichlet data), Poisson because its manufactured
+        solution multiplied by ``sin(pi*y)`` with ``y == 0`` -- so every residual
+        indicator was 0.0, ``_dorfler_mark`` degenerated to its
+        +1-element-per-step fallback, and the ``n_dof`` assertions elsewhere in
+        this class were really asserting ``n_start + max_refinements``
+        arithmetic. Bulk marking, the thing Dorfler *is*, ran zero times.
+
+        Asserting growth strictly exceeds ``max_refinements`` is what separates
+        marking from the fallback: the fallback adds at most one element per
+        step, so exceeding that bound is reachable only by marking a set.
+        """
+        op = _make_poisson_1d()
+        cfg = AMRConfig()
+        result = DorflerAMRSolver(config=cfg).solve(op, n_dof=512)
+
+        n_start = max(
+            min(512 // cfg.initial_dof_divisor, cfg.max_initial_points_1d),
+            cfg.min_initial_points,
+        )
+        growth = result.n_dof - n_start
+        assert growth > cfg.max_refinements, (
+            f"grew {growth} DOF over <= {cfg.max_refinements} steps -- that is the "
+            "+1-per-step fallback, so bulk marking never fired"
+        )
+
+    def test_dorfler_amr_1d_reduces_error_with_refinement(self) -> None:
+        """A refinement baseline that does not converge measures nothing.
+
+        Guards the same defect class as the 2026-08-16 L-shape retraction: while
+        1D Poisson was ``u == 0``, ``l2_error`` was 0.0 at every DOF count, so no
+        error-vs-DOF assertion could ever have failed.
+        """
+        op = _make_poisson_1d()
+        coarse = DorflerAMRSolver().solve(op, n_dof=32)
+        fine = DorflerAMRSolver().solve(op, n_dof=512)
+
+        assert fine.n_dof > coarse.n_dof, "precondition: the fine run must be finer"
+        assert coarse.l2_error > 0.0, "a zero coarse error means the problem is degenerate"
+        assert fine.l2_error < coarse.l2_error, (
+            f"refining {coarse.n_dof} -> {fine.n_dof} DOF did not reduce L2 error "
+            f"({coarse.l2_error:.3e} -> {fine.l2_error:.3e})"
         )
 
     def test_dorfler_amr_1d_n_dof_scales_with_target(self) -> None:

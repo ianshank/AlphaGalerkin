@@ -533,16 +533,21 @@ class PoissonOperator(PDEOperator):
         if self._source_function is not None:
             return self._source_function(coords)
 
-        # Default: sinusoidal source for smooth manufactured solution
-        if isinstance(coords, Tensor):
-            x = coords[:, 0]
-            y = coords[:, 1] if self.dim > 1 else torch.zeros_like(x)
-            # Source for solution u = sin(πx)sin(πy)
-            return 2 * (np.pi**2) * torch.sin(np.pi * x) * torch.sin(np.pi * y)
-        else:
-            x = coords[:, 0]
-            y = coords[:, 1] if self.dim > 1 else np.zeros_like(x)
-            return 2 * (np.pi**2) * np.sin(np.pi * x) * np.sin(np.pi * y)
+        # Source for the manufactured solution u = prod_d sin(pi*x_d), whose
+        # Laplacian is -dim*pi^2*u, so f = -laplacian(u) = dim*pi^2*u.
+        #
+        # The product runs over every dimension rather than a hardcoded (x, y).
+        # The previous form took ``y = 0`` when ``dim == 1``, so the ``sin(pi*y)``
+        # factor made f -- and the exact solution below -- identically ZERO in 1D:
+        # every 1D Poisson problem in the repo was the degenerate ``-u'' = 0``
+        # with homogeneous Dirichlet data, whose solution is ``u == 0``. That is
+        # what left the 1D Dorfler AMR baseline with ``max_indicator == 0.0`` at
+        # every step (bulk marking could never fire) and ``l2_error == 0.0`` at
+        # every DOF count. It also silently truncated ``dim >= 3`` to the 2D
+        # expression. At ``dim == 2`` this is the old expression re-associated:
+        # measured max deviation is 1 ULP (9.7e-8 relative to the amplitude at
+        # float32, 1.8e-16 at float64), so no 2D caller changes meaningfully.
+        return self.dim * (np.pi**2) * self._default_manufactured_solution(coords)
 
     def boundary_value(
         self,
@@ -577,15 +582,32 @@ class PoissonOperator(PDEOperator):
         if self._exact_solution_function is not None:
             return self._exact_solution_function(coords)
 
-        # Default: sinusoidal exact solution
+        return self._default_manufactured_solution(coords)
+
+    def _default_manufactured_solution(
+        self,
+        coords: NDArray[np.float32] | Tensor,
+    ) -> NDArray[np.float32] | Tensor:
+        """Separable sinusoid ``u = prod_d sin(pi * x_d)`` over EVERY dimension.
+
+        Shared by :meth:`source_term` and :meth:`exact_solution` so the two can
+        never describe different problems. ``source_term`` deliberately calls
+        *this* rather than ``exact_solution``: a caller-supplied
+        ``exact_solution_function`` need not be a Laplacian eigenfunction, so
+        scaling it by ``dim * pi^2`` would not be its source.
+
+        See ``source_term`` for why the previous ``(x, y)``-only form was
+        identically zero at ``dim == 1``. At ``dim == 2`` this is unchanged.
+        """
         if isinstance(coords, Tensor):
-            x = coords[:, 0]
-            y = coords[:, 1] if self.dim > 1 else torch.zeros_like(x)
-            return torch.sin(np.pi * x) * torch.sin(np.pi * y)
-        else:
-            x = coords[:, 0]
-            y = coords[:, 1] if self.dim > 1 else np.zeros_like(x)
-            return np.sin(np.pi * x) * np.sin(np.pi * y)
+            u = torch.ones_like(coords[:, 0])
+            for d in range(self.dim):
+                u = u * torch.sin(np.pi * coords[:, d])
+            return u
+        u_np: NDArray[np.float32] = np.ones_like(coords[:, 0])
+        for d in range(self.dim):
+            u_np = u_np * np.sin(np.pi * coords[:, d])
+        return u_np
 
 
 COLE_HOPF_N_TERMS: int = 50

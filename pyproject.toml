@@ -34,7 +34,18 @@ classifiers = [
 ]
 
 dependencies = [
-    "torch>=2.0.0",
+    # >=2.5.0 is a hard requirement of src/training/checkpoint.py: it uses the
+    # `torch.serialization.safe_globals` *context manager*, added in 2.5.0
+    # (pytorch/pytorch#127939). `add_safe_globals` landed earlier, in 2.4.0
+    # (#124331/#124330/#127808), so 2.4 is not sufficient -- on any torch in
+    # [2.0, 2.5) every checkpoint load raised `AttributeError: module
+    # 'torch.serialization' has no attribute 'safe_globals'`.
+    # >=2.6.0 is the floor actually declared, because the loaders that pass no
+    # `weights_only` at all (src/training/evaluation.py,
+    # src/training/operator_trainer.py, src/video_compression/codec/codec.py)
+    # are safe-by-default only from 2.6, where `torch.load` flipped its default
+    # to `weights_only=True`. Below that they silently unpickle.
+    "torch>=2.6.0",
     "torchvision>=0.15.0",
     "einops>=0.7.0",
     "jaxtyping>=0.2.25",

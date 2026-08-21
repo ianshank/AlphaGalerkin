@@ -2,6 +2,7 @@
 
 import os
 import pickle
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,18 @@ from src.training.checkpoint import (
     CheckpointManager,
     load_checkpoint_with_config,
     load_model_only,
+    load_torch_checkpoint,
 )
+
+# How long the "slow" load stalls inside the allowlist window waiting for the
+# other thread. Without the lock the other thread finishes immediately and this
+# never elapses; with the lock the other thread is blocked on acquire, so this
+# is the (one-off, per-test) cost of proving no tear-down happened.
+_WINDOW_HANDSHAKE_TIMEOUT_S = 0.5
+
+# Ceiling on any thread join in these tests. Exceeding it means a deadlock, not
+# slowness -- every load here is a few hundred bytes off tmpfs.
+_THREAD_JOIN_TIMEOUT_S = 30.0
 
 pytestmark = pytest.mark.security
 
@@ -355,6 +367,153 @@ class TestUnsafePickleOptIn:
 
         # No allow_unsafe_pickle anywhere: the safe path must be sufficient.
         assert manager.load().step == 1
+
+
+def _load_outcome(path: Path) -> str:
+    """Run a safe load and reduce it to ``"ok"`` or a short failure tag.
+
+    Returning a string rather than letting the exception escape keeps the
+    assertion in the *main* thread, where a failure is reported instead of
+    printed to stderr and swallowed.
+    """
+    try:
+        load_torch_checkpoint(path)
+    except Exception as exc:  # Intentionally broad: classify the outcome, do not handle.
+        return f"{type(exc).__name__}: {str(exc)[:80]}"
+    return "ok"
+
+
+class TestSafeGlobalsWindowIsSerialized:
+    """The allowlist window is process-global, so concurrent loads must not race.
+
+    ``torch.serialization.safe_globals.__enter__`` calls
+    ``torch._weights_only_unpickler._add_safe_globals``, which rebinds a
+    *module-global* set; ``__exit__`` subtracts from that same global. Two
+    overlapping windows therefore tear each other down: the first ``__exit__``
+    strips the allowlist while the other load is still unpickling.
+
+    This is reachable in shipped code -- ``src/poc/runner.py`` (the documented
+    ``--parallel`` flag) and ``src/agents/research_loop.py`` both reach this
+    loader from a ``ThreadPoolExecutor`` -- and becomes live the moment a
+    checkpoint carries a ``datetime``, which is exactly what the allowlist
+    exists for.
+    """
+
+    @staticmethod
+    def _datetime_checkpoint(tmp_path: Path) -> Path:
+        """A checkpoint that loads *only* while the allowlist window is open."""
+        path = tmp_path / "with_datetime.pt"
+        torch.save({"created_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}, path)
+        return path
+
+    def test_payload_really_depends_on_the_window(self, tmp_path: Path) -> None:
+        """Precondition for the race test: bare ``weights_only=True`` rejects it.
+
+        Without this the race test could pass for the wrong reason -- a payload
+        that loads with or without the allowlist proves nothing about tear-down.
+        """
+        ckpt = self._datetime_checkpoint(tmp_path)
+
+        with pytest.raises(pickle.UnpicklingError):
+            torch.load(ckpt, map_location="cpu", weights_only=True)
+
+        assert load_torch_checkpoint(ckpt)["created_at"].year == 2026
+
+    def test_concurrent_loads_do_not_tear_down_each_others_window(self, tmp_path: Path) -> None:
+        """Two overlapping loads must both succeed.
+
+        The handshake is deterministic in both directions rather than timing
+        dependent:
+
+        * The "slow" thread stalls *inside* its window (the patched
+          ``torch.load`` runs after ``safe_globals.__enter__``) until the other
+          thread reports done.
+        * Unlocked, the other thread runs straight through -- its ``__exit__``
+          removes the globals -- and the slow thread's real ``torch.load`` then
+          dies with ``UnpicklingError`` wrapped as ``RuntimeError: Failed to
+          load checkpoint``. Verified: that is exactly what HEAD~ produced.
+        * Locked, the other thread is parked on ``_SAFE_GLOBALS_LOCK`` and never
+          reaches its window, so the wait times out and both loads succeed.
+        """
+        ckpt = self._datetime_checkpoint(tmp_path)
+        original_load = torch.load
+        slow_registered = threading.Event()
+        slow_inside_window = threading.Event()
+        other_done = threading.Event()
+        slow_ident: dict[str, int] = {}
+        results: dict[str, str] = {}
+
+        def patched(*args: Any, **kwargs: Any) -> Any:
+            if threading.get_ident() == slow_ident.get("id"):
+                slow_inside_window.set()
+                other_done.wait(_WINDOW_HANDSHAKE_TIMEOUT_S)
+            return original_load(*args, **kwargs)
+
+        def slow() -> None:
+            slow_ident["id"] = threading.get_ident()
+            slow_registered.set()
+            results["slow"] = _load_outcome(ckpt)
+
+        def other() -> None:
+            slow_inside_window.wait(_THREAD_JOIN_TIMEOUT_S)
+            results["other"] = _load_outcome(ckpt)
+            other_done.set()
+
+        with patch("src.training.checkpoint.torch.load", side_effect=patched):
+            t_slow = threading.Thread(target=slow, name="slow-load")
+            t_other = threading.Thread(target=other, name="other-load")
+            t_slow.start()
+            assert slow_registered.wait(_THREAD_JOIN_TIMEOUT_S), "slow thread never started"
+            t_other.start()
+            t_slow.join(_THREAD_JOIN_TIMEOUT_S)
+            t_other.join(_THREAD_JOIN_TIMEOUT_S)
+
+        assert not t_slow.is_alive() and not t_other.is_alive(), (
+            "a load thread never finished -- the serialization lock deadlocked"
+        )
+        assert results == {"slow": "ok", "other": "ok"}, (
+            f"a concurrent load tore down the in-flight allowlist window: {results}"
+        )
+
+    def test_nested_load_does_not_deadlock(self, tmp_path: Path) -> None:
+        """Re-entering the window from the same thread must not hang.
+
+        Nothing re-enters :func:`load_torch_checkpoint` today -- the guarded
+        region is a single ``torch.load`` and ``weights_only=True`` cannot
+        execute arbitrary code -- which is why a plain ``threading.Lock`` would
+        also be *correct*. It would not be *safe*: any future nested load would
+        become an unkillable self-deadlock. ``RLock`` makes that case terminate.
+
+        The assertion is deliberately only "it terminates". ``RLock`` does not
+        make nesting semantically correct: the inner ``safe_globals.__exit__``
+        still strips the allowlist from the outer, in-flight load. If a nested
+        load is ever introduced, this test is the place to tighten.
+        """
+        ckpt = self._datetime_checkpoint(tmp_path)
+        original_load = torch.load
+        depth = {"n": 0}
+        outcome: dict[str, str] = {}
+
+        def patched(*args: Any, **kwargs: Any) -> Any:
+            depth["n"] += 1
+            if depth["n"] == 1:
+                # Re-enter the guarded region from this same thread.
+                _load_outcome(ckpt)
+            return original_load(*args, **kwargs)
+
+        def run() -> None:
+            outcome["result"] = _load_outcome(ckpt)
+
+        with patch("src.training.checkpoint.torch.load", side_effect=patched):
+            thread = threading.Thread(target=run, name="nested-load")
+            thread.start()
+            thread.join(_THREAD_JOIN_TIMEOUT_S)
+
+        assert not thread.is_alive(), (
+            "a nested load deadlocked -- _SAFE_GLOBALS_LOCK must stay re-entrant"
+        )
+        assert depth["n"] >= 2, "the nested load never happened; the test is vacuous"
+        assert "result" in outcome
 
 
 class TestSafeGlobalsAllowlist:

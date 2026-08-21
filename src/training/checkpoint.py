@@ -36,11 +36,19 @@ Security Note:
     automatic fallback anywhere in this module any more: a checkpoint that
     fails the safe load is rejected with `RuntimeError`.
 
-    Unrestricted pickle deserialization is still reachable, but only by an
-    explicit, per-call `allow_unsafe_pickle=True` -- for a genuinely legacy or
-    third-party file whose provenance the *operator* has established. No
-    first-party checkpoint needs it. It cannot be reached by a checkpoint's own
-    contents.
+    **Within this module** unrestricted pickle deserialization is reachable only
+    by an explicit, per-call `allow_unsafe_pickle=True` -- for a genuinely legacy
+    or third-party file whose provenance the *operator* has established. No
+    first-party checkpoint needs it, and it cannot be reached by a checkpoint's
+    own contents. That is a statement about `src/training/checkpoint.py` and
+    `src/training/base_trainer.py`, which route through
+    :func:`load_torch_checkpoint`; it is **not** a repo-wide claim. Loaders that
+    call `torch.load` directly set their own policy, and at least three still
+    pass `weights_only=False` on an operator-supplied path:
+    `src/experiments/verify_transfer.py` (`--model-path`, a command documented
+    in `CLAUDE.md`), `scripts/play_engine.py` and `scripts/encode_video.py`
+    (both `--model`). Those are the same unrestricted-pickle shape this module
+    closed and are tracked separately -- do not read this note as covering them.
 
     `CheckpointManager.load()` additionally bounds *which* files can be opened
     at all: a caller-supplied path is resolved against `checkpoint_dir` and
@@ -53,6 +61,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -96,6 +105,39 @@ UNSAFE_PICKLE_HINT = (
     "re-save it with a current AlphaGalerkin, or pass allow_unsafe_pickle=True."
 )
 
+# ``torch.serialization.safe_globals`` is NOT a scoped allowlist. Its
+# ``__enter__`` calls ``torch._weights_only_unpickler._add_safe_globals``, which
+# rebinds the module-global ``_marked_safe_globals_set``; ``__exit__`` subtracts
+# from that same global. So while a window is open the widening is process-wide
+# and visible to every other ``torch.load(weights_only=True)`` -- including the
+# bare ones in ``src/distributed/``, ``dashboard/tabs/game_tab.py`` and any
+# third-party library. Two consequences, only the second of which is fixable
+# here:
+#
+# 1. Leak (inherent to the torch API, not fixable from this module): during the
+#    window an unrelated load elsewhere in the process also accepts the three
+#    globals. Blast radius is bounded by ``SAFE_CHECKPOINT_GLOBALS`` being pure
+#    data constructors -- "a datetime deserializes that otherwise would not".
+# 2. Race (fixed by this lock): two overlapping windows tear each other down.
+#    The first ``__exit__`` removes the globals while the other load is still
+#    unpickling, and that load dies with ``UnpicklingError`` -> ``RuntimeError:
+#    Failed to load checkpoint``. Reachable today: ``src/poc/runner.py`` and
+#    ``src/agents/research_loop.py`` both reach this loader from a
+#    ``ThreadPoolExecutor`` via ``_centaur_common.build_arm_evaluator``. It is
+#    latent only because no shipped checkpoint contains a ``datetime``; a
+#    ``BaseTrainer`` subclass with a ``BaseModuleConfig`` config makes it live.
+#
+# Serialising the window is therefore correctness, not caution, and it costs
+# nothing measurable: checkpoint loads happen at setup, not in a hot loop.
+#
+# ``RLock`` rather than ``Lock``: the guarded region is a single ``torch.load``
+# and ``weights_only=True`` cannot execute arbitrary code, so nothing re-enters
+# this function today (the ``allow_unsafe_pickle`` branch returns before ever
+# acquiring the lock, so even an executing payload cannot deadlock on it).
+# ``RLock`` is defence in depth -- a future nested load degrades to the
+# pre-lock behaviour instead of hanging the process against itself.
+_SAFE_GLOBALS_LOCK = threading.RLock()
+
 
 def load_torch_checkpoint(
     path: Path | str,
@@ -129,9 +171,15 @@ def load_torch_checkpoint(
         The deserialized checkpoint object.
 
     Raises:
+        OSError: Propagated unchanged if the file cannot be *read* --
+            ``FileNotFoundError`` for a missing path, ``IsADirectoryError`` for a
+            directory, and so on. A missing file is not a deserialization
+            failure and must not be disguised as one.
         RuntimeError: If the checkpoint cannot be deserialized. Normalised so
             callers see one deterministic type instead of a platform- and
-            format-dependent pickle error.
+            format-dependent pickle error (``UnpicklingError``, ``EOFError`` and
+            ``RuntimeError`` are all reachable from ``torch.load`` on a corrupt
+            file).
 
     """
     if allow_unsafe_pickle:
@@ -143,11 +191,19 @@ def load_torch_checkpoint(
         return torch.load(path, map_location=map_location, weights_only=False)
 
     try:
-        # Scoped rather than a process-global ``add_safe_globals``: the widened
-        # allowlist applies to this load only and cannot leak into unrelated
-        # ``torch.load`` calls elsewhere in the process.
-        with torch.serialization.safe_globals(list(SAFE_CHECKPOINT_GLOBALS)):
+        # The allowlist window is process-global while open (see
+        # ``_SAFE_GLOBALS_LOCK``), so it is held under the lock for the whole
+        # ``torch.load``: releasing earlier would let a concurrent load's
+        # ``__exit__`` strip the globals out from under this one.
+        with _SAFE_GLOBALS_LOCK, torch.serialization.safe_globals(list(SAFE_CHECKPOINT_GLOBALS)):
             return torch.load(path, map_location=map_location, weights_only=True)
+    except OSError:
+        # A missing or unreadable file is an I/O failure, not a deserialization
+        # failure. Wrapping it would make ``load_model_only(model, "/nope.pt")``
+        # raise ``RuntimeError: Failed to load checkpoint: [Errno 2] ...`` with
+        # an unsafe-pickle hint appended, which is both the wrong type and
+        # actively misleading advice. Only pickle-layer failures are normalised.
+        raise
     except Exception as e:
         logger.error("checkpoint_load_failed", path=str(path), error=str(e))
         raise RuntimeError(f"Failed to load checkpoint: {e}\n\n{UNSAFE_PICKLE_HINT}") from e
@@ -327,10 +383,25 @@ class CheckpointManager:
         """Load a checkpoint.
 
         Deserialization is ``weights_only=True`` (see the module Security Note).
-        The path is additionally resolved against ``self.checkpoint_dir`` (relative
-        paths are interpreted relative to it, not to the process CWD) and must
-        resolve to a location inside that directory, so an untrusted ``path`` such
-        as ``"../../../etc/shadow"`` is rejected rather than opened.
+
+        A **caller-supplied** ``path`` is additionally resolved against
+        ``self.checkpoint_dir`` (relative paths are interpreted relative to it,
+        not to the process CWD) and must resolve to a location inside that
+        directory, so an untrusted ``path`` such as ``"../../../etc/shadow"`` is
+        rejected rather than opened.
+
+        That containment check applies *only* to a caller-supplied path. When
+        ``path is None`` (latest) or ``load_best`` is set, the path is one this
+        manager just generated from its own ``checkpoint_dir``; there is no
+        untrusted input to bound, and running it through the check was actively
+        wrong. ``Path.resolve()`` follows symlinks, so a checkpoint symlinked
+        into ``checkpoint_dir`` from a shared artifact store (an NFS model store,
+        or CI artifact-restore tooling) resolved to its target and was rejected
+        with ``ValueError`` on a plain ``manager.load()`` -- no caller path
+        involved. A relative ``checkpoint_dir`` was broken the same way: the
+        generated path was itself relative, so it was joined onto
+        ``checkpoint_dir`` a second time (``ckpts/ckpts/checkpoint_*.pt``) and
+        raised ``FileNotFoundError``.
 
         Args:
             path: Specific checkpoint path (None for latest). Relative paths are
@@ -354,6 +425,11 @@ class CheckpointManager:
             RuntimeError: If the checkpoint cannot be deserialized.
 
         """
+        # Only a path the *caller* supplied is untrusted input. Paths this
+        # manager derives from its own checkpoint_dir are not, and must not be
+        # put through the containment check (see the docstring).
+        caller_supplied = not load_best and path is not None
+
         if load_best:
             path = self.checkpoint_dir / CHECKPOINT_BEST
         elif path is None:
@@ -362,27 +438,30 @@ class CheckpointManager:
         if path is None:
             raise FileNotFoundError("No checkpoint found")
 
-        # Relative paths belong to this manager's directory, not the CWD.
-        candidate = Path(path)
-        if not candidate.is_absolute():
-            candidate = self.checkpoint_dir / candidate
+        path = Path(path)
 
-        # Path.resolve() is non-strict, so containment can be (and is) checked
-        # before existence: a missing *in-dir* checkpoint still raises
-        # FileNotFoundError, while an escaping path never reaches torch.load.
-        resolved = candidate.resolve()
-        root = self.checkpoint_dir.resolve()
-        if not allow_external and not resolved.is_relative_to(root):
-            logger.error(
-                "checkpoint_path_outside_directory",
-                path=str(resolved),
-                checkpoint_dir=str(root),
-            )
-            raise ValueError(
-                f"Checkpoint path {resolved} is outside checkpoint directory {root}. "
-                "Pass allow_external=True to load a checkpoint from another location."
-            )
-        path = resolved
+        if caller_supplied:
+            # Relative paths belong to this manager's directory, not the CWD.
+            candidate = path
+            if not candidate.is_absolute():
+                candidate = self.checkpoint_dir / candidate
+
+            # Path.resolve() is non-strict, so containment can be (and is) checked
+            # before existence: a missing *in-dir* checkpoint still raises
+            # FileNotFoundError, while an escaping path never reaches torch.load.
+            resolved = candidate.resolve()
+            root = self.checkpoint_dir.resolve()
+            if not allow_external and not resolved.is_relative_to(root):
+                logger.error(
+                    "checkpoint_path_outside_directory",
+                    path=str(resolved),
+                    checkpoint_dir=str(root),
+                )
+                raise ValueError(
+                    f"Checkpoint path {resolved} is outside checkpoint directory {root}. "
+                    "Pass allow_external=True to load a checkpoint from another location."
+                )
+            path = resolved
 
         if not path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {path}")

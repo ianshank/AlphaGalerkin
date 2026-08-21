@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from src.training.checkpoint import (
     create_model_from_checkpoint,
     load_checkpoint_with_config,
     load_model_only,
+    load_torch_checkpoint,
     save_model_only,
 )
 
@@ -413,10 +415,15 @@ class TestCheckpointManager:
 class TestCheckpointPathContainment:
     """Tests for path resolution and containment in CheckpointManager.load.
 
-    ``load()`` funnels into ``torch.load(..., weights_only=False)``, so the path
-    it accepts decides which files can be unpickled. These tests pin both halves
-    of the contract: paths resolve against ``checkpoint_dir`` (not the CWD), and
-    escaping it requires the explicit ``allow_external`` opt-in.
+    ``load()`` funnels into ``load_torch_checkpoint``, which deserializes with
+    ``weights_only=True`` (4ca61f1 removed the ``weights_only=False`` call this
+    docstring used to describe). Containment is therefore defence in depth, not
+    the only thing standing between a path and a pickle -- it bounds *which*
+    files a caller can make this manager open at all. These tests pin all three
+    halves of the contract: a caller-supplied relative path resolves against
+    ``checkpoint_dir`` (not the CWD), escaping it requires the explicit
+    ``allow_external`` opt-in, and a path the manager generated itself is not
+    subject to the check.
     """
 
     @staticmethod
@@ -536,6 +543,125 @@ class TestCheckpointPathContainment:
 
         with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
             manager.load(path=corrupt)
+
+    def test_symlinked_in_dir_checkpoint_loads_without_a_caller_path(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """A manager-generated path is not caller input, so containment skips it.
+
+        ``Path.resolve()`` follows symlinks, so a checkpoint symlinked into
+        ``checkpoint_dir`` from a shared artifact store (NFS model store, CI
+        artifact-restore tooling) resolved to its target and was rejected with
+        ``ValueError`` -- on ``manager.load()``, where the caller supplied no
+        path at all. The containment check exists to bound *untrusted* input;
+        applying it to the manager's own output is a plain bug.
+
+        The same test pins the security property it must not have weakened:
+        a caller-supplied traversal to that identical store is still rejected.
+        """
+        root = tmp_path / "ckpts"
+        store = tmp_path / "store"
+        root.mkdir()
+        store.mkdir()
+        real = self._saved(store, small_model, step=5)
+        real_best = store / "best.pt"
+        shutil.copy2(real, real_best)
+        (root / real.name).symlink_to(real)
+        (root / "best.pt").symlink_to(real_best)
+
+        manager = CheckpointManager(root)
+
+        assert manager.load().step == 5
+        assert manager.load(load_best=True).step == 5
+        # The skip must not have opened a door: caller-supplied input into the
+        # very same store is still refused.
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path=f"../store/{real.name}")
+        with pytest.raises(ValueError, match="outside checkpoint directory"):
+            manager.load(path=real)
+
+    def test_relative_checkpoint_dir_round_trips(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A relative ``checkpoint_dir`` must not be joined onto itself twice.
+
+        ``get_latest()`` and the ``load_best`` branch return paths built from
+        ``checkpoint_dir``. When that directory is relative those paths are
+        relative too, so the "relative paths belong to this manager" join fired
+        on them a second time -- ``ckpts/ckpts/checkpoint_*.pt`` -- and every
+        no-argument load raised ``FileNotFoundError``. Skipping the whole
+        resolution step for manager-generated paths fixes it by construction.
+        """
+        monkeypatch.chdir(tmp_path)
+        manager = CheckpointManager("relative_ckpts")
+        manager.save(step=3, model=small_model, metrics={"loss": 0.1})
+
+        assert manager.load().step == 3
+        assert manager.load(load_best=True).step == 3
+
+
+class TestIoErrorsAreNotDeserializationFailures:
+    """A missing file must look like a missing file.
+
+    ``load_torch_checkpoint`` normalises pickle-layer failures to ``RuntimeError``
+    so callers see one deterministic type. A bare ``except Exception`` swallowed
+    ``FileNotFoundError`` into that same wrapper, which is both the wrong type
+    and misleading: the wrapped message ends with an unsafe-pickle hint that has
+    nothing to do with a path typo.
+    """
+
+    def test_load_model_only_missing_file_raises_file_not_found(
+        self,
+        small_model: nn.Module,
+        tmp_path: Path,
+    ) -> None:
+        """The API-visible regression: ``FileNotFoundError``, not ``RuntimeError``."""
+        with pytest.raises(FileNotFoundError):
+            load_model_only(small_model, tmp_path / "nonexistent.pt")
+
+    def test_load_torch_checkpoint_propagates_os_errors(self, tmp_path: Path) -> None:
+        """``OSError`` generally, not just the missing-file case.
+
+        A directory raises ``IsADirectoryError``; both are ``OSError`` subclasses
+        and neither is a deserialization failure.
+        """
+        a_dir = tmp_path / "a_dir"
+        a_dir.mkdir()
+
+        with pytest.raises(FileNotFoundError):
+            load_torch_checkpoint(tmp_path / "nonexistent.pt")
+        with pytest.raises(IsADirectoryError):
+            load_torch_checkpoint(a_dir)
+
+    @pytest.mark.parametrize(
+        ("name", "payload"),
+        [
+            ("garbage", b"not a torch checkpoint"),
+            ("empty", b""),
+        ],
+    )
+    def test_corrupt_files_are_still_normalised_to_runtime_error(
+        self,
+        tmp_path: Path,
+        name: str,
+        payload: bytes,
+    ) -> None:
+        """The narrowing must not leak pickle-layer errors to callers.
+
+        ``torch.load`` raises ``UnpicklingError`` for garbage, ``EOFError`` for
+        an empty file and ``RuntimeError`` for a truncated zip -- none of them
+        ``OSError``, so all three still normalise.
+        """
+        path = tmp_path / f"{name}.pt"
+        path.write_bytes(payload)
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            load_torch_checkpoint(path)
 
 
 class TestSaveLoadModelOnly:

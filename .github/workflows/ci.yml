@@ -156,6 +156,51 @@ jobs:
   # ============================================================
   # Stage 2: Unit Tests (Fast)
   # ============================================================
+  # .gitleaks.toml has existed since the repo was set up, and `make gitleaks`
+  # has existed alongside it -- but NOTHING ever invoked either. A secret
+  # scanner that never runs is worse than none: its presence in the tree reads
+  # as coverage.
+  #
+  # This is a JOB, not a step in test-fast, for two reasons found the hard way
+  # when it was a step:
+  #   1. test-fast is a 3-way python matrix, so the scan ran three times per
+  #      push -- redundant work and three copies of any failure.
+  #   2. actions/checkout defaults to fetch-depth 1. gitleaks-action does a
+  #      diff scan against the base commit, which a shallow clone does not
+  #      contain, so `git` failed with "Use '--' to separate paths from
+  #      revisions", the scan covered ~0 bytes, and it still logged "no leaks
+  #      found in partial scan" before exiting 1. A scanner reporting a clean
+  #      result over zero bytes is precisely the failure mode this branch keeps
+  #      correcting; `fetch-depth: 0` gives it the history it needs to scan
+  #      anything at all.
+  #
+  # Scope: the config allowlists all of tests/, docs/ and config/baselines/, so
+  # this covers src/, scripts/ and .github/ and deliberately not fixtures.
+  # Narrowing that allowlist is tracked separately -- widening the scan and
+  # wiring it in one change makes a first run's failures impossible to triage.
+  #
+  # NOT in `ci-success`'s needs list, deliberately and temporarily: this job has
+  # never completed a green run, and its first attempt failed for a harness
+  # reason rather than a finding. It reports now and blocks later -- promote it
+  # into the merge gate once it has been green across a few pushes. Leaving that
+  # unsaid would make its absence look like an oversight.
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   test-fast:
     name: Unit Tests (Fast)
     runs-on: ubuntu-latest
@@ -191,22 +236,6 @@ jobs:
         run: |
           python -c "import sys; print('Python', sys.version)"
           pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
-
-      # .gitleaks.toml has existed since the repo was set up, and `make gitleaks`
-      # has existed alongside it -- but NOTHING ever invoked either. A secret
-      # scanner that never runs is worse than none: its presence in the tree
-      # reads as coverage. This is the first step that actually executes it.
-      #
-      # Note the config's allowlist is broad (all of tests/, docs/ and
-      # config/baselines/), so this catches secrets in src/, scripts/ and
-      # workflows and deliberately not in fixtures. Narrowing it is tracked
-      # separately -- widening the scan and wiring it in the same change would
-      # make a first run's failures impossible to triage.
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
 
       # The .claude/ harness -- 9 skills, 5 subagents, 4 slash commands, a
       # SessionStart hook and settings.json -- is executable configuration with

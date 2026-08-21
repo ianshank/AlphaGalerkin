@@ -273,3 +273,56 @@ def test_every_python_snippet_in_the_harness_parses() -> None:
             except SyntaxError as exc:
                 failures.append(f"{path.relative_to(CLAUDE_DIR)} block {i}: {exc}")
     assert not failures, "non-parsing python snippets:\n" + "\n".join(failures)
+
+
+class TestEnforcementIsWired:
+    """AQA: the suite above is worthless if nothing runs it.
+
+    Every test in this file passes happily on a developer's machine while the CI
+    step that runs them has been deleted. That is the failure mode this repo
+    has hit repeatedly and at scale — `tests/demos/` and `tests/notebooks/` (226
+    tests) were green locally and executed by NO CI step for months, and
+    `.gitleaks.toml` shipped alongside a `make gitleaks` target while nothing
+    ever invoked either.
+
+    So the acceptance criterion is not "the harness is valid" but "the harness
+    is valid AND something enforces it." These assertions read the workflow and
+    the Makefile as data.
+    """
+
+    CI = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+    MAKEFILE = REPO_ROOT / "Makefile"
+
+    def test_ci_runs_the_harness_suite(self) -> None:
+        assert "pytest tests/claude/" in self.CI.read_text(), (
+            "no CI step runs tests/claude/ -- these 71 tests would be green and "
+            "unexecuted, exactly like tests/demos/ was"
+        )
+
+    def test_ci_runs_gitleaks(self) -> None:
+        """The scanner, not merely its config, must be invoked."""
+        ci = self.CI.read_text()
+        assert "gitleaks/gitleaks-action" in ci, "gitleaks config exists but CI never runs it"
+        assert "GITLEAKS_CONFIG: .gitleaks.toml" in ci, "CI runs gitleaks with the wrong config"
+
+    def test_gitleaks_config_exists_for_that_step_to_use(self) -> None:
+        assert (REPO_ROOT / ".gitleaks.toml").is_file()
+
+    @pytest.mark.parametrize("target", ["test-claude", "test-demos", "gitleaks"])
+    def test_make_pre_pr_chains_the_local_equivalents(self, target: str) -> None:
+        """`make pre-pr` narrower than CI is how CI-invisible tests happen."""
+        text = self.MAKEFILE.read_text()
+        pre_pr = next((ln for ln in text.splitlines() if ln.startswith("pre-pr:")), "")
+        assert pre_pr, "no pre-pr target found in Makefile"
+        assert target in pre_pr, f"make pre-pr does not chain {target}"
+        assert f"\n{target}:" in text, f"{target} is chained but not defined"
+
+    def test_gitleaks_target_does_not_pass_silently_when_uninstalled(self) -> None:
+        """It is chained into pre-pr, so it must not hard-fail without the binary.
+
+        But a skipped scan reported as success is the "check described but not
+        executed" failure mode. The target must say so out loud.
+        """
+        body = self.MAKEFILE.read_text().split("\ngitleaks:", 1)[1].split("\n\n", 1)[0]
+        assert "command -v gitleaks" in body, "target does not detect a missing binary"
+        assert "SKIPPED" in body, "a skipped scan must announce itself, not pass quietly"

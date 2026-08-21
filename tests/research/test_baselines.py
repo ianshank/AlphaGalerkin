@@ -308,11 +308,16 @@ class TestDorflerAMRSolver:
         boundary data, so its exact solution is ``u == 0``; every residual
         indicator is therefore 0 and Dorfler marking degenerates to the
         +1-element-per-step fallback, giving a deterministic
-        ``65 start + 29 refinements = 94`` DOF (measured 124 under the old,
-        physically meaningless BC). The regression this test exists for --
-        the 18-DOF ceiling -- is unaffected, but note that AMR-on-Burgers no
-        longer exercises bulk marking; that guard wants a non-degenerate
-        steady problem (e.g. PoissonOperator, which has a real source term).
+        ``64 start + 30 refinements = 94`` DOF -- ``n_start =
+        max(min(128 // initial_dof_divisor, max_initial_points_1d),
+        min_initial_points) = max(min(64, 256), 4) = 64``, and since 94 never
+        reaches the requested 128 the loop never breaks early, so all
+        ``max_refinements = 30`` steps run at +1 element each (measured 124
+        under the old, physically meaningless BC). The regression this test
+        exists for -- the 18-DOF ceiling -- is unaffected, but note that
+        AMR-on-Burgers no longer exercises bulk marking; that guard wants a
+        non-degenerate steady problem (e.g. PoissonOperator, which has a real
+        source term).
         """
         cfg = PDEConfig(
             name="test_burgers_1d",

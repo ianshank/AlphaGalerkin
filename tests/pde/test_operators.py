@@ -569,11 +569,52 @@ class TestBurgersOperatorColeHopf:
 # series resolves u across the whole domain (1.0 is the shipped default from a
 # bare PDEConfig; 0.01 is the value used by this file's other fixtures).
 WELL_CONDITIONED_VISCOSITIES = [1.0, 0.5, 0.1, 0.05]
-# The full acceptance sweep, including the deliberately under-resolved 0.001
-# (R = 1/(2*pi*nu) = 159, where phi's dynamic range exp(-2R) = 5.8e-139 is far
-# below float64 resolution near x = 0).
-ACCEPTANCE_VISCOSITIES = [1.0, 0.01, 0.001]
+# The full acceptance sweep. Besides the resolved end it deliberately includes
+# three under-resolved viscosities, chosen so the sweep contains the *worst*
+# points found rather than avoiding them:
+#   0.005  -- ~50% of the domain degraded; measured max|u| = 1.0017 at t=0,
+#             i.e. it already breaks a naive `<= 1 + 1e-3` bound;
+#   0.0047 -- the worst overshoot located anywhere by a 116-point nu scan over
+#             [0.0005, 0.012] x TIME_SWEEP on this grid (max|u| = 1.0142);
+#   0.001  -- R = 1/(2*pi*nu) = 159, where phi's dynamic range exp(-2R) =
+#             5.8e-139 is far below float64 resolution and ~80% of the domain
+#             is degraded.
+ACCEPTANCE_VISCOSITIES = [1.0, 0.01, 0.005, 0.0047, 0.001]
 TIME_SWEEP = [0.0, 0.05, 0.2, 1.0]
+
+# Maximum-principle slack, split by regime because the maximum principle is an
+# exact property of the *true* solution and only transfers to the *computed*
+# one where the representation is resolved.
+#
+# Resolved (nu >= COLE_HOPF_MIN_RESOLVED_VISCOSITY): measured overshoot is
+# exactly 0.0 over a 40-point geometric nu sweep across [0.01, 10] x six times
+# x a 2001-point grid, on both branches. The only slack needed is the float32
+# cast on return (eps = 1.19e-7), so this is ~8 ulp.
+RESOLVED_MAX_PRINCIPLE_SLACK = 1e-6
+
+# Under-resolved (nu < COLE_HOPF_MIN_RESOLVED_VISCOSITY): the computed maximum
+# genuinely exceeds 1 by O(1e-2). This is float64 cancellation, not a defect in
+# the series -- see test_overshoot_is_summation_round_off_not_a_wrong_series,
+# which reproduces the potential in cancellation-free closed form and shows the
+# overshoot vanishes. (Cross-checked off-tree at dps=400 with mpmath, which is
+# not a declared dependency: the series reproduces -sin(pi*x) to 1e-150.) Just
+# outside the clamp boundary phi ~ COLE_HOPF_CLAMP_EPS carries no significant
+# digits, so u = -2*nu*phi_x/phi inherits a relative error of order
+# eps_mach*n_terms*pi/COLE_HOPF_CLAMP_EPS, i.e. a few percent.
+#
+# The bound is NOT the measured worst case, deliberately: that quantity is pure
+# round-off and is not even stable in the last bit of the *input*. Perturbing
+# nu = 0.0047 by +-3 ulp moves max|u| non-monotonically over
+# 1.0102 .. 1.0157, and the numpy and torch branches differ in the third
+# decimal (1.001664 vs 1.001627 at nu=0.005, t=0). Pinning the tolerance to one
+# sampled value would reproduce exactly the defect this constant replaces -- a
+# bound that holds only because the sweep misses the failing point.
+#
+# 0.05 is instead set above both the measured supremum (1.0142, over the nu
+# scan described on ACCEPTANCE_VISCOSITIES, re-checked on 401/2001/4001-point
+# grids) and the ~3.5e-2 mechanism ceiling above, while remaining ~9 orders of
+# magnitude below the ~1e10-1e13 blow-up this test exists to catch.
+UNDER_RESOLVED_MAX_PRINCIPLE_SLACK = 0.05
 
 
 def _burgers(viscosity: float, dim: int = 2) -> BurgersOperator:
@@ -728,19 +769,105 @@ class TestBurgersColeHopf:
         = 1 for the ``-sin(pi*x)`` datum, so a genuine solution is O(1). The old
         implementation returned finite float32 values of magnitude ~1e10-1e13,
         which no ``isfinite`` check catches.
+
+        The bound is regime-dependent, and deliberately so. Above
+        :data:`COLE_HOPF_MIN_RESOLVED_VISCOSITY` the principle transfers to the
+        computed values essentially exactly (measured overshoot 0.0), so the
+        slack there is float32 round-off. Below it the computed maximum really
+        does exceed 1 by O(1e-2) -- float64 cancellation just outside the clamp
+        boundary, not an error in the series -- so a single tight bound across
+        the whole sweep would either be false or force the sweep to dodge the
+        viscosities where it fails. See the two slack constants for the
+        measurements.
         """
         operator = _burgers(viscosity)
         coords = _grid(401)
 
         u_np = np.asarray(operator.exact_solution(coords, time=time))
         u_torch = operator.exact_solution(torch.from_numpy(coords), time=time)
+        assert isinstance(u_torch, torch.Tensor)
 
         assert u_np.dtype == np.float32
         assert np.isfinite(u_np).all()
         assert torch.isfinite(u_torch).all()
-        # 1e-3 slack absorbs float64 round-off in the under-resolved regime.
-        assert np.abs(u_np).max() <= 1.0 + 1e-3
-        assert float(u_torch.abs().max()) <= 1.0 + 1e-3
+
+        slack = (
+            RESOLVED_MAX_PRINCIPLE_SLACK
+            if viscosity >= COLE_HOPF_MIN_RESOLVED_VISCOSITY
+            else UNDER_RESOLVED_MAX_PRINCIPLE_SLACK
+        )
+        max_np = float(np.abs(u_np).max())
+        max_torch = float(u_torch.abs().max())
+        assert max_np <= 1.0 + slack, (
+            f"max|u| = {max_np:.6f} exceeds 1 + {slack} at nu={viscosity}, t={time} (numpy branch)"
+        )
+        assert max_torch <= 1.0 + slack, (
+            f"max|u| = {max_torch:.6f} exceeds 1 + {slack} at "
+            f"nu={viscosity}, t={time} (torch branch)"
+        )
+
+    @pytest.mark.parametrize("viscosity", ACCEPTANCE_VISCOSITIES)
+    def test_overshoot_is_summation_round_off_not_a_wrong_series(
+        self,
+        viscosity: float,
+    ) -> None:
+        """Attributes the >1 maximum to arithmetic, so it cannot hide a defect.
+
+        ``max|u|`` exceeding the maximum principle is the kind of symptom that
+        can mean either "float64 lost the denominator" or "the series is
+        wrong", and the second would be a repeat of the historical defect. This
+        test discriminates, by evaluating the same potential a second way that
+        involves no coefficients, no truncation and no summation at all.
+
+        At ``t = 0`` the generating function collapses in closed form: the
+        exponentially-scaled potential is exactly::
+
+            phi(x, 0)   = exp(-R*(1 + cos(pi*x)))
+            phi_x(x, 0) = R*pi*sin(pi*x) * phi(x, 0)
+
+        (whence ``u = -2*nu*phi_x/phi = -2*nu*R*pi*sin(pi*x) = -sin(pi*x)``,
+        since ``R = 1/(2*pi*nu)``). Two things follow, and both are asserted:
+
+        1. the shipped Fourier-Bessel summation reproduces that closed form to
+           absolute machine precision at *every* viscosity in the sweep,
+           including the under-resolved ones -- so the coefficients are right
+           (the historical all-ones coefficients differ from it by O(1)); and
+        2. the closed form, which cannot cancel, obeys the maximum principle to
+           float64 precision even at ``nu = 0.0047``, where the summation
+           overshoots by 1.2e-2.
+
+        Together those attribute the entire overshoot to round-off in the
+        summed denominator rather than to the formula. The clamp only ever
+        *truncates* ``u`` (it raises a vanishing denominator, shrinking the
+        quotient); it is the round-off that can amplify.
+
+        Complements ``test_matches_independent_finite_difference_march``, which
+        pins the ``t > 0`` evolution against the nonlinear PDE itself.
+        """
+        operator = _burgers(viscosity)
+        coords = _grid(401)
+        x = coords[:, 0].astype(np.float64)
+
+        r = 1.0 / (2.0 * np.pi * viscosity)
+        phi_closed = np.exp(-r * (1.0 + np.cos(np.pi * x)))
+        dphi_closed = r * np.pi * np.sin(np.pi * x) * phi_closed
+
+        phi_summed, dphi_summed = operator.cole_hopf_potential(coords, time=0.0)
+
+        # (1) The summation IS the closed form, to round-off. Both tolerances
+        # are ~50x the measured worst case (6.4e-15 and 1.8e-13 at nu=0.001)
+        # and many orders below any coefficient error.
+        assert np.abs(phi_summed - phi_closed).max() <= 1e-13
+        assert np.abs(dphi_summed - dphi_closed).max() <= 1e-11
+
+        # (2) The cancellation-free evaluation respects the maximum principle
+        # everywhere, including where the summed one does not.
+        u_closed = -2.0 * viscosity * dphi_closed / np.maximum(phi_closed, COLE_HOPF_CLAMP_EPS)
+        assert np.abs(u_closed).max() <= 1.0 + RESOLVED_MAX_PRINCIPLE_SLACK, (
+            f"the cancellation-free closed form overshot at nu={viscosity}: "
+            f"max|u| = {np.abs(u_closed).max():.6f}. That would indicate a "
+            f"defect in the derivation, not float64 round-off."
+        )
 
     @pytest.mark.parametrize("viscosity", WELL_CONDITIONED_VISCOSITIES)
     @pytest.mark.parametrize("time", TIME_SWEEP)
@@ -780,9 +907,12 @@ class TestBurgersColeHopf:
 
         Honest documentation of an intrinsic limit of the Fourier-Bessel
         representation (not of this implementation): ``phi`` spans
-        ``[exp(-2R), 1]``, so once ``exp(-2R)`` falls under float64 round-off the
-        series loses all significance near ``x = 0``. Accuracy survives in the
-        far field, and the magnitude stays physical everywhere.
+        ``[exp(-2R), 1]``, so once ``exp(-2R)`` falls under float64 round-off
+        the series loses significance over the *entire* interval left of
+        ``x_c(nu) = arccos(2*pi*nu*ln(1/COLE_HOPF_CLAMP_EPS) - 1)/pi`` -- at
+        ``nu = 0.001`` that is ``x_c = 0.794``, i.e. ~80% of the domain, not a
+        neighbourhood of the origin. Accuracy survives in the far field, and the
+        magnitude stays physical everywhere.
         """
         operator = _burgers(0.001)
         coords = _grid(401)
@@ -791,11 +921,36 @@ class TestBurgersColeHopf:
         u = np.asarray(operator.exact_solution(coords, time=0.0), dtype=np.float64)
         error = np.abs(u + np.sin(np.pi * x))
 
-        assert np.abs(u).max() <= 1.0 + 1e-3, "must stay bounded even when under-resolved"
+        assert np.abs(u).max() <= 1.0 + UNDER_RESOLVED_MAX_PRINCIPLE_SLACK, (
+            "must stay bounded even when under-resolved"
+        )
+        # NB: the accurate region actually begins at x_c = 0.794, so this window
+        # is a deliberately conservative slice of the far field and asserts much
+        # less than the whole accurate region. The *extent* of the degradation
+        # is pinned separately below, so this narrow window cannot be mistaken
+        # for a claim that only x < 0.9 is affected.
         assert error[x >= 0.9].max() < 1e-3, "far field must remain accurate"
         assert error.max() > 1e-2, (
-            "nu=0.001 is expected to be under-resolved near x=0; if this now "
-            "passes accurately, raise the documented COLE_HOPF_MIN_RESOLVED_VISCOSITY"
+            "nu=0.001 is expected to be under-resolved; if this now passes "
+            "accurately, raise the documented COLE_HOPF_MIN_RESOLVED_VISCOSITY"
+        )
+
+        # The extent, not just the existence, of the damage: the degraded region
+        # covers most of the domain. Measured 79.6% of a 401-point grid at
+        # err > 1e-3, with the rightmost bad point at x = 0.7975 against a
+        # predicted x_c = 0.794. Guards the docstring of
+        # COLE_HOPF_MIN_RESOLVED_VISCOSITY, whose earlier "near x = 0" wording
+        # understated this by roughly two orders of magnitude in area.
+        degraded = error > 1e-3
+        x_c = float(
+            np.arccos(2.0 * np.pi * 0.001 * np.log(1.0 / COLE_HOPF_CLAMP_EPS) - 1.0) / np.pi
+        )
+        assert degraded.mean() > 0.7, (
+            f"expected most of the domain to be degraded at nu=0.001, got {degraded.mean():.1%}"
+        )
+        assert x[degraded].max() == pytest.approx(x_c, abs=0.02), (
+            f"degraded region should end at the predicted x_c = {x_c:.4f}, "
+            f"measured {x[degraded].max():.4f}"
         )
 
     @pytest.mark.parametrize(

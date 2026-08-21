@@ -640,9 +640,43 @@ across the *whole* domain.
 
 ``phi`` spans ``[exp(-2R), 1]`` with ``R = 1/(2*pi*nu)``, while the round-off of
 the summation is ~machine epsilon of its unit l1 norm. Significance is
-therefore lost near ``x = 0`` once ``exp(-2R) ~ 1e-16``, i.e. ``nu ~ 0.009``.
-Measured ``max |u(x,0) + sin(pi*x)|`` on a 401-point grid: 6e-16 (nu=1.0),
-3e-15 (nu=0.1), 1.3e-3 (nu=0.01, confined to ``x < 0.25``), 1.0 (nu=0.001).
+therefore lost wherever ``phi`` falls under that floor, which first happens at
+``x = 0`` (where ``phi = exp(-2R)``) once ``exp(-2R) ~ 1e-16``, i.e.
+``nu ~ 0.009``.
+
+**The degraded region is not a neighbourhood of the origin -- it is a
+left-hand interval whose width grows rapidly as the viscosity falls, and it
+covers most of the domain well before ``nu`` reaches 1e-3.** Since
+``phi(x, 0) = exp(-R*(1 + cos(pi*x)))`` (exponentially scaled), the value
+drops below the :data:`COLE_HOPF_CLAMP_EPS` floor for every ``x`` left of::
+
+    x_c(nu) = arccos(2*pi*nu*ln(1/COLE_HOPF_CLAMP_EPS) - 1) / pi
+
+(and ``x_c = 0``, i.e. no degraded region, once the argument exceeds 1 at
+``nu >= 1/(pi*ln(1/COLE_HOPF_CLAMP_EPS)) = 0.00987`` -- which is what sets
+this constant, rounded up to 0.01). Left of ``x_c`` the clamp pins ``u`` to
+~0 while the true solution is O(1), so the *absolute* error there is as large
+as the solution itself; right of it the series is accurate to float64.
+
+Measured ``max |u(x,0) + sin(pi*x)|`` on a 401-point grid (float64 internals,
+before the float32 cast), with the region satisfying ``err > 1e-3``::
+
+    nu      degraded region     fraction of domain   max err   x_c(nu)
+    1.0     none                             0.0%    6e-16      0
+    0.1     none                             0.0%    3e-15      0
+    0.01    none                             0.0%    9.6e-4     0
+    0.009   x <= 0.23                       20.2%    0.33       0.19
+    0.005   x <= 0.52                       50.4%    0.98       0.50
+    0.001   x <= 0.80                       79.6%    1.0        0.79
+
+(``nu = 0.01`` sits exactly on the boundary: on a finer 4001-point grid its
+max error is 1.2e-3, confined to ``x <= 0.10``.)
+
+``t = 0`` is the worst case: diffusion lifts ``phi``'s minimum, so the
+degraded interval shrinks with time (at ``nu = 0.005`` it spans ``x <~ 0.5``
+at ``t = 0`` and has vanished by ``t = 1``, checked against a dps=300 mpmath
+reference).
+
 This is intrinsic to the Fourier-Bessel representation rather than to this
 implementation -- ``ive`` itself is only accurate to float64 relative
 precision, so no summation scheme can recover the lost digits. Below this
@@ -720,7 +754,12 @@ def _cole_hopf_coefficients(
             viscosity=viscosity,
             min_resolved_viscosity=COLE_HOPF_MIN_RESOLVED_VISCOSITY,
             n_terms=n_terms,
-            reason="phi spans [exp(-2R), 1] and loses float64 significance near x=0",
+            reason=(
+                "phi spans [exp(-2R), 1] and loses float64 significance over "
+                "the whole interval x < arccos(2*pi*nu*ln(1/clamp_eps) - 1)/pi "
+                "(~50% of the domain at nu=0.005, ~80% at nu=0.001), not just "
+                "near x=0"
+            ),
         )
 
     n = np.arange(1, n_terms + 1, dtype=np.float64)
@@ -951,8 +990,15 @@ class BurgersOperator(PDEOperator):
 
         The series is assembled in float64 (the denominator legitimately reaches
         ``1.5e-14`` at ``nu = 0.01``, which would underflow float32) and cast
-        back to the input dtype on return. Accuracy degrades near ``x = 0`` for
-        ``nu < COLE_HOPF_MIN_RESOLVED_VISCOSITY``; see that constant.
+        back to the input dtype on return.
+
+        For ``nu < COLE_HOPF_MIN_RESOLVED_VISCOSITY`` accuracy is lost over the
+        whole left-hand interval ``x < arccos(2*pi*nu*ln(1/eps) - 1)/pi``, not
+        merely in a neighbourhood of ``x = 0``: that is ~20% of the domain at
+        ``nu = 0.009``, ~50% at ``nu = 0.005`` and ~80% at ``nu = 0.001``, and
+        inside it ``u`` is pinned to ~0 while the true solution is O(1). Only
+        the far field can be trusted there; see
+        :data:`COLE_HOPF_MIN_RESOLVED_VISCOSITY` for the measured table.
 
         Args:
             coords: Points (N, dim) with spatial coordinates.

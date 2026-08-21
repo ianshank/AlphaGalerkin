@@ -2,14 +2,22 @@
 
 import os
 import pickle
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 import torch
+from torch import nn
 
-from src.training.checkpoint import CHECKPOINT_VERSION, CheckpointManager
+from src.training.checkpoint import (
+    CHECKPOINT_VERSION,
+    SAFE_CHECKPOINT_GLOBALS,
+    CheckpointManager,
+    load_checkpoint_with_config,
+    load_model_only,
+)
 
 pytestmark = pytest.mark.security
 
@@ -21,6 +29,24 @@ class MaliciousPickle:
         return (os.system, ('echo "vulnerable" > /dev/null',))
 
 
+class MarkerPickle:
+    """A ``MaliciousPickle`` that leaves *evidence* when unpickled.
+
+    Same shape and same blocked GLOBAL (``posix.system``) as
+    :class:`MaliciousPickle`, but it touches a file instead of writing to
+    ``/dev/null``. That turns "did the payload run?" into a filesystem
+    assertion, which is the only way to catch a fallback that silently
+    unpickles after the safe load rejected the file. The side effect stays
+    inside pytest's ``tmp_path``.
+    """
+
+    def __init__(self, marker: Path) -> None:
+        self.marker = marker
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (os.system, (f"touch {self.marker}",))
+
+
 @pytest.fixture
 def malicious_checkpoint(tmp_path: Path) -> Path:
     """Create a mock malicious checkpoint using standard pickle."""
@@ -30,19 +56,86 @@ def malicious_checkpoint(tmp_path: Path) -> Path:
     return ckpt_path
 
 
+@pytest.fixture
+def marker_checkpoint(tmp_path: Path) -> tuple[Path, Path]:
+    """A checkpoint whose payload creates a marker file when unpickled.
+
+    Returns:
+        ``(checkpoint_path, marker_path)``. The marker does not exist yet;
+        if it exists after a load, the payload executed.
+
+    """
+    marker = tmp_path / "PAYLOAD_EXECUTED"
+    ckpt_path = tmp_path / "marker.pt"
+    # A real state dict alongside the payload, shaped to load cleanly into the
+    # ``nn.Linear(1, 1)`` these tests use -- so the file is exactly what a loader
+    # would happily consume once unpickled, and nothing but the safety check
+    # stands between the payload and execution.
+    torch.save(
+        {
+            "model_state_dict": {"weight": torch.zeros(1, 1), "bias": torch.zeros(1)},
+            "weights": MarkerPickle(marker),
+        },
+        ckpt_path,
+    )
+    assert not marker.exists()
+    return ckpt_path, marker
+
+
+def _minimal_trainer(tmp_path: Path) -> Any:
+    """Build the smallest real ``BaseTrainer`` that can attempt a load.
+
+    Mirrors ``tests/training/test_base_trainer.py::ConcreteTrainer``; defined
+    here so the security suite exercises the shipped public method rather than
+    the private helper underneath it.
+    """
+    from src.training.base_trainer import BaseTrainer, BaseTrainerConfig
+
+    class _Config(BaseTrainerConfig):
+        pass
+
+    class _Trainer(BaseTrainer[_Config]):
+        def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:
+            loss = self.model(batch).sum()
+            return loss, {"loss": float(loss)}
+
+        def generate_data(self) -> torch.Tensor:
+            return torch.randn(2, 2)
+
+    return _Trainer(nn.Linear(2, 2), _Config(name="sec"), "cpu", tmp_path / "ckpt")
+
+
 def test_torch_load_weights_only() -> None:
     """Verify torch.load is explicitly called with weights_only=True where applicable."""
     # Check that when CheckpointManager loads weights, it specifies weights_only=True
     with patch("torch.load") as mock_load:
         mock_load.return_value = {"model_state_dict": {}}
-        manager = CheckpointManager(checkpoint_dir="dummy")
-        # We need a mock model to pass to load_model_only
-        mock_model = torch.nn.Linear(1, 1)
-        from src.training.checkpoint import load_model_only
+        mock_model = nn.Linear(1, 1)
 
         load_model_only(mock_model, "dummy.pt", strict=False)
 
-        mock_load.assert_called_with("dummy.pt", map_location="cpu", weights_only=True)
+        mock_load.assert_called_once_with("dummy.pt", map_location="cpu", weights_only=True)
+
+
+def test_safe_load_failure_does_not_retry_unsafely() -> None:
+    """A *failing* safe load must not be retried with weights_only=False.
+
+    ``test_torch_load_weights_only`` above mocks ``torch.load`` to *succeed*, so
+    the failure branch never runs -- which is precisely why the fallback ACE path
+    survived it. Here the safe load raises, and the assertion is on what happens
+    next: exactly one call, and no unpickle.
+    """
+    with patch("torch.load") as mock_load:
+        mock_load.side_effect = pickle.UnpicklingError("Unsupported global: posix.system")
+        mock_model = nn.Linear(1, 1)
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            load_model_only(mock_model, "dummy.pt", strict=False)
+
+        assert mock_load.call_count == 1, "safe-load failure triggered a retry"
+        assert all(call.kwargs.get("weights_only") is True for call in mock_load.call_args_list), (
+            "torch.load was reached with weights_only != True"
+        )
 
 
 def test_malicious_checkpoint_rejected(malicious_checkpoint: Path) -> None:
@@ -95,3 +188,228 @@ def test_external_load_requires_explicit_opt_in(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         manager.load(path=target)
     assert manager.load(path=target, allow_external=True).step == 11
+
+
+class TestNoUnsafePickleFallback:
+    """Regression tests for the ``load_model_only`` fallback ACE path.
+
+    Before 2026-08-21 every loader here either called ``weights_only=False``
+    outright or (in ``load_model_only``) caught *any* exception from the safe
+    load and retried with ``weights_only=False``. The failure mode was inverted:
+    a malicious pickle was executed *precisely because* it failed the safe check.
+
+    These tests use a real on-disk payload rather than a mocked ``torch.load``.
+    Mocking is what let the defect survive -- a mock that returns successfully
+    never reaches the fallback branch at all.
+    """
+
+    def test_load_model_only_rejects_payload_without_executing_it(
+        self, marker_checkpoint: tuple[Path, Path]
+    ) -> None:
+        """The demonstrated ACE path: safe load fails, payload must NOT run."""
+        ckpt, marker = marker_checkpoint
+        model = nn.Linear(1, 1)
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            load_model_only(model, ckpt, strict=False)
+
+        assert not marker.exists(), (
+            "ARBITRARY CODE EXECUTION: the payload ran. A checkpoint that fails "
+            "the weights_only=True check was unpickled anyway."
+        )
+
+    def test_load_checkpoint_with_config_rejects_payload(
+        self, marker_checkpoint: tuple[Path, Path]
+    ) -> None:
+        """Sibling loader: same file, same rejection, no execution."""
+        ckpt, marker = marker_checkpoint
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            load_checkpoint_with_config(ckpt)
+
+        assert not marker.exists(), "payload executed via load_checkpoint_with_config"
+
+    def test_manager_load_rejects_payload(self, tmp_path: Path) -> None:
+        """A payload *inside* checkpoint_dir passes containment but not the unpickle.
+
+        The ``allow_external`` containment check added in 77e928c bounds *which*
+        files are opened; it says nothing about what is inside a file that is
+        legitimately in the directory (e.g. written by a compromised training
+        job, or restored from a poisoned artifact store).
+        """
+        marker = tmp_path / "PAYLOAD_EXECUTED"
+        ckpt_dir = tmp_path / "ckpts"
+        manager = CheckpointManager(checkpoint_dir=ckpt_dir)
+        torch.save(
+            {
+                "model_state_dict": {},
+                "step": 1,
+                "version": CHECKPOINT_VERSION,
+                "payload": MarkerPickle(marker),
+            },
+            ckpt_dir / "checkpoint_00000001.pt",
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            manager.load()
+
+        assert not marker.exists(), "payload executed via CheckpointManager.load"
+
+    def test_base_trainer_load_checkpoint_rejects_payload(self, tmp_path: Path) -> None:
+        """``BaseTrainer.load_checkpoint`` had no containment of any kind.
+
+        Unlike ``CheckpointManager`` it has no ``checkpoint_dir`` policy, so the
+        safe default is the only thing standing between an arbitrary ``--resume``
+        path and code execution. Driven through the real public method rather
+        than the shared helper, so the wiring is covered as well as the policy.
+        """
+        trainer = _minimal_trainer(tmp_path)
+        marker = tmp_path / "PAYLOAD_EXECUTED"
+        ckpt = tmp_path / "trainer.pt"
+        torch.save({"global_step": 1, "payload": MarkerPickle(marker)}, ckpt)
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            trainer.load_checkpoint(ckpt)
+
+        assert not marker.exists(), "payload executed via BaseTrainer.load_checkpoint"
+
+    def test_base_trainer_load_training_state_rejects_payload(self, tmp_path: Path) -> None:
+        """The sibling optimizer/scheduler/scaler load path gets the same policy."""
+        trainer = _minimal_trainer(tmp_path)
+        marker = tmp_path / "PAYLOAD_EXECUTED"
+        state = tmp_path / "training_state.pt"
+        torch.save({"global_step": 1, "payload": MarkerPickle(marker)}, state)
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            trainer._load_training_state(state)
+
+        assert not marker.exists(), "payload executed via BaseTrainer._load_training_state"
+
+    def test_error_message_points_at_the_opt_in(self, marker_checkpoint: tuple[Path, Path]) -> None:
+        """A rejected load tells the operator the supported escape hatch."""
+        ckpt, _ = marker_checkpoint
+        model = nn.Linear(1, 1)
+
+        with pytest.raises(RuntimeError, match="allow_unsafe_pickle=True") as exc:
+            load_model_only(model, ckpt, strict=False)
+
+        assert "Refusing to retry" in str(exc.value)
+
+
+class TestUnsafePickleOptIn:
+    """Both states of the explicit ``allow_unsafe_pickle`` opt-in."""
+
+    def test_default_is_safe(self, marker_checkpoint: tuple[Path, Path]) -> None:
+        """Opt-in defaults to off: the payload is rejected."""
+        ckpt, marker = marker_checkpoint
+        model = nn.Linear(1, 1)
+
+        with pytest.raises(RuntimeError):
+            load_model_only(model, ckpt, strict=False)
+        assert not marker.exists()
+
+    def test_opt_in_reaches_pickle(self, marker_checkpoint: tuple[Path, Path]) -> None:
+        """``allow_unsafe_pickle=True`` really does unpickle.
+
+        This asserts the escape hatch is a *functioning* one and not dead code --
+        the flag must be the only thing that reaches pickle, so that the safe
+        default is meaningful rather than incidental.
+        """
+        ckpt, marker = marker_checkpoint
+        model = nn.Linear(1, 1)
+
+        # strict=False: the payload checkpoint's state dict does not match Linear.
+        load_model_only(model, ckpt, strict=False, allow_unsafe_pickle=True)
+
+        assert marker.exists(), (
+            "allow_unsafe_pickle=True did not reach pickle -- the opt-in is dead "
+            "code, so the safe default proves nothing."
+        )
+
+    def test_first_party_checkpoints_never_need_the_opt_in(self, tmp_path: Path) -> None:
+        """Every checkpoint this repo writes loads under the safe default.
+
+        This is the evidence the fallback removal rests on: if a real
+        ``CheckpointManager.save`` payload -- optimizer + scheduler +
+        ``config.model_dump()`` + metrics -- needed ``weights_only=False``, then
+        removing the fallback would break resume-from-checkpoint. It does not.
+        """
+        from config.schemas import AlphaGalerkinConfig
+
+        model = nn.Linear(4, 4)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
+        model(torch.randn(2, 4)).sum().backward()
+        optimizer.step()
+        scheduler.step()
+
+        manager = CheckpointManager(checkpoint_dir=tmp_path / "ckpts")
+        manager.save(
+            step=1,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            config=AlphaGalerkinConfig(),
+            metrics={"loss": 0.5},
+        )
+
+        # No allow_unsafe_pickle anywhere: the safe path must be sufficient.
+        assert manager.load().step == 1
+
+
+class TestSafeGlobalsAllowlist:
+    """The narrow ``weights_only=True`` allowlist that replaces the fallback.
+
+    ``BaseTrainer.save_checkpoint`` stores ``config.model_dump()``, and
+    ``BaseModuleConfig.created_at`` is a ``datetime``, so that one first-party
+    payload genuinely does not load under a bare ``weights_only=True``. The fix
+    is to admit the three pure-data datetime constructors it needs -- not to
+    relax the whole file to ``weights_only=False``.
+    """
+
+    def test_allowlist_is_exactly_the_datetime_trio(self) -> None:
+        """Pin the allowlist so widening it is a deliberate, reviewed act.
+
+        Each entry must be a pure data constructor. Adding anything callable
+        that can reach other code (``os.system``, ``builtins.eval``,
+        ``subprocess.Popen``) would reopen the hole this module just closed.
+        """
+        assert set(SAFE_CHECKPOINT_GLOBALS) == {datetime, timezone, timedelta}
+
+    def test_base_trainer_checkpoint_round_trips_under_safe_default(self, tmp_path: Path) -> None:
+        """The regression the allowlist exists for: resume must still work.
+
+        Without the allowlist this raises, and ``BaseTrainer`` checkpoints
+        become unloadable -- which is exactly the breakage that would tempt
+        someone to reinstate the unsafe fallback.
+        """
+        trainer = _minimal_trainer(tmp_path)
+        trainer.global_step = 7
+        path = trainer.save_checkpoint()
+
+        restored = _minimal_trainer(tmp_path)
+        assert restored.load_checkpoint(path) == 7
+
+    def test_allowlist_does_not_admit_the_payload(self, tmp_path: Path) -> None:
+        """Widening for datetime must not widen for anything else.
+
+        A checkpoint carrying *both* a legitimate ``datetime`` config and a
+        malicious global proves the allowlist is a whitelist, not a switch that
+        loosens the unpickler generally.
+        """
+        trainer = _minimal_trainer(tmp_path)
+        marker = tmp_path / "PAYLOAD_EXECUTED"
+        ckpt = tmp_path / "mixed.pt"
+        torch.save(
+            {
+                "global_step": 1,
+                "config": trainer.config.model_dump(),  # contains a real datetime
+                "payload": MarkerPickle(marker),
+            },
+            ckpt,
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            trainer.load_checkpoint(ckpt)
+
+        assert not marker.exists(), "allowlist admitted a non-allowlisted global"

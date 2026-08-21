@@ -581,46 +581,66 @@ class TestSaveLoadModelOnly:
         assert data["version"] == CHECKPOINT_VERSION
         assert "timestamp" in data
 
-    def test_load_model_only_fallback_to_legacy(
+    def test_load_model_only_does_not_fall_back_to_legacy(
         self,
         small_model: nn.Module,
         checkpoint_dir: Path,
     ) -> None:
-        """Test load_model_only falls back to weights_only=False on failure (lines 463-470).
+        """A failed weights_only=True load is a rejection, not a retry trigger.
 
-        We mock torch.load so the first call (weights_only=True) raises,
-        forcing the fallback path that uses weights_only=False.
+        This test previously asserted the *opposite* -- that a safe-load failure
+        fell through to ``weights_only=False``. That fallback was an arbitrary-
+        code-execution path: the checkpoints that fail the safe check are exactly
+        the malicious ones. See ``tests/security/test_checkpoint_safety.py`` for
+        the real-payload proof; this guards the call shape.
         """
         path = checkpoint_dir / "legacy_model.pt"
         save_model_only(small_model, path)
 
-        original_weight = small_model.policy_head.net[0].weight.clone()
-
-        # Modify model
-        with torch.no_grad():
-            small_model.policy_head.net[0].weight.fill_(0.0)
-
         original_torch_load = torch.load
-
-        call_count = 0
+        calls: list[dict[str, Any]] = []
 
         def patched_load(*args: Any, **kwargs: Any) -> Any:
-            nonlocal call_count
-            call_count += 1
+            calls.append(kwargs)
             if kwargs.get("weights_only", False) is True:
                 raise RuntimeError("Simulated weights_only failure")
             return original_torch_load(*args, **kwargs)
 
-        with patch("src.training.checkpoint.torch.load", side_effect=patched_load):
+        with (
+            patch("src.training.checkpoint.torch.load", side_effect=patched_load),
+            pytest.raises(RuntimeError, match="Failed to load checkpoint"),
+        ):
             load_model_only(small_model, path)
 
-        # Verify the fallback was actually used (at least 2 calls)
-        assert call_count >= 2
+        assert len(calls) == 1, "safe-load failure triggered an unsafe retry"
+        assert calls[0]["weights_only"] is True
 
-        assert torch.allclose(
-            small_model.policy_head.net[0].weight,
-            original_weight,
-        )
+    def test_load_model_only_unsafe_opt_in_uses_pickle(
+        self,
+        small_model: nn.Module,
+        checkpoint_dir: Path,
+    ) -> None:
+        """``allow_unsafe_pickle=True`` is the only route to weights_only=False."""
+        path = checkpoint_dir / "legacy_model.pt"
+        save_model_only(small_model, path)
+
+        original_weight = small_model.policy_head.net[0].weight.clone()
+        with torch.no_grad():
+            small_model.policy_head.net[0].weight.fill_(0.0)
+
+        original_torch_load = torch.load
+        calls: list[dict[str, Any]] = []
+
+        def patched_load(*args: Any, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return original_torch_load(*args, **kwargs)
+
+        with patch("src.training.checkpoint.torch.load", side_effect=patched_load):
+            load_model_only(small_model, path, allow_unsafe_pickle=True)
+
+        assert len(calls) == 1
+        assert calls[0]["weights_only"] is False
+        assert torch.allclose(small_model.policy_head.net[0].weight, original_weight)
 
     def test_load_model_only_non_strict(
         self,

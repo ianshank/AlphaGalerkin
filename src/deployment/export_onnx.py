@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 import torch
+import torch.onnx.utils
 from torch import Tensor, nn
 
 from src.deployment.config import ExportConfig
@@ -26,6 +27,20 @@ if TYPE_CHECKING:
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
+
+
+class _TupleWrapper(nn.Module):
+    """Wraps model to return tuple instead of dataclass for ONNX export."""
+
+    def __init__(self, model: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, *args: Any, **kwargs: Any) -> tuple[Tensor, Tensor]:
+        out = self.model(*args, **kwargs)
+        if isinstance(out, tuple):
+            return out
+        return out.policy_logits, out.value
 
 
 class ONNXExporter:
@@ -79,6 +94,9 @@ class ONNXExporter:
 
         # Ensure model is in eval mode
         model.eval()
+
+        # Wrap model to return tuple instead of dataclass
+        model = _TupleWrapper(model)
 
         # Prepare input
         if isinstance(sample_input, dict):
@@ -136,7 +154,11 @@ class ONNXExporter:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
-            torch.onnx.export(
+            # PyTorch 2.1+ changed the default torch.onnx.export backend to Dynamo,
+            # which breaks with legacy dynamic_axes dict format. We force the old
+            # TorchScript tracer via torch.onnx.utils.export.
+
+            torch.onnx.utils.export(
                 model,
                 input_tensors,
                 str(output_path),
@@ -168,7 +190,7 @@ class ONNXExporter:
         """
         scripted_model = torch.jit.script(model)
 
-        torch.onnx.export(
+        torch.onnx.utils.export(
             scripted_model,
             input_tensors,
             str(output_path),

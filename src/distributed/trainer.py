@@ -495,11 +495,23 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
 
         return path
 
-    def load_checkpoint(self, path: Path | str) -> int:  # type: ignore[override]
+    def load_checkpoint(  # type: ignore[override]
+        self,
+        path: Path | str,
+        *,
+        allow_unsafe_pickle: bool = False,
+    ) -> int:
         """Load checkpoint.
 
         Args:
             path: Path to checkpoint file.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only
+                for a file whose provenance the operator has established. Present
+                so every loader routed through
+                ``src/training/checkpoint.py::load_torch_checkpoint`` offers the
+                same documented recovery path for a checkpoint written before
+                that routing landed. Keyword-only and ``False`` by default, so
+                existing callers are unaffected and stay on the safe path.
 
         Returns:
             Training step from checkpoint.
@@ -516,6 +528,7 @@ class DistributedTrainer(BaseTrainer):  # type: ignore[type-arg]
             path,
             map_location=self.device,
             extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS,
+            allow_unsafe_pickle=allow_unsafe_pickle,
         )
 
         self.model.load_state_dict(checkpoint["model_state_dict"])

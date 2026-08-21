@@ -328,11 +328,18 @@ class VideoCompressionTrainer:
 
         return path
 
-    def load_checkpoint(self, path: Path | str) -> None:
+    def load_checkpoint(self, path: Path | str, *, allow_unsafe_pickle: bool = False) -> None:
         """Load training checkpoint.
 
         Args:
             path: Path to checkpoint.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only
+                for a file whose provenance the operator has established. Present
+                so every loader routed through
+                ``src/training/checkpoint.py::load_torch_checkpoint`` offers the
+                same documented recovery path for a checkpoint written before
+                that routing landed. Keyword-only and ``False`` by default, so
+                existing callers are unaffected and stay on the safe path.
 
         """
         # No ``extra_safe_globals`` here, and that is deliberate. ``self.config``
@@ -348,7 +355,11 @@ class VideoCompressionTrainer:
         # ``torch.load`` this replaced defaulted to ``weights_only=True`` and
         # rejected that ``datetime``, so resuming a codec run raised
         # ``UnpicklingError`` on a checkpoint this class had just written.
-        checkpoint = load_torch_checkpoint(path, map_location=self.device)
+        checkpoint = load_torch_checkpoint(
+            path,
+            map_location=self.device,
+            allow_unsafe_pickle=allow_unsafe_pickle,
+        )
 
         self.state.step = checkpoint["step"]
         self.state.epoch = checkpoint["epoch"]

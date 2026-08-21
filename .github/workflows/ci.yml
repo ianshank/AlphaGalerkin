@@ -113,15 +113,33 @@ jobs:
       # `PDEGame.get_result` (B17) survived. The audit is AST-only (stdlib
       # imports, no torch/numpy), so it runs in this job's minimal dep set.
       #
-      # The three refinement roots are clean and gated hard. Blocking the whole
-      # of src/ is not yet possible: `src/backend` carries a known domain-PoC
-      # backlog, so it runs report-only and its output is advisory.
+      # The three refinement roots are clean and gated hard. Every OTHER package
+      # is now gated too -- measured clean at the time this was tightened, so it
+      # costs nothing today and blocks the next dead abstraction instead of
+      # reporting it. `src/backend` alone stays advisory: its 7 unread
+      # `BackendInterface` protocol members are the documented domain-PoC
+      # backlog (docs/CODE_HYGIENE_AUDIT.md B10), tied to the open JAX
+      # keep-or-cut decision.
+      #
+      # Pass every root in ONE invocation. The audit resolves call sites within
+      # the union of the roots it is given, so scanning root-by-root is strictly
+      # stricter than scanning them together and would flag cross-package
+      # readers as missing -- e.g. `src/training` alone reports
+      # `BaseLoss.forward` (losses/base.py) unread, while the combined scan
+      # does not, because the reader lives outside that package. Do not "tighten"
+      # this by splitting it up.
       - name: Audit abstractions (refinement surfaces)
         run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
 
-      - name: Audit abstractions (rest of src, report-only)
+      - name: Audit abstractions (all packages except the src/backend backlog)
+        run: |
+          python -m scripts.audit_abstractions \
+            $(ls -d src/*/ | grep -v __pycache__ | grep -v 'src/backend/') \
+            --fail-on-missing
+
+      - name: Audit abstractions (src/backend, report-only)
         continue-on-error: true
-        run: python -m scripts.audit_abstractions src/
+        run: python -m scripts.audit_abstractions src/backend
 
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports
@@ -183,6 +201,27 @@ jobs:
       - name: Run security test suite
         run: |
           pytest tests/security/ \
+            -m "not gpu_required" \
+            --tb=short \
+            -q
+
+      # tests/demos/ and tests/notebooks/ are --ignore'd from the broad run below
+      # (they are slower than a unit test and would blur that step's signal), and
+      # until now they were named in NO other step -- so 226 tests, 151 + 75,
+      # never executed in CI at all. tests/demos was already flagged as a known
+      # gap in docs/CODE_HYGIENE_AUDIT.md; tests/notebooks was documented nowhere.
+      #
+      # Given their own step they cost ~2 min and keep the fast lane fast. Same
+      # shape as the security step above: a named directory, legible on failure.
+      #
+      # NOT included here: tests/e2e/. It has the same invisibility problem (11
+      # files on disk, one named in this workflow) but it is not currently safe
+      # to wire -- test_quick_validation_journey.py::test_train_physics_minimal
+      # shells out with a fixed 120 s timeout and fails on a loaded machine.
+      # Tracked separately; wiring it before that is fixed would buy a flaky gate.
+      - name: Run demo and notebook suites
+        run: |
+          pytest tests/demos/ tests/notebooks/ \
             -m "not gpu_required" \
             --tb=short \
             -q
@@ -748,7 +787,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,test-extras]"
+          # eval-harness included for the same reason as test-extras: without it
+          # 8 of the 11 modules under tests/integrations/eval_harness/ skip at
+          # import, masking ~900 LOC as "passing". This job exists to stop
+          # exactly that.
+          pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
       - name: Run FEM baseline + PettingZoo suites

@@ -6,6 +6,7 @@ and user journeys.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,31 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
+# Subprocess budgets for the CLI journeys, scaled by one env var.
+#
+# These were six bare literals across two modules (30 / 60 / 120), and the
+# 120 s one is not merely untidy: it is why
+# `test_quick_validation_journey.py::test_train_physics_minimal` fails on a
+# loaded machine. It shells out to a real training run, so the budget is a bet
+# about how fast the host is -- and the test asserts `returncode in [0, 1]`,
+# which a timeout (-1) fails. A slow box therefore reports a training defect
+# that does not exist.
+#
+# `E2E_TIMEOUT_SCALE` multiplies all three so a slow or contended runner can be
+# accommodated without editing source or loosening an assertion. Left at 1.0 the
+# values are byte-for-byte what they were.
+#
+# The three tiers are ordered by what the subprocess actually does, and that
+# ordering is the part worth preserving if these are ever retuned:
+#   TRIVIAL  -- argument parsing / --help; process startup dominates.
+#   BENCH    -- a bounded measurement loop; work is real but capped by argv.
+#   TRAINING -- a real training run; the only one whose cost tracks host speed.
+E2E_TIMEOUT_SCALE: float = float(os.environ.get("E2E_TIMEOUT_SCALE", "1.0"))
+
+E2E_TRIVIAL_TIMEOUT_S: int = int(30 * E2E_TIMEOUT_SCALE)
+E2E_BENCHMARK_TIMEOUT_S: int = int(60 * E2E_TIMEOUT_SCALE)
+E2E_TRAINING_TIMEOUT_S: int = int(120 * E2E_TIMEOUT_SCALE)
 
 # Type alias for the CLI runner fixture
 CLIRunnerType = Callable[

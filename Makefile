@@ -20,7 +20,9 @@
 #   make check         # lint + mypy + test-fast (pre-PR quick check)
 
 .PHONY: lint format mypy test-fast test-cert test-stoch test-all coverage \
-        gitleaks pre-commit docs-serve clean check gpu-smoke
+        gitleaks pre-commit docs-serve clean check gpu-smoke \
+        demo pre-pr test-agents test-benchmarks test-core test-e2e \
+        test-regression test-sanity test-security
 
 # ---------------------------------------------------------------------------
 # Tool resolution — prefer venv binaries, fall back to system
@@ -51,6 +53,36 @@ CERT_COV_THRESHOLD     ?= 85
 STOCH_COV_THRESHOLD    ?= 85
 
 # ---------------------------------------------------------------------------
+# Test-selection parity with CI
+# ---------------------------------------------------------------------------
+# `ci.yml` applies these SAME exclusions in both its `test-fast` and `coverage`
+# jobs. They live here as one variable so `make test-fast` / `make coverage`
+# measure what CI measures -- before this, the Makefile applied 3 of the 6
+# --ignore paths and none of the 9 --deselect ids, a 115-test divergence in the
+# targets `make pre-pr` chains to decide a PR is ready.
+#
+# Known duplication: this is a THIRD copy (ci.yml holds two). Collapsing all
+# three onto one shared args file is tracked as backlog B7 -- deliberately not
+# done here, because rewriting CI's test invocation risks a green PR for a
+# cosmetic win. Keep this block in step with ci.yml by hand until then.
+CI_TEST_EXCLUDES := \
+	--ignore=tests/e2e/ \
+	--ignore=tests/integration/ \
+	--ignore=tests/demos/ \
+	--ignore=tests/training/test_extended_config.py \
+	--ignore=tests/notebooks/ \
+	--ignore=tests/distributed/test_multiprocess.py \
+	--deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
+	--deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
+	--deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
+	--deselect=tests/experiments/test_physics_loss.py::TestPhysicsLossComputeLaplacian::test_laplacian_of_linear \
+	--deselect=tests/games/test_chess.py::TestChessEdgeCases::test_invalid_move_notation \
+	--deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
+	--deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
+	--deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
+	--deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error
+
+# ---------------------------------------------------------------------------
 # Lint & Format
 # ---------------------------------------------------------------------------
 lint:
@@ -72,9 +104,7 @@ mypy:
 test-fast:
 	$(PYTEST) tests/ \
 		-m "not slow and not e2e and not gpu_required" \
-		--ignore=tests/e2e/ \
-		--ignore=tests/integration/ \
-		--ignore=tests/demos/ \
+		$(CI_TEST_EXCLUDES) \
 		-q --no-header
 
 test-sanity:
@@ -125,9 +155,7 @@ test-all:
 coverage:
 	$(PYTEST) tests/ \
 		-m "not slow and not e2e and not gpu_required" \
-		--ignore=tests/e2e/ \
-		--ignore=tests/integration/ \
-		--ignore=tests/demos/ \
+		$(CI_TEST_EXCLUDES) \
 		--cov=src \
 		--cov-fail-under=$(GLOBAL_COV_THRESHOLD) \
 		-q --no-header

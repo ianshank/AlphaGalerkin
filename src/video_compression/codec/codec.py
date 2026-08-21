@@ -9,17 +9,18 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import structlog
 import torch
 from jaxtyping import Float
+from pydantic import ValidationError
 from torch import Tensor, nn
 
 from src.training.checkpoint import load_torch_checkpoint
 from src.video_compression.codec.entropy_coder import EncodedBitstream, EntropyCoder
 from src.video_compression.codec.gop_manager import FrameInfo, FrameType, GOPManager
-from src.video_compression.config import SAFE_CODEC_GLOBALS, CodecConfig
+from src.video_compression.config import SAFE_CODEC_GLOBALS, CodecConfig, TrainingConfig
 from src.video_compression.mcts.networks import (
     DynamicsNetwork,
     PredictionNetwork,
@@ -830,11 +831,81 @@ def create_codec(
     return codec
 
 
+CODEC_STATE_DICT_KEYS: tuple[str, ...] = ("model_state_dict", "model_state")
+"""Keys a codec checkpoint may store its weights under, in precedence order.
+
+Two are in use because two writers disagree: ``VideoCompressionTrainer`` and
+``ZooTrainer`` both write ``"model_state"``, while the test fixtures and
+``encode_video.py``'s export path write ``"model_state_dict"``. Readers must
+accept both -- ``scripts/decode_video.py`` and ``scripts/encode_video.py``
+already did, and :func:`load_codec` silently did not.
+"""
+
+
+def codec_state_dict_from_checkpoint(checkpoint: dict[str, Any]) -> dict[str, Any]:
+    """Extract a codec state dict, tolerating either writer's key.
+
+    Falls back to treating the whole payload as the state dict, which is what a
+    bare ``torch.save(codec.state_dict(), ...)`` produces.
+
+    The fallback used to be reached by every trainer-written checkpoint, because
+    those store weights under ``"model_state"``: ``load_state_dict(checkpoint,
+    strict=False)`` then matched nothing (the payload's keys are ``"step"``,
+    ``"epoch"``, ``"optimizer_state"``, ...) and, being non-strict, returned an
+    *untrained* codec without raising.
+    """
+    for key in CODEC_STATE_DICT_KEYS:
+        value = checkpoint.get(key)
+        if isinstance(value, dict):
+            return value
+    return checkpoint
+
+
+def codec_config_from_checkpoint(checkpoint: dict[str, Any]) -> CodecConfig:
+    """Reconstruct a :class:`CodecConfig` from whatever the writer embedded.
+
+    ``checkpoint["config"]`` is not one shape. Every in-repo writer
+    (``VideoCompressionTrainer._save_checkpoint``) dumps its ``TrainingConfig``,
+    which is a *sub*-config of ``CodecConfig``; the fixtures dump a whole
+    ``CodecConfig``. Constructing ``CodecConfig(**payload)`` unconditionally --
+    as this did -- raised ``ValidationError`` (22 errors) on every checkpoint the
+    repo actually writes, which is what made ``decode_video.py``'s reduced
+    fallback the ordinary path rather than the exception.
+
+    Order matters: try the whole config first, then the training sub-config
+    (preserving its values under ``training=``), then give up on a named default
+    rather than raising -- a checkpoint whose weights load fine should not be
+    rejected because its config metadata is a shape we do not recognise.
+    """
+    payload = checkpoint.get("config")
+    if not isinstance(payload, dict):
+        return CodecConfig(name="loaded")
+
+    try:
+        return CodecConfig(**payload)
+    except ValidationError:
+        pass
+
+    try:
+        training = TrainingConfig(**payload)
+    except ValidationError:
+        logger.warning(
+            "codec_config_unrecognised",
+            keys=sorted(payload)[:10],
+            detail="falling back to default CodecConfig; weights still load",
+        )
+        return CodecConfig(name="loaded")
+
+    logger.info("codec_config_from_training_config", name=training.name)
+    return CodecConfig(name=training.name, training=training)
+
+
 def load_codec(
     checkpoint_path: Path | str,
     config: CodecConfig | None = None,
     device: str = "cpu",
     *,
+    use_mcts_rate_control: bool = False,
     allow_unsafe_pickle: bool = False,
 ) -> VideoCodec:
     """Load codec from checkpoint.
@@ -843,6 +914,17 @@ def load_codec(
         checkpoint_path: Path to model checkpoint.
         config: Optional config override.
         device: Device for computation.
+        use_mcts_rate_control: Rebuild the codec with the MCTS rate controller
+            attached. Explicit because it CANNOT be recovered from a checkpoint:
+            ``MCTSRateController`` is not an ``nn.Module``, so it contributes no
+            state-dict entries, and ``CodecConfig.mcts.rate_control_mode`` has no
+            MCTS member either. The line this replaced tested
+            ``"rate_controller" in checkpoint["model_state_dict"]``, which was
+            False for every checkpoint ever written -- both because real writers
+            use the ``"model_state"`` key and because no such key exists under
+            either. The ``False`` default therefore preserves the behaviour every
+            existing caller already got; the parameter just makes the other
+            branch reachable.
         allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only for a
             file whose provenance an operator has established. Exposed here so a
             caller opting in reaches this, the *primary* load path -- otherwise
@@ -874,23 +956,17 @@ def load_codec(
         extra_safe_globals=SAFE_CODEC_GLOBALS,
     )
 
-    # Get config from checkpoint or use provided
     if config is None:
-        if "config" in checkpoint:
-            config = CodecConfig(**checkpoint["config"])
-        else:
-            config = CodecConfig(name="loaded")
+        config = codec_config_from_checkpoint(checkpoint)
 
-    # Determine if MCTS was used
-    use_mcts = "rate_controller" in checkpoint.get("model_state_dict", {})
+    state_dict = codec_state_dict_from_checkpoint(checkpoint)
 
-    codec = create_codec(config, use_mcts_rate_control=use_mcts, device=device)
-
-    # Load weights
-    if "model_state_dict" in checkpoint:
-        codec.load_state_dict(checkpoint["model_state_dict"], strict=False)
-    else:
-        codec.load_state_dict(checkpoint, strict=False)
+    codec = create_codec(
+        config,
+        use_mcts_rate_control=use_mcts_rate_control,
+        device=device,
+    )
+    codec.load_state_dict(state_dict, strict=False)
 
     codec.to(device)
     codec.eval()

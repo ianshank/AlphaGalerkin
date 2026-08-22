@@ -22,8 +22,11 @@ command(s) that must stay green when it changes. This skill selects and runs the
    - `src/pde/stochastic/**` → Stochastic Galerkin NKE layer row. Note its **import-isolation
      allowlist** (`tests/pde/stochastic/test_import_isolation.py`): any *new* `src.` import in
      that layer fails the guard by design.
-   - `src/poc/scenarios/noyron_basis*` , `src/pde/operators_picogk.py`, `src/pde/sdf.py`,
-     `src/pde/geometry_picogk.py` → Noyron HX scenario row.
+   - `src/poc/scenarios/noyron_basis*` → **Noyron basis selection (v2.2)** row
+     (`tests/poc/test_noyron_basis_config.py tests/poc/test_noyron_basis_scenario.py`).
+   - `src/pde/operators_picogk.py`, `src/pde/sdf.py`, `src/pde/geometry_picogk.py` →
+     **Noyron HX scenario** row
+     (`tests/pde/test_sdf.py tests/pde/test_picogk_domain.py tests/poc/test_noyron_hx_scenario.py`).
    - `src/integrations/**` → LLM-prior (mocked CPU) + backend-registry rows.
    - `src/agents/**` → Centaur research-loop + agents coverage rows.
    - `src/research/transfer_baseline_compare.py`, `src/experiments/cnn_baseline.py`,

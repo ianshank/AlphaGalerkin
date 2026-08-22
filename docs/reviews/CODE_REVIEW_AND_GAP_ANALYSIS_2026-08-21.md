@@ -12,25 +12,25 @@
 
 During this sprint, the engineering team executed a comprehensive stability triage, branch reconciliation, and static analysis fortification for **AlphaGalerkin** (v0.4.0-dev). All 141 previously missing baseline files were restored from Git HEAD, stale `.coverage.*` artifacts were eliminated, and a 67-file merge from `origin/claude/alphagalerkin-implementation-4zGEN` was completed cleanly using the `ort` strategy.
 
-Crucially, **25 failing ONNX integration tests were triaged and resolved**. The root cause was PyTorch 2.1+ transitioning its default `torch.onnx.export` to the Dynamo exporter backend, which clashed with legacy `dynamic_axes` dictionaries and custom dataclass outputs. By introducing `_TupleWrapper` and leveraging `torch.onnx.utils.export` with opset 14, all 30 ONNX integration tests now pass deterministically.
+Crucially, **25 failing ONNX integration tests were triaged and resolved**. The root cause was `torch.onnx.export` defaulting to the Dynamo backend from `torch>=2.9`, which conflicted with legacy `dynamic_axes` dictionaries and custom dataclass outputs. By routing all tracer paths through `torch.onnx.utils.export` via a `_TupleWrapper` (applied only on trace/dynamo paths; the script path keeps the original model for TorchScript compatibility), all 30 ONNX integration tests now pass deterministically.
 
 ---
 
 ## 2. Multi-Role Peer Review
 
 ### 🏛️ Architect Assessment
-* **C4 Architecture Alignment**: The system continues to conform to the 4-level C4 model defined in [`docs/architecture/c4_mermaid.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/docs/architecture/c4_mermaid.md). Containers (`PDE Game Framework`, `Continuous Operator Engine`, `MCTS Reasoning Layer`, and `Multi-Agent Orchestrator`) remain cleanly decoupled.
+* **C4 Architecture Alignment**: The system continues to conform to the 4-level C4 model defined in [`docs/architecture/c4_mermaid.md`](docs/architecture/c4_mermaid.md). Containers (`PDE Game Framework`, `Continuous Operator Engine`, `MCTS Reasoning Layer`, and `Multi-Agent Orchestrator`) remain cleanly decoupled.
 * **Structural Protocols (`src/core/protocols.py`)**: All core abstractions (`GameProtocol`, `EvaluatorProtocol`, `OperatorProtocol`, `SolverProtocol`) are `@runtime_checkable` Python Protocols. The AST abstraction audit confirmed that 100% of declared abstract methods in `src/mcts/`, `src/refinement/`, and `src/pde/` have real call sites.
 * **Backwards Compatibility**: All configuration additions across `ExportConfig`, `OperatorConfig`, and `AgentConfig` supply safe defaults, preventing schema breaks for existing serialized artifacts.
 
 ### 📝 Technical Writer & Documentation
 * **Charter & Architecture Synchronization**: All architectural changes are mirrored across `README.md`, `ARCHITECTURE.md`, `CLAUDE.md`, and `docs/architecture/gap_analysis_and_hardening.md`.
 * **Repository Configuration**:
-  - [`.gitignore`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.gitignore): Covers `.coverage.*`, caches, and platform artifacts.
-  - [`.dockerignore`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.dockerignore): Excludes test caches, virtualenvs, and temporary datasets.
-  - [`.gitleaks.toml`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.gitleaks.toml): Hardened secret-scanning allowlist for mock test vectors.
-  - [`Makefile`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/Makefile): Cross-platform targets for `lint`, `format`, `test-fast`, `coverage`, and `check`.
-  - [`CHANGELOG.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/CHANGELOG.md): Updated with all unreleased fixes and ONNX triage items.
+  - [`.gitignore`](.gitignore): Covers `.coverage.*`, caches, and platform artifacts.
+  - [`.dockerignore`](.dockerignore): Excludes test caches, virtualenvs, and temporary datasets.
+  - [`.gitleaks.toml`](.gitleaks.toml): Hardened secret-scanning allowlist for mock test vectors.
+  - [`Makefile`](Makefile): Cross-platform targets for `lint`, `format`, `test-fast`, `coverage`, and `check`.
+  - [`CHANGELOG.md`](CHANGELOG.md): Updated with all unreleased fixes and ONNX triage items.
 
 ### 🧪 SQE (Software Quality Engineering) Lead
 * **7-Tier Test Pyramid**:
@@ -72,15 +72,15 @@ To ensure seamless pair programming and autonomous task execution in the Antigra
 
 | Skill | Path | Description |
 | :--- | :--- | :--- |
-| `abstract-method-audit` | [`.agents/skills/abstract-method-audit/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/abstract-method-audit/SKILL.md) | AST audit for uncalled abstract methods & dead protocol members. |
-| `add-coverage-gate` | [`.agents/skills/add-coverage-gate/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/add-coverage-gate/SKILL.md) | Standardized procedure for adding per-module coverage gates in CI. |
-| `certificate-validation` | [`.agents/skills/certificate-validation/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/certificate-validation/SKILL.md) | Deterministic validation for verified error certificate specs. |
-| `coverage-gate` | [`.agents/skills/coverage-gate/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/coverage-gate/SKILL.md) | CI-mirrored execution of module coverage gates under `pytrace`. |
-| `new-pde-operator` | [`.agents/skills/new-pde-operator/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/new-pde-operator/SKILL.md) | End-to-end checklist for implementing and registering PDE operators. |
-| `pr-preflight` | [`.agents/skills/pr-preflight/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/pr-preflight/SKILL.md) | Full pre-PR local validation matching GitHub Actions flags. |
-| `regression-surface` | [`.agents/skills/regression-surface/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/regression-surface/SKILL.md) | Maps changed code paths to guarding regression test blocks. |
-| `spec-new` | [`.agents/skills/spec-new/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/spec-new/SKILL.md) | Spec-driven development scaffolding for new features. |
-| `surface-hardcoded-value` | [`.agents/skills/surface-hardcoded-value/SKILL.md`](file:///c:/Users/iansh/OneDrive/Documents/AlphaGalerkin/.agents/skills/surface-hardcoded-value/SKILL.md) | Pattern for replacing magic numbers with zero numeric shift. |
+| `abstract-method-audit` | [`.agents/skills/abstract-method-audit/SKILL.md`](.agents/skills/abstract-method-audit/SKILL.md) | AST audit for uncalled abstract methods & dead protocol members. |
+| `add-coverage-gate` | [`.agents/skills/add-coverage-gate/SKILL.md`](.agents/skills/add-coverage-gate/SKILL.md) | Standardized procedure for adding per-module coverage gates in CI. |
+| `certificate-validation` | [`.agents/skills/certificate-validation/SKILL.md`](.agents/skills/certificate-validation/SKILL.md) | Deterministic validation for verified error certificate specs. |
+| `coverage-gate` | [`.agents/skills/coverage-gate/SKILL.md`](.agents/skills/coverage-gate/SKILL.md) | CI-mirrored execution of module coverage gates under `pytrace`. |
+| `new-pde-operator` | [`.agents/skills/new-pde-operator/SKILL.md`](.agents/skills/new-pde-operator/SKILL.md) | End-to-end checklist for implementing and registering PDE operators. |
+| `pr-preflight` | [`.agents/skills/pr-preflight/SKILL.md`](.agents/skills/pr-preflight/SKILL.md) | Full pre-PR local validation matching GitHub Actions flags. |
+| `regression-surface` | [`.agents/skills/regression-surface/SKILL.md`](.agents/skills/regression-surface/SKILL.md) | Maps changed code paths to guarding regression test blocks. |
+| `spec-new` | [`.agents/skills/spec-new/SKILL.md`](.agents/skills/spec-new/SKILL.md) | Spec-driven development scaffolding for new features. |
+| `surface-hardcoded-value` | [`.agents/skills/surface-hardcoded-value/SKILL.md`](.agents/skills/surface-hardcoded-value/SKILL.md) | Pattern for replacing magic numbers with zero numeric shift. |
 
 In addition, the Python agent skills in `src/agents/skills/` provide declarative programmatic building blocks:
 - **`BenchmarkSkill`**: Multi-round warmup, timing, throughput, and summary statistics.

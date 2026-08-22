@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- **PyTorch 2.1+ Dynamo ONNX Exporter Failure (30 Integration Tests Restored)** — Resolved 25 failing ONNX tests in `tests/deployment/test_export_onnx_integration.py`. PyTorch 2.1+ made Dynamo export the default backend for `torch.onnx.export`, which collided with `dynamic_axes` dictionaries and dataclass model outputs. Fixed by introducing `_TupleWrapper` and delegating to `torch.onnx.utils.export` with opset 14, disabling constant-folding interference in tolerance tests. All 30 ONNX integration tests now pass cleanly.
+- **ONNX Legacy-Exporter Stabilization (30 Integration Tests Restored)** — Resolved 25 failing ONNX tests in `tests/deployment/test_export_onnx_integration.py`. `torch.onnx.export` uses the Dynamo backend by default from `torch>=2.9`, which conflicts with legacy `dynamic_axes` dictionaries and dataclass model outputs. Fixed by routing all tracer paths through `torch.onnx.utils.export` (the TorchScript-based legacy exporter) via a `_TupleWrapper` that normalises dataclass outputs to plain tuples on the trace and dynamo paths only (the script path receives the original model to stay TorchScript-compatible). Opset version remains configurable via `ExportConfig.opset_version` (unchanged default of 17). All 30 ONNX integration tests now pass cleanly.
 - **Environment & Working Tree Stabilization** — Restored 141 tracked baseline files from Git HEAD and purged 38 stale `.coverage.*` artifacts.
 - **Branch Synchronization** — Cleanly merged 67 files (4,787 insertions, 272 deletions) from `origin/claude/alphagalerkin-implementation-4zGEN` into `feature/ascr-multifield-petsc-p40` with zero conflicts.
 

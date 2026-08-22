@@ -30,16 +30,32 @@ logger = structlog.get_logger(__name__)
 
 
 class _TupleWrapper(nn.Module):
-    """Wraps model to return tuple instead of dataclass for ONNX export."""
+    """Wraps a dataclass-output model to return a plain tuple for ONNX tracing.
+
+    Only applied to models whose ``forward`` returns a dataclass (i.e.
+    ``AlphaGalerkinModel``).  Plain ``Tensor``- or ``tuple``-returning models
+    are passed through unchanged so callers never see an ``AttributeError`` on
+    ``.policy_logits``.
+
+    Note: this wrapper uses an explicit ``Tensor`` argument signature so that
+    it remains compatible with both the legacy ``torch.onnx.utils.export``
+    tracer and ``torch.jit.trace``.  It is **not** applied on the ``script``
+    export path (TorchScript rejects ``*args`` module signatures).
+    """
 
     def __init__(self, model: nn.Module) -> None:
         super().__init__()
         self.model = model
 
-    def forward(self, *args: Any, **kwargs: Any) -> tuple[Tensor, Tensor]:
-        out = self.model(*args, **kwargs)
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        out = self.model(x)
+        if isinstance(out, Tensor):
+            # Plain tensor model – return as singleton tuple so the exporter
+            # always sees a tuple and ``output_names`` remains consistent.
+            return out, out
         if isinstance(out, tuple):
-            return out
+            return out  # type: ignore[return-value]
+        # Dataclass (AlphaGalerkinModel's ModelOutput)
         return out.policy_logits, out.value
 
 
@@ -95,9 +111,6 @@ class ONNXExporter:
         # Ensure model is in eval mode
         model.eval()
 
-        # Wrap model to return tuple instead of dataclass
-        model = _TupleWrapper(model)
-
         # Prepare input
         if isinstance(sample_input, dict):
             input_tensors = tuple(sample_input.values())
@@ -112,13 +125,16 @@ class ONNXExporter:
             input_shapes=[tuple(t.shape) for t in input_tensors],
         )
 
-        # Select export method
+        # Select export method.  _TupleWrapper is applied only on the tracer
+        # paths (trace / dynamo) to normalise dataclass outputs.  The script
+        # path receives the original model because TorchScript cannot handle
+        # the wrapper's variadic signature.
         if self.config.export_method == "dynamo":
-            self._export_dynamo(model, input_tensors, output_path, **kwargs)
+            self._export_dynamo(_TupleWrapper(model), input_tensors, output_path, **kwargs)
         elif self.config.export_method == "script":
             self._export_script(model, input_tensors, output_path, **kwargs)
         else:
-            self._export_trace(model, input_tensors, output_path, **kwargs)
+            self._export_trace(_TupleWrapper(model), input_tensors, output_path, **kwargs)
 
         # Optimize if requested
         if self.config.optimization_level != "none":
@@ -154,9 +170,9 @@ class ONNXExporter:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
-            # PyTorch 2.1+ changed the default torch.onnx.export backend to Dynamo,
-            # which breaks with legacy dynamic_axes dict format. We force the old
-            # TorchScript tracer via torch.onnx.utils.export.
+            # torch.onnx.export uses the Dynamo exporter by default on
+            # torch>=2.9, which breaks with legacy dynamic_axes dict format.
+            # Force the TorchScript tracer via torch.onnx.utils.export.
 
             torch.onnx.utils.export(
                 model,

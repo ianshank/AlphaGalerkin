@@ -226,6 +226,15 @@ class TestONNXExporterActualExport:
         out = _export_to(tmp_path, model, sample, config=cfg)
         assert out.exists()
 
+    def test_export_opset_11(self, tmp_path: Path) -> None:
+        """Export succeeds with opset_version=11 (lower bound of supported range)."""
+        pytest.importorskip("onnx")
+        cfg = ExportConfig(opset_version=11, optimization_level="none")
+        model = _make_model()
+        sample = _sample_input()
+        out = _export_to(tmp_path, model, sample, config=cfg)
+        assert out.exists()
+
     def test_export_dynamic_batch_size_runs_batch_1_and_2(self, tmp_path: Path) -> None:
         """Exported model with dynamic batch axis accepts batch=1 and batch=2."""
         ort = pytest.importorskip("onnxruntime")
@@ -411,8 +420,8 @@ class TestONNXValidation:
         np.testing.assert_allclose(
             pt_policy,
             onnx_policy,
-            atol=1e-1,
-            rtol=1e-1,
+            atol=1e-4,
+            rtol=1e-4,
             err_msg="Policy outputs diverge beyond tolerance",
         )
 
@@ -437,9 +446,37 @@ class TestONNXValidation:
         np.testing.assert_allclose(
             pt_value,
             onnx_value,
-            atol=1e-1,
-            rtol=1e-1,
+            atol=1e-4,
+            rtol=1e-4,
             err_msg="Value outputs diverge beyond tolerance",
+        )
+
+    def test_policy_outputs_match_pytorch_constant_folding_enabled(
+        self, tmp_path: Path
+    ) -> None:
+        """ONNX policy outputs match PyTorch with the production default (constant folding on)."""
+        ort = pytest.importorskip("onnxruntime")
+        pytest.importorskip("onnx")
+        cfg = ExportConfig(optimization_level="none", do_constant_folding=True)
+        model = _make_model()
+        model.eval()
+        sample = _sample_input()
+        out = _export_to(tmp_path, model, sample, config=cfg)
+
+        with torch.no_grad():
+            pt_out = model(sample)
+        pt_policy = pt_out.policy_logits.numpy()
+
+        session = ort.InferenceSession(str(out), providers=["CPUExecutionProvider"])
+        onnx_outputs = session.run(None, {session.get_inputs()[0].name: sample.numpy()})
+        onnx_policy = onnx_outputs[0]
+
+        np.testing.assert_allclose(
+            pt_policy,
+            onnx_policy,
+            atol=1e-4,
+            rtol=1e-4,
+            err_msg="Policy outputs diverge beyond tolerance (constant folding enabled)",
         )
 
     def test_get_model_info_returns_expected_keys(self, tmp_path: Path) -> None:

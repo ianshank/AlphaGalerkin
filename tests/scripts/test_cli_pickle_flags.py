@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -209,3 +210,36 @@ def test_no_source_file_hardcodes_the_opt_in_on(tmp_path: Path) -> None:
                     offenders.append(str(py.relative_to(REPO_ROOT)))
 
     assert not offenders, f"{DEST}=True is hardcoded in: {sorted(set(offenders))}"
+
+
+def test_trainer_resume_can_reach_the_opt_in() -> None:
+    """`Trainer.load_checkpoint` must expose AND forward the hatch.
+
+    Found by review: `CheckpointManager.restore` had accepted
+    `allow_unsafe_pickle` since the hatch landed, but the trainer neither
+    exposed nor forwarded it — so resume, the API most likely to be pointed at a
+    legacy or third-party checkpoint, was the one with no way to opt in.
+
+    Asserts both halves. Exposing the parameter without forwarding it is worse
+    than omitting it: the caller believes they opted in, and silently did not.
+    """
+    import ast
+
+    from src.training.trainer import Trainer
+
+    params = inspect.signature(Trainer.load_checkpoint).parameters
+    assert DEST in params, "Trainer.load_checkpoint does not expose the opt-in"
+    assert params[DEST].default is False, "the opt-in must default to safe"
+
+    source = textwrap.dedent(inspect.getsource(Trainer.load_checkpoint))
+    forwarded = [
+        kw.arg
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        for kw in node.keywords
+        if kw.arg == DEST
+    ]
+    assert forwarded, (
+        f"Trainer.load_checkpoint accepts {DEST} but never passes it on -- "
+        "the parameter is inert and the caller's opt-in is silently dropped"
+    )

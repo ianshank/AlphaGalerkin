@@ -32,10 +32,9 @@ logger = structlog.get_logger(__name__)
 class _TupleWrapper(nn.Module):
     """Wraps a dataclass-output model to return a plain tuple for ONNX tracing.
 
-    Only applied to models whose ``forward`` returns a dataclass (i.e.
+    Only constructed for models whose ``forward`` returns a dataclass (i.e.
     ``AlphaGalerkinModel``).  Plain ``Tensor``- or ``tuple``-returning models
-    are passed through unchanged so callers never see an ``AttributeError`` on
-    ``.policy_logits``.
+    are exported directly without wrapping.
 
     Note: this wrapper uses an explicit ``Tensor`` argument signature so that
     it remains compatible with both the legacy ``torch.onnx.utils.export``
@@ -49,14 +48,25 @@ class _TupleWrapper(nn.Module):
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         out = self.model(x)
-        if isinstance(out, Tensor):
-            # Plain tensor model – return as singleton tuple so the exporter
-            # always sees a tuple and ``output_names`` remains consistent.
-            return out, out
         if isinstance(out, tuple):
             return out  # type: ignore[return-value]
         # Dataclass (AlphaGalerkinModel's ModelOutput)
         return out.policy_logits, out.value
+
+
+def _wrap_for_tracing(model: nn.Module, input_tensors: tuple[Tensor, ...]) -> nn.Module:
+    """Return ``_TupleWrapper(model)`` only when the model emits a dataclass.
+
+    A single probe forward pass determines the output type.  Plain
+    ``Tensor``- or ``tuple``-returning models are returned as-is so that
+    ``output_names`` and ``dynamic_axes`` stay consistent with the actual
+    graph topology.
+    """
+    with torch.no_grad():
+        probe = model(*input_tensors)
+    if isinstance(probe, (Tensor, tuple)):
+        return model
+    return _TupleWrapper(model)
 
 
 class ONNXExporter:
@@ -125,16 +135,19 @@ class ONNXExporter:
             input_shapes=[tuple(t.shape) for t in input_tensors],
         )
 
-        # Select export method.  _TupleWrapper is applied only on the tracer
-        # paths (trace / dynamo) to normalise dataclass outputs.  The script
-        # path receives the original model because TorchScript cannot handle
-        # the wrapper's variadic signature.
+        # Select export method.  _wrap_for_tracing wraps only dataclass-output
+        # models (AlphaGalerkinModel) on the tracer paths; plain Tensor/tuple
+        # models are passed through unchanged.  The script path receives the
+        # original model because TorchScript cannot handle the wrapper's
+        # explicit-Tensor signature.
         if self.config.export_method == "dynamo":
-            self._export_dynamo(_TupleWrapper(model), input_tensors, output_path, **kwargs)
+            wrapped = _wrap_for_tracing(model, input_tensors)
+            self._export_dynamo(wrapped, input_tensors, output_path, **kwargs)
         elif self.config.export_method == "script":
             self._export_script(model, input_tensors, output_path, **kwargs)
         else:
-            self._export_trace(_TupleWrapper(model), input_tensors, output_path, **kwargs)
+            wrapped = _wrap_for_tracing(model, input_tensors)
+            self._export_trace(wrapped, input_tensors, output_path, **kwargs)
 
         # Optimize if requested
         if self.config.optimization_level != "none":

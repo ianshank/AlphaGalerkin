@@ -20,7 +20,9 @@
 #   make check         # lint + mypy + test-fast (pre-PR quick check)
 
 .PHONY: lint format mypy test-fast test-cert test-stoch test-all coverage \
-        gitleaks pre-commit docs-serve clean check gpu-smoke
+        gitleaks pre-commit docs-serve clean check gpu-smoke \
+        demo pre-pr test-agents test-benchmarks test-core test-e2e \
+        test-regression test-sanity test-security test-demos test-claude
 
 # ---------------------------------------------------------------------------
 # Tool resolution — prefer venv binaries, fall back to system
@@ -51,6 +53,36 @@ CERT_COV_THRESHOLD     ?= 85
 STOCH_COV_THRESHOLD    ?= 85
 
 # ---------------------------------------------------------------------------
+# Test-selection parity with CI
+# ---------------------------------------------------------------------------
+# `ci.yml` applies these SAME exclusions in both its `test-fast` and `coverage`
+# jobs. They live here as one variable so `make test-fast` / `make coverage`
+# measure what CI measures -- before this, the Makefile applied 3 of the 6
+# --ignore paths and none of the 9 --deselect ids, a 115-test divergence in the
+# targets `make pre-pr` chains to decide a PR is ready.
+#
+# Known duplication: this is a THIRD copy (ci.yml holds two). Collapsing all
+# three onto one shared args file is tracked as backlog B7 -- deliberately not
+# done here, because rewriting CI's test invocation risks a green PR for a
+# cosmetic win. Keep this block in step with ci.yml by hand until then.
+CI_TEST_EXCLUDES := \
+	--ignore=tests/e2e/ \
+	--ignore=tests/integration/ \
+	--ignore=tests/demos/ \
+	--ignore=tests/training/test_extended_config.py \
+	--ignore=tests/notebooks/ \
+	--ignore=tests/distributed/test_multiprocess.py \
+	--deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
+	--deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
+	--deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
+	--deselect=tests/experiments/test_physics_loss.py::TestPhysicsLossComputeLaplacian::test_laplacian_of_linear \
+	--deselect=tests/games/test_chess.py::TestChessEdgeCases::test_invalid_move_notation \
+	--deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
+	--deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
+	--deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
+	--deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error
+
+# ---------------------------------------------------------------------------
 # Lint & Format
 # ---------------------------------------------------------------------------
 lint:
@@ -72,13 +104,25 @@ mypy:
 test-fast:
 	$(PYTEST) tests/ \
 		-m "not slow and not e2e and not gpu_required" \
-		--ignore=tests/e2e/ \
-		--ignore=tests/integration/ \
-		--ignore=tests/demos/ \
+		$(CI_TEST_EXCLUDES) \
 		-q --no-header
 
 test-sanity:
 	$(PYTEST) tests/sanity/ -v
+
+# Mirrors ci.yml's "Run demo and notebook suites" step. These 226 tests are
+# --ignore'd from test-fast (see CI_TEST_EXCLUDES) because they are slower than
+# a unit test, so without this target `make pre-pr` is NARROWER than CI -- which
+# is the drift that let them go unexecuted in CI for months in the first place.
+test-demos:
+	$(PYTEST) tests/demos/ tests/notebooks/ \
+		-m "not gpu_required" \
+		-q --no-header
+
+# Mirrors ci.yml's "Validate .claude harness" step: deterministic, hermetic
+# validation of the 9 skills / 5 subagents / 4 commands / hook / settings.json.
+test-claude:
+	$(PYTEST) tests/claude/ -q --no-header
 
 test-security:
 	$(PYTEST) tests/security/ -v
@@ -125,9 +169,7 @@ test-all:
 coverage:
 	$(PYTEST) tests/ \
 		-m "not slow and not e2e and not gpu_required" \
-		--ignore=tests/e2e/ \
-		--ignore=tests/integration/ \
-		--ignore=tests/demos/ \
+		$(CI_TEST_EXCLUDES) \
 		--cov=src \
 		--cov-fail-under=$(GLOBAL_COV_THRESHOLD) \
 		-q --no-header
@@ -147,8 +189,19 @@ gpu-smoke:
 # ---------------------------------------------------------------------------
 # Security
 # ---------------------------------------------------------------------------
+# Chained into `pre-pr`, so it must not hard-fail on a machine without the
+# binary -- but it must not pass QUIETLY either. A skipped scan reported as
+# success is the "check described but not executed" failure mode this repo has
+# had to correct repeatedly; the notice below names CI as the enforcing copy.
 gitleaks:
-	gitleaks detect --config .gitleaks.toml --verbose
+	@if command -v gitleaks >/dev/null 2>&1; then \
+		gitleaks detect --config .gitleaks.toml --verbose; \
+	else \
+		echo "SKIPPED: gitleaks is not installed -- this scan did NOT run."; \
+		echo "         Install it (https://github.com/gitleaks/gitleaks) or rely"; \
+		echo "         on the 'Secret scan (gitleaks)' step in ci.yml, which is"; \
+		echo "         the enforcing copy."; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Pre-commit (all hooks)
@@ -178,5 +231,5 @@ clean:
 # Pre-PR Comprehensive Gate (lint + mypy + sanity + security + regression +
 # benchmarks + core + agents + e2e + fast + coverage[85% global gate])
 # ---------------------------------------------------------------------------
-pre-pr: lint mypy test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-fast coverage
+pre-pr: lint mypy gitleaks test-claude test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-demos test-fast coverage
 check: pre-pr

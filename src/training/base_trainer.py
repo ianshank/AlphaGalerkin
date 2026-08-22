@@ -54,6 +54,7 @@ from torch.optim.lr_scheduler import (
 
 from src.templates.config import BaseModuleConfig
 from src.training.callbacks import Callback, CallbackContext
+from src.training.checkpoint import load_torch_checkpoint
 
 logger = structlog.get_logger(__name__)
 
@@ -656,24 +657,34 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         torch.save(state, path)
         return path
 
-    def _load_training_state(self, path: Path | str) -> int:
+    def _load_training_state(self, path: Path | str, *, allow_unsafe_pickle: bool = False) -> int:
         """Load optimizer, scheduler, scaler, and step from a file.
+
+        Deserialization is ``weights_only=True``; the optimizer, scheduler and
+        AMP ``GradScaler`` state written by :meth:`_save_training_state` all load
+        under it. See the :mod:`src.training.checkpoint` Security Note.
 
         Args:
             path: File path to read.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``.
+                Defaults to safe; never set it in response to a safe-load
+                failure you have not diagnosed.
 
         Returns:
             The ``global_step`` that was restored.
 
         Raises:
             FileNotFoundError: If *path* does not exist.
+            RuntimeError: If the state cannot be safely deserialized.
 
         """
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Training state not found: {path}")
 
-        state = torch.load(path, map_location=self.device, weights_only=False)
+        state = load_torch_checkpoint(
+            path, map_location=self.device, allow_unsafe_pickle=allow_unsafe_pickle
+        )
 
         self.optimizer.load_state_dict(state["optimizer_state_dict"])
         self.scheduler.load_state_dict(state["scheduler_state_dict"])
@@ -725,12 +736,31 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self._log.info("checkpoint_saved", path=str(path), step=self.global_step)
         return path
 
-    def load_checkpoint(self, path: Path | str | None = None, **kwargs: Any) -> int | None:
+    def load_checkpoint(
+        self,
+        path: Path | str | None = None,
+        *,
+        allow_unsafe_pickle: bool = False,
+        **kwargs: Any,
+    ) -> int | None:
         """Load model and optimizer state from a checkpoint.
+
+        Deserialization is ``weights_only=True``; everything
+        :meth:`save_checkpoint` writes (model, optimizer, scheduler, AMP scaler,
+        ``config.model_dump()``) loads under it. See the
+        :mod:`src.training.checkpoint` Security Note.
 
         Args:
             path: Path to the checkpoint file.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``.
+                Defaults to safe; only for a file whose provenance a human
+                operator has established.
             **kwargs: Additional keyword arguments for subclass compatibility.
+
+        Raises:
+            ValueError: If *path* is None.
+            FileNotFoundError: If *path* does not exist.
+            RuntimeError: If the checkpoint cannot be safely deserialized.
 
         """
         if path is None:
@@ -739,7 +769,9 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         if not resolved.exists():
             raise FileNotFoundError(f"Checkpoint not found: {resolved}")
 
-        state = torch.load(resolved, map_location=self.device, weights_only=False)
+        state = load_torch_checkpoint(
+            resolved, map_location=self.device, allow_unsafe_pickle=allow_unsafe_pickle
+        )
 
         self.model.load_state_dict(state["model_state_dict"])
         self.optimizer.load_state_dict(state["optimizer_state_dict"])

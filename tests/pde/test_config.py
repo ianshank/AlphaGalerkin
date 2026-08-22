@@ -228,6 +228,117 @@ class TestMeshRefinementConfig:
                 max_polynomial_degree=10,
             )
 
+    def test_hp_switchover_above_max_refinement_level_rejected(self) -> None:
+        """Switchover level above the refinement cap makes p-refinement unreachable."""
+        with pytest.raises(ValidationError, match="p-refinement branch"):
+            MeshRefinementConfig(
+                name="test",
+                refinement_strategy=RefinementStrategy.HP_REFINEMENT,
+                hp_switchover_level=8,
+                max_refinement_level=5,
+            )
+
+    def test_hp_switchover_equal_to_max_refinement_level_rejected(self) -> None:
+        """Equality is degenerate too: the p-refinement level window is empty."""
+        with pytest.raises(ValidationError, match="p-refinement branch"):
+            MeshRefinementConfig(
+                name="test",
+                refinement_strategy=RefinementStrategy.HP_REFINEMENT,
+                hp_switchover_level=5,
+                max_refinement_level=5,
+            )
+
+    def test_hp_switchover_one_below_max_refinement_level_accepted(self) -> None:
+        """The tightest non-degenerate case keeps exactly one p-refinable level."""
+        config = MeshRefinementConfig(
+            name="test",
+            refinement_strategy=RefinementStrategy.HP_REFINEMENT,
+            hp_switchover_level=4,
+            max_refinement_level=5,
+        )
+        assert config.hp_switchover_level == 4
+        assert config.max_refinement_level == 5
+
+    @pytest.mark.parametrize(
+        "strategy",
+        [RefinementStrategy.H_REFINEMENT, RefinementStrategy.P_REFINEMENT],
+    )
+    @pytest.mark.parametrize("max_refinement_level", [1, 2])
+    def test_shallow_budget_accepted_for_non_hp_strategies(
+        self,
+        strategy: RefinementStrategy,
+        max_refinement_level: int,
+    ) -> None:
+        """A shallow refinement budget is legitimate whenever hp is not in play.
+
+        Regression test for an over-broad cross-check: the
+        ``hp_switchover_level < max_refinement_level`` rule was applied
+        unconditionally, so every config with ``max_refinement_level <= 2``
+        (the default ``hp_switchover_level`` is 2) was rejected -- including
+        pure h- and p-refinement, which never read ``hp_switchover_level``
+        (``Mesh.refine_element`` dispatches on the strategy first). That made
+        the advertised ``max_refinement_level >= 1`` bound unreachable for the
+        *default* strategy.
+        """
+        config = MeshRefinementConfig(
+            name="smoke",
+            refinement_strategy=strategy,
+            max_refinement_level=max_refinement_level,
+        )
+
+        assert config.max_refinement_level == max_refinement_level
+        # The inert field keeps its default; it is simply never consulted.
+        assert config.hp_switchover_level == 2
+
+    def test_shallow_budget_accepted_on_default_strategy(self) -> None:
+        """The exact call from the defect report: a fast shallow smoke config."""
+        config = MeshRefinementConfig(name="smoke", max_refinement_level=2)
+
+        assert config.refinement_strategy == RefinementStrategy.H_REFINEMENT
+        assert config.max_refinement_level == 2
+
+    @pytest.mark.parametrize(
+        "strategy",
+        [RefinementStrategy.H_REFINEMENT, RefinementStrategy.P_REFINEMENT],
+    )
+    def test_degenerate_hp_window_accepted_for_non_hp_strategies(
+        self,
+        strategy: RefinementStrategy,
+    ) -> None:
+        """The same (switchover, cap) pair that hp rejects is fine without hp.
+
+        Pairs with ``test_hp_switchover_equal_to_max_refinement_level_rejected``
+        to pin the gate from both sides: identical field values, opposite
+        outcomes, decided solely by ``refinement_strategy``.
+        """
+        config = MeshRefinementConfig(
+            name="test",
+            refinement_strategy=strategy,
+            hp_switchover_level=5,
+            max_refinement_level=5,
+        )
+
+        assert config.hp_switchover_level == config.max_refinement_level == 5
+
+    def test_hp_switchover_upper_bound(self) -> None:
+        """hp_switchover_level carries the same standalone bound as its sibling.
+
+        Load-bearing under the default (h) strategy: the hp cross-check is
+        gated off there, so ``le=20`` is the only guard left.
+        """
+        with pytest.raises(ValidationError):
+            MeshRefinementConfig(name="test", hp_switchover_level=21)
+
+    def test_hp_switchover_upper_bound_under_hp_strategy(self) -> None:
+        """The standalone bound also fires before the (looser) cross-check."""
+        with pytest.raises(ValidationError):
+            MeshRefinementConfig(
+                name="test",
+                refinement_strategy=RefinementStrategy.HP_REFINEMENT,
+                hp_switchover_level=21,
+                max_refinement_level=20,
+            )
+
 
 class TestPDEGameConfig:
     """Tests for PDEGameConfig."""

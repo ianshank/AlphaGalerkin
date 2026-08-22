@@ -113,15 +113,33 @@ jobs:
       # `PDEGame.get_result` (B17) survived. The audit is AST-only (stdlib
       # imports, no torch/numpy), so it runs in this job's minimal dep set.
       #
-      # The three refinement roots are clean and gated hard. Blocking the whole
-      # of src/ is not yet possible: `src/backend` carries a known domain-PoC
-      # backlog, so it runs report-only and its output is advisory.
+      # The three refinement roots are clean and gated hard. Every OTHER package
+      # is now gated too -- measured clean at the time this was tightened, so it
+      # costs nothing today and blocks the next dead abstraction instead of
+      # reporting it. `src/backend` alone stays advisory: its 7 unread
+      # `BackendInterface` protocol members are the documented domain-PoC
+      # backlog (docs/CODE_HYGIENE_AUDIT.md B10), tied to the open JAX
+      # keep-or-cut decision.
+      #
+      # Pass every root in ONE invocation. The audit resolves call sites within
+      # the union of the roots it is given, so scanning root-by-root is strictly
+      # stricter than scanning them together and would flag cross-package
+      # readers as missing -- e.g. `src/training` alone reports
+      # `BaseLoss.forward` (losses/base.py) unread, while the combined scan
+      # does not, because the reader lives outside that package. Do not "tighten"
+      # this by splitting it up.
       - name: Audit abstractions (refinement surfaces)
         run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
 
-      - name: Audit abstractions (rest of src, report-only)
+      - name: Audit abstractions (all packages except the src/backend backlog)
+        run: |
+          python -m scripts.audit_abstractions \
+            $(ls -d src/*/ | grep -v __pycache__ | grep -v 'src/backend/') \
+            --fail-on-missing
+
+      - name: Audit abstractions (src/backend, report-only)
         continue-on-error: true
-        run: python -m scripts.audit_abstractions src/
+        run: python -m scripts.audit_abstractions src/backend
 
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports
@@ -138,6 +156,51 @@ jobs:
   # ============================================================
   # Stage 2: Unit Tests (Fast)
   # ============================================================
+  # .gitleaks.toml has existed since the repo was set up, and `make gitleaks`
+  # has existed alongside it -- but NOTHING ever invoked either. A secret
+  # scanner that never runs is worse than none: its presence in the tree reads
+  # as coverage.
+  #
+  # This is a JOB, not a step in test-fast, for two reasons found the hard way
+  # when it was a step:
+  #   1. test-fast is a 3-way python matrix, so the scan ran three times per
+  #      push -- redundant work and three copies of any failure.
+  #   2. actions/checkout defaults to fetch-depth 1. gitleaks-action does a
+  #      diff scan against the base commit, which a shallow clone does not
+  #      contain, so `git` failed with "Use '--' to separate paths from
+  #      revisions", the scan covered ~0 bytes, and it still logged "no leaks
+  #      found in partial scan" before exiting 1. A scanner reporting a clean
+  #      result over zero bytes is precisely the failure mode this branch keeps
+  #      correcting; `fetch-depth: 0` gives it the history it needs to scan
+  #      anything at all.
+  #
+  # Scope: the config allowlists all of tests/, docs/ and config/baselines/, so
+  # this covers src/, scripts/ and .github/ and deliberately not fixtures.
+  # Narrowing that allowlist is tracked separately -- widening the scan and
+  # wiring it in one change makes a first run's failures impossible to triage.
+  #
+  # NOT in `ci-success`'s needs list, deliberately and temporarily: this job has
+  # never completed a green run, and its first attempt failed for a harness
+  # reason rather than a finding. It reports now and blocks later -- promote it
+  # into the merge gate once it has been green across a few pushes. Leaving that
+  # unsaid would make its absence look like an oversight.
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   test-fast:
     name: Unit Tests (Fast)
     runs-on: ubuntu-latest
@@ -173,6 +236,58 @@ jobs:
         run: |
           python -c "import sys; print('Python', sys.version)"
           pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
+
+      # The .claude/ harness -- 9 skills, 5 subagents, 4 slash commands, a
+      # SessionStart hook and settings.json -- is executable configuration with
+      # no tests until now. A skill citing a deleted path, an agent declaring a
+      # tool that does not exist, or a permission naming a renamed module all
+      # fail at the moment someone relies on them. Hermetic and deterministic:
+      # no network, no model calls, ~0.25s.
+      - name: Validate .claude harness
+        run: |
+          pytest tests/claude/ \
+            --tb=short \
+            -q
+
+      # Explicit, named gate for the whole security suite. The broad
+      # "Run fast unit tests" step below does collect tests/security/, but only
+      # while every file there stays free of the slow/e2e markers it filters out,
+      # and a failure there is buried among ~9000 tests. Running the directory on
+      # its own keeps the signal legible and pins the suite in place: 69 tests,
+      # ~52s, no GPU, no network, no optional dependencies. (Measured 2026-08-21;
+      # the "33 tests, <1s" this replaced was written before rounds 3-4 more than
+      # doubled the suite, and was never re-measured. The count went 71 -> 69 when
+      # test_security_model.py was deleted: its three tests patched torch.load,
+      # called it in the test body, and asserted the mock recorded the arguments
+      # the test had just passed -- zero src imports, verified green in a
+      # directory containing no src/ at all.)
+      - name: Run security test suite
+        run: |
+          pytest tests/security/ \
+            -m "not gpu_required" \
+            --tb=short \
+            -q
+
+      # tests/demos/ and tests/notebooks/ are --ignore'd from the broad run below
+      # (they are slower than a unit test and would blur that step's signal), and
+      # until now they were named in NO other step -- so 226 tests, 151 + 75,
+      # never executed in CI at all. tests/demos was already flagged as a known
+      # gap in docs/CODE_HYGIENE_AUDIT.md; tests/notebooks was documented nowhere.
+      #
+      # Given their own step they cost ~2 min and keep the fast lane fast. Same
+      # shape as the security step above: a named directory, legible on failure.
+      #
+      # NOT included here: tests/e2e/. It has the same invisibility problem (11
+      # files on disk, one named in this workflow) but it is not currently safe
+      # to wire -- test_quick_validation_journey.py::test_train_physics_minimal
+      # shells out with a fixed 120 s timeout and fails on a loaded machine.
+      # Tracked separately; wiring it before that is fixed would buy a flaky gate.
+      - name: Run demo and notebook suites
+        run: |
+          pytest tests/demos/ tests/notebooks/ \
+            -m "not gpu_required" \
+            --tb=short \
+            -q
 
       - name: Run fast unit tests
         run: |
@@ -565,10 +680,75 @@ jobs:
         run: |
           pytest tests/engines/ --cov=src/engines --cov-branch --cov-fail-under=82 -q --no-header
 
+      # Raised 77 -> 85 (2026-08-21). The 77 was set against a documented 79.81%
+      # whose stated drag was physics_dataset.py at 23%; that file now measures
+      # 100% and the package measures 97.83%, so 77 had 20 points of slack and
+      # would not have caught a large regression.
       - name: Per-module coverage gate (data)
         if: always() && hashFiles('tests/data/') != ''
         run: |
-          pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=77 -q --no-header
+          pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=85 -q --no-header
+
+      # Five packages that had no gate at all. Measured 2026-08-21 with
+      # COVERAGE_CORE=pytrace (mandatory -- the installed torch wheel crashes
+      # coverage's default C tracer and the failure is silent UNDER-measurement,
+      # so a gate set without it is simply wrong). --cov-branch is redundant with
+      # pyproject.toml's `[tool.coverage.run] branch = true` and is kept only for
+      # symmetry with the gates above.
+      #
+      # Gated at floor(measured)-2 capped at 85, the convention documented on the
+      # src/agents row in CLAUDE.md. The cap is deliberate for a NEW gate: its job
+      # is to stop a package falling below the repo's global standard, not to
+      # freeze it at today's number, where an unrelated change would ratchet it
+      # red. (src/tools at 89 is the standing exception, not the rule.)
+      #
+      #   src/poc          89.57%  -> 85   (4011 stmts, the largest ungated surface;
+      #                                     its seven per-file gates cover 17 of 41
+      #                                     files -- runner.py, cli.py, results.py and
+      #                                     scenarios/transfer.py at 25% had none)
+      #   src/analysis     91.08%  -> 85
+      #   src/tournament   92.91%  -> 85
+      #   src/prototyping  93.16%  -> 85
+      #   src/demos        83.28%  -> 81   (below the cap, so floor(measured)-2 applies)
+      - name: Per-module coverage gate (poc)
+        if: always() && hashFiles('tests/poc/') != ''
+        run: |
+          pytest tests/poc/ -m "not gpu_required" \
+            --cov=src/poc --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (analysis)
+        if: always() && hashFiles('tests/analysis/') != ''
+        run: |
+          pytest tests/analysis/ --cov=src/analysis --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (tournament)
+        if: always() && hashFiles('tests/tournament/') != ''
+        run: |
+          pytest tests/tournament/ --cov=src/tournament --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (prototyping)
+        if: always() && hashFiles('tests/prototyping/') != ''
+        run: |
+          pytest tests/prototyping/ --cov=src/prototyping --cov-branch --cov-fail-under=85 -q --no-header
+
+      # src/demos hits the same pyproject.toml `[tool.coverage.run] omit` collision
+      # that src/video_compression needed a workaround for: a bare --cov=src/demos
+      # reports 0.00% with `CoverageWarning: No data was collected`, which is the
+      # false-pass failure mode a gate must not have. Same inline-coveragerc
+      # technique, dropping the omit for this step only.
+      - name: Per-module coverage gate (demos)
+        if: always() && hashFiles('tests/demos/') != ''
+        run: |
+          cat > .coveragerc.demos <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/demos/ \
+            --cov=src/demos --cov-config=.coveragerc.demos \
+            --cov-branch --cov-fail-under=81 -q --no-header
 
       # src/video_compression is globally omitted from the whole-repo --cov=src
       # gate above (`[tool.coverage.run] omit` in pyproject.toml) -- that omit
@@ -735,7 +915,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,test-extras]"
+          # eval-harness included for the same reason as test-extras: without it
+          # 8 of the 11 modules under tests/integrations/eval_harness/ skip at
+          # import, masking ~900 LOC as "passing". This job exists to stop
+          # exactly that.
+          pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
       - name: Run FEM baseline + PettingZoo suites

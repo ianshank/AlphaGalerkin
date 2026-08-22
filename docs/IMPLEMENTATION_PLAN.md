@@ -629,7 +629,7 @@ tests/property/
 # pyproject.toml additions
 [project.dependencies]
 # Distributed
-torch >= 2.0.0  # Already present
+torch >= 2.6.0  # Already present
 
 # ONNX
 onnx >= 1.14.0
@@ -646,7 +646,7 @@ kaleido >= 0.2.1  # For static image export
 
 [project.optional-dependencies]
 distributed = [
-    "torch >= 2.0.0",
+    "torch >= 2.6.0",
 ]
 onnx = [
     "onnx >= 1.14.0",

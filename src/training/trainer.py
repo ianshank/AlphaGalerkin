@@ -1425,6 +1425,8 @@ class Trainer(BaseTrainer):
         self,
         path: Path | str | None = None,
         load_best: bool = False,
+        allow_external: bool = False,
+        allow_unsafe_pickle: bool = False,
     ) -> int:
         """Load training checkpoint.
 
@@ -1432,8 +1434,21 @@ class Trainer(BaseTrainer):
         ensure consistency.
 
         Args:
-            path: Specific checkpoint path.
+            path: Specific checkpoint path. Relative paths resolve against the
+                trainer's checkpoint directory.
             load_best: Whether to load best checkpoint.
+            allow_external: Permit a checkpoint outside the checkpoint directory
+                (operator-supplied resume path). See
+                :meth:`CheckpointManager.load`.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only for
+                a file whose provenance the operator has established.
+
+                ``CheckpointManager.restore`` has accepted this since the hatch
+                landed, but this method neither exposed nor forwarded it — so the
+                one API most likely to be pointed at a legacy or third-party
+                checkpoint (resume) was the one with no way to opt in. Defaults
+                to ``False``, so every existing caller is unaffected and stays on
+                the safe path.
 
         Returns:
             Training step from checkpoint.
@@ -1446,6 +1461,8 @@ class Trainer(BaseTrainer):
             scheduler=self.scheduler,
             path=path,
             load_best=load_best,
+            allow_external=allow_external,
+            allow_unsafe_pickle=allow_unsafe_pickle,
         )
         self.global_step = step
 
@@ -1510,7 +1527,9 @@ def create_trainer(
     )
 
     if resume_from is not None:
-        trainer.load_checkpoint(path=resume_from)
+        # Operator-supplied resume path: may legitimately live outside the
+        # trainer's own checkpoint directory, so opt out of containment here.
+        trainer.load_checkpoint(path=resume_from, allow_external=True)
         logger.info("training_resumed", from_step=trainer.global_step)
 
         # Update tracker step offset for resumed training

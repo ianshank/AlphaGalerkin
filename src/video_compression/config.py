@@ -38,6 +38,48 @@ class RateControlMode(str, Enum):
     CRF = "crf"  # Constant rate factor (quality-based)
 
 
+# Every ``Enum`` this module defines, in one tuple, for allowlisting when a
+# checkpoint is deserialized under ``weights_only=True``.
+#
+# Why this exists: ``load_codec`` reconstructs its config with
+# ``CodecConfig(**checkpoint["config"])``, so the payload shape it accepts is a
+# ``CodecConfig`` dump -- which keeps these three as *enum members* rather than
+# plain strings. From torch 2.6 ``torch.load`` defaults to
+# ``weights_only=True``, whose unpickler rejects any global it was not told
+# about, so such a checkpoint fails on ``QuantizationMode`` before it ever
+# reaches the weights. Passing this tuple as
+# ``load_torch_checkpoint(..., extra_safe_globals=SAFE_CODEC_GLOBALS)`` is what
+# makes the safe load succeed, which is the whole point: a loader whose safe
+# path cannot work is a loader whose unsafe path becomes routine.
+#
+# Attribution corrected after review: this previously credited
+# ``VideoCompressionTrainer.save_checkpoint``. That trainer writes
+# ``TrainingConfig.model_dump()``, whose only non-primitive is ``created_at``
+# (already covered by the base allowlist) -- so it is NOT the reason this tuple
+# exists, and it is passed no extras.
+#
+# Worth knowing, though out of scope here: chasing that correction found that
+# **no writer in this repo emits a ``CodecConfig`` dump**. The sole
+# ``"config": self.config.model_dump()`` writer is the trainer above, writing
+# ``TrainingConfig``, while ``load_codec`` and ``scripts/decode_video.py`` both
+# read the entry back as ``CodecConfig``. The readers therefore expect a shape
+# only an external or older checkpoint supplies. That mismatch is a real defect
+# in its own right and is deliberately NOT fixed under a security change.
+#
+# These qualify under that function's pure-data rule: ``str``-valued ``Enum``
+# subclasses deserialize by looking up a member, and can invoke nothing else.
+#
+# Keep in sync when adding an enum here -- the tuple is asserted complete by
+# ``tests/security/test_codec_checkpoint_safety.py::TestSafeCodecGlobals``,
+# which reflects over this module rather than restating the list, so a new enum
+# fails that test rather than silently reintroducing the bare-load failure.
+SAFE_CODEC_GLOBALS: tuple[type, ...] = (
+    QuantizationMode,
+    EntropyModelType,
+    RateControlMode,
+)
+
+
 class EncoderConfig(BaseModuleConfig):
     """Configuration for the analysis transform (encoder).
 

@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from tests.e2e.conftest import (
+    E2E_TRAINING_TIMEOUT_S,
+    E2E_TRIVIAL_TIMEOUT_S,
+)
+
 if TYPE_CHECKING:
     from tests.e2e.conftest import CLIRunnerType
 
@@ -57,7 +62,7 @@ def test_poc_cli_invalid_scenario(cli_runner: CLIRunnerType) -> None:
     result = cli_runner(
         "src.poc.cli",
         ["info", "nonexistent_scenario_xyz"],
-        timeout=30,
+        timeout=E2E_TRIVIAL_TIMEOUT_S,
     )
     # Should exit with error but not crash
     not_found_in_stderr = "not found" in result.stderr.lower()
@@ -83,7 +88,7 @@ def test_poc_cli_run_tier_filter(
     result = cli_runner(
         "src.poc.cli",
         ["run", "--tier", "unit", "--output-dir", str(temp_output_dir)],
-        timeout=120,
+        timeout=E2E_TRAINING_TIMEOUT_S,
     )
     # Should attempt to run unit tier scenarios
     # Exit code depends on scenario availability
@@ -101,7 +106,7 @@ def test_poc_cli_config_path(cli_runner: CLIRunnerType, config_dir: Path) -> Non
     result = cli_runner(
         "src.poc.cli",
         ["run", "--config", str(config_file), "--help"],
-        timeout=30,
+        timeout=E2E_TRIVIAL_TIMEOUT_S,
     )
     # Help should work even with config path
     assert result.returncode in [0, 2]

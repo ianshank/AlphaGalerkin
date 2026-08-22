@@ -610,6 +610,24 @@ at the zero-derivative branch, so the condition is diagnosable instead of silent
 `is_time_dependent = True` — honour the class default or raise on the contradiction; (2) make
 `compute_exact_error` refuse the residual fallback when `_exact_solution is None` rather than
 reporting a constant as convergence; (3) re-run `llm_prior_demo.yaml` and re-derive `ood_*`.
+
+> **Status (2026-08-21).** Step (1) was done in the 2026-08-19 hygiene pass, which made
+> `BurgersOperator.exact_solution` reachable and thereby exposed a *second*, independent
+> defect in the Cole-Hopf series itself — every Fourier coefficient was hardcoded to 1
+> (the transform of a Dirac comb, not of a sinusoid), so the reachable "ground truth" was
+> ~1e12–1e13 rather than flat zero. **That second defect is now fixed**: the coefficients
+> are `2*(-1)^n*ive(n, R)`, `R = 1/(2*pi*nu)`, and `initial_condition` / `boundary_value` /
+> `exact_solution` were unified onto the single benchmark `u(x,0) = -sin(pi*x)` on `[0,1]`
+> with homogeneous Dirichlet data (they previously described three different problems).
+> Measured for the `ood_pde="burgers"` arm: `BasisSelectionGame` initial
+> `error_estimate` **4.20e12 → 0.7071**; the operator is no longer degenerate on either
+> the flat-zero or the 1e12 axis. Step (2) is **still open**. Step (3) is **still open by
+> design** — the `ood_*` thresholds were deliberately left untouched because re-deriving
+> them requires the real GPU run, but they are now measurable against a physically
+> meaningful solution (`ood_llm_residual <= 1e-2` demands a ~70x reduction from 0.707,
+> which is demanding-but-attainable, where before it was arithmetically impossible).
+> See `docs/CODE_HYGIENE_REVIEW_2026-08-19.md` for the full before/after and the
+> documented `nu -> 0` conditioning limit of the Fourier-Bessel representation.
 Re-measure the `noyron_basis` "~2–4% best-case reduction" open research item afterwards — it is
 plausibly a symptom of link 3 rather than of basis/geometry mismatch.
 

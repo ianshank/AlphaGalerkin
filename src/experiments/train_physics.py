@@ -497,6 +497,23 @@ def main() -> None:
     parser.add_argument("--train-size", type=int, default=9, help="Training grid size")
     parser.add_argument("--eval-size", type=int, default=19, help="Evaluation grid size")
     parser.add_argument("--n-epochs", type=int, default=100, help="Number of epochs")
+    # Dataset size was reachable only by editing TrainingConfig. --train-size is
+    # the GRID (9 -> 9x9), not the sample count, so there was no way to ask for a
+    # genuinely small run from the CLI: tests/e2e's "minimal" invocation still
+    # built 5000 samples / 157 batches and took ~1.7 h for its 2 epochs. Defaults
+    # are the existing TrainingConfig values, so every current caller is unchanged.
+    parser.add_argument(
+        "--n-train-samples",
+        type=int,
+        default=TrainingConfig.n_train_samples,
+        help="Training samples to generate (grid size is --train-size)",
+    )
+    parser.add_argument(
+        "--n-eval-samples",
+        type=int,
+        default=TrainingConfig.n_eval_samples,
+        help="Evaluation samples to generate (grid size is --eval-size)",
+    )
     parser.add_argument("--d-model", type=int, default=128, help="Model dimension")
     parser.add_argument("--n-layers", type=int, default=4, help="Number of layers")
     parser.add_argument("--fourier-scale", type=float, default=10.0, help="Fourier scale")
@@ -527,6 +544,8 @@ def main() -> None:
         train_grid_size=args.train_size,
         eval_grid_size=args.eval_size,
         n_epochs=args.n_epochs,
+        n_train_samples=args.n_train_samples,
+        n_eval_samples=args.n_eval_samples,
         d_model=args.d_model,
         n_layers=args.n_layers,
         fourier_scale=args.fourier_scale,

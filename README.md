@@ -206,10 +206,11 @@ pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py 
 ---
 ## Testing
 
-The project ships an extensive suite (**7,000+ test functions** across unit,
-integration, property-based, E2E, and security categories) with an **85% branch
-coverage** gate enforced in CI, plus per-module gates (e.g. `mcts ≥ 90`,
-`refinement ≥ 85`, `pde ≥ 75`).
+The project ships an extensive suite — **8,573 test functions, 9,770 collected**
+after parametrisation (measured 2026-08-21, CPU surface) across unit, integration,
+property-based, E2E and security categories — with an **85% branch coverage** gate
+enforced in CI, plus **34 per-module gates** (e.g. `mcts ≥ 90`, `refinement ≥ 85`,
+`poc ≥ 85`, `data ≥ 85`, `demos ≥ 81`, `pde ≥ 75`).
 
 ```bash
 export COVERAGE_CORE=pytrace          # a torch wheel crashes the default C tracer
@@ -308,14 +309,17 @@ AlphaGalerkin/
 │   ├── training/          # Training pipeline, checkpointing, ReLoBRaLo, constants
 │   ├── engines/           # External engine integration (UCI, Match, Elo)
 │   ├── math_kernel/       # Mathematical basis primitives (Fourier, Chebyshev)
-│   ├── mcts/              # Monte Carlo Tree Search, Evaluators, Gumbel MCTS, constants
+│   ├── mcts/              # Monte Carlo Tree Search, Evaluators, Gumbel MCTS
 │   └── tools/             # Utilities (GTP, CLI, Colab)
-├── tests/                 # 7-Tier Test Pyramid (3,000+ tests, >= 85% branch coverage gate)
+├── tests/                 # 7-Tier Test Pyramid (9,770 collected, >= 85% branch coverage gate)
 │   ├── sanity/            # Dynamic public module import smoke & CLI help checks
-│   ├── security/          # YAML injection defenses, weights_only checks, GTP fuzzing
+│   ├── security/          # Pickle-RCE payload tests, path containment, GTP fuzzing
 │   ├── benchmarks/        # O(N) attention scaling, MCTS throughput, FNet speedup
 │   ├── regression/        # Mathematical invariants, backup sign checks, transfer ratio floors
 │   ├── core/              # Core protocol conformance & generic registry unit tests
+│   ├── claude/            # Deterministic validation of the .claude/ agentic harness
+│   ├── demos/             # Benchmark & visualization demos (wired into CI 2026-08-21)
+│   ├── notebooks/         # Notebook execution smoke (wired into CI 2026-08-21)
 │   ├── pde/               # PDE operators, geometry, time-stepping
 │   ├── training/          # Trainer, loss properties, numerical stability
 │   ├── modeling/          # Attention properties, Fourier features

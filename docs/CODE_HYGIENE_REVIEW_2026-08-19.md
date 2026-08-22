@@ -65,6 +65,108 @@ before — `tests/pde/test_operators.py::test_steady_returns_none` (the test tha
 proved the naive "just honor the class default" fix would have broken something
 real) passes unmodified.
 
+> ✅ **RESOLVED (2026-08-21).** The Cole-Hopf defect described in this section is
+> fixed in `src/pde/operators.py`. Root cause was narrower and more serious than
+> "the truncated series is degenerate at t=0": **every Fourier coefficient of the
+> series was hardcoded to 1**, which is the Cole-Hopf image of a *Dirac comb*, not
+> of a sinusoid — a valid solution to the wrong problem. The correct coefficients
+> are `a_n = 2*(-1)^n*I_n(R)` with `R = 1/(2*pi*nu)` (modified Bessel, computed via
+> the exponentially-scaled `scipy.special.ive` so `R = 159` at `nu = 0.001` does not
+> overflow; the `e^-R` factor cancels between numerator and denominator). The
+> code's own docstring and an inline comment had claimed Bessel coefficients all
+> along — nothing numeric ever computed them.
+>
+> This was **not** a t=0 edge case: the denominator stayed negative-somewhere for
+> all `nu*t <~ 0.02`. Measured `max|u|` at `t=0`, before → after:
+> `nu=1.0` **5.0e13 → 1.000**; `nu=0.01` **5.0e11 → 1.000**; `nu=0.001`
+> **5.0e10 → 0.605**. The bound is the viscous-Burgers maximum principle
+> (`max|u(.,t)| <= max|u(.,0)| = 1`), now asserted.
+>
+> The operator previously described *three different problems at once*
+> (`initial_condition` = `sin(2*pi*x)`, `boundary_value` = a tanh shock with
+> `u(0,t) = 1`, `exact_solution`'s docstring = `-sin(pi*x)`). All three now describe
+> the standard Basdevant / Cole-Hopf benchmark: `u(x,0) = -sin(pi*x)` on `[0,1]`,
+> homogeneous Dirichlet. `exact_solution(coords, time=0.0)` now reproduces
+> `initial_condition(coords)` to 2e-7 (float32 epsilon) — the load-bearing
+> self-consistency property that was previously false three ways over.
+>
+> Consequences recorded elsewhere in this section are correspondingly closed: the
+> basis-game initial error for the shipped `ood_pde="burgers"` arm went
+> **4.20e12 → 0.7071**, and the second live consumer,
+> `src/research/baselines.py::BaseSolver._compute_l2_error` (feeding the
+> `burgers_shock` row of `config/benchmarks/sbir_suite.yaml`), went
+> **3.33e12 → 0.7016** (the exact RMS of `sin(pi*x)` against a zero trial solution).
+> The `ood_llm_residual`/`ood_trained_residual` thresholds are **still not
+> re-derived** — that needs the real GPU run — but they are now measured against a
+> physically meaningful ground truth instead of a 1e12 artifact.
+>
+> Known limitation, documented rather than hidden: the Fourier-Bessel
+> representation is intrinsically ill-conditioned as `nu -> 0` (`phi` spans
+> `[exp(-2R), 1]`, so significance is lost once `exp(-2R)` reaches float64
+> round-off, i.e. `nu <~ 0.009`). This is a property of the representation, not of
+> the implementation — `ive` itself is only float64-accurate, so no summation
+> scheme recovers the lost digits. Surfaced as
+> `COLE_HOPF_MIN_RESOLVED_VISCOSITY` with a `cole_hopf_underresolved` structlog
+> warning, and pinned by
+> `tests/pde/test_operators.py::TestBurgersColeHopf::test_under_resolved_viscosity_stays_bounded`.
+>
+> ⚠️ **Two corrections to the above, from the adversarial review pass (2026-08-21).**
+> Both were claims made in the fixing commit that the review disproved — recorded
+> here rather than quietly amended, per this repo's own convention.
+>
+> 1. **The affected region is far larger than "near `x = 0`".** The region with
+>    error `> 1e-3` reaches `x <= 0.52` at `nu=0.005` and `x <= 0.80` at
+>    `nu=0.001` — **79.6% of the domain** — with `u` clamped to ~0 where the true
+>    solution is O(1). "Near `x=0`" would lead a reader to trust `x=0.5`, which is
+>    wrong below `nu ~ 0.005`.
+>
+>    ⚠️ **Figures corrected 2026-08-21 (round 6).** This block originally read
+>    "none at `nu=0.01` (max 3.8e-4); `x <= 0.15` at `nu=0.009`; … `x <= 0.7975`
+>    at `nu=0.001` — i.e. 78.8%". Those three numbers do not reproduce. The
+>    canonical table is the one in `src/pde/operators.py`
+>    (`COLE_HOPF_MIN_RESOLVED_VISCOSITY`'s docstring), which gives `x <= 0.23`
+>    (20.2%) at `nu=0.009`, `x <= 0.52` (50.4%) at `nu=0.005`, and `x <= 0.80`
+>    (79.6%) at `nu=0.001`. Three independent measurements agree with the code
+>    table and not with the original figures: the code's own recorded run, an
+>    adversarial review pass (0.2325 / 79.6%), and a re-measurement on a
+>    401-point grid (0.2400 / 21.4%, 0.5225 / 51.4%, 0.8000 / 79.6%) — the
+>    sub-percent spread between those three is grid resolution, not disagreement.
+>
+>    Two notes on measurement basis, since they explain apparent mismatches that
+>    are **not** errors. At `t=0` the exact solution is just `-sin(pi*x)`, so this
+>    needs no arbitrary-precision reference at all — comparing to
+>    `initial_condition()` directly is exact, and an earlier attempt to re-derive
+>    it via mpmath produced a max error of 2.0 on a function bounded by 1, the
+>    signature of a `+sin` reference against this code's `-sin`. And the code
+>    table's `nu >= 0.1` rows read ~1e-15 because they are taken on float64
+>    internals *before* the float32 return cast; measured through the public
+>    method they are ~3e-8, which is float32 epsilon, not a discrepancy.
+> 2. **`config/benchmarks/sbir_suite.yaml`'s `nu=0.001` row is not reachable**, so
+>    the commit's warning that "that row cannot be trusted near x=0 even now" is
+>    moot. `src/research/pde_benchmarks.py:416-422` builds its `PDEConfig` reading
+>    only `advection_coeff` from `params` — it never reads `parameters.viscosity`,
+>    so the operator is always constructed at the bare `PDEConfig` default of
+>    `nu=1.0`. The commit's own evidence contradicted its warning: the reported
+>    `0.7016464` is the RMS of `sin(pi x)`, which only holds at `nu=1.0`.
+>
+> The **real** finding underneath correction 2, which nobody flagged at the time and
+> which is *pre-existing rather than introduced here*: `sbir_suite.yaml`'s
+> `parameters.viscosity: [0.01, 0.005, 0.001]` is **silently dropped**, so the SBIR
+> "Burgers shock" benchmark has never run at a shock-forming viscosity. Deliberately
+> **not** wired through as part of this pass: given correction 1, doing so would push
+> the benchmark straight into the unresolvable regime and make the reported numbers
+> worse, not better. It needs its own scoping.
+>
+> Also recorded, a shipped consequence of homogenising the BC that the fixing commit
+> flagged as a degeneracy but did not follow through on: the Burgers AMR baseline is
+> now **non-convergent** — l2_error 0.5789 at 94 DOF versus 0.6677 at 286 DOF, and
+> identical at 286 for both `target_dof` 512 and 2048. That feeds
+> `_attach_convergence_rates` and the SBIR report as a *negative* convergence rate.
+> The degeneracy itself is real and correctly diagnosed (zero source + zero Dirichlet
+> gives exact `u == 0`, so every residual indicator is zero and bulk marking never
+> fires); what was missing is that the shipped number now moves the wrong way with
+> refinement.
+
 **Critical finding, surfaced by fixing the above — live today, not hypothetical.**
 Making `BurgersOperator.exact_solution()` reachable at the default `t=0` exposed a
 **pre-existing, separate defect** in the Cole-Hopf approximation itself. At `t=0`,
@@ -82,6 +184,13 @@ headline GPU command. Directly measured: `build_pde_operator("burgers")` +
 `build_basis_game(...)` → `get_initial_state().error_estimate = 4.29e12`, with the
 same tensor serving as both the RMS baseline *and* the literal least-squares
 regression target for every basis-fit action in the game.
+
+*(Resolved 2026-08-21 — see the banner at the head of this section. The
+`test_cole_hopf_t0_magnitude_is_a_known_defect_not_a_correctness_claim` test named
+below has been inverted to
+`test_cole_hopf_t0_magnitude_is_physically_sane`, exactly as its own docstring
+authorised, and now asserts the maximum-principle bound plus the `-sin(pi*x)`
+profile.)*
 
 **The regression test added alongside the fix was itself silently vacuous**: it
 only asserted `torch.isfinite(...).all()`, which trivially passes on a
@@ -164,6 +273,15 @@ All gates verified passing with the exact CLAUDE.md-documented commands
 - `src/pde/operators.py`: Cole-Hopf `n_terms=50` and the `1e-10` clamp epsilon are
   duplicated across tensor/numpy branches, not named constants or config fields —
   the same epsilon implicated in the Cole-Hopf t=0 finding above.
+  ✅ **Closed (2026-08-21).** Both are named module constants
+  (`COLE_HOPF_N_TERMS`, `COLE_HOPF_CLAMP_EPS`), joined by
+  `COLE_HOPF_MAX_TERMS`, `COLE_HOPF_TERM_TOLERANCE`,
+  `COLE_HOPF_MIN_RESOLVED_VISCOSITY` and `COLE_HOPF_COEFFICIENT_CACHE_SIZE`.
+  `n_terms` is now a *floor* on an adaptive count (the coefficient envelope widens
+  as `nu` shrinks), and the clamp epsilon was **retuned 1e-10 → 1e-14**: `1e-10`
+  would have clipped the legitimate `phi = 1.5e-14` minimum at `nu = 0.01`,
+  destroying ~35% of the domain. The new value is derived from the exact
+  normalisation `c_0 + sum|c_n| == 1` that the scaled coefficients satisfy.
 - `src/pde/operators.py:903,924,1031`: `sigma = 0.1 * np.mean(self.domain_size)` (the
   synthetic Gaussian-pulse width fraction) is duplicated verbatim across three
   operators, not a config field.
@@ -377,7 +495,9 @@ import errors unrelated to any real code issue. Use `python3 -m mypy ...` /
 ## What this pass deliberately did not do
 
 - Did not fix the Cole-Hopf t=0 defect itself (only added a regression-lock test
-  pinning it as a known, tracked defect — see above), the Heat/AdvectionDiffusion
+  pinning it as a known, tracked defect — see above; ✅ **the defect itself was
+  fixed on 2026-08-21** and that regression-lock test inverted), the
+  Heat/AdvectionDiffusion
   P0-1 slices, the `fallback_to_uniform_on_parse_error` scope question, the
   `constants.py` dead re-export, the CLAUDE.md:115 stale-existence-claim, the
   Makefile drift/breakage, or any of the report-only untested-code findings — each
@@ -523,9 +643,19 @@ pytest tests/mcts tests/games tests/deployment tests/prototyping \
 
 ## Still open after round 2
 
-- **The Cole-Hopf t=0 defect from round 1 is unchanged** and remains the most
+- ~~**The Cole-Hopf t=0 defect from round 1 is unchanged** and remains the most
   urgent item in this document — see the round-1 section above. Round 2 did not
-  touch it (it is PDE-math work, not hygiene).
+  touch it (it is PDE-math work, not hygiene).~~ ✅ **RESOLVED (2026-08-21)** as
+  dedicated PDE-math work: the Fourier coefficients are now the correct
+  `2*(-1)^n*ive(n, R)` rather than a hardcoded 1, and `BurgersOperator`'s initial
+  condition / boundary values / exact solution were unified onto the single
+  Basdevant benchmark `u(x,0) = -sin(pi*x)`, Dirichlet. See the resolution banner
+  in the round-1 section. Still open, and explicitly *not* done there: re-deriving
+  the `ood_llm_residual` / `ood_trained_residual` thresholds (needs the real GPU
+  run), and the fact that `DorflerAMRSolver` on `BurgersOperator` is now a
+  degenerate baseline (zero source + zero boundary data ⇒ `u == 0`, so every
+  residual indicator is 0 and bulk marking never triggers — it was previously
+  propped up by the inconsistent tanh BC).
 - `src/distributed/worker.py`'s `games_completed` over-count (new, above).
 - A **pre-existing, unrelated** failing test surfaced while wiring `make check`:
   `tests/security/test_checkpoint_safety.py::test_checkpoint_path_validation`
@@ -621,3 +751,143 @@ upper bound or cross-validation against `max_refinement_level`;
 constant and belongs on the config; and `tests/distributed/test_worker.py`
 deliberately pins the `games_completed` over-count, so whoever fixes that bug must
 update the test rather than read its failure as a regression.
+
+---
+
+## Round 6 — Gap analysis, hygiene, coverage-gate enforcement (2026-08-21)
+
+A senior-dev/QA/architect pass over the branch: gap analysis, adversarial peer review of
+the 18-commit diff, tech debt, coverage gates, missed edge cases, lint/type/numpy checks,
+hardcoded values, logging, and a check that everything is wired.
+
+Scope was agreed up front as **fix defects + missing coverage gates + security/correctness
+gaps; report the larger refactors** rather than executing them, to keep the diff reviewable.
+
+### Verified baseline before any change
+
+| Check | Result |
+|---|---|
+| `ruff check` + `ruff format --check`, full CI file list | clean, 898 files |
+| `mypy --strict --ignore-missing-imports src/` | 8 errors in 3 files — exactly the documented baseline |
+| mypy version | local `python3 -m mypy` = **1.11.2**, matching CI's `>=1.10,<1.12` pin |
+
+Two hypotheses of mine were checked and **rejected**; recorded so they are not re-raised.
+CI's mypy pin does *not* differ from what this session has been running (the shell banner's
+`1.19.1` is a broken uv-tool PATH shim). And the `torch>=2.6.0` floor does **not** make the
+three `unused-ignore`s removable — `skfem` is absent in this environment, so
+`fem_baseline.py:279,283` are genuinely environment-dependent, exactly as CI's comment claims.
+
+### Fixed
+
+Nine defects, from an adversarial review pass that surfaced nine and a follow-on
+investigation that widened two of them. Each was reproduced before it was acted on; the two
+that did not reproduce are listed under *Not adjudicated* below.
+
+1. **1-D Poisson posed `u ≡ 0`, so the AMR baseline measured nothing** (`84c1a56`).
+   `PoissonOperator`'s manufactured solution was `sin(pi*x)*sin(pi*y)` with `y = 0` at
+   `dim == 1`, so both `source_term` and `exact_solution` returned identically zero. Measured
+   consequence: Dörfler AMR on 1-D Poisson reported `max_indicator == 0.0` at *every* step —
+   bulk marking, the thing Dörfler is, never fired once — and `l2_error` was `0.0` at every
+   DOF count, so no error-vs-DOF assertion could have failed. `dim >= 3` was silently
+   truncated to the 2-D expression by the same guard.
+
+   This is the same defect class as the 2026-08-16 L-shape retraction, and it is the real
+   cause behind the Burgers AMR note asking for "a non-degenerate steady problem": Poisson
+   was not one either. Fix is dimension-general (`u = prod_d sin(pi*x_d)`), extracted into a
+   shared helper so source and solution cannot drift apart. At `dim == 2` it is the old
+   expression re-associated — measured deviation **1 ULP** (9.7e-8 relative to amplitude at
+   float32, 1.8e-16 at float64), `exact_solution` bitwise identical — and every scenario path
+   defaults to `domain_dim=2`, so no calibrated threshold or reported figure moves.
+
+2. **`load_codec` could not read any checkpoint this repo writes** (`a4d60a8`). Three
+   defects in one function, each invisible because every fixture covering it wrote the one
+   shape no in-repo trainer produces. Reproduced end to end: a byte-for-byte
+   `VideoCompressionTrainer` checkpoint raised `ValidationError` (22 errors), because
+   `checkpoint["config"]` is a `TrainingConfig` dump — a *sub*-config of `CodecConfig`.
+   Weights were read only from `"model_state_dict"` while both real writers use
+   `"model_state"`, so `load_state_dict(..., strict=False)` matched **nothing** and returned
+   an *untrained* codec with no error at all. And `use_mcts` was probed as
+   `"rate_controller" in checkpoint["model_state_dict"]`, which can never be True —
+   `MCTSRateController` is not an `nn.Module`, so it contributes no state-dict entries under
+   any key, and `CodecConfig.mcts.rate_control_mode` has no MCTS member either.
+
+   The impossible probe is replaced by an explicit keyword-only parameter defaulting to the
+   `False` that line always produced, so behaviour is unchanged for every existing caller and
+   the other branch merely becomes reachable. This is what made `scripts/decode_video.py`'s
+   reduced fallback the ordinary path rather than the exception.
+
+3. **The legacy-checkpoint escape hatch reached only one of three loaders**
+   (`f10f5c4`, `6091ad8`). `src/training/checkpoint.py`'s module docstring promises that
+   unrestricted deserialization is reachable only by an explicit per-call opt-in. That was
+   true of the chokepoint but unreachable from `operator_trainer.py`,
+   `video_compression/training/trainer.py` and `distributed/trainer.py`, so a checkpoint
+   written before the routing landed was simply unreadable with no documented recovery. All
+   three now take the same keyword-only `allow_unsafe_pickle`, defaulting to `False`.
+
+4. **Two guards were green for reasons unrelated to what they guard** (`f6b9345`). The AST
+   pickle guard was named `no_unrestricted_pickle_load_outside_the_opt_in` but matched only
+   the literal `torch.load(...)` attribute form; `from torch import load` and `import torch
+   as t` — ordinary style, not adversarial tricks — bound the same function to a name the
+   walk ignored. It now resolves each module's own import bindings (verified against all four
+   call forms, with `json.load`/`yaml.load` as negative controls: four caught, no false
+   positives) and is renamed to what it asserts. Its docstring now states what stays
+   uncovered: `getattr`, a kwargs splat, and `pickle.loads` — see *Reported, not fixed*.
+
+   The CLI-flag test built its own two-argument `ArgumentParser` and asserted against that,
+   which is true no matter what `scripts/inspect_checkpoint.py` does; it would have stayed
+   green with the flag deleted from the script. `build_parser()` was extracted there — the
+   convention six other scripts already follow — and the test now calls it.
+
+5. **Two justification comments no longer matched the code they justify** (`26d73db`).
+   `ci.yml`'s security-suite step claimed "33 tests, <1s"; measured, it is **71 tests in
+   7.12s**. `pyproject.toml`'s torch-floor comment cited three loaders that "pass no
+   `weights_only` at all", two of which this same branch had already routed through the
+   chokepoint. Both are the same failure mode as the three doc claims corrected in `0a4bd70`:
+   a stale justification argues for keeping something on grounds already fixed.
+
+Every new guard was **mutation-tested**: restoring the defect fails a *named* test. Five
+mutations run, five named failures.
+
+### Reported, not fixed
+
+Each was verified to exist; none is a defect fix, so all were left for a scoped follow-up
+rather than widening this diff.
+
+- **`pickle.loads` on peer-rank bytes** — `src/distributed/worker.py:429,464` unpickle data
+  arriving over `torch.distributed.all_gather`. This is transport, not checkpoint loading,
+  and the right fix is a schema'd serialization format rather than an allowlist. The AST
+  guard's docstring now names it explicitly so its scope cannot be read as covering it.
+- **`_create_operator` silently drops YAML parameters** — `src/research/pde_benchmarks.py`
+  reads `params` but pulls only `advection_coeff`. Unchanged from round 5; still needs a
+  decision about what those rows should measure, because honouring `viscosity` as written
+  pushes the benchmark below `COLE_HOPF_MIN_RESOLVED_VISCOSITY`.
+- **AMR-on-Burgers stays degenerate by construction** — zero source *and* zero Dirichlet data
+  give exact `u == 0`. Unlike Poisson this is not a bug to fix in the operator; the bulk
+  marking guard was pointed at Poisson instead, and the Burgers docstring now says so.
+- **Reusability**: two allowlist tuples with near-identical derivation
+  (`SAFE_CHECKPOINT_GLOBALS`, `SAFE_CODEC_GLOBALS`, `SAFE_DISTRIBUTED_GLOBALS`) and five
+  identical `--allow-unsafe-pickle` argparse blocks. Consolidating either is a refactor
+  across security-sensitive files; the *shape* helpers extracted in `a4d60a8`
+  (`codec_config_from_checkpoint`, `codec_state_dict_from_checkpoint`) are the reusable piece
+  that was actually load-bearing, and `scripts/decode_video.py` / `scripts/encode_video.py`
+  can now drop their local workarounds onto them.
+- **`Mesh.__init__` takes an unvalidated `hp_switchover_level`** — carried from round 3; a
+  config validator cannot reach direct `Mesh(...)` construction.
+
+### Not adjudicated
+
+Stated plainly rather than resolved either way, because a wrong answer here is worse than an
+open question.
+
+- The adversarial review reported that three figures in this document's own 2026-08-21
+  correction block do not reproduce. **Adjudicated and corrected** — see the ⚠️ note in that
+  block. The doc's figures were wrong and `src/pde/operators.py`'s table was right; three
+  independent measurements agree with the code.
+
+  Recorded because the route there is the lesson: my first attempt to settle it built an
+  mpmath reference that returned a max error of **2.0 on a function bounded by 1** — the
+  signature of a `+sin` reference against this code's `-sin` — and I reported the dispute as
+  unadjudicable rather than publish a third number from a reference I had just caught being
+  wrong. That was the right call at the time and the wrong stopping point: at `t = 0` the
+  exact solution *is* `-sin(pi*x)`, so the measurement needs no arbitrary-precision reference
+  whatsoever. The elaborate tool was not merely broken, it was unnecessary.

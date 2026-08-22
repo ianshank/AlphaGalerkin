@@ -28,6 +28,7 @@ from numpy.typing import NDArray
 
 from src.experiments.physics_model import PhysicsOperator
 from src.physics.poisson import PoissonDataset
+from src.training.checkpoint import load_torch_checkpoint
 
 logger = structlog.get_logger(__name__)
 
@@ -82,7 +83,7 @@ def load_model(
     """
     logger.debug("loading_model", path=str(model_path), device=str(device))
 
-    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    checkpoint = load_torch_checkpoint(model_path, map_location=device)
 
     config = checkpoint.get("config", {})
 

@@ -117,6 +117,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Always play model as white",
     )
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help=(
+            "Load --model with weights_only=False. Executes arbitrary code if "
+            "the checkpoint is malicious; use only for a file whose provenance "
+            "you have established."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -144,6 +153,7 @@ def main() -> None:
     from src.engines.match import EngineMatch
     from src.games.chess import ChessGame
     from src.modeling.model import AlphaGalerkinModel
+    from src.training.checkpoint import load_torch_checkpoint
 
     # Configure engine
     engine_config = UCIConfig(
@@ -170,7 +180,11 @@ def main() -> None:
     device = resolve_device(args.device)
     logger.info("loading_model", path=str(args.model), device=str(device))
 
-    checkpoint = torch.load(args.model, map_location=device, weights_only=False)
+    checkpoint = load_torch_checkpoint(
+        args.model,
+        map_location=device,
+        allow_unsafe_pickle=args.allow_unsafe_pickle,
+    )
     model_config = checkpoint.get("config", {})
     if isinstance(model_config, dict):
         from config.schemas import AlphaGalerkinConfig

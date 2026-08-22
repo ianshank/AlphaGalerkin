@@ -158,8 +158,15 @@ class SelfPlayWorker:
                 game_time = (time.perf_counter() - start_time) * 1000
                 game_times.append(game_time)
 
-        # Update stats
-        self._stats.games_completed += n_games
+        # Update stats. ``games_completed`` counts games that actually ran, not
+        # the number requested: the loop above breaks early once ``stop()`` is
+        # signalled. ``game_times`` receives exactly one append per completed
+        # iteration (it is the last statement in the loop body), so its length
+        # *is* this batch's completed-game count -- and deriving it from the
+        # same list that feeds ``average_time_per_game_ms`` keeps the two
+        # coherent by construction (this batch contributes to the counter iff
+        # it contributed a timing sample).
+        self._stats.games_completed += len(game_times)
         self._stats.experiences_generated += len(experiences)
         self._stats.average_time_per_game_ms = (
             sum(game_times) / len(game_times) if game_times else 0
@@ -312,6 +319,12 @@ class SelfPlayCoordinator:
             experiences = worker.generate_batch(n_games, self.board_sizes)
             results[result_idx] = experiences
 
+        # Snapshot each worker's completed-game counter before dispatch so the
+        # post-join delta measures what *this* call actually produced. ``int``
+        # is immutable, so this is a genuine value snapshot even though
+        # ``get_stats()`` hands back the live ``WorkerStats`` object.
+        games_before = [worker.get_stats().games_completed for worker in self.workers]
+
         for i, worker in enumerate(self.workers):
             n_games = games_per_worker + (1 if i < remainder else 0)
             thread = threading.Thread(target=worker_task, args=(worker, n_games, i))
@@ -326,8 +339,17 @@ class SelfPlayCoordinator:
         for result in results:
             all_experiences.extend(result)
 
-        # Update state
-        self._state.total_games += total_games
+        # Update state. ``total_games`` must reflect games that actually
+        # completed, not the number requested: a worker stopped via ``stop()``
+        # / ``shutdown()`` breaks out of its batch loop early. Summing the
+        # per-worker deltas derives this from the same (now honest) counters
+        # ``get_worker_stats()`` reports, so coordinator and worker views can
+        # never disagree. ``thread.start()``/``thread.join()`` bracket the
+        # snapshot and this read, so both observe the worker threads' writes.
+        self._state.total_games += sum(
+            worker.get_stats().games_completed - before
+            for worker, before in zip(self.workers, games_before, strict=True)
+        )
         self._state.total_experiences += len(all_experiences)
 
         with self._experience_lock:

@@ -19,8 +19,9 @@ from src.templates.logging import (
     configure_module_logging,
     create_logger_class,
 )
+from src.training.checkpoint import load_torch_checkpoint
 from src.video_compression.codec.codec import create_codec
-from src.video_compression.config import CodecConfig
+from src.video_compression.config import SAFE_CODEC_GLOBALS, CodecConfig
 from src.video_compression.utils.bitstream import (
     BitstreamHeader,
     EncodedFrame,
@@ -85,6 +86,15 @@ def parse_args() -> argparse.Namespace:
         "--verbose",
         action="store_true",
         help="Enable verbose logging",
+    )
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help=(
+            "Load --model with weights_only=False. Executes arbitrary code if "
+            "the checkpoint is malicious; use only for a file whose provenance "
+            "you have established."
+        ),
     )
 
     return parser.parse_args()
@@ -210,7 +220,12 @@ def main() -> None:
         if args.model is not None:
             logger.info("loading_model", path=str(args.model))
             try:
-                checkpoint = torch.load(args.model, map_location=device, weights_only=False)
+                checkpoint = load_torch_checkpoint(
+                    args.model,
+                    map_location=device,
+                    allow_unsafe_pickle=args.allow_unsafe_pickle,
+                    extra_safe_globals=SAFE_CODEC_GLOBALS,
+                )
                 ckpt_keys = str(list(checkpoint.keys())) if isinstance(checkpoint, dict) else "N/A"
                 logger.info(
                     "checkpoint_debug",

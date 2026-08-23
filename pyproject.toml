@@ -180,7 +180,7 @@ picogk = [
 # `response_format={"type": "json_object"}` simultaneously on
 # `chat.completions.create`.
 lm-studio = [
-    "openai>=1.40,<2.0",
+    "openai>=1.40,<4.0",
 ]
 # LLM-evaluation harness (github.com/ianshank/Agents, package `langfuse-eval-harness`)
 # used by `src/integrations/eval_harness/` to trace + score the LLM-prior MCTS

@@ -74,7 +74,10 @@ FORWARD_REFERENCES: dict[str, str] = {
 }
 
 _PATH_IN_BACKTICKS = re.compile(
-    r"`((?:src|tests|scripts|docs|config|specs|openspec|dashboard|\.github|results)"
+    # ``evidence`` added 2026-08-23: the harness now cites spike write-ups under
+    # ``evidence/spikes/``, and a root absent from this alternation is not "allowed",
+    # it is *unchecked* -- a typo there would have gone unnoticed.
+    r"`((?:src|tests|scripts|docs|config|specs|openspec|dashboard|evidence|\.github|results)"
     r"/[A-Za-z0-9_./\-]+)`"
 )
 

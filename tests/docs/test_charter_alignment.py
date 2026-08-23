@@ -443,6 +443,81 @@ def test_evidence_artifacts_carry_run_provenance() -> None:
     )
 
 
+#: Evidence claims stated as a *floor* ("N+ test functions"). A floor is the right shape
+#: for a growing suite -- it stays true as tests are added -- but only if something checks
+#: it. Typing a number into a table and never verifying it is how "705+ tests" and
+#: "7,000+ test functions" came to coexist with a real count of 8,628.
+_FLOOR_CLAIM = re.compile(r"([\d,]+)\s*\+\s*test functions", re.IGNORECASE)
+
+
+def _count_test_functions() -> tuple[int, int]:
+    """``(n_files, n_test_functions)`` under ``tests/``, counted by AST.
+
+    AST rather than ``pytest --collect-only``: counting is then deterministic, needs no
+    imports (so it cannot be skewed by an optional dependency being absent), takes
+    milliseconds, and counts *functions* rather than parametrized cases -- which is what
+    the claim says.
+    """
+    import ast
+
+    tests_root = REPO_ROOT / "tests"
+    files = sorted(tests_root.rglob("test_*.py"))
+    total = 0
+    for path in files:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover - a broken test file fails elsewhere
+            continue
+        total += sum(
+            1
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name.startswith("test_")
+        )
+    return len(files), total
+
+
+def test_test_suite_size_claim_holds() -> None:
+    """A "N+ test functions" claim must be true of the tree, not remembered."""
+    claims = [
+        (cells[0].strip("`"), match)
+        for cells in _row_lines("evidence")
+        if (match := _FLOOR_CLAIM.search(cells[1]))
+    ]
+    assert claims, (
+        "no evidence row states a test-suite-size floor, so this guard is inert. If the "
+        "claim was removed, remove this test; if it was reworded, update _FLOOR_CLAIM."
+    )
+    _, actual = _count_test_functions()
+    failures = [
+        f"{claim!r}: claims {match.group(1)}+ test functions, tree has {actual}"
+        for claim, match in claims
+        if actual < int(match.group(1).replace(",", ""))
+    ]
+    assert not failures, "test-suite-size claims the tree does not support:\n  " + "\n  ".join(
+        failures
+    )
+
+
+def test_test_suite_size_claim_is_not_absurdly_stale() -> None:
+    """A floor far below reality is technically true and practically useless.
+
+    "7,000+" against 8,628 is fine. "705+" against 8,628 -- which CLAUDE.md's milestone
+    log briefly read as -- is not a claim, it is a fossil.
+    """
+    _, actual = _count_test_functions()
+    for cells in _row_lines("evidence"):
+        match = _FLOOR_CLAIM.search(cells[1])
+        if match is None:
+            continue
+        floor = int(match.group(1).replace(",", ""))
+        assert floor >= actual // 2, (
+            f"the evidence register claims {floor}+ test functions but the tree has "
+            f"{actual}. The floor has drifted far enough to be misleading; raise it to "
+            "the next round number below the real count."
+        )
+
+
 def test_comparison_arm_guard_actually_examines_a_claim() -> None:
     """A vocabulary that matches nothing would pass every claim.
 

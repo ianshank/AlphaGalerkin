@@ -129,7 +129,7 @@ written in response to.
 | L-shape substrate, uniform-refinement L2 rate | O(h^1.31) ≈ O(N^-0.65) | `tests/research/test_lshape_convergence_gate.py` |
 | L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler **worse**, 1.5× at 56 DOF rising to 10.5× at 2847; convergence N^-0.14 vs uniform's N^-0.63 (tensor-product refinement defect) | `results/lshape_adaptive_vs_uniform.{csv,run.json}` |
 | Stochastic Galerkin density MSE | 2.3e-8 | `results/stochastic_galerkin_compare.csv` |
-| Test-suite size | 7,000+ test functions | `tests/` |
+| Test-suite size | 7,000+ test functions (8,628 across 432 files, measured 2026-08-23) | `tests/docs/test_charter_alignment.py` |
 | Global coverage gate | 85% branch | `pyproject.toml` |
 <!-- charter:evidence:end -->
 

@@ -42,6 +42,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from src import __version__
 from src.templates.logging import configure_module_logging
 
 # Type for decorated functions
@@ -55,14 +56,17 @@ error_console = Console(stderr=True)
 def create_cli_app(
     name: str,
     help_text: str,
-    version: str = "0.1.0",
+    version: str | None = None,
 ) -> typer.Typer:
     """Create a Typer CLI app with standard configuration.
 
     Args:
         name: Name of the CLI app.
         help_text: Help text for the app.
-        version: Version string.
+        version: Version string. Defaults to the installed ``alphagalerkin``
+            version, so a release bump cannot leave a CLI reporting a stale
+            number (this default was previously the hardcoded string
+            ``"0.1.0"``, which outlived the ``0.4.0-dev`` bump).
 
     Returns:
         Configured Typer app.
@@ -83,10 +87,12 @@ def create_cli_app(
         rich_markup_mode="rich",
     )
 
+    resolved_version = version if version is not None else __version__
+
     # Add version callback
     def version_callback(value: bool) -> None:
         if value:
-            console.print(f"{name} version {version}")
+            console.print(f"{name} version {resolved_version}")
             raise typer.Exit()
 
     @app.callback()

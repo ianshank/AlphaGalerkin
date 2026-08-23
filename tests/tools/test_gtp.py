@@ -238,9 +238,16 @@ class TestGTPEngine:
         assert "AlphaGalerkin" in response
 
     def test_process_command_version(self, engine: GTPEngine) -> None:
-        """Version returns version string."""
+        """Version reports the installed package version, not a literal.
+
+        Previously asserted the hardcoded ``"0.1.0"``, which pinned a value that
+        had already drifted from ``pyproject.toml``'s ``0.4.0-dev``: the test
+        was defending the bug.
+        """
+        from src import __version__
+
         response = engine.process_command("version")
-        assert "0.1.0" in response
+        assert __version__ in response
 
     def test_process_command_known_command_true(self, engine: GTPEngine) -> None:
         """known_command returns 'true' for known commands."""

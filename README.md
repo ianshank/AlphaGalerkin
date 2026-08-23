@@ -427,10 +427,6 @@ same code path is safe everywhere.
 - [ ] Multi-physics coupling (fluid-structure interaction)
 - [ ] Publication: "MCTS-Guided Galerkin Methods for Adaptive PDE Solving" (NeurIPS ML4PhysicalSciences)
 
-Active development (`0.1.0`, pre-release). Shipped work and milestones are in
-[`CHANGELOG.md`](CHANGELOG.md); the release process is in [`RELEASING.md`](RELEASING.md).
-SBIR/commercialization material lives in [`docs/business/`](docs/business/README.md).
-
 ## Contributing
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), the

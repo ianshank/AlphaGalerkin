@@ -29,10 +29,12 @@ from src.templates.cli import (
     with_error_handling,
 )
 
+# No explicit version: create_cli_app defaults to the installed package version,
+# so `agents --version` cannot drift from pyproject.toml the way the hardcoded
+# "0.1.0" here did across the 0.4.0-dev bump.
 app = create_cli_app(
     name="agents",
     help_text="Agent-physics integration for multi-physics PDE solving.",
-    version="0.1.0",
 )
 
 

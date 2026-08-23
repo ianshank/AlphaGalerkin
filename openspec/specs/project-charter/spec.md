@@ -305,6 +305,7 @@ with a stated reason. An undisclosed deviation is indistinguishable from drift.
 | `CHANGELOG.md` still references removed modules | Immutable append-only history; excluded from the link checker by design. |
 | `results/lambda_scheduling.{csv,png}` outlive their producer | The `thermo` module was cut, but these are the only in-tree evidence of that negative result, and `ARCHITECTURE.md` declares changelog-referenced artifacts deliberate. |
 | `RefinementGameRegistry` has zero runtime registrants | Real PDE games register in `GameRegistry`; the refinement registry is a forward-looking abstraction. Tracked as a dead-abstraction follow-up, not a silent gap. |
+| Two tracks are frozen rather than active or removed | An owner decision paused the codec model-zoo and the `dashboard/` + `hf_space/` surfaces for this cycle so attention stays on the refinement thesis. Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py` against `config/focus.yaml`; the freeze lifts when the refinement experiment has an interpretable answer, either way. |
 <!-- charter:deviations:end -->
 
 #### Scenario: A deviation is recorded without a reason

@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Final
 
 import pytest
-import tomllib
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 PYPROJECT: Final[Path] = REPO_ROOT / "pyproject.toml"
@@ -54,9 +53,31 @@ def _normalise(version: str) -> str:
     return normalised
 
 
+#: ``version = "..."`` inside the ``[project]`` table. Anchored to that table so a
+#: dependency pin elsewhere in pyproject.toml cannot be mistaken for the project version.
+_PROJECT_TABLE: Final[re.Pattern[str]] = re.compile(
+    r"^\[project\]\s*$(.*?)(?=^\[)", re.MULTILINE | re.DOTALL
+)
+_PROJECT_VERSION: Final[re.Pattern[str]] = re.compile(
+    r"^version\s*=\s*[\"'](.+?)[\"']", re.MULTILINE
+)
+
+
 def _project_version() -> str:
-    with PYPROJECT.open("rb") as handle:
-        return str(tomllib.load(handle)["project"]["version"])
+    """Read ``[project].version`` from pyproject.toml.
+
+    Parsed with an anchored regex rather than ``tomllib``: that module is stdlib only
+    from Python 3.11, and this repository supports **3.10** (``requires-python =
+    ">=3.10"``, and CI runs a 3.10 job). Importing it here aborted collection of the
+    entire fast lane on 3.10 -- a single unimportable test module takes the whole run
+    down, so the blast radius of getting this wrong is far larger than one test.
+    """
+    text = PYPROJECT.read_text(encoding="utf-8")
+    table = _PROJECT_TABLE.search(text)
+    assert table is not None, "pyproject.toml has no [project] table"
+    match = _PROJECT_VERSION.search(table.group(1))
+    assert match is not None, "pyproject.toml [project] declares no version"
+    return match.group(1)
 
 
 def _declared_versions(path: Path) -> list[tuple[int, str]]:

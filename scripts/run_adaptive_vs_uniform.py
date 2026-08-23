@@ -25,7 +25,10 @@ from __future__ import annotations
 
 import argparse
 import csv
-from datetime import UTC, datetime
+
+# timezone.utc rather than datetime.UTC: the latter is 3.11+ and this repository
+# supports 3.10 (requires-python = ">=3.10", and CI runs a 3.10 job).
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -211,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     write_run_manifest(
         RunManifest(
             run_id=f"adaptive-vs-uniform-{params.initial_side}-{params.max_dof}",
-            created_at_utc=datetime.now(UTC).isoformat(),
+            created_at_utc=datetime.now(timezone.utc).isoformat(),
             harness="scripts.run_adaptive_vs_uniform",
             config=vars(args),
             git=collect_git_provenance(),

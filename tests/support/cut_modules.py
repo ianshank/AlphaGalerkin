@@ -40,3 +40,21 @@ FABRICATED_FIGURE: Final[str] = "0.000209"
 #: The blanket novelty claim retracted by ``docs/business/proposals/PRIOR_ART_REVIEW.md``
 #: (TreeMesh, arXiv:2111.07613, already couples MCTS+RL with FE mesh *generation*).
 RETRACTED_BLANKET_CLAIM: Final[str] = "no published papers combine MCTS with Galerkin"
+
+#: Retracted 2026-08-23. The project asserted the AMR-RL literature was "uniformly
+#: single-step"; VDGN (arXiv:2211.00801) refines *anticipatorily* for features that appear at
+#: later times, which is multi-step in effect. The surviving delta is the explicit search tree
+#: over refinement sequences, not multi-step reasoning as such. See ``docs/related-work.md``
+#: entry 2 and ``docs/business/proposals/PRIOR_ART_REVIEW.md`` Finding 2.
+RETRACTED_UNIFORMLY_SINGLE_STEP: Final[str] = "uniformly single-step"
+
+#: Retracted 2026-08-16. The committed L-shape result is that MCTS **loses** at matched DOF
+#: (median ratio 1.0996, 1 of 5 seeds) and at matched compute (2.04, 0 of 5). Any live
+#: statement that MCTS beats Doerfler is the retracted headline. Both spellings are guarded
+#: because the repo uses the umlaut inconsistently.
+RETRACTED_AMR_WIN_PHRASES: Final[tuple[str, ...]] = (
+    "beats dörfler",
+    "beats dorfler",
+    "outperforms dörfler",
+    "outperforms dorfler",
+)

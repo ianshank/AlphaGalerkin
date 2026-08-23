@@ -17,9 +17,13 @@ solve two classes of problems without retraining across resolutions:
 The two domains share one abstraction: **MCTS** (`src/mcts/`), adapted per domain
 via `GameInterface` (games) and `src/pde/mcts_adapter.py` (PDEs). The methodological
 delta — MCTS *multi-step look-ahead* for basis selection and error-driven refinement —
-is unpublished: the AMR-RL literature is uniformly *single-step*, and the only prior
-MCTS + finite-element work, **TreeMesh** ([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)),
-targets mesh *generation*, a distinct problem (see
+is unpublished: no RL-for-AMR work uses an **explicit search tree over refinement
+sequences**, and the only prior MCTS + finite-element work, **TreeMesh**
+([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)), targets mesh *generation*, a distinct
+problem. The delta is deliberately narrow: VDGN
+([arXiv:2211.00801](https://arxiv.org/abs/2211.00801)) already refines **anticipatorily** for
+features that appear at later times, so what is unoccupied is the explicit search tree and its
+transparent compute budget — not multi-step reasoning as such (see
 [`docs/business/proposals/PRIOR_ART_REVIEW.md`](docs/business/proposals/PRIOR_ART_REVIEW.md)).
 
 ## What's here
@@ -343,9 +347,13 @@ AlphaGalerkin/
 
 AlphaGalerkin addresses a **verified novelty gap**: the methodological
 delta — MCTS *multi-step look-ahead* for basis selection and error-driven refinement —
-is unpublished: the AMR-RL literature is uniformly *single-step*, and the only prior
-MCTS + finite-element work, **TreeMesh** ([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)),
-targets mesh *generation*, a distinct problem (see
+is unpublished: no RL-for-AMR work uses an **explicit search tree over refinement
+sequences**, and the only prior MCTS + finite-element work, **TreeMesh**
+([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)), targets mesh *generation*, a distinct
+problem. The delta is deliberately narrow: VDGN
+([arXiv:2211.00801](https://arxiv.org/abs/2211.00801)) already refines **anticipatorily** for
+features that appear at later times, so what is unoccupied is the explicit search tree and its
+transparent compute budget — not multi-step reasoning as such (see
 [`docs/business/proposals/PRIOR_ART_REVIEW.md`](docs/business/proposals/PRIOR_ART_REVIEW.md)).
 The SBIR reauthorization (S. 3971) extends the program through 2031 with backlogged FY2026 funds.
 

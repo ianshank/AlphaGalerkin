@@ -358,6 +358,184 @@ def test_evidence_claims_cite_existing_artifacts() -> None:
     )
 
 
+#: Artifacts committed before ``src/research/run_manifest.py`` existed. Their runs cannot
+#: be reconstructed, so a manifest would have to be invented -- worse than none. Each is
+#: asserted to still lack a manifest, so regenerating one *forces* this list to shrink.
+_ARTIFACTS_WITHOUT_PROVENANCE: dict[str, str] = {
+    "results/lshape_mcts_vs_dorfler.csv": (
+        "Predates the manifest module. Its own provenance gap is the reason that module "
+        "exists: the file records only a seed, so it cannot say whether it was produced "
+        "under search_mode='single_agent' or the retracted 'legacy_adversarial'."
+    ),
+    "results/transfer_baseline_compare.csv": "Predates the manifest module.",
+    "results/stochastic_galerkin_compare.csv": "Predates the manifest module.",
+    "results/lambda_scheduling.csv": (
+        "Predates the manifest module, and its producer (the cut `thermo` package) no "
+        "longer exists, so it can never be regenerated."
+    ),
+}
+
+#: Canonical arm name -> the spellings that denote it in claim prose. Deliberately a
+#: small, explicit vocabulary: a fuzzy match over prose would produce the false positives
+#: that killed ``check_doc_links.py``'s inline-span attempt. The umlaut variant is
+#: load-bearing rather than decorative -- the charter writes "Dörfler" while artifacts
+#: write "dorfler", and without both spellings this guard silently matches nothing, which
+#: is exactly how its first version passed the defect it was written for.
+_ARM_SPELLINGS: dict[str, tuple[str, ...]] = {
+    "uniform": ("uniform",),
+    "dorfler": ("dorfler", "d\u00f6rfler"),
+    "mcts": ("mcts",),
+}
+
+#: CSV columns that identify which arm a row belongs to.
+_ARM_COLUMNS: tuple[str, ...] = ("method", "arm")
+
+
+def _arms_named_in(claim: str) -> set[str]:
+    """Canonical arm names a claim references, across all accepted spellings."""
+    lowered = claim.lower()
+    return {
+        canonical
+        for canonical, spellings in _ARM_SPELLINGS.items()
+        if any(spelling in lowered for spelling in spellings)
+    }
+
+
+def _csv_arms(path: Path) -> set[str] | None:
+    """Distinct arm labels in ``path``, or None if it declares no arm column."""
+    import csv as _csv
+
+    with path.open(encoding="utf-8", newline="") as handle:
+        reader = _csv.DictReader(handle)
+        field = next((c for c in _ARM_COLUMNS if c in (reader.fieldnames or [])), None)
+        if field is None:
+            return None
+        return {(row[field] or "").strip().lower() for row in reader}
+
+
+def test_evidence_artifacts_carry_run_provenance() -> None:
+    """A committed CSV must say how it was produced.
+
+    Artifact *existence* is not provenance. ``results/lshape_mcts_vs_dorfler.csv``
+    carries one provenance column -- ``seed`` -- so it cannot be dated against the
+    2026-08-16 backup fix, and the harness still exposes the mode that produced the
+    retracted number.
+    """
+    failures: list[str] = []
+    for cells in _row_lines("evidence"):
+        claim = cells[0].strip("`")
+        for citation in re.findall(r"`([^`]+)`", cells[-1]):
+            if not _looks_like_repo_path(citation):
+                continue
+            for candidate in _expand_braces(citation):
+                if not candidate.endswith(".csv"):
+                    continue
+                if candidate in _ARTIFACTS_WITHOUT_PROVENANCE:
+                    continue
+                sidecar = Path(candidate).with_suffix(".run.json")
+                if not (REPO_ROOT / sidecar).exists():
+                    failures.append(f"{claim!r}: {candidate} has no {sidecar}")
+    assert not failures, (
+        "committed artifacts backing a charter claim with no run provenance:\n  "
+        + "\n  ".join(sorted(failures))
+        + "\n\nWrite one with src.research.run_manifest.write_run_manifest, or add the "
+        "path to _ARTIFACTS_WITHOUT_PROVENANCE with a reason it cannot be reconstructed."
+    )
+
+
+def test_comparison_arm_guard_actually_examines_a_claim() -> None:
+    """A vocabulary that matches nothing would pass every claim.
+
+    The first version of this guard used only the un-umlauted "dorfler", so the
+    charter's "Dörfler vs uniform" row matched a single arm, fell below the
+    two-arm threshold, and was skipped -- the guard passed the very defect it was
+    written for. This test is what makes that failure mode visible.
+    """
+    claims = [cells[0].strip("`") for cells in _row_lines("evidence")]
+    comparisons = [claim for claim in claims if len(_arms_named_in(claim)) >= 2]
+    assert comparisons, (
+        "the comparison-arm guard matched no charter claim, so it is inert. Either the "
+        f"evidence register has no comparison rows, or _ARM_SPELLINGS ({_ARM_SPELLINGS}) "
+        "no longer covers how they are spelled."
+    )
+
+    # Vocabulary coverage, not just "something matched". Asserting only the latter is too
+    # weak: dropping the umlaut spelling alone still left *other* rows matching two arms,
+    # so the guard stayed green while the row it was written for went unexamined.
+    unmatched = sorted(
+        canonical
+        for canonical in _ARM_SPELLINGS
+        if not any(canonical in _arms_named_in(claim) for claim in claims)
+    )
+    assert not unmatched, (
+        f"arm(s) {unmatched} appear in _ARM_SPELLINGS but no charter claim names them. "
+        "Either a spelling is missing (the charter writes 'Dörfler', artifacts write "
+        "'dorfler') or the entry is dead and should be removed -- an arm the guard can "
+        "never match is an arm it can never check."
+    )
+
+
+def test_provenance_exemptions_are_still_needed() -> None:
+    """A stale exemption is a permanent blind spot; make it fail instead."""
+    stale: list[str] = []
+    for candidate, reason in _ARTIFACTS_WITHOUT_PROVENANCE.items():
+        assert len(reason) >= _MIN_REASON_CHARS, f"{candidate}: reason too thin"
+        artifact = REPO_ROOT / candidate
+        if not artifact.exists():
+            stale.append(f"{candidate}: no longer exists")
+        elif (REPO_ROOT / Path(candidate).with_suffix(".run.json")).exists():
+            stale.append(f"{candidate}: now HAS a manifest")
+    assert not stale, (
+        "entries in _ARTIFACTS_WITHOUT_PROVENANCE that no longer need exempting:\n  "
+        + "\n  ".join(sorted(stale))
+        + "\n\nRemove them so the artifact is guarded again."
+    )
+
+
+def test_comparison_claims_cite_an_artifact_containing_the_arms() -> None:
+    """An artifact backing a comparison must contain the arms compared.
+
+    The charter's adaptive-vs-uniform row cited a CSV whose ``method`` column held only
+    ``{dorfler, mcts}`` -- there was no uniform arm in any committed artifact, so a
+    correct number traced to prose rather than to data. Existence checking could not
+    see it, because the file did exist.
+    """
+    failures: list[str] = []
+    for cells in _row_lines("evidence"):
+        claim = cells[0].strip("`")
+        named = _arms_named_in(claim)
+        if len(named) < 2:
+            continue  # not a comparison claim
+        csv_paths = [
+            candidate
+            for citation in re.findall(r"`([^`]+)`", cells[-1])
+            if _looks_like_repo_path(citation)
+            for candidate in _expand_braces(citation)
+            if candidate.endswith(".csv") and (REPO_ROOT / candidate).exists()
+        ]
+        if not csv_paths:
+            continue  # existence is another guard's job
+        present: set[str] = set()
+        for candidate in csv_paths:
+            arms = _csv_arms(REPO_ROOT / candidate)
+            if arms is not None:
+                present |= arms
+        if not present:
+            continue  # no arm column anywhere; nothing to check
+        missing = sorted(arm for arm in named if arm not in present)
+        if missing:
+            failures.append(
+                f"{claim!r}: names arm(s) {missing} but the cited artifact(s) "
+                f"{csv_paths} contain only {sorted(present)}"
+            )
+    assert not failures, (
+        "comparison claims whose artifact does not contain the arms compared:\n  "
+        + "\n  ".join(sorted(failures))
+        + "\n\nCommit an artifact that contains both arms; a claim about a comparison "
+        "is not evidenced by a file holding one side of it."
+    )
+
+
 # --------------------------------------------------------------------------------------
 # R3b — UI Claim Fidelity
 # --------------------------------------------------------------------------------------

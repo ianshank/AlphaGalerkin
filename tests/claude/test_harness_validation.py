@@ -65,13 +65,16 @@ VALID_TOOLS = frozenset(
 # Repo paths a `.claude` file may cite without them existing yet. Each entry
 # must carry a reason, and `test_forward_references_are_still_forward` asserts
 # the exemption is still needed -- so a stale entry fails rather than rotting.
-FORWARD_REFERENCES: dict[str, str] = {
-    "src/pde/certificate/": (
-        "certificate-validation is a KICKOFF skill: step 2 is literally "
-        "'Scaffold the module additively: src/pde/certificate/'. The path is "
-        "the skill's output, not its dependency."
-    ),
-}
+# Deliberate forward references: a path a *kickoff* skill instructs you to
+# create, so it is the skill's output rather than its dependency. Each entry
+# states its reason, and `test_forward_references_are_still_forward` fails once
+# the path exists -- so an exemption cannot outlive the thing it exempted.
+#
+# Currently empty, and that is the guard working rather than a gap:
+# `src/pde/certificate/` was the sole entry, and it was retired here the moment
+# the certificate package actually landed. Adding a new entry is fine; leaving
+# a stale one is what the meta-test prevents.
+FORWARD_REFERENCES: dict[str, str] = {}
 
 _PATH_IN_BACKTICKS = re.compile(
     r"`((?:src|tests|scripts|docs|config|specs|openspec|dashboard|\.github|results)"

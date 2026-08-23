@@ -122,6 +122,32 @@ repos:
         exclude: ^hf_space/
 
   # =============================================================
+  # Secret scanning with gitleaks
+  # =============================================================
+  # Catches accidentally-committed secrets (API keys, tokens, private keys)
+  # before they reach the branch, mirroring the `Secret Scan` job in
+  # .github/workflows/ci.yml. Configured by .gitleaks.toml at the repo root.
+  #
+  # NOTE: that config's allowlist is tests/, docs/ and config/baselines/ --
+  # not the list an earlier draft of this comment described. Narrowing it is
+  # tracked separately in CLAUDE.md's Next Steps; widening the scan and
+  # wiring it in one change makes a first run's failures impossible to triage.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # =============================================================
+  # Documentation
+  # =============================================================
+  - repo: https://github.com/PyCQA/doc8
+    rev: v1.1.1
+    hooks:
+      - id: doc8
+        args: [--max-line-length=100]
+        files: \.rst$
+
+  # =============================================================
   # Internal Markdown link check (offline, no network)
   # =============================================================
   - repo: local

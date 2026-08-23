@@ -126,6 +126,14 @@ test-extras = [
     "onnxscript>=0.1",
     "pettingzoo>=1.24",
 ]
+# WS2 populates: rigorous Track B verifier stack for
+# ``src/pde/certificate/verifiers/``. Kept empty in WS1 so
+# ``pip install -e '.[certificate-rigorous]'`` succeeds today (a no-op) —
+# WS2 will land the real ``auto_LiRPA`` / dReal / jax_verify pins here.
+# ``JaxVerifyResidualVerifier`` will additionally require the ``[jax]``
+# extra. See ``specs/jax_track_b_verifier.spec.md`` §3 and
+# ``docs/adr/0003-jax-track-b-verifier.md``.
+certificate-rigorous = []
 jax = [
     # Pins are intentionally narrow because flax 0.9 (the only release
     # compatible with our ``JaxBackend`` Module call sites) has a narrow

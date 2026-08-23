@@ -18,6 +18,7 @@ rather than editing history.
 | --- | --- | --- |
 | [0001](0001-chess-self-play.md) | Chess self-play training architecture | Accepted |
 | [0002](0002-mouse-droid-fusion-integration.md) | Mouse-Droid-AGI fusion-head integration (stable `src.modeling` surface) | Accepted |
+| [0003](0003-jax-track-b-verifier.md) | JAX at the Track B verifier and batched-evaluator boundaries only | Accepted |
 
 > ADR 0002 is enforced in CI: `tests/modeling/test_public_surface_contract.py`
 > turns its "frozen signatures" rule into a mechanical check.

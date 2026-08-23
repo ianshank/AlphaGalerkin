@@ -261,6 +261,141 @@ jobs:
                  --cov-report=term-missing \
                  -q --tb=short
 
+  # ------------------------------------------------------------------
+  # Surfaces contributed by the certificate work (PR #118).
+  #
+  # This file and the one on that branch were written independently and
+  # collided as an add/add conflict on the filename alone -- the two job sets
+  # are disjoint, so the resolution is a union rather than a choice. These four
+  # run through the composite action at .github/actions/coverage-gate, which
+  # that branch also adds.
+  # ------------------------------------------------------------------
+  certificate:
+    name: Regression / certificate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Certificate coverage gate
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: pde/certificate
+          mode: pytest-cov
+          tests: tests/pde/certificate/
+          cov-target: src.pde.certificate
+          fail-under: "85"
+          branch: "true"
+
+  # ------------------------------------------------------------
+  # Stochastic Galerkin (NKE) surface — untraced native-runner mode
+  # ------------------------------------------------------------
+  stochastic:
+    name: Regression / stochastic Galerkin (NKE)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Stochastic Galerkin coverage gate
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: stochastic-galerkin-nke
+          mode: native-include
+          tests: >-
+            tests/pde/stochastic
+            tests/research/test_stochastic_galerkin_compare.py
+            tests/poc/test_stochastic_galerkin_compare_config.py
+            tests/poc/test_stochastic_galerkin_compare_scenario.py
+            tests/scripts/test_run_stochastic_galerkin_compare.py
+            tests/regression/test_related_work_guard.py
+          include: >-
+            */src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py
+          fail-under: "85"
+          branch: "true"
+
+  # ------------------------------------------------------------
+  # Zero-shot transfer benchmark — honest operator vs retrained CNN
+  # ------------------------------------------------------------
+  transfer:
+    name: Regression / transfer baseline compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Transfer baseline coverage gate
+        uses: ./.github/actions/coverage-gate
+        with:
+          name: transfer-baseline-compare
+          mode: native-include
+          tests: >-
+            tests/research/test_transfer_baseline_compare.py
+            tests/poc/test_transfer_baseline_compare_config.py
+            tests/poc/test_transfer_baseline_compare_scenario.py
+            tests/experiments/test_cnn_baseline.py
+          include: >-
+            */src/research/transfer_baseline_compare.py,*/src/experiments/cnn_baseline.py,*/src/poc/scenarios/transfer_baseline_compare.py,*/src/poc/scenarios/transfer_baseline_compare_config.py
+          fail-under: "85"
+          branch: "true"
+
+  # ------------------------------------------------------------
+  # L-shape AMR MCTS vs Dörfler comparative baseline (thesis-critical)
+  # ------------------------------------------------------------
+  lshape-amr:
+    name: Regression / L-shape AMR compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: L-shape AMR regression tests
+        # No coverage gate on this surface: many of its tests are seed-sweep
+        # micro-runs of real MCTS, which are already slow and would take the
+        # timeout past 20 minutes. Coverage of these paths is measured under
+        # the global --cov=src gate in ci.yml.
+        run: |
+          pytest \
+            tests/research/test_lshape_notch_mask.py \
+            tests/pde/test_lshape_amr_game.py \
+            tests/research/test_lshape_amr_compare.py \
+            tests/poc/test_lshape_amr_compare_config.py \
+            tests/poc/test_lshape_amr_compare_scenario.py \
+            tests/scripts/test_run_lshape_amr.py \
+            -q --no-header
+
   surface-success:
     name: Regression Surface (gate)
     runs-on: ubuntu-latest
@@ -272,6 +407,10 @@ jobs:
       - alphagalerkin-coverage-gate
       - noyron-hx-surface
       - noyron-hx-coverage-gate
+      - certificate
+      - stochastic
+      - transfer
+      - lshape-amr
     if: always()
     steps:
       - name: Verify all regression-surface jobs passed

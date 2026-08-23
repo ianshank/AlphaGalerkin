@@ -59,5 +59,7 @@ for tool in ruff mypy pytest; do
   fi
 done
 
+python -c "import skfem; print('[session-start] scikit-fem: ' + skfem.__version__)" 2>/dev/null \
+  || echo "[session-start] scikit-fem: ABSENT -- tests/research/test_fem_baseline.py will skip silently; pip install -e '.[fem]'"
 echo "[session-start] CPU test surface: pytest -m 'not gpu_required'"
 echo "[session-start] done"

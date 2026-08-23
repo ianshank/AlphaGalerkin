@@ -84,3 +84,18 @@ exit 137) — that is an environment limit, not a test failure. Chunk by directo
 
 State what you ran, what passed, and what you did not run. Never report a suite as green that you
 did not execute, and never let a truncated pipe stand in for an exit code.
+
+## Environment
+
+```bash
+pip install -e '.[dev,fem]'
+```
+
+The `fem` extra matters: without `scikit-fem`, `tests/research/test_fem_baseline.py` skips at
+import and reports green while testing nothing. That suite went unexecuted in this environment
+for its entire existence. CI's `test-extras` job installs it; a local preflight that does not is
+narrower than CI.
+
+Note CI also runs a **Python 3.10** job (`requires-python = ">=3.10"`). Stdlib newer than that
+floor — `tomllib`, `datetime.UTC` — is a *collection* error, which takes the whole run down
+rather than failing one test. `tests/docs/test_python_floor_compatibility.py` catches it locally.

@@ -31,3 +31,22 @@ Working rules:
   hardcoded search literals — reuse `src/constants.py`.
 - Regression surface: `pytest tests/mcts/ tests/pde/test_mcts_adapter.py -v` plus the
   *MCTS backup semantics* CLAUDE.md row. `src/mcts/` gates at **90** branch. `mypy --strict` clean.
+
+## Instrumenting the search
+
+`src/mcts/` has **zero** instrumentation today: no timer, no evaluator-call counter, no
+node-expansion counter. Adding one is opt-in or not at all — a trailing keyword parameter
+defaulting to a null object, resolved **once** in `__init__`, so every call site stays
+branch-free.
+
+That is not style. `src/mcts` gates at **90% branch**, and an `if observer is not None:` at each
+of the six call sites would add ten partial branches; the null-object form adds exactly one.
+Default behaviour must stay byte-identical — `tests/mcts/test_backup_modes.py` and
+`test_search.py` are the proof.
+
+Counting semantics worth documenting when you add them: root expansion means a fresh-root
+`search()` costs `n_simulations + 1` evaluator calls and a reused root costs `n_simulations`;
+the no-legal-actions early return fires *before* the evaluator; `BatchMCTS` counts per leaf,
+not per batch call.
+
+`src/mcts/` must not import `src/refinement/` — a ledger forwarder duck-types the protocol.

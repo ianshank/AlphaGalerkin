@@ -32,3 +32,15 @@ bootstraps that flow for a new feature named `$FEATURE`.
 - Additive/backwards-compatible only: new files, new optional fields, new registry keys.
 - `ruff` + `mypy --strict` clean on the changed surface; tests to the 85% coverage gate.
 - Read `specs/README.md` for the full workflow.
+
+## When this is the wrong skill
+
+`specs/` sits *below* the charter (`openspec/project.md`: charter → `ARCHITECTURE.md` →
+`CLAUDE.md` → `specs/`). If the change touches a charter Requirement — scope, a numeric claim,
+the capability register, a coverage gate, or an accepted deviation — it needs an **OpenSpec
+change package** as well, and the `openspec-change` skill scaffolds it. A feature that adds a
+`src/` package or registers a PoC scenario touches *Scope Integrity* and *Capability Register
+Accuracy*, so it usually needs both.
+
+Also add the new spec to `specs/README.md`'s index. One shipped spec sat outside that table
+from the day it was written.

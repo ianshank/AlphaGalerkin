@@ -28,3 +28,31 @@ Working rules:
 - Prove correctness with a manufactured solution: residual vanishes on the exact solution (≤1e-3),
   including a Hypothesis parameter sweep.
 - Run the PDE + centaur Regression-Surface rows after changes; `mypy --strict` clean.
+
+## Element-local refinement substrate
+
+`src/refinement/` is the domain-free layer and, as of the substrate work, gains its first
+runtime registrant — retiring the charter deviation that read *"`RefinementGameRegistry` has
+zero runtime registrants"*. Contract: `RefinementGame.apply_action` is **pure** — a function of
+`(state, action)` that must not mutate `state`, because that is what lets MCTS identify a node
+by its action sequence. `LShapeAMRGame` violates this (it mutates `self._xs`); do not copy the
+pattern.
+
+Two facts about the refinement substrate, both measured rather than argued
+(`evidence/spikes/2026-08-23-skfem-substrate.md`):
+
+- **The error metric decides the answer.** `BaseSolver._compute_l2_error` is a plain nodal RMS
+  with no area weighting; on a graded mesh it over-weights the refined region and flatters
+  whichever arm refines hardest. Report a mesh-independent quadrature L2 and keep the RMS only
+  as an auxiliary field.
+- **Refinement on the current substrate is not element-local.**
+  `DorflerAMRSolver._dorfler_mark_2d` projects marks onto the x and y axes, so marking one
+  element inserts full grid *lines*. Adaptive marking is consequently **worse than uniform
+  refinement** there (`results/lshape_adaptive_vs_uniform.csv`). No marking-policy comparison on
+  that substrate measures policy quality.
+
+`scikit-fem` is optional (`pip install -e '.[dev,fem]'`). Its tests must skip **visibly** on CPU
+CI — a registered marker plus a conftest hook, never a bare module-level `pytest.importorskip`,
+which skips silently and can mask a half-succeeded install.
+
+Spec: `specs/refinement_substrate.spec.md`.

@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import json
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -34,6 +33,7 @@ class ProgressionOperator(str, Enum):
 
         Returns:
             True if condition is satisfied.
+
         """
         if self == ProgressionOperator.GREATER_THAN:
             return value > threshold
@@ -92,6 +92,7 @@ class ProgressionCriterion(BaseModel):
 
         Returns:
             True if criterion is satisfied.
+
         """
         if n_samples < self.min_samples:
             return False
@@ -169,7 +170,7 @@ class StageConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_max_greater_than_min(self) -> "StageConfig":
+    def validate_max_greater_than_min(self) -> StageConfig:
         """Validate that max values are greater than min values."""
         if self.max_games is not None and self.max_games < self.min_games:
             raise ValueError("max_games must be >= min_games")
@@ -257,6 +258,7 @@ class CurriculumConfig(BaseModel):
 
         Returns:
             Hexadecimal hash string.
+
         """
         data = self.model_dump(mode="json")
         json_str = json.dumps(data, sort_keys=True)
@@ -270,6 +272,7 @@ class CurriculumConfig(BaseModel):
 
         Returns:
             StageConfig or None if not found.
+
         """
         for stage in self.stages:
             if stage.name == name:
@@ -284,6 +287,7 @@ class CurriculumConfig(BaseModel):
 
         Returns:
             Stage index or -1 if not found.
+
         """
         for i, stage in enumerate(self.stages):
             if stage.name == name:
@@ -307,6 +311,7 @@ def create_default_curriculum(
 
     Returns:
         CurriculumConfig with default stages.
+
     """
     if board_sizes is None:
         board_sizes = [9, 13, 19]

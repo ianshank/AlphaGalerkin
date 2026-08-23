@@ -24,7 +24,7 @@ from numpy.typing import NDArray
 from torch import Tensor
 
 from src.pde.config import BasisSelectionConfig, PDEGameConfig
-from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.game import GamePhase, PDEGame, PDEState
 from src.pde.reward import log_reward
 
 logger = structlog.get_logger(__name__)
@@ -81,6 +81,15 @@ class BasisFunction:
             return (x**degree_x * y**degree_y).astype(np.float32)
 
         elif self.type == "rbf":
+            # ``BasisFunction`` is a pure evaluator with no reference to the
+            # owning ``PDEOperator``'s domain, so these ``.get(...)`` defaults
+            # cannot be derived from the actual domain bounds; they are a
+            # defensive fallback for a ``params`` dict missing keys, not a
+            # claim that 0.5 is "the domain center". In practice this path is
+            # unreachable for candidates produced by
+            # ``BasisSelectionGame._generate_candidates``, which always
+            # supplies ``center_x``/``center_y`` sampled from the operator's
+            # real ``domain_min``/``domain_max`` (see below).
             center_x = self.params.get("center_x", 0.5)
             center_y = self.params.get("center_y", 0.5)
             sigma = self.params.get("sigma", 0.1)
@@ -134,11 +143,14 @@ class BasisSelectionGame(PDEGame):
         # Generate candidate basis functions
         self._candidate_bases = self._generate_candidates()
 
-        # Cache collocation points (use configurable count)
+        # Cache collocation points (use configurable count). Forward the config
+        # seed so point sampling is reproducible per seed; ``seed=None`` (the
+        # default for every existing caller) preserves the prior random behavior.
         n_collocation = self.basis_config.n_collocation_points
         self._collocation_points = pde_operator.generate_collocation_points(
             n_points=n_collocation,
             method="lhs",
+            seed=self.basis_config.seed,
         )
 
         # Cache boundary points (use configurable count)
@@ -220,17 +232,41 @@ class BasisSelectionGame(PDEGame):
                     break
 
         elif basis_type == "rbf":
-            # Generate RBF basis with various centers
+            # Generate RBF basis with various centers, sampled from the
+            # operator's *actual* domain bounds rather than a hardcoded
+            # [0, 1] unit square. A flat [0, 1) sample is wrong for any
+            # non-unit-square domain (e.g. LShapedPoissonOperator's
+            # [-1, 1]^2), where it would place centers partly, or wholly,
+            # outside the real domain.
             rng = np.random.default_rng(self.basis_config.seed)
             scale_lo, scale_hi = self.basis_config.basis_scale_range
+            domain_min = self.pde_operator.domain_min
+            domain_max = self.pde_operator.domain_max
+            x_lo, x_hi = float(domain_min[0]), float(domain_max[0])
+            if len(domain_min) > 1:
+                y_lo, y_hi = float(domain_min[1]), float(domain_max[1])
+            else:
+                # 1D domain: pin center_y to 0. ``BasisFunction.evaluate`` does
+                # NOT ignore center_y here -- it substitutes ``y = 0`` (see the
+                # ``coords.shape[1] > 1`` branch), so r_sq becomes
+                # ``(x - center_x)**2 + center_y**2`` and any nonzero center_y
+                # multiplies the whole column by a constant
+                # ``exp(-center_y**2 / (2*sigma**2))``. At sigma=0.1 a center_y
+                # of 0.7 scales the column by ~2e-11, which ``np.linalg.lstsq``
+                # then discards as rank-deficient -- silently shrinking the
+                # effective basis. Pinning to 0 makes the 1D candidate a true
+                # 1D Gaussian. The draw is still taken (rather than skipped) so
+                # the RNG stream stays aligned with the ``sigma`` draw below,
+                # keeping seeded 2D results bit-identical.
+                y_lo, y_hi = 0.0, 0.0
 
             for idx in range(n_candidates):
                 candidates.append(
                     BasisFunction(
                         type="rbf",
                         params={
-                            "center_x": rng.uniform(0, 1),
-                            "center_y": rng.uniform(0, 1),
+                            "center_x": rng.uniform(x_lo, x_hi),
+                            "center_y": rng.uniform(y_lo, y_hi),
                             "sigma": rng.uniform(scale_lo, scale_hi),
                         },
                         index=idx,
@@ -382,11 +418,38 @@ class BasisSelectionGame(PDEGame):
             target = source.astype(np.float32)
 
         try:
-            coeffs, residual_norm, _, _ = np.linalg.lstsq(Phi, target, rcond=None)
+            coeffs, residual_norm, rank, singular_vals = np.linalg.lstsq(Phi, target, rcond=None)
             new_state.basis_coefficients = coeffs.astype(np.float32)
-        except np.linalg.LinAlgError:
-            # Fallback to pseudo-inverse
-            coeffs = np.linalg.pinv(Phi) @ target
+            # Log rank deficiency if detected
+            if rank < Phi.shape[1]:
+                # Safely compute condition number (avoid division by zero/NaN)
+                if len(singular_vals) > 1 and singular_vals[-1] > 1e-15:
+                    condition_number = float(singular_vals[0] / singular_vals[-1])
+                else:
+                    condition_number = np.inf
+                logger.debug(
+                    "lstsq_rank_deficient",
+                    full_rank=Phi.shape[1],
+                    detected_rank=rank,
+                    condition_number=condition_number,
+                )
+        except np.linalg.LinAlgError as e:
+            # Fallback to pseudo-inverse when lstsq fails (rare)
+            logger.warning(
+                "lstsq_failed_using_pinv",
+                error=str(e),
+                n_basis=Phi.shape[1],
+                n_points=Phi.shape[0],
+            )
+            pinv_Phi = np.linalg.pinv(Phi)
+            condition_number = np.linalg.cond(Phi)
+            logger.debug(
+                "pinv_condition_number",
+                rank=np.linalg.matrix_rank(Phi),
+                condition_number=condition_number,
+                rcond=np.finfo(float).eps * max(Phi.shape),
+            )
+            coeffs = pinv_Phi @ target
             new_state.basis_coefficients = coeffs.astype(np.float32)
 
         # Compute new solution (basis_coefficients is always set above)
@@ -410,20 +473,34 @@ class BasisSelectionGame(PDEGame):
         errors = self.compute_exact_error(new_state)
         new_state.error_estimate = errors["l2"]
 
-        # Update DOF and budget
+        # Update DOF and budget. Cost is config-driven (``cost_per_dof``),
+        # mirroring the reward path's ``cost = self.config.cost_per_dof *
+        # dof_added`` in ``get_reward`` below. (Previously this used a flat
+        # unit cost of 1.0, decoupled from ``cost_per_dof`` -- at the
+        # default ``cost_per_dof=0.01`` that exhausted the budget ~100x
+        # faster than the cost the reward path was actually accounting for.)
         new_state.dof = len(new_state.history)
-        cost = 1.0  # Unit cost per basis function
+        dof_added = new_state.dof - state.dof
+        cost = self.config.cost_per_dof * dof_added
         new_state.budget_remaining -= cost
 
-        # Update phase
-        if new_state.error_estimate < self.config.error_tolerance:
-            new_state.phase = GamePhase.CONVERGED
-        elif new_state.budget_remaining <= 0:
-            new_state.phase = GamePhase.BUDGET_EXHAUSTED
-        elif new_state.error_estimate > 0.1:
-            new_state.phase = GamePhase.EXPLORING
-        else:
-            new_state.phase = GamePhase.REFINING
+        # Update phase: delegate to the base class (PDEGame.get_phase) rather
+        # than hand-rolling a second, hardcoded EXPLORING/REFINING threshold
+        # here. ``phase`` is diagnostic only -- it is read by clone()/to_dict()
+        # and nothing in the reward or termination path -- so this changes
+        # reporting, not search behaviour.
+        #
+        # Two honest caveats on what delegation does and does not buy:
+        #   * get_phase reports INITIAL while step < early_phase_step_threshold
+        #     (default 5) and maps *any* non-converged terminal to
+        #     BUDGET_EXHAUSTED, so a state terminal via max_basis_functions now
+        #     reports BUDGET_EXHAUSTED with budget still remaining.
+        #   * It is NOT yet scale-normalized for this game: get_phase divides by
+        #     ``self._initial_error``, which BasisSelectionGame never sets, so
+        #     it falls back to 1.0 and the comparison is as absolute as the
+        #     literal it replaced. The win here is one code path instead of two,
+        #     not normalization.
+        new_state.phase = self.get_phase(new_state)
 
         return new_state
 
@@ -520,65 +597,14 @@ class BasisSelectionGame(PDEGame):
         # Check no valid actions
         return len(self.get_valid_actions(state)) == 0
 
-    def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
-        """Get final game result.
+    def _capacity_reason(self, state: PDEState) -> str | None:
+        """Report ``"max_basis"`` once the basis-function cap is reached.
 
-        Args:
-            state: Terminal state.
-            error_history: Error values throughout game.
-
-        Returns:
-            PDEResult with metrics.
-
+        This game's capacity rung; mirrors :meth:`is_terminal`.
         """
-        errors = self.compute_exact_error(state)
-
-        converged = state.error_estimate < self.config.error_tolerance
-
-        # Compute efficiency metrics
-        if len(error_history) > 1:
-            error_reduction_rate = (error_history[0] - error_history[-1]) / len(error_history)
-            dof_efficiency = (error_history[0] - error_history[-1]) / max(1, state.dof)
-        else:
-            error_reduction_rate = 0.0
-            dof_efficiency = 0.0
-
-        budget_used = self.config.computational_budget - state.budget_remaining
-        compute_efficiency = (
-            (error_history[0] - error_history[-1]) / max(1, budget_used)
-            if len(error_history) > 1
-            else 0.0
-        )
-
-        termination_reason = (
-            "converged"
-            if converged
-            else "max_basis"
-            if state.n_basis >= self.basis_config.max_basis_functions
-            else "budget_exhausted"
-            if state.budget_remaining <= 0
-            else "max_steps"
-        )
-
-        return PDEResult(
-            final_error=state.error_estimate,
-            final_dof=state.dof,
-            n_steps=state.step,
-            converged=converged,
-            l2_error=errors["l2"],
-            h1_error=errors["h1"],
-            linf_error=errors["linf"],
-            residual_norm=errors["residual"],
-            error_reduction_rate=error_reduction_rate,
-            dof_efficiency=dof_efficiency,
-            compute_efficiency=compute_efficiency,
-            initial_error=error_history[0] if error_history else state.error_estimate,
-            best_error=min(error_history) if error_history else state.error_estimate,
-            average_error=float(np.mean(error_history)) if error_history else state.error_estimate,
-            error_history=error_history,
-            termination_reason=termination_reason,
-            budget_used=budget_used,
-        )
+        if state.n_basis >= self.basis_config.max_basis_functions:
+            return "max_basis"
+        return None
 
     def compute_exact_error(self, state: PDEState) -> dict[str, float]:
         """Compute error metrics against exact solution.
@@ -599,6 +625,13 @@ class BasisSelectionGame(PDEGame):
             l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
             linf_error = float(np.max(np.abs(state.solution - exact)))
         else:
+            # CAUTION: exact solution unavailable; error is residual-based only.
+            # This does not measure actual solution error, only PDE residual magnitude.
+            # Results may pass on small residuals while solution is far from truth.
+            logger.warning(
+                "exact_solution_unavailable",
+                reason="operator has no analytical solution; using residual-based error metric",
+            )
             l2_error = float(np.sqrt(np.mean(state.residuals**2)))
             linf_error = float(np.max(np.abs(state.residuals)))
 

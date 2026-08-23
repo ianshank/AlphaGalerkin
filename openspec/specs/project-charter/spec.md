@@ -67,6 +67,8 @@ single failure.
 | `src/experiments/` | pde |
 | `src/demos/` | shared |
 | `src/prototyping/` | shared |
+| `src/core/` | shared |
+| `src/video_compression/` | video |
 <!-- charter:scope:end -->
 
 #### Scenario: A new package is added without charter update
@@ -89,7 +91,6 @@ that requires amending this charter first.
 <!-- charter:non-goals:start -->
 | Removed package | Removed | Why it is a non-goal |
 | --- | --- | --- |
-| `src/video_compression/` | 2026-07-22 | Neural codec work — unrelated to the Galerkin/MCTS thesis |
 | `src/reentry/` | 2026-07-22 | Domain PoC; not on the core solver path |
 | `src/vertex/` | 2026-07-22 | Cloud-training launcher; infrastructure, not thesis |
 | `src/intercept/` | 2026-07-22 | Domain PoC; not on the core solver path |
@@ -123,8 +124,10 @@ written in response to.
 | Zero-shot transfer MSE, 19×19 from 9×9 training | ≈2.3e-3 (3-seed median) | `results/transfer_baseline_compare.csv` |
 | Retrained-CNN baseline MSE, 19×19 | ≈1.6e-4 | `config/baselines/transfer_ci.json` |
 | Operator-vs-retrained-CNN ratio | ≈14× (operator loses) | `specs/transfer_baseline_compare.spec.md` |
-| L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 0.9605 (~4% win) | `results/lshape_mcts_vs_dorfler.csv` |
-| L-shape AMR at matched compute | median ratio 1.26, MCTS wins 0/5 seeds | `specs/lshape_amr_compare.spec.md` |
+| L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 1.0996 (MCTS **loses** ~10%), wins 1/5 seeds | `results/lshape_mcts_vs_dorfler.csv` |
+| L-shape AMR at matched compute | median ratio 2.04, MCTS wins 0/5 seeds | `specs/lshape_amr_compare.spec.md` |
+| L-shape substrate, uniform-refinement L2 rate | O(h^1.31) ≈ O(N^-0.65) | `tests/research/test_lshape_convergence_gate.py` |
+| L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler 5–9× **worse** (tensor-product refinement defect) | `results/lshape_mcts_vs_dorfler.csv` |
 | Stochastic Galerkin density MSE | 2.3e-8 | `results/stochastic_galerkin_compare.csv` |
 | Test-suite size | 7,000+ test functions | `tests/` |
 | Global coverage gate | 85% branch | `pyproject.toml` |
@@ -180,9 +183,21 @@ that no published work combines MCTS with Galerkin/finite-element methods is **r
 TreeMesh ([arXiv:2111.07613](https://arxiv.org/abs/2111.07613)) couples MCTS+RL with finite-element
 mesh *generation*, a distinct problem.
 
-Novelty is a *method* delta, not a demonstrated win. The honest `lshape_amr_compare` result — a
-~4% matched-DOF win that **evaporates at matched compute** (ratio 1.26, 0/5 seeds) — SHALL be
-reported alongside any favourable framing.
+Novelty is a *method* delta, not a demonstrated win. The honest `lshape_amr_compare` result — MCTS
+**losing** at matched DOF (ratio 1.0996, wins 1/5 seeds) and losing further at matched compute
+(ratio 2.04, 0/5 seeds) — SHALL be reported alongside any favourable framing.
+
+The previously reported "~4% matched-DOF win" (ratio 0.9605) is **retracted (2026-08-16)**: it was
+produced by a boundary-condition defect in `lshape_inside_predicate`, which removed the *open*
+rather than the *closed* fourth quadrant and so never imposed the `u=0` Dirichlet condition on the
+L-shape's two reentrant edges. The substrate diverged under uniform refinement (L2 error rising
+from 5.0e-2 at 65 DOF to 1.15e-1 at 12545 DOF), so both arms were compared on a problem neither was
+solving. Guarded going forward by `tests/research/test_lshape_convergence_gate.py`.
+
+A second, now-unmasked defect SHALL also be reported: the shared discretisation refines by
+tensor-product grid *lines*, so adaptive Dörfler marking is **5–9× worse than plain uniform
+refinement at matched DOF**, with the gap widening as DOF grows. Until refinement is element-local,
+no marking-policy comparison on this substrate measures refinement quality.
 
 `docs/related-work.md` owns the per-entry novelty-boundary register and is guarded by
 `tests/regression/test_related_work_guard.py`. `docs/business/proposals/PRIOR_ART_REVIEW.md` owns
@@ -247,6 +262,18 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/physics` | 75 |
 | `src/distributed` | 60 |
 | `dashboard` | 84 |
+| `src/agents` | 85 |
+| `src/tools` | 89 |
+| `src/experiments` | 87 |
+| `src/curriculum` | 87 |
+| `src/engines` | 82 |
+| `src/data` | 85 |
+| `src/video_compression` | 83 |
+| `src/poc` | 85 |
+| `src/analysis` | 85 |
+| `src/tournament` | 85 |
+| `src/prototyping` | 85 |
+| `src/demos` | 81 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced

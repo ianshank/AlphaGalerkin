@@ -14,12 +14,14 @@ from enum import Enum
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
+import structlog
 
 from src.constants import (
     DEFAULT_DIRICHLET_ALPHA,
     DEFAULT_DIRICHLET_EPSILON,
     DEFAULT_MCTS_SIMULATIONS,
     DEFAULT_PUCT_CONSTANT,
+    DEFAULT_TEMPERATURE,
     DEFAULT_VIRTUAL_LOSS,
 )
 from src.mcts.node import MCTSNode
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from src.mcts.evaluator import Evaluator
+
+logger = structlog.get_logger(__name__)
 
 
 class SearchMode(str, Enum):
@@ -205,12 +209,12 @@ class MCTS:
             self._simulate(root, game.clone())
 
         # Return visit distribution
-        return root.get_visit_distribution(temperature=1.0)
+        return root.get_visit_distribution(temperature=DEFAULT_TEMPERATURE)
 
     def get_action(
         self,
         game: GameInterface,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
         add_noise: bool = True,
     ) -> int:
         """Run MCTS and select an action.
@@ -224,14 +228,34 @@ class MCTS:
             Selected action.
 
         """
-        # Run search
-        self.search(game, add_noise)
+        # Run search. ``search`` always returns the temperature=1.0 visit
+        # distribution as part of its own contract; reuse it here instead of
+        # recomputing the identical aggregation when the caller's requested
+        # temperature happens to match.
+        distribution_at_one = self.search(game, add_noise)
 
         if self._root is None:
             raise RuntimeError("Root node is None after search - internal error")
 
+        if not self._root.children:
+            # No legal actions were available to expand (e.g. get_action() was
+            # called on an already-terminal game state). Without this guard the
+            # temperature==0 branch fails inside get_best_action() ("no children")
+            # and every other temperature fails inside np.random.choice() with an
+            # opaque "'a' cannot be empty" — neither names the actual cause.
+            raise ValueError(
+                "Cannot select an action: the root has no children (no legal "
+                "actions were available to search). This usually means "
+                "get_action() was called on an already-terminal game state — "
+                "check game.is_terminal() before calling get_action()."
+            )
+
         # Get visit distribution with temperature
-        distribution = self._root.get_visit_distribution(temperature)
+        distribution = (
+            distribution_at_one
+            if temperature == DEFAULT_TEMPERATURE
+            else self._root.get_visit_distribution(temperature)
+        )
 
         # Sample action
         if temperature == 0:
@@ -381,6 +405,43 @@ class MCTS:
             )
         return float(getter())
 
+    @staticmethod
+    def _check_finite_evaluation(
+        value: float,
+        policy: NDArray[np.float32],
+        *,
+        context: str,
+    ) -> None:
+        """Warn (never raise) when an evaluator returns a non-finite value/policy.
+
+        Neither field is sanitized here — a NaN or +/-inf leaf value is backed
+        up as-is and silently poisons every ancestor's ``total_value`` from
+        that point on. That corruption does not surface at the source: it
+        resurfaces, much later and far more confusingly, as
+        ``MCTSNode.select_child`` raising "no child selected" even though the
+        node has children (NaN comparisons are always False in Python, so a
+        NaN-scored child can never win ``score > best_score``, and if every
+        child is NaN-scored none ever does). The evaluator's own degenerate-
+        mask guard (``FNetEvaluator._process_policy``) only covers the empty-
+        ``legal_actions`` case, not a genuinely unstable network emitting NaN
+        logits directly, so this is the sole observability point for that
+        failure mode — checked at every expansion rather than left to
+        whichever downstream symptom happens to surface first.
+
+        Args:
+            value: The scalar value returned by the evaluator for this leaf.
+            policy: The full policy array returned by the evaluator.
+            context: Short label identifying the call site (``"expand"`` for
+                the single-simulation path, ``"batch_expand"`` for
+                ``BatchMCTS``), so a log line alone identifies which engine
+                path produced the anomaly.
+
+        """
+        if not np.isfinite(value):
+            logger.warning("mcts_evaluator_non_finite_value", context=context, value=value)
+        if not np.isfinite(policy).all():
+            logger.warning("mcts_evaluator_non_finite_policy", context=context)
+
     def _expand_node(
         self,
         node: MCTSNode,
@@ -400,11 +461,18 @@ class MCTS:
         legal_actions = game.get_legal_actions()
 
         if not legal_actions:
-            # No legal moves - game is over
-            return float(game.get_winner())
+            # No legal moves - game is over. Logged (not raised) because this
+            # is a legitimate terminal-like leaf for some games (e.g. a
+            # stalemate reached without game.is_terminal() having been
+            # checked first); it still changes search behavior (the node is
+            # never expanded), so it leaves an observability trail.
+            winner = float(game.get_winner())
+            logger.debug("mcts_expand_no_legal_actions", winner=winner)
+            return winner
 
         # Get neural network evaluation
         result = self.evaluator.evaluate(state, legal_actions)
+        self._check_finite_evaluation(result.value, result.policy, context="expand")
 
         # Create action priors
         action_priors = {a: float(result.policy[a]) for a in legal_actions}
@@ -531,7 +599,7 @@ class BatchMCTS(MCTS):
             self._simulate_batch(root, game, batch_size)
             remaining -= batch_size
 
-        return root.get_visit_distribution(temperature=1.0)
+        return root.get_visit_distribution(temperature=DEFAULT_TEMPERATURE)
 
     def _simulate_batch(
         self,
@@ -558,6 +626,10 @@ class BatchMCTS(MCTS):
         # (virtual loss diverges the batch), so ``paths`` and ``leaves`` are not
         # index-aligned — this map keeps the backup value assignment correct.
         leaf_index_for_path: list[int] = []
+        # Winner value for terminal paths, captured once at detection time
+        # (aligned with ``paths``); ``None`` for non-terminal paths, whose
+        # value instead comes from the batched evaluator ``results``.
+        terminal_values: list[float | None] = []
 
         for _ in range(batch_size):
             game_copy = game.clone()
@@ -584,9 +656,14 @@ class BatchMCTS(MCTS):
 
             if game_copy.is_terminal():
                 leaf_index_for_path.append(-1)
+                # Capture the winner now, while game_copy already reflects the
+                # full terminal state — avoids re-cloning and replaying the
+                # path later purely to recover the same value.
+                terminal_values.append(float(game_copy.get_winner()))
             else:
                 leaf_index_for_path.append(len(leaves))
                 leaves.append((node, game_copy))
+                terminal_values.append(None)
             paths.append(path)
             path_rewards.append((cumulative_reward, discount))
 
@@ -601,6 +678,15 @@ class BatchMCTS(MCTS):
             for (node, _game_state), result, la in zip(
                 leaves, results, legal_actions, strict=False
             ):
+                self._check_finite_evaluation(result.value, result.policy, context="batch_expand")
+                if not la:
+                    # A non-terminal leaf with zero legal actions is a game-contract
+                    # inconsistency the single-simulation path (_expand_node) treats
+                    # as a terminal-like leaf via an early return; this batched path
+                    # has no such fallback -- node.expand({}) leaves the node a leaf
+                    # forever, so the next simulation reselects and re-expands it
+                    # identically. Only observable today via this warning.
+                    logger.warning("mcts_batch_leaf_no_legal_actions", node_action=node.action)
                 action_priors = {a: float(result.policy[a]) for a in la}
                 node.expand(action_priors)
 
@@ -610,12 +696,11 @@ class BatchMCTS(MCTS):
             if leaf_idx >= 0:
                 value = results[leaf_idx].value
             else:
-                # Terminal state — replay the path to recover the winner.
-                game_copy = game.clone()
-                for node in path[1:]:
-                    if node.action is not None:
-                        game_copy.apply_action(node.action)
-                value = float(game_copy.get_winner())
+                # Terminal state — reuse the winner captured during selection
+                # instead of re-cloning and replaying the path.
+                cached_value = terminal_values[i]
+                assert cached_value is not None  # invariant: leaf_idx < 0 <=> terminal
+                value = cached_value
 
             # Combine accumulated intermediate rewards with the leaf value:
             # R + gamma**d * V(leaf). With rewards disabled this is exactly

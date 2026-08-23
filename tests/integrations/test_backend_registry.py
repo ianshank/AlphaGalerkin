@@ -91,12 +91,12 @@ def test_register_backend_duplicate_raises(isolated_registry: None) -> None:
 
 def test_backend_profile_is_frozen() -> None:
     profile = get_backend("vllm")
-    with pytest.raises(Exception):  # noqa: B017 - pydantic frozen raises ValidationError
+    with pytest.raises(Exception):
         profile.default_model = "mutated"  # type: ignore[misc]
 
 
 def test_backend_profile_forbids_extra() -> None:
-    with pytest.raises(Exception):  # noqa: B017
+    with pytest.raises(Exception):
         BackendProfile(
             name="x",
             default_base_url="http://x/v1",
@@ -174,7 +174,7 @@ def test_config_without_backend_defaults_to_lm_studio() -> None:
 
 
 def test_invalid_backend_rejected() -> None:
-    with pytest.raises(Exception):  # noqa: B017 - pydantic ValidationError
+    with pytest.raises(Exception):
         LMStudioConfig(backend="openai_cloud")  # type: ignore[arg-type]
 
 

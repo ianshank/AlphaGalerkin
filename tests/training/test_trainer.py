@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 import torch
+from pydantic import ValidationError as PydanticValidationError
 
 from config.schemas import (
     AlphaGalerkinConfig,
@@ -17,7 +18,9 @@ from config.schemas import (
     TrainingConfig,
 )
 from src.modeling.model import AlphaGalerkinModel
-from src.training.trainer import Trainer, TrainingMetrics, create_trainer
+from src.training.trainer import BufferFillError, Trainer, TrainingMetrics, create_trainer
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _make_fake_experiences(trainer: Trainer, n: int = 10) -> list:
@@ -384,6 +387,45 @@ class TestTrainerFillBuffer:
             trainer._fill_buffer(min_size=10)
         assert trainer.total_games_generated > 0
 
+    def test_fill_buffer_raises_when_self_play_yields_nothing(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """A self-play worker that never yields experiences must not hang.
+
+        Regression test for the unbounded ``_fill_buffer`` loop: previously,
+        if ``generate_experiences()`` ever netted zero new usable
+        experiences per call (e.g. a game-length or config bug), the loop
+        had no iteration cap and no wall-clock bound, so it would re-invoke
+        full self-play MCTS generation forever. It must now raise
+        ``BufferFillError`` after exactly
+        ``max_buffer_fill_iterations`` self-play calls instead of hanging.
+        """
+        small_config.training.max_buffer_fill_iterations = 3
+        trainer = Trainer(
+            model=small_model,
+            config=small_config,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        with patch.object(
+            trainer.self_play_worker,
+            "generate_experiences",
+            return_value=[],
+        ) as mock_generate:
+            with pytest.raises(
+                BufferFillError,
+                match="did not reach the minimum buffer size",
+            ):
+                trainer._fill_buffer(min_size=10)
+
+        # Bounded: exactly max_buffer_fill_iterations calls were made --
+        # proof the loop terminated instead of hanging indefinitely.
+        assert mock_generate.call_count == 3
+        assert len(trainer.buffer) == 0
+
 
 class TestTrainerStabilityMonitor:
     """Tests for _create_stability_monitor."""
@@ -530,3 +572,229 @@ class TestTrainerPhysicsLoss:
             checkpoint_dir=checkpoint_dir,
         )
         assert trainer.physics_loss_fn is None
+
+
+# ---------------------------------------------------------------------------
+# LR-scheduler configuration wiring
+# ---------------------------------------------------------------------------
+
+
+def _lr_trajectory(
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    n_steps: int,
+) -> list[float]:
+    """Sample the LR that ``optimizer`` sees at each of ``n_steps`` steps."""
+    lrs: list[float] = []
+    for _ in range(n_steps):
+        lrs.append(float(optimizer.param_groups[0]["lr"]))
+        scheduler.step()
+    return lrs
+
+
+def _reference_trajectory(
+    training_cfg: TrainingConfig,
+    min_lr_ratio: float,
+    warmup_start_factor: float,
+    n_steps: int,
+) -> list[float]:
+    """Build a scheduler directly from literals, bypassing the config plumbing."""
+    from src.training.base_trainer import BaseTrainer
+
+    model = torch.nn.Linear(2, 2)
+    opt = torch.optim.AdamW(model.parameters(), lr=training_cfg.learning_rate)
+    sched = BaseTrainer._create_scheduler(
+        optimizer=opt,
+        scheduler_type=training_cfg.lr_scheduler,
+        warmup_steps=training_cfg.warmup_steps,
+        total_steps=training_cfg.total_steps,
+        min_lr_ratio=min_lr_ratio,
+        warmup_start_factor=warmup_start_factor,
+    )
+    return _lr_trajectory(opt, sched, n_steps)
+
+
+def _cosine_config(base: AlphaGalerkinConfig, **training_overrides: object) -> AlphaGalerkinConfig:
+    """Clone ``base`` with a cosine+warmup schedule and optional training overrides."""
+    training = base.training.model_copy(
+        update={
+            "lr_scheduler": "cosine",
+            "warmup_steps": 3,
+            "total_steps": 12,
+            **training_overrides,
+        }
+    )
+    return base.model_copy(update={"training": training})
+
+
+class TestSchedulerConfigWiring:
+    """Guards that Trainer's LR schedule comes from config, not from literals.
+
+    ``Trainer._create_scheduler`` used to pass ``min_lr_ratio=0.1`` /
+    ``warmup_start_factor=0.1`` as inline literals. The refactor routes them
+    through ``TrainingConfig``; these tests assert both halves of that claim:
+    the plumbing carries the config values, *and* the default config still
+    reproduces the exact pre-refactor LR trajectory (zero numeric change).
+    """
+
+    HISTORICAL_MIN_LR_RATIO = 0.1
+    HISTORICAL_WARMUP_START_FACTOR = 0.1
+
+    def test_training_config_defaults_preserve_historical_literals(self) -> None:
+        """The new fields default to the values Trainer used to hardcode."""
+        cfg = TrainingConfig()
+        assert cfg.min_lr_ratio == self.HISTORICAL_MIN_LR_RATIO
+        assert cfg.warmup_start_factor == self.HISTORICAL_WARMUP_START_FACTOR
+
+    def test_create_scheduler_receives_config_values(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Trainer forwards the *config* ratios into the base helper."""
+        from src.training.base_trainer import BaseTrainer
+
+        cfg = _cosine_config(small_config, min_lr_ratio=0.37, warmup_start_factor=0.73)
+        trainer = Trainer(
+            model=small_model,
+            config=cfg,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+
+        captured: dict[str, object] = {}
+        real = BaseTrainer._create_scheduler
+
+        def _spy(**kwargs: object):
+            captured.update(kwargs)
+            return real(**kwargs)  # type: ignore[arg-type]
+
+        with patch.object(BaseTrainer, "_create_scheduler", staticmethod(_spy)):
+            trainer._create_scheduler()
+
+        assert captured["min_lr_ratio"] == 0.37
+        assert captured["warmup_start_factor"] == 0.73
+        assert captured["min_lr_ratio"] == cfg.training.min_lr_ratio
+        assert captured["warmup_start_factor"] == cfg.training.warmup_start_factor
+
+    def test_default_config_reproduces_pre_refactor_lr_trajectory(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Zero numeric change: default config == the old inline 0.1 / 0.1."""
+        cfg = _cosine_config(small_config)
+        trainer = Trainer(
+            model=small_model,
+            config=cfg,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        n_steps = cfg.training.total_steps
+
+        # trainer.scheduler is the production object built in __init__.
+        actual = _lr_trajectory(trainer.optimizer, trainer.scheduler, n_steps)
+        expected = _reference_trajectory(
+            cfg.training,
+            min_lr_ratio=self.HISTORICAL_MIN_LR_RATIO,
+            warmup_start_factor=self.HISTORICAL_WARMUP_START_FACTOR,
+            n_steps=n_steps,
+        )
+
+        assert actual == pytest.approx(expected)
+
+    def test_non_default_ratios_change_the_lr_trajectory(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """Mutation guard: a re-hardcoded 0.1 / 0.1 would make this fail."""
+        cfg = _cosine_config(small_config, min_lr_ratio=0.5, warmup_start_factor=0.9)
+        trainer = Trainer(
+            model=small_model,
+            config=cfg,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        n_steps = cfg.training.total_steps
+
+        actual = _lr_trajectory(trainer.optimizer, trainer.scheduler, n_steps)
+        historical = _reference_trajectory(
+            cfg.training,
+            min_lr_ratio=self.HISTORICAL_MIN_LR_RATIO,
+            warmup_start_factor=self.HISTORICAL_WARMUP_START_FACTOR,
+            n_steps=n_steps,
+        )
+        configured = _reference_trajectory(
+            cfg.training,
+            min_lr_ratio=0.5,
+            warmup_start_factor=0.9,
+            n_steps=n_steps,
+        )
+
+        assert actual == pytest.approx(configured)
+        assert actual != pytest.approx(historical)
+        # Warmup start factor is visible on the very first step.
+        assert actual[0] == pytest.approx(cfg.training.learning_rate * 0.9)
+
+    def test_warmup_start_factor_sets_the_step_zero_lr(
+        self,
+        small_model: AlphaGalerkinModel,
+        small_config: AlphaGalerkinConfig,
+        checkpoint_dir: Path,
+    ) -> None:
+        """The default 0.1 factor puts step-0 LR at 10% of peak."""
+        cfg = _cosine_config(small_config)
+        trainer = Trainer(
+            model=small_model,
+            config=cfg,
+            device="cpu",
+            checkpoint_dir=checkpoint_dir,
+        )
+        assert trainer.scheduler is not None
+        assert trainer.optimizer.param_groups[0]["lr"] == pytest.approx(
+            cfg.training.learning_rate * self.HISTORICAL_WARMUP_START_FACTOR
+        )
+
+
+class TestTrainingConfigSchedulerFieldBounds:
+    """Boundary validation for the two new config.schemas.TrainingConfig fields."""
+
+    @pytest.mark.parametrize("value", [0.0, 0.1, 1.0])
+    def test_min_lr_ratio_accepts_closed_unit_interval(self, value: float) -> None:
+        """ge=0, le=1 -- both endpoints valid."""
+        assert TrainingConfig(min_lr_ratio=value).min_lr_ratio == value
+
+    @pytest.mark.parametrize("value", [-1e-9, -0.5, 1.0000001, 2.0])
+    def test_min_lr_ratio_rejects_out_of_range(self, value: float) -> None:
+        """Values outside [0, 1] are rejected, not clamped."""
+        with pytest.raises(PydanticValidationError):
+            TrainingConfig(min_lr_ratio=value)
+
+    @pytest.mark.parametrize("value", [1e-9, 0.1, 1.0])
+    def test_warmup_start_factor_accepts_half_open_interval(self, value: float) -> None:
+        """gt=0, le=1 -- upper endpoint valid."""
+        assert TrainingConfig(warmup_start_factor=value).warmup_start_factor == value
+
+    @pytest.mark.parametrize("value", [0.0, -1e-9, -0.5, 1.0000001, 2.0])
+    def test_warmup_start_factor_rejects_zero_and_out_of_range(self, value: float) -> None:
+        """gt=0 rejects exactly zero: a zero start factor freezes warmup at LR 0."""
+        with pytest.raises(PydanticValidationError):
+            TrainingConfig(warmup_start_factor=value)
+
+    @pytest.mark.parametrize("field", ["min_lr_ratio", "warmup_start_factor"])
+    def test_none_is_rejected(self, field: str) -> None:
+        """Neither field is Optional; None must not fall back to the default."""
+        with pytest.raises(PydanticValidationError):
+            TrainingConfig(**{field: None})
+
+    def test_yaml_default_config_round_trips(self) -> None:
+        """config/train.yaml's explicit values load into the new fields."""
+        yaml = pytest.importorskip("yaml")
+        raw = yaml.safe_load((REPO_ROOT / "config" / "train.yaml").read_text())
+        cfg = TrainingConfig(**raw["training"])
+        assert cfg.min_lr_ratio == 0.1
+        assert cfg.warmup_start_factor == 0.1

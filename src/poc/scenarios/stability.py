@@ -23,6 +23,7 @@ from src.poc.config import (
     ScenarioStatus,
     StabilityScenarioConfig,
 )
+from src.poc.device import resolve_device
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
 
@@ -62,7 +63,7 @@ class StabilityScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = resolve_device("auto", context=self.name)
         self._scenario_logger = ScenarioLogger(
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),

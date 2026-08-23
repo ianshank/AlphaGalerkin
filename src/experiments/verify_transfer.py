@@ -26,8 +26,10 @@ import structlog
 import torch
 from numpy.typing import NDArray
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.experiments.physics_model import PhysicsOperator
 from src.physics.poisson import PoissonDataset
+from src.training.checkpoint import load_torch_checkpoint
 
 logger = structlog.get_logger(__name__)
 
@@ -40,7 +42,7 @@ DEFAULT_EVAL_SEED_OFFSET: int = 50000
 
 # Default resolutions for zero-shot transfer testing
 # 9x9 is typical training size, 19x19 is standard Go board
-DEFAULT_EVAL_SIZES: list[int] = [9, 13, 19]
+DEFAULT_EVAL_SIZES: list[int] = list(DEFAULT_BOARD_SIZES)
 DEFAULT_RESOLUTION_TEST_SIZES: list[int] = [9, 13, 19, 25]
 
 # Charge position bounds (fraction of grid)
@@ -69,12 +71,18 @@ class TransferResult:
 def load_model(
     model_path: Path,
     device: torch.device,
+    *,
+    allow_unsafe_pickle: bool = False,
 ) -> tuple[PhysicsOperator, dict[str, Any]]:
     """Load trained model from checkpoint.
 
     Args:
         model_path: Path to model checkpoint.
         device: Device to load model on.
+        allow_unsafe_pickle: Deserialize with ``weights_only=False``. Defaults
+            to ``False``; ``--model-path`` is an operator-supplied path, and
+            unpickling one executes whatever it contains. Only pass ``True``
+            for a file whose provenance you have established.
 
     Returns:
         Tuple of (model, config dict).
@@ -82,7 +90,11 @@ def load_model(
     """
     logger.debug("loading_model", path=str(model_path), device=str(device))
 
-    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    checkpoint = load_torch_checkpoint(
+        model_path,
+        map_location=device,
+        allow_unsafe_pickle=allow_unsafe_pickle,
+    )
 
     config = checkpoint.get("config", {})
 
@@ -197,6 +209,8 @@ def run_verification(
     n_samples: int = 500,
     threshold: float = 0.05,
     output_dir: Path | None = None,
+    *,
+    allow_unsafe_pickle: bool = False,
 ) -> dict[str, Any]:
     """Run full zero-shot transfer verification.
 
@@ -207,6 +221,8 @@ def run_verification(
         n_samples: Number of samples per evaluation.
         threshold: MSE threshold for passing.
         output_dir: Directory to save results.
+        allow_unsafe_pickle: Forwarded to :func:`load_model`; see its
+            docstring for why this defaults to ``False``.
 
     Returns:
         Dictionary with verification results.
@@ -232,7 +248,7 @@ def run_verification(
         train(config)
         model_path = Path(config.output_dir) / "best_model.pt"
 
-    model, config = load_model(model_path, device)
+    model, config = load_model(model_path, device, allow_unsafe_pickle=allow_unsafe_pickle)
     logger.info("model_loaded", path=str(model_path))
 
     # Run transfer tests
@@ -480,6 +496,15 @@ def main() -> None:
         default="outputs/physics_poc",
         help="Directory to save results",
     )
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help=(
+            "Load --model-path with weights_only=False. Executes arbitrary code "
+            "if the checkpoint is malicious; use only for a file whose "
+            "provenance you have established."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -493,6 +518,7 @@ def main() -> None:
         n_samples=args.n_samples,
         threshold=args.threshold,
         output_dir=Path(args.output_dir),
+        allow_unsafe_pickle=args.allow_unsafe_pickle,
     )
 
     # Exit with appropriate code

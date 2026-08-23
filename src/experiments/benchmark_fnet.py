@@ -25,6 +25,8 @@ import structlog
 import torch
 import torch.nn as nn
 
+from src.modeling.fnet import FNetMixingLayer
+
 logger = structlog.get_logger(__name__)
 
 # Module-level constants with documented rationale
@@ -49,48 +51,6 @@ class BenchmarkResult:
     speedup: float
     fnet_memory_mb: float
     softmax_memory_mb: float
-
-
-class FNetMixingLayer(nn.Module):
-    """FNet-style FFT mixing layer.
-
-    Uses 2D FFT for O(N log N) token mixing on grid-structured inputs.
-    """
-
-    def __init__(self, d_model: int) -> None:
-        """Initialize FNet mixing layer."""
-        super().__init__()
-        self.d_model = d_model
-        self.norm = nn.LayerNorm(d_model)
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        grid_size: int,
-    ) -> torch.Tensor:
-        """Apply FFT-based mixing.
-
-        Args:
-            x: Input tensor (batch, n_tokens, d_model).
-            grid_size: Grid dimension (sqrt of n_tokens).
-
-        Returns:
-            Mixed tensor (batch, n_tokens, d_model).
-
-        """
-        batch, n_tokens, d = x.shape
-
-        # Reshape to grid
-        x_grid = x.view(batch, grid_size, grid_size, d)
-
-        # 2D FFT mixing (real-valued for efficiency)
-        x_freq = torch.fft.rfft2(x_grid, dim=(1, 2), norm="ortho")
-        x_mixed = torch.fft.irfft2(x_freq, s=(grid_size, grid_size), dim=(1, 2), norm="ortho")
-
-        # Reshape back
-        x_mixed = x_mixed.view(batch, n_tokens, d)
-
-        return self.norm(x + x_mixed)
 
 
 class SoftmaxAttentionLayer(nn.Module):
@@ -170,7 +130,7 @@ def benchmark_layer(
 
     # Warmup
     for _ in range(n_warmup):
-        if grid_size is not None:  # noqa: SIM108
+        if grid_size is not None:
             layer(x, grid_size)
         else:
             layer(x)
@@ -186,7 +146,7 @@ def benchmark_layer(
             torch.cuda.synchronize()
 
         start = time.perf_counter()
-        if grid_size is not None:  # noqa: SIM108
+        if grid_size is not None:
             layer(x, grid_size)
         else:
             layer(x)

@@ -27,6 +27,25 @@ class DistributedBackend(str, Enum):
     MPI = "mpi"  # Message Passing Interface
 
 
+# Every ``Enum`` this module defines, for allowlisting when a checkpoint is
+# deserialized under ``weights_only=True``.
+#
+# ``DistributedTrainer.save_checkpoint`` stores ``distributed_config.model_dump()``,
+# which keeps ``backend`` as an enum *member* rather than a plain string, so a
+# ``weights_only=True`` load of a checkpoint this trainer just wrote fails on
+# ``DistributedBackend``. Until 2026-08-21 that was masked rather than fixed:
+# ``tests/distributed/test_distributed_trainer.py`` called
+# ``torch.serialization.add_safe_globals([DistributedBackend])`` at module import,
+# a process-global registration that kept the suite green while the production
+# loader stayed broken.
+#
+# ``str``-valued ``Enum`` subclasses deserialize by looking up a member and can
+# invoke nothing else, so they qualify as pure data. Completeness is asserted by
+# reflection in ``tests/security/test_checkpoint_roundtrip.py::
+# TestDistributedTrainerRoundTrip::test_safe_distributed_globals_is_complete``.
+SAFE_DISTRIBUTED_GLOBALS: tuple[type, ...] = (DistributedBackend,)
+
+
 class DistributedInfraConfig(BaseModel):
     """Configuration for distributed training infrastructure.
 

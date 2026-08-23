@@ -23,7 +23,7 @@ Keep PRs focused and reviewable. See CONTRIBUTING.md for the full workflow.
 - [ ] Tests added/updated; the **Regression Surface** command(s) for the changed
       path (see `CLAUDE.md`) pass locally
 - [ ] Changed modules stay above their coverage gate (global 85% branch + per-module)
-- [ ] `pre-commit run --all-files` is green (ruff, ruff-format, yamllint, commitizen…)
+- [ ] `pre-commit run --all-files` is green (ruff, ruff-format, yamllint…; commitizen runs separately at the `commit-msg` hook stage, not via `--all-files`)
 - [ ] `CHANGELOG.md` `[Unreleased]` updated
 - [ ] Docs updated (`README.md` / `docs/` / `ARCHITECTURE.md`) if behavior or layout changed
 

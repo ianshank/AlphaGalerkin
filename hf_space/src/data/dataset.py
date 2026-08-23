@@ -158,6 +158,7 @@ class BoardSizeBatchSampler(Sampler):
         for _size, indices in self.size_to_indices.items():
             if self.shuffle:
                 import random
+
                 indices = indices.copy()
                 random.shuffle(indices)
 
@@ -170,6 +171,7 @@ class BoardSizeBatchSampler(Sampler):
         # Shuffle batches (not within batches)
         if self.shuffle:
             import random
+
             random.shuffle(all_batches)
 
         yield from all_batches
@@ -255,17 +257,21 @@ class AugmentedExperience:
         self.transforms: list[callable] = [lambda x: x]  # Identity
 
         if use_rotations:
-            self.transforms.extend([
-                lambda x: torch.rot90(x, 1, [-2, -1]),
-                lambda x: torch.rot90(x, 2, [-2, -1]),
-                lambda x: torch.rot90(x, 3, [-2, -1]),
-            ])
+            self.transforms.extend(
+                [
+                    lambda x: torch.rot90(x, 1, [-2, -1]),
+                    lambda x: torch.rot90(x, 2, [-2, -1]),
+                    lambda x: torch.rot90(x, 3, [-2, -1]),
+                ]
+            )
 
         if use_reflections:
-            self.transforms.extend([
-                lambda x: torch.flip(x, [-1]),  # Horizontal
-                lambda x: torch.flip(x, [-2]),  # Vertical
-            ])
+            self.transforms.extend(
+                [
+                    lambda x: torch.flip(x, [-1]),  # Horizontal
+                    lambda x: torch.flip(x, [-2]),  # Vertical
+                ]
+            )
 
     def __call__(self, experience: Experience) -> Experience:
         """Apply random augmentation.
@@ -286,7 +292,7 @@ class AugmentedExperience:
 
         # Transform policy (reshape, transform, flatten)
         board_size = experience.board_size
-        n_positions = board_size ** 2
+        n_positions = board_size**2
 
         # Separate position policy and pass move
         position_policy = experience.target_policy[:n_positions]

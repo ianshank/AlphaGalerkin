@@ -91,7 +91,7 @@ C4Context
 │  │ • PoissonOperator   │   │ • BasisSelectionGame│   │ • ResidualLoss      │       │
 │  │ • BurgersOperator   │──>│ • MeshRefinementGame│──>│ • BoundaryLoss      │       │
 │  │ • AdvDiffOperator   │   │ • PDEState          │   │ • PhysicsInformedLoss│      │
-│  │ • HeatOperator      │   │ • PDEResult         │   │ • CombinedLoss      │       │
+│  │ • HeatOperator      │   │ • GamePhase         │   │ • CombinedLoss      │       │
 │  └─────────────────────┘   └─────────────────────┘   └─────────────────────┘       │
 │            │                         │                         │                    │
 │            │                         │                         │                    │
@@ -206,7 +206,6 @@ C4Component
 
     Component(game_base, "PDEGame", "ABC", "Abstract game interface for MCTS")
     Component(state, "PDEState", "Dataclass", "Solution, residuals, budget, history")
-    Component(result, "PDEResult", "Dataclass", "Final metrics and trajectories")
     Component(basis_game, "BasisSelectionGame", "Class", "Galerkin basis selection")
     Component(mesh_game, "MeshRefinementGame", "Class", "Adaptive h/p refinement")
     Component(basis_func, "BasisFunction", "Dataclass", "Fourier/polynomial/RBF basis")
@@ -215,7 +214,6 @@ C4Component
     Rel(basis_game, game_base, "implements")
     Rel(mesh_game, game_base, "implements")
     Rel(game_base, state, "uses")
-    Rel(game_base, result, "returns")
     Rel(basis_game, basis_func, "manages")
     Rel(mesh_game, mesh, "manages")
 ```
@@ -420,6 +418,7 @@ classDiagram
 
 ```mermaid
 sequenceDiagram
+    participant Solver as AlphaGalerkinSolver
     participant MCTS
     participant PDEGame
     participant PDEOperator
@@ -450,8 +449,10 @@ sequenceDiagram
         PDEGame-->>MCTS: bool
     end
 
-    MCTS->>PDEGame: get_result(final_state, history)
-    PDEGame-->>MCTS: PDEResult
+    Solver->>PDEGame: compute_exact_error(final_state)
+    PDEGame-->>Solver: {l2, h1, linf, residual}
+    Solver->>PDEGame: termination_reason(final_state)
+    PDEGame-->>Solver: "converged" | "max_dof" | ...
 ```
 
 ### 4.3 Architecture Decision Records

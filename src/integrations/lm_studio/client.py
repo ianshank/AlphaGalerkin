@@ -52,7 +52,7 @@ def _import_openai() -> Any:
     not have the ``[lm-studio]`` extra.
     """
     try:
-        import openai  # noqa: PLC0415
+        import openai
     except ImportError as e:  # pragma: no cover - import-time error path
         raise LMStudioError(
             "The 'openai' package is required for the LM Studio integration. "
@@ -118,7 +118,7 @@ class LMStudioClient:
         if config.preflight_on_construct:
             # Local import avoids a top-level cycle (preflight imports the
             # client indirectly via type-only references).
-            from src.integrations.lm_studio.preflight import (  # noqa: PLC0415
+            from src.integrations.lm_studio.preflight import (
                 check_lm_studio_server,
             )
 
@@ -206,10 +206,10 @@ class LMStudioClient:
                         error=type(last_error).__name__,
                     )
                     raise last_error
-                self._sleep_backoff(attempt)
                 self._emit_retry_log(
                     log, prompt_hash_str, attempt, reason=type(last_error).__name__
                 )
+                self._sleep_backoff(attempt)
                 attempt += 1
                 continue
 
@@ -221,8 +221,7 @@ class LMStudioClient:
             raw_content = self._extract_content(completion)
             try:
                 response = self._parse_response(raw_content)
-            except LMStudioParseError as exc:
-                last_error = exc
+            except LMStudioParseError:
                 if attempt >= self._config.max_retries:
                     self._emit_call_log(
                         log,
@@ -244,7 +243,6 @@ class LMStudioClient:
                 mismatch_error = LMStudioActionSpaceMismatchError(
                     f"logits length {len(response.logits)} != expected {expected_action_size}"
                 )
-                last_error = mismatch_error
                 if attempt >= self._config.max_retries:
                     self._emit_call_log(
                         log,

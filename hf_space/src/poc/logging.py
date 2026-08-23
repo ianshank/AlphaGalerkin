@@ -389,9 +389,7 @@ class DebugContext:
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
                     end_memory = torch.cuda.memory_allocated()
-                    context["memory_delta_mb"] = (
-                        end_memory - self._start_memory
-                    ) / 1024 / 1024
+                    context["memory_delta_mb"] = (end_memory - self._start_memory) / 1024 / 1024
             except ImportError:
                 pass
 

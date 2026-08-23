@@ -106,7 +106,11 @@ class ComparisonResult:
             List of model names in rank order.
 
         """
-        key = f"{metric}_mean" if f"{metric}_mean" in next(iter(self.model_metrics.values())).aggregate_metrics else metric
+        key = (
+            f"{metric}_mean"
+            if f"{metric}_mean" in next(iter(self.model_metrics.values())).aggregate_metrics
+            else metric
+        )
 
         model_values = []
         for name, metrics in self.model_metrics.items():
@@ -279,7 +283,7 @@ class ModelComparison:
         model_names = list(model_metrics.keys())
 
         for i, name1 in enumerate(model_names):
-            for name2 in model_names[i + 1:]:
+            for name2 in model_names[i + 1 :]:
                 pair_key = f"{name1}_vs_{name2}"
                 pairwise[pair_key] = {}
 

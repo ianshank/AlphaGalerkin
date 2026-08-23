@@ -31,9 +31,7 @@ if TYPE_CHECKING:
     pass
 
 # Create the registry and decorator
-PDEOperatorRegistry, register_pde_operator = create_registry(
-    "PDEOperator", PDEOperator
-)
+PDEOperatorRegistry, register_pde_operator = create_registry("PDEOperator", PDEOperator)
 
 
 def _register_builtin_operators() -> None:
@@ -69,6 +67,7 @@ def get_pde_operator(name: str) -> type[PDEOperator]:
 
     Raises:
         KeyError: If operator not registered.
+
     """
     return PDEOperatorRegistry().get_or_raise(name)
 
@@ -78,5 +77,6 @@ def list_pde_operators() -> list[str]:
 
     Returns:
         List of registered operator names.
+
     """
     return PDEOperatorRegistry().list_items()

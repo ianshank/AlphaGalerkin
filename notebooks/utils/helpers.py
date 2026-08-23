@@ -7,15 +7,17 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
 try:
     import structlog
+
     logger = structlog.get_logger(__name__)
 except ImportError:
     # Fallback to standard logging if structlog not available
@@ -24,7 +26,7 @@ except ImportError:
 if TYPE_CHECKING:
     from torch import nn
 
-    from notebooks.utils.config import DemoConfig, GoBoardConfig
+    from notebooks.utils.config import GoBoardConfig
 
 
 @dataclass
@@ -57,6 +59,7 @@ def setup_environment(
 
     """
     import random
+
     import numpy as np
 
     # Detect project root
@@ -173,7 +176,7 @@ def create_sample_board(
 
 def create_sample_board_from_config(
     size: int,
-    config: "GoBoardConfig",
+    config: GoBoardConfig,
     n_channels: int = 17,
     device: torch.device | str = "cpu",
 ) -> Tensor:
@@ -210,7 +213,7 @@ class ModelForwardResult:
 
 
 def safe_model_forward(
-    model: "nn.Module",
+    model: nn.Module,
     x: Tensor,
     return_lbb: bool = False,
 ) -> ModelForwardResult:
@@ -253,7 +256,7 @@ def safe_model_forward(
         )
 
 
-def format_model_summary(model: "nn.Module") -> str:
+def format_model_summary(model: nn.Module) -> str:
     """Format a model summary with parameter counts.
 
     Args:
@@ -294,9 +297,7 @@ def validate_board_sizes(sizes: Sequence[int], min_size: int = 3, max_size: int 
         if not isinstance(size, int):
             raise ValueError(f"Board size must be int, got {type(size)}")
         if size < min_size or size > max_size:
-            raise ValueError(
-                f"Board size {size} out of range [{min_size}, {max_size}]"
-            )
+            raise ValueError(f"Board size {size} out of range [{min_size}, {max_size}]")
 
     logger.debug("validated_board_sizes", sizes=list(sizes))
     return True

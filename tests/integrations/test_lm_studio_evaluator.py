@@ -116,6 +116,67 @@ def test_uniform_fallback_when_configured(fake_openai: FakeOpenAIModule) -> None
     assert result.policy[3] == pytest.approx(0.5)
 
 
+def test_uniform_fallback_when_configured_on_connection_error(
+    fake_openai: FakeOpenAIModule,
+) -> None:
+    """The fallback flag must also cover exhausted-retries connection errors.
+
+    Not just `LMStudioParseError` (the only case the flag's name literally
+    names). `evaluator.py` catches all three direct `LMStudioError`
+    subclasses in one except-tuple; this closes the missing evaluator-level
+    proof for the connection-error member of that tuple.
+    """
+    client = _build_client(fake_openai, fallback_to_uniform_on_parse_error=True)
+    err = fake_openai.APIConnectionError("network down")
+    fake_openai.last_client.chat.completions.responses = [err, err, err, err]
+    evaluator = _build_evaluator(client, n_actions=4)
+    result = evaluator.evaluate(_state(), legal_actions=[0, 2])
+    assert result.value == 0.0
+    assert result.policy[0] == pytest.approx(0.5)
+    assert result.policy[2] == pytest.approx(0.5)
+    assert len(evaluator.latencies_ms) == 1  # latency recorded on the fallback path too
+
+
+def test_non_retryable_error_bypasses_fallback_flag(fake_openai: FakeOpenAIModule) -> None:
+    """DESIGN FINDING (see audit report): permanent errors bypass the fallback flag.
+
+    A non-retryable SDK error (auth, 404, bad-request, ...) is coerced by
+    `LMStudioClient` to the plain
+    `LMStudioError` *parent* type (not one of `LMStudioParseError` /
+    `LMStudioActionSpaceMismatchError` / `LMStudioConnectionError`), and
+    `LMStudioEvaluator.evaluate`'s except-tuple only names those three
+    subclasses. So today, `fallback_to_uniform_on_parse_error=True` does
+    NOT protect against a permanent SDK failure the way it protects against
+    a parse/mismatch/connection failure -- it always propagates.
+
+    This test locks in and documents that current behaviour explicitly
+    (rather than leaving it an untested, implicit gap) so a future change
+    to either the except-tuple or the client's error coercion is a
+    deliberate, reviewed decision. Whether permanent errors *should*
+    bypass the flag is a real design question -- see the audit report --
+    this test intentionally does not take a side on it, only records the
+    present, reproducible behaviour.
+    """
+    client = _build_client(fake_openai, fallback_to_uniform_on_parse_error=True)
+    fake_openai.last_client.chat.completions.responses = [
+        fake_openai.AuthenticationError("invalid API key"),
+    ]
+    evaluator = _build_evaluator(client, n_actions=4)
+    from src.integrations.lm_studio.schema import LMStudioConnectionError, LMStudioError
+
+    with pytest.raises(LMStudioError) as exc_info:
+        evaluator.evaluate(_state(), legal_actions=[0, 2])
+    assert not isinstance(exc_info.value, LMStudioConnectionError)
+    # Exactly one SDK call: no retry was burned (consistent with client.py's
+    # permanent-vs-transient distinction).
+    assert len(fake_openai.last_client.chat.completions.calls) == 1
+    # The except-tuple in evaluate() never matches a bare LMStudioError, so
+    # neither `_latencies_ms.append` call executes -- the sample is dropped
+    # entirely rather than recorded on a fallback path (there is no
+    # fallback path here; the exception propagates past the whole `try`).
+    assert evaluator.latencies_ms == []
+
+
 def test_no_legal_actions_returns_zero_policy(fake_openai: FakeOpenAIModule) -> None:
     client = _build_client(fake_openai)
     evaluator = _build_evaluator(client, n_actions=4)

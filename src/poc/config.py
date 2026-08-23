@@ -20,6 +20,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ScenarioTier(str, Enum):
     """Validation tier indicating depth of testing."""
@@ -99,7 +101,7 @@ class BaseScenarioConfig(BaseModel):
         default_factory=list, description="Metrics that must pass"
     )
 
-    # Resource hints
+    # Resource hints (requires_gpu reserved for future use; currently not enforced/checked)
     requires_gpu: bool = Field(default=False, description="Whether GPU is required")
     estimated_duration_seconds: int = Field(
         default=60, ge=1, description="Estimated runtime for planning"
@@ -131,7 +133,7 @@ class TransferScenarioConfig(BaseScenarioConfig):
         default=9, ge=3, le=25, description="Grid size for training (e.g., 9 for 9x9)"
     )
     eval_resolutions: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Grid sizes for evaluation",
     )
     primary_eval_resolution: int = Field(
@@ -385,10 +387,13 @@ def load_config_from_dict(
         ValueError: If scenario type cannot be determined.
 
     """
+    from src.poc.config_noyron import NoyronHXScenarioConfig
+
     type_map: dict[str, type[BaseScenarioConfig]] = {
         "transfer": TransferScenarioConfig,
         "complexity": ComplexityScenarioConfig,
         "stability": StabilityScenarioConfig,
+        "noyron_hx": NoyronHXScenarioConfig,
     }
 
     # Lazy import: `LLMPriorAblationConfig` itself is light (it only pulls

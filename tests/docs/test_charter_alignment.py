@@ -598,9 +598,11 @@ def test_documented_gates_are_enforced_in_ci() -> None:
     """Charter gates must exist in CI at the stated value (charter subset of CI).
 
     The reverse direction is deliberately unchecked: adding a CI gate should not nag a charter
-    edit. Matching is scoped to the CI *step* that mentions the target, because four gates use
+    edit. Matching is scoped to the CI *step* that mentions the target, because several gates use
     the native ``coverage report --fail-under=`` form with no ``--cov=`` flag at all, so a
-    structural ``--cov=X`` -> ``--cov-fail-under=N`` pairing would silently miss them.
+    structural ``--cov=X`` -> ``--cov-fail-under=N`` pairing would silently miss them. (Count them
+    with ``grep -c 'coverage report' .github/workflows/ci.yml`` rather than trusting a number
+    here -- it has gone stale twice.)
     """
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     steps = re.split(r"^      - name: ", workflow, flags=re.MULTILINE)

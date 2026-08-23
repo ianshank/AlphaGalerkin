@@ -87,28 +87,34 @@ class Reporter:
 
         # Summary section
         summary = experiment.get_summary()
-        sections.append(ReportSection(
-            title="Experiment Summary",
-            content=self._format_summary(summary),
-            data=summary,
-        ))
+        sections.append(
+            ReportSection(
+                title="Experiment Summary",
+                content=self._format_summary(summary),
+                data=summary,
+            )
+        )
 
         # Runs section
         if experiment.runs:
             runs_content = self._format_runs(experiment.runs)
-            sections.append(ReportSection(
-                title="Runs",
-                content=runs_content,
-            ))
+            sections.append(
+                ReportSection(
+                    title="Runs",
+                    content=runs_content,
+                )
+            )
 
             # Best run
             best = experiment.get_best_run("loss")
             if best:
-                sections.append(ReportSection(
-                    title="Best Run",
-                    content=self._format_run(best),
-                    data=best.to_dict(),
-                ))
+                sections.append(
+                    ReportSection(
+                        title="Best Run",
+                        content=self._format_run(best),
+                        data=best.to_dict(),
+                    )
+                )
 
         report = self._build_report(
             title=f"Experiment: {experiment.config.name}",
@@ -147,24 +153,30 @@ class Reporter:
         sections = []
 
         # Summary
-        sections.append(ReportSection(
-            title="Transfer Validation Summary",
-            content=self._format_transfer_summary(result),
-        ))
+        sections.append(
+            ReportSection(
+                title="Transfer Validation Summary",
+                content=self._format_transfer_summary(result),
+            )
+        )
 
         # Per-target results
         if result.target_metrics:
-            sections.append(ReportSection(
-                title="Target Results",
-                content=self._format_transfer_targets(result),
-            ))
+            sections.append(
+                ReportSection(
+                    title="Target Results",
+                    content=self._format_transfer_targets(result),
+                )
+            )
 
         # Training info
         if result.train_epochs > 0:
-            sections.append(ReportSection(
-                title="Training",
-                content=self._format_training_info(result),
-            ))
+            sections.append(
+                ReportSection(
+                    title="Training",
+                    content=self._format_training_info(result),
+                )
+            )
 
         report = self._build_report(
             title=f"Transfer Validation [{result.result_id}]",
@@ -203,30 +215,38 @@ class Reporter:
         sections = []
 
         # Summary
-        sections.append(ReportSection(
-            title="Comparison Summary",
-            content=result.summary(),
-        ))
+        sections.append(
+            ReportSection(
+                title="Comparison Summary",
+                content=result.summary(),
+            )
+        )
 
         # Metrics table
-        sections.append(ReportSection(
-            title="Model Metrics",
-            content=self._format_comparison_table(result),
-        ))
+        sections.append(
+            ReportSection(
+                title="Model Metrics",
+                content=self._format_comparison_table(result),
+            )
+        )
 
         # Rankings
         if result.rankings:
-            sections.append(ReportSection(
-                title="Rankings",
-                content=self._format_rankings(result.rankings),
-            ))
+            sections.append(
+                ReportSection(
+                    title="Rankings",
+                    content=self._format_rankings(result.rankings),
+                )
+            )
 
         # Statistical tests
         if result.pairwise_tests:
-            sections.append(ReportSection(
-                title="Statistical Comparisons",
-                content=self._format_pairwise_tests(result.pairwise_tests),
-            ))
+            sections.append(
+                ReportSection(
+                    title="Statistical Comparisons",
+                    content=self._format_pairwise_tests(result.pairwise_tests),
+                )
+            )
 
         report = self._build_report(
             title=f"Model Comparison [{result.comparison_id}]",
@@ -267,16 +287,20 @@ class Reporter:
         sections = []
 
         # Summary
-        sections.append(ReportSection(
-            title="Benchmark Summary",
-            content=self._format_benchmark_summary(results),
-        ))
+        sections.append(
+            ReportSection(
+                title="Benchmark Summary",
+                content=self._format_benchmark_summary(results),
+            )
+        )
 
         # Results table
-        sections.append(ReportSection(
-            title="Results",
-            content=self._format_benchmark_table(results),
-        ))
+        sections.append(
+            ReportSection(
+                title="Results",
+                content=self._format_benchmark_table(results),
+            )
+        )
 
         report = self._build_report(
             title=f"Benchmark Report: {name}",
@@ -330,12 +354,14 @@ class Reporter:
         ]
 
         for section in sections:
-            lines.extend([
-                f"## {section.title}",
-                "",
-                section.content,
-                "",
-            ])
+            lines.extend(
+                [
+                    f"## {section.title}",
+                    "",
+                    section.content,
+                    "",
+                ]
+            )
 
         return "\n".join(lines)
 
@@ -365,13 +391,15 @@ class Reporter:
         ]
 
         for section in sections:
-            lines.extend([
-                "-" * 40,
-                section.title,
-                "-" * 40,
-                section.content,
-                "",
-            ])
+            lines.extend(
+                [
+                    "-" * 40,
+                    section.title,
+                    "-" * 40,
+                    section.content,
+                    "",
+                ]
+            )
 
         return "\n".join(lines)
 
@@ -469,11 +497,13 @@ class Reporter:
 
     def _format_training_info(self, result: TransferResult) -> str:
         """Format training info."""
-        return "\n".join([
-            f"- **Epochs**: {result.train_epochs}",
-            f"- **Final Loss**: {result.train_loss:.6f}",
-            f"- **Duration**: {result.train_duration_seconds:.1f}s",
-        ])
+        return "\n".join(
+            [
+                f"- **Epochs**: {result.train_epochs}",
+                f"- **Final Loss**: {result.train_loss:.6f}",
+                f"- **Duration**: {result.train_duration_seconds:.1f}s",
+            ]
+        )
 
     def _format_comparison_table(self, result: ComparisonResult) -> str:
         """Format comparison table."""
@@ -513,11 +543,13 @@ class Reporter:
             return "No benchmark results."
 
         sizes = sorted({r.size for r in results})
-        return "\n".join([
-            f"- **Benchmarks**: {len(results)}",
-            f"- **Sizes**: {sizes}",
-            f"- **Device**: {results[0].device}",
-        ])
+        return "\n".join(
+            [
+                f"- **Benchmarks**: {len(results)}",
+                f"- **Sizes**: {sizes}",
+                f"- **Device**: {results[0].device}",
+            ]
+        )
 
     def _format_benchmark_table(self, results: list[BenchmarkResult]) -> str:
         """Format benchmark results table."""

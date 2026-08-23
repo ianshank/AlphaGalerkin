@@ -9,15 +9,16 @@ Provides:
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from src.analysis.config import AnalysisConfig, MoveClassification
 
 if TYPE_CHECKING:
-    import torch
+    pass
 
 
 @dataclass
@@ -31,6 +32,7 @@ class EvaluationResult:
         value: Raw value output from network.
         mcts_visits: Visit counts from MCTS if available.
         depth: Search depth achieved.
+
     """
 
     win_rate: float
@@ -63,6 +65,7 @@ class EvaluationResult:
 
         Returns:
             Move probability or 0.0 if not found.
+
         """
         return self.policy.get(move, 0.0)
 
@@ -74,6 +77,7 @@ class EvaluationResult:
 
         Returns:
             Rank (0-indexed) or None if not in top moves.
+
         """
         for i, (m, _) in enumerate(self.best_moves):
             if m == move:
@@ -84,10 +88,7 @@ class EvaluationResult:
         """Convert to dictionary for serialization."""
         return {
             "win_rate": self.win_rate,
-            "best_moves": [
-                {"move": list(m), "probability": p}
-                for m, p in self.best_moves
-            ],
+            "best_moves": [{"move": list(m), "probability": p} for m, p in self.best_moves],
             "value": self.value,
             "depth": self.depth,
             "confidence": self.confidence,
@@ -102,6 +103,7 @@ class LRUCache:
 
         Args:
             max_size: Maximum number of entries.
+
         """
         self._cache: OrderedDict[str, EvaluationResult] = OrderedDict()
         self._max_size = max_size
@@ -114,6 +116,7 @@ class LRUCache:
 
         Returns:
             Cached result or None.
+
         """
         if key in self._cache:
             # Move to end (most recently used)
@@ -127,6 +130,7 @@ class LRUCache:
         Args:
             key: Cache key.
             value: Result to cache.
+
         """
         if key in self._cache:
             self._cache.move_to_end(key)
@@ -165,6 +169,7 @@ class PositionEvaluator:
             config: Analysis configuration.
             model_evaluator: Optional model evaluation function.
             logger: Optional structured logger.
+
         """
         self.config = config or AnalysisConfig()
         self._model_evaluator = model_evaluator
@@ -185,6 +190,7 @@ class PositionEvaluator:
 
         Args:
             evaluator: Function that takes board state and returns (value, policy).
+
         """
         self._model_evaluator = evaluator
 
@@ -205,6 +211,7 @@ class PositionEvaluator:
 
         Returns:
             EvaluationResult with win rate and best moves.
+
         """
         # Check cache
         cache_key = None
@@ -237,6 +244,7 @@ class PositionEvaluator:
 
         Returns:
             List of EvaluationResults.
+
         """
         if board_sizes is None:
             board_sizes = [19] * len(board_states)
@@ -262,6 +270,7 @@ class PositionEvaluator:
 
         Returns:
             EvaluationResult.
+
         """
         if self._model_evaluator is None:
             # Return dummy result if no model
@@ -272,9 +281,7 @@ class PositionEvaluator:
             value, policy = self._model_evaluator(board_state)
 
             # Convert to evaluation result
-            return self._process_model_output(
-                value, policy, board_size, legal_moves
-            )
+            return self._process_model_output(value, policy, board_size, legal_moves)
         except Exception as e:
             self._logger.warning("evaluation_failed", error=str(e))
             return self._create_dummy_result(board_size, legal_moves)
@@ -296,6 +303,7 @@ class PositionEvaluator:
 
         Returns:
             EvaluationResult.
+
         """
         # Convert value to float
         if hasattr(value, "item"):
@@ -339,7 +347,7 @@ class PositionEvaluator:
             key=lambda x: x[1],
             reverse=True,
         )
-        best_moves = [(m, p) for m, p in sorted_moves[:self.config.max_variations + 1]]
+        best_moves = [(m, p) for m, p in sorted_moves[: self.config.max_variations + 1]]
 
         return EvaluationResult(
             win_rate=win_rate,
@@ -362,12 +370,13 @@ class PositionEvaluator:
 
         Returns:
             Dummy EvaluationResult.
+
         """
         # Uniform distribution over legal moves
         if legal_moves:
             n_moves = len(legal_moves)
             prob = 1.0 / n_moves if n_moves > 0 else 0.0
-            policy = {m: prob for m in legal_moves}
+            policy = dict.fromkeys(legal_moves, prob)
             best_moves = [(m, prob) for m in legal_moves[:3]]
         else:
             policy = {}
@@ -390,6 +399,7 @@ class PositionEvaluator:
 
         Returns:
             Cache key string.
+
         """
         import hashlib
 
@@ -419,6 +429,7 @@ class PositionEvaluator:
 
         Returns:
             Tuple of (classification, win rate loss).
+
         """
         best_win_rate = evaluation.win_rate
         played_prob = evaluation.get_move_probability(played_move)
@@ -480,6 +491,7 @@ def create_position_evaluator(
 
     Returns:
         Configured PositionEvaluator.
+
     """
     from src.analysis.config import create_analysis_config
 

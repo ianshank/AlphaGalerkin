@@ -1,0 +1,35 @@
+name: local_gpu_test_zoo
+description: Small local test for GPU sweep
+schema_version: 1
+
+storage_backend: filesystem
+storage_root: outputs/video_compression/zoo/local_test
+
+device_assignment_strategy: single_device
+device_preference: cpu
+parallel_workers_per_device: 1
+fail_fast: true
+
+default_codec_config_ref: config/video_compression/codec_fast.yaml
+default_train_dataset_ref: null
+
+entries:
+  - entry_id: lambda_local_test
+    lambda_rd: 0.0032
+    distortion_metric: mixed
+    target_bpp: 0.18
+    target_psnr_db: 30.0
+    train_steps: 501  # very small for local test
+    batch_size: 2
+    estimated_vram_mib: 4000.0
+    seed: 20260502
+
+  - entry_id: lambda_local_test_2
+    lambda_rd: 0.0080
+    distortion_metric: mixed
+    target_bpp: 0.10
+    target_psnr_db: 27.0
+    train_steps: 501
+    batch_size: 2
+    estimated_vram_mib: 4000.0
+    seed: 20260502

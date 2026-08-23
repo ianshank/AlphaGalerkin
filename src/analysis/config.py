@@ -136,6 +136,26 @@ class AnalysisConfig(BaseModel):
         description="Include game statistics",
     )
 
+    # Model / evaluator options
+    model_checkpoint_path: str | None = Field(
+        default=None,
+        description=(
+            "Path to a trained AlphaGalerkin checkpoint. When set (and no explicit "
+            "evaluator is supplied), the reviewer wires a real model evaluator; "
+            "otherwise evaluations fall back to a uniform dummy."
+        ),
+    )
+    device: str = Field(
+        default="cpu",
+        description="Device preference for model evaluation (cpu, cuda, auto).",
+    )
+    evaluator_temperature: float = Field(
+        default=1.0,
+        gt=0.0,
+        le=100.0,
+        description="Policy softmax temperature for the model evaluator.",
+    )
+
     # Performance options
     batch_size: int = Field(
         default=8,

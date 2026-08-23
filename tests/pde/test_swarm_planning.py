@@ -95,6 +95,15 @@ class TestSwarmPlanningConfig:
         config = SwarmPlanningConfig(name="no_obs", n_obstacles=0)
         assert config.n_obstacles == 0
 
+    def test_potential_field_min_distance_default(self) -> None:
+        """The surfaced floor keeps the historical module-constant value."""
+        config = SwarmPlanningConfig(name="test")
+        assert config.potential_field_min_distance == 0.1
+
+    def test_potential_field_min_distance_override(self) -> None:
+        config = SwarmPlanningConfig(name="custom", potential_field_min_distance=0.5)
+        assert config.potential_field_min_distance == 0.5
+
     @pytest.mark.parametrize(
         "field,value",
         [
@@ -102,6 +111,8 @@ class TestSwarmPlanningConfig:
             ("collision_radius", 0.0),
             ("communication_range", -5.0),
             ("max_steps", 0),
+            ("potential_field_min_distance", 0.0),
+            ("potential_field_min_distance", -0.1),
         ],
     )
     def test_invalid_field_values(self, field: str, value: float) -> None:
@@ -320,6 +331,66 @@ class TestSwarmPlanningPDEMethods:
     ) -> None:
         potentials = game.compute_potential_field(initial_state)
         assert np.all(potentials >= 0.0)
+
+    @staticmethod
+    def _single_obstacle_state(game: SwarmPlanningGame, offset: float) -> SwarmState:
+        """One agent, one unit-radius obstacle at the origin, agent `offset` past it."""
+        state = game.get_initial_state(seed=0)
+        state.obstacles = np.array([[0.0, 0.0, 0.0, 1.0]], dtype=np.float64)
+        state.positions = np.array([[1.0 + offset, 0.0, 0.0]], dtype=np.float64)
+        return state
+
+    @pytest.mark.parametrize(
+        "offset,expected",
+        [
+            (-1.0, 10000.0),  # agent at obstacle centre: distance-past-surface = -1
+            (0.0, 10000.0),  # agent exactly on the surface: 0, floored to 0.1
+            (0.05, 10000.0),  # inside the floor: 0.05 -> 0.1
+            (0.1, 10000.0),  # exactly at the floor: unchanged
+            (0.5, 400.0),  # above the floor: 100 / 0.5**2, floor inactive
+        ],
+    )
+    def test_potential_field_min_distance_floor_caps_potential(
+        self, offset: float, expected: float
+    ) -> None:
+        """Below the floor the potential saturates at strength / floor**decay."""
+        config = SwarmPlanningConfig(
+            name="floor",
+            n_agents=2,
+            n_obstacles=1,
+            communication_range=100.0,
+            potential_field_strength=100.0,
+            potential_field_decay=2.0,
+        )
+        game = SwarmPlanningGame(config)
+        state = self._single_obstacle_state(game, offset)
+        potentials = game.compute_potential_field(state)
+        assert potentials[0] == pytest.approx(expected)
+
+    @staticmethod
+    def _floor_game(name: str, min_distance: float) -> SwarmPlanningGame:
+        """Game whose only varying knob is the potential-field distance floor."""
+        return SwarmPlanningGame(
+            SwarmPlanningConfig(
+                name=name,
+                n_agents=2,
+                n_obstacles=1,
+                communication_range=100.0,
+                potential_field_strength=100.0,
+                potential_field_decay=2.0,
+                potential_field_min_distance=min_distance,
+            )
+        )
+
+    def test_potential_field_min_distance_is_honoured(self) -> None:
+        """Raising the configured floor softens the obstacle (knob is live)."""
+        tight = self._floor_game("tight", 0.1)
+        loose = self._floor_game("loose", 0.5)
+        tight_state = self._single_obstacle_state(tight, 0.0)
+        loose_state = self._single_obstacle_state(loose, 0.0)
+
+        assert tight.compute_potential_field(tight_state)[0] == pytest.approx(10000.0)
+        assert loose.compute_potential_field(loose_state)[0] == pytest.approx(400.0)
 
     def test_potential_field_no_obstacles(self) -> None:
         config = SwarmPlanningConfig(

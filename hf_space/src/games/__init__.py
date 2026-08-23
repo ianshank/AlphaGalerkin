@@ -29,12 +29,11 @@ Usage:
 
 # Optional torch-dependent imports
 try:
+    # Import game implementations to trigger registration
+    from src.games import go  # noqa: F401
     from src.games.interface import GameInterface, GamePhase
     from src.games.registry import GameRegistry, register_game
     from src.games.state import GameState
-
-    # Import game implementations to trigger registration
-    from src.games import go  # noqa: F401
 
     _HAS_TORCH = True
 except ImportError:

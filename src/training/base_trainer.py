@@ -8,10 +8,12 @@ Provides shared machinery that all concrete trainers can inherit:
 - LR scheduling (cosine / linear warmup / none)
 - Checkpoint save/load interface
 - Structured logging with step timing
-- Abstract hooks: compute_loss, generate_data, evaluate
+- Optional hooks: compute_loss, generate_data (driven by step())
 
-Concrete trainers override the abstract methods and call super().__init__()
-to receive the shared setup.
+Concrete trainers override the hooks they need. Note that the production
+trainers (Trainer, DistributedTrainer) drive their own loops and deliberately
+do NOT call super().__init__(); the hooks exist for subclasses that want the
+generic step() loop.
 
 Usage::
 
@@ -22,9 +24,6 @@ Usage::
         def generate_data(self):
             return my_data_generator()
 
-        def evaluate(self):
-            return my_eval_fn()
-
 The existing ``Trainer`` and ``DistributedTrainer`` inherit from this
 base class, using the shared AMP, gradient clipping, LR scheduling,
 and checkpoint helpers while preserving their own public APIs.
@@ -32,7 +31,7 @@ and checkpoint helpers while preserving their own public APIs.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -55,10 +54,19 @@ from torch.optim.lr_scheduler import (
 
 from src.templates.config import BaseModuleConfig
 from src.training.callbacks import Callback, CallbackContext
+from src.training.checkpoint import load_torch_checkpoint
 
 logger = structlog.get_logger(__name__)
 
 ConfigT = TypeVar("ConfigT", bound="BaseTrainerConfig")
+
+# Single source of truth for the conservative base-trainer scheduler defaults.
+# Both BaseTrainerConfig's field defaults and _create_scheduler's parameter
+# defaults bind here so the two copies cannot silently diverge. Note that
+# src/training/trainer.py::Trainer deliberately overrides these with the more
+# aggressive values from config.schemas.TrainingConfig (0.1 / 0.1).
+DEFAULT_MIN_LR_RATIO: float = 0.01
+DEFAULT_WARMUP_START_FACTOR: float = 1e-6
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +110,7 @@ class BaseTrainerConfig(BaseModuleConfig):
         description="Number of linear warmup steps.",
     )
     warmup_start_factor: float = Field(
-        default=1e-6,
+        default=DEFAULT_WARMUP_START_FACTOR,
         gt=0.0,
         le=1.0,
         description="Starting LR factor for warmup (lr * factor at step 0).",
@@ -113,7 +121,7 @@ class BaseTrainerConfig(BaseModuleConfig):
         description="Total training steps (used for cosine annealing).",
     )
     min_lr_ratio: float = Field(
-        default=0.01,
+        default=DEFAULT_MIN_LR_RATIO,
         ge=0.0,
         le=1.0,
         description="Ratio of min_lr to peak lr for cosine schedule.",
@@ -179,7 +187,10 @@ class StepResult:
 
 
 class BaseTrainer(ABC, Generic[ConfigT]):
-    """Abstract base class for AlphaGalerkin trainers.
+    """Shared base class for AlphaGalerkin trainers.
+
+    Declares no abstract methods, so it is directly instantiable; the ABC base
+    is retained as a marker and for future abstract members.
 
     Provides shared infrastructure (AMP, gradient clipping, LR scheduling,
     checkpointing) that concrete trainers build on top of.
@@ -253,12 +264,23 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         )
 
     # ------------------------------------------------------------------
-    # Abstract interface
+    # Optional step() hooks
     # ------------------------------------------------------------------
+    # Deliberately NOT @abstractmethod: both production trainers (Trainer,
+    # DistributedTrainer) drive their own loops (_training_step / train_step)
+    # and never route through step(), so forcing every subclass to implement
+    # these was a dead contract — each production subclass stubbed both
+    # with NotImplementedError. Subclasses that want the generic step() loop
+    # override these; ones that don't may leave them and step() will raise.
+    #
+    # A third hook, evaluate(), was removed entirely (2026-08-19): it was
+    # never called by step() (which drives only generate_data and
+    # compute_loss) or anywhere else in src/, and both concrete subclass
+    # stubs (Trainer.evaluate, DistributedTrainer.evaluate) were themselves
+    # dead. See docs/CODE_HYGIENE_AUDIT.md §7.7.
 
-    @abstractmethod
     def compute_loss(self, batch: Any) -> tuple[Tensor, dict[str, float]]:
-        """Compute loss for a training batch.
+        """Compute loss for a training batch (hook for the ``step()`` loop).
 
         Args:
             batch: A batch of training data (type depends on concrete trainer).
@@ -268,27 +290,22 @@ class BaseTrainer(ABC, Generic[ConfigT]):
             any extra per-component losses or metrics to log.
 
         """
-        ...
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement compute_loss(); "
+            "override it to use the generic BaseTrainer.step() loop."
+        )
 
-    @abstractmethod
     def generate_data(self) -> Any:
-        """Generate or fetch a training batch.
+        """Generate or fetch a training batch (hook for the ``step()`` loop).
 
         Returns:
             A batch suitable for ``compute_loss``.
 
         """
-        ...
-
-    @abstractmethod
-    def evaluate(self) -> dict[str, float]:
-        """Run evaluation and return metrics.
-
-        Returns:
-            Dictionary of evaluation metric name -> value.
-
-        """
-        ...
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement generate_data(); "
+            "override it to use the generic BaseTrainer.step() loop."
+        )
 
     # ------------------------------------------------------------------
     # Training step (shared)
@@ -536,8 +553,8 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         scheduler_type: str,
         warmup_steps: int,
         total_steps: int,
-        min_lr_ratio: float = 0.01,
-        warmup_start_factor: float = 1e-6,
+        min_lr_ratio: float = DEFAULT_MIN_LR_RATIO,
+        warmup_start_factor: float = DEFAULT_WARMUP_START_FACTOR,
     ) -> LRScheduler:
         """Create an LR scheduler with optional warmup.
 
@@ -640,24 +657,34 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         torch.save(state, path)
         return path
 
-    def _load_training_state(self, path: Path | str) -> int:
+    def _load_training_state(self, path: Path | str, *, allow_unsafe_pickle: bool = False) -> int:
         """Load optimizer, scheduler, scaler, and step from a file.
+
+        Deserialization is ``weights_only=True``; the optimizer, scheduler and
+        AMP ``GradScaler`` state written by :meth:`_save_training_state` all load
+        under it. See the :mod:`src.training.checkpoint` Security Note.
 
         Args:
             path: File path to read.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``.
+                Defaults to safe; never set it in response to a safe-load
+                failure you have not diagnosed.
 
         Returns:
             The ``global_step`` that was restored.
 
         Raises:
             FileNotFoundError: If *path* does not exist.
+            RuntimeError: If the state cannot be safely deserialized.
 
         """
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Training state not found: {path}")
 
-        state = torch.load(path, map_location=self.device, weights_only=False)
+        state = load_torch_checkpoint(
+            path, map_location=self.device, allow_unsafe_pickle=allow_unsafe_pickle
+        )
 
         self.optimizer.load_state_dict(state["optimizer_state_dict"])
         self.scheduler.load_state_dict(state["scheduler_state_dict"])
@@ -709,12 +736,31 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         self._log.info("checkpoint_saved", path=str(path), step=self.global_step)
         return path
 
-    def load_checkpoint(self, path: Path | str | None = None, **kwargs: Any) -> int | None:
+    def load_checkpoint(
+        self,
+        path: Path | str | None = None,
+        *,
+        allow_unsafe_pickle: bool = False,
+        **kwargs: Any,
+    ) -> int | None:
         """Load model and optimizer state from a checkpoint.
+
+        Deserialization is ``weights_only=True``; everything
+        :meth:`save_checkpoint` writes (model, optimizer, scheduler, AMP scaler,
+        ``config.model_dump()``) loads under it. See the
+        :mod:`src.training.checkpoint` Security Note.
 
         Args:
             path: Path to the checkpoint file.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``.
+                Defaults to safe; only for a file whose provenance a human
+                operator has established.
             **kwargs: Additional keyword arguments for subclass compatibility.
+
+        Raises:
+            ValueError: If *path* is None.
+            FileNotFoundError: If *path* does not exist.
+            RuntimeError: If the checkpoint cannot be safely deserialized.
 
         """
         if path is None:
@@ -723,7 +769,9 @@ class BaseTrainer(ABC, Generic[ConfigT]):
         if not resolved.exists():
             raise FileNotFoundError(f"Checkpoint not found: {resolved}")
 
-        state = torch.load(resolved, map_location=self.device, weights_only=False)
+        state = load_torch_checkpoint(
+            resolved, map_location=self.device, allow_unsafe_pickle=allow_unsafe_pickle
+        )
 
         self.model.load_state_dict(state["model_state_dict"])
         self.optimizer.load_state_dict(state["optimizer_state_dict"])
@@ -840,7 +888,7 @@ class BaseTrainer(ABC, Generic[ConfigT]):
                 continue
             try:
                 method(ctx)
-            except Exception as exc:  # noqa: BLE001 — callbacks must not abort training
+            except Exception as exc:
                 # ``event`` is renamed to ``hook`` because structlog
                 # reserves ``event`` for the message identifier.
                 self._log.warning(

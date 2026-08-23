@@ -93,7 +93,11 @@ from src.agents.config import AgentConfig, AgentType
 
 
 class {class_name}(BaseAgent):
-    """TODO: describe what {class_name} does."""
+    """{class_name}: an AlphaGalerkin agent for {name.replace("_", " ")} tasks.
+
+    Subclasses :class:`BaseAgent` and implements the ``setup``/``step``/
+    ``reset`` lifecycle.  Configure via :func:`build_default_config`.
+    """
 
     def setup(self) -> None:
         """Initialize resources before the first step."""

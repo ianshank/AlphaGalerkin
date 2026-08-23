@@ -299,7 +299,13 @@ class TestBurgersOperatorProperties:
         assert np.isfinite(residual.l2_norm), f"Residual must be finite for viscosity={viscosity}"
 
     def test_initial_condition_sinusoidal(self, burgers_config: PDEConfig) -> None:
-        """Initial condition should be sin(2*pi*x) at t=0."""
+        """Initial condition should be -sin(pi*x) at t=0.
+
+        Previously asserted sin(2*pi*x). ``BurgersOperator`` is now pinned to the
+        standard Basdevant / Cole-Hopf benchmark, so ``initial_condition``,
+        ``boundary_value`` and ``exact_solution`` all describe one problem;
+        see ``tests/pde/test_operators.py::TestBurgersColeHopf``.
+        """
         operator = BurgersOperator(burgers_config)
 
         coords = np.array(
@@ -307,12 +313,17 @@ class TestBurgersOperatorProperties:
             dtype=np.float32,
         )
         ic = operator.initial_condition(coords)
-        expected = np.sin(2 * np.pi * coords[:, 0])
+        expected = -np.sin(np.pi * coords[:, 0])
 
-        np.testing.assert_allclose(ic, expected, rtol=1e-5)
+        np.testing.assert_allclose(ic, expected, atol=1e-6)
 
-    def test_boundary_profile_decreasing(self, burgers_config: PDEConfig) -> None:
-        """Shock-like boundary profile should be decreasing in x."""
+    def test_boundary_profile_homogeneous(self, burgers_config: PDEConfig) -> None:
+        """Boundary profile should be homogeneous Dirichlet (identically zero).
+
+        Previously asserted that the ``0.5*(1 - tanh(10*(x - 0.5)))`` shock
+        profile was non-increasing -- a predicate the zero profile also
+        satisfies, so it would have passed vacuously after the change.
+        """
         operator = BurgersOperator(burgers_config)
 
         # Points along x at fixed y
@@ -321,11 +332,7 @@ class TestBurgersOperatorProperties:
 
         boundary = operator.boundary_value(coords)
 
-        # Profile 0.5*(1 - tanh(10*(x-0.5))) is strictly decreasing in x
-        for i in range(len(boundary) - 1):
-            assert boundary[i] >= boundary[i + 1] - 1e-6, (
-                f"Boundary profile should be non-increasing at x={x_vals[i]:.2f}"
-            )
+        np.testing.assert_array_equal(boundary, np.zeros(len(x_vals), dtype=np.float32))
 
 
 # ---------------------------------------------------------------------------

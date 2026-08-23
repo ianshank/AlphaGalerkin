@@ -312,6 +312,31 @@ class TestRefinementGameAdapter:
         assert adapter.game.touched == []
         assert clone.game.touched == [1]
 
+    def test_clone_of_clone_isolates_stateful_game(self) -> None:
+        """Nested cloning (a clone of a clone) must isolate every generation.
+
+        MCTS clones along every simulation path, so a tree walk of depth > 1
+        clones a clone; only exercising one level of cloning would miss a
+        shared-by-reference container that leaks a grandchild mutation back
+        up to its parent or the root.
+        """
+        root = RefinementGameAdapter(_StatefulToyGame())
+        child = root.clone()
+        grandchild = child.clone()
+
+        assert grandchild.game is not child.game
+        assert grandchild.game is not root.game
+
+        grandchild.apply_action(2)
+        grandchild.apply_action(1)
+
+        assert root.game.touched == []
+        assert child.game.touched == []
+        assert grandchild.game.touched == [2, 1]
+        assert root.state.step == 0
+        assert child.state.step == 0
+        assert grandchild.state.step == 2
+
     def test_reset_and_error_reduction(self) -> None:
         adapter = RefinementGameAdapter(_ToyRefinementGame())
         adapter.apply_action(0)
@@ -319,6 +344,23 @@ class TestRefinementGameAdapter:
         adapter.reset()
         assert adapter.state.step == 0
         assert adapter.current_error == 1.0
+
+    def test_error_reduction_zero_division_guard(self) -> None:
+        """A zero initial error (already-converged edge case) must not raise.
+
+        ``error_reduction`` divides by ``error_history[0]``; a game whose
+        initial state is already exactly converged (error_estimate == 0.0)
+        must fall back to 0.0 rather than raising ZeroDivisionError.
+        """
+
+        class _ZeroInitialErrorGame(_ToyRefinementGame):
+            def get_initial_state(self) -> RefinementState:
+                state = super().get_initial_state()
+                state.error_estimate = 0.0
+                return state
+
+        adapter = RefinementGameAdapter(_ZeroInitialErrorGame())
+        assert adapter.error_reduction == 0.0
 
     def test_real_single_agent_mcts_micro_run(self) -> None:
         from src.mcts.evaluator import RandomEvaluator

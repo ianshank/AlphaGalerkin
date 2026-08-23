@@ -38,9 +38,9 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
     wandb = None
-
 from src.experiments.physics_model import PhysicsLoss, PhysicsOperator
 from src.physics.poisson import PoissonDataset
+from src.training.langfuse_tracker import LangfuseTracker, create_tracker
 
 logger = structlog.get_logger(__name__)
 
@@ -84,7 +84,12 @@ class TrainingConfig:
     output_dir: str = "outputs/physics_poc"
     seed: int = 42
 
-    # W&B logging
+    # Langfuse experiment tracking (credentials via LANGFUSE_* env)
+    langfuse_enabled: bool = False
+    langfuse_project: str = "alphagalerkin-physics-poc"
+    langfuse_run_name: str | None = None
+
+    # Weights & Biases experiment tracking
     wandb_enabled: bool = False
     wandb_project: str = "alphagalerkin-physics-poc"
     wandb_name: str | None = None
@@ -250,17 +255,32 @@ def train(config: TrainingConfig) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize W&B if enabled
-    if config.wandb_enabled and WANDB_AVAILABLE:
+    if config.wandb_enabled and WANDB_AVAILABLE and wandb is not None:
         wandb.init(
             project=config.wandb_project,
             name=config.wandb_name
-            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",  # noqa: E501
+            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",
             config=vars(config),
             tags=["physics-poc", "zero-shot-transfer"],
         )
-        logger.info("wandb_initialized", project=config.wandb_project)
-    elif config.wandb_enabled and not WANDB_AVAILABLE:
-        logger.warning("wandb_not_available", message="W&B requested but not installed")
+
+    # Initialize Langfuse experiment tracker (no-op without LANGFUSE_* env keys)
+    tracker: LangfuseTracker | None = None
+    if config.langfuse_enabled:
+        run_name = (
+            config.langfuse_run_name
+            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}"
+        )
+        tracker = create_tracker(
+            langfuse_config={
+                "enabled": True,
+                "project": config.langfuse_project,
+                "run_name": run_name,
+                "tags": ["physics-poc", "zero-shot-transfer"],
+            },
+            training_config=vars(config),
+        )
+        logger.info("tracker_created", project=config.langfuse_project, enabled=tracker.is_enabled)
 
     # Create datasets
     logger.info("creating_datasets", train_size=config.train_grid_size)
@@ -371,9 +391,9 @@ def train(config: TrainingConfig) -> dict[str, Any]:
                 lr=f"{scheduler.get_last_lr()[0]:.2e}",
             )
 
-            # W&B logging for evaluation
-            if config.wandb_enabled and WANDB_AVAILABLE:
-                wandb.log(
+            # Langfuse logging for evaluation
+            if tracker is not None:
+                tracker.log_metrics(
                     {
                         "epoch": epoch + 1,
                         "train/loss": train_loss,
@@ -383,7 +403,8 @@ def train(config: TrainingConfig) -> dict[str, Any]:
                         "eval/mae_transfer": eval_transfer["mae"],
                         "eval/best_transfer_mse": best_transfer_mse,
                         "learning_rate": scheduler.get_last_lr()[0],
-                    }
+                    },
+                    step=epoch + 1,
                 )
         elif (epoch + 1) % config.log_interval == 0:
             logger.info(
@@ -393,14 +414,15 @@ def train(config: TrainingConfig) -> dict[str, Any]:
                 lr=f"{scheduler.get_last_lr()[0]:.2e}",
             )
 
-            # W&B logging for training steps
-            if config.wandb_enabled and WANDB_AVAILABLE:
-                wandb.log(
+            # Langfuse logging for training steps
+            if tracker is not None:
+                tracker.log_metrics(
                     {
                         "epoch": epoch + 1,
                         "train/loss": train_loss,
                         "learning_rate": scheduler.get_last_lr()[0],
-                    }
+                    },
+                    step=epoch + 1,
                 )
 
     # Final evaluation
@@ -447,9 +469,9 @@ def train(config: TrainingConfig) -> dict[str, Any]:
 
     print("=" * 60)
 
-    # Log final results to W&B and finish
-    if config.wandb_enabled and WANDB_AVAILABLE:
-        wandb.log(
+    # Log final results to Langfuse and finish
+    if tracker is not None:
+        tracker.log_metrics(
             {
                 "final/mse_same_resolution": final_same["mse"],
                 "final/mse_transfer": final_transfer["mse"],
@@ -458,10 +480,13 @@ def train(config: TrainingConfig) -> dict[str, Any]:
                 "final/training_time_seconds": elapsed,
             }
         )
-        wandb.summary["success"] = results["success"]
-        wandb.summary["best_transfer_mse"] = best_transfer_mse
-        wandb.finish()
-        logger.info("wandb_finished")
+        tracker.log_summary(
+            {
+                "success": results["success"],
+                "best_transfer_mse": best_transfer_mse,
+            }
+        )
+        tracker.finish()
 
     return results
 
@@ -472,6 +497,23 @@ def main() -> None:
     parser.add_argument("--train-size", type=int, default=9, help="Training grid size")
     parser.add_argument("--eval-size", type=int, default=19, help="Evaluation grid size")
     parser.add_argument("--n-epochs", type=int, default=100, help="Number of epochs")
+    # Dataset size was reachable only by editing TrainingConfig. --train-size is
+    # the GRID (9 -> 9x9), not the sample count, so there was no way to ask for a
+    # genuinely small run from the CLI: tests/e2e's "minimal" invocation still
+    # built 5000 samples / 157 batches and took ~1.7 h for its 2 epochs. Defaults
+    # are the existing TrainingConfig values, so every current caller is unchanged.
+    parser.add_argument(
+        "--n-train-samples",
+        type=int,
+        default=TrainingConfig.n_train_samples,
+        help="Training samples to generate (grid size is --train-size)",
+    )
+    parser.add_argument(
+        "--n-eval-samples",
+        type=int,
+        default=TrainingConfig.n_eval_samples,
+        help="Evaluation samples to generate (grid size is --eval-size)",
+    )
     parser.add_argument("--d-model", type=int, default=128, help="Model dimension")
     parser.add_argument("--n-layers", type=int, default=4, help="Number of layers")
     parser.add_argument("--fourier-scale", type=float, default=10.0, help="Fourier scale")
@@ -485,11 +527,16 @@ def main() -> None:
     )
     parser.add_argument("--output-dir", type=str, default="outputs/physics_poc")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--wandb", action="store_true", help="Enable W&B logging")
     parser.add_argument(
-        "--wandb-project", type=str, default="alphagalerkin-physics-poc", help="W&B project name"
+        "--langfuse", action="store_true", help="Enable Langfuse experiment tracking"
     )
-    parser.add_argument("--wandb-name", type=str, default=None, help="W&B run name")
+    parser.add_argument(
+        "--langfuse-project",
+        type=str,
+        default="alphagalerkin-physics-poc",
+        help="Langfuse project name",
+    )
+    parser.add_argument("--langfuse-name", type=str, default=None, help="Langfuse run name")
 
     args = parser.parse_args()
 
@@ -497,6 +544,8 @@ def main() -> None:
         train_grid_size=args.train_size,
         eval_grid_size=args.eval_size,
         n_epochs=args.n_epochs,
+        n_train_samples=args.n_train_samples,
+        n_eval_samples=args.n_eval_samples,
         d_model=args.d_model,
         n_layers=args.n_layers,
         fourier_scale=args.fourier_scale,
@@ -505,9 +554,9 @@ def main() -> None:
         success_threshold=args.success_threshold,
         output_dir=args.output_dir,
         seed=args.seed,
-        wandb_enabled=args.wandb,
-        wandb_project=args.wandb_project,
-        wandb_name=args.wandb_name,
+        langfuse_enabled=args.langfuse,
+        langfuse_project=args.langfuse_project,
+        langfuse_run_name=args.langfuse_name,
     )
 
     train(config)

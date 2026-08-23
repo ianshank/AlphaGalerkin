@@ -1,0 +1,72 @@
+{
+  "name": "h265_reference_v1",
+  "schema_version": 1,
+  "description": "Seed H.265 quality baseline. Replace with values recorded by FFmpegBaselineRunner on real test sequences before treating BD-rate gate output as authoritative. The values below are placeholder anchors that allow the BD-rate pipeline (rdcurve -> bdrate -> report) to exercise end-to-end without ffmpeg installed.",
+  "hardware_tag": "placeholder",
+  "entries": [
+    {
+      "name": "akiyo|cif|30|libx265|crf22",
+      "schema_version": 1,
+      "cell_key": "akiyo|cif|30|libx265|crf22",
+      "sequence_id": "akiyo",
+      "codec": "libx265",
+      "crf": 22,
+      "preset": "medium",
+      "width": 352,
+      "height": 288,
+      "fps": 30.0,
+      "bpp": 0.92,
+      "psnr_db": 41.5,
+      "ms_ssim": 0.985,
+      "vmaf": null
+    },
+    {
+      "name": "akiyo|cif|30|libx265|crf28",
+      "schema_version": 1,
+      "cell_key": "akiyo|cif|30|libx265|crf28",
+      "sequence_id": "akiyo",
+      "codec": "libx265",
+      "crf": 28,
+      "preset": "medium",
+      "width": 352,
+      "height": 288,
+      "fps": 30.0,
+      "bpp": 0.43,
+      "psnr_db": 38.0,
+      "ms_ssim": 0.972,
+      "vmaf": null
+    },
+    {
+      "name": "akiyo|cif|30|libx265|crf32",
+      "schema_version": 1,
+      "cell_key": "akiyo|cif|30|libx265|crf32",
+      "sequence_id": "akiyo",
+      "codec": "libx265",
+      "crf": 32,
+      "preset": "medium",
+      "width": 352,
+      "height": 288,
+      "fps": 30.0,
+      "bpp": 0.21,
+      "psnr_db": 35.2,
+      "ms_ssim": 0.952,
+      "vmaf": null
+    },
+    {
+      "name": "akiyo|cif|30|libx265|crf38",
+      "schema_version": 1,
+      "cell_key": "akiyo|cif|30|libx265|crf38",
+      "sequence_id": "akiyo",
+      "codec": "libx265",
+      "crf": 38,
+      "preset": "medium",
+      "width": 352,
+      "height": 288,
+      "fps": 30.0,
+      "bpp": 0.08,
+      "psnr_db": 31.8,
+      "ms_ssim": 0.918,
+      "vmaf": null
+    }
+  ]
+}

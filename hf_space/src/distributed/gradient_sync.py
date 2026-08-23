@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
 import torch
@@ -131,9 +131,7 @@ class GradientSynchronizer:
             True if accumulation count reached, False otherwise.
 
         """
-        return (
-            self.accumulation_counter + 1
-        ) % self.config.gradient_accumulation_steps == 0
+        return (self.accumulation_counter + 1) % self.config.gradient_accumulation_steps == 0
 
     def step(self) -> None:
         """Increment accumulation counter."""
@@ -182,6 +180,7 @@ class GradientSynchronizer:
             start_event.record()
         else:
             import time as time_module
+
             start_time = time_module.perf_counter()
 
         # Collect gradients
@@ -261,14 +260,10 @@ class GradientSynchronizer:
         if not grads:
             return 0.0
 
-        total_norm = torch.norm(
-            torch.stack([torch.norm(g, 2) for g in grads]), 2
-        )
+        total_norm = torch.norm(torch.stack([torch.norm(g, 2) for g in grads]), 2)
         return total_norm.item()
 
-    def _compress_gradients(
-        self, flat_grads: Tensor
-    ) -> tuple[Tensor, float]:
+    def _compress_gradients(self, flat_grads: Tensor) -> tuple[Tensor, float]:
         """Compress gradients for bandwidth reduction.
 
         Uses top-k sparsification by default.
@@ -293,9 +288,7 @@ class GradientSynchronizer:
         compression_ratio = flat_grads.numel() / compressed.numel()
         return compressed, compression_ratio
 
-    def _decompress_gradients(
-        self, compressed: Tensor, original_numel: int
-    ) -> Tensor:
+    def _decompress_gradients(self, compressed: Tensor, original_numel: int) -> Tensor:
         """Decompress sparse gradient representation.
 
         Args:

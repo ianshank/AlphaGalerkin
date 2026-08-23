@@ -194,9 +194,7 @@ class Trainer:
         self.scaler = GradScaler("cuda") if self.use_amp else None
 
         # Replay buffer (prioritized or uniform based on config)
-        self.use_prioritized_replay = getattr(
-            self.training_config, "use_prioritized_replay", False
-        )
+        self.use_prioritized_replay = getattr(self.training_config, "use_prioritized_replay", False)
         self.buffer = create_replay_buffer(
             capacity=self.training_config.replay_buffer_size,
             prioritized=self.use_prioritized_replay,
@@ -205,9 +203,11 @@ class Trainer:
         )
 
         # Board size curriculum (optional)
-        self.curriculum = self._create_curriculum() if getattr(
-            self.training_config, "curriculum_enabled", False
-        ) else None
+        self.curriculum = (
+            self._create_curriculum()
+            if getattr(self.training_config, "curriculum_enabled", False)
+            else None
+        )
 
         # Self-play worker (use raw model, not DDP-wrapped)
         self.self_play_worker = SelfPlayWorker(
@@ -467,9 +467,7 @@ class Trainer:
             board_size = None
             if self.curriculum is not None:
                 board_size = self.curriculum.sample_board_size(self.global_step)
-            experiences = self.self_play_worker.generate_experiences(
-                n_games, board_size=board_size
-            )
+            experiences = self.self_play_worker.generate_experiences(n_games, board_size=board_size)
             self.model.train()
 
             # Add to buffer
@@ -651,12 +649,8 @@ class Trainer:
 
         """
         n_steps = n_steps or self.training_config.total_steps
-        checkpoint_interval = (
-            checkpoint_interval or self.training_config.checkpoint_interval
-        )
-        eval_interval = eval_interval or getattr(
-            self.training_config, "eval_interval", None
-        )
+        checkpoint_interval = checkpoint_interval or self.training_config.checkpoint_interval
+        eval_interval = eval_interval or getattr(self.training_config, "eval_interval", None)
 
         # Minimum buffer size before training
         min_buffer_size = min(
@@ -807,14 +801,16 @@ class Trainer:
         # Log final summary to W&B
         if self.wandb_logger is not None and self._metrics_history:
             final_metrics = self._metrics_history[-1]
-            self.wandb_logger.log_summary({
-                "final/total_loss": final_metrics.total_loss,
-                "final/policy_loss": final_metrics.policy_loss,
-                "final/value_loss": final_metrics.value_loss,
-                "final/lbb_loss": final_metrics.lbb_loss,
-                "final/total_steps": n_steps,
-                "final/total_games": self.total_games_generated,
-            })
+            self.wandb_logger.log_summary(
+                {
+                    "final/total_loss": final_metrics.total_loss,
+                    "final/policy_loss": final_metrics.policy_loss,
+                    "final/value_loss": final_metrics.value_loss,
+                    "final/lbb_loss": final_metrics.lbb_loss,
+                    "final/total_steps": n_steps,
+                    "final/total_games": self.total_games_generated,
+                }
+            )
 
             # Log final checkpoint as best model artifact
             self.wandb_logger.log_model_artifact(
@@ -844,9 +840,7 @@ class Trainer:
 
         if use_multi_res and hasattr(self.evaluator, "evaluate_multi_resolution"):
             # Use multi-resolution evaluation
-            results = self.evaluator.evaluate_multi_resolution(
-                n_games_per_size=n_games
-            )
+            results = self.evaluator.evaluate_multi_resolution(n_games_per_size=n_games)
             for board_size, result in results.items():
                 win_rates.append(result.win_rate)
                 if self.wandb_logger is not None:

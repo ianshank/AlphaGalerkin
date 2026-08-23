@@ -23,6 +23,7 @@ from src.poc.config import (
     ScenarioResult,
     ScenarioStatus,
 )
+from src.poc.device import resolve_device
 from src.poc.logging import ScenarioLogger
 from src.poc.registry import BaseScenario, scenario
 
@@ -71,17 +72,22 @@ class ComplexityScenario(BaseScenario):
 
     def setup(self) -> None:
         """Initialize resources."""
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device = resolve_device("auto", context=self.name)
         self._scenario_logger = ScenarioLogger(
             scenario_name=self.name,
             config_hash=self.config.compute_hash(),
         )
 
-        # Warn if not on GPU (timing will be less accurate)
-        if not torch.cuda.is_available():
+        # Warn if not on GPU (timing will be less accurate). Derived from the
+        # device actually resolved above rather than a second, independent
+        # torch.cuda.is_available() call — otherwise the two can disagree (a
+        # caller stubbing one but not the other gets a CUDA device *and* a
+        # "no GPU" warning at the same time).
+        if self._device.type != "cuda":
             self._scenario_logger.warning(
                 "gpu_not_available",
                 message="Timing results will be less accurate on CPU",
+                device=str(self._device),
             )
 
     def teardown(self) -> None:
@@ -226,6 +232,15 @@ class ComplexityScenario(BaseScenario):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
 
+            # Reset CUDA peak-memory tracker for this grid_size only —
+            # otherwise the recorded `memory_mb` below would include peak
+            # allocations from earlier grid sizes (warmup tensors, prior
+            # layer instances) and over-report. Scoped to the active
+            # device so this is correct on multi-GPU hosts; on CPU this
+            # is a no-op via the device-type guard.
+            if self._device is not None and self._device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device=self._device)
+
             # Timed runs
             times = []
             for _ in range(self.config.n_iterations):
@@ -239,7 +254,12 @@ class ComplexityScenario(BaseScenario):
 
             memory_mb = 0.0
             if self._device is not None and self._device.type == "cuda":
-                memory_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+                # Pass device= explicitly so the peak read targets the
+                # active device, not the process-wide current device. On
+                # a multi-GPU host where a different scenario / DDP rank
+                # is on cuda:0, an unscoped read would over-report by
+                # picking up that rank's allocations.
+                memory_mb = torch.cuda.max_memory_allocated(device=self._device) / 1024 / 1024
 
             results.append(
                 BenchmarkResult(
@@ -296,6 +316,11 @@ class ComplexityScenario(BaseScenario):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
 
+            # Reset CUDA peak-memory tracker per grid_size — see fnet loop
+            # comment above. Scoped to the active device (multi-GPU safe).
+            if self._device is not None and self._device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device=self._device)
+
             # Timed runs
             times = []
             for _ in range(self.config.n_iterations):
@@ -309,7 +334,12 @@ class ComplexityScenario(BaseScenario):
 
             memory_mb = 0.0
             if self._device is not None and self._device.type == "cuda":
-                memory_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+                # Pass device= explicitly so the peak read targets the
+                # active device, not the process-wide current device. On
+                # a multi-GPU host where a different scenario / DDP rank
+                # is on cuda:0, an unscoped read would over-report by
+                # picking up that rank's allocations.
+                memory_mb = torch.cuda.max_memory_allocated(device=self._device) / 1024 / 1024
 
             results.append(
                 BenchmarkResult(
@@ -359,6 +389,11 @@ class ComplexityScenario(BaseScenario):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
 
+            # Reset CUDA peak-memory tracker per grid_size — see fnet loop
+            # comment above. Scoped to the active device (multi-GPU safe).
+            if self._device is not None and self._device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device=self._device)
+
             # Timed runs
             times = []
             for _ in range(self.config.n_iterations):
@@ -372,7 +407,12 @@ class ComplexityScenario(BaseScenario):
 
             memory_mb = 0.0
             if self._device is not None and self._device.type == "cuda":
-                memory_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+                # Pass device= explicitly so the peak read targets the
+                # active device, not the process-wide current device. On
+                # a multi-GPU host where a different scenario / DDP rank
+                # is on cuda:0, an unscoped read would over-report by
+                # picking up that rank's allocations.
+                memory_mb = torch.cuda.max_memory_allocated(device=self._device) / 1024 / 1024
 
             results.append(
                 BenchmarkResult(

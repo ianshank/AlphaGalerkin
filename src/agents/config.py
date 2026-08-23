@@ -25,6 +25,7 @@ from typing_extensions import Self
 
 from src.integrations.lm_studio.config import LMStudioConfig
 from src.pde.config import PDEConfig
+from src.seeding import derive_seeds
 from src.templates.config import BaseModuleConfig
 
 # Evaluator arms and PDE families available to the research-loop harness.
@@ -567,6 +568,10 @@ class ResearchProblemSpec(BaseModuleConfig):
         return list(dict.fromkeys(v))
 
 
+def _default_research_arms() -> list[ResearchArm]:
+    return ["random"]
+
+
 class ResearchLoopConfig(BaseModuleConfig):
     """Configuration for the centaur research-loop harness.
 
@@ -587,7 +592,7 @@ class ResearchLoopConfig(BaseModuleConfig):
         description="Manifest of problems to sweep.",
     )
     default_arms: list[ResearchArm] = Field(
-        default_factory=lambda: ["random"],
+        default_factory=_default_research_arms,
         description="Default evaluator arms for problems that don't override.",
     )
 
@@ -695,7 +700,7 @@ class ResearchLoopConfig(BaseModuleConfig):
         """Per-cell seeds (explicit deduped, or derived via prime stride)."""
         if self.seeds is not None:
             return list(dict.fromkeys(self.seeds))
-        return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
+        return derive_seeds(self.seed, self.n_seeds, _SEED_PRIME_STRIDE)
 
     def arms_for(self, problem: ResearchProblemSpec) -> list[str]:
         """Effective arms for a problem (its override, else default_arms)."""

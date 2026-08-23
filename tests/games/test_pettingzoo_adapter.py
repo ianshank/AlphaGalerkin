@@ -120,7 +120,7 @@ class TestPettingZooAdapterNoDeps:
     def test_import_without_pettingzoo(self) -> None:
         """Verify module can be imported even without pettingzoo."""
         # This test passing means the import succeeded
-        from src.games.pettingzoo_adapter import PettingZooAdapter  # noqa: F811
+        from src.games.pettingzoo_adapter import PettingZooAdapter
 
         assert PettingZooAdapter is not None
 

@@ -8,14 +8,30 @@ Provides save/load functionality for:
 - Configuration
 
 Security Note:
-    Checkpoint loading uses `weights_only=False` because full training state
-    (optimizer, scheduler, config) requires pickle deserialization. This is
-    intentional but means checkpoints can execute arbitrary code if corrupted.
+    Loading deserializes with `weights_only=True`, admitting only the three
+    pure-data `datetime` constructors a saved `config.model_dump()` needs
+    (`templates.config.BaseModuleConfig` carries a `created_at: datetime`).
+    A checkpoint that fails that check is rejected with `RuntimeError`; there is
+    no automatic fallback to `weights_only=False` anywhere in this module.
 
-    **Only load checkpoints from trusted sources.**
+    **A failed safe load is never a reason to retry unsafely.** Until 2026-08-21
+    `load_model_only()` caught *any* exception from the `weights_only=True` load
+    and retried with `weights_only=False`, so a malicious pickle was executed
+    *precisely because* it failed the safety check -- an arbitrary-code-execution
+    path, and one that mattered more here than in the main tree because this
+    bundle is what `deploy_space.py` uploads to a public Space. The advice this
+    note used to give -- "for untrusted weights, use `load_model_only()`" --
+    pointed callers straight at that path.
 
-    For loading untrusted model weights only, use `load_model_only()` with
-    proper validation, or implement signature verification for checkpoint files.
+    Unrestricted pickle deserialization is now reachable only by an explicit,
+    per-call `allow_unsafe_pickle=True`, for a genuinely legacy or third-party
+    file whose provenance the *operator* has established. It cannot be reached
+    by a checkpoint's own contents.
+
+    This file is a vendored snapshot and is excluded from CI, so it is not
+    covered by `tests/security/test_checkpoint_safety.py`. It deliberately
+    mirrors `src/training/checkpoint.py`'s policy rather than importing it,
+    because the Space bundle must stand alone -- keep the two in step.
 """
 
 from __future__ import annotations
@@ -23,7 +39,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +53,70 @@ if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
 
 logger = structlog.get_logger(__name__)
+
+# Pure data constructors admitted under ``weights_only=True``: they build a value
+# from their arguments and can invoke nothing else. ``CheckpointManager.save``
+# stores ``config.model_dump()``, and ``templates.config.BaseModuleConfig`` has a
+# ``created_at: datetime`` field, so a saved config references all three.
+SAFE_CHECKPOINT_GLOBALS: tuple[type, ...] = (datetime, timezone, timedelta)
+
+UNSAFE_PICKLE_HINT = (
+    "Refusing to retry with weights_only=False: a checkpoint that fails the safe "
+    "load is exactly the checkpoint that must not be unpickled. If this file is "
+    "legacy or third-party and you have independently established its provenance, "
+    "re-save it, or pass allow_unsafe_pickle=True."
+)
+
+
+def load_torch_checkpoint(
+    path: Path | str,
+    *,
+    map_location: str | torch.device = "cpu",
+    allow_unsafe_pickle: bool = False,
+) -> Any:
+    """Deserialize a checkpoint file, safe by default.
+
+    The single ``torch.load`` chokepoint for this module. Failure of the safe
+    load raises -- it never escalates to pickle deserialization, which is the
+    inversion that made the old ``load_model_only`` fallback an
+    arbitrary-code-execution path.
+
+    Args:
+        path: Checkpoint file to read.
+        map_location: Device mapping forwarded to ``torch.load``.
+        allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only ever
+            pass ``True`` for a file whose provenance a human operator has
+            established; a malicious checkpoint executes arbitrary code at
+            deserialization time. Never derive this from untrusted input, and
+            never set it in response to a safe-load failure you did not diagnose.
+
+    Returns:
+        The deserialized checkpoint object.
+
+    Raises:
+        OSError: Propagated unchanged if the file cannot be *read*. A missing
+            file is not a deserialization failure and must not be disguised as
+            one.
+        RuntimeError: If the checkpoint cannot be deserialized.
+
+    """
+    if allow_unsafe_pickle:
+        logger.warning(
+            "checkpoint_unsafe_pickle_enabled",
+            path=str(path),
+            hint="weights_only=False: arbitrary code may execute. Trusted sources only.",
+        )
+        return torch.load(path, map_location=map_location, weights_only=False)
+
+    try:
+        with torch.serialization.safe_globals(list(SAFE_CHECKPOINT_GLOBALS)):
+            return torch.load(path, map_location=map_location, weights_only=True)
+    except OSError:
+        raise
+    except Exception as e:
+        logger.error("checkpoint_load_failed", path=str(path), error=str(e))
+        raise RuntimeError(f"Failed to load checkpoint: {e}\n\n{UNSAFE_PICKLE_HINT}") from e
+
 
 # Checkpoint format version for compatibility checking
 CHECKPOINT_VERSION = "1.0.0"
@@ -233,7 +313,7 @@ class CheckpointManager:
             raise FileNotFoundError(f"Checkpoint not found: {path}")
 
         # Load checkpoint
-        data = torch.load(path, map_location="cpu", weights_only=False)
+        data = load_torch_checkpoint(path)
 
         # Check version compatibility
         version = data.get("version", "0.0.0")
@@ -337,7 +417,13 @@ class CheckpointManager:
         """
         is_better = False
 
-        if self._best_value is None or self.best_mode == "min" and metric_value < self._best_value or self.best_mode == "max" and metric_value > self._best_value:
+        if (
+            self._best_value is None
+            or self.best_mode == "min"
+            and metric_value < self._best_value
+            or self.best_mode == "max"
+            and metric_value > self._best_value
+        ):
             is_better = True
 
         if is_better:
@@ -444,16 +530,6 @@ def load_model_only(
         strict: Whether to require exact state match.
 
     """
-    # Try secure loading first, fall back to legacy format with warning
-    try:
-        state = torch.load(path, map_location="cpu", weights_only=True)
-    except Exception as e:
-        logger.warning(
-            "weights_only_load_failed_using_legacy",
-            path=str(path),
-            error=str(e),
-            hint="Checkpoint may contain legacy pickled objects. Consider re-saving.",
-        )
-        state = torch.load(path, map_location="cpu", weights_only=False)
+    state = load_torch_checkpoint(path)
     model.load_state_dict(state["model_state_dict"], strict=strict)
     logger.info("model_loaded", path=str(path))

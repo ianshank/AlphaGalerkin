@@ -209,9 +209,7 @@ class TournamentManager:
     def participants(self) -> list[Player]:
         """Get list of participants."""
         return [
-            player
-            for pid in self._participants
-            if (player := self._registry.get(pid)) is not None
+            player for pid in self._participants if (player := self._registry.get(pid)) is not None
         ]
 
     @property
@@ -328,9 +326,9 @@ class TournamentManager:
 
         """
         return [
-            m for m in self._matches
-            if m.status == MatchStatus.SCHEDULED
-            and m.round_number == self._current_round
+            m
+            for m in self._matches
+            if m.status == MatchStatus.SCHEDULED and m.round_number == self._current_round
         ]
 
     def get_in_progress_matches(self) -> list[Match]:
@@ -340,10 +338,7 @@ class TournamentManager:
             List of in-progress matches.
 
         """
-        return [
-            m for m in self._matches
-            if m.status == MatchStatus.IN_PROGRESS
-        ]
+        return [m for m in self._matches if m.status == MatchStatus.IN_PROGRESS]
 
     def get_completed_matches(self) -> list[Match]:
         """Get all completed matches.
@@ -352,10 +347,7 @@ class TournamentManager:
             List of completed matches.
 
         """
-        return [
-            m for m in self._matches
-            if m.status == MatchStatus.COMPLETED
-        ]
+        return [m for m in self._matches if m.status == MatchStatus.COMPLETED]
 
     def get_match(self, match_id: str) -> Match | None:
         """Get a specific match.
@@ -463,9 +455,7 @@ class TournamentManager:
     def _check_round_complete(self) -> None:
         """Check if current round is complete."""
         pending = [
-            m for m in self._matches
-            if m.round_number == self._current_round
-            and not m.is_complete
+            m for m in self._matches if m.round_number == self._current_round and not m.is_complete
         ]
 
         if not pending:
@@ -549,7 +539,9 @@ class TournamentManager:
                 {
                     "rank": i + 1,
                     "player_id": pid,
-                    "player_name": player.name if (player := self._registry.get(pid)) else "Unknown",
+                    "player_name": player.name
+                    if (player := self._registry.get(pid))
+                    else "Unknown",
                     "score": score,
                     "wins": self._standings.wins.get(pid, 0),
                     "losses": self._standings.losses.get(pid, 0),

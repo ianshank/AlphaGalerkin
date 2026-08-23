@@ -51,6 +51,30 @@ def temp_output_dir():
         yield Path(tmpdir)
 
 
+def _install_recording_logger(
+    monkeypatch: pytest.MonkeyPatch, module: Any
+) -> list[tuple[str, dict[str, Any]]]:
+    """Swap ``module.logger`` for a recorder and return its event list.
+
+    Order-independent alternative to ``structlog.testing.capture_logs``: see
+    the note on ``test_list_logs_why_a_description_is_unavailable``.
+    """
+    recorded: list[tuple[str, dict[str, Any]]] = []
+
+    class _RecordingLogger:
+        def _record(self, event: str, **kw: Any) -> None:
+            recorded.append((event, kw))
+
+        warning = _record
+        error = _record
+        info = _record
+        debug = _record
+        exception = _record
+
+    monkeypatch.setattr(module, "logger", _RecordingLogger())
+    return recorded
+
+
 def _make_result(
     name: str = "test_scenario",
     status: ScenarioStatus = ScenarioStatus.PASSED,
@@ -228,6 +252,62 @@ class TestCmdList:
         captured = capsys.readouterr()
         assert "bad_scenario" in captured.out
         assert "(no description)" in captured.out
+
+    def test_list_logs_why_a_description_is_unavailable(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The swallowed construction error is reported, not silently hidden.
+
+        ``(no description)`` in the CLI output is indistinguishable from a
+        scenario that genuinely has no description, so the underlying
+        exception must reach the structured log with the scenario name.
+
+        The module logger is replaced rather than asserted through
+        ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+        sets ``cache_logger_on_first_use=True``, so once any earlier test has
+        called it, ``src.poc.cli``'s ``logger`` proxy has cached a
+        stdlib-backed bound logger and stops consulting the global processor
+        chain — ``capture_logs`` then records nothing, and the assertion would
+        pass or fail purely by collection order.
+        """
+        import src.poc.cli as cli_mod
+        from src.poc.cli import cmd_list
+
+        recorded = _install_recording_logger(monkeypatch, cli_mod)
+
+        class BadScenario(BaseScenario):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                raise RuntimeError("config schema rejected the temp instance")
+
+            def execute(self) -> ScenarioResult:
+                raise NotImplementedError
+
+        ScenarioRegistry().register("bad_scenario_logged", BadScenario)
+
+        with patch("src.poc.cli.register_builtin_scenarios"):
+            assert cmd_list(argparse.Namespace()) == 0
+        capsys.readouterr()
+
+        events = [kw for event, kw in recorded if event == "scenario_description_unavailable"]
+        assert len(events) == 1
+        assert events[0]["name"] == "bad_scenario_logged"
+        assert "config schema rejected" in str(events[0]["error"])
+
+    def test_list_healthy_scenarios_log_nothing(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No warning is emitted when every scenario constructs cleanly."""
+        import src.poc.cli as cli_mod
+        from src.poc.cli import cmd_list
+
+        recorded = _install_recording_logger(monkeypatch, cli_mod)
+        _register_dummy_scenario("healthy")
+
+        with patch("src.poc.cli.register_builtin_scenarios"):
+            assert cmd_list(argparse.Namespace()) == 0
+        capsys.readouterr()
+
+        assert not [kw for event, kw in recorded if event == "scenario_description_unavailable"]
 
 
 # ---------------------------------------------------------------------------

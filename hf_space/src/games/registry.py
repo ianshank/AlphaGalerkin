@@ -79,9 +79,7 @@ class GameRegistry:
 
         with self._lock:
             if name in self._games and not override:
-                raise ValueError(
-                    f"Game '{name}' already registered by {self._games[name]}"
-                )
+                raise ValueError(f"Game '{name}' already registered by {self._games[name]}")
 
             self._games[name] = game_cls
             logger.debug("game_registered", name=name, cls=game_cls.__name__)
@@ -216,6 +214,7 @@ def register_game(name: str) -> Callable[[type], type]:
             ...
 
     """
+
     def decorator(cls: type) -> type:
         GameRegistry().register(name, cls)
         cls.name = name  # Set name on class

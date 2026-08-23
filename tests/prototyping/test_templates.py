@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from src.prototyping.templates import (
@@ -205,6 +208,105 @@ class TestTemplateRegistry:
         registry2 = TemplateRegistry()
 
         assert registry1 is registry2
+
+    def test_singleton_thread_safe(self) -> None:
+        """Test singleton construction is thread-safe under concurrent first access.
+
+        Regression test: `TemplateRegistry.__new__` previously performed a bare
+        ``if cls._instance is None`` check with no lock, so concurrent first
+        access from multiple threads could race between the check and the
+        assignment and construct more than one singleton instance -- defeating
+        the whole point of the pattern (mirrors the double-checked locking in
+        `src/templates/registry.py::BaseRegistry.__new__`).
+
+        Forces the race window by clearing the cached singleton and releasing
+        many threads simultaneously via a barrier, repeated across several
+        trials to make a regression reliably observable.
+        """
+        n_threads = 32
+        n_trials = 5
+
+        original_instance = TemplateRegistry._instance
+        original_templates = dict(TemplateRegistry._templates)
+        original_switch_interval = sys.getswitchinterval()
+        try:
+            # CPython's GIL only switches threads roughly every 5ms
+            # (sys.getswitchinterval() default) of bytecode execution, but
+            # the racy check-then-set window in __new__ is only a handful
+            # of bytecode instructions -- far shorter than that. Without
+            # narrowing the switch interval, a bare thread-start race
+            # essentially never lands inside the window and this test
+            # would pass even against the unlocked, buggy implementation.
+            sys.setswitchinterval(1e-6)
+
+            for _ in range(n_trials):
+                # Force a fresh construction race instead of hitting the
+                # already-cached fast path.
+                TemplateRegistry._instance = None
+                barrier = threading.Barrier(n_threads)
+
+                def construct(_: int) -> TemplateRegistry:
+                    # Line every thread up so __new__ is entered by all of
+                    # them as close to simultaneously as possible.
+                    barrier.wait()
+                    return TemplateRegistry()
+
+                with ThreadPoolExecutor(max_workers=n_threads) as executor:
+                    instances = list(executor.map(construct, range(n_threads)))
+
+                first = instances[0]
+                assert all(instance is first for instance in instances), (
+                    "TemplateRegistry() returned different instances under "
+                    "concurrent first access -- the singleton lock regressed"
+                )
+        finally:
+            sys.setswitchinterval(original_switch_interval)
+            TemplateRegistry._instance = original_instance
+            TemplateRegistry._templates = original_templates
+
+    def test_singleton_construction_blocks_on_lock(self) -> None:
+        """Test that `__new__` genuinely serializes on `TemplateRegistry._lock`.
+
+        Deterministic companion to `test_singleton_thread_safe`: raw thread
+        scheduling races are inherently timing-dependent (CPython's GIL
+        switch granularity can make the actual check-then-set window in
+        `__new__` hard to hit reliably), so this test instead holds the lock
+        from the main thread and proves a background thread genuinely blocks
+        inside `TemplateRegistry()` until it is released. Against the pre-fix
+        implementation (no `_lock` attribute at all) this fails immediately
+        with an `AttributeError` rather than depending on scheduling luck.
+        """
+        original_instance = TemplateRegistry._instance
+        original_templates = dict(TemplateRegistry._templates)
+        TemplateRegistry._instance = None
+        try:
+            lock = TemplateRegistry._lock
+            assert isinstance(lock, type(threading.Lock()))
+
+            constructed = threading.Event()
+            results: list[TemplateRegistry] = []
+
+            def construct() -> None:
+                results.append(TemplateRegistry())
+                constructed.set()
+
+            lock.acquire()
+            worker = threading.Thread(target=construct)
+            try:
+                worker.start()
+                # The background thread must be blocked waiting for the
+                # lock, so it must not have constructed the singleton yet.
+                assert not constructed.wait(timeout=0.2)
+                assert TemplateRegistry._instance is None
+            finally:
+                lock.release()
+
+            worker.join(timeout=5.0)
+            assert constructed.is_set(), "background thread never completed construction"
+            assert results and results[0] is TemplateRegistry._instance
+        finally:
+            TemplateRegistry._instance = original_instance
+            TemplateRegistry._templates = original_templates
 
     def test_list_templates(self, template_registry: TemplateRegistry) -> None:
         """Test listing templates."""

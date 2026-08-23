@@ -237,6 +237,19 @@ outputs/poc/llm_prior_ablation/
 # Coverage rcfiles emitted by CI workflow heredocs (regression-surface
 # gates). Not source-of-truth — written at job time.
 .coveragerc.noyron-hx
+# Codec model zoo storage roots (Phase 2-B)
+checkpoints/video_compression/zoo/
+outputs/zoo/
+zoo_storage/
+bd_rate_report.json
+
+# Local workspace scratch & tooling
+master_clone/
+Test_Video_Materals/
+.claude/agents/
+.github/.claude/
+config/board.py
 
 # MkDocs build output
 /site/
+

@@ -29,6 +29,7 @@ from src.constants import (
     DEFAULT_DIRICHLET_ALPHA,
     DEFAULT_DIRICHLET_EPSILON,
     DEFAULT_MCTS_SIMULATIONS,
+    DEFAULT_TEMPERATURE,
 )
 
 if TYPE_CHECKING:
@@ -37,6 +38,22 @@ if TYPE_CHECKING:
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
+
+GUMBEL_NORMALIZATION_EPSILON: float = 1e-8
+"""Division-guard floor for policy/visit-count sum normalization.
+
+Inert numerics: retuning perturbs normalized policies by ~1e-8. Kept separate
+from ``GUMBEL_LOG_PRIOR_FLOOR`` (same value, different role) so neither can be
+retuned through the other.
+"""
+
+GUMBEL_LOG_PRIOR_FLOOR: float = 1e-8
+"""Log-argument floor for prior probabilities in Gumbel scores.
+
+Algorithmic knob, not an inert guard: ``log(1e-8) ~= -18.4`` is the score
+contribution assigned to a near-zero-prior action in sequential halving and
+the final argmax — retuning it changes action selection.
+"""
 
 
 class GumbelMCTSConfig(BaseModel):
@@ -290,13 +307,13 @@ class GumbelMCTS:
 
         # Mask illegal actions
         policy = policy * action_mask.mask.astype(np.float32)
-        policy = policy / (policy.sum() + 1e-8)
+        policy = policy / (policy.sum() + GUMBEL_NORMALIZATION_EPSILON)
 
         # Sample Gumbel noise for legal actions
         gumbels = np.random.gumbel(size=len(policy)) * self.config.gumbel_scale
 
         # Compute scores: log(prior) + gumbel
-        log_policy = np.log(policy + 1e-8)
+        log_policy = np.log(policy + GUMBEL_LOG_PRIOR_FLOOR)
         scores = log_policy + gumbels
 
         # Apply mask to scores
@@ -317,8 +334,12 @@ class GumbelMCTS:
                 gumbel=gumbels[action],
             )
 
-        # Run sequential halving
-        selected_action, visit_counts = self._sequential_halving(
+        # Run sequential halving. The per-action visit-count dict returned
+        # here duplicates ``root.children[a].visit_count`` (both are
+        # incremented in lockstep inside ``_sequential_halving``); the final
+        # policy below is derived straight from the tree, so the dict itself
+        # is discarded.
+        selected_action, _ = self._sequential_halving(
             root,
             top_actions.tolist(),
             self.config.n_simulations,
@@ -328,7 +349,7 @@ class GumbelMCTS:
         final_policy = np.zeros(len(policy))
         for action, node in root.children.items():
             final_policy[action] = node.visit_count
-        final_policy = final_policy / (final_policy.sum() + 1e-8)
+        final_policy = final_policy / (final_policy.sum() + GUMBEL_NORMALIZATION_EPSILON)
 
         # Compute Q-values
         q_values = np.zeros(len(policy))
@@ -403,7 +424,7 @@ class GumbelMCTS:
                     self.config.c_visit,
                     self.config.c_scale,
                 )
-                score = node.gumbel + np.log(node.prior + 1e-8) + q
+                score = node.gumbel + np.log(node.prior + GUMBEL_LOG_PRIOR_FLOOR) + q
                 scores.append((score, action))
 
             scores.sort(reverse=True)
@@ -414,7 +435,7 @@ class GumbelMCTS:
             actions,
             key=lambda a: (
                 root.children[a].gumbel
-                + np.log(root.children[a].prior + 1e-8)
+                + np.log(root.children[a].prior + GUMBEL_LOG_PRIOR_FLOOR)
                 + root.children[a].compute_completed_q(
                     self.config.c_visit,
                     self.config.c_scale,
@@ -439,6 +460,12 @@ class GumbelMCTS:
             return node._terminal_value
 
         if node.state is None:
+            # Defensive fallback: by construction the caller (sequential
+            # halving) sets ``child.state`` immediately before simulating it,
+            # so reaching this means ``game.apply_action`` returned ``None``
+            # — a game-contract violation. Logged because it silently returns
+            # a neutral value that would otherwise bias search with no trail.
+            self._logger.warning("gumbel_simulate_missing_state")
             return 0.0
 
         # Check for terminal state
@@ -486,7 +513,7 @@ class GumbelMCTS:
     def get_improved_policy(
         self,
         root_state: GameState,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> np.ndarray:
         """Get improved policy from search.
 
@@ -509,7 +536,7 @@ class GumbelMCTS:
         # Apply temperature
         visit_counts = result.visit_counts
         visit_counts = np.power(visit_counts, 1.0 / temperature)
-        return visit_counts / (visit_counts.sum() + 1e-8)
+        return visit_counts / (visit_counts.sum() + GUMBEL_NORMALIZATION_EPSILON)
 
 
 def create_gumbel_mcts(

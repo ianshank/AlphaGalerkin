@@ -91,21 +91,21 @@ def test_replace_overrides_and_logs_warning() -> None:
 
 def test_register_stability_helper_rejects_negative_value() -> None:
     StabilityConstantRegistry._reset_for_tests()
-    fresh = StabilityConstantRegistry()  # noqa: F841 — populated for isolation
+    fresh = StabilityConstantRegistry()
     with pytest.raises(ValueError, match="must be positive"):
         register_stability(PDEType.POISSON, source="analytic", value=-1.0)
 
 
 def test_register_stability_helper_rejects_bounded_none() -> None:
     StabilityConstantRegistry._reset_for_tests()
-    fresh = StabilityConstantRegistry()  # noqa: F841
+    fresh = StabilityConstantRegistry()
     with pytest.raises(ValueError, match="requires a numeric value"):
         register_stability(PDEType.POISSON, source="analytic", value=None)
 
 
 def test_register_stability_helper_rejects_unbounded_with_value() -> None:
     StabilityConstantRegistry._reset_for_tests()
-    fresh = StabilityConstantRegistry()  # noqa: F841
+    fresh = StabilityConstantRegistry()
     with pytest.raises(ValueError, match="requires value=None"):
         register_stability(PDEType.HELMHOLTZ, source="unbounded_with_warning", value=1.0)
 

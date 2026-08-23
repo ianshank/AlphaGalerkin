@@ -90,6 +90,24 @@ class SwarmPlanningConfig(BaseModuleConfig):
     potential_field_decay: float = Field(
         default=2.0, gt=0, description="Potential field distance decay exponent"
     )
+    # A domain-relative tunable, not a numerical epsilon: it is measured in the
+    # same length units as `domain_size` and it sets the finite ceiling
+    # `potential_field_strength / potential_field_min_distance**potential_field_decay`
+    # on the repulsion any agent can feel, so shrinking it makes obstacles
+    # sharper and enlarging it makes them softer. `obstacle_radius` is
+    # subtracted out before the floor is applied (`dists - obs_radii`), so the
+    # floored quantity is distance past the obstacle *surface*, which is zero
+    # or negative for an agent touching or inside an obstacle -- hence `gt=0`,
+    # which also keeps the base of the `**decay` exponentiation positive.
+    potential_field_min_distance: float = Field(
+        default=0.1,
+        gt=0,
+        description=(
+            "Floor on the obstacle-surface distance in the inverse-distance "
+            "potential, in the same length units as domain_size; caps repulsion "
+            "at potential_field_strength / min_distance**potential_field_decay"
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_swarm_config(self) -> SwarmPlanningConfig:
@@ -179,8 +197,6 @@ class SwarmPlanningGame:
             ],
             dtype=np.float64,
         )
-
-        self._rng = np.random.default_rng(config.seed)
 
         logger.info(
             "swarm_game_initialized",
@@ -430,6 +446,7 @@ class SwarmPlanningGame:
 
         strength = self.config.potential_field_strength
         decay = self.config.potential_field_decay
+        min_distance = self.config.potential_field_min_distance
 
         obs_centers = state.obstacles[:, :3]
         obs_radii = state.obstacles[:, 3]
@@ -438,8 +455,11 @@ class SwarmPlanningGame:
             diffs = state.positions[i] - obs_centers  # (n_obs, 3)
             dists = np.linalg.norm(diffs, axis=1)  # (n_obs,)
 
-            # Avoid division by zero; use obstacle radius as minimum distance
-            effective_dists = np.maximum(dists - obs_radii, 0.1)
+            # Floor the distance-past-the-surface (see
+            # SwarmPlanningConfig.potential_field_min_distance): caps the
+            # repulsion at strength / min_distance**decay, and keeps the base
+            # of the exponentiation positive for agents inside an obstacle.
+            effective_dists = np.maximum(dists - obs_radii, min_distance)
 
             potentials[i] = float(np.sum(strength / (effective_dists**decay)))
 

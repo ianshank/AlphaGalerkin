@@ -8,7 +8,7 @@
 
 ## Module Overview
 
-This module implements the complete AlphaGalerkin training pipeline: composite loss functions (policy + value + LBB + physics), adaptive loss balancing (5 strategies), prioritized experience replay, MCTS-driven self-play, curriculum learning over board sizes, checkpoint management with atomic saves, Elo tracking, W&B integration, and the main `Trainer` orchestration loop.
+This module implements the complete AlphaGalerkin training pipeline: composite loss functions (policy + value + LBB + physics), adaptive loss balancing (5 strategies), prioritized experience replay, MCTS-driven self-play, curriculum learning over board sizes, checkpoint management with atomic saves, Elo tracking, Langfuse experiment tracking, and the main `Trainer` orchestration loop.
 
 ## Design Patterns
 
@@ -23,7 +23,7 @@ Five interchangeable loss balancing strategies behind a common `LossBalancer` in
 ### 2. Factory Pattern
 - `create_loss_balancer(config, loss_names)` — instantiates the correct strategy
 - `create_replay_buffer(capacity, prioritized)` — uniform vs prioritized buffer
-- `create_wandb_logger(wandb_config, training_config)` — experiment tracker
+- `create_tracker(langfuse_config, training_config)` — Langfuse experiment tracker
 - `create_model_from_checkpoint(path)` — model reconstruction
 
 ### 3. Composite Pattern (Loss Composition)
@@ -49,7 +49,7 @@ CombinedAlphaGalerkinPhysicsLoss
 ### 5. Thread-Safe Data Structures
 - `UniformReplayBuffer` / `PrioritizedReplayBuffer`: `RLock`-protected circular buffers
 - `SumTree`: Binary tree for O(log N) priority-based sampling
-- `WandbLogger`: Thread-safe experiment tracking
+- `LangfuseTracker`: Thread-safe experiment tracking
 
 ### 6. Atomic Checkpoint Management
 `CheckpointManager` writes to temp files first, then renames — preventing corruption from interrupted saves. Supports best model tracking, rotation, and version compatibility.
@@ -69,7 +69,7 @@ Setup is performed in `__init__()` and at the beginning of `train()`. There is n
 - **Distributed training**: DDP wrapping, gradient accumulation, rank-aware operations
 - **Mixed precision**: AMP with GradScaler for memory efficiency
 - **Checkpoint engineering**: Atomic saves, best model tracking, version compatibility
-- **Experiment tracking**: W&B logging, metric collection, artifact management
+- **Experiment tracking**: Langfuse tracing, metric collection, checkpoint provenance
 
 ## Sub-Agents
 
@@ -82,7 +82,7 @@ Setup is performed in `__init__()` and at the beginning of `train()`. There is n
 | **Curriculum Designer** | `curriculum.py` | Board size scheduling, transition logic |
 | **Stability Monitor** | `stability.py` | Early stopping, plateau detection, gradient health |
 | **Evaluation Specialist** | `evaluation.py`, `eval_utils/elo_tracker.py` | Win rate, policy agreement, Elo ratings |
-| **Trainer Orchestrator** | `trainer.py`, `operator_trainer.py` | Main loop, distributed setup, W&B integration |
+| **Trainer Orchestrator** | `trainer.py`, `operator_trainer.py` | Main loop, distributed setup, Langfuse integration |
 
 ## Tools & Commands
 
@@ -124,13 +124,13 @@ python -m scripts.train --config-name=train_fast
 | `trainer.py` | Main training loop | `Trainer`, `TrainingMetrics` |
 | `operator_trainer.py` | Neural operator training | `OperatorTrainer`, `TrainingConfig` |
 | `distributed_context.py` | Multi-GPU support | `DistributedContext` |
-| `wandb_logger.py` | Experiment tracking | `WandbLogger` |
+| `langfuse_tracker.py` | Experiment tracking | `LangfuseTracker` |
 | `eval_utils/elo_tracker.py` | Strength tracking | `EloTracker`, `EloRating` |
 
 ## Dependencies
 
 **Internal**: `src.modeling` (model), `src.mcts` (search/evaluator), `src.data` (datasets/collation), `src.templates.config` (BaseModuleConfig), `src.tools` (SimpleGoGame for self-play/eval), `src.pde` (PDEConfig/operators for trainer), `config.schemas` (type hints)
-**External**: `torch`, `torch.distributed`, `torch.amp`, `jaxtyping`, `pydantic`, `structlog`, `wandb` (optional), `numpy`
+**External**: `torch`, `torch.distributed`, `torch.amp`, `jaxtyping`, `pydantic`, `structlog`, `langfuse`, `numpy`
 
 ## Conventions & Constraints
 

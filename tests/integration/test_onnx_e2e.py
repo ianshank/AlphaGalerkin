@@ -24,8 +24,8 @@ from torch import nn
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
 
-from src.deployment.config import ExportConfig  # noqa: E402  — after importorskip
-from src.deployment.export_onnx import ONNXExporter  # noqa: E402
+from src.deployment.config import ExportConfig
+from src.deployment.export_onnx import ONNXExporter
 
 pytestmark = pytest.mark.onnx_required
 

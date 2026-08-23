@@ -71,9 +71,7 @@ class CoordinateLabelConfig(BaseModel):
     )
     font_size: int = Field(default=10, ge=6, le=20, description="Label font size")
     font_color: str = Field(default="black", description="Label text color")
-    padding: float = Field(
-        default=0.8, ge=0.3, le=1.5, description="Padding for labels"
-    )
+    padding: float = Field(default=0.8, ge=0.3, le=1.5, description="Padding for labels")
     skip_i: bool = Field(
         default=True,
         description="Skip 'I' in column labels (Go convention)",
@@ -100,18 +98,10 @@ class BoardRenderConfig(BaseModel):
 
     board_color: str = Field(default="#e3c586", description="Board background color")
     line_color: str = Field(default="black", description="Grid line color")
-    line_width: float = Field(
-        default=1.0, ge=0.5, le=3.0, description="Grid line width"
-    )
-    stone_radius: float = Field(
-        default=0.45, ge=0.3, le=0.5, description="Stone radius"
-    )
-    star_point_size: int = Field(
-        default=20, ge=10, le=50, description="Star point marker size"
-    )
-    last_move_marker_color: str = Field(
-        default="red", description="Last move marker color"
-    )
+    line_width: float = Field(default=1.0, ge=0.5, le=3.0, description="Grid line width")
+    stone_radius: float = Field(default=0.45, ge=0.3, le=0.5, description="Stone radius")
+    star_point_size: int = Field(default=20, ge=10, le=50, description="Star point marker size")
+    last_move_marker_color: str = Field(default="red", description="Last move marker color")
     last_move_marker_size: int = Field(
         default=20, ge=10, le=40, description="Last move marker size"
     )
@@ -215,10 +205,7 @@ class SpaceConfig(BaseModel):
         valid_sizes = [size.value for size in BoardSize]
         for size in v:
             if size not in valid_sizes:
-                raise ValueError(
-                    f"Unsupported board size: {size}. "
-                    f"Valid sizes: {valid_sizes}"
-                )
+                raise ValueError(f"Unsupported board size: {size}. Valid sizes: {valid_sizes}")
         return sorted(set(v))
 
     @model_validator(mode="after")

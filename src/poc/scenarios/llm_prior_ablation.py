@@ -53,6 +53,7 @@ from src.poc.scenarios._centaur_common import (
     build_basis_game,
     build_pde_operator,
     enumerate_basis_descriptions,
+    median_of,
     run_basis_selection_cell,
 )
 from src.poc.scenarios.llm_prior_config import (
@@ -75,11 +76,9 @@ _LATENCY_P95 = 95.0
 """Percentile used for the headline latency threshold."""
 
 
-def _median(samples: list[float]) -> float:
-    """Median that returns NaN for empty input (instead of raising)."""
-    if not samples:
-        return float("nan")
-    return float(np.median(np.asarray(samples, dtype=np.float64)))
+# Back-compat alias for the shared helper (kept so existing references and
+# tests that import ``llm_prior_ablation._median`` keep working).
+_median = median_of
 
 
 def _percentile(samples: list[float], q: float) -> float:

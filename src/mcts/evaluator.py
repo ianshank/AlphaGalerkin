@@ -11,10 +11,20 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 import numpy as np
 import torch
 
+from src.constants import DEFAULT_TEMPERATURE
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from src.modeling.model import AlphaGalerkinModel
+
+_SOFTMAX_NORMALIZER_FLOOR: float = 1e-8
+"""Lower bound added to the softmax denominator to avoid divide-by-zero.
+
+Same name and value as ``src/integrations/lm_studio/evaluator.py``, whose
+``LMStudioEvaluator`` documents that it mirrors ``FNetEvaluator._process_policy``
+— keep the two in sync.
+"""
 
 
 class EvaluationResult(NamedTuple):
@@ -74,7 +84,7 @@ class FNetEvaluator:
         model: AlphaGalerkinModel,
         device: torch.device | str = "cpu",
         use_fast_path: bool = True,
-        temperature: float = 1.0,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> None:
         """Initialize evaluator.
 
@@ -198,9 +208,17 @@ class FNetEvaluator:
         # Masked logits
         masked_logits = logits + mask
 
-        # Softmax
-        exp_logits = np.exp(masked_logits - masked_logits.max())
-        policy = exp_logits / (exp_logits.sum() + 1e-8)
+        # Softmax. The shift must ignore -inf entries: with no legal actions
+        # every entry is -inf, so a plain .max() gives -inf and (-inf) - (-inf)
+        # is NaN — an all-NaN policy that silently poisons MCTS selection rather
+        # than failing loudly. Taking the max over finite entries only (with
+        # initial=0.0 for the all-masked case) degrades to an all-zero policy
+        # instead. This mirrors src/integrations/lm_studio/evaluator.py, which
+        # already guarded it; the two were documented as mirrors while differing
+        # in exactly this case.
+        shift = np.max(masked_logits[np.isfinite(masked_logits)], initial=0.0)
+        exp_logits = np.exp(masked_logits - shift)
+        policy = exp_logits / (exp_logits.sum() + _SOFTMAX_NORMALIZER_FLOOR)
 
         return policy.astype(np.float32)
 

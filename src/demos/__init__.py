@@ -49,7 +49,7 @@ _VISUALIZATION_NAMES = frozenset(
 
 
 # Lazy imports for demo modules that require torch or matplotlib
-def __getattr__(name: str) -> Any:  # noqa: ANN401
+def __getattr__(name: str) -> Any:
     """Lazy import for heavy demo modules."""
     if name in _VISUALIZATION_NAMES:
         logger.debug("lazy_import_visualizations", requested_name=name)

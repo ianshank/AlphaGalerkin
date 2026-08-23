@@ -106,8 +106,7 @@ class EvalResult:
         for name, metric in self.metrics.items():
             if metric.ci_lower is not None and metric.ci_upper is not None:
                 lines.append(
-                    f"  {name}: {metric.value:.6f} "
-                    f"[{metric.ci_lower:.6f}, {metric.ci_upper:.6f}]"
+                    f"  {name}: {metric.value:.6f} [{metric.ci_lower:.6f}, {metric.ci_upper:.6f}]"
                 )
             else:
                 lines.append(f"  {name}: {metric.value:.6f}")
@@ -239,9 +238,7 @@ class QuickEvaluator:
             std = None
 
             if self.config.compute_confidence:
-                ci_lower, ci_upper, std = self._bootstrap_ci(
-                    predictions, targets, metric_fn
-                )
+                ci_lower, ci_upper, std = self._bootstrap_ci(predictions, targets, metric_fn)
 
             metric_results[metric_name] = MetricResult(
                 name=metric_name,
@@ -294,12 +291,14 @@ class QuickEvaluator:
         values: list[dict[str, str | float | None]] = []
         for result in results:
             if metric in result.metrics:
-                values.append({
-                    "model_id": result.model_id,
-                    "value": result.metrics[metric].value,
-                    "ci_lower": result.metrics[metric].ci_lower,
-                    "ci_upper": result.metrics[metric].ci_upper,
-                })
+                values.append(
+                    {
+                        "model_id": result.model_id,
+                        "value": result.metrics[metric].value,
+                        "ci_lower": result.metrics[metric].ci_lower,
+                        "ci_upper": result.metrics[metric].ci_upper,
+                    }
+                )
 
         # Sort by value (ascending for error metrics)
         values.sort(key=lambda x: float(x["value"]) if x["value"] is not None else float("inf"))
@@ -400,10 +399,7 @@ class QuickEvaluator:
         if not predictions:
             return 0.0
         # Round to nearest integer for classification
-        correct = sum(
-            1 for p, t in zip(predictions, targets)
-            if round(p) == round(t)
-        )
+        correct = sum(1 for p, t in zip(predictions, targets) if round(p) == round(t))
         return correct / len(predictions)
 
     @staticmethod

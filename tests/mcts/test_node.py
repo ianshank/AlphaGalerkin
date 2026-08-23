@@ -534,3 +534,138 @@ class TestRepr:
         assert "N=10" in repr_str
         assert "Q=0.5" in repr_str
         assert "P=0.5" in repr_str
+
+
+# --- c_puct Boundary Value Tests ---
+
+
+class TestCPuctBoundaryValues:
+    """c_puct at its degenerate (0.0) and very-large boundary.
+
+    ``ucb_score``'s exploration term is purely multiplicative in ``c_puct``
+    (``c_puct * prior * sqrt(N_parent) / (1 + N_child)``), so 0.0 is the
+    annihilating value (exploration vanishes entirely, selection degrades to
+    greedy Q) and there is no denominator involving ``c_puct`` that could
+    divide by zero or blow up as it grows.
+    """
+
+    def test_ucb_score_zero_c_puct_removes_exploration_term(self, visited_node: MCTSNode):
+        """At c_puct=0.0 the score is exactly Q (with virtual loss).
+
+        The exploration bonus contributes nothing regardless of prior.
+        """
+        score = visited_node.ucb_score(c_puct=0.0, parent_visits=100)
+        assert score == pytest.approx(visited_node.q_value_with_virtual_loss)
+
+    def test_ucb_score_zero_c_puct_ignores_prior(self):
+        """Two nodes differing only in prior score identically at c_puct=0."""
+        low_prior = MCTSNode(prior=0.01)
+        high_prior = MCTSNode(prior=0.99)
+        low_prior.visit_count = high_prior.visit_count = 4
+        low_prior.total_value = high_prior.total_value = 2.0
+
+        assert low_prior.ucb_score(0.0, 100) == pytest.approx(high_prior.ucb_score(0.0, 100))
+
+    def test_select_child_zero_c_puct_picks_highest_q_regardless_of_prior(self):
+        """With no exploration term, selection is pure greedy Q."""
+        root = MCTSNode()
+        root.expand({0: 0.1, 1: 0.9})  # action 1 has the much higher prior
+        root.visit_count = 10
+        root.children[0].visit_count = 5
+        root.children[0].total_value = 4.0  # Q = 0.8 (higher)
+        root.children[1].visit_count = 5
+        root.children[1].total_value = 1.0  # Q = 0.2 (lower, despite the prior)
+
+        selected = root.select_child(c_puct=0.0)
+
+        assert selected is root.children[0]
+
+    def test_ucb_score_very_large_c_puct_stays_finite(self, node_with_prior: MCTSNode):
+        score = node_with_prior.ucb_score(c_puct=1e6, parent_visits=100)
+        assert math.isfinite(score)
+        assert score > 0
+
+    def test_select_child_very_large_c_puct_does_not_crash(self):
+        root = MCTSNode()
+        root.expand({0: 0.3, 1: 0.5, 2: 0.2})
+        root.visit_count = 10
+
+        selected = root.select_child(c_puct=1e6)
+
+        assert selected in root.children.values()
+
+
+# --- Temperature Boundary Value Tests ---
+
+
+class TestTemperatureBoundaryValues:
+    """Temperature at a very large (near-uniform) value.
+
+    ``visits ** (1.0 / temperature)`` -> ``visits ** ~0`` as temperature
+    grows; unvisited (0-count) children must stay at weight 0 rather than
+    producing NaN (``0 ** positive_epsilon == 0``, not NaN).
+    """
+
+    def test_get_visit_distribution_very_large_temperature_stays_finite(
+        self, expanded_node: MCTSNode
+    ):
+        expanded_node.children[0].visit_count = 5
+        expanded_node.children[1].visit_count = 0
+        expanded_node.children[2].visit_count = 3
+
+        distribution = expanded_node.get_visit_distribution(temperature=1e6)
+
+        assert all(math.isfinite(p) for p in distribution.values())
+        assert abs(sum(distribution.values()) - 1.0) < 1e-6
+
+    def test_get_visit_distribution_all_zero_visits_falls_back_to_uniform(
+        self, expanded_node: MCTSNode
+    ):
+        """No visits at all (temperature irrelevant).
+
+        The existing ``total > 0`` uniform fallback must still apply at
+        extreme temperature, not divide 0/0 into NaN.
+        """
+        distribution = expanded_node.get_visit_distribution(temperature=1e6)
+
+        assert all(math.isfinite(p) for p in distribution.values())
+        assert abs(sum(distribution.values()) - 1.0) < 1e-6
+
+
+# --- Non-Finite Q-Value Selection (documents current behaviour) ---
+
+
+class TestSelectChildNonFiniteQValues:
+    """Documents current behaviour when every child's Q-value is NaN.
+
+    This is not an endorsement that a NaN-poisoned tree is fine -- it is a
+    known-confusing symptom of an upstream problem. ``MCTS._check_finite_evaluation``
+    (``src/mcts/search.py``) now catches and logs the actual cause at the
+    evaluator boundary, before a NaN value can ever reach this state via a
+    real search. ``select_child`` itself is intentionally unchanged by this
+    audit: NaN comparisons are always False in Python, so ``score >
+    best_score`` never fires for any child, and the "no best child found"
+    branch fires even though the node does have children. That branch's
+    error message now names the actual cause (non-finite scores) instead of
+    the earlier, misleading "no children" framing. Locking in this behaviour
+    here means a future change to the comparison logic (e.g. NaN-aware
+    tie-breaking) is a deliberate, visible diff instead of an unnoticed
+    regression.
+    """
+
+    def test_all_nan_q_values_raises_error_naming_non_finite_scores(self):
+        root = MCTSNode()
+        root.expand({0: 0.5, 1: 0.5})
+        root.visit_count = 5
+        for child in root.children.values():
+            child.visit_count = 1
+            child.total_value = float("nan")
+
+        # The node does have children -- unlike the genuinely-childless case
+        # (``test_select_child_raises_on_leaf``, a ValueError with an
+        # accurate message), this raises the RuntimeError fallback. Its
+        # message correctly identifies the non-finite scores as the cause
+        # rather than claiming the node has no children.
+        assert len(root.children) == 2
+        with pytest.raises(RuntimeError, match="non-finite"):
+            root.select_child(c_puct=1.5)

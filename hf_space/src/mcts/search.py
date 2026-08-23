@@ -271,10 +271,7 @@ class MCTS:
         result = self.evaluator.evaluate(state, legal_actions)
 
         # Create action priors
-        action_priors = {
-            a: float(result.policy[a])
-            for a in legal_actions
-        }
+        action_priors = {a: float(result.policy[a]) for a in legal_actions}
 
         # Expand node
         node.expand(action_priors)
@@ -320,9 +317,8 @@ class MCTS:
         # Mix noise into priors
         for i, child in enumerate(root.children.values()):
             child.prior = (
-                (1 - self.dirichlet_epsilon) * child.prior
-                + self.dirichlet_epsilon * noise[i]
-            )
+                1 - self.dirichlet_epsilon
+            ) * child.prior + self.dirichlet_epsilon * noise[i]
 
     def get_pv(self) -> list[int]:
         """Get principal variation from current root.
@@ -445,9 +441,7 @@ class BatchMCTS(MCTS):
             results = self.evaluator.evaluate_batch(states, legal_actions)
 
             # Expand leaves with results
-            for (node, game_state), result, la in zip(
-                leaves, results, legal_actions
-            ):
+            for (node, game_state), result, la in zip(leaves, results, legal_actions):
                 action_priors = {a: float(result.policy[a]) for a in la}
                 node.expand(action_priors)
 

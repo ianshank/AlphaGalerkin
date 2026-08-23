@@ -14,6 +14,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ProgressionOperator(str, Enum):
     """Operators for progression criterion evaluation."""
@@ -314,7 +316,7 @@ def create_default_curriculum(
 
     """
     if board_sizes is None:
-        board_sizes = [9, 13, 19]
+        board_sizes = list(DEFAULT_BOARD_SIZES)
 
     stages = []
     for i, size in enumerate(board_sizes):

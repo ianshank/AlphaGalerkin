@@ -468,10 +468,13 @@ class PDEBenchmarkRunner:
         if not solvers:
             self._log.warning("no_baselines_available_using_defaults")
             # Provide defaults so the runner still works
-            import contextlib
-
-            with contextlib.suppress(Exception):
+            try:
                 solvers.append(get_solver("uniform_fdm"))
+            except Exception:
+                # Defensive: even the default baseline can fail to construct.
+                # Covered by tests/research/test_pde_benchmarks.py
+                # ``TestGetBaselines::test_default_baseline_failure_*``.
+                self._log.exception("default_baseline_init_failed", baseline="uniform_fdm")
 
         return solvers
 
@@ -485,6 +488,15 @@ class PDEBenchmarkRunner:
             "pinn": "pinn",
             "navier_stokes_fdm": "navier_stokes_fdm",
             "navier_stokes": "navier_stokes_fdm",
+            # Extra solvers from src/research/extra_solvers (registered lazily).
+            "direct_solver": "direct_solver",
+            "direct": "direct_solver",
+            "spsolve": "direct_solver",
+            "multigrid": "multigrid",
+            "amg": "multigrid",
+            "algebraic_multigrid": "multigrid",
+            "fno": "fno",
+            "deeponet": "deeponet",
         }
         key = name.lower().replace("-", "_").replace(" ", "_")
         return mapping.get(key, key)

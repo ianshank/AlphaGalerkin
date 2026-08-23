@@ -99,6 +99,8 @@ C4Container
 
         Container(lm_studio_evaluator, "LM Studio Evaluator (LLM Prior)", "Python/openai-SDK", "Optional MCTS evaluator backed by an OpenAI-compatible local LLM (Qwen-14B in LM Studio by default). Implements src/mcts/evaluator.py::Evaluator structurally with illegal-action masking + temperature softmax. Bounded exponential-backoff retries split SDK errors into retryable (APIConnectionError / APITimeoutError / RateLimitError / InternalServerError) and non-retryable (Authentication / BadRequest / NotFound / etc.). Preflight checks server reachable + model in /v1/models + free-VRAM floor before accepting traffic. Gated behind the [lm-studio] optional extra; SDK imported lazily so the base install is unaffected.")
 
+        Container(codec_zoo, "Codec Model Zoo (Phase 2)", "Python/PyTorch", "Dual-GPU model zoo for the R-D Lagrangian sweep. Pydantic schemas, device planner (VRAM_AWARE), ZooTrainer with fixed-lambda and warm starts, and manifest-level parallel sweep orchestrator. Includes structural stability fixes for FactorizedPrior, GDN, and MS-SSIM.")
+
         ContainerDb(checkpoint_store, "Model Checkpoints", "File System", "Stores trained model weights and training state")
         ContainerDb(results_store, "Experiment Results", "JSON/YAML", "Stores PoC scenario results and metrics")
     }
@@ -1231,7 +1233,7 @@ C4Deployment
 
 ```python
 # Core dependencies
-torch >= 2.0.0          # Deep learning framework
+torch >= 2.6.0          # Deep learning framework
 einops >= 0.7.0         # Tensor operations
 jaxtyping >= 0.2.25     # Type annotations for arrays
 pydantic >= 2.0.0       # Data validation
@@ -1627,6 +1629,79 @@ C4Component
 
 ---
 
+## Level 3: Component Diagram - Quality Gates & Agentic Harness
+
+Added 2026-08-21. This layer is **executable configuration**, not documentation:
+`.claude/` drives real tool invocations and `ci.yml` blocks merges on the gates
+below. It was previously absent from every architecture diagram despite being
+enforced on every push — the same class of gap as a package with no `AGENT.md`,
+but with teeth.
+
+```mermaid
+C4Component
+    title Component Diagram - Quality Gates & Agentic Harness
+
+    Container_Boundary(harness, ".claude/ Agentic Harness") {
+        Component(skills, "Skills (9)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference)")
+
+        Component(subagents, "Subagents (5)", "Markdown + tools frontmatter", "reviewer (adversarial diff review), sqe (tests + coverage), pde-solver, mcts-engineer, integration-engineer. Tool grants are validated against the real tool set")
+
+        Component(commands, "Slash Commands (4)", "Markdown + argument-hint", "audit-abstractions, poc-run, record-baseline, agents-research. A declared argument-hint must actually consume $ARGUMENTS")
+
+        Component(hook, "SessionStart Hook", "bash", "Bootstraps the editable install with the SETUPTOOLS_USE_DISTUTILS=stdlib antlr fix; registered in settings.json")
+
+        Component(settings, "settings.json", "JSON + schema", "Pins COVERAGE_CORE=pytrace (load-bearing: the installed torch wheel crashes coverage's C tracer and UNDER-measures silently), PYTHONHASHSEED=0, and 9 pre-approved python -m entry points")
+    }
+
+    Container_Boundary(gates, "CI Enforcement (ci.yml)") {
+        Component(lint, "Lint & Type Check", "ruff + mypy", "ruff check/format over 899 files; mypy --strict --ignore-missing-imports (continue-on-error: 8-error documented baseline)")
+
+        Component(secrets, "Secret Scan", "gitleaks-action", "Runs .gitleaks.toml. Wired 2026-08-21 -- the config and a `make gitleaks` target had both existed for months while NOTHING invoked either")
+
+        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "71 hermetic tests: frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism")
+
+        Component(security_gate, "Security suite", "pytest tests/security/", "Pickle-RCE payload tests, allowlist purity, path containment. 69 tests")
+
+        Component(coverage_gate, "Test Coverage", "pytest --cov", "Global 85% branch gate plus 34 named per-module gates")
+
+        Component(abstraction_gate, "Abstraction audit", "scripts/audit_abstractions", "Blocking for every package except src/backend: an @abstractmethod with no call site fails the build")
+    }
+
+    Container_Boundary(local, "Local Parity") {
+        Component(makefile, "Makefile", "make pre-pr", "Chains lint, mypy, gitleaks, test-claude, security, regression, benchmarks, core, agents, e2e, demos, fast, coverage. CI_TEST_EXCLUDES mirrors ci.yml's 6 --ignore + 9 --deselect by hand")
+
+        Component(precommit, "pre-commit", ".pre-commit-config.yaml", "ruff with no files: filter -- so it rewrites dashboard/ too, which is why CI lints dashboard/ as well")
+    }
+
+    Rel(skills, coverage_gate, "encode the same thresholds as")
+    Rel(subagents, harness_gate, "validated by")
+    Rel(commands, harness_gate, "validated by")
+    Rel(hook, settings, "registered in")
+    Rel(settings, harness_gate, "validated by")
+    Rel(makefile, coverage_gate, "mirrors")
+    Rel(precommit, lint, "must agree with")
+    Rel(secrets, harness_gate, "sibling step")
+
+    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
+```
+
+### Quality-Gate Components
+
+| Component | Enforcement | Failure mode it prevents |
+|---|---|---|
+| `tests/claude/` | blocking CI step | A skill citing a deleted path, an agent declaring a non-existent tool, or a permission naming a renamed module — each fails only when someone relies on it |
+| gitleaks | blocking CI step | A committed secret. Previously unenforced: config present, scanner never invoked |
+| 34 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
+| Abstraction audit | blocking `lint` job | A dead `@abstractmethod` accumulating call-site-free API |
+| `make pre-pr` | local | Local/CI drift. Kept in step by hand; the duplication is tracked as backlog B7 |
+
+**Deliberately not gated**, with reasons rather than numbers: `src/integrations`
+(a whole-package gate would read 93% while `omit` drops 240 statements of
+`eval_harness` from the denominator), `src/deployment` (27.91% is an
+onnx-absent-from-the-job artifact), `src/math_kernel` and `src/backend` (gating
+locks in untested JAX-guarded paths), `src/core` (80 statements, 2 tests — a
+gate there is theatre).
+
 ## References
 
 - **C4 Model**: [c4model.com](https://c4model.com)
@@ -1650,9 +1725,9 @@ C4Component
 
 ## Document Metadata
 
-- **Version**: 3.0.0
+- **Version**: 3.1.0
 - **Created**: 2026-01-26
-- **Updated**: 2026-03-31
+- **Updated**: 2026-08-21
 - **Format**: Mermaid C4 Diagrams
 - **Status**: Complete
 - **Audience**: Developers, Researchers, Computational Scientists, Technical Stakeholders

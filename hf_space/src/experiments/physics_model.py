@@ -89,17 +89,18 @@ class PhysicsOperator(nn.Module):
         self.input_proj = nn.Linear(fourier_output_dim + 1, d_model)  # +1 for charge
 
         # Galerkin attention layers (O(N) complexity)
-        self.galerkin_layers = nn.ModuleList([
-            GalerkinBlock(d_model, n_heads, dropout=dropout)
-            for _ in range(n_layers)
-        ])
+        self.galerkin_layers = nn.ModuleList(
+            [GalerkinBlock(d_model, n_heads, dropout=dropout) for _ in range(n_layers)]
+        )
 
         # Optional FNet layers for mixing
         if use_fnet:
-            self.fnet_layers = nn.ModuleList([
-                FNetBlock(d_model, d_ffn=4 * d_model, dropout=dropout)
-                for _ in range(n_layers // 2)
-            ])
+            self.fnet_layers = nn.ModuleList(
+                [
+                    FNetBlock(d_model, d_ffn=4 * d_model, dropout=dropout)
+                    for _ in range(n_layers // 2)
+                ]
+            )
         else:
             self.fnet_layers = None
 

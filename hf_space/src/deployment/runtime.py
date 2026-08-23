@@ -148,10 +148,12 @@ class ONNXRuntime:
             provider_options = []
             for provider in providers:
                 if provider == ExecutionProvider.CUDA.value:
-                    provider_options.append({
-                        "device_id": self.config.cuda_device_id,
-                        "arena_extend_strategy": self.config.cuda_arena_extend_strategy,
-                    })
+                    provider_options.append(
+                        {
+                            "device_id": self.config.cuda_device_id,
+                            "arena_extend_strategy": self.config.cuda_arena_extend_strategy,
+                        }
+                    )
                     if self.config.cuda_mem_limit > 0:
                         provider_options[-1]["gpu_mem_limit"] = self.config.cuda_mem_limit
                 else:
@@ -258,12 +260,14 @@ class ONNXRuntime:
         batch_size = len(inputs)
 
         for i in range(batch_size):
-            results.append(InferenceResult(
-                policy=result.policy[i] if len(result.policy) > i else np.array([]),
-                value=result.value[i] if len(result.value) > i else np.array([]),
-                inference_time_ms=result.inference_time_ms / batch_size,
-                provider_used=result.provider_used,
-            ))
+            results.append(
+                InferenceResult(
+                    policy=result.policy[i] if len(result.policy) > i else np.array([]),
+                    value=result.value[i] if len(result.value) > i else np.array([]),
+                    inference_time_ms=result.inference_time_ms / batch_size,
+                    provider_used=result.provider_used,
+                )
+            )
 
         return results
 
@@ -278,9 +282,7 @@ class ONNXRuntime:
         self._metrics.total_time_ms += inference_time
         self._metrics.min_time_ms = min(self._metrics.min_time_ms, inference_time)
         self._metrics.max_time_ms = max(self._metrics.max_time_ms, inference_time)
-        self._metrics.average_time_ms = (
-            self._metrics.total_time_ms / self._metrics.total_inferences
-        )
+        self._metrics.average_time_ms = self._metrics.total_time_ms / self._metrics.total_inferences
         self._metrics.throughput_per_sec = (
             1000.0 / self._metrics.average_time_ms if self._metrics.average_time_ms > 0 else 0
         )
@@ -310,11 +312,13 @@ class ONNXRuntime:
 
         info = []
         for inp in self._session.get_inputs():
-            info.append({
-                "name": inp.name,
-                "shape": inp.shape,
-                "type": inp.type,
-            })
+            info.append(
+                {
+                    "name": inp.name,
+                    "shape": inp.shape,
+                    "type": inp.type,
+                }
+            )
         return info
 
     def get_output_info(self) -> list[dict[str, Any]]:
@@ -329,11 +333,13 @@ class ONNXRuntime:
 
         info = []
         for out in self._session.get_outputs():
-            info.append({
-                "name": out.name,
-                "shape": out.shape,
-                "type": out.type,
-            })
+            info.append(
+                {
+                    "name": out.name,
+                    "shape": out.shape,
+                    "type": out.type,
+                }
+            )
         return info
 
     def benchmark(

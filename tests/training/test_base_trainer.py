@@ -7,6 +7,7 @@ LR scheduling, checkpoint save/load.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,13 @@ import torch
 from pydantic import ValidationError
 from torch import Tensor, nn
 
-from src.training.base_trainer import BaseTrainer, BaseTrainerConfig, StepResult
+from src.training.base_trainer import (
+    DEFAULT_MIN_LR_RATIO,
+    DEFAULT_WARMUP_START_FACTOR,
+    BaseTrainer,
+    BaseTrainerConfig,
+    StepResult,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers: concrete minimal trainer for testing
@@ -52,9 +59,6 @@ class ConcreteTrainer(BaseTrainer[MinimalConfig]):
         y = torch.zeros(4, 2, device=self.device)
         self._batch_count += 1
         return x, y
-
-    def evaluate(self) -> dict[str, float]:
-        return {"eval_loss": 0.0}
 
 
 def _make_model() -> nn.Module:
@@ -670,3 +674,213 @@ class TestInheritance:
             "_load_training_state",
         ]:
             assert hasattr(BaseTrainer, method_name), f"Missing {method_name}"
+
+
+# ---------------------------------------------------------------------------
+# step() hooks (demoted from @abstractmethod)
+# ---------------------------------------------------------------------------
+
+
+class HookLessTrainer(BaseTrainer[MinimalConfig]):
+    """Subclass that overrides *none* of the two ``step()`` hooks.
+
+    Instantiating this at all is the regression under test: while
+    ``compute_loss`` / ``generate_data`` were ``@abstractmethod`` this class
+    could not be constructed (``TypeError`` at instantiation). A third hook,
+    ``evaluate``, was also demoted alongside these two but has since been
+    deleted entirely (zero call sites; docs/CODE_HYGIENE_AUDIT.md §7.7).
+    """
+
+
+class PartialTrainer(BaseTrainer[MinimalConfig]):
+    """Overrides ``generate_data`` only, so ``step()`` fails in ``compute_loss``."""
+
+    def generate_data(self) -> tuple[Tensor, Tensor]:
+        x = torch.randn(4, 2, device=self.device)
+        return x, torch.zeros(4, 2, device=self.device)
+
+
+class TestStepHookContract:
+    """Guards the @abstractmethod -> concrete-raising-hook demotion.
+
+    The two remaining hooks (``compute_loss``, ``generate_data``) must (a)
+    no longer be abstract, so a subclass that drives its own loop is
+    constructible, and (b) still fail loudly -- with the documented,
+    class-name-carrying message -- if the generic ``step()`` loop is used
+    without overriding them. (A third hook, ``evaluate``, was demoted
+    alongside these two but has since been deleted outright -- see
+    docs/CODE_HYGIENE_AUDIT.md §7.7.)
+    """
+
+    def test_no_abstract_methods_remain(self) -> None:
+        """BaseTrainer declares no abstract methods after the demotion."""
+        assert BaseTrainer.__abstractmethods__ == frozenset()
+
+    def test_hookless_subclass_is_instantiable(self, tmp_path: Path) -> None:
+        """A subclass overriding none of the hooks can be constructed."""
+        trainer = HookLessTrainer(
+            _make_model(),
+            MinimalConfig(name="hookless"),
+            device="cpu",
+            checkpoint_dir=tmp_path / "ckpt",
+        )
+        assert trainer.global_step == 0
+
+    @pytest.mark.parametrize(
+        ("hook", "args"),
+        [
+            ("compute_loss", (object(),)),
+            ("generate_data", ()),
+        ],
+    )
+    def test_hook_raises_not_implemented_with_documented_message(
+        self,
+        tmp_path: Path,
+        hook: str,
+        args: tuple[Any, ...],
+    ) -> None:
+        """Each hook raises NotImplementedError naming the class and the remedy."""
+        trainer = HookLessTrainer(
+            _make_model(),
+            MinimalConfig(name="hookless"),
+            device="cpu",
+            checkpoint_dir=tmp_path / "ckpt",
+        )
+        with pytest.raises(
+            NotImplementedError,
+            match=rf"HookLessTrainer does not implement {hook}\(\); "
+            r"override it to use the generic BaseTrainer\.step\(\) loop\.",
+        ):
+            getattr(trainer, hook)(*args)
+
+    def test_step_surfaces_generate_data_failure(self, tmp_path: Path) -> None:
+        """step() propagates the generate_data hook failure (first hook called)."""
+        trainer = HookLessTrainer(
+            _make_model(),
+            MinimalConfig(name="hookless"),
+            device="cpu",
+            checkpoint_dir=tmp_path / "ckpt",
+        )
+        with pytest.raises(NotImplementedError, match="generate_data"):
+            trainer.step()
+        assert trainer.global_step == 0
+
+    def test_step_surfaces_compute_loss_failure(self, tmp_path: Path) -> None:
+        """With generate_data supplied, step() fails on the compute_loss hook."""
+        trainer = PartialTrainer(
+            _make_model(),
+            MinimalConfig(name="partial"),
+            device="cpu",
+            checkpoint_dir=tmp_path / "ckpt",
+        )
+        with pytest.raises(NotImplementedError, match="compute_loss"):
+            trainer.step()
+        assert trainer.global_step == 0
+
+    def test_overriding_subclass_runs_through_step(self, tmp_path: Path) -> None:
+        """A subclass that overrides both hooks still drives step() end-to-end."""
+        trainer = _make_trainer(tmp_path)
+        before = trainer.global_step
+        result = trainer.step()
+
+        assert trainer.global_step == before + 1
+        assert torch.isfinite(torch.tensor(result.loss))
+        assert "l2" in result.metrics
+
+    def test_subclass_overrides_take_precedence_over_raising_hooks(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The concrete hooks are plain methods, so overrides shadow them."""
+        trainer = _make_trainer(tmp_path)
+        batch = trainer.generate_data()
+        loss, metrics = trainer.compute_loss(batch)
+
+        assert isinstance(loss, Tensor)
+        assert metrics["l2"] == pytest.approx(float(loss))
+
+
+# ---------------------------------------------------------------------------
+# Scheduler default constants (single source of truth)
+# ---------------------------------------------------------------------------
+
+
+class TestSchedulerDefaultConstants:
+    """Guards DEFAULT_MIN_LR_RATIO / DEFAULT_WARMUP_START_FACTOR binding.
+
+    The refactor's claim is that the config field defaults and the
+    ``_create_scheduler`` parameter defaults both bind to one module constant
+    so the two copies cannot diverge. These tests fail if either copy is
+    re-hardcoded.
+    """
+
+    def test_constant_values_are_the_historical_conservative_defaults(self) -> None:
+        """The extracted constants keep the pre-refactor literal values."""
+        assert DEFAULT_MIN_LR_RATIO == 0.01
+        assert DEFAULT_WARMUP_START_FACTOR == 1e-6
+
+    def test_config_field_defaults_bind_to_constants(self) -> None:
+        """BaseTrainerConfig defaults come from the module constants."""
+        cfg = BaseTrainerConfig(name="t")
+        assert cfg.min_lr_ratio == DEFAULT_MIN_LR_RATIO
+        assert cfg.warmup_start_factor == DEFAULT_WARMUP_START_FACTOR
+
+    def test_create_scheduler_param_defaults_bind_to_constants(self) -> None:
+        """_create_scheduler's signature defaults come from the same constants."""
+        params = inspect.signature(BaseTrainer._create_scheduler).parameters
+        assert params["min_lr_ratio"].default == DEFAULT_MIN_LR_RATIO
+        assert params["warmup_start_factor"].default == DEFAULT_WARMUP_START_FACTOR
+
+    def test_constants_are_distinguishable(self) -> None:
+        """The two constants differ, so a swap is observable rather than inert."""
+        assert DEFAULT_MIN_LR_RATIO != DEFAULT_WARMUP_START_FACTOR
+
+    def test_default_min_lr_ratio_reaches_the_scheduler_eta_min(self) -> None:
+        """Omitting min_lr_ratio yields eta_min == lr * DEFAULT_MIN_LR_RATIO."""
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        sched = BaseTrainer._create_scheduler(
+            opt, scheduler_type="cosine", warmup_steps=0, total_steps=100
+        )
+        assert sched.eta_min == pytest.approx(0.01 * DEFAULT_MIN_LR_RATIO)  # type: ignore[attr-defined]
+
+    def test_default_warmup_start_factor_reaches_the_warmup_schedule(self) -> None:
+        """Omitting warmup_start_factor yields lr * DEFAULT_WARMUP_START_FACTOR at step 0."""
+        model = _make_model()
+        opt = BaseTrainer._create_optimizer(model, lr=0.01, weight_decay=0.0)
+        BaseTrainer._create_scheduler(
+            opt, scheduler_type="cosine", warmup_steps=10, total_steps=100
+        )
+        assert opt.param_groups[0]["lr"] == pytest.approx(0.01 * DEFAULT_WARMUP_START_FACTOR)
+
+
+class TestSchedulerConfigFieldBounds:
+    """Boundary validation for the two scheduler ratio fields on BaseTrainerConfig."""
+
+    @pytest.mark.parametrize("value", [0.0, 0.5, 1.0])
+    def test_min_lr_ratio_accepts_closed_unit_interval(self, value: float) -> None:
+        """ge=0, le=1 -- both endpoints are valid."""
+        assert BaseTrainerConfig(name="t", min_lr_ratio=value).min_lr_ratio == value
+
+    @pytest.mark.parametrize("value", [-1e-9, -0.1, 1.0000001, 2.0])
+    def test_min_lr_ratio_rejects_outside_unit_interval(self, value: float) -> None:
+        """Values outside [0, 1] are rejected."""
+        with pytest.raises(ValidationError):
+            BaseTrainerConfig(name="t", min_lr_ratio=value)
+
+    @pytest.mark.parametrize("value", [1e-9, 0.5, 1.0])
+    def test_warmup_start_factor_accepts_half_open_interval(self, value: float) -> None:
+        """gt=0, le=1 -- upper endpoint valid, values just above 0 valid."""
+        assert BaseTrainerConfig(name="t", warmup_start_factor=value).warmup_start_factor == value
+
+    @pytest.mark.parametrize("value", [0.0, -1e-9, -0.5, 1.0000001, 2.0])
+    def test_warmup_start_factor_rejects_zero_and_out_of_range(self, value: float) -> None:
+        """gt=0 rejects exactly zero (unlike min_lr_ratio) and >1 is rejected."""
+        with pytest.raises(ValidationError):
+            BaseTrainerConfig(name="t", warmup_start_factor=value)
+
+    @pytest.mark.parametrize("field", ["min_lr_ratio", "warmup_start_factor"])
+    def test_none_is_rejected(self, field: str) -> None:
+        """Neither field is Optional; None must not silently become the default."""
+        with pytest.raises(ValidationError):
+            BaseTrainerConfig(name="t", **{field: None})

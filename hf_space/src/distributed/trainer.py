@@ -136,13 +136,9 @@ class DistributedTrainer:
         self.scheduler = scheduler
 
         # Mixed precision
-        self.use_amp = (
-            distributed_config.use_amp and self.device.type == "cuda"
-        )
+        self.use_amp = distributed_config.use_amp and self.device.type == "cuda"
         self.scaler = GradScaler("cuda") if self.use_amp else None
-        self.amp_dtype = getattr(
-            torch, distributed_config.amp_dtype, torch.float16
-        )
+        self.amp_dtype = getattr(torch, distributed_config.amp_dtype, torch.float16)
 
         # Gradient synchronization
         self.grad_sync: GradientSynchronizer | None = None

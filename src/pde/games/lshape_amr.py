@@ -40,7 +40,7 @@ import torch
 from numpy.typing import NDArray
 
 from src.mcts.evaluator import EvaluationResult
-from src.pde.game import GamePhase, PDEGame, PDEResult, PDEState
+from src.pde.game import GamePhase, PDEGame, PDEState
 
 if TYPE_CHECKING:
     from src.pde.config import PDEGameConfig
@@ -135,7 +135,19 @@ class EncodedValueEvaluator:
                 policy[action] = uniform
         flat = np.asarray(state, dtype=np.float32).reshape(-1)
         value = float(flat[0]) if flat.size else 0.0
-        value = max(-1.0, min(1.0, value))
+        if np.isfinite(value):
+            value = max(-1.0, min(1.0, value))
+        else:
+            # A NaN/Inf leaf value means the injected solve_fn diverged (e.g. a
+            # singular masked solve). Python's min/max resolve NaN via the
+            # *first* operand under CPython's nan-comparison semantics, so the
+            # naive `max(-1.0, min(1.0, value))` clamp below silently turns a
+            # NaN into +1.0 -- the best possible leaf value for what is
+            # actually a computational failure, which would actively steer
+            # MCTS toward the broken branch instead of away from it. Fall back
+            # to a neutral value instead.
+            logger.warning("encoded_value_non_finite", raw_value=value)
+            value = 0.0
         return EvaluationResult(policy=policy, value=value)
 
     def evaluate_batch(
@@ -381,52 +393,18 @@ class LShapeAMRGame(PDEGame):
             return True
         return not self.get_valid_actions(state)
 
-    def _termination_reason(self, state: PDEState) -> str:
-        """Classify *why* an episode ended, mirroring :meth:`is_terminal`.
+    def _capacity_reason(self, state: PDEState) -> str | None:
+        """Report ``"max_dof"`` once the DOF cap is reached.
 
-        Distinguishes the terminal causes (converged / max DOF / max steps /
-        no legal actions) rather than collapsing them into a single
-        "budget_exhausted", matching the fidelity of the sibling
-        mesh_refinement / basis_selection games. Returns "running" for a
-        non-terminal state.
+        Uses ``>=`` rather than ``mesh_refinement``'s ``>``, matching this
+        game's own :meth:`is_terminal`. ``budget_remaining`` is derived from the
+        same ceiling (``max_dof - n_dof``), so it reaches zero exactly here —
+        checking capacity first is what keeps the label ``"max_dof"`` instead
+        of the less specific ``"budget_exhausted"``.
         """
-        if state.error_estimate < self.config.error_tolerance:
-            return "converged"
         if state.dof >= self.config.max_dof:
             return "max_dof"
-        if state.step >= self.config.max_steps:
-            return "max_steps"
-        if not self.get_valid_actions(state):
-            return "no_legal_actions"
-        return "running"
-
-    def get_result(self, state: PDEState, error_history: list[float]) -> PDEResult:
-        """Assemble a :class:`PDEResult` from the terminal state and history."""
-        initial_error = error_history[0] if error_history else state.error_estimate
-        best_error = min(error_history) if error_history else state.error_estimate
-        avg_error = float(np.mean(error_history)) if error_history else state.error_estimate
-        reduction = initial_error - state.error_estimate
-        return PDEResult(
-            final_error=state.error_estimate,
-            final_dof=state.dof,
-            n_steps=state.step,
-            converged=state.error_estimate < self.config.error_tolerance,
-            l2_error=state.error_estimate,
-            h1_error=state.error_estimate,
-            linf_error=state.error_estimate,
-            residual_norm=float(np.sqrt(np.mean(state.residuals**2)))
-            if state.residuals.size
-            else 0.0,
-            error_reduction_rate=reduction / max(state.step, 1),
-            dof_efficiency=reduction / max(state.dof, 1),
-            compute_efficiency=reduction / max(state.step, 1),
-            initial_error=initial_error,
-            best_error=best_error,
-            average_error=avg_error,
-            error_history=list(error_history),
-            termination_reason=self._termination_reason(state),
-            budget_used=float(state.dof),
-        )
+        return None
 
     def compute_exact_error(self, state: PDEState) -> dict[str, float]:
         """Return the error metrics carried on the state."""

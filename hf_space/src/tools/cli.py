@@ -8,9 +8,7 @@ import sys
 
 def main() -> None:
     """Main entry point for CLI."""
-    parser = argparse.ArgumentParser(
-        description="AlphaGalerkin - Resolution-independent Go AI"
-    )
+    parser = argparse.ArgumentParser(description="AlphaGalerkin - Resolution-independent Go AI")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # GTP command
@@ -20,17 +18,13 @@ def main() -> None:
     gtp_parser.add_argument("--device", type=str, default="cpu", help="Device")
 
     # Verify command
-    verify_parser = subparsers.add_parser(
-        "verify", help="Verify resolution invariance"
-    )
+    verify_parser = subparsers.add_parser("verify", help="Verify resolution invariance")
     verify_parser.add_argument("--train-size", type=int, default=9)
     verify_parser.add_argument("--infer-size", type=int, default=19)
     verify_parser.add_argument("--device", type=str, default="cpu")
 
     # Colab generation command
-    subparsers.add_parser(
-        "generate-colab", help="Generate Colab-compatible notebook"
-    )
+    subparsers.add_parser("generate-colab", help="Generate Colab-compatible notebook")
 
     args = parser.parse_args()
 

@@ -72,16 +72,14 @@ training:
   plateau_factor: 0.5
   plateau_min_lr: 0.000001
 
-# Enable W&B for tracking
-wandb:
+# Langfuse experiment tracking (credentials via LANGFUSE_* env)
+langfuse:
   enabled: true
   project: alphagalerkin
-  mode: online
   tags:
     - 5hr-run
     - fast-mcts
   log_model: true
-  log_code: true
   log_interval: 25  # More frequent logging
 
 # Runtime settings

@@ -84,18 +84,12 @@ class BaseScenarioConfig(BaseModel):
     # Identification
     name: str = Field(..., description="Unique scenario identifier")
     description: str = Field(..., description="Human-readable description")
-    tier: ScenarioTier = Field(
-        default=ScenarioTier.FUNCTIONAL, description="Validation tier"
-    )
+    tier: ScenarioTier = Field(default=ScenarioTier.FUNCTIONAL, description="Validation tier")
 
     # Execution control
     enabled: bool = Field(default=True, description="Whether to run this scenario")
-    timeout_seconds: int = Field(
-        default=3600, ge=1, description="Maximum execution time"
-    )
-    retry_count: int = Field(
-        default=0, ge=0, le=5, description="Number of retries on failure"
-    )
+    timeout_seconds: int = Field(default=3600, ge=1, description="Maximum execution time")
+    retry_count: int = Field(default=0, ge=0, le=5, description="Number of retries on failure")
 
     # Reproducibility
     seed: int = Field(default=42, description="Random seed for reproducibility")
@@ -145,39 +139,27 @@ class TransferScenarioConfig(BaseScenarioConfig):
     )
 
     # Data settings
-    n_train_samples: int = Field(
-        default=5000, ge=100, description="Number of training samples"
-    )
+    n_train_samples: int = Field(default=5000, ge=100, description="Number of training samples")
     n_eval_samples: int = Field(
         default=500, ge=10, description="Number of evaluation samples per resolution"
     )
-    n_charges: int = Field(
-        default=5, ge=1, le=20, description="Number of point charges per sample"
-    )
+    n_charges: int = Field(default=5, ge=1, le=20, description="Number of point charges per sample")
     batch_size: int = Field(default=32, ge=1, description="Batch size for evaluation")
 
     # Training settings
     n_epochs: int = Field(default=100, ge=1, description="Number of training epochs")
-    learning_rate: float = Field(
-        default=1e-3, gt=0, description="Optimizer learning rate"
-    )
+    learning_rate: float = Field(default=1e-3, gt=0, description="Optimizer learning rate")
 
     # Model settings
     d_model: int = Field(default=128, ge=16, description="Model hidden dimension")
     n_heads: int = Field(default=4, ge=1, description="Number of attention heads")
     n_layers: int = Field(default=4, ge=1, description="Number of transformer layers")
-    n_fourier_features: int = Field(
-        default=64, ge=8, description="Number of Fourier features"
-    )
-    fourier_scale: float = Field(
-        default=10.0, gt=0, description="Fourier feature scale"
-    )
+    n_fourier_features: int = Field(default=64, ge=8, description="Number of Fourier features")
+    fourier_scale: float = Field(default=10.0, gt=0, description="Fourier feature scale")
     use_fnet: bool = Field(default=True, description="Use FNet mixing layers")
 
     # Success criteria
-    mse_threshold: float = Field(
-        default=0.05, gt=0, description="MSE threshold for passing"
-    )
+    mse_threshold: float = Field(default=0.05, gt=0, description="MSE threshold for passing")
 
     @field_validator("eval_resolutions")
     @classmethod
@@ -251,9 +233,7 @@ class ComplexityScenarioConfig(BaseScenarioConfig):
         default=1.5, gt=1.0, description="Min FNet speedup over Softmax at largest size"
     )
 
-    requires_gpu: bool = Field(
-        default=True, description="GPU recommended for accurate timing"
-    )
+    requires_gpu: bool = Field(default=True, description="GPU recommended for accurate timing")
 
     @field_validator("grid_sizes")
     @classmethod
@@ -297,17 +277,11 @@ class StabilityScenarioConfig(BaseScenarioConfig):
     n_training_steps: int = Field(
         default=1000, ge=100, description="Training steps for stability monitoring"
     )
-    learning_rate: float = Field(
-        default=1e-3, gt=0, description="Learning rate for training"
-    )
+    learning_rate: float = Field(default=1e-3, gt=0, description="Learning rate for training")
 
     # Success criteria
-    lbb_threshold: float = Field(
-        default=1e-6, gt=0, description="Minimum acceptable LBB constant"
-    )
-    max_lbb_violations: int = Field(
-        default=0, ge=0, description="Maximum allowed LBB violations"
-    )
+    lbb_threshold: float = Field(default=1e-6, gt=0, description="Minimum acceptable LBB constant")
+    max_lbb_violations: int = Field(default=0, ge=0, description="Maximum allowed LBB violations")
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> StabilityScenarioConfig:
@@ -336,9 +310,7 @@ class ScenarioResult(BaseModel):
     passed: bool = Field(..., description="Whether all thresholds were met")
 
     # Metrics
-    metrics: dict[str, float] = Field(
-        default_factory=dict, description="Collected metrics"
-    )
+    metrics: dict[str, float] = Field(default_factory=dict, description="Collected metrics")
     threshold_results: dict[str, bool] = Field(
         default_factory=dict, description="Per-threshold pass/fail"
     )
@@ -396,9 +368,7 @@ class ScenarioResult(BaseModel):
 
 
 # Type alias for config union
-ScenarioConfigUnion = (
-    TransferScenarioConfig | ComplexityScenarioConfig | StabilityScenarioConfig
-)
+ScenarioConfigUnion = TransferScenarioConfig | ComplexityScenarioConfig | StabilityScenarioConfig
 
 
 def load_config_from_dict(

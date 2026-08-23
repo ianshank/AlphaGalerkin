@@ -313,6 +313,41 @@ class TestChessCastling:
             assert new_state.board[7, 4] == 0
             assert new_state.board[7, 7] == 0
 
+    def test_queenside_castling_execution(self, game: ChessGame) -> None:
+        """Verify queenside castling moves both king and rook."""
+        board = np.zeros((8, 8), dtype=np.int8)
+        board[7, 4] = Piece.KING * WHITE  # King on e1
+        board[7, 0] = Piece.ROOK * WHITE  # Rook on a1
+        board[0, 4] = Piece.KING * BLACK
+
+        state = GameState(
+            board=board,
+            current_player=WHITE,
+            move_number=10,
+            move_history=[],
+            metadata={
+                "castling_rights": {"K": False, "Q": True, "k": False, "q": False},
+                "en_passant_square": None,
+                "halfmove_clock": 0,
+                "position_history": [],
+                "board_history": [],
+            },
+        )
+
+        legal = game.get_legal_actions(state)
+        # Find castling move (king e1->c1)
+        castle_action = game.string_to_action("e1c1")
+        assert castle_action in legal, "queenside castling should be legal here"
+
+        new_state = game.apply_action(state, castle_action)
+        # King should be on c1 (7, 2)
+        assert new_state.board[7, 2] == Piece.KING * WHITE
+        # Rook should be on d1 (7, 3)
+        assert new_state.board[7, 3] == Piece.ROOK * WHITE
+        # Original squares should be empty
+        assert new_state.board[7, 4] == 0
+        assert new_state.board[7, 0] == 0
+
 
 class TestChessEnPassant:
     """Tests for en passant mechanics."""
@@ -388,6 +423,50 @@ class TestChessDrawRules:
         )
 
         assert game.is_terminal(state)
+
+    def test_threefold_repetition_terminates_game(self, game: ChessGame) -> None:
+        """Drive a real move sequence that repeats one position three times.
+
+        Both sides shuffle a knight out and back ("b1-c3-b1" / "b8-c6-b8"),
+        which returns the exact same board (plus unchanged castling rights
+        and en-passant square, since knights never trigger either) after
+        every 4-ply cycle. Three cycles produce three occurrences of that
+        position hash in ``position_history``, which must terminate the
+        game with ``reason="threefold_repetition"`` (chess.py:966-973).
+        """
+        board = np.zeros((8, 8), dtype=np.int8)
+        board[7, 4] = Piece.KING * WHITE  # White king e1
+        board[0, 4] = Piece.KING * BLACK  # Black king e8
+        board[7, 1] = Piece.KNIGHT * WHITE  # White knight b1
+        board[0, 1] = Piece.KNIGHT * BLACK  # Black knight b8
+
+        state = GameState(
+            board=board,
+            current_player=WHITE,
+            move_number=0,
+            move_history=[],
+            metadata={
+                "castling_rights": {"K": False, "Q": False, "k": False, "q": False},
+                "en_passant_square": None,
+                "halfmove_clock": 0,
+                "position_history": [],
+                "board_history": [],
+            },
+        )
+
+        assert not game.is_terminal(state)
+
+        shuffle = ["b1c3", "b8c6", "c3b1", "c6b8"]  # one full "out and back" cycle
+        for cycle in range(3):
+            for move_str in shuffle:
+                action = game.string_to_action(move_str, state)
+                assert action is not None, f"cycle {cycle}: {move_str} was not legal"
+                state = game.apply_action(state, action)
+
+        assert game.is_terminal(state)
+        result = game.get_result(state)
+        assert result.reason == "threefold_repetition"
+        assert result.winner == 0
 
 
 class TestChessTensorEncoding:

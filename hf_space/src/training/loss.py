@@ -139,9 +139,8 @@ class AlphaGalerkinLoss(nn.Module):
         if self.label_smoothing > 0:
             n_classes = target_policy.size(-1)
             smooth_target = (
-                (1.0 - self.label_smoothing) * target_policy
-                + self.label_smoothing / n_classes
-            )
+                1.0 - self.label_smoothing
+            ) * target_policy + self.label_smoothing / n_classes
             target_policy = smooth_target
 
         # Cross-entropy with soft targets: -sum(target * log_probs)
@@ -361,9 +360,7 @@ class EntropyRegularizer(nn.Module):
             log_probs = log_probs.clamp(min=-100.0)
 
             entropy = -(probs * log_probs).sum(dim=-1)
-            max_entropy = torch.log(
-                torch.tensor(n_actions, dtype=torch.float32, device=device)
-            )
+            max_entropy = torch.log(torch.tensor(n_actions, dtype=torch.float32, device=device))
 
         # Normalized entropy
         normalized_entropy = entropy / max_entropy.clamp(min=1e-8)

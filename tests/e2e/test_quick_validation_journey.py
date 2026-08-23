@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from tests.e2e.conftest import (
+    E2E_BENCHMARK_TIMEOUT_S,
+    E2E_TRAINING_TIMEOUT_S,
+    E2E_TRIVIAL_TIMEOUT_S,
+)
+
 if TYPE_CHECKING:
     from tests.e2e.conftest import CLIRunnerType
 
@@ -59,8 +65,17 @@ def test_train_physics_minimal(cli_runner: CLIRunnerType, temp_output_dir: Path)
             "5",
             "--eval-size",
             "7",
+            # Without these the run is NOT minimal: --train-size is the grid
+            # (5 -> 5x5), not the sample count, so this built the default 5000
+            # samples / 157 batches and needed ~1.7 h for its 2 epochs. It failed
+            # under every timeout because no timeout was ever the problem --
+            # `returncode in [0, 1]` cannot hold for a run that does not finish.
+            "--n-train-samples",
+            "16",
+            "--n-eval-samples",
+            "8",
         ],
-        timeout=120,
+        timeout=E2E_TRAINING_TIMEOUT_S,
     )
     # Training might fail due to minimal data, but should not crash
     assert result.returncode in [0, 1], f"Unexpected error: {result.stderr}"
@@ -87,7 +102,7 @@ def test_benchmark_fnet_small(cli_runner: CLIRunnerType, temp_output_dir: Path) 
             "--output-dir",
             str(temp_output_dir),
         ],
-        timeout=60,
+        timeout=E2E_BENCHMARK_TIMEOUT_S,
     )
     # Check for successful execution
     assert result.success, f"Benchmark failed: {result.stderr}"
@@ -99,7 +114,7 @@ def test_train_physics_invalid_args(cli_runner: CLIRunnerType) -> None:
     result = cli_runner(
         "src.experiments.train_physics",
         ["--invalid-nonexistent-arg"],
-        timeout=30,
+        timeout=E2E_TRIVIAL_TIMEOUT_S,
     )
     assert not result.success, "Should reject invalid arguments"
 

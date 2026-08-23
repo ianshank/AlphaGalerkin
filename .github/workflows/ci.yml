@@ -12,16 +12,31 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "feature/*", "claude/*"]
+    branches: [main, master, develop, "feature/*", "claude/*", "plan/*", "release/*"]
+  # No branches filter: the repo's default branch is not main/develop, so a
+  # [main, develop] filter silently disabled CI for every pull request.
   pull_request:
-    branches: [main, develop]
   schedule:
     - cron: '0 4 * * *'  # Run nightly at 4am UTC
   workflow_dispatch:
 
-# Cancel in-progress runs on new pushes to same branch
+# Cancel in-progress runs on new pushes to the same branch.
+#
+# Keyed on HEAD REPO + HEAD BRANCH, not github.ref, so that the push-triggered
+# run and the pull_request-triggered run for the same branch land in the same
+# group and dedupe. Without this, any branch matching the push globs above that
+# also has an open PR runs the entire pipeline twice per push (github.ref is
+# refs/heads/<branch> for push but refs/pull/<n>/merge for pull_request, so the
+# two never collided).
+#
+# The head-repo half is what keeps fork PRs independent: two different forks can
+# each have a branch named e.g. "feature/foo", and keying on the branch name
+# alone would let unrelated fork runs cancel each other. For a same-repo PR,
+# head.repo.full_name equals github.repository, so the push/PR dedup above still
+# collapses to one run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 
 # Least privilege: jobs only need to read the repository (no writes to contents,
@@ -34,8 +49,9 @@ env:
   PYTHONUNBUFFERED: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PIP_NO_WARN_SCRIPT_LOCATION: "1"
-  # Disable W&B for CI to avoid API key requirements
-  WANDB_MODE: disabled
+  # Langfuse credentials are intentionally unset in CI; the tracker
+  # degrades to a no-op when LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY
+  # are absent, so no API keys are required.
   # Set matplotlib to non-interactive backend
   MPLBACKEND: Agg
   # Reproducible builds
@@ -74,16 +90,56 @@ jobs:
           # Install minimal deps for type checking
           pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
-      # dashboard/ is included so CI matches .pre-commit-config.yaml, which runs ruff
-      # with no `files:` filter. Without it, dashboard code can be CI-green and still
-      # be rewritten by a contributor's commit hook. hf_space/ stays excluded: it is
-      # the deploy bundle, pinned to an older ruff/gradio, and an accepted charter
-      # deviation.
+      # Scope is exactly the complement of pre-commit's ruff `exclude:`
+      # (^(hf_space|notebooks|claude-code-platform)/) — i.e. every tracked *.py
+      # is linted by exactly one of the two, with no file lintable by the commit
+      # hook but invisible to CI. Verify after changing either side with:
+      #   git ls-files '*.py' | grep -vE '^(src/|tests/|dashboard/|scripts/|config/)' \
+      #     | grep -vE '^(conftest|deploy_space)\.py$' \
+      #     | grep -vE '^(hf_space|notebooks|claude-code-platform)/'
+      # (must print nothing). Without parity, code can be CI-green and still be
+      # rewritten or rejected by a contributor's commit hook. The three excluded
+      # trees are the HF deploy bundle (pinned to an older ruff/gradio, an
+      # accepted charter deviation), notebook helpers, and vendored platform code.
       - name: Run Ruff linting
-        run: ruff check src/ tests/ dashboard/ --output-format=github
+        run: ruff check src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --output-format=github
 
       - name: Run Ruff formatting check
-        run: ruff format src/ tests/ dashboard/ --check
+        run: ruff format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --check
+
+      # F0/F1 screen: an @abstractmethod that every subclass overrides but
+      # nothing ever *calls* is dead code — a docstring describing an algorithm
+      # that does not run. That is exactly how `PDEGame.get_reward` (F1) and
+      # `PDEGame.get_result` (B17) survived. The audit is AST-only (stdlib
+      # imports, no torch/numpy), so it runs in this job's minimal dep set.
+      #
+      # The three refinement roots are clean and gated hard. Every OTHER package
+      # is now gated too -- measured clean at the time this was tightened, so it
+      # costs nothing today and blocks the next dead abstraction instead of
+      # reporting it. `src/backend` alone stays advisory: its 7 unread
+      # `BackendInterface` protocol members are the documented domain-PoC
+      # backlog (docs/CODE_HYGIENE_AUDIT.md B10), tied to the open JAX
+      # keep-or-cut decision.
+      #
+      # Pass every root in ONE invocation. The audit resolves call sites within
+      # the union of the roots it is given, so scanning root-by-root is strictly
+      # stricter than scanning them together and would flag cross-package
+      # readers as missing -- e.g. `src/training` alone reports
+      # `BaseLoss.forward` (losses/base.py) unread, while the combined scan
+      # does not, because the reader lives outside that package. Do not "tighten"
+      # this by splitting it up.
+      - name: Audit abstractions (refinement surfaces)
+        run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+
+      - name: Audit abstractions (all packages except the src/backend backlog)
+        run: |
+          python -m scripts.audit_abstractions \
+            $(ls -d src/*/ | grep -v __pycache__ | grep -v 'src/backend/') \
+            --fail-on-missing
+
+      - name: Audit abstractions (src/backend, report-only)
+        continue-on-error: true
+        run: python -m scripts.audit_abstractions src/backend
 
       - name: Run MyPy type checking
         # Informational gate (continue-on-error). mypy --strict currently reports
@@ -131,6 +187,51 @@ jobs:
   # ============================================================
   # Stage 2: Unit Tests (Fast)
   # ============================================================
+  # .gitleaks.toml has existed since the repo was set up, and `make gitleaks`
+  # has existed alongside it -- but NOTHING ever invoked either. A secret
+  # scanner that never runs is worse than none: its presence in the tree reads
+  # as coverage.
+  #
+  # This is a JOB, not a step in test-fast, for two reasons found the hard way
+  # when it was a step:
+  #   1. test-fast is a 3-way python matrix, so the scan ran three times per
+  #      push -- redundant work and three copies of any failure.
+  #   2. actions/checkout defaults to fetch-depth 1. gitleaks-action does a
+  #      diff scan against the base commit, which a shallow clone does not
+  #      contain, so `git` failed with "Use '--' to separate paths from
+  #      revisions", the scan covered ~0 bytes, and it still logged "no leaks
+  #      found in partial scan" before exiting 1. A scanner reporting a clean
+  #      result over zero bytes is precisely the failure mode this branch keeps
+  #      correcting; `fetch-depth: 0` gives it the history it needs to scan
+  #      anything at all.
+  #
+  # Scope: the config allowlists all of tests/, docs/ and config/baselines/, so
+  # this covers src/, scripts/ and .github/ and deliberately not fixtures.
+  # Narrowing that allowlist is tracked separately -- widening the scan and
+  # wiring it in one change makes a first run's failures impossible to triage.
+  #
+  # NOT in `ci-success`'s needs list, deliberately and temporarily: this job has
+  # never completed a green run, and its first attempt failed for a harness
+  # reason rather than a finding. It reports now and blocks later -- promote it
+  # into the merge gate once it has been green across a few pushes. Leaving that
+  # unsaid would make its absence look like an oversight.
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   test-fast:
     name: Unit Tests (Fast)
     runs-on: ubuntu-latest
@@ -155,17 +256,69 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir -e ".[dev]" || pip install --no-cache-dir -e ".[dev]"
+          pip install -e ".[dev]" || pip install -e ".[dev]"
           # Safety-net: ensure core scientific/ML deps are present even if
           # the editable install partially failed (can happen with complex
           # dependency graphs on older pip resolvers).
           python -c "import einops, jaxtyping, gradio" 2>/dev/null || \
-            pip install --no-cache-dir "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
+            pip install "einops>=0.7.0" "jaxtyping>=0.2.25" "gradio>=6.0.0"
 
       - name: Show installed package versions
         run: |
           python -c "import sys; print('Python', sys.version)"
           pip list --format=columns | grep -E "gradio|anyio|pydantic|hypothesis|torch|numpy|scipy|Pillow|einops|jaxtyping|matplotlib"
+
+      # The .claude/ harness -- 9 skills, 5 subagents, 4 slash commands, a
+      # SessionStart hook and settings.json -- is executable configuration with
+      # no tests until now. A skill citing a deleted path, an agent declaring a
+      # tool that does not exist, or a permission naming a renamed module all
+      # fail at the moment someone relies on them. Hermetic and deterministic:
+      # no network, no model calls, ~0.25s.
+      - name: Validate .claude harness
+        run: |
+          pytest tests/claude/ \
+            --tb=short \
+            -q
+
+      # Explicit, named gate for the whole security suite. The broad
+      # "Run fast unit tests" step below does collect tests/security/, but only
+      # while every file there stays free of the slow/e2e markers it filters out,
+      # and a failure there is buried among ~9000 tests. Running the directory on
+      # its own keeps the signal legible and pins the suite in place: 69 tests,
+      # ~52s, no GPU, no network, no optional dependencies. (Measured 2026-08-21;
+      # the "33 tests, <1s" this replaced was written before rounds 3-4 more than
+      # doubled the suite, and was never re-measured. The count went 71 -> 69 when
+      # test_security_model.py was deleted: its three tests patched torch.load,
+      # called it in the test body, and asserted the mock recorded the arguments
+      # the test had just passed -- zero src imports, verified green in a
+      # directory containing no src/ at all.)
+      - name: Run security test suite
+        run: |
+          pytest tests/security/ \
+            -m "not gpu_required" \
+            --tb=short \
+            -q
+
+      # tests/demos/ and tests/notebooks/ are --ignore'd from the broad run below
+      # (they are slower than a unit test and would blur that step's signal), and
+      # until now they were named in NO other step -- so 226 tests, 151 + 75,
+      # never executed in CI at all. tests/demos was already flagged as a known
+      # gap in docs/CODE_HYGIENE_AUDIT.md; tests/notebooks was documented nowhere.
+      #
+      # Given their own step they cost ~2 min and keep the fast lane fast. Same
+      # shape as the security step above: a named directory, legible on failure.
+      #
+      # NOT included here: tests/e2e/. It has the same invisibility problem (11
+      # files on disk, one named in this workflow) but it is not currently safe
+      # to wire -- test_quick_validation_journey.py::test_train_physics_minimal
+      # shells out with a fixed 120 s timeout and fails on a loaded machine.
+      # Tracked separately; wiring it before that is fixed would buy a flaky gate.
+      - name: Run demo and notebook suites
+        run: |
+          pytest tests/demos/ tests/notebooks/ \
+            -m "not gpu_required" \
+            --tb=short \
+            -q
 
       - name: Run fast unit tests
         run: |
@@ -178,7 +331,6 @@ jobs:
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
             --ignore=tests/distributed/test_multiprocess.py \
-            --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
@@ -187,37 +339,26 @@ jobs:
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
             --deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
             --deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_device \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_torch_device \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
             -q 2>&1 | tee /tmp/pytest-output.txt; exit ${PIPESTATUS[0]}
 
       - name: Upload pytest output
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pytest-output-py${{ matrix.python-version }}
           path: /tmp/pytest-output.txt
           retention-days: 7
 
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-fast-py${{ matrix.python-version }}
-          path: |
-            .pytest_cache/
-          retention-days: 7
-
   # ============================================================
-  # Stage 3: Unit Tests (Slow) - Only on main/develop or explicit
+  # Stage 3: Unit Tests (Slow) - Only on the default branch, nightly, or explicit
   # ============================================================
   test-slow:
     name: Unit Tests (Slow)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: test-fast
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule'
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule'
 
     steps:
       - name: Checkout repository
@@ -279,7 +420,14 @@ jobs:
   coverage:
     name: Test Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30: this job runs the whole test sweep under the pure-Python
+    # tracer plus ~20 per-module gates, and measured 24m08s on a GitHub runner
+    # after the Noyron/SBIR gates were added -- 80% of a 30-minute cap, close
+    # enough that one slow runner turns a green build red. Note several gate
+    # steps re-run files the sweep already covered; collapsing that duplication
+    # (so each file is measured once) is the real fix and is tracked in
+    # docs/CODE_HYGIENE_AUDIT.md §7.7.
+    timeout-minutes: 45
     needs: lint
     # The installed torch wheel crashes coverage's default C tracer on import
     # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
@@ -313,7 +461,6 @@ jobs:
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
             --ignore=tests/distributed/test_multiprocess.py \
-            --ignore=tests/pde/test_mcts_adapter.py \
             --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
             --deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
@@ -322,8 +469,6 @@ jobs:
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
             --deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
             --deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_device \
-            --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_sequential_fallback_cuda_torch_device \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
             --cov=src \
             --cov-report=xml \
@@ -411,15 +556,38 @@ jobs:
         run: |
           pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85 -q --no-header
 
+      # CAUTION: never mix file-path --cov=path/to/module.py specs into a
+      # pytest-cov invocation. Under coverage 7.x / pytest-cov 7.x, file-path
+      # specs are silently dropped (only a CoverageWarning, slug
+      # module-not-imported), so the gate
+      # passes on the remaining directory spec alone. This gate previously
+      # carried two file specs that enforced nothing; they now run below as a
+      # separate native-runner step (path-glob --include), the same pattern as
+      # the scaling_law/agents/transfer/stochastic gates.
       - name: Per-module coverage gate (integrations/lm_studio)
         if: always() && hashFiles('tests/integrations/') != ''
         run: |
           pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
             tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" \
             --cov=src/integrations/lm_studio \
-            --cov=src/poc/scenarios/llm_prior_ablation.py \
-            --cov=src/poc/scenarios/llm_prior_config.py \
             --cov-branch --cov-fail-under=85 -q --no-header
+
+      # Gated at 79, not 85: with the file specs silently dropped, this surface
+      # decayed unenforced — measured today at 81 combined branch
+      # (llm_prior_ablation.py 77, llm_prior_config.py 100) vs the documented 86,
+      # which is not reproducible under branch measurement with the documented
+      # test selection. 79 = measured − 2. Ratcheting back toward 85+ is tracked
+      # in docs/CODE_HYGIENE_AUDIT.md.
+      - name: Per-module coverage gate (poc/llm_prior scenario modules)
+        if: always() && hashFiles('tests/poc/test_llm_prior_ablation_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/llm_prior_ablation.py,*/src/poc/scenarios/llm_prior_config.py" \
+            -m pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
+            tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/llm_prior_ablation.py,*/src/poc/scenarios/llm_prior_config.py" \
+            --fail-under=79
 
       - name: Per-module coverage gate (integrations/openai_compat)
         if: always() && hashFiles('tests/integrations/test_backend_registry.py') != ''
@@ -492,6 +660,175 @@ jobs:
             --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
             --fail-under=85
 
+      # The three gates below were documented in CLAUDE.md's Regression Surface
+      # table but never wired into CI (phantom gates, audit backlog B20). All use
+      # the native runner: their documented commands carry file-path or dotted
+      # --cov specs, both of which fail under the installed coverage stack (see
+      # the CAUTION note on the lm_studio gate and the torch-collision note above).
+      - name: Per-module coverage gate (noyron_basis v2.2)
+        if: always() && hashFiles('tests/poc/test_noyron_basis_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/noyron_basis.py,*/src/poc/scenarios/noyron_basis_config.py" \
+            -m pytest tests/poc/test_noyron_basis_config.py \
+            tests/poc/test_noyron_basis_scenario.py -m "not gpu_required" -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/noyron_basis.py,*/src/poc/scenarios/noyron_basis_config.py" \
+            --fail-under=85
+
+      - name: Per-module coverage gate (Noyron HX surface)
+        if: always() && hashFiles('tests/poc/test_noyron_hx_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/pde/sdf.py,*/src/pde/geometry_picogk.py,*/src/poc/scenarios/noyron_hx.py,*/src/poc/config_noyron.py" \
+            -m pytest tests/pde/test_sdf.py tests/pde/test_picogk_domain.py \
+            tests/poc/test_noyron_hx_scenario.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/pde/sdf.py,*/src/pde/geometry_picogk.py,*/src/poc/scenarios/noyron_hx.py,*/src/poc/config_noyron.py" \
+            --fail-under=85
+
+      - name: Per-module coverage gate (SBIR P40 surface)
+        if: always() && hashFiles('tests/scripts/test_run_sbir_p40.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
+            -m pytest tests/research/test_baselines.py tests/research/test_pinn_device.py \
+            tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py \
+            tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py \
+            tests/scripts/test_run_sbir_p40.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
+            --fail-under=85
+
+      # Phase-2c (B20 close-out, docs/CODE_HYGIENE_AUDIT.md §7.4): six packages
+      # that previously rode only the global 85% gate. Each threshold is
+      # floor(measured branch %) - 2, capped at 85 on first landing, per the
+      # add-coverage-gate skill. Measured 2026-08-15:
+      #   agents 95.42 -> 85 (capped) | tools 91.86 -> 89 | experiments 89.76 -> 87
+      #   curriculum 89.06 -> 87 | engines 84.26 -> 82 | data 79.81 -> 77
+      - name: Per-module coverage gate (agents)
+        if: always() && hashFiles('tests/agents/') != ''
+        run: |
+          pytest tests/agents/ --cov=src/agents --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (tools)
+        if: always() && hashFiles('tests/tools/') != ''
+        run: |
+          pytest tests/tools/ --cov=src/tools --cov-branch --cov-fail-under=89 -q --no-header
+
+      - name: Per-module coverage gate (experiments)
+        if: always() && hashFiles('tests/experiments/') != ''
+        run: |
+          pytest tests/experiments/ --cov=src/experiments --cov-branch --cov-fail-under=87 -q --no-header
+
+      - name: Per-module coverage gate (curriculum)
+        if: always() && hashFiles('tests/curriculum/') != ''
+        run: |
+          pytest tests/curriculum/ --cov=src/curriculum --cov-branch --cov-fail-under=87 -q --no-header
+
+      - name: Per-module coverage gate (engines)
+        if: always() && hashFiles('tests/engines/') != ''
+        run: |
+          pytest tests/engines/ --cov=src/engines --cov-branch --cov-fail-under=82 -q --no-header
+
+      # Raised 77 -> 85 (2026-08-21). The 77 was set against a documented 79.81%
+      # whose stated drag was physics_dataset.py at 23%; that file now measures
+      # 100% and the package measures 97.83%, so 77 had 20 points of slack and
+      # would not have caught a large regression.
+      - name: Per-module coverage gate (data)
+        if: always() && hashFiles('tests/data/') != ''
+        run: |
+          pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=85 -q --no-header
+
+      # Five packages that had no gate at all. Measured 2026-08-21 with
+      # COVERAGE_CORE=pytrace (mandatory -- the installed torch wheel crashes
+      # coverage's default C tracer and the failure is silent UNDER-measurement,
+      # so a gate set without it is simply wrong). --cov-branch is redundant with
+      # pyproject.toml's `[tool.coverage.run] branch = true` and is kept only for
+      # symmetry with the gates above.
+      #
+      # Gated at floor(measured)-2 capped at 85, the convention documented on the
+      # src/agents row in CLAUDE.md. The cap is deliberate for a NEW gate: its job
+      # is to stop a package falling below the repo's global standard, not to
+      # freeze it at today's number, where an unrelated change would ratchet it
+      # red. (src/tools at 89 is the standing exception, not the rule.)
+      #
+      #   src/poc          89.57%  -> 85   (4011 stmts, the largest ungated surface;
+      #                                     its seven per-file gates cover 17 of 41
+      #                                     files -- runner.py, cli.py, results.py and
+      #                                     scenarios/transfer.py at 25% had none)
+      #   src/analysis     91.08%  -> 85
+      #   src/tournament   92.91%  -> 85
+      #   src/prototyping  93.16%  -> 85
+      #   src/demos        83.28%  -> 81   (below the cap, so floor(measured)-2 applies)
+      - name: Per-module coverage gate (poc)
+        if: always() && hashFiles('tests/poc/') != ''
+        run: |
+          pytest tests/poc/ -m "not gpu_required" \
+            --cov=src/poc --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (analysis)
+        if: always() && hashFiles('tests/analysis/') != ''
+        run: |
+          pytest tests/analysis/ --cov=src/analysis --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (tournament)
+        if: always() && hashFiles('tests/tournament/') != ''
+        run: |
+          pytest tests/tournament/ --cov=src/tournament --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (prototyping)
+        if: always() && hashFiles('tests/prototyping/') != ''
+        run: |
+          pytest tests/prototyping/ --cov=src/prototyping --cov-branch --cov-fail-under=85 -q --no-header
+
+      # src/demos hits the same pyproject.toml `[tool.coverage.run] omit` collision
+      # that src/video_compression needed a workaround for: a bare --cov=src/demos
+      # reports 0.00% with `CoverageWarning: No data was collected`, which is the
+      # false-pass failure mode a gate must not have. Same inline-coveragerc
+      # technique, dropping the omit for this step only.
+      - name: Per-module coverage gate (demos)
+        if: always() && hashFiles('tests/demos/') != ''
+        run: |
+          cat > .coveragerc.demos <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/demos/ \
+            --cov=src/demos --cov-config=.coveragerc.demos \
+            --cov-branch --cov-fail-under=81 -q --no-header
+
+      # src/video_compression is globally omitted from the whole-repo --cov=src
+      # gate above (`[tool.coverage.run] omit` in pyproject.toml) -- that omit
+      # predates this package's current active status in the charter's scope
+      # register (openspec/specs/project-charter/spec.md lists it under domain
+      # "video") and was never revisited. A `--cov=src/video_compression` run
+      # under the unmodified repo config would silently measure 0% ("Module
+      # src/video_compression was never imported"), which is exactly the
+      # false-pass failure mode a coverage gate must not have. The
+      # inline-generated coveragerc override below is the same technique
+      # .github/workflows/phase2-zoo-validation.yml already uses to solve the
+      # identical collision for src/video_compression/zoo/ alone: it drops the
+      # omit for this step only, leaving pyproject.toml and the global gate's
+      # measured percentage untouched. Measured branch coverage 85.43%;
+      # gated at 83 (floor(measured)-2).
+      - name: Per-module coverage gate (video_compression)
+        if: always() && hashFiles('tests/video_compression/') != ''
+        run: |
+          cat > .coveragerc.video-compression <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/video_compression/ -m "not gpu_required" \
+            --cov=src/video_compression --cov-config=.coveragerc.video-compression \
+            --cov-branch --cov-fail-under=83 -q --no-header
+
       # dashboard/ lives outside src/, so the --cov=src run above measures none of it
       # even though the blanket `pytest tests/` executes its 214 tests. Gated at 84
       # against a measured 84.85%: tabs/game_tab.py sits at 53% because _ensure_loaded
@@ -506,7 +843,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
           flags: unittests
@@ -517,7 +854,7 @@ jobs:
 
       - name: Upload coverage report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: htmlcov/
@@ -561,7 +898,7 @@ jobs:
             -q
 
   # ============================================================
-  # Stage 8: Chess Pipeline Tests
+  # Stage 7: Chess Pipeline Tests
   # ============================================================
   test-chess:
     name: Chess Pipeline Tests
@@ -629,7 +966,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,test-extras]"
+          # eval-harness included for the same reason as test-extras: without it
+          # 8 of the 11 modules under tests/integrations/eval_harness/ skip at
+          # import, masking ~900 LOC as "passing". This job exists to stop
+          # exactly that.
+          pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
       - name: Run FEM baseline + PettingZoo suites
@@ -649,38 +990,6 @@ jobs:
           pytest tests/deployment/test_export_onnx_integration.py \
             tests/integration/test_onnx_e2e.py \
             --tb=short -q
-
-  # ============================================================
-  # Performance Benchmark
-  # ============================================================
-  benchmark:
-    name: Performance Benchmark
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: test-fast
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: "pip"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
-      - name: Run performance benchmarks
-        run: |
-          pytest tests/ -m "benchmark" --tb=short -q || true
-      - name: Upload benchmark results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results
-          path: benchmark_results/
-          retention-days: 30
 
   # ============================================================
   # Honest zero-shot transfer regression tripwire
@@ -722,7 +1031,7 @@ jobs:
             --output-dir outputs/transfer_ci --log-level WARNING
       - name: Upload transfer benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: transfer-baseline-results
           path: results/transfer_baseline_compare.*
@@ -735,7 +1044,13 @@ jobs:
     name: CI Success
     runs-on: ubuntu-latest
     needs: [lint, test-fast, coverage, transfer-baseline-regression]
-    if: always()
+    # !cancelled() rather than always(): a run superseded by the concurrency
+    # group (push + pull_request for the same branch, or a newer push) has its
+    # needed jobs cancelled, and under always() this job would still execute,
+    # see result=cancelled, and report a spurious red X for a run nobody was
+    # waiting on. Skipping on cancellation keeps the aggregate gate honest while
+    # still running -- and failing -- whenever a needed job genuinely fails.
+    if: ${{ !cancelled() }}
 
     steps:
       - name: Check required jobs passed

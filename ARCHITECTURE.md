@@ -92,9 +92,14 @@ code not on the production import path.
 | `src/experiments/` | pde | experimental | Physics PoC experiments (Poisson supervised training, zero-shot transfer, FNet benchmark, CNN baseline). |
 | `src/demos/` | shared | experimental | Interactive demos for the HF Space. |
 | `src/prototyping/` | shared | experimental | Fast-prototyping utilities — **not** imported by core production paths (only its own tests + `hf_space/`). |
+| `src/core/` | shared | core | Cross-cutting protocols (`Evaluator`, `GameInterface`) and component registry. |
+| `src/video_compression/` | video | experimental | Learned video codec: MCTS rate-control, hyperprior entropy model, encoder/decoder, RD-curve analysis, ONNX/TensorRT runtime. |
 <!-- package-map:end -->
 
-Plus `src/constants.py` (centralized numerical constants) and `src/__init__.py`.
+Plus three root-level modules: `src/constants.py` (centralized numerical constants),
+`src/seeding.py` (global RNG seeding + deterministic multi-seed derivation), and
+`src/__init__.py`. These are deliberately plain modules rather than packages so they stay
+out of the drift-guarded package map above, which enumerates `src/*/__init__.py`.
 
 ## Layering (dependency direction)
 

@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
 from src.training.callbacks import CallbackSpec
 
 
@@ -110,12 +111,28 @@ class MCTSConfig(BaseModel):
     """Configuration for Monte Carlo Tree Search."""
 
     # Search parameters
-    n_simulations: int = Field(default=800, description="Number of MCTS simulations per move. AlphaZero uses 800 for competition play. Lower values (200-400) for training speed.")
-    c_puct: float = Field(default=1.5, description="PUCT exploration constant (AlphaZero default=1.5). Higher values encourage exploration. See Silver et al. 2017, Appendix A.")
+    n_simulations: int = Field(
+        default=800,
+        description="Number of MCTS simulations per move. AlphaZero uses 800 for "
+        "competition play. Lower values (200-400) for training speed.",
+    )
+    c_puct: float = Field(
+        default=1.5,
+        description="PUCT exploration constant (AlphaZero default=1.5). Higher values "
+        "encourage exploration. See Silver et al. 2017, Appendix A.",
+    )
 
     # Dirichlet noise for root exploration
-    dirichlet_alpha: float = Field(default=0.03, description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for Chess. Inversely proportional to approximate game branching factor.")
-    dirichlet_epsilon: float = Field(default=0.25, description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls exploration vs exploitation at root node.")
+    dirichlet_alpha: float = Field(
+        default=0.03,
+        description="Dirichlet noise concentration parameter. 0.03 for Go (19x19), 0.3 for "
+        "Chess. Inversely proportional to approximate game branching factor.",
+    )
+    dirichlet_epsilon: float = Field(
+        default=0.25,
+        description="Dirichlet noise mixing weight at root. AlphaZero uses 0.25. Controls "
+        "exploration vs exploitation at root node.",
+    )
 
     # Temperature for move selection
     temperature: float = Field(default=1.0, description="Temperature for move selection")
@@ -145,10 +162,46 @@ class TrainingConfig(BaseModel):
     )
     warmup_steps: int = Field(default=1000, description="Number of warmup steps")
     total_steps: int = Field(default=100000, description="Total training steps")
+    min_lr_ratio: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Ratio of minimum LR to peak LR for cosine/linear schedules. "
+            "Default 0.1 preserves the value Trainer historically hardcoded; "
+            "the conservative BaseTrainer default is 0.01 "
+            "(src/training/base_trainer.py::DEFAULT_MIN_LR_RATIO)."
+        ),
+    )
+    warmup_start_factor: float = Field(
+        default=0.1,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Starting LR factor for warmup (lr * factor at step 0). "
+            "Default 0.1 preserves the value Trainer historically hardcoded; "
+            "the conservative BaseTrainer default is 1e-6 "
+            "(src/training/base_trainer.py::DEFAULT_WARMUP_START_FACTOR)."
+        ),
+    )
 
     # Self-play
     n_self_play_games: int = Field(default=100, description="Self-play games per iteration")
     replay_buffer_size: int = Field(default=500000, description="Replay buffer capacity")
+    max_buffer_fill_iterations: int = Field(
+        default=50,
+        ge=1,
+        description=(
+            "Maximum number of self-play generation calls "
+            "Trainer._fill_buffer will make while trying to reach the "
+            "minimum buffer size before training starts. Guards against an "
+            "infinite loop if generate_experiences() ever yields zero (or "
+            "too few) usable experiences per call -- e.g. a game-length or "
+            "self-play configuration bug -- by raising "
+            "src.training.trainer.BufferFillError once the cap is exceeded "
+            "instead of hot-looping self-play MCTS generation forever."
+        ),
+    )
 
     # Loss weights
     policy_loss_weight: float = Field(default=1.0, description="Weight for policy loss")
@@ -415,39 +468,30 @@ class DistributedConfig(BaseModel):
     )
 
 
-class WandbConfig(BaseModel):
-    """Configuration for Weights & Biases logging.
+class LangfuseConfig(BaseModel):
+    """Configuration for Langfuse experiment tracking.
 
-    This is the single source of truth for W&B configuration.
-    The WandbLogger accepts this configuration via model_dump().
+    Single source of truth for the Langfuse tracker config; consumed via
+    ``model_dump()`` by ``src.training.langfuse_tracker.create_tracker``.
+    Credentials are sourced from the environment (``LANGFUSE_PUBLIC_KEY`` /
+    ``LANGFUSE_SECRET_KEY`` / ``LANGFUSE_HOST``), never stored here. The tracker
+    degrades to a no-op when credentials are absent.
     """
 
-    # Core settings
-    enabled: bool = Field(default=True, description="Enable W&B logging")
-    project: str = Field(default="alphagalerkin", description="W&B project name")
-    entity: str | None = Field(default=None, description="W&B team/user entity")
-    name: str | None = Field(default=None, description="Run name (auto-generated if None)")
-    tags: list[str] = Field(default_factory=list, description="Tags for the run")
-    notes: str | None = Field(default=None, description="Notes for the run")
-    group: str | None = Field(default=None, description="Group for organizing runs")
-    job_type: str = Field(default="train", description="Job type (train, eval, etc.)")
-
-    # Mode settings
-    mode: Literal["online", "offline", "disabled"] = Field(default="online", description="W&B mode")
-
-    # Logging settings
-    log_model: bool = Field(default=True, description="Log model checkpoints as artifacts")
-    log_gradients: bool = Field(default=False, description="Log gradient histograms")
-    log_code: bool = Field(default=True, description="Log source code")
+    enabled: bool = Field(default=True, description="Enable Langfuse tracking")
+    project: str = Field(default="alphagalerkin", description="Langfuse project name")
+    run_name: str | None = Field(default=None, description="Run/trace name (auto if None)")
+    session_name: str | None = Field(
+        default=None, description="Langfuse session id grouping related runs"
+    )
+    tags: list[str] = Field(default_factory=list, description="Tags for the run trace")
+    host: str | None = Field(
+        default=None, description="Langfuse host URL (falls back to LANGFUSE_HOST env)"
+    )
+    log_model: bool = Field(
+        default=True, description="Record checkpoint references as trace events (no upload)"
+    )
     log_interval: int = Field(default=10, description="Steps between metric logging")
-
-    # Model watching
-    watch_model: bool = Field(default=False, description="Use wandb.watch() on model")
-    watch_log_freq: int = Field(default=100, description="Frequency for gradient logging")
-
-    # Resume configuration (for resuming W&B runs)
-    resume_id: str | None = Field(default=None, description="W&B run ID to resume")
-    resume_mode: str = Field(default="allow", description="Resume mode: 'allow', 'must', 'never'")
 
 
 class AlphaGalerkinConfig(BaseModel):
@@ -458,7 +502,7 @@ class AlphaGalerkinConfig(BaseModel):
     operator: OperatorConfig = Field(default_factory=OperatorConfig)
     mcts: MCTSConfig = Field(default_factory=MCTSConfig)
     training: TrainingConfig = Field(default_factory=TrainingConfig)
-    wandb: WandbConfig = Field(default_factory=WandbConfig)
+    langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
     distributed: DistributedConfig = Field(default_factory=DistributedConfig)
 
     # Experiment tracking
@@ -476,7 +520,7 @@ class AlphaGalerkinConfig(BaseModel):
     checkpoint_dir: str = Field(default="checkpoints", description="Directory for checkpoints")
     log_interval: int = Field(default=100, description="Steps between console logging")
     board_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Board sizes to train on (resolution-independent)",
     )
 

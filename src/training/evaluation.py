@@ -423,7 +423,7 @@ class Evaluator:
             Tuple of (outcome, num_moves).
 
         """
-        assert self.game is not None  # noqa: S101
+        assert self.game is not None
 
         state = self.game.initial_state()
 

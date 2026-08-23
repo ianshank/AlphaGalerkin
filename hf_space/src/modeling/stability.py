@@ -288,7 +288,7 @@ class StableGalerkinInitializer:
         nn.init.orthogonal_(weight)
 
         # Scale to target variance
-        scale = 1.0 / (d_key ** 0.5)
+        scale = 1.0 / (d_key**0.5)
         weight.data.mul_(scale)
 
     def verify_and_adjust(

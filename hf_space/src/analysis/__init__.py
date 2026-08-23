@@ -14,10 +14,10 @@ from src.analysis.config import (
     AnalysisMode,
     AnnotationLevel,
 )
-from src.analysis.evaluator import PositionEvaluator, EvaluationResult
-from src.analysis.reviewer import GameReviewer, MoveAnalysis, GameAnalysis
+from src.analysis.evaluator import EvaluationResult, PositionEvaluator
+from src.analysis.patterns import PatternLibrary, PatternMatcher
+from src.analysis.reviewer import GameAnalysis, GameReviewer, MoveAnalysis
 from src.analysis.statistics import GameStatistics, StatisticsCollector
-from src.analysis.patterns import PatternMatcher, PatternLibrary
 
 __all__ = [
     # Configuration

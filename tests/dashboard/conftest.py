@@ -26,15 +26,10 @@ sys.path.insert(1, HF_SPACE_STR)
 # Use non-interactive backend for all matplotlib calls in tests
 matplotlib.use("Agg")
 
-
-# ---------------------------------------------------------------------------
-# Pytest markers
-# ---------------------------------------------------------------------------
-
-
-def pytest_configure(config: pytest.Config) -> None:
-    """Register dashboard-specific markers."""
-    config.addinivalue_line("markers", "dashboard: dashboard UI tests")
+try:
+    import gradio as _gr  # noqa: F401
+except (ImportError, Exception):
+    collect_ignore_glob = ["test_*.py"]
 
 
 # ---------------------------------------------------------------------------

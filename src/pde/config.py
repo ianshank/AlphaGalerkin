@@ -17,7 +17,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 
 from src.pde.geometry import GeometryConfig
 from src.templates.config import BaseModuleConfig, MetricDefinition, ThresholdOperator
@@ -138,13 +138,6 @@ class PDEConfig(BaseModuleConfig):
         gt=0.0,
         description="End time for time-dependent PDEs",
     )
-
-    @field_validator("domain_min", "domain_max", "advection_coeff")
-    @classmethod
-    def validate_list_length(cls, v: list[float], info) -> list[float]:
-        """Ensure lists have consistent length."""
-        # Note: Full validation requires cross-field check in model_validator
-        return v
 
     @model_validator(mode="after")
     def validate_domain(self) -> PDEConfig:
@@ -303,6 +296,24 @@ class MeshRefinementConfig(BaseModuleConfig):
         le=20,
         description="Maximum refinement level per element",
     )
+    hp_switchover_level: int = Field(
+        default=2,
+        ge=0,
+        le=20,
+        description=(
+            "Refinement level threshold for HP_REFINEMENT's h-vs-p choice: "
+            "elements below this level are h-refined (subdivided); at or "
+            "above it they are p-refined (polynomial degree increased) "
+            "instead. Under HP_REFINEMENT it must be strictly less than "
+            "max_refinement_level, otherwise no element ever reaches the "
+            "p-refinement branch (cross-checked in validate_mesh_config). "
+            "Inert under H_REFINEMENT/P_REFINEMENT, which never read it; for "
+            "those strategies the standalone le=20 bound above is the only "
+            "guard, keeping the field inside the same range as its sibling "
+            "max_refinement_level so a strategy switch cannot smuggle in an "
+            "out-of-range value."
+        ),
+    )
 
     # Polynomial degree (for p-refinement)
     initial_polynomial_degree: int = Field(
@@ -356,6 +367,35 @@ class MeshRefinementConfig(BaseModuleConfig):
             raise ValueError(
                 f"initial_polynomial_degree ({self.initial_polynomial_degree}) > "
                 f"max_polynomial_degree ({self.max_polynomial_degree})"
+            )
+        # Gated on HP_REFINEMENT because `hp_switchover_level` is read at exactly
+        # one site -- the HP_REFINEMENT branch of `Mesh.refine_element` -- and is
+        # inert under H_REFINEMENT/P_REFINEMENT, which dispatch on the strategy
+        # before ever consulting it. Applying the cross-check unconditionally
+        # rejected legitimate shallow-budget configs (e.g.
+        # `MeshRefinementConfig(name="smoke", max_refinement_level=2)`, a fast
+        # smoke test on the default h-strategy) for a p-branch they never reach,
+        # despite `max_refinement_level` advertising `ge=1`.
+        #
+        # Deliberately `>=`, unlike the two `>` checks above: equality is itself
+        # degenerate here, not merely the boundary of a valid range. Elements are
+        # h-refined while `level < hp_switchover_level` and p-refined at or above
+        # it (Mesh.refine_element), but refinement stops entirely once
+        # `level >= max_refinement_level` (MeshRefinementGame._refine_eligible),
+        # so the p-branch is only reachable on the level window
+        # [hp_switchover_level, max_refinement_level - 1] -- empty at `==`.
+        if (
+            self.refinement_strategy == RefinementStrategy.HP_REFINEMENT
+            and self.hp_switchover_level >= self.max_refinement_level
+        ):
+            raise ValueError(
+                f"hp_switchover_level ({self.hp_switchover_level}) >= "
+                f"max_refinement_level ({self.max_refinement_level}): the "
+                f"p-refinement branch of HP_REFINEMENT would be unreachable "
+                f"(it applies only on levels [{self.hp_switchover_level}, "
+                f"{self.max_refinement_level - 1}], which is empty), silently "
+                f"degenerating hp-refinement into pure h-refinement. Use "
+                f"hp_switchover_level < max_refinement_level"
             )
         return self
 
@@ -415,10 +455,6 @@ class PDEGameConfig(BaseModuleConfig):
         gt=0.0,
         lt=1.0,
         description="Target error tolerance",
-    )
-    error_metric: Literal["l2", "h1", "linf", "residual"] = Field(
-        default="l2",
-        description="Error metric for evaluation",
     )
 
     # Reward shaping

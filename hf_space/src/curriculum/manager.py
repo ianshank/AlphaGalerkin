@@ -8,10 +8,11 @@ Provides:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -78,6 +79,7 @@ class CurriculumManager:
             model_zoo: Optional model zoo for opponent selection.
             checkpoint_dir: Directory for curriculum checkpoints.
             logger: Optional structured logger.
+
         """
         self.config = config or create_default_curriculum()
         self._model_zoo = model_zoo
@@ -158,6 +160,7 @@ class CurriculumManager:
 
         Returns:
             True if stage transition occurred.
+
         """
         if not self._started:
             raise RuntimeError("Curriculum not started. Call start() first.")
@@ -216,6 +219,7 @@ class CurriculumManager:
 
         Args:
             stage: Completed stage.
+
         """
         # Save checkpoint if configured
         if self.config.checkpoint_on_stage_complete and self._checkpoint_dir:
@@ -229,7 +233,9 @@ class CurriculumManager:
                 version=self._model_zoo.get_latest_version() or 0,
                 metrics={
                     f"curriculum_stage_{stage.config.name}_win_rate": stage.metrics.win_rate,
-                    f"curriculum_stage_{stage.config.name}_games": float(stage.metrics.games_played),
+                    f"curriculum_stage_{stage.config.name}_games": float(
+                        stage.metrics.games_played
+                    ),
                 },
             )
 
@@ -238,6 +244,7 @@ class CurriculumManager:
 
         Args:
             stage: Started stage.
+
         """
         self._logger.info(
             "new_stage_started",
@@ -250,6 +257,7 @@ class CurriculumManager:
 
         Returns:
             Tuple of (state_dict, metadata) or None.
+
         """
         if self._model_zoo is None:
             return None
@@ -270,6 +278,7 @@ class CurriculumManager:
 
         Returns:
             Dictionary of adjusted parameters.
+
         """
         return self._scheduler.get_training_params(
             base_learning_rate,
@@ -282,6 +291,7 @@ class CurriculumManager:
 
         Returns:
             CurriculumMetrics object.
+
         """
         stage = self._scheduler.current_stage
         summary = self._scheduler.get_summary()
@@ -320,6 +330,7 @@ class CurriculumManager:
 
         Returns:
             Path to saved checkpoint.
+
         """
         if path is None:
             if self._checkpoint_dir is None:
@@ -335,6 +346,7 @@ class CurriculumManager:
 
         Args:
             path: Path to checkpoint file.
+
         """
         self._scheduler.load_state(path)
         self._started = True
@@ -350,6 +362,7 @@ class CurriculumManager:
 
         Args:
             callback: Function to call when curriculum completes.
+
         """
         self._on_curriculum_complete.append(callback)
 
@@ -358,6 +371,7 @@ class CurriculumManager:
 
         Returns:
             True if advancement occurred.
+
         """
         return self._scheduler.force_advance()
 
@@ -369,6 +383,7 @@ class CurriculumManager:
 
         Returns:
             True if skip was successful.
+
         """
         for stage_config in self.config.stages:
             if stage_config.board_size == board_size:
@@ -380,6 +395,7 @@ class CurriculumManager:
 
         Returns:
             Dictionary with full curriculum status.
+
         """
         summary = self._scheduler.get_summary()
         summary["is_started"] = self._started
@@ -408,6 +424,7 @@ def create_curriculum_manager(
 
     Returns:
         Configured CurriculumManager.
+
     """
     config = create_default_curriculum(
         name=name,

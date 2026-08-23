@@ -27,12 +27,25 @@ import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import StepLR
 
-from src.distributed.config import DistributedBackend, DistributedInfraConfig
+from src.distributed.config import (
+    SAFE_DISTRIBUTED_GLOBALS,
+    DistributedBackend,
+    DistributedInfraConfig,
+)
 from src.distributed.gradient_sync import GradientAccumulator
 from src.distributed.trainer import DistributedMetrics, DistributedTrainer
+from src.training.checkpoint import load_torch_checkpoint
 
-# Allow DistributedBackend enum to be deserialized with weights_only=True
-torch.serialization.add_safe_globals([DistributedBackend])
+# NO module-level ``add_safe_globals`` here, deliberately. Until 2026-08-21 this
+# file registered ``DistributedBackend`` process-wide at import, which kept the
+# suite green while ``DistributedTrainer.load_checkpoint`` was in fact unable to
+# read a checkpoint it had just written. A test-only registration that hides a
+# production failure is worse than no test: the loader now allowlists the enum
+# itself via ``SAFE_DISTRIBUTED_GLOBALS``, and re-adding a global registration
+# here would re-mask any future regression. The tests that inspect a saved
+# checkpoint directly go through ``load_torch_checkpoint`` with the same
+# allowlist the production loader uses, so they exercise the real path
+# instead of a hand-rolled one that can drift from it.
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -236,7 +249,8 @@ class TestDistributedTrainerInit:
         assert trainer.global_step == 0
         assert not trainer._is_initialized
 
-    def test_setup_device_returns_cpu_when_no_cuda(self) -> None:
+    @patch("torch.cuda.is_available", return_value=False)
+    def test_setup_device_returns_cpu_when_no_cuda(self, _mock_cuda) -> None:
         """_setup_device returns CPU device when CUDA is unavailable."""
         trainer = _make_trainer()
         assert trainer.device == torch.device("cpu")
@@ -287,7 +301,8 @@ class TestDistributedTrainerInit:
         trainer = _make_trainer(model=model, optimizer=optimizer, scheduler=scheduler)
         assert trainer.scheduler is scheduler
 
-    def test_amp_disabled_on_cpu(self) -> None:
+    @patch("torch.cuda.is_available", return_value=False)
+    def test_amp_disabled_on_cpu(self, _mock_cuda) -> None:
         """AMP is disabled even if config says use_amp=True when device is CPU."""
         dist_config = _make_distributed_config(use_amp=True)
         trainer = _make_trainer(distributed_config=dist_config)
@@ -336,7 +351,7 @@ class TestDistributedTrainerCheckpoint:
         ckpt_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(ckpt_path, metrics={"test": True})
 
-        checkpoint = torch.load(ckpt_path, weights_only=True)
+        checkpoint = load_torch_checkpoint(ckpt_path, extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS)
         assert "model_state_dict" in checkpoint
         assert "optimizer_state_dict" in checkpoint
         assert "step" in checkpoint
@@ -352,7 +367,7 @@ class TestDistributedTrainerCheckpoint:
         ckpt_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(ckpt_path)
 
-        checkpoint = torch.load(ckpt_path, weights_only=True)
+        checkpoint = load_torch_checkpoint(ckpt_path, extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS)
         assert "scheduler_state_dict" in checkpoint
 
     def test_load_checkpoint_restores_state(self, tmp_path: Path) -> None:
@@ -567,7 +582,7 @@ def _checkpoint_coordination_worker(
         torch.distributed.barrier()
 
         if rank == 1:
-            loaded = torch.load(ckpt_path, weights_only=True)
+            loaded = load_torch_checkpoint(ckpt_path, extra_safe_globals=SAFE_DISTRIBUTED_GLOBALS)
 
             # Verify step
             assert loaded["step"] == 10, f"Step mismatch: {loaded['step']}"
@@ -702,3 +717,47 @@ class TestGradientAccumulator:
         acc.accumulate(3.0)
         assert abs(acc.accumulated_loss - 7.0) < TOLERANCE
         assert acc._step_count == 3
+
+
+# =========================================================================
+# 7. step()-hook stubs (BaseTrainer demotion)
+# =========================================================================
+
+
+class TestDistributedTrainerStepHookStubs:
+    """DistributedTrainer's own NotImplementedError stubs must survive.
+
+    ``BaseTrainer.compute_loss`` / ``generate_data`` were demoted from
+    ``@abstractmethod`` to concrete raising hooks, so deleting these
+    subclass stubs no longer breaks instantiation -- it silently swaps the
+    trainer-specific guidance ("uses train_step()") for the generic base
+    message. Nothing else asserts these messages.
+
+    A third stub, ``evaluate``, was deleted outright (2026-08-19) along
+    with ``BaseTrainer.evaluate`` itself: it had zero call sites anywhere
+    in the codebase (see docs/CODE_HYGIENE_AUDIT.md §7.7), so there is no
+    longer a method here to cover.
+    """
+
+    @pytest.mark.parametrize(
+        ("hook", "args", "expected"),
+        [
+            ("compute_loss", (None,), "DistributedTrainer uses train_step"),
+            ("generate_data", (), "DistributedTrainer receives batches via train_step"),
+        ],
+    )
+    def test_stub_raises_with_trainer_specific_message(
+        self,
+        hook: str,
+        args: tuple[Any, ...],
+        expected: str,
+    ) -> None:
+        """Each stub keeps its own message rather than inheriting the base one."""
+        trainer = _make_trainer()
+        with pytest.raises(NotImplementedError, match=expected):
+            getattr(trainer, hook)(*args)
+
+    def test_stubs_are_defined_on_the_subclass_not_inherited(self) -> None:
+        """The stubs are the subclass's own attributes (deletion is detectable)."""
+        for hook in ("compute_loss", "generate_data"):
+            assert hook in vars(DistributedTrainer), hook

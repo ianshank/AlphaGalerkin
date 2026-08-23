@@ -31,6 +31,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 try:
     import wandb
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -132,15 +133,9 @@ def train_epoch(
         samples = [dataset[i] for i in batch_indices]
 
         # Stack into tensors
-        coords = torch.tensor(
-            np.stack([s.coords for s in samples]), device=device
-        )
-        charges = torch.tensor(
-            np.stack([s.charges for s in samples]), device=device
-        )
-        targets = torch.tensor(
-            np.stack([s.potential for s in samples]), device=device
-        )
+        coords = torch.tensor(np.stack([s.coords for s in samples]), device=device)
+        charges = torch.tensor(np.stack([s.charges for s in samples]), device=device)
+        targets = torch.tensor(np.stack([s.potential for s in samples]), device=device)
 
         # Forward pass
         optimizer.zero_grad()
@@ -206,15 +201,9 @@ def evaluate(
         batch_indices = indices[start : start + batch_size]
         samples = [dataset[i] for i in batch_indices]
 
-        coords = torch.tensor(
-            np.stack([s.coords for s in samples]), device=device
-        )
-        charges = torch.tensor(
-            np.stack([s.charges for s in samples]), device=device
-        )
-        targets = torch.tensor(
-            np.stack([s.potential for s in samples]), device=device
-        )
+        coords = torch.tensor(np.stack([s.coords for s in samples]), device=device)
+        charges = torch.tensor(np.stack([s.charges for s in samples]), device=device)
+        targets = torch.tensor(np.stack([s.potential for s in samples]), device=device)
 
         predictions = model(coords, charges)
 
@@ -263,7 +252,8 @@ def train(config: TrainingConfig) -> dict[str, Any]:
     if config.wandb_enabled and WANDB_AVAILABLE:
         wandb.init(
             project=config.wandb_project,
-            name=config.wandb_name or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",  # noqa: E501
+            name=config.wandb_name
+            or f"physics-poc-{config.train_grid_size}x{config.train_grid_size}",  # noqa: E501
             config=vars(config),
             tags=["physics-poc", "zero-shot-transfer"],
         )
@@ -349,9 +339,7 @@ def train(config: TrainingConfig) -> dict[str, Any]:
         # Evaluate
         if (epoch + 1) % config.eval_interval == 0:
             # Same resolution
-            eval_same = evaluate(
-                model, eval_train_dataset, loss_fn, device, config.batch_size
-            )
+            eval_same = evaluate(model, eval_train_dataset, loss_fn, device, config.batch_size)
             history["eval_mse_same_res"].append(eval_same["mse"])
 
             # Zero-shot transfer (different resolution!)
@@ -384,16 +372,18 @@ def train(config: TrainingConfig) -> dict[str, Any]:
 
             # W&B logging for evaluation
             if config.wandb_enabled and WANDB_AVAILABLE:
-                wandb.log({
-                    "epoch": epoch + 1,
-                    "train/loss": train_loss,
-                    "eval/mse_same_resolution": eval_same["mse"],
-                    "eval/mae_same_resolution": eval_same["mae"],
-                    "eval/mse_transfer": eval_transfer["mse"],
-                    "eval/mae_transfer": eval_transfer["mae"],
-                    "eval/best_transfer_mse": best_transfer_mse,
-                    "learning_rate": scheduler.get_last_lr()[0],
-                })
+                wandb.log(
+                    {
+                        "epoch": epoch + 1,
+                        "train/loss": train_loss,
+                        "eval/mse_same_resolution": eval_same["mse"],
+                        "eval/mae_same_resolution": eval_same["mae"],
+                        "eval/mse_transfer": eval_transfer["mse"],
+                        "eval/mae_transfer": eval_transfer["mae"],
+                        "eval/best_transfer_mse": best_transfer_mse,
+                        "learning_rate": scheduler.get_last_lr()[0],
+                    }
+                )
         elif (epoch + 1) % config.log_interval == 0:
             logger.info(
                 "training_step",
@@ -404,19 +394,17 @@ def train(config: TrainingConfig) -> dict[str, Any]:
 
             # W&B logging for training steps
             if config.wandb_enabled and WANDB_AVAILABLE:
-                wandb.log({
-                    "epoch": epoch + 1,
-                    "train/loss": train_loss,
-                    "learning_rate": scheduler.get_last_lr()[0],
-                })
+                wandb.log(
+                    {
+                        "epoch": epoch + 1,
+                        "train/loss": train_loss,
+                        "learning_rate": scheduler.get_last_lr()[0],
+                    }
+                )
 
     # Final evaluation
-    final_same = evaluate(
-        model, eval_train_dataset, loss_fn, device, config.batch_size
-    )
-    final_transfer = evaluate(
-        model, eval_transfer_dataset, loss_fn, device, config.batch_size
-    )
+    final_same = evaluate(model, eval_train_dataset, loss_fn, device, config.batch_size)
+    final_transfer = evaluate(model, eval_transfer_dataset, loss_fn, device, config.batch_size)
 
     elapsed = time.time() - start_time
 
@@ -460,13 +448,15 @@ def train(config: TrainingConfig) -> dict[str, Any]:
 
     # Log final results to W&B and finish
     if config.wandb_enabled and WANDB_AVAILABLE:
-        wandb.log({
-            "final/mse_same_resolution": final_same["mse"],
-            "final/mse_transfer": final_transfer["mse"],
-            "final/best_transfer_mse": best_transfer_mse,
-            "final/success": int(results["success"]),
-            "final/training_time_seconds": elapsed,
-        })
+        wandb.log(
+            {
+                "final/mse_same_resolution": final_same["mse"],
+                "final/mse_transfer": final_transfer["mse"],
+                "final/best_transfer_mse": best_transfer_mse,
+                "final/success": int(results["success"]),
+                "final/training_time_seconds": elapsed,
+            }
+        )
         wandb.summary["success"] = results["success"]
         wandb.summary["best_transfer_mse"] = best_transfer_mse
         wandb.finish()
@@ -486,13 +476,18 @@ def main() -> None:
     parser.add_argument("--fourier-scale", type=float, default=10.0, help="Fourier scale")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--success-threshold", type=float, default=0.05,
-                        help="MSE threshold for zero-shot transfer success")
+    parser.add_argument(
+        "--success-threshold",
+        type=float,
+        default=0.05,
+        help="MSE threshold for zero-shot transfer success",
+    )
     parser.add_argument("--output-dir", type=str, default="outputs/physics_poc")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--wandb", action="store_true", help="Enable W&B logging")
-    parser.add_argument("--wandb-project", type=str, default="alphagalerkin-physics-poc",
-                        help="W&B project name")
+    parser.add_argument(
+        "--wandb-project", type=str, default="alphagalerkin-physics-poc", help="W&B project name"
+    )
     parser.add_argument("--wandb-name", type=str, default=None, help="W&B run name")
 
     args = parser.parse_args()

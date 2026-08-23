@@ -110,25 +110,44 @@ def _check_vram(min_free_gib: float) -> tuple[float | None, bool]:
 
     Returns:
         Tuple ``(free_gib, sufficient)``. ``free_gib`` is ``None`` when
-        CUDA is absent (or ``mem_get_info`` raises); in that case the
-        VRAM check is treated as skipped and ``sufficient`` is True so it
-        does not block scenarios that intentionally run on a server-side
-        GPU we can't introspect.
+        CUDA is absent, when the driver can't be probed at all (a present
+        but broken driver can make even ``is_available``/``device_count``
+        raise — distinct from "no GPU", where they cleanly return
+        ``False``/``0``), or when every device's ``mem_get_info`` raises;
+        in all these cases the VRAM check is treated as skipped and
+        ``sufficient`` is True so it does not block scenarios that
+        intentionally run on a server-side GPU we can't introspect.
 
     """
     try:
-        import torch  # noqa: PLC0415
+        import torch
     except ImportError:  # pragma: no cover - torch is a hard dep elsewhere
         return None, True
-    if not torch.cuda.is_available():
+    try:
+        cuda_available = torch.cuda.is_available()
+        n_devices = torch.cuda.device_count() if cuda_available else 0
+    except Exception as exc:
+        # A present-but-broken CUDA driver (stale kernel module, mismatched
+        # runtime, etc.) can make `is_available`/`device_count` themselves
+        # raise, not just `mem_get_info` below. Degrade to "skipped" like
+        # the per-device probe failure rather than propagating an
+        # unrelated RuntimeError out of `check_lm_studio_server`. Covered
+        # by tests/integrations/test_lm_studio_preflight.py
+        # (``test_is_available_raising_*``, ``test_device_count_raising_*``).
+        logger.warning("vram_probe_failed", device_index=None, error=str(exc))
         return None, True
-    n_devices = torch.cuda.device_count()
+    if not cuda_available:
+        return None, True
     best_free_gib: float = 0.0
     inspected = False
     for idx in range(n_devices):
         try:
             free_bytes, _total = torch.cuda.mem_get_info(idx)
-        except Exception:  # pragma: no cover - per-device probe failure
+        except Exception as exc:
+            # Covered by tests/integrations/test_lm_studio_preflight.py
+            # (``test_vram_probe_failure_*``), which monkeypatches
+            # ``torch.cuda.mem_get_info`` to raise.
+            logger.warning("vram_probe_failed", device_index=idx, error=str(exc))
             continue
         free_gib = float(free_bytes) / _BYTES_PER_GIB
         best_free_gib = max(best_free_gib, free_gib)
@@ -163,8 +182,17 @@ def check_lm_studio_server(
         # Lazy import keeps the base install (no ``openai`` installed)
         # from breaking when this module is imported transitively.
         try:
-            import openai  # noqa: PLC0415
+            import openai
         except ImportError as exc:
+            logger.warning(
+                "lm_studio_preflight",
+                passed=False,
+                server_reachable=False,
+                model_available=False,
+                free_vram_gib=None,
+                vram_sufficient=True,
+                error=str(exc),
+            )
             return PreflightReport(
                 server_reachable=False,
                 model_available=False,

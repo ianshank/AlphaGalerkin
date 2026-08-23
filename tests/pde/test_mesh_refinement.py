@@ -253,9 +253,40 @@ class TestMesh:
             domain_max=np.array([1.0, 1.0], dtype=np.float32),
             initial_resolution=2,
         )
-        # Level 0 element -> h-refinement (level < 2)
+        # Level 0 element -> h-refinement (level < default hp_switchover_level=2)
         result = mesh.refine_element(0, RefinementStrategy.HP_REFINEMENT)
         assert len(result) == 4  # h-refinement for level < 2
+
+    def test_hp_refinement_default_switchover_level_is_2(self) -> None:
+        """``Mesh``'s own default mirrors ``MeshRefinementConfig.hp_switchover_level``."""
+        mesh = Mesh(
+            domain_min=np.array([0.0, 0.0], dtype=np.float32),
+            domain_max=np.array([1.0, 1.0], dtype=np.float32),
+            initial_resolution=2,
+        )
+        assert mesh.hp_switchover_level == 2
+
+    def test_hp_refinement_custom_switchover_level(self) -> None:
+        """A custom ``hp_switchover_level`` changes the h-vs-p decision.
+
+        With the threshold lowered to 0, even a level-0 element is at or
+        above the switchover level, so HP_REFINEMENT p-refines (polynomial
+        degree bump, element count unchanged) instead of h-refining
+        (subdividing into 4 children) -- the opposite of the default-level-2
+        behavior exercised by ``test_hp_refinement`` above.
+        """
+        mesh = Mesh(
+            domain_min=np.array([0.0, 0.0], dtype=np.float32),
+            domain_max=np.array([1.0, 1.0], dtype=np.float32),
+            initial_resolution=2,
+            hp_switchover_level=0,
+        )
+        original_degree = mesh.elements[0].polynomial_degree
+        original_count = mesh.n_elements
+        result = mesh.refine_element(0, RefinementStrategy.HP_REFINEMENT)
+        assert result == [0]  # p-refinement returns the same element index
+        assert mesh.elements[0].polynomial_degree == original_degree + 1
+        assert mesh.n_elements == original_count
 
     def test_h_refinement_updates_level(self) -> None:
         mesh = Mesh(
@@ -386,6 +417,34 @@ class TestMeshRefinementGameInit:
         assert game.mesh is not None
         assert game.mesh.dim == 2
 
+    def test_mesh_hp_switchover_level_threads_from_config(
+        self, poisson_operator: PoissonOperator
+    ) -> None:
+        """``MeshRefinementConfig.hp_switchover_level`` reaches ``Mesh``.
+
+        Both ``__init__`` and ``get_initial_state`` construct a fresh
+        ``Mesh``; a non-default value must survive both construction sites.
+        """
+        custom_mesh_config = MeshRefinementConfig(
+            name="test_mesh_custom_switchover",
+            initial_resolution=2,
+            hp_switchover_level=5,
+        )
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(
+            name="test_game_custom_switchover",
+            pde_config=pde_config,
+            game_mode="mesh_refinement",
+            mesh_config=custom_mesh_config,
+        )
+        game = MeshRefinementGame(poisson_operator, game_config)
+        assert game.mesh.hp_switchover_level == 5
+
+        # get_initial_state() rebuilds self.mesh; the custom value must
+        # survive that reconstruction too.
+        game.get_initial_state()
+        assert game.mesh.hp_switchover_level == 5
+
 
 class TestMeshRefinementGameInitialState:
     """Tests for initial state."""
@@ -489,6 +548,38 @@ class TestMeshRefinementGameActions:
         actions = game.get_valid_actions(state)
         new_state = game.apply_action(state, actions[0])
         assert new_state.budget_remaining < initial_budget
+
+    def test_apply_action_budget_cost_matches_cost_per_dof(
+        self, poisson_operator: PoissonOperator, mesh_config: MeshRefinementConfig
+    ) -> None:
+        """Budget decrement equals ``cost_per_dof * dof_added``, not a flat unit cost.
+
+        Regression test: the budget-decrement path previously used a
+        hardcoded ``cost = 1`` per action, decoupled from
+        ``PDEGameConfig.cost_per_dof`` (which the reward path already
+        honours via the identical ``cost_per_dof * dof_added`` formula).
+        """
+        custom_cost_per_dof = 0.37
+        pde_config = PDEConfig(name="test", pde_type=PDEType.POISSON)
+        game_config = PDEGameConfig(
+            name="test_cost",
+            pde_config=pde_config,
+            game_mode="mesh_refinement",
+            mesh_config=mesh_config,
+            cost_per_dof=custom_cost_per_dof,
+        )
+        custom_game = MeshRefinementGame(poisson_operator, game_config)
+        state = custom_game.get_initial_state()
+        initial_budget = state.budget_remaining
+        actions = custom_game.get_valid_actions(state)
+
+        new_state = custom_game.apply_action(state, actions[0])
+
+        dof_added = new_state.dof - state.dof
+        assert dof_added > 0  # h-refinement strictly increases DOF here
+        assert (initial_budget - new_state.budget_remaining) == pytest.approx(
+            custom_cost_per_dof * dof_added
+        )
 
     def test_apply_action_updates_coords(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
@@ -671,6 +762,98 @@ class TestMeshRefinementGameInterpolation:
         assert values.shape == (3,)
         assert np.all(np.isfinite(values))
 
+    @staticmethod
+    def _collinear_state() -> PDEState:
+        """A 2-D state whose points are collinear (Qhull cannot triangulate)."""
+        coords = np.array([[0.0, 0.0], [0.25, 0.25], [0.5, 0.5], [1.0, 1.0]], dtype=np.float32)
+        return PDEState(
+            coords=coords,
+            solution=np.array([0.0, 1.0, 2.0, 4.0], dtype=np.float32),
+            residuals=np.zeros(4, dtype=np.float32),
+            mesh_levels=None,
+            error_estimate=0.0,
+            dof=4,
+            step=0,
+            budget_remaining=1.0,
+            phase=GamePhase.INITIAL,
+            history=[],
+        )
+
+    def test_degenerate_triangulation_falls_back_to_nearest(self, game: MeshRefinementGame) -> None:
+        """A Delaunay failure must degrade, not crash.
+
+        ``LinearNDInterpolator.__init__`` runs Qhull on the source points and
+        raises on a degenerate (here: collinear) point set. The
+        ``except Exception`` arm sets ``linear=None``, which makes every value
+        NaN and routes the whole query through the nearest-neighbour fallback,
+        so the returned array is still finite and correctly shaped.
+        """
+        old_state = self._collinear_state()
+        query = np.array([[0.1, 0.1], [0.9, 0.9]], dtype=np.float32)
+
+        values = game._interpolate_solution(old_state, query)
+
+        assert values.shape == (2,)
+        assert values.dtype == np.float32
+        assert np.all(np.isfinite(values))
+        # Nearest-neighbour of each query point, taken from the source values.
+        np.testing.assert_allclose(values, [0.0, 4.0])
+
+    def test_degenerate_triangulation_is_logged(
+        self, game: MeshRefinementGame, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The swallowed Qhull error emits a structured warning.
+
+        Silently dropping to nearest-neighbour changes the interpolation order
+        (and therefore the error estimate driving refinement), so the event
+        must be visible with the point count and the underlying error text.
+
+        The module logger is replaced rather than asserted through
+        ``structlog.testing.capture_logs`` / ``caplog``: ``configure_logging``
+        (``src/poc/logging.py``) sets ``cache_logger_on_first_use=True``, so
+        once any earlier test in the session has called it, this module's
+        ``logger`` proxy has cached a stdlib-backed bound logger and stops
+        consulting the global processor chain. ``capture_logs`` then silently
+        records nothing — the assertion would pass alone and fail in a full
+        run purely by collection order.
+        """
+        import src.pde.games.mesh_refinement as mesh_mod
+
+        recorded: list[tuple[str, dict[str, object]]] = []
+
+        class _RecordingLogger:
+            def warning(self, event: str, **kw: object) -> None:
+                recorded.append((event, kw))
+
+            def debug(self, event: str, **kw: object) -> None:
+                pass
+
+        monkeypatch.setattr(mesh_mod, "logger", _RecordingLogger())
+
+        old_state = self._collinear_state()
+        query = np.array([[0.1, 0.1]], dtype=np.float32)
+        game._interpolate_solution(old_state, query)
+
+        events = [kw for event, kw in recorded if event == "interpolator_build_failed"]
+        assert len(events) == 1
+        assert events[0]["n_points"] == 4
+        assert events[0]["error"]
+
+    def test_failed_interpolator_is_not_cached(self, game: MeshRefinementGame) -> None:
+        """A failed build must not poison the interpolator cache.
+
+        The ``try/except/else`` only populates ``_cached_interp_state`` on the
+        success path; if the failure were cached, a later good state reusing
+        the same identity would silently keep the nearest-neighbour path.
+        """
+        old_state = self._collinear_state()
+        query = np.array([[0.1, 0.1]], dtype=np.float32)
+
+        game._interpolate_solution(old_state, query)
+
+        assert game._cached_interp_state is not old_state
+        assert game._cached_interp_linear is None
+
 
 class TestMeshRefinementGameLogReward:
     """Tests for the proposal-form log reward on the mesh game."""
@@ -761,53 +944,95 @@ class TestMeshRefinementGameTerminal:
         state.step = game.config.max_steps
         assert game.is_terminal(state) is True
 
+    def test_terminal_reachable_at_real_initial_state(
+        self, poisson_operator: PoissonOperator, mesh_config: MeshRefinementConfig
+    ) -> None:
+        """A tight ``max_dof`` can make the real coarse mesh terminal before any refinement.
 
-class TestMeshRefinementGameResult:
-    """Tests for game result generation."""
+        Unlike ``test_terminal_max_dof`` (which synthetically overwrites
+        ``state.dof``), this builds the game from a real config and calls
+        ``get_initial_state()`` unmodified: ``initial_resolution=2`` in 2D
+        always produces a 4-element, 16-DOF coarse mesh, so ``max_dof=10``
+        (the Pydantic floor) is already exceeded at construction. Also proves
+        ``PDEGameAdapter`` and a real MCTS micro-run tolerate a
+        terminal-at-construction game without crashing.
+        """
+        tight_config = PDEGameConfig(
+            name="tight_dof_game",
+            pde_config=PDEConfig(name="tight_dof_poisson", pde_type=PDEType.POISSON),
+            game_mode="mesh_refinement",
+            mesh_config=mesh_config,
+            max_steps=10,
+            max_dof=10,  # Pydantic floor; below the coarse mesh's 16 DOF.
+            error_tolerance=1e-4,
+        )
+        tight_game = MeshRefinementGame(poisson_operator, tight_config)
+        state = tight_game.get_initial_state()
 
-    def test_get_result(self, game: MeshRefinementGame) -> None:
-        state = game.get_initial_state()
-        actions = game.get_valid_actions(state)
-        state = game.apply_action(state, actions[0])
-        error_history = [1.0, state.error_estimate]
-        result = game.get_result(state, error_history)
-        assert result.n_steps == 1
-        assert result.final_dof > 0
-        assert len(result.error_history) == 2
+        assert state.dof == 16
+        assert state.dof > tight_config.max_dof
+        assert tight_game.is_terminal(state) is True
 
-    def test_get_result_converged(self, game: MeshRefinementGame) -> None:
+        from src.pde.mcts_adapter import PDEGameAdapter
+
+        adapter = PDEGameAdapter(tight_game)
+        assert adapter.is_terminal() is True
+
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS
+
+        mcts = MCTS(
+            evaluator=RandomEvaluator(n_actions=tight_game.action_space_size),
+            n_simulations=4,
+            search_mode=adapter.search_mode,
+        )
+        # A terminal-at-the-root search must not raise.
+        action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
+        assert 0 <= action < tight_game.action_space_size
+
+
+class TestMeshRefinementTerminationReason:
+    """Tests for the termination-cause classifier.
+
+    ``termination_reason`` must mirror :meth:`is_terminal`'s ladder. This
+    game's capacity rung is the DOF count, compared with a strict ``>``.
+    """
+
+    def test_converged(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
         state.error_estimate = 1e-6
-        result = game.get_result(state, [1.0, 1e-6])
-        assert result.converged is True
-        assert result.termination_reason == "converged"
+        assert game.termination_reason(state) == "converged"
 
-    def test_get_result_max_dof(self, game: MeshRefinementGame) -> None:
+    def test_max_dof_capacity_rung(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
-        state.dof = 10000
-        result = game.get_result(state, [1.0])
-        assert result.termination_reason == "max_dof"
+        state.error_estimate = 1.0
+        state.dof = game.config.max_dof + 1
+        assert game.termination_reason(state) == "max_dof"
 
-    def test_get_result_budget_exhausted(self, game: MeshRefinementGame) -> None:
+    def test_dof_exactly_at_cap_is_not_over_capacity(self, game: MeshRefinementGame) -> None:
+        """``is_terminal`` uses ``>``; the classifier must not drift to ``>=``."""
         state = game.get_initial_state()
+        state.error_estimate = 1.0
+        state.dof = game.config.max_dof
+        assert game.termination_reason(state) != "max_dof"
+
+    def test_budget_exhausted(self, game: MeshRefinementGame) -> None:
+        state = game.get_initial_state()
+        state.error_estimate = 1.0
         state.budget_remaining = 0
-        result = game.get_result(state, [1.0])
-        assert result.termination_reason == "budget_exhausted"
+        assert game.termination_reason(state) == "budget_exhausted"
 
-    def test_get_result_empty_history(self, game: MeshRefinementGame) -> None:
+    def test_max_steps(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
-        result = game.get_result(state, [])
-        assert result.error_reduction_rate == 0.0
+        state.error_estimate = 1.0
+        state.step = game.config.max_steps
+        assert game.termination_reason(state) == "max_steps"
 
-    def test_get_result_efficiency_metrics(self, game: MeshRefinementGame) -> None:
+    def test_running_for_non_terminal_state(self, game: MeshRefinementGame) -> None:
         state = game.get_initial_state()
-        actions = game.get_valid_actions(state)
-        state = game.apply_action(state, actions[0])
-        error_history = [1.0, state.error_estimate]
-        result = game.get_result(state, error_history)
-        assert isinstance(result.error_reduction_rate, float)
-        assert isinstance(result.dof_efficiency, float)
-        assert isinstance(result.compute_efficiency, float)
+        state.error_estimate = 1.0
+        assert game.is_terminal(state) is False
+        assert game.termination_reason(state) == "running"
 
 
 class TestMeshRefinementGameError:
@@ -903,8 +1128,21 @@ class TestMeshRefinementGameMisc:
             steps += 1
             assert isinstance(reward, float)
 
-        result = game.get_result(state, error_history)
-        assert result.n_steps == steps
+        assert state.step == steps
+        assert len(error_history) == steps + 1
+        # The loop exits on either the game going terminal or the test-local
+        # `steps < 3` cutoff, so assert the invariant that covers both:
+        # "running" is returned for exactly the non-terminal states.
+        reason = game.termination_reason(state)
+        assert (reason == "running") is (not game.is_terminal(state))
+        if game.is_terminal(state):
+            assert reason in {
+                "converged",
+                "max_dof",
+                "budget_exhausted",
+                "max_steps",
+                "no_legal_actions",
+            }
 
     def test_mesh_quality_tracking(self, game: MeshRefinementGame) -> None:
         """Track mesh quality through refinement steps."""

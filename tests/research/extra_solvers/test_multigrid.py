@@ -29,6 +29,71 @@ def _make_poisson_op() -> PoissonOperator:
     return PoissonOperator(cfg)
 
 
+class _ManufacturedPoissonND(PoissonOperator):
+    """N-D Poisson on the unit cube with a separable manufactured solution.
+
+    ``u(x) = prod_d sin(pi x_d)``, so ``-Delta u = dim * pi^2 * u`` and ``u = 0``
+    on the boundary — the exact reference for convergence checks in any dim.
+    """
+
+    def source_term(self, coords):  # type: ignore[no-untyped-def]
+        c = np.asarray(coords, dtype=np.float64)
+        prod = np.ones(c.shape[0], dtype=np.float64)
+        for d in range(self.dim):
+            prod *= np.sin(np.pi * c[:, d])
+        return self.dim * (np.pi**2) * prod
+
+    def boundary_value(self, coords):  # type: ignore[no-untyped-def]
+        return np.zeros(np.asarray(coords).shape[0], dtype=np.float64)
+
+    def exact_solution(self, coords):  # type: ignore[no-untyped-def]
+        c = np.asarray(coords, dtype=np.float64)
+        prod = np.ones(c.shape[0], dtype=np.float64)
+        for d in range(self.dim):
+            prod *= np.sin(np.pi * c[:, d])
+        return prod
+
+
+def _make_manufactured_op(dim: int) -> _ManufacturedPoissonND:
+    cfg = PDEConfig(
+        name=f"manufactured_{dim}d",
+        pde_type=PDEType.POISSON,
+        domain_dim=dim,
+        domain_min=[0.0] * dim,
+        domain_max=[1.0] * dim,
+        advection_coeff=[0.0] * dim,
+    )
+    return _ManufacturedPoissonND(cfg)
+
+
+class TestDirectPoissonND:
+    """N-D generalization: the scipy-direct solver converges in 1D/2D/3D."""
+
+    def test_1d_solution_shape_and_accuracy(self) -> None:
+        op = _make_manufactured_op(1)
+        result = DirectPoissonSolver().solve(op, n_dof=64)
+        assert result.metadata["dim"] == 1
+        n = result.metadata["n_per_side"]
+        assert result.solution.size == n + 2  # 1D grid incl. 2 boundaries
+        assert result.l2_error is not None and result.l2_error < 1e-2
+
+    def test_3d_solution_shape_and_accuracy(self) -> None:
+        op = _make_manufactured_op(3)
+        result = DirectPoissonSolver().solve(op, n_dof=8**3)  # ~8 per side
+        assert result.metadata["dim"] == 3
+        n = result.metadata["n_per_side"]
+        assert result.n_dof == n**3
+        assert result.solution.size == (n + 2) ** 3
+        assert result.l2_error is not None and result.l2_error < 5e-2
+
+    def test_3d_refinement_reduces_error(self) -> None:
+        op = _make_manufactured_op(3)
+        coarse = DirectPoissonSolver().solve(op, n_dof=6**3)
+        fine = DirectPoissonSolver().solve(op, n_dof=12**3)
+        assert fine.l2_error is not None and coarse.l2_error is not None
+        assert fine.l2_error < coarse.l2_error
+
+
 # ---------------------------------------------------------------------------
 # Direct
 # ---------------------------------------------------------------------------
@@ -62,17 +127,17 @@ class TestDirectPoissonSolve:
         result = solver.solve(op, n_dof=4)  # request smaller than floor
         assert result.metadata["n_per_side"] >= 8
 
-    def test_higher_dim_rejected(self) -> None:
+    def test_unsupported_dim_rejected(self) -> None:
         cfg = PDEConfig(
-            name="p1d",
+            name="p4d",
             pde_type=PDEType.POISSON,
-            domain_dim=1,
-            domain_min=[0.0],
-            domain_max=[1.0],
-            advection_coeff=[0.0],
+            domain_dim=4,
+            domain_min=[0.0, 0.0, 0.0, 0.0],
+            domain_max=[1.0, 1.0, 1.0, 1.0],
+            advection_coeff=[0.0, 0.0, 0.0, 0.0],
         )
         op = PoissonOperator(cfg)
-        with pytest.raises(NotImplementedError, match="2D"):
+        with pytest.raises(NotImplementedError, match="1D/2D/3D"):
             DirectPoissonSolver().solve(op, n_dof=16)
 
     def test_homogeneous_bc_boundary_is_zero(self) -> None:
@@ -169,17 +234,17 @@ class TestMultigridSolverBehavior:
         with pytest.raises(ImportError, match="pip install pyamg"):
             solver.solve(_make_poisson_op(), n_dof=64)
 
-    def test_higher_dim_rejected(self) -> None:
-        """Solver explicitly rejects 1D (or any non-2D) operators."""
+    def test_unsupported_dim_rejected(self) -> None:
+        """Dim is validated (before the optional pyamg import) — 4D rejected."""
         from src.research.extra_solvers.multigrid import MultigridPoissonSolver
 
         cfg = PDEConfig(
-            name="p1d",
+            name="p4d",
             pde_type=PDEType.POISSON,
-            domain_dim=1,
-            domain_min=[0.0],
-            domain_max=[1.0],
-            advection_coeff=[0.0],
+            domain_dim=4,
+            domain_min=[0.0, 0.0, 0.0, 0.0],
+            domain_max=[1.0, 1.0, 1.0, 1.0],
+            advection_coeff=[0.0, 0.0, 0.0, 0.0],
         )
-        with pytest.raises(NotImplementedError, match="2D"):
+        with pytest.raises(NotImplementedError, match="1D/2D/3D"):
             MultigridPoissonSolver().solve(PoissonOperator(cfg), n_dof=16)

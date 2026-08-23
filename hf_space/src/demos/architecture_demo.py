@@ -101,9 +101,12 @@ class ArchitectureDemo:
 
         # Visualize first few feature dimensions as 2D fields
         fig, axes = plt.subplots(
-            2, 4,
-            figsize=(self.config.visualization.figure_width * 1.5,
-                     self.config.visualization.figure_height),
+            2,
+            4,
+            figsize=(
+                self.config.visualization.figure_width * 1.5,
+                self.config.visualization.figure_height,
+            ),
             dpi=self.config.visualization.dpi,
         )
 
@@ -123,7 +126,7 @@ class ArchitectureDemo:
         plt.close(fig)
 
         # Frequency spectrum
-        frequencies = torch.sqrt((freq_matrix ** 2).sum(dim=0)).numpy()
+        frequencies = torch.sqrt((freq_matrix**2).sum(dim=0)).numpy()
 
         spectrum_plot = self.chart_viz.render_fourier_spectrum(
             frequencies=frequencies,
@@ -202,9 +205,12 @@ without being tied to discrete grid positions.
 
         # Individual head visualizations
         fig, axes = plt.subplots(
-            2, n_heads,
-            figsize=(self.config.visualization.figure_width * 1.5,
-                     self.config.visualization.figure_height),
+            2,
+            n_heads,
+            figsize=(
+                self.config.visualization.figure_width * 1.5,
+                self.config.visualization.figure_height,
+            ),
             dpi=self.config.visualization.dpi,
         )
 
@@ -307,9 +313,12 @@ AlphaGalerkin Strategy:
 
         # Visualization
         fig, (ax1, ax2) = plt.subplots(
-            1, 2,
-            figsize=(self.config.visualization.figure_width * 1.5,
-                     self.config.visualization.figure_height),
+            1,
+            2,
+            figsize=(
+                self.config.visualization.figure_width * 1.5,
+                self.config.visualization.figure_height,
+            ),
             dpi=self.config.visualization.dpi,
         )
 
@@ -326,8 +335,7 @@ AlphaGalerkin Strategy:
 
         # Condition number
         condition_numbers = [
-            smax / (smin + 1e-10)
-            for smax, smin in zip(sigma_maxs, sigma_mins, strict=True)
+            smax / (smin + 1e-10) for smax, smin in zip(sigma_maxs, sigma_mins, strict=True)
         ]
         ax2.semilogy(steps, condition_numbers, color="#3498db", linewidth=2)
         ax2.axhline(y=100, color="orange", linestyle="--", label="Good threshold")
@@ -392,8 +400,10 @@ guarantees existence, uniqueness, and stability of the solution.
         """
         # Create a simple architecture diagram
         fig, ax = plt.subplots(
-            figsize=(self.config.visualization.figure_width,
-                     self.config.visualization.figure_height * 1.5),
+            figsize=(
+                self.config.visualization.figure_width,
+                self.config.visualization.figure_height * 1.5,
+            ),
             dpi=self.config.visualization.dpi,
         )
 
@@ -424,7 +434,9 @@ guarantees existence, uniqueness, and stability of the solution.
 
         for block in blocks:
             rect = plt.Rectangle(
-                (0.2, block["y"] - 0.05), 0.6, 0.08,
+                (0.2, block["y"] - 0.05),
+                0.6,
+                0.08,
                 facecolor=block["color"],
                 edgecolor="black",
                 linewidth=2,
@@ -444,8 +456,13 @@ guarantees existence, uniqueness, and stability of the solution.
 
         # Add title
         ax.text(
-            0.5, 0.98, "AlphaGalerkin Architecture",
-            ha="center", va="top", fontsize=14, fontweight="bold",
+            0.5,
+            0.98,
+            "AlphaGalerkin Architecture",
+            ha="center",
+            va="top",
+            fontsize=14,
+            fontweight="bold",
         )
 
         ax.set_xlim(0, 1)

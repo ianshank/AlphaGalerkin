@@ -31,3 +31,10 @@ the CLAUDE.md guidance for Helmholtz/Biharmonic).
 
 - Additive only — never change an existing `PDEType` value or registry key.
 - `ruff` + `mypy --strict` clean; residual property test must pass on CPU.
+- **Steps 3–5 do NOT apply to `src/pde/stochastic/`.** That layer acts on densities/moments
+  rather than pointwise fields and deliberately has **no** `PDEType` / `PDE_TYPE_MAP` entry, so
+  it cannot leak into the MCTS basis-selection `Literal` enums. It is additionally protected by
+  a *positive* dependency allowlist in `tests/pde/stochastic/test_import_isolation.py`, so any
+  new `src.` import from that layer fails the guard by design — widening the allowlist is a
+  deliberate decision, not a formality. If your operator belongs there, follow
+  `specs/stochastic_galerkin_nke.spec.md` instead of this checklist.

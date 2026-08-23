@@ -229,27 +229,74 @@ class TestTermination:
         game.get_initial_state()
         assert not game.is_terminal(self._state(dof=10, step=1, error_estimate=1.0))
 
+    def test_terminal_reachable_at_real_initial_state(self) -> None:
+        """A tight ``max_dof`` can make the real coarse grid terminal before any refinement.
+
+        Unlike the other ``test_terminal_on_*`` cases (which check a
+        synthetic ``self._state(...)``), this calls ``get_initial_state()``
+        unmodified on a validly-constructed config: ``initial_side=4``
+        produces a ``(4+1)**2 == 25``-node coarse grid, so ``max_dof=20``
+        is already exceeded at construction. Also proves ``PDEGameAdapter``
+        and a real MCTS micro-run tolerate a terminal-at-construction game.
+        """
+        game = LShapeAMRGame(
+            _operator(),
+            _game_config(max_dof=20),
+            solve_fn=_fake_solve_fn(),
+            initial_side=4,
+            n_candidate_elements=6,
+        )
+        state = game.get_initial_state()
+
+        assert state.dof == 25
+        assert state.dof > 20
+        assert game.is_terminal(state) is True
+
+        from src.pde.mcts_adapter import PDEGameAdapter
+
+        adapter = PDEGameAdapter(game)
+        assert adapter.is_terminal() is True
+
+        from src.mcts.evaluator import RandomEvaluator
+        from src.mcts.search import MCTS
+
+        mcts = MCTS(
+            evaluator=RandomEvaluator(n_actions=game.action_space_size),
+            n_simulations=4,
+            search_mode=adapter.search_mode,
+        )
+        # A terminal-at-the-root search must not raise.
+        action = mcts.get_action(adapter, temperature=0.0, add_noise=False)
+        assert 0 <= action < game.action_space_size
+
     def test_termination_reason_distinguishes_causes(self) -> None:
-        # get_result must report the *specific* terminal cause (not a blanket
-        # "budget_exhausted"), mirroring is_terminal's branch order:
+        # termination_reason must report the *specific* terminal cause (not a
+        # blanket "budget_exhausted"), mirroring is_terminal's branch order:
         # converged -> max_dof -> max_steps -> no_legal_actions -> running.
+        # The ladder now lives on PDEGame; this game supplies only the
+        # max_dof capacity rung via _capacity_reason.
         game = _make_game()
         game.get_initial_state()
-        assert game._termination_reason(self._state(error_estimate=1e-9)) == "converged"
-        assert game._termination_reason(self._state(dof=300, error_estimate=1.0)) == "max_dof"
+        assert game.termination_reason(self._state(error_estimate=1e-9)) == "converged"
+        assert game.termination_reason(self._state(dof=300, error_estimate=1.0)) == "max_dof"
         assert (
-            game._termination_reason(self._state(step=12, dof=10, error_estimate=1.0))
-            == "max_steps"
+            game.termination_reason(self._state(step=12, dof=10, error_estimate=1.0)) == "max_steps"
         )
-        assert (
-            game._termination_reason(self._state(dof=10, step=1, error_estimate=1.0)) == "running"
-        )
+        assert game.termination_reason(self._state(dof=10, step=1, error_estimate=1.0)) == "running"
         # With no refinable elements the episode ends on the no-actions branch.
         game._last_indicators = np.zeros((1, 1), dtype=np.float64)
         assert (
-            game._termination_reason(self._state(dof=10, step=1, error_estimate=1.0))
+            game.termination_reason(self._state(dof=10, step=1, error_estimate=1.0))
             == "no_legal_actions"
         )
+
+    def test_capacity_rung_uses_inclusive_dof_comparison(self) -> None:
+        """Caps with ``>=`` here, where ``mesh_refinement`` uses ``>``."""
+        game = _make_game()
+        game.get_initial_state()
+        max_dof = game.config.max_dof
+        assert game.termination_reason(self._state(dof=max_dof, error_estimate=1.0)) == "max_dof"
+        assert game._capacity_reason(self._state(dof=max_dof - 1, error_estimate=1.0)) is None
 
 
 # --------------------------------------------------------------------------- #
@@ -314,11 +361,9 @@ class TestEncodingAndClone:
         assert clone._xs.size >= original_xs.size
         np.testing.assert_array_equal(game._xs, original_xs)
 
-    def test_get_result_and_exact_error(self) -> None:
+    def test_exact_error_keys(self) -> None:
         game = _make_game()
         state = game.get_initial_state()
-        result = game.get_result(state, [state.error_estimate])
-        assert result.final_dof == state.dof
         errs = game.compute_exact_error(state)
         assert set(errs) == {"l2", "h1", "linf", "residual"}
 
@@ -351,6 +396,29 @@ class TestEncodedValueEvaluator:
         ev = EncodedValueEvaluator(n_actions=2)
         assert ev.evaluate(np.array([5.0], dtype=np.float32), [0]).value == 1.0
         assert ev.evaluate(np.array([-5.0], dtype=np.float32), [0]).value == -1.0
+
+    def test_nan_value_falls_back_to_neutral_not_max(self) -> None:
+        """A NaN leaf value must not silently clamp to +1.0 (the best value).
+
+        Regression test: Python's ``max(-1.0, min(1.0, value))`` resolves NaN
+        comparisons via the *first* operand (``min(1.0, nan) == 1.0``), so the
+        naive clamp used to turn a diverging solve's NaN into the best
+        possible MCTS leaf value instead of a neutral/failure signal.
+        """
+        ev = EncodedValueEvaluator(n_actions=2)
+        res = ev.evaluate(np.array([float("nan")], dtype=np.float32), [0])
+        assert res.value == 0.0
+        assert np.isfinite(res.value)
+
+    def test_positive_inf_value_falls_back_to_neutral(self) -> None:
+        ev = EncodedValueEvaluator(n_actions=2)
+        res = ev.evaluate(np.array([float("inf")], dtype=np.float32), [0])
+        assert res.value == 0.0
+
+    def test_negative_inf_value_falls_back_to_neutral(self) -> None:
+        ev = EncodedValueEvaluator(n_actions=2)
+        res = ev.evaluate(np.array([float("-inf")], dtype=np.float32), [0])
+        assert res.value == 0.0
 
     def test_empty_state_value_zero(self) -> None:
         ev = EncodedValueEvaluator(n_actions=2)
@@ -403,3 +471,76 @@ class TestRealSolveMicroRun:
         assert actions, "the coarse L-shape must offer a refinable element"
         new_state = game.apply_action(state, actions[0])
         assert new_state.dof >= state.dof
+
+
+# --------------------------------------------------------------------------- #
+# Edge case: NaN/Inf propagation from a diverging injected solve_fn            #
+# --------------------------------------------------------------------------- #
+
+
+def _diverging_after_first_call():  # type: ignore[no-untyped-def]
+    """A ``solve_fn`` whose second and later calls return ``l2_error=nan``.
+
+    Models a masked FD solve that becomes singular after refinement (e.g. a
+    degenerate element) while the initial coarse solve still succeeds.
+    """
+    call_count = {"n": 0}
+
+    def solve(xs: np.ndarray, ys: np.ndarray) -> GridSolveResult:
+        call_count["n"] += 1
+        xx, yy = np.meshgrid(xs, ys, indexing="ij")
+        grid = np.stack([xx.ravel(), yy.ravel()], axis=-1).astype(np.float64)
+        n_nodes = grid.shape[0]
+        nx, ny = len(xs) - 1, len(ys) - 1
+        l2 = float("nan") if call_count["n"] >= 2 else 1.0 / n_nodes
+        return GridSolveResult(
+            solution=np.zeros(n_nodes, dtype=np.float64),
+            grid=grid,
+            l2_error=l2,
+            n_dof=n_nodes,
+            indicators=np.ones((nx, ny), dtype=np.float64),
+        )
+
+    return solve
+
+
+class TestDivergingSolvePropagation:
+    """A diverging (NaN-producing) injected solve must not crash or mislead MCTS."""
+
+    def test_nan_error_estimate_propagates_without_crash(self) -> None:
+        game = _make_game(solve_fn=_diverging_after_first_call())
+        state = game.get_initial_state()
+        assert np.isfinite(state.error_estimate)
+
+        action = game.get_valid_actions(state)[0]
+        diverged = game.apply_action(state, action)
+        assert np.isnan(diverged.error_estimate)
+
+        # Downstream consumers must not raise on a NaN state.
+        reward = game.get_reward(diverged, state)
+        assert np.isnan(reward)
+        assert game.is_terminal(diverged) in (True, False)  # no crash
+        tensor = game.to_tensor(diverged)
+        assert tensor.shape == (1, 1, 1)
+
+    def test_nan_leaf_value_is_not_reported_as_best_action(self) -> None:
+        """The encoded evaluator must not turn a diverging solve into value=1.0.
+
+        This is the end-to-end version of
+        ``TestEncodedValueEvaluator.test_nan_value_falls_back_to_neutral_not_max``:
+        exercising the real ``LShapeAMRGame.to_tensor`` encoding rather than a
+        hand-built array.
+        """
+        game = _make_game(solve_fn=_diverging_after_first_call())
+        state = game.get_initial_state()
+        action = game.get_valid_actions(state)[0]
+        diverged = game.apply_action(state, action)
+
+        tensor = game.to_tensor(diverged)
+        evaluator = EncodedValueEvaluator(n_actions=game.action_space_size)
+        result = evaluator.evaluate(tensor.numpy(), game.get_valid_actions(diverged))
+
+        assert result.value != 1.0, (
+            "a diverging (NaN) solve must not be encoded as the best possible leaf value"
+        )
+        assert np.isfinite(result.value)

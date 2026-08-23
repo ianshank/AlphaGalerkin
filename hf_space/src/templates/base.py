@@ -21,6 +21,7 @@ Example:
                     status=ExecutionStatus.FAILED,
                     error=str(e),
                 )
+
 """
 
 from __future__ import annotations
@@ -115,6 +116,7 @@ class ExecutionResult:
 
         Returns:
             Metric value or default.
+
         """
         return self.metrics.get(name, default)
 
@@ -124,6 +126,7 @@ class ExecutionResult:
         Args:
             name: Metric name.
             value: Metric value.
+
         """
         self.metrics[name] = value
 
@@ -133,6 +136,7 @@ class ExecutionResult:
         Args:
             name: Artifact name.
             value: Artifact value.
+
         """
         self.artifacts[name] = value
 
@@ -141,6 +145,7 @@ class ExecutionResult:
 
         Returns:
             Dictionary representation.
+
         """
         return {
             "run_id": self.run_id,
@@ -165,6 +170,7 @@ class ExecutionResult:
 
         Returns:
             ExecutionResult instance.
+
         """
         return cls(
             run_id=data.get("run_id", ""),
@@ -172,15 +178,9 @@ class ExecutionResult:
             status=ExecutionStatus(data.get("status", "pending")),
             error=data.get("error"),
             start_time=(
-                datetime.fromisoformat(data["start_time"])
-                if data.get("start_time")
-                else None
+                datetime.fromisoformat(data["start_time"]) if data.get("start_time") else None
             ),
-            end_time=(
-                datetime.fromisoformat(data["end_time"])
-                if data.get("end_time")
-                else None
-            ),
+            end_time=(datetime.fromisoformat(data["end_time"]) if data.get("end_time") else None),
             duration_seconds=data.get("duration_seconds", 0.0),
             metrics=data.get("metrics", {}),
             artifacts=data.get("artifacts", {}),
@@ -211,6 +211,7 @@ class BaseExecutable(ABC, Generic[T]):
                     status=ExecutionStatus.COMPLETED,
                     metrics={"items_processed": len(data)},
                 )
+
     """
 
     # Class-level configuration
@@ -227,6 +228,7 @@ class BaseExecutable(ABC, Generic[T]):
         Args:
             config: Configuration for this executable.
             run_id: Optional unique identifier for this run.
+
         """
         self.config = config
         self.run_id = run_id or str(uuid.uuid4())[:8]
@@ -250,6 +252,7 @@ class BaseExecutable(ABC, Generic[T]):
 
         Returns:
             ExecutionResult with status, metrics, and artifacts.
+
         """
         raise NotImplementedError
 
@@ -264,6 +267,7 @@ class BaseExecutable(ABC, Generic[T]):
 
         Returns:
             ExecutionResult from execute() or error result.
+
         """
         self._status = ExecutionStatus.RUNNING
         self._start_time = time.perf_counter()
@@ -346,6 +350,7 @@ class BaseExecutable(ABC, Generic[T]):
 
         Returns:
             ExecutionResult with provided and computed fields.
+
         """
         duration = 0.0
         if self._start_time is not None:
@@ -385,6 +390,7 @@ class BaseExecutable(ABC, Generic[T]):
 
         Raises:
             ValueError: If configuration is invalid.
+
         """
         # Pydantic validation happens at construction time
         # This method is for additional custom validation
@@ -416,6 +422,7 @@ def create_executable_class(
         class MyProcessor(MyExecutable):
             def execute(self) -> ExecutionResult:
                 ...
+
     """
     logger_cls = create_logger_class(module_name or name)
 

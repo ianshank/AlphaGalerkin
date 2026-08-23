@@ -38,10 +38,9 @@ training:
   eval_interval: 50
   eval_games: 5
 
-# Disable W&B for fast tests
-wandb:
+# Disable experiment tracking for fast tests
+langfuse:
   enabled: false
-  mode: disabled
 
 # Experiment settings
 experiment_name: alphagalerkin_fast_test

@@ -255,14 +255,10 @@ def run_benchmark(
 
         with torch.no_grad():
             # Benchmark FNet
-            fnet_time, fnet_mem = benchmark_layer(
-                fnet, x, n_warmup, n_iterations, grid_size
-            )
+            fnet_time, fnet_mem = benchmark_layer(fnet, x, n_warmup, n_iterations, grid_size)
 
             # Benchmark Softmax
-            softmax_time, softmax_mem = benchmark_layer(
-                softmax, x, n_warmup, n_iterations
-            )
+            softmax_time, softmax_mem = benchmark_layer(softmax, x, n_warmup, n_iterations)
 
         speedup = softmax_time / fnet_time if fnet_time > 0 else float("inf")
 

@@ -116,9 +116,7 @@ class TransferResult:
         return {
             "result_id": self.result_id,
             "source_size": self.source_size,
-            "target_metrics": {
-                k: v.to_dict() for k, v in self.target_metrics.items()
-            },
+            "target_metrics": {k: v.to_dict() for k, v in self.target_metrics.items()},
             "primary_target": self.primary_target,
             "config_hash": self.config_hash,
             "passed": self.passed,
@@ -145,9 +143,7 @@ class TransferResult:
         for size, metrics in sorted(self.target_metrics.items()):
             status = "PASS" if metrics.passed else "FAIL"
             primary = " (primary)" if size == self.primary_target else ""
-            lines.append(
-                f"    {size}x{size}{primary}: MSE={metrics.mse:.6f} [{status}]"
-            )
+            lines.append(f"    {size}x{size}{primary}: MSE={metrics.mse:.6f} [{status}]")
 
         return "\n".join(lines)
 
@@ -251,9 +247,12 @@ class TransferValidator:
 
         # Determine overall pass/fail
         all_passed = all(m.passed for m in target_metrics.values())
-        primary_passed = target_metrics.get(self.config.primary_target, TransferMetrics(
-            target_size=0, source_size=0, n_samples=0, mse=1.0, mae=0, rmse=0, max_error=0
-        )).passed
+        primary_passed = target_metrics.get(
+            self.config.primary_target,
+            TransferMetrics(
+                target_size=0, source_size=0, n_samples=0, mse=1.0, mae=0, rmse=0, max_error=0
+            ),
+        ).passed
 
         if self.config.require_all_targets:
             result.passed = all_passed
@@ -315,6 +314,7 @@ class TransferValidator:
         )
 
         import time
+
         train_start = time.perf_counter()
 
         model, train_loss = train_fn(
@@ -364,9 +364,12 @@ class TransferValidator:
 
         # Determine pass/fail
         all_passed = all(m.passed for m in target_metrics.values())
-        primary_passed = target_metrics.get(self.config.primary_target, TransferMetrics(
-            target_size=0, source_size=0, n_samples=0, mse=1.0, mae=0, rmse=0, max_error=0
-        )).passed
+        primary_passed = target_metrics.get(
+            self.config.primary_target,
+            TransferMetrics(
+                target_size=0, source_size=0, n_samples=0, mse=1.0, mae=0, rmse=0, max_error=0
+            ),
+        ).passed
 
         result.passed = all_passed if self.config.require_all_targets else primary_passed
         result.all_passed = all_passed

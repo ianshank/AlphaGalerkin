@@ -6,8 +6,8 @@ Implements full SGF FF[4] specification parsing.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import structlog
 
@@ -42,6 +42,7 @@ class SGFParser:
 
         # Or from string
         game = parser.parse("(;GM[1]FF[4]SZ[19];B[pd];W[dd])")
+
     """
 
     # Token patterns
@@ -54,6 +55,7 @@ class SGFParser:
 
         Args:
             config: Parser configuration (uses defaults if None)
+
         """
         self.config = config or SGFConfig(name="sgf_parser")
         self._text = ""
@@ -71,6 +73,7 @@ class SGFParser:
 
         Raises:
             SGFParseError: If parsing fails and strict mode is enabled
+
         """
         self._text = text
         self._pos = 0
@@ -108,6 +111,7 @@ class SGFParser:
 
         Returns:
             Parsed game tree
+
         """
         path = Path(path)
         enc = encoding or self.config.encoding
@@ -125,6 +129,7 @@ class SGFParser:
 
         Yields:
             Game trees for each game found
+
         """
         self._text = text
         self._pos = 0

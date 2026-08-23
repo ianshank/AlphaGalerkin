@@ -142,6 +142,51 @@ def test_clone_isolates_state(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", sorted(_FACTORIES))
+def test_clone_of_clone_isolates_state(name: str) -> None:
+    """Repeated (nested) cloning must isolate every generation, not just one.
+
+    ``MCTS`` clones along every simulation path, so a tree walk of depth > 1
+    clones a clone. If a stateful game's ``clone()`` shared any mutable
+    container by reference (rather than deep-copying), only a *single* level
+    of cloning would look safe while a grandchild mutation would silently
+    leak back into its parent/grandparent.
+    """
+    root = _FACTORIES[name]()
+
+    root_error, root_step = root.state.error_estimate, root.state.step
+    child = root.clone()
+    child_error, child_step = child.state.error_estimate, child.state.step
+
+    # Clone the clone (grandchild) and only ever mutate the grandchild.
+    grandchild = child.clone()
+    for _ in range(3):
+        actions = grandchild.get_legal_actions()
+        if not actions:
+            break
+        grandchild.apply_action(actions[0])
+
+    # Neither the root nor the intermediate child observed the grandchild's
+    # mutations.
+    assert root.state.error_estimate == pytest.approx(root_error)
+    assert root.state.step == root_step
+    assert child.state.error_estimate == pytest.approx(child_error)
+    assert child.state.step == child_step
+
+    # The underlying stateful game instances (when the domain has one) must
+    # all be distinct objects, not just the outermost pair.
+    if name == "mesh_refinement":
+        assert grandchild.pde_game is not child.pde_game
+        assert grandchild.pde_game is not root.pde_game
+        assert grandchild.pde_game.mesh is not child.pde_game.mesh
+        assert grandchild.pde_game.mesh is not root.pde_game.mesh
+    elif name == "lshape_amr":
+        assert grandchild.pde_game is not child.pde_game
+        assert grandchild.pde_game is not root.pde_game
+        assert grandchild.pde_game._xs is not child.pde_game._xs
+        assert grandchild.pde_game._xs is not root.pde_game._xs
+
+
+@pytest.mark.parametrize("name", sorted(_FACTORIES))
 def test_clone_underlying_game_independent_for_stateful(name: str) -> None:
     """Stateful games must not share the mutable instance with their clone."""
     adapter = _FACTORIES[name]()

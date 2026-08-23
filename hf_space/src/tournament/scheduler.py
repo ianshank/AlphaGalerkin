@@ -203,10 +203,7 @@ class TournamentScheduler:
                 if rating_diff > self.config.swiss_rating_cutoff:
                     continue
 
-                score_diff = abs(
-                    standings.get(player.player_id, 0)
-                    - standings.get(opp_id, 0)
-                )
+                score_diff = abs(standings.get(player.player_id, 0) - standings.get(opp_id, 0))
 
                 if score_diff < best_score_diff:
                     best_score_diff = score_diff
@@ -257,11 +254,13 @@ class TournamentScheduler:
             p2_idx = bracket_size - 1 - i
 
             if p1_idx < n and p2_idx < n:
-                pairings.append(Pairing(
-                    seeded[p1_idx],
-                    seeded[p2_idx],
-                    self._current_round,
-                ))
+                pairings.append(
+                    Pairing(
+                        seeded[p1_idx],
+                        seeded[p2_idx],
+                        self._current_round,
+                    )
+                )
             elif p1_idx < n:
                 # p1 gets a bye
                 pass
@@ -305,7 +304,9 @@ class TournamentScheduler:
                     )
                     if winner:
                         winners.append(winner)
-            return self._elimination_pairings(winners, double=self.config.format == TournamentFormat.DOUBLE_ELIMINATION)
+            return self._elimination_pairings(
+                winners, double=self.config.format == TournamentFormat.DOUBLE_ELIMINATION
+            )
 
         return []
 
@@ -369,7 +370,4 @@ def create_round_robin_schedule(
     scheduler = TournamentScheduler(config)
     pairings = scheduler.generate_pairings(players)
 
-    return [
-        pairing.to_match(board_size, games_per_match)
-        for pairing in pairings
-    ]
+    return [pairing.to_match(board_size, games_per_match) for pairing in pairings]

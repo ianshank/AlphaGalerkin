@@ -16,6 +16,7 @@ from pydantic import Field, field_validator, model_validator
 
 from src.integrations.lm_studio.config import LMStudioConfig
 from src.poc.config import BaseScenarioConfig, MetricThreshold
+from src.seeding import derive_seeds
 
 SCENARIO_NAME = "noyron_basis"
 """Registry / YAML dispatch key for the scenario."""
@@ -168,7 +169,7 @@ class NoyronBasisConfig(BaseScenarioConfig):
 
     def resolved_seeds(self) -> list[int]:
         """Deterministic, decorrelated per-seed RNG seeds."""
-        return [self.seed + i * _SEED_PRIME_STRIDE for i in range(self.n_seeds)]
+        return derive_seeds(self.seed, self.n_seeds, _SEED_PRIME_STRIDE)
 
     def max_rollouts_for_cell(self) -> int:
         """Hard per-cell rollout cap that scales with the search budget."""

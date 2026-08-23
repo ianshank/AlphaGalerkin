@@ -39,6 +39,7 @@ from src.training.curriculum import BoardSizeCurriculum
 from src.training.distributed_context import DistributedContext
 from src.training.eval_utils import EloTracker
 from src.training.evaluation import Evaluator
+from src.training.langfuse_tracker import LangfuseTracker
 from src.training.loss_balancing import (
     BalancingStrategy,
     LossBalancer,
@@ -60,7 +61,6 @@ from src.training.stability import (
     PlateauDetector,
     TrainingStabilityMonitor,
 )
-from src.training.wandb_logger import WandbLogger
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
@@ -69,6 +69,22 @@ if TYPE_CHECKING:
     from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 
 logger = structlog.get_logger(__name__)
+
+
+class BufferFillError(RuntimeError):
+    """Raised when the replay buffer cannot be filled within the call budget.
+
+    Raised by :meth:`Trainer._fill_buffer` when it cannot reach the target
+    replay-buffer size within ``TrainingConfig.max_buffer_fill_iterations``
+    calls to ``SelfPlayWorker.generate_experiences``.
+
+    This guards the self-play buffer-fill loop against hot-looping
+    indefinitely when self-play stops yielding usable experiences (e.g. a
+    game-length or self-play configuration bug): a buffer that never fills
+    is a real configuration/environment problem the caller needs to know
+    about, not something to silently give up on and continue training with
+    an under-filled buffer.
+    """
 
 
 @dataclass
@@ -142,7 +158,7 @@ class Trainer(BaseTrainer):
         config: AlphaGalerkinConfig,
         device: torch.device | str = "auto",
         checkpoint_dir: Path | str | None = None,
-        wandb_logger: WandbLogger | None = None,
+        tracker: LangfuseTracker | None = None,
         distributed_context: DistributedContext | None = None,
         game: GameInterface | None = None,
         callbacks: list[Callback] | None = None,
@@ -154,7 +170,7 @@ class Trainer(BaseTrainer):
             config: Complete configuration.
             device: Training device ("auto" for automatic selection).
             checkpoint_dir: Directory for checkpoints.
-            wandb_logger: Optional W&B logger for experiment tracking.
+            tracker: Optional Langfuse experiment tracker.
             distributed_context: Optional distributed context (auto-detected if None).
             game: Optional GameInterface for non-Go games (e.g. chess).
                   When provided, self-play uses this game instead of SimpleGoGame.
@@ -188,12 +204,12 @@ class Trainer(BaseTrainer):
         else:
             self.device = torch.device(device)
 
-        # W&B logging only on rank 0
-        if wandb_logger is not None and not self.dist_ctx.is_main_process:
-            self.wandb_logger = None  # Disable W&B on non-main ranks
-            logger.info("wandb_disabled_non_main_rank", rank=self.dist_ctx.rank)
+        # Experiment tracking only on rank 0
+        if tracker is not None and not self.dist_ctx.is_main_process:
+            self.tracker = None  # Disable tracking on non-main ranks
+            logger.info("tracking_disabled_non_main_rank", rank=self.dist_ctx.rank)
         else:
-            self.wandb_logger = wandb_logger
+            self.tracker = tracker
 
         logger.info(
             "trainer_initialized",
@@ -336,9 +352,9 @@ class Trainer(BaseTrainer):
         self._warmup_completed = self.training_config.warmup_steps == 0
         self._warmup_steps = self.training_config.warmup_steps
 
-        # Watch model with W&B if enabled
-        if self.wandb_logger is not None:
-            self.wandb_logger.watch_model(self.model)
+        # Watch model with the tracker if enabled (no-op for Langfuse)
+        if self.tracker is not None:
+            self.tracker.watch_model(self.model)
 
         # Lifecycle callbacks: resolve specs from config, then append any
         # explicit callbacks the caller passed.  This keeps user-facing
@@ -389,12 +405,13 @@ class Trainer(BaseTrainer):
             scheduler_type=scheduler_type,
             warmup_steps=self.training_config.warmup_steps,
             total_steps=self.training_config.total_steps,
-            min_lr_ratio=0.1,
-            warmup_start_factor=0.1,
+            min_lr_ratio=self.training_config.min_lr_ratio,
+            warmup_start_factor=self.training_config.warmup_start_factor,
         )
 
     # ------------------------------------------------------------------
-    # Abstract method implementations (required by BaseTrainer ABC)
+    # step()-hook overrides (BaseTrainer no longer declares these abstract;
+    # these stubs document this trainer's real entry points)
     # ------------------------------------------------------------------
 
     def compute_loss(self, batch: Any) -> tuple[torch.Tensor, dict[str, float]]:
@@ -407,12 +424,6 @@ class Trainer(BaseTrainer):
         """Not used directly -- Trainer uses _sample_batch instead."""
         raise NotImplementedError(
             "Trainer uses _sample_batch(); use that method or the train() loop."
-        )
-
-    def evaluate(self) -> dict[str, float]:
-        """Not used directly -- Trainer uses _run_evaluation instead."""
-        raise NotImplementedError(
-            "Trainer uses _run_evaluation(); use that method or the train() loop."
         )
 
     # ------------------------------------------------------------------
@@ -591,20 +602,52 @@ class Trainer(BaseTrainer):
     def _fill_buffer(self, min_size: int) -> None:
         """Fill replay buffer to minimum size.
 
+        Bounded by ``training_config.max_buffer_fill_iterations`` self-play
+        generation calls. Without this bound, a self-play call that nets
+        zero (or too few) usable experiences -- e.g. from a game-length or
+        configuration bug -- would make this loop re-invoke full MCTS
+        self-play generation forever.
+
         Args:
             min_size: Minimum number of experiences needed.
+
+        Raises:
+            BufferFillError: If the buffer still has not reached
+                ``min_size`` after ``max_buffer_fill_iterations`` self-play
+                generation calls.
 
         """
         fill_start = time.time()
         initial_size = len(self.buffer)
+        max_iterations = self.training_config.max_buffer_fill_iterations
+        iterations = 0
 
         while len(self.buffer) < min_size:
+            if iterations >= max_iterations:
+                elapsed = time.time() - fill_start
+                raise BufferFillError(
+                    f"_fill_buffer did not reach the minimum buffer size of "
+                    f"{min_size} experiences after {iterations} self-play "
+                    f"generation call(s) ({elapsed:.1f}s elapsed): buffer "
+                    f"holds {len(self.buffer)} experiences (started at "
+                    f"{initial_size}). generate_experiences() is likely "
+                    "yielding zero or too few usable experiences per call "
+                    "-- check the self-play/game configuration (board size, "
+                    "game-length limits, curriculum settings) or the "
+                    "self-play worker for a bug before retrying. Raise "
+                    "TrainingConfig.max_buffer_fill_iterations (currently "
+                    f"{max_iterations}) if more self-play iterations are "
+                    "genuinely expected to be needed."
+                )
+            iterations += 1
             n_games = self.training_config.n_self_play_games
             logger.info(
                 "generating_self_play_games",
                 n_games=n_games,
                 buffer_size=len(self.buffer),
                 target_size=min_size,
+                iteration=iterations,
+                max_iterations=max_iterations,
             )
 
             # Generate games (use curriculum board size if enabled)
@@ -620,9 +663,9 @@ class Trainer(BaseTrainer):
             self.total_games_generated += n_games
 
             # Log self-play progress to W&B
-            if self.wandb_logger is not None:
+            if self.tracker is not None:
                 stats = self.self_play_worker.get_stats()
-                self.wandb_logger.log_metrics(
+                self.tracker.log_metrics(
                     {
                         "self_play/games_completed": stats["games_played"],
                         "self_play/avg_game_length": stats["avg_game_length"],
@@ -646,11 +689,12 @@ class Trainer(BaseTrainer):
             experiences_added=experiences_added,
             fill_time_seconds=round(fill_time, 2),
             fill_rate_per_second=round(fill_rate, 1),
+            iterations=iterations,
         )
 
         # Log buffer fill summary to W&B
-        if self.wandb_logger is not None:
-            self.wandb_logger.log_metrics(
+        if self.tracker is not None:
+            self.tracker.log_metrics(
                 {
                     "self_play/fill_time_seconds": round(fill_time, 2),
                     "self_play/experiences_added": experiences_added,
@@ -870,8 +914,8 @@ class Trainer(BaseTrainer):
                     board_sizes=stage.board_sizes,
                     weights=stage.size_weights,
                 )
-                if self.wandb_logger is not None:
-                    self.wandb_logger.log_metrics(
+                if self.tracker is not None:
+                    self.tracker.log_metrics(
                         {
                             "curriculum/n_board_sizes": len(stage.board_sizes),
                             "curriculum/max_board_size": max(stage.board_sizes),
@@ -945,9 +989,9 @@ class Trainer(BaseTrainer):
                 ),
             )
 
-            # W&B logging (every step by default, configurable via wandb.log_interval)
-            if self.wandb_logger is not None:
-                self.wandb_logger.log_training_step(metrics)
+            # Tracker logging (every step by default, configurable via langfuse.log_interval)
+            if self.tracker is not None:
+                self.tracker.log_training_step(metrics)
 
             # Console logging
             if step % log_interval == 0:
@@ -1029,8 +1073,8 @@ class Trainer(BaseTrainer):
                 )
 
                 # Log checkpoint as W&B artifact
-                if self.wandb_logger is not None and checkpoint_path is not None:
-                    self.wandb_logger.log_model_artifact(
+                if self.tracker is not None and checkpoint_path is not None:
+                    self.tracker.log_model_artifact(
                         checkpoint_path=checkpoint_path,
                         name=f"checkpoint-{step}",
                         metadata=metrics.to_dict(),
@@ -1067,9 +1111,9 @@ class Trainer(BaseTrainer):
         )
 
         # Log final summary to W&B
-        if self.wandb_logger is not None and self._metrics_history:
+        if self.tracker is not None and self._metrics_history:
             final_metrics = self._metrics_history[-1]
-            self.wandb_logger.log_summary(
+            self.tracker.log_summary(
                 {
                     "final/total_loss": final_metrics.total_loss,
                     "final/policy_loss": final_metrics.policy_loss,
@@ -1082,7 +1126,7 @@ class Trainer(BaseTrainer):
 
             # Log final checkpoint as best model artifact
             if final_checkpoint_path is not None:
-                self.wandb_logger.log_model_artifact(
+                self.tracker.log_model_artifact(
                     checkpoint_path=final_checkpoint_path,
                     name="model-final",
                     metadata=final_metrics.to_dict(),
@@ -1112,8 +1156,8 @@ class Trainer(BaseTrainer):
             results = self.evaluator.evaluate_multi_resolution(n_games_per_size=n_games)
             for board_size, result in results.items():
                 win_rates.append(result.win_rate)
-                if self.wandb_logger is not None:
-                    self.wandb_logger.log_evaluation(
+                if self.tracker is not None:
+                    self.tracker.log_evaluation(
                         result=result,
                         prefix=f"eval/{board_size}x{board_size}",
                         step=step,
@@ -1126,8 +1170,8 @@ class Trainer(BaseTrainer):
                     board_size=board_size,
                 )
                 win_rates.append(result.win_rate)
-                if self.wandb_logger is not None:
-                    self.wandb_logger.log_evaluation(
+                if self.tracker is not None:
+                    self.tracker.log_evaluation(
                         result=result,
                         prefix=f"eval/{board_size}x{board_size}",
                         step=step,
@@ -1151,8 +1195,8 @@ class Trainer(BaseTrainer):
             board_size=9,
         )
 
-        if self.wandb_logger is not None:
-            self.wandb_logger.log_metrics(
+        if self.tracker is not None:
+            self.tracker.log_metrics(
                 {"eval/policy_agreement": policy_agreement},
                 step=step,
             )
@@ -1215,9 +1259,9 @@ class Trainer(BaseTrainer):
                 self.elo_tracker.update_ratings(step, opponent_step, score)
 
                 # Log to W&B
-                if self.wandb_logger is not None:
+                if self.tracker is not None:
                     current_rating = self.elo_tracker.get_rating(step)
-                    self.wandb_logger.log_metrics(
+                    self.tracker.log_metrics(
                         {
                             f"elo/vs_step_{opponent_step}": result.win_rate,
                             "elo/current_rating": current_rating,
@@ -1302,8 +1346,8 @@ class Trainer(BaseTrainer):
             if "los" in result.metadata:
                 elo_metrics["eval/engine/los"] = result.metadata["los"]
 
-            if self.wandb_logger is not None:
-                self.wandb_logger.log_metrics(
+            if self.tracker is not None:
+                self.tracker.log_metrics(
                     elo_metrics,
                     step=step,
                 )
@@ -1381,6 +1425,8 @@ class Trainer(BaseTrainer):
         self,
         path: Path | str | None = None,
         load_best: bool = False,
+        allow_external: bool = False,
+        allow_unsafe_pickle: bool = False,
     ) -> int:
         """Load training checkpoint.
 
@@ -1388,8 +1434,21 @@ class Trainer(BaseTrainer):
         ensure consistency.
 
         Args:
-            path: Specific checkpoint path.
+            path: Specific checkpoint path. Relative paths resolve against the
+                trainer's checkpoint directory.
             load_best: Whether to load best checkpoint.
+            allow_external: Permit a checkpoint outside the checkpoint directory
+                (operator-supplied resume path). See
+                :meth:`CheckpointManager.load`.
+            allow_unsafe_pickle: Deserialize with ``weights_only=False``. Only for
+                a file whose provenance the operator has established.
+
+                ``CheckpointManager.restore`` has accepted this since the hatch
+                landed, but this method neither exposed nor forwarded it — so the
+                one API most likely to be pointed at a legacy or third-party
+                checkpoint (resume) was the one with no way to opt in. Defaults
+                to ``False``, so every existing caller is unaffected and stays on
+                the safe path.
 
         Returns:
             Training step from checkpoint.
@@ -1402,6 +1461,8 @@ class Trainer(BaseTrainer):
             scheduler=self.scheduler,
             path=path,
             load_best=load_best,
+            allow_external=allow_external,
+            allow_unsafe_pickle=allow_unsafe_pickle,
         )
         self.global_step = step
 
@@ -1435,7 +1496,7 @@ def create_trainer(
     checkpoint_dir: Path | str | None = None,
     resume_from: Path | str | None = None,
     device: str = "auto",
-    wandb_logger: WandbLogger | None = None,
+    tracker: LangfuseTracker | None = None,
     distributed_context: DistributedContext | None = None,
     game: GameInterface | None = None,
 ) -> Trainer:
@@ -1447,7 +1508,7 @@ def create_trainer(
         checkpoint_dir: Checkpoint directory.
         resume_from: Path to checkpoint to resume from.
         device: Training device.
-        wandb_logger: Optional W&B logger for experiment tracking.
+        tracker: Optional Langfuse experiment tracker.
         distributed_context: Optional distributed context (auto-detected if None).
         game: Optional GameInterface for non-Go games (e.g. PDE, chess).
 
@@ -1460,17 +1521,19 @@ def create_trainer(
         config=config,
         device=device,
         checkpoint_dir=checkpoint_dir,
-        wandb_logger=wandb_logger,
+        tracker=tracker,
         distributed_context=distributed_context,
         game=game,
     )
 
     if resume_from is not None:
-        trainer.load_checkpoint(path=resume_from)
+        # Operator-supplied resume path: may legitimately live outside the
+        # trainer's own checkpoint directory, so opt out of containment here.
+        trainer.load_checkpoint(path=resume_from, allow_external=True)
         logger.info("training_resumed", from_step=trainer.global_step)
 
-        # Update W&B step offset for resumed training
-        if wandb_logger is not None:
-            wandb_logger.set_step_offset(trainer.global_step)
+        # Update tracker step offset for resumed training
+        if tracker is not None:
+            tracker.set_step_offset(trainer.global_step)
 
     return trainer

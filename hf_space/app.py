@@ -20,20 +20,20 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config.board import get_default_space_config
-from src.endgame import EndgameDetector
-from src.game_manager import GameManager, GameSession
-from src.rendering.board_renderer import BoardRenderer
-
 from config.schemas import AlphaGalerkinConfig
 from src.demos.architecture_demo import create_architecture_demo_tab
 from src.demos.benchmark_demo import create_benchmark_demo_tab
 
 # Demo modules from PR #20
 from src.demos.physics_demo import create_physics_demo_tab
+from src.endgame import EndgameDetector
+from src.game_manager import GameManager, GameSession
 from src.mcts.evaluator import FNetEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
+from src.rendering.board_renderer import BoardRenderer
 from src.tools.gtp import SimpleGoGame
+from src.training.checkpoint import load_torch_checkpoint
 
 # Configure structured logging
 structlog.configure(
@@ -127,7 +127,13 @@ def load_model(path: Path) -> AlphaGalerkinModel | None:
         return None
 
     try:
-        checkpoint = torch.load(path, map_location=DEVICE, weights_only=False)
+        # This is the Space's live model load, and it runs at module scope
+        # (``MODEL = load_model(MODEL_PATH)`` below) on a file ``_ensure_checkpoint``
+        # may have just fetched with ``hf_hub_download``. Unpickling a
+        # remotely-downloaded file at import is the highest-exposure
+        # deserialization in this bundle, so it goes through the same safe
+        # chokepoint as everything else rather than ``weights_only=False``.
+        checkpoint = load_torch_checkpoint(path, map_location=DEVICE)
         cfg = checkpoint.get("config", {})
 
         if isinstance(cfg, dict):

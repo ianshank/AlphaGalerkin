@@ -15,6 +15,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.constants import DEFAULT_BOARD_SIZES
+
 
 class ExperimentType(str, Enum):
     """Type of research experiment."""
@@ -163,7 +165,7 @@ class BenchmarkConfig(BaseModel):
 
     # Sizes to benchmark
     sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Sizes to benchmark",
     )
 
@@ -249,7 +251,7 @@ class TransferConfig(BaseModel):
 
     # Target domains
     target_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Target domain sizes (evaluation)",
     )
     n_eval_samples: int = Field(
@@ -334,7 +336,7 @@ class ComparisonConfig(BaseModel):
 
     # Evaluation settings
     eval_sizes: list[int] = Field(
-        default_factory=lambda: [9, 13, 19],
+        default_factory=lambda: list(DEFAULT_BOARD_SIZES),
         description="Evaluation sizes",
     )
     n_eval_samples: int = Field(
@@ -428,6 +430,6 @@ def create_transfer_config(
     """
     return TransferConfig(
         source_size=source_size,
-        target_sizes=target_sizes or [9, 13, 19],
+        target_sizes=target_sizes or list(DEFAULT_BOARD_SIZES),
         **kwargs,
     )

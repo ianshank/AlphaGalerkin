@@ -95,17 +95,15 @@ training:
   engine_eval_depth: 5           # Plies search depth
   engine_eval_games: 4           # Games per evaluation
 
-# W&B logging
-wandb:
+# Langfuse experiment tracking (credentials via LANGFUSE_* env)
+langfuse:
   enabled: true
   project: alphagalerkin
-  mode: online
   tags:
     - chess
     - self-play
     - alphazero
   log_model: true
-  log_code: true
   log_interval: 10
 
 # Runtime settings

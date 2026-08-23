@@ -84,8 +84,14 @@ tuning = [
 ]
 # scikit-fem backs the hp-adaptive FEM classical baseline used for DOE
 # Genesis proposal benchmarks (see src/research/fem_baseline.py).
+#
+# Upper bound is empirical, not defensive: the whole suite was verified green on
+# 12.0.2 (23/23, evidence/spikes/2026-08-23-skfem-substrate.md) against a pin
+# written for 9.x, so no API drift exists across that range. The <13 cap keeps a
+# future major from silently changing `refined()`'s conformity or `get_dofs()`'s
+# shape, both of which the element-local substrate depends on.
 fem = [
-    "scikit-fem>=9.0",
+    "scikit-fem>=9.0,<13",
 ]
 # matplotlib backs the CSV/PNG report artifacts: src/poc/visualization/
 # imports it at module level, and the *_compare research harnesses' plotting
@@ -120,7 +126,7 @@ dev = [
 # baseline, ONNX export/validate, PettingZoo adapter) actually execute rather than
 # skipping. onnxscript is required by torch>=2.x `torch.onnx.export` (dynamo path).
 test-extras = [
-    "scikit-fem>=9.0",
+    "scikit-fem>=9.0,<13",
     "onnx>=1.15",
     "onnxruntime>=1.17",
     "onnxscript>=0.1",

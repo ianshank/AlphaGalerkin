@@ -25,6 +25,15 @@ updates:
       # Pinned to align with the lint step / avoid 2.10+ behavioural changes.
       - dependency-name: "pydantic"
       - dependency-name: "mypy"
+      # langfuse v3/v4 is a different SDK: verified against langfuse==4.14.4,
+      # `Langfuse.trace`, `.score` and `.generation` are all gone (replaced by
+      # OpenTelemetry spans + `create_score`). src/training/langfuse_tracker.py
+      # calls all three, and the tracker is written to no-op when the SDK is
+      # *absent* -- not when its API has moved -- so a widened pin breaks
+      # silently on the next clean install. Unpin only together with a
+      # migration of that module. Closed PR #133 carries the probe output.
+      - dependency-name: "langfuse"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions used by the workflows
   - package-ecosystem: "github-actions"

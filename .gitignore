@@ -123,6 +123,11 @@ validation_outputs/
 !tsconfig.json
 !tests/modeling/_public_surface_golden.json
 !config/**/*.json
+# Committed benchmark provenance sidecars. The blanket ``*.json`` above would
+# silently swallow every ``results/*.run.json``, defeating run provenance without
+# any error -- the artifact would simply never be committed. Guarded by
+# tests/research/test_run_manifest.py::TestSidecarsAreCommittable.
+!results/**/*.json
 notebooks/utils/*.json
 uv.lock
 
@@ -252,4 +257,3 @@ config/board.py
 
 # MkDocs build output
 /site/
-

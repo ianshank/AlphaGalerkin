@@ -1,0 +1,64 @@
+# Scope-containment configuration for the current implementation cycle.
+#
+# Prose lives in `docs/FOCUS.md`; this file is the machine-readable half, read
+# by `scripts/check_focus.py` (wired into CI's `lint` job). The two are kept in
+# step by `tests/scripts/test_check_focus.py`, which asserts every track named
+# here appears in the doc and vice versa -- a frozen track nobody wrote down is
+# indistinguishable from an accident.
+#
+# The rule this encodes: a diff may touch a frozen track, or the core solver
+# surface, but a *substantive* change to both in one changeset means attention
+# has split. Incidental edits (a version shim, an import fix, a rename that
+# sweeps the tree) are below `incidental_line_budget` and never trip it.
+
+schema_version: 1
+
+# How many changed lines (added + deleted) a single frozen track may carry
+# before it counts as substantive rather than incidental. Deliberately small:
+# the gate exists to catch feature work, and feature work is never seven lines.
+# Raising this is a scope decision, so it lives here rather than in the script.
+incidental_line_budget: 20
+
+# Paths whose work is deliberately paused for this cycle. A trailing `/` marks a
+# directory prefix; anything else is an exact file path.
+frozen_tracks:
+  - name: codec
+    reason: >-
+      The video-compression / codec model-zoo track is complete enough to sit
+      still. It is the largest non-core surface in the tree and it competes for
+      the same reviewer attention as the refinement work, so it is frozen rather
+      than deleted -- it stays green in CI and keeps its coverage gate.
+    paths:
+      - src/video_compression/
+      - config/video_compression/
+      - tests/video_compression/
+      - scripts/benchmark_codec.py
+      - scripts/decode_video.py
+      - scripts/encode_video.py
+      - scripts/demo_compression.py
+      - scripts/train_compression.py
+      - scripts/train_compression_zoo.py
+      - scripts/train_compression_zoo_entry.py
+      - .github/workflows/phase2-zoo-validation.yml
+
+  - name: interactive-surfaces
+    reason: >-
+      `dashboard/` and its `hf_space/` deploy mirror are demo surfaces, not
+      evidence. `hf_space/src/` is additionally a ~55k-LOC near-duplicate of
+      `src/` (hygiene backlog B14, and a disclosed charter deviation), so any
+      substantive change there doubles the maintenance cost of the core work it
+      would be competing with.
+    paths:
+      - dashboard/
+      - hf_space/
+      - tests/dashboard/
+      - tests/hf_space/
+      - deploy_space.py
+
+# The surfaces this cycle's thesis actually lives on. A substantive frozen-track
+# change landing alongside any of these is what the gate reports.
+core_paths:
+  - src/mcts/
+  - src/pde/
+  - src/refinement/
+  - src/research/

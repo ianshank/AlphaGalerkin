@@ -154,6 +154,83 @@ jobs:
         run: mypy src/ --strict --ignore-missing-imports
 
   # ============================================================
+  # Scope containment (docs/FOCUS.md)
+  # ============================================================
+  # An owner decision froze two tracks for this cycle (the codec model-zoo, and
+  # dashboard/ + its hf_space mirror). A freeze written only in prose is a
+  # suggestion; this makes it a check.
+  #
+  # The rule is NOT "do not touch frozen code" -- a freeze is a pause, not a ban,
+  # and this repository's own history shows what deleting too early costs. It is
+  # "do not make a *substantive* change to a frozen track in the same changeset
+  # as core solver work", because that is what split attention looks like in a
+  # diff. "Substantive" is a line budget in config/focus.yaml, so an incidental
+  # edit (a version shim, a tree-wide rename) never trips it.
+  #
+  # A separate job rather than a step in `lint` for one concrete reason:
+  # `git diff <base>...<head>` needs the merge base, and `lint`'s checkout is
+  # deliberately shallow (fetch-depth 1). Deepening it would slow every step in
+  # that job to serve one check.
+  #
+  # NOT in `ci-success`'s needs list, deliberately and temporarily -- the same
+  # convention the `secrets` job above documents. It was verified clean against
+  # this branch's own diff before landing, and it is mutation-tested (8/8), but
+  # a brand-new gate promoted into someone's merge path by the same pull request
+  # that introduces it gives a first red no way to be triaged. Promote it into
+  # the merge gate once it has been green across a few pull requests. Leaving
+  # that unsaid would make its absence look like an oversight.
+  focus:
+    name: Scope Containment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only meaningful on a pull request: on a plain push there is no base branch
+    # to diff against, so there is no changeset to classify.
+    #
+    # The `focus-override` label is the escape hatch for a genuinely coupled
+    # change. It is deliberately a *visible* one -- an override nobody can see
+    # is the same as no gate.
+    if: >-
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'focus-override')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Full history: the check diffs against the merge base, which a
+          # shallow clone does not contain.
+          fetch-depth: 0
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        # The checker is stdlib + pyyaml + pydantic by design, so this job stays
+        # seconds rather than minutes.
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pydantic>=2.7,<2.10" pyyaml
+
+      - name: Check scope containment
+        run: |
+          set -euo pipefail
+          # `actions/checkout` with fetch-depth 0 normally populates
+          # refs/remotes/origin/*, but a fork or a changed fetch spec can leave
+          # the base branch unfetched. Falling back to the SHA the event itself
+          # carried means the check reports a real verdict instead of a git
+          # error that reads like a harness problem.
+          BASE="origin/${{ github.event.pull_request.base.ref }}"
+          if ! git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            git fetch --no-tags --depth=1 origin "$BASE"
+          fi
+          echo "Diffing against base: $BASE"
+          python -m scripts.check_focus --base "$BASE" --head HEAD --fail-on-violation
+
+  # ============================================================
   # Stage 2: Unit Tests (Fast)
   # ============================================================
   # .gitleaks.toml has existed since the repo was set up, and `make gitleaks`

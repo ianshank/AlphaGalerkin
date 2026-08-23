@@ -13,10 +13,11 @@ Spec: specs/stochastic_galerkin_nke.spec.md (AC7, change-doc task 1.9).
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
 
 import pytest
+
+from tests.support.import_graph import imported_modules, matches_module_prefix
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -54,33 +55,20 @@ def _guarded_files() -> list[Path]:
     return sorted(f for f in files if f.name != "__pycache__")
 
 
-def _module_of(path: Path) -> str:
-    return ".".join(path.relative_to(REPO_ROOT).with_suffix("").parts)
-
-
 def _imported_modules(path: Path) -> set[str]:
-    """All absolute module names imported by ``path`` (relative imports resolved)."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    own_module = _module_of(path)
-    own_package_parts = own_module.split(".")[:-1]
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imported.add(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level == 0:
-                if node.module:
-                    imported.add(node.module)
-            else:
-                base_parts = own_package_parts[: len(own_package_parts) - node.level + 1]
-                base = ".".join(base_parts)
-                imported.add(f"{base}.{node.module}" if node.module else base)
-    return imported
+    """All absolute module names imported by ``path`` (relative imports resolved).
+
+    Thin wrapper so this guard's call sites stay unchanged while the
+    implementation lives in ``tests/support/import_graph.py``, shared with
+    ``tests/regression/test_import_contracts.py``. Two AST walks that must agree
+    are two AST walks that will eventually disagree.
+    """
+    return imported_modules(path, REPO_ROOT)
 
 
 def _matches(module: str, prefix: str) -> bool:
-    return module == prefix or module.startswith(prefix + ".")
+    """Module-boundary match. See ``tests.support.import_graph``."""
+    return matches_module_prefix(module, prefix)
 
 
 class TestImportIsolation:

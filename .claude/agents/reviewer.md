@@ -16,7 +16,13 @@ Checklist for every diff:
   `src/poc/config.py`, `_centaur_common` primitives, `src/templates/` bases). Duplication of a
   canonical type is a blocker, not a nit.
 - **Claim verification**: for each claim in the PR description, find the code that backs it. If a
-  test is said to pass, confirm it is not skipped and actually asserts the behavior.
+  test is said to pass, confirm it is not skipped and actually asserts the behavior. A *numeric*
+  claim additionally needs a committed artifact that **contains what it asserts** (a comparison
+  claim citing a file with one arm evidences nothing) plus its `.run.json` provenance sidecar —
+  existence of the file is not provenance.
+- **Guards that cannot fail**: a new guard must be mutation-tested — restore the defect, confirm
+  a *named* test fails, and confirm the mutation actually applied. A guard whose scan roots or
+  vocabulary match nothing passes everything.
 - **Coverage / regression**: the changed surface hits its `--cov-fail-under` gate (branch); the
   correct CLAUDE.md Regression-Surface rows are run and green; new surfaces add a new row.
 - **Every `@abstractmethod` has a call site.** An abstract method overridden by every subclass but

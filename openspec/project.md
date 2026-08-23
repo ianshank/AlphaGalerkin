@@ -53,12 +53,35 @@ openspec/
 ├── specs/
 │   └── project-charter/spec.md         # the charter (current truth)
 └── changes/
+    ├── archive/                        # completed changes (see below)
     └── project-charter-alignment/      # the change that introduced it
         ├── proposal.md
         ├── design.md
         ├── tasks.md
         └── specs/project-charter/spec.md   # delta
 ```
+
+## Archiving completed changes
+
+A change package is **active** while its `tasks.md` has unchecked boxes. Once every
+task is done and its delta has landed in `openspec/specs/`, move the directory to
+`openspec/changes/archive/<change-id>/`. Without this, completed and in-flight work
+are indistinguishable in a directory listing, and the tree grows monotonically.
+
+Two exceptions, both deliberate:
+
+- **`project-charter-alignment/` stays where it is**, despite being 36/36 complete.
+  It is the change that introduced the charter, and it is cited by name from
+  `CHANGELOG.md` (append-only, so the reference cannot be repointed) and from
+  `tests/docs/test_charter_alignment.py`'s design-note docstring. Moving it would
+  break a historical citation to gain tidiness. It is documented provenance, not
+  a backlog item.
+- A change whose delta was **rejected** is deleted, not archived — an archive of
+  decisions that never landed reads as though they did.
+
+Archiving is a convention, not a guard: nothing fails if a completed change lingers.
+That is a deliberate limit, because the charter's own rule is that a Requirement
+without a guard is a wish, and this is a convention rather than a Requirement.
 
 ## Validation
 

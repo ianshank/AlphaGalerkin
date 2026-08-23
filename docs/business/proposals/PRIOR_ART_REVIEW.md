@@ -29,11 +29,19 @@ tree-search look-ahead; the internal claim conflated "RL" with "MCTS".
 | **Foucart, Charous, Lermusiaux 2023** | "Deep Reinforcement Learning for Adaptive Mesh Refinement," *J. Comput. Phys.* 491:112381 (arXiv:2209.12351); MIT MSEAS | Local **POMDP** policy networks trained from simulation; train small → deploy large | **No** (deep RL, POMDP) |
 | **Huergo, Rubio, Ferrer 2024** | "A reinforcement learning strategy for p-adaptation in high-order solvers," *Results in Engineering* v21 (arXiv:2306.08292); UPM | **PPO** actor-critic chooses polynomial order p per element in HORSES3D | **No** (PPO) |
 
-## Finding 2 — the landscape is uniformly single-step RL
+## Finding 2 — no AMR-RL method uses an explicit search tree
 
-A broader survey confirms the pattern: every located AMR-ML method picks the *immediate*
-refine/mark/coarsen action with a learned policy or value function — none plans multiple
-steps ahead with a search tree.
+> **Corrected 2026-08-23.** This section previously read *"the landscape is uniformly
+> single-step RL"*. That is **retracted** — it conflated *"no search tree"* with *"no
+> multi-step planning"*, and VDGN (arXiv:2211.00801, row 1 below) explicitly refines
+> **anticipatorily** for features that will appear at later times, unlocking regions of the
+> error-cost landscape a local error estimator cannot reach. The `MCTS?` column below was
+> always correct; the section's framing was not.
+
+Every located AMR-ML method selects its refine/mark/coarsen action with a learned policy or
+value function. **None uses an explicit search tree over refinement sequences with a
+transparent, reportable compute budget** — that, and not multi-step reasoning as such, is the
+defensible delta.
 
 | Citation | What it does | MCTS? |
 |---|---|---|
@@ -62,10 +70,13 @@ selection** returned **no** prior work. "Galerkin" is the cleanest differentiato
 ## Honest defensible delta
 
 The **narrow methodological delta survives**: no published work applies **MCTS multi-step
-look-ahead to error-driven adaptive refinement or to Galerkin/spectral basis selection**.
-The entire AMR-RL canon is single-step policy RL, so "multi-step tree-search planning vs.
-myopic RL / greedy Dörfler marking" is a genuine, previously-unoccupied framing, and
+look-ahead to error-driven adaptive refinement or to Galerkin/spectral basis selection**, and
 "MCTS + Galerkin basis selection" in particular returns zero prior art.
+
+State it as *"explicit bounded tree search over refinement sequences, with transparent compute
+budgets and replayable decisions"* — **not** as *"vs. myopic RL"*. The latter framing rests on
+the retracted uniformly-single-step claim (see Finding 2) and would be rebutted by VDGN on
+first read.
 
 **Two honesty constraints on how this is framed:**
 
@@ -76,12 +87,25 @@ myopic RL / greedy Dörfler marking" is a genuine, previously-unoccupied framing
    > targets mesh **generation**, a distinct problem."*
 
 2. **Novelty ≠ superiority.** The delta is a *method* novelty, not a demonstrated win. The
-   single-step RL papers already match classical error-estimator marking, so multi-step
+   RL-for-AMR papers already match classical error-estimator marking, so multi-step
    look-ahead must earn an **empirical** advantage — ideally at **matched wall-clock**, not
-   just matched DOF — to be compelling. The repo's own `lshape_amr_compare` result is the
-   relevant honest data point: an *untrained* MCTS refinement policy beats Dörfler by a few
-   percent at matched DOF but is far worse at matched wall-clock, so the compelling claim
-   depends on a trained evaluator that closes the wall-clock gap (out of scope today).
+   just matched DOF — to be compelling.
+
+   > **Corrected 2026-08-23.** This paragraph previously stated, incorrectly, that an
+   > untrained MCTS refinement policy "beats Dörfler by a few percent at matched DOF" —
+   > a claim **retracted on 2026-08-16** whose correction never propagated here. The committed
+   > result is the opposite: MCTS **loses** at matched DOF (median ratio **1.0996**, winning
+   > 1 of 5 seeds) and loses further at matched compute (**2.04**, 0 of 5). See
+   > `openspec/specs/project-charter/spec.md` (*Novelty Claim Discipline*) and
+   > `specs/lshape_amr_compare.spec.md`.
+   >
+   > The deeper point is that neither figure measures policy quality. The shared
+   > discretisation refines by tensor-product grid *lines*, on which adaptive Dörfler marking
+   > is itself **5–9× worse than plain uniform refinement** at matched DOF — so both arms were
+   > compared on a substrate that penalises adaptivity. Until refinement is element-local, no
+   > marking-policy comparison on it means anything. An element-local substrate inverts the
+   > adaptive-vs-uniform result (4–10× *better*, `evidence/spikes/2026-08-23-skfem-substrate.md`),
+   > and the head-to-head is being re-run there.
 
 ## Addendum (2026-07-23) — NKE and the stochastic Galerkin layer
 

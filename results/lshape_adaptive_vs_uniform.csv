@@ -1,0 +1,17 @@
+problem,method,refinement_level,n_dof,l2_error,error_per_dof
+poisson_lshaped,uniform,0,16,1.71419783e-02,1.07137364e-03
+poisson_lshaped,uniform,1,56,8.47966965e-03,1.51422672e-04
+poisson_lshaped,uniform,2,208,3.71462140e-03,1.78587567e-05
+poisson_lshaped,uniform,3,800,1.55740021e-03,1.94675026e-06
+poisson_lshaped,uniform,4,3136,6.38671932e-04,2.03658142e-07
+poisson_lshaped,dorfler,0,16,1.71419783e-02,1.07137364e-03
+poisson_lshaped,dorfler,1,24,1.37436054e-02,5.72650226e-04
+poisson_lshaped,dorfler,2,34,1.28538975e-02,3.78055808e-04
+poisson_lshaped,dorfler,3,56,1.23263516e-02,2.20113421e-04
+poisson_lshaped,dorfler,4,110,1.26652523e-02,1.15138657e-04
+poisson_lshaped,dorfler,5,215,1.25667765e-02,5.84501230e-05
+poisson_lshaped,dorfler,6,438,1.25588141e-02,2.86730916e-05
+poisson_lshaped,dorfler,7,873,8.28990488e-03,9.49588188e-06
+poisson_lshaped,dorfler,8,1316,8.40085607e-03,6.38362924e-06
+poisson_lshaped,dorfler,9,1930,8.34689281e-03,4.32481493e-06
+poisson_lshaped,dorfler,10,2847,7.11265411e-03,2.49829790e-06

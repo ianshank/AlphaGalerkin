@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from src.integrations.lm_studio.preflight import PreflightReport
@@ -174,6 +175,51 @@ def test_synthetic_two_arms_records_comparison(
     # Both arms produced their own scaling fits.
     assert "random_residual_scaling_exponent" in result.metrics
     assert "llm_residual_scaling_exponent" in result.metrics
+
+
+def test_arm_comparison_p_is_reproducible_across_runs(
+    passing_preflight: PreflightReport,
+    stub_lm_client: MagicMock,
+) -> None:
+    """The scenario is seeded end to end, so its recorded statistic must be too.
+
+    Before `SignificanceTest.random_seed` existed, `arm_comparison_p` was drawn
+    from NumPy's global stream: two runs of an otherwise fully-determined
+    scenario recorded different p-values, and the number could not be
+    re-derived from a committed artifact. Perturbing the global stream between
+    the runs is what makes this discriminating -- without it the assertion would
+    hold by accident whenever the two runs happened to start from the same
+    global state.
+    """
+    # `bootstrap` explicitly: the config default is `mann_whitney`, which is
+    # deterministic and never reaches an RNG at all, so a test left on the
+    # default cannot detect an unseeded draw. `bootstrap` and `permutation` are
+    # both selectable from config, and they are where the defect lived.
+    config = _cpu_config(
+        arms=["random", "llm"],
+        min_residual_decay=0.5,
+        min_fit_r2=0.9,
+        significance_test_type="bootstrap",
+    )
+    # Near-identical bases on purpose. The separated bases the sibling test uses
+    # (1.0 vs 0.5) make every resample fall on the same side of the observed
+    # difference, so the p-value pins to 0.0 for any RNG and the assertion below
+    # would hold whether or not the seed was wired through -- which is exactly
+    # what a first draft of this test did.
+    overlapping = {"random": 1.0, "llm": 1.0005}
+
+    first = _SyntheticScenario(config, base=overlapping).run()
+    np.random.seed(20260823)
+    for _ in range(53):
+        np.random.random()
+    second = _SyntheticScenario(config, base=overlapping).run()
+
+    p_value = first.metrics["arm_comparison_p"]
+    assert 0.0 < p_value < 1.0, (
+        f"p={p_value} is degenerate, so this test cannot detect an unseeded draw; "
+        "the two arms must overlap for the RNG to show through"
+    )
+    assert p_value == second.metrics["arm_comparison_p"]
 
 
 def test_llm_only_arm_preflight_fail_skips(failing_preflight: PreflightReport) -> None:

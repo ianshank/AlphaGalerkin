@@ -7,13 +7,20 @@ using various statistical tests with proper corrections.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Final, Literal, Protocol, cast
 
 import numpy as np
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
 logger = structlog.get_logger(__name__)
+
+#: Hard ceiling on permutations regardless of ``n_bootstrap``. An exact
+#: permutation test is O(n_permutations) resamples and the p-value resolution it
+#: buys past this point is well below the noise in any measurement this project
+#: makes; surfaced as a named constant rather than a literal so the trade-off is
+#: visible at the call site.
+MAX_PERMUTATIONS: Final[int] = 10_000
 
 
 class SignificanceTest(BaseModel):
@@ -63,6 +70,16 @@ class SignificanceTest(BaseModel):
         lt=1,
         description="Confidence level for intervals",
     )
+    random_seed: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Seed for the resampling RNG used by the bootstrap and permutation tests. "
+            "None (the default) keeps the historical behaviour of drawing from NumPy's "
+            "global stream, which is NOT reproducible run to run; set it whenever a "
+            "reported interval has to be re-derivable from a committed artifact."
+        ),
+    )
 
 
 @dataclass
@@ -95,6 +112,46 @@ class EffectSizeResult:
     interpretation: str  # "small", "medium", "large"
 
 
+class _Resampler(Protocol):
+    """The two RNG operations the resampling tests need.
+
+    Both ``numpy.random`` (the legacy global module) and
+    ``numpy.random.Generator`` satisfy this, which is what lets the unseeded
+    default stay byte-identical to the historical behaviour.
+    """
+
+    def shuffle(self, x: np.ndarray) -> None: ...  # pragma: no cover - structural
+
+    def choice(  # pragma: no cover - structural
+        self, a: np.ndarray, size: int, replace: bool
+    ) -> np.ndarray: ...
+
+
+def resolve_resampler(test: SignificanceTest, override: _Resampler | None = None) -> _Resampler:
+    """Pick the RNG a resampling test should draw from.
+
+    Precedence: an explicit ``override`` (an injected generator, for tests and
+    for callers threading their own seeded stream), then ``test.random_seed``,
+    then NumPy's global stream.
+
+    Falling back to the global stream is deliberate rather than lazy. It is the
+    historical behaviour, and it is the only fallback under which a caller who
+    has already done ``np.random.seed(...)`` keeps getting the results they get
+    today. The cost is stated plainly in the field's own description: without a
+    seed, the intervals this module reports are not reproducible -- which is a
+    real problem in a project whose governance posture is that every number
+    traces to an artifact, and exactly why ``random_seed`` exists.
+    """
+    if override is not None:
+        return override
+    if test.random_seed is not None:
+        return np.random.default_rng(test.random_seed)
+    # `numpy.random` provides `shuffle` and `choice` with matching signatures,
+    # but a module object is not structurally a Protocol instance to a type
+    # checker, so the equivalence is asserted here rather than inferred.
+    return cast(_Resampler, np.random)
+
+
 class StatisticalAnalyzer:
     """Analyzes experimental results for statistical significance.
 
@@ -109,14 +166,19 @@ class StatisticalAnalyzer:
     def __init__(
         self,
         test_config: SignificanceTest | None = None,
+        resampler: _Resampler | None = None,
     ) -> None:
         """Initialize analyzer.
 
         Args:
             test_config: Default test configuration.
+            resampler: Optional RNG for the bootstrap/permutation tests. Takes
+                precedence over ``SignificanceTest.random_seed``. Defaults to
+                None, which keeps the historical global-stream behaviour.
 
         """
         self.test_config = test_config or SignificanceTest()
+        self._resampler = resampler
         self._logger = structlog.get_logger(__name__)
 
     def compare_runs(
@@ -147,23 +209,26 @@ class StatisticalAnalyzer:
         std_baseline = np.std(baseline, ddof=1)
         std_treatment = np.std(treatment, ddof=1)
 
-        # Run statistical test
+        # Run statistical test. Only the bootstrap path produces a resampled
+        # confidence interval; everything else falls through to the normal one.
+        ci: tuple[float, float] | None = None
         if test.test_type == "t_test":
             statistic, p_value = self._t_test(baseline, treatment, test)
         elif test.test_type == "mann_whitney":
             statistic, p_value = self._mann_whitney(baseline, treatment, test)
         elif test.test_type == "bootstrap":
+            # `_bootstrap_test` already resamples the CI and returns it. The
+            # previous code unpacked it here, discarded it on the next line
+            # (`ci = None`), and then recomputed the identical quantity -- so
+            # the default test type paid for `2 * n_bootstrap` extra resamples
+            # per call and reported the second draw rather than the first.
             statistic, p_value, ci = self._bootstrap_test(baseline, treatment, test)
         elif test.test_type == "permutation":
             statistic, p_value = self._permutation_test(baseline, treatment, test)
         else:
             raise ValueError(f"Unknown test type: {test.test_type}")
 
-        # Confidence interval
-        ci = None
-        if test.test_type == "bootstrap":
-            ci = self._bootstrap_ci(baseline, treatment, test)
-        else:
+        if ci is None:
             ci = self._normal_ci(baseline, treatment, test)
 
         # Apply correction if needed
@@ -366,9 +431,10 @@ class StatisticalAnalyzer:
         n_baseline = len(baseline)
 
         # Bootstrap under null
+        rng = resolve_resampler(test, self._resampler)
         bootstrap_diffs = []
         for _ in range(test.n_bootstrap):
-            np.random.shuffle(combined)
+            rng.shuffle(combined)
             boot_baseline = combined[:n_baseline]
             boot_treatment = combined[n_baseline:]
             bootstrap_diffs.append(np.mean(boot_treatment) - np.mean(boot_baseline))
@@ -409,11 +475,12 @@ class StatisticalAnalyzer:
         combined = np.concatenate([baseline, treatment])
         n_baseline = len(baseline)
 
-        n_permutations = min(test.n_bootstrap, 10000)
+        n_permutations = min(test.n_bootstrap, MAX_PERMUTATIONS)
+        rng = resolve_resampler(test, self._resampler)
         count_extreme = 0
 
         for _ in range(n_permutations):
-            np.random.shuffle(combined)
+            rng.shuffle(combined)
             perm_baseline = combined[:n_baseline]
             perm_treatment = combined[n_baseline:]
             perm_diff = np.mean(perm_treatment) - np.mean(perm_baseline)
@@ -449,11 +516,12 @@ class StatisticalAnalyzer:
             Tuple of (lower, upper) bounds.
 
         """
+        rng = resolve_resampler(test, self._resampler)
         bootstrap_diffs = []
 
         for _ in range(test.n_bootstrap):
-            boot_baseline = np.random.choice(baseline, size=len(baseline), replace=True)
-            boot_treatment = np.random.choice(treatment, size=len(treatment), replace=True)
+            boot_baseline = rng.choice(baseline, size=len(baseline), replace=True)
+            boot_treatment = rng.choice(treatment, size=len(treatment), replace=True)
             bootstrap_diffs.append(np.mean(boot_treatment) - np.mean(boot_baseline))
 
         alpha = 1 - test.confidence_level

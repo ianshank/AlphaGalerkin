@@ -25,6 +25,24 @@
 /ARCHITECTURE.md        @ianshank
 /CLAUDE.md              @ianshank
 
+# Governance surfaces. The charter is supreme, the evidence artifacts are what
+# every numeric claim resolves to, and the baselines are what CI gates against --
+# a change to any of them is a change to what this project claims, so it is
+# routed for review even when the diff looks like a data file.
+#
+# Routing, not enforcement: every path here resolves to the same single owner,
+# and CODEOWNERS cannot separate an author from an approver when there is one of
+# them. The value is that a governance change is never invisible in the file
+# list. Genuine author/approver separation needs distinct GitHub identities plus
+# admin-enforced branch protection, none of which is repository-side config.
+/openspec/              @ianshank
+/evidence/              @ianshank
+/results/               @ianshank
+/config/baselines/      @ianshank
+/config/focus.yaml      @ianshank
+/docs/FOCUS.md          @ianshank
+/docs/adr/              @ianshank
+
 # CI / tooling
 /.github/               @ianshank
 /pyproject.toml         @ianshank

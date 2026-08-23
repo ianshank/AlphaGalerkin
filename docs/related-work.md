@@ -57,6 +57,44 @@ density-propagation path alongside its deterministic operator learning; a future
 research item is MCTS-guided selection *over* the stochastic layer's mixture basis
 (K, component placement), which would combine the two without merging their code paths.
 
+## 2. VDGN — Multi-Agent RL for Adaptive Mesh Refinement — arXiv:2211.00801
+
+*"Multi-Agent Reinforcement Learning for Adaptive Mesh Refinement"* (Dzanic, Yang, Petersen,
+Kolev, Anderson, Faissol; LLNL). Related: *"Learning robust marking policies for adaptive mesh
+refinement"* (arXiv:2207.06339), and Yang et al., AISTATS 2023 (arXiv:2103.01342).
+
+**Why this entry exists:** it is the counterexample to a claim this project made and has now
+**retracted**. Until 2026-08-23, `README.md`, `CLAIMS`-adjacent prose in `CLAUDE.md`, and
+`docs/business/proposals/PRIOR_ART_REVIEW.md` all asserted that the AMR-RL literature is
+*"uniformly single-step"*. It is not, and a reviewer would have said so on first read.
+
+**What it does:** formulates AMR as a multi-agent MDP in which each element is an agent with a
+value-decomposition network, trained on the simulation itself. Its central contribution is
+**anticipatory refinement** — refining regions that will encounter complex features at *future*
+times, which a local error estimator cannot see because the feature is not there yet. That
+unlocks regions of the error-vs-cost landscape inaccessible to threshold marking, and it
+reports outperforming threshold-based policies on global error and cost. A companion line of
+work learns *robust marking policies*, i.e. a learned replacement for a fixed Dörfler θ.
+
+**What it does NOT do (and this is the whole delta):** no explicit **search tree over refinement
+sequences**. The policy is amortised into network weights and queried once per decision; there
+is no expansion, no backup, no per-decision compute budget that can be dialled, reported, or
+replayed. AlphaGalerkin's claim is precisely that — *bounded tree search over legal refinement
+sequences, with a transparent compute budget and replayable decisions* — and **not** "multi-step
+vs. myopic RL", which VDGN rebuts.
+
+**Consequence for this project's claims:** two framings are now inadmissible. "The AMR-RL canon
+is uniformly single-step" is retracted (this entry). "Multi-step look-ahead vs. myopic RL" is
+retracted as a *framing*, because anticipatory refinement is multi-step in effect. What survives
+is narrow and still real: the explicit tree, its budget accounting, and its application to
+Galerkin **basis** selection, for which the prior-art search returns nothing.
+
+**Consequence for the benchmark:** because a learned marking policy is exactly what
+arXiv:2207.06339 already does, an experiment whose action space is *"choose θ this step"* is
+inside occupied prior art. The element-choice action space is the one where the delta lives —
+on a conforming mesh the DOF cost of a refinement set is non-additive through green closure, so
+element choice is genuinely non-myopic in a way a scalar threshold is not.
+
 <!-- entries:end -->
 
 ## Notes

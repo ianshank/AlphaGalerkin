@@ -43,11 +43,14 @@ AlphaZero - to discover optimal refinement strategies with multi-step look-ahead
 ### 3. Key Innovation (Narrow, Verified Novelty)
 MCTS *multi-step look-ahead* applied to Galerkin basis selection and error-driven adaptive
 refinement is unpublished (prior-art review 2026-07-22, `docs/business/proposals/PRIOR_ART_REVIEW.md`).
-The RL-for-AMR canon (Yang et al. AISTATS 2023, Foucart et al. JCP 2023, Huergo et al. 2024,
-Freymuth et al. NeurIPS 2023) is uniformly *single-step* policy RL. **Do not overclaim**: the
-only prior MCTS+finite-element work, TreeMesh (arXiv:2111.07613), targets mesh *generation* —
-a distinct problem — so a blanket "no MCTS+FEM" claim is false. MCTS provides:
-- Multi-step look-ahead planning (vs. myopic RL policies)
+No work in the RL-for-AMR canon (Yang et al. AISTATS 2023, Foucart et al. JCP 2023, Huergo et
+al. 2024, Freymuth et al. NeurIPS 2023) uses an explicit **search tree over refinement
+sequences**. **Do not overclaim**, on two counts: the only prior MCTS+finite-element work,
+TreeMesh (arXiv:2111.07613), targets mesh *generation* — a distinct problem — so a blanket "no
+MCTS+FEM" claim is false; and the canon is **not** myopic in effect — VDGN (arXiv:2211.00801)
+refines anticipatorily for features that appear at later times, so "vs. myopic RL" is not a
+defensible framing. MCTS provides:
+- Explicit bounded tree search over refinement sequences, with a reportable compute budget
 - Provable exploration guarantees (UCB bounds)
 - No training data requirement (operates directly on the PDE)
 - Integration with mathematical convergence theory (LBB stability)

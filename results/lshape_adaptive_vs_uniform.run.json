@@ -1,0 +1,68 @@
+{
+  "arms": [
+    {
+      "counters": {
+        "levels": 5.0
+      },
+      "name": "uniform",
+      "parameters": {
+        "marking": "all elements"
+      }
+    },
+    {
+      "counters": {
+        "levels": 11.0
+      },
+      "name": "dorfler",
+      "parameters": {
+        "marking_fraction": 0.5
+      }
+    }
+  ],
+  "artifacts": {
+    "csv": "results/lshape_adaptive_vs_uniform.csv"
+  },
+  "config": {
+    "initial_side": 4,
+    "marking_fraction": 0.5,
+    "max_dof": 2200,
+    "output": "results/lshape_adaptive_vs_uniform.csv",
+    "scale": 1.0
+  },
+  "config_hash": "unknown",
+  "created_at_utc": "2026-08-23T17:41:46.443909+00:00",
+  "git": {
+    "branch": "claude/alphagalerkin-council-review-plan-5a63hr",
+    "dirty": true,
+    "sha": "60d9d9fced6e72ce20b34e58f0150ec1a3179898"
+  },
+  "hardware_tag": "unknown",
+  "harness": "scripts.run_adaptive_vs_uniform",
+  "metrics": {
+    "dorfler_convergence_exponent": -0.13635099017604757,
+    "dorfler_over_uniform_at_dof_207": 3.37887111500512,
+    "dorfler_over_uniform_at_dof_2847": 10.455771328145296,
+    "dorfler_over_uniform_at_dof_56": 1.4536358200800474,
+    "dorfler_over_uniform_at_dof_769": 5.600655880922238,
+    "dorfler_over_uniform_max": 10.455771328145296,
+    "dorfler_over_uniform_min": 1.4536358200800474,
+    "matched_dof_max": 2847.0,
+    "matched_dof_min": 16.0,
+    "uniform_convergence_exponent": -0.6264073837587618
+  },
+  "notes": "Evidences the charter row 'L-shape adaptive Doerfler vs uniform at matched DOF'. Both arms share one solver, one geometry predicate and one refinement primitive; only the marking differs. Ratios are dorfler/uniform, so above 1 means adaptive marking is WORSE -- which is the point: on a tensor-product substrate, refining one element inserts full grid lines, so the refinement budget is spent away from the singularity. This is why no marking-policy comparison on this substrate measures policy quality.",
+  "packages": {
+    "packages": {
+      "matplotlib": "3.11.1",
+      "numpy": "2.4.6",
+      "pydantic": "2.9.2",
+      "scikit-fem": "12.0.2",
+      "scipy": "1.17.1",
+      "torch": "2.13.0"
+    },
+    "python": "3.11.15"
+  },
+  "run_id": "adaptive-vs-uniform-4-2200",
+  "schema_version": 1,
+  "seeds": []
+}

@@ -18,6 +18,11 @@ rather than editing history.
 | --- | --- | --- |
 | [0001](0001-chess-self-play.md) | Chess self-play training architecture | Accepted |
 | [0002](0002-mouse-droid-fusion-integration.md) | Mouse-Droid-AGI fusion-head integration (stable `src.modeling` surface) | Accepted |
+| [0004](0004-licensing-and-ip-posture.md) | Licensing and IP posture: MIT stays, and disclosure has already happened | Accepted |
 
 > ADR 0002 is enforced in CI: `tests/modeling/test_public_surface_contract.py`
 > turns its "frozen signatures" rule into a mechanical check.
+
+> ADR 0003 is deliberately unallocated: it is claimed by the unmerged PR #118
+> (`docs/adr/0003-jax-track-b-verifier.md`). Numbering around it avoids a collision
+> when that branch lands.

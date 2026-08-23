@@ -347,6 +347,14 @@ class ScalingLawScenario(BaseScenario):
             test_type=self.config.significance_test_type,
             alpha=self.config.significance_alpha,
             n_bootstrap=self.config.n_bootstrap,
+            # The scenario is seeded end to end, so its statistics are too.
+            # The default `significance_test_type` is `mann_whitney`, which is
+            # deterministic and never reaches an RNG -- but `bootstrap` and
+            # `permutation` are both selectable from config, and under either of
+            # those the recorded `arm_comparison_p` was drawn from NumPy's
+            # global stream, so it differed between two runs of an otherwise
+            # fully-determined scenario.
+            random_seed=self.config.seed,
         )
         result = analyzer.compare_runs(samples_a, samples_b, test=test)
         self.record_metric("arm_comparison_p", float(result.p_value))

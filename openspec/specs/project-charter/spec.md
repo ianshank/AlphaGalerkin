@@ -127,9 +127,9 @@ written in response to.
 | L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 1.0996 (MCTS **loses** ~10%), wins 1/5 seeds | `results/lshape_mcts_vs_dorfler.csv` |
 | L-shape AMR at matched compute | median ratio 2.04, MCTS wins 0/5 seeds | `specs/lshape_amr_compare.spec.md` |
 | L-shape substrate, uniform-refinement L2 rate | O(h^1.31) ≈ O(N^-0.65) | `tests/research/test_lshape_convergence_gate.py` |
-| L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler 5–9× **worse** (tensor-product refinement defect) | `results/lshape_mcts_vs_dorfler.csv` |
+| L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler **worse**, 1.5× at 56 DOF rising to 10.5× at 2847; convergence N^-0.14 vs uniform's N^-0.63 (tensor-product refinement defect) | `results/lshape_adaptive_vs_uniform.{csv,run.json}` |
 | Stochastic Galerkin density MSE | 2.3e-8 | `results/stochastic_galerkin_compare.csv` |
-| Test-suite size | 7,000+ test functions | `tests/` |
+| Test-suite size | 7,000+ test functions (8,628 across 432 files, measured 2026-08-23) | `tests/docs/test_charter_alignment.py` |
 | Global coverage gate | 85% branch | `pyproject.toml` |
 <!-- charter:evidence:end -->
 
@@ -195,8 +195,17 @@ from 5.0e-2 at 65 DOF to 1.15e-1 at 12545 DOF), so both arms were compared on a 
 solving. Guarded going forward by `tests/research/test_lshape_convergence_gate.py`.
 
 A second, now-unmasked defect SHALL also be reported: the shared discretisation refines by
-tensor-product grid *lines*, so adaptive Dörfler marking is **5–9× worse than plain uniform
-refinement at matched DOF**, with the gap widening as DOF grows. Until refinement is element-local,
+tensor-product grid *lines*, so adaptive Dörfler marking is **worse than plain uniform refinement at
+matched DOF**, with the gap widening as DOF grows: measured at 1.5× at 56 DOF, 3.4× at 207, 5.6× at
+769 and 10.5× at 2847 (`results/lshape_adaptive_vs_uniform.csv`). The rate separation is the sharper
+statement, because it does not depend on where the curves are read: adaptive converges at N^-0.14
+against uniform's N^-0.63.
+
+The previously registered figure was "5–9×", which is consistent with these readings over the range
+it described but cited `results/lshape_mcts_vs_dorfler.csv` — a file whose `method` column contains
+only `{dorfler, mcts}`. **There was no uniform arm in any committed artifact**, so the number traced
+to prose rather than to data, and the evidence guard could not tell because it checks only that the
+cited file exists. Corrected 2026-08-23 by committing the missing artifact. Until refinement is element-local,
 no marking-policy comparison on this substrate measures refinement quality.
 
 `docs/related-work.md` owns the per-entry novelty-boundary register and is guarded by
@@ -296,6 +305,7 @@ with a stated reason. An undisclosed deviation is indistinguishable from drift.
 | `CHANGELOG.md` still references removed modules | Immutable append-only history; excluded from the link checker by design. |
 | `results/lambda_scheduling.{csv,png}` outlive their producer | The `thermo` module was cut, but these are the only in-tree evidence of that negative result, and `ARCHITECTURE.md` declares changelog-referenced artifacts deliberate. |
 | `RefinementGameRegistry` has zero runtime registrants | Real PDE games register in `GameRegistry`; the refinement registry is a forward-looking abstraction. Tracked as a dead-abstraction follow-up, not a silent gap. |
+| Two tracks are frozen rather than active or removed | An owner decision paused the codec model-zoo and the `dashboard/` + `hf_space/` surfaces for this cycle so attention stays on the refinement thesis. Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py` against `config/focus.yaml`; the freeze lifts when the refinement experiment has an interpretable answer, either way. |
 <!-- charter:deviations:end -->
 
 #### Scenario: A deviation is recorded without a reason

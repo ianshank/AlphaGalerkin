@@ -60,3 +60,5 @@ deliberately avoid that.
 | [`transfer_baseline_compare.spec.md`](transfer_baseline_compare.spec.md) | Honest zero-shot transfer — operator vs a retrained CNN | Implemented |
 | [`stochastic_galerkin_nke.spec.md`](stochastic_galerkin_nke.spec.md) | NKE stochastic Galerkin operator-splitting layer (additive) | Implemented |
 | [`headline_runs.spec.md`](headline_runs.spec.md) | GPU / hardware-gated headline runbooks | Runbook |
+| [`verified_error_certificate.spec.md`](verified_error_certificate.spec.md) | Two-track certified error bounds | Draft (unimplemented; `src/pde/certificate/` is a declared forward reference) |
+| [`refinement_substrate.spec.md`](refinement_substrate.spec.md) | Element-local refinement substrate (the prerequisite for any marking-policy comparison) | Draft |

@@ -14,6 +14,7 @@ from typing import TextIO
 import numpy as np
 import structlog
 
+from src import __version__
 from src.mcts.evaluator import FNetEvaluator, RandomEvaluator
 from src.mcts.search import MCTS
 from src.modeling.model import AlphaGalerkinModel
@@ -504,7 +505,12 @@ class GTPEngine:
         return "AlphaGalerkin"
 
     def _version(self) -> str:
-        return "0.1.0"
+        """GTP ``version``: report the installed package version, not a literal.
+
+        This returned a hardcoded ``"0.1.0"`` that survived the ``0.4.0-dev``
+        bump, so a GTP controller was told the wrong engine version.
+        """
+        return __version__
 
     def _known_command(self, cmd: str) -> str:
         return "true" if cmd.lower() in self.commands else "false"

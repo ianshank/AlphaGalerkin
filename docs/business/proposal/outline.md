@@ -60,7 +60,7 @@
 - Galerkin attention: `src/modeling/attention.py` — Q(K^T V), Monte Carlo normalization, LBB constraint (dim(K) ≥ dim(Q)).
 - FNet mixing: `src/modeling/` — torch.fft.rfft2, O(N log N).
 - Gumbel MCTS: `src/mcts/gumbel.py` — sequential halving, improved policy targets, Gumbel-Top-k sampling.
-- PDE game wrappers: `src/pde/games/basis_selection.py`, `src/pde/games/mesh_refinement.py`.
+- PDE game wrappers: `src/pde/games/basis_selection.py`, `src/pde/games/mesh_refinement/`.
 - Adapter: `src/pde/mcts_adapter.py` bridges PDE games to the generic MCTS `GameInterface`.
 - Integration entry point: `src/alphagalerkin/solver.py` (Track B.1 deliverable).
 

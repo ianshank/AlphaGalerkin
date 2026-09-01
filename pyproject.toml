@@ -411,11 +411,21 @@ module = [
     # module-override matching already applies "src.pde.operators.*" to the
     # package itself (verified empirically: an isolated repro and the errors
     # actually present in operators/__init__.py's `del` cleanup line both
-    # confirm this, on mypy 1.19.1) -- explicit rather than relying on a
+    # confirm this, on mypy 1.11.2 -- the version `python -m mypy` actually
+    # resolves to in this repo's pinned dev env (`mypy>=1.10,<1.12`); a bare
+    # `mypy` on PATH can resolve to an unrelated, unpinned install (1.19.1
+    # was the false lead here) -- explicit rather than relying on a
     # glob-matching detail a future reader would otherwise have to re-derive.
     "src.pde.operators",
     "src.pde.operators.*",
+    # Both the bare package name and the glob are listed for the same reason
+    # documented above for src.pde.operators.* -- explicit rather than
+    # relying on a glob-matching detail a future reader would otherwise have
+    # to re-derive (verified empirically on mypy 1.11.2 during the
+    # mesh_refinement.py -> mesh_refinement/ package split,
+    # docs/CODE_HYGIENE_AUDIT.md B4/B21).
     "src.pde.games.mesh_refinement",
+    "src.pde.games.mesh_refinement.*",
     "src.pde.config",
     "src.pde.registry",
     "src.agents.collocation",

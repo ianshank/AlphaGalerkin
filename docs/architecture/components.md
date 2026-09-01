@@ -85,7 +85,7 @@ PDE solving as sequential decision-making for MCTS-guided Galerkin approximation
 - **`game_interface.py`** — `PDEGameInterface` bridging PDE games to `GameRegistry`.
 - **`register_games.py`** — Auto-registration of `pde_basis` and `pde_mesh` games.
 - **`games/basis_selection.py`** — Galerkin basis selection game.
-- **`games/mesh_refinement.py`** — Adaptive h/p-refinement game.
+- **`games/mesh_refinement/`** (split from a single `mesh_refinement.py` 2026-09-01, docs/CODE_HYGIENE_AUDIT.md B4) — `mesh.py` (the pure quadtree data structure: `ActionKind`, `MeshElement`, `Mesh` -- no MCTS/`torch` dependency), `game.py` (`MeshRefinementGame`, the MCTS-facing adaptive h/p-refinement game); `__init__.py` re-exports the full public surface, so `from src.pde.games.mesh_refinement import MeshRefinementGame` etc. is unchanged.
 - **`games/lshape_amr.py`** — `LShapeAMRGame`, the real-solve L-shaped Poisson AMR game used by the MCTS-vs-Dörfler baseline.
 - **`games/swarm_planning.py`** — Swarm-planning refinement game.
 

@@ -782,7 +782,7 @@ src/
     mcts_adapter.py   - Adapter bridging PDE games to MCTS GameInterface
     games/            - Concrete PDE game implementations
       basis_selection.py  - Galerkin basis selection game
-      mesh_refinement.py  - Adaptive mesh refinement game
+      mesh_refinement/    - Adaptive mesh refinement game (mesh.py pure quadtree, game.py MCTS game)
   poc/          - PoC scenario framework
     config.py         - Pydantic configuration schemas
     registry.py       - Scenario registration and discovery

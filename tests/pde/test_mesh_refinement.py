@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import torch
 
+import src.pde.games.mesh_refinement as mesh_refinement_package
 from src.pde.config import (
     MeshRefinementConfig,
     PDEConfig,
@@ -16,6 +17,81 @@ from src.pde.config import (
 from src.pde.game import GamePhase, PDEState
 from src.pde.games.mesh_refinement import Mesh, MeshElement, MeshRefinementGame
 from src.pde.operators import PoissonOperator
+
+# Frozen at the 2026-09-01 mesh_refinement.py -> mesh_refinement/ package split
+# (docs/CODE_HYGIENE_AUDIT.md B4/B21, following the src/pde/operators.py ->
+# operators/ precedent). This is the *actual* guarantee that split preserved:
+# every public name the old flat module exposed is still exposed, unchanged.
+# It deliberately excludes dunders (``__path__``, ``__all__``) -- becoming a
+# package unavoidably adds ``__path__``, and declaring an explicit ``__all__``
+# (the old flat module had none) adds itself as an attribute; both are
+# harmless since nothing in this codebase introspects ``dir()`` on this
+# module. See ``tests/pde/test_operators.py::TestOperatorsPackagePublicAPI``
+# for the sibling test and the peer-review correction it encodes (an earlier
+# claim of literal ``dir()`` byte-identity was broader than what was actually
+# verified and did not hold).
+_MESH_REFINEMENT_PACKAGE_PUBLIC_API = frozenset(
+    {
+        "ActionKind",
+        "Any",
+        "Float",
+        "GamePhase",
+        "IntEnum",
+        "LinearNDInterpolator",
+        "Mesh",
+        "MeshElement",
+        "MeshRefinementConfig",
+        "MeshRefinementGame",
+        "NDArray",
+        "NearestNDInterpolator",
+        "PDEGame",
+        "PDEGameConfig",
+        "PDEState",
+        "RefinementStrategy",
+        "TYPE_CHECKING",
+        "Tensor",
+        "annotations",  # `from __future__ import annotations` leaks this name
+        "copy",
+        "dataclass",
+        "field",
+        "itertools",
+        "log_reward",
+        "logger",
+        "np",
+        "structlog",
+        "time",
+        "torch",
+    }
+)
+
+
+class TestMeshRefinementPackagePublicAPI:
+    """The real, narrower guarantee the mesh_refinement.py -> mesh_refinement/ split made."""
+
+    def test_public_names_match_frozen_pre_split_surface(self) -> None:
+        public_names = {n for n in dir(mesh_refinement_package) if not n.startswith("_")}
+        assert public_names == _MESH_REFINEMENT_PACKAGE_PUBLIC_API
+
+    def test_dunder_all_covers_the_frozen_public_surface(self) -> None:
+        # __all__ (new -- the old flat module had none) is not required to
+        # equal dir()'s public names exactly: it has no reason to list the
+        # incidental `annotations` future-import leak. The real invariant is
+        # one-directional: every name this test freezes as public must be
+        # explicitly exported, so `from src.pde.games.mesh_refinement import *`
+        # cannot silently drop one.
+        assert _MESH_REFINEMENT_PACKAGE_PUBLIC_API - {"annotations"} <= set(
+            mesh_refinement_package.__all__
+        )
+
+    # Unlike the operators.py split (which had to explicitly re-export
+    # `_cole_hopf_coefficients` because a test imported it directly), no test
+    # or production call site imports a leading-underscore name from this
+    # module -- verified by
+    # `grep -rn "from src.pde.games.mesh_refinement import _" tests/ src/`
+    # returning nothing -- so no third "private name still reachable" test is
+    # needed here (the operators-split pattern makes that test conditional on
+    # such a re-export existing).
+
 
 # ---- Mesh tests ----
 
@@ -816,8 +892,16 @@ class TestMeshRefinementGameInterpolation:
         consulting the global processor chain. ``capture_logs`` then silently
         records nothing — the assertion would pass alone and fail in a full
         run purely by collection order.
+
+        Patched at ``src.pde.games.mesh_refinement.game`` (not the package's
+        top-level ``mesh_refinement`` module) since the
+        ``mesh_refinement.py`` -> ``mesh_refinement/`` package split moved
+        ``_interpolate_solution`` -- and the ``logger.warning(...)`` call
+        inside it -- into ``game.py``, which owns its own
+        ``logger = structlog.get_logger(__name__)`` module attribute
+        independent of the re-exported one on the package's ``__init__.py``.
         """
-        import src.pde.games.mesh_refinement as mesh_mod
+        import src.pde.games.mesh_refinement.game as mesh_game_mod
 
         recorded: list[tuple[str, dict[str, object]]] = []
 
@@ -828,7 +912,7 @@ class TestMeshRefinementGameInterpolation:
             def debug(self, event: str, **kw: object) -> None:
                 pass
 
-        monkeypatch.setattr(mesh_mod, "logger", _RecordingLogger())
+        monkeypatch.setattr(mesh_game_mod, "logger", _RecordingLogger())
 
         old_state = self._collinear_state()
         query = np.array([[0.1, 0.1]], dtype=np.float32)

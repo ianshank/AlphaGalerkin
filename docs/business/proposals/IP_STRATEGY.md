@@ -15,7 +15,7 @@ The following are protected as trade secrets and should NOT be published:
 ### Claim 1: MCTS-Guided Adaptive Mesh Refinement
 **Title**: "System and Method for Adaptive Mesh Refinement Using Monte Carlo Tree Search-Guided Galerkin Discretization"
 - **What**: Computational pipeline where MCTS selects refinement actions on a Galerkin FEM mesh
-- **Key files**: `src/pde/games/mesh_refinement.py`, `src/mcts/search.py`, `src/pde/mcts_adapter.py`
+- **Key files**: `src/pde/games/mesh_refinement/` (`mesh.py`, `game.py`), `src/mcts/search.py`, `src/pde/mcts_adapter.py`
 - **Claims focus**: The integration interface, MCTS-derived adaptation criteria, multi-step planning
 - **Post-Alice framing**: Technical improvement to specific FEM computation (not abstract algorithm)
 

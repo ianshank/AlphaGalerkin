@@ -79,7 +79,7 @@ subset of this alphabet per game mode:
 - Terminate action is **implicit**: MCTS selects no action when
   `is_terminal(state)` is true (line 480).
 
-#### 2.2.2 MeshRefinementGame (`src/pde/games/mesh_refinement.py:321`)
+#### 2.2.2 MeshRefinementGame (`src/pde/games/mesh_refinement/game.py:41`)
 
 - $\mathcal{A}(s) =$ leaf-element indices $i \in [0, |\text{leaves}|)$
   satisfying all of:
@@ -87,24 +87,27 @@ subset of this alphabet per game mode:
   - `element.size > min_element_size`
   - `element.polynomial_degree < max_polynomial_degree`
 
-  (see `get_valid_actions`, line 425).
+  (see `get_valid_actions`, `game.py:248`).
 - Refinement semantics determined by
   `mesh_config.refinement_strategy`
   (`RefinementStrategy` enum in `src/pde/config.py`):
   - `H_REFINEMENT`: subdivide selected element into $2^d$ children
-    (`Mesh._subdivide_element`, line 244).
+    (`Mesh._subdivide_element`, `mesh.py:260`, called from
+    `refine_element`'s `H_REFINEMENT` branch at `mesh.py:244`).
   - `P_REFINEMENT`: increment `polynomial_degree` on selected element
-    (line 224).
-  - `HP_REFINEMENT`: h below level 2, then p (`refine_element`, line 233).
+    (`refine_element`, `mesh.py:241`).
+  - `HP_REFINEMENT`: h below level 2, then p (`refine_element`'s
+    `HP_REFINEMENT` branch, `mesh.py:249`).
 - **Coarsen** is not currently exposed as a primitive action; it is
   reachable only via `get_initial_state` re-roll. Adding coarsening is
   tracked as a Phase-I deliverable.
-- **Terminate** is implicit via `is_terminal` (line 608).
+- **Terminate** is implicit via `is_terminal` (`game.py:591`).
 
 ### 2.3 Transition Kernel $P(s' \mid s, a)$
 
 **Deterministic.** Given the current state and action, $s'$ is the
-unique output of `apply_action` (basis: line 342; mesh: line 467). There
+unique output of `apply_action` (basis: line 342; mesh:
+`src/pde/games/mesh_refinement/game.py:312`). There
 is no stochasticity in the environment — the only randomness in a full
 MCTS rollout comes from the tree-search policy itself and any random
 basis-candidate generation that happens at construction time
@@ -124,12 +127,14 @@ s'.dof = len(history);   s'.budget_remaining -= 1
 
 The mesh-refinement transition invokes `Mesh.refine_element`,
 regenerates element centroids, interpolates the previous solution
-(`_interpolate_solution` — nearest-neighbor, line 540) to the new
+(`_interpolate_solution` — nearest-neighbor,
+`src/pde/games/mesh_refinement/game.py:420`) to the new
 centroids, and recomputes residuals.
 
 ### 2.4 Reward $R(s, a, s')$
 
-Implemented reward (basis: `get_reward`, line 453; mesh: line 563) is:
+Implemented reward (basis: `get_reward`, line 453; mesh:
+`src/pde/games/mesh_refinement/game.py:522`) is:
 
 $$
 R(s, a, s') = \alpha_1 \cdot \Delta e - \alpha_2 \cdot \Delta n_\text{dof}
@@ -252,9 +257,9 @@ as a regression test against the current reward coefficients.
 - Introduce `LogRewardAdapter` for exact parity with the
   $-\alpha \log L_2 - \beta \log C$ reward used in the proposal narrative.
 - Replace nearest-neighbor solution interpolation
-  (`_interpolate_solution`, `mesh_refinement.py:540`) with a proper
-  $L^2$-projection onto the refined space to restore consistency rates
-  in mixed h/p regimes.
+  (`_interpolate_solution`, `src/pde/games/mesh_refinement/game.py:420`)
+  with a proper $L^2$-projection onto the refined space to restore
+  consistency rates in mixed h/p regimes.
 - Tighten `get_winner` thresholds (`mcts_adapter.py:142`) into
   Pydantic-validated configuration rather than hard-coded `0.1` / `0.5`.
 
@@ -266,7 +271,7 @@ as a regression test against the current reward coefficients.
 |---|---|---|
 | State | $\mathcal{S}$ | `PDEState`, `src/pde/game.py:47` |
 | Action (basis) | $\mathcal{A}(s)$ | `BasisSelectionGame.get_valid_actions`, line 300 |
-| Action (mesh) | $\mathcal{A}(s)$ | `MeshRefinementGame.get_valid_actions`, line 425 |
+| Action (mesh) | $\mathcal{A}(s)$ | `MeshRefinementGame.get_valid_actions`, `src/pde/games/mesh_refinement/game.py:248` |
 | Transition | $P$ (deterministic) | `apply_action` (both games) |
 | Reward | $R$ | `get_reward` (both games) |
 | Terminal predicate | $T$ | `is_terminal` (both games) |

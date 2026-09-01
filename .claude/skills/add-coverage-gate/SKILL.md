@@ -73,7 +73,11 @@ fine. So **land the `ci.yml` step first**, then document it — never the revers
 2. The charter gates register (`openspec/specs/project-charter/spec.md`) — only for gates expressed
    as `--cov=<target>` with `--cov-fail-under=<N>`. The guard matches per CI *step* by that literal
    pair, so a native-runner gate (no `--cov=` at all) **cannot** be charter-registered; leave it out
-   rather than inventing a row the matcher can't verify.
+   rather than inventing a row the matcher can't verify. Edit the charter file directly for this —
+   it's the documented carve-out from the `openspec-change` skill's usual proposal/design/tasks
+   process, since this is a mechanical, guard-verified row under an unchanged Requirement, not a
+   policy decision. If your case involves a genuine policy call instead (e.g. the threshold needed
+   a real tradeoff, not `floor(measured)-2`), use `openspec-change` instead of this step.
 
 ## Step 6 — Verify
 

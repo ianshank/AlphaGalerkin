@@ -527,14 +527,32 @@ class GumbelMCTS:
                         assert root.state is not None
                         child.state = self.game.apply_action(root.state, action)
 
-                    # Run simulation
+                    # Run simulation. `_simulate` returns a value from
+                    # `child.state.current_player`'s perspective -- the
+                    # player to move *at the child* (see
+                    # `test_simulate_winner_current_player_returns_positive`
+                    # / `..._opponent_returns_negative`). `apply_action`
+                    # always switches the mover (the only convention this
+                    # engine drives; no single-agent variant exists here),
+                    # so that player is root's OPPONENT, one ply below root.
+                    # Every consumer of `child.value` /
+                    # `child.compute_completed_q` -- root's own action
+                    # selection, sequential halving's scores, and
+                    # `_gumbel_mixed_value`'s mix with `raw_value` (root's
+                    # own-perspective raw network estimate) -- assumes
+                    # root's perspective, so negate before backing up
+                    # (GitHub Copilot review finding on PR #140,
+                    # gumbel.py:537: an unnegated child value made root
+                    # favor actions that were actually good for the
+                    # opponent).
                     value = self._simulate(child)
+                    root_perspective_value = -value
 
                     # Backpropagate. `discount` is the one-step backup
                     # discount from this child (depth 1 below root) to its
                     # own value_sum; 1.0 (the default) is a no-op.
                     child.visit_count += 1
-                    child.value_sum += self.config.discount * value
+                    child.value_sum += self.config.discount * root_perspective_value
                     visit_counts[action] += 1
                     remaining_budget -= 1
 

@@ -16,10 +16,25 @@ Nothing scaffolded the layer above it, so charter changes were being made by han
 | adds/removes a `src/` package, or changes what is in scope | **this** — *Scope Integrity* |
 | makes, corrects or retracts a numeric claim | **this** — *Evidence-Backed Claims* |
 | registers a new PoC scenario | **this** — *Capability Register Accuracy* |
-| adds or changes a coverage gate | **this** — *Quality Gate Fidelity* |
+| adds or changes a coverage gate, and it's a genuine policy call (raising the *project ceiling* past 85, dropping a gate, changing the ⊆-direction rule itself) | **this** — *Quality Gate Fidelity* |
+| adds a *new package's* row to the existing gates register at its measured `floor(measured)-2` threshold, with the CI step already landed | **`add-coverage-gate`**, not this — see below |
 | accepts a deviation | **this** — *Accepted Deviation Disclosure* |
 | ships a feature touching none of the above | `spec-new` |
 | both | both — the substrate work needed a feature spec *and* a charter delta |
+
+**The `add-coverage-gate` carve-out, precisely**: the *Quality Gate Fidelity* Requirement's text
+("gates documented SHALL be enforced by CI", charter ⊆ CI) does not change when a new package's
+row is added — the row is a mechanical, guard-verified data point
+(`tests/docs/test_charter_alignment.py`), not a Requirement or scenario edit, and
+`add-coverage-gate` SKILL.md's Step 5 already instructs editing the charter register directly as
+one of five coupled edits (measure → threshold → `ci.yml` step → docs → verify) landed together.
+Running the full proposal/design/tasks package for that one mechanical row would be governance
+theater with no reviewable decision inside it. This carve-out was added after a GitHub Copilot
+review on PR #140/#141 correctly flagged the ambiguity between these two skills — before this
+edit, nothing reconciled them, and a charter-register row landed via `add-coverage-gate` looked
+indistinguishable from an undocumented process violation. If a future case is genuinely
+ambiguous (e.g. the new gate's threshold required a real design tradeoff, not just
+`floor(measured)-2`), use this skill instead.
 
 ## Steps
 

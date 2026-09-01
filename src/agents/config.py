@@ -545,6 +545,17 @@ class OrchestratorConfig(BaseModuleConfig):
 _SEED_PRIME_STRIDE = 1009
 """Prime stride for deriving per-seed values from the master seed."""
 
+_PDES_WITHOUT_EXACT_SOLUTION = frozenset({"heat", "advection_diffusion"})
+"""PDE registry names with no exact_solution() for BasisSelectionGame today.
+
+Duplicated (not shared via an import) in src/poc/scenarios/llm_prior_config.py
+and scaling_law_config.py -- this module's own comment above ResearchPDEName
+already documents staying decoupled from the heavy MCTS/PDE import surface,
+so two string literals are kept as an independent local constant rather than
+importing one from a heavier sibling module. See docs/CODE_HYGIENE_AUDIT.md
+B24.
+"""
+
 
 class ResearchProblemSpec(BaseModuleConfig):
     """A single problem in a research-loop manifest.
@@ -562,6 +573,20 @@ class ResearchProblemSpec(BaseModuleConfig):
         default=None,
         description="Per-problem arm override. When None, the loop default_arms apply.",
     )
+
+    @field_validator("pde")
+    @classmethod
+    def _pde_has_exact_solution(cls, v: str) -> str:
+        if v in _PDES_WITHOUT_EXACT_SOLUTION:
+            raise ValueError(
+                f"pde={v!r} has no exact_solution() for BasisSelectionGame and "
+                "would raise ExactSolutionUnavailableError partway through the "
+                "research loop instead of failing here at construction "
+                "(docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose a different "
+                "pde, or drop this validator once a manufactured solution "
+                "exists for this operator."
+            )
+        return v
 
     @field_validator("arms")
     @classmethod

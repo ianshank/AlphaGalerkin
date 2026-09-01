@@ -25,11 +25,20 @@ _SEED_PRIME_STRIDE = 1009
 """Prime stride used when deriving per-seed values from the master seed."""
 
 ArmName = Literal["random", "trained", "llm"]
+_PDES_WITHOUT_EXACT_SOLUTION = frozenset({"heat", "advection_diffusion"})
+"""PDE registry names with no exact_solution() for BasisSelectionGame today.
+
+Duplicated (not shared via an import) in llm_prior_config.py and
+src/agents/config.py::ResearchPDEName's validator -- kept as independent
+string literals rather than a cross-module import so each config module's
+import graph stays whatever it already was. See docs/CODE_HYGIENE_AUDIT.md
+B24.
+"""
 # NOTE: "heat" and "advection_diffusion" (without a time argument) have no
-# exact_solution() for BasisSelectionGame and will raise
-# ExactSolutionUnavailableError at scenario setup (docs/CODE_HYGIENE_AUDIT.md
-# P0-1) rather than silently reporting a degenerate zero-residual as
-# convergence. No shipped YAML sets either value today.
+# exact_solution() for BasisSelectionGame and would otherwise raise
+# ExactSolutionUnavailableError deep in the sweep loop
+# (docs/CODE_HYGIENE_AUDIT.md P0-1) instead of failing fast at construction
+# (the `_pde_has_exact_solution` validator below, B24).
 PDEName = Literal[
     "poisson",
     "heat",
@@ -218,6 +227,20 @@ class ScalingLawConfig(BaseScenarioConfig):
         if v != SCALING_SCENARIO_NAME:
             raise ValueError(
                 f"name must be exactly {SCALING_SCENARIO_NAME!r} for YAML dispatch; got {v!r}"
+            )
+        return v
+
+    @field_validator("pde")
+    @classmethod
+    def _pde_has_exact_solution(cls, v: str) -> str:
+        if v in _PDES_WITHOUT_EXACT_SOLUTION:
+            raise ValueError(
+                f"pde={v!r} has no exact_solution() for BasisSelectionGame and "
+                "would raise ExactSolutionUnavailableError partway through the "
+                "budget sweep instead of failing here at construction "
+                "(docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose a different "
+                "pde, or drop this validator once a manufactured solution "
+                "exists for this operator."
             )
         return v
 

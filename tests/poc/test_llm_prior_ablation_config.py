@@ -29,6 +29,20 @@ def test_pde_enum_membership_enforced() -> None:
         LLMPriorAblationConfig(ood_pde="bogus")  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("unsupported_pde", ["heat", "advection_diffusion"])
+def test_id_pde_rejects_operators_without_exact_solution(unsupported_pde: str) -> None:
+    """B24: fail fast at construction, not mid-run via ExactSolutionUnavailableError."""
+    with pytest.raises(ValidationError, match="ExactSolutionUnavailableError"):
+        LLMPriorAblationConfig(id_pde=unsupported_pde)  # type: ignore[arg-type]
+
+
+def test_id_pde_accepts_poisson_the_default() -> None:
+    # Regression guard: the validator must not reject the one value every
+    # shipped config actually uses.
+    config = LLMPriorAblationConfig(id_pde="poisson")
+    assert config.id_pde == "poisson"
+
+
 def test_default_thresholds_match_fields() -> None:
     config = LLMPriorAblationConfig(
         id_rollout_reduction_pct_min=33.0,

@@ -24,6 +24,18 @@ def test_name_is_locked() -> None:
         ScalingLawConfig(name="not_scaling_law")
 
 
+@pytest.mark.parametrize("unsupported_pde", ["heat", "advection_diffusion"])
+def test_pde_rejects_operators_without_exact_solution(unsupported_pde: str) -> None:
+    """B24: fail fast at construction, not mid-sweep via ExactSolutionUnavailableError."""
+    with pytest.raises(ValueError, match="ExactSolutionUnavailableError"):
+        ScalingLawConfig(pde=unsupported_pde)  # type: ignore[arg-type]
+
+
+def test_pde_accepts_poisson_the_default() -> None:
+    cfg = ScalingLawConfig(pde="poisson")
+    assert cfg.pde == "poisson"
+
+
 def test_arms_must_be_non_empty() -> None:
     with pytest.raises(ValueError, match="arms must be non-empty"):
         ScalingLawConfig(arms=[])

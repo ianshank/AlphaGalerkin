@@ -17,6 +17,17 @@ SCENARIO_NAME = "llm_prior_ablation"
 _SEED_PRIME_STRIDE = 1009
 """Prime stride used when deriving per-seed values from the master seed."""
 
+_PDES_WITHOUT_EXACT_SOLUTION = frozenset({"heat", "advection_diffusion"})
+"""PDE registry names with no exact_solution() for BasisSelectionGame today.
+
+Duplicated (not shared via an import) in scaling_law_config.py and
+src/agents/config.py::ResearchPDEName's validator -- the latter is
+deliberately decoupled from the heavy MCTS/PDE import surface, and this
+module follows the same discipline rather than pulling in a shared
+constant from a heavier module just for two string literals. See
+docs/CODE_HYGIENE_AUDIT.md B24.
+"""
+
 
 class LLMPriorAblationConfig(BaseScenarioConfig):
     """Ablation scenario: random / trained / LLM evaluators on ID + OOD PDEs.
@@ -52,13 +63,16 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
 
     # PDE coverage
     # NOTE: "heat" and "advection_diffusion" (without a time argument) have no
-    # exact_solution() for this game and will raise ExactSolutionUnavailableError
-    # at scenario setup (docs/CODE_HYGIENE_AUDIT.md P0-1; src/pde/games/basis_
-    # selection.py) rather than silently reporting a degenerate zero-residual as
-    # convergence, which is what they did before that fix. No shipped YAML sets
-    # either value today. Left in the Literal (not narrowed) pending either a
-    # manufactured solution for these operators or a graceful arm-skip matching
-    # the LM Studio preflight-failure pattern this scenario already uses.
+    # exact_solution() for this game and would otherwise raise
+    # ExactSolutionUnavailableError deep in the per-seed rollout loop
+    # (docs/CODE_HYGIENE_AUDIT.md P0-1; src/pde/games/basis_selection.py)
+    # rather than silently reporting a degenerate zero-residual as convergence,
+    # which is what they did before that fix. The `_id_pde_has_exact_solution`
+    # validator below (B24) turns that into an immediate, actionable config
+    # error instead -- fail fast at construction, not mid-run after already
+    # spending compute on other arms/seeds. Left in the Literal (not narrowed)
+    # pending a manufactured solution for these operators, at which point the
+    # validator's rejection list shrinks rather than the type changing.
     id_pde: Literal["poisson", "heat", "advection_diffusion"] = Field(
         default="poisson",
         description="In-distribution PDE — the trained evaluator is expected to win here.",
@@ -215,6 +229,20 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
     def _seeds_non_empty(cls, v: list[int] | None) -> list[int] | None:
         if v is not None and not v:
             raise ValueError("seeds must be non-empty when provided (use None to derive)")
+        return v
+
+    @field_validator("id_pde")
+    @classmethod
+    def _id_pde_has_exact_solution(cls, v: str) -> str:
+        if v in _PDES_WITHOUT_EXACT_SOLUTION:
+            raise ValueError(
+                f"id_pde={v!r} has no exact_solution() for BasisSelectionGame "
+                "and would raise ExactSolutionUnavailableError partway through "
+                "the ablation grid instead of failing here at construction "
+                "(docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose a different "
+                "id_pde, or drop this validator once a manufactured solution "
+                "exists for this operator."
+            )
         return v
 
     @field_validator("name")

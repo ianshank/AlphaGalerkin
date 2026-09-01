@@ -19,7 +19,7 @@ bootstraps that flow for a new feature named `$FEATURE`.
 3. **Mirror the layout**: create the module under `src/<pkg>/` and its test under `tests/<pkg>/`
    (identical relative path). Follow the closest existing precedent
    (`src/poc/scenarios/scaling_law.py` + `scaling_law_config.py` for scenarios;
-   `src/pde/operators.py` for PDE operators; `src/agents/*.py` for agents).
+   `src/pde/operators/` for PDE operators; `src/agents/*.py` for agents).
 4. **Config first**: every tunable is a typed `Field(default=…, <bounds>, description=…)`.
    Surface numerical-stability literals as named module constants.
 5. **AQA test**: add a test asserting the config's `get_default_thresholds()` returns exactly the

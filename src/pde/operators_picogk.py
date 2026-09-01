@@ -7,7 +7,7 @@ by a signed distance field and we must override the collocation/boundary
 samplers to delegate to the SDF-backed geometry.
 
 This module follows the exact pattern established by
-``LShapedPoissonOperator`` (``src/pde/operators.py:1262``): hold a
+``LShapedPoissonOperator`` (``src/pde/operators/lshaped_poisson.py``): hold a
 ``DomainGeometry`` reference and override ``generate_collocation_points``
 and ``generate_boundary_points`` to call ``geometry.sample_interior`` /
 ``geometry.sample_boundary``. Everything else (residual, autodiff Laplacian,

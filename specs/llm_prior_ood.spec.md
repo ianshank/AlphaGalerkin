@@ -1,7 +1,7 @@
 # Spec: llm_prior_ood — Helmholtz / Biharmonic OOD expansion
 
 > **Status:** Implemented (CPU wiring) + Runbook (GPU headline)
-> **Primary module(s):** `src/poc/scenarios/llm_prior_ablation.py`, `src/pde/operators.py`
+> **Primary module(s):** `src/poc/scenarios/llm_prior_ablation.py`, `src/pde/operators/helmholtz.py`, `src/pde/operators/biharmonic.py`
 > **Config class:** `src.poc.scenarios.llm_prior_config.LLMPriorAblationConfig`
 > **Tracking:** CLAUDE.md Next-Steps row "LLM-prior OOD coverage expansion"
 

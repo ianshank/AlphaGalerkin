@@ -407,7 +407,7 @@ disallow_untyped_decorators = false
 # Modules with numpy ndarray/Tensor interop that have structural assignment issues
 [[tool.mypy.overrides]]
 module = [
-    "src.pde.operators",
+    "src.pde.operators.*",
     "src.pde.games.mesh_refinement",
     "src.pde.config",
     "src.pde.registry",

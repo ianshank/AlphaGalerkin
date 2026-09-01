@@ -132,7 +132,7 @@ C4Container
 
 | Container | Technology | Responsibility | Key Files |
 |-----------|------------|----------------|-----------|
-| PDE Operators | PyTorch + NumPy | Define PDE equations, compute residuals via autodiff | `src/pde/operators.py` |
+| PDE Operators | PyTorch + NumPy | Define PDE equations, compute residuals via autodiff | `src/pde/operators/` |
 | Game Engine | Python | Implement PDEGame interface for MCTS integration | `src/pde/games/*.py` |
 | Physics Losses | PyTorch | Physics-informed loss terms (residual, BC, IC, conservation) | `src/training/physics_loss.py` |
 | Configuration | Pydantic | Type-safe configs with validation | `src/pde/config.py` |

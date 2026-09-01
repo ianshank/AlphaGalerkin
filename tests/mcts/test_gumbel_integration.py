@@ -407,14 +407,24 @@ class TestSequentialHalvingConfigKnobs:
 
         Action 3 never gets visited (see ``_budget_starved_root``).
         Disabled, its completed Q defaults to a flat ``0.0`` -- strictly
-        better than actions 0-2's real (bad) observed value of -5.0, so it
-        wins purely by being unexplored. Enabled, its completed Q is
-        ``v_mix``, grounded in a very negative raw root value, so it loses
-        instead -- proving the flag is read and changes the outcome.
+        better than actions 0-2's real (bad, from root's perspective)
+        observed value of -5.0, so it wins purely by being unexplored.
+        Enabled, its completed Q is ``v_mix``, grounded in a very negative
+        raw root value, so it loses instead -- proving the flag is read and
+        changes the outcome.
+
+        ``visited_value`` here is +5.0, not -5.0: it feeds
+        ``GumbelNode._terminal_value``, i.e. what ``_simulate`` returns from
+        the *child's own* perspective (a Copilot review finding on PR #140,
+        gumbel.py:537 -- root's action selection needs root's perspective,
+        so ``_sequential_halving`` now negates this before backing it up
+        into ``value_sum``). +5.0 for the child (child's mover is winning)
+        is therefore -5.0 for root, matching the "bad observed value of
+        -5.0" this test's outcome depends on.
         """
         actions = [0, 1, 2, 3]
         raw_value = -100.0
-        visited_value = -5.0
+        visited_value = 5.0
 
         gumbel_mcts.config.use_mixed_value = False
         root_disabled = self._budget_starved_root(_make_state(), visited_value)
@@ -432,14 +442,20 @@ class TestSequentialHalvingConfigKnobs:
         assert best_enabled == 0
 
     def test_discount_scales_the_backed_up_value(self, gumbel_mcts: GumbelMCTS) -> None:
-        """A discount < 1.0 shrinks the value backed up into value_sum."""
+        """A discount < 1.0 shrinks the value backed up into value_sum.
+
+        ``_terminal_value = -8.0`` is what ``_simulate`` returns from the
+        child's own perspective; ``_sequential_halving`` negates it to
+        root's perspective (+8.0, a Copilot review finding on PR #140,
+        gumbel.py:537) before applying ``discount``.
+        """
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
         for a in (0, 1):
             node = GumbelNode(prior=0.5, gumbel=0.0)
             node.state = root_state
-            node._terminal_value = 8.0
+            node._terminal_value = -8.0
             root.children[a] = node
 
         gumbel_mcts.config.discount = 0.25
@@ -451,14 +467,21 @@ class TestSequentialHalvingConfigKnobs:
             assert root.children[a].value == pytest.approx(2.0)
 
     def test_discount_default_is_a_backward_compatible_noop(self, gumbel_mcts: GumbelMCTS) -> None:
-        """Discount defaults to 1.0: byte-identical to the pre-fix, undiscounted backup."""
+        """Discount defaults to 1.0: the discount multiplier itself is a no-op.
+
+        (The value backed up is still negated to root's perspective before
+        ``discount`` is applied -- see ``test_discount_scales_the_backed_up_value``
+        and gumbel.py:537's fix -- so this only pins ``discount=1.0`` leaving
+        that already-negated value unscaled, not byte-identical output
+        against the pre-negation-fix module.)
+        """
         root_state = _make_state()
         root = GumbelNode(state=root_state)
         root._is_expanded = True
         for a in (0, 1):
             node = GumbelNode(prior=0.5, gumbel=0.0)
             node.state = root_state
-            node._terminal_value = 8.0
+            node._terminal_value = -8.0
             root.children[a] = node
 
         assert gumbel_mcts.config.discount == 1.0
@@ -466,6 +489,61 @@ class TestSequentialHalvingConfigKnobs:
 
         for a in (0, 1):
             assert root.children[a].value_sum == pytest.approx(8.0)
+
+
+class _AsymmetricWinnerGame(_MockGame):
+    """Mock game whose winner depends on which root action was taken.
+
+    Action 0's subtree is a guaranteed win for root's player; action 1's is
+    a guaranteed win for the opponent. ``_MockGame.get_winner`` always
+    returns ``1`` regardless of state, which can't distinguish the two --
+    this override reads the actual first move played instead.
+    """
+
+    def get_winner(self, state: GameState) -> int | None:
+        if not self.is_terminal(state):
+            return None
+        first_action = state.move_history[0]
+        return 1 if first_action == 0 else -1
+
+
+class TestSequentialHalvingRootPerspective:
+    """Regression for the opponent-perspective sign bug.
+
+    GitHub Copilot review, PR #140, gumbel.py:537: ``_simulate(child)``
+    returns a value from ``child.state.current_player``'s perspective (the
+    player to move *at the child*, i.e. root's opponent one ply below
+    root), but ``_sequential_halving`` backed this up into
+    ``child.value_sum`` unnegated -- so an action that was a guaranteed WIN
+    for root scored identically to a guaranteed LOSS for root, and search
+    could actively prefer losing actions. This is exactly the reproduction
+    the review requested: two terminal root actions whose winners differ.
+    """
+
+    def test_search_prefers_the_action_that_wins_for_root(
+        self,
+        gumbel_config: GumbelMCTSConfig,
+        small_model: AlphaGalerkinModel,
+    ) -> None:
+        game = _AsymmetricWinnerGame()
+        mcts = GumbelMCTS(config=gumbel_config, game=game, model=small_model, device="cpu")
+
+        # move_number=2 so a single action from root reaches move_number=3,
+        # `_MockGame`'s terminal threshold -- `_simulate` then takes the
+        # cheap win/loss branch instead of a real network forward pass.
+        root_state = _make_state(player=1, move_number=2)
+        root = GumbelNode(state=root_state)
+        root._is_expanded = True
+        for action in (0, 1):
+            root.children[action] = GumbelNode(prior=0.5, gumbel=0.0)
+
+        best_action, _ = mcts._sequential_halving(root, [0, 1], total_simulations=8, raw_value=0.0)
+
+        # A correct root-perspective backup must prefer action 0 (a
+        # guaranteed win for root), not action 1 (a guaranteed loss).
+        assert best_action == 0
+        assert root.children[0].value == pytest.approx(1.0)
+        assert root.children[1].value == pytest.approx(-1.0)
 
 
 # ---------------------------------------------------------------------------

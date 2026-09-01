@@ -101,8 +101,11 @@ from src.pde.operators.poisson import PoissonOperator  # noqa: E402
 # accessible as ``operators.poisson``), which the old flat module never
 # exposed. Deleting those bindings here (the submodules stay importable and
 # fully cached in ``sys.modules`` -- only this package's own namespace loses
-# the attribute) keeps ``dir(src.pde.operators)`` byte-identical to the
-# pre-split module, which is the property this file exists to preserve.
+# the attribute) keeps every *public* name in ``dir(src.pde.operators)``
+# unchanged from the pre-split module (see the module docstring above and
+# ``tests/pde/test_operators.py::TestOperatorsPackagePublicAPI`` for the
+# actual, narrower guarantee -- not literal ``dir()`` byte-identity, which a
+# package's ``__path__``/``__all__`` dunders make impossible).
 del (
     advection_diffusion,
     base,

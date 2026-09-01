@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Tech-debt Phase 2c: stale line citations in mdp_specification.md (B27)
+- **`docs/doe_genesis/mdp_specification.md`'s `MeshRefinementGame` line citations were stale independent of any PR** — GitHub Copilot review on PR #140 flagged two dangling `mesh_refinement.py:321`/`:540` references (post-B4-split) and suggested retargeting to `mesh_refinement/game.py:41`/`:420`. Verified against the pre-split flat file at the merge-base rather than trusting the suggestion: every mesh-related citation in this doc was already off by 30-350+ lines before this PR touched the file, drifted from a much older module version. Fixed all 7+ citations (not just the 2 Copilot named) against the real current line numbers in the split `mesh_refinement/{mesh,game}.py`, verified by direct read of each cited symbol.
+
 ### Fixed — Tech-debt Phase 2c: OpenSpec skill conflict (B26)
 - **`add-coverage-gate` and `openspec-change` gave conflicting guidance on editing the charter's coverage-gate register**, flagged by a GitHub Copilot review on PR #140 (the `src/poc/visualization` gate row from the B20 close-out). Investigated rather than reverted: `add-coverage-gate` SKILL.md's Step 5 already instructed a direct charter edit as one of five coupled mechanical steps, so the finding was a genuine tooling inconsistency, not a process violation — the *Quality Gate Fidelity* Requirement's text/scenario is unchanged, only a guard-verified data row was added. `openspec-change` SKILL.md's routing table now carves out this mechanical case for `add-coverage-gate`, reserving the full proposal/design/tasks process for a genuine policy call on gates (raising the ceiling, dropping a gate, changing the ⊆-direction rule).
 

@@ -61,6 +61,24 @@ def test_load_run_result_dicts_research_layout(tmp_path: Path) -> None:
     assert dicts[0]["name"] == "research_loop"
 
 
+def test_load_run_result_dicts_skips_non_dict_json(tmp_path: Path) -> None:
+    """A JSON file whose root is not an object is silently skipped.
+
+    ``isinstance(raw, dict)`` guards the append -- a result file that decodes
+    to a list or scalar (malformed writer, or a directory holding unrelated
+    JSON) must not be treated as a result dict.
+    """
+    run_dir = tmp_path / "results" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "not_a_dict.json").write_text(json.dumps([1, 2, 3]))
+    (run_dir / "real.json").write_text(json.dumps({"scenario_name": "s", "metrics": {"m": 1.0}}))
+
+    dicts = _load_run_result_dicts(str(tmp_path), "run1")
+
+    assert len(dicts) == 1
+    assert dicts[0]["scenario_name"] == "s"
+
+
 def test_load_run_result_dicts_corrupt_json_raises(tmp_path: Path) -> None:
     run_dir = tmp_path / "results" / "run1"
     run_dir.mkdir(parents=True)
@@ -144,6 +162,41 @@ def test_diff_detects_regression(tmp_path: Path) -> None:
         argparse.Namespace(baseline=str(out), run_id="run2", output_dir=str(tmp_path))
     )
     assert rc_diff == 1
+
+
+def test_diff_reports_missing_metric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A baseline metric absent from the run's observed metrics is reported.
+
+    Absence is a coverage gap, not a regression (``compare`` docs), but
+    ``cmd_diff`` must still print it under "Missing in run" -- the
+    ``if report.missing_in_observed:`` branch was previously untested.
+    """
+    _write_run(tmp_path, "run1", {"residual_median_b4": 0.5, "extra_metric": 1.0})
+    out = tmp_path / "base.json"
+    cmd_record_baseline(
+        argparse.Namespace(
+            run_id="run1",
+            out=str(out),
+            output_dir=str(tmp_path),
+            tolerance_pct=10.0,
+            higher_better="",
+            higher_better_suffix="",
+            description="",
+            hardware_tag="",
+            git_sha="",
+            llm_backend="",
+        )
+    )
+    # Second run drops "extra_metric" entirely.
+    _write_run(tmp_path, "run2", {"residual_median_b4": 0.5})
+    rc_diff = cmd_diff(
+        argparse.Namespace(baseline=str(out), run_id="run2", output_dir=str(tmp_path))
+    )
+
+    assert rc_diff == 0  # missing metrics are not regressions
+    captured = capsys.readouterr()
+    assert "Missing in run" in captured.out
+    assert "extra_metric" in captured.out
 
 
 def test_record_no_metrics_returns_error(tmp_path: Path) -> None:

@@ -165,6 +165,103 @@ class TestPlotGeneration:
         with pytest.raises(KeyError, match="nonexistent_plot"):
             create_plot("nonexistent_plot", {}, cfg)
 
+    def test_training_curves_with_accuracy_combines_legends(self) -> None:
+        """The ``accuracy is not None`` branch overlays a twin axis + legend.
+
+        The plain-loss test above never sets ``accuracy``, so this branch
+        (dual-axis plot + combined ``ax_loss.legend(lines_loss + lines_acc, ...)``)
+        was previously untested.
+        """
+        import matplotlib.pyplot as plt
+
+        data = {
+            "steps": [1, 2, 3, 4, 5],
+            "loss": [1.0, 0.8, 0.6, 0.5, 0.4],
+            "accuracy": [0.2, 0.4, 0.6, 0.75, 0.9],
+        }
+        cfg = VisualizationConfig(name="test")
+        fig = create_plot("training_curves", data, cfg)
+        assert isinstance(fig, plt.Figure)
+        # Two axes: the primary loss axis and the twinned accuracy axis.
+        assert len(fig.axes) == 2
+        plt.close(fig)
+
+    def test_pareto_frontier_plot(self) -> None:
+        """The headline Pareto-frontier plot (previously entirely untested)."""
+        import matplotlib.pyplot as plt
+
+        data = {
+            "methods": {
+                "FDM": {"wall_time": [1.0, 2.0, 4.0], "error": [0.1, 0.05, 0.01]},
+                "MCTS": {"wall_time": [0.5, 1.5, 3.0], "error": [0.2, 0.08, 0.02]},
+            },
+        }
+        cfg = VisualizationConfig(name="test")
+        fig = create_plot("pareto_frontier", data, cfg)
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_pareto_frontier_plot_with_single_dominant_point(self) -> None:
+        """A single Pareto-minimal point skips the frontier overlay line.
+
+        ``len(pareto) >= 2`` guards the dashed-line overlay; a method sweep
+        that collapses to one non-dominated point exercises the False branch.
+        """
+        import matplotlib.pyplot as plt
+
+        data = {
+            "methods": {
+                "Only": {"wall_time": [1.0], "error": [0.1]},
+            },
+        }
+        cfg = VisualizationConfig(name="test")
+        fig = create_plot("pareto_frontier", data, cfg)
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_comparison_boxplot_falls_back_on_older_matplotlib(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``tick_labels=`` (matplotlib>=3.9) falls back to ``labels=`` on TypeError.
+
+        Simulates an older matplotlib whose ``Axes.boxplot`` does not accept
+        ``tick_labels`` by rejecting that kwarg on the first call only.
+        """
+        import matplotlib.axes
+        import matplotlib.pyplot as plt
+
+        # The installed matplotlib (3.11+) accepts ``tick_labels=`` but has
+        # fully removed the old ``labels=`` kwarg the except-branch falls
+        # back to, so a real "older matplotlib" cannot be reproduced by
+        # simply calling through. Instead: reject ``tick_labels=`` on the
+        # first call (forcing the source's except-branch to run its
+        # ``labels=`` call), then translate ``labels=`` back to
+        # ``tick_labels=`` before delegating, so the retry still renders on
+        # this matplotlib version. This asserts the source actually took the
+        # except branch (via ``calls``) without depending on a removed API.
+        original_boxplot = matplotlib.axes.Axes.boxplot
+        calls: list[bool] = []
+
+        def _boxplot(self: matplotlib.axes.Axes, x: object, **kwargs: object) -> object:
+            calls.append("tick_labels" in kwargs)
+            if "tick_labels" in kwargs:
+                raise TypeError("tick_labels= not supported on this matplotlib")
+            labels = kwargs.pop("labels", None)
+            if labels is not None:
+                kwargs["tick_labels"] = labels
+            return original_boxplot(self, x, **kwargs)
+
+        monkeypatch.setattr(matplotlib.axes.Axes, "boxplot", _boxplot)
+
+        data = {"methods": {"A": [0.1, 0.2, 0.15], "B": [0.3, 0.25, 0.35]}}
+        cfg = VisualizationConfig(name="test")
+        fig = create_plot("comparison_boxplot", data, cfg)
+
+        assert isinstance(fig, plt.Figure)
+        # First call rejected (tick_labels=), second call (labels=) succeeded.
+        assert calls == [True, False]
+        plt.close(fig)
+
 
 # ---------------------------------------------------------------------------
 # HTML report generation tests

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from src.poc.config import ScenarioTier, TransferScenarioConfig
+from src.poc.config import ScenarioStatus, ScenarioTier, TransferScenarioConfig
 from src.poc.registry import ScenarioRegistry
 from src.poc.scenarios.transfer import TransferScenario
 
@@ -182,6 +182,185 @@ class TestTransferScenarioTeardown:
     def test_teardown_without_setup_is_safe(self, small_config: TransferScenarioConfig) -> None:
         """Teardown on a never-setup scenario must not raise."""
         TransferScenario(small_config).teardown()
+
+
+class TestTransferScenarioExecute:
+    """Real CPU micro-runs through ``execute()``: train, evaluate, save.
+
+    ``execute()``, ``_train_model()``, ``_evaluate_at_resolution()`` and
+    ``_save_model()`` previously had no coverage at all (measured 25% branch
+    on this file) -- every prior test in this module stopped at ``setup()``/
+    ``teardown()``. ``small_config`` is small enough (9x9/13x13, 100 train
+    samples, 1 epoch, d_model=16) that a full ``run()`` completes in a few
+    seconds on CPU, so this exercises the real training/evaluation loop
+    rather than mocking it away.
+    """
+
+    def test_execute_passes_with_a_generous_threshold(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A generous ``mse_threshold`` lets the tiny model pass everywhere."""
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(update={"mse_threshold": 10.0})
+        s = TransferScenario(config)
+        result = s.run()
+
+        assert result.status is ScenarioStatus.PASSED
+        assert result.passed is True
+        assert result.threshold_results == {"mse_9x9": True, "mse_13x13": True}
+        assert hasattr(result, "primary_resolution")
+        assert result.primary_resolution == config.primary_eval_resolution
+        assert hasattr(result, "primary_passed")
+        assert result.primary_passed is True
+
+    def test_execute_fails_with_an_impossible_threshold(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """An unreachable ``mse_threshold`` fails every resolution."""
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(update={"mse_threshold": 1e-12})
+        s = TransferScenario(config)
+        result = s.run()
+
+        assert result.status is ScenarioStatus.FAILED
+        assert result.passed is False
+        assert all(v is False for v in result.threshold_results.values())
+        assert result.primary_passed is False
+
+    def test_execute_records_metrics_for_every_eval_resolution(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Each eval resolution records mse/mae/rmse/max_error plus train_loss_final."""
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(update={"mse_threshold": 10.0})
+        result = TransferScenario(config).run()
+
+        assert "train_loss_final" in result.metrics
+        assert result.metrics["train_loss_final"] >= 0.0
+        for eval_res in config.eval_resolutions:
+            for metric in ("mse", "mae", "rmse", "max_error"):
+                key = f"{metric}_{eval_res}x{eval_res}"
+                assert key in result.metrics, key
+                assert result.metrics[key] >= 0.0
+
+    def test_execute_saves_a_model_artifact(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """The trained model checkpoint is written and recorded as an artifact."""
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(update={"mse_threshold": 10.0})
+        result = TransferScenario(config).run()
+
+        assert "model" in result.artifacts
+        model_path = Path(result.artifacts["model"])
+        assert model_path.exists()
+
+        checkpoint = torch.load(model_path, weights_only=False)
+        assert "model_state_dict" in checkpoint
+        assert checkpoint["config"]["d_model"] == config.d_model
+        assert checkpoint["scenario_config_hash"] == config.compute_hash()
+
+    def test_execute_logs_progress_every_ten_epochs(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """The ``(epoch + 1) % 10 == 0`` progress-log branch fires at 10 epochs.
+
+        ``small_config`` uses a single epoch everywhere else in this module, so
+        that branch (and its paired ``scenario_logger.metric`` call) was never
+        exercised. A single eval resolution keeps this fast.
+        """
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(
+            update={
+                "n_epochs": 10,
+                "eval_resolutions": [9],
+                "primary_eval_resolution": 9,
+                "mse_threshold": 10.0,
+            }
+        )
+        result = TransferScenario(config).run()
+
+        assert result.status is ScenarioStatus.PASSED
+        assert "train_loss_final" in result.metrics
+
+    def test_execute_skips_model_artifact_when_training_yields_no_model(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """``if self._output_dir and self._model:`` guards a falsy ``_model``.
+
+        ``_train_model`` always returns a real module in production, but the
+        guard exists for defensive reasons; this proves the False branch is
+        genuinely dead code by construction, not silently broken.
+        """
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(update={"mse_threshold": 10.0})
+        s = TransferScenario(config)
+        # Force _train_model to return a falsy stand-in without touching
+        # _evaluate_at_resolution (which only needs ``self._model.eval()``/
+        # ``self._model(...)`` to exist -- a real tiny module still satisfies
+        # that while being distinguishable from "no model").
+
+        real_train_model = TransferScenario._train_model
+
+        class _FalsyModuleWrapper:
+            """Wraps a real module but is falsy, so ``and self._model`` fails."""
+
+            def __init__(self, module: torch.nn.Module) -> None:
+                self._module = module
+
+            def __bool__(self) -> bool:
+                return False
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(self._module, name)
+
+            def __call__(self, *args: object, **kwargs: object) -> object:
+                return self._module(*args, **kwargs)
+
+        def _train_model_falsy(self: TransferScenario) -> object:
+            return _FalsyModuleWrapper(real_train_model(self))
+
+        monkeypatch.setattr(TransferScenario, "_train_model", _train_model_falsy)
+        result = s.run()
+
+        assert result.status is ScenarioStatus.PASSED
+        assert "model" not in result.artifacts
+
+    def test_execute_result_has_expected_base_fields(
+        self,
+        small_config: TransferScenarioConfig,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """The returned ``ScenarioResult`` carries the usual bookkeeping fields."""
+        monkeypatch.chdir(tmp_path)
+        config = small_config.model_copy(update={"mse_threshold": 10.0})
+        result = TransferScenario(config).run()
+
+        assert result.scenario_name == "transfer"
+        assert result.config_hash == config.compute_hash()
+        assert result.device in ("cpu", "cuda")
+        assert result.duration_seconds >= 0
+        assert result.start_time is not None
+        assert result.end_time is not None
 
 
 class TestClassicScenariosShareTheDevicePolicy:

@@ -17,6 +17,7 @@ from src.mcts.gumbel import (
     GumbelMCTSConfig,
     GumbelNode,
     GumbelSearchResult,
+    _gumbel_mixed_value,
 )
 
 # --- GumbelMCTSConfig Tests ---
@@ -200,6 +201,28 @@ class TestGumbelNode:
         q = default_node.compute_completed_q(c_visit=50.0, c_scale=1.0)
         assert q == 0.0
 
+    def test_compute_completed_q_unvisited_uses_mixed_value_estimate_when_given(
+        self, default_node: GumbelNode
+    ):
+        """An unvisited node's completed Q is the supplied v_mix, not a flat 0.0.
+
+        This is the exact knob ``GumbelMCTSConfig.use_mixed_value`` gates at
+        its call sites in ``GumbelMCTS`` -- see ``TestGumbelMixedValue`` and
+        ``test_gumbel_integration.py::TestSequentialHalvingConfigKnobs`` for
+        proof that the config flag actually changes search behaviour.
+        """
+        q = default_node.compute_completed_q(c_visit=50.0, c_scale=1.0, mixed_value_estimate=0.42)
+        assert q == 0.42
+
+        # A visited node ignores mixed_value_estimate entirely -- it always
+        # uses its own value + sigma * prior.
+        visited = GumbelNode(prior=0.5)
+        visited.visit_count = 10
+        visited.value_sum = 5.0
+        q_with = visited.compute_completed_q(c_visit=50.0, c_scale=1.0, mixed_value_estimate=99.0)
+        q_without = visited.compute_completed_q(c_visit=50.0, c_scale=1.0)
+        assert q_with == q_without
+
     def test_compute_completed_q_visited(self, visited_node: GumbelNode):
         """Test completed Q for visited node."""
         c_visit = 50.0
@@ -244,6 +267,95 @@ class TestGumbelNode:
         assert len(default_node.children) == 2
         assert default_node.children[0].prior == 0.6
         assert default_node.children[1].prior == 0.4
+
+
+# --- _gumbel_mixed_value Tests ---
+#
+# ``_gumbel_mixed_value`` is the v_mix estimator that
+# ``GumbelMCTSConfig.use_mixed_value`` gates. Before this fix nothing in
+# ``src/mcts/gumbel.py`` computed it at all, so the flag was inert
+# (docs/CODE_HYGIENE_AUDIT.md P2: "the *defining* feature of Gumbel
+# AlphaZero -- setting it changes nothing").
+
+
+class TestGumbelMixedValue:
+    """Tests for the ``_gumbel_mixed_value`` value-mixing estimator."""
+
+    def test_no_children_returns_raw_value(self):
+        root = GumbelNode()
+        assert _gumbel_mixed_value(root, raw_value=-2.0) == -2.0
+
+    def test_no_visited_children_returns_raw_value(self):
+        """With nothing visited yet there is nothing to mix in."""
+        root = GumbelNode()
+        root.children[0] = GumbelNode(prior=0.5)  # visit_count == 0
+        root.children[1] = GumbelNode(prior=0.5)  # visit_count == 0
+        assert _gumbel_mixed_value(root, raw_value=3.5) == 3.5
+
+    def test_matches_hand_computed_formula(self):
+        root = GumbelNode()
+        a = GumbelNode(prior=0.3)
+        a.visit_count = 2
+        a.value_sum = 1.0  # value == 0.5
+        b = GumbelNode(prior=0.7)
+        b.visit_count = 1
+        b.value_sum = -2.0  # value == -2.0
+        root.children[0] = a
+        root.children[1] = b
+
+        raw_value = 1.0
+        total_visits = 3  # 2 + 1
+        weighted_q = (0.3 * 0.5 + 0.7 * -2.0) / (0.3 + 0.7)
+        expected = (raw_value + total_visits * weighted_q) / (total_visits + 1)
+
+        assert _gumbel_mixed_value(root, raw_value) == pytest.approx(expected)
+
+    def test_unvisited_siblings_do_not_affect_the_mix(self):
+        """Only visited children contribute to weighted_q's numerator/denominator."""
+        root = GumbelNode()
+        visited = GumbelNode(prior=0.4)
+        visited.visit_count = 5
+        visited.value_sum = 5.0  # value == 1.0
+        unvisited = GumbelNode(prior=0.6)  # visit_count == 0, must be excluded
+        root.children[0] = visited
+        root.children[1] = unvisited
+
+        raw_value = 0.0
+        expected = (raw_value + 5 * 1.0) / (5 + 1)
+        assert _gumbel_mixed_value(root, raw_value) == pytest.approx(expected)
+
+    def test_zero_total_prior_among_visited_falls_back_to_raw_value(self):
+        """Guards the division-by-~0 branch when every visited prior is ~0."""
+        root = GumbelNode()
+        visited = GumbelNode(prior=0.0)
+        visited.visit_count = 1
+        visited.value_sum = 99.0
+        root.children[0] = visited
+
+        assert _gumbel_mixed_value(root, raw_value=7.0) == 7.0
+
+    def test_more_visits_pulls_the_mix_toward_weighted_q(self):
+        """As a visited child's visit count grows, v_mix moves toward weighted_q.
+
+        v_mix should move away from raw_value and toward the visit-weighted
+        mean Q -- the correct limiting behaviour of an estimator that is a
+        weighted average of the two, with raw_value acting as a
+        single-pseudo-visit prior.
+        """
+        raw_value = 10.0
+
+        def _mix(n_visits: int) -> float:
+            root = GumbelNode()
+            child = GumbelNode(prior=1.0)
+            child.visit_count = n_visits
+            child.value_sum = 0.0  # value == 0.0 regardless of visit count
+            root.children[0] = child
+            return _gumbel_mixed_value(root, raw_value)
+
+        v_low = _mix(1)
+        v_high = _mix(1000)
+        assert abs(v_high - 0.0) < abs(v_low - 0.0)
+        assert v_high == pytest.approx(0.0, abs=1e-2)
 
 
 # --- GumbelSearchResult Tests ---

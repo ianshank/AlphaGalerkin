@@ -545,15 +545,27 @@ class OrchestratorConfig(BaseModuleConfig):
 _SEED_PRIME_STRIDE = 1009
 """Prime stride for deriving per-seed values from the master seed."""
 
-_PDES_WITHOUT_EXACT_SOLUTION = frozenset({"heat", "advection_diffusion"})
-"""PDE registry names with no exact_solution() for BasisSelectionGame today.
+_PDES_INCOMPATIBLE_WITH_BASIS_SELECTION = frozenset(
+    {"heat", "advection_diffusion", "navier_stokes"}
+)
+"""PDE registry names BasisSelectionGame cannot fit a scalar approximation to.
+
+"heat"/"advection_diffusion" have no exact_solution() at all; "navier_stokes"
+has one, but it is a vector (N, 2) velocity field, incompatible with this
+game's scalar (N,) approximation (`solution - exact` fails with a numpy
+broadcasting error, not ExactSolutionUnavailableError). Verified
+exhaustively against every PDE reachable from ResearchPDEName -- the other 5
+("poisson", "burgers", "poisson_lshaped", "helmholtz", "biharmonic") all
+return scalar (N,).
 
 Duplicated (not shared via an import) in src/poc/scenarios/llm_prior_config.py
 and scaling_law_config.py -- this module's own comment above ResearchPDEName
 already documents staying decoupled from the heavy MCTS/PDE import surface,
-so two string literals are kept as an independent local constant rather than
-importing one from a heavier sibling module. See docs/CODE_HYGIENE_AUDIT.md
-B24.
+so three string literals are kept as an independent local constant rather
+than importing one from a heavier sibling module. See
+docs/CODE_HYGIENE_AUDIT.md B24 (the original heat/advection_diffusion cut)
+and its navier_stokes correction (a GitHub Copilot review finding on PR #140,
+verified before fixing rather than trusted).
 """
 
 
@@ -577,14 +589,15 @@ class ResearchProblemSpec(BaseModuleConfig):
     @field_validator("pde")
     @classmethod
     def _pde_has_exact_solution(cls, v: str) -> str:
-        if v in _PDES_WITHOUT_EXACT_SOLUTION:
+        if v in _PDES_INCOMPATIBLE_WITH_BASIS_SELECTION:
             raise ValueError(
-                f"pde={v!r} has no exact_solution() for BasisSelectionGame and "
-                "would raise ExactSolutionUnavailableError partway through the "
-                "research loop instead of failing here at construction "
-                "(docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose a different "
-                "pde, or drop this validator once a manufactured solution "
-                "exists for this operator."
+                f"pde={v!r} is incompatible with BasisSelectionGame (no "
+                "exact_solution(), or a vector-valued one incompatible with "
+                "this game's scalar approximation) and would fail partway "
+                "through the research loop instead of failing here at "
+                "construction (docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose "
+                "a different pde, or drop this validator once a compatible "
+                "solution exists for this operator."
             )
         return v
 

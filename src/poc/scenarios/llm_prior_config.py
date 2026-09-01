@@ -17,15 +17,31 @@ SCENARIO_NAME = "llm_prior_ablation"
 _SEED_PRIME_STRIDE = 1009
 """Prime stride used when deriving per-seed values from the master seed."""
 
-_PDES_WITHOUT_EXACT_SOLUTION = frozenset({"heat", "advection_diffusion"})
-"""PDE registry names with no exact_solution() for BasisSelectionGame today.
+_PDES_INCOMPATIBLE_WITH_BASIS_SELECTION = frozenset(
+    {"heat", "advection_diffusion", "navier_stokes"}
+)
+"""PDE registry names BasisSelectionGame cannot fit a scalar approximation to.
+
+Two different reasons collapse into one rejection set: "heat" and
+"advection_diffusion" (without a time argument) have no exact_solution() at
+all; "navier_stokes" has one, but it is a vector velocity field of shape
+(N, 2), while BasisSelectionGame's `solution - exact` fits a scalar (N,)
+approximation, so it fails with a numpy broadcasting error instead of
+ExactSolutionUnavailableError. Both failure modes are equally a config-time
+rejection candidate -- fail fast, not partway through a run. Verified
+exhaustively against every PDE name reachable from these three Literals
+(`python -c` probe against `_centaur_common.build_pde_operator`, 2026-09-01);
+"poisson", "burgers", "poisson_lshaped", "helmholtz", "biharmonic" all
+return scalar (N,) and are fine.
 
 Duplicated (not shared via an import) in scaling_law_config.py and
 src/agents/config.py::ResearchPDEName's validator -- the latter is
 deliberately decoupled from the heavy MCTS/PDE import surface, and this
 module follows the same discipline rather than pulling in a shared
-constant from a heavier module just for two string literals. See
-docs/CODE_HYGIENE_AUDIT.md B24.
+constant from a heavier module just for three string literals. See
+docs/CODE_HYGIENE_AUDIT.md B24 (the original heat/advection_diffusion cut)
+and its navier_stokes correction (a GitHub Copilot review finding on PR #140,
+verified before fixing rather than trusted).
 """
 
 
@@ -63,16 +79,21 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
 
     # PDE coverage
     # NOTE: "heat" and "advection_diffusion" (without a time argument) have no
-    # exact_solution() for this game and would otherwise raise
-    # ExactSolutionUnavailableError deep in the per-seed rollout loop
+    # exact_solution() for this game, and "navier_stokes" (only reachable via
+    # ood_pde below) has one but it is vector-valued and incompatible with
+    # this game's scalar approximation -- all three would otherwise raise
+    # (ExactSolutionUnavailableError, or a numpy broadcasting ValueError for
+    # navier_stokes) deep in the per-seed rollout loop
     # (docs/CODE_HYGIENE_AUDIT.md P0-1; src/pde/games/basis_selection.py)
-    # rather than silently reporting a degenerate zero-residual as convergence,
-    # which is what they did before that fix. The `_id_pde_has_exact_solution`
-    # validator below (B24) turns that into an immediate, actionable config
-    # error instead -- fail fast at construction, not mid-run after already
-    # spending compute on other arms/seeds. Left in the Literal (not narrowed)
-    # pending a manufactured solution for these operators, at which point the
-    # validator's rejection list shrinks rather than the type changing.
+    # rather than failing at construction. The `_id_pde_has_exact_solution`/
+    # `_ood_pde_is_compatible` validators below (B24, later widened by a
+    # Copilot review finding on PR #140 to cover navier_stokes) turn that into
+    # an immediate, actionable config error instead -- fail fast, not mid-run
+    # after already spending compute on other arms/seeds. Left in the Literals
+    # (not narrowed) pending either a manufactured scalar solution for
+    # heat/advection_diffusion or vector-valued basis selection for
+    # navier_stokes, at which point the validators' rejection sets shrink
+    # rather than the types changing.
     id_pde: Literal["poisson", "heat", "advection_diffusion"] = Field(
         default="poisson",
         description="In-distribution PDE — the trained evaluator is expected to win here.",
@@ -234,14 +255,32 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
     @field_validator("id_pde")
     @classmethod
     def _id_pde_has_exact_solution(cls, v: str) -> str:
-        if v in _PDES_WITHOUT_EXACT_SOLUTION:
+        if v in _PDES_INCOMPATIBLE_WITH_BASIS_SELECTION:
             raise ValueError(
-                f"id_pde={v!r} has no exact_solution() for BasisSelectionGame "
-                "and would raise ExactSolutionUnavailableError partway through "
-                "the ablation grid instead of failing here at construction "
-                "(docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose a different "
-                "id_pde, or drop this validator once a manufactured solution "
-                "exists for this operator."
+                f"id_pde={v!r} is incompatible with BasisSelectionGame (no "
+                "exact_solution(), or a vector-valued one BasisSelectionGame "
+                "cannot fit a scalar approximation to) and would fail partway "
+                "through the ablation grid instead of failing here at "
+                "construction (docs/CODE_HYGIENE_AUDIT.md P0-1, B24). Choose "
+                "a different id_pde, or drop this rejection once a compatible "
+                "solution exists for this operator."
+            )
+        return v
+
+    @field_validator("ood_pde")
+    @classmethod
+    def _ood_pde_is_compatible(cls, v: str) -> str:
+        if v in _PDES_INCOMPATIBLE_WITH_BASIS_SELECTION:
+            raise ValueError(
+                f"ood_pde={v!r} is incompatible with BasisSelectionGame -- "
+                "for 'navier_stokes' specifically, exact_solution() returns "
+                "a vector velocity field of shape (N, 2), while this game "
+                "fits a scalar (N,) approximation, so `solution - exact` "
+                "fails with a numpy broadcasting error instead of failing "
+                "here at construction (docs/CODE_HYGIENE_AUDIT.md B24, a "
+                "Copilot review finding on PR #140). Choose a different "
+                "ood_pde, or drop this rejection once vector-valued basis "
+                "selection exists."
             )
         return v
 

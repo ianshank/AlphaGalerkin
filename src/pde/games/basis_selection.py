@@ -354,7 +354,7 @@ class BasisSelectionGame(PDEGame):
         # Compute initial residual (= -source term for zero solution)
         source = self.pde_operator.source_term(self._collocation_points)
         if isinstance(source, Tensor):
-            source = source.numpy()
+            source = source.detach().cpu().numpy()
         residuals = -source.astype(np.float32)
 
         # Compute initial error
@@ -379,7 +379,7 @@ class BasisSelectionGame(PDEGame):
             )
 
         if isinstance(self._exact_solution, Tensor):
-            exact = self._exact_solution.numpy()
+            exact = self._exact_solution.detach().cpu().numpy()
         else:
             exact = self._exact_solution
         error = float(np.sqrt(np.mean((solution - exact) ** 2)))
@@ -710,7 +710,7 @@ class BasisSelectionGame(PDEGame):
             )
 
         if isinstance(self._exact_solution, Tensor):
-            exact = self._exact_solution.numpy()
+            exact = self._exact_solution.detach().cpu().numpy()
         else:
             exact = self._exact_solution
         l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))

@@ -6,6 +6,7 @@ import torch
 from numpy.typing import NDArray
 from scipy.special import ive
 
+import src.pde.operators as operators_package
 from src.pde.config import BoundaryCondition, PDEConfig, PDEType
 from src.pde.operators import (
     COLE_HOPF_CLAMP_EPS,
@@ -21,6 +22,86 @@ from src.pde.operators import (
     PoissonOperator,
     _cole_hopf_coefficients,
 )
+
+# Frozen at the 2026-09-01 operators.py -> operators/ package split
+# (docs/CODE_HYGIENE_AUDIT.md B4). This is the *actual* guarantee that split
+# preserved: every public name the old flat module exposed is still exposed,
+# unchanged. It deliberately excludes dunders (``__path__``, ``__all__``) --
+# becoming a package unavoidably adds ``__path__``, and declaring an explicit
+# ``__all__`` (the old flat module had none) adds itself as an attribute;
+# both are harmless since nothing in this codebase introspects ``dir()`` on
+# this module. A peer review of PR #140 found the two prior claims describing
+# this ("dir(m) is unchanged", in the split's own commit message, CHANGELOG,
+# and this module's docstring) were broader than what was actually verified
+# and did not hold -- this test encodes the narrower claim that is true.
+_OPERATORS_PACKAGE_PUBLIC_API = frozenset(
+    {
+        "ABC",
+        "AdvectionDiffusionOperator",
+        "Any",
+        "BiharmonicOperator",
+        "BoundaryCondition",
+        "BurgersOperator",
+        "COLE_HOPF_CLAMP_EPS",
+        "COLE_HOPF_COEFFICIENT_CACHE_SIZE",
+        "COLE_HOPF_MAX_TERMS",
+        "COLE_HOPF_MIN_RESOLVED_VISCOSITY",
+        "COLE_HOPF_N_TERMS",
+        "COLE_HOPF_TERM_TOLERANCE",
+        "Callable",
+        "DEFAULT_BOUNDARY_TOLERANCE",
+        "DEFAULT_HELMHOLTZ_WAVENUMBER",
+        "DomainGeometry",
+        "GAUSSIAN_PULSE_WIDTH_FRACTION",
+        "GeometryType",
+        "HeatOperator",
+        "HelmholtzOperator",
+        "LShapedDomain",
+        "LShapedPoissonOperator",
+        "NDArray",
+        "NavierStokesOperator",
+        "PDEConfig",
+        "PDEOperator",
+        "PDEResidual",
+        "PDEType",
+        "PoissonOperator",
+        "Tensor",
+        "abstractmethod",
+        "annotations",  # `from __future__ import annotations` leaks this name
+        "create_geometry",
+        "dataclass",
+        "ive",
+        "logger",
+        "lru_cache",
+        "np",
+        "structlog",
+        "torch",
+    }
+)
+
+
+class TestOperatorsPackagePublicAPI:
+    """The real, narrower guarantee the operators.py -> operators/ split made."""
+
+    def test_public_names_match_frozen_pre_split_surface(self) -> None:
+        public_names = {n for n in dir(operators_package) if not n.startswith("_")}
+        assert public_names == _OPERATORS_PACKAGE_PUBLIC_API
+
+    def test_dunder_all_covers_the_frozen_public_surface(self) -> None:
+        # __all__ (new -- the old flat module had none) is not required to
+        # equal dir()'s public names exactly: it deliberately also lists the
+        # private `_cole_hopf_coefficients` (explicit re-export) and has no
+        # reason to list the incidental `annotations` future-import leak. The
+        # real invariant is one-directional: every name this test freezes as
+        # public must be explicitly exported, so `from src.pde.operators
+        # import *` cannot silently drop one.
+        assert _OPERATORS_PACKAGE_PUBLIC_API - {"annotations"} <= set(operators_package.__all__)
+
+    def test_private_cole_hopf_coefficients_still_reachable(self) -> None:
+        # The one private name (leading underscore, so excluded from the
+        # public-surface set above) that a test outside this package imports
+        # directly -- confirms the package's re-export shim covers it too.
+        assert operators_package._cole_hopf_coefficients is _cole_hopf_coefficients
 
 
 class TestPDEResidual:

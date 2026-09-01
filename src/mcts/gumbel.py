@@ -55,6 +55,19 @@ contribution assigned to a near-zero-prior action in sequential halving and
 the final argmax — retuning it changes action selection.
 """
 
+GUMBEL_MIXED_VALUE_PRIOR_SUM_FLOOR: float = 1e-8
+"""Division-guard floor for ``_gumbel_mixed_value``'s visited-prior-sum.
+
+Inert numerics, same value and shape as ``GUMBEL_NORMALIZATION_EPSILON`` but
+declared separately rather than reused: it guards a different quantity
+(``sum(child.prior for child in visited)`` in the v_mix estimator, not a
+policy/visit-count normalizer), and ``GUMBEL_LOG_PRIOR_FLOOR`` -- despite
+holding the same numeric value -- is documented above as an algorithmic knob
+that changes action selection when retuned. Reusing it here would silently
+couple v_mix's degrade-to-raw-value threshold to that retuning, exactly the
+coupling the module's constants are otherwise kept apart to avoid.
+"""
+
 
 class GumbelMCTSConfig(BaseModel):
     """Configuration for Gumbel MCTS.
@@ -294,7 +307,7 @@ def _gumbel_mixed_value(root: GumbelNode, raw_value: float) -> float:
 
     visited = [child for child in children if child.visit_count > 0]
     prior_sum = sum(child.prior for child in visited)
-    if prior_sum <= GUMBEL_LOG_PRIOR_FLOOR:
+    if prior_sum <= GUMBEL_MIXED_VALUE_PRIOR_SUM_FLOOR:
         # Every visited child has a (numerically) zero prior -- degrade to
         # the raw estimate rather than dividing by ~0.
         return raw_value
@@ -359,7 +372,17 @@ class GumbelMCTS:
         self._logger = structlog.get_logger(__name__).bind(
             n_simulations=config.n_simulations,
             max_actions=config.max_num_considered_actions,
+            use_mixed_value=config.use_mixed_value,
+            discount=config.discount,
         )
+        # One-time record of which search-behavior knobs are active, mirroring
+        # the fix for the identical gap in the non-Gumbel engine
+        # (docs/CODE_HYGIENE_AUDIT.md P2 "Zero-logging packages": "recording
+        # search_mode/invert_backup at MCTS.__init__ ... there is no runtime
+        # record of which mode ran"). Without this, a debugging session on a
+        # Gumbel run has no trace of whether v_mix completed-Q or the flat
+        # pre-fix 0.0 was in effect, or what discount was applied.
+        self._logger.debug("gumbel_mcts_configured")
 
     def search(
         self,

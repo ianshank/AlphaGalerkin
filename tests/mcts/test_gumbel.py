@@ -484,20 +484,24 @@ class TestGumbelNodeEdgeCases:
 
 
 class TestGumbelConstantSiteBinding:
-    """Static guard that the two 1e-8 constants sit at the sites they name.
+    """Static guard that the three 1e-8 constants sit at the sites they name.
 
-    ``GUMBEL_NORMALIZATION_EPSILON`` (inert division guard) and
+    ``GUMBEL_NORMALIZATION_EPSILON`` (inert division guard),
     ``GUMBEL_LOG_PRIOR_FLOOR`` (an algorithmic knob that shifts action
-    selection) share the same value today, so no purely numeric assertion can
-    detect a swap. These tests parse ``src/mcts/gumbel.py`` and check which
-    constant appears at which kind of expression, so swapping them -- or
-    reintroducing a bare ``1e-8`` -- fails loudly.
+    selection), and ``GUMBEL_MIXED_VALUE_PRIOR_SUM_FLOOR`` (inert division
+    guard for ``_gumbel_mixed_value``'s visited-prior-sum) share the same
+    value today, so no purely numeric assertion can detect a swap. These
+    tests parse ``src/mcts/gumbel.py`` and check which constant appears at
+    which kind of expression, so swapping them -- or reintroducing a bare
+    ``1e-8`` -- fails loudly.
     """
 
     NORMALIZATION_NAME = "GUMBEL_NORMALIZATION_EPSILON"
     LOG_PRIOR_NAME = "GUMBEL_LOG_PRIOR_FLOOR"
+    MIXED_VALUE_PRIOR_SUM_NAME = "GUMBEL_MIXED_VALUE_PRIOR_SUM_FLOOR"
     EXPECTED_NORMALIZATION_SITES = 3
     EXPECTED_LOG_SITES = 3
+    EXPECTED_PRIOR_SUM_SITES = 1
 
     @staticmethod
     def _module_tree() -> ast.Module:
@@ -560,12 +564,47 @@ class TestGumbelConstantSiteBinding:
         assert len(names) == self.EXPECTED_LOG_SITES
         assert set(names) == {self.LOG_PRIOR_NAME}
 
+    @classmethod
+    def _prior_sum_floor_names(cls) -> list[str]:
+        """Names compared against in a ``prior_sum <= <name>`` guard."""
+        import ast
+
+        names: list[str] = []
+        for node in ast.walk(cls._module_tree()):
+            if not isinstance(node, ast.Compare) or len(node.ops) != 1:
+                continue
+            if not isinstance(node.ops[0], ast.LtE):
+                continue
+            left = node.left
+            is_prior_sum = isinstance(left, ast.Name) and left.id == "prior_sum"
+            comparator = node.comparators[0]
+            if is_prior_sum and isinstance(comparator, ast.Name):
+                names.append(comparator.id)
+        return names
+
+    def test_prior_sum_guard_uses_the_mixed_value_constant(self) -> None:
+        """`prior_sum <= X` in `_gumbel_mixed_value` binds to the right constant.
+
+        Must bind to GUMBEL_MIXED_VALUE_PRIOR_SUM_FLOOR, not
+        GUMBEL_LOG_PRIOR_FLOOR -- despite sharing its value, reusing the
+        algorithmic-knob constant here would silently couple v_mix's
+        degrade-to-raw-value threshold to retuning that knob for its
+        documented, unrelated purpose.
+        """
+        names = self._prior_sum_floor_names()
+        assert len(names) == self.EXPECTED_PRIOR_SUM_SITES
+        assert set(names) == {self.MIXED_VALUE_PRIOR_SUM_NAME}
+
     def test_no_bare_epsilon_literal_remains(self) -> None:
-        """1e-8 appears only in the two constant definitions, never inline."""
+        """1e-8 appears only in the three constant definitions, never inline."""
         import ast
 
         tree = self._module_tree()
-        definition_names = {self.NORMALIZATION_NAME, self.LOG_PRIOR_NAME}
+        definition_names = {
+            self.NORMALIZATION_NAME,
+            self.LOG_PRIOR_NAME,
+            self.MIXED_VALUE_PRIOR_SUM_NAME,
+        }
         inline_literals = 0
         for top in tree.body:
             is_constant_def = (

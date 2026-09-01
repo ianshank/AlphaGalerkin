@@ -7,7 +7,7 @@ This module provides concrete implementations of PDEGame:
 - CollocationGame: Place collocation points strategically
 """
 
-from src.pde.games.basis_selection import BasisSelectionGame
+from src.pde.games.basis_selection import BasisSelectionGame, ExactSolutionUnavailableError
 from src.pde.games.mesh_refinement import MeshRefinementGame
 from src.pde.games.swarm_planning import SwarmPlanningGame
 
@@ -20,6 +20,7 @@ from src.pde.games.swarm_planning import SwarmPlanningGame
 
 __all__ = [
     "BasisSelectionGame",
+    "ExactSolutionUnavailableError",
     "MeshRefinementGame",
     "SwarmPlanningGame",
 ]

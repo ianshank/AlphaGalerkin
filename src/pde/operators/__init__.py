@@ -31,8 +31,17 @@ continues to work unchanged -- the split is transparent to callers.
 
 The imports below intentionally mirror the *exact* top-of-file import block
 of the old monolithic module (down to the incidental names it leaked into its
-namespace, e.g. ``ABC``, ``Tensor``, ``np``) so that ``dir(src.pde.operators)``
-is unchanged before and after the split.
+namespace, e.g. ``ABC``, ``Tensor``, ``np``), so that every *public* name
+(``[n for n in dir(src.pde.operators) if not n.startswith("_")]``) is
+unchanged before and after the split. **Not** every name in the raw
+``dir()`` output: becoming a package unavoidably adds ``__path__``, and the
+explicit ``__all__`` below (absent from the old flat module) adds itself as
+an attribute -- both dunders, both harmless, since nothing in this codebase
+introspects ``dir()`` on this module. An earlier revision of this docstring
+claimed the stronger, false "``dir()`` is byte-identical" property; that
+claim was not what was actually checked and did not hold (verified 2026-09-01
+via a peer review of PR #140) -- see ``tests/pde/test_operators.py`` for the
+test that encodes the real, narrower, true guarantee.
 """
 
 from __future__ import annotations

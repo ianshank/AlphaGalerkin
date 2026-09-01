@@ -34,6 +34,11 @@ from src.templates.config import BaseModuleConfig
 # heavy MCTS/PDE import surface (validated again at runtime when operators are
 # actually built).
 ResearchArm = Literal["random", "trained", "llm"]
+# NOTE: "heat" and "advection_diffusion" (without a time argument) have no
+# exact_solution() for BasisSelectionGame and will raise
+# ExactSolutionUnavailableError at scenario setup (docs/CODE_HYGIENE_AUDIT.md
+# P0-1) rather than silently reporting a degenerate zero-residual as
+# convergence. No shipped YAML sets either value today.
 ResearchPDEName = Literal[
     "poisson",
     "heat",

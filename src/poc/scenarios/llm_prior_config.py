@@ -51,6 +51,14 @@ class LLMPriorAblationConfig(BaseScenarioConfig):
     )
 
     # PDE coverage
+    # NOTE: "heat" and "advection_diffusion" (without a time argument) have no
+    # exact_solution() for this game and will raise ExactSolutionUnavailableError
+    # at scenario setup (docs/CODE_HYGIENE_AUDIT.md P0-1; src/pde/games/basis_
+    # selection.py) rather than silently reporting a degenerate zero-residual as
+    # convergence, which is what they did before that fix. No shipped YAML sets
+    # either value today. Left in the Literal (not narrowed) pending either a
+    # manufactured solution for these operators or a graceful arm-skip matching
+    # the LM Studio preflight-failure pattern this scenario already uses.
     id_pde: Literal["poisson", "heat", "advection_diffusion"] = Field(
         default="poisson",
         description="In-distribution PDE — the trained evaluator is expected to win here.",

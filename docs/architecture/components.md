@@ -79,7 +79,7 @@ Tournament management and rating.
 PDE solving as sequential decision-making for MCTS-guided Galerkin approximation.
 
 - **`game.py`** — `PDEGame`, `PDEState` abstractions.
-- **`operators.py`** — `PoissonOperator`, `BurgersOperator`, `NavierStokesOperator`, `AdvectionDiffusionOperator`, `HeatOperator`, `LShapedPoissonOperator`, `HelmholtzOperator`, `BiharmonicOperator`. Plus `operators_picogk.py` — `HelicalHeatOperator`, `HelicalStokesOperator`, `HelicalMagnetostaticsOperator`. (Registry keys, enumerated at runtime: `advection_diffusion, biharmonic, burgers, heat, helical_heat, helical_magnetostatics, helical_stokes, helmholtz, navier_stokes, poisson, poisson_lshaped`.)
+- **`operators/`** (split from a single `operators.py` 2026-09-01, docs/CODE_HYGIENE_AUDIT.md B4) — `base.py` (`PDEResidual`, `PDEOperator` ABC), one file per concrete operator: `poisson.py`, `burgers.py`, `advection_diffusion.py`, `heat.py`, `navier_stokes.py`, `lshaped_poisson.py`, `helmholtz.py`, `biharmonic.py`; `__init__.py` re-exports the full public surface, so `from src.pde.operators import PoissonOperator` etc. is unchanged. Plus `operators_picogk.py` — `HelicalHeatOperator`, `HelicalStokesOperator`, `HelicalMagnetostaticsOperator`. (Registry keys, enumerated at runtime: `advection_diffusion, biharmonic, burgers, heat, helical_heat, helical_magnetostatics, helical_stokes, helmholtz, navier_stokes, poisson, poisson_lshaped`.)
 - **`geometry.py`** — `RectangularDomain`, `LShapedDomain`, `CylinderFlowDomain` with rejection sampling.
 - **`time_stepping.py`** — `ForwardEuler`, `RK4`, `CrankNicolson` with factory pattern.
 - **`game_interface.py`** — `PDEGameInterface` bridging PDE games to `GameRegistry`.

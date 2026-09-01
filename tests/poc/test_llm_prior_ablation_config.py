@@ -29,6 +29,38 @@ def test_pde_enum_membership_enforced() -> None:
         LLMPriorAblationConfig(ood_pde="bogus")  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("unsupported_pde", ["heat", "advection_diffusion"])
+def test_id_pde_rejects_operators_without_exact_solution(unsupported_pde: str) -> None:
+    """B24: fail fast at construction, not mid-run via ExactSolutionUnavailableError."""
+    with pytest.raises(ValidationError, match="incompatible with BasisSelectionGame"):
+        LLMPriorAblationConfig(id_pde=unsupported_pde)  # type: ignore[arg-type]
+
+
+def test_id_pde_accepts_poisson_the_default() -> None:
+    # Regression guard: the validator must not reject the one value every
+    # shipped config actually uses.
+    config = LLMPriorAblationConfig(id_pde="poisson")
+    assert config.id_pde == "poisson"
+
+
+def test_ood_pde_rejects_navier_stokes_vector_shape_mismatch() -> None:
+    """B24 correction (Copilot review, PR #140).
+
+    navier_stokes has an exact solution, but it's vector-valued (N, 2) --
+    incompatible with this game's scalar (N,) approximation. Fail at
+    construction, not a numpy broadcasting error partway through the
+    ablation grid.
+    """
+    with pytest.raises(ValidationError, match="incompatible with BasisSelectionGame"):
+        LLMPriorAblationConfig(ood_pde="navier_stokes")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("ood_pde", ["burgers", "poisson_lshaped", "helmholtz", "biharmonic"])
+def test_ood_pde_accepts_every_other_option(ood_pde: str) -> None:
+    config = LLMPriorAblationConfig(ood_pde=ood_pde)  # type: ignore[arg-type]
+    assert config.ood_pde == ood_pde
+
+
 def test_default_thresholds_match_fields() -> None:
     config = LLMPriorAblationConfig(
         id_rollout_reduction_pct_min=33.0,

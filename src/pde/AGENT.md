@@ -57,7 +57,7 @@ Rich config hierarchy: `PDEConfig` → `PDEGameConfig` (with nested `BasisSelect
 |-----------|-------|----------------|
 | **PDE Operator Specialist** | `operators.py` | Adding new PDE types (Navier-Stokes, Wave, etc.) |
 | **Basis Selection Expert** | `games/basis_selection.py` | Modifying basis types, candidate generation |
-| **Mesh Refinement Expert** | `games/mesh_refinement.py` | Modifying refinement strategies, DOF calculations |
+| **Mesh Refinement Expert** | `games/mesh_refinement/` (`mesh.py` quadtree, `game.py` MCTS game) | Modifying refinement strategies, DOF calculations |
 | **Adapter Engineer** | `mcts_adapter.py` | Changing PDE-to-MCTS mapping, error-to-outcome thresholds |
 | **Config Designer** | `config.py` | Adding config fields, reward shaping parameters |
 
@@ -83,7 +83,7 @@ pytest tests/pde/test_mcts_adapter.py -v
 | `registry.py` | PDE operator registration | `PDEOperatorRegistry`, `@register_pde_operator()` |
 | `mcts_adapter.py` | PDE-to-MCTS bridge | `PDEGameAdapter` |
 | `games/basis_selection.py` | Galerkin basis selection game | `BasisSelectionGame`, `BasisFunction` |
-| `games/mesh_refinement.py` | Adaptive mesh refinement game | `MeshRefinementGame`, `Mesh`, `MeshElement` |
+| `games/mesh_refinement/` | Adaptive mesh refinement game (`mesh.py` pure quadtree + `game.py` MCTS game, split 2026-09-01, docs/CODE_HYGIENE_AUDIT.md B4) | `MeshRefinementGame`, `Mesh`, `MeshElement` |
 
 ## Dependencies
 

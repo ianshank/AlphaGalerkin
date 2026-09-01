@@ -2,7 +2,7 @@
 
 This module wires an arbitrary ``SDFEvaluator`` (analytical or voxel-backed)
 into the existing ``DomainGeometry`` ABC so every operator in
-``src/pde/operators.py`` can solve on a PicoGK-generated part without code
+``src/pde/operators/`` can solve on a PicoGK-generated part without code
 changes.
 
 Rejection sampling is used for ``sample_interior`` because Leap 71 parts are

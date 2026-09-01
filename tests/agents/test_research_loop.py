@@ -44,11 +44,38 @@ def test_config_requires_at_least_one_problem() -> None:
         ResearchLoopConfig(name="c", problems=[])
 
 
+@pytest.mark.parametrize("unsupported_pde", ["heat", "advection_diffusion", "navier_stokes"])
+def test_problem_spec_rejects_pde_incompatible_with_basis_selection(unsupported_pde: str) -> None:
+    """B24 (+Copilot-review navier_stokes correction, PR #140).
+
+    Fail fast at construction, not mid-loop via ExactSolutionUnavailableError
+    or a numpy broadcasting error (navier_stokes' vector-valued solution).
+    """
+    with pytest.raises(ValueError, match="incompatible with BasisSelectionGame"):
+        _problem("p", pde=unsupported_pde)
+
+
+def test_problem_spec_accepts_poisson_the_default() -> None:
+    problem = _problem("p", pde="poisson")
+    assert problem.pde == "poisson"
+
+
+@pytest.mark.parametrize("pde", ["burgers", "poisson_lshaped", "helmholtz", "biharmonic"])
+def test_problem_spec_accepts_every_other_option(pde: str) -> None:
+    problem = _problem("p", pde=pde)
+    assert problem.pde == pde
+
+
 def test_config_problem_names_must_be_unique() -> None:
+    # pde="burgers" (not the "poisson" default) only to prove the duplicate
+    # check is on `name`, not whole-object equality; "heat" would also work
+    # structurally but now fails BasisSelectionGame's exact-solution
+    # validator (docs/CODE_HYGIENE_AUDIT.md B24) before this check is ever
+    # reached.
     with pytest.raises(ValueError, match="problem names must be unique"):
         ResearchLoopConfig(
             name="c",
-            problems=[_problem("dup"), _problem("dup", pde="heat")],
+            problems=[_problem("dup"), _problem("dup", pde="burgers")],
         )
 
 

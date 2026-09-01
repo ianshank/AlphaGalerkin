@@ -104,6 +104,37 @@ class BasisFunction:
             raise ValueError(f"Unknown basis type: {self.type}")
 
 
+class ExactSolutionUnavailableError(ValueError):
+    """Raised when the operator has no exact solution to compare against.
+
+    Both ``get_initial_state`` and ``compute_exact_error`` were asked for a
+    ground-truth error metric but the operator has no exact solution for
+    this game's collocation points.
+
+    ``BasisSelectionGame`` used to fall back to the RMS of ``state.residuals``
+    in this situation (independently, in both methods), but that residual is
+    structurally degenerate for this game: every state's solution is built
+    via ``torch.from_numpy(...)``, which is disconnected from the autodiff
+    graph, so ``PDEOperator.compute_derivatives`` returns all-zero derivative
+    terms for *every* call (see ``docs/CODE_HYGIENE_AUDIT.md`` P0-1). The
+    "residual" therefore collapses to a constant that does not depend on the
+    fitted solution or the number of basis functions selected. Left
+    unguarded in ``get_initial_state``, this constant became
+    ``PDEState.error_estimate`` at DOF 0 -- letting a game with no
+    analytical solution "converge" before a single MCTS rollout, which also
+    made ``compute_exact_error``'s own refusal unreachable in practice
+    (nothing ever calls it on a game that already reports itself converged).
+
+    Raised instead of silently returning that constant. Operators without a
+    real exact solution (currently ``HeatOperator``, and
+    ``AdvectionDiffusionOperator`` as called here without a ``time`` argument)
+    are not yet supported by ``BasisSelectionGame``'s error metric; wire in a
+    genuine manufactured solution (see ``PoissonOperator``/``HelmholtzOperator``
+    /``BiharmonicOperator``/``BurgersOperator`` for the pattern) before using
+    them with this game.
+    """
+
+
 class BasisSelectionGame(PDEGame):
     """Basis selection game for Galerkin methods.
 
@@ -298,6 +329,21 @@ class BasisSelectionGame(PDEGame):
         Returns:
             Initial PDEState.
 
+        Raises:
+            ExactSolutionUnavailableError: If ``self.pde_operator`` has no
+                exact solution for this game's collocation points. This is
+                the same refusal ``compute_exact_error`` applies (see its
+                docstring and ``docs/CODE_HYGIENE_AUDIT.md`` P0-1): the
+                initial-residual fallback below is the *same* structurally
+                degenerate constant (independent of the fitted solution or
+                DOF), and it feeds ``PDEState.error_estimate`` directly --
+                the value ``_centaur_common.run_basis_selection_cell`` checks
+                against ``target_residual`` to decide whether to run MCTS at
+                all. Leaving this path unguarded let a degenerate operator's
+                game "converge" at DOF 0 with zero rollouts, silently making
+                ``compute_exact_error``'s own refusal unreachable in
+                practice.
+
         """
         n_points = len(self._collocation_points)
         self._collocation_points.shape[1]
@@ -308,18 +354,35 @@ class BasisSelectionGame(PDEGame):
         # Compute initial residual (= -source term for zero solution)
         source = self.pde_operator.source_term(self._collocation_points)
         if isinstance(source, Tensor):
-            source = source.numpy()
+            source = source.detach().cpu().numpy()
         residuals = -source.astype(np.float32)
 
         # Compute initial error
-        if self._exact_solution is not None:
-            if isinstance(self._exact_solution, Tensor):
-                exact = self._exact_solution.numpy()
-            else:
-                exact = self._exact_solution
-            error = float(np.sqrt(np.mean((solution - exact) ** 2)))
+        if self._exact_solution is None:
+            logger.error(
+                "exact_error_refused_no_exact_solution",
+                operator=type(self.pde_operator).__name__,
+                reason=(
+                    "operator has no analytical solution for this game; "
+                    "residual-based initial error_estimate is structurally "
+                    "degenerate here (see ExactSolutionUnavailableError)"
+                ),
+            )
+            raise ExactSolutionUnavailableError(
+                f"{type(self.pde_operator).__name__} has no exact_solution() "
+                "for this game's collocation points, so get_initial_state "
+                "cannot report a ground-truth error_estimate. Refusing the "
+                "prior residual-RMS fallback, which was structurally a "
+                "constant independent of the fitted solution/dof (see "
+                "ExactSolutionUnavailableError.__doc__ and "
+                "docs/CODE_HYGIENE_AUDIT.md P0-1)."
+            )
+
+        if isinstance(self._exact_solution, Tensor):
+            exact = self._exact_solution.detach().cpu().numpy()
         else:
-            error = float(np.sqrt(np.mean(residuals**2)))
+            exact = self._exact_solution
+        error = float(np.sqrt(np.mean((solution - exact) ** 2)))
 
         return PDEState(
             coords=self._collocation_points.copy(),
@@ -615,25 +678,43 @@ class BasisSelectionGame(PDEGame):
         Returns:
             Dictionary with error metrics.
 
+        Raises:
+            ExactSolutionUnavailableError: If ``self.pde_operator`` has no
+                exact solution for this game's collocation points (i.e.
+                ``pde_operator.exact_solution(...)`` returned ``None`` at
+                construction time). Falling back to a residual-based metric
+                here is unsound for this game -- see the exception's
+                docstring -- so this refuses rather than silently reporting a
+                degenerate constant as convergence evidence
+                (``docs/CODE_HYGIENE_AUDIT.md`` P0-1).
+
         """
-        # L2 error
-        if self._exact_solution is not None:
-            if isinstance(self._exact_solution, Tensor):
-                exact = self._exact_solution.numpy()
-            else:
-                exact = self._exact_solution
-            l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
-            linf_error = float(np.max(np.abs(state.solution - exact)))
-        else:
-            # CAUTION: exact solution unavailable; error is residual-based only.
-            # This does not measure actual solution error, only PDE residual magnitude.
-            # Results may pass on small residuals while solution is far from truth.
-            logger.warning(
-                "exact_solution_unavailable",
-                reason="operator has no analytical solution; using residual-based error metric",
+        if self._exact_solution is None:
+            logger.error(
+                "exact_error_refused_no_exact_solution",
+                operator=type(self.pde_operator).__name__,
+                reason=(
+                    "operator has no analytical solution for this game; "
+                    "residual-based fallback is structurally degenerate here "
+                    "(see ExactSolutionUnavailableError)"
+                ),
             )
-            l2_error = float(np.sqrt(np.mean(state.residuals**2)))
-            linf_error = float(np.max(np.abs(state.residuals)))
+            raise ExactSolutionUnavailableError(
+                f"{type(self.pde_operator).__name__} has no exact_solution() "
+                "for this game's collocation points, so compute_exact_error "
+                "cannot report a ground-truth L2/Linf error. Refusing the "
+                "prior residual-RMS fallback, which was structurally a "
+                "constant independent of the fitted solution/dof (see "
+                "ExactSolutionUnavailableError.__doc__ and "
+                "docs/CODE_HYGIENE_AUDIT.md P0-1)."
+            )
+
+        if isinstance(self._exact_solution, Tensor):
+            exact = self._exact_solution.detach().cpu().numpy()
+        else:
+            exact = self._exact_solution
+        l2_error = float(np.sqrt(np.mean((state.solution - exact) ** 2)))
+        linf_error = float(np.max(np.abs(state.solution - exact)))
 
         # H1 error (would need gradient computation)
         h1_error = l2_error  # Approximation

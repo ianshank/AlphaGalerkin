@@ -4,7 +4,7 @@
 **Scope:** Formal Markov Decision Process underlying AlphaGalerkin's
 MCTS-guided basis selection and adaptive mesh refinement.
 **Source of truth:** `src/pde/game.py`, `src/pde/games/basis_selection.py`,
-`src/pde/games/mesh_refinement.py`, `src/pde/mcts_adapter.py`.
+`src/pde/games/mesh_refinement/` (`mesh.py`, `game.py`), `src/pde/mcts_adapter.py`.
 
 ---
 

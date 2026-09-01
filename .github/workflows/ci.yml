@@ -793,6 +793,89 @@ jobs:
           pytest tests/poc/ -m "not gpu_required" \
             --cov=src/poc --cov-branch --cov-fail-under=85 -q --no-header
 
+      # B20 close-out (docs/CODE_HYGIENE_AUDIT.md §7.4): five surfaces that
+      # previously rode only the whole-package `src/poc` gate above (and, for
+      # constants.py/seeding.py, only the global 85% `--cov=src` gate) with no
+      # gate of their own -- a regression in any one of them could be masked
+      # by high coverage elsewhere in the same package/tree. Each threshold is
+      # floor(measured branch %) - 2, capped at 85, the same convention as
+      # every other gate in this job. Measured 2026-08-24 (after closing the
+      # non-GPU-only gaps found while adding these gates -- see below):
+      #   src/poc/cli.py                                  99%   -> 85 (capped)
+      #   src/poc/visualization/*                        100%   -> 85 (capped)
+      #   scenarios/{transfer,complexity,stability}.py     94%   -> 85 (capped)
+      #   src/constants.py                                100%   -> 85 (capped)
+      #   src/seeding.py                                  100%   -> 85 (capped)
+      #
+      # cli.py's cmd_eval_harness (previously 0% -- entirely untested) and the
+      # demo/log-level, metrics-truncation, non-dict-JSON, missing-metric-diff
+      # branches are now covered (tests/poc/test_cli_eval_harness.py + additions
+      # to test_cli_commands.py/test_cli_demo_export.py/test_cli_baselines.py).
+      # visualization/plots.py's pareto_frontier plot (previously entirely
+      # untested) and the training_curves dual-axis + comparison_boxplot
+      # matplotlib-fallback branches are now covered (tests/poc/test_visualization.py).
+      # scenarios/transfer.py's execute()/_train_model()/_evaluate_at_resolution()/
+      # _save_model() were previously 0% (measured 25% branch on the whole file,
+      # the single largest gap this pass found) -- now exercised by a real CPU
+      # micro-run in tests/poc/test_transfer_scenario.py (small 9x9/13x13 model,
+      # completes in a few seconds). complexity.py/stability.py needed no new
+      # tests: their remaining gaps are GPU-only branches (`torch.cuda.is_available()`
+      # / `.type == "cuda"`) or defensive `if self._scenario_logger:` checks that
+      # are always true after `setup()` in every real call path.
+      #
+      # Single-file targets (cli.py, constants.py, seeding.py) use the native
+      # coverage runner with path-glob --include, not pytest-cov's --cov=path.py
+      # or dotted --cov=module.path: coverage 7.x silently drops bare file-path
+      # specs (see the lm_studio gate's CAUTION comment above), and the dotted
+      # form crashes on import here with the same torch C-extension collision
+      # documented on the scaling_law/agents/transfer_baseline_compare gates
+      # below (`SystemError: ... bad call flags` inside `torch._C`) -- verified
+      # empirically while wiring this gate. visualization/ is a real directory
+      # with no torch-import-order collision, so it uses the simpler --cov=DIR
+      # form like most other per-package gates.
+      - name: Per-module coverage gate (poc/cli)
+        if: always() && hashFiles('tests/poc/test_cli_commands.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/cli.py" \
+            -m pytest tests/poc/test_cli_commands.py tests/poc/test_cli_demo_export.py \
+            tests/poc/test_cli_baselines.py tests/poc/test_cli_eval_harness.py -q -p no:cov
+          python -m coverage report --include="*/src/poc/cli.py" --fail-under=85
+
+      - name: Per-module coverage gate (poc/visualization)
+        if: always() && hashFiles('tests/poc/test_visualization.py') != ''
+        run: |
+          pytest tests/poc/visualization tests/poc/test_visualization.py \
+            tests/poc/test_reports_coverage.py \
+            --cov=src/poc/visualization --cov-branch --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (poc/scenarios classic - transfer, complexity, stability)
+        if: always() && hashFiles('tests/poc/test_transfer_scenario.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/poc/scenarios/transfer.py,*/src/poc/scenarios/complexity.py,*/src/poc/scenarios/stability.py" \
+            -m pytest tests/poc/test_transfer_scenario.py tests/poc/test_complexity_scenario.py \
+            tests/poc/test_stability_scenario.py -q -p no:cov
+          python -m coverage report \
+            --include="*/src/poc/scenarios/transfer.py,*/src/poc/scenarios/complexity.py,*/src/poc/scenarios/stability.py" \
+            --fail-under=85
+
+      - name: Per-module coverage gate (constants)
+        if: always() && hashFiles('tests/test_constants.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/constants.py" \
+            -m pytest tests/test_constants.py tests/modeling/test_constants_wiring.py -q -p no:cov
+          python -m coverage report --include="*/src/constants.py" --fail-under=85
+
+      - name: Per-module coverage gate (seeding)
+        if: always() && hashFiles('tests/test_seeding.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/seeding.py" \
+            -m pytest tests/test_seeding.py -q -p no:cov
+          python -m coverage report --include="*/src/seeding.py" --fail-under=85
+
       - name: Per-module coverage gate (analysis)
         if: always() && hashFiles('tests/analysis/') != ''
         run: |

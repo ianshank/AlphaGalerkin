@@ -693,6 +693,127 @@ class TestMain:
 
         assert ret == 0
 
+    def test_main_record_baseline_command_dispatches(
+        self, temp_output_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """main() dispatches the ``record-baseline`` subcommand end-to-end.
+
+        Previously only ``cmd_record_baseline`` itself was tested directly
+        (``tests/poc/test_cli_baselines.py``) -- this is the ``elif
+        args.command == "record-baseline":`` dispatch branch in ``main()``.
+        """
+        import json
+
+        from src.poc.cli import main
+
+        run_dir = temp_output_dir / "results" / "run1"
+        run_dir.mkdir(parents=True)
+        (run_dir / "r.json").write_text(
+            json.dumps({"scenario_name": "s", "metrics": {"residual_median_b4": 0.5}})
+        )
+        out_path = temp_output_dir / "baseline.json"
+
+        with patch(
+            "sys.argv",
+            [
+                "cli",
+                "record-baseline",
+                "--run-id",
+                "run1",
+                "--out",
+                str(out_path),
+                "--output-dir",
+                str(temp_output_dir),
+            ],
+        ):
+            ret = main()
+
+        assert ret == 0
+        assert out_path.exists()
+        captured = capsys.readouterr()
+        assert "Recorded" in captured.out
+
+    def test_main_diff_command_dispatches(self, temp_output_dir: Path) -> None:
+        """main() dispatches the ``diff`` subcommand end-to-end (self-diff, clean)."""
+        import json
+
+        from src.poc.cli import main
+
+        run_dir = temp_output_dir / "results" / "run1"
+        run_dir.mkdir(parents=True)
+        (run_dir / "r.json").write_text(
+            json.dumps({"scenario_name": "s", "metrics": {"residual_median_b4": 0.5}})
+        )
+        out_path = temp_output_dir / "baseline.json"
+
+        with patch(
+            "sys.argv",
+            [
+                "cli",
+                "record-baseline",
+                "--run-id",
+                "run1",
+                "--out",
+                str(out_path),
+                "--output-dir",
+                str(temp_output_dir),
+            ],
+        ):
+            main()
+
+        with patch(
+            "sys.argv",
+            [
+                "cli",
+                "diff",
+                "--baseline",
+                str(out_path),
+                "--run-id",
+                "run1",
+                "--output-dir",
+                str(temp_output_dir),
+            ],
+        ):
+            ret = main()
+
+        assert ret == 0
+
+    def test_main_eval_harness_command_dispatches(
+        self, temp_output_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """main() dispatches the ``eval-harness`` subcommand end-to-end (mocked)."""
+        import src.integrations.eval_harness.runner as eval_harness_runner
+        from src.poc.cli import main
+
+        class _FakeRunResult:
+            run_id = "eh_main"
+            config_name = "demo"
+            aggregate: dict[str, object] = {}
+
+        with (
+            patch.object(
+                eval_harness_runner,
+                "run_eval",
+                lambda config_path, offline: _FakeRunResult(),
+            ),
+            patch(
+                "sys.argv",
+                [
+                    "cli",
+                    "eval-harness",
+                    "--config",
+                    "unused.yaml",
+                    "--output-dir",
+                    str(temp_output_dir),
+                ],
+            ),
+        ):
+            ret = main()
+
+        assert ret == 0
+        captured = capsys.readouterr()
+        assert "eh_main" in captured.out
+
 
 # ---------------------------------------------------------------------------
 # Tests for register_builtin_scenarios

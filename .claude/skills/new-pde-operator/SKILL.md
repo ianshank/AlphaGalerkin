@@ -11,8 +11,11 @@ the CLAUDE.md guidance for Helmholtz/Biharmonic).
 
 ## Checklist
 
-1. **Implement the operator** in `src/pde/operators.py` (or `operators_picogk.py` for SDF/helical
-   geometries), subclassing `PDEOperator`. Provide `source_term`, `boundary_value`,
+1. **Implement the operator** as a new file under `src/pde/operators/` (one class per module,
+   following the precedent of `src/pde/operators/helmholtz.py`; or `operators_picogk.py` for
+   SDF/helical geometries), subclassing `PDEOperator` from `src/pde/operators/base.py`. Re-export
+   the class from `src/pde/operators/__init__.py` so `from src.pde.operators import MyOperator`
+   keeps working. Provide `source_term`, `boundary_value`,
    `exact_solution` (manufactured solution), and the residual. No hardcoded coefficients — surface
    them as Pydantic fields on `PDEConfig`/subclass, with a named module constant default
    (e.g. `DEFAULT_HELMHOLTZ_WAVENUMBER`).

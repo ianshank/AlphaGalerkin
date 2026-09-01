@@ -35,7 +35,7 @@ feasibility_evidence:
     evidence_type: "working_code"
     key_files:
       - "src/pde/mcts_adapter.py"
-      - "src/pde/games/mesh_refinement.py"
+      - "src/pde/games/mesh_refinement/"
       - "src/mcts/search.py"
 
   - claim: "Classical baseline comparison framework"

@@ -106,7 +106,7 @@ result = balancer.compute_weighted_loss(losses)
 
 ---
 
-## 6. PDE Operators (`src/pde/operators.py`)
+## 6. PDE Operators (`src/pde/operators/`)
 
 Reusable PDE operator definitions with automatic differentiation — applicable to any PDE benchmark.
 

@@ -349,6 +349,126 @@ class TestSequentialHalving:
 
 
 # ---------------------------------------------------------------------------
+# TestSequentialHalvingConfigKnobs
+#
+# Proves GumbelMCTSConfig.use_mixed_value and .discount actually change
+# search behaviour -- the exact dead-config gap flagged by
+# docs/CODE_HYGIENE_AUDIT.md P2 ("Config fields that are declared but never
+# read"): before this fix, toggling either changed nothing.
+# ---------------------------------------------------------------------------
+
+
+class TestSequentialHalvingConfigKnobs:
+    """Deterministic proofs that both knobs change ``_sequential_halving``.
+
+    All nodes below pre-set ``state`` (to something non-``None``, so the
+    ``if child.state is None`` expand branch is skipped) and
+    ``_terminal_value`` (so ``_simulate`` returns a fixed value immediately
+    without touching the game or the model). This makes every assertion
+    exact and independent of ``np.random``/model weights.
+    """
+
+    @staticmethod
+    def _budget_starved_root(root_state: GameState, visited_value: float) -> GumbelNode:
+        """Root with 4 actions and a budget of 3 forces action 3 unvisited.
+
+        ``_sequential_halving``'s per-action budget accounting allocates
+        ``sims_per_action = max(1, remaining_budget // (2 * n_actions))``
+        simulations per round, then walks ``remaining_actions`` in order,
+        breaking out of the inner loop the moment the budget hits zero. With
+        4 actions and a budget of 3, actions 0/1/2 each consume one unit of
+        budget before it is exhausted, and action 3 -- last in iteration
+        order -- never gets simulated at all (``visit_count`` stays 0).
+        """
+        root = GumbelNode(state=root_state)
+        root._is_expanded = True
+        for a in range(4):
+            node = GumbelNode(prior=0.25, gumbel=0.0)
+            node.state = root_state
+            node._terminal_value = visited_value
+            root.children[a] = node
+        return root
+
+    def test_action_3_is_starved_of_budget_by_construction(self, gumbel_mcts: GumbelMCTS) -> None:
+        """Pins the fixture's own precondition.
+
+        If a future change to the halving loop's budget accounting altered
+        this, the two knob tests below would silently stop testing what
+        their docstrings claim.
+        """
+        root = self._budget_starved_root(_make_state(), visited_value=-5.0)
+        _, visit_counts = gumbel_mcts._sequential_halving(
+            root, [0, 1, 2, 3], total_simulations=3, raw_value=0.0
+        )
+        assert visit_counts == {0: 1, 1: 1, 2: 1, 3: 0}
+
+    def test_use_mixed_value_toggle_changes_best_action(self, gumbel_mcts: GumbelMCTS) -> None:
+        """Toggling ``use_mixed_value`` flips which starved action wins.
+
+        Action 3 never gets visited (see ``_budget_starved_root``).
+        Disabled, its completed Q defaults to a flat ``0.0`` -- strictly
+        better than actions 0-2's real (bad) observed value of -5.0, so it
+        wins purely by being unexplored. Enabled, its completed Q is
+        ``v_mix``, grounded in a very negative raw root value, so it loses
+        instead -- proving the flag is read and changes the outcome.
+        """
+        actions = [0, 1, 2, 3]
+        raw_value = -100.0
+        visited_value = -5.0
+
+        gumbel_mcts.config.use_mixed_value = False
+        root_disabled = self._budget_starved_root(_make_state(), visited_value)
+        best_disabled, _ = gumbel_mcts._sequential_halving(
+            root_disabled, actions, total_simulations=3, raw_value=raw_value
+        )
+        assert best_disabled == 3
+
+        gumbel_mcts.config.use_mixed_value = True
+        root_enabled = self._budget_starved_root(_make_state(), visited_value)
+        best_enabled, _ = gumbel_mcts._sequential_halving(
+            root_enabled, actions, total_simulations=3, raw_value=raw_value
+        )
+        assert best_enabled != 3
+        assert best_enabled == 0
+
+    def test_discount_scales_the_backed_up_value(self, gumbel_mcts: GumbelMCTS) -> None:
+        """A discount < 1.0 shrinks the value backed up into value_sum."""
+        root_state = _make_state()
+        root = GumbelNode(state=root_state)
+        root._is_expanded = True
+        for a in (0, 1):
+            node = GumbelNode(prior=0.5, gumbel=0.0)
+            node.state = root_state
+            node._terminal_value = 8.0
+            root.children[a] = node
+
+        gumbel_mcts.config.discount = 0.25
+        gumbel_mcts._sequential_halving(root, [0, 1], total_simulations=2, raw_value=0.0)
+
+        for a in (0, 1):
+            assert root.children[a].visit_count == 1
+            assert root.children[a].value_sum == pytest.approx(0.25 * 8.0)
+            assert root.children[a].value == pytest.approx(2.0)
+
+    def test_discount_default_is_a_backward_compatible_noop(self, gumbel_mcts: GumbelMCTS) -> None:
+        """Discount defaults to 1.0: byte-identical to the pre-fix, undiscounted backup."""
+        root_state = _make_state()
+        root = GumbelNode(state=root_state)
+        root._is_expanded = True
+        for a in (0, 1):
+            node = GumbelNode(prior=0.5, gumbel=0.0)
+            node.state = root_state
+            node._terminal_value = 8.0
+            root.children[a] = node
+
+        assert gumbel_mcts.config.discount == 1.0
+        gumbel_mcts._sequential_halving(root, [0, 1], total_simulations=2, raw_value=0.0)
+
+        for a in (0, 1):
+            assert root.children[a].value_sum == pytest.approx(8.0)
+
+
+# ---------------------------------------------------------------------------
 # TestGumbelSearch
 # ---------------------------------------------------------------------------
 
@@ -401,6 +521,34 @@ class TestGumbelSearch:
         state = _make_state()
         result = gumbel_mcts.search(state)
         assert np.all(result.visit_counts >= 0)
+
+    def test_search_smoke_with_use_mixed_value_disabled(
+        self, mock_game: _MockGame, small_model: AlphaGalerkinModel
+    ) -> None:
+        """End-to-end sanity: use_mixed_value=False still runs to completion."""
+        config = GumbelMCTSConfig(
+            n_simulations=8,
+            max_num_considered_actions=4,
+            use_mixed_value=False,
+        )
+        mcts = GumbelMCTS(config=config, game=mock_game, model=small_model, device="cpu")
+        result = mcts.search(_make_state())
+        assert isinstance(result, GumbelSearchResult)
+        assert np.isfinite(result.q_values).all()
+
+    def test_search_smoke_with_discount_below_one(
+        self, mock_game: _MockGame, small_model: AlphaGalerkinModel
+    ) -> None:
+        """End-to-end sanity: discount < 1.0 still runs to completion."""
+        config = GumbelMCTSConfig(
+            n_simulations=8,
+            max_num_considered_actions=4,
+            discount=0.5,
+        )
+        mcts = GumbelMCTS(config=config, game=mock_game, model=small_model, device="cpu")
+        result = mcts.search(_make_state())
+        assert isinstance(result, GumbelSearchResult)
+        assert np.isfinite(result.q_values).all()
 
     def test_search_is_deterministic_with_fixed_seed(self, gumbel_mcts: GumbelMCTS) -> None:
         state = _make_state()

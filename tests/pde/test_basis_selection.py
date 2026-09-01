@@ -13,8 +13,12 @@ from src.pde.config import (
     PDEType,
 )
 from src.pde.game import GamePhase, PDEState
-from src.pde.games.basis_selection import BasisFunction, BasisSelectionGame
-from src.pde.operators import PoissonOperator
+from src.pde.games.basis_selection import (
+    BasisFunction,
+    BasisSelectionGame,
+    ExactSolutionUnavailableError,
+)
+from src.pde.operators import HeatOperator, PoissonOperator
 
 
 @pytest.fixture
@@ -404,6 +408,93 @@ class TestBasisSelectionGameErrorReduction:
             state = game.apply_action(state, i)
         # After several basis additions, we expect some error change
         assert state.n_basis > 0
+
+
+class TestBasisSelectionGameNoExactSolution:
+    """``get_initial_state``/``compute_exact_error`` must refuse (P0-1).
+
+    ``HeatOperator.exact_solution`` unconditionally returns ``None`` (no
+    override on the base-class default), so it is a real, currently-shipped
+    example of an operator with no ground truth for this game. Before the
+    fix, both methods independently fell back to the RMS of
+    ``state.residuals`` -- which is structurally a constant here (see
+    ``ExactSolutionUnavailableError.__doc__``) -- as if it were a real error
+    metric. ``get_initial_state`` is the first of the two actually reached
+    (it runs at episode start), so it must raise there rather than letting a
+    degenerate 0-DOF state look "converged" before ``compute_exact_error``
+    is ever called.
+    """
+
+    @pytest.fixture
+    def heat_game(self, small_basis_config: BasisSelectionConfig) -> BasisSelectionGame:
+        pde_config = PDEConfig(name="test_heat", pde_type=PDEType.HEAT)
+        operator = HeatOperator(pde_config)
+        game_config = PDEGameConfig(
+            name="test_heat_game",
+            pde_config=pde_config,
+            game_mode="basis_selection",
+            basis_config=small_basis_config,
+            max_steps=20,
+            error_tolerance=1e-4,
+        )
+        return BasisSelectionGame(operator, game_config)
+
+    def _bare_initial_state(self, heat_game: BasisSelectionGame) -> PDEState:
+        """Construct the state ``get_initial_state`` would have built.
+
+        Bypasses ``get_initial_state`` itself (which now refuses before
+        returning) so ``compute_exact_error`` can be tested against a
+        well-formed state in isolation, exactly as it would receive one from
+        any *other* caller that already holds a state (e.g. ``apply_action``
+        on a later step).
+        """
+        n_points = len(heat_game._collocation_points)
+        return PDEState(
+            coords=heat_game._collocation_points.copy(),
+            solution=np.zeros(n_points, dtype=np.float32),
+            residuals=np.zeros(n_points, dtype=np.float32),
+            basis_coefficients=np.array([], dtype=np.float32),
+            error_estimate=0.0,
+            dof=0,
+            step=0,
+            budget_remaining=heat_game.config.computational_budget,
+            phase=GamePhase.INITIAL,
+            history=[],
+        )
+
+    def test_exact_solution_is_none_for_heat(self, heat_game: BasisSelectionGame) -> None:
+        # Sanity check on the premise: HeatOperator really has no exact
+        # solution for this game's (untimed) collocation-point call.
+        assert heat_game._exact_solution is None
+
+    def test_get_initial_state_raises_for_heat(self, heat_game: BasisSelectionGame) -> None:
+        with pytest.raises(ExactSolutionUnavailableError, match="HeatOperator"):
+            heat_game.get_initial_state()
+
+    def test_compute_exact_error_raises_given_a_state(self, heat_game: BasisSelectionGame) -> None:
+        state = self._bare_initial_state(heat_game)
+        with pytest.raises(ExactSolutionUnavailableError, match="HeatOperator"):
+            heat_game.compute_exact_error(state)
+
+    def test_apply_action_raises_via_compute_exact_error(
+        self, heat_game: BasisSelectionGame
+    ) -> None:
+        state = self._bare_initial_state(heat_game)
+        actions = heat_game.get_valid_actions(state)
+        with pytest.raises(ExactSolutionUnavailableError):
+            heat_game.apply_action(state, actions[0])
+
+    def test_error_message_names_the_operator_and_the_audit_reference(
+        self, heat_game: BasisSelectionGame
+    ) -> None:
+        try:
+            heat_game.get_initial_state()
+        except ExactSolutionUnavailableError as exc:
+            message = str(exc)
+            assert "HeatOperator" in message
+            assert "exact_solution" in message
+        else:
+            pytest.fail("expected ExactSolutionUnavailableError")
 
 
 class TestBasisSelectionGameReward:

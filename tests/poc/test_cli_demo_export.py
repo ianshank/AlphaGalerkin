@@ -146,6 +146,41 @@ def test_all_pass(mock_runner, default_args):
     assert exit_code == 0
 
 
+def test_demo_flag_with_debug_log_level_skips_error_level_override(
+    mock_runner, default_args, capsys
+):
+    """When ``--log-level`` is DEBUG/WARNING, ``--demo`` must not force ERROR.
+
+    ``cmd_run`` only calls ``logging.getLogger().setLevel(logging.ERROR)``
+    when the caller's log level is *not* one of DEBUG/WARNING -- this proves
+    the guard's False branch (an explicit DEBUG/WARNING run keeps demo mode's
+    presentation table without silencing the caller's chosen verbosity).
+    """
+    default_args.demo = True
+    default_args.log_level = "DEBUG"
+    ret = cmd_run(default_args)
+    captured = capsys.readouterr()
+
+    assert ret == 1  # one of the two mock results fails
+    assert "Scenario Name" in captured.out
+
+
+def test_demo_flag_truncates_long_metrics_string(mock_runner, default_args, capsys):
+    """Metric summaries longer than 22 chars are truncated with an ellipsis."""
+    long_metrics_result = mock_runner.run_all.return_value[0]
+    long_metrics_result.metrics = {
+        "residual_fit_r2": 0.987654321,
+        "solved_fraction": 0.5,
+        "extra_metric_name": 1.2345,
+    }
+    default_args.demo = True
+
+    cmd_run(default_args)
+    captured = capsys.readouterr()
+
+    assert "..." in captured.out
+
+
 def test_all_fail(mock_runner, default_args):
     # Fix the mock results to all fail
     res1 = MagicMock()

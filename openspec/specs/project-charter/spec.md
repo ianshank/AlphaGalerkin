@@ -279,6 +279,7 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/data` | 85 |
 | `src/video_compression` | 83 |
 | `src/poc` | 85 |
+| `src/poc/visualization` | 85 |
 | `src/analysis` | 85 |
 | `src/tournament` | 85 |
 | `src/prototyping` | 85 |

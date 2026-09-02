@@ -204,15 +204,35 @@ class TestSettings:
                 missing.append(m.group(1))
         assert not missing, f"permissions name non-existent module(s): {missing}"
 
-    def test_coverage_core_is_pinned_to_pytrace(self) -> None:
-        """Not cosmetic: the installed torch wheel crashes coverage's C tracer.
+    def test_no_coverage_core_tracer_pin(self) -> None:
+        """The inverse of what this test asserted until 2026-09-02.
 
-        The failure is silent UNDER-measurement, so a session without this env
-        var produces coverage numbers that are simply wrong -- CLAUDE.md's
-        Regression Surface calls this out on every gate.
+        History, kept rather than deleted -- the pin was real and its removal
+        was evidence-driven, not a cleanup. Two commits justified it:
+
+        * ``cb645ad`` (2026-07-10): the installed torch wheel crashed coverage's
+          default C tracer at collection.
+        * ``cfe7f22`` (2026-08-15): the C tracer silently UNDER-measured --
+          ``src/training`` cited at 89.53% under ``pytrace`` vs 82.45% without,
+          with ``base_trainer.py`` reported at 46%.
+
+        Both were re-verified in 2026-09 and neither reproduces. The identical
+        ``src/training`` gate measures 88.25% under *both* tracers with a
+        byte-identical per-file breakdown, and a minimal direct reproduction of
+        the documented crash (``coverage run --branch`` over a script importing
+        ``torch._C`` and running a tensor op) exits 0 under both cores. CI's own
+        logs then confirmed it at scale: removing the pin from the ``coverage``
+        job cut pytest execution from 1967.30s to 604.32s (3.26x) with
+        byte-identical totals (``TOTAL 29971 2232 7150 91%``, 90.70%), zero
+        crash signatures, and all 43 per-module gates green.
+
+        So this now asserts *absence*: the pin costs ~3x wall-clock on every
+        coverage job and buys nothing. A reintroduced ``COVERAGE_CORE`` here
+        would silently slow CI back down and re-assert a false invariant, so it
+        fails until someone re-establishes the crash with fresh evidence.
         """
         data = json.loads((CLAUDE_DIR / "settings.json").read_text())
-        assert data["env"]["COVERAGE_CORE"] == "pytrace"
+        assert "COVERAGE_CORE" not in data.get("env", {})
 
 
 class TestSessionStartHook:

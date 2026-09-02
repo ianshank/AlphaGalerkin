@@ -194,25 +194,25 @@ window-width correction, not a threshold loosening.
 
 ```bash
 # Substrate contract + marking parity + the adequacy gate (CPU)
-COVERAGE_CORE=pytrace pytest tests/refinement/ tests/research/test_marking.py \
+pytest tests/refinement/ tests/research/test_marking.py \
   tests/research/test_substrates_config.py tests/research/test_substrates_sweep.py \
   tests/research/test_tensor_grid_substrate.py \
   tests/research/test_skfem_substrate.py tests/research/test_amr_arena_interpretability.py -v
 
 # Back-compat: the legacy harness and the FEM solver must be untouched in behaviour
-COVERAGE_CORE=pytrace pytest tests/research/test_lshape_amr_compare.py \
+pytest tests/research/test_lshape_amr_compare.py \
   tests/research/test_fem_baseline.py tests/research/test_baselines.py \
   tests/pde/test_lshape_amr_game.py -v
 
 # Per-module coverage gates (branch) — the new code rides the existing gates
-COVERAGE_CORE=pytrace pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85
-COVERAGE_CORE=pytrace pytest tests/research/ --cov=src/research --cov-fail-under=85
+pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85
+pytest tests/research/ --cov=src/research --cov-fail-under=85
 
 # The substrates package needs its own gate: skfem_tri.py is in pyproject.toml's
 # global coverage `omit` (optional [fem] extra), so the line above does not
 # measure it at all. Runs in the `test-extras` CI job, the only one with
 # scikit-fem installed, against an inline .coveragerc that drops the omit.
-COVERAGE_CORE=pytrace pytest tests/research/test_skfem_substrate.py \
+pytest tests/research/test_skfem_substrate.py \
   tests/research/test_amr_arena_interpretability.py tests/research/test_tensor_grid_substrate.py \
   tests/research/test_substrates_config.py tests/research/test_substrates_sweep.py \
   --cov=src/research/substrates --cov-config=.coveragerc.substrates \

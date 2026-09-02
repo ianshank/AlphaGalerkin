@@ -28,7 +28,7 @@ llm_prior gate until 2026-08 (see `docs/CODE_HYGIENE_AUDIT.md` §7.1).**
 |---|---|---|
 | **Directory** | `--cov=src/pde` | ✅ Works with pytest-cov. Use for whole-package gates. |
 | **File path** | `--cov=src/poc/scenarios/x.py` | ❌ **BANNED.** Under coverage 7.x / pytest-cov 7.x these are silently dropped with only a `CovReportWarning`. If any directory spec is present in the same command, the gate passes on that directory alone and the files enforce nothing; if it is the only spec, coverage reports `0` and the gate fails for the wrong reason. |
-| **Dotted module** | `--cov=src.poc.scenarios.x` | ❌ **BANNED.** Makes coverage import the target during tracer setup, colliding with the torch C extension (`SystemError: bad call flags`) even under `COVERAGE_CORE=pytrace`. |
+| **Dotted module** | `--cov=src.poc.scenarios.x` | ❌ **BANNED.** Makes coverage import the target during tracer setup, colliding with the torch C extension (`SystemError: bad call flags`) under every tracer, pure-Python included — so no `COVERAGE_CORE` value rescues it. |
 
 **To gate individual files, use the native runner** (`python -m coverage run --branch
 --include=<path globs>` + `python -m coverage report --include=<same globs> --fail-under=<N>`).
@@ -62,18 +62,22 @@ rather than the thing that turns branch measurement on.
    gaps — mirror the synthetic-harness pattern in `tests/poc/test_scaling_law_scenario.py`).
 4. Report the actual percentage; never claim a gate passed without running it.
 
-## Environment note — coverage tracer vs. the installed PyTorch wheel
+## Environment note — do NOT set `COVERAGE_CORE` (retired 2026-09-02)
 
-The installed PyTorch wheel crashes on `import torch` while coverage's default **C tracer** is
-active (`SystemError: ... bad call flags`), so `pytest --cov` can collect no data. **This affects
-CI too, not just local runs**: the `coverage` job sets `COVERAGE_CORE: pytrace` at job level
-(`.github/workflows/ci.yml`, `env:` on the job) precisely for this reason. Set it locally so your
-run matches CI:
+This section used to instruct setting `COVERAGE_CORE=pytrace`, on the claim that the installed
+PyTorch wheel crashes coverage's default **C tracer** on `import torch` (`SystemError: ... bad
+call flags`) so `pytest --cov` collects no data, and that CI's `coverage` job pinned it at job
+level for the same reason. Both halves were re-verified in 2026-09 and **neither reproduces**: a
+minimal `coverage run --branch` over a script importing `torch._C` exits 0 under both cores, the
+`src/training` gate measures 88.25% under both with a byte-identical per-file breakdown, and
+removing the pin from CI cut that job's pytest execution 1967.30s → 604.32s (3.26×) with
+byte-identical coverage totals. No CI job sets it now, and
+`tests/claude/test_harness_validation.py::test_no_coverage_core_tracer_pin` asserts its absence.
 
 ```bash
-COVERAGE_CORE=pytrace python -m coverage run --branch \
+python -m coverage run --branch \
   --include="*/<pkg>/*.py" -m pytest tests/<pkg>/ -m "not gpu_required" -q -p no:cov
-COVERAGE_CORE=pytrace python -m coverage report \
+python -m coverage report \
   --include="*/<pkg>/*.py" --fail-under=<N>
 ```
 

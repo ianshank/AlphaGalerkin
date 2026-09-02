@@ -17,14 +17,17 @@ Never pick a threshold before measuring; never measure with a different test sel
 gate will run (a wider selection inflates the number and the gate goes red in CI).
 
 ```bash
-COVERAGE_CORE=pytrace python -m coverage run --branch \
+python -m coverage run --branch \
   --include="*/src/<pkg>/*.py" \
   -m pytest tests/<pkg>/ -m "not gpu_required" -q -p no:cov
-COVERAGE_CORE=pytrace python -m coverage report --include="*/src/<pkg>/*.py"
+python -m coverage report --include="*/src/<pkg>/*.py"
 ```
 
-`COVERAGE_CORE=pytrace` is required — the installed torch wheel crashes coverage's C tracer, and
-the CI `coverage` job sets it at job level for the same reason.
+**Do not set `COVERAGE_CORE`.** This step used to require `COVERAGE_CORE=pytrace`; the pin was
+retired repo-wide on 2026-09-02 after both claims justifying it (a C-tracer crash on `import
+torch`, and silent under-measurement) were re-verified and neither reproduced. The default C
+tracer measures identically and runs ~3× faster —
+`tests/claude/test_harness_validation.py::test_no_coverage_core_tracer_pin` asserts its absence.
 
 ## Step 2 — Pick the threshold: `floor(measured) - 2`
 
@@ -47,9 +50,53 @@ the CI `coverage` job sets it at job level for the same reason.
 pytest-cov command. The first is silently dropped under coverage 7.x; the second collides with the
 torch C extension. See the decision table in the `coverage-gate` skill.
 
+## Step 3.5 — If the package is in the global coverage `omit`, override it *for this step only*
+
+Check first, because this is the failure mode most likely to bite:
+
+```bash
+python - <<'PY'
+import tomllib, pathlib
+print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["tool"]["coverage"]["run"]["omit"])
+PY
+```
+
+If any entry is an **ancestor or descendant** of your target, a bare `--cov=<target>` reports
+`0.00%` with `CoverageWarning: No data was collected` — and `--cov-fail-under` can then never
+fail. That is a gate that measures nothing while looking green; it has shipped three times here
+(`video_compression`, `demos`, `skfem_tri.py`). `--include` alone does **not** rescue it: the
+native `coverage run` reads pyproject's `omit` too.
+
+The fix is an inline `.coveragerc` generated in the step, overriding the omit without touching
+pyproject or the global `--cov=src` gate's number (used by 5 gates today: `backend`, `demos`,
+`video_compression`, `research/substrates`, `research/fem_baseline.py`):
+
+```yaml
+        run: |
+          cat > .coveragerc.<pkg> <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/<pkg>/ --cov=src/<pkg> --cov-config=.coveragerc.<pkg> \
+            --cov-branch --cov-fail-under=<N> -q --no-header
+```
+
+For a **native-runner** gate use `--rcfile=` on both `coverage run` and `coverage report` instead
+of `--cov-config=`. `.gitignore`'s `.coveragerc.*` glob already covers the generated file.
+
+`tests/docs/test_coverage_gate_integrity.py` enforces both directions of this and will fail your
+PR: an omitted target with no overriding gate needs an entry in `_OMIT_WITHOUT_A_CI_GATE` with a
+reason, and `_OMITTED_BUT_GATED_ELSEWHERE` entries must name a step that *both* selects the module
+**and** passes `--cov-config=`/`--rcfile=`. An ancestor `--cov` is explicitly not accepted as
+proof — it inherits the same omit.
+
 ## Step 4 — Wire the `ci.yml` step
 
-Add to the `coverage` job, mirroring its neighbours exactly:
+Add to the **`coverage-gates`** job (split out of `coverage` on 2026-09-02 when the combined job
+blew its 45-minute cap), mirroring its neighbours exactly:
 
 ```yaml
       - name: Per-module coverage gate (<pkg>)
@@ -61,7 +108,8 @@ Add to the `coverage` job, mirroring its neighbours exactly:
 - `if: always() && hashFiles(...)` so the step still runs after an earlier gate fails (you want
   every gate's number in one CI run, not one per push) and skips cleanly if the path is absent.
 - Verify the `hashFiles` path exists — a typo makes the step skip forever and look green.
-- Do **not** re-declare `COVERAGE_CORE`; it is already job-level.
+- Do **not** declare `COVERAGE_CORE` anywhere. This bullet used to read "it is already job-level";
+  no job sets it as of 2026-09-02 (see Step 1).
 
 ## Step 5 — Mirror it into the docs, in the right order
 

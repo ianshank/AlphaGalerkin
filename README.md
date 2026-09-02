@@ -213,8 +213,8 @@ pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py 
 The project ships an extensive suite — **8,573 test functions, 9,770 collected**
 after parametrisation (measured 2026-08-21, CPU surface) across unit, integration,
 property-based, E2E and security categories — with an **85% branch coverage** gate
-enforced in CI, plus **44 per-module gates** (e.g. `mcts ≥ 90`, `refinement ≥ 85`,
-`poc ≥ 85`, `data ≥ 85`, `demos ≥ 81`, `pde ≥ 75`, `research/substrates ≥ 95`).
+enforced in CI, plus **45 per-module gates** (e.g. `mcts ≥ 90`, `refinement ≥ 85`,
+`poc ≥ 85`, `data ≥ 85`, `demos ≥ 81`, `pde ≥ 85`, `research/substrates ≥ 95`).
 That count is a machine count of workflow steps carrying a `--fail-under` with a
 non-global `--cov`/`--include` target, so it is recountable rather than
 maintained by hand — the previously stated 34 had drifted. Gates are also
@@ -224,7 +224,9 @@ reports 0.00% and can never fail) or written as a `--cov=<...>.py` file-path spe
 (silently ignored by coverage 7.x). Both had shipped, three times.
 
 ```bash
-export COVERAGE_CORE=pytrace          # a torch wheel crashes the default C tracer
+# No COVERAGE_CORE pin needed: the `pytrace` export this block used to carry was
+# retired 2026-09-02 -- the crash it guarded against does not reproduce, and the
+# default C tracer is ~3x faster on CI's coverage job.
 pytest -m "not gpu_required"          # CPU-only default surface
 ruff check src/ && ruff format --check src/
 ```

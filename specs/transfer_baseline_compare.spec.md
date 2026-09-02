@@ -146,14 +146,14 @@ recorded number.
 ## Regression Surface
 
 ```bash
-COVERAGE_CORE=pytrace pytest tests/experiments/test_cnn_baseline.py \
+pytest tests/experiments/test_cnn_baseline.py \
   tests/research/test_transfer_baseline_compare.py \
   tests/poc/test_transfer_baseline_compare_config.py \
   tests/poc/test_transfer_baseline_compare_scenario.py \
   tests/scripts/test_run_transfer_baseline_compare.py -v
 
 # per-module branch coverage gate (>= 85)
-COVERAGE_CORE=pytrace pytest tests/research/test_transfer_baseline_compare.py \
+pytest tests/research/test_transfer_baseline_compare.py \
   tests/poc/test_transfer_baseline_compare_config.py \
   tests/poc/test_transfer_baseline_compare_scenario.py \
   --cov=src/research/transfer_baseline_compare --cov=src/experiments/cnn_baseline \

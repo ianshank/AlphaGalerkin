@@ -80,6 +80,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Revert condition, stated in advance**: any crash signature or any gate percentage that
   differs from its currently-documented value on this change's own CI run reverts the two
   `env:` blocks removed here. Two-line change, two-line revert.
+- **The CI run answered it, and the pin is now retired everywhere.** No revert triggered: zero
+  crash signatures in the full `Run tests with coverage` step body, test counts identical to the
+  last pinned baseline (`9545 passed, 265 skipped, 42 deselected`), coverage byte-identical
+  (`TOTAL 29971 2232 7150 91%`, `Total coverage: 90.70%`), all 43 `coverage-gates` steps green —
+  and pytest execution down from **1967.30s to 604.32s (3.26×)**, which is also what pushed the
+  formerly-combined `coverage` job past its 45-minute cap in the first place. On that evidence the
+  five remaining sites were removed: `test-extras`'s two `[fem]` gate steps (re-measured without
+  the pin first — substrates 99.32%/129 passed, `fem_baseline.py` 85%/51 passed, both identical to
+  their documented values), `transfer-baseline-regression`'s job-level `env:` (which ran **no**
+  coverage command at all, so the pin there was inert), `Makefile`'s `export COVERAGE_CORE ?=`,
+  and `.claude/settings.json`'s `env` key.
+- **The guard was inverted, not deleted.**
+  `tests/claude/test_harness_validation.py::test_coverage_core_is_pinned_to_pytrace` is now
+  `test_no_coverage_core_tracer_pin` and asserts the key's *absence* — mutation-killed by
+  reintroducing it. Its docstring keeps both original claims with their commit hashes and dates
+  rather than erasing them, the same treatment this CHANGELOG gives the L-shape retraction: a
+  reintroduced pin should have to re-establish the crash with fresh evidence, not inherit a
+  disproved one. ~40 documentation sites were corrected the same way (`CLAUDE.md`'s Regression
+  Surface warning block, `README.md`, `CONTRIBUTING.md`, `docs/getting-started.md`, five
+  `specs/*.spec.md`, four `.claude/skills/*/SKILL.md`, the C4 harness diagram) — the retracted
+  numbers stay on the page, marked as disproved.
+- **Also closes `docs/CODE_HYGIENE_AUDIT.md` B7's third sub-item** ("`COVERAGE_CORE`
+  centralization") by deletion: there is nothing left to centralize. Tracked as **B36**.
 
 ### Fixed — PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
 

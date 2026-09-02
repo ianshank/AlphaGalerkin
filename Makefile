@@ -51,8 +51,10 @@ RUFF   ?= ruff
 MYPY   ?= $(PYTHON) -m mypy
 COV    ?= $(PYTHON) -m coverage
 
-# Coverage tracer — pytrace avoids torch C-extension crashes on Windows/nightly
-export COVERAGE_CORE ?= pytrace
+# NOTE: no COVERAGE_CORE pin. The `pytrace` pin that used to live here was
+# retired 2026-09-02 after the crash it guarded against was shown not to
+# reproduce; coverage's default C tracer is ~3x faster and measures identically.
+# See CHANGELOG.md's tracer-retirement entry for the CI evidence.
 
 # Disable wandb telemetry in tests
 export WANDB_MODE ?= disabled

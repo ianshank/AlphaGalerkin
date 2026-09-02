@@ -61,8 +61,8 @@ running the whole suite, run the **Regression Surface** command block for your
 code path — the table is in [`CLAUDE.md`](https://github.com/ianshank/AlphaGalerkin/blob/HEAD/CLAUDE.md). Examples:
 
 ```bash
-# Coverage in this environment needs pytrace (a torch wheel crashes the C tracer)
-export COVERAGE_CORE=pytrace
+# No COVERAGE_CORE pin: the `pytrace` export this block used to carry was retired
+# 2026-09-02 after the crash it guarded against failed to reproduce.
 
 # Solver wiring
 pytest tests/alphagalerkin/test_solver.py -v

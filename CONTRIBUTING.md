@@ -64,12 +64,14 @@ pre-commit run --all-files
 ### Coverage
 
 CI enforces **85% branch coverage** globally, plus **per-module gates** (e.g.
-`mcts ≥ 90`, `refinement ≥ 85`, `pde ≥ 75`, `distributed ≥ 60`, games (Go + Chess) `≥ 80`). New
+`mcts ≥ 90`, `refinement ≥ 85`, `pde ≥ 85`, `distributed ≥ 60`, games (Go + Chess) `≥ 80`). New
 code needs tests that keep the changed module above its gate. The
 [`coverage-gate`](.claude/) skill runs the exact per-module command for you.
 
-> **Note:** coverage in this environment requires `COVERAGE_CORE=pytrace` (a torch
-> wheel crashes the default C tracer).
+> **Note (changed 2026-09-02):** this section used to require `COVERAGE_CORE=pytrace`
+> because a torch wheel was believed to crash coverage's default C tracer. That claim
+> was re-verified and does not reproduce; the pin is retired repo-wide and the default
+> tracer is ~3× faster. Do not set `COVERAGE_CORE`.
 
 ## 4. Coding conventions
 

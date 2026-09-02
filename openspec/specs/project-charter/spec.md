@@ -284,6 +284,9 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/tournament` | 85 |
 | `src/prototyping` | 85 |
 | `src/demos` | 81 |
+| `src/backend` | 54 |
+| `src/core` | 85 |
+| `src/deployment` | 25 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced

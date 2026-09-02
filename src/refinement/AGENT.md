@@ -49,7 +49,7 @@ Parameterised over the domain type so a domain-specific config composes in witho
 pytest tests/refinement/ -v
 
 # Coverage gate (85 branch; currently 100%)
-COVERAGE_CORE=pytrace pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85
+pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85
 
 # The two guards that keep this package honest
 pytest tests/regression/test_import_contracts.py -v

@@ -703,9 +703,10 @@ jobs:
       # NOTE: these two gates use the native coverage runner with path-glob
       # --include rather than pytest-cov's dotted --cov=module.path. The dotted
       # form makes coverage import the target module during tracer setup, which
-      # collides with the torch C extension (SystemError: bad call flags), even
-      # under COVERAGE_CORE=pytrace. The native runner with path globs measures
-      # the same modules without importing them for source discovery.
+      # collides with the torch C extension (SystemError: bad call flags) under
+      # every tracer, pure-Python included -- so it is not a tracer choice that
+      # fixes it. The native runner with path globs measures the same modules
+      # without importing them for source discovery.
       - name: Per-module coverage gate (poc/scaling_law + centaur-common)
         if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
         run: |
@@ -839,12 +840,11 @@ jobs:
         run: |
           pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=85 -q --no-header
 
-      # Five packages that had no gate at all. Measured 2026-08-21 with
-      # COVERAGE_CORE=pytrace (mandatory -- the installed torch wheel crashes
-      # coverage's default C tracer and the failure is silent UNDER-measurement,
-      # so a gate set without it is simply wrong). --cov-branch is redundant with
-      # pyproject.toml's `[tool.coverage.run] branch = true` and is kept only for
-      # symmetry with the gates above.
+      # Five packages that had no gate at all. Measured 2026-08-21 under the
+      # since-retired COVERAGE_CORE=pytrace pin; re-measured identical without
+      # it (see the tracer-retirement entry in CHANGELOG.md). --cov-branch is
+      # redundant with pyproject.toml's `[tool.coverage.run] branch = true` and
+      # is kept only for symmetry with the gates above.
       #
       # Gated at floor(measured)-2 capped at 85, the convention documented on the
       # src/agents row in CLAUDE.md. The cap is deliberate for a NEW gate: its job
@@ -1205,16 +1205,13 @@ jobs:
       # Gate 95, deliberately above the usual "floor(measured)-2 capped at 85"
       # convention: the package is 272 statements at 99%, so an 85 gate would
       # carry 14 points of slack and reproduce the finding this step exists to
-      # close. COVERAGE_CORE=pytrace is mandatory -- the torch wheel crashes
-      # coverage's C tracer and silently UNDER-measures.
+      # close.
       - name: Coverage gate (src/research/substrates, needs [fem])
         env:
-          COVERAGE_CORE: pytrace
-          # Same reason as the step above, and it matters more here: without
-          # scikit-fem the fem_required tests SKIP, the measured percentage
-          # collapses, and the gate fails on "coverage too low" -- naming the
-          # symptom instead of the cause. This turns that into the collection
-          # error it actually is.
+          # Without scikit-fem the fem_required tests SKIP, the measured
+          # percentage collapses, and the gate fails on "coverage too low" --
+          # naming the symptom instead of the cause. This turns that into the
+          # collection error it actually is.
           ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
         run: |
           cat > .coveragerc.substrates <<'COVEOF'
@@ -1243,7 +1240,6 @@ jobs:
       # collected"). Gated at 83 = floor(measured 85) - 2.
       - name: Coverage gate (src/research/fem_baseline.py, needs [fem])
         env:
-          COVERAGE_CORE: pytrace
           # Without scikit-fem every test here skips and `coverage report`
           # fails with "No data was collected" -- true, but it reads like a
           # tooling fault rather than a missing extra.
@@ -1291,8 +1287,6 @@ jobs:
     needs: lint
     permissions:
       contents: read
-    env:
-      COVERAGE_CORE: pytrace
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

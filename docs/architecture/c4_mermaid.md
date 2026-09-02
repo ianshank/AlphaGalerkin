@@ -1662,7 +1662,7 @@ C4Component
     title Component Diagram - Quality Gates & Agentic Harness
 
     Container_Boundary(harness, ".claude/ Agentic Harness") {
-        Component(skills, "Skills (9)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference)")
+        Component(skills, "Skills (12)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, openspec-change, claims-ledger, run-provenance, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference)")
 
         Component(subagents, "Subagents (5)", "Markdown + tools frontmatter", "reviewer (adversarial diff review), sqe (tests + coverage), pde-solver, mcts-engineer, integration-engineer. Tool grants are validated against the real tool set")
 
@@ -1670,7 +1670,7 @@ C4Component
 
         Component(hook, "SessionStart Hook", "bash", "Bootstraps the editable install with the SETUPTOOLS_USE_DISTUTILS=stdlib antlr fix; registered in settings.json")
 
-        Component(settings, "settings.json", "JSON + schema", "Pins COVERAGE_CORE=pytrace (load-bearing: the installed torch wheel crashes coverage's C tracer and UNDER-measures silently), PYTHONHASHSEED=0, and 9 pre-approved python -m entry points")
+        Component(settings, "settings.json", "JSON + schema", "Pins PYTHONHASHSEED=0, MPLBACKEND, WANDB_MODE and the pre-approved python -m entry points. NO COVERAGE_CORE tracer pin: retired 2026-09-02 after the C-tracer crash it guarded against failed to reproduce; test_no_coverage_core_tracer_pin now asserts its absence")
     }
 
     Container_Boundary(gates, "CI Enforcement (ci.yml)") {
@@ -1678,11 +1678,11 @@ C4Component
 
         Component(secrets, "Secret Scan", "gitleaks-action", "Runs .gitleaks.toml. Wired 2026-08-21 -- the config and a `make gitleaks` target had both existed for months while NOTHING invoked either")
 
-        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "71 hermetic tests: frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism")
+        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "87 hermetic tests: frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism")
 
         Component(security_gate, "Security suite", "pytest tests/security/", "Pickle-RCE payload tests, allowlist purity, path containment. 69 tests")
 
-        Component(coverage_gate, "Test Coverage", "pytest --cov", "Global 85% branch gate plus 34 named per-module gates")
+        Component(coverage_gate, "Test Coverage + Per-Module Coverage Gates", "pytest --cov", "Global 85% branch gate in the coverage job, plus 45 named per-module gates split into their own coverage-gates job (2026-09-02, when the combined job blew its 45-minute cap)")
 
         Component(abstraction_gate, "Abstraction audit", "scripts/audit_abstractions", "Blocking for every package except src/backend: an @abstractmethod with no call site fails the build")
     }
@@ -1711,16 +1711,22 @@ C4Component
 |---|---|---|
 | `tests/claude/` | blocking CI step | A skill citing a deleted path, an agent declaring a non-existent tool, or a permission naming a renamed module — each fails only when someone relies on it |
 | gitleaks | blocking CI step | A committed secret. Previously unenforced: config present, scanner never invoked |
-| 34 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
+| 45 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
 | Abstraction audit | blocking `lint` job | A dead `@abstractmethod` accumulating call-site-free API |
 | `make pre-pr` | local | Local/CI drift. Kept in step by hand; the duplication is tracked as backlog B7 |
 
 **Deliberately not gated**, with reasons rather than numbers: `src/integrations`
 (a whole-package gate would read 93% while `omit` drops 240 statements of
-`eval_harness` from the denominator), `src/deployment` (27.91% is an
-onnx-absent-from-the-job artifact), `src/math_kernel` and `src/backend` (gating
-locks in untested JAX-guarded paths), `src/core` (80 statements, 2 tests — a
-gate there is theatre).
+`eval_harness` from the denominator) and `src/math_kernel` (gating locks in
+untested JAX-guarded paths that no test in the repo, including the `test-jax`
+job, exercises).
+
+`src/backend`, `src/core` and `src/deployment` **were** on this list and were
+gated on 2026-09-02 (B31) at 54 / 85 / 25 respectively — `src/backend` was in
+the global `omit` *and* ungated, so its 213 passing tests measured nothing
+anywhere. `src/deployment`'s 25 is a regression tripwire, not a standard: 626
+statements with 416 missed is the largest genuinely under-tested surface in
+`src/`, and raising it is test work, not a number to edit in CI.
 
 ## References
 

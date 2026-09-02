@@ -213,8 +213,15 @@ pytest tests/video_compression/zoo/ tests/scripts/test_train_compression_zoo.py 
 The project ships an extensive suite — **8,573 test functions, 9,770 collected**
 after parametrisation (measured 2026-08-21, CPU surface) across unit, integration,
 property-based, E2E and security categories — with an **85% branch coverage** gate
-enforced in CI, plus **34 per-module gates** (e.g. `mcts ≥ 90`, `refinement ≥ 85`,
-`poc ≥ 85`, `data ≥ 85`, `demos ≥ 81`, `pde ≥ 75`).
+enforced in CI, plus **44 per-module gates** (e.g. `mcts ≥ 90`, `refinement ≥ 85`,
+`poc ≥ 85`, `data ≥ 85`, `demos ≥ 81`, `pde ≥ 75`, `research/substrates ≥ 95`).
+That count is a machine count of workflow steps carrying a `--fail-under` with a
+non-global `--cov`/`--include` target, so it is recountable rather than
+maintained by hand — the previously stated 34 had drifted. Gates are also
+checked for *integrity*, not just presence: `tests/docs/test_coverage_gate_integrity.py`
+fails a gate whose target is swallowed by the global coverage `omit` (which
+reports 0.00% and can never fail) or written as a `--cov=<...>.py` file-path spec
+(silently ignored by coverage 7.x). Both had shipped, three times.
 
 ```bash
 export COVERAGE_CORE=pytrace          # a torch wheel crashes the default C tracer
@@ -409,6 +416,8 @@ same code path is safe everywhere.
 - [x] ~~SBIR proposal infrastructure~~ (SAM guide, budgets, timeline, program offices, IP strategy)
 - [x] ~~SBIR P40 benchmark hardening~~ (`scripts/run_sbir_p40.py` config-driven driver, `GpuUtilizationProfiler`, AMR escapes 18-DOF ceiling, NS-FDM Taylor-Green parity, PINN device knob)
 - [x] ~~Migrate Trainer to BaseTrainer inheritance~~ (`src/training/trainer.py::Trainer(BaseTrainer)`; `DistributedTrainer` too. `OperatorTrainer` was never migrated — it has zero production callers, so it stays a plain class until a caller needs it; see `docs/CODE_HYGIENE_AUDIT.md`)
+- [x] ~~Element-local refinement substrate + adequacy gate~~ (`src/refinement/substrate.py`, `src/research/substrates/`) — the project's central claim was previously **unmeasurable**: on the only substrate that existed, refining one element inserted full tensor-product grid *lines*, so adaptive marking converged worse than uniform refinement and any comparison measured the substrate rather than the policy. Now two substrates behind one stepwise interface, with a gate that asserts adaptive beats uniform on the element-local one **and fails on the tensor-product control** — a gate that passes on both measures nothing. Measured at θ=0.5 over DOF ∈ (200, 4000): element-local adaptive `N^-1.31` vs uniform `N^-0.67` (adaptive ~10× better at matched DOF); tensor-product adaptive `N^-0.23` vs uniform `N^-0.65` (adaptive ~13× *worse*). See `specs/refinement_substrate.spec.md`
+- [ ] Wire the substrate into a `RefinementGame` and retire the two-path period (`openspec/changes/element-local-substrate/` Slice E) — the substrate exists and is gated, but nothing in a non-test process constructs one yet, so `RefinementSubstrateRegistry` still has zero runtime registrants (a disclosed charter deviation). This is the prerequisite for the MCTS-vs-classical arena, which is deliberately a *separate* change
 - [ ] Multi-field PDE support — **`ModelOutput.vector_fields`/`with_vector_fields()` already exist** (`src/modeling/model.py`) but nothing produces or consumes them yet. What's actually open: a spec naming a pilot operator (`NavierStokesOperator` is the only vector-valued one today) and what `BasisSelectionGame`'s scalar `(N,)` fit, the loss functions, and the MCTS `Evaluator` protocol need to change to support it
 - [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals — no code exists; this is a proposal-narrative/business decision, not scoped engineering work (see `docs/CODE_HYGIENE_AUDIT.md`)
 - [ ] Capture proposal-grade Tesla P40 numbers from `scripts/run_sbir_p40.py` once a sm_61-compatible PyTorch wheel is available — code side is done; blocked on procuring P40 hardware + a compatible wheel

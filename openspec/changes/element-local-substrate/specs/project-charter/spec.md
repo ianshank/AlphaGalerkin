@@ -7,22 +7,31 @@ Requirements. The other six are untouched.
 
 ### Requirement: Scope Integrity
 
-The scope register gains the modules this change adds. No package is removed, and no non-goal
-is re-entered.
+`src/refinement/` is **already** in the scope register and gains modules rather than entering it.
+No package is removed, and no non-goal is re-entered.
 
-Added to the scope register (domain `pde`):
+**Amended 2026-09-02**: this Requirement originally instructed adding a
+`src/research/substrates/` row to the scope register. That is now known to be impossible without
+breaking the guard it was meant to satisfy, and the row is dropped rather than added.
 
-| Package | Domain | Note |
-| --- | --- | --- |
-| `src/research/substrates/` | pde | Concrete refinement substrates. `skfem_tri.py` is in the coverage `omit`, matching `fem_baseline.py`, because its tests require the optional `[fem]` extra. |
+`tests/docs/test_charter_alignment.py`'s scope register is **top-level-package granular**:
+`_ARCH_ROW_PACKAGE = re.compile(r"\|\s*`src/([a-z0-9_]+)/`\s*\|")` — the character class excludes
+`/`, so a nested path cannot match the pattern the guard parses — and its on-disk comparison set
+is built from `SRC.glob("*/__init__.py")`, one level deep only. A `src/research/substrates/` row
+fails `assert not extra` (the register would name a package the glob never finds) and
+`assert not phantom` (the register would claim a package with no `src/<name>/__init__.py`) in
+both directions, on a guard that is otherwise green. Widening that guard to nested paths is a
+larger, separate change to a load-bearing scope/claims-drift check, not a one-line row addition.
 
-`src/refinement/` is **already** in the register and gains modules rather than entering it.
+The concern the row was meant to address is already covered: `src/research/substrates/` is a
+subpackage of `src/research/`, which already has its own row in the register. Nothing added by
+this change sits outside the scope that row already claims.
 
-#### Scenario: The substrate package is added without a charter row
+#### Scenario: The substrate package is a subpackage of an already-scoped package
 - GIVEN `src/research/substrates/__init__.py` exists on disk
+- AND the scope register lists `src/research/` (domain `pde`)
 - WHEN the scope guard runs
-- AND the scope register does not list it
-- THEN the guard SHALL fail naming the package
+- THEN the guard SHALL pass without a dedicated `src/research/substrates/` row
 
 ### Requirement: Accepted Deviation Disclosure
 

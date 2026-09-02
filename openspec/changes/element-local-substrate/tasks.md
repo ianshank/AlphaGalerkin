@@ -198,8 +198,15 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 8. Governance
 
-- [ ] 8.1 Charter: scope register gains the new modules; the
-      `RefinementGameRegistry`-has-no-registrants deviation is retired.
+- [x] 8.1a **Resolved by amendment (2026-09-02), not by adding the row.** The charter scope
+      register is top-level-package granular (`tests/docs/test_charter_alignment.py`'s
+      `_ARCH_ROW_PACKAGE` regex excludes `/`; its on-disk set is one `SRC.glob("*/__init__.py")`
+      level deep), so a `src/research/substrates/` row fails that guard's `extra`/`phantom`
+      assertions in both directions — on a guard that is otherwise green. `src/research/` already
+      covers the subpackage. See the amended Scope Integrity Requirement in
+      `specs/project-charter/spec.md` (this change's delta).
+- [ ] 8.1b The `RefinementGameRegistry`-has-no-registrants deviation is retired — depends on
+      task 7.1 (Slice E's `RefinementGame`), not yet done.
 - [ ] 8.2 Charter: add the **time-boxed** two-path deviation, with its retirement condition
       (the golden test is the only remaining consumer of the legacy harness).
 - [ ] 8.3 `specs/lshape_amr_compare.spec.md`: mark superseded, pointing here.

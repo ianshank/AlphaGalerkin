@@ -386,6 +386,34 @@ class TestTensorGridRefinableMask:
         mask = substrate.refinable_mask(mesh)
         assert np.all(indicators[~mask] == 0.0)
 
+    def test_agrees_with_the_zeroed_indicators_after_refinement(
+        self, params: ComparisonParams
+    ) -> None:
+        """The invariant must survive refinement, not just hold on the coarse mesh.
+
+        `_refine_grid` inserts midpoints, so a refined cell's *centre* can land
+        exactly on the slit (x=0 or y=0) — the one place the interior-unknown
+        predicate and a closed-domain membership test disagree. Sharing
+        `element_inside_mask` with the estimator is what keeps the mask and the
+        indicators consistent there; this drives four levels to prove it,
+        rather than trusting that the initial mesh is representative.
+        """
+        substrate = TensorGridSubstrate(
+            _build_operator(params.scale),
+            inside=lshape_inside_predicate(params.scale),
+            config=SubstrateConfig(
+                name="tg_mask3", kind="tensor_grid", initial_side=params.initial_side
+            ),
+        )
+        mesh = substrate.initial_mesh()
+        for level in range(4):
+            result = substrate.solve(mesh)
+            mask = substrate.refinable_mask(mesh)
+            assert np.all(result.indicators[~mask] == 0.0), (
+                f"level {level}: a non-refinable element has a non-zero indicator"
+            )
+            mesh = substrate.refine(mesh, substrate.mark(result.indicators, 0.5))
+
     def test_all_true_without_a_geometry_predicate(self) -> None:
         substrate = TensorGridSubstrate(
             PoissonOperator(

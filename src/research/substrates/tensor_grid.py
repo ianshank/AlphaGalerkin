@@ -77,8 +77,29 @@ class TensorGridSubstrate:
         Args:
             operator: The PDE operator to solve (must implement ``domain_min``/
                 ``domain_max``/``source_term``/``boundary_value``/``exact_solution``).
-            inside: Optional geometry predicate for a non-rectangular domain
-                (e.g. the L-shape). ``None`` solves the full bounding box.
+            inside: Optional **interior-unknown** predicate for a non-rectangular
+                domain — "is this point an unknown the solver must solve for?"
+                — **not** a closed-domain membership test. ``None`` solves the
+                full bounding box.
+
+                The distinction is not pedantry, and calling this a "geometry
+                predicate" (as this docstring previously did) invites exactly
+                the wrong one. The two answers differ precisely on the L-shape's
+                reentrant edges: ``LShapedDomain.contains_point`` removes the
+                *open* quadrant, so slit-edge points are members of the closed
+                domain, while ``lshape_inside_predicate`` removes the *closed*
+                quadrant so those nodes are pinned Dirichlet. Passing the
+                membership flavour gives slit-edge nodes a full Laplacian row,
+                their ``u = 0`` condition is never imposed, and the stencil
+                couples across the slit — discretising a different, inconsistent
+                problem on which the L2 error **grows** with DOF instead of
+                converging (5.0e-2 at 65 DOF to 1.15e-1 at 12545). That is the
+                defect behind the 2026-08-16 retraction, and it is silent: every
+                downstream ratio stays a finite, plausible number.
+
+                Use ``src.research.lshape_amr_compare.lshape_inside_predicate``.
+                The contract is guarded by
+                ``tests/research/test_lshape_convergence_gate.py::TestReentrantEdgesArePinned``.
             config: ``SubstrateConfig``; ``initial_side`` drives the coarse grid.
 
         """

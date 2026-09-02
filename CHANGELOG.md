@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Gap analysis: three ungated packages, a blind spot in the gate guard, and an unbuilt Dockerfile
+
+- **`src/backend` was invisible to every coverage gate in the repository.** `src/backend/*` sits
+  in pyproject.toml's global `[tool.coverage.run] omit` — a legitimate origin (`jax_backend.py`
+  needs the optional `[jax]` extra) applied at *package* granularity — **and** it had no
+  per-module gate, so its 213 passing tests measured nothing anywhere. Real branch coverage is
+  **56%**, and the omit was hiding `logging.py` and `rng.py` at literally **0%**, not just the
+  JAX module it was written for. Gated at 54 via the inline-coveragerc technique. This is the
+  fourth instance of the omit-collision false pass in this repo, after `video_compression`,
+  `demos` and `skfem_tri.py`.
+- **The coverage-gate integrity guard could not have caught it, and that is the finding.**
+  `tests/docs/test_coverage_gate_integrity.py` verified that a gate a workflow *declares* is not
+  secretly neutered by the omit. It said nothing about a package that is omitted **and never
+  gated at all** — not a fake gate, but no gate, invisible for exactly the same reason. Added
+  the missing direction: every `omit` entry must be gated by a step that both selects it *and*
+  overrides the omit, or carry an entry in `_OMIT_WITHOUT_A_CI_GATE` with a reason. Self-expiring
+  in both directions — a stale exemption fails the moment a gate appears, and an exemption for a
+  pattern no longer in `omit` fails as vacuous, the same way the import contracts guard against
+  a rule about nothing. 20 tests; 2 further mutations killed.
+- **Gates for the last two ungated `src/` packages**: `src/core` at 85 (measured 97.67%) and
+  `src/deployment` at **25** (measured 27.91% — 626 statements, 416 missed). 25 is stated as a
+  regression tripwire, not a standard: it stops the largest genuinely under-tested surface in
+  `src/` sliding further, and raising it is test work, not a number to edit in CI.
+- **`docker/Dockerfile` shipped on 2026-08-16 (`61c1e93`) and was built by nothing** — no CI job,
+  no Makefile target, no test — while `CLAUDE.md`'s Next Steps recorded, "verified 2026-08-21",
+  that no Dockerfile existed anywhere in the tree. The verification was wrong five days after
+  the fact and nothing caught it for two weeks, because nothing exercised the file. Verified by
+  hand that the image's `CMD` currently works, by materialising the real build context
+  (git-tracked files minus `.dockerignore`) and running it: **510 passed, 6 skipped**. Closed
+  with `tests/docs/test_dockerfile_context.py` — **hermetic, no daemon, builds nothing**:
+  every `COPY` source must survive `.dockerignore`, every copied path must exist, and every path
+  the `CMD` runs must be both un-ignored and actually brought in by some `COPY`. Two vacuity
+  guards, because a deleted Dockerfile would otherwise make every parametrised assertion iterate
+  an empty list and pass. 2/2 mutation-killed. Companion `make docker-build` / `make docker-test`
+  take `DOCKER_IMAGE` / `DOCKER_CONTEXT` / `DOCKERFILE` as overridable variables.
+- **`src/refinement/AGENT.md`** — the package this branch created had none, which was the least
+  defensible entry on the missing-AGENT.md list. Documents the domain-free contract and the
+  import rule that enforces it, the numpy-only constraint on `substrate.py` (and why
+  `get_type_hints` forced runtime imports), the mandatory `SearchMode.SINGLE_AGENT`, and the
+  self-expiring staged-exemption rule. The count itself was stale: **15 of 28** packages lack
+  one, not "14 of 26" — the old figure predated `src/core` and `src/refinement`.
+- **Recorded, not fixed, with reasons**: `src/research/baselines.py` is now the largest file in
+  the repo at 1540 lines and this work *added* to it (B34 — splitting it belongs in its own PR,
+  not one already at 5k additions whose CI had never completed a run); and two
+  `tests/video_compression/unit/test_loss.py` cases download 500 MB of ImageNet VGG16 weights
+  from `download.pytorch.org`, so they fail in any air-gapped environment and pass on GitHub's
+  networked runners, which is why CI has never flagged them (B35 — an unrelated subsystem, and
+  `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
+  passed**, 208 skipped, those 2 network failures the entire delta.
+
 ### Fixed — PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
 
 - **`CI Success` was red on a run in which nothing failed.** All 47 steps of the `coverage`

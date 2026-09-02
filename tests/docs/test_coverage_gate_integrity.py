@@ -222,6 +222,102 @@ def _is_omitted(target: str, patterns: list[str]) -> str | None:
     return None
 
 
+#: Omit patterns that no CI gate covers, each with the reason it is acceptable.
+#:
+#: This dict exists because the checks above answer only half the question. They
+#: verify that a gate a workflow *declares* is not secretly neutered by the
+#: omit. They say nothing about a package that is omitted **and never gated at
+#: all** -- which is not a fake gate, it is no gate, and it is invisible for
+#: exactly the same reason. ``src/backend`` sat in that blind spot: 2873 LOC and
+#: 213 passing tests measuring nothing anywhere, because ``src/backend/*`` was
+#: omitted from the whole-tree gate (legitimately -- ``jax_backend.py`` needs the
+#: optional [jax] extra) at *package* granularity, which also silently excused
+#: ``logging.py`` and ``rng.py`` at literally 0%. Found by hand on 2026-09-02,
+#: not by this file, which is the finding.
+#:
+#: An entry here is a claim that no gate is warranted, not a note that none
+#: exists -- and ``test_every_orphaned_omit_exemption_is_still_orphaned``
+#: fails it the moment a gate appears, so it cannot outlive its reason.
+_OMIT_WITHOUT_A_CI_GATE: dict[str, str] = {
+    "src/integrations/eval_harness/*": (
+        "needs the optional [eval-harness] git dependency (langfuse-eval-harness, "
+        "not on PyPI), which no CI job installs; enforced instead by the "
+        "`Eval-harness adapter` Regression Surface command when the extra is "
+        "present. A CI gate would measure 0% on every job that runs it."
+    ),
+}
+
+
+def _omit_pattern_is_gated(pattern: str) -> bool:
+    """Whether some workflow step both selects ``pattern``'s module and beats the omit.
+
+    Reuses ``_step_really_gates`` rather than re-deriving the two conditions:
+    the whole point of the ``src/backend`` miss was two checks that should have
+    agreed but never met.
+    """
+    path = pattern[:-2] if pattern.endswith("/*") else pattern
+    return any(_step_really_gates(script, path) for _wf, _job, _step, script in _iter_run_scripts())
+
+
+def test_every_omit_entry_is_gated_somewhere() -> None:
+    """An omitted package must be measured by *some* gate, or be a stated exemption.
+
+    The omit list is not a list of code that does not matter -- it is a list of
+    code the whole-tree percentage cannot honestly include. Each entry therefore
+    owes a per-module gate that overrides it. Without this test, adding a package
+    to ``omit`` silently removes it from every gate in the repo, and the diff that
+    does it is one line that reads like configuration.
+    """
+    orphaned = [
+        pattern
+        for pattern in _omit_patterns()
+        if pattern not in _OMIT_WITHOUT_A_CI_GATE and not _omit_pattern_is_gated(pattern)
+    ]
+    assert not orphaned, (
+        "these `[tool.coverage.run] omit` entries are measured by no coverage gate "
+        f"anywhere, so their tests report nothing: {orphaned}. Add a per-module gate "
+        "using the inline-coveragerc technique (see the `demos`/`backend` steps in "
+        "ci.yml), or record the entry in `_OMIT_WITHOUT_A_CI_GATE` with a reason."
+    )
+
+
+def test_every_orphaned_omit_exemption_is_still_orphaned() -> None:
+    """A stale exemption is worse than none: it hides a gate that now exists.
+
+    Mirrors ``scripts/audit_abstractions.py``'s ``_STAGED_FOR_UPCOMING_TASK``
+    staleness check and ``tests/regression/test_import_contracts.py``'s
+    ``test_every_exemption_is_still_needed``. If a gate is later added for an
+    exempted pattern, the exemption must be *deleted*, not left to imply the
+    package is still ungatable.
+    """
+    now_gated = [p for p in _OMIT_WITHOUT_A_CI_GATE if _omit_pattern_is_gated(p)]
+    assert not now_gated, (
+        f"these patterns are exempted as ungatable but now have a real gate: {now_gated}. "
+        "Delete their `_OMIT_WITHOUT_A_CI_GATE` entries."
+    )
+
+
+def test_every_orphaned_omit_exemption_states_a_reason() -> None:
+    """A reason is what distinguishes an exemption from a hole someone tolerated."""
+    for pattern, reason in _OMIT_WITHOUT_A_CI_GATE.items():
+        assert reason.strip(), f"{pattern} is exempted with no reason"
+        assert len(reason.split()) >= 8, f"{pattern}'s reason is too thin to review: {reason!r}"
+
+
+def test_every_orphaned_omit_exemption_is_actually_omitted() -> None:
+    """An exemption for a pattern no longer in `omit` guards nothing.
+
+    Same vacuity failure the import contracts guard against: a renamed or
+    removed omit entry turns its exemption into a rule about nothing, and a
+    rule about nothing passes.
+    """
+    patterns = set(_omit_patterns())
+    stale = [p for p in _OMIT_WITHOUT_A_CI_GATE if p not in patterns]
+    assert not stale, (
+        f"these `_OMIT_WITHOUT_A_CI_GATE` keys are not in pyproject.toml's omit list: {stale}"
+    )
+
+
 INVOCATIONS = _cov_invocations()
 
 

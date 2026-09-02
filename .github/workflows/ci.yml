@@ -973,6 +973,49 @@ jobs:
         run: |
           pytest tests/prototyping/ --cov=src/prototyping --cov-branch --cov-fail-under=85 -q --no-header
 
+      # src/backend was invisible to EVERY coverage gate in this repo until
+      # 2026-09-02: `src/backend/*` is in pyproject.toml's global
+      # `[tool.coverage.run] omit` AND it had no per-module gate, so its 213
+      # passing tests measured nothing anywhere. The omit's origin is legitimate
+      # -- jax_backend.py needs the optional [jax] extra -- but it was applied at
+      # *package* granularity, which also hid torch_backend.py (95%),
+      # interface.py (100%), types.py (100%), and, less comfortably, logging.py
+      # and rng.py at literally 0%. Same inline-coveragerc technique as demos /
+      # video_compression, dropping the omit for this step only. Gated at 54 =
+      # floor(measured 56) - 2, measured in THIS lane (no JAX installed, so the
+      # 118 jax_backend tests skip); the test-jax job covers the other lane.
+      - name: Per-module coverage gate (backend)
+        if: always() && hashFiles('tests/backend/') != ''
+        run: |
+          cat > .coveragerc.backend <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/backend/ \
+            --cov=src/backend --cov-config=.coveragerc.backend \
+            --cov-branch --cov-fail-under=54 -q --no-header
+
+      # src/core (the Protocols + registry extracted in the 2026-08-16 sprint) had
+      # no gate and rode only the global --cov=src. Measured 97.67% branch; gated
+      # 85 per the floor(measured)-2-capped-at-85 convention.
+      - name: Per-module coverage gate (core)
+        if: always() && hashFiles('tests/core/') != ''
+        run: |
+          pytest tests/core/ --cov=src/core --cov-branch --cov-fail-under=85 -q --no-header
+
+      # src/deployment (ONNX export / quantization / runtime) had no gate. Measured
+      # 27.91% branch -- 626 statements, 416 missed. 25 is a REGRESSION TRIPWIRE,
+      # not a standard: it stops the package sliding further while it is the
+      # largest genuinely under-tested surface in src/. Raising it is real test
+      # work, tracked in docs/CODE_HYGIENE_AUDIT.md, not a number to edit here.
+      - name: Per-module coverage gate (deployment)
+        if: always() && hashFiles('tests/deployment/') != ''
+        run: |
+          pytest tests/deployment/ --cov=src/deployment --cov-branch --cov-fail-under=25 -q --no-header
+
       # src/demos hits the same pyproject.toml `[tool.coverage.run] omit` collision
       # that src/video_compression needed a workaround for: a bare --cov=src/demos
       # reports 0.00% with `CoverageWarning: No data was collected`, which is the

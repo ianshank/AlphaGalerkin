@@ -19,12 +19,14 @@
 #   make docs-serve    # MkDocs local dev server
 #   make clean         # remove caches
 #   make check         # lint + mypy + test-fast (pre-PR quick check)
+#   make docker-build  # build docker/Dockerfile (override DOCKER_IMAGE/CONTEXT)
+#   make docker-test   # build, then run the image's own default CMD
 
 .PHONY: lint format mypy test-fast test-cert test-stoch test-all coverage \
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
         test-regression test-sanity test-security test-demos test-claude \
-        test-substrate
+        test-substrate docker-build docker-test
 
 # ---------------------------------------------------------------------------
 # Tool resolution
@@ -257,6 +259,33 @@ pre-commit:
 # ---------------------------------------------------------------------------
 docs-serve:
 	mkdocs serve
+
+# ---------------------------------------------------------------------------
+# Docker
+#
+# `docker/Dockerfile` shipped on 2026-08-16 and, until 2026-09-02, was built by
+# nothing -- no CI job, no target here, no test -- while CLAUDE.md's Next Steps
+# simultaneously recorded that no Dockerfile existed. These targets make it
+# runnable by hand; `tests/docs/test_dockerfile_context.py` is the part that
+# runs in CI, and it needs no daemon: it asserts every COPY source survives
+# `.dockerignore` and that the CMD's trees actually reach the image.
+#
+# DOCKER_IMAGE / DOCKER_CONTEXT are variables, not literals, so a caller can
+# retag or build from an exported context without editing this file.
+# ---------------------------------------------------------------------------
+DOCKER ?= docker
+DOCKER_IMAGE ?= alphagalerkin:dev
+DOCKER_CONTEXT ?= .
+DOCKERFILE ?= docker/Dockerfile
+
+docker-build:
+	$(DOCKER) build -f $(DOCKERFILE) -t $(DOCKER_IMAGE) $(DOCKER_CONTEXT)
+
+# Runs the image's own default command (the sanity/security/benchmarks/
+# regression selection baked into the Dockerfile's CMD), so this target cannot
+# drift from what the image actually does on `docker run`.
+docker-test: docker-build
+	$(DOCKER) run --rm $(DOCKER_IMAGE)
 
 # ---------------------------------------------------------------------------
 # Cleanup

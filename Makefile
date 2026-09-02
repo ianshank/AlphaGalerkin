@@ -11,6 +11,7 @@
 #   make test-fast     # fast unit tests (excludes slow/e2e/gpu)
 #   make test-cert     # certificate module tests + 85% gate
 #   make test-stoch    # stochastic module tests + 85% gate
+#   make test-substrate # refinement-substrate surface + 95% gate (needs [fem])
 #   make test-all      # full test suite (fast + slow)
 #   make coverage      # global coverage with 85% gate
 #   make gitleaks      # secret scan
@@ -22,16 +23,31 @@
 .PHONY: lint format mypy test-fast test-cert test-stoch test-all coverage \
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
-        test-regression test-sanity test-security test-demos test-claude
+        test-regression test-sanity test-security test-demos test-claude \
+        test-substrate
 
 # ---------------------------------------------------------------------------
-# Tool resolution — prefer venv binaries, fall back to system
+# Tool resolution
+#
+# The Python-importing tools go through `$(PYTHON) -m` rather than their bare
+# console scripts, because a bare `pytest`/`mypy`/`coverage` on PATH is bound to
+# whichever interpreter installed it -- which need not be the one holding this
+# project's dependencies. Measured in a working container: `pytest` resolved to
+# a uv tool interpreter and every test target died at
+# `ModuleNotFoundError: No module named 'hypothesis'` while `python -m pytest`
+# ran the full suite. That silently broke `make pre-pr`, the documented pre-PR
+# gate, for every target except `lint`. `$(PYTHON) -m` also still prefers an
+# activated venv (its `python` is first on PATH), so this is strictly better at
+# the thing the previous comment claimed. `ruff` stays a bare binary: it is a
+# standalone executable that imports nothing from the environment.
+#
+# Every variable remains overridable: `PYTEST="uv run pytest" make test-fast`.
 # ---------------------------------------------------------------------------
 PYTHON ?= python
-PYTEST ?= pytest
+PYTEST ?= $(PYTHON) -m pytest
 RUFF   ?= ruff
-MYPY   ?= mypy
-COV    ?= coverage
+MYPY   ?= $(PYTHON) -m mypy
+COV    ?= $(PYTHON) -m coverage
 
 # Coverage tracer — pytrace avoids torch C-extension crashes on Windows/nightly
 export COVERAGE_CORE ?= pytrace
@@ -51,6 +67,10 @@ export PYTHONHASHSEED ?= 0
 GLOBAL_COV_THRESHOLD   ?= 85
 CERT_COV_THRESHOLD     ?= 85
 STOCH_COV_THRESHOLD    ?= 85
+# Above the usual floor(measured)-2-capped-at-85 convention on purpose: the
+# substrates package is 272 statements at 99%, so an 85 gate would carry 14
+# points of slack. Must match ci.yml's test-extras step.
+SUBSTRATE_COV_THRESHOLD ?= 95
 
 # ---------------------------------------------------------------------------
 # Test-selection parity with CI
@@ -159,6 +179,29 @@ test-stoch:
 	$(COV) report \
 		--include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
 		--fail-under=$(STOCH_COV_THRESHOLD)
+
+# Mirrors ci.yml's test-extras "Coverage gate (src/research/substrates)" step.
+# REQUIRES the optional [fem] extra: without scikit-fem the fem_required tests
+# skip, the measured percentage collapses, and the gate fails for the wrong
+# reason -- so this target is deliberately NOT chained into `pre-pr`, which must
+# stay runnable on a base install. ALPHAGALERKIN_REQUIRE_EXTRAS=1 turns a
+# missing scikit-fem into a loud collection error rather than that silent
+# collapse. The heredoc'd rcfile drops skfem_tri.py from pyproject.toml's global
+# coverage `omit` for this run only; a bare --cov of it otherwise reports 0.00%
+# with "No data was collected".
+test-substrate:
+	@printf '[run]\nbranch = true\n\n[report]\nshow_missing = true\n' > .coveragerc.substrates
+	ALPHAGALERKIN_REQUIRE_EXTRAS=1 $(PYTEST) \
+		tests/refinement/test_substrate.py \
+		tests/research/test_marking.py \
+		tests/research/test_substrates_config.py \
+		tests/research/test_substrates_sweep.py \
+		tests/research/test_tensor_grid_substrate.py \
+		tests/research/test_skfem_substrate.py \
+		tests/research/test_amr_arena_interpretability.py \
+		--cov=src/research/substrates \
+		--cov-config=.coveragerc.substrates \
+		--cov-branch --cov-fail-under=$(SUBSTRATE_COV_THRESHOLD) -q --no-header
 
 test-all:
 	$(PYTEST) tests/ -q --no-header

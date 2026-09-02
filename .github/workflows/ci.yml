@@ -1148,6 +1148,32 @@ jobs:
             --cov-config=.coveragerc.substrates \
             --cov-branch --cov-fail-under=95 -q --no-header
 
+      # fem_baseline.py has the same problem for the same reason and had no gate
+      # at all: it is in the global omit (needs [fem]), so the `coverage` job's
+      # --cov=src/research gate at 85 has never measured it -- 249 statements
+      # invisible inside a package percentage that looked fine. Native-runner
+      # form because a --cov=<...>.py spec is silently dropped by coverage 7.x,
+      # and --rcfile because `coverage run` reads pyproject.toml's omit too
+      # (--include alone does NOT override it -- verified: "No data was
+      # collected"). Gated at 83 = floor(measured 85) - 2.
+      - name: Coverage gate (src/research/fem_baseline.py, needs [fem])
+        env:
+          COVERAGE_CORE: pytrace
+        run: |
+          cat > .coveragerc.fem <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          python -m coverage run --rcfile=.coveragerc.fem --branch \
+            --include="*/src/research/fem_baseline.py" \
+            -m pytest tests/research/test_fem_baseline.py \
+            tests/research/test_skfem_substrate.py -q -p no:cov
+          python -m coverage report --rcfile=.coveragerc.fem \
+            --include="*/src/research/fem_baseline.py" --fail-under=83
+
       # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
       # which these tracer-based tests do not target (src/deployment/export_onnx.py
       # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the

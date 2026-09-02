@@ -267,7 +267,7 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/research` | 85 |
 | `src/alphagalerkin` | 85 |
 | `src/games` | 80 |
-| `src/pde` | 75 |
+| `src/pde` | 85 |
 | `src/physics` | 75 |
 | `src/distributed` | 60 |
 | `dashboard` | 84 |

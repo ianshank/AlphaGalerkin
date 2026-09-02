@@ -528,7 +528,7 @@ jobs:
       - name: Per-module coverage gate (pde)
         if: always() && hashFiles('tests/pde/') != ''
         run: |
-          pytest tests/pde/ --cov=src/pde --cov-fail-under=75 -q --no-header
+          pytest tests/pde/ --cov=src/pde --cov-fail-under=85 -q --no-header
 
       # First per-module gate for the MCTS engine (branch): it was previously
       # covered only by the global --cov=src gate, and it is now known to have
@@ -554,6 +554,15 @@ jobs:
         if: always() && hashFiles('tests/training/') != ''
         run: |
           pytest tests/training/ --cov=src/training --cov-fail-under=85 -q --no-header
+
+      - name: Per-module coverage gate (training/operator_trainer)
+        if: always() && hashFiles('tests/test_operator_training.py') != ''
+        run: |
+          python -m coverage run --branch \
+            --include="*/src/training/operator_trainer.py" \
+            -m pytest tests/test_operator_training.py \
+            tests/security/test_checkpoint_roundtrip.py::TestOperatorTrainerRoundTrip -q -p no:cov
+          python -m coverage report --include="*/src/training/operator_trainer.py" --fail-under=85
 
       - name: Per-module coverage gate (research)
         if: always() && hashFiles('tests/research/') != ''

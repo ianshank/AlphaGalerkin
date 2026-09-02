@@ -244,6 +244,81 @@ class TestOperatorTrainer:
         assert len(history["train_loss"]) == 2
         assert len(history["val_loss"]) == 2
 
+    def test_load_checkpoint_restores_state(
+        self,
+        small_model: NeuralOperator,
+        small_dataset: PhysicsDataset,
+        tmp_path,
+    ) -> None:
+        """`load_checkpoint` had zero coverage (docs/CODE_HYGIENE_AUDIT.md B30).
+
+        A round trip through the real public API, not the chokepoint directly:
+        `tests/security/test_checkpoint_roundtrip.py` covers the payload-shape
+        safety property, but never constructs an `OperatorTrainer` or calls
+        `.load_checkpoint()`, so the state-restoration lines (current_epoch,
+        best_val_loss, history, model/optimizer state dicts) were never
+        exercised by anything.
+        """
+        from torch.utils.data import DataLoader
+
+        config = TrainingConfig(
+            epochs=2,
+            batch_size=8,
+            device="cpu",
+            patience=100,
+            checkpoint_dir=tmp_path,
+        )
+        trainer = OperatorTrainer(small_model, config)
+        loader = DataLoader(small_dataset, batch_size=8)
+        trainer.fit(loader, loader)
+        saved_path = trainer.save_checkpoint("final.pt")
+
+        fresh_model = NeuralOperator(in_channels=1, out_channels=1, width=16, n_layers=1, modes=4)
+        fresh_trainer = OperatorTrainer(fresh_model, TrainingConfig(device="cpu"))
+        assert fresh_trainer.current_epoch == 0
+        assert fresh_trainer.history["train_loss"] == []
+
+        fresh_trainer.load_checkpoint(saved_path)
+
+        assert fresh_trainer.current_epoch == trainer.current_epoch
+        assert fresh_trainer.best_val_loss == trainer.best_val_loss
+        assert fresh_trainer.history == trainer.history
+        for name, param in trainer.model.state_dict().items():
+            assert torch.equal(param, fresh_trainer.model.state_dict()[name])
+
+    def test_load_checkpoint_allow_unsafe_pickle_flag_is_plumbed_through(
+        self,
+        small_model: NeuralOperator,
+        tmp_path,
+    ) -> None:
+        """`allow_unsafe_pickle` on `OperatorTrainer.load_checkpoint` had zero coverage.
+
+        Default `False` must reject a legacy (raw-dataclass) payload; passing
+        `allow_unsafe_pickle=True` through the trainer's own public method
+        (not `load_torch_checkpoint` directly) must let the identical file load.
+        """
+        from src.training.operator_trainer import TrainingConfig as _LegacyTrainingConfig
+
+        trainer = OperatorTrainer(small_model, TrainingConfig(device="cpu"))
+        legacy_path = tmp_path / "legacy.pt"
+        torch.save(
+            {
+                "epoch": 3,
+                "model_state_dict": small_model.state_dict(),
+                "optimizer_state_dict": trainer.optimizer.state_dict(),
+                "best_val_loss": 0.25,
+                "history": {"train_loss": [], "val_loss": [], "lr": []},
+                "config": _LegacyTrainingConfig(),
+            },
+            legacy_path,
+        )
+        with pytest.raises(RuntimeError, match="Failed to load checkpoint"):
+            trainer.load_checkpoint(legacy_path)
+
+        trainer.load_checkpoint(legacy_path, allow_unsafe_pickle=True)
+        assert trainer.current_epoch == 3
+        assert trainer.best_val_loss == 0.25
+
 
 class TestResolutionTransfer:
     """Test resolution transfer capability."""

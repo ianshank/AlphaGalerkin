@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Next-steps case follow-through: OperatorTrainer.load_checkpoint had zero test coverage (B30)
+- **Two new tests close a real gap**: `OperatorTrainer.load_checkpoint` — including the `allow_unsafe_pickle` opt-in added 2026-08-21 — was never exercised by anything. The existing `TestOperatorTrainerRoundTrip` tests `load_torch_checkpoint` directly against hand-built dicts and never constructs an `OperatorTrainer`. Added `test_load_checkpoint_restores_state` (real save/load round trip through the public API) and `test_load_checkpoint_allow_unsafe_pickle_flag_is_plumbed_through` (`tests/test_operator_training.py::TestOperatorTrainer`).
+- **New dedicated CI gate** (`Per-module coverage gate (training/operator_trainer)`): the module's two test files live outside `tests/training/`, so the whole-package `src/training` gate never measured it (25% in-scope vs 88% with its own tests). Gated at 85, native-runner form. See `docs/CODE_HYGIENE_AUDIT.md` B30.
+
 ### Fixed — Next-steps case follow-through: coverage-gate slack, stale docs (B28, B29)
 - **`src/pde` coverage gate raised 75 → 85** (`.github/workflows/ci.yml`, `openspec/specs/project-charter/spec.md`) — measured branch coverage is 93.5%, so the gate carried 18 points of slack, unchanged since 2026-04-10. A prior PR claiming this raise (#57, open since April) never actually landed it. See `docs/CODE_HYGIENE_AUDIT.md` B28.
 - **`README.md`'s Near-Term checklist corrected**: `Trainer` already inherits `BaseTrainer` (has for 5 months); ticked. `ModelOutput.vector_fields` scaffolding already exists and is unconsumed — reworded from "extend ModelOutput" to name what's actually open (`BasisSelectionGame`/losses/evaluator, needs a spec first). `OperatorTrainer`'s BaseTrainer migration noted as low-priority (zero production callers). See `docs/CODE_HYGIENE_AUDIT.md` B29.

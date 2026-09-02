@@ -67,7 +67,16 @@ def _copy_sources() -> list[str]:
 
     Handles line continuations, ``--chown=``/``--from=`` flags, and the
     "last token is the destination" rule.
+
+    Returns ``[]`` if the Dockerfile is missing rather than raising: this
+    function feeds ``@pytest.mark.parametrize`` below, which runs at
+    *collection* time -- a ``FileNotFoundError`` here would crash collection
+    of this entire file with a traceback, burying the one test that exists to
+    report a missing Dockerfile clearly (``test_dockerfile_exists``). An empty
+    return just yields zero parametrized cases, which pytest collects fine.
     """
+    if not DOCKERFILE.is_file():
+        return []
     text = DOCKERFILE.read_text(encoding="utf-8")
     # Join continuations before parsing: a COPY split across lines otherwise
     # parses as a COPY with no destination and silently contributes nothing.
@@ -113,6 +122,8 @@ def test_the_dockerfile_actually_copies_something() -> None:
     A Dockerfile whose COPY lines stopped parsing (a syntax change, a new flag
     form) would make every assertion below iterate an empty list and pass.
     """
+    if not DOCKERFILE.is_file():
+        pytest.skip("no Dockerfile -- see test_dockerfile_exists for the real failure")
     assert len(_copy_sources()) >= 2
 
 
@@ -149,6 +160,8 @@ def test_default_command_runs_paths_that_are_in_the_image() -> None:
     reach the image. They arrive via ``COPY tests/ tests/``, so this asserts the
     two halves agree rather than trusting that they do.
     """
+    if not DOCKERFILE.is_file():
+        pytest.skip("no Dockerfile -- see test_dockerfile_exists for the real failure")
     patterns = _dockerignore_patterns()
     copied = _copy_sources()
     path_args = [token for token in _cmd_arguments() if "/" in token and not token.startswith("-")]

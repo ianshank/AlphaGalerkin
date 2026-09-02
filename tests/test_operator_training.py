@@ -250,7 +250,7 @@ class TestOperatorTrainer:
         small_dataset: PhysicsDataset,
         tmp_path,
     ) -> None:
-        """`load_checkpoint` had zero coverage (docs/CODE_HYGIENE_AUDIT.md B29).
+        """`load_checkpoint` had zero coverage (docs/CODE_HYGIENE_AUDIT.md B30).
 
         A round trip through the real public API, not the chokepoint directly:
         `tests/security/test_checkpoint_roundtrip.py` covers the payload-shape

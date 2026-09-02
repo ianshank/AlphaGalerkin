@@ -55,10 +55,15 @@ Task 0 is already complete and is what justifies the rest.
       stays clean — but only after fixing a real bug the audit tool had: it silently treated any
       generic `Protocol[T]` base (an `ast.Subscript`, not `ast.Name`/`ast.Attribute`) as a
       non-Protocol class, so `RefinementSubstrate`'s 8 members were never checked at all. The
-      8 members have zero real callers today (this Protocol ships ahead of its first concrete
+      8 members had zero real callers at Slice A (this Protocol ships ahead of its first concrete
       consumer, Slice E's task 7.1) — exempted via a new, explicitly time-boxed
       `_STAGED_FOR_UPCOMING_TASK` allowlist in `scripts/audit_abstractions.py`, distinct from
-      `_KNOWN_LIVE` (a real caller the heuristic can't see).
+      `_KNOWN_LIVE` (a real caller the heuristic can't see). **[CORRECTED — Slice D, 2026-09-02]**
+      Seven of the eight gained a `src/` reader in `src/research/substrates/sweep.py` and were
+      removed from the allowlist rather than left exempted; only `fingerprint` remains staged
+      (its consumer is the fingerprint-keyed solve cache, task 7.1). The Protocol's docstring
+      is pinned to the allowlist by `tests/scripts/test_audit_abstractions.py` so the "all 8"
+      wording cannot drift again — a Copilot review on PR #143 caught it having done exactly that.
 - [x] 2.4 **[Added — not in the original checklist]** `src/research/substrates/config.py::SubstrateConfig`:
       the Pydantic Data Contract, found missing by an independent adversarial review of the
       implementation plan.

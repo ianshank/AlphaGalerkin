@@ -74,6 +74,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ci-success.needs`, with none of the "deliberately omitted" comments `focus`/`secrets` carry.
   Verified none has a job-level `if:` (so none can be `skipped` into a false red); all three now
   block. `CI Success` gates nine jobs instead of six.
+- **Copilot: `RefinementSubstrate`'s docstring still said "all 8 members are temporarily
+  exempted" via `_STAGED_FOR_UPCOMING_TASK`** a full slice after Slice D had shrunk that allowlist
+  to `fingerprint` alone — a wrong claim about which members the abstraction audit guards today.
+  Rewritten to say what is true (seven members read by the sweep driver, one still staged for
+  task 7.1), the matching stale sentence in `openspec/changes/element-local-substrate/tasks.md`
+  2.3 annotated rather than erased, and the docstring **pinned to the allowlist** by
+  `tests/scripts/test_audit_abstractions.py::TestRefinementSubstrateDocstringTracksTheAllowlist`:
+  every staged member of the class must be named in the docstring, the allowlist may be mentioned
+  *iff* something is still staged (so task 7.1 retiring the last entry forces the docstring
+  update in the same commit), and the declared member count is pinned so "seven of the eight" and
+  `AGENT.md`'s "8 members" cannot outlive a ninth. Mutation-checked: restoring the original
+  "all 8 members" wording fails the guard.
 - **Copilot: `_dockerignore_patterns()` read `.dockerignore` unconditionally** and a missing file
   crashed two tests with a traceback that buried `test_dockerfile_exists`. Fixed as **skip, not
   no-op** — the suggested no-op (return `[]`) would have made `_is_excluded(source, [])` return

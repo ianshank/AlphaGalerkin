@@ -74,11 +74,21 @@ class RefinementSubstrate(Protocol[TMesh]):
     Every member here is meant to have a real caller — ``scripts.audit_abstractions``
     fails the build on a ``Protocol`` member with no reader (the F1 defect
     class), so this Protocol is meant to grow only alongside the concrete
-    substrate and caller that need the new member. Currently an intentional,
-    disclosed exception: this Protocol ships in element-local-substrate's
-    Slice A, ahead of its first concrete consumer in Slice E (task 7.1), so
-    all 8 members are temporarily exempted via the audit's
-    ``_STAGED_FOR_UPCOMING_TASK`` allowlist rather than genuinely read yet.
+    substrate and caller that need the new member. Seven of the eight members
+    (``initial_mesh``, ``solve``, ``mark``, ``refine``, ``n_units``,
+    ``refinable_mask``, ``describe``) are read by the sweep driver in
+    ``src/research/substrates/sweep.py`` and are audited live since Slice D —
+    with the honest caveat that the driver is entered only from the
+    adequacy-gate test (``tests/research/test_amr_arena_interpretability.py``),
+    so its ``src/`` call sites are one indirection from test-only. The one
+    remaining intentional, disclosed exception is ``fingerprint``: its only
+    consumer, the fingerprint-keyed solve cache, lands with
+    element-local-substrate Slice E (task 7.1), so it alone is exempted via
+    the audit's ``_STAGED_FOR_UPCOMING_TASK`` allowlist rather than genuinely
+    read yet. That exemption is self-expiring, not documentary:
+    ``tests/scripts/test_audit_abstractions.py`` fails once a staged member
+    gains a reader, and this docstring is pinned to the allowlist by the
+    same file, so neither can silently outlive the other.
 
     ``@runtime_checkable`` is what lets ``src.templates.registry.create_registry``'s
     ``issubclass(cls, RefinementSubstrate)`` structural check work when

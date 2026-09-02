@@ -330,3 +330,70 @@ def test_every_staged_exemption_is_still_forward(
         f"{cls}.{name} is exempted by _STAGED_FOR_UPCOMING_TASK but now HAS a reader -- "
         "delete the entry instead of leaving it to hide a live member"
     )
+
+
+def _protocol_members(cls: type) -> set[str]:
+    """Public callable members declared directly on a Protocol class."""
+    return {
+        name for name, value in vars(cls).items() if callable(value) and not name.startswith("_")
+    }
+
+
+def _staged_for(cls_name: str) -> set[str]:
+    return {name for cls, name in audit_module._STAGED_FOR_UPCOMING_TASK if cls == cls_name}
+
+
+class TestRefinementSubstrateDocstringTracksTheAllowlist:
+    """The Protocol's docstring must describe the allowlist as it *is*, not as it was.
+
+    ``RefinementSubstrate``'s docstring said "all 8 members are temporarily
+    exempted via ``_STAGED_FOR_UPCOMING_TASK``" for a full slice after Slice D
+    had shrunk that allowlist to ``fingerprint`` alone -- a Copilot review on
+    PR #143 caught it. A docstring that names an exemption is a claim about
+    the audit's coverage, and a wrong one tells a reader that live members are
+    unguarded. So the docstring is pinned to the allowlist in both directions:
+    every staged member of this class must be named in it, and once the class
+    has no staged members the allowlist must not be mentioned at all. The
+    member count is pinned too, because "seven of the eight" (here) and "8
+    members" (``src/refinement/AGENT.md``) go stale the day a ninth lands.
+    """
+
+    CLS_NAME = "RefinementSubstrate"
+    DECLARED_MEMBER_COUNT = 8
+
+    def _docstring(self) -> str:
+        from src.refinement.substrate import RefinementSubstrate
+
+        doc = RefinementSubstrate.__doc__
+        assert doc, "RefinementSubstrate has no docstring to pin"
+        return doc
+
+    def test_every_staged_member_is_named_in_the_docstring(self) -> None:
+        doc = self._docstring()
+        for member in sorted(_staged_for(self.CLS_NAME)):
+            assert f"``{member}``" in doc, (
+                f"{self.CLS_NAME}.{member} is staged in _STAGED_FOR_UPCOMING_TASK but the "
+                "Protocol docstring does not name it as the exempted member"
+            )
+
+    def test_allowlist_is_mentioned_iff_something_is_still_staged(self) -> None:
+        doc = self._docstring()
+        mentioned = "_STAGED_FOR_UPCOMING_TASK" in doc
+        assert mentioned == bool(_staged_for(self.CLS_NAME)), (
+            "the docstring names the allowlist but nothing of this class is staged any more "
+            "(or the reverse) -- Slice E's task 7.1 retires the last entry; update the "
+            "docstring in the same commit"
+            if mentioned
+            else "a member of this class is staged but the docstring does not say so"
+        )
+
+    def test_declared_member_count_matches_the_prose(self) -> None:
+        from src.refinement.substrate import RefinementSubstrate
+
+        members = _protocol_members(RefinementSubstrate)
+        assert len(members) == self.DECLARED_MEMBER_COUNT, (
+            f"{self.CLS_NAME} now declares {len(members)} members "
+            f"({sorted(members)}); update the 'seven of the eight' clause in its docstring "
+            "and the '8 members' list in src/refinement/AGENT.md, then this constant"
+        )
+        assert _staged_for(self.CLS_NAME) <= members, "a staged name is not a member"

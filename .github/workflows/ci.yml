@@ -486,11 +486,6 @@ jobs:
     # grew with every gate added. Keep new whole-suite work out of here.
     timeout-minutes: 45
     needs: lint
-    # The installed torch wheel crashes coverage's default C tracer on import
-    # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
-    # pure-Python tracer, as documented in CLAUDE.md, so the coverage gates run.
-    env:
-      COVERAGE_CORE: pytrace
 
     steps:
       - name: Checkout repository
@@ -573,10 +568,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: lint
-    # Same pure-Python tracer requirement as the sweep: the installed torch
-    # wheel crashes coverage's default C tracer on import.
-    env:
-      COVERAGE_CORE: pytrace
 
     steps:
       - name: Checkout repository

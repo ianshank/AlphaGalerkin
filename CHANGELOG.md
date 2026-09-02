@@ -57,6 +57,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
   passed**, 208 skipped, those 2 network failures the entire delta.
 
+### Fixed — CI coverage jobs no longer pin the pure-Python coverage tracer
+
+- **`COVERAGE_CORE=pytrace` was retired from the `coverage` and `coverage-gates` jobs.** The pin
+  dated to two documented claims that this session directly re-verified and found no longer
+  true: `cb645ad` (2026-07-10) said the C tracer crashed at collection; `cfe7f22` (2026-08-15)
+  said it silently under-measured (`src/training` cited at 89.53% pytrace vs 82.45% C, with
+  `base_trainer.py` reported at 46%). Re-measured today on the identical `src/training` gate:
+  **88.25% under both tracers, byte-identical per-file breakdown, `base_trainer.py` 88% both** —
+  and a minimal, direct reproduction of the exact documented failure (`coverage run --branch`
+  over a script that imports `torch._C` and runs a tensor op) exits 0 under both cores. CI's own
+  pulled logs confirm the torch version matches exactly (`torch-2.13.0`) between this environment
+  and the GitHub runner, so the fix is not environment-specific.
+- **Zero test blast radius by construction**: the only test that hardcodes the pin
+  (`tests/claude/test_harness_validation.py::test_coverage_core_is_pinned_to_pytrace`) reads
+  `.claude/settings.json`, which this change does not touch — confirmed 87/87 pass unchanged.
+  `tests/docs/test_charter_alignment.py` (27/27) and `tests/docs/test_coverage_gate_integrity.py`
+  (20/20), both of which parse `ci.yml`'s coverage-gate steps, are likewise unaffected.
+  `test-extras`'s two `[fem]` gates, `transfer-baseline-regression`, `Makefile`, and
+  `.claude/settings.json` still carry the pin — deliberately deferred pending this change's own
+  CI numbers.
+- **Revert condition, stated in advance**: any crash signature or any gate percentage that
+  differs from its currently-documented value on this change's own CI run reverts the two
+  `env:` blocks removed here. Two-line change, two-line revert.
+
 ### Fixed — PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
 
 - **`CI Success` was red on a run in which nothing failed.** All 47 steps of the `coverage`

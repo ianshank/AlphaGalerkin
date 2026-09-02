@@ -22,7 +22,7 @@ import numpy as np
 import structlog
 
 from src.refinement.substrate import SubstrateSolveResult
-from src.research.baselines import nodal_rms_l2_error
+from src.research.baselines import nodal_rms_l2_error, require_exact_solution
 from src.research.fem_baseline import (
     _make_element,
     _require_skfem,
@@ -64,31 +64,12 @@ class SkfemTriSubstrate:
         self._operator = operator
         self._config = config or SubstrateConfig(name="skfem_tri_substrate", kind="skfem_tri")
         self._skfem = _require_skfem()
-        self._require_exact_solution()
+        require_exact_solution(operator, "SkfemTriSubstrate")
         self._log = logger.bind(**self.describe())
         self._log.info(
             "substrate_initialised",
             initial_refinements=self._config.initial_refinements,
         )
-
-    def _require_exact_solution(self) -> None:
-        """Fail at construction, not deep inside a quadrature form (AC6).
-
-        Every metric this substrate reports is measured against an analytic
-        exact solution. An operator without one cannot drive the adequacy gate
-        at all, and ``SubstrateSolveResult.l2_error`` is a bare ``float`` with
-        nowhere to put a ``None``. Discovering that as a ``TypeError`` raised
-        from inside a ``skfem.Functional`` -- several frames below any code the
-        caller wrote -- is the unhelpful version of the same failure.
-        """
-        probe = np.zeros((1, 2), dtype=np.float32)
-        if self._operator.exact_solution(probe) is None:
-            raise ValueError(
-                f"SkfemTriSubstrate requires an operator with an analytic exact solution; "
-                f"{type(self._operator).__name__}.exact_solution returned None. This "
-                f"substrate measures error against that solution, so there is nothing "
-                f"meaningful for solve() to report without it."
-            )
 
     def initial_mesh(self) -> SkfemTriMesh:
         """The coarse L-shaped mesh (three unit squares), per AC8."""

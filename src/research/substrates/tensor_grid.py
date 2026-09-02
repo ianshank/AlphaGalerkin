@@ -37,8 +37,9 @@ from src.research.baselines import (
     DorflerAMRSolver,
     element_inside_mask,
     nodal_rms_l2_error,
+    require_exact_solution,
 )
-from src.research.lshape_amr_compare import _area_weighted_l2
+from src.research.lshape_amr_compare import area_weighted_l2
 from src.research.marking import dorfler_mark
 from src.research.substrates.config import SubstrateConfig
 
@@ -116,13 +117,7 @@ class TensorGridSubstrate:
         self._config = config or SubstrateConfig(name="tensor_grid_substrate", kind="tensor_grid")
         self._sparse = sparse
         self._spsolve = spsolve
-        probe = np.zeros((1, 2), dtype=np.float32)
-        if self._operator.exact_solution(probe) is None:
-            raise ValueError(
-                f"TensorGridSubstrate measures error against an analytic exact solution; "
-                f"{type(operator).__name__}.exact_solution returned None. Failing here "
-                f"rather than as a TypeError from inside solve()."
-            )
+        require_exact_solution(operator, "TensorGridSubstrate")
         self._log = logger.bind(**self.describe())
         self._log.info("substrate_initialised", has_geometry_predicate=inside is not None)
 
@@ -170,7 +165,7 @@ class TensorGridSubstrate:
             self._operator.exact_solution(grid.astype(np.float32)), dtype=np.float64
         ).ravel()
         diff = (u_full.ravel() - exact)[in_mask]
-        area_weighted = _area_weighted_l2(diff, mesh.xs, mesh.ys, in_mask)
+        area_weighted = area_weighted_l2(diff, mesh.xs, mesh.ys, in_mask)
         # The unweighted counterpart, so `error_metric` is a real choice here
         # and `extra` carries the same pair SkfemTriSubstrate reports. Computed
         # over in-domain nodes only, matching the area-weighted norm's support.

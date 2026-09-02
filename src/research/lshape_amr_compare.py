@@ -291,7 +291,7 @@ def _trapezoidal_weights(axis: NDArray[np.float64]) -> NDArray[np.float64]:
     return np.concatenate([[h[0] / 2.0], 0.5 * (h[:-1] + h[1:]), [h[-1] / 2.0]])
 
 
-def _area_weighted_l2(
+def area_weighted_l2(
     diff: NDArray[np.float64],
     xs: NDArray[np.float64],
     ys: NDArray[np.float64],
@@ -362,7 +362,7 @@ def make_solve_fn(
         # differently, that bias would distort the *ratio* itself. Weighting
         # each node by its trapezoidal dual-cell area (wx_i * wy_j) recovers the
         # mesh-independent continuous norm ||u_h - u||_L2 / sqrt(|Omega|).
-        l2 = _area_weighted_l2(diff, xs, ys, in_mask)
+        l2 = area_weighted_l2(diff, xs, ys, in_mask)
         n_dof = int(in_mask.sum())
         return GridSolveResult(
             solution=u_full,

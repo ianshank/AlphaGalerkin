@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
+
+- **`CI Success` was red on a run in which nothing failed.** All 47 steps of the `coverage`
+  job reported `success`; the job was then killed by `timeout-minutes: 45` after 54 minutes and
+  its `cancelled` conclusion propagated to the aggregate gate. The cause is structural, not
+  incidental: `coverage` ran a full-suite measurement (~35 min) *and* ~40 sequential per-module
+  gates (~17.5 min) in one job, so every gate added pushed it further over budget. **Split the
+  per-module gates into their own `coverage-gates` job** (436 lines, 40 steps) — they re-run
+  their own test subsets and need no artifact from the main job, so the two halves now run
+  concurrently and both land inside the cap. Raising `timeout-minutes` was rejected as masking:
+  the next gate lands right back here.
+- **`test-extras` was never in `ci-success`'s `needs`**, so every gate it carries has been
+  unable to block a merge — including the two `[fem]` gates added days earlier
+  (`src/research/substrates` at 95, `fem_baseline.py` at 83). Added, along with the new
+  `coverage-gates` job; omitting the latter after the split would have silently downgraded ~40
+  hard thresholds to advisory.
+- **Deleted `SubstrateConfig.marking_fraction`, which had zero readers.** It was added in
+  `883c5a2` *to close* a dead-knob finding and reproduced the exact defect it was meant to fix —
+  and `_KIND_SCOPED_FIELDS`, the validator written in the same commit, structurally cannot catch
+  it: that rule rejects a field scoped to the *other* substrate kind, never a shared field
+  nothing reads. θ already exists as a required, validated, keyword-only parameter on
+  `run_refinement_sweep`, the only API that consumes it. Rejected alternatives, both recorded in
+  `specs/refinement_substrate.spec.md`: defaulting θ from `describe()` (which returns no θ) or
+  adding `default_theta` (a ninth member on a Protocol frozen in Slice A).
+- **Renamed `_area_weighted_l2` → `area_weighted_l2`** (`src/research/lshape_amr_compare.py`),
+  ten sites, **no back-compat alias**. It was private by convention and imported cross-module by
+  `TensorGridSubstrate` — the underscore was a claim the code contradicted. The alias precedent
+  cited when this was first raised (`_dorfler_mark = dorfler_mark`) does not exist; what exists
+  is a method delegate. An alias with no retirement condition is a liability in a repo whose
+  meta-guards fail stale exemptions by design.
+- **`require_exact_solution(operator, owner)`** (`src/research/baselines.py`) replaces two
+  verbatim copies of the same construction-time guard, each of which probed the operator with a
+  hardcoded `np.zeros((1, 2))`. Probing at `operator.dim` is the fix; the shared helper is the
+  point. This was the **third** copy-paste between the substrate pair (after
+  `dirichlet_dof_indices` and the nodal-RMS formula), which is the actual finding — treating the
+  pattern rather than the literal is what stops a fourth. Pinned by a spy that records the
+  probe's *shape* over `dim ∈ {1, 2, 3}`: "it did not raise" is not evidence, because a `(1, 2)`
+  probe against a 1-D or 3-D operator still returns a non-`None` array by broadcast. Both
+  substrate call sites carry their own guard test, so a substrate that stops calling the helper
+  fails rather than silently regaining the several-frames-deep `TypeError`. **2/2
+  mutation-killed** (hardcoded `2` restored; the `TensorGridSubstrate` call removed).
+- **`src/refinement` branch coverage corrected 96% → 100%** in `.github/workflows/ci.yml` and
+  the CLAUDE.md Regression Surface row (170 statements, 12 branches, 0 missed; re-measured
+  2026-09-02). The 96% predated Slice A's `substrate.py`/`substrate_registry.py`.
+  `CHANGELOG.md`'s `[0.4.0-dev]` figure is deliberately **not** touched — it sits under a
+  released heading and measures a tree that still contained `src/thermo` (cut 2026-07-22). That
+  is append-only history, not a competing claim.
+
 ### Added — `element-local-substrate` Slice A: shared marking + substrate protocol
 - **One `dorfler_mark` function replaces two independently-drifting Dörfler bulk-marking implementations** (`src/research/marking.py`) — `DorflerAMRSolver._dorfler_mark` (`src/research/baselines.py`, squared bulk quantity, marks ≥1 element on an all-zero indicator array) and `ScikitFEMPoissonSolver._dorfler_mark` (`src/research/fem_baseline.py`, linear bulk quantity, returns all-False on all-zeros) now both delegate to it (`variant="squared"`/`"linear"`), byte-for-byte, Hypothesis-verified against frozen reference re-derivations of each original formula plus the two solvers' own 85-test regression suite. **Lives under `src.research`, not `src.refinement`** as originally planned: CI's `reference-baselines-do-not-import-the-candidate` architectural contract (`tests/regression/test_import_contracts.py`) forbids `baselines.py`/`fem_baseline.py` from importing anything under `src.refinement` at all, and `dorfler_mark` is active marking behaviour, not the inert protocol/type import the contract's one exemption (`src/mcts/gumbel.py`) tolerates — caught by that contract's own test failing in CI, fixed by relocating rather than exempting.
 - **`RefinementSubstrate` Protocol + `SubstrateSolveResult`** (`src/refinement/substrate.py`, numpy-only per `src/pde/games/__init__.py`'s documented SIGSEGV rationale) and its registry (`substrate_registry.py`) — the stepwise interface `openspec/changes/element-local-substrate/design.md` specifies, that `TensorGridSubstrate` and `SkfemTriSubstrate` will implement in later slices. `@runtime_checkable` so a concrete substrate satisfies it structurally, without inheriting from it. `SubstrateSolveResult.__post_init__` enforces AC5's `n_dof_free <= n_dof` invariant (both non-negative) at construction, not just by convention.

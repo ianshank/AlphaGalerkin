@@ -476,12 +476,14 @@ jobs:
     name: Test Coverage
     runs-on: ubuntu-latest
     # 45, not 30: this job runs the whole test sweep under the pure-Python
-    # tracer plus ~20 per-module gates, and measured 24m08s on a GitHub runner
-    # after the Noyron/SBIR gates were added -- 80% of a 30-minute cap, close
-    # enough that one slow runner turns a green build red. Note several gate
-    # steps re-run files the sweep already covered; collapsing that duplication
-    # (so each file is measured once) is the real fix and is tracked in
-    # docs/CODE_HYGIENE_AUDIT.md §7.7.
+    # tracer, which measured ~35 minutes on a GitHub runner.
+    #
+    # The ~40 per-module gates that used to run here were split into the
+    # `coverage-gates` job on 2026-09-02, after this job hit the 45-minute cap
+    # at 54 minutes and was cancelled with all 47 of its steps already
+    # successful -- failing `ci-success` on work that had actually completed.
+    # Raising the cap was rejected as masking: the job was 20% over budget and
+    # grew with every gate added. Keep new whole-suite work out of here.
     timeout-minutes: 45
     needs: lint
     # The installed torch wheel crashes coverage's default C tracer on import
@@ -532,6 +534,66 @@ jobs:
             --cov-fail-under=85 \
             -q
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-alphagalerkin
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage report artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 5b: Per-module coverage gates
+  # ============================================================
+  # Split out of `coverage` on 2026-09-02 because that job hit its
+  # timeout-minutes: 45 at 54 minutes and was cancelled -- with ALL 47 of its
+  # steps having already succeeded, which then failed `ci-success` on a job
+  # whose work was actually done. The split is the fix rather than a larger
+  # timeout: the whole-suite sweep was ~35 min and these gates ~17.5 min, so
+  # raising the cap would have masked a job 20% over budget that grows with
+  # every gate added. These steps re-run their own test subsets and consume no
+  # artifact from the sweep, so they parallelise with it for free.
+  #
+  # Still true, and still the real fix (docs/CODE_HYGIENE_AUDIT.md 7.7): several
+  # gates re-run files the sweep already covered. Collapsing that duplication so
+  # each file is measured once would shrink both halves.
+  coverage-gates:
+    name: Per-Module Coverage Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: lint
+    # Same pure-Python tracer requirement as the sweep: the installed torch
+    # wheel crashes coverage's default C tracer on import.
+    env:
+      COVERAGE_CORE: pytrace
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pytest-cov matplotlib
+
       # Per-module coverage gates — ratcheted up as part of tech-debt reduction.
       # Each gate ensures no single subsystem regresses below its threshold.
       - name: Per-module coverage gate (pde)
@@ -548,7 +610,9 @@ jobs:
         run: |
           pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
 
-      # Domain-free refinement engine (WS1). Branch coverage currently 96%.
+      # Domain-free refinement engine (WS1). Branch coverage 100% (170 stmts,
+      # 12 branches, 0 missed; re-measured 2026-09-02). The 96% previously
+      # stated here predated Slice A's substrate.py/substrate_registry.py.
       - name: Per-module coverage gate (refinement)
         if: always() && hashFiles('tests/refinement/') != ''
         run: |
@@ -968,25 +1032,6 @@ jobs:
         run: |
           pytest tests/dashboard/ --cov=dashboard --cov-branch --cov-fail-under=84 -q --no-header
 
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v7
-        with:
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-alphagalerkin
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload coverage report artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: htmlcov/
-          retention-days: 14
-
   # ============================================================
   # Stage 6: JAX Backend Tests
   # ============================================================
@@ -1248,7 +1293,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage, transfer-baseline-regression]
+    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression]
     # !cancelled() rather than always(): a run superseded by the concurrency
     # group (push + pull_request for the same branch, or a newer push) has its
     # needed jobs cancelled, and under always() this job would still execute,
@@ -1264,6 +1309,8 @@ jobs:
           echo "  lint:                        ${{ needs.lint.result }}"
           echo "  test-fast:                   ${{ needs.test-fast.result }}"
           echo "  coverage:                    ${{ needs.coverage.result }}"
+          echo "  coverage-gates:              ${{ needs.coverage-gates.result }}"
+          echo "  test-extras:                 ${{ needs.test-extras.result }}"
           echo "  transfer-baseline (soft):    ${{ needs.transfer-baseline-regression.result }}"
           echo "======================="
 
@@ -1288,6 +1335,25 @@ jobs:
           # Coverage gate is a hard threshold (--cov-fail-under=85)
           if [[ "${{ needs.coverage.result }}" != "success" ]]; then
             echo "FAIL: Coverage gate did not pass (result=${{ needs.coverage.result }})"
+            exit 1
+          fi
+
+          # Per-module gates, split out of `coverage` on 2026-09-02. Gating them
+          # here is not new strictness -- they were already hard gates inside the
+          # coverage job, and omitting them from `needs` after the split would
+          # have silently downgraded ~40 thresholds to advisory.
+          if [[ "${{ needs.coverage-gates.result }}" != "success" ]]; then
+            echo "FAIL: Per-module coverage gates did not pass (result=${{ needs.coverage-gates.result }})"
+            exit 1
+          fi
+
+          # test-extras was NEVER in this list, so every gate it carries has been
+          # unable to block a merge -- including the two [fem] gates added on
+          # 2026-09-02 (src/research/substrates at 95, fem_baseline.py at 83) and
+          # the FEM-baseline + PettingZoo suites that predate them. A gate that
+          # cannot fail the build is a report, not a gate.
+          if [[ "${{ needs.test-extras.result }}" != "success" ]]; then
+            echo "FAIL: Optional-dependency suites failed (result=${{ needs.test-extras.result }})"
             exit 1
           fi
 

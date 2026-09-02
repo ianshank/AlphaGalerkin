@@ -22,10 +22,10 @@ from src.research.lshape_amr_compare import (
     ComparisonResult,
     MultiSeedComparison,
     TrajectoryPoint,
-    _area_weighted_l2,
     _interp_log,
     _step_read,
     _trapezoidal_weights,
+    area_weighted_l2,
     compare_ratios,
     export_csv,
     export_plot,
@@ -455,7 +455,7 @@ class TestTrapezoidalWeights:
 
 
 # --------------------------------------------------------------------------- #
-# _area_weighted_l2                                                            #
+# area_weighted_l2                                                            #
 # --------------------------------------------------------------------------- #
 
 
@@ -464,7 +464,7 @@ class TestAreaWeightedL2:
         xs = np.linspace(0.0, 1.0, 3, dtype=np.float64)
         ys = np.linspace(0.0, 1.0, 3, dtype=np.float64)
         in_mask = np.zeros(9, dtype=bool)
-        assert np.isnan(_area_weighted_l2(np.array([], dtype=np.float64), xs, ys, in_mask))
+        assert np.isnan(area_weighted_l2(np.array([], dtype=np.float64), xs, ys, in_mask))
 
     def test_all_masked_out_with_nonempty_diff_is_nan(self) -> None:
         """Defensive-only: the ``total <= 0.0`` guard on a nonempty ``diff``.
@@ -484,7 +484,7 @@ class TestAreaWeightedL2:
         ys = np.linspace(0.0, 1.0, 3, dtype=np.float64)
         diff = np.array([1.0, 2.0], dtype=np.float64)
         in_mask = np.zeros(9, dtype=bool)
-        assert np.isnan(_area_weighted_l2(diff, xs, ys, in_mask))
+        assert np.isnan(area_weighted_l2(diff, xs, ys, in_mask))
 
     def test_constant_field_on_uniform_grid_recovers_constant(self) -> None:
         # On a uniform grid a constant error field returns exactly that constant,
@@ -494,7 +494,7 @@ class TestAreaWeightedL2:
         in_mask = np.ones(9, dtype=bool)
         c = 0.37
         diff = np.full(9, c, dtype=np.float64)
-        val = _area_weighted_l2(diff, xs, ys, in_mask)
+        val = area_weighted_l2(diff, xs, ys, in_mask)
         assert val == pytest.approx(c)
         assert val > 0.0 and np.isfinite(val)
 
@@ -505,7 +505,7 @@ class TestAreaWeightedL2:
         ys = np.array([0.0, 0.1, 1.0], dtype=np.float64)
         in_mask = np.ones(9, dtype=bool)
         diff = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], dtype=np.float64)
-        weighted = _area_weighted_l2(diff, xs, ys, in_mask)
+        weighted = area_weighted_l2(diff, xs, ys, in_mask)
         rms = float(np.sqrt(np.mean(diff**2)))
         assert np.isfinite(weighted) and weighted > 0.0
         assert weighted != pytest.approx(rms)

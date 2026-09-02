@@ -30,6 +30,7 @@ from src.research.baselines import (
     UniformFDMSolver,
     get_solver,
     list_solvers,
+    require_exact_solution,
 )
 
 scipy = pytest.importorskip("scipy", reason="scipy required for FDM/AMR tests")
@@ -804,3 +805,72 @@ class TestPerSolverConfigs:
         solver = NavierStokesFDMSolver(config=config)
         assert solver.dt == 0.005
         assert solver.t_final == 0.5
+
+
+class TestRequireExactSolution:
+    """The shared construction-time guard both substrates route through.
+
+    Extracted from two verbatim copies (``SkfemTriSubstrate`` and
+    ``TensorGridSubstrate``) that each wrote ``np.zeros((1, 2))`` -- the third
+    copy-paste between that pair, after ``dirichlet_dof_indices`` and the
+    nodal-RMS formula. The hardcoded ``2`` is the part worth pinning: reverting
+    ``operator.dim`` to a literal leaves every substrate test green, because
+    both substrates happen to be 2-D.
+    """
+
+    @staticmethod
+    def _operator(domain_dim: int) -> PoissonOperator:
+        return PoissonOperator(
+            PDEConfig(
+                name=f"poisson_{domain_dim}d",
+                pde_type=PDEType.POISSON,
+                domain_dim=domain_dim,
+                domain_min=[0.0] * domain_dim,
+                domain_max=[1.0] * domain_dim,
+                # Defaults to a length-2 list, and PDEConfig cross-validates it
+                # against domain_dim -- so a dim-parametrised operator cannot be
+                # built without it.
+                advection_coeff=[1.0] * domain_dim,
+            )
+        )
+
+    @pytest.mark.parametrize("domain_dim", [1, 2, 3])
+    def test_probes_at_the_operators_own_dim(self, domain_dim: int) -> None:
+        """Kills the hardcoded-2 mutation directly.
+
+        A spy records the probe's shape rather than asserting the call merely
+        succeeded: a ``(1, 2)`` probe against a 1-D or 3-D operator would still
+        return a non-``None`` array from most operators (numpy broadcasts the
+        column product), so "it did not raise" is not evidence.
+        """
+        operator = self._operator(domain_dim)
+        seen: list[tuple[int, ...]] = []
+
+        def spy(points: np.ndarray) -> np.ndarray:
+            seen.append(points.shape)
+            return np.zeros((points.shape[0], 1), dtype=np.float32)
+
+        operator.exact_solution = spy  # type: ignore[method-assign]
+        require_exact_solution(operator, "SomeSubstrate")
+
+        assert seen == [(1, domain_dim)]
+
+    def test_raises_when_exact_solution_is_none(self) -> None:
+        operator = self._operator(2)
+        operator.exact_solution = lambda points: None  # type: ignore[method-assign, assignment]
+        with pytest.raises(ValueError, match="analytic exact solution"):
+            require_exact_solution(operator, "SomeSubstrate")
+
+    def test_error_names_the_owner_the_caller_passed(self) -> None:
+        """``owner`` must reach the message, or the parameter is decoration.
+
+        The point of the argument is that the user sees the class they actually
+        constructed, not ``baselines.require_exact_solution``.
+        """
+        operator = self._operator(2)
+        operator.exact_solution = lambda points: None  # type: ignore[method-assign, assignment]
+        with pytest.raises(ValueError, match="TensorGridSubstrate"):
+            require_exact_solution(operator, "TensorGridSubstrate")
+
+    def test_a_real_operator_passes(self) -> None:
+        require_exact_solution(self._operator(2), "SomeSubstrate")

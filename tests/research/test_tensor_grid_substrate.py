@@ -430,3 +430,33 @@ class TestTensorGridRefinableMask:
         )
         mesh = substrate.initial_mesh()
         assert substrate.refinable_mask(mesh).all()
+
+
+class TestExactSolutionGuard:
+    """The construction-time guard, on the *other* caller.
+
+    ``tests/research/test_skfem_substrate.py`` pins the same contract for
+    ``SkfemTriSubstrate``. Both are needed: the guard now lives in one shared
+    helper (``src.research.baselines.require_exact_solution``, whose own tests
+    pin the ``operator.dim`` probe), but a substrate that simply stops *calling*
+    it would leave that helper's tests green while regaining the several-frames-
+    deep ``TypeError`` the guard exists to replace.
+    """
+
+    def test_construction_raises_with_an_actionable_message(self) -> None:
+        operator = _build_operator(1.0)
+        object.__setattr__(operator, "exact_solution", lambda pts: None)
+        with pytest.raises(ValueError, match="analytic exact solution"):
+            TensorGridSubstrate(operator, config=SubstrateConfig(name="t", kind="tensor_grid"))
+
+    def test_message_names_this_substrate_not_the_helper(self) -> None:
+        operator = _build_operator(1.0)
+        object.__setattr__(operator, "exact_solution", lambda pts: None)
+        with pytest.raises(ValueError, match="TensorGridSubstrate"):
+            TensorGridSubstrate(operator, config=SubstrateConfig(name="t", kind="tensor_grid"))
+
+    def test_a_real_operator_still_constructs(self) -> None:
+        substrate = TensorGridSubstrate(
+            _build_operator(1.0), config=SubstrateConfig(name="t", kind="tensor_grid")
+        )
+        assert substrate is not None

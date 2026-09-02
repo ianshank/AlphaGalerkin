@@ -57,12 +57,20 @@ Every tunable is a typed Pydantic `Field`. No hardcoded values.
 | `kind` | `Literal["tensor_grid","skfem_tri"]` | `"skfem_tri"` | — | Which substrate to build. `tensor_grid` reproduces today's behaviour and is the control. |
 | `element_type` | `Literal["P1","P2","P3"]` | `"P1"` | — | Lagrange order. Scoped to `kind="skfem_tri"`. |
 | `initial_refinements` | `int` | `2` | `ge=0, le=8` | Uniform refinements applied to the coarse L-shape before the sweep. Scoped to `kind="skfem_tri"`. |
-| `marking_fraction` | `float` | `0.5` | `gt=0, le=1` | Dörfler bulk fraction (θ) — the default passed to `mark()`. **Added during implementation**: θ is the single most consequential AMR tunable and was originally absent from this contract entirely, passed as a bare unvalidated positional float. `θ<=0` marks nothing and `θ>1` chases bulk that cannot exist; both previously "worked". |
 | `initial_side` | `int` | `4` | `ge=2, le=64`, even | Elements per axis; even so the reentrant corner is a node. Scoped to `kind="tensor_grid"`. |
 | `marking_variant` | `Literal["squared","linear"]` | `"squared"` | — | Dörfler bulk quantity. `squared` is the textbook form; `linear` reproduces `fem_baseline`'s existing behaviour. |
 | `error_metric` | `Literal["quadrature","nodal_rms"]` | `"quadrature"` | — | Which L2 the substrate reports. See AC6 — `nodal_rms` exists only to reproduce legacy numbers. |
 | `enforce_immutable_meshes` | `bool` | `True` | — | Clear numpy write flags on mesh arrays. See AC3. |
 | `solve_cache_max_entries` | `int` | `4096` | `ge=1, le=1e6` | Fingerprint-keyed solve cache bound. **Not yet wired** — no substrate memoises solves today; declared alongside `RefinementSubstrate.fingerprint`, its only consumer, which lands with Slice E task 7.1. |
+
+**`marking_fraction` was added and then removed (2026-09-02).** It briefly appeared in this
+contract to close a "θ is an unvalidated positional float" finding, and reproduced the exact
+defect it was meant to close: nothing ever read it, so setting it was a silent no-op. θ is
+already a **required, validated, keyword-only** parameter of `run_refinement_sweep` — the only
+API that consumes it — so the contract needs no second home for it. Rejected alternatives:
+defaulting θ from `describe()` (which returns only `kind`, `dof_convention` and one
+kind-scoped key — no θ), or adding a `default_theta` member to the `RefinementSubstrate`
+Protocol frozen in Slice A.
 
 **Field scoping is enforced, not documentary.** A `model_validator` rejects a `kind`-scoped
 field set away from its default on the *other* kind: `SubstrateConfig(kind="tensor_grid",

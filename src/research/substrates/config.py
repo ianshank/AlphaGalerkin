@@ -63,18 +63,6 @@ class SubstrateConfig(BaseModuleConfig):
             "Scoped to kind='skfem_tri'."
         ),
     )
-    marking_fraction: float = Field(
-        default=0.5,
-        gt=0.0,
-        le=1.0,
-        description=(
-            "Dörfler bulk fraction (theta) -- the single most consequential AMR "
-            "tunable, and the default value passed to mark(). Bounded here "
-            "because theta<=0 marks nothing and theta>1 is unreachable bulk, "
-            "both of which otherwise 'work' and silently produce meaningless "
-            "marking."
-        ),
-    )
     initial_side: int = Field(
         default=4,
         ge=2,

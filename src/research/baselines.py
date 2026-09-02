@@ -241,6 +241,39 @@ def element_inside_mask(
     return np.asarray(inside(centres), dtype=bool).reshape(len(xs) - 1, len(ys) - 1)
 
 
+def require_exact_solution(operator: PDEOperator, owner: str) -> None:
+    """Fail at construction when ``operator`` has no analytic exact solution.
+
+    Every ``RefinementSubstrate`` measures error against an exact solution, and
+    ``SubstrateSolveResult.l2_error`` is a bare ``float`` with nowhere to put a
+    ``None``. Without this, such an operator surfaces as a ``TypeError`` from
+    ``np.asarray(None, dtype=np.float64)`` several frames inside a solve or a
+    quadrature form -- true, but unhelpful.
+
+    Probed at ``operator.dim`` rather than a hardcoded 2: both substrates
+    previously wrote ``np.zeros((1, 2))``, which silently assumed 2-D and was
+    the third copy-paste between that pair (after ``_dirichlet_dof_indices``
+    and the nodal-RMS formula). Shared here, next to the other primitives both
+    substrates already import, so a fourth cannot drift.
+
+    Args:
+        operator: The operator to probe.
+        owner: Caller name, used verbatim in the error so the message names the
+            class the user actually constructed.
+
+    Raises:
+        ValueError: If ``exact_solution`` returns ``None``.
+
+    """
+    probe = np.zeros((1, operator.dim), dtype=np.float32)
+    if operator.exact_solution(probe) is None:
+        raise ValueError(
+            f"{owner} measures error against an analytic exact solution; "
+            f"{type(operator).__name__}.exact_solution returned None. Failing at "
+            f"construction rather than as a TypeError from inside solve()."
+        )
+
+
 def nodal_rms_l2_error(
     solution: NDArray[np.float64],
     coords: NDArray[np.float64],

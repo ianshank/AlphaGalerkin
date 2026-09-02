@@ -109,15 +109,6 @@ class TestSubstrateConfigValidation:
         with pytest.raises(ValidationError):
             SubstrateConfig(name="test", not_a_real_field=1)  # type: ignore[call-arg]
 
-    @pytest.mark.parametrize("value", [0.0, -0.1, 1.5])
-    def test_rejects_marking_fraction_outside_the_unit_interval(self, value: float) -> None:
-        with pytest.raises(ValidationError):
-            SubstrateConfig(name="test", marking_fraction=value)
-
-    @pytest.mark.parametrize("value", [0.001, 0.3, 1.0])
-    def test_accepts_marking_fraction_in_range(self, value: float) -> None:
-        assert SubstrateConfig(name="test", marking_fraction=value).marking_fraction == value
-
 
 class TestKindScopedFieldValidation:
     """A knob the chosen substrate never reads must be rejected, not ignored.

@@ -4,26 +4,34 @@ Covers FEMConfig validation, ScikitFEMPoissonSolver on unit-square Poisson
 with a manufactured solution, P2/P3 element convergence, and the
 ScikitFEMLShapedSolver smoke test on the L-shaped domain.
 
-scikit-fem is required; tests are skipped if not installed.
+scikit-fem is required. ``fem_required`` (registered in pyproject.toml) marks
+every test in this module; the root conftest.py hook skips them *visibly*
+(reporting a skip count) when scikit-fem is not installed, and hard-fails
+collection instead when ``ALPHAGALERKIN_REQUIRE_EXTRAS=1`` (the test-extras
+CI job) -- unlike a bare ``pytest.importorskip``, which would go quietly
+green even if the optional [fem] extra's install had silently failed.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import PoissonOperator
 from src.research.baselines import SOLVER_REGISTRY, BaseSolver, SolverResult
-
-pytest.importorskip("skfem", reason="scikit-fem required for FEM baseline tests")
-
-import numpy as np
-
 from src.research.fem_baseline import (
     FEMConfig,
     ScikitFEMLShapedSolver,
     ScikitFEMPoissonSolver,
+    _make_element,
+    _require_skfem,
+    assemble_and_solve,
+    build_initial_mesh,
+    quadrature_l2_error,
 )
+
+pytestmark = pytest.mark.fem_required
 
 
 def _make_poisson_2d() -> PoissonOperator:
@@ -276,3 +284,55 @@ class TestScikitFEMLShapedSolver:
         assert isinstance(result, SolverResult)
         assert result.n_dof > 0
         assert result.metadata["method"] == "scikit_fem_hp_adaptive"
+
+
+class TestQuadratureL2Error:
+    """AC6: the new, additive quadrature-L2 primitive."""
+
+    def test_differs_from_nodal_rms(self):
+        operator = _make_poisson_2d()
+        skfem = _require_skfem()
+        mesh = build_initial_mesh(
+            operator,
+            25,
+            skfem,
+            min_initial_dof_hint=9,
+            min_mesh_side=3,
+            initial_mesh_refinements=2,
+        )
+        element = _make_element("P1", skfem)
+        solver = ScikitFEMPoissonSolver(FEMConfig())
+        u, _coords, nodal_rms = assemble_and_solve(
+            mesh, element, operator, skfem, solver._compute_l2_error
+        )
+        quad_l2 = quadrature_l2_error(mesh, element, u, operator, skfem)
+
+        assert quad_l2 >= 0.0
+        assert nodal_rms is not None
+        # The two metrics measure the same error differently -- AC6 requires
+        # they need not (and generally do not) coincide.
+        assert quad_l2 != pytest.approx(nodal_rms)
+
+    def test_decreases_under_refinement(self):
+        """Refining the mesh should reduce the quadrature L2 error."""
+        operator = _make_poisson_2d()
+        skfem = _require_skfem()
+        element = _make_element("P1", skfem)
+        solver = ScikitFEMPoissonSolver(FEMConfig())
+
+        errors = []
+        for refinements in (1, 3):
+            mesh = build_initial_mesh(
+                operator,
+                9,
+                skfem,
+                min_initial_dof_hint=9,
+                min_mesh_side=3,
+                initial_mesh_refinements=refinements,
+            )
+            u, _coords, _nodal_rms = assemble_and_solve(
+                mesh, element, operator, skfem, solver._compute_l2_error
+            )
+            errors.append(quadrature_l2_error(mesh, element, u, operator, skfem))
+
+        assert errors[1] < errors[0]

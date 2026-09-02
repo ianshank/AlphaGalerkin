@@ -81,20 +81,54 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 4. `fem_baseline` decomposition
 
-- [ ] 4.1 **Capture goldens first**, before any refactor: `solve()` outputs for
-      `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`.
-- [ ] 4.2 Extract `build_initial_mesh`, `assemble_and_solve`, `zz_indicator`,
-      `quadrature_l2_error` as module-level primitives.
-- [ ] 4.3 Re-express `solve()` over them; the existing 23-test file must stay green untouched.
+- [x] 4.1 **Capture goldens first**, before any refactor: `solve()` outputs for
+      `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`. Byte-identical before/after the
+      extraction (`values`, `l2_error`, `metadata` all match).
+- [x] 4.2 Extracted `build_initial_mesh`, `build_lshaped_initial_mesh` (the
+      `ScikitFEMLShapedSolver`-specific L-shape builder, needed by `SkfemTriSubstrate`),
+      `assemble_and_solve` (takes an injected `l2_error_fn` so it stays pure while
+      `SolverResult.l2_error`'s nodal-RMS meaning is preserved byte-for-byte), `zz_indicator`,
+      `element_gradients`, `triangle_area`, `estimate_smoothness`, and the new
+      `quadrature_l2_error` as module-level primitives in `src/research/fem_baseline.py`.
+- [x] 4.3 Re-expressed `solve()`/class methods as thin delegates; the existing 23-test file
+      stays green untouched, plus 2 new tests for `quadrature_l2_error` (differs from nodal
+      RMS; decreases under refinement).
+- [x] 4.4 **[Added — the risk an independent adversarial review of the implementation plan
+      surfaced]** Re-measured the adaptive-vs-uniform rate separation through the actual
+      production primitives above (not the spike's own stronger ZZ reimplementation), on the
+      real L-shaped Poisson benchmark via `SkfemTriSubstrate`: adaptive rate **-1.322** (spike:
+      -1.256), uniform rate **-0.671** (spike: -0.710) — both comfortably inside the planned
+      Slice D thresholds (`ADAPTIVE_RATE_MIN=-1.10`, `UNIFORM_RATE_BAND=(-0.85,-0.55)`). The
+      production estimator's weaker (Python-loop, P1-downsampled) implementation does **not**
+      measurably change the rate separation; no threshold recalibration needed.
 
 ## 5. `SkfemTriSubstrate`
 
-- [ ] 5.1 Implement over the task-4 primitives; report quadrature L2, carry nodal RMS in
-      `extra` (AC6).
-- [ ] 5.2 Clear mesh write flags behind `enforce_immutable_meshes`; property-test it (AC3).
-- [ ] 5.3 Assert the reentrant corner is a mesh node at the origin (AC8).
-- [ ] 5.4 `fem_required` marker + root-conftest hook + `ALPHAGALERKIN_REQUIRE_EXTRAS=1`;
-      add `skfem_tri.py` to the coverage `omit`.
+- [x] 5.1 Implemented over the task-4 primitives (`src/research/substrates/skfem_tri.py`);
+      reports quadrature L2 as the primary metric (`error_metric="quadrature"`, default), nodal
+      RMS in `extra["l2_error_nodal_rms"]` (AC6). Verified end-to-end: 384 -> 391 elements from
+      marking a single element (vs 384 -> 1536 for `mesh.refined()` with no args) — genuinely
+      element-local, not the tensor-grid substrate's full-grid-line defect.
+- [x] 5.2 Clears mesh write flags behind `enforce_immutable_meshes` (default `True`); verified
+      both the enforced (`ValueError` on mutation attempt) and opt-out (`False`) paths.
+- [x] 5.3 Verified the reentrant corner is a mesh node at the origin (AC8) on the real
+      `build_lshaped_initial_mesh` output.
+- [x] 5.4 `fem_required` marker registered (`pyproject.toml`); root `conftest.py` hook mirrors
+      `gpu_required`'s shape but additionally reports a skip count via `pytest_terminal_summary`,
+      and `ALPHAGALERKIN_REQUIRE_EXTRAS=1` raises `pytest.UsageError` (exit code 4) instead of
+      skipping when scikit-fem is absent. `tests/research/test_fem_baseline.py` and
+      `test_skfem_substrate.py` switched from `pytest.importorskip` to `pytestmark =
+      pytest.mark.fem_required` so the hook can intercept before any test body runs (both
+      modules already used lazy `_require_skfem()` calls, not module-level skfem imports, so
+      this is a safe swap). Manually verified end-to-end both ways: uninstalling scikit-fem
+      shows `fem_required: skipped 45 test(s) -- ...`; the same run under
+      `ALPHAGALERKIN_REQUIRE_EXTRAS=1` exits 4 with the install-hint message. Wired into the
+      `test-extras` CI job (`.github/workflows/ci.yml`). `skfem_tri.py` added to
+      `pyproject.toml`'s coverage `omit`, alongside `fem_baseline.py`. **Not done**: no
+      automated (`pytester`-based) regression test for the conftest hook itself — no precedent
+      for this in the codebase, and out of proportion given the task's own scope; the hook's
+      correctness is exercised every CI run via the two fem_required-marked suites' successful
+      collection (a broken marker registration would fail collection under `--strict-markers`).
 
 ## 6. The adequacy gate
 

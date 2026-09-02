@@ -1091,9 +1091,16 @@ jobs:
           pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
+      # ALPHAGALERKIN_REQUIRE_EXTRAS=1 turns a fem_required test collected
+      # without scikit-fem into a hard collection error rather than a silent
+      # skip -- this job installs [test-extras] specifically so scikit-fem is
+      # present; a half-succeeded install must not go quietly green here.
       - name: Run FEM baseline + PettingZoo suites
+        env:
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
         run: |
           pytest tests/research/test_fem_baseline.py \
+            tests/research/test_skfem_substrate.py \
             tests/games/test_pettingzoo_adapter.py \
             --tb=short -q
 

@@ -270,6 +270,35 @@ _OMIT_WITHOUT_A_CI_GATE: dict[str, str] = {
 #: is checked.
 _REGRESSION_SURFACE_CLAIM = "Regression Surface"
 
+#: The citation shape: a backticked row name immediately followed by the marker.
+_REGRESSION_SURFACE_CITATION = re.compile(r"`([^`]+)`\s+" + _REGRESSION_SURFACE_CLAIM)
+
+
+def _rows_cited(reason: str) -> list[str]:
+    """Every Regression Surface row an exemption reason names in backticks.
+
+    Extracted so ``TestRowsCited`` can drive it on synthetic input. The first
+    version of the guard below inlined this regex in a comprehension and was
+    **vacuous on live data**: the sole exemption cites no row, ``findall``
+    returned ``[]``, the inner loop never entered, and coverage still reported
+    the function 100% covered -- a comprehension collapses to one line with no
+    branch arc. It failed under mutation (restoring the false citation) but had
+    never once demonstrated the regex *accepts* a valid citation, so a regex
+    typo matching nothing would have left it green forever. Same shape as the
+    ``describe()`` tautology caught one commit earlier.
+    """
+    return _REGRESSION_SURFACE_CITATION.findall(reason)
+
+
+def _rows_missing_from_surface(exemptions: dict[str, str], surface: str) -> list[tuple[str, str]]:
+    """``(pattern, row)`` for every cited row absent from ``surface``."""
+    return [
+        (pattern, row)
+        for pattern, reason in exemptions.items()
+        for row in _rows_cited(reason)
+        if row not in surface
+    ]
+
 
 def _omit_pattern_is_gated(pattern: str) -> bool:
     """Whether some workflow step both selects ``pattern``'s module and beats the omit.
@@ -556,17 +585,44 @@ def test_regression_surface_rows_cited_by_exemptions_exist() -> None:
     Regression Surface row in backticks must name one that exists. "This module
     is fine, trust me" remains unfalsifiable, and is supposed to be rare.
     """
-    claims = re.compile(r"`([^`]+)`\s+" + _REGRESSION_SURFACE_CLAIM)
     surface = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    missing = [
-        (pattern, row)
-        for pattern, reason in _OMIT_WITHOUT_A_CI_GATE.items()
-        for row in claims.findall(reason)
-        if row not in surface
-    ]
+    missing = _rows_missing_from_surface(_OMIT_WITHOUT_A_CI_GATE, surface)
     assert not missing, (
         "these exemptions justify themselves with a CLAUDE.md Regression Surface "
         f"row that does not exist: {missing}. Either add the row, or state the "
         "real reason -- an exemption backed by a citation that does not resolve is "
         "worse than no exemption, because it reads as enforced."
     )
+
+
+class TestRowsCited:
+    """Unit-tests the citation predicate on synthetic input, so it cannot be vacuous.
+
+    Per the ``TestGatePredicate`` precedent in
+    ``tests/research/test_amr_arena_interpretability.py``: a predicate that only
+    ever runs behind live data whose current shape never enters its body is a
+    predicate nothing checks. These cases do not depend on what
+    ``_OMIT_WITHOUT_A_CI_GATE`` happens to contain today.
+    """
+
+    def test_a_valid_citation_is_extracted(self) -> None:
+        reason = "enforced by the `Solver wiring` Regression Surface row instead"
+        assert _rows_cited(reason) == ["Solver wiring"]
+
+    def test_a_reason_with_no_citation_yields_nothing(self) -> None:
+        assert _rows_cited("needs the optional [fem] extra; disclosed gap, see B37") == []
+
+    def test_backticks_without_the_marker_are_not_a_citation(self) -> None:
+        """``src/foo/*`` in backticks is a path, not a row claim."""
+        assert _rows_cited("gated by `src/research/substrates` in test-extras") == []
+
+    def test_missing_rows_are_separated_from_present_ones(self) -> None:
+        """The property the live guard asserts, on data where both cases exist."""
+        exemptions = {
+            "src/a/*": "covered by the `Solver wiring` Regression Surface row",
+            "src/b/*": "covered by the `Eval-harness adapter` Regression Surface row",
+        }
+        surface = "| Solver wiring | pytest tests/... |"
+        assert _rows_missing_from_surface(exemptions, surface) == [
+            ("src/b/*", "Eval-harness adapter")
+        ]

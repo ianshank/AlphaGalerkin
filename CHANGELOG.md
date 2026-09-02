@@ -57,6 +57,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
   passed**, 208 skipped, those 2 network failures the entire delta.
 
+### Fixed — the "CI error" that was not one, and what the audits found underneath it
+
+- **B38 closed: every push fired CI twice and cancelled one.** `push:` listed `"claude/*"` and
+  three other globs, so a push to a branch with an open PR fired both `push` and `pull_request`
+  into one concurrency group, where `cancel-in-progress` killed whichever registered first. The
+  loser left ~11 `cancelled` check runs on the SHA and `mergeable_state: unstable` — mis-triaged
+  as a CI failure twice in one day. Worse, `focus` ran only on `pull_request` and `test-slow`'s
+  `[full-test]` hatch only on `push`, so which gate ran was a scheduler race. `push:` is now
+  restricted to post-merge branches (the default branch is **hardcoded**, because `on:` filters
+  cannot evaluate expressions — the risk is named in the comment), `pull_request:` covers every PR
+  head, and `workflow_dispatch` replaces the `[full-test]` hatch on feature branches. Stated cost:
+  a feature-branch push with no open PR gets no CI until a PR exists.
+- **Three hard-failing jobs could not fail the merge gate.** `test-integration`, `test-jax` and
+  `test-chess` (which runs its own `--cov-fail-under=80` on `src/games`) were absent from
+  `ci-success.needs`, with none of the "deliberately omitted" comments `focus`/`secrets` carry.
+  Verified none has a job-level `if:` (so none can be `skipped` into a false red); all three now
+  block. `CI Success` gates nine jobs instead of six.
+- **Copilot: `_dockerignore_patterns()` read `.dockerignore` unconditionally** and a missing file
+  crashed two tests with a traceback that buried `test_dockerfile_exists`. Fixed as **skip, not
+  no-op** — the suggested no-op (return `[]`) would have made `_is_excluded(source, [])` return
+  `None` for every source and the exclusion test go green on vacuous input. Verified by moving the
+  real file aside: one clean failure, eight skips, no traceback.
+- **A guard added one commit earlier was vacuous on live data.**
+  `test_regression_surface_rows_cited_by_exemptions_exist`'s sole input cites no row, so its
+  regex returned `[]`, the comprehension's inner loop never entered, and coverage reported the
+  function **100% covered** (a comprehension collapses to one line with no branch arc). It killed
+  a mutation but had never demonstrated the regex accepts a *valid* citation. Extracted
+  `_rows_cited` / `_rows_missing_from_surface` and unit-tested them on synthetic valid + invalid
+  citations, per the `TestGatePredicate` precedent.
+- **Two shared primitives were 0% covered under `baselines.py`'s own CI gate.**
+  `element_inside_mask` and `require_measurable_l2` — extracted specifically to stop the two
+  substrates drifting — are tested only through the substrates, and the SBIR P40 gate that
+  measures `baselines.py` lists no substrate suite. It passed at 91% with both bodies unmeasured.
+  `nodal_rms_l2_error`'s `n == 0` path — the trigger `require_measurable_l2`'s docstring calls
+  "the live one" — was exercised by nothing: the only tests of it monkeypatched the helper away.
+  Direct tests added for all three, plus the `exact is None` and torch-unwrap arcs.
+- **Branch-new `fem_baseline.py` arcs covered rather than deleted.** `dirichlet_dof_indices`'
+  two lower compat legs (unreachable on scikit-fem 12 — probed — but the pin allows `>=9`), the
+  three `torch.Tensor` unwraps (one torch-returning operator fixture; the documented `PDEOperator`
+  return type), `quadrature_l2_error`'s no-exact-solution raise, `_element_gradients`' singular
+  element, and `build_lshaped_initial_mesh`'s `except TypeError` fallback.
+
+### Removed — dead code the audit found, four items of it mine
+
+- **`warn_on_degenerate_units` + `AREA_FLOOR`**: zero production callers; the constant's only
+  reader was the dead function; the function's only callers were four tests written for it.
+  Wiring it needs per-element areas the `RefinementSubstrate` Protocol does not expose. Deleted,
+  with the four tests and `test_named_constants_match_spec`'s third assertion. The earlier
+  CHANGELOG line claiming `sweep.py` "now consumes all three" constants is corrected in place.
+- **`ERROR_METRIC_NODAL_RMS` had zero readers** one commit after being added "so the implicit
+  `else` is spelled" — both ternaries still compared only against the quadrature member. Now
+  consumed by a shared `select_primary_l2(config, *, quadrature, nodal)` that dispatches on both
+  members and **raises on an unknown metric** (reachable only past Pydantic's `Literal`, tested
+  via `model_construct`), replacing the last duplicated metric-selection block between the two
+  substrates.
+- **`SUBSTRATE_AREA_WEIGHTED_L2_KEY` had zero test readers** — the tests written alongside it
+  still indexed `extra` with the bare string. Fixed.
+- **A fourth `1e-15`** sat in `scripts/run_adaptive_vs_uniform.py` while `DEFAULT_RATIO_FLOOR`'s
+  docstring promised "a fourth copy cannot drift". Sourced from the constant; docstring corrected.
+- **A `# pragma: no cover` on a tested line** (`tensor_grid.py`'s scipy guard, driven by a
+  `builtins.__import__` monkeypatch). Removed — a covered line marked uncovered corrupts the number
+  the gate reads.
+- **Two docs made stale by registering the substrates**: the charter deviation row and README both
+  said "zero runtime registrants". Accurate: two registrants, zero runtime lookups.
+- Test hygiene: a bounds test probing `initial_side` with `[1, 65]` — both odd, so the parity
+  validator rejected them with the bounds deleted; two byte-identical tests differing only in
+  `match=` merged; `scripts/audit_abstractions.py`'s "real, non-test reader" wording softened
+  (the reader is entered only from the adequacy-gate test).
+
 ### Fixed — five defects in the element-local substrate surface, and a false guard exemption
 
 - **`build_lshaped_initial_mesh` silently meshed the wrong domain.** It hardcoded
@@ -254,7 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`tests/research/test_amr_arena_interpretability.py`** — the gate that makes the charter's central claim measurable at all. Asserts adaptive marking beats uniform refinement on the L-shaped Poisson singularity, **and** that the *identical* predicate rejects `TensorGridSubstrate`: a gate that passes on both substrates is not a gate. Both halves share one `gate_violations()` function, so "the same assertion fails there" is literally rather than approximately true. Measured at θ=0.5 over `(200, 4000)` — `SkfemTriSubstrate`: adaptive **-1.3109**, uniform **-0.6710**, error ratio **0.0946** at matched DOF (passes); `TensorGridSubstrate`: adaptive **-0.2325**, uniform **-0.6489**, ratio **13.35** (fails).  Adaptive is thus ~10x *better* than uniform on the element-local substrate and ~13x *worse* on the tensor-product one — the substrate, not the marking policy, decides the sign. The tensor-grid half deliberately carries **no** `fem_required` marker, so the discriminating half runs on every CPU CI job with no optional dependency.
 - **5/5 mutations killed.** One initially survived and is worth recording: widening `UNIFORM_RATE_BAND` to `(-5.0, 0.0)` left every solve-driven test green, because both substrates' uniform rates sit comfortably inside the band — so AC8's "a rate that is too *good* is also a defect" tripwire was documented but asserted nowhere. Closed by `TestGatePredicate`, which unit-tests the predicate on synthetic `RateSeparation` values (including the `-1.05` both-arms rate that was the task-zero spike's actual wrong result) with no PDE solve.
 - **`src/research/substrates/sweep.py`** — the sweep/rate-fit machinery lives in a reusable, substrate-agnostic module rather than inside the test file, so the eventual arena change consumes it instead of growing a second, subtly-different copy (the exact failure mode that made `dorfler_mark` necessary). `run_refinement_sweep` / `fit_log_log_rate` / `measure_rate_separation` / `warn_on_degenerate_units`, with structlog events throughout (`refinement_sweep_start` / `_level` / `_stop` carrying its stop *reason* / `_done`, `rate_fit`, `rate_separation`, `degenerate_units`). `fit_log_log_rate` **refuses** to fit fewer than `RATE_FIT_MIN_POINTS` points rather than returning a meaningless slope. 100% branch coverage; 22 unit tests drive it entirely through a synthetic substrate, which is what makes "substrate-agnostic" a tested claim rather than a docstring.
-- **Three dead constants got real consumers.** `RATIO_FLOOR`, `AREA_FLOOR` and `RATE_FIT_MIN_POINTS` had *no* production reader, and `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant defined as `1e-15` — a tautology guarding nothing. `sweep.py` now consumes all three, with behavioural coverage for each; the value-pinning test is retained but relabelled for what it actually guards (doc/code drift against the spec table).
+- **Three dead constants got real consumers.** `RATIO_FLOOR`, `AREA_FLOOR` and `RATE_FIT_MIN_POINTS` had *no* production reader, and `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant defined as `1e-15` — a tautology guarding nothing. `sweep.py` now consumes all three, with behavioural coverage for each; the value-pinning test is retained but relabelled for what it actually guards (doc/code drift against the spec table). **CORRECTED 2026-09-02**: true for `RATIO_FLOOR` and `RATE_FIT_MIN_POINTS`, false for `AREA_FLOOR` -- its only consumer was `warn_on_degenerate_units`, which itself had zero production callers, so the "real consumer" was a dead function with four tests written for it. Both deleted.
 - **Spec correction, disclosed**: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`. The original window is *physically* incapable of holding three **uniform** points — a 2D uniform arm quadruples DOF per level, so a 13× window spans at most two. Not a judgement call: `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than fitting a two-point slope, which is how it surfaced. Verified on both substrates (`skfem_tri` uniform lands on `[225, 833, 3201]`, `tensor_grid` on `[208, 800, 3136]`). A window-*width* correction, not a threshold loosening — the other three constants hold at their originally pinned values. Recorded with its reason in `specs/refinement_substrate.spec.md`.
 - **Abstraction-audit allowlist shrunk 8 → 1, and made self-expiring.** `sweep.py` is a real, non-test reader of seven of the eight `RefinementSubstrate` members, so those seven left `_STAGED_FOR_UPCOMING_TASK` rather than staying exempted — an allowlist entry covering a live member silently stops guarding it, which is the opposite of the gate's purpose. Only `fingerprint` remains staged (its consumer, the fingerprint-keyed solve cache bounded by `solve_cache_max_entries`, lands with Slice E). CI's blocking "Audit abstractions (refinement surfaces)" step gained `src/research` as a fourth root, because the declaration and its driver live in different packages and the narrower scan reported live members as dead — the cross-package false positive that step's own comment warns against. New `test_every_staged_exemption_is_still_forward` drops the allowlist, re-runs the audit over exactly CI's roots, and requires every staged member to *still* be unread — so a stale exemption fails rather than rotting (same discipline as the import-contract meta-guards and `.claude`'s `FORWARD_REFERENCES`). Mutation-verified: re-adding `solve` to the allowlist turns it red.
 

@@ -59,6 +59,29 @@ class TestSpeedupPredicate:
         assert fnet_speedup(1.0, 0.0) == float("inf")
 
 
+class TestBenchmarkTimerEdges:
+    """The shared fixture's ``if not times:`` early return had no caller.
+
+    Every site passes ``timing_rounds`` >= 5, so ``times`` was never empty and
+    the all-zeros ``BenchmarkStats`` branch was unmeasured. Zero rounds is a
+    legitimate way to ask "warm up only"; it must not divide by zero.
+    """
+
+    def test_zero_timing_rounds_returns_all_zero_stats(
+        self, benchmark_timer: BenchmarkTimerProtocol
+    ) -> None:
+        calls = 0
+
+        def fn() -> None:
+            nonlocal calls
+            calls += 1
+
+        stats = benchmark_timer(fn, warmup_rounds=2, timing_rounds=0)
+        assert calls == 2, "warmups still run"
+        assert stats.mean_time_s == stats.median_time_s == stats.throughput_per_s == 0.0
+        assert stats.robust_time_s() == 0.0
+
+
 @pytest.mark.benchmark
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
 def test_fnet_vs_attention(

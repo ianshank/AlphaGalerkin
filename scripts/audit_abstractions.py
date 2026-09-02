@@ -88,9 +88,13 @@ _STAGED_FOR_UPCOMING_TASK: frozenset[tuple[str, str]] = frozenset(
         # in Slice A of element-local-substrate, ahead of its consumers.
         #
         # Slice D shrank this block from all 8 members to 1: the sweep driver
-        # (src/research/substrates/sweep.py) is a real, non-test reader of
-        # initial_mesh / solve / mark / refine / n_units / refinable_mask /
-        # describe, so those seven were removed rather than left exempted --
+        # (src/research/substrates/sweep.py) reads initial_mesh / solve / mark /
+        # refine / n_units / refinable_mask / describe. Honest caveat: the driver
+        # lives under src/ but is entered only from the adequacy-gate test
+        # (tests/research/test_amr_arena_interpretability.py), so "non-test
+        # reader" is one indirection from test-only -- the AST heuristic sees a
+        # src/ call site, which is what it checks. Those seven were removed
+        # rather than left exempted --
         # an allowlist that covers a live member silently stops guarding it,
         # which is the opposite of what this file is for. Verified by removing
         # each entry and re-running the audit.

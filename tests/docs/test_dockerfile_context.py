@@ -36,6 +36,18 @@ _NON_CONTEXT_SOURCES: frozenset[str] = frozenset()
 
 
 def _dockerignore_patterns() -> list[str]:
+    """Patterns from ``.dockerignore``, comments and blanks stripped.
+
+    Deliberately **strict** -- a missing file raises rather than returning
+    ``[]``. A Copilot review suggested guarding it "the same way
+    ``_copy_sources()`` guards the Dockerfile, so other assertions either
+    no-op or skip cleanly"; the no-op half is wrong. With ``[]``,
+    ``_is_excluded(source, [])`` returns ``None`` for every source and
+    ``test_no_copied_path_is_excluded_by_dockerignore`` goes green on vacuous
+    input -- the exact false-pass shape ``test_coverage_gate_integrity.py``
+    exists to catch. So the *callers* skip (pointing at ``test_dockerfile_exists``,
+    which reports the missing file clearly) and this helper stays honest.
+    """
     return [
         line.strip()
         for line in DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
@@ -137,6 +149,8 @@ def test_no_copied_path_is_excluded_by_dockerignore(source: str) -> None:
     """
     if source in _NON_CONTEXT_SOURCES:
         pytest.skip(f"{source} is a build-stage artefact, not a context path")
+    if not DOCKERIGNORE.is_file():
+        pytest.skip("no .dockerignore -- see test_dockerfile_exists for the real failure")
     pattern = _is_excluded(source, _dockerignore_patterns())
     assert pattern is None, (
         f"docker/Dockerfile copies {source!r}, but .dockerignore excludes it via "
@@ -162,6 +176,8 @@ def test_default_command_runs_paths_that_are_in_the_image() -> None:
     """
     if not DOCKERFILE.is_file():
         pytest.skip("no Dockerfile -- see test_dockerfile_exists for the real failure")
+    if not DOCKERIGNORE.is_file():
+        pytest.skip("no .dockerignore -- see test_dockerfile_exists for the real failure")
     patterns = _dockerignore_patterns()
     copied = _copy_sources()
     path_args = [token for token in _cmd_arguments() if "/" in token and not token.startswith("-")]

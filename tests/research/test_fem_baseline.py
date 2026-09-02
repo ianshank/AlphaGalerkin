@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import torch
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import PoissonOperator
@@ -29,6 +30,7 @@ from src.research.fem_baseline import (
     assemble_and_solve,
     build_initial_mesh,
     build_lshaped_initial_mesh,
+    dirichlet_dof_indices,
     quadrature_l2_error,
 )
 
@@ -394,3 +396,138 @@ class TestLShapedMeshMatchesOperatorDomain:
         )
         origin = np.isclose(mesh.p[0], 0.0) & np.isclose(mesh.p[1], 0.0)
         assert origin.any(), "the reentrant corner at the origin is not a mesh node"
+
+
+class _TorchReturningOperator:
+    """A ``PDEOperator``-shaped stand-in whose every hook returns ``torch.Tensor``.
+
+    ``fem_baseline`` unwraps torch at three sites (``l_form``, the Dirichlet
+    values, ``quadrature_l2_error``'s integrand) and none was ever exercised:
+    every operator the suites use returns numpy. The ``PDEOperator`` contract
+    documents torch as the return type, so this is the *likely* production
+    shape, not the exotic one. Wraps a real operator so the values are honest.
+    """
+
+    def __init__(self, inner: PoissonOperator) -> None:
+        self._inner = inner
+        self.dim = inner.dim
+        self.domain_min = inner.domain_min
+        self.domain_max = inner.domain_max
+
+    def source_term(self, pts: np.ndarray) -> torch.Tensor:
+        return torch.as_tensor(np.asarray(self._inner.source_term(pts)))
+
+    def boundary_value(self, pts: np.ndarray) -> torch.Tensor:
+        return torch.as_tensor(np.asarray(self._inner.boundary_value(pts)))
+
+    def exact_solution(self, pts: np.ndarray) -> torch.Tensor:
+        return torch.as_tensor(np.asarray(self._inner.exact_solution(pts)))
+
+
+class TestDirichletDofIndicesCompatChain:
+    """Two of three legs of the version-compat chain were measured by nothing.
+
+    The function's own docstring says it was extracted because "a compat
+    fallback with two copies, neither individually tested, is worse than one
+    tested copy". The consolidation happened; the testing did not -- under
+    scikit-fem 12 ``get_dofs()`` always has ``flatten``, so lines for the
+    ``nodal`` and bare-array legs never ran. Stub bases reach them.
+    """
+
+    def test_flatten_leg(self) -> None:
+        class _Dofs:
+            def flatten(self) -> np.ndarray:
+                return np.array([3, 1, 2])
+
+        class _Basis:
+            def get_dofs(self) -> _Dofs:
+                return _Dofs()
+
+        np.testing.assert_array_equal(dirichlet_dof_indices(_Basis()), [3, 1, 2])
+
+    def test_nodal_leg_when_flatten_is_absent(self) -> None:
+        class _Dofs:
+            nodal = {"u": np.array([7, 8])}
+
+        class _Basis:
+            def get_dofs(self) -> _Dofs:
+                return _Dofs()
+
+        np.testing.assert_array_equal(dirichlet_dof_indices(_Basis()), [7, 8])
+
+    def test_bare_array_leg_when_neither_is_present(self) -> None:
+        class _Basis:
+            def get_dofs(self) -> list[int]:
+                return [5, 6, 9]
+
+        np.testing.assert_array_equal(dirichlet_dof_indices(_Basis()), [5, 6, 9])
+
+
+class TestTorchReturningOperatorIsUnwrapped:
+    """One fixture, three unwrap sites."""
+
+    def test_assemble_and_solve_accepts_torch_source_and_boundary(self) -> None:
+        skfem = _require_skfem()
+        inner = _make_poisson_2d()
+        operator = _TorchReturningOperator(inner)
+        mesh = build_initial_mesh(
+            inner, 9, skfem, min_initial_dof_hint=9, min_mesh_side=3, initial_mesh_refinements=1
+        )
+        element = _make_element("P1", skfem)
+        solver = ScikitFEMPoissonSolver(FEMConfig())
+        u, _coords, nodal_rms = assemble_and_solve(
+            mesh, element, operator, skfem, solver._compute_l2_error
+        )
+        assert np.isfinite(u).all()
+        # And the quadrature integrand's unwrap, on the same solve.
+        quad = quadrature_l2_error(mesh, element, u, operator, skfem)
+        assert np.isfinite(quad) and quad >= 0.0
+
+
+class TestQuadratureL2ErrorRefusesNoExactSolution:
+    def test_none_exact_solution_raises(self) -> None:
+        skfem = _require_skfem()
+        operator = _make_poisson_2d()
+        mesh = build_initial_mesh(
+            operator, 9, skfem, min_initial_dof_hint=9, min_mesh_side=3, initial_mesh_refinements=0
+        )
+        element = _make_element("P1", skfem)
+        u = np.zeros(skfem.Basis(mesh, element).N)
+        object.__setattr__(operator, "exact_solution", lambda pts: None)
+        with pytest.raises(ValueError, match="analytic exact solution"):
+            quadrature_l2_error(mesh, element, u, operator, skfem)
+
+
+class TestElementGradientsDegenerateElement:
+    def test_collinear_vertices_yield_zero_gradient_not_a_crash(self) -> None:
+        """A singular fit matrix takes the ``LinAlgError`` branch and zeroes the row."""
+
+        class _FakeMesh:
+            p = np.array([[0.0, 1.0, 2.0], [0.0, 0.0, 0.0]], dtype=np.float64)  # collinear
+            t = np.array([[0], [1], [2]], dtype=np.int64)
+
+        grads = ScikitFEMPoissonSolver._element_gradients(_FakeMesh(), np.array([0.0, 1.0, 2.0]))
+        assert grads.shape == (1, 2)
+        np.testing.assert_array_equal(grads[0], [0.0, 0.0])
+
+
+class TestLShapedMeshFallback:
+    def test_falls_back_to_init_lshaped_when_mesh_addition_is_unsupported(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cover the ``except TypeError`` leg instead of deleting it.
+
+        Unreachable on scikit-fem 12 (probed: ``nw + ne + sw`` succeeds), but the
+        pin allows ``>=9`` and the lower end is untestable here.
+        """
+        skfem = _require_skfem()
+
+        def _no_add(self: object, other: object) -> object:
+            raise TypeError("mesh addition unsupported in this version")
+
+        monkeypatch.setattr(skfem.MeshTri, "__add__", _no_add)
+        mesh = build_lshaped_initial_mesh(
+            _make_poisson_lshaped(), skfem, initial_mesh_refinements=0
+        )
+        origin = np.isclose(mesh.p[0], 0.0) & np.isclose(mesh.p[1], 0.0)
+        assert origin.any(), "fallback mesh lost the reentrant corner"

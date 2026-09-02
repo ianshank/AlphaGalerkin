@@ -44,13 +44,13 @@ from src.research.baselines import (
 from src.research.lshape_amr_compare import area_weighted_l2
 from src.research.marking import dorfler_mark
 from src.research.substrates.config import (
-    ERROR_METRIC_QUADRATURE,
     SUBSTRATE_AREA_WEIGHTED_L2_KEY,
     SUBSTRATE_KIND_TENSOR_GRID,
     SUBSTRATE_NODAL_RMS_L2_KEY,
     SUBSTRATE_PRIMARY_L2_KEY,
     SubstrateConfig,
     resolve_substrate_config,
+    select_primary_l2,
 )
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ class TensorGridSubstrate:
         try:
             from scipy import sparse
             from scipy.sparse.linalg import spsolve
-        except ImportError as exc:  # pragma: no cover - environment guard
+        except ImportError as exc:
             raise ImportError(
                 "TensorGridSubstrate requires scipy. Install with: pip install scipy"
             ) from exc
@@ -189,11 +189,7 @@ class TensorGridSubstrate:
         nodal_rms = nodal_rms_l2_error(u_full.ravel()[in_mask], grid[in_mask], self._operator)
         nodal_rms_value = require_measurable_l2(nodal_rms, "TensorGridSubstrate")
 
-        l2_error = (
-            area_weighted
-            if self._config.error_metric == ERROR_METRIC_QUADRATURE
-            else nodal_rms_value
-        )
+        l2_error = select_primary_l2(self._config, quadrature=area_weighted, nodal=nodal_rms_value)
         n_dof = int(in_mask.sum())
         n_dof_free = self._n_dof_free(mesh, in_mask)
 

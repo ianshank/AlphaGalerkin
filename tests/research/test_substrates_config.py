@@ -12,10 +12,10 @@ import pytest
 from pydantic import ValidationError
 
 from src.research.substrates.config import (
-    AREA_FLOOR,
     RATE_FIT_MIN_POINTS,
     RATIO_FLOOR,
     SubstrateConfig,
+    select_primary_l2,
 )
 
 
@@ -79,10 +79,21 @@ class TestSubstrateConfigValidation:
         config = SubstrateConfig(name="test", kind="tensor_grid", initial_side=value)
         assert config.initial_side == value
 
-    @pytest.mark.parametrize("value", [1, 65])
+    @pytest.mark.parametrize("value", [0, 66])
     def test_initial_side_out_of_bounds_rejected(self, value: int) -> None:
-        with pytest.raises(ValidationError):
-            SubstrateConfig(name="test", initial_side=value)
+        """Probed with EVEN out-of-range values on the RIGHT kind, deliberately.
+
+        Two earlier versions of this test never reached the bounds at all. The
+        first used ``[1, 65]`` -- both odd -- so the parity validator rejected
+        them with ``ge``/``le`` deleted. The second switched to ``[0, 66]`` but
+        left ``kind`` at its default ``"skfem_tri"``, and ``initial_side`` is
+        scoped to ``"tensor_grid"``, so ``_reject_fields_scoped_to_the_other_kind``
+        rejected *any* value before Pydantic looked at the number. A mutation
+        check (delete the bounds; the test must fail) caught both. With the
+        kind set and even values, only the bounds can reject these.
+        """
+        with pytest.raises(ValidationError, match="greater than or equal|less than or equal"):
+            SubstrateConfig(name="test", kind="tensor_grid", initial_side=value)
 
     @pytest.mark.parametrize("variant", ["squared", "linear"])
     def test_accepts_valid_marking_variant(self, variant: str) -> None:
@@ -189,20 +200,45 @@ class TestKindScopedFieldValidation:
 
 
 def test_named_constants_match_spec() -> None:
-    """Pins the three constants against ``specs/refinement_substrate.spec.md``'s table.
+    """Pins the two constants against ``specs/refinement_substrate.spec.md``'s table.
 
     Be clear about what this is and is not. It guards **doc/code drift** — the
     spec names these values, so silently changing one here should fail. It is
     *not* a behavioural test, and on its own it would be close to a tautology
     (asserting a constant defined as ``1e-15`` equals ``1e-15``). The
     behavioural coverage lives in ``tests/research/test_substrates_sweep.py``,
-    which drives all three through their real consumers in
+    which drives both through their real consumers in
     ``src/research/substrates/sweep.py``: ``RATE_FIT_MIN_POINTS`` as the
-    fit-refusal boundary, ``AREA_FLOOR`` as the degenerate-unit threshold, and
-    ``RATIO_FLOOR`` as the log-interpolation guard. Until Slice D added that
-    module the three constants had **no consumer at all**, and this test was
-    the only thing referencing them.
+    fit-refusal boundary and ``RATIO_FLOOR`` as the log-interpolation guard.
+
+    There used to be a third, ``AREA_FLOOR``, whose "real consumer" was
+    ``warn_on_degenerate_units`` -- a function with zero production callers,
+    so the constant's entire consumption chain terminated in four tests written
+    for it. Both were deleted on 2026-09-02; a dead-code audit, not this test,
+    found it. A value-pinning test cannot tell a live constant from a dead one.
     """
     assert RATIO_FLOOR == 1e-15
-    assert AREA_FLOOR == 1e-30
     assert RATE_FIT_MIN_POINTS == 3
+
+
+class TestSelectPrimaryL2:
+    """The one shared metric-selection helper, incl. the branch a Literal makes unreachable."""
+
+    def test_quadrature_selects_quadrature(self) -> None:
+        cfg = SubstrateConfig(name="q", kind="tensor_grid", error_metric="quadrature")
+        assert select_primary_l2(cfg, quadrature=1.0, nodal=2.0) == 1.0
+
+    def test_nodal_rms_selects_nodal(self) -> None:
+        """``ERROR_METRIC_NODAL_RMS`` finally has a reader; this is it."""
+        cfg = SubstrateConfig(name="n", kind="tensor_grid", error_metric="nodal_rms")
+        assert select_primary_l2(cfg, quadrature=1.0, nodal=2.0) == 2.0
+
+    def test_unknown_metric_raises_instead_of_falling_through(self) -> None:
+        """Bypasses validation on purpose.
+
+        The ``Literal`` makes this unreachable through ``SubstrateConfig(...)``,
+        and the old ternary would have silently returned the nodal value here.
+        """
+        cfg = SubstrateConfig.model_construct(name="x", kind="tensor_grid", error_metric="bogus")
+        with pytest.raises(ValueError, match="unknown error_metric"):
+            select_primary_l2(cfg, quadrature=1.0, nodal=2.0)

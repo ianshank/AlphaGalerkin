@@ -8,7 +8,6 @@ full data contract and acceptance criteria.
 from __future__ import annotations
 
 from src.research.substrates.config import (
-    AREA_FLOOR,
     ERROR_METRIC_NODAL_RMS,
     ERROR_METRIC_QUADRATURE,
     RATE_FIT_MIN_POINTS,
@@ -21,10 +20,10 @@ from src.research.substrates.config import (
     SUBSTRATE_QUADRATURE_L2_KEY,
     SubstrateConfig,
     resolve_substrate_config,
+    select_primary_l2,
 )
 
 __all__ = [
-    "AREA_FLOOR",
     "ERROR_METRIC_NODAL_RMS",
     "ERROR_METRIC_QUADRATURE",
     "RATE_FIT_MIN_POINTS",
@@ -37,4 +36,5 @@ __all__ = [
     "SUBSTRATE_QUADRATURE_L2_KEY",
     "SubstrateConfig",
     "resolve_substrate_config",
+    "select_primary_l2",
 ]

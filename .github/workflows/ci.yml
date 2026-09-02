@@ -11,8 +11,24 @@
 name: CI
 
 on:
+  # push: is restricted to POST-MERGE branches only. Every feature/claude/plan/
+  # release push with an open PR used to fire this workflow twice -- once as
+  # `push`, once as `pull_request` -- into the same concurrency group, where
+  # `cancel-in-progress` killed whichever registered first. The loser left ~11
+  # `cancelled` check runs stapled to the SHA and `mergeable_state: unstable`,
+  # which was mis-triaged as a CI failure twice in one day (B38). Worse, `focus`
+  # runs only on pull_request and test-slow's [full-test] hatch only on push, so
+  # which gate ran was a scheduler race. `pull_request:` below (unfiltered)
+  # covers every PR head; a feature-branch push with NO open PR now gets no CI
+  # until a PR exists -- the stated cost.
+  #
+  # RISK, named: the default branch is hardcoded here because `on:` filters
+  # cannot evaluate expressions. If the default branch is renamed, post-merge
+  # CI on it silently stops (PR CI is unaffected). The repo's own history has
+  # this exact bug once already -- see the comment that used to sit above
+  # `pull_request:` and now lives in git blame.
   push:
-    branches: [main, master, develop, "feature/*", "claude/*", "plan/*", "release/*"]
+    branches: [claude/alphagalerkin-implementation-4zGEN, main, master, develop]
   # No branches filter: the repo's default branch is not main/develop, so a
   # [main, develop] filter silently disabled CI for every pull request.
   pull_request:
@@ -413,7 +429,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: test-fast
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule'
+    # workflow_dispatch added 2026-09-02: the [full-test] commit-message hatch reads
+    # github.event.head_commit, which only `push` payloads carry, and push: is now
+    # restricted to post-merge branches -- so on a feature branch the hatch is dead.
+    # A manual dispatch works on any branch and replaces it.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout repository
@@ -1321,7 +1341,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression]
+    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-jax, test-chess]
     # !cancelled() rather than always(): a run superseded by the concurrency
     # group (push + pull_request for the same branch, or a newer push) has its
     # needed jobs cancelled, and under always() this job would still execute,
@@ -1339,6 +1359,9 @@ jobs:
           echo "  coverage:                    ${{ needs.coverage.result }}"
           echo "  coverage-gates:              ${{ needs.coverage-gates.result }}"
           echo "  test-extras:                 ${{ needs.test-extras.result }}"
+          echo "  test-integration:            ${{ needs.test-integration.result }}"
+          echo "  test-jax:                    ${{ needs.test-jax.result }}"
+          echo "  test-chess:                  ${{ needs.test-chess.result }}"
           echo "  transfer-baseline (soft):    ${{ needs.transfer-baseline-regression.result }}"
           echo "======================="
 
@@ -1382,6 +1405,26 @@ jobs:
           # cannot fail the build is a report, not a gate.
           if [[ "${{ needs.test-extras.result }}" != "success" ]]; then
             echo "FAIL: Optional-dependency suites failed (result=${{ needs.test-extras.result }})"
+            exit 1
+          fi
+
+          # The three below were NEVER in `needs` (B38, 2026-09-02): hard-failing
+          # jobs that ran on every PR with no `if:` and could not block a merge.
+          # test-chess even carries its own --cov-fail-under=80 on src/games that
+          # enforced nothing. focus/secrets stay out per their own comments;
+          # test-slow stays out because it is PR-invisible by design.
+          if [[ "${{ needs.test-integration.result }}" != "success" ]]; then
+            echo "FAIL: Integration tests failed (result=${{ needs.test-integration.result }})"
+            exit 1
+          fi
+
+          if [[ "${{ needs.test-jax.result }}" != "success" ]]; then
+            echo "FAIL: JAX backend tests failed (result=${{ needs.test-jax.result }})"
+            exit 1
+          fi
+
+          if [[ "${{ needs.test-chess.result }}" != "success" ]]; then
+            echo "FAIL: Chess pipeline tests failed (result=${{ needs.test-chess.result }})"
             exit 1
           fi
 

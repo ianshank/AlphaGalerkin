@@ -36,6 +36,7 @@ import numpy as np
 import structlog
 from numpy.typing import NDArray
 
+from src.constants import DEFAULT_RATIO_FLOOR
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator
 from src.research.baselines import DorflerAMRSolver
@@ -63,8 +64,10 @@ DEFAULT_OUTPUT: str = "results/lshape_adaptive_vs_uniform.csv"
 MAX_UNIFORM_LEVELS: int = 12
 #: Matched-DOF readings taken at this many log-spaced points.
 N_MATCHED_READINGS: int = 4
-#: Floor applied to any ratio denominator.
-RATIO_FLOOR: float = 1e-15
+#: Floor applied to any ratio denominator. Sourced from src.constants: this was
+#: the FOURTH independent 1e-15 in the tree, found by a dead-code audit the day
+#: after DEFAULT_RATIO_FLOOR's docstring promised a fourth could not drift.
+RATIO_FLOOR: float = DEFAULT_RATIO_FLOOR
 
 
 def build_operator(scale: float) -> LShapedPoissonOperator:

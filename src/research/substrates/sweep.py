@@ -22,11 +22,9 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import structlog
 
-from src.research.substrates.config import AREA_FLOOR, RATE_FIT_MIN_POINTS, RATIO_FLOOR
+from src.research.substrates.config import RATE_FIT_MIN_POINTS, RATIO_FLOOR
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
-
     from src.refinement.substrate import RefinementSubstrate
 
 logger = structlog.get_logger(__name__)
@@ -281,32 +279,3 @@ def measure_rate_separation(
         matched_dof=matched_dof,
     )
     return separation
-
-
-def warn_on_degenerate_units(
-    substrate: RefinementSubstrate[Any],
-    mesh: Any,
-    areas: NDArray[np.float64],
-) -> int:
-    """Log a warning for any unit whose area is below ``AREA_FLOOR``.
-
-    A degenerate (near-zero-area) element silently zeroes its own error
-    indicator -- it can never be marked, so refinement quietly stops improving
-    exactly where the mesh is worst. That is a *diagnostic* concern rather than
-    a numerical one (the estimator's arithmetic is unchanged), so this reports
-    rather than clamps.
-
-    Returns:
-        The number of degenerate units found.
-
-    """
-    degenerate = int(np.count_nonzero(areas < AREA_FLOOR))
-    if degenerate:
-        logger.warning(
-            "degenerate_units",
-            n_degenerate=degenerate,
-            n_units=substrate.n_units(mesh),
-            area_floor=AREA_FLOOR,
-            min_area=float(areas.min()) if areas.size else float("nan"),
-        )
-    return degenerate

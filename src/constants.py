@@ -103,13 +103,16 @@ apart rather than silently retune one of them.
 DEFAULT_RATIO_FLOOR: Final[float] = 1e-15
 """Floor used to avoid division by zero in benchmark ratio calculations.
 
-The value three research harnesses had each declared for themselves --
+The value **four** sites had each declared for themselves --
 ``research/lshape_amr_compare.py``'s ``RATIO_FLOOR``,
-``research/transfer_baseline_compare.py``'s ``TRANSFER_RATIO_FLOOR``, and
-``research/substrates/config.py``'s ``RATIO_FLOOR``. The last of those carried a
+``research/transfer_baseline_compare.py``'s ``TRANSFER_RATIO_FLOOR``,
+``research/substrates/config.py``'s ``RATIO_FLOOR``, and
+``scripts/run_adaptive_vs_uniform.py``'s ``RATIO_FLOOR``. The third carried a
 provenance comment that was wrong on every count: it cited a module path that
 does not exist and claimed to mirror :data:`DEFAULT_TRANSFER_RATIO_FLOOR`,
-which is a thousandfold larger. Named here so a fourth copy cannot drift.
+which is a thousandfold larger. The fourth was found by a dead-code audit one
+commit after this docstring first claimed "three" and promised a fourth could
+not drift -- it already had. All four now source this one name.
 
 **Not** interchangeable with :data:`DEFAULT_TRANSFER_RATIO_FLOOR`. Changing one
 must not change the other.

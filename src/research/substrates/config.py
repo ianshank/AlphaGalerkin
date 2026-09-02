@@ -64,10 +64,6 @@ _KIND_SCOPED_FIELDS: dict[str, tuple[str, ...]] = {
 #: so they are named separately and deliberately not unified.
 RATIO_FLOOR = DEFAULT_RATIO_FLOOR
 
-#: Numerical-stability floor for element/cell area computations, guarding
-#: against division by a degenerate (near-zero-area) element.
-AREA_FLOOR = 1e-30
-
 #: Minimum number of (DOF, error) points required before a log-log
 #: convergence rate is fit; fewer points make the fitted slope meaningless.
 RATE_FIT_MIN_POINTS = 3
@@ -227,3 +223,38 @@ def resolve_substrate_config(
             f"succeed and then misreport kind in describe() and in every log line."
         )
     return config
+
+
+def select_primary_l2(config: SubstrateConfig, *, quadrature: float, nodal: float) -> float:
+    """Pick the L2 value ``config.error_metric`` names -- and refuse an unknown one.
+
+    Both substrates used to write ``x if error_metric == "quadrature" else y``
+    with ``"nodal_rms"`` never spelled: it was the implicit ``else``, so a third
+    metric would have silently fallen through to nodal RMS. ``ERROR_METRIC_NODAL_RMS``
+    was then added to name that branch -- and read by nothing, because both
+    ternaries still compared only against the quadrature member. This is where
+    it is finally consumed, and where an unrecognised metric fails loudly instead
+    of being absorbed. Pydantic's ``Literal`` makes that branch unreachable
+    through a validated config; it exists for a config built some other way.
+
+    Args:
+        config: The substrate's config; ``error_metric`` decides.
+        quadrature: The value to report under ``ERROR_METRIC_QUADRATURE`` (for
+            the tensor grid this is the area-weighted analogue).
+        nodal: The value to report under ``ERROR_METRIC_NODAL_RMS``.
+
+    Returns:
+        The selected value.
+
+    Raises:
+        ValueError: If ``config.error_metric`` is neither known member.
+
+    """
+    if config.error_metric == ERROR_METRIC_QUADRATURE:
+        return quadrature
+    if config.error_metric == ERROR_METRIC_NODAL_RMS:
+        return nodal
+    raise ValueError(
+        f"unknown error_metric {config.error_metric!r}; expected "
+        f"{ERROR_METRIC_QUADRATURE!r} or {ERROR_METRIC_NODAL_RMS!r}"
+    )

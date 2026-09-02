@@ -39,13 +39,13 @@ from src.research.fem_baseline import (
 )
 from src.research.marking import dorfler_mark
 from src.research.substrates.config import (
-    ERROR_METRIC_QUADRATURE,
     SUBSTRATE_KIND_SKFEM_TRI,
     SUBSTRATE_NODAL_RMS_L2_KEY,
     SUBSTRATE_PRIMARY_L2_KEY,
     SUBSTRATE_QUADRATURE_L2_KEY,
     SubstrateConfig,
     resolve_substrate_config,
+    select_primary_l2,
 )
 
 if TYPE_CHECKING:
@@ -115,9 +115,7 @@ class SkfemTriSubstrate:
         indicators = zz_indicator(mesh.mesh, u)
 
         nodal_rms_value = require_measurable_l2(nodal_rms, "SkfemTriSubstrate")
-        l2_error = (
-            quad_l2 if self._config.error_metric == ERROR_METRIC_QUADRATURE else nodal_rms_value
-        )
+        l2_error = select_primary_l2(self._config, quadrature=quad_l2, nodal=nodal_rms_value)
         extra = {
             SUBSTRATE_PRIMARY_L2_KEY: l2_error,
             SUBSTRATE_NODAL_RMS_L2_KEY: nodal_rms_value,

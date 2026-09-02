@@ -31,6 +31,8 @@ from src.research.lshape_amr_compare import (
 )
 from src.research.substrates import tensor_grid as tensor_grid_module
 from src.research.substrates.config import (
+    SUBSTRATE_AREA_WEIGHTED_L2_KEY,
+    SUBSTRATE_NODAL_RMS_L2_KEY,
     SUBSTRATE_PRIMARY_L2_KEY,
     SubstrateConfig,
 )
@@ -310,15 +312,15 @@ class TestTensorGridSubstrateConfigIsHonoured:
         r_quad = quad.solve(mesh)
         r_nodal = nodal.solve(mesh)
         assert r_quad.l2_error != r_nodal.l2_error
-        assert r_quad.l2_error == r_quad.extra["l2_error_area_weighted"]
-        assert r_nodal.l2_error == r_nodal.extra["l2_error_nodal_rms"]
+        assert r_quad.l2_error == r_quad.extra[SUBSTRATE_AREA_WEIGHTED_L2_KEY]
+        assert r_nodal.l2_error == r_nodal.extra[SUBSTRATE_NODAL_RMS_L2_KEY]
 
     def test_both_metrics_are_always_reported_in_extra(
         self, operator: LShapedPoissonOperator
     ) -> None:
         """AC6's shape: the unselected metric is additive, never dropped."""
         result = self._substrate(operator).solve(self._substrate(operator).initial_mesh())
-        assert {"l2_error_area_weighted", "l2_error_nodal_rms"} <= set(result.extra)
+        assert {SUBSTRATE_AREA_WEIGHTED_L2_KEY, SUBSTRATE_NODAL_RMS_L2_KEY} <= set(result.extra)
 
     def test_enforce_immutable_meshes_clears_write_flags(
         self, operator: LShapedPoissonOperator
@@ -450,16 +452,15 @@ class TestExactSolutionGuard:
     deep ``TypeError`` the guard exists to replace.
     """
 
-    def test_construction_raises_with_an_actionable_message(self) -> None:
-        operator = _build_operator(1.0)
-        object.__setattr__(operator, "exact_solution", lambda pts: None)
-        with pytest.raises(ValueError, match="analytic exact solution"):
-            TensorGridSubstrate(operator, config=SubstrateConfig(name="t", kind="tensor_grid"))
+    def test_construction_raises_naming_this_substrate_and_the_cause(self) -> None:
+        """One raise, both halves of the message: the cause AND the caller.
 
-    def test_message_names_this_substrate_not_the_helper(self) -> None:
+        Was two byte-identical tests differing only in ``match=`` -- same
+        operator, same monkeypatch, same call, two substrings of one message.
+        """
         operator = _build_operator(1.0)
         object.__setattr__(operator, "exact_solution", lambda pts: None)
-        with pytest.raises(ValueError, match="TensorGridSubstrate"):
+        with pytest.raises(ValueError, match=r"TensorGridSubstrate.*analytic exact solution"):
             TensorGridSubstrate(operator, config=SubstrateConfig(name="t", kind="tensor_grid"))
 
     def test_a_real_operator_still_constructs(self) -> None:

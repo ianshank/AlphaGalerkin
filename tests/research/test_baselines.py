@@ -13,6 +13,7 @@ import math
 
 import numpy as np
 import pytest
+import torch
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import BurgersOperator, PoissonOperator
@@ -28,9 +29,12 @@ from src.research.baselines import (
     SolverConfig,
     SolverResult,
     UniformFDMSolver,
+    element_inside_mask,
     get_solver,
     list_solvers,
+    nodal_rms_l2_error,
     require_exact_solution,
+    require_measurable_l2,
 )
 
 scipy = pytest.importorskip("scipy", reason="scipy required for FDM/AMR tests")
@@ -874,3 +878,125 @@ class TestRequireExactSolution:
 
     def test_a_real_operator_passes(self) -> None:
         require_exact_solution(self._operator(2), "SomeSubstrate")
+
+
+class TestElementInsideMask:
+    """``element_inside_mask`` was 0% body-covered under this file's own CI gate.
+
+    It is a shared primitive extracted specifically so the two substrates could
+    not drift apart on the centre test -- and the SBIR P40 gate this file feeds
+    (`--fail-under=85`, measured 91%) lists no substrate suite, so the gate
+    passed with the function's entire body unmeasured. Verified by grep: no
+    test here called it directly before this class.
+
+    The predicate is **vectorised**: ``(n, 2)`` centres in, ``(n,)`` bools out
+    -- the same ``InsidePredicate`` shape ``lshape_inside_predicate`` has. The
+    first draft of this class passed scalar ``(x, y)`` lambdas and failed on
+    the real contract, which is itself a small argument for the test existing.
+    """
+
+    def test_centre_test_on_a_notched_unit_square(self) -> None:
+        xs = np.linspace(-1.0, 1.0, 5)
+        ys = np.linspace(-1.0, 1.0, 5)
+
+        def inside(pts: np.ndarray) -> np.ndarray:  # L-shape: drop the SE quadrant
+            return ~((pts[:, 0] > 0.0) & (pts[:, 1] < 0.0))
+
+        mask = element_inside_mask(xs, ys, inside)
+        assert mask.shape == (4, 4)
+        # 4x4 elements; the SE quadrant is the 2x2 block with centre x>0, y<0.
+        assert mask.sum() == 12
+        cx = 0.5 * (xs[:-1] + xs[1:])
+        cy = 0.5 * (ys[:-1] + ys[1:])
+        for i in range(4):
+            for j in range(4):
+                assert mask[i, j] == (not (cx[i] > 0.0 and cy[j] < 0.0))
+
+    def test_all_true_predicate_keeps_every_element(self) -> None:
+        mask = element_inside_mask(
+            np.linspace(0, 1, 3), np.linspace(0, 1, 4), lambda pts: np.ones(len(pts), dtype=bool)
+        )
+        assert mask.shape == (2, 3) and mask.all()
+
+    def test_agrees_with_the_scale_aware_lshape_predicate(self) -> None:
+        """The production predicate, not a toy: the notch must be excluded."""
+        from src.research.lshape_amr_compare import lshape_inside_predicate
+
+        xs = ys = np.linspace(-1.0, 1.0, 9)
+        mask = element_inside_mask(xs, ys, lshape_inside_predicate(1.0))
+        assert mask.shape == (8, 8)
+        # Bottom-right 4x4 block of elements (x>0, y<0) is the notch.
+        assert not mask[4:, :4].any()
+        assert mask[:4, :].all() and mask[4:, 4:].all()
+
+
+class TestRequireMeasurableL2:
+    """``require_measurable_l2`` was 0% body-covered under this file's own CI gate.
+
+    Same story as ``TestElementInsideMask``: a shared guard, tested only through
+    the substrates, invisible to the gate that measures the file it lives in.
+    """
+
+    def test_a_number_passes_through_as_float(self) -> None:
+        out = require_measurable_l2(np.float64(0.25), "X")
+        assert out == 0.25 and isinstance(out, float)
+
+    def test_zero_is_a_measurement_not_a_sentinel(self) -> None:
+        """``0.0`` must survive: the whole point is that ``None`` != ``0.0``."""
+        assert require_measurable_l2(0.0, "X") == 0.0
+
+    def test_none_raises_and_names_the_owner(self) -> None:
+        with pytest.raises(ValueError, match=r"SomeSubstrate.*unmeasurable"):
+            require_measurable_l2(None, "SomeSubstrate")
+
+
+class TestNodalRmsL2Error:
+    """Drives the real helper, not a monkeypatch of it.
+
+    The only prior tests of its ``None`` result replaced the function wholesale
+    (``monkeypatch.setattr(module, "nodal_rms_l2_error", lambda *a, **k: None)``)
+    and asserted the *caller's* handling. Neither of the two triggers that make
+    the real body return ``None`` was ever executed -- including the empty-array
+    one that ``require_measurable_l2``'s docstring calls "the live path".
+    """
+
+    @staticmethod
+    def _operator() -> PoissonOperator:
+        return PoissonOperator(
+            PDEConfig(
+                name="rms",
+                pde_type=PDEType.POISSON,
+                domain_dim=2,
+                domain_min=[0.0, 0.0],
+                domain_max=[1.0, 1.0],
+            )
+        )
+
+    def test_empty_input_returns_none_not_zero(self) -> None:
+        """The ``n == 0`` ternary: invisible to branch coverage, exercised by nothing."""
+        out = nodal_rms_l2_error(np.array([]), np.zeros((0, 2)), self._operator())
+        assert out is None
+
+    def test_operator_without_exact_solution_returns_none(self) -> None:
+        operator = self._operator()
+        object.__setattr__(operator, "exact_solution", lambda pts: None)
+        assert nodal_rms_l2_error(np.zeros(3), np.zeros((3, 2)), operator) is None
+
+    def test_torch_exact_solution_is_unwrapped(self) -> None:
+        """The ``isinstance(exact, torch.Tensor)`` arc -- the *documented* return type."""
+        operator = self._operator()
+        exact_np = operator.exact_solution(np.zeros((4, 2), dtype=np.float32))
+        assert exact_np is not None
+        object.__setattr__(
+            operator, "exact_solution", lambda pts: torch.as_tensor(np.asarray(exact_np))
+        )
+        out = nodal_rms_l2_error(np.zeros(4), np.zeros((4, 2)), operator)
+        assert out is not None and np.isfinite(out)
+
+    def test_matches_the_closed_form_rms(self) -> None:
+        operator = self._operator()
+        coords = np.array([[0.25, 0.25], [0.5, 0.5], [0.75, 0.75]])
+        exact = np.asarray(operator.exact_solution(coords.astype(np.float32))).ravel()
+        solution = exact + np.array([0.1, -0.2, 0.3])
+        out = nodal_rms_l2_error(solution, coords, operator)
+        assert out == pytest.approx(np.sqrt(np.mean(np.array([0.1, -0.2, 0.3]) ** 2)), rel=1e-6)

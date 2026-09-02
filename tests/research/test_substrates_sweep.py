@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from src.refinement.substrate import SubstrateSolveResult
-from src.research.substrates.config import AREA_FLOOR, RATE_FIT_MIN_POINTS
+from src.research.substrates.config import RATE_FIT_MIN_POINTS
 from src.research.substrates.sweep import (
     InsufficientSweepPointsError,
     RateSeparation,
@@ -29,7 +29,6 @@ from src.research.substrates.sweep import (
     fit_log_log_rate,
     measure_rate_separation,
     run_refinement_sweep,
-    warn_on_degenerate_units,
 )
 
 
@@ -240,27 +239,3 @@ class TestMeasureRateSeparation:
         adaptive = _sweep(_FakeSubstrate(), max_dof=1024)
         with pytest.raises(InsufficientSweepPointsError):
             measure_rate_separation(adaptive, adaptive, (16, 32))
-
-
-class TestWarnOnDegenerateUnits:
-    def test_reports_units_below_the_area_floor(self) -> None:
-        substrate = _FakeSubstrate()
-        mesh = substrate.initial_mesh()
-        areas = np.array([1.0, AREA_FLOOR / 10.0, 0.0, 2.0])
-        assert warn_on_degenerate_units(substrate, mesh, areas) == 2
-
-    def test_returns_zero_and_stays_quiet_on_a_healthy_mesh(self) -> None:
-        substrate = _FakeSubstrate()
-        mesh = substrate.initial_mesh()
-        assert warn_on_degenerate_units(substrate, mesh, np.ones(4)) == 0
-
-    def test_does_not_clamp_the_areas_it_reports_on(self) -> None:
-        """Diagnostic, not a correction: the caller's array must be untouched."""
-        substrate = _FakeSubstrate()
-        areas = np.array([1.0, 0.0])
-        warn_on_degenerate_units(substrate, substrate.initial_mesh(), areas)
-        assert areas.tolist() == [1.0, 0.0]
-
-    def test_empty_area_array_is_not_a_crash(self) -> None:
-        substrate = _FakeSubstrate()
-        assert warn_on_degenerate_units(substrate, substrate.initial_mesh(), np.array([])) == 0

@@ -48,6 +48,7 @@ import torch
 from torch import Tensor, nn
 from torch.optim import AdamW
 
+from src.constants import DEFAULT_RATIO_FLOOR
 from src.experiments.cnn_baseline import DiscreteCNNBaseline, count_parameters, match_cnn_channels
 from src.experiments.physics_model import PhysicsOperator
 from src.physics.poisson import PoissonDataset, PoissonSample
@@ -63,8 +64,11 @@ logger = structlog.get_logger(__name__)
 # --------------------------------------------------------------------------- #
 
 # Floor for any MSE denominator so the ratio stays finite even if a retrained CNN
-# reaches (near) zero error on a trivial target.
-TRANSFER_RATIO_FLOOR: float = 1e-15
+# reaches (near) zero error on a trivial target. Sourced from src.constants rather
+# than redeclared. Value unchanged. Despite the name this is NOT
+# DEFAULT_TRANSFER_RATIO_FLOOR, which is 1e-12 -- the near-collision is exactly why
+# both now carry explicit cross-references.
+TRANSFER_RATIO_FLOOR: float = DEFAULT_RATIO_FLOOR
 
 # ``SEED_PRIME_STRIDE`` and ``resolved_seeds`` are imported from src.research.seed_sweep
 # (shared with lshape_amr_compare) and re-exported above.

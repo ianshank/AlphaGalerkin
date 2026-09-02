@@ -274,6 +274,44 @@ def require_exact_solution(operator: PDEOperator, owner: str) -> None:
         )
 
 
+def require_measurable_l2(nodal_rms: float | None, owner: str) -> float:
+    """Return ``nodal_rms``, or raise -- never substitute ``0.0``.
+
+    :func:`nodal_rms_l2_error` documents that it returns ``None`` "not a crash,
+    and **not** ``0.0``", because ``0.0`` is the strongest possible correctness
+    claim and an unmeasurable error is the weakest possible evidence for it.
+    Both substrates nevertheless wrote ``float(nodal_rms or 0.0)`` at six sites,
+    converting the sentinel straight back into the value the helper refuses to
+    return, so an unmeasurable solve published a *perfect* L2 error.
+
+    Two triggers reach that ``None``. The first -- an operator with no analytic
+    exact solution -- is already guarded at construction by
+    :func:`require_exact_solution`. The second is an **empty diff array**
+    (``n == 0``): an empty in-domain node set, reachable from an over-restrictive
+    geometry predicate, and guarded by nothing. That is what makes this a live
+    path rather than defensive dead code.
+
+    Args:
+        nodal_rms: The value from :func:`nodal_rms_l2_error`.
+        owner: Caller name, used verbatim so the error names the substrate the
+            user actually constructed.
+
+    Returns:
+        ``nodal_rms``, when it is not ``None``.
+
+    Raises:
+        ValueError: If ``nodal_rms`` is ``None``.
+
+    """
+    if nodal_rms is None:
+        raise ValueError(
+            f"{owner}: the nodal-RMS L2 error is unmeasurable (no exact solution, or an "
+            f"empty in-domain node set). Refusing to report 0.0, which would publish a "
+            f"perfect score for a solve that was never measured."
+        )
+    return float(nodal_rms)
+
+
 def nodal_rms_l2_error(
     solution: NDArray[np.float64],
     coords: NDArray[np.float64],

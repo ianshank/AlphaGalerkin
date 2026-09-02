@@ -13,10 +13,13 @@ committed ``results/lshape_mcts_vs_dorfler.csv`` per AC1's second clause.
 from __future__ import annotations
 
 import csv
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+from structlog.testing import capture_logs
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator, PoissonOperator
@@ -26,7 +29,11 @@ from src.research.lshape_amr_compare import (
     make_solve_fn,
     run_dorfler_arm,
 )
-from src.research.substrates.config import SubstrateConfig
+from src.research.substrates import tensor_grid as tensor_grid_module
+from src.research.substrates.config import (
+    SUBSTRATE_PRIMARY_L2_KEY,
+    SubstrateConfig,
+)
 from src.research.substrates.tensor_grid import TensorGridSubstrate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -460,3 +467,186 @@ class TestExactSolutionGuard:
             _build_operator(1.0), config=SubstrateConfig(name="t", kind="tensor_grid")
         )
         assert substrate is not None
+
+
+class TestSubstrateIdentityIsNotDuplicated:
+    """D2: ``describe()`` must report the config's ``kind``, not a hardcoded twin.
+
+    Before the fix, ``SubstrateConfig(kind="skfem_tri")`` handed to
+    ``TensorGridSubstrate`` constructed cleanly, passed
+    ``_reject_fields_scoped_to_the_other_kind``, and then reported
+    ``describe()["kind"] == "tensor_grid"`` -- and the bound structlog logger
+    emitted the same wrong value, so the logs could not be trusted to reflect
+    the config either. ``kind``'s only production readers were its own
+    validator, making it the ``marking_fraction`` pattern with a twist: the
+    field *is* load-bearing for validation, so the fix is to wire it, not
+    delete it. The kind-scoped validator structurally cannot catch this -- it
+    rejects a field scoped to the *other* kind, never a mismatched ``kind``.
+    """
+
+    @pytest.fixture
+    def operator(self) -> PoissonOperator:
+        return PoissonOperator(
+            PDEConfig(
+                name="poisson_kind",
+                pde_type=PDEType.POISSON,
+                domain_dim=2,
+                domain_min=[0.0, 0.0],
+                domain_max=[1.0, 1.0],
+            )
+        )
+
+    def test_describe_derives_the_kind_rather_than_restating_it(
+        self, operator: PoissonOperator
+    ) -> None:
+        """``describe()`` must *read* the config, not carry a second copy.
+
+        Deliberately white-box, and the first version of this test was a
+        tautology worth recording: asserting
+        ``describe()["kind"] == substrate._config.kind`` on a normally-built
+        substrate passes whether ``describe()`` reads the field or hardcodes
+        the same string, because the constructor guard makes the two agree by
+        construction. A mutation check caught it -- reverting ``describe()`` to
+        a literal left the test green.
+
+        Rebinding ``_config`` afterwards is the only way to separate the two
+        spellings, so that is what this does. The state is unreachable through
+        the public API precisely *because* of the constructor guard; the point
+        is to stop a future edit reintroducing the second source of truth that
+        let ``describe()`` disagree with its own config.
+        """
+        substrate = TensorGridSubstrate(operator)
+        substrate._config = SubstrateConfig(name="rebound", kind="skfem_tri")
+        assert substrate.describe()["kind"] == "skfem_tri"
+
+    def test_a_mismatched_kind_is_rejected_at_construction(self, operator: PoissonOperator) -> None:
+        """Fail loudly rather than silently disagreeing with your own config."""
+        with pytest.raises(ValueError, match="kind"):
+            TensorGridSubstrate(
+                operator,
+                config=SubstrateConfig(name="mismatch", kind="skfem_tri"),
+            )
+
+
+class TestPrimaryErrorKeyIsUniform:
+    """D4: both substrates must publish the selected metric under one key.
+
+    ``TensorGridSubstrate`` emitted ``l2_error_area_weighted`` while
+    ``SkfemTriSubstrate`` emitted ``l2_error_quadrature`` -- two implementations
+    of one Protocol shipping the *same slot* under different names, so no
+    generic consumer could read it. Worse, the comment above the tensor-grid
+    site asserted the opposite ("`extra` carries the same pair
+    SkfemTriSubstrate reports"). Fixed additively: the metric-specific keys
+    stay, and a shared ``l2_error_primary`` names the selected one.
+    """
+
+    @pytest.fixture
+    def operator(self) -> LShapedPoissonOperator:
+        return _build_operator(1.0)
+
+    @pytest.mark.parametrize("metric", ["quadrature", "nodal_rms"])
+    def test_primary_key_present_and_equals_l2_error(
+        self, operator: LShapedPoissonOperator, metric: str
+    ) -> None:
+        substrate = TensorGridSubstrate(
+            operator,
+            inside=lshape_inside_predicate(1.0),
+            config=SubstrateConfig(name="primary", kind="tensor_grid", error_metric=metric),
+        )
+        result = substrate.solve(substrate.initial_mesh())
+        assert SUBSTRATE_PRIMARY_L2_KEY in result.extra
+        assert result.extra[SUBSTRATE_PRIMARY_L2_KEY] == result.l2_error
+
+
+class TestUnmeasurableSolveFailsLoudly:
+    """D3: an unmeasurable error must not be published as a perfect score.
+
+    ``nodal_rms_l2_error`` documents "Returns ``None`` -- not a crash, and not
+    ``0.0``" and returns ``None`` on *two* triggers: no analytic exact solution
+    (guarded at construction by ``require_exact_solution``) and an **empty diff
+    array**, which nothing guarded. Both substrates then wrote
+    ``float(nodal_rms or 0.0)`` -- exactly the value the helper refuses to
+    return -- so an empty in-domain node set published ``l2_error = 0.0``.
+    """
+
+    def test_solve_raises_when_the_nodal_rms_is_unmeasurable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        substrate = TensorGridSubstrate(_build_operator(1.0), inside=lshape_inside_predicate(1.0))
+        mesh = substrate.initial_mesh()
+        monkeypatch.setattr(tensor_grid_module, "nodal_rms_l2_error", lambda *a, **k: None)
+        with pytest.raises(ValueError, match="unmeasurable"):
+            substrate.solve(mesh)
+
+
+class TestSubstratesAreRegistered:
+    """D5: the registry had no registrants, no exports, and no callers.
+
+    ``src/refinement/substrate_registry.py`` promised lookup-by-key so callers
+    "need not import the concrete module directly", but neither substrate
+    carried the decorator, the pair was absent from ``src.refinement``'s
+    ``__all__`` (its sibling game registry is present), and every registration
+    in the tree lived inside a test.
+    """
+
+    def test_tensor_grid_is_registered_under_its_kind(self) -> None:
+        """Read in a **subprocess**, deliberately.
+
+        ``RefinementSubstrateRegistry`` is a process-global singleton and
+        ``tests/refinement/test_substrate.py`` / ``test_skfem_substrate.py``
+        both ``clear()`` it in setup *and* teardown, so an in-process assertion
+        here passes or fails on collection order -- verified: it goes green
+        alone and red after ``tests/refinement/test_substrate.py``. This is the
+        hazard ``src/refinement/AGENT.md`` documents and the same reason
+        ``tests/docs/test_charter_alignment.py`` reads ``ScenarioRegistry`` out
+        of process. A fresh interpreter sees only the import-time registration,
+        which is the property under test.
+        """
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from src.refinement.substrate_registry import RefinementSubstrateRegistry;"
+                "from src.research.substrates.tensor_grid import TensorGridSubstrate;"
+                "assert RefinementSubstrateRegistry().get_or_raise('tensor_grid')"
+                " is TensorGridSubstrate;"
+                "print('registered')",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            timeout=180,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "registered" in proc.stdout
+
+    def test_the_registry_pair_is_exported_from_src_refinement(self) -> None:
+        import src.refinement as refinement
+
+        assert "RefinementSubstrateRegistry" in refinement.__all__
+        assert "register_refinement_substrate" in refinement.__all__
+
+
+class TestZeroMarkedRefineWarns:
+    """Both substrates must warn on an empty selection, not spin silently.
+
+    ``marking_variant="linear"`` returns all-False on an all-zero indicator
+    array, and ``run_refinement_sweep``'s DOF-growth loop would then make no
+    progress with nothing said. ``SkfemTriSubstrate`` warned; the tensor grid
+    did not, despite reading the same ``marking_variant`` field and running in
+    the same loop -- the identical failure observable on one substrate and
+    invisible on the other. Neither warning had a test, so both were
+    unexecuted code until now.
+    """
+
+    def test_empty_selection_emits_a_warning_and_leaves_the_mesh_unrefined(self) -> None:
+        substrate = TensorGridSubstrate(_build_operator(1.0), inside=lshape_inside_predicate(1.0))
+        mesh = substrate.initial_mesh()
+        empty = np.zeros(substrate.n_units(mesh), dtype=bool)
+        # structlog, not stdlib logging -- ``caplog`` sees nothing here, which is
+        # itself worth recording: the first version of this test passed an empty
+        # string into an ``in`` check and would have gone green on a deleted warning.
+        with capture_logs() as events:
+            refined = substrate.refine(mesh, empty)
+        assert any(e["event"] == "substrate_refine_noop" for e in events), events
+        assert substrate.n_units(refined) == substrate.n_units(mesh)

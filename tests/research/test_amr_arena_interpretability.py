@@ -75,9 +75,10 @@ ADAPTIVE_VS_UNIFORM_MAX_RATIO = 1.0
 #: reason are recorded in ``specs/refinement_substrate.spec.md``.
 RATE_FIT_DOF_RANGE = (200, 4000)
 
-#: Sweep budget. Matches ``RATE_FIT_DOF_RANGE``'s upper bound so a sweep stops
-#: as soon as it has spanned the fitting window.
-MAX_SWEEP_DOF = 4000
+#: Sweep budget. *Derived* from ``RATE_FIT_DOF_RANGE``'s upper bound rather
+#: than retyped, so a sweep stops as soon as it has spanned the fitting window.
+#: The coupling used to live only in this comment, with ``4000`` written twice.
+MAX_SWEEP_DOF = RATE_FIT_DOF_RANGE[1]
 
 #: Level ceilings (runaway guards). Uniform multiplies DOF each level so it
 #: needs very few; adaptive adds DOF slowly and needs many more.

@@ -28,6 +28,7 @@ from src.research.fem_baseline import (
     _require_skfem,
     assemble_and_solve,
     build_initial_mesh,
+    build_lshaped_initial_mesh,
     quadrature_l2_error,
 )
 
@@ -336,3 +337,60 @@ class TestQuadratureL2Error:
             errors.append(quadrature_l2_error(mesh, element, u, operator, skfem))
 
         assert errors[1] < errors[0]
+
+
+class TestLShapedMeshMatchesOperatorDomain:
+    """D1: the L-shape builder must not silently mesh a domain it was not given.
+
+    ``build_lshaped_initial_mesh`` hardcodes ``linspace(-1.0, 0.0, 3)`` and never
+    reads ``operator.domain_min``/``domain_max`` -- unlike its sibling
+    ``build_initial_mesh``, which does. Measured before the fix::
+
+        scale=2.0: operator x in [-2.0, 2.0]  ->  mesh x in [-1.0, 1.0]
+
+    That is not a cosmetic mismatch. ``lshape_inside_predicate(scale)`` *is*
+    scale-aware, so at ``scale != 1`` the notch logic scales and the mesh does
+    not, mixing two geometries with every downstream number still finite and
+    plausible -- the 2026-08-16 L-shape retraction's exact signature. The
+    adequacy gate reaches this path via ``_lshaped_operator(params.scale)``
+    and is masked only because ``ComparisonParams.scale`` defaults to 1.0.
+
+    Supporting scaled L-shapes is a feature; failing loudly on one is the fix.
+    """
+
+    @staticmethod
+    def _operator(scale: float) -> PoissonOperator:
+        return PoissonOperator(
+            PDEConfig(
+                name="lshaped_scaled",
+                pde_type=PDEType.POISSON,
+                domain_dim=2,
+                domain_min=[-scale, -scale],
+                domain_max=[scale, scale],
+            )
+        )
+
+    def test_unit_domain_is_accepted(self) -> None:
+        """The canonical [-1,1]^2 L-shape still builds, unchanged."""
+        mesh = build_lshaped_initial_mesh(
+            self._operator(1.0), _require_skfem(), initial_mesh_refinements=0
+        )
+        assert float(mesh.p[0].min()) == pytest.approx(-1.0)
+        assert float(mesh.p[0].max()) == pytest.approx(1.0)
+
+    @pytest.mark.parametrize("scale", [2.0, 5.0, 0.5])
+    def test_non_unit_domain_raises_instead_of_silently_meshing_the_unit_square(
+        self, scale: float
+    ) -> None:
+        with pytest.raises(NotImplementedError, match="unit L-shape"):
+            build_lshaped_initial_mesh(
+                self._operator(scale), _require_skfem(), initial_mesh_refinements=0
+            )
+
+    def test_the_reentrant_corner_is_still_a_node(self) -> None:
+        """AC8 must survive the added validation."""
+        mesh = build_lshaped_initial_mesh(
+            self._operator(1.0), _require_skfem(), initial_mesh_refinements=0
+        )
+        origin = np.isclose(mesh.p[0], 0.0) & np.isclose(mesh.p[1], 0.0)
+        assert origin.any(), "the reentrant corner at the origin is not a mesh node"

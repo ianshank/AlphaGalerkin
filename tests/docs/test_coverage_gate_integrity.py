@@ -238,14 +238,37 @@ def _is_omitted(target: str, patterns: list[str]) -> str | None:
 #: An entry here is a claim that no gate is warranted, not a note that none
 #: exists -- and ``test_every_orphaned_omit_exemption_is_still_orphaned``
 #: fails it the moment a gate appears, so it cannot outlive its reason.
+#: CORRECTED 2026-09-02. The original reason for the entry below was false in
+#: both of its checkable clauses, and it was written by the same change that
+#: added this guard -- the guard fired, and it was silenced with an untruth:
+#:
+#:   * "which no CI job installs" -- ``.github/workflows/ci.yml`` installs
+#:     ``.[dev,test-extras,eval-harness]`` in the ``test-extras`` job, with a
+#:     comment saying it does so *specifically* to un-skip these modules.
+#:   * "enforced instead by the `Eval-harness adapter` Regression Surface
+#:     command" -- no such row exists in ``CLAUDE.md``. It never did.
+#:
+#: ``test_every_orphaned_omit_exemption_states_a_reason`` only checks a reason is
+#: *present*, and ``..._is_still_orphaned`` only that no gate has appeared. A
+#: false reason satisfied both forever. ``test_regression_surface_rows_cited_by_
+#: exemptions_exist`` below closes the half of that hole which is mechanically
+#: decidable.
 _OMIT_WITHOUT_A_CI_GATE: dict[str, str] = {
     "src/integrations/eval_harness/*": (
         "needs the optional [eval-harness] git dependency (langfuse-eval-harness, "
-        "not on PyPI), which no CI job installs; enforced instead by the "
-        "`Eval-harness adapter` Regression Surface command when the extra is "
-        "present. A CI gate would measure 0% on every job that runs it."
+        "a git URL, not on PyPI). The test-extras CI job DOES install it, but runs "
+        "no test under tests/integrations/eval_harness/, so 8 of those 11 modules "
+        "skip at import and 914 LOC is measured by nothing anywhere. This is a "
+        "DISCLOSED GAP, not a justified exemption: the fix is a per-module gate in "
+        "test-extras, which already has the extra installed. Tracked as B37 in "
+        "docs/CODE_HYGIENE_AUDIT.md."
     ),
 }
+
+#: Marker an exemption reason uses when it claims a ``CLAUDE.md`` Regression
+#: Surface row enforces the module instead. Any such claim is checkable, so it
+#: is checked.
+_REGRESSION_SURFACE_CLAIM = "Regression Surface"
 
 
 def _omit_pattern_is_gated(pattern: str) -> bool:
@@ -518,3 +541,32 @@ class TestTheGuardItself:
     def test_a_prefix_that_is_not_a_path_boundary_is_not_a_match(self) -> None:
         """``src/demos/*`` must not swallow ``src/demos_extra``."""
         assert _is_omitted("src/demos_extra", ["src/demos/*"]) is None
+
+
+def test_regression_surface_rows_cited_by_exemptions_exist() -> None:
+    """An exemption may not point at a ``CLAUDE.md`` row that does not exist.
+
+    The specific untruth this file shipped with: an exemption claiming coverage
+    was "enforced instead by the `Eval-harness adapter` Regression Surface
+    command", when ``grep -n "Eval-harness" CLAUDE.md`` returns nothing. Both
+    pre-existing exemption meta-guards passed -- one checks a reason is present,
+    the other that no gate has appeared -- because neither reads the reason.
+
+    Only the mechanically decidable half is enforced here: a reason that names a
+    Regression Surface row in backticks must name one that exists. "This module
+    is fine, trust me" remains unfalsifiable, and is supposed to be rare.
+    """
+    claims = re.compile(r"`([^`]+)`\s+" + _REGRESSION_SURFACE_CLAIM)
+    surface = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    missing = [
+        (pattern, row)
+        for pattern, reason in _OMIT_WITHOUT_A_CI_GATE.items()
+        for row in claims.findall(reason)
+        if row not in surface
+    ]
+    assert not missing, (
+        "these exemptions justify themselves with a CLAUDE.md Regression Surface "
+        f"row that does not exist: {missing}. Either add the row, or state the "
+        "real reason -- an exemption backed by a citation that does not resolve is "
+        "worse than no exemption, because it reads as enforced."
+    )

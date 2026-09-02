@@ -39,6 +39,7 @@ import numpy as np
 import structlog
 from numpy.typing import NDArray
 
+from src.constants import DEFAULT_RATIO_FLOOR
 from src.pde.games.lshape_amr import (
     EncodedValueEvaluator,
     GridSolveResult,
@@ -61,7 +62,10 @@ logger = structlog.get_logger(__name__)
 
 # Floor applied to any denominator (DOF, error, wall-clock, ratio) so ratios
 # stay finite even for a degenerate (single-point / zero-time) trajectory.
-RATIO_FLOOR: float = 1e-15
+# Sourced from src.constants rather than redeclared: this was one of three
+# independent 1e-15 literals. Value unchanged. NOT the same constant as
+# DEFAULT_TRANSFER_RATIO_FLOOR (1e-12) -- same knob, different live values.
+RATIO_FLOOR: float = DEFAULT_RATIO_FLOOR
 
 # ``SEED_PRIME_STRIDE`` and ``resolved_seeds`` are imported from src.research.seed_sweep
 # (shared with transfer_baseline_compare) and re-exported above.

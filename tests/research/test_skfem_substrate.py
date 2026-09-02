@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from structlog.testing import capture_logs
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator
@@ -24,7 +25,8 @@ from src.refinement.substrate_registry import (
     RefinementSubstrateRegistry,
     register_refinement_substrate,
 )
-from src.research.substrates.config import SubstrateConfig
+from src.research.substrates import skfem_tri as skfem_tri_module
+from src.research.substrates.config import SUBSTRATE_PRIMARY_L2_KEY, SubstrateConfig
 from src.research.substrates.skfem_tri import SkfemTriMesh, SkfemTriSubstrate
 
 pytestmark = pytest.mark.fem_required
@@ -320,3 +322,80 @@ class TestSkfemTriSubstrateRequiresAnExactSolution:
 
     def test_a_real_operator_still_constructs(self) -> None:
         assert SkfemTriSubstrate(_lshaped_operator()) is not None
+
+
+class TestSkfemTriMirrorsTheTensorGridContract:
+    """The same D2/D3/D4 fixes, asserted on the other implementation.
+
+    Two implementations of one Protocol that are only tested on one side are
+    two implementations that will diverge -- which is exactly what happened to
+    the ``extra`` key sets and the zero-marked refine warning.
+    """
+
+    @pytest.fixture
+    def operator(self) -> LShapedPoissonOperator:
+        return LShapedPoissonOperator(
+            PDEConfig(
+                name="lshaped_mirror",
+                pde_type=PDEType.POISSON,
+                domain_dim=2,
+                domain_min=[-1.0, -1.0],
+                domain_max=[1.0, 1.0],
+            )
+        )
+
+    def test_a_mismatched_kind_is_rejected_at_construction(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        with pytest.raises(ValueError, match="kind"):
+            SkfemTriSubstrate(operator, config=SubstrateConfig(name="mismatch", kind="tensor_grid"))
+
+    def test_describe_derives_the_kind_rather_than_restating_it(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        """See the tensor-grid twin for why this rebinds ``_config``."""
+        substrate = SkfemTriSubstrate(operator)
+        substrate._config = SubstrateConfig(name="rebound", kind="tensor_grid")
+        assert substrate.describe()["kind"] == "tensor_grid"
+
+    @pytest.mark.parametrize("metric", ["quadrature", "nodal_rms"])
+    def test_primary_key_present_and_equals_l2_error(
+        self, operator: LShapedPoissonOperator, metric: str
+    ) -> None:
+        substrate = SkfemTriSubstrate(
+            operator,
+            config=SubstrateConfig(name="primary", kind="skfem_tri", error_metric=metric),
+        )
+        result = substrate.solve(substrate.initial_mesh())
+        assert SUBSTRATE_PRIMARY_L2_KEY in result.extra
+        assert result.extra[SUBSTRATE_PRIMARY_L2_KEY] == result.l2_error
+
+    def test_solve_raises_when_the_nodal_rms_is_unmeasurable(
+        self, operator: LShapedPoissonOperator, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        substrate = SkfemTriSubstrate(operator)
+        mesh = substrate.initial_mesh()
+        monkeypatch.setattr(skfem_tri_module, "nodal_rms_l2_error", lambda *a, **k: None)
+        with pytest.raises(ValueError, match="unmeasurable"):
+            substrate.solve(mesh)
+
+
+class TestSkfemZeroMarkedRefineWarns:
+    """The pre-existing twin of the tensor-grid guard -- previously untested."""
+
+    def test_empty_selection_emits_a_warning(self) -> None:
+        operator = LShapedPoissonOperator(
+            PDEConfig(
+                name="lshaped_noop",
+                pde_type=PDEType.POISSON,
+                domain_dim=2,
+                domain_min=[-1.0, -1.0],
+                domain_max=[1.0, 1.0],
+            )
+        )
+        substrate = SkfemTriSubstrate(operator)
+        mesh = substrate.initial_mesh()
+        empty = np.zeros(substrate.n_units(mesh), dtype=bool)
+        with capture_logs() as events:
+            substrate.refine(mesh, empty)
+        assert any(e["event"] == "substrate_refine_noop" for e in events), events

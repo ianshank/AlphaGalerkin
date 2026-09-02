@@ -57,6 +57,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
   passed**, 208 skipped, those 2 network failures the entire delta.
 
+### Fixed — five defects in the element-local substrate surface, and a false guard exemption
+
+- **`build_lshaped_initial_mesh` silently meshed the wrong domain.** It hardcoded
+  `linspace(-1.0, 0.0, 3)` and never read `operator.domain_min`/`domain_max`, unlike its sibling
+  `build_initial_mesh`. Measured: an operator on `[-5, 5]^2` got a mesh on `[-1, 1]^2`. Compounding
+  it, `lshape_inside_predicate(scale)` *is* scale-aware, so at `scale != 1` the notch rule scaled
+  and the mesh did not — two geometries mixed, every downstream number still finite and plausible,
+  which is the 2026-08-16 L-shape retraction's exact signature. The adequacy gate reaches this path
+  via `_lshaped_operator(params.scale)`, masked only by `ComparisonParams.scale` defaulting to 1.0.
+  Now raises. Corner coordinates surfaced as named constants (`LSHAPE_DOMAIN_MIN/MAX/MID`,
+  `LSHAPE_NODES_PER_SQUARE`) instead of six literals on three lines.
+- **`SubstrateConfig.kind` was read by nothing, and `describe()` could lie.**
+  `TensorGridSubstrate(op, config=SubstrateConfig(kind="skfem_tri"))` constructed cleanly and
+  reported `describe()["kind"] == "tensor_grid"`, with the bound structlog logger emitting the same
+  wrong value. Both `describe()`s hardcoded their kind; the field's only production readers were
+  its own validator. New shared `resolve_substrate_config(config, kind=..., default_name=...)` —
+  used by both substrates — builds the default or rejects a mismatch, and `describe()` now reads
+  the config. `_KIND_SCOPED_FIELDS` structurally could not catch this: it rejects a field scoped to
+  the *other* kind, never a mismatched `kind`.
+- **An unmeasurable solve published a perfect score.** `nodal_rms_l2_error` documents "Returns
+  `None` — not a crash, and **not** `0.0`" and returns `None` on two triggers: no exact solution
+  (guarded at construction) and an **empty diff array**, guarded nowhere. Both substrates wrote
+  `float(nodal_rms or 0.0)` at six sites — exactly the value the helper refuses to return — so an
+  empty in-domain node set reported `l2_error = 0.0`. New shared
+  `baselines.require_measurable_l2(value, owner)` raises instead.
+- **The two substrates' `extra` dicts disagreed while a comment claimed they matched.**
+  `tensor_grid` emitted `l2_error_area_weighted`, `skfem_tri` emitted `l2_error_quadrature` — the
+  same slot under different names from two implementations of one Protocol — and the tensor-grid
+  comment asserted the opposite. Fixed **additively**: metric-specific keys stay, and a shared
+  `l2_error_primary` (`SUBSTRATE_PRIMARY_L2_KEY`) names the selected one on both. No production
+  reader of `SubstrateSolveResult.extra` existed, which is why this was worth fixing before one did.
+- **`src/refinement/substrate_registry.py` was a registry with no registrants and no export.** Both
+  substrates now carry `@register_refinement_substrate`, and the pair is exported from
+  `src.refinement` alongside its already-exported game twin. Its guard reads the registry in a
+  **subprocess**, because two suites `clear()` that process-global singleton in setup and teardown
+  — verified: an in-process assertion goes green alone and red after
+  `tests/refinement/test_substrate.py`.
+- **A guard exemption this session added was false in both checkable clauses.**
+  `_OMIT_WITHOUT_A_CI_GATE["src/integrations/eval_harness/*"]` claimed the extra is installed by no
+  CI job (`ci.yml:1179` installs it) and that a "`Eval-harness adapter` Regression Surface command"
+  enforces coverage instead (no such row exists). 914 LOC is measured nowhere and 8 of 11 test
+  modules skip. Reason rewritten to the truth and marked a disclosed gap (B37); new
+  `test_regression_surface_rows_cited_by_exemptions_exist` closes the decidable half of the hole
+  — mutation-killed by restoring the original citation.
+- **Benchmark assertions compared on the mean.** `BenchmarkStats` exposed no median, and
+  `test_fnet_perf` asserted on `mean_time_s` in CI's blocking lane (`benchmark` is a registered
+  marker that appears in no `-m` filter). Measured on an *idle* box, 30 rounds at N=512:
+  `mean=0.953ms median=0.438ms max=13.228ms` — one outlier at 30x the median more than doubles the
+  mean. Added `median_time_s` + `robust_time_s()` to the shared fixture. **Not** threshold-widening:
+  the assertion needs 1.5x and the code delivers 19–42x whichever statistic is used. Thresholds
+  named (`MIN_FNET_SPEEDUP`, `SPEEDUP_ASSERTED_ABOVE_N`, `WARMUP_ROUNDS`, `TIMING_ROUNDS`), and a
+  synthetic `TestSpeedupPredicate` now fails if the threshold is widened to the historical `0.5`.
+  Also removed 16 lines of dead `pytest-benchmark` delegation (the package is installed nowhere and
+  declared in no dependency file; no fixture named `benchmark` exists) and a duplicate marker
+  registration that shadowed pyproject.toml's with different wording.
+
+### Changed — one ratio floor, three declarations
+
+- `1e-15` was declared independently in `research/lshape_amr_compare.py`,
+  `research/transfer_baseline_compare.py` and `research/substrates/config.py`. The last carried a
+  provenance comment wrong on every count: it cited `src/experiments/transfer_baseline_compare`
+  (no such module) and claimed to mirror `DEFAULT_TRANSFER_RATIO_FLOOR`, which is `1e-12` — a
+  thousandfold different. All three now source `src.constants.DEFAULT_RATIO_FLOOR`. **Values
+  unchanged** (asserted: all three still `1e-15`), and deliberately **not** unified with
+  `DEFAULT_TRANSFER_RATIO_FLOOR`: same knob, different live values, which is the case
+  `surface-hardcoded-value` Step 1 says to keep apart. Both constants now cross-reference each other.
+- Substrate kind and error-metric strings, and the three `extra` key names, surfaced as constants
+  in `research/substrates/config.py` — each was previously a bare literal at up to nine sites, and
+  `"nodal_rms"` was never spelled at all (the implicit `else`, so a third metric would have fallen
+  through silently).
+- `MAX_SWEEP_DOF` now derives from `RATE_FIT_DOF_RANGE[1]` instead of retyping `4000`; the coupling
+  previously lived only in a comment.
+- `fit_log_log_rate` takes an `arm=` label bound onto its `rate_fit` log line.
+  `measure_rate_separation` calls it twice in succession, and the two lines were previously
+  byte-indistinguishable — in the code that produces the charter's headline rate separation.
+  Default keeps every existing caller unchanged.
+- `TensorGridSubstrate.refine` warns on an empty selection, matching `SkfemTriSubstrate`. Both read
+  the same `marking_variant` and run in the same sweep loop, but only one warned.
+
 ### Fixed — CI coverage jobs no longer pin the pure-Python coverage tracer
 
 - **`COVERAGE_CORE=pytrace` was retired from the `coverage` and `coverage-gates` jobs.** The pin

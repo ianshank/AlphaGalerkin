@@ -44,6 +44,30 @@ logger = structlog.get_logger(__name__)
 #: analytic exact solution), matching ``BaseSolver._compute_l2_error``.
 L2ErrorFn = Callable[[NDArray[np.float64], NDArray[np.float64], PDEOperator], float | None]
 
+#: Corner coordinates of the canonical L-shaped benchmark domain,
+#: ``[-1, 1]^2 \ [0, 1]x[-1, 0]``. These are part of the *definition* of the
+#: reentrant-corner Poisson benchmark (the ``r^(2/3) sin(2t/3)`` singularity sits
+#: at the origin), not a tunable -- which is why
+#: :func:`build_lshaped_initial_mesh` validates an operator against them rather
+#: than sizing itself from the operator the way :func:`build_initial_mesh` does.
+LSHAPE_DOMAIN_MIN: float = -1.0
+LSHAPE_DOMAIN_MAX: float = 1.0
+
+#: The reentrant corner itself. Kept separate from a bare ``0.0`` because it is
+#: the one coordinate AC8 pins as a mesh node, and the three sub-squares meet here.
+LSHAPE_DOMAIN_MID: float = 0.0
+
+#: Nodes per axis in each of the three unit squares assembled into the L-shape.
+#: 3 nodes == 2 elements per axis; the sub-squares must agree or ``nw + ne + sw``
+#: leaves hanging nodes on the shared edges.
+LSHAPE_NODES_PER_SQUARE: int = 3
+
+#: Absolute tolerance when comparing an operator's domain to the canonical
+#: L-shape. Loose enough to survive float round-trips through a Pydantic config
+#: (which stores the bounds as a list), tight enough that any real rescaling --
+#: the smallest the callers use is 0.5 -- is rejected.
+LSHAPE_DOMAIN_ATOL: float = 1e-9
+
 
 class FEMConfig(SolverConfig):
     """Configuration for scikit-fem-based FEM solvers."""
@@ -183,13 +207,59 @@ def build_lshaped_initial_mesh(
     The L-shaped domain is defined as ``[-1,1]^2 \ [0,1]x[-1,0]``. The
     reentrant corner at the origin (AC8) is a mesh node on both the primary
     (sum) path and the ``init_lshaped()`` fallback.
+
+    Unlike :func:`build_initial_mesh`, which sizes itself from
+    ``operator.domain_min``/``domain_max``, this builder emits the **canonical
+    unit** L-shape its own docstring declares -- the corner coordinates are
+    part of the benchmark's definition, not a parameter. It therefore validates
+    that the operator agrees, rather than silently meshing a different domain
+    than the one it was handed.
+
+    That check is not defensive tidiness. ``lshape_inside_predicate(scale)``
+    (``src/research/lshape_amr_compare.py``) *is* scale-aware, so an operator
+    on ``[-s, s]^2`` with ``s != 1`` previously produced a scaled notch rule
+    over an unscaled mesh: two geometries mixed, every downstream number still
+    finite and plausible. That is the 2026-08-16 L-shape retraction's exact
+    signature, and it reached the adequacy gate via
+    ``_lshaped_operator(params.scale)``, masked only by ``scale`` defaulting
+    to 1.0. Supporting scaled L-shapes is a feature; this raises instead.
+
+    Raises:
+        NotImplementedError: If ``operator.dim != 2``, or if the operator's
+            domain is not the canonical unit L-shape bounding box.
+
     """
     if operator.dim != 2:
         raise NotImplementedError("L-shaped domain is inherently 2D")
 
-    nw = skfem.MeshTri.init_tensor(np.linspace(-1.0, 0.0, 3), np.linspace(0.0, 1.0, 3))
-    ne = skfem.MeshTri.init_tensor(np.linspace(0.0, 1.0, 3), np.linspace(0.0, 1.0, 3))
-    sw = skfem.MeshTri.init_tensor(np.linspace(-1.0, 0.0, 3), np.linspace(-1.0, 0.0, 3))
+    lo = np.asarray(operator.domain_min, dtype=float)[:2]
+    hi = np.asarray(operator.domain_max, dtype=float)[:2]
+    expected_lo = np.full(2, LSHAPE_DOMAIN_MIN)
+    expected_hi = np.full(2, LSHAPE_DOMAIN_MAX)
+    if not (
+        np.allclose(lo, expected_lo, atol=LSHAPE_DOMAIN_ATOL)
+        and np.allclose(hi, expected_hi, atol=LSHAPE_DOMAIN_ATOL)
+    ):
+        raise NotImplementedError(
+            f"build_lshaped_initial_mesh emits the canonical unit L-shape "
+            f"[{LSHAPE_DOMAIN_MIN}, {LSHAPE_DOMAIN_MAX}]^2 \\ "
+            f"[0, {LSHAPE_DOMAIN_MAX}]x[{LSHAPE_DOMAIN_MIN}, 0], but the operator's domain is "
+            f"[{lo.tolist()}, {hi.tolist()}]. Scaled L-shapes are unsupported: the mesh would "
+            f"stay unit-scale while lshape_inside_predicate(scale) scales the notch, mixing "
+            f"two geometries silently."
+        )
+
+    mid = LSHAPE_DOMAIN_MID
+    nodes = LSHAPE_NODES_PER_SQUARE
+    nw = skfem.MeshTri.init_tensor(
+        np.linspace(LSHAPE_DOMAIN_MIN, mid, nodes), np.linspace(mid, LSHAPE_DOMAIN_MAX, nodes)
+    )
+    ne = skfem.MeshTri.init_tensor(
+        np.linspace(mid, LSHAPE_DOMAIN_MAX, nodes), np.linspace(mid, LSHAPE_DOMAIN_MAX, nodes)
+    )
+    sw = skfem.MeshTri.init_tensor(
+        np.linspace(LSHAPE_DOMAIN_MIN, mid, nodes), np.linspace(LSHAPE_DOMAIN_MIN, mid, nodes)
+    )
 
     try:
         mesh = nw + ne + sw

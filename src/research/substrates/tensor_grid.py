@@ -33,15 +33,25 @@ import numpy as np
 import structlog
 
 from src.refinement.substrate import SubstrateSolveResult
+from src.refinement.substrate_registry import register_refinement_substrate
 from src.research.baselines import (
     DorflerAMRSolver,
     element_inside_mask,
     nodal_rms_l2_error,
     require_exact_solution,
+    require_measurable_l2,
 )
 from src.research.lshape_amr_compare import area_weighted_l2
 from src.research.marking import dorfler_mark
-from src.research.substrates.config import SubstrateConfig
+from src.research.substrates.config import (
+    ERROR_METRIC_QUADRATURE,
+    SUBSTRATE_AREA_WEIGHTED_L2_KEY,
+    SUBSTRATE_KIND_TENSOR_GRID,
+    SUBSTRATE_NODAL_RMS_L2_KEY,
+    SUBSTRATE_PRIMARY_L2_KEY,
+    SubstrateConfig,
+    resolve_substrate_config,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -61,6 +71,7 @@ class TensorGridMesh:
     ys: NDArray[np.float64]
 
 
+@register_refinement_substrate(SUBSTRATE_KIND_TENSOR_GRID)
 class TensorGridSubstrate:
     """``RefinementSubstrate`` over a 2D tensor-product grid (the legacy control).
 
@@ -114,7 +125,9 @@ class TensorGridSubstrate:
 
         self._operator = operator
         self._inside = inside
-        self._config = config or SubstrateConfig(name="tensor_grid_substrate", kind="tensor_grid")
+        self._config = resolve_substrate_config(
+            config, kind=SUBSTRATE_KIND_TENSOR_GRID, default_name="tensor_grid_substrate"
+        )
         self._sparse = sparse
         self._spsolve = spsolve
         require_exact_solution(operator, "TensorGridSubstrate")
@@ -166,13 +179,20 @@ class TensorGridSubstrate:
         ).ravel()
         diff = (u_full.ravel() - exact)[in_mask]
         area_weighted = area_weighted_l2(diff, mesh.xs, mesh.ys, in_mask)
-        # The unweighted counterpart, so `error_metric` is a real choice here
-        # and `extra` carries the same pair SkfemTriSubstrate reports. Computed
-        # over in-domain nodes only, matching the area-weighted norm's support.
+        # The unweighted counterpart, so `error_metric` is a real choice here.
+        # Computed over in-domain nodes only, matching the area-weighted norm's
+        # support. NOTE: this is NOT the same pair SkfemTriSubstrate reports --
+        # its quadrature-metric key is `l2_error_quadrature`, ours is
+        # `l2_error_area_weighted`, because an area-weighted nodal norm is not a
+        # quadrature form. A comment here used to claim they matched; they never
+        # did, which is why SUBSTRATE_PRIMARY_L2_KEY exists (D4).
         nodal_rms = nodal_rms_l2_error(u_full.ravel()[in_mask], grid[in_mask], self._operator)
+        nodal_rms_value = require_measurable_l2(nodal_rms, "TensorGridSubstrate")
 
         l2_error = (
-            area_weighted if self._config.error_metric == "quadrature" else float(nodal_rms or 0.0)
+            area_weighted
+            if self._config.error_metric == ERROR_METRIC_QUADRATURE
+            else nodal_rms_value
         )
         n_dof = int(in_mask.sum())
         n_dof_free = self._n_dof_free(mesh, in_mask)
@@ -182,8 +202,9 @@ class TensorGridSubstrate:
             n_dof=n_dof,
             n_dof_free=n_dof_free,
             n_units=self.n_units(mesh),
+            l2_primary=l2_error,
             l2_area_weighted=area_weighted,
-            l2_nodal_rms=float(nodal_rms or 0.0),
+            l2_nodal_rms=nodal_rms_value,
         )
         return SubstrateSolveResult(
             values=u_full,
@@ -192,8 +213,9 @@ class TensorGridSubstrate:
             n_dof=n_dof,
             n_dof_free=n_dof_free,
             extra={
-                "l2_error_area_weighted": area_weighted,
-                "l2_error_nodal_rms": float(nodal_rms or 0.0),
+                SUBSTRATE_PRIMARY_L2_KEY: l2_error,
+                SUBSTRATE_AREA_WEIGHTED_L2_KEY: area_weighted,
+                SUBSTRATE_NODAL_RMS_L2_KEY: nodal_rms_value,
             },
         )
 
@@ -219,7 +241,18 @@ class TensorGridSubstrate:
         return dorfler_mark(indicators, theta, variant=self._config.marking_variant)
 
     def refine(self, mesh: TensorGridMesh, marked: NDArray[np.bool_]) -> TensorGridMesh:
-        """Axis-project ``marked`` and insert grid lines via ``_refine_grid``."""
+        """Axis-project ``marked`` and insert grid lines via ``_refine_grid``.
+
+        Warns on an empty selection for the same reason ``SkfemTriSubstrate``
+        does: ``marking_variant="linear"`` returns all-False on an all-zero
+        indicator array, and a DOF-growth loop would then spin silently. Both
+        substrates read the same ``marking_variant`` field and are driven by the
+        same ``run_refinement_sweep`` loop, but only the skfem side warned --
+        so the identical failure was observable on one substrate and invisible
+        on the other.
+        """
+        if not marked.any():
+            self._log.warning("substrate_refine_noop", n_units=self.n_units(mesh))
         nx = len(mesh.xs) - 1
         ny = len(mesh.ys) - 1
         marked_grid = marked.reshape(nx, ny)
@@ -266,7 +299,7 @@ class TensorGridSubstrate:
 
     def describe(self) -> dict[str, str | int | float]:
         return {
-            "kind": "tensor_grid",
+            "kind": self._config.kind,
             "dof_convention": "in_domain_grid_nodes",
             "initial_side": self._config.initial_side,
         }

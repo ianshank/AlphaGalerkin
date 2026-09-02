@@ -11,6 +11,11 @@ from src.refinement.config import RefinementGameConfig
 from src.refinement.game import RefinementGame
 from src.refinement.registry import RefinementGameRegistry, register_refinement_game
 from src.refinement.state import RefinementLike, RefinementState
+from src.refinement.substrate import RefinementSubstrate, SubstrateSolveResult
+from src.refinement.substrate_registry import (
+    RefinementSubstrateRegistry,
+    register_refinement_substrate,
+)
 
 __all__ = [
     "RefinementGame",
@@ -19,5 +24,9 @@ __all__ = [
     "RefinementGameRegistry",
     "RefinementLike",
     "RefinementState",
+    "RefinementSubstrate",
+    "RefinementSubstrateRegistry",
+    "SubstrateSolveResult",
     "register_refinement_game",
+    "register_refinement_substrate",
 ]

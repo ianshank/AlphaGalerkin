@@ -22,7 +22,12 @@ import numpy as np
 import structlog
 
 from src.refinement.substrate import SubstrateSolveResult
-from src.research.baselines import nodal_rms_l2_error, require_exact_solution
+from src.refinement.substrate_registry import register_refinement_substrate
+from src.research.baselines import (
+    nodal_rms_l2_error,
+    require_exact_solution,
+    require_measurable_l2,
+)
 from src.research.fem_baseline import (
     _make_element,
     _require_skfem,
@@ -33,7 +38,15 @@ from src.research.fem_baseline import (
     zz_indicator,
 )
 from src.research.marking import dorfler_mark
-from src.research.substrates.config import SubstrateConfig
+from src.research.substrates.config import (
+    ERROR_METRIC_QUADRATURE,
+    SUBSTRATE_KIND_SKFEM_TRI,
+    SUBSTRATE_NODAL_RMS_L2_KEY,
+    SUBSTRATE_PRIMARY_L2_KEY,
+    SUBSTRATE_QUADRATURE_L2_KEY,
+    SubstrateConfig,
+    resolve_substrate_config,
+)
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -50,6 +63,7 @@ class SkfemTriMesh:
     mesh: Any
 
 
+@register_refinement_substrate(SUBSTRATE_KIND_SKFEM_TRI)
 class SkfemTriSubstrate:
     """``RefinementSubstrate`` over a ``scikit-fem`` triangular mesh (element-local).
 
@@ -62,7 +76,9 @@ class SkfemTriSubstrate:
         config: SubstrateConfig | None = None,
     ) -> None:
         self._operator = operator
-        self._config = config or SubstrateConfig(name="skfem_tri_substrate", kind="skfem_tri")
+        self._config = resolve_substrate_config(
+            config, kind=SUBSTRATE_KIND_SKFEM_TRI, default_name="skfem_tri_substrate"
+        )
         self._skfem = _require_skfem()
         require_exact_solution(operator, "SkfemTriSubstrate")
         self._log = logger.bind(**self.describe())
@@ -98,16 +114,24 @@ class SkfemTriSubstrate:
         )
         indicators = zz_indicator(mesh.mesh, u)
 
-        l2_error = quad_l2 if self._config.error_metric == "quadrature" else (nodal_rms or 0.0)
-        extra = {"l2_error_nodal_rms": float(nodal_rms or 0.0), "l2_error_quadrature": quad_l2}
+        nodal_rms_value = require_measurable_l2(nodal_rms, "SkfemTriSubstrate")
+        l2_error = (
+            quad_l2 if self._config.error_metric == ERROR_METRIC_QUADRATURE else nodal_rms_value
+        )
+        extra = {
+            SUBSTRATE_PRIMARY_L2_KEY: l2_error,
+            SUBSTRATE_NODAL_RMS_L2_KEY: nodal_rms_value,
+            SUBSTRATE_QUADRATURE_L2_KEY: quad_l2,
+        }
 
         self._log.info(
             "substrate_solve",
             n_dof=n_dof,
             n_dof_free=n_dof_free,
             n_units=self.n_units(mesh),
+            l2_primary=l2_error,
             l2_quadrature=quad_l2,
-            l2_nodal_rms=float(nodal_rms or 0.0),
+            l2_nodal_rms=nodal_rms_value,
         )
         return SubstrateSolveResult(
             values=u,
@@ -155,7 +179,7 @@ class SkfemTriSubstrate:
 
     def describe(self) -> dict[str, str | int | float]:
         return {
-            "kind": "skfem_tri",
+            "kind": self._config.kind,
             "dof_convention": "fem_basis_dofs",
             "element_type": self._config.element_type,
         }

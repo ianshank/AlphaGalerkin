@@ -92,7 +92,28 @@ DEFAULT_BOUNDARY_TOLERANCE: Final[float] = 1e-6
 """Tolerance for boundary point detection in PDE geometry."""
 
 DEFAULT_TRANSFER_RATIO_FLOOR: Final[float] = 1e-12
-"""Floor used to avoid division by zero in transfer ratio calculation."""
+"""Floor used to avoid division by zero in transfer ratio calculation.
+
+Numerically **different** from :data:`DEFAULT_RATIO_FLOOR` below (1e-12 vs
+1e-15) and deliberately not unified with it: same knob, different live values
+at different call sites, which ``surface-hardcoded-value`` Step 1 says to keep
+apart rather than silently retune one of them.
+"""
+
+DEFAULT_RATIO_FLOOR: Final[float] = 1e-15
+"""Floor used to avoid division by zero in benchmark ratio calculations.
+
+The value three research harnesses had each declared for themselves --
+``research/lshape_amr_compare.py``'s ``RATIO_FLOOR``,
+``research/transfer_baseline_compare.py``'s ``TRANSFER_RATIO_FLOOR``, and
+``research/substrates/config.py``'s ``RATIO_FLOOR``. The last of those carried a
+provenance comment that was wrong on every count: it cited a module path that
+does not exist and claimed to mirror :data:`DEFAULT_TRANSFER_RATIO_FLOOR`,
+which is a thousandfold larger. Named here so a fourth copy cannot drift.
+
+**Not** interchangeable with :data:`DEFAULT_TRANSFER_RATIO_FLOOR`. Changing one
+must not change the other.
+"""
 
 DEFAULT_POISSON_RHS: Final[float] = 1.0
 """Default right-hand side constant for Poisson test problems."""
@@ -166,6 +187,7 @@ __all__ = [
     "DEFAULT_PUCT_CONSTANT",
     "DEFAULT_TEMPERATURE",
     "DEFAULT_TEMPERATURE_SCHEDULE",
+    "DEFAULT_RATIO_FLOOR",
     "DEFAULT_TRANSFER_RATIO_FLOOR",
     "DEFAULT_VIRTUAL_LOSS",
     "LAYER_NORM_EPSILON",

@@ -178,11 +178,20 @@ def run_refinement_sweep(
 def fit_log_log_rate(
     points: list[SweepPoint],
     dof_range: tuple[float, float],
+    *,
+    arm: str = "unspecified",
 ) -> tuple[float, int]:
     """Least-squares slope of ``log(l2_error)`` vs ``log(n_dof)`` over a window.
 
     Args:
         points: A sweep trajectory.
+        arm: Which arm this trajectory belongs to, bound onto the ``rate_fit``
+            log line. ``measure_rate_separation`` calls this twice in
+            succession; without it the two lines are byte-indistinguishable in
+            structure and nothing says which slope came from which arm -- in
+            the exact code that produces the charter's headline rate
+            separation. Defaults to a sentinel so every existing caller keeps
+            working unchanged.
         dof_range: ``(low, high)`` inclusive DOF window to fit over. Restricting
             the window is what makes the rate an *asymptotic* statement rather
             than an average over the pre-asymptotic levels where neither arm has
@@ -213,7 +222,7 @@ def fit_log_log_rate(
         )
 
     slope = float(np.polyfit(np.log(dofs[usable]), np.log(errors[usable]), 1)[0])
-    logger.debug("rate_fit", slope=slope, n_points=n_used, dof_range=dof_range)
+    logger.debug("rate_fit", arm=arm, slope=slope, n_points=n_used, dof_range=dof_range)
     return slope, n_used
 
 
@@ -243,8 +252,8 @@ def measure_rate_separation(
     The matched-DOF reading is taken at the largest DOF *both* arms reach, so
     neither arm is credited for a level the other never got to.
     """
-    adaptive_rate, n_adaptive = fit_log_log_rate(adaptive, dof_range)
-    uniform_rate, n_uniform = fit_log_log_rate(uniform, dof_range)
+    adaptive_rate, n_adaptive = fit_log_log_rate(adaptive, dof_range, arm="adaptive")
+    uniform_rate, n_uniform = fit_log_log_rate(uniform, dof_range, arm="uniform")
 
     matched_dof = float(
         min(

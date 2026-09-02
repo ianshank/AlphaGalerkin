@@ -10,26 +10,59 @@ constructor arguments.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from src.constants import DEFAULT_RATIO_FLOOR
 from src.templates.config import BaseModuleConfig
+
+#: The two substrate identities. Named because each was previously spelled as a
+#: bare string at nine sites -- including inside both ``describe()`` bodies,
+#: which is how ``describe()["kind"]`` came to be able to disagree with
+#: ``SubstrateConfig.kind`` (D2).
+SUBSTRATE_KIND_TENSOR_GRID: Final[str] = "tensor_grid"
+SUBSTRATE_KIND_SKFEM_TRI: Final[str] = "skfem_tri"
+
+#: The two ``error_metric`` members, named for the same reason: both substrates
+#: compared ``self._config.error_metric == "quadrature"`` against a bare string
+#: and left ``"nodal_rms"`` entirely unspelled as the implicit ``else``, so a
+#: third metric would have silently fallen through to the nodal-RMS branch.
+ERROR_METRIC_QUADRATURE: Final[str] = "quadrature"
+ERROR_METRIC_NODAL_RMS: Final[str] = "nodal_rms"
+
+#: ``SubstrateSolveResult.extra`` key carrying whichever metric ``error_metric``
+#: selected, identically on every substrate. The metric-specific keys below stay
+#: additive; this one exists because the two implementations previously published
+#: the selected value under *different* names (``l2_error_area_weighted`` vs
+#: ``l2_error_quadrature``), so no generic consumer could read it (D4).
+SUBSTRATE_PRIMARY_L2_KEY: Final[str] = "l2_error_primary"
+
+#: Metric-specific ``extra`` keys, unchanged and still always reported.
+SUBSTRATE_NODAL_RMS_L2_KEY: Final[str] = "l2_error_nodal_rms"
+SUBSTRATE_QUADRATURE_L2_KEY: Final[str] = "l2_error_quadrature"
+SUBSTRATE_AREA_WEIGHTED_L2_KEY: Final[str] = "l2_error_area_weighted"
 
 #: Fields that only mean something for one substrate kind. Setting one away
 #: from its default while building the *other* kind is rejected rather than
 #: silently ignored -- a typed, validated, described field that does nothing
 #: is a worse lie than a magic number, because it looks like a knob.
 _KIND_SCOPED_FIELDS: dict[str, tuple[str, ...]] = {
-    "skfem_tri": ("element_type", "initial_refinements"),
-    "tensor_grid": ("initial_side",),
+    SUBSTRATE_KIND_SKFEM_TRI: ("element_type", "initial_refinements"),
+    SUBSTRATE_KIND_TENSOR_GRID: ("initial_side",),
 }
 
 #: Numerical-stability floor for any ratio computation over substrate
-#: quantities (e.g. error ratios between two DOF counts), mirroring
-#: ``DEFAULT_TRANSFER_RATIO_FLOOR`` in ``src/experiments/transfer_baseline_compare``-
-#: adjacent code.
-RATIO_FLOOR = 1e-15
+#: quantities (e.g. error ratios between two DOF counts).
+#:
+#: Re-exported from ``src.constants`` rather than redeclared: this was a third
+#: independent ``1e-15`` literal, and its original provenance comment was wrong
+#: on every count -- it cited ``src/experiments/transfer_baseline_compare`` (a
+#: module that does not exist; the real one is under ``src/research/``) and
+#: claimed to mirror ``DEFAULT_TRANSFER_RATIO_FLOOR``, which is ``1e-12``, a
+#: thousandfold different. The two are the same *knob* with different *values*,
+#: so they are named separately and deliberately not unified.
+RATIO_FLOOR = DEFAULT_RATIO_FLOOR
 
 #: Numerical-stability floor for element/cell area computations, guarding
 #: against division by a degenerate (near-zero-area) element.
@@ -146,3 +179,51 @@ class SubstrateConfig(BaseModuleConfig):
                 f"silently a no-op, so it is rejected instead."
             )
         return self
+
+
+def resolve_substrate_config(
+    config: SubstrateConfig | None,
+    *,
+    kind: str,
+    default_name: str,
+) -> SubstrateConfig:
+    """Return ``config``, or a default one, having checked it is for ``kind``.
+
+    Both substrates previously wrote the same two lines by hand::
+
+        self._config = config or SubstrateConfig(name="...", kind="...")
+
+    and then hardcoded their kind a *second* time inside ``describe()``. The
+    two spellings could disagree, and did: a ``SubstrateConfig(kind="skfem_tri")``
+    handed to ``TensorGridSubstrate`` constructed cleanly and then reported
+    ``describe()["kind"] == "tensor_grid"``, with the bound structlog logger
+    emitting the same wrong value. ``kind`` had no production reader outside its
+    own validator, so nothing could catch it -- and ``_KIND_SCOPED_FIELDS``
+    structurally cannot, since it rejects a field scoped to the *other* kind,
+    never a mismatched ``kind`` itself.
+
+    Shared here, next to the config it validates, so a third substrate cannot
+    reintroduce the divergence.
+
+    Args:
+        config: The caller's config, or ``None`` to build the default.
+        kind: The concrete substrate's own kind. Must be a ``SubstrateConfig.kind``
+            member.
+        default_name: ``name`` for the default config when ``config`` is ``None``.
+
+    Returns:
+        A config whose ``kind`` is ``kind``.
+
+    Raises:
+        ValueError: If ``config.kind`` names a different substrate.
+
+    """
+    if config is None:
+        return SubstrateConfig(name=default_name, kind=kind)  # type: ignore[arg-type]
+    if config.kind != kind:
+        raise ValueError(
+            f"config.kind={config.kind!r} does not match the substrate being built "
+            f"({kind!r}). Constructing one substrate with another's config used to "
+            f"succeed and then misreport kind in describe() and in every log line."
+        )
+    return config

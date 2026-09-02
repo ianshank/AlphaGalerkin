@@ -284,6 +284,9 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/tournament` | 85 |
 | `src/prototyping` | 85 |
 | `src/demos` | 81 |
+| `src/backend` | 54 |
+| `src/core` | 85 |
+| `src/deployment` | 25 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced
@@ -306,6 +309,9 @@ with a stated reason. An undisclosed deviation is indistinguishable from drift.
 | `CHANGELOG.md` still references removed modules | Immutable append-only history; excluded from the link checker by design. |
 | `results/lambda_scheduling.{csv,png}` outlive their producer | The `thermo` module was cut, but these are the only in-tree evidence of that negative result, and `ARCHITECTURE.md` declares changelog-referenced artifacts deliberate. |
 | `RefinementGameRegistry` has zero runtime registrants | Real PDE games register in `GameRegistry`; the refinement registry is a forward-looking abstraction. Tracked as a dead-abstraction follow-up, not a silent gap. |
+| `RefinementSubstrateRegistry` has two runtime registrants and zero runtime lookups | Same shape as the row above, and disclosed rather than left for a reviewer to find. **Narrowed 2026-09-02**: both `TensorGridSubstrate` and `SkfemTriSubstrate` now carry `@register_refinement_substrate` (this row previously said neither did), so `RefinementSubstrateRegistry().get_or_raise("skfem_tri")` resolves -- but no non-test caller performs that lookup yet. Both substrates are constructed directly today (by the adequacy gate and by tests); the registry exists because `element-local-substrate` Slice E introduces config-driven substrate selection, which is the first thing that needs a lookup. Retires when that lands — or the registry goes. |
+| One `RefinementSubstrate` Protocol member is exempted from the abstraction-audit gate | `fingerprint` has no reader: its consumer is the fingerprint-keyed solve cache bounded by `SubstrateConfig.solve_cache_max_entries`, which lands with `element-local-substrate` Slice E task 7.1. Recorded in `scripts/audit_abstractions.py::_STAGED_FOR_UPCOMING_TASK`, which is distinct from `_KNOWN_LIVE` (a real caller the AST cannot see) and is **self-expiring**: `tests/scripts/test_audit_abstractions.py::test_every_staged_exemption_is_still_forward` drops the allowlist, re-runs the audit over CI's own roots, and fails if a staged member has gained a reader — so a stale exemption cannot quietly narrow the gate. The seven other members left this allowlist the moment `src/research/substrates/sweep.py` read them. |
+| `src/research/substrates/skfem_tri.py` is in the global coverage `omit` | It requires the optional `[fem]` extra, so the repo-wide `--cov=src` gate would report it as 0% ("never imported") on every job without scikit-fem. Not ungated, though: the `test-extras` job — the only one that installs the extra — runs a dedicated `--cov=src/research/substrates` step at `--cov-fail-under=95` against an inline `.coveragerc` that drops the omit, the same technique already used for `video_compression` and `demos`. |
 | Two tracks are frozen rather than active or removed | An owner decision paused the codec model-zoo and the `dashboard/` + `hf_space/` surfaces for this cycle so attention stays on the refinement thesis. Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py` against `config/focus.yaml`; the freeze lifts when the refinement experiment has an interpretable answer, either way. |
 <!-- charter:deviations:end -->
 

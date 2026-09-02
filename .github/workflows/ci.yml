@@ -11,8 +11,24 @@
 name: CI
 
 on:
+  # push: is restricted to POST-MERGE branches only. Every feature/claude/plan/
+  # release push with an open PR used to fire this workflow twice -- once as
+  # `push`, once as `pull_request` -- into the same concurrency group, where
+  # `cancel-in-progress` killed whichever registered first. The loser left ~11
+  # `cancelled` check runs stapled to the SHA and `mergeable_state: unstable`,
+  # which was mis-triaged as a CI failure twice in one day (B38). Worse, `focus`
+  # runs only on pull_request and test-slow's [full-test] hatch only on push, so
+  # which gate ran was a scheduler race. `pull_request:` below (unfiltered)
+  # covers every PR head; a feature-branch push with NO open PR now gets no CI
+  # until a PR exists -- the stated cost.
+  #
+  # RISK, named: the default branch is hardcoded here because `on:` filters
+  # cannot evaluate expressions. If the default branch is renamed, post-merge
+  # CI on it silently stops (PR CI is unaffected). The repo's own history has
+  # this exact bug once already -- see the comment that used to sit above
+  # `pull_request:` and now lives in git blame.
   push:
-    branches: [main, master, develop, "feature/*", "claude/*", "plan/*", "release/*"]
+    branches: [claude/alphagalerkin-implementation-4zGEN, main, master, develop]
   # No branches filter: the repo's default branch is not main/develop, so a
   # [main, develop] filter silently disabled CI for every pull request.
   pull_request:
@@ -128,8 +144,17 @@ jobs:
       # `BaseLoss.forward` (losses/base.py) unread, while the combined scan
       # does not, because the reader lives outside that package. Do not "tighten"
       # this by splitting it up.
+      # src/research joined these roots when the element-local substrate landed:
+      # RefinementSubstrate is declared in src/refinement but its driver
+      # (src/research/substrates/sweep.py) lives in src/research, so the
+      # narrower scan flagged seven live Protocol members as unread -- exactly
+      # the cross-package false positive the comment above warns about. Widening
+      # the scan is the honest fix; exempting live members via the script's
+      # allowlist would have silently stopped guarding them.
       - name: Audit abstractions (refinement surfaces)
-        run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+        run: |
+          python -m scripts.audit_abstractions \
+            src/mcts src/refinement src/pde src/research --fail-on-missing
 
       - name: Audit abstractions (all packages except the src/backend backlog)
         run: |
@@ -404,7 +429,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: test-fast
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule'
+    # workflow_dispatch added 2026-09-02: the [full-test] commit-message hatch reads
+    # github.event.head_commit, which only `push` payloads carry, and push: is now
+    # restricted to post-merge branches -- so on a feature branch the hatch is dead.
+    # A manual dispatch works on any branch and replaces it.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout repository
@@ -467,19 +496,16 @@ jobs:
     name: Test Coverage
     runs-on: ubuntu-latest
     # 45, not 30: this job runs the whole test sweep under the pure-Python
-    # tracer plus ~20 per-module gates, and measured 24m08s on a GitHub runner
-    # after the Noyron/SBIR gates were added -- 80% of a 30-minute cap, close
-    # enough that one slow runner turns a green build red. Note several gate
-    # steps re-run files the sweep already covered; collapsing that duplication
-    # (so each file is measured once) is the real fix and is tracked in
-    # docs/CODE_HYGIENE_AUDIT.md §7.7.
+    # tracer, which measured ~35 minutes on a GitHub runner.
+    #
+    # The ~40 per-module gates that used to run here were split into the
+    # `coverage-gates` job on 2026-09-02, after this job hit the 45-minute cap
+    # at 54 minutes and was cancelled with all 47 of its steps already
+    # successful -- failing `ci-success` on work that had actually completed.
+    # Raising the cap was rejected as masking: the job was 20% over budget and
+    # grew with every gate added. Keep new whole-suite work out of here.
     timeout-minutes: 45
     needs: lint
-    # The installed torch wheel crashes coverage's default C tracer on import
-    # (ValueError: module functions cannot set METH_CLASS ... / segfault). Use the
-    # pure-Python tracer, as documented in CLAUDE.md, so the coverage gates run.
-    env:
-      COVERAGE_CORE: pytrace
 
     steps:
       - name: Checkout repository
@@ -523,6 +549,62 @@ jobs:
             --cov-fail-under=85 \
             -q
 
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-alphagalerkin
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage report artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 14
+
+  # ============================================================
+  # Stage 5b: Per-module coverage gates
+  # ============================================================
+  # Split out of `coverage` on 2026-09-02 because that job hit its
+  # timeout-minutes: 45 at 54 minutes and was cancelled -- with ALL 47 of its
+  # steps having already succeeded, which then failed `ci-success` on a job
+  # whose work was actually done. The split is the fix rather than a larger
+  # timeout: the whole-suite sweep was ~35 min and these gates ~17.5 min, so
+  # raising the cap would have masked a job 20% over budget that grows with
+  # every gate added. These steps re-run their own test subsets and consume no
+  # artifact from the sweep, so they parallelise with it for free.
+  #
+  # Still true, and still the real fix (docs/CODE_HYGIENE_AUDIT.md 7.7): several
+  # gates re-run files the sweep already covered. Collapsing that duplication so
+  # each file is measured once would shrink both halves.
+  coverage-gates:
+    name: Per-Module Coverage Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: lint
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pytest-cov matplotlib
+
       # Per-module coverage gates — ratcheted up as part of tech-debt reduction.
       # Each gate ensures no single subsystem regresses below its threshold.
       - name: Per-module coverage gate (pde)
@@ -539,7 +621,9 @@ jobs:
         run: |
           pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
 
-      # Domain-free refinement engine (WS1). Branch coverage currently 96%.
+      # Domain-free refinement engine (WS1). Branch coverage 100% (170 stmts,
+      # 12 branches, 0 missed; re-measured 2026-09-02). The 96% previously
+      # stated here predated Slice A's substrate.py/substrate_registry.py.
       - name: Per-module coverage gate (refinement)
         if: always() && hashFiles('tests/refinement/') != ''
         run: |
@@ -639,9 +723,10 @@ jobs:
       # NOTE: these two gates use the native coverage runner with path-glob
       # --include rather than pytest-cov's dotted --cov=module.path. The dotted
       # form makes coverage import the target module during tracer setup, which
-      # collides with the torch C extension (SystemError: bad call flags), even
-      # under COVERAGE_CORE=pytrace. The native runner with path globs measures
-      # the same modules without importing them for source discovery.
+      # collides with the torch C extension (SystemError: bad call flags) under
+      # every tracer, pure-Python included -- so it is not a tracer choice that
+      # fixes it. The native runner with path globs measures the same modules
+      # without importing them for source discovery.
       - name: Per-module coverage gate (poc/scaling_law + centaur-common)
         if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
         run: |
@@ -775,12 +860,11 @@ jobs:
         run: |
           pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=85 -q --no-header
 
-      # Five packages that had no gate at all. Measured 2026-08-21 with
-      # COVERAGE_CORE=pytrace (mandatory -- the installed torch wheel crashes
-      # coverage's default C tracer and the failure is silent UNDER-measurement,
-      # so a gate set without it is simply wrong). --cov-branch is redundant with
-      # pyproject.toml's `[tool.coverage.run] branch = true` and is kept only for
-      # symmetry with the gates above.
+      # Five packages that had no gate at all. Measured 2026-08-21 under the
+      # since-retired COVERAGE_CORE=pytrace pin; re-measured identical without
+      # it (see the tracer-retirement entry in CHANGELOG.md). --cov-branch is
+      # redundant with pyproject.toml's `[tool.coverage.run] branch = true` and
+      # is kept only for symmetry with the gates above.
       #
       # Gated at floor(measured)-2 capped at 85, the convention documented on the
       # src/agents row in CLAUDE.md. The cap is deliberate for a NEW gate: its job
@@ -900,6 +984,49 @@ jobs:
         run: |
           pytest tests/prototyping/ --cov=src/prototyping --cov-branch --cov-fail-under=85 -q --no-header
 
+      # src/backend was invisible to EVERY coverage gate in this repo until
+      # 2026-09-02: `src/backend/*` is in pyproject.toml's global
+      # `[tool.coverage.run] omit` AND it had no per-module gate, so its 213
+      # passing tests measured nothing anywhere. The omit's origin is legitimate
+      # -- jax_backend.py needs the optional [jax] extra -- but it was applied at
+      # *package* granularity, which also hid torch_backend.py (95%),
+      # interface.py (100%), types.py (100%), and, less comfortably, logging.py
+      # and rng.py at literally 0%. Same inline-coveragerc technique as demos /
+      # video_compression, dropping the omit for this step only. Gated at 54 =
+      # floor(measured 56) - 2, measured in THIS lane (no JAX installed, so the
+      # 118 jax_backend tests skip); the test-jax job covers the other lane.
+      - name: Per-module coverage gate (backend)
+        if: always() && hashFiles('tests/backend/') != ''
+        run: |
+          cat > .coveragerc.backend <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/backend/ \
+            --cov=src/backend --cov-config=.coveragerc.backend \
+            --cov-branch --cov-fail-under=54 -q --no-header
+
+      # src/core (the Protocols + registry extracted in the 2026-08-16 sprint) had
+      # no gate and rode only the global --cov=src. Measured 97.67% branch; gated
+      # 85 per the floor(measured)-2-capped-at-85 convention.
+      - name: Per-module coverage gate (core)
+        if: always() && hashFiles('tests/core/') != ''
+        run: |
+          pytest tests/core/ --cov=src/core --cov-branch --cov-fail-under=85 -q --no-header
+
+      # src/deployment (ONNX export / quantization / runtime) had no gate. Measured
+      # 27.91% branch -- 626 statements, 416 missed. 25 is a REGRESSION TRIPWIRE,
+      # not a standard: it stops the package sliding further while it is the
+      # largest genuinely under-tested surface in src/. Raising it is real test
+      # work, tracked in docs/CODE_HYGIENE_AUDIT.md, not a number to edit here.
+      - name: Per-module coverage gate (deployment)
+        if: always() && hashFiles('tests/deployment/') != ''
+        run: |
+          pytest tests/deployment/ --cov=src/deployment --cov-branch --cov-fail-under=25 -q --no-header
+
       # src/demos hits the same pyproject.toml `[tool.coverage.run] omit` collision
       # that src/video_compression needed a workaround for: a bare --cov=src/demos
       # reports 0.00% with `CoverageWarning: No data was collected`, which is the
@@ -958,25 +1085,6 @@ jobs:
         if: always() && hashFiles('tests/dashboard/') != ''
         run: |
           pytest tests/dashboard/ --cov=dashboard --cov-branch --cov-fail-under=84 -q --no-header
-
-      - name: Upload coverage to Codecov
-        if: always()
-        uses: codecov/codecov-action@v7
-        with:
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-alphagalerkin
-          fail_ci_if_error: false
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload coverage report artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: htmlcov/
-          retention-days: 14
 
   # ============================================================
   # Stage 6: JAX Backend Tests
@@ -1091,11 +1199,85 @@ jobs:
           pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
+      # ALPHAGALERKIN_REQUIRE_EXTRAS=1 turns a fem_required test collected
+      # without scikit-fem into a hard collection error rather than a silent
+      # skip -- this job installs [test-extras] specifically so scikit-fem is
+      # present; a half-succeeded install must not go quietly green here.
       - name: Run FEM baseline + PettingZoo suites
+        env:
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
         run: |
           pytest tests/research/test_fem_baseline.py \
+            tests/research/test_skfem_substrate.py \
             tests/games/test_pettingzoo_adapter.py \
             --tb=short -q
+
+      # src/research/substrates/skfem_tri.py is in pyproject.toml's global
+      # [tool.coverage.run] omit (it needs the optional [fem] extra), so a bare
+      # --cov of it reports 0.00% with "No data was collected" -- and this job,
+      # the ONLY one with scikit-fem installed, previously ran no --cov at all.
+      # The module's coverage was therefore measured nowhere and could not
+      # regress-fail: exactly the false pass CLAUDE.md documents for
+      # video_compression and demos. Same inline-coveragerc fix as those two,
+      # dropping the omit for this step only. Directory (not file-path) --cov
+      # spec: coverage 7.x silently drops --cov=<...>.py.
+      #
+      # Gate 95, deliberately above the usual "floor(measured)-2 capped at 85"
+      # convention: the package is 272 statements at 99%, so an 85 gate would
+      # carry 14 points of slack and reproduce the finding this step exists to
+      # close.
+      - name: Coverage gate (src/research/substrates, needs [fem])
+        env:
+          # Without scikit-fem the fem_required tests SKIP, the measured
+          # percentage collapses, and the gate fails on "coverage too low" --
+          # naming the symptom instead of the cause. This turns that into the
+          # collection error it actually is.
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
+        run: |
+          cat > .coveragerc.substrates <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/research/test_skfem_substrate.py \
+            tests/research/test_amr_arena_interpretability.py \
+            tests/research/test_tensor_grid_substrate.py \
+            tests/research/test_substrates_config.py \
+            tests/research/test_substrates_sweep.py \
+            --cov=src/research/substrates \
+            --cov-config=.coveragerc.substrates \
+            --cov-branch --cov-fail-under=95 -q --no-header
+
+      # fem_baseline.py has the same problem for the same reason and had no gate
+      # at all: it is in the global omit (needs [fem]), so the `coverage` job's
+      # --cov=src/research gate at 85 has never measured it -- 249 statements
+      # invisible inside a package percentage that looked fine. Native-runner
+      # form because a --cov=<...>.py spec is silently dropped by coverage 7.x,
+      # and --rcfile because `coverage run` reads pyproject.toml's omit too
+      # (--include alone does NOT override it -- verified: "No data was
+      # collected"). Gated at 83 = floor(measured 85) - 2.
+      - name: Coverage gate (src/research/fem_baseline.py, needs [fem])
+        env:
+          # Without scikit-fem every test here skips and `coverage report`
+          # fails with "No data was collected" -- true, but it reads like a
+          # tooling fault rather than a missing extra.
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
+        run: |
+          cat > .coveragerc.fem <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          python -m coverage run --rcfile=.coveragerc.fem --branch \
+            --include="*/src/research/fem_baseline.py" \
+            -m pytest tests/research/test_fem_baseline.py \
+            tests/research/test_skfem_substrate.py -q -p no:cov
+          python -m coverage report --rcfile=.coveragerc.fem \
+            --include="*/src/research/fem_baseline.py" --fail-under=83
 
       # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
       # which these tracer-based tests do not target (src/deployment/export_onnx.py
@@ -1125,8 +1307,6 @@ jobs:
     needs: lint
     permissions:
       contents: read
-    env:
-      COVERAGE_CORE: pytrace
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -1161,7 +1341,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage, transfer-baseline-regression]
+    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-jax, test-chess]
     # !cancelled() rather than always(): a run superseded by the concurrency
     # group (push + pull_request for the same branch, or a newer push) has its
     # needed jobs cancelled, and under always() this job would still execute,
@@ -1177,6 +1357,11 @@ jobs:
           echo "  lint:                        ${{ needs.lint.result }}"
           echo "  test-fast:                   ${{ needs.test-fast.result }}"
           echo "  coverage:                    ${{ needs.coverage.result }}"
+          echo "  coverage-gates:              ${{ needs.coverage-gates.result }}"
+          echo "  test-extras:                 ${{ needs.test-extras.result }}"
+          echo "  test-integration:            ${{ needs.test-integration.result }}"
+          echo "  test-jax:                    ${{ needs.test-jax.result }}"
+          echo "  test-chess:                  ${{ needs.test-chess.result }}"
           echo "  transfer-baseline (soft):    ${{ needs.transfer-baseline-regression.result }}"
           echo "======================="
 
@@ -1201,6 +1386,45 @@ jobs:
           # Coverage gate is a hard threshold (--cov-fail-under=85)
           if [[ "${{ needs.coverage.result }}" != "success" ]]; then
             echo "FAIL: Coverage gate did not pass (result=${{ needs.coverage.result }})"
+            exit 1
+          fi
+
+          # Per-module gates, split out of `coverage` on 2026-09-02. Gating them
+          # here is not new strictness -- they were already hard gates inside the
+          # coverage job, and omitting them from `needs` after the split would
+          # have silently downgraded ~40 thresholds to advisory.
+          if [[ "${{ needs.coverage-gates.result }}" != "success" ]]; then
+            echo "FAIL: Per-module coverage gates did not pass (result=${{ needs.coverage-gates.result }})"
+            exit 1
+          fi
+
+          # test-extras was NEVER in this list, so every gate it carries has been
+          # unable to block a merge -- including the two [fem] gates added on
+          # 2026-09-02 (src/research/substrates at 95, fem_baseline.py at 83) and
+          # the FEM-baseline + PettingZoo suites that predate them. A gate that
+          # cannot fail the build is a report, not a gate.
+          if [[ "${{ needs.test-extras.result }}" != "success" ]]; then
+            echo "FAIL: Optional-dependency suites failed (result=${{ needs.test-extras.result }})"
+            exit 1
+          fi
+
+          # The three below were NEVER in `needs` (B38, 2026-09-02): hard-failing
+          # jobs that ran on every PR with no `if:` and could not block a merge.
+          # test-chess even carries its own --cov-fail-under=80 on src/games that
+          # enforced nothing. focus/secrets stay out per their own comments;
+          # test-slow stays out because it is PR-invisible by design.
+          if [[ "${{ needs.test-integration.result }}" != "success" ]]; then
+            echo "FAIL: Integration tests failed (result=${{ needs.test-integration.result }})"
+            exit 1
+          fi
+
+          if [[ "${{ needs.test-jax.result }}" != "success" ]]; then
+            echo "FAIL: JAX backend tests failed (result=${{ needs.test-jax.result }})"
+            exit 1
+          fi
+
+          if [[ "${{ needs.test-chess.result }}" != "success" ]]; then
+            echo "FAIL: Chess pipeline tests failed (result=${{ needs.test-chess.result }})"
             exit 1
           fi
 

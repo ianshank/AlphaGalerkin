@@ -27,6 +27,7 @@ from src.pde.config import PDEType
 from src.pde.operators import PDEOperator
 from src.poc.device import resolve_device
 from src.research.gpu_profiler import GpuUtilizationProfiler
+from src.research.marking import dorfler_mark
 
 logger = structlog.get_logger(__name__)
 
@@ -210,6 +211,134 @@ class NavierStokesConfig(SolverConfig):
     )
 
 
+def element_inside_mask(
+    xs: NDArray[np.float64],
+    ys: NDArray[np.float64],
+    inside: InsidePredicate,
+) -> NDArray[np.bool_]:
+    """Which tensor-grid elements lie inside the physical domain, by centre test.
+
+    Shape ``(len(xs) - 1, len(ys) - 1)``. An element counts as inside iff its
+    centre satisfies ``inside`` -- the same rule
+    ``DorflerAMRSolver._compute_indicators_2d`` uses to decide which elements
+    get a zero indicator, and therefore the rule any *refinability* answer has
+    to agree with: an element whose indicator is forced to zero can never be
+    marked, so calling it refinable is a claim the estimator contradicts.
+
+    Module-level so the indicator path and ``TensorGridSubstrate.refinable_mask``
+    share **one** definition. The centres are built through the identical
+    ``float32 -> float64`` round-trip the per-element midpoint uses, so the
+    predicate sees byte-for-byte the same input; a second hand-rolled copy of
+    that round-trip would be free to drift by a ULP and silently disagree at
+    the boundary.
+    """
+    cx_all = 0.5 * (xs[:-1] + xs[1:])
+    cy_all = 0.5 * (ys[:-1] + ys[1:])
+    cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
+    centres = (
+        np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1).astype(np.float32).astype(np.float64)
+    )
+    return np.asarray(inside(centres), dtype=bool).reshape(len(xs) - 1, len(ys) - 1)
+
+
+def require_exact_solution(operator: PDEOperator, owner: str) -> None:
+    """Fail at construction when ``operator`` has no analytic exact solution.
+
+    Every ``RefinementSubstrate`` measures error against an exact solution, and
+    ``SubstrateSolveResult.l2_error`` is a bare ``float`` with nowhere to put a
+    ``None``. Without this, such an operator surfaces as a ``TypeError`` from
+    ``np.asarray(None, dtype=np.float64)`` several frames inside a solve or a
+    quadrature form -- true, but unhelpful.
+
+    Probed at ``operator.dim`` rather than a hardcoded 2: both substrates
+    previously wrote ``np.zeros((1, 2))``, which silently assumed 2-D and was
+    the third copy-paste between that pair (after ``_dirichlet_dof_indices``
+    and the nodal-RMS formula). Shared here, next to the other primitives both
+    substrates already import, so a fourth cannot drift.
+
+    Args:
+        operator: The operator to probe.
+        owner: Caller name, used verbatim in the error so the message names the
+            class the user actually constructed.
+
+    Raises:
+        ValueError: If ``exact_solution`` returns ``None``.
+
+    """
+    probe = np.zeros((1, operator.dim), dtype=np.float32)
+    if operator.exact_solution(probe) is None:
+        raise ValueError(
+            f"{owner} measures error against an analytic exact solution; "
+            f"{type(operator).__name__}.exact_solution returned None. Failing at "
+            f"construction rather than as a TypeError from inside solve()."
+        )
+
+
+def require_measurable_l2(nodal_rms: float | None, owner: str) -> float:
+    """Return ``nodal_rms``, or raise -- never substitute ``0.0``.
+
+    :func:`nodal_rms_l2_error` documents that it returns ``None`` "not a crash,
+    and **not** ``0.0``", because ``0.0`` is the strongest possible correctness
+    claim and an unmeasurable error is the weakest possible evidence for it.
+    Both substrates nevertheless wrote ``float(nodal_rms or 0.0)`` at six sites,
+    converting the sentinel straight back into the value the helper refuses to
+    return, so an unmeasurable solve published a *perfect* L2 error.
+
+    Two triggers reach that ``None``. The first -- an operator with no analytic
+    exact solution -- is already guarded at construction by
+    :func:`require_exact_solution`. The second is an **empty diff array**
+    (``n == 0``): an empty in-domain node set, reachable from an over-restrictive
+    geometry predicate, and guarded by nothing. That is what makes this a live
+    path rather than defensive dead code.
+
+    Args:
+        nodal_rms: The value from :func:`nodal_rms_l2_error`.
+        owner: Caller name, used verbatim so the error names the substrate the
+            user actually constructed.
+
+    Returns:
+        ``nodal_rms``, when it is not ``None``.
+
+    Raises:
+        ValueError: If ``nodal_rms`` is ``None``.
+
+    """
+    if nodal_rms is None:
+        raise ValueError(
+            f"{owner}: the nodal-RMS L2 error is unmeasurable (no exact solution, or an "
+            f"empty in-domain node set). Refusing to report 0.0, which would publish a "
+            f"perfect score for a solve that was never measured."
+        )
+    return float(nodal_rms)
+
+
+def nodal_rms_l2_error(
+    solution: NDArray[np.float64],
+    coords: NDArray[np.float64],
+    operator: PDEOperator,
+) -> float | None:
+    """Root-mean-square nodal error against the exact solution, if available.
+
+    The historical ``l2_error`` every ``SolverResult`` in this module reports.
+    Deliberately **not** a true L2 norm: it is unweighted, so on a graded mesh
+    it over-counts the densely-refined region. ``fem_baseline.quadrature_l2_error``
+    is the mesh-independent metric to compare two refinement policies with; this
+    one exists so those historical numbers stay reproducible byte-for-byte.
+
+    Returns ``None`` -- not a crash, and not ``0.0`` -- when ``operator`` has no
+    analytic exact solution, which is the majority of real operators.
+    """
+    exact = operator.exact_solution(coords.astype(np.float32))
+    if exact is None:
+        return None
+    if isinstance(exact, torch.Tensor):
+        exact = exact.detach().cpu().numpy()
+    exact = np.asarray(exact, dtype=np.float64)
+    diff = solution.flatten() - exact.flatten()
+    n = len(diff)
+    return float(np.sqrt(np.sum(diff**2) / n)) if n > 0 else None
+
+
 class BaseSolver(ABC):
     """Protocol for classical PDE solvers.
 
@@ -241,16 +370,17 @@ class BaseSolver(ABC):
         coords: NDArray[np.float64],
         operator: PDEOperator,
     ) -> float | None:
-        """Compute L2 error against the exact solution, if available."""
-        exact = operator.exact_solution(coords.astype(np.float32))
-        if exact is None:
-            return None
-        if isinstance(exact, torch.Tensor):
-            exact = exact.detach().cpu().numpy()
-        exact = np.asarray(exact, dtype=np.float64)
-        diff = solution.flatten() - exact.flatten()
-        n = len(diff)
-        return float(np.sqrt(np.sum(diff**2) / n)) if n > 0 else None
+        """Compute L2 error against the exact solution, if available.
+
+        Thin delegate to the module-level :func:`nodal_rms_l2_error` (same
+        split as ``_dorfler_mark`` -> ``dorfler_mark``), so a caller outside
+        this class hierarchy -- a ``RefinementSubstrate``, say -- reuses the
+        formula instead of copying it. A copy was briefly made in
+        ``SkfemTriSubstrate`` and immediately diverged: it dropped the
+        ``exact is None`` guard below, which turns every operator without an
+        analytic solution into a ``TypeError`` from inside ``np.asarray``.
+        """
+        return nodal_rms_l2_error(solution, coords, operator)
 
 
 class UniformFDMSolver(BaseSolver):
@@ -667,17 +797,13 @@ class DorflerAMRSolver(BaseSolver):
         return indicators
 
     def _dorfler_mark(self, indicators: NDArray[np.float64]) -> NDArray[np.bool_]:
-        """Mark elements using Dorfler bulk-chasing strategy."""
-        total = np.sum(indicators**2)
-        threshold = self.marking_fraction * total
+        """Mark elements using Dorfler bulk-chasing strategy.
 
-        sorted_idx = np.argsort(indicators)[::-1]
-        cumsum = np.cumsum(indicators[sorted_idx] ** 2)
-
-        n_mark = int(np.searchsorted(cumsum, threshold)) + 1
-        marked = np.zeros(len(indicators), dtype=bool)
-        marked[sorted_idx[:n_mark]] = True
-        return marked
+        Delegates to ``src.research.marking.dorfler_mark`` (variant="squared"),
+        the shared primitive that also backs ``ScikitFEMPoissonSolver._dorfler_mark``
+        and any ``RefinementSubstrate``.
+        """
+        return dorfler_mark(indicators, self.marking_fraction, variant="squared")
 
     @staticmethod
     def _refine_grid(
@@ -922,15 +1048,7 @@ class DorflerAMRSolver(BaseSolver):
         # the predicate input is byte-for-byte the same.
         elem_inside: NDArray[np.bool_] | None = None
         if inside is not None:
-            cx_all = 0.5 * (xs[:-1] + xs[1:])
-            cy_all = 0.5 * (ys[:-1] + ys[1:])
-            cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
-            centres = (
-                np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1)
-                .astype(np.float32)
-                .astype(np.float64)
-            )
-            elem_inside = np.asarray(inside(centres), dtype=bool).reshape(nx, ny)
+            elem_inside = element_inside_mask(xs, ys, inside)
 
         for i in range(nx):
             hx = xs[i + 1] - xs[i]

@@ -129,7 +129,8 @@ operator with stability constant \(C_0 > 0\) (inf-sup \(\beta\) in the coercive 
 
 ### AC6: Regression surface
 - New CLAUDE.md row: "Certificate soundness" — `pytest tests/pde/certificate/ -v`
-  (with `COVERAGE_CORE=pytrace` per repo convention), `mypy --strict` clean,
+  (no `COVERAGE_CORE` pin — the `pytrace` convention this line cited was retired
+  2026-09-02), `mypy --strict` clean,
   additive-only changes, coverage gate on `src/pde/certificate/`.
 - Shared-surface guard: any touch of `src/research/baselines.py` must keep
   `tests/research/test_baselines*.py` green (documented SBIR P40 surface).

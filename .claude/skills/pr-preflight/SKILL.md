@@ -48,9 +48,10 @@ Use the `regression-surface` skill: it maps changed paths to the exact command b
 
 ## Step 4 — Coverage gates for the packages you changed
 
-Use the `coverage-gate` skill (and `add-coverage-gate` if the package has no gate yet). Set
-`COVERAGE_CORE=pytrace` — the installed torch wheel crashes coverage's C tracer, and the CI
-`coverage` job sets it at job level for exactly this reason.
+Use the `coverage-gate` skill (and `add-coverage-gate` if the package has no gate yet). Do **not**
+set `COVERAGE_CORE`: this step used to require `pytrace`, but the pin was retired repo-wide on
+2026-09-02 after the C-tracer crash it guarded against failed to reproduce, and no CI job sets it
+now.
 
 ## Step 5 — One combined invocation (the step people skip)
 
@@ -59,7 +60,7 @@ crossed with collection order** (registry singletons, `sys.modules` purges, stru
 the affected suites together, in one pytest process, mirroring CI's ignore/deselect flags:
 
 ```bash
-COVERAGE_CORE=pytrace pytest <all affected test dirs> \
+pytest <all affected test dirs> \
   -m "not slow and not e2e and not gpu_required" -q \
   <the --ignore / --deselect flags from ci.yml's test-fast step, verbatim>
 ```

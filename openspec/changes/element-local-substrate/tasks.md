@@ -23,53 +23,176 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 1. Shared marking
 
-- [ ] 1.1 `src/refinement/marking.py`: one `dorfler_mark(indicators, theta, variant)` with
-      frozen `squared`/`linear` presets.
-- [ ] 1.2 Delegate `DorflerAMRSolver._dorfler_mark` and `._dorfler_mark_2d`; the 2-D axis
-      projection stays exactly where it is — it *is* the legacy behaviour the golden pins.
-- [ ] 1.3 Delegate `ScikitFEMPoissonSolver._dorfler_mark`.
-- [ ] 1.4 Hypothesis byte-parity test for both variants, including the all-zeros case where
+- [x] 1.1 **[CORRECTED — lives at `src/research/marking.py`, not `src/refinement/marking.py`.]**
+      CI's `reference-baselines-do-not-import-the-candidate` contract
+      (`tests/regression/test_import_contracts.py`) forbids `src/research/baselines.py` and
+      `fem_baseline.py` from importing anything under `src.refinement` — discovered only when
+      the originally-planned `src/refinement/marking.py` failed that check in CI (both baselines
+      delegate to `dorfler_mark`, so the import is real marking *behaviour*, not the kind of
+      inert protocol/type import the contract's one existing exemption, `src/mcts/gumbel.py`,
+      tolerates). `dorfler_mark(indicators, theta, variant)` with frozen `squared`/`linear`
+      presets now lives under `src.research`, alongside its only two callers plus
+      `src.research.substrates.tensor_grid`.
+- [x] 1.2 **[Amended]** `DorflerAMRSolver._dorfler_mark` delegates directly. `._dorfler_mark_2d`
+      does **not** delegate — it stays exactly as it was (it *is* the legacy behaviour the golden
+      pins) — but `TensorGridSubstrate.mark()`/`.refine()` (Slice B) reproduce its
+      selection-then-axis-projection as a provably equivalent two-step composition (flat
+      selection via the shared `dorfler_mark`, then axis projection + `_refine_grid`), verified
+      not by inspection but by `tests/research/test_tensor_grid_substrate.py`'s end-to-end
+      trajectory golden test against a live `run_dorfler_arm` call.
+- [x] 1.3 Delegate `ScikitFEMPoissonSolver._dorfler_mark`.
+- [x] 1.4 Hypothesis byte-parity test for both variants, including the all-zeros case where
       the two implementations genuinely differ (AC4).
 
 ## 2. Protocol
 
-- [ ] 2.1 `src/refinement/substrate.py`: `RefinementSubstrate` + `SubstrateSolveResult` with
-      `__post_init__` invariants. numpy-only imports.
-- [ ] 2.2 Registry via `src/templates/registry.py::create_registry` — the canonical pattern; do
-      not add a new one.
-- [ ] 2.3 Confirm `python -m scripts.audit_abstractions src/refinement --fail-on-missing` stays
-      clean: every protocol member needs a reader.
+- [x] 2.1 `src/refinement/substrate.py`: `RefinementSubstrate` + `SubstrateSolveResult` with
+      `__post_init__` invariants (`n_dof_free <= n_dof`, both non-negative — AC5).
+      numpy-only imports.
+- [x] 2.2 Registry via `src/templates/registry.py::create_registry` — the canonical pattern;
+      `src/refinement/substrate_registry.py`.
+- [x] 2.3 Confirmed `python -m scripts.audit_abstractions src/refinement --fail-on-missing`
+      stays clean — but only after fixing a real bug the audit tool had: it silently treated any
+      generic `Protocol[T]` base (an `ast.Subscript`, not `ast.Name`/`ast.Attribute`) as a
+      non-Protocol class, so `RefinementSubstrate`'s 8 members were never checked at all. The
+      8 members had zero real callers at Slice A (this Protocol ships ahead of its first concrete
+      consumer, Slice E's task 7.1) — exempted via a new, explicitly time-boxed
+      `_STAGED_FOR_UPCOMING_TASK` allowlist in `scripts/audit_abstractions.py`, distinct from
+      `_KNOWN_LIVE` (a real caller the heuristic can't see). **[CORRECTED — Slice D, 2026-09-02]**
+      Seven of the eight gained a `src/` reader in `src/research/substrates/sweep.py` and were
+      removed from the allowlist rather than left exempted; only `fingerprint` remains staged
+      (its consumer is the fingerprint-keyed solve cache, task 7.1). The Protocol's docstring
+      is pinned to the allowlist by `tests/scripts/test_audit_abstractions.py` so the "all 8"
+      wording cannot drift again — a Copilot review on PR #143 caught it having done exactly that.
+- [x] 2.4 **[Added — not in the original checklist]** `src/research/substrates/config.py::SubstrateConfig`:
+      the Pydantic Data Contract, found missing by an independent adversarial review of the
+      implementation plan.
 
 ## 3. `TensorGridSubstrate` — the back-compat proof
 
-- [ ] 3.1 Wrap `make_solve_fn` + `DorflerAMRSolver._refine_grid` verbatim.
-- [ ] 3.2 **Golden**: bitwise against a live `run_dorfler_arm`, float-tolerance against the
-      committed CSV (AC1). If bitwise cannot hold, record the deviation — do not loosen.
-- [ ] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image).
+- [x] 3.1 Wrap `DorflerAMRSolver._solve_on_grid_2d`/`_compute_indicators_2d`/`_refine_grid`
+      (all `@staticmethod`, called verbatim) plus `lshape_amr_compare._area_weighted_l2`.
+      `_dorfler_mark_2d` itself is **not** called directly (see 1.2's amendment) — its
+      selection+projection is reproduced as an equivalent `mark()`/`refine()` composition,
+      proven by 3.2's golden test rather than by literal wrapping.
+- [x] 3.2 **Golden**: bitwise against a live `run_dorfler_arm` (`tests/research/test_tensor_grid_substrate.py`),
+      float-tolerance against `results/lshape_mcts_vs_dorfler.csv`'s `dorfler` rows (AC1). Both
+      passed on the first real run — no deviation to record. Mutation-checked: forcing `mark()`
+      to the wrong (`"linear"`) variant diverges the trajectory at level 2, confirming the golden
+      test discriminates rather than passing vacuously.
+- [x] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image) — done in Slice D as
+      `TestAdequacyGateFailsOnTensorGridSubstrate` (task 6.2 states the identical requirement
+      from the gate's own side; doing it once there avoided a forward dependency on a gate that
+      did not exist yet). Measured at θ=0.5 over (200, 4000): adaptive `-0.2325` vs uniform
+      `-0.6489`, ratio `13.35` at
+      matched DOF. Deliberately carries **no** `fem_required` marker, so the discriminating
+      half of the gate runs on every CPU CI job.
 
 ## 4. `fem_baseline` decomposition
 
-- [ ] 4.1 **Capture goldens first**, before any refactor: `solve()` outputs for
-      `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`.
-- [ ] 4.2 Extract `build_initial_mesh`, `assemble_and_solve`, `zz_indicator`,
-      `quadrature_l2_error` as module-level primitives.
-- [ ] 4.3 Re-express `solve()` over them; the existing 23-test file must stay green untouched.
+- [x] 4.1 **Capture goldens first**, before any refactor: `solve()` outputs for
+      `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`. Byte-identical before/after the
+      extraction (`values`, `l2_error`, `metadata` all match).
+- [x] 4.2 Extracted `build_initial_mesh`, `build_lshaped_initial_mesh` (the
+      `ScikitFEMLShapedSolver`-specific L-shape builder, needed by `SkfemTriSubstrate`),
+      `assemble_and_solve` (takes an injected `l2_error_fn` so it stays pure while
+      `SolverResult.l2_error`'s nodal-RMS meaning is preserved byte-for-byte), `zz_indicator`,
+      `element_gradients`, `triangle_area`, `estimate_smoothness`, and the new
+      `quadrature_l2_error` as module-level primitives in `src/research/fem_baseline.py`.
+- [x] 4.3 Re-expressed `solve()`/class methods as thin delegates; the existing 23-test file
+      stays green untouched, plus 2 new tests for `quadrature_l2_error` (differs from nodal
+      RMS; decreases under refinement).
+- [x] 4.4 **[Added — the risk an independent adversarial review of the implementation plan
+      surfaced]** Re-measured the adaptive-vs-uniform rate separation through the actual
+      production primitives above (not the spike's own stronger ZZ reimplementation), on the
+      real L-shaped Poisson benchmark via `SkfemTriSubstrate`: adaptive rate **-1.3109**
+      (spike: -1.256), uniform rate **-0.6710** (spike: -0.710), at θ=0.5 over (200, 4000) —
+      both comfortably inside the planned Slice D thresholds (`ADAPTIVE_RATE_MIN=-1.10`,
+      `UNIFORM_RATE_BAND=(-0.85,-0.55)`). The production estimator's weaker (Python-loop,
+      P1-downsampled) implementation does **not** measurably change the rate separation; no
+      threshold recalibration needed.
+
+      **Two figure corrections, both made in Slice D and both the same root cause** — a number
+      transcribed from an exploratory script rather than read out of committed code, which is
+      exactly what the gap-analysis review flagged. This line first read `-1.322`/`-0.671`,
+      mixing two *fitting windows*; its replacement `-1.2515` was measured at **θ=0.3** while
+      the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Same substrate,
+      same window, different θ, a 5% different rate. Convention going forward: **a convergence
+      rate is quoted with its θ and its DOF window, or it is not quoted.**
 
 ## 5. `SkfemTriSubstrate`
 
-- [ ] 5.1 Implement over the task-4 primitives; report quadrature L2, carry nodal RMS in
-      `extra` (AC6).
-- [ ] 5.2 Clear mesh write flags behind `enforce_immutable_meshes`; property-test it (AC3).
-- [ ] 5.3 Assert the reentrant corner is a mesh node at the origin (AC8).
-- [ ] 5.4 `fem_required` marker + root-conftest hook + `ALPHAGALERKIN_REQUIRE_EXTRAS=1`;
-      add `skfem_tri.py` to the coverage `omit`.
+- [x] 5.1 Implemented over the task-4 primitives (`src/research/substrates/skfem_tri.py`);
+      reports quadrature L2 as the primary metric (`error_metric="quadrature"`, default), nodal
+      RMS in `extra["l2_error_nodal_rms"]` (AC6). Verified end-to-end: 384 -> 391 elements from
+      marking a single element (vs 384 -> 1536 for `mesh.refined()` with no args) — genuinely
+      element-local, not the tensor-grid substrate's full-grid-line defect.
+- [x] 5.2 Clears mesh write flags behind `enforce_immutable_meshes` (default `True`); verified
+      both the enforced (`ValueError` on mutation attempt) and opt-out (`False`) paths.
+- [x] 5.3 Verified the reentrant corner is a mesh node at the origin (AC8) on the real
+      `build_lshaped_initial_mesh` output.
+- [x] 5.4 `fem_required` marker registered (`pyproject.toml`); root `conftest.py` hook mirrors
+      `gpu_required`'s shape but additionally reports a skip count via `pytest_terminal_summary`,
+      and `ALPHAGALERKIN_REQUIRE_EXTRAS=1` raises `pytest.UsageError` (exit code 4) instead of
+      skipping when scikit-fem is absent. `tests/research/test_fem_baseline.py` and
+      `test_skfem_substrate.py` switched from `pytest.importorskip` to `pytestmark =
+      pytest.mark.fem_required` so the hook can intercept before any test body runs (both
+      modules already used lazy `_require_skfem()` calls, not module-level skfem imports, so
+      this is a safe swap). Manually verified end-to-end both ways: uninstalling scikit-fem
+      shows `fem_required: skipped 45 test(s) -- ...`; the same run under
+      `ALPHAGALERKIN_REQUIRE_EXTRAS=1` exits 4 with the install-hint message. Wired into the
+      `test-extras` CI job (`.github/workflows/ci.yml`). `skfem_tri.py` added to
+      `pyproject.toml`'s coverage `omit`, alongside `fem_baseline.py`. **Not done**: no
+      automated (`pytester`-based) regression test for the conftest hook itself — no precedent
+      for this in the codebase, and out of proportion given the task's own scope; the hook's
+      correctness is exercised every CI run via the two fem_required-marked suites' successful
+      collection (a broken marker registration would fail collection under `--strict-markers`).
 
 ## 6. The adequacy gate
 
-- [ ] 6.1 `tests/research/test_amr_arena_interpretability.py`: log-log rate separation over
+- [x] 6.1 `tests/research/test_amr_arena_interpretability.py`: log-log rate separation over
       `RATE_FIT_DOF_RANGE`, uniform rate inside `UNIFORM_RATE_BAND` (too *good* is a defect),
-      adaptive below `ADAPTIVE_RATE_MIN` (AC7).
-- [ ] 6.2 Mutation-test it against `TensorGridSubstrate` — it must fail there.
+      adaptive below `ADAPTIVE_RATE_MIN` (AC7). Measured on `SkfemTriSubstrate`: adaptive
+      **-1.3109**, uniform **-0.6710**, ratio **0.0946** at matched DOF (all at θ=0.5, the value
+      `ComparisonParams.marking_fraction` gives and the gate passes; a rate quoted without its
+      θ and window is not a fact — an earlier draft of this line said `-1.2515`, measured at
+      θ=0.3) — all three of the spec's
+      originally pinned thresholds hold against the *production* primitives, so task 4.4's
+      recalibration contingency was not triggered.
+
+      **One spec constant corrected**: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`. The
+      original window is physically incapable of holding `RATE_FIT_MIN_POINTS` (3) *uniform*
+      points — a 2D uniform arm quadruples DOF per level, so a 13x window spans at most two.
+      Not a judgement call: `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than
+      fitting a two-point slope, which is how it surfaced. Recorded with its reason in
+      `specs/refinement_substrate.spec.md`. A *window-width* correction, not a threshold
+      loosening — the other three constants were untouched.
+
+      The measurement machinery itself (`run_refinement_sweep`, `fit_log_log_rate`,
+      `measure_rate_separation`) lives in the reusable, substrate-agnostic
+      `src/research/substrates/sweep.py`, **not** in the test file, so the eventual arena change
+      consumes it instead of growing a second, subtly-different copy — the exact failure mode
+      that made `dorfler_mark` necessary. It is also where `RATIO_FLOOR`, `AREA_FLOOR` and
+      `RATE_FIT_MIN_POINTS` finally get real consumers (they had none, and
+      `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant
+      literally defined as `1e-15` — a tautology). 100% branch coverage; 22 unit tests drive it
+      through a synthetic substrate, which is what makes "substrate-agnostic" a tested claim.
+- [x] 6.2 Mutation-test it against `TensorGridSubstrate` — it must fail there.
+      `TestAdequacyGateFailsOnTensorGridSubstrate` asserts the *identical* predicate
+      (`gate_violations`, shared by both halves, so "the same assertion" is literally rather
+      than approximately true) rejects the control substrate, **and** that the reason is the
+      adaptive arm specifically — the tensor grid's uniform arm converges normally at `-0.6489`,
+      inside the band, so a substrate too broken for either arm to converge would not pass this
+      for the wrong reason.
+
+      5/5 mutations killed (loosened `ADAPTIVE_RATE_MIN`; widened `UNIFORM_RATE_BAND`; loosened
+      `ADAPTIVE_VS_UNIFORM_MAX_RATIO`; adaptive policy swapped for uniform; the DOF window
+      reverted to the spec's `(200, 2600)`). The band mutation initially **survived** — both
+      substrates' uniform rates sit comfortably inside it, so loosening it removed a constraint
+      nothing exercised, leaving AC8's "too good is a defect" tripwire documented but unasserted.
+      Closed by `TestGatePredicate`, which unit-tests `gate_violations` on synthetic
+      `RateSeparation` values (including the `-1.05` both-arms rate that was the spike's actual
+      wrong result), with no PDE solve.
 
 ## 7. First registrant
 
@@ -80,8 +203,15 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 8. Governance
 
-- [ ] 8.1 Charter: scope register gains the new modules; the
-      `RefinementGameRegistry`-has-no-registrants deviation is retired.
+- [x] 8.1a **Resolved by amendment (2026-09-02), not by adding the row.** The charter scope
+      register is top-level-package granular (`tests/docs/test_charter_alignment.py`'s
+      `_ARCH_ROW_PACKAGE` regex excludes `/`; its on-disk set is one `SRC.glob("*/__init__.py")`
+      level deep), so a `src/research/substrates/` row fails that guard's `extra`/`phantom`
+      assertions in both directions — on a guard that is otherwise green. `src/research/` already
+      covers the subpackage. See the amended Scope Integrity Requirement in
+      `specs/project-charter/spec.md` (this change's delta).
+- [ ] 8.1b The `RefinementGameRegistry`-has-no-registrants deviation is retired — depends on
+      task 7.1 (Slice E's `RefinementGame`), not yet done.
 - [ ] 8.2 Charter: add the **time-boxed** two-path deviation, with its retirement condition
       (the golden test is the only remaining consumer of the legacy harness).
 - [ ] 8.3 `specs/lshape_amr_compare.spec.md`: mark superseded, pointing here.

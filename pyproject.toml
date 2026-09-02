@@ -404,6 +404,20 @@ module = [
 ]
 disallow_untyped_decorators = false
 
+# scikit-fem's form decorators (@BilinearForm / @LinearForm / @Functional) are
+# untyped, and -- because scikit-fem is an OPTIONAL extra -- their typedness
+# differs by environment: installed, mypy sees real (untyped) callables; absent,
+# --ignore-missing-imports resolves them to Any. An inline
+# `# type: ignore[untyped-decorator]` is therefore *required* in one environment
+# and reported as an unused ignore in the other, so it cannot be correct in both
+# (this is exactly what left the file at 3 errors locally and 2 in CI). Same
+# resolution as the flax block above: turn the check off for the one module that
+# has to interoperate with an untyped decorator, rather than annotating a
+# contradiction inline.
+[[tool.mypy.overrides]]
+module = ["src.research.fem_baseline"]
+disallow_untyped_decorators = false
+
 # Modules with numpy ndarray/Tensor interop that have structural assignment issues
 [[tool.mypy.overrides]]
 module = [
@@ -489,6 +503,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: end-to-end integration tests",
     "gpu_required: tests requiring GPU",
+    "fem_required: tests requiring the optional scikit-fem extra ([fem])",
     "onnx_required: tests requiring ONNX",
     "jax: JAX-specific tests",
     "cross_backend: cross-backend equivalence tests",
@@ -509,13 +524,17 @@ branch = true
 # Omit modules whose tests are excluded from CI coverage runs.
 # backend tests cause JAX crashes on Windows CI and are skipped
 # demos tests are ignored via --ignore=tests/demos/
-# fem_baseline requires the optional ``fem`` extra (scikit-fem); its tests
-# use ``pytest.importorskip`` and skip cleanly in the default CI matrix,
-# so including it here would unfairly tank the global coverage gate.
+# fem_baseline.py and substrates/skfem_tri.py require the optional ``fem``
+# extra (scikit-fem); their tests are marked ``fem_required`` (root
+# conftest.py skips them *visibly*, reporting a count, when scikit-fem is
+# absent -- and hard-fails collection under ALPHAGALERKIN_REQUIRE_EXTRAS=1,
+# the test-extras CI job) and skip cleanly in the default CI matrix, so
+# including them here would unfairly tank the global coverage gate.
 omit = [
     "src/backend/*",
     "src/demos/*",
     "src/research/fem_baseline.py",
+    "src/research/substrates/skfem_tri.py",
     # The eval-harness adapter requires the optional [eval-harness] git dependency
     # (langfuse-eval-harness, not on PyPI). Its tests use ``pytest.importorskip``
     # and skip cleanly in the default CI matrix, so it is omitted from the global

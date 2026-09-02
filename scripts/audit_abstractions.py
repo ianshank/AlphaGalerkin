@@ -72,6 +72,42 @@ _KNOWN_LIVE: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
+# A DIFFERENT exemption reason from ``_KNOWN_LIVE`` above: these members have
+# NO caller anywhere yet, by design — they are the interface half of an
+# approved, tracked, multi-PR OpenSpec rollout
+# (openspec/changes/element-local-substrate/), landing ahead of the first
+# concrete consumer so each PR-sized slice stays reviewable. Unlike
+# ``_KNOWN_LIVE`` (a real caller the AST heuristic cannot see), this is
+# genuinely dead code today — the exemption is time-boxed, not permanent: each
+# entry names the task that is expected to add its first real ``src/`` caller,
+# and must be deleted (not extended) once that task lands. An entry still
+# present after its named task merges is a stale exemption, not a valid one.
+_STAGED_FOR_UPCOMING_TASK: frozenset[tuple[str, str]] = frozenset(
+    {
+        # RefinementSubstrate (src/refinement/substrate.py): the Protocol lands
+        # in Slice A of element-local-substrate, ahead of its consumers.
+        #
+        # Slice D shrank this block from all 8 members to 1: the sweep driver
+        # (src/research/substrates/sweep.py) reads initial_mesh / solve / mark /
+        # refine / n_units / refinable_mask / describe. Honest caveat: the driver
+        # lives under src/ but is entered only from the adequacy-gate test
+        # (tests/research/test_amr_arena_interpretability.py), so "non-test
+        # reader" is one indirection from test-only -- the AST heuristic sees a
+        # src/ call site, which is what it checks. Those seven were removed
+        # rather than left exempted --
+        # an allowlist that covers a live member silently stops guarding it,
+        # which is the opposite of what this file is for. Verified by removing
+        # each entry and re-running the audit.
+        #
+        # ``fingerprint`` alone is still genuinely dead: its consumer is the
+        # fingerprint-keyed solve cache bounded by
+        # SubstrateConfig.solve_cache_max_entries, which lands with Slice E
+        # (openspec/changes/element-local-substrate/tasks.md task 7.1). Retire
+        # this last entry then.
+        ("RefinementSubstrate", "fingerprint"),
+    }
+)
+
 
 @dataclass
 class Finding:
@@ -128,9 +164,15 @@ def _is_property(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 def _is_protocol_class(node: ast.ClassDef) -> bool:
     for base in node.bases:
-        if isinstance(base, ast.Name) and base.id == "Protocol":
+        # A generic base (``Protocol[TMesh]``) parses as ``ast.Subscript``, not
+        # ``ast.Name``/``ast.Attribute`` — unwrap it so a *generic* Protocol is
+        # not silently invisible to this audit (it was: ``RefinementSubstrate
+        # (Protocol[TMesh])`` parsed as a plain, non-Protocol class and its
+        # members were never checked for call sites at all).
+        target = base.value if isinstance(base, ast.Subscript) else base
+        if isinstance(target, ast.Name) and target.id == "Protocol":
             return True
-        if isinstance(base, ast.Attribute) and base.attr == "Protocol":
+        if isinstance(target, ast.Attribute) and target.attr == "Protocol":
             return True
     return False
 
@@ -200,7 +242,7 @@ def audit(roots: list[Path]) -> AuditReport:
         if key in seen_abstract:
             continue
         seen_abstract.add(key)
-        if (f.cls, f.name) in _KNOWN_LIVE:
+        if (f.cls, f.name) in _KNOWN_LIVE or (f.cls, f.name) in _STAGED_FOR_UPCOMING_TASK:
             continue
         if not _has_use(f):
             report.abstract_missing.append(f)
@@ -211,7 +253,7 @@ def audit(roots: list[Path]) -> AuditReport:
         if key in seen_proto:
             continue
         seen_proto.add(key)
-        if (f.cls, f.name) in _KNOWN_LIVE:
+        if (f.cls, f.name) in _KNOWN_LIVE or (f.cls, f.name) in _STAGED_FOR_UPCOMING_TASK:
             continue
         if not _has_use(f):
             report.protocol_missing.append(f)

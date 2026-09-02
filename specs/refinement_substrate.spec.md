@@ -2,8 +2,14 @@
 
 > **Status:** Draft
 > **Owner:** pde-solver
-> **Primary module(s):** `src/refinement/substrate.py`, `src/refinement/marking.py`,
-> `src/research/substrates/{tensor_grid,skfem_tri}.py`
+> **Primary module(s):** `src/refinement/substrate.py`, `src/research/marking.py`
+> **[CORRECTED during implementation — not `src/refinement/marking.py` as originally planned:
+> `tests/regression/test_import_contracts.py`'s `reference-baselines-do-not-import-the-candidate`
+> contract forbids `src/research/baselines.py`/`fem_baseline.py` from importing anything under
+> `src.refinement`, and `dorfler_mark` is active marking behaviour those two files delegate to —
+> not the kind of inert protocol/type import the contract's one exemption (`src/mcts/gumbel.py`)
+> tolerates. Moved to `src.research`, alongside its only callers.]**,
+> `src/research/substrates/{config,tensor_grid,skfem_tri}.py`
 > **Config class:** `src.refinement.config.RefinementGameConfig` (engine knobs) +
 > `src.research.substrates.SubstrateConfig` (this spec's data contract)
 > **Tracking:** `openspec/changes/element-local-substrate/`, PR #134 (spike evidence)
@@ -49,13 +55,29 @@ Every tunable is a typed Pydantic `Field`. No hardcoded values.
 | Field | Type | Default | Bounds | Meaning |
 |---|---|---|---|---|
 | `kind` | `Literal["tensor_grid","skfem_tri"]` | `"skfem_tri"` | — | Which substrate to build. `tensor_grid` reproduces today's behaviour and is the control. |
-| `element_type` | `Literal["P1","P2","P3"]` | `"P1"` | — | Lagrange order (`skfem_tri` only). |
-| `initial_refinements` | `int` | `2` | `ge=0, le=8` | Uniform refinements applied to the coarse L-shape before the sweep. |
-| `initial_side` | `int` | `4` | `ge=2, le=64`, even | Elements per axis (`tensor_grid` only); even so the reentrant corner is a node. |
+| `element_type` | `Literal["P1","P2","P3"]` | `"P1"` | — | Lagrange order. Scoped to `kind="skfem_tri"`. |
+| `initial_refinements` | `int` | `2` | `ge=0, le=8` | Uniform refinements applied to the coarse L-shape before the sweep. Scoped to `kind="skfem_tri"`. |
+| `initial_side` | `int` | `4` | `ge=2, le=64`, even | Elements per axis; even so the reentrant corner is a node. Scoped to `kind="tensor_grid"`. |
 | `marking_variant` | `Literal["squared","linear"]` | `"squared"` | — | Dörfler bulk quantity. `squared` is the textbook form; `linear` reproduces `fem_baseline`'s existing behaviour. |
 | `error_metric` | `Literal["quadrature","nodal_rms"]` | `"quadrature"` | — | Which L2 the substrate reports. See AC6 — `nodal_rms` exists only to reproduce legacy numbers. |
 | `enforce_immutable_meshes` | `bool` | `True` | — | Clear numpy write flags on mesh arrays. See AC3. |
-| `solve_cache_max_entries` | `int` | `4096` | `ge=1, le=1e6` | Fingerprint-keyed solve cache bound. |
+| `solve_cache_max_entries` | `int` | `4096` | `ge=1, le=1e6` | Fingerprint-keyed solve cache bound. **Not yet wired** — no substrate memoises solves today; declared alongside `RefinementSubstrate.fingerprint`, its only consumer, which lands with Slice E task 7.1. |
+
+**`marking_fraction` was added and then removed (2026-09-02).** It briefly appeared in this
+contract to close a "θ is an unvalidated positional float" finding, and reproduced the exact
+defect it was meant to close: nothing ever read it, so setting it was a silent no-op. θ is
+already a **required, validated, keyword-only** parameter of `run_refinement_sweep` — the only
+API that consumes it — so the contract needs no second home for it. Rejected alternatives:
+defaulting θ from `describe()` (which returns only `kind`, `dof_convention` and one
+kind-scoped key — no θ), or adding a `default_theta` member to the `RefinementSubstrate`
+Protocol frozen in Slice A.
+
+**Field scoping is enforced, not documentary.** A `model_validator` rejects a `kind`-scoped
+field set away from its default on the *other* kind: `SubstrateConfig(kind="tensor_grid",
+element_type="P2")` used to construct cleanly, validate cleanly and do nothing at all — a
+typed, described, validated knob that is a silent no-op is worse than a magic number, because
+it looks like it works. Only values set away from their default are rejected, so no existing
+construction breaks.
 
 Named module-level constants for numerical-stability literals (mirroring
 `DEFAULT_TRANSFER_RATIO_FLOOR`, `EVAL_SEED_STRIDE`):
@@ -152,23 +174,49 @@ tunable without editing assertions:
 | `UNIFORM_RATE_BAND` | `(-0.85, -0.55)` | Uniform P1 L2 rate on the L-shape. Spike measured `-0.710`; theory gives `-2/3`. A rate *outside* this band on either side is a defect — too good means the singularity is not in the domain (AC8). |
 | `ADAPTIVE_RATE_MIN` | `-1.10` | Adaptive must reach at least this. Spike measured `-1.256`. |
 | `ADAPTIVE_VS_UNIFORM_MAX_RATIO` | `1.0` | Adaptive must beat uniform at matched DOF over `RATE_FIT_DOF_RANGE`. |
-| `RATE_FIT_DOF_RANGE` | `(200, 2600)` | The asymptotic window the rate is fitted over. Below it, neither arm has separated. |
+| `RATE_FIT_DOF_RANGE` | ~~`(200, 2600)`~~ → `(200, 4000)` | The asymptotic window the rate is fitted over. Below it, neither arm has separated. **CORRECTED during Slice D implementation** — see below. |
+
+**Correction: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`.** The originally pinned
+window is *physically incapable* of holding `RATE_FIT_MIN_POINTS` (3) **uniform** points: a 2D
+uniform arm quadruples DOF per level, so a 13× window spans at most two of them. This was not a
+judgement call — `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than fitting a
+two-point slope, which is how the mismatch surfaced at all. Measured on **both** substrates:
+`skfem_tri` uniform lands on `[225, 833, 3201]` and `tensor_grid` uniform on `[208, 800, 3136]`,
+each giving n=2 inside `(200, 2600)` and n=3 inside `(200, 4000)`. Widened to the cheapest
+window that admits three uniform points on both substrates (measured cost: +0.3 s adaptive,
++1.1 s uniform). The other three constants were **not** touched — all three hold at their
+originally pinned values against the production primitives (measured `skfem_tri`: adaptive
+`-1.3109`, uniform `-0.6710`; `tensor_grid`: adaptive `-0.2325`, uniform `-0.6489`; all at
+θ=0.5, the value `ComparisonParams.marking_fraction` gives and the committed gate passes), so this is a
+window-width correction, not a threshold loosening.
 
 ## Regression Surface
 
 ```bash
 # Substrate contract + marking parity + the adequacy gate (CPU)
-COVERAGE_CORE=pytrace pytest tests/refinement/ tests/research/test_tensor_grid_substrate.py \
+pytest tests/refinement/ tests/research/test_marking.py \
+  tests/research/test_substrates_config.py tests/research/test_substrates_sweep.py \
+  tests/research/test_tensor_grid_substrate.py \
   tests/research/test_skfem_substrate.py tests/research/test_amr_arena_interpretability.py -v
 
 # Back-compat: the legacy harness and the FEM solver must be untouched in behaviour
-COVERAGE_CORE=pytrace pytest tests/research/test_lshape_amr_compare.py \
+pytest tests/research/test_lshape_amr_compare.py \
   tests/research/test_fem_baseline.py tests/research/test_baselines.py \
   tests/pde/test_lshape_amr_game.py -v
 
 # Per-module coverage gates (branch) — the new code rides the existing gates
-COVERAGE_CORE=pytrace pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85
-COVERAGE_CORE=pytrace pytest tests/research/ --cov=src/research --cov-fail-under=85
+pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85
+pytest tests/research/ --cov=src/research --cov-fail-under=85
+
+# The substrates package needs its own gate: skfem_tri.py is in pyproject.toml's
+# global coverage `omit` (optional [fem] extra), so the line above does not
+# measure it at all. Runs in the `test-extras` CI job, the only one with
+# scikit-fem installed, against an inline .coveragerc that drops the omit.
+pytest tests/research/test_skfem_substrate.py \
+  tests/research/test_amr_arena_interpretability.py tests/research/test_tensor_grid_substrate.py \
+  tests/research/test_substrates_config.py tests/research/test_substrates_sweep.py \
+  --cov=src/research/substrates --cov-config=.coveragerc.substrates \
+  --cov-branch --cov-fail-under=95
 
 # skfem-dependent tests must be VISIBLY skipped on CPU CI, and hard-fail in test-extras
 pytest tests/research/test_skfem_substrate.py -m fem_required -v
@@ -182,8 +230,11 @@ ALPHAGALERKIN_REQUIRE_EXTRAS=1 pytest tests/research/test_skfem_substrate.py -v 
 - **A trained evaluator.** Deliberately excluded so the eventual comparison isolates planning
   depth; training a prior is its own workstream.
 - **Replacing `LShapeAMRGame` / `lshape_amr_compare.py`.** They are **frozen as the
-  back-compat golden reference** — not extended, not deleted — and marked superseded in
-  `specs/lshape_amr_compare.spec.md`. The two-path period is recorded as a time-boxed charter
+  back-compat golden reference** — not extended, not deleted. **Correction:** an earlier
+  version of this line said they were "marked superseded in
+  `specs/lshape_amr_compare.spec.md`". They are not — that edit is Slice E's task 8.3 and has
+  not landed, so the claim was false when written. It will read *"and marked superseded in
+  ..."* once that task is done, not before. The two-path period is recorded as a time-boxed charter
   deviation with its retirement condition stated (the golden test is the only remaining
   consumer), so it is disclosed rather than accidental.
 - **Estimator vectorisation.** `_compute_zz_indicator` is a Python loop over elements with an

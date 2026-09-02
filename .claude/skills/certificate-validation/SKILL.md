@@ -87,7 +87,7 @@ wavenumber-dependent estimate or `UNBOUNDED`; `UNBOUNDED` certificates render
 
 ### Gate 7 — Coverage
 ```bash
-COVERAGE_CORE=pytrace pytest tests/pde/certificate/ -v --cov=src/pde/certificate --cov-branch
+pytest tests/pde/certificate/ -v --cov=src/pde/certificate --cov-branch
 ```
 Pass: ≥ 85% branch coverage on `src/pde/certificate/`.
 

@@ -7,6 +7,367 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Gap analysis: three ungated packages, a blind spot in the gate guard, and an unbuilt Dockerfile
+
+- **`src/backend` was invisible to every coverage gate in the repository.** `src/backend/*` sits
+  in pyproject.toml's global `[tool.coverage.run] omit` — a legitimate origin (`jax_backend.py`
+  needs the optional `[jax]` extra) applied at *package* granularity — **and** it had no
+  per-module gate, so its 213 passing tests measured nothing anywhere. Real branch coverage is
+  **56%**, and the omit was hiding `logging.py` and `rng.py` at literally **0%**, not just the
+  JAX module it was written for. Gated at 54 via the inline-coveragerc technique. This is the
+  fourth instance of the omit-collision false pass in this repo, after `video_compression`,
+  `demos` and `skfem_tri.py`.
+- **The coverage-gate integrity guard could not have caught it, and that is the finding.**
+  `tests/docs/test_coverage_gate_integrity.py` verified that a gate a workflow *declares* is not
+  secretly neutered by the omit. It said nothing about a package that is omitted **and never
+  gated at all** — not a fake gate, but no gate, invisible for exactly the same reason. Added
+  the missing direction: every `omit` entry must be gated by a step that both selects it *and*
+  overrides the omit, or carry an entry in `_OMIT_WITHOUT_A_CI_GATE` with a reason. Self-expiring
+  in both directions — a stale exemption fails the moment a gate appears, and an exemption for a
+  pattern no longer in `omit` fails as vacuous, the same way the import contracts guard against
+  a rule about nothing. 20 tests; 2 further mutations killed.
+- **Gates for the last two ungated `src/` packages**: `src/core` at 85 (measured 97.67%) and
+  `src/deployment` at **25** (measured 27.91% — 626 statements, 416 missed). 25 is stated as a
+  regression tripwire, not a standard: it stops the largest genuinely under-tested surface in
+  `src/` sliding further, and raising it is test work, not a number to edit in CI.
+- **`docker/Dockerfile` shipped on 2026-08-16 (`61c1e93`) and was built by nothing** — no CI job,
+  no Makefile target, no test — while `CLAUDE.md`'s Next Steps recorded, "verified 2026-08-21",
+  that no Dockerfile existed anywhere in the tree. The verification was wrong five days after
+  the fact and nothing caught it for two weeks, because nothing exercised the file. Verified by
+  hand that the image's `CMD` currently works, by materialising the real build context
+  (git-tracked files minus `.dockerignore`) and running it: **510 passed, 6 skipped**. Closed
+  with `tests/docs/test_dockerfile_context.py` — **hermetic, no daemon, builds nothing**:
+  every `COPY` source must survive `.dockerignore`, every copied path must exist, and every path
+  the `CMD` runs must be both un-ignored and actually brought in by some `COPY`. Two vacuity
+  guards, because a deleted Dockerfile would otherwise make every parametrised assertion iterate
+  an empty list and pass. 2/2 mutation-killed. Companion `make docker-build` / `make docker-test`
+  take `DOCKER_IMAGE` / `DOCKER_CONTEXT` / `DOCKERFILE` as overridable variables.
+- **`src/refinement/AGENT.md`** — the package this branch created had none, which was the least
+  defensible entry on the missing-AGENT.md list. Documents the domain-free contract and the
+  import rule that enforces it, the numpy-only constraint on `substrate.py` (and why
+  `get_type_hints` forced runtime imports), the mandatory `SearchMode.SINGLE_AGENT`, and the
+  self-expiring staged-exemption rule. The count itself was stale: **15 of 28** packages lack
+  one, not "14 of 26" — the old figure predated `src/core` and `src/refinement`.
+- **Recorded, not fixed, with reasons**: `src/research/baselines.py` is now the largest file in
+  the repo at 1540 lines and this work *added* to it (B34 — splitting it belongs in its own PR,
+  not one already at 5k additions whose CI had never completed a run); and two
+  `tests/video_compression/unit/test_loss.py` cases download 500 MB of ImageNet VGG16 weights
+  from `download.pytorch.org`, so they fail in any air-gapped environment and pass on GitHub's
+  networked runners, which is why CI has never flagged them (B35 — an unrelated subsystem, and
+  `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
+  passed**, 208 skipped, those 2 network failures the entire delta.
+
+### Fixed — the "CI error" that was not one, and what the audits found underneath it
+
+- **B38 closed: every push fired CI twice and cancelled one.** `push:` listed `"claude/*"` and
+  three other globs, so a push to a branch with an open PR fired both `push` and `pull_request`
+  into one concurrency group, where `cancel-in-progress` killed whichever registered first. The
+  loser left ~11 `cancelled` check runs on the SHA and `mergeable_state: unstable` — mis-triaged
+  as a CI failure twice in one day. Worse, `focus` ran only on `pull_request` and `test-slow`'s
+  `[full-test]` hatch only on `push`, so which gate ran was a scheduler race. `push:` is now
+  restricted to post-merge branches (the default branch is **hardcoded**, because `on:` filters
+  cannot evaluate expressions — the risk is named in the comment), `pull_request:` covers every PR
+  head, and `workflow_dispatch` replaces the `[full-test]` hatch on feature branches. Stated cost:
+  a feature-branch push with no open PR gets no CI until a PR exists.
+- **Three hard-failing jobs could not fail the merge gate.** `test-integration`, `test-jax` and
+  `test-chess` (which runs its own `--cov-fail-under=80` on `src/games`) were absent from
+  `ci-success.needs`, with none of the "deliberately omitted" comments `focus`/`secrets` carry.
+  Verified none has a job-level `if:` (so none can be `skipped` into a false red); all three now
+  block. `CI Success` gates nine jobs instead of six.
+- **Copilot: `RefinementSubstrate`'s docstring still said "all 8 members are temporarily
+  exempted" via `_STAGED_FOR_UPCOMING_TASK`** a full slice after Slice D had shrunk that allowlist
+  to `fingerprint` alone — a wrong claim about which members the abstraction audit guards today.
+  Rewritten to say what is true (seven members read by the sweep driver, one still staged for
+  task 7.1), the matching stale sentence in `openspec/changes/element-local-substrate/tasks.md`
+  2.3 annotated rather than erased, and the docstring **pinned to the allowlist** by
+  `tests/scripts/test_audit_abstractions.py::TestRefinementSubstrateDocstringTracksTheAllowlist`:
+  every staged member of the class must be named in the docstring, the allowlist may be mentioned
+  *iff* something is still staged (so task 7.1 retiring the last entry forces the docstring
+  update in the same commit), and the declared member count is pinned so "seven of the eight" and
+  `AGENT.md`'s "8 members" cannot outlive a ninth. Mutation-checked: restoring the original
+  "all 8 members" wording fails the guard.
+- **Copilot: `_dockerignore_patterns()` read `.dockerignore` unconditionally** and a missing file
+  crashed two tests with a traceback that buried `test_dockerfile_exists`. Fixed as **skip, not
+  no-op** — the suggested no-op (return `[]`) would have made `_is_excluded(source, [])` return
+  `None` for every source and the exclusion test go green on vacuous input. Verified by moving the
+  real file aside: one clean failure, eight skips, no traceback.
+- **A guard added one commit earlier was vacuous on live data.**
+  `test_regression_surface_rows_cited_by_exemptions_exist`'s sole input cites no row, so its
+  regex returned `[]`, the comprehension's inner loop never entered, and coverage reported the
+  function **100% covered** (a comprehension collapses to one line with no branch arc). It killed
+  a mutation but had never demonstrated the regex accepts a *valid* citation. Extracted
+  `_rows_cited` / `_rows_missing_from_surface` and unit-tested them on synthetic valid + invalid
+  citations, per the `TestGatePredicate` precedent.
+- **Two shared primitives were 0% covered under `baselines.py`'s own CI gate.**
+  `element_inside_mask` and `require_measurable_l2` — extracted specifically to stop the two
+  substrates drifting — are tested only through the substrates, and the SBIR P40 gate that
+  measures `baselines.py` lists no substrate suite. It passed at 91% with both bodies unmeasured.
+  `nodal_rms_l2_error`'s `n == 0` path — the trigger `require_measurable_l2`'s docstring calls
+  "the live one" — was exercised by nothing: the only tests of it monkeypatched the helper away.
+  Direct tests added for all three, plus the `exact is None` and torch-unwrap arcs.
+- **Branch-new `fem_baseline.py` arcs covered rather than deleted.** `dirichlet_dof_indices`'
+  two lower compat legs (unreachable on scikit-fem 12 — probed — but the pin allows `>=9`), the
+  three `torch.Tensor` unwraps (one torch-returning operator fixture; the documented `PDEOperator`
+  return type), `quadrature_l2_error`'s no-exact-solution raise, `_element_gradients`' singular
+  element, and `build_lshaped_initial_mesh`'s `except TypeError` fallback.
+
+### Removed — dead code the audit found, four items of it mine
+
+- **`warn_on_degenerate_units` + `AREA_FLOOR`**: zero production callers; the constant's only
+  reader was the dead function; the function's only callers were four tests written for it.
+  Wiring it needs per-element areas the `RefinementSubstrate` Protocol does not expose. Deleted,
+  with the four tests and `test_named_constants_match_spec`'s third assertion. The earlier
+  CHANGELOG line claiming `sweep.py` "now consumes all three" constants is corrected in place.
+- **`ERROR_METRIC_NODAL_RMS` had zero readers** one commit after being added "so the implicit
+  `else` is spelled" — both ternaries still compared only against the quadrature member. Now
+  consumed by a shared `select_primary_l2(config, *, quadrature, nodal)` that dispatches on both
+  members and **raises on an unknown metric** (reachable only past Pydantic's `Literal`, tested
+  via `model_construct`), replacing the last duplicated metric-selection block between the two
+  substrates.
+- **`SUBSTRATE_AREA_WEIGHTED_L2_KEY` had zero test readers** — the tests written alongside it
+  still indexed `extra` with the bare string. Fixed.
+- **A fourth `1e-15`** sat in `scripts/run_adaptive_vs_uniform.py` while `DEFAULT_RATIO_FLOOR`'s
+  docstring promised "a fourth copy cannot drift". Sourced from the constant; docstring corrected.
+- **A `# pragma: no cover` on a tested line** (`tensor_grid.py`'s scipy guard, driven by a
+  `builtins.__import__` monkeypatch). Removed — a covered line marked uncovered corrupts the number
+  the gate reads.
+- **Two docs made stale by registering the substrates**: the charter deviation row and README both
+  said "zero runtime registrants". Accurate: two registrants, zero runtime lookups.
+- Test hygiene: a bounds test probing `initial_side` with `[1, 65]` — both odd, so the parity
+  validator rejected them with the bounds deleted; two byte-identical tests differing only in
+  `match=` merged; `scripts/audit_abstractions.py`'s "real, non-test reader" wording softened
+  (the reader is entered only from the adequacy-gate test).
+
+### Fixed — five defects in the element-local substrate surface, and a false guard exemption
+
+- **`build_lshaped_initial_mesh` silently meshed the wrong domain.** It hardcoded
+  `linspace(-1.0, 0.0, 3)` and never read `operator.domain_min`/`domain_max`, unlike its sibling
+  `build_initial_mesh`. Measured: an operator on `[-5, 5]^2` got a mesh on `[-1, 1]^2`. Compounding
+  it, `lshape_inside_predicate(scale)` *is* scale-aware, so at `scale != 1` the notch rule scaled
+  and the mesh did not — two geometries mixed, every downstream number still finite and plausible,
+  which is the 2026-08-16 L-shape retraction's exact signature. The adequacy gate reaches this path
+  via `_lshaped_operator(params.scale)`, masked only by `ComparisonParams.scale` defaulting to 1.0.
+  Now raises. Corner coordinates surfaced as named constants (`LSHAPE_DOMAIN_MIN/MAX/MID`,
+  `LSHAPE_NODES_PER_SQUARE`) instead of six literals on three lines.
+- **`SubstrateConfig.kind` was read by nothing, and `describe()` could lie.**
+  `TensorGridSubstrate(op, config=SubstrateConfig(kind="skfem_tri"))` constructed cleanly and
+  reported `describe()["kind"] == "tensor_grid"`, with the bound structlog logger emitting the same
+  wrong value. Both `describe()`s hardcoded their kind; the field's only production readers were
+  its own validator. New shared `resolve_substrate_config(config, kind=..., default_name=...)` —
+  used by both substrates — builds the default or rejects a mismatch, and `describe()` now reads
+  the config. `_KIND_SCOPED_FIELDS` structurally could not catch this: it rejects a field scoped to
+  the *other* kind, never a mismatched `kind`.
+- **An unmeasurable solve published a perfect score.** `nodal_rms_l2_error` documents "Returns
+  `None` — not a crash, and **not** `0.0`" and returns `None` on two triggers: no exact solution
+  (guarded at construction) and an **empty diff array**, guarded nowhere. Both substrates wrote
+  `float(nodal_rms or 0.0)` at six sites — exactly the value the helper refuses to return — so an
+  empty in-domain node set reported `l2_error = 0.0`. New shared
+  `baselines.require_measurable_l2(value, owner)` raises instead.
+- **The two substrates' `extra` dicts disagreed while a comment claimed they matched.**
+  `tensor_grid` emitted `l2_error_area_weighted`, `skfem_tri` emitted `l2_error_quadrature` — the
+  same slot under different names from two implementations of one Protocol — and the tensor-grid
+  comment asserted the opposite. Fixed **additively**: metric-specific keys stay, and a shared
+  `l2_error_primary` (`SUBSTRATE_PRIMARY_L2_KEY`) names the selected one on both. No production
+  reader of `SubstrateSolveResult.extra` existed, which is why this was worth fixing before one did.
+- **`src/refinement/substrate_registry.py` was a registry with no registrants and no export.** Both
+  substrates now carry `@register_refinement_substrate`, and the pair is exported from
+  `src.refinement` alongside its already-exported game twin. Its guard reads the registry in a
+  **subprocess**, because two suites `clear()` that process-global singleton in setup and teardown
+  — verified: an in-process assertion goes green alone and red after
+  `tests/refinement/test_substrate.py`.
+- **A guard exemption this session added was false in both checkable clauses.**
+  `_OMIT_WITHOUT_A_CI_GATE["src/integrations/eval_harness/*"]` claimed the extra is installed by no
+  CI job (`ci.yml:1179` installs it) and that a "`Eval-harness adapter` Regression Surface command"
+  enforces coverage instead (no such row exists). 914 LOC is measured nowhere and 8 of 11 test
+  modules skip. Reason rewritten to the truth and marked a disclosed gap (B37); new
+  `test_regression_surface_rows_cited_by_exemptions_exist` closes the decidable half of the hole
+  — mutation-killed by restoring the original citation.
+- **Benchmark assertions compared on the mean.** `BenchmarkStats` exposed no median, and
+  `test_fnet_perf` asserted on `mean_time_s` in CI's blocking lane (`benchmark` is a registered
+  marker that appears in no `-m` filter). Measured on an *idle* box, 30 rounds at N=512:
+  `mean=0.953ms median=0.438ms max=13.228ms` — one outlier at 30x the median more than doubles the
+  mean. Added `median_time_s` + `robust_time_s()` to the shared fixture. **Not** threshold-widening:
+  the assertion needs 1.5x and the code delivers 19–42x whichever statistic is used. Thresholds
+  named (`MIN_FNET_SPEEDUP`, `SPEEDUP_ASSERTED_ABOVE_N`, `WARMUP_ROUNDS`, `TIMING_ROUNDS`), and a
+  synthetic `TestSpeedupPredicate` now fails if the threshold is widened to the historical `0.5`.
+  Also removed 16 lines of dead `pytest-benchmark` delegation (the package is installed nowhere and
+  declared in no dependency file; no fixture named `benchmark` exists) and a duplicate marker
+  registration that shadowed pyproject.toml's with different wording.
+
+### Changed — one ratio floor, three declarations
+
+- `1e-15` was declared independently in `research/lshape_amr_compare.py`,
+  `research/transfer_baseline_compare.py` and `research/substrates/config.py`. The last carried a
+  provenance comment wrong on every count: it cited `src/experiments/transfer_baseline_compare`
+  (no such module) and claimed to mirror `DEFAULT_TRANSFER_RATIO_FLOOR`, which is `1e-12` — a
+  thousandfold different. All three now source `src.constants.DEFAULT_RATIO_FLOOR`. **Values
+  unchanged** (asserted: all three still `1e-15`), and deliberately **not** unified with
+  `DEFAULT_TRANSFER_RATIO_FLOOR`: same knob, different live values, which is the case
+  `surface-hardcoded-value` Step 1 says to keep apart. Both constants now cross-reference each other.
+- Substrate kind and error-metric strings, and the three `extra` key names, surfaced as constants
+  in `research/substrates/config.py` — each was previously a bare literal at up to nine sites, and
+  `"nodal_rms"` was never spelled at all (the implicit `else`, so a third metric would have fallen
+  through silently).
+- `MAX_SWEEP_DOF` now derives from `RATE_FIT_DOF_RANGE[1]` instead of retyping `4000`; the coupling
+  previously lived only in a comment.
+- `fit_log_log_rate` takes an `arm=` label bound onto its `rate_fit` log line.
+  `measure_rate_separation` calls it twice in succession, and the two lines were previously
+  byte-indistinguishable — in the code that produces the charter's headline rate separation.
+  Default keeps every existing caller unchanged.
+- `TensorGridSubstrate.refine` warns on an empty selection, matching `SkfemTriSubstrate`. Both read
+  the same `marking_variant` and run in the same sweep loop, but only one warned.
+
+### Fixed — CI coverage jobs no longer pin the pure-Python coverage tracer
+
+- **`COVERAGE_CORE=pytrace` was retired from the `coverage` and `coverage-gates` jobs.** The pin
+  dated to two documented claims that this session directly re-verified and found no longer
+  true: `cb645ad` (2026-07-10) said the C tracer crashed at collection; `cfe7f22` (2026-08-15)
+  said it silently under-measured (`src/training` cited at 89.53% pytrace vs 82.45% C, with
+  `base_trainer.py` reported at 46%). Re-measured today on the identical `src/training` gate:
+  **88.25% under both tracers, byte-identical per-file breakdown, `base_trainer.py` 88% both** —
+  and a minimal, direct reproduction of the exact documented failure (`coverage run --branch`
+  over a script that imports `torch._C` and runs a tensor op) exits 0 under both cores. CI's own
+  pulled logs confirm the torch version matches exactly (`torch-2.13.0`) between this environment
+  and the GitHub runner, so the fix is not environment-specific.
+- **Zero test blast radius by construction**: the only test that hardcodes the pin
+  (`tests/claude/test_harness_validation.py::test_coverage_core_is_pinned_to_pytrace`) reads
+  `.claude/settings.json`, which this change does not touch — confirmed 87/87 pass unchanged.
+  `tests/docs/test_charter_alignment.py` (27/27) and `tests/docs/test_coverage_gate_integrity.py`
+  (20/20), both of which parse `ci.yml`'s coverage-gate steps, are likewise unaffected.
+  `test-extras`'s two `[fem]` gates, `transfer-baseline-regression`, `Makefile`, and
+  `.claude/settings.json` still carry the pin — deliberately deferred pending this change's own
+  CI numbers.
+- **Revert condition, stated in advance**: any crash signature or any gate percentage that
+  differs from its currently-documented value on this change's own CI run reverts the two
+  `env:` blocks removed here. Two-line change, two-line revert.
+- **The CI run answered it, and the pin is now retired everywhere.** No revert triggered: zero
+  crash signatures in the full `Run tests with coverage` step body, test counts identical to the
+  last pinned baseline (`9545 passed, 265 skipped, 42 deselected`), coverage byte-identical
+  (`TOTAL 29971 2232 7150 91%`, `Total coverage: 90.70%`), all 43 `coverage-gates` steps green —
+  and pytest execution down from **1967.30s to 604.32s (3.26×)**, which is also what pushed the
+  formerly-combined `coverage` job past its 45-minute cap in the first place. On that evidence the
+  five remaining sites were removed: `test-extras`'s two `[fem]` gate steps (re-measured without
+  the pin first — substrates 99.32%/129 passed, `fem_baseline.py` 85%/51 passed, both identical to
+  their documented values), `transfer-baseline-regression`'s job-level `env:` (which ran **no**
+  coverage command at all, so the pin there was inert), `Makefile`'s `export COVERAGE_CORE ?=`,
+  and `.claude/settings.json`'s `env` key.
+- **The guard was inverted, not deleted.**
+  `tests/claude/test_harness_validation.py::test_coverage_core_is_pinned_to_pytrace` is now
+  `test_no_coverage_core_tracer_pin` and asserts the key's *absence* — mutation-killed by
+  reintroducing it. Its docstring keeps both original claims with their commit hashes and dates
+  rather than erasing them, the same treatment this CHANGELOG gives the L-shape retraction: a
+  reintroduced pin should have to re-establish the crash with fresh evidence, not inherit a
+  disproved one. ~40 documentation sites were corrected the same way (`CLAUDE.md`'s Regression
+  Surface warning block, `README.md`, `CONTRIBUTING.md`, `docs/getting-started.md`, five
+  `specs/*.spec.md`, four `.claude/skills/*/SKILL.md`, the C4 harness diagram) — the retracted
+  numbers stay on the page, marked as disproved.
+- **Also closes `docs/CODE_HYGIENE_AUDIT.md` B7's third sub-item** ("`COVERAGE_CORE`
+  centralization") by deletion: there is nothing left to centralize. Tracked as **B36**.
+
+### Fixed — PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
+
+- **`CI Success` was red on a run in which nothing failed.** All 47 steps of the `coverage`
+  job reported `success`; the job was then killed by `timeout-minutes: 45` after 54 minutes and
+  its `cancelled` conclusion propagated to the aggregate gate. The cause is structural, not
+  incidental: `coverage` ran a full-suite measurement (~35 min) *and* ~40 sequential per-module
+  gates (~17.5 min) in one job, so every gate added pushed it further over budget. **Split the
+  per-module gates into their own `coverage-gates` job** (436 lines, 40 steps) — they re-run
+  their own test subsets and need no artifact from the main job, so the two halves now run
+  concurrently and both land inside the cap. Raising `timeout-minutes` was rejected as masking:
+  the next gate lands right back here.
+- **`test-extras` was never in `ci-success`'s `needs`**, so every gate it carries has been
+  unable to block a merge — including the two `[fem]` gates added days earlier
+  (`src/research/substrates` at 95, `fem_baseline.py` at 83). Added, along with the new
+  `coverage-gates` job; omitting the latter after the split would have silently downgraded ~40
+  hard thresholds to advisory.
+- **Deleted `SubstrateConfig.marking_fraction`, which had zero readers.** It was added in
+  `883c5a2` *to close* a dead-knob finding and reproduced the exact defect it was meant to fix —
+  and `_KIND_SCOPED_FIELDS`, the validator written in the same commit, structurally cannot catch
+  it: that rule rejects a field scoped to the *other* substrate kind, never a shared field
+  nothing reads. θ already exists as a required, validated, keyword-only parameter on
+  `run_refinement_sweep`, the only API that consumes it. Rejected alternatives, both recorded in
+  `specs/refinement_substrate.spec.md`: defaulting θ from `describe()` (which returns no θ) or
+  adding `default_theta` (a ninth member on a Protocol frozen in Slice A).
+- **Renamed `_area_weighted_l2` → `area_weighted_l2`** (`src/research/lshape_amr_compare.py`),
+  ten sites, **no back-compat alias**. It was private by convention and imported cross-module by
+  `TensorGridSubstrate` — the underscore was a claim the code contradicted. The alias precedent
+  cited when this was first raised (`_dorfler_mark = dorfler_mark`) does not exist; what exists
+  is a method delegate. An alias with no retirement condition is a liability in a repo whose
+  meta-guards fail stale exemptions by design.
+- **`require_exact_solution(operator, owner)`** (`src/research/baselines.py`) replaces two
+  verbatim copies of the same construction-time guard, each of which probed the operator with a
+  hardcoded `np.zeros((1, 2))`. Probing at `operator.dim` is the fix; the shared helper is the
+  point. This was the **third** copy-paste between the substrate pair (after
+  `dirichlet_dof_indices` and the nodal-RMS formula), which is the actual finding — treating the
+  pattern rather than the literal is what stops a fourth. Pinned by a spy that records the
+  probe's *shape* over `dim ∈ {1, 2, 3}`: "it did not raise" is not evidence, because a `(1, 2)`
+  probe against a 1-D or 3-D operator still returns a non-`None` array by broadcast. Both
+  substrate call sites carry their own guard test, so a substrate that stops calling the helper
+  fails rather than silently regaining the several-frames-deep `TypeError`. **2/2
+  mutation-killed** (hardcoded `2` restored; the `TensorGridSubstrate` call removed).
+- **`src/refinement` branch coverage corrected 96% → 100%** in `.github/workflows/ci.yml` and
+  the CLAUDE.md Regression Surface row (170 statements, 12 branches, 0 missed; re-measured
+  2026-09-02). The 96% predated Slice A's `substrate.py`/`substrate_registry.py`.
+  `CHANGELOG.md`'s `[0.4.0-dev]` figure is deliberately **not** touched — it sits under a
+  released heading and measures a tree that still contained `src/thermo` (cut 2026-07-22). That
+  is append-only history, not a competing claim.
+
+### Added — `element-local-substrate` Slice A: shared marking + substrate protocol
+- **One `dorfler_mark` function replaces two independently-drifting Dörfler bulk-marking implementations** (`src/research/marking.py`) — `DorflerAMRSolver._dorfler_mark` (`src/research/baselines.py`, squared bulk quantity, marks ≥1 element on an all-zero indicator array) and `ScikitFEMPoissonSolver._dorfler_mark` (`src/research/fem_baseline.py`, linear bulk quantity, returns all-False on all-zeros) now both delegate to it (`variant="squared"`/`"linear"`), byte-for-byte, Hypothesis-verified against frozen reference re-derivations of each original formula plus the two solvers' own 85-test regression suite. **Lives under `src.research`, not `src.refinement`** as originally planned: CI's `reference-baselines-do-not-import-the-candidate` architectural contract (`tests/regression/test_import_contracts.py`) forbids `baselines.py`/`fem_baseline.py` from importing anything under `src.refinement` at all, and `dorfler_mark` is active marking behaviour, not the inert protocol/type import the contract's one exemption (`src/mcts/gumbel.py`) tolerates — caught by that contract's own test failing in CI, fixed by relocating rather than exempting.
+- **`RefinementSubstrate` Protocol + `SubstrateSolveResult`** (`src/refinement/substrate.py`, numpy-only per `src/pde/games/__init__.py`'s documented SIGSEGV rationale) and its registry (`substrate_registry.py`) — the stepwise interface `openspec/changes/element-local-substrate/design.md` specifies, that `TensorGridSubstrate` and `SkfemTriSubstrate` will implement in later slices. `@runtime_checkable` so a concrete substrate satisfies it structurally, without inheriting from it. `SubstrateSolveResult.__post_init__` enforces AC5's `n_dof_free <= n_dof` invariant (both non-negative) at construction, not just by convention.
+- **`SubstrateConfig`** (`src/research/substrates/config.py`) — the Pydantic data contract from `specs/refinement_substrate.spec.md`'s Data Contract table (`kind`, `element_type`, `marking_variant`, `error_metric`, `enforce_immutable_meshes`, `solve_cache_max_entries`, and the even-`initial_side` invariant), plus the named numerical-stability constants `RATIO_FLOOR`/`AREA_FLOOR`/`RATE_FIT_MIN_POINTS`. Not in the original 27-task checklist; added after an independent adversarial review of the implementation plan found no task owned it.
+- **Fixed a real bug in `scripts/audit_abstractions.py`**, found while gating this change: a generic `Protocol[T]` base parses as `ast.Subscript`, not `ast.Name`/`ast.Attribute`, so `_is_protocol_class` silently returned `False` for any generic Protocol — `RefinementSubstrate`'s 8 members were invisible to the audit entirely, not "verified live", and the CI gate that scans `src/refinement` (`.github/workflows/ci.yml`'s "Audit abstractions (refinement surfaces)" step) would have passed on dead code by tool blind spot rather than genuine compliance. Fixed the AST unwrap; the resulting real finding (8 declared-but-uncalled members, since Slice A intentionally ships ahead of its first concrete consumer) is exempted via a new, explicitly time-boxed `_STAGED_FOR_UPCOMING_TASK` allowlist — distinct from the existing `_KNOWN_LIVE` (a real caller the AST heuristic can't see) — naming Slice E's task 7.1 (`RefinementGame` subclass over the substrate) as the entry it retires. 4 new regression tests, including one that would have caught the original bug.
+- Coverage: `src/refinement` 100% branch, `src/research/marking.py` 100% branch, `src/research/substrates` 100% branch.
+
+### Added — `element-local-substrate` Slice B: `TensorGridSubstrate`, the back-compat proof
+- **`TensorGridSubstrate`** (`src/research/substrates/tensor_grid.py`) wraps `DorflerAMRSolver`'s existing static solve/indicator/refine primitives and `lshape_amr_compare._area_weighted_l2` behind `RefinementSubstrate`, reproducing today's `run_dorfler_arm` trajectory. `mark()`/`refine()` split `_dorfler_mark_2d`'s single call (element selection + x/y-axis projection) into two Protocol-compliant primitives — `mark()` returns the shared `dorfler_mark`'s flat element selection, `refine()` does the axis projection plus `DorflerAMRSolver._refine_grid` (unmodified) — a composition proven bitwise-equivalent to the fused legacy call by the golden test, not by inspection.
+- **AC1 golden test** (`tests/research/test_tensor_grid_substrate.py`): the full `initial_mesh -> solve -> mark -> refine` loop matches a live `run_dorfler_arm` call bitwise (7 refinement levels, identical `n_dof`/`l2_error` at every level) and the committed `results/lshape_mcts_vs_dorfler.csv` `dorfler` rows to float tolerance. Mutation-checked: forcing `mark()` to the wrong bulk-marking variant diverges the trajectory at level 2 (`n_dof` 46 vs 34), confirming the test discriminates a wrong marking policy rather than passing vacuously.
+- Coverage: `src/research/substrates` (now including `tensor_grid.py`) 100% branch.
+
+### Added — `element-local-substrate` Slice C: `fem_baseline` decomposition + `SkfemTriSubstrate`
+- **`fem_baseline.py` decomposed into module-level primitives** (`build_initial_mesh`, `build_lshaped_initial_mesh`, `assemble_and_solve`, `zz_indicator`, `element_gradients`, `triangle_area`, `estimate_smoothness`, plus the new `quadrature_l2_error`) — `ScikitFEMPoissonSolver`/`ScikitFEMLShapedSolver` re-expressed as thin delegates. Byte-identical before/after (`solution`, `l2_error`, `metadata` all match across `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`); the existing 23-test file passes untouched, plus 2 new tests for `quadrature_l2_error`.
+- **Re-measured the AC7 adequacy-gate risk an independent adversarial review of the implementation plan surfaced**: the task-zero spike's headline rate-separation numbers (`-1.256`/`-0.710`) came from the spike's own stronger, non-production ZZ estimator, not the weaker production one this slice actually extracts. Measured through the real production primitives on the real L-shaped Poisson benchmark: adaptive **-1.3109**, uniform **-0.6710**, at θ=0.5 over `RATE_FIT_DOF_RANGE = (200, 4000)` — both comfortably inside the planned Slice D thresholds. No recalibration needed. **Corrected twice in Slice D**, both times by the gap-analysis review's rule that a number must come from committed code: (1) this line originally read "adaptive -1.322, uniform -0.671", which mixed two different fitting *windows* — the adaptive figure was fitted over `(200, 2600)`, the uniform over `(200, 4000)`, because the narrower window cannot hold three uniform points at all; (2) the replacement figure `-1.2515` was measured at **θ=0.3**, while the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Same substrate, same window, different θ, 5% different rate. Both figures above are now from the gate's own configuration, and both are **bounded by a committed test** (adaptive ≤ `-1.10`, uniform ∈ `(-0.85, -0.55)`) rather than resting on a transcribed local run. **Quote θ and the window with any rate in this repo** — a bare convergence rate is not a fact.
+- **`SkfemTriSubstrate`** (`src/research/substrates/skfem_tri.py`) — the element-local substrate the charter's own adequacy claim needs to be measurable at all. Verified end-to-end: marking a single element grows the mesh 384 → 391 (local) vs 384 → 1536 for `mesh.refined()` with no marks (uniform) — genuinely element-local, not the tensor-grid substrate's full-grid-line defect. Reports quadrature L2 as the primary metric (configurable), nodal RMS additive in `extra` (AC6); clears mesh write flags behind `enforce_immutable_meshes` (AC3, verified both enforced and opt-out); the reentrant corner is confirmed a mesh node at the origin on the real mesh builder's output (AC8). 20 new tests.
+- **`fem_required` marker + visible skip discipline**: registered in `pyproject.toml`; a root `conftest.py` hook mirrors the existing `gpu_required` skip but additionally reports a skip count via `pytest_terminal_summary` (`gpu_required` does not), and `ALPHAGALERKIN_REQUIRE_EXTRAS=1` raises `pytest.UsageError` (exit 4) instead of skipping — closing a real gap in the `test-extras` CI job's own stated purpose (a half-succeeded `scikit-fem` install would otherwise skip silently and still go green). `test_fem_baseline.py`/`test_skfem_substrate.py` switched from `pytest.importorskip` to `pytestmark = pytest.mark.fem_required`, manually verified both ways (uninstalling scikit-fem: visible `skipped 45 test(s)`; same run under the env var: hard failure with the install hint). Wired into `test-extras`; `skfem_tri.py` added to the coverage `omit` alongside `fem_baseline.py`.
+- Coverage: `src/research/substrates/skfem_tri.py` 89% (native-runner measurement; the file rides `fem_baseline.py`'s existing omit-list treatment, so no dedicated CI gate — remaining gaps are version-dependent defensive branches, same class as `fem_baseline.py`'s own pre-existing gaps).
+
+### Added — `element-local-substrate` Slice D: the adequacy gate (AC7)
+- **`tests/research/test_amr_arena_interpretability.py`** — the gate that makes the charter's central claim measurable at all. Asserts adaptive marking beats uniform refinement on the L-shaped Poisson singularity, **and** that the *identical* predicate rejects `TensorGridSubstrate`: a gate that passes on both substrates is not a gate. Both halves share one `gate_violations()` function, so "the same assertion fails there" is literally rather than approximately true. Measured at θ=0.5 over `(200, 4000)` — `SkfemTriSubstrate`: adaptive **-1.3109**, uniform **-0.6710**, error ratio **0.0946** at matched DOF (passes); `TensorGridSubstrate`: adaptive **-0.2325**, uniform **-0.6489**, ratio **13.35** (fails).  Adaptive is thus ~10x *better* than uniform on the element-local substrate and ~13x *worse* on the tensor-product one — the substrate, not the marking policy, decides the sign. The tensor-grid half deliberately carries **no** `fem_required` marker, so the discriminating half runs on every CPU CI job with no optional dependency.
+- **5/5 mutations killed.** One initially survived and is worth recording: widening `UNIFORM_RATE_BAND` to `(-5.0, 0.0)` left every solve-driven test green, because both substrates' uniform rates sit comfortably inside the band — so AC8's "a rate that is too *good* is also a defect" tripwire was documented but asserted nowhere. Closed by `TestGatePredicate`, which unit-tests the predicate on synthetic `RateSeparation` values (including the `-1.05` both-arms rate that was the task-zero spike's actual wrong result) with no PDE solve.
+- **`src/research/substrates/sweep.py`** — the sweep/rate-fit machinery lives in a reusable, substrate-agnostic module rather than inside the test file, so the eventual arena change consumes it instead of growing a second, subtly-different copy (the exact failure mode that made `dorfler_mark` necessary). `run_refinement_sweep` / `fit_log_log_rate` / `measure_rate_separation` / `warn_on_degenerate_units`, with structlog events throughout (`refinement_sweep_start` / `_level` / `_stop` carrying its stop *reason* / `_done`, `rate_fit`, `rate_separation`, `degenerate_units`). `fit_log_log_rate` **refuses** to fit fewer than `RATE_FIT_MIN_POINTS` points rather than returning a meaningless slope. 100% branch coverage; 22 unit tests drive it entirely through a synthetic substrate, which is what makes "substrate-agnostic" a tested claim rather than a docstring.
+- **Three dead constants got real consumers.** `RATIO_FLOOR`, `AREA_FLOOR` and `RATE_FIT_MIN_POINTS` had *no* production reader, and `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant defined as `1e-15` — a tautology guarding nothing. `sweep.py` now consumes all three, with behavioural coverage for each; the value-pinning test is retained but relabelled for what it actually guards (doc/code drift against the spec table). **CORRECTED 2026-09-02**: true for `RATIO_FLOOR` and `RATE_FIT_MIN_POINTS`, false for `AREA_FLOOR` -- its only consumer was `warn_on_degenerate_units`, which itself had zero production callers, so the "real consumer" was a dead function with four tests written for it. Both deleted.
+- **Spec correction, disclosed**: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`. The original window is *physically* incapable of holding three **uniform** points — a 2D uniform arm quadruples DOF per level, so a 13× window spans at most two. Not a judgement call: `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than fitting a two-point slope, which is how it surfaced. Verified on both substrates (`skfem_tri` uniform lands on `[225, 833, 3201]`, `tensor_grid` on `[208, 800, 3136]`). A window-*width* correction, not a threshold loosening — the other three constants hold at their originally pinned values. Recorded with its reason in `specs/refinement_substrate.spec.md`.
+- **Abstraction-audit allowlist shrunk 8 → 1, and made self-expiring.** `sweep.py` is a real, non-test reader of seven of the eight `RefinementSubstrate` members, so those seven left `_STAGED_FOR_UPCOMING_TASK` rather than staying exempted — an allowlist entry covering a live member silently stops guarding it, which is the opposite of the gate's purpose. Only `fingerprint` remains staged (its consumer, the fingerprint-keyed solve cache bounded by `solve_cache_max_entries`, lands with Slice E). CI's blocking "Audit abstractions (refinement surfaces)" step gained `src/research` as a fourth root, because the declaration and its driver live in different packages and the narrower scan reported live members as dead — the cross-package false positive that step's own comment warns against. New `test_every_staged_exemption_is_still_forward` drops the allowlist, re-runs the audit over exactly CI's roots, and requires every staged member to *still* be unread — so a stale exemption fails rather than rotting (same discipline as the import-contract meta-guards and `.claude`'s `FORWARD_REFERENCES`). Mutation-verified: re-adding `solve` to the allowlist turns it red.
+
+### Added — A guard for the false pass this repo has now written three times
+
+- **`tests/docs/test_coverage_gate_integrity.py`** — the "identify areas to improve hooks/validations" ask, answered with the failure that actually keeps happening rather than a proposal. `video_compression`, `demos` and `src/research/substrates/skfem_tri.py` each shipped a coverage gate that measured **nothing** while reporting green, and each was found by a human reading the workflow. The two mechanisms are entirely mechanical, so they are now checked: a `--cov` target swallowed by pyproject.toml's global `omit` (coverage reports `0.00%` with `No data was collected`, and `--cov-fail-under` cannot fail), and a `--cov=<...>.py` file-path spec, which coverage 7.x silently ignores. Also asserts every `--cov` target exists on disk. Hermetic — parses YAML and the TOML omit block, runs nothing.
+- **Exemptions are falsifiable, not documentary.** An entry claiming a module is "gated elsewhere" must name a step that *both* selects it **and** overrides the omit (`--cov-config=` / `--rcfile=`); an ancestor `--cov` is explicitly rejected as proof, because it inherits the same omit. A stale exemption whose omit pattern is gone, or one with an empty reason, fails.
+- **7/7 mutations killed**, and three of them mattered. The first version only detected an omit that was an *ancestor* of the target, so dropping `--cov-config` from the substrates gate — where the omit is a *descendant* — passed; that is precisely how the third instance got written, since the package total would have read ~99% from four files while the fifth contributed nothing. The second version accepted an ancestor `--cov` as proof of "gated elsewhere", which the repo-wide `--cov=src` satisfies while inheriting the same omit. The third used substring matching, so `--cov=src/research` matched inside `--cov=src/research/substrates` and one gate stood in as proof for a sibling file.
+- **It found a real gap on its first run**: `src/research/fem_baseline.py` (249 statements) is in the global `omit`, so the `coverage` job's `--cov=src/research` gate at 85 had **never measured it** — invisible inside a package percentage that looked healthy. Now gated at 83 (measured 85%) in `test-extras`, the only job that installs the `[fem]` extra. Native-runner form for two independent reasons: a file-path `--cov` spec is dropped, *and* `coverage run` reads pyproject.toml's omit too, so `--include` alone does not override it.
+- **A different existing guard caught this one**: `test_python_floor_compatibility` rejected `import tomllib` (3.11+) against the declared 3.10 floor, where it would have been a *collection* error taking the whole run down. Replaced with the anchored-regex parse the sibling `test_version_consistency.py` already uses — and that parser is itself pinned by a test, after its first version harvested a comment string as if it were an omit pattern.
+
+### Fixed — `make` could not run any test target, in any environment where the console scripts differ from the interpreter
+
+- `PYTEST ?= pytest` (and `mypy`, `coverage`) resolved to whichever interpreter installed those console scripts, which need not be the one holding the project's dependencies. Measured in a working container: every `make test-*`, `make mypy`, `make coverage` and therefore **`make pre-pr` — the documented pre-PR gate — died at `ModuleNotFoundError: No module named 'hypothesis'`**, while `python -m pytest` ran the full suite. Only `make lint` worked, because `ruff` is a standalone binary that imports nothing. Now routed through `$(PYTHON) -m`, which also still prefers an activated venv (its `python` is first on PATH), so this is strictly better at what the old comment claimed. Every variable stays overridable.
+- New `make test-substrate` target mirroring the `test-extras` coverage step. Deliberately **not** chained into `pre-pr`: it requires the optional `[fem]` extra, and without scikit-fem the tests skip, the measured percentage collapses, and the gate would fail for entirely the wrong reason.
+
+### Fixed — `element-local-substrate`: gap-analysis remediation (4 blockers, 15 findings)
+
+An adversarial gap analysis against `main` verified 19 findings across Slices A–D. The ones that were real defects, not style:
+
+- **Crash on any operator without an analytic exact solution.** `SkfemTriSubstrate._nodal_rms_l2` copied `BaseSolver._compute_l2_error` and dropped its `if exact is None: return None` guard, so `np.asarray(None, dtype=np.float64)` raised `TypeError` from several frames inside the solve — while the docstring claimed the formula was "reproduced verbatim" and that the copy avoided importing `src.research.baselines` (which `fem_baseline` already imports, so the coupling existed either way and the duplication bought nothing but a divergence). `mypy --strict` could not see it: `np.asarray` swallows `None`. Fixed by extracting `baselines.nodal_rms_l2_error` as a module-level primitive that `BaseSolver._compute_l2_error` now delegates to (same split as `_dorfler_mark` → `dorfler_mark`), deleting the copy, and — because both substrates measure error against an exact solution and `SubstrateSolveResult.l2_error` is a bare `float` with nowhere to put a `None` — **failing at construction** with a named error instead. `quadrature_l2_error` gained the same guard.
+- **A coverage gate that measured nothing.** `src/research/substrates/skfem_tri.py` is in pyproject.toml's global coverage `omit` (it needs the optional `[fem]` extra), and the one CI job that installs scikit-fem ran no `--cov` at all — so the recorded "89%" was measured nowhere and could not regress-fail. Exactly the false pass this repo already documents twice (`video_compression`, `demos`). Fixed with the same inline-`.coveragerc` technique, in the `test-extras` job, gated at **95** against a measured **99%** — deliberately above the usual `floor(measured)-2 capped at 85` convention, because on a 272-statement package an 85 gate carries 14 points of slack and would reproduce the finding.
+- **`refinable_mask` contradicted the estimator.** Both substrates returned all-True unconditionally. With a geometry predicate that is wrong in a way that matters: `_compute_indicators_2d` forces out-of-domain (notch) elements to a **zero** indicator, so they can never be marked — reporting them refinable was a claim the estimator contradicts. And the mask is *read*, not decorative: a uniform sweep marks exactly it. Fixed by sharing a new `baselines.element_inside_mask` between the estimator and the mask, so the two cannot drift; a test asserts every non-refinable element has a zero indicator.
+- **Four `SubstrateConfig` fields were silently ignored.** `SubstrateConfig(kind="tensor_grid", element_type="P2")` constructed cleanly, validated cleanly, and did nothing — a typed, described, validated knob that is a no-op is worse than a magic number, because it looks like it works. `marking_variant` and `error_metric` are now read by `TensorGridSubstrate` (which also reports both L2 metrics, so `extra` is no longer empty), `enforce_immutable_meshes` is now enforced there too (a frozen dataclass stops rebinding fields, not in-place array writes), and a `model_validator` **rejects** a `kind`-scoped field set for the other substrate. Only values set away from their default are rejected, so nothing existing breaks — two tests in the repo did go red, which is the validator working on real calling code.
+- **θ, the single most consequential AMR tunable, was unvalidated and absent from the data contract.** `dorfler_mark` accepted `theta=-1`, `0`, `5`; `SubstrateConfig` had eight fields and none was the bulk fraction. Added `marking_fraction` (`gt=0, le=1`) and a range check. Also: **NaN indicators silently marked the wrong set** — `np.argsort` sorts NaN last, so the descending `[::-1]` both variants use ranks it *first* and poisons the cumulative sum. Every downstream number stayed finite and plausible, which is the worst failure mode available here. Now rejected, with a test that asserts the *mechanism* so a future author can see what removing the guard re-enables.
+- **AC2's conformity clause had no test** despite the module docstring claiming it. Zero facets shared by >2 elements, after one and after four successive local refinements — the property that justifies skfem RGB over a quadtree backend and the one most likely to break under a scikit-fem major (hence the `<13` pin). The incidence helper is itself mutation-tested against a synthetic hanging node. **AC3** was likewise tested more weakly than written (`n_units` unchanged, which a mesh with moved vertices also satisfies); it now compares coordinate and connectivity **bytes**.
+- **No logging in any new production module**, while every sibling module has structlog. Added throughout, including the case that motivated it: `skfem`'s `refined([])` returns a same-size mesh and raises nothing, so a driving loop that terminates on DOF growth spins silently — reachable whenever `marking_variant="linear"` meets an all-zero indicator array. Now a named warning. The `n_marked` vs element-growth pair logged by both `refine()` methods *is* the O(|M|)-vs-O(N) evidence AC2 asks for; it previously existed only inside a test assertion.
+- **Duplication and cost in the hot path**: `_dirichlet_dof_indices` was a second, untested copy of a version-compat chain (now `fem_baseline.dirichlet_dof_indices`, shared), and each `solve()` built **three** `skfem.Basis` objects on the path the spec names as the dominant cost inside MCTS (now one, threaded through).
+- **`mypy --strict` on `src/research`** is clean again. The `# type: ignore[untyped-decorator]` comments on skfem's form decorators could not be correct in both environments — required when the optional extra is absent (`Any` decorator), an unused-ignore when it is installed — so they are replaced by a per-module `disallow_untyped_decorators = false` override, the same resolution already used for flax's `@nn.compact`. Root `conftest.py`'s two hooks are annotated.
+- **Two numeric claims corrected**, both traceable to the same root cause: a figure transcribed from an exploratory script rather than read out of committed code. The Slice C rate pair mixed two fitting *windows*; its replacement was measured at **θ=0.3** while the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Convention adopted repo-wide: **a convergence rate is quoted with its θ and its DOF window, or it is not quoted.**
+- **Documentation drift closed**: a Regression Surface row for all seven new test files (CLAUDE.md had none), three new rows in the charter's deviations register (the zero-registrant substrate registry, the staged audit exemption, the omitted module — each previously an undisclosed deviation a reviewer would have had to find), `ARCHITECTURE.md`'s `src/refinement`/`src/research` descriptions, a **Refinement Substrates** container plus five components and seven relations in the C4 diagrams, and a `docs/CODE_HYGIENE_AUDIT.md` §7.4 entry. One spec claim was simply **false** and is now marked as such: `specs/refinement_substrate.spec.md` stated that `specs/lshape_amr_compare.spec.md` is "marked superseded" — it is not; that edit is Slice E's task 8.3 and has not landed.
+
 ### Fixed — Next-steps case follow-through: OperatorTrainer.load_checkpoint had zero test coverage (B30)
 - **Two new tests close a real gap**: `OperatorTrainer.load_checkpoint` — including the `allow_unsafe_pickle` opt-in added 2026-08-21 — was never exercised by anything. The existing `TestOperatorTrainerRoundTrip` tests `load_torch_checkpoint` directly against hand-built dicts and never constructs an `OperatorTrainer`. Added `test_load_checkpoint_restores_state` (real save/load round trip through the public API) and `test_load_checkpoint_allow_unsafe_pickle_flag_is_plumbed_through` (`tests/test_operator_training.py::TestOperatorTrainer`).
 - **New dedicated CI gate** (`Per-module coverage gate (training/operator_trainer)`): the module's two test files live outside `tests/training/`, so the whole-package `src/training` gate never measured it (25% in-scope vs 88% with its own tests). Gated at 85, native-runner form. See `docs/CODE_HYGIENE_AUDIT.md` B30.

@@ -200,7 +200,7 @@ untrained MCTS. Gating either would make the experiment a guaranteed failure tha
 
 ```bash
 # Scenario + config + harness + game + mask + CLI (CPU)
-COVERAGE_CORE=pytrace pytest tests/research/test_lshape_notch_mask.py \
+pytest tests/research/test_lshape_notch_mask.py \
   tests/pde/test_lshape_amr_game.py tests/research/test_lshape_amr_compare.py \
   tests/poc/test_lshape_amr_compare_config.py tests/poc/test_lshape_amr_compare_scenario.py \
   tests/scripts/test_run_lshape_amr.py -v
@@ -210,9 +210,9 @@ pytest tests/research/test_baselines.py tests/research/test_baselines_2d.py \
   tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py -v
 
 # Per-module coverage gates (branch)
-COVERAGE_CORE=pytrace pytest tests/research/test_lshape_amr_compare.py \
+pytest tests/research/test_lshape_amr_compare.py \
   --cov=src/research/lshape_amr_compare --cov-branch --cov-fail-under=85
-COVERAGE_CORE=pytrace pytest tests/poc/test_lshape_amr_compare_config.py \
+pytest tests/poc/test_lshape_amr_compare_config.py \
   tests/poc/test_lshape_amr_compare_scenario.py \
   --cov=src/poc/scenarios/lshape_amr_compare.py \
   --cov=src/poc/scenarios/lshape_amr_compare_config.py --cov-branch --cov-fail-under=85

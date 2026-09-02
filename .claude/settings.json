@@ -3,8 +3,7 @@
   "env": {
     "MPLBACKEND": "Agg",
     "WANDB_MODE": "disabled",
-    "PYTHONHASHSEED": "0",
-    "COVERAGE_CORE": "pytrace"
+    "PYTHONHASHSEED": "0"
   },
   "hooks": {
     "SessionStart": [

@@ -248,7 +248,7 @@ ratio would be a self-serving benchmark.
 
 ```bash
 # Layer + harness + scenario + guards (CPU; coverage exactly as CI runs it — native runner form)
-COVERAGE_CORE=pytrace python -m coverage run --branch \
+python -m coverage run --branch \
   --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare*.py" \
   -m pytest tests/pde/stochastic tests/research/test_stochastic_galerkin_compare.py \
     tests/poc/test_stochastic_galerkin_compare_config.py tests/poc/test_stochastic_galerkin_compare_scenario.py \

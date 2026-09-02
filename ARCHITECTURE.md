@@ -70,7 +70,7 @@ code not on the production import path.
 | `src/modeling/` | shared | core | Neural architectures — Galerkin & softmax attention, FNet blocks, LBB stability guard, the full model + heads. |
 | `src/math_kernel/` | pde | core | Basis functions and integral approximations (Chebyshev/Fourier), Torch + optional JAX. |
 | `src/pde/` | pde | core | PDE-solving-as-a-game framework: operators, geometry/SDF, `mcts_adapter`, `games/`, `stochastic/`, time-stepping. |
-| `src/refinement/` | pde | core | Domain-free sequential-refinement engine (`RefinementGame` + adapter + registry) that `src/pde/` implements. |
+| `src/refinement/` | pde | core | Domain-free sequential-refinement engine (`RefinementGame` + adapter + registry, and the `RefinementSubstrate` protocol + its registry) that `src/pde/` and `src/research/substrates/` implement. |
 | `src/alphagalerkin/` | pde | core | Unified `AlphaGalerkinSolver` wrapper matching the baseline protocol for apples-to-apples benchmarking. |
 | `src/training/` | shared | core | Training infrastructure — trainers, losses, replay buffer, self-play, checkpointing. |
 | `src/games/` | game-ai | core | Multi-game support — abstract `GameInterface`, registry, Go/Chess implementations. |
@@ -79,7 +79,7 @@ code not on the production import path.
 | `src/analysis/` | game-ai | support | Game analysis/auditing — position evaluation, game review, pattern recognition. |
 | `src/curriculum/` | game-ai | support | Curriculum-learning scheduler (board-size progression 9→13→19). |
 | `src/physics/` | pde | support | Synthetic physics data generation (Poisson ground truth). |
-| `src/research/` | pde | support | SBIR benchmark harness — FDM/AMR/PINN baselines, transfer validation, reporting. |
+| `src/research/` | pde | support | SBIR benchmark harness — FDM/AMR/PINN baselines, transfer validation, reporting — plus the shared Dörfler marking primitive (`marking.py`) and the concrete `RefinementSubstrate` implementations under `substrates/` (tensor-product control and element-local scikit-fem) with their sweep/rate-fit driver. |
 | `src/data/` | shared | support | Dataset loading (`PhysicsDataset`) and collation. |
 | `src/backend/` | shared | support | PyTorch/JAX backend abstraction (migration-era; both coexist). |
 | `src/distributed/` | shared | support | Multi-node DDP/NCCL distributed training infrastructure. |

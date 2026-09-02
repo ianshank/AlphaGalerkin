@@ -89,6 +89,8 @@ C4Container
 
         Container(research, "Research & Benchmarking", "Python/SciPy", "SBIR baselines (FDM, AMR, PINN), benchmark runner, convergence reports")
 
+        Container(substrates, "Refinement Substrates", "Python/NumPy/scikit-fem", "Concrete RefinementSubstrate implementations behind one stepwise interface, so two refinement policies provably share a discretisation and differ only in what they mark. TensorGridSubstrate reproduces the legacy tensor-product grid byte-for-byte and is the control -- its refinement inserts full grid lines, which is why adaptive marking loses to uniform there. SkfemTriSubstrate refines only the marked triangles (conforming RGB), where adaptive wins ~10x at matched DOF. Shared dorfler_mark (squared/linear variants) and a substrate-agnostic sweep + log-log rate fitter drive both. Element-local half is gated behind the optional [fem] extra.")
+
         Container(geometry, "Domain Geometry & Time-Stepping", "Python/PyTorch", "Rectangular, L-shaped, cylinder domains; Forward Euler, RK4, Crank-Nicolson")
 
         Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
@@ -162,6 +164,7 @@ C4Container
 | **PoC Framework** | Validates mathematical claims through experiments | Pydantic, structlog |
 | **Data Layer** | Data loading and preprocessing | PyTorch Dataset, padding/masking |
 | **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
+| **Refinement Substrates** | One stepwise interface so refinement policies are compared on a shared discretisation, plus the adequacy gate proving the substrate can show a marking win at all | scikit-fem RGB refinement, Zienkiewicz-Zhu estimator, Dörfler marking, log-log rate fitting |
 | **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
 | **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
@@ -1426,12 +1429,29 @@ C4Component
         Component(benchmark_config, "Benchmark Configs", "YAML", "sbir_suite.yaml (with heavy_refinement_levels), sbir_p40.yaml (PINN profiles for p40/cpu rows), navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml")
 
         Component(p40_driver, "scripts/run_sbir_p40.py", "argparse CLI", "Config-driven driver: loads sbir_p40.yaml, applies CLI overrides (--device, --n-epochs, --n-collocation, --refinement-levels, --skip-cpu), registers PINN profiles via _make_pinn_class")
+
+        Component(dorfler_mark, "dorfler_mark", "Function", "The single shared Dorfler bulk-marking primitive (marking.py). Two frozen variants: `squared` reproduces DorflerAMRSolver (marks one element even on an all-zero array), `linear` reproduces ScikitFEMPoissonSolver (marks nothing). Both legacy solvers delegate to it, so the two implementations can no longer drift apart. Rejects theta outside (0,1] and non-finite indicators, both of which previously produced a plausible mask over the wrong elements.")
+
+        Component(tensor_grid_substrate, "TensorGridSubstrate", "RefinementSubstrate", "The back-compat control. Wraps DorflerAMRSolver's verbatim static primitives; refining one element inserts full grid LINES, which is the defect that makes adaptive marking lose to uniform. Bitwise-golden against a live run_dorfler_arm.")
+
+        Component(skfem_substrate, "SkfemTriSubstrate", "RefinementSubstrate", "Element-local: only marked triangles are split (conforming RGB, zero hanging nodes). Reuses fem_baseline's module-level primitives -- one basis threaded through assembly, quadrature L2, and the ZZ estimator. Reports quadrature L2 as primary with nodal RMS additive, because their ratio drifts with mesh grading and would flatter whichever arm refines hardest. Requires the optional [fem] extra.")
+
+        Component(sweep, "run_refinement_sweep / measure_rate_separation", "Substrate-agnostic driver", "Drives any RefinementSubstrate through solve/mark/refine, fits a log-log convergence rate over a pinned DOF window, and compares two arms at matched DOF. Refuses to fit fewer than RATE_FIT_MIN_POINTS points rather than returning a meaningless slope. Lives here rather than in the gate's test file so the eventual arena consumes it instead of growing a second copy.")
+
+        Component(adequacy_gate, "AC7 adequacy gate", "Test (executable spec)", "Asserts adaptive beats uniform on SkfemTriSubstrate AND that the identical predicate FAILS on TensorGridSubstrate -- a gate that passes on both substrates measures nothing. Also unit-tests the predicate on synthetic inputs, because loosening the uniform-rate band left every solve-driven assertion green.")
     }
 
     Component_Ext(pde_operators, "PDE Operators", "Provides exact solutions, residuals; numpy/torch parity guarded by tests/pde/test_taylor_green_invariants.py")
     Component_Ext(alphagalerkin, "AlphaGalerkin Engine", "MCTS-guided solver under comparison")
     Component_Ext(nvidia_smi, "nvidia-smi dmon", "External GPU telemetry binary (optional)")
 
+    Rel(amr_solver, dorfler_mark, "Delegates marking")
+    Rel(tensor_grid_substrate, dorfler_mark, "Marks via (variant from config)")
+    Rel(skfem_substrate, dorfler_mark, "Marks via (variant from config)")
+    Rel(tensor_grid_substrate, amr_solver, "Wraps static solve/refine primitives verbatim")
+    Rel(sweep, tensor_grid_substrate, "Drives (control arm)")
+    Rel(sweep, skfem_substrate, "Drives (element-local arm)")
+    Rel(adequacy_gate, sweep, "Measures rate separation on both substrates")
     Rel(benchmark_runner, fdm_solver, "Runs baseline")
     Rel(benchmark_runner, amr_solver, "Runs baseline")
     Rel(benchmark_runner, ns_fdm_solver, "Runs baseline")
@@ -1642,7 +1662,7 @@ C4Component
     title Component Diagram - Quality Gates & Agentic Harness
 
     Container_Boundary(harness, ".claude/ Agentic Harness") {
-        Component(skills, "Skills (9)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference)")
+        Component(skills, "Skills (12)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, openspec-change, claims-ledger, run-provenance, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference)")
 
         Component(subagents, "Subagents (5)", "Markdown + tools frontmatter", "reviewer (adversarial diff review), sqe (tests + coverage), pde-solver, mcts-engineer, integration-engineer. Tool grants are validated against the real tool set")
 
@@ -1650,7 +1670,7 @@ C4Component
 
         Component(hook, "SessionStart Hook", "bash", "Bootstraps the editable install with the SETUPTOOLS_USE_DISTUTILS=stdlib antlr fix; registered in settings.json")
 
-        Component(settings, "settings.json", "JSON + schema", "Pins COVERAGE_CORE=pytrace (load-bearing: the installed torch wheel crashes coverage's C tracer and UNDER-measures silently), PYTHONHASHSEED=0, and 9 pre-approved python -m entry points")
+        Component(settings, "settings.json", "JSON + schema", "Pins PYTHONHASHSEED=0, MPLBACKEND, WANDB_MODE and the pre-approved python -m entry points. NO COVERAGE_CORE tracer pin: retired 2026-09-02 after the C-tracer crash it guarded against failed to reproduce; test_no_coverage_core_tracer_pin now asserts its absence")
     }
 
     Container_Boundary(gates, "CI Enforcement (ci.yml)") {
@@ -1658,11 +1678,11 @@ C4Component
 
         Component(secrets, "Secret Scan", "gitleaks-action", "Runs .gitleaks.toml. Wired 2026-08-21 -- the config and a `make gitleaks` target had both existed for months while NOTHING invoked either")
 
-        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "71 hermetic tests: frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism")
+        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "87 hermetic tests: frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism")
 
         Component(security_gate, "Security suite", "pytest tests/security/", "Pickle-RCE payload tests, allowlist purity, path containment. 69 tests")
 
-        Component(coverage_gate, "Test Coverage", "pytest --cov", "Global 85% branch gate plus 34 named per-module gates")
+        Component(coverage_gate, "Test Coverage + Per-Module Coverage Gates", "pytest --cov", "Global 85% branch gate in the coverage job, plus 45 named per-module gates split into their own coverage-gates job (2026-09-02, when the combined job blew its 45-minute cap)")
 
         Component(abstraction_gate, "Abstraction audit", "scripts/audit_abstractions", "Blocking for every package except src/backend: an @abstractmethod with no call site fails the build")
     }
@@ -1691,16 +1711,22 @@ C4Component
 |---|---|---|
 | `tests/claude/` | blocking CI step | A skill citing a deleted path, an agent declaring a non-existent tool, or a permission naming a renamed module — each fails only when someone relies on it |
 | gitleaks | blocking CI step | A committed secret. Previously unenforced: config present, scanner never invoked |
-| 34 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
+| 45 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
 | Abstraction audit | blocking `lint` job | A dead `@abstractmethod` accumulating call-site-free API |
 | `make pre-pr` | local | Local/CI drift. Kept in step by hand; the duplication is tracked as backlog B7 |
 
 **Deliberately not gated**, with reasons rather than numbers: `src/integrations`
 (a whole-package gate would read 93% while `omit` drops 240 statements of
-`eval_harness` from the denominator), `src/deployment` (27.91% is an
-onnx-absent-from-the-job artifact), `src/math_kernel` and `src/backend` (gating
-locks in untested JAX-guarded paths), `src/core` (80 statements, 2 tests — a
-gate there is theatre).
+`eval_harness` from the denominator) and `src/math_kernel` (gating locks in
+untested JAX-guarded paths that no test in the repo, including the `test-jax`
+job, exercises).
+
+`src/backend`, `src/core` and `src/deployment` **were** on this list and were
+gated on 2026-09-02 (B31) at 54 / 85 / 25 respectively — `src/backend` was in
+the global `omit` *and* ungated, so its 213 passing tests measured nothing
+anywhere. `src/deployment`'s 25 is a regression tripwire, not a standard: 626
+statements with 416 missed is the largest genuinely under-tested surface in
+`src/`, and raising it is test work, not a number to edit in CI.
 
 ## References
 

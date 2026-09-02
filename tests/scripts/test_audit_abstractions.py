@@ -4,7 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import scripts.audit_abstractions as audit_module
 from scripts.audit_abstractions import audit, main
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: The roots CI's blocking `--fail-on-missing` step scans
+#: (`.github/workflows/ci.yml`, "Audit abstractions (refinement surfaces)").
+#: Kept here so the staleness guard below scans exactly what CI does -- a
+#: narrower scan would report a cross-package reader as missing and make a
+#: live exemption look correctly staged.
+AUDITED_ROOTS = ("src/mcts", "src/refinement", "src/pde", "src/research")
 
 
 def _write(tmp_path: Path, name: str, body: str) -> Path:
@@ -194,3 +206,194 @@ def test_allowlist_is_class_scoped_not_name_only(tmp_path: Path) -> None:
     )
     report = audit([tmp_path])
     assert ("Unrelated", "is_ready") in {(f.cls, f.name) for f in report.abstract_missing}
+
+
+def test_generic_protocol_member_without_reader_flagged(tmp_path: Path) -> None:
+    """A *generic* ``Protocol[T]`` base must be recognized, not silently skipped.
+
+    ``Protocol[T]`` parses as ``ast.Subscript``, not ``ast.Name``/``ast.Attribute``
+    — before the fix, ``_is_protocol_class`` returned False for any generic
+    Protocol, so its members were never checked for call sites at all (a
+    generic Protocol was entirely invisible to this audit, not "verified live").
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class Iface(Protocol[T]):\n"
+            "    def solve(self, x: T) -> T: ...\n"
+        ),
+    )
+    report = audit([tmp_path])
+    assert {f.name for f in report.protocol_missing} == {"solve"}
+
+
+def test_generic_protocol_member_with_reader_not_flagged(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class Iface(Protocol[T]):\n"
+            "    def solve(self, x: T) -> T: ...\n"
+            "def run(i: Iface) -> None:\n"
+            "    i.solve(1)\n"
+        ),
+    )
+    report = audit([tmp_path])
+    assert not report.protocol_missing
+
+
+def test_staged_allowlist_suppresses_declared_but_not_yet_consumed_members(
+    tmp_path: Path,
+) -> None:
+    """``_STAGED_FOR_UPCOMING_TASK`` exempts a genuinely-uncalled member.
+
+    Distinct from ``_KNOWN_LIVE`` (a real caller the AST heuristic cannot see):
+    ``RefinementSubstrate.fingerprint`` has no caller anywhere yet, by design,
+    pending element-local-substrate's Slice E (task 7.1), which adds the
+    fingerprint-keyed solve cache that reads it.
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class RefinementSubstrate(Protocol[T]):\n"
+            "    def fingerprint(self, x: T) -> bytes: ...\n"
+        ),
+    )
+    assert not audit([tmp_path]).protocol_missing
+
+
+def test_staged_allowlist_does_not_cover_members_that_gained_a_reader(
+    tmp_path: Path,
+) -> None:
+    """A member that became live must LEAVE the allowlist, not stay exempted.
+
+    Slice D shrank ``_STAGED_FOR_UPCOMING_TASK`` from all 8
+    ``RefinementSubstrate`` members to just ``fingerprint``, because
+    ``src/research/substrates/sweep.py`` became a real reader of the other
+    seven. This pins that shrink: an allowlist entry covering a live member
+    silently stops guarding it, which is the exact failure mode this script
+    exists to prevent. ``solve`` is the representative — it is the member the
+    previous version of this test used, so a careless re-widening of the
+    allowlist would fail here rather than pass quietly.
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class RefinementSubstrate(Protocol[T]):\n"
+            "    def solve(self, x: T) -> T: ...\n"
+        ),
+    )
+    missing = {f.name for f in audit([tmp_path]).protocol_missing}
+    assert "solve" in missing
+
+
+@pytest.mark.parametrize("staged", sorted(audit_module._STAGED_FOR_UPCOMING_TASK))
+def test_every_staged_exemption_is_still_forward(
+    staged: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staged exemption must still be *needed*, not merely present.
+
+    ``_STAGED_FOR_UPCOMING_TASK`` means "declared ahead of its first consumer".
+    The moment that consumer lands, the entry stops exempting a dead member and
+    starts *hiding a live one* — silently narrowing CI's ``--fail-on-missing``
+    gate by exactly the F0/F1 defect class the gate exists to catch. Asserting
+    only that the exemption works (the test above) cannot detect that; nothing
+    would go red, the entry would just rot.
+
+    So: drop the allowlist entirely, re-run the audit over the same roots CI
+    scans, and require every staged member to still show up as unread. This
+    goes red the day a real caller lands, forcing the entry's deletion rather
+    than letting it linger. Same discipline as
+    ``tests/regression/test_import_contracts.py``'s "exemptions must still be
+    needed" meta-guard and ``.claude``'s ``FORWARD_REFERENCES``, which CLAUDE.md
+    describes as "asserted to still be forward, so a stale exemption fails
+    rather than rotting".
+    """
+    monkeypatch.setattr(audit_module, "_STAGED_FOR_UPCOMING_TASK", frozenset())
+    report = audit([REPO_ROOT / root for root in AUDITED_ROOTS])
+    still_dead = {(f.cls, f.name) for f in report.protocol_missing} | {
+        (f.cls, f.name) for f in report.abstract_missing
+    }
+    cls, name = staged
+    assert staged in still_dead, (
+        f"{cls}.{name} is exempted by _STAGED_FOR_UPCOMING_TASK but now HAS a reader -- "
+        "delete the entry instead of leaving it to hide a live member"
+    )
+
+
+def _protocol_members(cls: type) -> set[str]:
+    """Public callable members declared directly on a Protocol class."""
+    return {
+        name for name, value in vars(cls).items() if callable(value) and not name.startswith("_")
+    }
+
+
+def _staged_for(cls_name: str) -> set[str]:
+    return {name for cls, name in audit_module._STAGED_FOR_UPCOMING_TASK if cls == cls_name}
+
+
+class TestRefinementSubstrateDocstringTracksTheAllowlist:
+    """The Protocol's docstring must describe the allowlist as it *is*, not as it was.
+
+    ``RefinementSubstrate``'s docstring said "all 8 members are temporarily
+    exempted via ``_STAGED_FOR_UPCOMING_TASK``" for a full slice after Slice D
+    had shrunk that allowlist to ``fingerprint`` alone -- a Copilot review on
+    PR #143 caught it. A docstring that names an exemption is a claim about
+    the audit's coverage, and a wrong one tells a reader that live members are
+    unguarded. So the docstring is pinned to the allowlist in both directions:
+    every staged member of this class must be named in it, and once the class
+    has no staged members the allowlist must not be mentioned at all. The
+    member count is pinned too, because "seven of the eight" (here) and "8
+    members" (``src/refinement/AGENT.md``) go stale the day a ninth lands.
+    """
+
+    CLS_NAME = "RefinementSubstrate"
+    DECLARED_MEMBER_COUNT = 8
+
+    def _docstring(self) -> str:
+        from src.refinement.substrate import RefinementSubstrate
+
+        doc = RefinementSubstrate.__doc__
+        assert doc, "RefinementSubstrate has no docstring to pin"
+        return doc
+
+    def test_every_staged_member_is_named_in_the_docstring(self) -> None:
+        doc = self._docstring()
+        for member in sorted(_staged_for(self.CLS_NAME)):
+            assert f"``{member}``" in doc, (
+                f"{self.CLS_NAME}.{member} is staged in _STAGED_FOR_UPCOMING_TASK but the "
+                "Protocol docstring does not name it as the exempted member"
+            )
+
+    def test_allowlist_is_mentioned_iff_something_is_still_staged(self) -> None:
+        doc = self._docstring()
+        mentioned = "_STAGED_FOR_UPCOMING_TASK" in doc
+        assert mentioned == bool(_staged_for(self.CLS_NAME)), (
+            "the docstring names the allowlist but nothing of this class is staged any more "
+            "(or the reverse) -- Slice E's task 7.1 retires the last entry; update the "
+            "docstring in the same commit"
+            if mentioned
+            else "a member of this class is staged but the docstring does not say so"
+        )
+
+    def test_declared_member_count_matches_the_prose(self) -> None:
+        from src.refinement.substrate import RefinementSubstrate
+
+        members = _protocol_members(RefinementSubstrate)
+        assert len(members) == self.DECLARED_MEMBER_COUNT, (
+            f"{self.CLS_NAME} now declares {len(members)} members "
+            f"({sorted(members)}); update the 'seven of the eight' clause in its docstring "
+            "and the '8 members' list in src/refinement/AGENT.md, then this constant"
+        )
+        assert _staged_for(self.CLS_NAME) <= members, "a staged name is not a member"

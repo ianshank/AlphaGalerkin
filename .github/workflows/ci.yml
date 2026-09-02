@@ -1131,6 +1131,12 @@ jobs:
       - name: Coverage gate (src/research/substrates, needs [fem])
         env:
           COVERAGE_CORE: pytrace
+          # Same reason as the step above, and it matters more here: without
+          # scikit-fem the fem_required tests SKIP, the measured percentage
+          # collapses, and the gate fails on "coverage too low" -- naming the
+          # symptom instead of the cause. This turns that into the collection
+          # error it actually is.
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
         run: |
           cat > .coveragerc.substrates <<'COVEOF'
           [run]
@@ -1159,6 +1165,10 @@ jobs:
       - name: Coverage gate (src/research/fem_baseline.py, needs [fem])
         env:
           COVERAGE_CORE: pytrace
+          # Without scikit-fem every test here skips and `coverage report`
+          # fails with "No data was collected" -- true, but it reads like a
+          # tooling fault rather than a missing extra.
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
         run: |
           cat > .coveragerc.fem <<'COVEOF'
           [run]

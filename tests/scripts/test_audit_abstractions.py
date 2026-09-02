@@ -4,7 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import scripts.audit_abstractions as audit_module
 from scripts.audit_abstractions import audit, main
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: The roots CI's blocking `--fail-on-missing` step scans
+#: (`.github/workflows/ci.yml`, "Audit abstractions (refinement surfaces)").
+#: Kept here so the staleness guard below scans exactly what CI does -- a
+#: narrower scan would report a cross-package reader as missing and make a
+#: live exemption look correctly staged.
+AUDITED_ROOTS = ("src/mcts", "src/refinement", "src/pde", "src/research")
 
 
 def _write(tmp_path: Path, name: str, body: str) -> Path:
@@ -241,8 +253,36 @@ def test_staged_allowlist_suppresses_declared_but_not_yet_consumed_members(
     """``_STAGED_FOR_UPCOMING_TASK`` exempts a genuinely-uncalled member.
 
     Distinct from ``_KNOWN_LIVE`` (a real caller the AST heuristic cannot see):
-    ``RefinementSubstrate``'s members have no caller anywhere yet, by design,
-    pending element-local-substrate's Slice E (task 7.1).
+    ``RefinementSubstrate.fingerprint`` has no caller anywhere yet, by design,
+    pending element-local-substrate's Slice E (task 7.1), which adds the
+    fingerprint-keyed solve cache that reads it.
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class RefinementSubstrate(Protocol[T]):\n"
+            "    def fingerprint(self, x: T) -> bytes: ...\n"
+        ),
+    )
+    assert not audit([tmp_path]).protocol_missing
+
+
+def test_staged_allowlist_does_not_cover_members_that_gained_a_reader(
+    tmp_path: Path,
+) -> None:
+    """A member that became live must LEAVE the allowlist, not stay exempted.
+
+    Slice D shrank ``_STAGED_FOR_UPCOMING_TASK`` from all 8
+    ``RefinementSubstrate`` members to just ``fingerprint``, because
+    ``src/research/substrates/sweep.py`` became a real reader of the other
+    seven. This pins that shrink: an allowlist entry covering a live member
+    silently stops guarding it, which is the exact failure mode this script
+    exists to prevent. ``solve`` is the representative — it is the member the
+    previous version of this test used, so a careless re-widening of the
+    allowlist would fail here rather than pass quietly.
     """
     _write(
         tmp_path,
@@ -254,4 +294,39 @@ def test_staged_allowlist_suppresses_declared_but_not_yet_consumed_members(
             "    def solve(self, x: T) -> T: ...\n"
         ),
     )
-    assert not audit([tmp_path]).protocol_missing
+    missing = {f.name for f in audit([tmp_path]).protocol_missing}
+    assert "solve" in missing
+
+
+@pytest.mark.parametrize("staged", sorted(audit_module._STAGED_FOR_UPCOMING_TASK))
+def test_every_staged_exemption_is_still_forward(
+    staged: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staged exemption must still be *needed*, not merely present.
+
+    ``_STAGED_FOR_UPCOMING_TASK`` means "declared ahead of its first consumer".
+    The moment that consumer lands, the entry stops exempting a dead member and
+    starts *hiding a live one* — silently narrowing CI's ``--fail-on-missing``
+    gate by exactly the F0/F1 defect class the gate exists to catch. Asserting
+    only that the exemption works (the test above) cannot detect that; nothing
+    would go red, the entry would just rot.
+
+    So: drop the allowlist entirely, re-run the audit over the same roots CI
+    scans, and require every staged member to still show up as unread. This
+    goes red the day a real caller lands, forcing the entry's deletion rather
+    than letting it linger. Same discipline as
+    ``tests/regression/test_import_contracts.py``'s "exemptions must still be
+    needed" meta-guard and ``.claude``'s ``FORWARD_REFERENCES``, which CLAUDE.md
+    describes as "asserted to still be forward, so a stale exemption fails
+    rather than rotting".
+    """
+    monkeypatch.setattr(audit_module, "_STAGED_FOR_UPCOMING_TASK", frozenset())
+    report = audit([REPO_ROOT / root for root in AUDITED_ROOTS])
+    still_dead = {(f.cls, f.name) for f in report.protocol_missing} | {
+        (f.cls, f.name) for f in report.abstract_missing
+    }
+    cls, name = staged
+    assert staged in still_dead, (
+        f"{cls}.{name} is exempted by _STAGED_FOR_UPCOMING_TASK but now HAS a reader -- "
+        "delete the entry instead of leaving it to hide a live member"
+    )

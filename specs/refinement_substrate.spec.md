@@ -158,7 +158,20 @@ tunable without editing assertions:
 | `UNIFORM_RATE_BAND` | `(-0.85, -0.55)` | Uniform P1 L2 rate on the L-shape. Spike measured `-0.710`; theory gives `-2/3`. A rate *outside* this band on either side is a defect — too good means the singularity is not in the domain (AC8). |
 | `ADAPTIVE_RATE_MIN` | `-1.10` | Adaptive must reach at least this. Spike measured `-1.256`. |
 | `ADAPTIVE_VS_UNIFORM_MAX_RATIO` | `1.0` | Adaptive must beat uniform at matched DOF over `RATE_FIT_DOF_RANGE`. |
-| `RATE_FIT_DOF_RANGE` | `(200, 2600)` | The asymptotic window the rate is fitted over. Below it, neither arm has separated. |
+| `RATE_FIT_DOF_RANGE` | ~~`(200, 2600)`~~ → `(200, 4000)` | The asymptotic window the rate is fitted over. Below it, neither arm has separated. **CORRECTED during Slice D implementation** — see below. |
+
+**Correction: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`.** The originally pinned
+window is *physically incapable* of holding `RATE_FIT_MIN_POINTS` (3) **uniform** points: a 2D
+uniform arm quadruples DOF per level, so a 13× window spans at most two of them. This was not a
+judgement call — `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than fitting a
+two-point slope, which is how the mismatch surfaced at all. Measured on **both** substrates:
+`skfem_tri` uniform lands on `[225, 833, 3201]` and `tensor_grid` uniform on `[208, 800, 3136]`,
+each giving n=2 inside `(200, 2600)` and n=3 inside `(200, 4000)`. Widened to the cheapest
+window that admits three uniform points on both substrates (measured cost: +0.3 s adaptive,
++1.1 s uniform). The other three constants were **not** touched — all three hold at their
+originally pinned values against the production primitives (measured `skfem_tri`: adaptive
+`-1.2515`, uniform `-0.6710`; `tensor_grid`: adaptive `-0.2325`, uniform `-0.6489`), so this is a
+window-width correction, not a threshold loosening.
 
 ## Regression Surface
 

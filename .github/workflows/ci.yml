@@ -128,8 +128,17 @@ jobs:
       # `BaseLoss.forward` (losses/base.py) unread, while the combined scan
       # does not, because the reader lives outside that package. Do not "tighten"
       # this by splitting it up.
+      # src/research joined these roots when the element-local substrate landed:
+      # RefinementSubstrate is declared in src/refinement but its driver
+      # (src/research/substrates/sweep.py) lives in src/research, so the
+      # narrower scan flagged seven live Protocol members as unread -- exactly
+      # the cross-package false positive the comment above warns about. Widening
+      # the scan is the honest fix; exempting live members via the script's
+      # allowlist would have silently stopped guarding them.
       - name: Audit abstractions (refinement surfaces)
-        run: python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+        run: |
+          python -m scripts.audit_abstractions \
+            src/mcts src/refinement src/pde src/research --fail-on-missing
 
       - name: Audit abstractions (all packages except the src/backend backlog)
         run: |

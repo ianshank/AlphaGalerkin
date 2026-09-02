@@ -101,6 +101,20 @@ class TestSubstrateConfigValidation:
 
 
 def test_named_constants_match_spec() -> None:
+    """Pins the three constants against ``specs/refinement_substrate.spec.md``'s table.
+
+    Be clear about what this is and is not. It guards **doc/code drift** — the
+    spec names these values, so silently changing one here should fail. It is
+    *not* a behavioural test, and on its own it would be close to a tautology
+    (asserting a constant defined as ``1e-15`` equals ``1e-15``). The
+    behavioural coverage lives in ``tests/research/test_substrates_sweep.py``,
+    which drives all three through their real consumers in
+    ``src/research/substrates/sweep.py``: ``RATE_FIT_MIN_POINTS`` as the
+    fit-refusal boundary, ``AREA_FLOOR`` as the degenerate-unit threshold, and
+    ``RATIO_FLOOR`` as the log-interpolation guard. Until Slice D added that
+    module the three constants had **no consumer at all**, and this test was
+    the only thing referencing them.
+    """
     assert RATIO_FLOOR == 1e-15
     assert AREA_FLOOR == 1e-30
     assert RATE_FIT_MIN_POINTS == 3

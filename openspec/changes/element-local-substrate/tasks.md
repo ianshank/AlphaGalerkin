@@ -75,9 +75,12 @@ Task 0 is already complete and is what justifies the rest.
       passed on the first real run — no deviation to record. Mutation-checked: forcing `mark()`
       to the wrong (`"linear"`) variant diverges the trajectory at level 2, confirming the golden
       test discriminates rather than passing vacuously.
-- [ ] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image) — deferred to Slice D
-      (task 6.2 states the identical requirement from the gate's own side; doing it once there
-      avoids a forward dependency on a gate that does not exist yet).
+- [x] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image) — done in Slice D as
+      `TestAdequacyGateFailsOnTensorGridSubstrate` (task 6.2 states the identical requirement
+      from the gate's own side; doing it once there avoided a forward dependency on a gate that
+      did not exist yet). Measured: adaptive `-0.2325` vs uniform `-0.6489`, ratio `>1` at
+      matched DOF. Deliberately carries **no** `fem_required` marker, so the discriminating
+      half of the gate runs on every CPU CI job.
 
 ## 4. `fem_baseline` decomposition
 
@@ -132,10 +135,46 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 6. The adequacy gate
 
-- [ ] 6.1 `tests/research/test_amr_arena_interpretability.py`: log-log rate separation over
+- [x] 6.1 `tests/research/test_amr_arena_interpretability.py`: log-log rate separation over
       `RATE_FIT_DOF_RANGE`, uniform rate inside `UNIFORM_RATE_BAND` (too *good* is a defect),
-      adaptive below `ADAPTIVE_RATE_MIN` (AC7).
-- [ ] 6.2 Mutation-test it against `TensorGridSubstrate` — it must fail there.
+      adaptive below `ADAPTIVE_RATE_MIN` (AC7). Measured on `SkfemTriSubstrate`: adaptive
+      **-1.2515**, uniform **-0.6710**, ratio **<1** at matched DOF — all three of the spec's
+      originally pinned thresholds hold against the *production* primitives, so task 4.4's
+      recalibration contingency was not triggered.
+
+      **One spec constant corrected**: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`. The
+      original window is physically incapable of holding `RATE_FIT_MIN_POINTS` (3) *uniform*
+      points — a 2D uniform arm quadruples DOF per level, so a 13x window spans at most two.
+      Not a judgement call: `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than
+      fitting a two-point slope, which is how it surfaced. Recorded with its reason in
+      `specs/refinement_substrate.spec.md`. A *window-width* correction, not a threshold
+      loosening — the other three constants were untouched.
+
+      The measurement machinery itself (`run_refinement_sweep`, `fit_log_log_rate`,
+      `measure_rate_separation`) lives in the reusable, substrate-agnostic
+      `src/research/substrates/sweep.py`, **not** in the test file, so the eventual arena change
+      consumes it instead of growing a second, subtly-different copy — the exact failure mode
+      that made `dorfler_mark` necessary. It is also where `RATIO_FLOOR`, `AREA_FLOOR` and
+      `RATE_FIT_MIN_POINTS` finally get real consumers (they had none, and
+      `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant
+      literally defined as `1e-15` — a tautology). 100% branch coverage; 22 unit tests drive it
+      through a synthetic substrate, which is what makes "substrate-agnostic" a tested claim.
+- [x] 6.2 Mutation-test it against `TensorGridSubstrate` — it must fail there.
+      `TestAdequacyGateFailsOnTensorGridSubstrate` asserts the *identical* predicate
+      (`gate_violations`, shared by both halves, so "the same assertion" is literally rather
+      than approximately true) rejects the control substrate, **and** that the reason is the
+      adaptive arm specifically — the tensor grid's uniform arm converges normally at `-0.6489`,
+      inside the band, so a substrate too broken for either arm to converge would not pass this
+      for the wrong reason.
+
+      5/5 mutations killed (loosened `ADAPTIVE_RATE_MIN`; widened `UNIFORM_RATE_BAND`; loosened
+      `ADAPTIVE_VS_UNIFORM_MAX_RATIO`; adaptive policy swapped for uniform; the DOF window
+      reverted to the spec's `(200, 2600)`). The band mutation initially **survived** — both
+      substrates' uniform rates sit comfortably inside it, so loosening it removed a constraint
+      nothing exercised, leaving AC8's "too good is a defect" tripwire documented but unasserted.
+      Closed by `TestGatePredicate`, which unit-tests `gate_violations` on synthetic
+      `RateSeparation` values (including the `-1.05` both-arms rate that was the spike's actual
+      wrong result), with no PDE solve.
 
 ## 7. First registrant
 

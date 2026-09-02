@@ -85,18 +85,22 @@ _KNOWN_LIVE: frozenset[tuple[str, str]] = frozenset(
 _STAGED_FOR_UPCOMING_TASK: frozenset[tuple[str, str]] = frozenset(
     {
         # RefinementSubstrate (src/refinement/substrate.py): the Protocol lands
-        # in Slice A of element-local-substrate; its first real driver is the
-        # RefinementGame subclass added in Slice E, task 7.1
-        # (openspec/changes/element-local-substrate/tasks.md). Retire this
-        # entire block when task 7.1 lands.
-        ("RefinementSubstrate", "initial_mesh"),
-        ("RefinementSubstrate", "solve"),
-        ("RefinementSubstrate", "mark"),
-        ("RefinementSubstrate", "refine"),
-        ("RefinementSubstrate", "n_units"),
-        ("RefinementSubstrate", "refinable_mask"),
+        # in Slice A of element-local-substrate, ahead of its consumers.
+        #
+        # Slice D shrank this block from all 8 members to 1: the sweep driver
+        # (src/research/substrates/sweep.py) is a real, non-test reader of
+        # initial_mesh / solve / mark / refine / n_units / refinable_mask /
+        # describe, so those seven were removed rather than left exempted --
+        # an allowlist that covers a live member silently stops guarding it,
+        # which is the opposite of what this file is for. Verified by removing
+        # each entry and re-running the audit.
+        #
+        # ``fingerprint`` alone is still genuinely dead: its consumer is the
+        # fingerprint-keyed solve cache bounded by
+        # SubstrateConfig.solve_cache_max_entries, which lands with Slice E
+        # (openspec/changes/element-local-substrate/tasks.md task 7.1). Retire
+        # this last entry then.
         ("RefinementSubstrate", "fingerprint"),
-        ("RefinementSubstrate", "describe"),
     }
 )
 

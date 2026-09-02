@@ -194,3 +194,64 @@ def test_allowlist_is_class_scoped_not_name_only(tmp_path: Path) -> None:
     )
     report = audit([tmp_path])
     assert ("Unrelated", "is_ready") in {(f.cls, f.name) for f in report.abstract_missing}
+
+
+def test_generic_protocol_member_without_reader_flagged(tmp_path: Path) -> None:
+    """A *generic* ``Protocol[T]`` base must be recognized, not silently skipped.
+
+    ``Protocol[T]`` parses as ``ast.Subscript``, not ``ast.Name``/``ast.Attribute``
+    — before the fix, ``_is_protocol_class`` returned False for any generic
+    Protocol, so its members were never checked for call sites at all (a
+    generic Protocol was entirely invisible to this audit, not "verified live").
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class Iface(Protocol[T]):\n"
+            "    def solve(self, x: T) -> T: ...\n"
+        ),
+    )
+    report = audit([tmp_path])
+    assert {f.name for f in report.protocol_missing} == {"solve"}
+
+
+def test_generic_protocol_member_with_reader_not_flagged(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class Iface(Protocol[T]):\n"
+            "    def solve(self, x: T) -> T: ...\n"
+            "def run(i: Iface) -> None:\n"
+            "    i.solve(1)\n"
+        ),
+    )
+    report = audit([tmp_path])
+    assert not report.protocol_missing
+
+
+def test_staged_allowlist_suppresses_declared_but_not_yet_consumed_members(
+    tmp_path: Path,
+) -> None:
+    """``_STAGED_FOR_UPCOMING_TASK`` exempts a genuinely-uncalled member.
+
+    Distinct from ``_KNOWN_LIVE`` (a real caller the AST heuristic cannot see):
+    ``RefinementSubstrate``'s members have no caller anywhere yet, by design,
+    pending element-local-substrate's Slice E (task 7.1).
+    """
+    _write(
+        tmp_path,
+        "mod.py",
+        (
+            "from typing import Protocol, TypeVar\n"
+            "T = TypeVar('T')\n"
+            "class RefinementSubstrate(Protocol[T]):\n"
+            "    def solve(self, x: T) -> T: ...\n"
+        ),
+    )
+    assert not audit([tmp_path]).protocol_missing

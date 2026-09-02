@@ -1,0 +1,106 @@
+"""Domain-free contract for element-local (or grid-local) refinement substrates.
+
+``RefinementSubstrate`` is the interface a concrete mesh/grid representation
+implements so that marking, refinement, and error estimation can be driven
+generically — by a ``RefinementGame``, by the adequacy gate that compares two
+substrates' rate of convergence, or by a future MCTS-vs-classical arena —
+without that caller needing to know whether the underlying representation is
+a tensor-product grid (``src.research.substrates.tensor_grid``) or a
+``scikit-fem`` triangular mesh (``src.research.substrates.skfem_tri``).
+
+Per ``openspec/changes/element-local-substrate/design.md``, this module
+imports **numpy only**: no scipy, no torch, no skfem. ``src/pde/games/__init__.py``
+documents a real SIGSEGV caused by rippling the torch import graph into
+unrelated coverage gates under the C tracer — keeping this layer import-light
+is what makes it safe to depend on from anywhere.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    import numpy as np
+    from numpy.typing import NDArray
+
+TMesh = TypeVar("TMesh")
+
+
+@dataclass(frozen=True)
+class SubstrateSolveResult:
+    """Outcome of solving on one mesh/grid state.
+
+    Attributes:
+        values: Solution field at the mesh's degrees of freedom.
+        indicators: Per-unit (element/cell) error indicators, flat, with
+            ``len(indicators) == n_units(mesh)``.
+        l2_error: Mesh-independent (quadrature) L2 error against the exact
+            solution — the primary, comparison-safe error metric (see
+            design.md's "Two error metrics, not one").
+        n_dof: The declared comparison axis (the DOF count two substrates or
+            two refinement policies are matched against).
+        n_dof_free: Unknowns actually solved for (may be fewer than ``n_dof``
+            once Dirichlet boundary DOFs are eliminated).
+        extra: Auxiliary metrics that must not replace ``l2_error`` — e.g.
+            ``l2_error_nodal_rms``, the biased metric ``l2_error`` exists to
+            avoid.
+
+    """
+
+    values: NDArray[np.float64]
+    indicators: NDArray[np.float64]
+    l2_error: float
+    n_dof: int
+    n_dof_free: int
+    extra: Mapping[str, float]
+
+
+@runtime_checkable
+class RefinementSubstrate(Protocol[TMesh]):
+    """A mesh/grid representation with solve, mark, and refine primitives.
+
+    Every member here must have a real caller — ``scripts.audit_abstractions``
+    fails the build on a ``Protocol`` member with no reader (the F1 defect
+    class), so this Protocol only grows alongside the concrete substrate and
+    caller that need the new member.
+
+    ``@runtime_checkable`` is what lets ``src.templates.registry.create_registry``'s
+    ``issubclass(cls, RefinementSubstrate)`` structural check work when
+    registering a concrete substrate — Protocols are structural, so a concrete
+    substrate need not (and should not) inherit from this class explicitly.
+    """
+
+    def initial_mesh(self) -> TMesh:
+        """Return the coarsest mesh/grid this substrate starts refinement from."""
+        ...
+
+    def solve(self, mesh: TMesh) -> SubstrateSolveResult:
+        """Solve the substrate's PDE on ``mesh`` and return the result."""
+        ...
+
+    def mark(self, indicators: NDArray[np.float64], theta: float) -> NDArray[np.bool_]:
+        """Select which units to refine next, given their error indicators."""
+        ...
+
+    def refine(self, mesh: TMesh, marked: NDArray[np.bool_]) -> TMesh:
+        """Return a new, more refined mesh/grid; must not mutate ``mesh``."""
+        ...
+
+    def n_units(self, mesh: TMesh) -> int:
+        """Number of markable units (elements/cells) in ``mesh``."""
+        ...
+
+    def refinable_mask(self, mesh: TMesh) -> NDArray[np.bool_]:
+        """Which units in ``mesh`` are eligible for refinement."""
+        ...
+
+    def fingerprint(self, mesh: TMesh) -> bytes:
+        """A stable, hashable identity for ``mesh`` (for memoising solves)."""
+        ...
+
+    def describe(self) -> dict[str, str | int | float]:
+        """Human/log-readable metadata about this substrate's configuration."""
+        ...

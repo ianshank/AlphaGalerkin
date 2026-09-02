@@ -27,6 +27,7 @@ from numpy.typing import NDArray
 from pydantic import Field
 
 from src.pde.operators import PDEOperator
+from src.refinement.marking import dorfler_mark
 from src.research.baselines import (
     SOLVER_REGISTRY,
     BaseSolver,
@@ -406,17 +407,13 @@ class ScikitFEMPoissonSolver(BaseSolver):
     # Dorfler marking
     # ------------------------------------------------------------------
     def _dorfler_mark(self, indicators: NDArray[np.float64]) -> NDArray[np.bool_]:
-        """Select the smallest subset whose indicators sum to theta * total."""
-        total = float(np.sum(indicators))
-        if total <= 0.0:
-            return np.zeros_like(indicators, dtype=bool)
-        threshold = self.config.marking_fraction * total
-        order = np.argsort(indicators)[::-1]
-        cumulative = np.cumsum(indicators[order])
-        cutoff = int(np.searchsorted(cumulative, threshold) + 1)
-        marked = np.zeros_like(indicators, dtype=bool)
-        marked[order[:cutoff]] = True
-        return marked
+        """Select the smallest subset whose indicators sum to theta * total.
+
+        Delegates to ``src.refinement.marking.dorfler_mark`` (variant="linear"),
+        the shared primitive that also backs ``DorflerAMRSolver._dorfler_mark``
+        and any ``RefinementSubstrate``.
+        """
+        return dorfler_mark(indicators, self.config.marking_fraction, variant="linear")
 
     def _estimate_smoothness(
         self,

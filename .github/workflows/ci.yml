@@ -1113,6 +1113,41 @@ jobs:
             tests/games/test_pettingzoo_adapter.py \
             --tb=short -q
 
+      # src/research/substrates/skfem_tri.py is in pyproject.toml's global
+      # [tool.coverage.run] omit (it needs the optional [fem] extra), so a bare
+      # --cov of it reports 0.00% with "No data was collected" -- and this job,
+      # the ONLY one with scikit-fem installed, previously ran no --cov at all.
+      # The module's coverage was therefore measured nowhere and could not
+      # regress-fail: exactly the false pass CLAUDE.md documents for
+      # video_compression and demos. Same inline-coveragerc fix as those two,
+      # dropping the omit for this step only. Directory (not file-path) --cov
+      # spec: coverage 7.x silently drops --cov=<...>.py.
+      #
+      # Gate 95, deliberately above the usual "floor(measured)-2 capped at 85"
+      # convention: the package is 272 statements at 99%, so an 85 gate would
+      # carry 14 points of slack and reproduce the finding this step exists to
+      # close. COVERAGE_CORE=pytrace is mandatory -- the torch wheel crashes
+      # coverage's C tracer and silently UNDER-measures.
+      - name: Coverage gate (src/research/substrates, needs [fem])
+        env:
+          COVERAGE_CORE: pytrace
+        run: |
+          cat > .coveragerc.substrates <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          pytest tests/research/test_skfem_substrate.py \
+            tests/research/test_amr_arena_interpretability.py \
+            tests/research/test_tensor_grid_substrate.py \
+            tests/research/test_substrates_config.py \
+            tests/research/test_substrates_sweep.py \
+            --cov=src/research/substrates \
+            --cov-config=.coveragerc.substrates \
+            --cov-branch --cov-fail-under=95 -q --no-header
+
       # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
       # which these tracer-based tests do not target (src/deployment/export_onnx.py
       # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the

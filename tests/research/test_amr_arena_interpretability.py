@@ -51,7 +51,10 @@ from src.research.substrates.tensor_grid import TensorGridSubstrate
 UNIFORM_RATE_BAND = (-0.85, -0.55)
 
 #: Adaptive must reach at least this steep a rate. Spike measured -1.256;
-#: measured -1.2515 through the production primitives (see RATE_FIT_DOF_RANGE).
+#: measured -1.3109 through the production primitives, at the theta the gate
+#: actually passes (ComparisonParams.marking_fraction = 0.5) over
+#: RATE_FIT_DOF_RANGE. Quote the theta with any rate: the same substrate reads
+#: -1.31 at theta=0.5 and -1.25 at theta=0.3, so a bare rate is not a fact.
 ADAPTIVE_RATE_MIN = -1.10
 
 #: Adaptive must beat uniform at matched DOF. Below 1.0 means adaptive wins.

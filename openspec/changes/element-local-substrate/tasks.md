@@ -78,7 +78,8 @@ Task 0 is already complete and is what justifies the rest.
 - [x] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image) — done in Slice D as
       `TestAdequacyGateFailsOnTensorGridSubstrate` (task 6.2 states the identical requirement
       from the gate's own side; doing it once there avoided a forward dependency on a gate that
-      did not exist yet). Measured: adaptive `-0.2325` vs uniform `-0.6489`, ratio `>1` at
+      did not exist yet). Measured at θ=0.5 over (200, 4000): adaptive `-0.2325` vs uniform
+      `-0.6489`, ratio `13.35` at
       matched DOF. Deliberately carries **no** `fem_required` marker, so the discriminating
       half of the gate runs on every CPU CI job.
 
@@ -99,11 +100,20 @@ Task 0 is already complete and is what justifies the rest.
 - [x] 4.4 **[Added — the risk an independent adversarial review of the implementation plan
       surfaced]** Re-measured the adaptive-vs-uniform rate separation through the actual
       production primitives above (not the spike's own stronger ZZ reimplementation), on the
-      real L-shaped Poisson benchmark via `SkfemTriSubstrate`: adaptive rate **-1.322** (spike:
-      -1.256), uniform rate **-0.671** (spike: -0.710) — both comfortably inside the planned
-      Slice D thresholds (`ADAPTIVE_RATE_MIN=-1.10`, `UNIFORM_RATE_BAND=(-0.85,-0.55)`). The
-      production estimator's weaker (Python-loop, P1-downsampled) implementation does **not**
-      measurably change the rate separation; no threshold recalibration needed.
+      real L-shaped Poisson benchmark via `SkfemTriSubstrate`: adaptive rate **-1.3109**
+      (spike: -1.256), uniform rate **-0.6710** (spike: -0.710), at θ=0.5 over (200, 4000) —
+      both comfortably inside the planned Slice D thresholds (`ADAPTIVE_RATE_MIN=-1.10`,
+      `UNIFORM_RATE_BAND=(-0.85,-0.55)`). The production estimator's weaker (Python-loop,
+      P1-downsampled) implementation does **not** measurably change the rate separation; no
+      threshold recalibration needed.
+
+      **Two figure corrections, both made in Slice D and both the same root cause** — a number
+      transcribed from an exploratory script rather than read out of committed code, which is
+      exactly what the gap-analysis review flagged. This line first read `-1.322`/`-0.671`,
+      mixing two *fitting windows*; its replacement `-1.2515` was measured at **θ=0.3** while
+      the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Same substrate,
+      same window, different θ, a 5% different rate. Convention going forward: **a convergence
+      rate is quoted with its θ and its DOF window, or it is not quoted.**
 
 ## 5. `SkfemTriSubstrate`
 
@@ -138,7 +148,10 @@ Task 0 is already complete and is what justifies the rest.
 - [x] 6.1 `tests/research/test_amr_arena_interpretability.py`: log-log rate separation over
       `RATE_FIT_DOF_RANGE`, uniform rate inside `UNIFORM_RATE_BAND` (too *good* is a defect),
       adaptive below `ADAPTIVE_RATE_MIN` (AC7). Measured on `SkfemTriSubstrate`: adaptive
-      **-1.2515**, uniform **-0.6710**, ratio **<1** at matched DOF — all three of the spec's
+      **-1.3109**, uniform **-0.6710**, ratio **0.0946** at matched DOF (all at θ=0.5, the value
+      `ComparisonParams.marking_fraction` gives and the gate passes; a rate quoted without its
+      θ and window is not a fact — an earlier draft of this line said `-1.2515`, measured at
+      θ=0.3) — all three of the spec's
       originally pinned thresholds hold against the *production* primitives, so task 4.4's
       recalibration contingency was not triggered.
 

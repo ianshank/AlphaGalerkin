@@ -89,6 +89,8 @@ C4Container
 
         Container(research, "Research & Benchmarking", "Python/SciPy", "SBIR baselines (FDM, AMR, PINN), benchmark runner, convergence reports")
 
+        Container(substrates, "Refinement Substrates", "Python/NumPy/scikit-fem", "Concrete RefinementSubstrate implementations behind one stepwise interface, so two refinement policies provably share a discretisation and differ only in what they mark. TensorGridSubstrate reproduces the legacy tensor-product grid byte-for-byte and is the control -- its refinement inserts full grid lines, which is why adaptive marking loses to uniform there. SkfemTriSubstrate refines only the marked triangles (conforming RGB), where adaptive wins ~10x at matched DOF. Shared dorfler_mark (squared/linear variants) and a substrate-agnostic sweep + log-log rate fitter drive both. Element-local half is gated behind the optional [fem] extra.")
+
         Container(geometry, "Domain Geometry & Time-Stepping", "Python/PyTorch", "Rectangular, L-shaped, cylinder domains; Forward Euler, RK4, Crank-Nicolson")
 
         Container(swarm, "Swarm Planning", "Python/NumPy", "Multi-agent swarm game with potential field avoidance and coverage optimization")
@@ -162,6 +164,7 @@ C4Container
 | **PoC Framework** | Validates mathematical claims through experiments | Pydantic, structlog |
 | **Data Layer** | Data loading and preprocessing | PyTorch Dataset, padding/masking |
 | **Research & Benchmarking** | SBIR baseline comparisons and reports | SciPy, FDM, AMR, PINN, YAML configs |
+| **Refinement Substrates** | One stepwise interface so refinement policies are compared on a shared discretisation, plus the adequacy gate proving the substrate can show a marking win at all | scikit-fem RGB refinement, Zienkiewicz-Zhu estimator, Dörfler marking, log-log rate fitting |
 | **Domain Geometry** | Complex domain abstractions and time integration | Rejection sampling, RK4, Crank-Nicolson |
 | **Swarm Planning** | Multi-agent coverage optimization | Potential fields, PettingZoo adapter |
 | **SBIR Proposal Infrastructure** | Submission readiness for 5 solicitations | SAM guide, budgets, timeline, IP, competitive analysis |
@@ -1426,12 +1429,29 @@ C4Component
         Component(benchmark_config, "Benchmark Configs", "YAML", "sbir_suite.yaml (with heavy_refinement_levels), sbir_p40.yaml (PINN profiles for p40/cpu rows), navy_n252_088.yaml, doe_ascr_c59.yaml, nsf_sbir.yaml")
 
         Component(p40_driver, "scripts/run_sbir_p40.py", "argparse CLI", "Config-driven driver: loads sbir_p40.yaml, applies CLI overrides (--device, --n-epochs, --n-collocation, --refinement-levels, --skip-cpu), registers PINN profiles via _make_pinn_class")
+
+        Component(dorfler_mark, "dorfler_mark", "Function", "The single shared Dorfler bulk-marking primitive (marking.py). Two frozen variants: `squared` reproduces DorflerAMRSolver (marks one element even on an all-zero array), `linear` reproduces ScikitFEMPoissonSolver (marks nothing). Both legacy solvers delegate to it, so the two implementations can no longer drift apart. Rejects theta outside (0,1] and non-finite indicators, both of which previously produced a plausible mask over the wrong elements.")
+
+        Component(tensor_grid_substrate, "TensorGridSubstrate", "RefinementSubstrate", "The back-compat control. Wraps DorflerAMRSolver's verbatim static primitives; refining one element inserts full grid LINES, which is the defect that makes adaptive marking lose to uniform. Bitwise-golden against a live run_dorfler_arm.")
+
+        Component(skfem_substrate, "SkfemTriSubstrate", "RefinementSubstrate", "Element-local: only marked triangles are split (conforming RGB, zero hanging nodes). Reuses fem_baseline's module-level primitives -- one basis threaded through assembly, quadrature L2, and the ZZ estimator. Reports quadrature L2 as primary with nodal RMS additive, because their ratio drifts with mesh grading and would flatter whichever arm refines hardest. Requires the optional [fem] extra.")
+
+        Component(sweep, "run_refinement_sweep / measure_rate_separation", "Substrate-agnostic driver", "Drives any RefinementSubstrate through solve/mark/refine, fits a log-log convergence rate over a pinned DOF window, and compares two arms at matched DOF. Refuses to fit fewer than RATE_FIT_MIN_POINTS points rather than returning a meaningless slope. Lives here rather than in the gate's test file so the eventual arena consumes it instead of growing a second copy.")
+
+        Component(adequacy_gate, "AC7 adequacy gate", "Test (executable spec)", "Asserts adaptive beats uniform on SkfemTriSubstrate AND that the identical predicate FAILS on TensorGridSubstrate -- a gate that passes on both substrates measures nothing. Also unit-tests the predicate on synthetic inputs, because loosening the uniform-rate band left every solve-driven assertion green.")
     }
 
     Component_Ext(pde_operators, "PDE Operators", "Provides exact solutions, residuals; numpy/torch parity guarded by tests/pde/test_taylor_green_invariants.py")
     Component_Ext(alphagalerkin, "AlphaGalerkin Engine", "MCTS-guided solver under comparison")
     Component_Ext(nvidia_smi, "nvidia-smi dmon", "External GPU telemetry binary (optional)")
 
+    Rel(amr_solver, dorfler_mark, "Delegates marking")
+    Rel(tensor_grid_substrate, dorfler_mark, "Marks via (variant from config)")
+    Rel(skfem_substrate, dorfler_mark, "Marks via (variant from config)")
+    Rel(tensor_grid_substrate, amr_solver, "Wraps static solve/refine primitives verbatim")
+    Rel(sweep, tensor_grid_substrate, "Drives (control arm)")
+    Rel(sweep, skfem_substrate, "Drives (element-local arm)")
+    Rel(adequacy_gate, sweep, "Measures rate separation on both substrates")
     Rel(benchmark_runner, fdm_solver, "Runs baseline")
     Rel(benchmark_runner, amr_solver, "Runs baseline")
     Rel(benchmark_runner, ns_fdm_solver, "Runs baseline")

@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from src.pde.config import PDEConfig, PDEType
@@ -236,3 +237,168 @@ class TestTensorGridSubstratePrimitives:
         monkeypatch.setattr(builtins, "__import__", _fake_import)
         with pytest.raises(ImportError, match="requires scipy"):
             TensorGridSubstrate(operator)
+
+
+class TestTensorGridSubstrateConfigIsHonoured:
+    """Every ``SubstrateConfig`` field this substrate accepts must actually do something.
+
+    A gap-analysis review found four fields — ``marking_variant``,
+    ``error_metric``, ``enforce_immutable_meshes`` and ``initial_refinements``
+    — that this substrate declared, validated and then silently ignored. Two
+    are now read (the first two below), one is now enforced
+    (``enforce_immutable_meshes``), and the fourth is rejected outright by
+    ``SubstrateConfig``'s kind-scope validator because it means nothing here.
+    These tests are what stop that regressing to decoration again.
+    """
+
+    @pytest.fixture
+    def operator(self) -> LShapedPoissonOperator:
+        return _build_operator(ComparisonParams().scale)
+
+    def _substrate(self, operator: LShapedPoissonOperator, **kwargs: object) -> TensorGridSubstrate:
+        params = ComparisonParams()
+        return TensorGridSubstrate(
+            operator,
+            inside=lshape_inside_predicate(params.scale),
+            config=SubstrateConfig(
+                name="tg_cfg",
+                kind="tensor_grid",
+                initial_side=params.initial_side,
+                **kwargs,  # type: ignore[arg-type]
+            ),
+        )
+
+    @pytest.mark.parametrize(
+        "indicators",
+        [
+            # Squared bulk reaches theta with one element here; linear needs two.
+            np.array([2.0, 1.0, 1.0, 1.0, 1.0]),
+            # AC4's documented divergence: on an all-zero array the squared
+            # variant still marks exactly one element, the linear variant none.
+            np.zeros(5),
+        ],
+        ids=["weighted-vs-unweighted-bulk", "all-zeros"],
+    )
+    def test_marking_variant_is_read_from_config(
+        self, operator: LShapedPoissonOperator, indicators: np.ndarray
+    ) -> None:
+        """The field must change the selection, not just be stored.
+
+        Synthetic indicators on purpose: the two variants agree on this
+        substrate's *real* coarse-mesh indicators (one dominant element), so a
+        real-indicator test would pass whether or not the config were read --
+        a non-test. These two inputs are chosen because they are exactly where
+        the variants provably differ.
+        """
+        squared = self._substrate(operator, marking_variant="squared")
+        linear = self._substrate(operator, marking_variant="linear")
+        assert not np.array_equal(squared.mark(indicators, 0.5), linear.mark(indicators, 0.5))
+
+    def test_error_metric_selects_which_l2_is_reported(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        quad = self._substrate(operator, error_metric="quadrature")
+        nodal = self._substrate(operator, error_metric="nodal_rms")
+        mesh = quad.initial_mesh()
+        r_quad = quad.solve(mesh)
+        r_nodal = nodal.solve(mesh)
+        assert r_quad.l2_error != r_nodal.l2_error
+        assert r_quad.l2_error == r_quad.extra["l2_error_area_weighted"]
+        assert r_nodal.l2_error == r_nodal.extra["l2_error_nodal_rms"]
+
+    def test_both_metrics_are_always_reported_in_extra(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        """AC6's shape: the unselected metric is additive, never dropped."""
+        result = self._substrate(operator).solve(self._substrate(operator).initial_mesh())
+        assert {"l2_error_area_weighted", "l2_error_nodal_rms"} <= set(result.extra)
+
+    def test_enforce_immutable_meshes_clears_write_flags(
+        self, operator: LShapedPoissonOperator
+    ) -> None:
+        """A frozen dataclass stops rebinding fields, not in-place array writes."""
+        substrate = self._substrate(operator, enforce_immutable_meshes=True)
+        mesh = substrate.initial_mesh()
+        assert not mesh.xs.flags.writeable
+        assert not mesh.ys.flags.writeable
+        with pytest.raises(ValueError):
+            mesh.xs[0] = 0.0
+
+    def test_immutability_can_be_opted_out(self, operator: LShapedPoissonOperator) -> None:
+        mesh = self._substrate(operator, enforce_immutable_meshes=False).initial_mesh()
+        assert mesh.xs.flags.writeable
+
+    def test_refined_meshes_are_frozen_too(self, operator: LShapedPoissonOperator) -> None:
+        substrate = self._substrate(operator)
+        mesh = substrate.initial_mesh()
+        refined = substrate.refine(mesh, substrate.mark(substrate.solve(mesh).indicators, 0.5))
+        assert not refined.xs.flags.writeable
+
+
+class TestTensorGridRefinableMask:
+    """``refinable_mask`` must agree with the estimator, not merely be permissive.
+
+    It previously returned all-True unconditionally. With a geometry predicate
+    that is wrong in a way that matters: ``_compute_indicators_2d`` forces
+    out-of-domain elements to a **zero** indicator, so they can never be
+    marked — calling them refinable is a claim the estimator contradicts. And
+    the mask is read, not decorative: a uniform sweep marks exactly it
+    (``src/research/substrates/sweep.py``).
+    """
+
+    @pytest.fixture
+    def params(self) -> ComparisonParams:
+        return ComparisonParams()
+
+    def test_excludes_the_notch_when_a_geometry_predicate_is_given(
+        self, params: ComparisonParams
+    ) -> None:
+        substrate = TensorGridSubstrate(
+            _build_operator(params.scale),
+            inside=lshape_inside_predicate(params.scale),
+            config=SubstrateConfig(
+                name="tg_mask", kind="tensor_grid", initial_side=params.initial_side
+            ),
+        )
+        mesh = substrate.initial_mesh()
+        mask = substrate.refinable_mask(mesh)
+        assert mask.shape == (substrate.n_units(mesh),)
+        assert not mask.all(), "the L-shape notch must be excluded"
+        # The notch is one of four quadrants of the bounding box.
+        assert mask.sum() == pytest.approx(0.75 * mask.size, rel=0.05)
+
+    def test_agrees_with_the_zeroed_indicators(self, params: ComparisonParams) -> None:
+        """The binding property: every non-refinable element has a zero indicator.
+
+        This is what makes the mask *correct* rather than merely different --
+        it is derived from the same ``element_inside_mask`` the estimator uses,
+        so the two cannot drift apart.
+        """
+        substrate = TensorGridSubstrate(
+            _build_operator(params.scale),
+            inside=lshape_inside_predicate(params.scale),
+            config=SubstrateConfig(
+                name="tg_mask2", kind="tensor_grid", initial_side=params.initial_side
+            ),
+        )
+        mesh = substrate.initial_mesh()
+        indicators = substrate.solve(mesh).indicators
+        mask = substrate.refinable_mask(mesh)
+        assert np.all(indicators[~mask] == 0.0)
+
+    def test_all_true_without_a_geometry_predicate(self) -> None:
+        substrate = TensorGridSubstrate(
+            PoissonOperator(
+                PDEConfig(
+                    name="poisson_rect",
+                    pde_type=PDEType.POISSON,
+                    domain_dim=2,
+                    domain_min=[0.0, 0.0],
+                    domain_max=[1.0, 1.0],
+                )
+            ),
+            inside=None,
+            config=SubstrateConfig(name="tg_full", kind="tensor_grid", initial_side=4),
+        )
+        mesh = substrate.initial_mesh()
+        assert substrate.refinable_mask(mesh).all()

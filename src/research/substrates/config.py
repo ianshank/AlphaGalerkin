@@ -12,9 +12,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from src.templates.config import BaseModuleConfig
+
+#: Fields that only mean something for one substrate kind. Setting one away
+#: from its default while building the *other* kind is rejected rather than
+#: silently ignored -- a typed, validated, described field that does nothing
+#: is a worse lie than a magic number, because it looks like a knob.
+_KIND_SCOPED_FIELDS: dict[str, tuple[str, ...]] = {
+    "skfem_tri": ("element_type", "initial_refinements"),
+    "tensor_grid": ("initial_side",),
+}
 
 #: Numerical-stability floor for any ratio computation over substrate
 #: quantities (e.g. error ratios between two DOF counts), mirroring
@@ -43,20 +52,36 @@ class SubstrateConfig(BaseModuleConfig):
     )
     element_type: Literal["P1", "P2", "P3"] = Field(
         default="P1",
-        description="Lagrange order ('skfem_tri' only).",
+        description="Lagrange order. Scoped to kind='skfem_tri'.",
     )
     initial_refinements: int = Field(
         default=2,
         ge=0,
         le=8,
-        description="Uniform refinements applied to the coarse L-shape before the sweep.",
+        description=(
+            "Uniform refinements applied to the coarse L-shape before the sweep. "
+            "Scoped to kind='skfem_tri'."
+        ),
+    )
+    marking_fraction: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Dörfler bulk fraction (theta) -- the single most consequential AMR "
+            "tunable, and the default value passed to mark(). Bounded here "
+            "because theta<=0 marks nothing and theta>1 is unreachable bulk, "
+            "both of which otherwise 'work' and silently produce meaningless "
+            "marking."
+        ),
     )
     initial_side: int = Field(
         default=4,
         ge=2,
         le=64,
         description=(
-            "Elements per axis ('tensor_grid' only); even so the reentrant corner is a node."
+            "Elements per axis; even so the reentrant corner is a node. "
+            "Scoped to kind='tensor_grid'."
         ),
     )
     marking_variant: Literal["squared", "linear"] = Field(
@@ -80,7 +105,14 @@ class SubstrateConfig(BaseModuleConfig):
         default=4096,
         ge=1,
         le=1_000_000,
-        description="Fingerprint-keyed solve cache bound.",
+        description=(
+            "Fingerprint-keyed solve cache bound. NOT YET WIRED: no substrate "
+            "memoises solves today. Declared here alongside "
+            "RefinementSubstrate.fingerprint, its only consumer, which lands "
+            "with element-local-substrate Slice E (task 7.1) -- the same task "
+            "that retires fingerprint's entry in "
+            "scripts/audit_abstractions.py::_STAGED_FOR_UPCOMING_TASK."
+        ),
     )
 
     @field_validator("initial_side")
@@ -92,3 +124,37 @@ class SubstrateConfig(BaseModuleConfig):
                 f"initial_side must be even so the reentrant corner is a node; got {v}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _reject_fields_scoped_to_the_other_kind(self) -> SubstrateConfig:
+        """Refuse a knob that this ``kind`` would silently ignore.
+
+        ``SubstrateConfig(kind="tensor_grid", element_type="P2")`` used to
+        construct cleanly, validate cleanly, and then do nothing at all --
+        the config equivalent of a dead abstraction. Rejecting it turns a
+        silent no-op into an immediate, named error.
+
+        Only fields set *away from their default* are rejected, so a caller
+        that never mentions the field is unaffected and every existing
+        construction keeps working.
+        """
+        other_kinds = [k for k in _KIND_SCOPED_FIELDS if k != self.kind]
+        offending = [
+            field
+            for kind in other_kinds
+            for field in _KIND_SCOPED_FIELDS[kind]
+            if field in self.model_fields_set
+            and getattr(self, field) != type(self).model_fields[field].default
+        ]
+        if offending:
+            owners = sorted(
+                kind
+                for kind in other_kinds
+                if any(field in _KIND_SCOPED_FIELDS[kind] for field in offending)
+            )
+            raise ValueError(
+                f"kind={self.kind!r} ignores {sorted(offending)}, which only affect "
+                f"{owners}. Setting a field the chosen substrate never reads is "
+                f"silently a no-op, so it is rejected instead."
+            )
+        return self

@@ -19,14 +19,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import torch
+import structlog
 
 from src.refinement.substrate import SubstrateSolveResult
+from src.research.baselines import nodal_rms_l2_error
 from src.research.fem_baseline import (
     _make_element,
     _require_skfem,
     assemble_and_solve,
     build_lshaped_initial_mesh,
+    dirichlet_dof_indices,
     quadrature_l2_error,
     zz_indicator,
 )
@@ -37,6 +39,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from src.pde.operators import PDEOperator
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,31 @@ class SkfemTriSubstrate:
         self._operator = operator
         self._config = config or SubstrateConfig(name="skfem_tri_substrate", kind="skfem_tri")
         self._skfem = _require_skfem()
+        self._require_exact_solution()
+        self._log = logger.bind(**self.describe())
+        self._log.info(
+            "substrate_initialised",
+            initial_refinements=self._config.initial_refinements,
+        )
+
+    def _require_exact_solution(self) -> None:
+        """Fail at construction, not deep inside a quadrature form (AC6).
+
+        Every metric this substrate reports is measured against an analytic
+        exact solution. An operator without one cannot drive the adequacy gate
+        at all, and ``SubstrateSolveResult.l2_error`` is a bare ``float`` with
+        nowhere to put a ``None``. Discovering that as a ``TypeError`` raised
+        from inside a ``skfem.Functional`` -- several frames below any code the
+        caller wrote -- is the unhelpful version of the same failure.
+        """
+        probe = np.zeros((1, 2), dtype=np.float32)
+        if self._operator.exact_solution(probe) is None:
+            raise ValueError(
+                f"SkfemTriSubstrate requires an operator with an analytic exact solution; "
+                f"{type(self._operator).__name__}.exact_solution returned None. This "
+                f"substrate measures error against that solution, so there is nothing "
+                f"meaningful for solve() to report without it."
+            )
 
     def initial_mesh(self) -> SkfemTriMesh:
         """The coarse L-shaped mesh (three unit squares), per AC8."""
@@ -68,23 +97,37 @@ class SkfemTriSubstrate:
             self._skfem,
             initial_mesh_refinements=self._config.initial_refinements,
         )
+        self._log.debug("substrate_initial_mesh", n_units=int(mesh.t.shape[1]))
         return SkfemTriMesh(mesh=self._maybe_freeze(mesh))
 
     def solve(self, mesh: SkfemTriMesh) -> SubstrateSolveResult:
         element = _make_element(self._config.element_type, self._skfem)
+        # One basis, threaded through both primitives. Each would otherwise
+        # build its own, making three assemblies per solve on the path the
+        # spec names as the dominant cost inside MCTS.
         basis = self._skfem.Basis(mesh.mesh, element)
-        n_dof = basis.N
-        n_dof_free = n_dof - len(self._dirichlet_dof_indices(basis))
+        n_dof = int(basis.N)
+        n_dof_free = n_dof - len(dirichlet_dof_indices(basis))
 
         u, _coords, nodal_rms = assemble_and_solve(
-            mesh.mesh, element, self._operator, self._skfem, self._nodal_rms_l2
+            mesh.mesh, element, self._operator, self._skfem, nodal_rms_l2_error, basis=basis
         )
-        quad_l2 = quadrature_l2_error(mesh.mesh, element, u, self._operator, self._skfem)
+        quad_l2 = quadrature_l2_error(
+            mesh.mesh, element, u, self._operator, self._skfem, basis=basis
+        )
         indicators = zz_indicator(mesh.mesh, u)
 
         l2_error = quad_l2 if self._config.error_metric == "quadrature" else (nodal_rms or 0.0)
         extra = {"l2_error_nodal_rms": float(nodal_rms or 0.0), "l2_error_quadrature": quad_l2}
 
+        self._log.info(
+            "substrate_solve",
+            n_dof=n_dof,
+            n_dof_free=n_dof_free,
+            n_units=self.n_units(mesh),
+            l2_quadrature=quad_l2,
+            l2_nodal_rms=float(nodal_rms or 0.0),
+        )
         return SubstrateSolveResult(
             values=u,
             indicators=indicators,
@@ -94,42 +137,29 @@ class SkfemTriSubstrate:
             extra=extra,
         )
 
-    @staticmethod
-    def _dirichlet_dof_indices(basis: Any) -> NDArray[np.int64]:
-        """Mirror ``assemble_and_solve``'s own Dirichlet-dof extraction."""
-        dirichlet_dofs = basis.get_dofs()
-        if hasattr(dirichlet_dofs, "flatten"):
-            return np.asarray(dirichlet_dofs.flatten())
-        if hasattr(dirichlet_dofs, "nodal"):
-            return np.asarray(dirichlet_dofs.nodal["u"])
-        return np.asarray(dirichlet_dofs)
-
-    def _nodal_rms_l2(
-        self,
-        solution: NDArray[np.float64],
-        coords: NDArray[np.float64],
-        operator: PDEOperator,
-    ) -> float | None:
-        """The legacy nodal-RMS metric (``BaseSolver._compute_l2_error``'s formula).
-
-        Injected into ``assemble_and_solve`` so this substrate never imports
-        ``src.research.baselines`` (avoiding a needless coupling); the
-        formula itself is reproduced verbatim.
-        """
-        exact = operator.exact_solution(coords.astype(np.float32))
-        if isinstance(exact, torch.Tensor):
-            exact = exact.detach().cpu().numpy()
-        exact = np.asarray(exact, dtype=np.float64)
-        diff = solution.flatten() - exact.flatten()
-        n = len(diff)
-        return float(np.sqrt(np.sum(diff**2) / n)) if n > 0 else None
-
     def mark(self, indicators: NDArray[np.float64], theta: float) -> NDArray[np.bool_]:
         return dorfler_mark(indicators, theta, variant=self._config.marking_variant)
 
     def refine(self, mesh: SkfemTriMesh, marked: NDArray[np.bool_]) -> SkfemTriMesh:
         """Element-local refinement: only the marked triangles are split."""
+        n_marked = int(np.count_nonzero(marked))
+        n_before = self.n_units(mesh)
+        if n_marked == 0:
+            # skfem's refined([]) returns a same-size mesh and raises nothing,
+            # so a driving loop that terminates on DOF growth spins silently.
+            # Reachable: marking_variant="linear" returns all-False on an
+            # all-zero indicator array.
+            self._log.warning("substrate_refine_noop", n_units=n_before)
         refined = mesh.mesh.refined(np.where(marked)[0])
+        n_after = int(refined.t.shape[1])
+        # This pair *is* the O(|M|)-vs-O(N) evidence AC2 asks for; before it was
+        # logged it existed only inside a test assertion.
+        self._log.debug(
+            "substrate_refine",
+            n_marked=n_marked,
+            n_units_before=n_before,
+            n_units_after=n_after,
+        )
         return SkfemTriMesh(mesh=self._maybe_freeze(refined))
 
     def n_units(self, mesh: SkfemTriMesh) -> int:

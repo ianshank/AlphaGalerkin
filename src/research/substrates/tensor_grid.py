@@ -30,9 +30,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
+import structlog
 
 from src.refinement.substrate import SubstrateSolveResult
-from src.research.baselines import DorflerAMRSolver
+from src.research.baselines import (
+    DorflerAMRSolver,
+    element_inside_mask,
+    nodal_rms_l2_error,
+)
 from src.research.lshape_amr_compare import _area_weighted_l2
 from src.research.marking import dorfler_mark
 from src.research.substrates.config import SubstrateConfig
@@ -43,6 +48,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
     from src.pde.operators import PDEOperator
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -88,16 +95,42 @@ class TensorGridSubstrate:
         self._config = config or SubstrateConfig(name="tensor_grid_substrate", kind="tensor_grid")
         self._sparse = sparse
         self._spsolve = spsolve
+        probe = np.zeros((1, 2), dtype=np.float32)
+        if self._operator.exact_solution(probe) is None:
+            raise ValueError(
+                f"TensorGridSubstrate measures error against an analytic exact solution; "
+                f"{type(operator).__name__}.exact_solution returned None. Failing here "
+                f"rather than as a TypeError from inside solve()."
+            )
+        self._log = logger.bind(**self.describe())
+        self._log.info("substrate_initialised", has_geometry_predicate=inside is not None)
 
     def initial_mesh(self) -> TensorGridMesh:
         """Coarse grid matching ``run_dorfler_arm``'s own construction."""
         domain_min = np.asarray(self._operator.domain_min, dtype=np.float64)
         domain_max = np.asarray(self._operator.domain_max, dtype=np.float64)
         n = self._config.initial_side + 1
-        return TensorGridMesh(
+        mesh = TensorGridMesh(
             xs=np.linspace(float(domain_min[0]), float(domain_max[0]), n, dtype=np.float64),
             ys=np.linspace(float(domain_min[1]), float(domain_max[1]), n, dtype=np.float64),
         )
+        self._log.debug("substrate_initial_mesh", n_units=self.n_units(mesh))
+        return self._maybe_freeze(mesh)
+
+    def _maybe_freeze(self, mesh: TensorGridMesh) -> TensorGridMesh:
+        """Clear numpy write flags on the axis arrays (AC3), behind the config flag.
+
+        ``TensorGridMesh`` is a frozen dataclass, but freezing a dataclass only
+        stops rebinding its *fields* -- ``mesh.xs[0] = 3.0`` still mutates the
+        array in place. This is the tensor-grid counterpart of
+        ``SkfemTriSubstrate._maybe_freeze``; before it existed,
+        ``enforce_immutable_meshes`` (default ``True``) was declared, validated,
+        and read by exactly one of the two substrates.
+        """
+        if self._config.enforce_immutable_meshes:
+            mesh.xs.flags.writeable = False
+            mesh.ys.flags.writeable = False
+        return mesh
 
     def solve(self, mesh: TensorGridMesh) -> SubstrateSolveResult:
         """Solve on ``mesh`` via the verbatim static primitives."""
@@ -116,18 +149,36 @@ class TensorGridSubstrate:
             self._operator.exact_solution(grid.astype(np.float32)), dtype=np.float64
         ).ravel()
         diff = (u_full.ravel() - exact)[in_mask]
-        l2_error = _area_weighted_l2(diff, mesh.xs, mesh.ys, in_mask)
+        area_weighted = _area_weighted_l2(diff, mesh.xs, mesh.ys, in_mask)
+        # The unweighted counterpart, so `error_metric` is a real choice here
+        # and `extra` carries the same pair SkfemTriSubstrate reports. Computed
+        # over in-domain nodes only, matching the area-weighted norm's support.
+        nodal_rms = nodal_rms_l2_error(u_full.ravel()[in_mask], grid[in_mask], self._operator)
 
+        l2_error = (
+            area_weighted if self._config.error_metric == "quadrature" else float(nodal_rms or 0.0)
+        )
         n_dof = int(in_mask.sum())
         n_dof_free = self._n_dof_free(mesh, in_mask)
 
+        self._log.info(
+            "substrate_solve",
+            n_dof=n_dof,
+            n_dof_free=n_dof_free,
+            n_units=self.n_units(mesh),
+            l2_area_weighted=area_weighted,
+            l2_nodal_rms=float(nodal_rms or 0.0),
+        )
         return SubstrateSolveResult(
             values=u_full,
             indicators=indicators_2d.ravel(),
             l2_error=l2_error,
             n_dof=n_dof,
             n_dof_free=n_dof_free,
-            extra={},
+            extra={
+                "l2_error_area_weighted": area_weighted,
+                "l2_error_nodal_rms": float(nodal_rms or 0.0),
+            },
         )
 
     @staticmethod
@@ -143,8 +194,13 @@ class TensorGridSubstrate:
         return int((in_mask & interior_mask).sum())
 
     def mark(self, indicators: NDArray[np.float64], theta: float) -> NDArray[np.bool_]:
-        """Flat element selection -- the shared primitive, squared-bulk variant."""
-        return dorfler_mark(indicators, theta, variant="squared")
+        """Flat element selection -- the shared primitive.
+
+        The variant comes from the config (defaulting to ``"squared"``, the
+        legacy behaviour the golden test pins) rather than being hardcoded,
+        so ``marking_variant`` is a knob rather than decoration.
+        """
+        return dorfler_mark(indicators, theta, variant=self._config.marking_variant)
 
     def refine(self, mesh: TensorGridMesh, marked: NDArray[np.bool_]) -> TensorGridMesh:
         """Axis-project ``marked`` and insert grid lines via ``_refine_grid``."""
@@ -155,14 +211,39 @@ class TensorGridSubstrate:
         marked_y = np.asarray(marked_grid.any(axis=0), dtype=bool)
         new_xs = DorflerAMRSolver._refine_grid(mesh.xs, marked_x)
         new_ys = DorflerAMRSolver._refine_grid(mesh.ys, marked_y)
-        return TensorGridMesh(xs=new_xs, ys=new_ys)
+        refined = TensorGridMesh(xs=new_xs, ys=new_ys)
+        # n_marked vs the resulting element growth is the tensor-product defect
+        # made visible: marking a handful of elements inserts whole grid lines,
+        # so n_units_after is driven by the axis projection, not by |M|.
+        self._log.debug(
+            "substrate_refine",
+            n_marked=int(np.count_nonzero(marked)),
+            n_axes_marked_x=int(np.count_nonzero(marked_x)),
+            n_axes_marked_y=int(np.count_nonzero(marked_y)),
+            n_units_before=self.n_units(mesh),
+            n_units_after=self.n_units(refined),
+        )
+        return self._maybe_freeze(refined)
 
     def n_units(self, mesh: TensorGridMesh) -> int:
         return (len(mesh.xs) - 1) * (len(mesh.ys) - 1)
 
     def refinable_mask(self, mesh: TensorGridMesh) -> NDArray[np.bool_]:
-        """Every element is refinable (no geometry-aware exclusion at this layer)."""
-        return np.ones(self.n_units(mesh), dtype=bool)
+        """Elements inside the physical domain; all of them when unmasked.
+
+        Must agree with the estimator, not merely be permissive: with a
+        geometry predicate (the L-shape notch), `_compute_indicators_2d`
+        forces out-of-domain elements to a **zero** indicator, so they can
+        never be marked. Reporting them as refinable was a claim the estimator
+        contradicts — and it is read, not decorative: a uniform sweep marks
+        exactly this mask (`src/research/substrates/sweep.py`).
+
+        Shares `element_inside_mask` with the estimator rather than
+        re-deriving the centre test, so the two cannot drift apart.
+        """
+        if self._inside is None:
+            return np.ones(self.n_units(mesh), dtype=bool)
+        return np.asarray(element_inside_mask(mesh.xs, mesh.ys, self._inside).ravel(), dtype=bool)
 
     def fingerprint(self, mesh: TensorGridMesh) -> bytes:
         return mesh.xs.tobytes() + b"|" + mesh.ys.tobytes()

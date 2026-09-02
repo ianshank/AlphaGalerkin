@@ -106,3 +106,53 @@ class TestDorflerMarkLinearVariant:
 def test_unknown_variant_raises() -> None:
     with pytest.raises(ValueError, match="Unknown marking variant"):
         dorfler_mark(np.array([1.0, 2.0]), 0.5, variant="cubic")  # type: ignore[arg-type]
+
+
+class TestInputValidation:
+    """Guards added after a gap-analysis review found both silent-wrong-answer paths.
+
+    Neither of these raised before: an out-of-range ``theta`` and a NaN
+    indicator both produced a *finite, plausible* mask over the wrong
+    elements, which is the worst failure mode available here — every
+    downstream error, DOF count and convergence rate stays a real number.
+    """
+
+    @pytest.mark.parametrize("variant", ["squared", "linear"])
+    @pytest.mark.parametrize("theta", [0.0, -0.5, 1.5, float("nan")])
+    def test_rejects_theta_outside_the_unit_interval(self, variant: str, theta: float) -> None:
+        indicators = np.array([1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match="theta"):
+            dorfler_mark(indicators, theta, variant=variant)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize("variant", ["squared", "linear"])
+    @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+    def test_rejects_non_finite_indicators(self, variant: str, bad: float) -> None:
+        indicators = np.array([1.0, bad, 3.0])
+        with pytest.raises(ValueError, match="finite"):
+            dorfler_mark(indicators, 0.5, variant=variant)  # type: ignore[arg-type]
+
+    def test_a_nan_would_otherwise_be_ranked_first(self) -> None:
+        """Documents *why* the guard above matters, not merely that it fires.
+
+        ``np.argsort`` sorts NaN last, so the descending ``[::-1]`` used by
+        both variants ranks it **first** — it becomes the highest-priority
+        element, and ``np.cumsum`` then poisons every subsequent partial sum.
+        Asserting the mechanism means a future author who removes the guard
+        can see what they are re-enabling.
+        """
+        indicators = np.array([1.0, np.nan, 3.0])
+        descending = np.argsort(indicators)[::-1]
+        assert descending[0] == 1, "NaN is ranked first by the very ordering dorfler_mark uses"
+        assert np.isnan(np.cumsum(indicators[descending])[-1])
+
+    @pytest.mark.parametrize("variant", ["squared", "linear"])
+    def test_empty_indicator_array_is_not_a_crash(self, variant: str) -> None:
+        """Pinned rather than left to luck: an empty mesh marks nothing."""
+        marked = dorfler_mark(np.array([]), 0.5, variant=variant)  # type: ignore[arg-type]
+        assert marked.shape == (0,)
+        assert marked.dtype == bool
+
+    def test_theta_of_exactly_one_is_legal(self) -> None:
+        """Boundary: theta=1.0 means "chase all the bulk", which is well-defined."""
+        indicators = np.array([1.0, 2.0, 3.0])
+        assert dorfler_mark(indicators, 1.0, variant="squared").all()

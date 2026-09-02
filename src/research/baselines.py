@@ -211,6 +211,63 @@ class NavierStokesConfig(SolverConfig):
     )
 
 
+def element_inside_mask(
+    xs: NDArray[np.float64],
+    ys: NDArray[np.float64],
+    inside: InsidePredicate,
+) -> NDArray[np.bool_]:
+    """Which tensor-grid elements lie inside the physical domain, by centre test.
+
+    Shape ``(len(xs) - 1, len(ys) - 1)``. An element counts as inside iff its
+    centre satisfies ``inside`` -- the same rule
+    ``DorflerAMRSolver._compute_indicators_2d`` uses to decide which elements
+    get a zero indicator, and therefore the rule any *refinability* answer has
+    to agree with: an element whose indicator is forced to zero can never be
+    marked, so calling it refinable is a claim the estimator contradicts.
+
+    Module-level so the indicator path and ``TensorGridSubstrate.refinable_mask``
+    share **one** definition. The centres are built through the identical
+    ``float32 -> float64`` round-trip the per-element midpoint uses, so the
+    predicate sees byte-for-byte the same input; a second hand-rolled copy of
+    that round-trip would be free to drift by a ULP and silently disagree at
+    the boundary.
+    """
+    cx_all = 0.5 * (xs[:-1] + xs[1:])
+    cy_all = 0.5 * (ys[:-1] + ys[1:])
+    cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
+    centres = (
+        np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1).astype(np.float32).astype(np.float64)
+    )
+    return np.asarray(inside(centres), dtype=bool).reshape(len(xs) - 1, len(ys) - 1)
+
+
+def nodal_rms_l2_error(
+    solution: NDArray[np.float64],
+    coords: NDArray[np.float64],
+    operator: PDEOperator,
+) -> float | None:
+    """Root-mean-square nodal error against the exact solution, if available.
+
+    The historical ``l2_error`` every ``SolverResult`` in this module reports.
+    Deliberately **not** a true L2 norm: it is unweighted, so on a graded mesh
+    it over-counts the densely-refined region. ``fem_baseline.quadrature_l2_error``
+    is the mesh-independent metric to compare two refinement policies with; this
+    one exists so those historical numbers stay reproducible byte-for-byte.
+
+    Returns ``None`` -- not a crash, and not ``0.0`` -- when ``operator`` has no
+    analytic exact solution, which is the majority of real operators.
+    """
+    exact = operator.exact_solution(coords.astype(np.float32))
+    if exact is None:
+        return None
+    if isinstance(exact, torch.Tensor):
+        exact = exact.detach().cpu().numpy()
+    exact = np.asarray(exact, dtype=np.float64)
+    diff = solution.flatten() - exact.flatten()
+    n = len(diff)
+    return float(np.sqrt(np.sum(diff**2) / n)) if n > 0 else None
+
+
 class BaseSolver(ABC):
     """Protocol for classical PDE solvers.
 
@@ -242,16 +299,17 @@ class BaseSolver(ABC):
         coords: NDArray[np.float64],
         operator: PDEOperator,
     ) -> float | None:
-        """Compute L2 error against the exact solution, if available."""
-        exact = operator.exact_solution(coords.astype(np.float32))
-        if exact is None:
-            return None
-        if isinstance(exact, torch.Tensor):
-            exact = exact.detach().cpu().numpy()
-        exact = np.asarray(exact, dtype=np.float64)
-        diff = solution.flatten() - exact.flatten()
-        n = len(diff)
-        return float(np.sqrt(np.sum(diff**2) / n)) if n > 0 else None
+        """Compute L2 error against the exact solution, if available.
+
+        Thin delegate to the module-level :func:`nodal_rms_l2_error` (same
+        split as ``_dorfler_mark`` -> ``dorfler_mark``), so a caller outside
+        this class hierarchy -- a ``RefinementSubstrate``, say -- reuses the
+        formula instead of copying it. A copy was briefly made in
+        ``SkfemTriSubstrate`` and immediately diverged: it dropped the
+        ``exact is None`` guard below, which turns every operator without an
+        analytic solution into a ``TypeError`` from inside ``np.asarray``.
+        """
+        return nodal_rms_l2_error(solution, coords, operator)
 
 
 class UniformFDMSolver(BaseSolver):
@@ -919,15 +977,7 @@ class DorflerAMRSolver(BaseSolver):
         # the predicate input is byte-for-byte the same.
         elem_inside: NDArray[np.bool_] | None = None
         if inside is not None:
-            cx_all = 0.5 * (xs[:-1] + xs[1:])
-            cy_all = 0.5 * (ys[:-1] + ys[1:])
-            cx_grid, cy_grid = np.meshgrid(cx_all, cy_all, indexing="ij")
-            centres = (
-                np.stack([cx_grid.ravel(), cy_grid.ravel()], axis=-1)
-                .astype(np.float32)
-                .astype(np.float64)
-            )
-            elem_inside = np.asarray(inside(centres), dtype=bool).reshape(nx, ny)
+            elem_inside = element_inside_mask(xs, ys, inside)
 
         for i in range(nx):
             hx = xs[i + 1] - xs[i]

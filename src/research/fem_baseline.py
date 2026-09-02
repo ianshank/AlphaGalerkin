@@ -18,6 +18,7 @@ Supports three adaptation strategies:
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from typing import Any, Literal, cast
 
 import numpy as np
@@ -36,6 +37,12 @@ from src.research.baselines import (
 from src.research.marking import dorfler_mark
 
 logger = structlog.get_logger(__name__)
+
+#: Signature of the L2-error callback ``assemble_and_solve`` takes. Spelled out
+#: rather than left as ``Any`` so the injection point keeps a checked contract
+#: in a ``--strict`` codebase; ``None`` is a legal return (an operator with no
+#: analytic exact solution), matching ``BaseSolver._compute_l2_error``.
+L2ErrorFn = Callable[[NDArray[np.float64], NDArray[np.float64], PDEOperator], float | None]
 
 
 class FEMConfig(SolverConfig):
@@ -197,12 +204,30 @@ def build_lshaped_initial_mesh(
     return mesh
 
 
+def dirichlet_dof_indices(basis: Any) -> NDArray[np.int64]:
+    """Extract Dirichlet DOF indices from a basis, across skfem API versions.
+
+    Module-level rather than inlined so ``assemble_and_solve`` and any
+    substrate that needs the free-DOF count share **one** copy of this
+    version-compat chain. It was briefly duplicated into
+    ``SkfemTriSubstrate``; a compat fallback with two copies, neither
+    individually tested, is worse than one tested copy.
+    """
+    dofs = basis.get_dofs()
+    if hasattr(dofs, "flatten"):
+        return np.asarray(dofs.flatten())
+    if hasattr(dofs, "nodal"):
+        return np.asarray(dofs.nodal["u"])
+    return np.asarray(dofs)
+
+
 def assemble_and_solve(
     mesh: Any,
     element: Any,
     operator: PDEOperator,
     skfem: Any,
-    l2_error_fn: Any,
+    l2_error_fn: L2ErrorFn,
+    basis: Any | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], float | None]:
     """Assemble the Poisson system and solve it.
 
@@ -215,19 +240,27 @@ def assemble_and_solve(
             injected so this stays a pure function while
             ``SolverResult.l2_error``'s nodal-RMS meaning is preserved
             byte-for-byte (``BaseSolver._compute_l2_error``).
+        basis: An already-constructed ``skfem.Basis`` for ``(mesh, element)``.
+            Optional and defaulted to ``None`` (build one) so every existing
+            caller is unchanged; a caller that needs the basis for its own
+            purposes -- e.g. a substrate reporting ``n_dof_free`` -- passes it
+            in rather than paying for a third assembly. Basis construction is
+            not free, and the spec's Out of Scope section notes this path is
+            the dominant cost inside MCTS.
 
     """
     from scipy.sparse.linalg import spsolve
     from skfem import BilinearForm, LinearForm
     from skfem.helpers import dot, grad
 
-    basis = skfem.Basis(mesh, element)
+    if basis is None:
+        basis = skfem.Basis(mesh, element)
 
-    @BilinearForm  # type: ignore[untyped-decorator]
+    @BilinearForm
     def a_form(u: Any, v: Any, _: Any) -> Any:
         return dot(grad(u), grad(v))
 
-    @LinearForm  # type: ignore[untyped-decorator]
+    @LinearForm
     def l_form(v: Any, w: Any) -> Any:
         x = w.x  # quadrature point coordinates (dim, n_q, n_elements)
         pts = np.stack([x[0].ravel(), x[1].ravel()], axis=-1).astype(np.float32)
@@ -244,12 +277,7 @@ def assemble_and_solve(
     # Dirichlet boundary conditions via operator.boundary_value,
     # evaluated at the actual DOF locations (covers P2/P3 edge dofs).
     dirichlet_dofs = basis.get_dofs()
-    if hasattr(dirichlet_dofs, "flatten"):
-        dof_indices = dirichlet_dofs.flatten()
-    elif hasattr(dirichlet_dofs, "nodal"):
-        dof_indices = dirichlet_dofs.nodal["u"]
-    else:
-        dof_indices = np.asarray(dirichlet_dofs)
+    dof_indices = dirichlet_dof_indices(basis)
 
     dof_locs = basis.doflocs  # (dim, n_dof)
     bc_pts = np.asarray(dof_locs[:, dof_indices].T, dtype=np.float32)
@@ -280,6 +308,7 @@ def quadrature_l2_error(
     solution: NDArray[np.float64],
     operator: PDEOperator,
     skfem: Any,
+    basis: Any | None = None,
 ) -> float:
     """Mesh-independent (quadrature) L2 error against the exact solution.
 
@@ -288,14 +317,37 @@ def quadrature_l2_error(
     ``nodalRMS / quadratureL2`` drifts with mesh grading (spike-measured
     0.34->0.53 uniform vs 0.34->0.76 adaptive), so reporting only the nodal
     RMS would flatter whichever arm refines hardest.
-    """
-    basis = skfem.Basis(mesh, element)
 
-    @skfem.Functional  # type: ignore[untyped-decorator]
+    Args:
+        mesh: The skfem mesh the solution lives on.
+        element: The skfem Element (Lagrange order) the solution was solved in.
+        solution: Nodal/DOF solution vector to measure.
+        operator: PDE operator supplying ``exact_solution``.
+        skfem: The imported ``skfem`` module.
+        basis: Optional pre-built ``skfem.Basis``; see ``assemble_and_solve``.
+
+    Raises:
+        ValueError: If ``operator`` has no analytic exact solution. Unlike the
+            nodal-RMS metric, whose ``float | None`` return lets a caller
+            degrade, this returns a bare ``float`` -- so ``None`` has nowhere
+            to go and reaching ``np.asarray(None, ...)`` would surface as an
+            opaque ``TypeError`` from inside a quadrature form. Failing here,
+            named, is the honest version of the same outcome.
+
+    """
+    if basis is None:
+        basis = skfem.Basis(mesh, element)
+
+    @skfem.Functional
     def squared_error(w: Any) -> Any:
         x = w.x
         pts = np.stack([x[0].ravel(), x[1].ravel()], axis=-1).astype(np.float32)
         exact_out = operator.exact_solution(pts)
+        if exact_out is None:
+            raise ValueError(
+                f"quadrature_l2_error requires an operator with an analytic exact "
+                f"solution; {type(operator).__name__}.exact_solution returned None"
+            )
         if isinstance(exact_out, torch.Tensor):
             exact_out = exact_out.detach().cpu().numpy()
         exact_vals = np.asarray(exact_out, dtype=np.float64).reshape(x[0].shape)

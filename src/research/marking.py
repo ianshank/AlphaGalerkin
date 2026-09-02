@@ -57,7 +57,27 @@ def dorfler_mark(
     Returns:
         1D boolean mask, ``len(result) == len(indicators)``, True where marked.
 
+    Raises:
+        ValueError: If ``theta`` is outside ``(0, 1]``, or if ``indicators``
+            contains NaN/Inf. Both otherwise "work" and silently mark the wrong
+            set: ``theta <= 0`` chases zero bulk, ``theta > 1`` chases bulk that
+            does not exist, and a single NaN makes ``np.argsort`` sort it *last*
+            -- so the ``[::-1]`` below puts it *first*, poisons the cumulative
+            sum, and hands ``searchsorted`` a meaningless threshold. Silently
+            marking the wrong elements is the worst available failure mode here,
+            because every downstream number stays finite and plausible.
+
     """
+    if not 0.0 < theta <= 1.0:
+        raise ValueError(f"theta (Dörfler bulk fraction) must be in (0, 1]; got {theta!r}")
+    if indicators.size and not np.all(np.isfinite(indicators)):
+        n_bad = int(np.count_nonzero(~np.isfinite(indicators)))
+        raise ValueError(
+            f"indicators must be finite; got {n_bad} non-finite value(s) of "
+            f"{indicators.size}. A NaN sorts last, so the descending order below "
+            f"would rank it first and mark an arbitrary set."
+        )
+
     if variant == "squared":
         weighted = indicators**2
         total = float(np.sum(weighted))

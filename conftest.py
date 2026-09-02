@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from _pytest.config import Config
+    from _pytest.terminal import TerminalReporter
 
 try:
     import torch as _torch
@@ -34,7 +39,7 @@ _REQUIRE_EXTRAS = os.environ.get("ALPHAGALERKIN_REQUIRE_EXTRAS") == "1"
 _fem_skip_count = 0
 
 
-def pytest_collection_modifyitems(config, items) -> None:
+def pytest_collection_modifyitems(config: Config, items: list[pytest.Item]) -> None:
     """Auto-skip tests marked gpu_required when CUDA is not available."""
     if not (_HAS_TORCH and _torch.cuda.is_available()):
         skip_gpu = pytest.mark.skip(reason="CUDA not available (no NVIDIA driver)")
@@ -60,7 +65,9 @@ def pytest_collection_modifyitems(config, items) -> None:
     _fem_skip_count += len(fem_items)
 
 
-def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+def pytest_terminal_summary(
+    terminalreporter: TerminalReporter, exitstatus: int, config: Config
+) -> None:
     """Report how many fem_required tests were skipped -- visibly, not silently."""
     if _fem_skip_count:
         terminalreporter.write_line(

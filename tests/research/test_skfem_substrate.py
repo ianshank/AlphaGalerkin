@@ -95,11 +95,24 @@ class TestSkfemTriSubstrateAC2LocalRefinement:
         assert (n_local - n0) < 0.1 * (n_uniform - n0)
 
     def test_refine_does_not_mutate_input_mesh(self, substrate: SkfemTriSubstrate) -> None:
+        """AC3 as written: the coordinate and connectivity **bytes** are unchanged.
+
+        Previously this asserted only that ``n_units`` was unchanged, which a
+        mesh whose vertices had been moved in place would also satisfy. AC3
+        says "bytes", so compare bytes.
+        """
         mesh = substrate.initial_mesh()
         n0 = substrate.n_units(mesh)
+        p_before = mesh.mesh.p.tobytes()
+        t_before = mesh.mesh.t.tobytes()
+
         marked = np.ones(substrate.n_units(mesh), dtype=bool)
-        substrate.refine(mesh, marked)
+        refined = substrate.refine(mesh, marked)
+
         assert substrate.n_units(mesh) == n0
+        assert mesh.mesh.p.tobytes() == p_before
+        assert mesh.mesh.t.tobytes() == t_before
+        assert refined.mesh is not mesh.mesh
 
 
 class TestSkfemTriSubstrateAC3Immutability:
@@ -228,3 +241,82 @@ class TestSkfemTriSubstrateRegistry:
         register_refinement_substrate("skfem_tri")(SkfemTriSubstrate)
         cls = RefinementSubstrateRegistry().get_or_raise("skfem_tri")
         assert cls is SkfemTriSubstrate
+
+
+class TestSkfemTriSubstrateAC2Conformity:
+    """AC2's second clause, which had no test despite the module docstring claiming it.
+
+    "Zero edges shared by more than two elements, after one local refinement
+    and after four successive ones." Conformity is the entire justification for
+    choosing skfem's RGB refinement over a quadtree backend (the spec's Out of
+    Scope names exactly this), and it is the property most likely to break
+    under a future scikit-fem major -- which is why ``pyproject.toml`` caps the
+    dependency at ``<13``. Asserting it here means a version bump that
+    introduces hanging nodes fails loudly instead of silently invalidating
+    every error estimate downstream.
+    """
+
+    @staticmethod
+    def _max_facet_incidence(mesh: object) -> int:
+        """Largest number of elements sharing any one facet (edge). Conforming == 2."""
+        t2f = np.asarray(mesh.t2f)  # type: ignore[attr-defined]
+        counts = np.bincount(t2f.ravel())
+        return int(counts.max()) if counts.size else 0
+
+    def test_initial_mesh_is_conforming(self, substrate: SkfemTriSubstrate) -> None:
+        mesh = substrate.initial_mesh()
+        assert self._max_facet_incidence(mesh.mesh) <= 2
+
+    def test_one_local_refinement_stays_conforming(self, substrate: SkfemTriSubstrate) -> None:
+        mesh = substrate.initial_mesh()
+        marked = np.zeros(substrate.n_units(mesh), dtype=bool)
+        marked[0] = True
+        refined = substrate.refine(mesh, marked)
+        assert self._max_facet_incidence(refined.mesh) <= 2
+
+    def test_four_successive_local_refinements_stay_conforming(
+        self, substrate: SkfemTriSubstrate
+    ) -> None:
+        """The case a naive quadtree fails: repeated refinement of one region."""
+        mesh = substrate.initial_mesh()
+        for _ in range(4):
+            result = substrate.solve(mesh)
+            marked = substrate.mark(result.indicators, theta=0.3)
+            mesh = substrate.refine(mesh, marked)
+            assert self._max_facet_incidence(mesh.mesh) <= 2, (
+                "a hanging node appeared -- RGB refinement is no longer conforming, "
+                "which invalidates every error estimate computed on this mesh"
+            )
+
+    def test_the_incidence_helper_can_actually_detect_a_hanging_node(self) -> None:
+        """Guards the guard: a helper that always returns <= 2 tests nothing.
+
+        Feeds it a synthetic ``t2f`` where one facet is shared by three
+        elements -- the exact condition the three tests above rule out -- and
+        requires it to report 3.
+        """
+
+        class _FakeMesh:
+            t2f = np.array([[0, 0, 0], [1, 2, 3]])
+
+        assert TestSkfemTriSubstrateAC2Conformity._max_facet_incidence(_FakeMesh()) == 3
+
+
+class TestSkfemTriSubstrateRequiresAnExactSolution:
+    """A no-exact-solution operator must fail at construction, named.
+
+    Before this, ``SkfemTriSubstrate`` accepted such an operator and crashed
+    later with a ``TypeError`` from ``np.asarray(None, dtype=np.float64)``
+    several frames inside a quadrature form -- the substrate had silently
+    dropped ``BaseSolver._compute_l2_error``'s ``if exact is None`` guard while
+    its docstring claimed the formula was "reproduced verbatim".
+    """
+
+    def test_construction_raises_with_an_actionable_message(self) -> None:
+        operator = _lshaped_operator()
+        object.__setattr__(operator, "exact_solution", lambda pts: None)
+        with pytest.raises(ValueError, match="analytic exact solution"):
+            SkfemTriSubstrate(operator)
+
+    def test_a_real_operator_still_constructs(self) -> None:
+        assert SkfemTriSubstrate(_lshaped_operator()) is not None

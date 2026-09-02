@@ -408,10 +408,10 @@ same code path is safe everywhere.
 - [x] ~~BaseTrainer consolidation~~ (`src/training/base_trainer.py` with AMP, gradient clipping, LR scheduling)
 - [x] ~~SBIR proposal infrastructure~~ (SAM guide, budgets, timeline, program offices, IP strategy)
 - [x] ~~SBIR P40 benchmark hardening~~ (`scripts/run_sbir_p40.py` config-driven driver, `GpuUtilizationProfiler`, AMR escapes 18-DOF ceiling, NS-FDM Taylor-Green parity, PINN device knob)
-- [ ] Multi-field PDE support (extending ModelOutput for vector fields)
-- [ ] Migrate Trainer and OperatorTrainer to BaseTrainer inheritance
-- [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals
-- [ ] Capture proposal-grade Tesla P40 numbers from `scripts/run_sbir_p40.py` once a sm_61-compatible PyTorch wheel is available
+- [x] ~~Migrate Trainer to BaseTrainer inheritance~~ (`src/training/trainer.py::Trainer(BaseTrainer)`; `DistributedTrainer` too. `OperatorTrainer` was never migrated — it has zero production callers, so it stays a plain class until a caller needs it; see `docs/CODE_HYGIENE_AUDIT.md`)
+- [ ] Multi-field PDE support — **`ModelOutput.vector_fields`/`with_vector_fields()` already exist** (`src/modeling/model.py`) but nothing produces or consumes them yet. What's actually open: a spec naming a pilot operator (`NavierStokesOperator` is the only vector-valued one today) and what `BasisSelectionGame`'s scalar `(N,)` fit, the loss functions, and the MCTS `Evaluator` protocol need to change to support it
+- [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals — no code exists; this is a proposal-narrative/business decision, not scoped engineering work (see `docs/CODE_HYGIENE_AUDIT.md`)
+- [ ] Capture proposal-grade Tesla P40 numbers from `scripts/run_sbir_p40.py` once a sm_61-compatible PyTorch wheel is available — code side is done; blocked on procuring P40 hardware + a compatible wheel
 
 ### Medium-Term (v0.5)
 - [ ] 3D tetrahedral domain geometry support

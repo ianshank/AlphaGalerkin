@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Next-steps case follow-through: coverage-gate slack, stale docs (B28, B29)
+- **`src/pde` coverage gate raised 75 → 85** (`.github/workflows/ci.yml`, `openspec/specs/project-charter/spec.md`) — measured branch coverage is 93.5%, so the gate carried 18 points of slack, unchanged since 2026-04-10. A prior PR claiming this raise (#57, open since April) never actually landed it. See `docs/CODE_HYGIENE_AUDIT.md` B28.
+- **`README.md`'s Near-Term checklist corrected**: `Trainer` already inherits `BaseTrainer` (has for 5 months); ticked. `ModelOutput.vector_fields` scaffolding already exists and is unconsumed — reworded from "extend ModelOutput" to name what's actually open (`BasisSelectionGame`/losses/evaluator, needs a spec first). `OperatorTrainer`'s BaseTrainer migration noted as low-priority (zero production callers). See `docs/CODE_HYGIENE_AUDIT.md` B29.
+- **`docs/CODE_HYGIENE_AUDIT.md`'s P0-1 heading corrected** from "3 of 8" to "2 of 8" — the Burgers OOD-reward defect it originally described was fixed 2026-08-19, verified at runtime through the real `_centaur_common` path (six distinct rewards, monotone error decrease). The heading and its pre-split `src/pde/operators.py` path citation were stale relative to the section's own status block.
+
 ### Fixed — Tech-debt Phase 2c: stale line citations in mdp_specification.md (B27)
 - **`docs/doe_genesis/mdp_specification.md`'s `MeshRefinementGame` line citations were stale independent of any PR** — GitHub Copilot review on PR #140 flagged two dangling `mesh_refinement.py:321`/`:540` references (post-B4-split) and suggested retargeting to `mesh_refinement/game.py:41`/`:420`. Verified against the pre-split flat file at the merge-base rather than trusting the suggestion: every mesh-related citation in this doc was already off by 30-350+ lines before this PR touched the file, drifted from a much older module version. Fixed all 7+ citations (not just the 2 Copilot named) against the real current line numbers in the split `mesh_refinement/{mesh,game}.py`, verified by direct read of each cited symbol.
 

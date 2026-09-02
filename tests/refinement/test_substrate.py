@@ -180,5 +180,14 @@ class TestRefinementSubstrateRegistry:
         assert isinstance(cls(), RefinementSubstrate)
 
     def test_rejects_structurally_incomplete_class(self) -> None:
-        with pytest.raises(TypeError, match="must inherit from RefinementSubstrate"):
+        """The real requirement is structural conformance, not inheritance.
+
+        Asserts only that registration is rejected with a ``TypeError`` --
+        not the exact wording -- since ``create_registry``'s message names
+        "inherit" as an implementation detail of its ``issubclass`` check,
+        not a promise this Protocol relies on (see also
+        ``test_non_conforming_class_does_not_satisfy_isinstance`` above,
+        which pins the actual structural-conformance behaviour).
+        """
+        with pytest.raises(TypeError):
             register_refinement_substrate("bad")(_IncompleteSubstrate)

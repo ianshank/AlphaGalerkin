@@ -17,14 +17,12 @@ is what makes it safe to depend on from anywhere.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, TypeVar, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    import numpy as np
-    from numpy.typing import NDArray
+import numpy as np
+from numpy.typing import NDArray
 
 TMesh = TypeVar("TMesh")
 
@@ -73,10 +71,14 @@ class SubstrateSolveResult:
 class RefinementSubstrate(Protocol[TMesh]):
     """A mesh/grid representation with solve, mark, and refine primitives.
 
-    Every member here must have a real caller — ``scripts.audit_abstractions``
+    Every member here is meant to have a real caller — ``scripts.audit_abstractions``
     fails the build on a ``Protocol`` member with no reader (the F1 defect
-    class), so this Protocol only grows alongside the concrete substrate and
-    caller that need the new member.
+    class), so this Protocol is meant to grow only alongside the concrete
+    substrate and caller that need the new member. Currently an intentional,
+    disclosed exception: this Protocol ships in element-local-substrate's
+    Slice A, ahead of its first concrete consumer in Slice E (task 7.1), so
+    all 8 members are temporarily exempted via the audit's
+    ``_STAGED_FOR_UPCOMING_TASK`` allowlist rather than genuinely read yet.
 
     ``@runtime_checkable`` is what lets ``src.templates.registry.create_registry``'s
     ``issubclass(cls, RefinementSubstrate)`` structural check work when

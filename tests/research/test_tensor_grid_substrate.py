@@ -117,8 +117,16 @@ class TestTensorGridSubstrateGolden:
         """AC1's second clause: float-tolerance against the committed artifact.
 
         The CSV's ``l2_error`` column is 8-significant-figure text
-        (``f"{l2:.8e}"``), so comparing for text-exactness would be brittle;
-        this asserts agreement to that precision instead.
+        (``f"{l2:.8e}"``), so comparing for text-exactness would be brittle.
+        ``rel=1e-4`` is deliberately looser than that text precision: a
+        sparse ``spsolve`` can differ in its low-order bits across BLAS/LAPACK
+        builds (confirmed cross-runner -- CI's Linux BLAS build reproduced
+        this CSV's own values to only ~8.6e-6 relative, not text-exact),
+        which is a platform property, not a correctness one. This tolerance
+        is still ~100x tighter than a genuine algorithmic divergence would
+        produce (the mutation check on the *other* test in this class shows
+        a wrong marking policy diverges by tens of percent within a few
+        levels), so it still discriminates a real defect.
         """
         inside = lshape_inside_predicate(params.scale)
         substrate = TensorGridSubstrate(
@@ -144,7 +152,7 @@ class TestTensorGridSubstrateGolden:
                 continue
             committed_dof, committed_l2 = committed_by_level[level]
             assert dof == committed_dof
-            assert l2 == pytest.approx(committed_l2, rel=1e-7)
+            assert l2 == pytest.approx(committed_l2, rel=1e-4)
 
 
 class TestTensorGridSubstratePrimitives:

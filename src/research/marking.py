@@ -45,7 +45,7 @@ def dorfler_mark(
     """Mark elements via Dörfler bulk-chasing.
 
     Args:
-        indicators: Non-negative per-element error indicators.
+        indicators: Non-negative per-element error indicators, 1D.
         theta: Bulk fraction (``marking_fraction`` in both legacy callers).
         variant: ``"squared"`` reproduces ``DorflerAMRSolver._dorfler_mark`` — the
             bulk quantity is ``indicators ** 2`` and an all-zero array still marks
@@ -55,7 +55,7 @@ def dorfler_mark(
             ``indicators`` itself and a non-positive total marks nothing.
 
     Returns:
-        Boolean mask, same shape as ``indicators``, True where marked.
+        1D boolean mask, ``len(result) == len(indicators)``, True where marked.
 
     """
     if variant == "squared":

@@ -1,6 +1,6 @@
 """Parity tests for the shared Dörfler marking primitive.
 
-``src.refinement.marking.dorfler_mark`` unifies two historically divergent
+``src.research.marking.dorfler_mark`` unifies two historically divergent
 implementations: ``DorflerAMRSolver._dorfler_mark`` (squared bulk quantity,
 ``src.research.baselines``) and ``ScikitFEMPoissonSolver._dorfler_mark`` (linear
 bulk quantity, ``src.research.fem_baseline``). These tests pin both variants
@@ -17,9 +17,9 @@ import pytest
 from hypothesis import example, given
 from hypothesis import strategies as st
 
-from src.refinement.marking import dorfler_mark
 from src.research.baselines import DorflerAMRSolver
 from src.research.fem_baseline import FEMConfig, ScikitFEMPoissonSolver
+from src.research.marking import dorfler_mark
 
 _INDICATOR_ARRAYS = st.lists(
     st.floats(min_value=0.0, max_value=1e6, allow_nan=False, allow_infinity=False),

@@ -23,29 +23,61 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 1. Shared marking
 
-- [ ] 1.1 `src/refinement/marking.py`: one `dorfler_mark(indicators, theta, variant)` with
-      frozen `squared`/`linear` presets.
-- [ ] 1.2 Delegate `DorflerAMRSolver._dorfler_mark` and `._dorfler_mark_2d`; the 2-D axis
-      projection stays exactly where it is — it *is* the legacy behaviour the golden pins.
-- [ ] 1.3 Delegate `ScikitFEMPoissonSolver._dorfler_mark`.
-- [ ] 1.4 Hypothesis byte-parity test for both variants, including the all-zeros case where
+- [x] 1.1 **[CORRECTED — lives at `src/research/marking.py`, not `src/refinement/marking.py`.]**
+      CI's `reference-baselines-do-not-import-the-candidate` contract
+      (`tests/regression/test_import_contracts.py`) forbids `src/research/baselines.py` and
+      `fem_baseline.py` from importing anything under `src.refinement` — discovered only when
+      the originally-planned `src/refinement/marking.py` failed that check in CI (both baselines
+      delegate to `dorfler_mark`, so the import is real marking *behaviour*, not the kind of
+      inert protocol/type import the contract's one existing exemption, `src/mcts/gumbel.py`,
+      tolerates). `dorfler_mark(indicators, theta, variant)` with frozen `squared`/`linear`
+      presets now lives under `src.research`, alongside its only two callers plus
+      `src.research.substrates.tensor_grid`.
+- [x] 1.2 **[Amended]** `DorflerAMRSolver._dorfler_mark` delegates directly. `._dorfler_mark_2d`
+      does **not** delegate — it stays exactly as it was (it *is* the legacy behaviour the golden
+      pins) — but `TensorGridSubstrate.mark()`/`.refine()` (Slice B) reproduce its
+      selection-then-axis-projection as a provably equivalent two-step composition (flat
+      selection via the shared `dorfler_mark`, then axis projection + `_refine_grid`), verified
+      not by inspection but by `tests/research/test_tensor_grid_substrate.py`'s end-to-end
+      trajectory golden test against a live `run_dorfler_arm` call.
+- [x] 1.3 Delegate `ScikitFEMPoissonSolver._dorfler_mark`.
+- [x] 1.4 Hypothesis byte-parity test for both variants, including the all-zeros case where
       the two implementations genuinely differ (AC4).
 
 ## 2. Protocol
 
-- [ ] 2.1 `src/refinement/substrate.py`: `RefinementSubstrate` + `SubstrateSolveResult` with
-      `__post_init__` invariants. numpy-only imports.
-- [ ] 2.2 Registry via `src/templates/registry.py::create_registry` — the canonical pattern; do
-      not add a new one.
-- [ ] 2.3 Confirm `python -m scripts.audit_abstractions src/refinement --fail-on-missing` stays
-      clean: every protocol member needs a reader.
+- [x] 2.1 `src/refinement/substrate.py`: `RefinementSubstrate` + `SubstrateSolveResult` with
+      `__post_init__` invariants (`n_dof_free <= n_dof`, both non-negative — AC5).
+      numpy-only imports.
+- [x] 2.2 Registry via `src/templates/registry.py::create_registry` — the canonical pattern;
+      `src/refinement/substrate_registry.py`.
+- [x] 2.3 Confirmed `python -m scripts.audit_abstractions src/refinement --fail-on-missing`
+      stays clean — but only after fixing a real bug the audit tool had: it silently treated any
+      generic `Protocol[T]` base (an `ast.Subscript`, not `ast.Name`/`ast.Attribute`) as a
+      non-Protocol class, so `RefinementSubstrate`'s 8 members were never checked at all. The
+      8 members have zero real callers today (this Protocol ships ahead of its first concrete
+      consumer, Slice E's task 7.1) — exempted via a new, explicitly time-boxed
+      `_STAGED_FOR_UPCOMING_TASK` allowlist in `scripts/audit_abstractions.py`, distinct from
+      `_KNOWN_LIVE` (a real caller the heuristic can't see).
+- [x] 2.4 **[Added — not in the original checklist]** `src/research/substrates/config.py::SubstrateConfig`:
+      the Pydantic Data Contract, found missing by an independent adversarial review of the
+      implementation plan.
 
 ## 3. `TensorGridSubstrate` — the back-compat proof
 
-- [ ] 3.1 Wrap `make_solve_fn` + `DorflerAMRSolver._refine_grid` verbatim.
-- [ ] 3.2 **Golden**: bitwise against a live `run_dorfler_arm`, float-tolerance against the
-      committed CSV (AC1). If bitwise cannot hold, record the deviation — do not loosen.
-- [ ] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image).
+- [x] 3.1 Wrap `DorflerAMRSolver._solve_on_grid_2d`/`_compute_indicators_2d`/`_refine_grid`
+      (all `@staticmethod`, called verbatim) plus `lshape_amr_compare._area_weighted_l2`.
+      `_dorfler_mark_2d` itself is **not** called directly (see 1.2's amendment) — its
+      selection+projection is reproduced as an equivalent `mark()`/`refine()` composition,
+      proven by 3.2's golden test rather than by literal wrapping.
+- [x] 3.2 **Golden**: bitwise against a live `run_dorfler_arm` (`tests/research/test_tensor_grid_substrate.py`),
+      float-tolerance against `results/lshape_mcts_vs_dorfler.csv`'s `dorfler` rows (AC1). Both
+      passed on the first real run — no deviation to record. Mutation-checked: forcing `mark()`
+      to the wrong (`"linear"`) variant diverges the trajectory at level 2, confirming the golden
+      test discriminates rather than passing vacuously.
+- [ ] 3.3 Assert the adequacy gate **fails** here (AC7's mirror image) — deferred to Slice D
+      (task 6.2 states the identical requirement from the gate's own side; doing it once there
+      avoids a forward dependency on a gate that does not exist yet).
 
 ## 4. `fem_baseline` decomposition
 

@@ -27,13 +27,13 @@ from numpy.typing import NDArray
 from pydantic import Field
 
 from src.pde.operators import PDEOperator
-from src.refinement.marking import dorfler_mark
 from src.research.baselines import (
     SOLVER_REGISTRY,
     BaseSolver,
     SolverConfig,
     SolverResult,
 )
+from src.research.marking import dorfler_mark
 
 logger = structlog.get_logger(__name__)
 
@@ -409,7 +409,7 @@ class ScikitFEMPoissonSolver(BaseSolver):
     def _dorfler_mark(self, indicators: NDArray[np.float64]) -> NDArray[np.bool_]:
         """Select the smallest subset whose indicators sum to theta * total.
 
-        Delegates to ``src.refinement.marking.dorfler_mark`` (variant="linear"),
+        Delegates to ``src.research.marking.dorfler_mark`` (variant="linear"),
         the shared primitive that also backs ``DorflerAMRSolver._dorfler_mark``
         and any ``RefinementSubstrate``.
         """

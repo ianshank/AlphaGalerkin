@@ -2,8 +2,14 @@
 
 > **Status:** Draft
 > **Owner:** pde-solver
-> **Primary module(s):** `src/refinement/substrate.py`, `src/refinement/marking.py`,
-> `src/research/substrates/{tensor_grid,skfem_tri}.py`
+> **Primary module(s):** `src/refinement/substrate.py`, `src/research/marking.py`
+> **[CORRECTED during implementation — not `src/refinement/marking.py` as originally planned:
+> `tests/regression/test_import_contracts.py`'s `reference-baselines-do-not-import-the-candidate`
+> contract forbids `src/research/baselines.py`/`fem_baseline.py` from importing anything under
+> `src.refinement`, and `dorfler_mark` is active marking behaviour those two files delegate to —
+> not the kind of inert protocol/type import the contract's one exemption (`src/mcts/gumbel.py`)
+> tolerates. Moved to `src.research`, alongside its only callers.]**,
+> `src/research/substrates/{config,tensor_grid,skfem_tri}.py`
 > **Config class:** `src.refinement.config.RefinementGameConfig` (engine knobs) +
 > `src.research.substrates.SubstrateConfig` (this spec's data contract)
 > **Tracking:** `openspec/changes/element-local-substrate/`, PR #134 (spike evidence)

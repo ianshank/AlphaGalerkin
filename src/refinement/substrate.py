@@ -57,6 +57,17 @@ class SubstrateSolveResult:
     n_dof_free: int
     extra: Mapping[str, float]
 
+    def __post_init__(self) -> None:
+        """Enforce AC5's invariant: free unknowns cannot exceed the declared DOF count."""
+        if self.n_dof < 0:
+            raise ValueError(f"n_dof must be >= 0, got {self.n_dof}")
+        if self.n_dof_free < 0:
+            raise ValueError(f"n_dof_free must be >= 0, got {self.n_dof_free}")
+        if self.n_dof_free > self.n_dof:
+            raise ValueError(
+                f"n_dof_free ({self.n_dof_free}) must be <= n_dof ({self.n_dof}) -- AC5"
+            )
+
 
 @runtime_checkable
 class RefinementSubstrate(Protocol[TMesh]):

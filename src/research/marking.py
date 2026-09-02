@@ -7,9 +7,22 @@ same idea — mark the smallest subset of elements whose indicators make up a
 substrate needs to reproduce either one exactly: whether the bulk quantity is
 squared or linear, and what an all-zero indicator array marks. ``dorfler_mark``
 reproduces both behaviours byte-for-byte behind one function, keyed by
-``variant``, so ``RefinementSubstrate`` implementations (and the legacy solvers
-themselves, via a thin delegate) share one marking primitive instead of two
-copies that can silently drift apart.
+``variant``, so ``RefinementSubstrate`` implementations under
+``src.research.substrates`` (and the legacy solvers themselves, via a thin
+delegate) share one marking primitive instead of two copies that can silently
+drift apart.
+
+Lives under ``src.research`` rather than ``src.refinement`` (its originally
+planned home in ``openspec/changes/element-local-substrate/``): both legacy
+solvers this module de-duplicates are scoped by
+``tests/regression/test_import_contracts.py``'s
+``reference-baselines-do-not-import-the-candidate`` contract, which forbids
+``src/research/baselines.py``/``fem_baseline.py`` from importing anything
+under ``src.refinement`` at all -- unlike the contract's one existing
+exemption (``src/mcts/gumbel.py`` importing an inert protocol/type), this
+module is active marking *behaviour*, exactly what the contract exists to
+keep out of a reference baseline. See the correction note in
+``specs/refinement_substrate.spec.md``.
 """
 
 from __future__ import annotations

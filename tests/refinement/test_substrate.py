@@ -101,6 +101,51 @@ class TestSubstrateSolveResult:
         assert result.l2_error == 0.1
         assert result.extra["l2_error_nodal_rms"] == 0.2
 
+    def test_n_dof_free_exceeding_n_dof_raises(self) -> None:
+        """AC5: n_dof_free <= n_dof must hold, enforced at construction."""
+        with pytest.raises(ValueError, match="n_dof_free"):
+            SubstrateSolveResult(
+                values=np.zeros(1),
+                indicators=np.zeros(1),
+                l2_error=0.1,
+                n_dof=1,
+                n_dof_free=2,
+                extra={},
+            )
+
+    def test_negative_n_dof_raises(self) -> None:
+        with pytest.raises(ValueError, match="n_dof"):
+            SubstrateSolveResult(
+                values=np.zeros(1),
+                indicators=np.zeros(1),
+                l2_error=0.1,
+                n_dof=-1,
+                n_dof_free=0,
+                extra={},
+            )
+
+    def test_negative_n_dof_free_raises(self) -> None:
+        with pytest.raises(ValueError, match="n_dof_free"):
+            SubstrateSolveResult(
+                values=np.zeros(1),
+                indicators=np.zeros(1),
+                l2_error=0.1,
+                n_dof=1,
+                n_dof_free=-1,
+                extra={},
+            )
+
+    def test_n_dof_free_equal_to_n_dof_is_allowed(self) -> None:
+        result = SubstrateSolveResult(
+            values=np.zeros(1),
+            indicators=np.zeros(1),
+            l2_error=0.1,
+            n_dof=1,
+            n_dof_free=1,
+            extra={},
+        )
+        assert result.n_dof_free == result.n_dof
+
 
 class TestRefinementSubstrateProtocol:
     def test_conforming_class_satisfies_isinstance(self) -> None:

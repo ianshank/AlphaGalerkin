@@ -26,8 +26,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.pde.config import PDEType
 from src.pde.operators import PDEOperator
 from src.poc.device import resolve_device
-from src.refinement.marking import dorfler_mark
 from src.research.gpu_profiler import GpuUtilizationProfiler
+from src.research.marking import dorfler_mark
 
 logger = structlog.get_logger(__name__)
 
@@ -670,7 +670,7 @@ class DorflerAMRSolver(BaseSolver):
     def _dorfler_mark(self, indicators: NDArray[np.float64]) -> NDArray[np.bool_]:
         """Mark elements using Dorfler bulk-chasing strategy.
 
-        Delegates to ``src.refinement.marking.dorfler_mark`` (variant="squared"),
+        Delegates to ``src.research.marking.dorfler_mark`` (variant="squared"),
         the shared primitive that also backs ``ScikitFEMPoissonSolver._dorfler_mark``
         and any ``RefinementSubstrate``.
         """

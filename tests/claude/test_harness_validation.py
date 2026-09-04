@@ -26,8 +26,10 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -356,3 +358,219 @@ class TestEnforcementIsWired:
         body = self.MAKEFILE.read_text().split("\ngitleaks:", 1)[1].split("\n\n", 1)[0]
         assert "command -v gitleaks" in body, "target does not detect a missing binary"
         assert "SKIPPED" in body, "a skipped scan must announce itself, not pass quietly"
+
+
+class TestTheDocumentedInventoryMatchesDisk:
+    """CLAUDE.md's harness counts must equal what is on disk.
+
+    This row has drifted **twice** and records both drifts in its own prose: a
+    "9 subagents" transcription slip corrected on 2026-09-02, and a "103 tests"
+    figure that was never a measured count. The row explains why -- the suite is
+    data-driven, so a new skill is validated on sight and the hand-maintained
+    number in the row is free to rot unnoticed.
+
+    Correcting it a third time by hand would repeat the mistake. These assertions
+    make the claim self-maintaining: adding a skill, an agent or a command fails
+    here until the row is updated, which is the only mechanism that has ever kept
+    a number in this file honest.
+
+    The test count is deliberately **not** asserted exactly -- it changes with
+    every test added anywhere under ``tests/claude/``, which would make this a
+    tax rather than a guard. A floor is asserted instead, so the row can never
+    claim more coverage than exists.
+    """
+
+    #: The Regression Surface row that states the inventory.
+    ROW_PREFIX = "| Agentic harness (`.claude/`) |"
+
+    @staticmethod
+    def _row() -> str:
+        text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        rows = [
+            line
+            for line in text.splitlines()
+            if line.startswith(TestTheDocumentedInventoryMatchesDisk.ROW_PREFIX)
+        ]
+        assert len(rows) == 1, (
+            f"expected exactly one Agentic-harness Regression Surface row, found "
+            f"{len(rows)}; a renamed row would make every assertion below vacuous"
+        )
+        return rows[0]
+
+    def test_the_row_exists(self) -> None:
+        """Vacuity guard for the assertions below."""
+        assert self._row()
+
+    @pytest.mark.parametrize(
+        ("noun", "counted"),
+        [
+            (
+                "skills",
+                lambda: len([p for p in (REPO_ROOT / ".claude/skills").iterdir() if p.is_dir()]),
+            ),
+            ("subagents", lambda: len(list((REPO_ROOT / ".claude/agents").glob("*.md")))),
+            ("slash commands", lambda: len(list((REPO_ROOT / ".claude/commands").glob("*.md")))),
+        ],
+    )
+    def test_the_stated_count_matches_the_directory(
+        self, noun: str, counted: Callable[[], int]
+    ) -> None:
+        """Each ``N <noun>`` claim in the row equals the files on disk."""
+        actual = counted()
+        assert actual > 0, f"no {noun} found on disk; the count would be vacuous"
+        expected = f"**{actual} skills, " if noun == "skills" else f"{actual} {noun}"
+        row = self._row()
+        assert expected in row or f"{actual} {noun}" in row, (
+            f"CLAUDE.md's Agentic-harness row does not state {actual} {noun}; "
+            f"the directory holds {actual}. This number has drifted twice before -- "
+            f"update the row rather than the assertion."
+        )
+
+
+#: Wall-clock ceiling for running one hook in a test. Every invocation here
+#: is a dry-run, so this is a hang detector rather than a work budget; named
+#: so widening it is a visible edit rather than a silent one.
+HOOK_RUN_TIMEOUT_S: int = 30
+
+
+class TestPostToolUseHooks:
+    """The two path-gated hooks parse, are registered, and actually gate.
+
+    "Deterministic validation of the harness" means more than "the file exists".
+    A hook that fires on every edit is a hook someone disables, and a disabled
+    hook checks nothing -- so the *gating* is the property worth asserting, and
+    it is asserted by **running** each hook against synthetic payloads rather
+    than by reading its source.
+
+    Every case below is hermetic: the non-matching payloads exercise the early
+    exit, which runs no pytest and touches no network.
+    """
+
+    #: Hook scripts registered under ``PostToolUse``, and the tool payload key
+    #: they read. Discovered from settings.json rather than listed, so a third
+    #: hook is validated on sight.
+    HOOKS_DIR = CLAUDE_DIR / "hooks"
+
+    #: Paths each hook must *decline* -- ordinary source edits, which are the
+    #: overwhelming majority and must cost nothing.
+    IGNORED_PATHS: tuple[str, ...] = (
+        "src/pde/trainer.py",
+        "tests/e2e/test_untested_entry_points.py",
+        "README.rst",
+        "config/scenarios/poc_quick.yaml",
+    )
+
+    @staticmethod
+    def _post_tool_use_commands() -> list[str]:
+        settings = json.loads((CLAUDE_DIR / "settings.json").read_text(encoding="utf-8"))
+        entries = settings.get("hooks", {}).get("PostToolUse", [])
+        return [
+            hook["command"]
+            for entry in entries
+            for hook in entry.get("hooks", [])
+            if isinstance(hook, dict) and "command" in hook
+        ]
+
+    @staticmethod
+    def _run_hook(script: Path, file_path: str) -> subprocess.CompletedProcess[str]:
+        """Feed a synthetic PostToolUse payload to *script*, in dry-run.
+
+        Dry-run is what makes this hermetic and fast: the property under test is
+        the *gating decision* (does this path fire the hook?), not the command it
+        then runs. Running the real command would cost ~13 s per matching
+        parametrisation and make this suite something a developer skips -- and a
+        skipped harness test is the failure mode the suite exists to prevent.
+        """
+        payload = json.dumps({"tool_input": {"file_path": file_path}})
+        return subprocess.run(
+            ["bash", str(script)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            env={**os.environ, "ALPHAGALERKIN_HOOK_DRY_RUN": "1"},
+            timeout=HOOK_RUN_TIMEOUT_S,
+            check=False,
+        )
+
+    def test_post_tool_use_is_registered(self) -> None:
+        """Vacuity guard: without a registration every assertion below is moot."""
+        commands = self._post_tool_use_commands()
+        assert commands, "settings.json declares no PostToolUse hooks"
+
+    @pytest.mark.parametrize("script_name", ["guard_build_config.sh", "check_doc_links.sh"])
+    def test_the_hook_exists_parses_and_is_registered(self, script_name: str) -> None:
+        """A hook that is not registered runs never; one that is not executable errors."""
+        script = self.HOOKS_DIR / script_name
+        assert script.is_file(), f"{script_name} is registered or expected but absent"
+        parsed = subprocess.run(
+            ["bash", "-n", str(script)], capture_output=True, text=True, check=False
+        )
+        assert parsed.returncode == 0, parsed.stderr
+        assert any(script_name in command for command in self._post_tool_use_commands()), (
+            f"{script_name} exists but no PostToolUse entry invokes it, so it never runs"
+        )
+
+    @pytest.mark.parametrize("script_name", ["guard_build_config.sh", "check_doc_links.sh"])
+    @pytest.mark.parametrize("ignored", IGNORED_PATHS)
+    def test_the_hook_declines_paths_outside_its_scope(
+        self, script_name: str, ignored: str
+    ) -> None:
+        """An ordinary source edit must cost nothing and print nothing.
+
+        This is the assertion that keeps the hook cheap enough to survive. If it
+        ever starts firing on `src/**.py`, it fires hundreds of times a session
+        and gets removed -- taking its protection with it.
+        """
+        result = self._run_hook(self.HOOKS_DIR / script_name, ignored)
+        assert result.returncode == 0
+        assert not result.stdout.strip(), (
+            f"{script_name} produced output for {ignored!r}, which is outside its "
+            f"declared scope; a hook that fires on every edit will be disabled"
+        )
+
+    @pytest.mark.parametrize(
+        ("script_name", "matching"),
+        [
+            ("guard_build_config.sh", ".github/workflows/ci.yml"),
+            ("guard_build_config.sh", "Makefile"),
+            ("guard_build_config.sh", "pyproject.toml"),
+            ("guard_build_config.sh", "conftest.py"),
+            ("check_doc_links.sh", "CLAUDE.md"),
+        ],
+    )
+    def test_the_hook_acts_on_paths_inside_its_scope(self, script_name: str, matching: str) -> None:
+        """The conditional half: a gate that declines *everything* is not a gate.
+
+        Without this, deleting the whole ``case`` body -- or narrowing it to a
+        path that never occurs -- would pass every declining test above.
+        """
+        result = self._run_hook(self.HOOKS_DIR / script_name, matching)
+        assert result.stdout.strip(), (
+            f"{script_name} produced no output for {matching!r}, which it is "
+            f"supposed to guard; the path gate matches nothing"
+        )
+
+    @pytest.mark.parametrize("script_name", ["guard_build_config.sh", "check_doc_links.sh"])
+    def test_the_hook_never_blocks(self, script_name: str) -> None:
+        """Hooks here report; CI gates. A blocking hook gets switched off."""
+        result = self._run_hook(self.HOOKS_DIR / script_name, ".github/workflows/ci.yml")
+        assert result.returncode == 0, (
+            f"{script_name} exited {result.returncode}; these hooks must always "
+            f"exit 0 -- the build gate is CI, not the editor"
+        )
+
+    @pytest.mark.parametrize("script_name", ["guard_build_config.sh", "check_doc_links.sh"])
+    def test_the_hook_survives_a_malformed_payload(self, script_name: str) -> None:
+        """A hook that crashes on unexpected stdin is noise on every edit."""
+        result = subprocess.run(
+            ["bash", str(self.HOOKS_DIR / script_name)],
+            input="not json at all",
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            env={**os.environ, "ALPHAGALERKIN_HOOK_DRY_RUN": "1"},
+            timeout=HOOK_RUN_TIMEOUT_S,
+            check=False,
+        )
+        assert result.returncode == 0

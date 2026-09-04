@@ -18,6 +18,16 @@ from src.research.substrates.config import (
     SubstrateConfig,
     select_primary_l2,
 )
+from src.research.substrates.sweep import RateSeparation, gate_violations
+
+#: A measurement that passes the pinned gate. Values are the AC7 skfem readings
+#: recorded in CLAUDE.md (adaptive -1.3109, uniform -0.6710, ratio 0.0946),
+#: rounded -- named so "the healthy case still passes" is a test about the
+#: measured substrate rather than about arbitrary numbers.
+HEALTHY_ADAPTIVE_RATE: float = -1.31
+HEALTHY_UNIFORM_RATE: float = -0.67
+HEALTHY_ERROR_RATIO: float = 0.095
+HEALTHY_MATCHED_DOF: float = 1000.0
 
 
 class TestSubstrateConfigDefaults:
@@ -283,3 +293,71 @@ class TestAdequacyGateSweepBudget:
     def test_the_budget_is_an_int_for_the_sweep_signature(self) -> None:
         """``run_refinement_sweep(max_dof: int)`` types it as a count."""
         assert isinstance(AdequacyGateConfig(name="t").max_sweep_dof, int)
+
+
+class TestTheAdequacyGateRejectsNonFiniteMeasurements:
+    """A NaN measurement must not read as a passing substrate.
+
+    ``gate_violations`` returns ``[]`` for "adequate". Two of its three clauses
+    are bare ``>`` / ``>=`` comparisons, and **every** comparison against a NaN
+    is False -- so a NaN rate produced no violation and the gate returned its
+    pass verdict for a measurement that says nothing. Only the band clause
+    caught it, by accident of being a chained comparison, which is precisely why
+    this was invisible: one of three clauses handled the case and two did not.
+
+    Reachable, not theoretical: ``fit_log_log_rate`` calls ``np.polyfit`` with no
+    rank check, and ``RATE_FIT_MIN_POINTS`` guarantees three *points*, not three
+    distinct x-values -- a degenerate fit emits a RankWarning and returns NaN.
+
+    This is the gate the substrate spec calls "the gate that makes any
+    comparison meaningful", so a false pass here silently validates an
+    unmeasurable substrate.
+    """
+
+    @staticmethod
+    def _separation(**overrides: float) -> RateSeparation:
+        """A healthy measurement, with named fields overridable per test."""
+        base: dict[str, float] = {
+            "adaptive_rate": HEALTHY_ADAPTIVE_RATE,
+            "uniform_rate": HEALTHY_UNIFORM_RATE,
+            "error_ratio_at_matched_dof": HEALTHY_ERROR_RATIO,
+        }
+        base.update(overrides)
+        return RateSeparation(
+            adaptive_rate=base["adaptive_rate"],
+            uniform_rate=base["uniform_rate"],
+            error_ratio_at_matched_dof=base["error_ratio_at_matched_dof"],
+            matched_dof=HEALTHY_MATCHED_DOF,
+            n_adaptive_points=RATE_FIT_MIN_POINTS,
+            n_uniform_points=RATE_FIT_MIN_POINTS,
+        )
+
+    def test_the_healthy_measurement_passes(self) -> None:
+        """The conditional half: tightening must not reject a real pass.
+
+        Without this, a gate that rejected *everything* would satisfy every
+        assertion below.
+        """
+        assert gate_violations(self._separation()) == []
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["adaptive_rate", "uniform_rate", "error_ratio_at_matched_dof"],
+    )
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_a_non_finite_field_is_a_violation(self, field_name: str, bad: float) -> None:
+        """Each of the three fields, each of the three non-finite values."""
+        violations = gate_violations(self._separation(**{field_name: bad}))
+        assert violations, f"{field_name}={bad!r} produced the gate's PASS verdict"
+        assert any(field_name in v for v in violations), (
+            f"the violation must name {field_name}, not merely exist: got {violations}"
+        )
+
+    def test_the_non_finite_verdict_does_not_dilute_itself(self) -> None:
+        """Only the non-finite diagnosis is reported, not threshold noise.
+
+        Comparisons against a NaN silently pass, so continuing past the
+        non-finite check would append meaningless numbers to a real diagnosis.
+        """
+        violations = gate_violations(self._separation(adaptive_rate=float("nan")))
+        assert all("is nan" in v or "not a finite" in v for v in violations), violations

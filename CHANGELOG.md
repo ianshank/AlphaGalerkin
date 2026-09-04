@@ -54,6 +54,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   research outcome); the substrate registry is driven in a **subprocess**, since two suites
   `clear()` that process-global singleton.
 
+### Fixed — the audit of this branch's own work: seven defects, five of them guards that could not fail
+
+An adversarial review of everything above, with every finding verified by applying the mutation
+and re-running before it was accepted. Five of the seven are in code this branch added, which is
+the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped several.
+
+- **The `--baseline` regression gate exited 0 on a run that produced no metrics — and it was live
+  in CI.** `handle_baseline_flags` computed `report.missing_in_observed`, printed it, and derived
+  its exit code from `has_regressions` alone. A scenario that raises returns `metrics={}`, so
+  every baseline entry lands in `missing_in_observed`, `regressions` stays empty, and the gate
+  reports green having compared nothing; because the helper returned non-`None`, the caller's own
+  `return 0 if result.passed else 1` was unreachable. Reproduced: exit 0 with
+  `missing_in_observed=['s.m']`. **Not new and not latent** — `scripts/run_transfer_baseline_compare.py`
+  and `scripts/run_stochastic_galerkin_compare.py` carried the identical line, and the first is
+  the `transfer-baseline-regression` CI job, so that gate had never been able to fail on an empty
+  run. Fixed centrally: `ScenarioRegressionReport` gains `has_missing` and `is_clean`, and all
+  four call sites gate on `is_clean`. `has_regressions` keeps its meaning exactly — a missing
+  metric is still *not* a regression, it is the absence of a comparison; what changed is the gate
+  policy, and `tests/poc/test_cli_baselines.py` now pins both halves separately.
+- **The module docstring's reuse claim was false, so the fix had to be made true.**
+  `cli_support.py` said it existed so a third copy of the dispatch block was not created; only
+  `run_lshape_amr.py` consumed it. Both siblings are now converged, which is what carries the fix
+  above into the live CI gate. Recorded tolerances are unchanged and asserted so: transfer keeps
+  15.0, stochastic keeps 25.0 via a named `STOCHASTIC_TOLERANCE_PCT` — the comment claiming both
+  used 15.0 was wrong. Both persisted `description` strings are now named constants.
+- **`PDETrainingConfig.seed` did not deliver reproducibility.** Found while writing a test to
+  prove `--seed` reached the solver rather than only the report: the same seed did **not**
+  reproduce (final errors 0.4607 vs 0.4766). `PDETrainer` threaded `seed` into two config objects
+  and seeded no RNG, and `RandomEvaluator` accepts no seed, so MCTS drew from numpy's *unseeded*
+  global stream — a field whose description read "RNG seed for reproducibility" providing none.
+  Fixed through the existing `set_global_seeds`; `None` keeps its documented "genuinely random"
+  meaning, so the change is additive. The field is now bounded by the new `MIN_RNG_SEED` /
+  `MAX_RNG_SEED` in `src/seeding.py`, because seeding it made an out-of-range value a runtime
+  crash where it had previously been inert (`seed=2**32` validated fine and then raised).
+- **A NaN measurement read as a passing substrate.** `gate_violations` returns `[]` for "adequate",
+  and every `>` / `>=` comparison against a NaN is False — so a NaN rate produced no violation and
+  the gate returned its pass verdict for a measurement that says nothing. Only the band clause
+  caught it, by accident of being a chained comparison, which is exactly why it was invisible: one
+  of three clauses handled the case and two did not. Reachable, not theoretical: `fit_log_log_rate`
+  calls `np.polyfit` with no rank check, and `RATE_FIT_MIN_POINTS` guarantees three *points*, not
+  three distinct x-values. This is the gate the substrate spec calls "the gate that makes any
+  comparison meaningful".
+- **Three of this branch's own guards survived their own mutation.** `execution_device_label` was
+  guarded only by two E2E assertions of the form `payload["device"] == e2e_device` — every runner
+  is `ubuntu-latest` and `test-e2e` pins `E2E_DEVICE: cpu`, so the fixed and pre-fix expressions
+  are indistinguishable there; restoring the pre-fix body left both green. `collect_hardware_tag`
+  was asserted with `tag.strip()`, which passes identically on the `UNKNOWN` default the collector
+  exists to replace; deleting its call site left six tests passing. `--seed` was asserted by
+  echoing the value back out of a JSON field that reads the config independently of the trainer.
+  Each now has a discriminating test, mutation-killed by name.
+- **A coverage gate measuring 28% of the module it owns.** The `poc/baselines` step named two test
+  files and not this branch's own `tests/poc/test_baseline_cli_support.py`, so `cli_support.py`
+  measured 28% while the step passed at 86% on `registry.py`'s slack — 0.66 points of margin.
+  `tests/docs/test_coverage_gate_integrity.py` cannot catch this: it models omit collisions and
+  file-path specs, nothing about a step's *test selection*. Adding the filename: 28% → **100%**.
+- **The Regression Surface prescribed the command CI cannot run.** The three E2E rows documented
+  the unsplit whole-tier invocation — measured at a 13,649 MB peak, OOM-killed twice locally and
+  the cause of run 863's "runner has received a shutdown signal". The rows drifted from the CI
+  they describe *in the same commit as that CI*. All three now carry the literal strings `ci.yml`
+  runs, and new guard clause `(i)` makes the drift a build failure rather than a correction —
+  which is backlog **B8**, whose case this branch made concretely.
+
+### Added — harness: two skills, the missing agent role, two hooks, one command
+
+- **`harden-a-guard`** turns this repo's most important convention from a *value* stated in two
+  agent files into an eight-step procedure with a completion bar. It was enforced by nothing, and
+  five of this branch's seven self-corrections were mutation-survival findings.
+- **`wire-a-ci-job`** does for a test job what `add-coverage-gate` already does for a gate: the
+  six coupled edits, of which this branch got two wrong. Includes the `make <t> PYTEST=<stub>`
+  check that catches a status-propagation rewrite a grep cannot.
+- **`build-engineer`** — the missing agent role. Nothing in `.claude/agents/` owned `ci.yml`, the
+  `Makefile`, markers/omit, or the CI↔docs mirror, yet **all seven** of this repo's recorded
+  invisibility defects lived there and **not one** was caught by a check.
+- **Two path-gated `PostToolUse` hooks.** The build-config guard runs the hermetic enforcement
+  suites when one of five paths is edited (~6 firings per branch, ~13 s each); the doc-link guard
+  moves an existing pre-commit check to authorship time (0.10 s). Both report and never block —
+  CI is the gate, and a blocking hook gets disabled. `ALPHAGALERKIN_HOOK_DRY_RUN=1` makes the
+  gating decision testable in milliseconds; 20 tests drive both hooks against synthetic payloads,
+  4 of which fail when the path gate is narrowed to nothing.
+- **`/babysit-pr`** encodes the PR-to-green loop that was re-improvised every session, including
+  the triage table for this repo's known failure classes and the constraint (`gh` is unavailable
+  here) that had been rediscovered by hand more than once.
+- **The harness inventory is now machine-checked.** CLAUDE.md's "N skills, N subagents, N slash
+  commands" had drifted twice and recorded both drifts in its own prose. Correcting it a third
+  time by hand would repeat the mistake; `TestTheDocumentedInventoryMatchesDisk` fails until the
+  row matches the directories. It caught the new slash command immediately.
+
 ### Fixed — four defects the journeys surfaced, each in code the tests had to touch
 
 - **`ScenarioResult.device` recorded the wrong thing.** Documented as "Computation device used",

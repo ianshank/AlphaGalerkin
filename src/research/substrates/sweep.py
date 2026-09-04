@@ -16,6 +16,7 @@ measurement passes on one substrate and fails on the other.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -314,8 +315,33 @@ def gate_violations(
         means the substrate passed.
 
     """
-    gate = gate or default_adequacy_gate()
+    gate = default_adequacy_gate() if gate is None else gate
     violations: list[str] = []
+
+    # Non-finite first, and as its own violation rather than folded into the
+    # comparisons below. Every `>`/`>=` against a NaN is False, so a NaN rate
+    # produces *no* violation and the gate returns [] -- its pass verdict -- for
+    # a measurement that says nothing. (The band check happens to catch it,
+    # because `not low <= nan <= high` is True, which is why this was invisible:
+    # one of the three clauses accidentally handled the case and two did not.)
+    #
+    # Reachable: `fit_log_log_rate` calls `np.polyfit` with no rank check, and
+    # `RATE_FIT_MIN_POINTS` guarantees three *points*, not three *distinct*
+    # x-values -- a degenerate fit emits a RankWarning and returns nan.
+    for field_name, value in (
+        ("uniform_rate", separation.uniform_rate),
+        ("adaptive_rate", separation.adaptive_rate),
+        ("error_ratio_at_matched_dof", separation.error_ratio_at_matched_dof),
+    ):
+        if not math.isfinite(value):
+            violations.append(
+                f"{field_name} is {value!r}, not a finite measurement -- the "
+                "substrate cannot be judged adequate on a fit that did not converge"
+            )
+    if violations:
+        # Return early: the comparisons below would silently pass on the same
+        # non-finite values and dilute the diagnosis with meaningless numbers.
+        return violations
 
     low, high = gate.uniform_rate_band
     if not low <= separation.uniform_rate <= high:
@@ -373,7 +399,10 @@ def measure_adequacy(
         The two arms' fitted rates and their error ratio at matched DOF.
 
     """
-    gate = gate or default_adequacy_gate()
+    # `is None`, not truthiness: a pydantic model is always truthy today, but
+    # the intended predicate is "no gate supplied", and the two are only
+    # accidentally equivalent.
+    gate = default_adequacy_gate() if gate is None else gate
     adaptive = run_refinement_sweep(
         substrate,
         policy="adaptive",

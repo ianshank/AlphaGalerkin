@@ -17,6 +17,8 @@ specific backend's RNG through the backend abstraction; call sites that seed
 
 from __future__ import annotations
 
+from typing import Final
+
 import numpy as np
 import torch
 
@@ -44,6 +46,15 @@ def derive_seeds(base_seed: int, n_seeds: int, stride: int) -> list[int]:
 
     """
     return [base_seed + i * stride for i in range(n_seeds)]
+
+
+#: Inclusive bounds on a seed accepted by ``numpy.random.seed``. Named here,
+#: beside the function that applies them, because the constraint belongs to the
+#: seeding contract rather than to any one caller -- and because a config field
+#: that accepts a seed this function will reject turns a validation error into a
+#: runtime crash further down. ``PDETrainingConfig.seed`` bounds itself on these.
+MIN_RNG_SEED: Final[int] = 0
+MAX_RNG_SEED: Final[int] = 2**32 - 1
 
 
 def set_global_seeds(seed: int) -> None:

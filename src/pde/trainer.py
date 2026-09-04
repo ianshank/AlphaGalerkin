@@ -41,7 +41,7 @@ from src.pde.config import (
 from src.pde.games.basis_selection import BasisSelectionGame
 from src.pde.mcts_adapter import PDEGameAdapter
 from src.pde.operators import PoissonOperator
-from src.seeding import set_global_seeds
+from src.seeding import MAX_RNG_SEED, MIN_RNG_SEED, set_global_seeds
 from src.templates.config import BaseModuleConfig
 
 if TYPE_CHECKING:
@@ -172,7 +172,13 @@ class PDETrainingConfig(BaseModuleConfig):
     )
     seed: int | None = Field(  # type: ignore[assignment]
         default=None,
-        description="RNG seed for reproducibility (None = random)",
+        ge=MIN_RNG_SEED,
+        le=MAX_RNG_SEED,
+        description=(
+            "RNG seed for reproducibility (None = random). Bounded to numpy's "
+            "valid range: the trainer now seeds the global RNGs from this, and "
+            "np.random.seed rejects anything outside it."
+        ),
     )
 
     @model_validator(mode="after")

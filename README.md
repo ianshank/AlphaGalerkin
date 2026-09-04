@@ -229,6 +229,34 @@ reports 0.00% and can never fail) or written as a `--cov=<...>.py` file-path spe
 # default C tracer is ~3x faster on CI's coverage job.
 pytest -m "not gpu_required"          # CPU-only default surface
 ruff check src/ && ruff format --check src/
+
+make pre-pr                            # the developer mirror of CI
+```
+
+**Enforcement is itself tested.** The recurring defect in this repository has not
+been a wrong answer; it has been a suite, package or gate that *looked* enforced
+and enforced nothing — seven recorded instances, every one found by a person
+reading a config file. Two hermetic suites (`tests/docs/`, `tests/claude/`; no
+network, no model calls, ~2 s) parse `ci.yml`, the `Makefile`, `pyproject.toml`
+and the docs *as data* and assert the path from each test tier to `ci-success`'s
+`exit 1` is unbroken — including that `make pre-pr` is not narrower than CI, and
+that a documented command matches the one CI runs. The wiring is drawn in
+[the C4 test-enforcement view](docs/architecture/c4_mermaid.md#level-2-container-diagram--test-enforcement).
+
+Every guard in those suites is **mutation-tested**: the defect it claims to catch
+is planted, a *named* test must go red, and the kill is recorded. The procedure is
+`.claude/skills/harden-a-guard/SKILL.md`.
+
+**End-to-end journeys run the shipped entry points as processes** — the exit code
+a shell sees, the argument parser, import-time side effects and the on-disk
+artifact together, which in-process `main(argv)` tests cannot check. The tier is
+GPU/CPU agnostic: `E2E_DEVICE` (default `auto`) is resolved once at collection,
+so requesting `cuda` on a CPU box is a collection *error*, never a silent skip.
+
+```bash
+# The E2E tier runs as two invocations, not one -- see the C4 view above for why.
+pytest tests/e2e/ -m "not gpu_required and not fem_required" -k "not chess" -q
+pytest tests/e2e/ -m "not gpu_required and not fem_required" -k "chess" -q
 ```
 
 Which tests guard which code path is documented in the **Regression Surface**

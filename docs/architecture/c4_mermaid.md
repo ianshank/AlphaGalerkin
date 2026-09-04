@@ -172,6 +172,82 @@ C4Container
 
 ---
 
+## Level 2: Container Diagram — Test Enforcement
+
+The repository's most-repeated defect is not in the solver: it is a suite, a
+package or a gate that *appears* enforced and enforces nothing. Seven instances
+are recorded in `CLAUDE.md`, and every one was found by a person reading a
+config file rather than by a check.
+
+This view exists because that path — **test tier → CI job → blocking gate** — was
+documented nowhere, which is precisely how a tier can run nowhere without anyone
+noticing. A tier is enforced only if there is an unbroken path from it to
+`ci-success`'s `exit 1`.
+
+```mermaid
+graph TB
+    subgraph tiers["Test tiers (tests/)"]
+        FAST["tests/ (fast lane)<br/>unit + integration"]
+        E2E["tests/e2e/<br/>process-level journeys"]
+        DOCS["tests/docs/<br/>hermetic config guards"]
+        CLAUDET["tests/claude/<br/>harness validation"]
+        EXTRAS["fem_required half<br/>needs [fem] extra"]
+    end
+
+    subgraph jobs["CI jobs (.github/workflows/ci.yml)"]
+        JFAST["test-fast<br/>3.10 / 3.11 / 3.12"]
+        JE2E["test-e2e<br/>split: -k chess / not chess"]
+        JEXTRAS["test-extras"]
+        JCOV["coverage + coverage-gates<br/>43 per-module gates"]
+    end
+
+    GATE["ci-success<br/>if result != success: exit 1"]
+    LOCAL["make pre-pr<br/>developer mirror"]
+
+    FAST --> JFAST
+    DOCS --> JFAST
+    CLAUDET --> JFAST
+    E2E --> JE2E
+    EXTRAS --> JEXTRAS
+
+    JFAST --> GATE
+    JE2E --> GATE
+    JEXTRAS --> GATE
+    JCOV --> GATE
+
+    JFAST -.mirrors.-> LOCAL
+    JE2E -.mirrors.-> LOCAL
+
+    DOCS -.guards the arrows themselves.-> jobs
+    CLAUDET -.guards .claude/ + settings.-> GATE
+
+    style GATE fill:#c62828,color:#fff
+    style E2E fill:#1565c0,color:#fff
+    style JE2E fill:#1565c0,color:#fff
+    style DOCS fill:#2e7d32,color:#fff
+```
+
+### Why each edge is load-bearing
+
+| Edge | What breaks if it is missing | Guarded by |
+|---|---|---|
+| tier → job | the tier runs nowhere (`tests/e2e/`: 137 tests, one file named in one job) | `test_e2e_visibility.py` clause (b) |
+| job → `ci-success.needs` | the job runs but cannot block a merge | clause (c) |
+| `needs` → `exit 1` | an `echo` of the result reads identically in review and gates nothing | clause (c), via `hard_gate_jobs` |
+| job → `make pre-pr` | the developer mirror is narrower than CI (`make test-e2e` once ran **3 of 81** tests) | clause (d) + the `pre-pr` parametrize list |
+| CI command → `CLAUDE.md` row | the documented command diverges from the enforced one | clause (i) |
+
+### The one workaround in this picture
+
+`test-e2e` runs **two** invocations rather than one. That is a workaround for a
+pre-existing memory leak, not a design choice: run whole, the tier's pytest
+parent climbs to a measured 13,649 MB and the runner is killed. Split at the
+first in-process file it peaks at 1,451 MB and 3,614 MB. The partition is
+exhaustive by construction (`X` / `not X`) and asserted complete, so collapsing
+it once the leak is fixed needs no guard change. See `docs/E2E_TEST_PLAN.md` §12.4.
+
+---
+
 ## Level 3: Component Diagram - Neural Operator Model
 
 This diagram shows the internal components of the Neural Operator Model container.

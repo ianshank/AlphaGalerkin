@@ -813,3 +813,94 @@ class TestKExpressionParsing:
     def test_reads_the_last_k_expression(self, command: str, expected: str) -> None:
         """The last ``-k`` wins; a missing or dangling one yields the empty string."""
         assert effective_k_expression(command) == expected
+
+
+# --------------------------------------------------------------------------- #
+# Clause (h): the Makefile target must not swallow a failing half              #
+# --------------------------------------------------------------------------- #
+
+#: Make's ignore-errors recipe prefix. A recipe line carrying it reports success
+#: however it exits, and the TARGET's status is its LAST line's -- so a `-` on
+#: any but the last line of a multi-command target silently discards that
+#: command's result.
+MAKE_IGNORE_ERRORS_PREFIX: Final[str] = "-"
+
+
+def _raw_recipe_lines(target: str, makefile: Path = MAKEFILE) -> list[str]:
+    """Recipe lines of *target* with the leading tab removed and nothing else.
+
+    Deliberately NOT ``makefile_target_recipe``: that one calls
+    ``strip_recipe_prefixes``, which removes the very character this clause is
+    about. Reading the raw text is the whole point.
+
+    Args:
+        target: Make target name.
+        makefile: Makefile to read.
+
+    Returns:
+        Recipe lines, in order, tab stripped.
+
+    """
+    lines: list[str] = []
+    collecting = False
+    for line in makefile.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("\t"):
+            if line.strip() and not line.lstrip().startswith("#"):
+                collecting = line.split(":")[0].strip() == target
+            continue
+        if collecting:
+            lines.append(line[1:])
+    return lines
+
+
+def test_the_makefile_e2e_target_does_not_ignore_a_failing_half() -> None:
+    """``make test-e2e`` must fail when either half fails.
+
+    The regression this pins, measured rather than reasoned about: the first
+    version of the split target carried Make's ``-`` prefix on the non-chess
+    line, with a comment claiming the second line "re-runs the first's status".
+    No such mechanism exists -- ``-`` discards that line's exit code and the
+    target takes the LAST line's -- so ``make test-e2e`` exited 0 with half the
+    tier failing.
+
+    ``make pre-pr`` chains this target, so that was the developer-facing gate
+    reporting success on a red suite: the same "a check that cannot fail is not
+    a check" defect this file exists to prevent, reintroduced through the
+    workaround for the memory leak.
+    """
+    recipe = _raw_recipe_lines(MAKEFILE_E2E_TARGET)
+    assert recipe, f"the {MAKEFILE_E2E_TARGET!r} target has no recipe at all"
+    ignored = [line for line in recipe if line.startswith(MAKE_IGNORE_ERRORS_PREFIX)]
+    assert not ignored, (
+        f"{MAKEFILE_E2E_TARGET!r} carries Make's ignore-errors prefix on {ignored!r}. "
+        "That line's failure is discarded and the target reports the last line's "
+        "status, so the target can exit 0 with tests failing. Accumulate the "
+        "status explicitly instead."
+    )
+
+
+class TestRawRecipeReader:
+    """Unit-test the raw reader on synthetic Makefiles.
+
+    It must NOT reuse ``makefile_target_recipe``, which strips the prefix this
+    clause looks for -- so the reader is its own code path and needs its own
+    coverage, or the clause above could pass by reading nothing.
+    """
+
+    def test_reads_lines_verbatim_including_the_prefix(self, tmp_path: Path) -> None:
+        """The ``-`` survives, unlike in the prefix-stripping parser."""
+        makefile = tmp_path / "Makefile"
+        makefile.write_text("t:\n\t-false\n\ttrue\n", encoding="utf-8")
+        assert _raw_recipe_lines("t", makefile) == ["-false", "true"]
+
+    def test_stops_at_the_next_target(self, tmp_path: Path) -> None:
+        """A later target's recipe is not attributed to this one."""
+        makefile = tmp_path / "Makefile"
+        makefile.write_text("a:\n\techo a\n\nb:\n\t-echo b\n", encoding="utf-8")
+        assert _raw_recipe_lines("a", makefile) == ["echo a"]
+
+    def test_an_absent_target_reads_empty(self, tmp_path: Path) -> None:
+        """Which is why the clause above asserts the recipe is non-empty first."""
+        makefile = tmp_path / "Makefile"
+        makefile.write_text("a:\n\techo a\n", encoding="utf-8")
+        assert _raw_recipe_lines("nope", makefile) == []

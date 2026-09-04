@@ -171,11 +171,23 @@ test-agents:
 # Split into two invocations, mirroring the `test-e2e` CI job. Running the tier
 # as a single process leaks until it dies (see docs/E2E_TEST_PLAN.md 12.4);
 # splitting at the first in-process file caps each process at 1.5 / 3.6 GB
-# instead of 13.6 GB. `-` on the first line so a failure there does not hide the
-# chess half's result; the second line re-runs the first's status.
+# instead of 13.6 GB.
+#
+# Both halves always run -- a failure in the first must not hide the second's
+# result -- and the target fails if EITHER did. The first attempt at that used
+# Make's `-` ignore-errors prefix on the first line, with a comment claiming the
+# second line "re-runs the first's status". No such mechanism exists: `-` makes
+# Make ignore that line's exit code, and the last line's status becomes the
+# target's, so `make test-e2e` exited 0 with half the tier failing (measured;
+# Copilot review, PR #144). `make pre-pr` chains this target, so that was a
+# developer's pre-PR gate reporting success on a red suite -- the exact class of
+# defect this branch exists to remove. One recipe line, one shell, status
+# accumulated explicitly.
 test-e2e:
-	-$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -k "not chess" -v
-	$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -k "chess" -v
+	status=0; \
+	$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -k "not chess" -v || status=$$?; \
+	$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -k "chess" -v || status=$$?; \
+	exit $$status
 
 test-cert:
 	$(COV) run --branch \

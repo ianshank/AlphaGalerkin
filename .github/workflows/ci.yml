@@ -379,11 +379,15 @@ jobs:
       # Given their own step they cost ~2 min and keep the fast lane fast. Same
       # shape as the security step above: a named directory, legible on failure.
       #
-      # NOT included here: tests/e2e/. It has the same invisibility problem (11
-      # files on disk, one named in this workflow) but it is not currently safe
-      # to wire -- test_quick_validation_journey.py::test_train_physics_minimal
-      # shells out with a fixed 120 s timeout and fails on a loaded machine.
-      # Tracked separately; wiring it before that is fixed would buy a flaky gate.
+      # tests/e2e/ used to be named here as a KNOWN gap, on the grounds that
+      # test_quick_validation_journey.py::test_train_physics_minimal "shells out
+      # with a fixed 120 s timeout and fails on a loaded machine". That
+      # attribution was wrong: the run was never minimal (--train-size is the
+      # grid side, not the sample count, so it built the default 5000 samples and
+      # needed ~1.7 h), so no budget could have made it pass. Bounding the sample
+      # counts fixed it -- measured 15 s. The directory now has its own `test-e2e`
+      # job below, blocking in ci-success, and tests/docs/test_e2e_visibility.py
+      # fails the build if it is ever silently un-wired again.
       - name: Run demo and notebook suites
         run: |
           pytest tests/demos/ tests/notebooks/ \
@@ -486,6 +490,59 @@ jobs:
         run: |
           pytest tests/integration/ tests/training/ \
             -m "not gpu_required" \
+            --tb=short \
+            -q
+
+  # ============================================================
+  # Stage 4b: End-to-End Journeys
+  # ------------------------------------------------------------
+  # tests/e2e/ was excluded from every step in this workflow except one chess
+  # smoke: the fast lane passes BOTH --ignore=tests/e2e/ and -m "not e2e", and
+  # the `coverage` job repeats both. 11 test files, 81 tests, one of them named
+  # anywhere. That is the same invisibility that hid tests/demos + tests/notebooks
+  # (226 tests) until 18f533d and src/backend (213 tests) until 2026-09-02 --
+  # each found by a person reading this file, never by a check.
+  #
+  # Measured on a 4-CPU container: the whole directory is 130-310 s, so it fits
+  # this cap with ~6x headroom.
+  #
+  # E2E_DEVICE is set EXPLICITLY rather than left to default "auto": a runner
+  # that grows a GPU would otherwise silently change what this job measures.
+  # See tests/e2e/conftest.py for the contract; the same suite runs unchanged on
+  # a CUDA host with E2E_DEVICE=cuda (which FAILS LOUD, at collection, if CUDA
+  # turns out to be absent).
+  #
+  # fem_required E2E is excluded here and selected positively in test-extras --
+  # the only job that installs the [fem] extra. Excluding it in both places is
+  # the invisibility bug this job exists to fix, so
+  # tests/docs/test_e2e_visibility.py asserts that positive selection exists.
+  test-e2e:
+    name: E2E Journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: test-fast
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run E2E journeys
+        env:
+          E2E_DEVICE: cpu
+        run: |
+          pytest tests/e2e/ \
+            -m "not gpu_required and not fem_required" \
             --tb=short \
             -q
 
@@ -1279,6 +1336,26 @@ jobs:
           python -m coverage report --rcfile=.coveragerc.fem \
             --include="*/src/research/fem_baseline.py" --fail-under=83
 
+      # The fem_required half of the E2E tier. `test-e2e` deliberately excludes
+      # it (-m "not fem_required") because that job does not install [fem]; this
+      # job is the only one that does. Selecting it POSITIVELY here is what stops
+      # "excluded in both places" -- which is exactly how tests/e2e/ became
+      # invisible in the first place, and is asserted by
+      # tests/docs/test_e2e_visibility.py.
+      #
+      # ALPHAGALERKIN_REQUIRE_EXTRAS=1 for the same reason as the steps above: a
+      # half-succeeded scikit-fem install must be a collection error here, not a
+      # silent skip that reports green.
+      - name: Run fem_required E2E journeys
+        env:
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
+          E2E_DEVICE: cpu
+        run: |
+          pytest tests/e2e/ \
+            -m "fem_required and not gpu_required" \
+            --tb=short \
+            -q
+
       # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
       # which these tracer-based tests do not target (src/deployment/export_onnx.py
       # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the
@@ -1341,7 +1418,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-jax, test-chess]
+    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-e2e, test-jax, test-chess]
     # !cancelled() rather than always(): a run superseded by the concurrency
     # group (push + pull_request for the same branch, or a newer push) has its
     # needed jobs cancelled, and under always() this job would still execute,
@@ -1360,6 +1437,7 @@ jobs:
           echo "  coverage-gates:              ${{ needs.coverage-gates.result }}"
           echo "  test-extras:                 ${{ needs.test-extras.result }}"
           echo "  test-integration:            ${{ needs.test-integration.result }}"
+          echo "  test-e2e:                    ${{ needs.test-e2e.result }}"
           echo "  test-jax:                    ${{ needs.test-jax.result }}"
           echo "  test-chess:                  ${{ needs.test-chess.result }}"
           echo "  transfer-baseline (soft):    ${{ needs.transfer-baseline-regression.result }}"
@@ -1415,6 +1493,15 @@ jobs:
           # test-slow stays out because it is PR-invisible by design.
           if [[ "${{ needs.test-integration.result }}" != "success" ]]; then
             echo "FAIL: Integration tests failed (result=${{ needs.test-integration.result }})"
+            exit 1
+          fi
+
+          # test-e2e is blocking from its first day. The tier was excluded from
+          # every step in this workflow but one, so its 81 tests gated nothing;
+          # adding the job without adding it here would reproduce that exactly --
+          # a job that runs, reports, and cannot fail the build.
+          if [[ "${{ needs.test-e2e.result }}" != "success" ]]; then
+            echo "FAIL: E2E journeys failed (result=${{ needs.test-e2e.result }})"
             exit 1
           fi
 

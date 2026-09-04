@@ -12,6 +12,11 @@ Public surface:
 
 from __future__ import annotations
 
+from src.poc.baselines.cli_support import (
+    DEFAULT_CLI_TOLERANCE_PCT,
+    add_baseline_arguments,
+    handle_baseline_flags,
+)
 from src.poc.baselines.registry import (
     BASELINE_DENOM_FLOOR,
     DEFAULT_TOLERANCE_PCT,
@@ -33,6 +38,7 @@ from src.poc.baselines.schema import (
 
 __all__ = [
     "BASELINE_DENOM_FLOOR",
+    "DEFAULT_CLI_TOLERANCE_PCT",
     "DEFAULT_TOLERANCE_PCT",
     "POC_BASELINE_DOCUMENT_SCHEMA_VERSION",
     "POC_BASELINE_ENTRY_SCHEMA_VERSION",
@@ -44,6 +50,8 @@ __all__ = [
     "ScenarioBaselineRegistry",
     "ScenarioRegressionReport",
     "migrate_baseline_document",
+    "add_baseline_arguments",
+    "handle_baseline_flags",
     "observed_from_result_dicts",
     "regression_pct",
 ]

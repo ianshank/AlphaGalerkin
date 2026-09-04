@@ -50,10 +50,23 @@ def set_global_seeds(seed: int) -> None:
     """Seed the ``numpy`` and ``torch`` global RNGs for reproducibility.
 
     ``torch.manual_seed`` seeds both the CPU generator and all CUDA devices, so a
-    single call makes ``numpy``- and ``torch``-based sampling deterministic on CPU
-    and GPU alike. Seeding two independent generators is order-independent, so
-    this is a byte-for-byte replacement for either ``np``-then-``torch`` or
+    single call makes ``numpy``- and ``torch``-based *sampling* reproducible.
+    Seeding two independent generators is order-independent, so this is a
+    byte-for-byte replacement for either ``np``-then-``torch`` or
     ``torch``-then-``np`` inline pairs.
+
+    Scope of the guarantee -- read this before pinning a float in a test:
+        Seeding fixes the RNG streams, **not** the arithmetic. This function
+        deliberately does *not* set ``torch.backends.cudnn.deterministic`` or
+        ``torch.use_deterministic_algorithms``, so GPU kernels (and multi-threaded
+        CPU matmul) may reassociate reductions and give run-to-run differences
+        within floating-point tolerance. ``src/backend/torch_backend.py`` sets the
+        cuDNN flags for callers that need bitwise reproducibility; nothing on the
+        scenario/harness paths uses it. Assert on tolerances, not on exact floats.
+
+        (An earlier version of this docstring claimed sampling was "deterministic
+        on CPU and GPU alike", which overstated what the two ``manual_seed`` calls
+        provide and is the kind of claim a test would then be written against.)
 
     Args:
         seed: Seed applied to both RNGs. Callers that need to clamp the value to

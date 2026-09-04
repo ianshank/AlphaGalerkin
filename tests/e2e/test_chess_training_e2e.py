@@ -21,6 +21,11 @@ from src.modeling.model import AlphaGalerkinModel
 from src.training.replay_buffer import UniformReplayBuffer
 from src.training.self_play import SelfPlayWorker
 
+#: Every file in this directory carries the `e2e` marker so `-m e2e` can
+#: select the tier. Without it, only the directory-level `--ignore` kept
+#: these tests out of the fast lane -- an invisible, easily-lost coupling.
+pytestmark = pytest.mark.e2e
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

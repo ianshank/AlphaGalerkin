@@ -38,14 +38,24 @@ _REQUIRE_EXTRAS = os.environ.get("ALPHAGALERKIN_REQUIRE_EXTRAS") == "1"
 #: without a visible trace.
 _fem_skip_count = 0
 
+#: Same treatment for the gpu_required skip. Every workflow in this repo runs on
+#: `ubuntu-latest`, so all ~22 gpu_required sites have skipped on every CI run
+#: ever -- and until now, silently. A count is not a gate, but it is the
+#: difference between "the GPU suite is skipped here" being visible and being
+#: assumed; a GPU host whose driver disappeared otherwise looks identical to a
+#: green run.
+_gpu_skip_count = 0
+
 
 def pytest_collection_modifyitems(config: Config, items: list[pytest.Item]) -> None:
     """Auto-skip tests marked gpu_required when CUDA is not available."""
     if not (_HAS_TORCH and _torch.cuda.is_available()):
         skip_gpu = pytest.mark.skip(reason="CUDA not available (no NVIDIA driver)")
-        for item in items:
-            if item.get_closest_marker("gpu_required"):
-                item.add_marker(skip_gpu)
+        gpu_items = [item for item in items if item.get_closest_marker("gpu_required")]
+        for item in gpu_items:
+            item.add_marker(skip_gpu)
+        global _gpu_skip_count
+        _gpu_skip_count += len(gpu_items)
 
     if _HAS_SKFEM:
         return
@@ -68,10 +78,15 @@ def pytest_collection_modifyitems(config: Config, items: list[pytest.Item]) -> N
 def pytest_terminal_summary(
     terminalreporter: TerminalReporter, exitstatus: int, config: Config
 ) -> None:
-    """Report how many fem_required tests were skipped -- visibly, not silently."""
+    """Report how many optional-dependency tests were skipped -- visibly."""
     if _fem_skip_count:
         terminalreporter.write_line(
             f"fem_required: skipped {_fem_skip_count} test(s) -- scikit-fem not installed "
             "(pip install -e '.[fem]')",
+            yellow=True,
+        )
+    if _gpu_skip_count:
+        terminalreporter.write_line(
+            f"gpu_required: skipped {_gpu_skip_count} test(s) -- CUDA not available",
             yellow=True,
         )

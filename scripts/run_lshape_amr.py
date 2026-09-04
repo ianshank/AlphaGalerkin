@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 
+from src.poc.baselines import add_baseline_arguments, handle_baseline_flags
+from src.poc.baselines.registry import ObservedMetrics
 from src.poc.config import load_config_from_dict
 from src.poc.logging import configure_logging
 from src.poc.scenarios.lshape_amr_compare import LShapeAMRCompareScenario
@@ -91,6 +94,42 @@ def build_config(config_path: str | Path, args: argparse.Namespace) -> LShapeAMR
     return cast("LShapeAMRCompareConfig", config)
 
 
+#: Metric-name substrings recorded into a regression baseline. The excluded
+#: remainder is excluded for a measured reason, not tidiness:
+#:   * ``matched_wall_time_seconds`` and ``error_per_dof_ratio_mcts_over_dorfler``
+#:     are wall-clock derived, so they move with runner contention -- CLAUDE.md
+#:     already records a benchmark assertion that failed under load and passed
+#:     in isolation two seconds later.
+#:   * ``*_win_fraction`` is a binary flip on a small seed count; at n_seeds=3 a
+#:     single seed changes it by 0.33.
+#:   * ``l2_ratio_seed_{min,max,std}`` is spread, not level; it is 0.0 whenever
+#:     the seeds agree, and a 0.0 baseline cannot express a tolerance.
+#: What remains is the two headline ratios and the four per-arm final readings.
+STABLE_BASELINE_SUBSTRINGS: tuple[str, ...] = (
+    "l2_error_ratio_at_matched_dof",
+    "l2_error_ratio_at_matched_solves",
+    "mcts_final_l2",
+    "dorfler_final_l2",
+)
+
+
+def stable_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
+    """Filter *metrics* to the stable headline subset recorded into a baseline.
+
+    Args:
+        metrics: Every metric the scenario recorded.
+
+    Returns:
+        The subset whose names contain a ``STABLE_BASELINE_SUBSTRINGS`` entry.
+
+    """
+    return {
+        name: float(value)
+        for name, value in metrics.items()
+        if any(sub in name for sub in STABLE_BASELINE_SUBSTRINGS)
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -115,6 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", default=None, help="Override the device (cpu/cuda).")
     parser.add_argument("--log-level", default="INFO", help="structlog level (default INFO).")
+    # This harness had NO baseline flags, unlike its two siblings
+    # (run_transfer_baseline_compare, run_stochastic_galerkin_compare), so the
+    # L-shape headline was the one committed result that could not be
+    # regression-gated from its own CLI.
+    add_baseline_arguments(parser)
     return parser
 
 
@@ -134,6 +178,20 @@ def main(argv: list[str] | None = None) -> int:
     print("\nArtifacts:")
     for name, path in result.artifacts.items():
         print(f"  {name}: {path}")
+
+    observed: ObservedMetrics = {SCENARIO_NAME: {k: float(v) for k, v in result.metrics.items()}}
+    baseline_exit = handle_baseline_flags(
+        args,
+        observed=observed,
+        scenario_name=SCENARIO_NAME,
+        stable_filter=stable_metrics,
+        # Every recorded metric here is a ratio or an error, all lower-better.
+        # The higher-better ones (win fractions) are excluded by stable_metrics.
+        higher_better_metrics=(),
+        description="lshape_amr_compare headline (stable metrics only)",
+    )
+    if baseline_exit is not None:
+        return baseline_exit
 
     return 0 if result.passed else 1
 

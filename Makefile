@@ -163,8 +163,13 @@ test-core:
 test-agents:
 	$(PYTEST) tests/agents/ -v
 
+# Runs the WHOLE directory with CI's filter, matching the `test-e2e` job in
+# .github/workflows/ci.yml. The previous glob (`test_user_journey_*.py`) selected
+# 3 of 81 tests, so `pre-pr` -- which chains this target -- certified a PR
+# against three E2E tests. E2E_DEVICE is left to its "auto" default here so a
+# developer on a CUDA box exercises the GPU path locally; CI pins it to cpu.
 test-e2e:
-	$(PYTEST) tests/e2e/test_user_journey_*.py -v
+	$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -v
 
 test-cert:
 	$(COV) run --branch \

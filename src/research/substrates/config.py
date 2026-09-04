@@ -258,3 +258,111 @@ def select_primary_l2(config: SubstrateConfig, *, quadrature: float, nodal: floa
         f"unknown error_metric {config.error_metric!r}; expected "
         f"{ERROR_METRIC_QUADRATURE!r} or {ERROR_METRIC_NODAL_RMS!r}"
     )
+
+
+class AdequacyGateConfig(BaseModuleConfig):
+    """Thresholds for the substrate adequacy gate (``specs/refinement_substrate.spec.md`` AC7/AC8).
+
+    Promoted out of ``tests/research/test_amr_arena_interpretability.py``, where
+    these four values and the predicate reading them lived as module constants.
+    That placement made the verdict the spec calls "the gate that makes any
+    comparison meaningful" reachable only from pytest: a caller who ran a sweep
+    through the public API had no way to ask whether the substrate was adequate.
+
+    Every default is byte-identical to the constant it replaces -- this is a
+    move, not a retune. The originating comments are preserved per field because
+    each records a measurement, and a threshold whose provenance is lost is a
+    threshold nobody dares change.
+    """
+
+    #: Uniform P1 L2 rate on the L-shape. Theory gives -2/3; the task-zero spike
+    #: measured -0.710. A rate outside this band **on either side** is a defect:
+    #: too *good* means the reentrant singularity is not actually in the domain
+    #: (AC8's cautionary tale -- a translated mesh produced a confident, entirely
+    #: wrong "adaptive loses on skfem too" result, caught only by this tripwire).
+    uniform_rate_band: tuple[float, float] = Field(
+        default=(-0.85, -0.55),
+        description="Inclusive (low, high) band the uniform arm's log-log rate must land in.",
+    )
+
+    #: Adaptive must reach at least this steep a rate. Spike measured -1.256;
+    #: measured -1.3109 through the production primitives, at the theta the gate
+    #: actually passes (``ComparisonParams.marking_fraction = 0.5``) over
+    #: ``rate_fit_dof_range``. Quote the theta with any rate: the same substrate
+    #: reads -1.31 at theta=0.5 and -1.25 at theta=0.3, so a bare rate is not a
+    #: fact.
+    adaptive_rate_min: float = Field(
+        default=-1.10,
+        description="Adaptive log-log rate must be at least this steep (i.e. <= this value).",
+    )
+
+    #: Adaptive must beat uniform at matched DOF. Below 1.0 means adaptive wins.
+    adaptive_vs_uniform_max_ratio: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Adaptive/uniform error ratio at matched DOF must be strictly below this.",
+    )
+
+    #: The asymptotic window the rate is fitted over. Below it, neither arm has
+    #: separated yet. Corrected from the spec's originally pinned ``(200, 2600)``,
+    #: which is physically incapable of holding ``RATE_FIT_MIN_POINTS`` uniform
+    #: points: a 2D uniform arm quadruples DOF per level, so a 13x window spans
+    #: at most two of them.
+    rate_fit_dof_range: tuple[float, float] = Field(
+        default=(200.0, 4000.0),
+        description="(low, high) DOF window the log-log rates are fitted over.",
+    )
+
+    #: Level ceilings (runaway guards). Uniform multiplies DOF each level so it
+    #: needs very few; adaptive adds DOF slowly and needs many more.
+    max_levels_uniform: int = Field(
+        default=8, ge=1, description="Refinement levels the uniform control arm may take."
+    )
+    max_levels_adaptive: int = Field(
+        default=40, ge=1, description="Refinement levels the adaptive arm may take."
+    )
+
+    @property
+    def max_sweep_dof(self) -> int:
+        """DOF budget for both arms.
+
+        *Derived* from ``rate_fit_dof_range``'s upper bound rather than retyped,
+        so a sweep stops as soon as it has spanned the fitting window. The
+        coupling previously lived only in a comment, with ``4000`` written twice.
+
+        Returns ``int``, not ``float``: a DOF budget is a count, and
+        ``run_refinement_sweep(max_dof: int)`` types it that way. The fitting
+        *window* stays float because it is interpolated over. This also preserves
+        value identity with the module constant this replaced
+        (``MAX_SWEEP_DOF = RATE_FIT_DOF_RANGE[1]`` over an int pair), which is
+        the promotion's whole contract -- a move, not a retune.
+
+        Returns:
+            The upper bound of the fitting window, as a DOF count.
+
+        """
+        return int(self.rate_fit_dof_range[1])
+
+    @field_validator("uniform_rate_band", "rate_fit_dof_range")
+    @classmethod
+    def _low_below_high(cls, value: tuple[float, float]) -> tuple[float, float]:
+        """Reject an inverted or degenerate interval.
+
+        An inverted band admits nothing and would make the gate fail on every
+        input; a degenerate one admits a single float. Both are configuration
+        errors that would otherwise present as a mysterious gate result.
+
+        Args:
+            value: The (low, high) pair.
+
+        Returns:
+            The validated pair.
+
+        Raises:
+            ValueError: If ``low >= high``.
+
+        """
+        low, high = value
+        if low >= high:
+            raise ValueError(f"interval low must be < high, got {value!r}")
+        return value

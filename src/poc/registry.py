@@ -214,6 +214,37 @@ class BaseScenario(ABC):
         """Get scenario name."""
         return self._scenario_name or self.config.name
 
+    def execution_device_label(self) -> str:
+        """Return the device this scenario actually ran on.
+
+        ``ScenarioResult.device`` is documented as "Computation device used",
+        but both construction sites previously filled it with
+        ``"cuda" if torch.cuda.is_available() else "cpu"`` -- host *availability*,
+        not execution device. A scenario configured ``device: cpu`` on a CUDA
+        host therefore persisted ``"cuda"``, the exact inverse of the field's
+        meaning, in the one artifact a caller would read to find out where a run
+        executed.
+
+        Scenarios that resolve a device store it on ``self._device`` (the
+        convention across every device-aware scenario in ``src/poc/scenarios``);
+        this reads that when present. Scenarios with no device concept -- the
+        numpy-only comparison harnesses -- keep the historical availability
+        expression, so no existing result shape changes for them.
+
+        Returns:
+            The resolved device string (e.g. ``"cpu"``, ``"cuda"``, ``"cuda:0"``)
+            when the scenario resolved one, else host CUDA availability.
+
+        """
+        device = getattr(self, "_device", None)
+        if device is not None:
+            return str(device)
+        # Local import matching this module's convention: torch is imported
+        # inside the methods that need it, not at module scope.
+        import torch
+
+        return "cuda" if torch.cuda.is_available() else "cpu"
+
     def setup(self) -> None:
         """Pre-execution setup (override in subclasses).
 
@@ -324,7 +355,7 @@ class BaseScenario(ABC):
                 duration_seconds=duration,
                 error_message=str(e),
                 error_traceback=traceback.format_exc(),
-                device="cuda" if torch.cuda.is_available() else "cpu",
+                device=self.execution_device_label(),
                 python_version=sys.version,
                 torch_version=torch.__version__,
             )
@@ -411,7 +442,7 @@ class BaseScenario(ABC):
             start_time=self._start_time,
             end_time=end_time,
             duration_seconds=duration,
-            device="cuda" if torch.cuda.is_available() else "cpu",
+            device=self.execution_device_label(),
             python_version=sys.version,
             torch_version=torch.__version__,
         )

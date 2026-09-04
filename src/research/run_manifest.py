@@ -279,3 +279,46 @@ __all__ = [
     "migrate_run_manifest",
     "write_run_manifest",
 ]
+
+
+def collect_hardware_tag() -> str:
+    """Best-effort host/accelerator label for a run manifest. Never raises.
+
+    ``RunManifest.hardware_tag`` defaults to ``UNKNOWN`` and every committed
+    sidecar carried that default, because no harness ever set it. A provenance
+    record that cannot say what the numbers were measured on is missing the one
+    field a reader needs to judge whether a wall-clock or accelerator-sensitive
+    result transfers to their machine.
+
+    The tag is deliberately free-form and deliberately in ``_VOLATILE_FIELDS``
+    (excluded from ``stable_fields``): it changes with the host, so a golden
+    comparison must not assert on it.
+
+    Returns:
+        ``"<machine>-<n>cpu"`` plus ``-cuda:<device name>`` when a CUDA device is
+        visible, else :data:`UNKNOWN` if even the platform probe fails.
+
+    """
+    import os
+    import platform
+
+    try:
+        machine = platform.machine() or "unknown-arch"
+        # os.cpu_count() can return None on exotic platforms.
+        n_cpu = os.cpu_count() or 0
+        tag = f"{machine}-{n_cpu}cpu"
+    except OSError:
+        return UNKNOWN
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            tag = f"{tag}-cuda:{torch.cuda.get_device_name(0)}"
+    # Broad by intent: a provenance label must never be the reason a benchmark
+    # run fails. A missing/!broken torch, a driver mismatch, or a CUDA call that
+    # raises all degrade to the CPU-only tag rather than aborting the harness.
+    except Exception:
+        pass
+
+    return tag

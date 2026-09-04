@@ -44,9 +44,11 @@ def test_poc_cli_help(cli_runner: CLIRunnerType) -> None:
 def test_poc_cli_info_transfer(cli_runner: CLIRunnerType) -> None:
     """Verify 'info' command shows scenario details."""
     result = cli_runner("src.poc.cli", ["info", "transfer"])
-    # May succeed or fail depending on scenario registration
-    # But should not crash with an unexpected error
-    assert result.returncode in [0, 1, 2], f"Unexpected error: {result.stderr}"
+    # `in [0, 1, 2]` is every code argparse can produce, so it asserted nothing:
+    # it passed whether the scenario was found, missing, or the CLI crashed.
+    # `transfer` is a built-in scenario registered at import, so 0 is the contract.
+    assert result.returncode == 0, f"Unexpected error: {result.stderr}"
+    assert "transfer" in result.output.lower()
 
 
 @pytest.mark.e2e
@@ -64,18 +66,18 @@ def test_poc_cli_invalid_scenario(cli_runner: CLIRunnerType) -> None:
         ["info", "nonexistent_scenario_xyz"],
         timeout=E2E_TRIVIAL_TIMEOUT_S,
     )
-    # Should exit with error but not crash
-    not_found_in_stderr = "not found" in result.stderr.lower()
-    not_found_in_stdout = "not found" in result.stdout.lower()
-    assert not result.success or not_found_in_stderr or not_found_in_stdout
+    # The previous `not success or "not found" in ...` disjunction passed on any
+    # non-zero exit, including a crash. An unknown scenario is a handled error: 1.
+    assert result.returncode == 1, f"Expected a handled error: {result.output}"
+    assert "not found" in result.output.lower()
 
 
 @pytest.mark.e2e
 def test_poc_cli_compare_help(cli_runner: CLIRunnerType) -> None:
     """Verify 'compare' subcommand shows help."""
     result = cli_runner("src.poc.cli", ["compare", "--help"])
-    # Compare might not exist, but should handle gracefully
-    assert result.returncode in [0, 2], f"Unexpected error: {result.stderr}"
+    # `compare` is a registered subparser; --help on it exits 0.
+    assert result.returncode == 0, f"Unexpected error: {result.stderr}"
 
 
 @pytest.mark.e2e
@@ -90,9 +92,10 @@ def test_poc_cli_run_tier_filter(
         ["run", "--tier", "unit", "--output-dir", str(temp_output_dir)],
         timeout=E2E_TRAINING_TIMEOUT_S,
     )
-    # Should attempt to run unit tier scenarios
-    # Exit code depends on scenario availability
-    assert result.returncode in [0, 1], f"Unexpected error: {result.stderr}"
+    # `cmd_run` returns `all(r.passed)`, so 0 means every selected scenario
+    # passed its thresholds. No unit-tier scenario is registered today, and an
+    # empty selection is vacuously all-passed -- still 0, not "either".
+    assert result.returncode == 0, f"Unexpected error: {result.stderr}"
 
 
 @pytest.mark.e2e
@@ -108,5 +111,5 @@ def test_poc_cli_config_path(cli_runner: CLIRunnerType, config_dir: Path) -> Non
         ["run", "--config", str(config_file), "--help"],
         timeout=E2E_TRIVIAL_TIMEOUT_S,
     )
-    # Help should work even with config path
-    assert result.returncode in [0, 2]
+    # --help short-circuits before the config is read; it exits 0.
+    assert result.returncode == 0, f"Unexpected error: {result.stderr}"

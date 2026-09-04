@@ -1,10 +1,13 @@
 # E2E Test Plan — covering the work landed since the 2026-07 core refocus
 
-> **Status:** plan, v2. Nothing here is implemented; every test is a proposal with an
-> owner-visible acceptance bar. Numbers marked *(measured)* were produced on this branch on
-> 2026-09-04; everything else is an estimate and says so. **v1 of this plan was peer-reviewed
-> against the code and retracted in part** — §0.1 lists what was wrong, in the repo's usual
-> form: the wrong claim stays on the page, marked, next to the corrected one.
+> **Status: IMPLEMENTED (2026-09-04).** Phases 0–4 are landed; see §12 for what shipped, what
+> the implementation found wrong in this plan (again), and what is deliberately still open.
+> The plan text below is kept as written so the corrections stay auditable.
+>
+> Numbers marked *(measured)* were produced on this branch on 2026-09-04; everything else was an
+> estimate and says so. **v1 of this plan was peer-reviewed against the code and retracted in
+> part** — §0.1 lists what was wrong, in the repo's usual form: the wrong claim stays on the
+> page, marked, next to the corrected one. §12.2 does the same for v2.
 >
 > **Scope authority:** `docs/FOCUS.md` / `config/focus.yaml`. Tests are added only on the
 > active surfaces (`src/refinement/`, `src/pde/`, `src/mcts/`, `src/research/`, the governance
@@ -384,9 +387,98 @@ Container: 4 CPUs, no CUDA, torch 2.13.0+cu130, scikit-fem absent. All 81 tests 
 
 | Run | Result |
 | --- | --- |
-| `pytest tests/e2e/ -m "not gpu_required" -q` (80 tests, `go_training` deselected) | 80 passed, **308.6 s** — overlapped a stray earlier process; upper bound |
+| `pytest tests/e2e/ -m "not gpu_required" -q --deselect tests/e2e/test_user_journey_go_training.py::test_user_journey_go_training` | 80 passed, **308.6 s** — overlapped a stray earlier process; upper bound. ~~An earlier draft of this row wrote the command without the `--deselect` and attributed the 80/81 split to the marker filter~~ — **corrected 2026-09-04 (Copilot review, PR #144)**: *no* test in `tests/e2e/` carries `gpu_required`, so `-m "not gpu_required"` alone selects all 81. The deselection was an explicit flag, dropped when the command was transcribed, which is exactly the kind of silently-wrong provenance this plan's §2 rule 6 exists to prevent. |
 | `test_quick_validation_journey` + `test_sbir_demo` + `test_centaur_e2e` + `test_chess_training_e2e` + `test_poc_scenario_journey` (38) | 38 passed, **60.7 s** |
 | `test_chess_engine_e2e` + `test_config_validation` + `test_cli_journey` (40) | 40 passed, **63.1 s** |
 | three `test_user_journey_*` (3) | 3 passed, **7.0 s** |
 | Slowest single tests | `test_train_physics_minimal` 15.3 s; `test_engine_vs_random_game` 14.0 s; `test_user_journey_go_training` 4.6 s; every `poc.cli`/`agents.cli` subprocess ≈ 3.2–3.5 s (torch import) |
 | Plan-argv runs (by the reviewer, same container) | `run_lshape_amr … --max-dof 120 --n-simulations 2`: exit 0, 6 s, ratio 0.9627, seed std 0; `poc.cli run --config noyron_basis_cpu.yaml`: exit 0, 8 s, 4 baseline entries; `run_adaptive_vs_uniform --max-dof 120`: < 5 s, final uniform DOF 208 |
+
+---
+
+## 12. Implementation record (2026-09-04)
+
+### 12.1 What shipped
+
+**Phase 0 — the tier is now CI-visible and device-agnostic.**
+
+| Change | Where |
+| --- | --- |
+| New blocking CI job `test-e2e` (`-m "not gpu_required and not fem_required"`, `E2E_DEVICE: cpu`, 30-min cap), in `ci-success.needs` with a hard `exit 1` gate | `.github/workflows/ci.yml` |
+| Positively-selecting `fem_required` E2E step in `test-extras`, the only job that installs `[fem]` | `.github/workflows/ci.yml` |
+| `make test-e2e` runs the whole directory with CI's filter (was **3 of 81** tests via a glob) | `Makefile` |
+| `E2E_DEVICE` (default `auto`), resolved **once at conftest import** through `resolve_device`; `e2e_device` / `e2e_device_type` fixtures; terminal-summary device line | `tests/e2e/conftest.py` |
+| `py_runner` (`python -c`), `pin_scenario_yaml` (refuses to pin an undeclared key), `NO_CUDA_ENV`, `CLIResult.output`, shared `_run_subprocess`; `cli_runner`/`py_runner`/`pin_scenario_yaml` made session-scoped so a module fixture can run an expensive harness once | `tests/e2e/conftest.py` |
+| `gpu_required` skips now **report a count**, like the `fem_required` hook next to them | `conftest.py` |
+| `ScenarioResult.device` reports the **execution** device via `BaseScenario.execution_device_label()`; scenarios with no device concept keep the old expression | `src/poc/registry.py` |
+| `set_global_seeds` docstring no longer claims GPU determinism it does not implement | `src/seeding.py` |
+| All **seven** set-valued exit assertions replaced with exact codes (each measured first) | `tests/e2e/*` |
+| `e2e` marker added to the two files that lacked it — `-m e2e` now selects **81**, was 76 | `tests/e2e/*` |
+| Guards: `tests/docs/test_e2e_visibility.py` (49 tests) + `tests/docs/test_marker_vocabulary.py` (45), sharing `tests/support/workflows.py` and `tests/support/marker_expr.py` | `tests/docs/`, `tests/support/` |
+
+**Phases 1–4 — the journeys.** Nine new files under `tests/e2e/`:
+`test_adaptive_vs_uniform_journey.py`, `test_lshape_amr_journey.py`,
+`test_refinement_substrate_journey.py`, `test_baseline_gate_journey.py`,
+`test_poc_baseline_cli_journey.py`, `test_agents_cli_journey.py`,
+`test_governance_cli_journey.py`, `test_untested_entry_points.py`,
+`test_checkpoint_lifecycle_journey.py`.
+
+**Src changes the journeys required** (each additive and separately tested):
+
+- `AdequacyGateConfig` + `gate_violations` + `measure_adequacy` + `default_adequacy_gate`
+  **promoted** from `tests/research/test_amr_arena_interpretability.py` into
+  `src/research/substrates/{config,sweep}.py`. Byte-identical defaults; the test file keeps
+  re-exports so `TestGatePredicate` exercises the promoted function rather than a copy.
+  A caller who runs a sweep can now ask for the adequacy verdict — previously only pytest could.
+- `src/poc/baselines/cli_support.py`: shared `add_baseline_arguments` / `handle_baseline_flags`.
+  `scripts/run_lshape_amr.py` gained `--record-baseline` / `--baseline` / `--tolerance-pct`,
+  closing the gap where the L-shape headline could not be regression-gated from its own CLI.
+  Policy (which metrics are stable, which are higher-better) stays per-harness; only the
+  mechanism is shared.
+- `scripts/inspect_checkpoint.py` now returns a real exit code. It previously exited **0 whether
+  the checkpoint deserialized or not**.
+- `collect_hardware_tag()` in `src/research/run_manifest.py`, wired into
+  `scripts/run_adaptive_vs_uniform.py`: sidecars recorded `hardware_tag: "unknown"` because no
+  harness ever set it. Now e.g. `x86_64-4cpu`, plus the CUDA device name when one is visible.
+
+### 12.2 What the implementation found wrong in *this* plan (v2)
+
+Same convention as §0.1: the wrong statement stays, marked.
+
+| v2 said | Actually | Fix |
+| --- | --- | --- |
+| §3 guard clause (b): "a step selects `tests/e2e/` whose `-m` does not exclude `e2e`" | **Defeated by its own mutation.** The `test-extras` fem step (`-m "fem_required and not gpu_required"`) satisfies that literally — it selects the directory and never mentions `e2e` — so *deleting the entire `test-e2e` job left the guard green* | Strengthened to `expression_selects_plainly`: a qualifying step must also not narrow the run to some other positively-required marker. Mutation 1 only goes red under the strengthened form |
+| §6.3: assert STL `len >= 84` and `uint32@80 == (len - 84) // 50` | **Passes on a zero-triangle file**: an empty exporter writes exactly the 84-byte preamble and `0 == 0` holds. Verified — under the planted mutation the file *was* 84 bytes and the relation *did* hold | Added `triangle_count > 0` (the load-bearing half) and replaced floor division with an exact tiling check `len == 84 + count * 50`, since `//` also absorbs a truncated payload |
+| §4.3: "only the thresholds move; the predicate is a straight promotion" | `max_sweep_dof` returned `float` (the field defaults became floats), which `run_refinement_sweep(max_dof: int)` rejects under `mypy --strict` | Returns `int`, which also restores exact value identity with the original int-pair constant |
+| §4.3 mutation (d): "tests 2 and 3 fail" | Test 2 is `fem_required` and **skips on CPU CI**, so the aliased-registry mutation would have gone unkilled on every CI run | A registry-distinctness assertion was added to test 3 (the un-marked one), which is what kills it |
+| §6.1: assert `list-agents` output contains the agent names | Vacuous as a substring check — `structlog` prints `item_registered` lines naming all four agents *before* the table renders, so it passes against an empty table | Parses the rendered table's first column and compares an exact set |
+| §5.1: lshape row is `xfail(strict=True)` until the baseline flags land | The flags landed in the same change, so it is a **live parametrisation**, not an xfail | Row is real; all three harnesses are gated |
+| §2 rule 9 / §5.1: re-run drift needs a wide tolerance (the in-process test uses `--tolerance-pct 100000`) | **Measured: zero.** All three harnesses reproduce their stable metrics *exactly* at `--tolerance-pct 0` with the seed pinned, on this CPU container | `RERUN_TOLERANCE_PCT_CPU = 1.0` with the measurement recorded; the wide value applies only off-CPU, where no cuDNN determinism flag is set |
+| §9: Phase 2 ≈ 3–6 min, Phase 4 `slow` | Phase 2 measured **2:54**; Phase 4 **22 s** | Phase 4 keeps `slow` (it is the only phase whose cost tracks host speed); estimates corrected in §12.3 |
+
+### 12.3 Measured runtimes (4-CPU container, `E2E_DEVICE=auto` → cpu)
+
+| File | Result | Wall |
+| --- | --- | --- |
+| `test_baseline_gate_journey.py` | 14 passed | 2:54 |
+| `test_poc_baseline_cli_journey.py` | 5 passed | 31 s |
+| Phase 1 (3 files) | 21 passed, 1 skipped (`fem_required`) | 59 s |
+| Phase 3 (3 files) | 10 passed | 34 s |
+| `test_checkpoint_lifecycle_journey.py` | 4 passed, 1 xfailed | 22 s |
+| `tests/docs/` (incl. both new guards) | 178 passed | ~2 s |
+
+### 12.4 Deliberately still open
+
+- **No shipped command produces a PDE-consumable checkpoint.**
+  `scripts/train.py +game=pde_basis` crashes in `src/modeling/embeddings.py` with a tensor-shape
+  mismatch: `config/train_fast.yaml`'s `operator.input_channels` is Go-shaped (17) and nothing
+  reconciles it with the selected game's encoding. Pinned as a **strict xfail**
+  (`test_pde_game_training_is_a_known_gap`) so it flips visibly when fixed. Fixing it is
+  PDE-model work, not E2E-test work.
+- **CLAUDE.md's Multi-Game Commands section documents `python -m scripts.train game=go`**, which
+  errors — `game` is not a key in `config/train.yaml`, so Hydra requires `+game=go`.
+- **`tests/docs/test_coverage_gate_integrity.py` still carries its own workflow parser**, now the
+  one remaining copy alongside `tests/support/workflows.py`. It is heavily mutation-tested;
+  collapsing it belongs in its own change.
+- **`src/research/baselines.py` and the three `-m` vocabularies** are untouched here; the
+  `make pre-pr` / CI exclusion-list duplication (backlog B7) is unchanged.

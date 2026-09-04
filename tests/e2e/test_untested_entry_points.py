@@ -26,7 +26,7 @@ import json
 import math
 import struct
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -52,6 +52,10 @@ DEMO_PDE_TYPE = "poisson"
 DEMO_N_EPISODES = 1
 DEMO_MCTS_SIMS = 2
 DEMO_SEED = 1
+#: A second seed, used to prove --seed reaches the solver rather than only the
+#: report. Any value distinct from DEMO_SEED works; the tests assert a
+#: difference between the two runs, never a value from either.
+DEMO_ALTERNATE_SEED = 20260904
 
 #: Files ``run_demo`` writes into ``--output-dir``. The plot is written *only*
 #: without ``--no-plots``, which is what makes its absence an assertion about
@@ -103,15 +107,24 @@ def _files_under(root: Path) -> set[Path]:
     return {path for path in root.rglob("*") if path.is_file()}
 
 
-def _run_pde_demo(cli_runner: CLIRunnerType, output_dir: Path) -> None:
-    """Run the PDE demo into *output_dir*, asserting only that it exited 0.
+def _run_pde_demo(
+    cli_runner: CLIRunnerType, output_dir: Path, seed: int = DEMO_SEED
+) -> dict[str, Any]:
+    """Run the PDE demo into *output_dir* and return its parsed metrics JSON.
 
-    Shared by the two demo journeys so each asserts a different property of the
-    same real run without either duplicating the argv.
+    Shared by the demo journeys so each asserts a different property of the same
+    real run without either duplicating the argv.
 
     Args:
         cli_runner: The subprocess runner fixture.
         output_dir: ``--output-dir`` for the run; must be under ``tmp_path``.
+        seed: ``--seed`` for the run. A parameter rather than a constant because
+            the only way to prove the flag reaches the *solver* -- as opposed to
+            being copied into the report from a second read of the same config
+            field -- is to vary it and observe the numbers move.
+
+    Returns:
+        The decoded ``metrics.json`` payload.
 
     """
     result = cli_runner(
@@ -127,12 +140,16 @@ def _run_pde_demo(cli_runner: CLIRunnerType, output_dir: Path) -> None:
             str(output_dir),
             "--no-plots",
             "--seed",
-            str(DEMO_SEED),
+            str(seed),
         ],
         E2E_BENCHMARK_TIMEOUT_S,
         None,
     )
     assert result.returncode == EXIT_OK, result.output
+    payload: dict[str, Any] = json.loads(
+        (output_dir / DEMO_METRICS_FILENAME).read_text(encoding="utf-8")
+    )
+    return payload
 
 
 def test_demo_pde_solver_runs_an_episode_and_writes_only_where_told(
@@ -180,9 +197,7 @@ def test_demo_pde_solver_metrics_json_echoes_argv_and_reports_finite_errors(
     """
     output_dir = tmp_path / "pde_demo"
 
-    _run_pde_demo(cli_runner, output_dir)
-
-    payload = json.loads((output_dir / DEMO_METRICS_FILENAME).read_text(encoding="utf-8"))
+    payload = _run_pde_demo(cli_runner, output_dir)
     requested = {
         "pde_type": DEMO_PDE_TYPE,
         "n_episodes": DEMO_N_EPISODES,
@@ -197,6 +212,38 @@ def test_demo_pde_solver_metrics_json_echoes_argv_and_reports_finite_errors(
     assert all(math.isfinite(payload[key]) for key in DEMO_ERROR_KEYS)
     assert len(payload["episode_summaries"]) == DEMO_N_EPISODES
     assert "total_time_seconds" in payload  # present; never asserted on (rule 5)
+
+
+def test_demo_pde_solver_seed_reaches_the_solver_not_just_the_report(
+    cli_runner: CLIRunnerType, tmp_path: Path
+) -> None:
+    """``--seed`` changes the numbers, and the same seed reproduces them.
+
+    The sibling test above asserts the JSON *echoes* the requested seed. That
+    is not the same property, and the difference is not academic:
+    ``scripts/demo_pde_solver.py`` reads ``cfg.seed`` twice -- once into
+    ``DemoMetrics.seed`` (the echo) and once into ``PDETrainingConfig(seed=...)``
+    (the solver). Severing the second read leaves the first intact.
+
+    Verified: hardcoding ``seed=42`` in the trainer construction left the whole
+    file green. This test fails on that mutation, because two different
+    requested seeds then produce identical error histories.
+
+    Asserts a *difference*, never a value -- no number here is a threshold.
+    Numpy-only surface; no device is forwarded.
+    """
+    first = _run_pde_demo(cli_runner, tmp_path / "seed_a", seed=DEMO_SEED)
+    second = _run_pde_demo(cli_runner, tmp_path / "seed_b", seed=DEMO_ALTERNATE_SEED)
+    repeat = _run_pde_demo(cli_runner, tmp_path / "seed_a_again", seed=DEMO_SEED)
+
+    assert first["per_episode_errors"] != second["per_episode_errors"], (
+        f"seeds {DEMO_SEED} and {DEMO_ALTERNATE_SEED} produced identical error "
+        "histories: --seed is echoed into the report but never reaches the solver"
+    )
+    assert first["per_episode_errors"] == repeat["per_episode_errors"], (
+        "the same seed did not reproduce: the run is not seed-deterministic, so "
+        "the difference above cannot be attributed to the seed"
+    )
 
 
 def _run_helix_export(cli_runner: CLIRunnerType, output: Path) -> None:

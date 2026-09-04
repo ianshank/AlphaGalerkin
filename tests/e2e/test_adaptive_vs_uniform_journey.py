@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from src.research.run_manifest import (
+    UNKNOWN,
     load_run_manifest,
     manifest_path_for,
     migrate_run_manifest,
@@ -295,25 +296,31 @@ def test_sidecar_metrics_have_the_charter_shape(
     assert metrics["matched_dof_min"] <= metrics["matched_dof_max"]
 
 
-def test_hardware_tag_is_recorded_or_declared_unknown(
+def test_hardware_tag_records_the_host_the_run_measured_on(
     adaptive_vs_uniform_run: AdaptiveVsUniformRun,
 ) -> None:
-    """``hardware_tag`` is present and says *something*.
+    """``hardware_tag`` names a real host, not the "we did not record it" default.
 
-    The one provenance field a device-agnostic tier needs. Today the harness
-    never sets it, so ``RunManifest``'s default (``"unknown"``) is written --
-    which is itself provenance ("we did not record it"), and is why the
-    assertion is "a non-empty string" rather than a literal. If the harness is
-    later taught to populate it with a real host/accelerator label, this test
-    passes unchanged; an *empty* tag -- a field that neither records nor admits
-    ignorance -- fails.
+    The one provenance field a device-agnostic tier needs: a wall-clock or
+    accelerator-sensitive number is uninterpretable without it.
+
+    The assertion is ``!= UNKNOWN`` rather than the ``tag.strip()`` this test
+    originally carried, because ``UNKNOWN`` is itself a non-empty string --
+    so the original passed identically whether the harness populated the field
+    or not. Verified: deleting ``hardware_tag=collect_hardware_tag()`` from
+    ``scripts/run_adaptive_vs_uniform.py`` left the whole file green. The
+    *content* of the tag is pinned by ``tests/research/test_hardware_tag.py``;
+    what this asserts is that the harness reaches the collector at all.
     """
     run = adaptive_vs_uniform_run
     assert run.result.returncode == EXIT_SUCCESS, run.result.output
 
     tag = load_run_manifest(run.manifest_path).hardware_tag
-    assert isinstance(tag, str)
-    assert tag.strip(), "hardware_tag must record a host label or explicitly say 'unknown'"
+    assert tag != UNKNOWN, (
+        "the harness wrote the RunManifest default: collect_hardware_tag() was "
+        "never called, so this run's numbers cannot be attributed to a host"
+    )
+    assert tag.strip()
 
 
 def test_unknown_flag_exits_two(cli_runner: CLIRunnerType, tmp_path: Path) -> None:

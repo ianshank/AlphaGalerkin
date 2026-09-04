@@ -32,7 +32,7 @@ from typing import Any, cast
 
 import yaml
 
-from src.poc.baselines import ScenarioBaselineRegistry
+from src.poc.baselines import add_baseline_arguments, handle_baseline_flags
 from src.poc.config import load_config_from_dict
 from src.poc.logging import configure_logging
 from src.poc.scenarios.transfer_baseline_compare import TransferBaselineCompareScenario
@@ -52,6 +52,13 @@ STABLE_BASELINE_SUBSTRINGS: tuple[str, ...] = (
     "mse_cnn_retrained_",
     "mse_cnn_zeroshot_",
 )
+
+#: Free-text label stored in a recorded baseline document. Named rather than
+#: inlined because it is persisted: the committed
+#: ``config/baselines/transfer_ci.json`` carries this exact string, so a silent
+#: edit would make a re-recorded document differ from the one in git for a
+#: reason unrelated to any measurement.
+BASELINE_DESCRIPTION: str = "transfer_baseline_compare headline (stable metrics only)"
 
 
 def _stable_metrics(metrics: dict[str, float]) -> dict[str, float]:
@@ -152,25 +159,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", default=None, help="Override the device (cpu/cuda).")
     parser.add_argument("--log-level", default="INFO", help="structlog level (default INFO).")
-    parser.add_argument(
-        "--record-baseline",
-        dest="record_baseline",
-        default=None,
-        help="Record this run's metrics as a baseline JSON and exit 0.",
-    )
-    parser.add_argument(
-        "--baseline",
-        default=None,
-        help="Diff this run against a committed baseline JSON; exit 1 on regression.",
-    )
-    parser.add_argument(
-        "--tolerance-pct",
-        dest="tolerance_pct",
-        type=float,
-        default=15.0,
-        help="Per-metric regression tolerance when recording a baseline (default 15).",
-    )
-    parser.add_argument("--git-sha", dest="git_sha", default="", help="Provenance: commit SHA.")
+    # The four baseline flags come from the shared helper rather than being
+    # redeclared here, so a fix to the gate's semantics (e.g. failing on a
+    # metric the run did not produce) reaches every harness at once. The
+    # recorded tolerance is unchanged: 15.0 is this helper's default.
+    add_baseline_arguments(parser)
     return parser
 
 
@@ -198,28 +191,19 @@ def main(argv: list[str] | None = None) -> int:
 
     observed = _observed(result)
 
-    if args.record_baseline:
-        stable = {SCENARIO_NAME: _stable_metrics(observed[SCENARIO_NAME])}
-        # Every recorded stable metric is lower-better: the win_fraction / seed-spread
-        # metrics (the only higher-better ones) are excluded by _stable_metrics above, so
-        # no higher-better override is needed here.
-        registry = ScenarioBaselineRegistry.from_observed(
-            stable,
-            higher_better_metrics=(),
-            tolerance_pct=args.tolerance_pct,
-            description="transfer_baseline_compare headline (stable metrics only)",
-            git_sha=args.git_sha,
-        )
-        registry.save(args.record_baseline)
-        print(f"\nBaseline recorded -> {args.record_baseline}")
-        return 0
-
-    if args.baseline:
-        registry = ScenarioBaselineRegistry.load(args.baseline)
-        report = registry.compare(observed, baseline_path=args.baseline)
-        print("\nRegression diff vs baseline:")
-        print(report.summary() if hasattr(report, "summary") else report)
-        return 1 if report.has_regressions else 0
+    # Every recorded stable metric is lower-better: the win_fraction / seed-spread
+    # metrics (the only higher-better ones) are excluded by _stable_metrics above, so
+    # no higher-better override is needed here.
+    baseline_exit = handle_baseline_flags(
+        args,
+        observed=observed,
+        scenario_name=SCENARIO_NAME,
+        stable_filter=_stable_metrics,
+        higher_better_metrics=(),
+        description=BASELINE_DESCRIPTION,
+    )
+    if baseline_exit is not None:
+        return baseline_exit
 
     return 0 if result.passed else 1
 

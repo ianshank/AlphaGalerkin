@@ -153,3 +153,146 @@ class TestDiff:
             stable_filter=dict,
         )
         assert code == EXIT_REGRESSION
+
+
+class TestTheGateFailsOnAnUnmeasuredRun:
+    """A gate that reports green having compared nothing is not a gate.
+
+    Four ways a run can produce no comparison, each of which exited **0**
+    before this class existed:
+
+    1. the scenario raised, so ``ScenarioResult.metrics`` is empty;
+    2. the scenario produced metrics under a *different* name;
+    3. the baseline declares a metric this run no longer emits;
+    4. the caller passed a scenario key absent from ``observed`` entirely.
+
+    (1)-(3) are the same mechanism: every baseline entry lands in
+    ``missing_in_observed``, ``regressions`` stays empty, and gating on
+    ``has_regressions`` alone passes. This is the vacuity class the repo has
+    hit three times in coverage gates -- a check that cannot fail.
+    """
+
+    @staticmethod
+    def _baseline(tmp_path: Path, **metrics: float) -> Path:
+        path = tmp_path / "baseline.json"
+        code = handle_baseline_flags(
+            _args(record_baseline=str(path)),
+            observed={SCENARIO: dict(metrics)},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        assert code == EXIT_OK
+        return path
+
+    def test_a_crashed_run_producing_no_metrics_fails_the_gate(self, tmp_path: Path) -> None:
+        """The headline case: a scenario that raised must not diff green.
+
+        ``BaseScenario.run()`` returns ``status=ERROR`` with ``metrics={}``, so
+        a harness builds ``observed={scenario: {}}`` and the gate sees nothing
+        to compare.
+        """
+        baseline = self._baseline(tmp_path, metric=1.0)
+        code = handle_baseline_flags(
+            _args(baseline=str(baseline)),
+            observed={SCENARIO: {}},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        assert code == EXIT_REGRESSION
+
+    def test_a_renamed_metric_fails_the_gate(self, tmp_path: Path) -> None:
+        """A baseline entry the run no longer emits is a deliberate re-record."""
+        baseline = self._baseline(tmp_path, metric=1.0)
+        code = handle_baseline_flags(
+            _args(baseline=str(baseline)),
+            observed={SCENARIO: {"metric_v2": 1.0}},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        assert code == EXIT_REGRESSION
+
+    def test_a_partially_complete_run_fails_the_gate(self, tmp_path: Path) -> None:
+        """One of two baseline metrics missing is still an unmeasured gate.
+
+        Guards the boundary: with a non-empty ``diffs`` list the report *looks*
+        healthy, and only ``missing_in_observed`` distinguishes it.
+        """
+        baseline = self._baseline(tmp_path, kept=1.0, dropped=2.0)
+        code = handle_baseline_flags(
+            _args(baseline=str(baseline)),
+            observed={SCENARIO: {"kept": 1.0}},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        assert code == EXIT_REGRESSION
+
+    def test_a_complete_matching_run_still_passes(self, tmp_path: Path) -> None:
+        """The conditional half: tightening the gate must not fail a good run.
+
+        Without this, deleting the diff branch outright would pass every test
+        above.
+        """
+        baseline = self._baseline(tmp_path, kept=1.0, other=2.0)
+        code = handle_baseline_flags(
+            _args(baseline=str(baseline)),
+            observed={SCENARIO: {"kept": 1.0, "other": 2.0}},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        assert code == EXIT_OK
+
+    def test_an_unknown_scenario_key_names_itself(self, tmp_path: Path) -> None:
+        """A caller typo raises with the key, not a bare KeyError traceback."""
+        baseline = self._baseline(tmp_path, metric=1.0)
+        with pytest.raises(KeyError, match="absent from the observed metrics"):
+            handle_baseline_flags(
+                _args(baseline=str(baseline)),
+                observed={"a_different_scenario": {"metric": 1.0}},
+                scenario_name=SCENARIO,
+                stable_filter=dict,
+            )
+
+    def test_both_flags_together_is_refused(self, tmp_path: Path) -> None:
+        """Record and diff are opposite intents; silently picking one is worse."""
+        baseline = self._baseline(tmp_path, metric=1.0)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            handle_baseline_flags(
+                _args(baseline=str(baseline), record_baseline=str(tmp_path / "new.json")),
+                observed={SCENARIO: {"metric": 1.0}},
+                scenario_name=SCENARIO,
+                stable_filter=dict,
+            )
+
+
+class TestTheGateOutputIsReadable:
+    """The report an operator reads when a gate fails must name the cause.
+
+    Before this, three of the four call sites printed a raw dataclass ``repr``
+    because they probed ``hasattr(report, "summary")`` and no such method
+    existed -- a permanently-false branch that hid ``missing_in_observed``,
+    the field the exit code now turns on, inside a one-line repr.
+    """
+
+    def test_a_missing_metric_is_named_in_the_printed_report(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The failing metric appears, flagged, in what the gate prints."""
+        path = tmp_path / "baseline.json"
+        handle_baseline_flags(
+            _args(record_baseline=str(path)),
+            observed={SCENARIO: {"headline_metric": 1.0}},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        capsys.readouterr()
+        handle_baseline_flags(
+            _args(baseline=str(path)),
+            observed={SCENARIO: {}},
+            scenario_name=SCENARIO,
+            stable_filter=dict,
+        )
+        out = capsys.readouterr().out
+        assert "MISSING IN RUN" in out
+        assert "headline_metric" in out
+        assert "1 missing" in out
+        assert "ScenarioRegressionReport(" not in out, "printed the raw dataclass repr"

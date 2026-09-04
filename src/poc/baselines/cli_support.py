@@ -27,11 +27,21 @@ import argparse
 from collections.abc import Callable, Iterable, Mapping
 from typing import Final
 
+import structlog
+
 from src.poc.baselines.registry import ObservedMetrics, ScenarioBaselineRegistry
 
+logger = structlog.get_logger(__name__)
+
 #: Default per-metric regression tolerance, in percent, when recording a
-#: baseline. Matches the value the two pre-existing scripts already used, so
-#: adopting this helper changes no recorded document.
+#: baseline. This is the value ``scripts/run_transfer_baseline_compare.py`` and
+#: ``scripts/run_lshape_amr.py`` record with;
+#: ``scripts/run_stochastic_galerkin_compare.py`` deliberately records with
+#: ``STOCHASTIC_TOLERANCE_PCT`` (25.0) instead, passed through
+#: ``add_baseline_arguments(default_tolerance_pct=...)``. The per-harness value
+#: is a *policy* decision about how noisy that harness's metrics are, so it is
+#: a parameter rather than a constant -- adopting this helper must never move a
+#: recorded document's tolerance.
 DEFAULT_CLI_TOLERANCE_PCT: Final[float] = 15.0
 
 #: Exit code for "no regression" (also used for a successful record).
@@ -117,13 +127,37 @@ def handle_baseline_flags(
 
     Returns:
         ``EXIT_OK`` after recording, ``EXIT_REGRESSION`` if recording selected no
-        metrics, ``EXIT_OK``/``EXIT_REGRESSION`` after a diff, or ``None`` when
-        neither flag was given -- in which case the caller falls through to its
-        own acceptance-threshold verdict. Returning ``None`` rather than
-        ``EXIT_OK`` is what keeps that verdict reachable: collapsing the two
-        would make every run exit 0.
+        metrics, ``EXIT_OK``/``EXIT_REGRESSION`` after a diff (clean means every
+        baseline entry was observed *and* none regressed -- see
+        :attr:`~src.poc.baselines.registry.ScenarioRegressionReport.is_clean`),
+        or ``None`` when neither flag was given -- in which case the caller
+        falls through to its own acceptance-threshold verdict. Returning
+        ``None`` rather than ``EXIT_OK`` is what keeps that verdict reachable:
+        collapsing the two would make every run exit 0.
+
+    Raises:
+        ValueError: Both ``--record-baseline`` and ``--baseline`` were given.
+        KeyError: *scenario_name* is absent from *observed*.
 
     """
+    if args.record_baseline and args.baseline:
+        # Silently letting record win would run the *opposite* of what the
+        # caller asked for half the time, and exit 0 either way.
+        raise ValueError(
+            "--record-baseline and --baseline are mutually exclusive: "
+            "recording writes a new baseline, diffing gates against an existing one."
+        )
+
+    if scenario_name not in observed:
+        # A bare KeyError here reads as an internal fault. Naming the key turns
+        # a traceback into a diagnosis -- and this is reachable from a caller
+        # typo, not just from a broken run.
+        raise KeyError(
+            f"scenario {scenario_name!r} is absent from the observed metrics "
+            f"(saw {sorted(observed)}); the harness and the baseline disagree "
+            f"about the scenario name."
+        )
+
     if args.record_baseline:
         selected = stable_filter(observed[scenario_name])
         if not selected:
@@ -134,6 +168,13 @@ def handle_baseline_flags(
             # the same vacuity class as a coverage gate whose target is swallowed
             # by `omit`. `poc.cli record-baseline` already refuses this case; the
             # shared helper must not be the way around it.
+            logger.error(
+                "scenario_baseline_record_refused",
+                scenario=scenario_name,
+                path=str(args.record_baseline),
+                n_metrics_available=len(observed[scenario_name]),
+                reason="stable_filter_selected_nothing",
+            )
             print(
                 f"\nNo stable metrics selected for {scenario_name!r} "
                 f"(of {len(observed[scenario_name])} recorded); refusing to write an "
@@ -156,7 +197,20 @@ def handle_baseline_flags(
         registry = ScenarioBaselineRegistry.load(args.baseline)
         report = registry.compare(observed, baseline_path=args.baseline)
         print("\nRegression diff vs baseline:")
-        print(report.summary() if hasattr(report, "summary") else report)
-        return EXIT_REGRESSION if report.has_regressions else EXIT_OK
+        print(report.summary())
+        logger.info(
+            "scenario_baseline_gate",
+            scenario=scenario_name,
+            path=str(args.baseline),
+            n_regressions=len(report.regressions),
+            n_missing=len(report.missing_in_observed),
+            missing=list(report.missing_in_observed),
+            is_clean=report.is_clean,
+        )
+        # `is_clean`, not `not has_regressions`. A scenario that raised returns
+        # `metrics={}`, so every baseline entry lands in `missing_in_observed`,
+        # `regressions` is empty, and gating on regressions alone exits 0 on a
+        # crashed run -- a gate that reports green having compared nothing.
+        return EXIT_OK if report.is_clean else EXIT_REGRESSION
 
     return None

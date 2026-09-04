@@ -381,17 +381,11 @@ def cmd_diff(args: argparse.Namespace) -> int:
 
     print(f"\nBaseline diff: {args.baseline} vs run {args.run_id}")
     print("=" * 60)
-    for diff in report.diffs:
-        print(
-            f"  [{diff.status:>9}] {diff.key}: "
-            f"{diff.baseline_value:.6g} -> {diff.observed_value:.6g} "
-            f"({diff.delta_pct:+.1f}% vs ±{diff.tolerance_pct:.1f}%)"
-        )
-    if report.missing_in_observed:
-        print(f"\n  Missing in run: {', '.join(report.missing_in_observed)}")
-    print("\n" + "=" * 60)
-    print(f"{len(report.regressions)} regression(s), {len(report.improvements)} improvement(s).")
-    return 1 if report.has_regressions else 0
+    print(report.summary())
+    print("=" * 60)
+    # `is_clean`, not `not has_regressions`: a run that produced none of the
+    # baseline's metrics has zero regressions and is not a passing gate.
+    return 0 if report.is_clean else 1
 
 
 def cmd_eval_harness(args: argparse.Namespace) -> int:

@@ -52,11 +52,13 @@ from tests.support.workflows import (
     MAKEFILE,
     REPO_ROOT,
     WORKFLOW_DIR,
+    UnbalancedQuoteError,
     iter_commands,
     iter_run_scripts,
     makefile_commands,
     makefile_target_recipe,
     strip_recipe_prefixes,
+    strip_shell_comments,
 )
 
 PYPROJECT = REPO_ROOT / "pyproject.toml"
@@ -405,3 +407,73 @@ class TestMakeRecipePrefixes:
             for identifier in marker_identifiers(expression)
         ]
         assert "slow" in identifiers
+
+
+class TestShellCommentStripping:
+    """``strip_shell_comments`` -- Copilot review, PR #144.
+
+    Two ways the earlier version misread real shell, both of which change what
+    the guards in this repo see. Neither altered the parse of the live
+    ``ci.yml``/``Makefile`` (verified: all 417 parsed commands byte-identical
+    before and after), so these are latent gaps rather than live defects -- but
+    a parser that *can* silently misread is the same defect class the guards
+    exist to catch, and it is cheaper to close than to remember.
+    """
+
+    def test_a_comment_after_a_separator_is_stripped(self) -> None:
+        """``cmd;#c`` is a comment in shell, and must not survive as command text.
+
+        This is the dangerous direction: ``iter_commands`` splits on ``;``,
+        ``&&`` and ``|``, so a retained comment comes back as its own "command".
+        A commented-out ``pytest tests/e2e/ -m "..."`` would then be read as a
+        live step -- a deleted step could look present, or a third ``-k`` could
+        appear out of prose.
+        """
+        assert strip_shell_comments('echo hi;# pytest tests/e2e/ -m "not e2e"') == "echo hi;"
+        assert strip_shell_comments("true &&#pytest tests/e2e/") == "true &&"
+        assert strip_shell_comments("(#pytest tests/e2e/") == "("
+
+    def test_a_quoted_string_may_span_newlines(self) -> None:
+        r"""Quote state survives a newline, as it does in the shell.
+
+        The opposite direction, and the one that loses coverage: resetting at
+        each ``\\n`` dropped the open-quote state, so the next ``#`` inside the
+        string was cut as a comment along with the rest of the command.
+        """
+        source = 'echo "line1\nline2 # not a comment"\n'
+        assert strip_shell_comments(source) == source
+
+    def test_an_unbalanced_quote_raises_rather_than_guessing(self) -> None:
+        """Desynchronised quote state is reported, not returned.
+
+        Past an unterminated quote every ``#`` is classified by a state that is
+        already wrong, so a best-effort return would be a guard silently reading
+        the wrong commands.
+        """
+        with pytest.raises(UnbalancedQuoteError):
+            strip_shell_comments('echo "unterminated')
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("pytest tests/e2e/  # trailing", "pytest tests/e2e/  "),
+            ('echo "a#b"', 'echo "a#b"'),
+            ("echo 'a#b'", "echo 'a#b'"),
+            ("# whole line\npytest tests/e2e/", "\npytest tests/e2e/"),
+            ("", ""),
+        ],
+    )
+    def test_ordinary_cases_are_unchanged(self, source: str, expected: str) -> None:
+        """The behaviour the fix must not disturb."""
+        assert strip_shell_comments(source) == expected
+
+    def test_the_live_workflows_and_makefile_parse_without_desync(self) -> None:
+        """Every real script parses with balanced quotes.
+
+        A vacuity guard for the raise above: if the live inputs tripped it, the
+        exception would surface here rather than as a mystifying failure inside
+        an unrelated guard.
+        """
+        for run in iter_run_scripts():
+            strip_shell_comments(run.script)
+        assert makefile_commands(), "the Makefile parsed to no commands at all"

@@ -132,13 +132,43 @@ def job_needs(document: dict[str, Any], job: str) -> list[str]:
     return []
 
 
+#: Characters after which an unquoted ``#`` begins a comment, in addition to
+#: the start of the script. Whitespace is the common case; the shell
+#: metacharacters matter because ``cmd;#c`` and ``cmd &&#c`` are comments too,
+#: and treating them as command text is not merely untidy -- ``iter_commands``
+#: splits on those same separators, so the comment would come back as its own
+#: "command". A commented-out ``pytest tests/e2e/ -m "..."`` would then be read
+#: by the guards as a live step: a deleted step could look present, or a third
+#: ``-k`` could appear from prose. (Copilot review, PR #144.)
+COMMENT_START_PREDECESSORS: Final[frozenset[str]] = frozenset(" \t\n;&|(")
+
+
+class UnbalancedQuoteError(ValueError):
+    """A script ended inside an unterminated quote.
+
+    Raised rather than returning a best-effort parse: an unbalanced quote means
+    the scan's idea of "quoted" has desynchronised from the source, so every
+    ``#`` after that point is classified by a state that is already wrong. A
+    guard built on that would under- or over-cover silently, which is the exact
+    failure this module exists to make impossible.
+    """
+
+
 def strip_shell_comments(script: str) -> str:
-    """Remove ``#`` comments from a shell script without touching quoted text.
+    r"""Remove ``#`` comments from a shell script without touching quoted text.
 
     Naive ``line.split("#")`` would truncate ``echo "a#b"`` and, worse, would
     *keep* a ``-m`` expression that only appears inside prose. Quote state is
     tracked so an apostrophe in a comment cannot desynchronise the scan --
     the comment is cut before its contents are ever examined.
+
+    Quote state spans newlines, as it does in the shell. An earlier version
+    reset it at every ``\\n``, which silently **truncated** any command carrying
+    a quoted string across lines: the reopened-quote state was lost, so the next
+    ``#`` inside that string was cut as a comment along with everything after
+    it. Tracking across lines is what the shell actually does; the cost is that
+    a genuinely unbalanced quote now desynchronises the rest of the scan, which
+    is why that case raises instead of being returned quietly.
 
     Args:
         script: Raw shell source.
@@ -146,31 +176,40 @@ def strip_shell_comments(script: str) -> str:
     Returns:
         ``script`` with comment text replaced by nothing, newlines preserved.
 
+    Raises:
+        UnbalancedQuoteError: The script ends inside a quote.
+
     """
     out: list[str] = []
     in_single = False
     in_double = False
     index = 0
-    at_token_start = True
+    previous = "\n"  # start-of-script behaves like a fresh line
     while index < len(script):
         char = script[index]
-        if char == "\n":
-            in_single = in_double = False
-            at_token_start = True
-            out.append(char)
-            index += 1
-            continue
         if char == "'" and not in_double:
             in_single = not in_single
         elif char == '"' and not in_single:
             in_double = not in_double
-        elif char == "#" and not in_single and not in_double and at_token_start:
+        elif (
+            char == "#"
+            and not in_single
+            and not in_double
+            and previous in COMMENT_START_PREDECESSORS
+        ):
             while index < len(script) and script[index] != "\n":
                 index += 1
+            previous = "\n"
             continue
-        at_token_start = char.isspace()
+        previous = char
         out.append(char)
         index += 1
+    if in_single or in_double:
+        quote = "'" if in_single else '"'
+        raise UnbalancedQuoteError(
+            f"script ends inside an unterminated {quote} quote; comment stripping "
+            "cannot be trusted past that point"
+        )
     return "".join(out)
 
 

@@ -574,3 +574,100 @@ class TestPostToolUseHooks:
             check=False,
         )
         assert result.returncode == 0
+
+
+class TestTheHarnessIsActuallyTracked:
+    """Every harness file this suite validates must be in git.
+
+    The suite reads `.claude/` from **disk**, which is right -- it is validating
+    executable configuration, not a manifest. But it means a file that exists
+    locally and is excluded from the repository passes every assertion here and
+    is absent from CI's checkout, the Docker context, and every other
+    contributor's tree.
+
+    That is not hypothetical. `.gitignore` carried `.claude/agents/` under
+    "Local workspace scratch & tooling" while **five** agent files were already
+    tracked and validated. The rule did nothing for those and silently dropped
+    every new one: `git add -A` skipped it, the local suite passed, and CI failed
+    on a checkout missing the file. Found by the inventory guard on its first
+    real run, at the cost of one red build.
+
+    Same class as every invisibility defect recorded in CLAUDE.md -- something
+    that looks present and is not -- so it gets a check rather than a comment.
+    """
+
+    #: Harness directories whose contents are validated by this suite, and must
+    #: therefore reach every checkout. Kept explicit rather than globbing
+    #: `.claude/*` so a genuinely-local subdirectory can be added later with a
+    #: deliberate decision instead of an accidental one.
+    TRACKED_HARNESS_DIRS: tuple[str, ...] = (
+        ".claude/agents",
+        ".claude/skills",
+        ".claude/commands",
+        ".claude/hooks",
+    )
+
+    @staticmethod
+    def _tracked_paths() -> set[str]:
+        listing = subprocess.run(
+            ["git", "ls-files", ".claude"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            timeout=HOOK_RUN_TIMEOUT_S,
+            check=True,
+        )
+        return {line.strip() for line in listing.stdout.splitlines() if line.strip()}
+
+    def test_git_reports_tracked_harness_files(self) -> None:
+        """Vacuity guard: a broken `git ls-files` would pass everything below."""
+        assert self._tracked_paths(), "git ls-files .claude returned nothing"
+
+    @pytest.mark.parametrize("directory", TRACKED_HARNESS_DIRS)
+    def test_every_file_on_disk_is_tracked(self, directory: str) -> None:
+        """A harness file present locally but absent from git is invisible."""
+        root = REPO_ROOT / directory
+        assert root.is_dir(), f"{directory} does not exist; the check would be vacuous"
+
+        on_disk = {
+            str(path.relative_to(REPO_ROOT))
+            for path in root.rglob("*")
+            if path.is_file() and "__pycache__" not in path.parts
+        }
+        assert on_disk, f"{directory} is empty; the check would be vacuous"
+
+        untracked = sorted(on_disk - self._tracked_paths())
+        assert not untracked, (
+            f"{untracked} exist under {directory} but are not tracked by git, so "
+            f"they are absent from CI's checkout while this suite -- which reads "
+            f"from disk -- passes locally. Check .gitignore: `git add -f <path>` "
+            f"is a workaround, removing the ignore rule is the fix."
+        )
+
+    @pytest.mark.parametrize("directory", TRACKED_HARNESS_DIRS)
+    def test_the_directory_is_not_gitignored(self, directory: str) -> None:
+        """The rule itself, not only its current effect.
+
+        A directory can be fully tracked *today* via ``git add -f`` while still
+        being ignored, so the next file added to it silently disappears. This
+        catches the rule; the test above catches the symptom.
+        """
+        # `--no-index` is load-bearing, not defensive. Without it `check-ignore`
+        # skips paths that are already TRACKED -- which is exactly the state a
+        # `git add -f` workaround leaves behind, i.e. the one this test exists to
+        # detect. Verified: with the rule restored, the bare form returns 1
+        # ("not ignored") and this assertion passes; `--no-index` returns 0 and
+        # it fails. The first draft of this test used the bare form and could not
+        # fail -- caught by its own mutation check, which is why it is written
+        # down here.
+        checked = subprocess.run(
+            ["git", "check-ignore", "--no-index", "-q", directory],
+            cwd=REPO_ROOT,
+            timeout=HOOK_RUN_TIMEOUT_S,
+            check=False,
+        )
+        assert checked.returncode != 0, (
+            f"{directory} is matched by a .gitignore rule while this suite "
+            f"validates its contents. Every new file added there will be dropped "
+            f"by `git add -A` and missing from CI."
+        )

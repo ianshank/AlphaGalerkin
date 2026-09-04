@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import yaml
 
@@ -216,6 +216,35 @@ def iter_commands(script: str) -> list[str]:
 
 _MAKE_TARGET = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)\s*:(?!=)")
 
+#: Make's recipe-line prefixes, stripped before the line is treated as a shell
+#: command. ``@`` silences the echo, ``-`` ignores a non-zero exit, ``+`` forces
+#: execution under ``-n``; none is part of the command Make actually runs.
+#:
+#: Leaving them in place is not cosmetic. ``tests/docs/test_marker_vocabulary.py``
+#: decides whether an unquoted ``-m`` is a marker expression by looking at the
+#: *program token*, so a recipe written ``@$(PYTEST) ... -m "..."`` would present
+#: as the program ``@$(PYTEST)``, fail the pytest check, and be skipped -- a
+#: guard that silently covers less than it claims, which is the exact defect
+#: class this whole change exists to prevent. Two such lines are live in the
+#: Makefile today (the `test-substrate` printf and the `gitleaks` if-block).
+MAKE_RECIPE_PREFIXES: Final[str] = "@-+"
+
+
+def strip_recipe_prefixes(line: str) -> str:
+    """Remove Make's leading recipe prefixes from a recipe line.
+
+    Make allows any combination of ``@``, ``-`` and ``+`` in any order at the
+    start of a recipe line, so this strips repeatedly rather than once.
+
+    Args:
+        line: A recipe line with its leading tab already removed.
+
+    Returns:
+        The shell command Make would run.
+
+    """
+    return line.lstrip(MAKE_RECIPE_PREFIXES)
+
 
 def makefile_target_recipe(target: str, makefile: Path = MAKEFILE) -> list[str]:
     """The recipe lines of one Makefile target.
@@ -240,7 +269,7 @@ def makefile_target_recipe(target: str, makefile: Path = MAKEFILE) -> list[str]:
         if not collecting:
             continue
         if line.startswith("\t"):
-            recipe.append(line[1:])
+            recipe.append(strip_recipe_prefixes(line[1:]))
         elif line.strip() == "" or line.lstrip().startswith("#"):
             continue
         else:
@@ -259,7 +288,10 @@ def makefile_commands(makefile: Path = MAKEFILE) -> list[str]:
 
     """
     text = makefile.read_text(encoding="utf-8")
-    dedented = "\n".join(line[1:] if line.startswith("\t") else line for line in text.splitlines())
+    dedented = "\n".join(
+        strip_recipe_prefixes(line[1:]) if line.startswith("\t") else line
+        for line in text.splitlines()
+    )
     return iter_commands(dedented)
 
 

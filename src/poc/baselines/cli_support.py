@@ -116,15 +116,31 @@ def handle_baseline_flags(
         description: Free-text label stored in the recorded document.
 
     Returns:
-        ``EXIT_OK`` after recording, ``EXIT_OK``/``EXIT_REGRESSION`` after a
-        diff, or ``None`` when neither flag was given -- in which case the
-        caller falls through to its own acceptance-threshold verdict. Returning
-        ``None`` rather than ``EXIT_OK`` is what keeps that verdict reachable:
-        collapsing the two would make every run exit 0.
+        ``EXIT_OK`` after recording, ``EXIT_REGRESSION`` if recording selected no
+        metrics, ``EXIT_OK``/``EXIT_REGRESSION`` after a diff, or ``None`` when
+        neither flag was given -- in which case the caller falls through to its
+        own acceptance-threshold verdict. Returning ``None`` rather than
+        ``EXIT_OK`` is what keeps that verdict reachable: collapsing the two
+        would make every run exit 0.
 
     """
     if args.record_baseline:
-        stable = {scenario_name: stable_filter(observed[scenario_name])}
+        selected = stable_filter(observed[scenario_name])
+        if not selected:
+            # An empty baseline is worse than no baseline: `compare` has nothing
+            # to check, so every later `--baseline` run exits 0 and the gate
+            # reports green while measuring nothing. That happens silently the
+            # moment a metric is renamed and `stable_filter` stops matching --
+            # the same vacuity class as a coverage gate whose target is swallowed
+            # by `omit`. `poc.cli record-baseline` already refuses this case; the
+            # shared helper must not be the way around it.
+            print(
+                f"\nNo stable metrics selected for {scenario_name!r} "
+                f"(of {len(observed[scenario_name])} recorded); refusing to write an "
+                f"empty baseline to {args.record_baseline}."
+            )
+            return EXIT_REGRESSION
+        stable = {scenario_name: selected}
         registry = ScenarioBaselineRegistry.from_observed(
             stable,
             higher_better_metrics=tuple(higher_better_metrics),

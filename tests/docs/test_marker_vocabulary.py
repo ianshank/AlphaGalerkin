@@ -48,12 +48,15 @@ from tests.support.marker_expr import (
     parse_terms,
 )
 from tests.support.workflows import (
+    MAKE_RECIPE_PREFIXES,
     MAKEFILE,
     REPO_ROOT,
     WORKFLOW_DIR,
     iter_commands,
     iter_run_scripts,
     makefile_commands,
+    makefile_target_recipe,
+    strip_recipe_prefixes,
 )
 
 PYPROJECT = REPO_ROOT / "pyproject.toml"
@@ -339,3 +342,66 @@ class TestTermParsing:
         assert expression_selects_plainly("", "e2e")
         assert not expression_selects_plainly("fem_required and not gpu_required", "e2e")
         assert not expression_selects_plainly("not slow and not e2e", "e2e")
+
+
+class TestMakeRecipePrefixes:
+    """``strip_recipe_prefixes`` -- Copilot review, PR #144.
+
+    Make allows ``@`` (silence), ``-`` (ignore errors) and ``+`` (run under -n)
+    in any combination at the start of a recipe line; none is part of the command
+    Make runs. The parsers here removed only the leading tab, so such a line was
+    handed on as e.g. ``@$(PYTEST) ... -m "..."``.
+
+    That is not cosmetic for this file. ``_marker_terms`` decides whether an
+    *unquoted* ``-m`` is a marker expression by inspecting the program token, so
+    a prefixed recipe would fail that check and be skipped -- the vocabulary
+    guard would silently cover less than it claims, which is precisely the defect
+    class this whole change exists to prevent.
+    """
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            ("@printf 'x'", "printf 'x'"),
+            ("-rm -f coverage.xml", "rm -f coverage.xml"),
+            ("+$(MAKE) sub", "$(MAKE) sub"),
+            ("@-+echo combined", "echo combined"),
+            ("pytest -m e2e", "pytest -m e2e"),
+            ("", ""),
+        ],
+    )
+    def test_strips_every_prefix_combination(self, line: str, expected: str) -> None:
+        """Prefixes are removed; an unprefixed command is untouched."""
+        assert strip_recipe_prefixes(line) == expected
+
+    def test_no_parsed_makefile_command_retains_a_prefix(self) -> None:
+        """On the real Makefile, no parsed command still starts with a prefix.
+
+        The live inputs are the ``test-substrate`` ``@printf`` and the
+        ``gitleaks`` ``@if`` block. Reverting the fix makes both reappear here.
+        """
+        prefixed = [
+            command
+            for command in makefile_commands()
+            if command[:1] in set(MAKE_RECIPE_PREFIXES) and command
+        ]
+        assert prefixed == []
+
+    def test_a_prefixed_pytest_recipe_is_still_scanned(self, tmp_path: Path) -> None:
+        """A ``@``-prefixed pytest recipe must not vanish from the vocabulary scan.
+
+        The regression this guards: with the prefix left on, the program token is
+        ``@pytest``, the unquoted-``-m`` rule rejects it, and a typo'd marker in
+        such a recipe would go unreported.
+        """
+        makefile = tmp_path / "Makefile"
+        makefile.write_text('prefixed:\n\t@pytest tests/ -m "not slow"\n', encoding="utf-8")
+        commands = makefile_target_recipe("prefixed", makefile)
+        assert commands, "the prefixed recipe was not parsed at all"
+        identifiers = [
+            identifier
+            for command in commands
+            for expression in marker_expressions(command)
+            for identifier in marker_identifiers(expression)
+        ]
+        assert "slow" in identifiers

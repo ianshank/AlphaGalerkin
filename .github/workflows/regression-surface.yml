@@ -12,10 +12,28 @@
 # regression surfaces are documented to depend on actually change. The
 # narrow scope keeps the feedback loop fast for surface-affecting PRs.
 #
-# Maintenance: when CLAUDE.md's regression-surface table gains or loses
-# a row, update this workflow's `paths:` filter and `jobs:` accordingly.
-# A drift between CLAUDE.md and this workflow is itself a regression to
-# call out in review.
+# SCOPE, stated accurately (corrected 2026-09-04): this workflow mirrors a
+# NAMED SUBSET of that table, not the whole of it. Measured: the table has
+# ~70 rows; this workflow has 9 jobs covering five surfaces -- the
+# AlphaGalerkin solver, the trained PDE evaluator, the PDE end-to-end loop,
+# the MCTS evaluator protocol, and Noyron HX. The header previously implied
+# a one-to-one mirror and instructed maintainers to keep the two in step,
+# which had not been true for a long time: `src/research/substrates/**`,
+# `src/refinement/**`, `src/poc/baselines/**`, `src/research/baselines.py`,
+# `src/pde/stochastic/**` and `src/integrations/lm_studio/**` all have rows
+# in the table and no `paths:` entry here.
+#
+# That is a documentation defect, NOT a coverage hole, and the distinction
+# matters: ci.yml's fast lane runs `tests/` broadly on every push, so those
+# surfaces DO run on every commit. This workflow is a supplementary
+# fast-feedback lane for five specific surfaces, and widening `paths:`
+# without adding matching `jobs:` would only re-run these five jobs on
+# unrelated changes -- noise, not coverage.
+#
+# Maintenance: when adding a job here, add its `paths:` entry in the same
+# change. When adding a row to CLAUDE.md's table, decide deliberately
+# whether it earns a job here; if not, it is still covered by ci.yml.
+# See CLAUDE.md's Next Steps for the docketed follow-up.
 
 name: Regression Surface
 

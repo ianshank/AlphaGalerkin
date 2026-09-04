@@ -99,6 +99,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Recorded, not fixed
 
+- **Running the E2E tier whole surfaced a pre-existing memory leak.** Traced with a 2 s RSS
+  sampler over the full 136-test selection: the pytest **parent** holds flat at **594 MB**
+  through the three new subprocess-driven journeys (t=0-113 s), jumps to **2,125 MB** the moment
+  `test_chess_engine_e2e.py` starts (pre-existing, 29 in-process tests), and then climbs
+  monotonically to **13.2 GB**, never releasing. Two separate full runs were OOM-killed
+  (SIGKILL, exit 137) at ~84%, at slightly different tests -- the signature of a cumulative
+  allocation plus whatever peak lands on top, not one greedy test. The new journeys do not leak
+  (the substrate journey measured alone peaks at 1.1 GB in 8 s), and a first hypothesis --
+  captured subprocess output -- was measured and **disproved**: each child emits 4-20 KB, ~3 MB
+  across the tier, three orders of magnitude short. It was invisible because the directory was
+  never run whole: CI ran exactly one of these files, alone, in the chess job. Root-causing it
+  is chess/MCTS work, not E2E-test work. Consequence worth stating plainly: `test-e2e` is
+  blocking, so a runner without headroom for that peak will fail it; the mitigation would be
+  splitting the one pytest invocation into two steps (two processes, memory released between),
+  which is a workaround and would be labelled as one.
+
 - **No shipped command produces a PDE-consumable checkpoint.** `scripts/train.py +game=pde_basis`
   crashes in `src/modeling/embeddings.py` with a tensor-shape mismatch, because
   `config/train_fast.yaml`'s `operator.input_channels` is Go-shaped (17) and nothing reconciles

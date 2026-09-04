@@ -467,7 +467,49 @@ Same convention as §0.1: the wrong statement stays, marked.
 | `test_checkpoint_lifecycle_journey.py` | 4 passed, 1 xfailed | 22 s |
 | `tests/docs/` (incl. both new guards) | 178 passed | ~2 s |
 
-### 12.4 Deliberately still open
+### 12.4 A memory finding the wiring surfaced
+
+Running the tier **whole** — which nothing had ever done — exposed a pre-existing
+leak that has nothing to do with the new journeys.
+
+Traced with a 2-second RSS sampler over the full 136-test selection on a 4-CPU,
+16 GB container:
+
+| Point in the run | pytest **parent** RSS |
+| --- | --- |
+| t=0–113 s, through `test_adaptive_vs_uniform_journey`, `test_agents_cli_journey`, `test_baseline_gate_journey` (all new, all subprocess-driven) | **flat at 594 MB** |
+| t=203 s, `test_chess_engine_e2e.py` starts (pre-existing, 29 in-process tests) | **2,125 MB** |
+| t=219 s, `test_chess_training_e2e.py` (pre-existing) | 2,913 MB |
+| ... monotonic from there, never releasing ... | |
+| t=461 s, `test_quick_validation_journey.py` | **13,093 MB** |
+
+Peak parent 13.2 GB; the run was OOM-killed (SIGKILL, exit 137) at ~84% on two
+separate attempts, at slightly different tests — the signature of a cumulative
+allocation plus whatever peak lands on top, not of one greedy test.
+
+What this does and does not say:
+
+- **The new journeys do not leak.** Run first, all three subprocess-driven files
+  hold the parent flat at 594 MB for nearly two minutes. The substrate journey
+  measured alone peaks at 1.1 GB and finishes in 8 s.
+- **The growth begins exactly at the first in-process file** and continues
+  regardless of what runs afterwards, which is consistent with the allocator not
+  returning freed pages rather than with a single runaway test.
+- **A first hypothesis was wrong and is recorded as such**: captured subprocess
+  output. Measured, each child emits 4–20 KB, ~3 MB across the tier — three
+  orders of magnitude short. Not the cause.
+- **It was invisible because the directory was never run whole.** CI ran exactly
+  one of these files, alone, in the chess job. This is the same shape as the
+  finding in §0: the defect and the reason nobody saw it are the same fact.
+
+Root-causing it is chess/MCTS work, not E2E-test work, so it is **recorded, not
+fixed**. What matters for this change is the consequence: the `test-e2e` job is
+blocking, and a runner with less headroom than the peak will fail it. If that
+happens, the mitigation is to split the single pytest invocation into two steps
+in the same job — two processes, so memory is released in between — and that is
+a workaround to be labelled as one, not a fix.
+
+### 12.5 Deliberately still open
 
 - **No shipped command produces a PDE-consumable checkpoint.**
   `scripts/train.py +game=pde_basis` crashes in `src/modeling/embeddings.py` with a tensor-shape

@@ -261,6 +261,13 @@ def select_primary_l2(config: SubstrateConfig, *, quadrature: float, nodal: floa
     )
 
 
+#: Smallest DOF count a rate-fitting window bound may name. One, not zero: a
+#: window is a range of *mesh sizes*, and a mesh with no degrees of freedom is
+#: not a coarser mesh, it is the absence of one. Named rather than inlined so
+#: the floor is stated once and the validator's message can quote it.
+MIN_RATE_FIT_DOF: Final[float] = 1.0
+
+
 class AdequacyGateConfig(BaseModuleConfig):
     """Thresholds for the substrate adequacy gate (``specs/refinement_substrate.spec.md`` AC7/AC8).
 
@@ -357,12 +364,30 @@ class AdequacyGateConfig(BaseModuleConfig):
 
     @field_validator("uniform_rate_band", "rate_fit_dof_range")
     @classmethod
-    def _low_below_high(cls, value: tuple[float, float]) -> tuple[float, float]:
-        """Reject an inverted or degenerate interval.
+    def _finite_and_ordered(cls, value: tuple[float, float]) -> tuple[float, float]:
+        """Reject a non-finite, inverted or degenerate interval.
 
         An inverted band admits nothing and would make the gate fail on every
         input; a degenerate one admits a single float. Both are configuration
         errors that would otherwise present as a mysterious gate result.
+
+        The finiteness check was added after review (Copilot, PR #144) and is
+        the more valuable half, because a non-finite bound fails *late and
+        somewhere else*. Measured on the pre-fix version, every one of these
+        constructed cleanly:
+
+        * ``rate_fit_dof_range=(200, nan)`` -> ``max_sweep_dof`` raises
+          ``ValueError`` from inside a property, far from the config that caused it;
+        * ``rate_fit_dof_range=(200, inf)`` -> ``OverflowError``, likewise;
+        * ``uniform_rate_band=(nan, -0.55)`` -> constructs, and then *every*
+          comparison against that bound is False, so the band clause silently
+          stops discriminating.
+
+        The ordering check does not catch these: ``nan >= x`` is False, so a NaN
+        bound passes ``low >= high`` unnoticed. That is the same arithmetic that
+        let a NaN *measurement* read as a passing substrate in
+        :func:`~src.research.substrates.sweep.gate_violations`; this closes the
+        configuration side of it.
 
         Args:
             value: The (low, high) pair.
@@ -371,10 +396,78 @@ class AdequacyGateConfig(BaseModuleConfig):
             The validated pair.
 
         Raises:
-            ValueError: If ``low >= high``.
+            ValueError: If either bound is non-finite, or ``low >= high``.
 
         """
         low, high = value
+        for label, bound in (("low", low), ("high", high)):
+            if not math.isfinite(bound):
+                raise ValueError(
+                    f"interval {label} bound must be finite, got {value!r}; a "
+                    f"non-finite bound makes every comparison against it False, "
+                    f"so the gate stops discriminating instead of failing"
+                )
         if low >= high:
             raise ValueError(f"interval low must be < high, got {value!r}")
+        return value
+
+    @field_validator("rate_fit_dof_range")
+    @classmethod
+    def _dof_window_is_positive(cls, value: tuple[float, float]) -> tuple[float, float]:
+        """A DOF window must describe real mesh sizes.
+
+        Separate from the interval check because it applies to only one field: a
+        *rate band* is legitimately negative (a converging method has a negative
+        log-log slope), while a *DOF count* cannot be. Folding them together
+        would either reject valid rate bands or accept a negative budget.
+
+        Measured on the pre-fix version: ``rate_fit_dof_range=(-50, -10)``
+        constructed and yielded ``max_sweep_dof = -10``, a negative budget that
+        stops ``run_refinement_sweep`` at the first level -- producing a "sweep"
+        of one point, which no rate fit can use.
+
+        Args:
+            value: The (low, high) DOF window.
+
+        Returns:
+            The validated window.
+
+        Raises:
+            ValueError: If either bound is not strictly positive.
+
+        """
+        low, high = value
+        if low < MIN_RATE_FIT_DOF or high < MIN_RATE_FIT_DOF:
+            raise ValueError(
+                f"rate_fit_dof_range bounds must be >= {MIN_RATE_FIT_DOF}, got {value!r}; "
+                f"a DOF count is a mesh size, and a non-positive budget stops the "
+                f"sweep before it can produce a fittable trajectory"
+            )
+        return value
+
+    @field_validator("adaptive_rate_min", "adaptive_vs_uniform_max_ratio")
+    @classmethod
+    def _threshold_is_finite(cls, value: float) -> float:
+        """A scalar gate threshold must be a real number.
+
+        Same reasoning as the interval bounds, and the same false-pass risk: the
+        gate compares ``adaptive_rate > adaptive_rate_min``, and if the
+        *threshold* is NaN that comparison is False for every input, so the
+        clause reports no violation on any measurement whatsoever.
+
+        Args:
+            value: The threshold.
+
+        Returns:
+            The validated threshold.
+
+        Raises:
+            ValueError: If *value* is not finite.
+
+        """
+        if not math.isfinite(value):
+            raise ValueError(
+                f"gate threshold must be finite, got {value!r}; a non-finite "
+                f"threshold makes its clause unable to fire"
+            )
         return value

@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.research.substrates.config import (
+    MIN_RATE_FIT_DOF,
     RATE_FIT_MIN_POINTS,
     RATIO_FLOOR,
     AdequacyGateConfig,
@@ -28,6 +29,10 @@ HEALTHY_ADAPTIVE_RATE: float = -1.31
 HEALTHY_UNIFORM_RATE: float = -0.67
 HEALTHY_ERROR_RATIO: float = 0.095
 HEALTHY_MATCHED_DOF: float = 1000.0
+
+#: ``max_sweep_dof`` of the shipped gate. Named so the defaults-still-validate
+#: test asserts the real value rather than merely "it constructed".
+DEFAULT_MAX_SWEEP_DOF: int = 4000
 
 
 class TestSubstrateConfigDefaults:
@@ -361,3 +366,96 @@ class TestTheAdequacyGateRejectsNonFiniteMeasurements:
         """
         violations = gate_violations(self._separation(adaptive_rate=float("nan")))
         assert all("is nan" in v or "not a finite" in v for v in violations), violations
+
+
+class TestTheGateConfigRejectsUnusableThresholds:
+    """A gate whose own thresholds are non-finite cannot fire.
+
+    ``_low_below_high`` checked ordering only, and ``nan >= x`` is False -- so a
+    NaN bound passed the ordering check unnoticed. Same arithmetic that let a
+    NaN *measurement* read as a passing substrate; this is the configuration
+    side of it (Copilot review, PR #144).
+
+    Measured on the pre-fix version, all of these constructed cleanly and failed
+    late somewhere else:
+
+    ============================  =========================================
+    config                        consequence
+    ============================  =========================================
+    ``dof_range=(200, nan)``      ``max_sweep_dof`` raises ``ValueError``
+    ``dof_range=(200, inf)``      ``max_sweep_dof`` raises ``OverflowError``
+    ``dof_range=(-50, -10)``      ``max_sweep_dof = -10`` (negative budget)
+    ``band=(nan, -0.55)``         band clause silently stops discriminating
+    ``adaptive_rate_min=nan``     that clause can never fire
+    ============================  =========================================
+    """
+
+    @staticmethod
+    def _build(**overrides: object) -> AdequacyGateConfig:
+        return AdequacyGateConfig(name="probe", description="probe", **overrides)  # type: ignore[arg-type]
+
+    def test_the_shipped_defaults_still_validate(self) -> None:
+        """The conditional half: validation that rejects everything is not validation."""
+        gate = self._build()
+        assert gate.max_sweep_dof == DEFAULT_MAX_SWEEP_DOF
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.parametrize("position", [0, 1])
+    def test_a_non_finite_interval_bound_is_rejected(self, bad: float, position: int) -> None:
+        """Both fields, both positions, all three non-finite values."""
+        for field, default in (
+            ("uniform_rate_band", (-0.85, -0.55)),
+            ("rate_fit_dof_range", (200.0, 4000.0)),
+        ):
+            bounds = list(default)
+            bounds[position] = bad
+            with pytest.raises(ValidationError, match="finite"):
+                self._build(**{field: tuple(bounds)})
+
+    @pytest.mark.parametrize("window", [(-50.0, -10.0), (0.0, 4000.0), (0.0, 0.5)])
+    def test_a_non_positive_dof_window_is_rejected(self, window: tuple[float, float]) -> None:
+        """A DOF count is a mesh size; zero degrees of freedom is not a mesh."""
+        with pytest.raises(ValidationError, match=str(int(MIN_RATE_FIT_DOF))):
+            self._build(rate_fit_dof_range=window)
+
+    def test_a_negative_rate_band_is_still_accepted(self) -> None:
+        """The positivity rule must not leak onto the rate fields.
+
+        A converging method has a *negative* log-log slope, so a negative
+        ``uniform_rate_band`` is correct and must survive. Folding the two checks
+        into one validator would reject it -- which is why they are separate.
+        """
+        gate = self._build(uniform_rate_band=(-2.0, -0.1), adaptive_rate_min=-1.5)
+        assert gate.uniform_rate_band == (-2.0, -0.1)
+        assert gate.adaptive_rate_min == -1.5
+
+    @pytest.mark.parametrize("field", ["adaptive_rate_min", "adaptive_vs_uniform_max_ratio"])
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_a_non_finite_scalar_threshold_is_rejected(self, field: str, bad: float) -> None:
+        """A NaN threshold makes its clause False for every input, forever.
+
+        Rejection is asserted, not the *message*: the two fields are caught by
+        different layers. ``adaptive_vs_uniform_max_ratio`` carries ``gt=0``, and
+        pydantic's own bound rejects a NaN before the finiteness validator runs;
+        ``adaptive_rate_min`` is unbounded (a convergence rate is legitimately
+        negative), so only the validator stands between it and a clause that can
+        never fire. Asserting one shared message would either be false for one
+        field or force a bound onto a field that must not have one.
+        """
+        with pytest.raises(ValidationError):
+            self._build(**{field: bad})
+
+    def test_the_unbounded_rate_threshold_is_caught_by_the_finiteness_validator(self) -> None:
+        """Pin which layer protects ``adaptive_rate_min`` specifically.
+
+        Without this, the parametrised test above would still pass if the
+        finiteness validator were deleted and someone added a bound to the ratio
+        field -- the field with no bound would silently lose its only guard.
+        """
+        with pytest.raises(ValidationError, match="finite"):
+            self._build(adaptive_rate_min=float("nan"))
+
+    def test_an_inverted_interval_is_still_rejected(self) -> None:
+        """The original ordering check must survive the finiteness addition."""
+        with pytest.raises(ValidationError, match="low must be < high"):
+            self._build(uniform_rate_band=(-0.55, -0.85))

@@ -503,11 +503,35 @@ What this does and does not say:
   finding in §0: the defect and the reason nobody saw it are the same fact.
 
 Root-causing it is chess/MCTS work, not E2E-test work, so it is **recorded, not
-fixed**. What matters for this change is the consequence: the `test-e2e` job is
-blocking, and a runner with less headroom than the peak will fail it. If that
-happens, the mitigation is to split the single pytest invocation into two steps
-in the same job — two processes, so memory is released in between — and that is
-a workaround to be labelled as one, not a fix.
+fixed**.
+
+**It did fail on a GitHub runner, and the mitigation is now applied.** Run 863's
+`test-e2e` job died at ~58% with *"The runner has received a shutdown signal"*,
+immediately after the chess files and following a four-minute stall on nine
+trivial config tests — the signature of memory pressure, not of a slow test.
+Every other job in that run passed.
+
+The `test-e2e` job (and `make test-e2e`) therefore runs the tier as **two
+invocations** rather than one, split at the first in-process file. Measured:
+
+| Invocation | Result | Peak RSS |
+| --- | --- | --- |
+| `-k "not chess"` | 103 passed, 1 xfailed, 3:21 | **1,451 MB** |
+| `-k "chess"` | 32 passed, 0:54 | **3,614 MB** |
+| *single process (what failed)* | died at ~58% | **13,649 MB** |
+
+104 + 32 = 136, exactly the marker-selected count, so the partition is complete.
+
+This is a **workaround, labelled as one** in the workflow comment: it caps the
+peak without touching the leak. Two things stop it decaying into a second
+invisibility problem — the partition is exhaustive by construction (`X` and
+`not X`, so no test can fall between the steps), and
+`tests/docs/test_e2e_visibility.py::test_the_e2e_k_partition_is_complete`
+asserts the pair is whole, so deleting one step fails the build instead of
+silently retiring half the tier. Mutation-checked both ways: dropping the chess
+step, and narrowing it to `chess and engine`. When the leak is fixed, collapse
+the steps back into one and delete the partition constant — the guard already
+accepts a single unfiltered step, so that change needs no edit to it.
 
 ### 12.5 Deliberately still open
 

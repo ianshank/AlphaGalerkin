@@ -537,12 +537,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Run E2E journeys
+      # SPLIT INTO TWO INVOCATIONS -- a workaround for a PRE-EXISTING leak, not a
+      # fix, and labelled as one. Running the tier as a single process is what
+      # first exposed it (nothing had ever run this directory whole): the pytest
+      # PARENT climbs monotonically and never releases, and the run dies. On
+      # this runner it failed with "The runner has received a shutdown signal"
+      # after a 4-minute stall on nine trivial config tests; locally it was
+      # OOM-killed (SIGKILL, exit 137) twice at a 13.6 GB peak.
+      #
+      # Measured, which is what picked the split point: the parent holds flat at
+      # 594 MB through the subprocess-driven journeys and jumps the moment the
+      # in-process `test_chess_engine_e2e.py` starts. Splitting there caps each
+      # process at a fraction of the whole:
+      #
+      #     -k "not chess"   103 passed + 1 xfailed, 3:21, peak 1,451 MB
+      #     -k "chess"        32 passed,             0:54, peak 3,614 MB
+      #     (single process)  died,                        peak 13,649 MB
+      #
+      # The partition is exhaustive by construction (X and not-X), and
+      # tests/docs/test_e2e_visibility.py asserts the pair is complete, so
+      # deleting one step cannot silently retire half the tier.
+      #
+      # Root-causing the leak is chess/MCTS work, not E2E-test work; see
+      # docs/E2E_TEST_PLAN.md section 12.4. When it is fixed, collapse these two
+      # steps back into one and delete the partition constant in that guard.
+      - name: Run E2E journeys (excluding the chess suites)
         env:
           E2E_DEVICE: cpu
         run: |
           pytest tests/e2e/ \
             -m "not gpu_required and not fem_required" \
+            -k "not chess" \
+            --tb=short \
+            -q
+
+      - name: Run E2E journeys (chess suites, separate process)
+        env:
+          E2E_DEVICE: cpu
+        run: |
+          pytest tests/e2e/ \
+            -m "not gpu_required and not fem_required" \
+            -k "chess" \
             --tb=short \
             -q
 

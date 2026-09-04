@@ -33,7 +33,9 @@ subprocess, no network. Guards ``docs/E2E_TEST_PLAN.md`` §3 (Phase 0).
 from __future__ import annotations
 
 import ast
+import shlex
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -262,6 +264,29 @@ def e2e_selecting_commands() -> list[tuple[RunScript, str]]:
             expression = effective_marker_expression(command)
             if expression_selects_plainly(expression, E2E_MARKER):
                 found.append((run, expression))
+    return found
+
+
+def e2e_selecting_ci_commands() -> list[tuple[RunScript, str]]:
+    """The same qualifying steps as :func:`e2e_selecting_commands`, as raw commands.
+
+    The sibling returns the *marker* expression, which is what the visibility
+    clauses ask about. The partition clause needs the command text itself, to
+    read its ``-k``.
+
+    Returns:
+        ``(run script, command)`` pairs, one per qualifying command.
+
+    """
+    found: list[tuple[RunScript, str]] = []
+    for run in iter_run_scripts():
+        if run.workflow != CI_WORKFLOW_FILENAME:
+            continue
+        for command in iter_commands(run.script):
+            if not selects_e2e_directory(command):
+                continue
+            if expression_selects_plainly(effective_marker_expression(command), E2E_MARKER):
+                found.append((run, command))
     return found
 
 
@@ -701,3 +726,90 @@ class TestTheGuardItself:
         echoed = 'if [[ "${{ needs.b.result }}" != "success" ]]; then\n  echo "note"\nfi\n'
         assert hard_gate_jobs(gated) == {"a"}
         assert hard_gate_jobs(echoed) == set()
+
+
+# --------------------------------------------------------------------------- #
+# Clause (g): the memory-workaround split must stay exhaustive                 #
+# --------------------------------------------------------------------------- #
+
+#: The ``-k`` partition the `test-e2e` job runs the tier under.
+#:
+#: The tier cannot currently run as a single pytest process: the parent's RSS
+#: climbs monotonically and never releases, so the job dies (on a GitHub runner
+#: with "The runner has received a shutdown signal"; locally OOM-killed at a
+#: 13.6 GB peak). Splitting at the first in-process file caps each process --
+#: measured 1,451 MB and 3,614 MB respectively. See docs/E2E_TEST_PLAN.md 12.4;
+#: the leak is pre-existing chess/MCTS work, not the journeys'.
+#:
+#: The pair is exhaustive by construction (``X`` and ``not X``), so no test can
+#: fall between the two steps. What this constant guards is the *other* failure
+#: mode: deleting one step, which would silently retire half the tier -- exactly
+#: the invisibility this whole file exists to prevent, reintroduced through the
+#: workaround for a different problem.
+E2E_REQUIRED_K_PARTITION: Final[frozenset[str]] = frozenset({"chess", "not chess"})
+
+#: Set when the tier is run by a single unfiltered step. Kept as an accepted
+#: shape so that fixing the leak and collapsing the two steps back into one does
+#: NOT require editing this guard -- only deleting the partition constant.
+E2E_UNFILTERED: Final[frozenset[str]] = frozenset({""})
+
+
+def effective_k_expression(command: str) -> str:
+    """The ``-k`` expression pytest would apply to *command*.
+
+    Mirrors :func:`effective_marker_expression`: pytest keeps the last ``-k``
+    when several are given.
+
+    Args:
+        command: One logical shell command.
+
+    Returns:
+        The expression, or ``""`` when the command has no ``-k``.
+
+    """
+    tokens = shlex.split(command)
+    expression = ""
+    for index, token in enumerate(tokens[:-1]):
+        if token == "-k":
+            expression = tokens[index + 1]
+    return expression
+
+
+def test_the_e2e_k_partition_is_complete() -> None:
+    """Every step running the tier together covers all of it.
+
+    Two accepted shapes: one unfiltered step, or the complementary ``-k`` pair
+    recorded in :data:`E2E_REQUIRED_K_PARTITION`. Anything else -- one half
+    deleted, or a third filter added -- means some journeys run nowhere.
+    """
+    observed = {effective_k_expression(command) for _run, command in e2e_selecting_ci_commands()}
+    assert observed in (E2E_UNFILTERED, E2E_REQUIRED_K_PARTITION), (
+        f"the `-k` filters on the steps running tests/e2e/ are {sorted(observed)!r}, which is "
+        f"neither a single unfiltered step nor the complete partition "
+        f"{sorted(E2E_REQUIRED_K_PARTITION)!r}. Half the tier is running nowhere -- the "
+        "invisibility this file guards, reintroduced through the memory workaround."
+    )
+
+
+class TestKExpressionParsing:
+    """Unit-test the ``-k`` extractor on synthetic input.
+
+    Written because the live data currently has exactly two shapes; a parser
+    that returned ``""`` for everything would satisfy neither branch of the
+    assertion above by accident, but would silently accept a third step.
+    """
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            ('pytest tests/e2e/ -k "not chess"', "not chess"),
+            ("pytest tests/e2e/ -k chess", "chess"),
+            ("pytest tests/e2e/", ""),
+            ('pytest tests/e2e/ -k "a" -k "b"', "b"),
+            ("pytest tests/e2e/ -m e2e", ""),
+            ("pytest -k", ""),
+        ],
+    )
+    def test_reads_the_last_k_expression(self, command: str, expected: str) -> None:
+        """The last ``-k`` wins; a missing or dangling one yields the empty string."""
+        assert effective_k_expression(command) == expected

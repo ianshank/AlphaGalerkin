@@ -110,10 +110,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   captured subprocess output -- was measured and **disproved**: each child emits 4-20 KB, ~3 MB
   across the tier, three orders of magnitude short. It was invisible because the directory was
   never run whole: CI ran exactly one of these files, alone, in the chess job. Root-causing it
-  is chess/MCTS work, not E2E-test work. Consequence worth stating plainly: `test-e2e` is
-  blocking, so a runner without headroom for that peak will fail it; the mitigation would be
-  splitting the one pytest invocation into two steps (two processes, memory released between),
-  which is a workaround and would be labelled as one.
+  is chess/MCTS work, not E2E-test work. **It then failed on a GitHub runner exactly as
+  predicted** -- run 863's `test-e2e` died at ~58% with "The runner has received a shutdown
+  signal", right after the chess files and following a four-minute stall on nine trivial config
+  tests, while every other job in that run passed. The job (and `make test-e2e`) now runs the
+  tier as **two invocations** split at the first in-process file: `-k "not chess"` (103 passed
+  + 1 xfailed, peak **1,451 MB**) and `-k "chess"` (32 passed, peak **3,614 MB**), against
+  **13,649 MB** for the single process that died. 104 + 32 = 136 = the marker-selected count,
+  so the partition is complete. This is a workaround and is labelled as one in the workflow;
+  it caps the peak without touching the leak. Two things keep it from becoming a second
+  invisibility problem: the partition is exhaustive by construction (`X` / `not X`), and
+  `test_the_e2e_k_partition_is_complete` asserts the pair is whole -- mutation-killed by
+  deleting the chess step and by narrowing it to `chess and engine`. The guard already accepts
+  a single unfiltered step, so collapsing the split once the leak is fixed needs no edit to it.
 
 - **No shipped command produces a PDE-consumable checkpoint.** `scripts/train.py +game=pde_basis`
   crashes in `src/modeling/embeddings.py` with a tensor-shape mismatch, because

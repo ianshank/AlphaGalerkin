@@ -10,6 +10,7 @@ constructor arguments.
 
 from __future__ import annotations
 
+import math
 from typing import Final, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -258,3 +259,215 @@ def select_primary_l2(config: SubstrateConfig, *, quadrature: float, nodal: floa
         f"unknown error_metric {config.error_metric!r}; expected "
         f"{ERROR_METRIC_QUADRATURE!r} or {ERROR_METRIC_NODAL_RMS!r}"
     )
+
+
+#: Smallest DOF count a rate-fitting window bound may name. One, not zero: a
+#: window is a range of *mesh sizes*, and a mesh with no degrees of freedom is
+#: not a coarser mesh, it is the absence of one. Named rather than inlined so
+#: the floor is stated once and the validator's message can quote it.
+MIN_RATE_FIT_DOF: Final[float] = 1.0
+
+
+class AdequacyGateConfig(BaseModuleConfig):
+    """Thresholds for the substrate adequacy gate (``specs/refinement_substrate.spec.md`` AC7/AC8).
+
+    Promoted out of ``tests/research/test_amr_arena_interpretability.py``, where
+    these four values and the predicate reading them lived as module constants.
+    That placement made the verdict the spec calls "the gate that makes any
+    comparison meaningful" reachable only from pytest: a caller who ran a sweep
+    through the public API had no way to ask whether the substrate was adequate.
+
+    Every default is byte-identical to the constant it replaces -- this is a
+    move, not a retune. The originating comments are preserved per field because
+    each records a measurement, and a threshold whose provenance is lost is a
+    threshold nobody dares change.
+    """
+
+    #: Uniform P1 L2 rate on the L-shape. Theory gives -2/3; the task-zero spike
+    #: measured -0.710. A rate outside this band **on either side** is a defect:
+    #: too *good* means the reentrant singularity is not actually in the domain
+    #: (AC8's cautionary tale -- a translated mesh produced a confident, entirely
+    #: wrong "adaptive loses on skfem too" result, caught only by this tripwire).
+    uniform_rate_band: tuple[float, float] = Field(
+        default=(-0.85, -0.55),
+        description="Inclusive (low, high) band the uniform arm's log-log rate must land in.",
+    )
+
+    #: Adaptive must reach at least this steep a rate. Spike measured -1.256;
+    #: measured -1.3109 through the production primitives, at the theta the gate
+    #: actually passes (``ComparisonParams.marking_fraction = 0.5``) over
+    #: ``rate_fit_dof_range``. Quote the theta with any rate: the same substrate
+    #: reads -1.31 at theta=0.5 and -1.25 at theta=0.3, so a bare rate is not a
+    #: fact.
+    adaptive_rate_min: float = Field(
+        default=-1.10,
+        description="Adaptive log-log rate must be at least this steep (i.e. <= this value).",
+    )
+
+    #: Adaptive must beat uniform at matched DOF. Below 1.0 means adaptive wins.
+    adaptive_vs_uniform_max_ratio: float = Field(
+        default=1.0,
+        gt=0.0,
+        description="Adaptive/uniform error ratio at matched DOF must be strictly below this.",
+    )
+
+    #: The asymptotic window the rate is fitted over. Below it, neither arm has
+    #: separated yet. Corrected from the spec's originally pinned ``(200, 2600)``,
+    #: which is physically incapable of holding ``RATE_FIT_MIN_POINTS`` uniform
+    #: points: a 2D uniform arm quadruples DOF per level, so a 13x window spans
+    #: at most two of them.
+    rate_fit_dof_range: tuple[float, float] = Field(
+        default=(200.0, 4000.0),
+        description="(low, high) DOF window the log-log rates are fitted over.",
+    )
+
+    #: Level ceilings (runaway guards). Uniform multiplies DOF each level so it
+    #: needs very few; adaptive adds DOF slowly and needs many more.
+    max_levels_uniform: int = Field(
+        default=8, ge=1, description="Refinement levels the uniform control arm may take."
+    )
+    max_levels_adaptive: int = Field(
+        default=40, ge=1, description="Refinement levels the adaptive arm may take."
+    )
+
+    @property
+    def max_sweep_dof(self) -> int:
+        """DOF budget for both arms.
+
+        *Derived* from ``rate_fit_dof_range``'s upper bound rather than retyped,
+        so a sweep stops as soon as it has spanned the fitting window. The
+        coupling previously lived only in a comment, with ``4000`` written twice.
+
+        Returns ``int``, not ``float``: a DOF budget is a count, and
+        ``run_refinement_sweep(max_dof: int)`` types it that way. The fitting
+        *window* stays float because it is interpolated over. ``ceil`` preserves
+        value identity with the module constant this replaced
+        (``MAX_SWEEP_DOF = RATE_FIT_DOF_RANGE[1]`` over an int pair), which is
+        the promotion's whole contract -- a move, not a retune.
+
+        **Rounds up, deliberately.** This was ``int(...)`` until a review flagged
+        the truncation (Copilot, PR #144), and the rounding *direction* is the
+        substantive half of that finding: ``max_dof`` is a stopping threshold
+        (``run_refinement_sweep`` halts once ``n_dof >= max_dof``) derived from
+        the top of the window the rates are fitted over, so the budget has to
+        **span** that window. Truncating rounds the budget down and can stop the
+        sweep just short of covering it -- with too few points at the top, the
+        fit either leans on a shorter lever arm or raises
+        ``InsufficientSweepPointsError``. Rounding up can only overshoot by less
+        than one DOF, which costs nothing.
+
+        Returns:
+            The upper bound of the fitting window, as a DOF count, rounded up.
+
+        """
+        return math.ceil(self.rate_fit_dof_range[1])
+
+    @field_validator("uniform_rate_band", "rate_fit_dof_range")
+    @classmethod
+    def _finite_and_ordered(cls, value: tuple[float, float]) -> tuple[float, float]:
+        """Reject a non-finite, inverted or degenerate interval.
+
+        An inverted band admits nothing and would make the gate fail on every
+        input; a degenerate one admits a single float. Both are configuration
+        errors that would otherwise present as a mysterious gate result.
+
+        The finiteness check was added after review (Copilot, PR #144) and is
+        the more valuable half, because a non-finite bound fails *late and
+        somewhere else*. Measured on the pre-fix version, every one of these
+        constructed cleanly:
+
+        * ``rate_fit_dof_range=(200, nan)`` -> ``max_sweep_dof`` raises
+          ``ValueError`` from inside a property, far from the config that caused it;
+        * ``rate_fit_dof_range=(200, inf)`` -> ``OverflowError``, likewise;
+        * ``uniform_rate_band=(nan, -0.55)`` -> constructs, and then *every*
+          comparison against that bound is False, so the band clause silently
+          stops discriminating.
+
+        The ordering check does not catch these: ``nan >= x`` is False, so a NaN
+        bound passes ``low >= high`` unnoticed. That is the same arithmetic that
+        let a NaN *measurement* read as a passing substrate in
+        :func:`~src.research.substrates.sweep.gate_violations`; this closes the
+        configuration side of it.
+
+        Args:
+            value: The (low, high) pair.
+
+        Returns:
+            The validated pair.
+
+        Raises:
+            ValueError: If either bound is non-finite, or ``low >= high``.
+
+        """
+        low, high = value
+        for label, bound in (("low", low), ("high", high)):
+            if not math.isfinite(bound):
+                raise ValueError(
+                    f"interval {label} bound must be finite, got {value!r}; a "
+                    f"non-finite bound makes every comparison against it False, "
+                    f"so the gate stops discriminating instead of failing"
+                )
+        if low >= high:
+            raise ValueError(f"interval low must be < high, got {value!r}")
+        return value
+
+    @field_validator("rate_fit_dof_range")
+    @classmethod
+    def _dof_window_is_positive(cls, value: tuple[float, float]) -> tuple[float, float]:
+        """A DOF window must describe real mesh sizes.
+
+        Separate from the interval check because it applies to only one field: a
+        *rate band* is legitimately negative (a converging method has a negative
+        log-log slope), while a *DOF count* cannot be. Folding them together
+        would either reject valid rate bands or accept a negative budget.
+
+        Measured on the pre-fix version: ``rate_fit_dof_range=(-50, -10)``
+        constructed and yielded ``max_sweep_dof = -10``, a negative budget that
+        stops ``run_refinement_sweep`` at the first level -- producing a "sweep"
+        of one point, which no rate fit can use.
+
+        Args:
+            value: The (low, high) DOF window.
+
+        Returns:
+            The validated window.
+
+        Raises:
+            ValueError: If either bound is not strictly positive.
+
+        """
+        low, high = value
+        if low < MIN_RATE_FIT_DOF or high < MIN_RATE_FIT_DOF:
+            raise ValueError(
+                f"rate_fit_dof_range bounds must be >= {MIN_RATE_FIT_DOF}, got {value!r}; "
+                f"a DOF count is a mesh size, and a non-positive budget stops the "
+                f"sweep before it can produce a fittable trajectory"
+            )
+        return value
+
+    @field_validator("adaptive_rate_min", "adaptive_vs_uniform_max_ratio")
+    @classmethod
+    def _threshold_is_finite(cls, value: float) -> float:
+        """A scalar gate threshold must be a real number.
+
+        Same reasoning as the interval bounds, and the same false-pass risk: the
+        gate compares ``adaptive_rate > adaptive_rate_min``, and if the
+        *threshold* is NaN that comparison is False for every input, so the
+        clause reports no violation on any measurement whatsoever.
+
+        Args:
+            value: The threshold.
+
+        Returns:
+            The validated threshold.
+
+        Raises:
+            ValueError: If *value* is not finite.
+
+        """
+        if not math.isfinite(value):
+            raise ValueError(
+                f"gate threshold must be finite, got {value!r}; a non-finite "
+                f"threshold makes its clause unable to fire"
+            )
+        return value

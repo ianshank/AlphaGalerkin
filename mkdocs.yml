@@ -26,6 +26,7 @@ exclude_docs: |
   CHESS_ENGINE_BENCHMARKING.md
   CODE_HYGIENE_AUDIT.md
   FOCUS.md
+  E2E_TEST_PLAN.md
   PLAN_2026-04-27.md
 
 theme:

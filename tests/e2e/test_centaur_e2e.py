@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests.e2e.conftest import CLIRunnerType
+from tests.e2e.conftest import E2E_TRIVIAL_TIMEOUT_S, CLIRunnerType
 
 pytestmark = pytest.mark.e2e
 
@@ -142,20 +142,23 @@ def test_research_loop_e2e_from_demo_then_cpu_run() -> None:
 
 
 def test_poc_cli_info_scaling_law(cli_runner: CLIRunnerType) -> None:
-    result = cli_runner("src.poc.cli", ["info", "scaling_law"], 60, None)
-    # info may exit 0 (found) or non-zero on environments without the scenario
-    # loaded; the key contract is that the CLI runs and mentions the scenario.
-    assert result.returncode in (0, 1, 2)
-    assert "scaling" in (result.stdout + result.stderr).lower()
+    result = cli_runner("src.poc.cli", ["info", "scaling_law"], E2E_TRIVIAL_TIMEOUT_S, None)
+    # `in (0, 1, 2)` is every code argparse can produce -- it passed whether the
+    # scenario existed or not. `scaling_law` is registered by importing
+    # `src.poc.scenarios`, which the CLI does, so 0 is the contract.
+    assert result.returncode == 0, f"Unexpected error: {result.stderr}"
+    # Assert on the registered name, not the substring "scaling": the latter
+    # survives renaming the scenario to anything scaling-ish.
+    assert "scaling_law" in result.output
 
 
 def test_agents_cli_help_lists_research(cli_runner: CLIRunnerType) -> None:
-    result = cli_runner("src.agents.cli", ["--help"], 60, None)
-    assert result.success, result.stderr
+    result = cli_runner("src.agents.cli", ["--help"], E2E_TRIVIAL_TIMEOUT_S, None)
+    assert result.returncode == 0, result.stderr
     assert "research" in result.stdout.lower()
 
 
 def test_agents_cli_research_help(cli_runner: CLIRunnerType) -> None:
-    result = cli_runner("src.agents.cli", ["research", "--help"], 60, None)
-    assert result.returncode in (0, 2)
-    assert "config" in (result.stdout + result.stderr).lower()
+    result = cli_runner("src.agents.cli", ["research", "--help"], E2E_TRIVIAL_TIMEOUT_S, None)
+    assert result.returncode == 0, result.stderr
+    assert "config" in result.output.lower()

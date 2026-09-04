@@ -27,7 +27,7 @@ from typing import Any, cast
 
 import yaml
 
-from src.poc.baselines import ScenarioBaselineRegistry
+from src.poc.baselines import add_baseline_arguments, handle_baseline_flags
 from src.poc.config import load_config_from_dict
 from src.poc.logging import configure_logging
 from src.poc.scenarios.stochastic_galerkin_compare import StochasticGalerkinCompareScenario
@@ -44,6 +44,17 @@ STABLE_BASELINE_METRICS: tuple[str, ...] = (
     "deterministic_density_mse",
     "deterministic_density_mse_median",
 )
+
+#: Per-metric regression tolerance this harness records with. Wider than the
+#: shared default (15.0) because the stochastic arm's MSEs carry MDN-training
+#: noise the deterministic transfer benchmark does not. Named and passed in
+#: explicitly so adopting the shared CLI helper cannot silently tighten it.
+STOCHASTIC_TOLERANCE_PCT: float = 25.0
+
+#: Free-text label stored in a recorded baseline document. Named because it is
+#: persisted -- ``config/baselines/stochastic_galerkin_ci.json`` carries this
+#: exact string.
+BASELINE_DESCRIPTION: str = "stochastic_galerkin_compare headline (stable metrics only)"
 
 
 def _stable_metrics(metrics: dict[str, float]) -> dict[str, float]:
@@ -126,25 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", default=None, help="Override the device (cpu/cuda).")
     parser.add_argument("--log-level", default="INFO", help="structlog level (default INFO).")
-    parser.add_argument(
-        "--record-baseline",
-        dest="record_baseline",
-        default=None,
-        help="Record this run's metrics as a baseline JSON and exit 0.",
-    )
-    parser.add_argument(
-        "--baseline",
-        default=None,
-        help="Diff this run against a committed baseline JSON; exit 1 on regression.",
-    )
-    parser.add_argument(
-        "--tolerance-pct",
-        dest="tolerance_pct",
-        type=float,
-        default=25.0,
-        help="Per-metric regression tolerance when recording a baseline (default 25).",
-    )
-    parser.add_argument("--git-sha", dest="git_sha", default="", help="Provenance: commit SHA.")
+    # Shared flags, but this harness's OWN tolerance: the stochastic metrics are
+    # noisier than the transfer ones, so the policy value stays local and is
+    # passed in rather than inherited from the helper's default. Adopting the
+    # shared mechanism must not move a recorded document's tolerance.
+    add_baseline_arguments(parser, default_tolerance_pct=STOCHASTIC_TOLERANCE_PCT)
     return parser
 
 
@@ -172,26 +169,17 @@ def main(argv: list[str] | None = None) -> int:
 
     observed = _observed(result)
 
-    if args.record_baseline:
-        stable = {SCENARIO_NAME: _stable_metrics(observed[SCENARIO_NAME])}
-        # All recorded stable metrics are lower-better (MSEs).
-        registry = ScenarioBaselineRegistry.from_observed(
-            stable,
-            higher_better_metrics=(),
-            tolerance_pct=args.tolerance_pct,
-            description="stochastic_galerkin_compare headline (stable metrics only)",
-            git_sha=args.git_sha,
-        )
-        registry.save(args.record_baseline)
-        print(f"\nBaseline recorded -> {args.record_baseline}")
-        return 0
-
-    if args.baseline:
-        registry = ScenarioBaselineRegistry.load(args.baseline)
-        report = registry.compare(observed, baseline_path=args.baseline)
-        print("\nRegression diff vs baseline:")
-        print(report.summary() if hasattr(report, "summary") else report)
-        return 1 if report.has_regressions else 0
+    # All recorded stable metrics are lower-better (MSEs).
+    baseline_exit = handle_baseline_flags(
+        args,
+        observed=observed,
+        scenario_name=SCENARIO_NAME,
+        stable_filter=_stable_metrics,
+        higher_better_metrics=(),
+        description=BASELINE_DESCRIPTION,
+    )
+    if baseline_exit is not None:
+        return baseline_exit
 
     return 0 if result.passed else 1
 

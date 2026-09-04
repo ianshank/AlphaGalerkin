@@ -41,6 +41,7 @@ from src.pde.config import (
 from src.pde.games.basis_selection import BasisSelectionGame
 from src.pde.mcts_adapter import PDEGameAdapter
 from src.pde.operators import PoissonOperator
+from src.seeding import MAX_RNG_SEED, MIN_RNG_SEED, set_global_seeds
 from src.templates.config import BaseModuleConfig
 
 if TYPE_CHECKING:
@@ -171,7 +172,13 @@ class PDETrainingConfig(BaseModuleConfig):
     )
     seed: int | None = Field(  # type: ignore[assignment]
         default=None,
-        description="RNG seed for reproducibility (None = random)",
+        ge=MIN_RNG_SEED,
+        le=MAX_RNG_SEED,
+        description=(
+            "RNG seed for reproducibility (None = random). Bounded to numpy's "
+            "valid range: the trainer now seeds the global RNGs from this, and "
+            "np.random.seed rejects anything outside it."
+        ),
     )
 
     @model_validator(mode="after")
@@ -294,6 +301,21 @@ class PDETrainer:
 
         """
         self.config = config
+
+        # `seed` was threaded into BasisSelectionConfig and PDEGameConfig below
+        # but no RNG was ever seeded from it, and `RandomEvaluator` takes no
+        # seed -- so MCTS drew from numpy's *unseeded* global stream and the
+        # field documented as "RNG seed for reproducibility" did not deliver
+        # reproducibility. Measured before this line existed: two runs of
+        # `scripts/demo_pde_solver.py --seed 1` produced final errors 0.4607 and
+        # 0.4766.
+        #
+        # `None` keeps its documented meaning (an unseeded, genuinely random
+        # run), so this is additive: no caller that omitted `seed` changes
+        # behaviour, and a caller that passed one now gets what it asked for.
+        if config.seed is not None:
+            set_global_seeds(config.seed)
+            logger.debug("pde_trainer_seeded", seed=config.seed)
 
         # Build PDE config
         domain_min = [0.0] * config.domain_dim

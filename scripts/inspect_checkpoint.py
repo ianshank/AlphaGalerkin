@@ -14,11 +14,22 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
+from typing import Final
 
 from src.training.checkpoint import load_torch_checkpoint
 
+#: Process exit codes. Named because the failure one was previously absent
+#: entirely: `inspect()` caught every exception, printed "Error:", and returned
+#: `None`, and `main()` returned `None` too -- so the script exited **0 whether
+#: the checkpoint deserialized or not**. A caller scripting around it (or a CI
+#: step, or an E2E journey asserting that a hostile payload is refused) could not
+#: tell success from failure by the only signal a shell reads.
+EXIT_OK: Final[int] = 0
+EXIT_LOAD_FAILED: Final[int] = 1
 
-def inspect(path: str, *, allow_unsafe_pickle: bool = False) -> None:
+
+def inspect(path: str, *, allow_unsafe_pickle: bool = False) -> int:
     """Inspect a PyTorch checkpoint file and print its structure.
 
     Args:
@@ -26,6 +37,12 @@ def inspect(path: str, *, allow_unsafe_pickle: bool = False) -> None:
         allow_unsafe_pickle: Deserialize with ``weights_only=False``. Executes
             arbitrary code if the file is malicious; only for a file whose
             provenance you have established.
+
+    Returns:
+        :data:`EXIT_OK` when the file deserialized, else :data:`EXIT_LOAD_FAILED`.
+        The error is still *reported* rather than raised -- this remains a
+        reporting tool, and a traceback is not more useful here than the message
+        -- but the outcome is now visible to the caller.
 
     """
     print(f"Loading {path}")
@@ -35,12 +52,13 @@ def inspect(path: str, *, allow_unsafe_pickle: bool = False) -> None:
     # file contains, including when the answer is 'it will not deserialize'.
     except Exception as e:
         print("Error:", e)
-        return
+        return EXIT_LOAD_FAILED
 
     if isinstance(data, dict):
         print("Keys:", data.keys())
     else:
         print("Not a dict, type:", type(data))
+    return EXIT_OK
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,11 +84,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    """Parse arguments and inspect the named checkpoint."""
-    args = build_parser().parse_args()
-    inspect(args.path, allow_unsafe_pickle=args.allow_unsafe_pickle)
+def main(argv: list[str] | None = None) -> int:
+    """Parse arguments and inspect the named checkpoint.
+
+    Args:
+        argv: Argument vector; defaults to ``sys.argv[1:]``. Accepting it makes
+            the entry point testable in-process, matching the ``main(argv)``
+            convention the other scripts here follow.
+
+    Returns:
+        The process exit code.
+
+    """
+    args = build_parser().parse_args(argv)
+    return inspect(args.path, allow_unsafe_pickle=args.allow_unsafe_pickle)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

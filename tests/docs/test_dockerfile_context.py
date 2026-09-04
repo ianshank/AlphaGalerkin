@@ -188,3 +188,72 @@ def test_default_command_runs_paths_that_are_in_the_image() -> None:
         assert any(arg == c or arg.startswith(c.rstrip("/") + "/") for c in copied), (
             f"CMD runs {arg!r}, but no COPY brings it into the image"
         )
+
+
+# ============================================================================ #
+# The image must not be told to run a suite whose inputs it does not contain   #
+# ============================================================================ #
+#
+# The clauses above assert that every path the `CMD` *names* survives
+# `.dockerignore` and is brought in by a `COPY`. That is necessary and not
+# sufficient: `COPY tests/ tests/` brings in **every** suite, including two that
+# read repo-root files the image deliberately does not carry.
+#
+# `tests/claude/` reads `.claude/`, which `.dockerignore` excludes on purpose
+# (agent configuration is not runtime material). `tests/docs/` reads `.github/`,
+# `CLAUDE.md` and `ARCHITECTURE.md`, none of which is `COPY`ed. Both are
+# *present* in the image and would fail there.
+#
+# Today's `CMD` names neither, so nothing is broken. This guard exists so that
+# stays true by construction: adding `tests/docs` to the `CMD` -- a one-word
+# edit that reads like broadening coverage -- fails here, with the missing input
+# named, instead of failing inside a built image with an import or fixture error.
+
+#: Suites that read repo-root paths, and the paths they read. A suite may only
+#: appear in the ``CMD`` if every path listed here reaches the image.
+#:
+#: Deliberately hand-maintained rather than derived: deriving it would mean
+#: importing the suites, which is what this check exists to avoid needing to do.
+#: The mapping is small and its entries are asserted to be real directories, so
+#: a renamed suite fails loudly rather than dropping out of the check.
+SUITE_REPO_ROOT_INPUTS: Final[dict[str, tuple[str, ...]]] = {
+    "tests/claude": (".claude",),
+    "tests/docs": (".github", "CLAUDE.md", "ARCHITECTURE.md"),
+}
+
+
+def test_the_input_map_names_real_suites() -> None:
+    """Vacuity guard: a renamed suite must fail, not silently stop being checked."""
+    for suite in SUITE_REPO_ROOT_INPUTS:
+        assert (REPO_ROOT / suite).is_dir(), (
+            f"{suite} is listed in SUITE_REPO_ROOT_INPUTS but does not exist; "
+            f"the entry now checks nothing"
+        )
+
+
+@pytest.mark.parametrize("suite", sorted(SUITE_REPO_ROOT_INPUTS))
+def test_the_cmd_does_not_run_a_suite_whose_inputs_are_absent(suite: str) -> None:
+    """A suite in the ``CMD`` must have every repo-root input it reads.
+
+    Fails with the *cause* -- the named missing path -- rather than leaving a
+    built image to fail with a fixture error, which is the same principle as
+    making the two `[fem]` coverage gates fail on the missing extra rather than
+    on the coverage number.
+    """
+    if suite not in _cmd_arguments():
+        pytest.skip(f"{suite} is not named in the Dockerfile CMD, so its inputs are not required")
+
+    patterns = _dockerignore_patterns()
+    copied = _copy_sources()
+    missing = [
+        required
+        for required in SUITE_REPO_ROOT_INPUTS[suite]
+        if _is_excluded(required, patterns) is not None
+        or not any(required.rstrip("/") == source.rstrip("/") for source in copied)
+    ]
+    assert not missing, (
+        f"the Dockerfile CMD runs {suite}, which reads {missing} -- and those "
+        f"paths are either excluded by .dockerignore or never COPYed, so the "
+        f"suite is present in the image but cannot pass there. Either COPY them "
+        f"(and un-ignore where needed) or drop {suite} from the CMD."
+    )

@@ -33,7 +33,10 @@ from importlib.metadata import version as _package_version
 from pathlib import Path
 from typing import Any, Final
 
+import structlog
 from pydantic import BaseModel, ConfigDict, Field
+
+logger = structlog.get_logger(__name__)
 
 #: Current manifest schema. Bump when a field's *meaning* changes; additive
 #: fields do not need a bump because readers use ``extra="ignore"``.
@@ -46,6 +49,18 @@ GIT_SUBPROCESS_TIMEOUT_S: Final[float] = 5.0
 #: Value recorded when a field genuinely cannot be determined. Preferred over
 #: omitting the field or guessing: "we do not know" is itself provenance.
 UNKNOWN: Final[str] = "unknown"
+
+#: Architecture label when ``platform.machine()`` returns an empty string.
+#: Distinct from :data:`UNKNOWN`, which means "the whole probe failed" -- a
+#: reader must be able to tell "we could not identify the CPU architecture" from
+#: "we collected nothing at all".
+UNKNOWN_ARCH: Final[str] = "unknown-arch"
+
+#: Which CUDA device the tag names. Device 0 by convention; the device *count*
+#: is recorded alongside it so a multi-GPU host is not mistaken for a single-card
+#: one. Named rather than inlined so a caller reading the tag knows which card
+#: the name refers to.
+CUDA_PROBE_DEVICE_INDEX: Final[int] = 0
 
 #: Fields excluded from :meth:`RunManifest.stable_fields`, because they change
 #: between two runs of identical code and would make any comparison flaky.
@@ -264,6 +279,57 @@ def manifest_path_for(artifact: str | Path) -> Path:
     return target.with_suffix(".run.json")
 
 
+def collect_hardware_tag() -> str:
+    """Best-effort host/accelerator label for a run manifest. Never raises.
+
+    ``RunManifest.hardware_tag`` defaults to ``UNKNOWN`` and every committed
+    sidecar carried that default, because no harness ever set it. A provenance
+    record that cannot say what the numbers were measured on is missing the one
+    field a reader needs to judge whether a wall-clock or accelerator-sensitive
+    result transfers to their machine.
+
+    The tag is deliberately free-form and deliberately in ``_VOLATILE_FIELDS``
+    (excluded from ``stable_fields``): it changes with the host, so a golden
+    comparison must not assert on it.
+
+    Returns:
+        ``"<machine>-<n>cpu"``, plus ``-<k>x<device name>`` when ``k`` CUDA
+        devices are visible, else :data:`UNKNOWN` if even the platform probe
+        fails.
+
+    """
+    import os
+    import platform
+
+    try:
+        machine = platform.machine() or UNKNOWN_ARCH
+        # os.cpu_count() can return None on exotic platforms.
+        n_cpu = os.cpu_count() or 0
+        tag = f"{machine}-{n_cpu}cpu"
+    except OSError:
+        logger.debug("hardware_tag_platform_probe_failed", exc_info=True)
+        return UNKNOWN
+
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            # Device *count* as well as name: the reference rig is dual-GPU
+            # (cuda:0 RTX 5060 Ti + cuda:1 RTX 5060), and a tag naming only
+            # device 0 would record a single-card host for a two-card sweep.
+            n_cuda = torch.cuda.device_count()
+            tag = f"{tag}-{n_cuda}x{torch.cuda.get_device_name(CUDA_PROBE_DEVICE_INDEX)}"
+    # Broad by intent: a provenance label must never be the reason a benchmark
+    # run fails. A missing/broken torch, a driver mismatch, or a CUDA call that
+    # raises all degrade to the CPU-only tag rather than aborting the harness.
+    # Logged at debug so "why does the sidecar say CPU on the GPU rig?" is
+    # answerable without reproducing the run.
+    except Exception:
+        logger.debug("hardware_tag_cuda_probe_failed", cpu_tag=tag, exc_info=True)
+
+    return tag
+
+
 __all__ = [
     "GIT_SUBPROCESS_TIMEOUT_S",
     "RUN_MANIFEST_SCHEMA_VERSION",
@@ -273,6 +339,7 @@ __all__ = [
     "PackageVersions",
     "RunManifest",
     "collect_git_provenance",
+    "collect_hardware_tag",
     "collect_package_versions",
     "load_run_manifest",
     "manifest_path_for",

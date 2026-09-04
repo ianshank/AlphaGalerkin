@@ -9,6 +9,11 @@ from unittest.mock import patch
 
 import pytest
 
+#: Every file in this directory carries the `e2e` marker so `-m e2e` can
+#: select the tier. Without it, only the directory-level `--ignore` kept
+#: these tests out of the fast lane -- an invisible, easily-lost coupling.
+pytestmark = pytest.mark.e2e
+
 # Skip the entire module if the CLI entry point cannot be imported
 cli_module = pytest.importorskip("src.tools.cli", reason="CLI module (src.tools.cli) not available")
 main = cli_module.main

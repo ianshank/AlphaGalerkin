@@ -77,8 +77,10 @@ def test_train_physics_minimal(cli_runner: CLIRunnerType, temp_output_dir: Path)
         ],
         timeout=E2E_TRAINING_TIMEOUT_S,
     )
-    # Training might fail due to minimal data, but should not crash
-    assert result.returncode in [0, 1], f"Unexpected error: {result.stderr}"
+    # `in [0, 1]` tolerated a failed training run as success. With the sample
+    # counts bounded (above) the run completes; measured exit code is 0. A
+    # timeout reports -1, which this now catches instead of silently accepting.
+    assert result.returncode == 0, f"Unexpected error: {result.stderr}"
 
 
 @pytest.mark.e2e

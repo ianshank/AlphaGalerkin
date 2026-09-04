@@ -33,57 +33,48 @@ from src.research.lshape_amr_compare import ComparisonParams, lshape_inside_pred
 from src.research.substrates.config import SubstrateConfig
 from src.research.substrates.sweep import (
     RateSeparation,
-    measure_rate_separation,
-    run_refinement_sweep,
+    default_adequacy_gate,
+    gate_violations,
+    measure_adequacy,
 )
 from src.research.substrates.tensor_grid import TensorGridSubstrate
 
 # --------------------------------------------------------------------------
-# Gate constants (spec: "surfaced as named module-level values so they are
-# tunable without editing assertions").
+# Gate constants and predicate -- now RE-EXPORTS, not definitions.
+#
+# These four thresholds and `gate_violations` used to be defined here, which
+# made the verdict the spec calls "the gate that makes any comparison
+# meaningful" reachable only from pytest: a caller who ran a sweep through the
+# public API had no way to ask whether the substrate was adequate. They now live
+# in `src/research/substrates/` (AdequacyGateConfig + gate_violations +
+# measure_adequacy) with byte-identical values -- a move, not a retune; the
+# per-field provenance comments moved with them.
+#
+# The names are kept here so every assertion below still reads against a named
+# threshold rather than a literal, and so `TestGatePredicate` exercises the
+# PROMOTED function rather than a copy that could drift from it.
 # --------------------------------------------------------------------------
 
-#: Uniform P1 L2 rate on the L-shape. Theory gives -2/3; the task-zero spike
-#: measured -0.710. A rate outside this band **on either side** is a defect:
-#: too *good* means the reentrant singularity is not actually in the domain
-#: (AC8's cautionary tale — a translated mesh produced a confident, entirely
-#: wrong "adaptive loses on skfem too" result, caught only by this tripwire).
-UNIFORM_RATE_BAND = (-0.85, -0.55)
+#: The pinned gate, built once. Every constant below is read off it.
+ADEQUACY_GATE = default_adequacy_gate()
 
-#: Adaptive must reach at least this steep a rate. Spike measured -1.256;
-#: measured -1.3109 through the production primitives, at the theta the gate
-#: actually passes (ComparisonParams.marking_fraction = 0.5) over
-#: RATE_FIT_DOF_RANGE. Quote the theta with any rate: the same substrate reads
-#: -1.31 at theta=0.5 and -1.25 at theta=0.3, so a bare rate is not a fact.
-ADAPTIVE_RATE_MIN = -1.10
+UNIFORM_RATE_BAND = ADEQUACY_GATE.uniform_rate_band
+ADAPTIVE_RATE_MIN = ADEQUACY_GATE.adaptive_rate_min
+ADAPTIVE_VS_UNIFORM_MAX_RATIO = ADEQUACY_GATE.adaptive_vs_uniform_max_ratio
+RATE_FIT_DOF_RANGE = ADEQUACY_GATE.rate_fit_dof_range
+MAX_SWEEP_DOF = ADEQUACY_GATE.max_sweep_dof
+MAX_LEVELS_UNIFORM = ADEQUACY_GATE.max_levels_uniform
+MAX_LEVELS_ADAPTIVE = ADEQUACY_GATE.max_levels_adaptive
 
-#: Adaptive must beat uniform at matched DOF. Below 1.0 means adaptive wins.
-ADAPTIVE_VS_UNIFORM_MAX_RATIO = 1.0
 
-#: The asymptotic window the rate is fitted over. Below it, neither arm has
-#: separated yet.
-#:
-#: **CORRECTED from the spec's originally pinned ``(200, 2600)``.** That window
-#: is physically incapable of holding ``RATE_FIT_MIN_POINTS`` (3) *uniform*
-#: points: a 2D uniform arm quadruples DOF per level, so a 13x window spans at
-#: most two of them. Measured on both substrates — skfem uniform lands on
-#: [225, 833, 3201] and tensor-grid uniform on [208, 800, 3136], each giving
-#: n=2 inside (200, 2600) and n=3 inside (200, 4000). ``fit_log_log_rate``
-#: correctly raised ``InsufficientSweepPointsError`` rather than fitting a
-#: two-point slope, which is how the mismatch surfaced. Widened to the
-#: cheapest window that admits three uniform points; the correction and its
-#: reason are recorded in ``specs/refinement_substrate.spec.md``.
-RATE_FIT_DOF_RANGE = (200, 4000)
+def measure(substrate: object, theta: float) -> RateSeparation:
+    """Run both arms on ``substrate`` and fit their rates over the pinned window.
 
-#: Sweep budget. *Derived* from ``RATE_FIT_DOF_RANGE``'s upper bound rather
-#: than retyped, so a sweep stops as soon as it has spanned the fitting window.
-#: The coupling used to live only in this comment, with ``4000`` written twice.
-MAX_SWEEP_DOF = RATE_FIT_DOF_RANGE[1]
-
-#: Level ceilings (runaway guards). Uniform multiplies DOF each level so it
-#: needs very few; adaptive adds DOF slowly and needs many more.
-MAX_LEVELS_UNIFORM = 8
-MAX_LEVELS_ADAPTIVE = 40
+    Thin adapter onto the promoted ``measure_adequacy``; kept so the existing
+    call sites read unchanged and so the ``object`` -> Protocol cast stays in
+    one place.
+    """
+    return measure_adequacy(substrate, theta=theta, gate=ADEQUACY_GATE)  # type: ignore[arg-type]
 
 
 def _lshaped_operator(scale: float) -> LShapedPoissonOperator:
@@ -96,60 +87,6 @@ def _lshaped_operator(scale: float) -> LShapedPoissonOperator:
             domain_max=[scale, scale],
         )
     )
-
-
-def measure(substrate: object, theta: float) -> RateSeparation:
-    """Run both arms on ``substrate`` and fit their rates over the pinned window.
-
-    Substrate-agnostic on purpose: the whole point of AC7 is that the *same*
-    measurement is applied to both substrates, so any difference in the verdict
-    is a property of the substrate rather than of the measurement.
-    """
-    adaptive = run_refinement_sweep(
-        substrate,  # type: ignore[arg-type]
-        policy="adaptive",
-        theta=theta,
-        max_levels=MAX_LEVELS_ADAPTIVE,
-        max_dof=MAX_SWEEP_DOF,
-    )
-    uniform = run_refinement_sweep(
-        substrate,  # type: ignore[arg-type]
-        policy="uniform",
-        theta=theta,
-        max_levels=MAX_LEVELS_UNIFORM,
-        max_dof=MAX_SWEEP_DOF,
-    )
-    return measure_rate_separation(adaptive, uniform, RATE_FIT_DOF_RANGE)
-
-
-def gate_violations(separation: RateSeparation) -> list[str]:
-    """Return every way ``separation`` fails the adequacy gate; empty == pass.
-
-    Factored out so both halves of AC7 apply the *identical* predicate: the
-    skfem half asserts this is empty, the tensor-grid half asserts it is not.
-    Asserting a shared function rather than duplicated inline comparisons is
-    what makes "the same assertion fails on the other substrate" literally
-    true rather than approximately true.
-    """
-    violations: list[str] = []
-
-    low, high = UNIFORM_RATE_BAND
-    if not low <= separation.uniform_rate <= high:
-        violations.append(
-            f"uniform_rate {separation.uniform_rate:.4f} outside {UNIFORM_RATE_BAND} "
-            "(too good is as diagnostic as too bad -- see AC8)"
-        )
-    if separation.adaptive_rate > ADAPTIVE_RATE_MIN:
-        violations.append(
-            f"adaptive_rate {separation.adaptive_rate:.4f} is shallower than "
-            f"ADAPTIVE_RATE_MIN {ADAPTIVE_RATE_MIN}"
-        )
-    if separation.error_ratio_at_matched_dof >= ADAPTIVE_VS_UNIFORM_MAX_RATIO:
-        violations.append(
-            f"error_ratio_at_matched_dof {separation.error_ratio_at_matched_dof:.4f} "
-            f">= {ADAPTIVE_VS_UNIFORM_MAX_RATIO} -- adaptive does not beat uniform"
-        )
-    return violations
 
 
 def _separation(

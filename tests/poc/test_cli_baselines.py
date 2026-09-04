@@ -165,11 +165,24 @@ def test_diff_detects_regression(tmp_path: Path) -> None:
 
 
 def test_diff_reports_missing_metric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A baseline metric absent from the run's observed metrics is reported.
+    """A baseline metric absent from the run is reported *and* fails the gate.
 
-    Absence is a coverage gap, not a regression (``compare`` docs), but
-    ``cmd_diff`` must still print it under "Missing in run" -- the
-    ``if report.missing_in_observed:`` branch was previously untested.
+    Two distinct contracts, and this test pins both because they were once
+    conflated:
+
+    * **Classification is unchanged.** Absence is still not a regression --
+      ``has_regressions`` stays False, because nothing got worse; nothing was
+      measured at all. ``compare``'s documented semantics are untouched.
+    * **The gate now fails on it.** ``cmd_diff``'s exit code moved from
+      ``has_regressions`` to ``is_clean``. Gating on regressions alone meant a
+      run producing *none* of the baseline's metrics exited 0: a scenario that
+      raises returns ``metrics={}``, every entry lands in
+      ``missing_in_observed``, and the gate reported green having compared
+      nothing.
+
+    This assertion previously read ``rc_diff == 0  # missing metrics are not
+    regressions``, which was true about the classification and wrong about the
+    gate.
     """
     _write_run(tmp_path, "run1", {"residual_median_b4": 0.5, "extra_metric": 1.0})
     out = tmp_path / "base.json"
@@ -193,10 +206,14 @@ def test_diff_reports_missing_metric(tmp_path: Path, capsys: pytest.CaptureFixtu
         argparse.Namespace(baseline=str(out), run_id="run2", output_dir=str(tmp_path))
     )
 
-    assert rc_diff == 0  # missing metrics are not regressions
+    assert rc_diff == 1, "a baseline entry the run never produced must fail the gate"
     captured = capsys.readouterr()
-    assert "Missing in run" in captured.out
+    assert "MISSING IN RUN" in captured.out
     assert "extra_metric" in captured.out
+    assert "0 regression(s)" in captured.out, (
+        "the metric must still be classified as missing rather than regressed: "
+        "the exit code changed, the classification did not"
+    )
 
 
 def test_record_no_metrics_returns_error(tmp_path: Path) -> None:

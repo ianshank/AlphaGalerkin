@@ -251,7 +251,13 @@ bd_rate_report.json
 # Local workspace scratch & tooling
 master_clone/
 Test_Video_Materals/
-.claude/agents/
+# NOTE: `.claude/agents/` was listed here as scratch until 2026-09-04, while five
+# agent files were already TRACKED, validated by tests/claude/ and documented in
+# CLAUDE.md as harness configuration. The rule therefore did nothing for the files
+# that existed and silently dropped every NEW one: `git add -A` skipped it, the
+# local suite passed (it reads from disk), and CI failed on a checkout that was
+# missing the file. Caught by TestTheDocumentedInventoryMatchesDisk on its first
+# real run. `.github/.claude/` below is genuinely generated and stays ignored.
 .github/.claude/
 config/board.py
 

@@ -17,6 +17,8 @@ specific backend's RNG through the backend abstraction; call sites that seed
 
 from __future__ import annotations
 
+from typing import Final
+
 import numpy as np
 import torch
 
@@ -46,14 +48,36 @@ def derive_seeds(base_seed: int, n_seeds: int, stride: int) -> list[int]:
     return [base_seed + i * stride for i in range(n_seeds)]
 
 
+#: Inclusive bounds on a seed accepted by ``numpy.random.seed``. Named here,
+#: beside the function that applies them, because the constraint belongs to the
+#: seeding contract rather than to any one caller -- and because a config field
+#: that accepts a seed this function will reject turns a validation error into a
+#: runtime crash further down. ``PDETrainingConfig.seed`` bounds itself on these.
+MIN_RNG_SEED: Final[int] = 0
+MAX_RNG_SEED: Final[int] = 2**32 - 1
+
+
 def set_global_seeds(seed: int) -> None:
     """Seed the ``numpy`` and ``torch`` global RNGs for reproducibility.
 
     ``torch.manual_seed`` seeds both the CPU generator and all CUDA devices, so a
-    single call makes ``numpy``- and ``torch``-based sampling deterministic on CPU
-    and GPU alike. Seeding two independent generators is order-independent, so
-    this is a byte-for-byte replacement for either ``np``-then-``torch`` or
+    single call makes ``numpy``- and ``torch``-based *sampling* reproducible.
+    Seeding two independent generators is order-independent, so this is a
+    byte-for-byte replacement for either ``np``-then-``torch`` or
     ``torch``-then-``np`` inline pairs.
+
+    Scope of the guarantee -- read this before pinning a float in a test:
+        Seeding fixes the RNG streams, **not** the arithmetic. This function
+        deliberately does *not* set ``torch.backends.cudnn.deterministic`` or
+        ``torch.use_deterministic_algorithms``, so GPU kernels (and multi-threaded
+        CPU matmul) may reassociate reductions and give run-to-run differences
+        within floating-point tolerance. ``src/backend/torch_backend.py`` sets the
+        cuDNN flags for callers that need bitwise reproducibility; nothing on the
+        scenario/harness paths uses it. Assert on tolerances, not on exact floats.
+
+        (An earlier version of this docstring claimed sampling was "deterministic
+        on CPU and GPU alike", which overstated what the two ``manual_seed`` calls
+        provide and is the kind of claim a test would then be written against.)
 
     Args:
         seed: Seed applied to both RNGs. Callers that need to clamp the value to

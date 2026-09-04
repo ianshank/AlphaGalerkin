@@ -88,6 +88,81 @@ class ScenarioRegressionReport:
         """True iff at least one metric regressed beyond tolerance."""
         return bool(self.regressions)
 
+    @property
+    def has_missing(self) -> bool:
+        """True iff the run failed to produce a metric the baseline declares.
+
+        Distinct from :attr:`has_regressions` on purpose: a missing metric is
+        not a *worse* number, it is the **absence** of a number, so no
+        comparison ran for it at all.
+        """
+        return bool(self.missing_in_observed)
+
+    @property
+    def is_clean(self) -> bool:
+        """True iff every baseline entry was observed and none regressed.
+
+        This is the predicate a CI gate wants, and it is deliberately stricter
+        than ``not has_regressions``. Gating on regressions alone passes a run
+        that produced **no metrics whatsoever** -- a scenario that raised
+        returns ``metrics={}``, every baseline entry lands in
+        ``missing_in_observed``, ``regressions`` is empty, and the gate reports
+        green on a crashed run. That is the same vacuity as a coverage gate
+        whose target is swallowed by ``omit``: the check cannot fail because it
+        measured nothing.
+
+        A legitimately retired metric is therefore a deliberate re-record, not
+        a silent pass -- which is the direction this repo's evidence standard
+        requires.
+        """
+        return not self.has_regressions and not self.has_missing
+
+    def summary(self) -> str:
+        """Render the comparison as human-readable lines for a CLI or CI log.
+
+        Lives on the report rather than in each caller because three harness
+        scripts and ``poc.cli diff`` all render the same object; the previous
+        arrangement had one real renderer in ``poc.cli`` and a
+        ``hasattr(report, "summary")`` probe in the other three that was always
+        False, so those three printed a raw dataclass ``repr`` with
+        ``missing_in_observed`` -- the field :attr:`is_clean` turns on -- buried
+        inside it.
+
+        Returns:
+            A multi-line string. Never empty: a report with no diffs still
+            states that, so an operator can tell "nothing regressed" from
+            "nothing was compared".
+
+        """
+        lines = [f"Baseline: {self.baseline_path}"]
+        lines.append(
+            f"  {self.n_entries_baseline} baseline entr"
+            f"{'y' if self.n_entries_baseline == 1 else 'ies'}, "
+            f"{self.n_metrics_observed} metric(s) observed"
+        )
+        if self.diffs:
+            for diff in self.diffs:
+                baseline_value = (
+                    "n/a" if diff.baseline_value is None else f"{diff.baseline_value:.6g}"
+                )
+                observed_value = (
+                    "n/a" if diff.observed_value is None else f"{diff.observed_value:.6g}"
+                )
+                lines.append(
+                    f"  [{diff.status:>9}] {diff.key}: {baseline_value} -> {observed_value} "
+                    f"({diff.delta_pct:+.1f}% vs +/-{diff.tolerance_pct:.1f}%)"
+                )
+        else:
+            lines.append("  (no metrics compared)")
+        if self.missing_in_observed:
+            lines.append(f"  MISSING IN RUN: {', '.join(self.missing_in_observed)}")
+        lines.append(
+            f"  {len(self.regressions)} regression(s), "
+            f"{len(self.improvements)} improvement(s), "
+            f"{len(self.missing_in_observed)} missing."
+        )
+        return "\n".join(lines)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "baseline_path": self.baseline_path,
@@ -97,6 +172,8 @@ class ScenarioRegressionReport:
             "n_regressions": len(self.regressions),
             "n_improvements": len(self.improvements),
             "has_regressions": self.has_regressions,
+            "has_missing": self.has_missing,
+            "is_clean": self.is_clean,
             "missing_in_observed": list(self.missing_in_observed),
             "diffs": [d.to_dict() for d in self.diffs],
             "regressions": [d.to_dict() for d in self.regressions],

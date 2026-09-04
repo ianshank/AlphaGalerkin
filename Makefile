@@ -163,8 +163,31 @@ test-core:
 test-agents:
 	$(PYTEST) tests/agents/ -v
 
+# Runs the WHOLE directory with CI's filter, matching the `test-e2e` job in
+# .github/workflows/ci.yml. The previous glob (`test_user_journey_*.py`) selected
+# 3 of 81 tests, so `pre-pr` -- which chains this target -- certified a PR
+# against three E2E tests. E2E_DEVICE is left to its "auto" default here so a
+# developer on a CUDA box exercises the GPU path locally; CI pins it to cpu.
+# Split into two invocations, mirroring the `test-e2e` CI job. Running the tier
+# as a single process leaks until it dies (see docs/E2E_TEST_PLAN.md 12.4);
+# splitting at the first in-process file caps each process at 1.5 / 3.6 GB
+# instead of 13.6 GB.
+#
+# Both halves always run -- a failure in the first must not hide the second's
+# result -- and the target fails if EITHER did. The first attempt at that used
+# Make's `-` ignore-errors prefix on the first line, with a comment claiming the
+# second line "re-runs the first's status". No such mechanism exists: `-` makes
+# Make ignore that line's exit code, and the last line's status becomes the
+# target's, so `make test-e2e` exited 0 with half the tier failing (measured;
+# Copilot review, PR #144). `make pre-pr` chains this target, so that was a
+# developer's pre-PR gate reporting success on a red suite -- the exact class of
+# defect this branch exists to remove. One recipe line, one shell, status
+# accumulated explicitly.
 test-e2e:
-	$(PYTEST) tests/e2e/test_user_journey_*.py -v
+	status=0; \
+	$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -k "not chess" -v || status=$$?; \
+	$(PYTEST) tests/e2e/ -m "not gpu_required and not fem_required" -k "chess" -v || status=$$?; \
+	exit $$status
 
 test-cert:
 	$(COV) run --branch \

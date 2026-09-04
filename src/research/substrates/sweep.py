@@ -16,13 +16,18 @@ measurement passes on one substrate and fails on the other.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 import numpy as np
 import structlog
 
-from src.research.substrates.config import RATE_FIT_MIN_POINTS, RATIO_FLOOR
+from src.research.substrates.config import (
+    RATE_FIT_MIN_POINTS,
+    RATIO_FLOOR,
+    AdequacyGateConfig,
+)
 
 if TYPE_CHECKING:
     from src.refinement.substrate import RefinementSubstrate
@@ -34,6 +39,10 @@ logger = structlog.get_logger(__name__)
 #: chasing); ``"uniform"`` marks every refinable unit, which is the control
 #: arm the adequacy gate measures against.
 MarkingPolicy = Literal["adaptive", "uniform"]
+
+#: Canonical ``name`` for the pinned adequacy gate. Named so every caller
+#: labels the same gate identically instead of inventing a local string.
+ADEQUACY_GATE_NAME: Final[str] = "substrate_adequacy_gate"
 
 
 @dataclass(frozen=True)
@@ -279,3 +288,133 @@ def measure_rate_separation(
         matched_dof=matched_dof,
     )
     return separation
+
+
+def gate_violations(
+    separation: RateSeparation,
+    gate: AdequacyGateConfig | None = None,
+) -> list[str]:
+    """Return every way *separation* fails the adequacy gate; empty means pass.
+
+    The predicate behind ``specs/refinement_substrate.spec.md`` AC7: a substrate
+    is adequate when adaptive marking genuinely beats uniform refinement on the
+    L-shaped benchmark. Both halves of AC7 apply this *identical* function -- the
+    skfem half asserts the result is empty, the tensor-grid half asserts it is
+    not -- which is what makes "the same assertion fails on the other substrate"
+    literally rather than approximately true.
+
+    Lives here, not in the gate's test module, so a caller who ran a sweep
+    through the public API can ask for the verdict. Previously only pytest could.
+
+    Args:
+        separation: The measurement to judge, from :func:`measure_rate_separation`.
+        gate: Thresholds; defaults to :class:`AdequacyGateConfig`'s pinned values.
+
+    Returns:
+        Human-readable violation strings, one per failed condition. Empty list
+        means the substrate passed.
+
+    """
+    gate = default_adequacy_gate() if gate is None else gate
+    violations: list[str] = []
+
+    # Non-finite first, and as its own violation rather than folded into the
+    # comparisons below. Every `>`/`>=` against a NaN is False, so a NaN rate
+    # produces *no* violation and the gate returns [] -- its pass verdict -- for
+    # a measurement that says nothing. (The band check happens to catch it,
+    # because `not low <= nan <= high` is True, which is why this was invisible:
+    # one of the three clauses accidentally handled the case and two did not.)
+    #
+    # Reachable: `fit_log_log_rate` calls `np.polyfit` with no rank check, and
+    # `RATE_FIT_MIN_POINTS` guarantees three *points*, not three *distinct*
+    # x-values -- a degenerate fit emits a RankWarning and returns nan.
+    for field_name, value in (
+        ("uniform_rate", separation.uniform_rate),
+        ("adaptive_rate", separation.adaptive_rate),
+        ("error_ratio_at_matched_dof", separation.error_ratio_at_matched_dof),
+    ):
+        if not math.isfinite(value):
+            violations.append(
+                f"{field_name} is {value!r}, not a finite measurement -- the "
+                "substrate cannot be judged adequate on a fit that did not converge"
+            )
+    if violations:
+        # Return early: the comparisons below would silently pass on the same
+        # non-finite values and dilute the diagnosis with meaningless numbers.
+        return violations
+
+    low, high = gate.uniform_rate_band
+    if not low <= separation.uniform_rate <= high:
+        violations.append(
+            f"uniform_rate {separation.uniform_rate:.4f} outside {gate.uniform_rate_band} "
+            "(too good is as diagnostic as too bad -- see AC8)"
+        )
+    if separation.adaptive_rate > gate.adaptive_rate_min:
+        violations.append(
+            f"adaptive_rate {separation.adaptive_rate:.4f} is shallower than "
+            f"adaptive_rate_min {gate.adaptive_rate_min}"
+        )
+    if separation.error_ratio_at_matched_dof >= gate.adaptive_vs_uniform_max_ratio:
+        violations.append(
+            f"error_ratio_at_matched_dof {separation.error_ratio_at_matched_dof:.4f} "
+            f">= {gate.adaptive_vs_uniform_max_ratio} -- adaptive does not beat uniform"
+        )
+    return violations
+
+
+def default_adequacy_gate() -> AdequacyGateConfig:
+    """Build the pinned adequacy gate.
+
+    ``AdequacyGateConfig`` inherits ``BaseModuleConfig``, whose ``name`` is
+    required; this supplies the canonical one so callers do not each invent a
+    different label for the same gate.
+
+    Returns:
+        An ``AdequacyGateConfig`` carrying the spec's pinned thresholds.
+
+    """
+    return AdequacyGateConfig(name=ADEQUACY_GATE_NAME)
+
+
+def measure_adequacy(
+    substrate: RefinementSubstrate,
+    *,
+    theta: float,
+    gate: AdequacyGateConfig | None = None,
+) -> RateSeparation:
+    """Drive both arms on *substrate* and fit their rates over the pinned window.
+
+    Substrate-agnostic on purpose: AC7's whole point is that the *same*
+    measurement is applied to both substrates, so any difference in the verdict
+    is a property of the substrate rather than of the measurement.
+
+    Args:
+        substrate: The substrate under test.
+        theta: Dörfler bulk fraction for the adaptive arm. Always quote it with
+            any rate you report -- the same substrate reads -1.31 at 0.5 and
+            -1.25 at 0.3, so a bare rate is not a fact.
+        gate: Thresholds and sweep budgets; defaults to the pinned values.
+
+    Returns:
+        The two arms' fitted rates and their error ratio at matched DOF.
+
+    """
+    # `is None`, not truthiness: a pydantic model is always truthy today, but
+    # the intended predicate is "no gate supplied", and the two are only
+    # accidentally equivalent.
+    gate = default_adequacy_gate() if gate is None else gate
+    adaptive = run_refinement_sweep(
+        substrate,
+        policy="adaptive",
+        theta=theta,
+        max_levels=gate.max_levels_adaptive,
+        max_dof=gate.max_sweep_dof,
+    )
+    uniform = run_refinement_sweep(
+        substrate,
+        policy="uniform",
+        theta=theta,
+        max_levels=gate.max_levels_uniform,
+        max_dof=gate.max_sweep_dof,
+    )
+    return measure_rate_separation(adaptive, uniform, gate.rate_fit_dof_range)

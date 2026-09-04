@@ -23,6 +23,7 @@ from typing import Final
 
 import pytest
 
+from src.poc.baselines.cli_support import EXIT_REGRESSION
 from tests.e2e.conftest import (
     E2E_BENCHMARK_TIMEOUT_S,
     E2E_TRAINING_TIMEOUT_S,
@@ -391,7 +392,14 @@ def test_missing_baseline_file_exits_nonzero(
         CHEAPEST_CASE.timeout,
         None,
     )
-    assert result.returncode != 0
+    # Exact: a missing baseline file is a load failure, which the harness
+    # surfaces as the same EXIT_REGRESSION the gate uses. `!= 0` would also
+    # accept -1 (the runner's timeout code), so a hung child would read as a
+    # correctly-refused run.
+    assert result.returncode == EXIT_REGRESSION, (
+        f"expected {EXIT_REGRESSION} for a baseline path that does not exist; "
+        f"got {result.returncode}"
+    )
     assert absent.name in result.output
 
 

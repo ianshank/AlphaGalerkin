@@ -331,7 +331,14 @@ class TestEnforcementIsWired:
     def test_gitleaks_config_exists_for_that_step_to_use(self) -> None:
         assert (REPO_ROOT / ".gitleaks.toml").is_file()
 
-    @pytest.mark.parametrize("target", ["test-claude", "test-demos", "gitleaks"])
+    @pytest.mark.parametrize(
+        "target",
+        # `test-e2e` was added 2026-09-04: the branch that created that target
+        # chained it into `pre-pr` and asserted the chaining nowhere, so deleting
+        # the line from the Makefile left every guard in the repo green -- the
+        # "pre-pr is narrower than CI" defect the target exists to prevent.
+        ["test-claude", "test-demos", "gitleaks", "test-e2e"],
+    )
     def test_make_pre_pr_chains_the_local_equivalents(self, target: str) -> None:
         """`make pre-pr` narrower than CI is how CI-invisible tests happen."""
         text = self.MAKEFILE.read_text()

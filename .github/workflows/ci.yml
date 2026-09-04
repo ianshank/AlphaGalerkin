@@ -561,9 +561,20 @@ jobs:
       # Root-causing the leak is chess/MCTS work, not E2E-test work; see
       # docs/E2E_TEST_PLAN.md section 12.4. When it is fixed, collapse these two
       # steps back into one and delete the partition constant in that guard.
+      # E2E_TIMEOUT_SCALE: the three subprocess budgets (30/60/120 s) were
+      # measured on an idle box. Under concurrent load the same children take
+      # multiples of that -- measured locally at load ~4.4, a `poc.cli run` that
+      # takes 7 s idle took 56 s, i.e. 4 s inside its 60 s budget, and a 105 s
+      # training child exceeded 120 s. A shared GitHub runner is not idle, and
+      # this job is in `ci-success.needs`, so a load spike would fail the build
+      # for a reason that is not a defect. The scale multiplies the budgets; it
+      # does not disable them, so a genuinely hung child is still caught.
+      # This is the same load-sensitivity class CLAUDE.md records for
+      # `tests/benchmarks/` -- recorded there, mitigated here.
       - name: Run E2E journeys (excluding the chess suites)
         env:
           E2E_DEVICE: cpu
+          E2E_TIMEOUT_SCALE: "3"
         run: |
           pytest tests/e2e/ \
             -m "not gpu_required and not fem_required" \
@@ -574,6 +585,7 @@ jobs:
       - name: Run E2E journeys (chess suites, separate process)
         env:
           E2E_DEVICE: cpu
+          E2E_TIMEOUT_SCALE: "3"
         run: |
           pytest tests/e2e/ \
             -m "not gpu_required and not fem_required" \
@@ -810,6 +822,7 @@ jobs:
         if: always() && hashFiles('tests/poc/test_scenario_baselines.py') != ''
         run: |
           pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
+            tests/poc/test_baseline_cli_support.py \
             --cov=src/poc/baselines --cov-branch --cov-fail-under=85 -q --no-header
 
       # NOTE: these two gates use the native coverage runner with path-glob

@@ -33,6 +33,7 @@ from typing import Any, Final
 
 import pytest
 
+from scripts.inspect_checkpoint import EXIT_LOAD_FAILED as INSPECT_EXIT_LOAD_FAILED
 from tests.e2e.conftest import (
     E2E_BENCHMARK_TIMEOUT_S,
     E2E_TRAINING_TIMEOUT_S,
@@ -191,9 +192,16 @@ def test_inspect_checkpoint_exits_nonzero_on_a_payload_it_refuses(
         E2E_BENCHMARK_TIMEOUT_S,
         None,
     )
-    assert result.returncode != 0, (
-        "inspect_checkpoint exited 0 on a checkpoint it could not load -- "
-        "the defect this test exists for"
+    # Exact, not `!= 0`. `_run_subprocess` reports a timeout as returncode -1,
+    # which satisfies `!= 0` -- so the loose form cannot tell a refusal from a
+    # hang, and a hung child also leaves the marker absent, satisfying the next
+    # assertion too. The script names this code, so the test uses its constant
+    # rather than a literal.
+    assert result.returncode == INSPECT_EXIT_LOAD_FAILED, (
+        f"inspect_checkpoint returned {result.returncode} on a checkpoint it "
+        f"could not load; expected {INSPECT_EXIT_LOAD_FAILED}. Exiting 0 is the "
+        f"defect this test exists for; a negative code means the child never "
+        f"finished, which is a different failure and must not read as a refusal"
     )
     assert not marker.exists(), "the payload executed despite the safe loader"
 

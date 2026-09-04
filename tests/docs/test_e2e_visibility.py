@@ -33,6 +33,7 @@ subprocess, no network. Guards ``docs/E2E_TEST_PLAN.md`` §3 (Phase 0).
 from __future__ import annotations
 
 import ast
+import re
 import shlex
 from pathlib import Path
 from typing import Final
@@ -904,3 +905,170 @@ class TestRawRecipeReader:
         makefile = tmp_path / "Makefile"
         makefile.write_text("a:\n\techo a\n", encoding="utf-8")
         assert _raw_recipe_lines("nope", makefile) == []
+
+
+# ============================================================================ #
+# Clause (i): CLAUDE.md's Regression Surface must prescribe the real command   #
+# ============================================================================ #
+#
+# `docs/CODE_HYGIENE_AUDIT.md` B8 asks for a drift guard on CLAUDE.md's
+# Regression Surface, and this branch is the strongest evidence for it: the
+# three E2E rows it added prescribed
+#
+#     pytest tests/e2e/ -m "not gpu_required and not fem_required" -q
+#
+# -- the *unsplit* invocation, measured at a 13,649 MB peak, OOM-killed twice
+# locally and killed CI run 863 with "the runner has received a shutdown
+# signal". The row drifted from the CI it describes **in the same commit as that
+# CI**, and nothing caught it.
+#
+# The guard is deliberately narrow. It does not try to parse every row's command
+# (they are heterogeneous prose, and a naive matcher produced false positives the
+# last time this was attempted -- see CLAUDE.md's Next Steps on
+# `check_doc_links.py` inline spans). It asserts one property that is cheap,
+# exact, and covers the whole defect: **a row describing the E2E tier must not
+# prescribe an invocation the CI workflow does not itself run.**
+
+#: The Regression Surface rows that describe the E2E tier, by the leading text of
+#: their first cell. A row whose title changes fails here rather than silently
+#: dropping out of the check.
+#: Lower bound on the clause banners this file must define. A floor rather
+#: than an equality so adding clause (j) does not fail here before the
+#: CLAUDE.md row is updated -- the row check below is the equality.
+MIN_GUARD_CLAUSES: Final[int] = 8
+
+#: Spelled-out counts, because the CLAUDE.md row states the number in prose.
+#: Bounded to what a guard file could plausibly reach; a count outside this
+#: raises a KeyError naming the gap rather than passing silently.
+_NUMBER_WORDS: Final[dict[int, str]] = {
+    6: "Six",
+    7: "Seven",
+    8: "Eight",
+    9: "Nine",
+    10: "Ten",
+    11: "Eleven",
+    12: "Twelve",
+}
+
+E2E_SURFACE_ROW_TITLES: Final[frozenset[str]] = frozenset(
+    {
+        "E2E tier visibility (the CI-invisibility guard)",
+        "E2E device contract (GPU/CPU agnostic, fail-loud)",
+        "E2E journeys (Phases 1-4)",
+    }
+)
+
+#: A bare `pytest tests/e2e/` selection with no `-k` partition. This is the
+#: shape that cannot run: it is what run 863 died on.
+_UNPARTITIONED_E2E_RUN = re.compile(
+    r"pytest\s+tests/e2e/(?!\S)"
+    # A `-k` partition is the whole point: exempt.
+    r"(?![^`\n]*-k\b)"
+    # Collection is cheap and never OOMs; the device-contract row documents a
+    # collection-time failure deliberately.
+    r"(?![^`\n]*--collect-only\b)"
+    # A run that *positively selects* fem_required is the one-test optional-extra
+    # half, not the whole tier. `not fem_required` is an exclusion and must still
+    # be caught, so the lookahead requires the marker without a preceding `not`.
+    r'(?![^`\n]*-m "fem_required)'
+)
+
+
+def _claude_md_rows() -> list[str]:
+    """Every Markdown table row in CLAUDE.md, as raw source lines.
+
+    Returns:
+        Lines beginning with ``|``, which in this document are exactly the
+        Regression Surface (and other) table rows.
+
+    """
+    text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    return [line for line in text.splitlines() if line.startswith("|")]
+
+
+def _e2e_surface_rows() -> list[str]:
+    """The Regression Surface rows describing the E2E tier.
+
+    Returns:
+        One raw row per title in :data:`E2E_SURFACE_ROW_TITLES`.
+
+    """
+    rows = _claude_md_rows()
+    found: list[str] = []
+    for title in sorted(E2E_SURFACE_ROW_TITLES):
+        matches = [row for row in rows if row.startswith(f"| {title} |")]
+        assert len(matches) == 1, (
+            f"expected exactly one Regression Surface row titled {title!r}, found "
+            f"{len(matches)}; if the row was renamed, update E2E_SURFACE_ROW_TITLES "
+            f"so this guard keeps covering it instead of silently covering nothing"
+        )
+        found.append(matches[0])
+    return found
+
+
+def test_the_e2e_surface_rows_exist() -> None:
+    """Vacuity guard: the rows this clause inspects must be present.
+
+    Without this, a renamed or deleted row turns every assertion below into an
+    assertion about an empty list.
+    """
+    assert len(_e2e_surface_rows()) == len(E2E_SURFACE_ROW_TITLES)
+
+
+@pytest.mark.parametrize("title", sorted(E2E_SURFACE_ROW_TITLES))
+def test_the_surface_row_does_not_prescribe_the_unrunnable_invocation(title: str) -> None:
+    """No E2E row may document a whole-tier ``pytest tests/e2e/`` run.
+
+    The tier is split into a ``-k "chess"`` / ``-k "not chess"`` pair because
+    running it as one process exhausts the runner's memory. A row prescribing
+    the unsplit form sends a reader -- or a future maintainer restoring "the
+    documented command" into CI -- straight back into run 863's failure.
+
+    ``--collect-only`` is exempt: collection is cheap and the device-contract
+    row legitimately documents a collection-time failure.
+    """
+    (row,) = [r for r in _e2e_surface_rows() if r.startswith(f"| {title} |")]
+    offending = _UNPARTITIONED_E2E_RUN.findall(row)
+    assert not offending, (
+        f"Regression Surface row {title!r} prescribes an unpartitioned "
+        f"`pytest tests/e2e/` run. That invocation is what CI run 863 died on "
+        f"(13,649 MB peak). Document the two-step `-k` pair that ci.yml actually "
+        f"runs, or `--collect-only`."
+    )
+
+
+def test_every_k_partition_in_ci_appears_in_the_surface_rows() -> None:
+    """The documented pair must be the pair CI runs, not merely *a* pair.
+
+    Guards the direction the previous test cannot: a row could avoid the
+    unsplit form while still naming a partition CI does not use.
+    """
+    documented = " ".join(_e2e_surface_rows())
+    for expression in sorted(E2E_REQUIRED_K_PARTITION):
+        assert f'-k "{expression}"' in documented, (
+            f"ci.yml runs the E2E tier with -k {expression!r}, but no Regression "
+            f"Surface row mentions it; the documented command and the enforced "
+            f"one have diverged"
+        )
+
+
+def test_the_clause_count_matches_the_guard() -> None:
+    """CLAUDE.md's stated clause count must equal the clauses that exist.
+
+    This number was hand-maintained and drifted: the row said "Six clauses"
+    after (g) and (h) had been added. Counting the clause banners in this file
+    makes the claim self-maintaining.
+    """
+    source = Path(__file__).read_text(encoding="utf-8")
+    clauses = set(re.findall(r"^# (?:Clause )?\(([a-z])\)", source, flags=re.MULTILINE))
+    assert len(clauses) >= MIN_GUARD_CLAUSES, (
+        f"found only {sorted(clauses)}; the clause banners are how this guard "
+        f"documents its own scope"
+    )
+    (row,) = [r for r in _e2e_surface_rows() if r.startswith("| E2E tier visibility")]
+    spelled = _NUMBER_WORDS[len(clauses)]
+    assert spelled.lower() in row.lower(), (
+        f"this file defines {len(clauses)} clauses ({sorted(clauses)}), but the "
+        f"CLAUDE.md row does not say {spelled!r}. Update the row; a hand-counted "
+        f"number in prose is exactly what drifted before."
+    )

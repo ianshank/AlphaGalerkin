@@ -10,6 +10,7 @@ constructor arguments.
 
 from __future__ import annotations
 
+import math
 from typing import Final, Literal
 
 from pydantic import Field, field_validator, model_validator
@@ -332,16 +333,27 @@ class AdequacyGateConfig(BaseModuleConfig):
 
         Returns ``int``, not ``float``: a DOF budget is a count, and
         ``run_refinement_sweep(max_dof: int)`` types it that way. The fitting
-        *window* stays float because it is interpolated over. This also preserves
+        *window* stays float because it is interpolated over. ``ceil`` preserves
         value identity with the module constant this replaced
         (``MAX_SWEEP_DOF = RATE_FIT_DOF_RANGE[1]`` over an int pair), which is
         the promotion's whole contract -- a move, not a retune.
 
+        **Rounds up, deliberately.** This was ``int(...)`` until a review flagged
+        the truncation (Copilot, PR #144), and the rounding *direction* is the
+        substantive half of that finding: ``max_dof`` is a stopping threshold
+        (``run_refinement_sweep`` halts once ``n_dof >= max_dof``) derived from
+        the top of the window the rates are fitted over, so the budget has to
+        **span** that window. Truncating rounds the budget down and can stop the
+        sweep just short of covering it -- with too few points at the top, the
+        fit either leans on a shorter lever arm or raises
+        ``InsufficientSweepPointsError``. Rounding up can only overshoot by less
+        than one DOF, which costs nothing.
+
         Returns:
-            The upper bound of the fitting window, as a DOF count.
+            The upper bound of the fitting window, as a DOF count, rounded up.
 
         """
-        return int(self.rate_fit_dof_range[1])
+        return math.ceil(self.rate_fit_dof_range[1])
 
     @field_validator("uniform_rate_band", "rate_fit_dof_range")
     @classmethod

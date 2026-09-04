@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from src.research.substrates.config import (
     RATE_FIT_MIN_POINTS,
     RATIO_FLOOR,
+    AdequacyGateConfig,
     SubstrateConfig,
     select_primary_l2,
 )
@@ -242,3 +243,43 @@ class TestSelectPrimaryL2:
         cfg = SubstrateConfig.model_construct(name="x", kind="tensor_grid", error_metric="bogus")
         with pytest.raises(ValueError, match="unknown error_metric"):
             select_primary_l2(cfg, quadrature=1.0, nodal=2.0)
+
+
+class TestAdequacyGateSweepBudget:
+    """``AdequacyGateConfig.max_sweep_dof`` -- Copilot review, PR #144.
+
+    The budget is *derived* from the top of the window the convergence rates are
+    fitted over, and ``run_refinement_sweep`` halts once ``n_dof >= max_dof``. So
+    the rounding direction is not cosmetic: the budget has to **span** the
+    window. This was ``int(...)`` (truncating) until the review flagged it.
+    """
+
+    def test_rounds_up_so_the_budget_spans_the_fit_window(self) -> None:
+        """A fractional upper bound must not shrink the sweep.
+
+        Truncation stops the sweep just short of covering the window, leaving
+        the fit with fewer points at the top -- a shorter lever arm, or
+        ``InsufficientSweepPointsError``. Overshooting costs less than one DOF.
+        """
+        gate = AdequacyGateConfig(name="t", rate_fit_dof_range=(200.0, 4000.9))
+        assert gate.max_sweep_dof == 4001
+
+    def test_a_hair_under_an_integer_still_covers_it(self) -> None:
+        """``3999.999`` must not become ``3999``."""
+        gate = AdequacyGateConfig(name="t", rate_fit_dof_range=(200.0, 3999.999))
+        assert gate.max_sweep_dof == 4000
+
+    def test_an_integral_bound_is_unchanged(self) -> None:
+        """Value identity with the module constant this replaced.
+
+        The promotion out of the gate's test file was a move, not a retune, and
+        the pinned default is an integral ``4000``; ``ceil`` leaves it exactly
+        there. Without this, the fix above could silently shift the shipped gate.
+        """
+        assert AdequacyGateConfig(name="t").max_sweep_dof == 4000
+        gate = AdequacyGateConfig(name="t", rate_fit_dof_range=(200.0, 4000.0))
+        assert gate.max_sweep_dof == 4000
+
+    def test_the_budget_is_an_int_for_the_sweep_signature(self) -> None:
+        """``run_refinement_sweep(max_dof: int)`` types it as a count."""
+        assert isinstance(AdequacyGateConfig(name="t").max_sweep_dof, int)

@@ -14,11 +14,12 @@ other fails the build. Prose that CI cannot read is a suggestion.
 ## The current focus
 
 The cycle's thesis is that **multi-step tree search beats greedy marking for
-adaptive mesh refinement** — and that thesis is, as of today, unfalsified. Not
-disproven: *untested*, because the substrate the experiment ran on refines by
-tensor-product grid lines, so a marking-policy comparison on it measures the
-substrate rather than the policy. Everything in the active set exists to get
-that experiment to the point where its result means something.
+adaptive mesh refinement** — and that thesis is, as of today, still *untested
+on an interpretable substrate*. The classical adequacy gate on
+`SkfemTriSubstrate` is green (and correctly fails on the tensor-product
+control); what remains is running the MCTS-vs-classical arena through the
+registered `SubstrateRefinementGame`. Everything in the active set exists to
+get that experiment to an interpretable answer either way.
 
 Active surfaces: `src/refinement/`, `src/pde/`, `src/mcts/`, `src/research/`,
 and the governance layer (`openspec/`, `specs/`, `tests/docs/`,

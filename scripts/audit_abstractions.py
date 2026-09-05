@@ -84,27 +84,11 @@ _KNOWN_LIVE: frozenset[tuple[str, str]] = frozenset(
 # present after its named task merges is a stale exemption, not a valid one.
 _STAGED_FOR_UPCOMING_TASK: frozenset[tuple[str, str]] = frozenset(
     {
-        # RefinementSubstrate (src/refinement/substrate.py): the Protocol lands
-        # in Slice A of element-local-substrate, ahead of its consumers.
-        #
-        # Slice D shrank this block from all 8 members to 1: the sweep driver
-        # (src/research/substrates/sweep.py) reads initial_mesh / solve / mark /
-        # refine / n_units / refinable_mask / describe. Honest caveat: the driver
-        # lives under src/ but is entered only from the adequacy-gate test
-        # (tests/research/test_amr_arena_interpretability.py), so "non-test
-        # reader" is one indirection from test-only -- the AST heuristic sees a
-        # src/ call site, which is what it checks. Those seven were removed
-        # rather than left exempted --
-        # an allowlist that covers a live member silently stops guarding it,
-        # which is the opposite of what this file is for. Verified by removing
-        # each entry and re-running the audit.
-        #
-        # ``fingerprint`` alone is still genuinely dead: its consumer is the
-        # fingerprint-keyed solve cache bounded by
-        # SubstrateConfig.solve_cache_max_entries, which lands with Slice E
-        # (openspec/changes/element-local-substrate/tasks.md task 7.1). Retire
-        # this last entry then.
-        ("RefinementSubstrate", "fingerprint"),
+        # Empty: ``RefinementSubstrate.fingerprint`` gained its production reader
+        # in Slice E (``src/research/substrates/solve_cache.py`` via
+        # ``FingerprintSolveCache.get_or_solve``). Do not re-add retired entries —
+        # ``test_every_staged_exemption_is_still_forward`` fails if a staged
+        # member already has a reader.
     }
 )
 

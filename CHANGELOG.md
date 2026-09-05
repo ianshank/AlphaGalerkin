@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
+  `src/pde/register_refinement_games.py`, config-driven substrate factory with
+  `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production
+  reader of `RefinementSubstrate.fingerprint`).
+
+### Changed
+- Retired charter deviations for empty `RefinementGameRegistry`, zero substrate
+  lookups, and the staged `fingerprint` audit exemption; added time-boxed
+  two-path AMR harness deviation.
+- Marked `specs/lshape_amr_compare.spec.md` superseded for element-local policy
+  comparisons (legacy numbers remain golden / non-informative for policy).
+
+
 All notable changes to AlphaGalerkin will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

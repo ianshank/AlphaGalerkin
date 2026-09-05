@@ -77,18 +77,11 @@ class RefinementSubstrate(Protocol[TMesh]):
     substrate and caller that need the new member. Seven of the eight members
     (``initial_mesh``, ``solve``, ``mark``, ``refine``, ``n_units``,
     ``refinable_mask``, ``describe``) are read by the sweep driver in
-    ``src/research/substrates/sweep.py`` and are audited live since Slice D —
-    with the honest caveat that the driver is entered only from the
-    adequacy-gate test (``tests/research/test_amr_arena_interpretability.py``),
-    so its ``src/`` call sites are one indirection from test-only. The one
-    remaining intentional, disclosed exception is ``fingerprint``: its only
-    consumer, the fingerprint-keyed solve cache, lands with
-    element-local-substrate Slice E (task 7.1), so it alone is exempted via
-    the audit's ``_STAGED_FOR_UPCOMING_TASK`` allowlist rather than genuinely
-    read yet. That exemption is self-expiring, not documentary:
-    ``tests/scripts/test_audit_abstractions.py`` fails once a staged member
-    gains a reader, and this docstring is pinned to the allowlist by the
-    same file, so neither can silently outlive the other.
+    ``src/research/substrates/sweep.py``. ``fingerprint`` is read by
+    ``FingerprintSolveCache`` in ``src/research/substrates/solve_cache.py``
+    (Slice E). The sweep driver's honest caveat remains: it lives under
+    ``src/`` but is entered from the adequacy-gate test, so those call sites
+    are one indirection from test-only.
 
     ``@runtime_checkable`` is what lets ``src.templates.registry.create_registry``'s
     ``issubclass(cls, RefinementSubstrate)`` structural check work when

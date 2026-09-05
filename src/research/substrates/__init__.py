@@ -7,6 +7,12 @@ full data contract and acceptance criteria.
 
 from __future__ import annotations
 
+from src.research.substrates.factory import (
+    build_default_operator,
+    build_substrate_from_config,
+    ensure_substrate_registrants,
+)
+from src.research.substrates.solve_cache import FingerprintSolveCache
 from src.research.substrates.config import (
     ERROR_METRIC_NODAL_RMS,
     ERROR_METRIC_QUADRATURE,
@@ -24,6 +30,10 @@ from src.research.substrates.config import (
 )
 
 __all__ = [
+    "FingerprintSolveCache",
+    "build_default_operator",
+    "build_substrate_from_config",
+    "ensure_substrate_registrants",
     "ERROR_METRIC_NODAL_RMS",
     "ERROR_METRIC_QUADRATURE",
     "RATE_FIT_MIN_POINTS",

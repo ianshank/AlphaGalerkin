@@ -249,14 +249,21 @@ def test_generic_protocol_member_with_reader_not_flagged(tmp_path: Path) -> None
 
 def test_staged_allowlist_suppresses_declared_but_not_yet_consumed_members(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``_STAGED_FOR_UPCOMING_TASK`` exempts a genuinely-uncalled member.
 
-    Distinct from ``_KNOWN_LIVE`` (a real caller the AST heuristic cannot see):
-    ``RefinementSubstrate.fingerprint`` has no caller anywhere yet, by design,
-    pending element-local-substrate's Slice E (task 7.1), which adds the
-    fingerprint-keyed solve cache that reads it.
+    Distinct from ``_KNOWN_LIVE`` (a real caller the AST heuristic cannot see).
+    Slice E retired the real ``fingerprint`` exemption once
+    ``FingerprintSolveCache`` became its reader; this test keeps a *synthetic*
+    staged entry so the allowlist mechanism itself stays covered when the
+    production set is empty.
     """
+    monkeypatch.setattr(
+        audit_module,
+        "_STAGED_FOR_UPCOMING_TASK",
+        frozenset({("RefinementSubstrate", "fingerprint")}),
+    )
     _write(
         tmp_path,
         "mod.py",
@@ -298,7 +305,13 @@ def test_staged_allowlist_does_not_cover_members_that_gained_a_reader(
     assert "solve" in missing
 
 
-@pytest.mark.parametrize("staged", sorted(audit_module._STAGED_FOR_UPCOMING_TASK))
+
+def test_staged_allowlist_empty_after_slice_e() -> None:
+    """Slice E retired the last production staged member (fingerprint)."""
+    assert audit_module._STAGED_FOR_UPCOMING_TASK == frozenset()
+
+
+@pytest.mark.parametrize("staged", sorted(audit_module._STAGED_FOR_UPCOMING_TASK) or [pytest.param(("__none__", "__none__"), marks=pytest.mark.skip(reason="no staged exemptions"))])
 def test_every_staged_exemption_is_still_forward(
     staged: tuple[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -381,7 +394,7 @@ class TestRefinementSubstrateDocstringTracksTheAllowlist:
         mentioned = "_STAGED_FOR_UPCOMING_TASK" in doc
         assert mentioned == bool(_staged_for(self.CLS_NAME)), (
             "the docstring names the allowlist but nothing of this class is staged any more "
-            "(or the reverse) -- Slice E's task 7.1 retires the last entry; update the "
+            "(or the reverse) -- Slice E retired fingerprint; keep docstring and allowlist in sync "
             "docstring in the same commit"
             if mentioned
             else "a member of this class is staged but the docstring does not say so"

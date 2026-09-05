@@ -1,6 +1,6 @@
 # Spec: L-shaped Poisson AMR — MCTS refinement vs Dörfler marking
 
-> **Status:** Implemented
+> **Status:** Superseded — tensor-product / legacy harness retained as golden control only. Prefer `specs/refinement_substrate.spec.md` + `openspec/changes/refinement-game-registrant` / `mcts-classical-amr-arena` for element-local policy comparisons. Legacy MCTS-vs-Dörfler numbers are **non-informative for element-local policy**.
 > **Owner:** pde-solver
 > **Primary module(s):** `src/research/lshape_amr_compare.py`, `src/pde/games/lshape_amr.py`, `src/poc/scenarios/lshape_amr_compare.py`
 > **Config class:** `src.poc.scenarios.lshape_amr_compare_config.LShapeAMRCompareConfig`

@@ -196,6 +196,8 @@ Task 0 is already complete and is what justifies the rest.
 
 ## 7. First registrant
 
+> **Slice E ownership:** remaining tasks 7.x–8.x are executed via `openspec/changes/refinement-game-registrant/` (implementation PR).
+
 - [ ] 7.1 Minimal `RefinementGame` over the substrate, `@register_refinement_game`.
 - [ ] 7.2 Registration only via an explicit `register_games` module — **never** from
       `__init__.py` (the documented SIGSEGV class).

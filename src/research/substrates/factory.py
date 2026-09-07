@@ -14,7 +14,6 @@ import structlog
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator, PoissonOperator
 from src.refinement.substrate_registry import RefinementSubstrateRegistry
-from src.research.lshape_amr_compare import lshape_inside_predicate
 from src.research.substrates.config import (
     SUBSTRATE_KIND_TENSOR_GRID,
     SubstrateConfig,
@@ -26,6 +25,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 OperatorName = Literal["poisson", "lshape_poisson"]
+
 
 # Side-effect imports: register concrete substrates so registry lookups resolve.
 # Kept in a dedicated helper so importing ``factory`` is the explicit act that
@@ -103,11 +103,11 @@ def build_substrate_from_config(
     registry = RefinementSubstrateRegistry()
     # Production lookup — retires the "zero runtime lookups" charter deviation.
     substrate_cls = registry.get_or_raise(config.kind)
-    op = operator if operator is not None else build_default_operator(
-        operator_name, scale=scale
-    )
+    op = operator if operator is not None else build_default_operator(operator_name, scale=scale)
     kwargs: dict[str, Any] = {"operator": op, "config": config}
     if config.kind == SUBSTRATE_KIND_TENSOR_GRID and operator_name == "lshape_poisson":
+        from src.research.lshape_amr_compare import lshape_inside_predicate
+
         kwargs["inside"] = lshape_inside_predicate(scale)
     substrate = substrate_cls(**kwargs)
     logger.info(

@@ -160,9 +160,7 @@ class SubstrateRefinementGame(RefinementGame):
         if self.is_terminal(state):
             return []
         if not isinstance(state, SubstrateEpisodeState) or state.mesh is None:
-            raise TypeError(
-                "SubstrateRefinementGame requiress SubstrateEpisodeState with a mesh"
-            )
+            raise TypeError("SubstrateRefinementGame requires SubstrateEpisodeState with a mesh")
         mask = self._substrate.refinable_mask(state.mesh)
         n_units = int(self._substrate.n_units(state.mesh))
         limit = min(n_units, self.action_space_size, len(mask))
@@ -171,9 +169,7 @@ class SubstrateRefinementGame(RefinementGame):
     def apply_action(self, state: RefinementState, action: int) -> SubstrateEpisodeState:
         """Refine a single unit; pure in ``(state, action)`` — no instance mutation."""
         if not isinstance(state, SubstrateEpisodeState) or state.mesh is None:
-            raise TypeError(
-                "SubstrateRefinementGame requires SubstrateEpisodeState with a mesh"
-            )
+            raise TypeError("SubstrateRefinementGame requires SubstrateEpisodeState with a mesh")
         valid = self.get_valid_actions(state)
         if action not in valid:
             raise ValueError(
@@ -215,9 +211,7 @@ class SubstrateRefinementGame(RefinementGame):
     def get_reward(self, state: RefinementState, prev_state: RefinementState) -> float:
         """Error reduction minus optional cost weight."""
         reduction = float(prev_state.error_estimate) - float(state.error_estimate)
-        return reduction - float(self._config.reward_cost_weight) * float(
-            self._config.refine_cost
-        )
+        return reduction - float(self._config.reward_cost_weight) * float(self._config.refine_cost)
 
     def get_winner(self, state: RefinementState) -> int:
         """Map terminal error to ``{-1, 1}`` against ``winner_error_threshold``."""

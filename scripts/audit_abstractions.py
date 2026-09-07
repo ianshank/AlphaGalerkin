@@ -82,15 +82,7 @@ _KNOWN_LIVE: frozenset[tuple[str, str]] = frozenset(
 # entry names the task that is expected to add its first real ``src/`` caller,
 # and must be deleted (not extended) once that task lands. An entry still
 # present after its named task merges is a stale exemption, not a valid one.
-_STAGED_FOR_UPCOMING_TASK: frozenset[tuple[str, str]] = frozenset(
-    {
-        # Empty: ``RefinementSubstrate.fingerprint`` gained its production reader
-        # in Slice E (``src/research/substrates/solve_cache.py`` via
-        # ``FingerprintSolveCache.get_or_solve``). Do not re-add retired entries —
-        # ``test_every_staged_exemption_is_still_forward`` fails if a staged
-        # member already has a reader.
-    }
-)
+_STAGED_FOR_UPCOMING_TASK: frozenset[tuple[str, str]] = frozenset()
 
 
 @dataclass

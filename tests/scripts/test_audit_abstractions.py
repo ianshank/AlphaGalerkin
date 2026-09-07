@@ -305,13 +305,21 @@ def test_staged_allowlist_does_not_cover_members_that_gained_a_reader(
     assert "solve" in missing
 
 
-
 def test_staged_allowlist_empty_after_slice_e() -> None:
     """Slice E retired the last production staged member (fingerprint)."""
     assert audit_module._STAGED_FOR_UPCOMING_TASK == frozenset()
 
 
-@pytest.mark.parametrize("staged", sorted(audit_module._STAGED_FOR_UPCOMING_TASK) or [pytest.param(("__none__", "__none__"), marks=pytest.mark.skip(reason="no staged exemptions"))])
+@pytest.mark.parametrize(
+    "staged",
+    sorted(audit_module._STAGED_FOR_UPCOMING_TASK)
+    or [
+        pytest.param(
+            ("__none__", "__none__"),
+            marks=pytest.mark.skip(reason="no staged exemptions"),
+        )
+    ],
+)
 def test_every_staged_exemption_is_still_forward(
     staged: tuple[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

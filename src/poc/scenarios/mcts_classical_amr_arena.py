@@ -18,6 +18,7 @@ from src.poc.scenarios.mcts_classical_amr_arena_config import (
 
 if TYPE_CHECKING:
     from src.research.mcts_classical_amr_arena import MultiSeedArena
+    from src.research.run_manifest import GitProvenance
 
 
 @scenario(SCENARIO_NAME)
@@ -68,10 +69,14 @@ class MCTSClassicalAMRArenaScenario(BaseScenario):
             run_comparison,
             write_arena_manifest,
         )
+        from src.research.run_manifest import collect_git_provenance
 
+        # Snapshot before any artifact write so untracked CSV/PNG cannot
+        # flip git.dirty on an otherwise clean source tree.
+        git = collect_git_provenance()
         arena = run_comparison(self.config)
         self._record_metrics(arena)
-        self._write_artifacts(arena, export_csv, export_plot, write_arena_manifest)
+        self._write_artifacts(arena, export_csv, export_plot, write_arena_manifest, git=git)
         return self._create_result(status=ScenarioStatus.RUNNING)
 
     def _record_metrics(self, arena: MultiSeedArena) -> None:
@@ -95,6 +100,8 @@ class MCTSClassicalAMRArenaScenario(BaseScenario):
         export_csv: Any,
         export_plot: Any,
         write_arena_manifest: Any,
+        *,
+        git: GitProvenance,
     ) -> None:
         """Write CSV, optional PNG, and the run sidecar."""
         base_str = str(Path(self.config.output_dir) / self.config.artifact_basename)
@@ -111,6 +118,7 @@ class MCTSClassicalAMRArenaScenario(BaseScenario):
             csv_path,
             plotted,
             proposal_grade=False,
+            git=git,
         )
         self.record_artifact("run_json", str(sidecar))
 

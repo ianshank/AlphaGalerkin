@@ -32,6 +32,7 @@ from src.refinement.adapter import RefinementGameAdapter
 from src.research.lshape_amr_compare import _interp_log, _step_read
 from src.research.run_manifest import (
     ArmProvenance,
+    GitProvenance,
     RunManifest,
     assert_proposal_grade,
     collect_git_provenance,
@@ -528,16 +529,24 @@ def write_arena_manifest(
     png_path: Path | None,
     *,
     proposal_grade: bool = False,
+    git: GitProvenance | None = None,
 ) -> Path:
-    """Persist ``*.run.json`` beside the CSV. Collectors never raise."""
+    """Persist ``*.run.json`` beside the CSV. Collectors never raise.
+
+    ``git`` should be snapshotted *before* CSV/PNG write. Collecting after
+    those files exist marks an otherwise clean tree dirty via untracked
+    (or overwritten) artifacts, which is a chicken-egg, not a dirty source
+    tree. ``None`` falls back to a live probe for callers that do not write.
+    """
     metrics = result.metrics()
+    git_state = git if git is not None else collect_git_provenance()
     manifest = RunManifest(
         run_id=config.compute_hash(),
         created_at_utc=datetime.now(timezone.utc).isoformat(),
         harness=HARNESS_NAME,
         config_hash=config.compute_hash(),
         config=config.model_dump(mode="json"),
-        git=collect_git_provenance(),
+        git=git_state,
         packages=collect_package_versions(),
         hardware_tag=collect_hardware_tag(),
         seeds=list(result.seeds),

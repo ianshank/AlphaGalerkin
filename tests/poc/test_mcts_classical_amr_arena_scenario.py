@@ -63,3 +63,36 @@ class TestMicroRun:
         sidecar = Path(result.artifacts["csv"]).with_suffix(".run.json")
         assert sidecar.exists()
         assert result.metrics["n_seeds"] == pytest.approx(1.0)
+
+    def test_git_is_snapshotted_before_artifact_write(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.research.run_manifest import GitProvenance, load_run_manifest
+
+        order: list[str] = []
+
+        def _probe() -> GitProvenance:
+            order.append("git")
+            return GitProvenance(sha="snap", branch="test", dirty=False)
+
+        monkeypatch.setattr(
+            "src.research.run_manifest.collect_git_provenance",
+            _probe,
+        )
+        from src.research.mcts_classical_amr_arena import export_csv as original_export
+
+        def _export(*args: object, **kwargs: object) -> object:
+            order.append("csv")
+            return original_export(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "src.research.mcts_classical_amr_arena.export_csv",
+            _export,
+        )
+        scenario = MCTSClassicalAMRArenaScenario(_config(tmp_path))
+        result = scenario.run()
+        assert order[:2] == ["git", "csv"]
+        sidecar = Path(result.artifacts["csv"]).with_suffix(".run.json")
+        loaded = load_run_manifest(sidecar)
+        assert loaded.git.dirty is False
+        assert loaded.git.sha == "snap"

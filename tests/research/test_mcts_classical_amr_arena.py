@@ -325,6 +325,68 @@ class TestManifestAndActionSpace:
         sidecar = write_arena_manifest(arena, config, csv_path, png, proposal_grade=True)
         assert sidecar.exists()
 
+    def test_write_arena_manifest_uses_injected_git(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.poc.scenarios.mcts_classical_amr_arena_config import (
+            MCTSClassicalAMRArenaConfig,
+        )
+        from src.research.mcts_classical_amr_arena import (
+            MultiSeedArena,
+            SeedComparison,
+        )
+        from src.research.run_manifest import GitProvenance, load_run_manifest
+        from src.research.substrates.config import SubstrateConfig
+
+        dorfler = _traj("dorfler", [10, 20], [1.0, 0.5], [1, 2])
+        uniform = _traj("uniform", [10, 40], [1.0, 0.4], [1, 2])
+        mcts = _traj("mcts", [10, 18], [1.0, 0.6], [1, 5])
+        seed = SeedComparison(
+            seed=7,
+            mcts=mcts,
+            l2_error_ratio_at_matched_dof=1.2,
+            l2_error_ratio_at_matched_solves=1.5,
+            error_per_dof_ratio_at_matched_wall_clock=2.0,
+            matched_dof=18.0,
+            matched_solves=2.0,
+            matched_wall_time_seconds=1.0,
+        )
+        arena = MultiSeedArena(
+            dorfler=dorfler,
+            uniform=uniform,
+            per_seed=[seed],
+            seeds=[7],
+            marking_fraction=0.5,
+            dof_convention="fem_basis_dofs",
+        )
+        csv_path = tmp_path / "arena.csv"
+        export_csv(arena, csv_path)
+        config = MCTSClassicalAMRArenaConfig(
+            name="mcts_classical_amr_arena",
+            substrate=SubstrateConfig(name="tg", kind="tensor_grid", initial_side=4),
+            operator_name="poisson",
+            require_adequacy_precondition=False,
+        )
+
+        def _must_not_collect() -> GitProvenance:
+            raise AssertionError("live git probe must not run when git is injected")
+
+        monkeypatch.setattr(
+            "src.research.mcts_classical_amr_arena.collect_git_provenance",
+            _must_not_collect,
+        )
+        sidecar = write_arena_manifest(
+            arena,
+            config,
+            csv_path,
+            None,
+            proposal_grade=True,
+            git=GitProvenance(sha="deadbeef", branch="clean", dirty=False),
+        )
+        loaded = load_run_manifest(sidecar)
+        assert loaded.git.dirty is False
+        assert loaded.git.sha == "deadbeef"
+
     def test_classical_arm_empty_sweep_is_silent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from src.research.mcts_classical_amr_arena import run_classical_arm
 

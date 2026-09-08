@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import csv
 from pathlib import Path
 
 import numpy as np
@@ -409,3 +410,46 @@ class TestManifestAndActionSpace:
         )
         assert traj.points == []
         assert traj.method == "dorfler"
+
+
+class TestCommittedArtifacts:
+    """Human number-match against the proposal-grade sidecar."""
+
+    def test_sidecar_is_proposal_grade_and_matches_csv(self) -> None:
+        from src.research.run_manifest import assert_proposal_grade, load_run_manifest
+
+        csv_path = REPO_ROOT / "results" / "mcts_classical_amr_arena.csv"
+        sidecar_path = REPO_ROOT / "results" / "mcts_classical_amr_arena.run.json"
+        assert csv_path.is_file()
+        assert sidecar_path.is_file()
+        manifest = load_run_manifest(sidecar_path)
+        assert_proposal_grade(manifest)
+        assert manifest.git.dirty is False
+        mcts_arm = next(arm for arm in manifest.arms if arm.name == "mcts")
+        assert mcts_arm.parameters["search_mode"] == "single_agent"
+        assert mcts_arm.parameters["add_noise"] is False
+        assert mcts_arm.parameters["evaluator"] == "ResidualPriorErrorValueEvaluator"
+        assert manifest.config["temperature"] == 0.0
+        assert manifest.config["marking_fraction"] == pytest.approx(0.5)
+        assert manifest.config["max_dof"] == 600
+
+        dorfler: dict[int, float] = {}
+        last_by_seed: dict[int, tuple[int, float]] = {}
+        with csv_path.open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                dof = int(row["n_dof"])
+                err = float(row["l2_error"])
+                if row["method"] == "dorfler":
+                    dorfler[dof] = err
+                elif row["method"] == "mcts":
+                    last_by_seed[int(row["seed"])] = (dof, err)
+        assert last_by_seed
+        dof, err = next(iter(last_by_seed.values()))
+        assert all(pair == (dof, err) for pair in last_by_seed.values())
+        csv_ratio = err / dorfler[dof]
+        assert csv_ratio == pytest.approx(
+            manifest.metrics["l2_error_ratio_at_matched_dof"],
+            rel=1e-9,
+            abs=1e-10,
+        )
+        assert dof == int(manifest.metrics["matched_dof"])

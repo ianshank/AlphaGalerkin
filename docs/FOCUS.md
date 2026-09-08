@@ -13,13 +13,19 @@ other fails the build. Prose that CI cannot read is a suggestion.
 
 ## The current focus
 
-The cycle's thesis is that **multi-step tree search beats greedy marking for
-adaptive mesh refinement**. The substrate is interpretable (`SkfemTriSubstrate`
-adequacy gate green; the same gate fails on the tensor-product control). Slice E
-registered `SubstrateRefinementGame` with a real MCTS smoke. What remains is the
-**scored** MCTS-vs-classical arena (`specs/mcts_classical_amr_arena.spec.md`) —
-a win or an honest negative lifts the freeze. Adequacy rates are gate evidence,
-not a look-ahead win.
+The cycle's thesis — **multi-step tree search beats greedy marking for
+adaptive mesh refinement** — now has an interpretable answer on the element-local
+substrate. Untrained MCTS vs Dörfler on `SkfemTriSubstrate` at θ=0.5, policy
+`max_dof=600` (matched DOF 287): median `l2_error_ratio_at_matched_dof` **0.9532**
+(`results/mcts_classical_amr_arena.csv`). Look-ahead does **not** win at matched
+solves (ratio 9.23, ungated). Adequacy rates remain gate evidence, not this
+result. Legacy `results/lshape_mcts_vs_dorfler.csv` is **non-informative for
+element-local policy**.
+
+The freeze **lifts** on that signed result. `config/focus.yaml` still lists
+`codec` and `interactive-surfaces` so the split-attention gate keeps working
+until a follow-up re-scopes tracks (empty `frozen_tracks` is rejected; promoting
+the `focus` job into `ci-success` is a separate PR).
 
 Active surfaces: `src/refinement/`, `src/pde/`, `src/mcts/`, `src/research/`,
 and the governance layer (`openspec/`, `specs/`, `tests/docs/`,
@@ -80,11 +86,11 @@ nobody can see is the same as no gate.
 
 ## When the freeze lifts
 
-The freeze is tied to a result, not a date. It lifts when the refinement
-experiment has an interpretable answer — whichever way it goes. A negative
-result ends the cycle just as legitimately as a positive one, and the charter
-already requires reporting it either way.
-
-The physical repository split that a frozen track invites stays deferred until
-then: restructuring around an unfalsified thesis is the expensive version of
-this mistake.
+The freeze lifted on the committed Phase 2 artifacts
+(`results/mcts_classical_amr_arena.{csv,run.json}`): a matched-DOF win (median
+ratio 0.9532 at θ=0.5, policy `max_dof=600`) that evaporates at matched compute.
+That is an interpretable answer either way — not a smoke pass. Parked work
+(certificates, Noyron geometry, dashboard WS3–5, codec B35, LLM GPU smokes)
+may resume in **separate** changesets; do not mix it with a new solver number
+in the same PR. The `codec` / `interactive-surfaces` rows below remain the
+machine-readable freeze until a follow-up edits `config/focus.yaml`.

@@ -126,6 +126,7 @@ written in response to.
 | Operator-vs-retrained-CNN ratio | ≈14× (operator loses) | `specs/transfer_baseline_compare.spec.md` |
 | L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 1.0996 (MCTS **loses** ~10%), wins 1/5 seeds; **non-informative for element-local policy** (tensor-product substrate) | `results/lshape_mcts_vs_dorfler.csv` |
 | L-shape AMR at matched compute | median ratio 2.04, MCTS wins 0/5 seeds; **non-informative for element-local policy** | `specs/lshape_amr_compare.spec.md` |
+| Element-local AMR, MCTS vs Dörfler at matched DOF (θ=0.5, policy max_dof=600, matched_dof=287) | median ratio 0.9532 (MCTS **wins** ~4.7%; 3 identical seeds; evaporates at matched solves, ratio 9.23 ungated). Adequacy rates over (200, 4000) are **not** this result. | `results/mcts_classical_amr_arena.{csv,run.json}` |
 | L-shape substrate, uniform-refinement L2 rate | O(h^1.31) ≈ O(N^-0.65) | `tests/research/test_lshape_convergence_gate.py` |
 | L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler **worse**, 1.5× at 56 DOF rising to 10.5× at 2847; convergence N^-0.14 vs uniform's N^-0.63 (tensor-product refinement defect) | `results/lshape_adaptive_vs_uniform.{csv,run.json}` |
 | Stochastic Galerkin density MSE | 2.3e-8 | `results/stochastic_galerkin_compare.csv` |
@@ -199,6 +200,11 @@ Novelty is a *method* delta, not a demonstrated win. The honest `lshape_amr_comp
 (ratio 2.04, 0/5 seeds) — SHALL be reported alongside any favourable framing. Those figures are
 **non-informative for element-local policy** (tensor-product substrate / legacy harness); the
 cycle thesis is measured by `mcts_classical_amr_arena` on `SkfemTriSubstrate`.
+Committed Phase 2 result (`results/mcts_classical_amr_arena.csv`, θ=0.5, policy
+`max_dof=600`, matched DOF 287): median `l2_error_ratio_at_matched_dof` **0.9532**
+(MCTS ~4.7% better at matched DOF; 3 identical seeds). Look-ahead does **not** win
+at matched solves (ratio 9.23, ungated). Do **not** quote adequacy `N^-1.31` / ~10×
+rates as this result — those are gate evidence on `(200, 4000)`.
 
 The previously reported "~4% matched-DOF win" (ratio 0.9605) is **retracted (2026-08-16)**: it was
 produced by a boundary-condition defect in `lshape_inside_predicate`, which removed the *open*

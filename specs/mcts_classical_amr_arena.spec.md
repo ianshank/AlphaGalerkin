@@ -141,6 +141,24 @@ which may be smaller. Do not present policy ratios as if they were fitted over
 
 Matched-solves and wall-clock ratios are **not** gated.
 
+## Measured result (Phase 2, committed)
+
+Proposal-grade run on `19609d4` (`results/mcts_classical_amr_arena.{csv,run.json}`,
+`dirty: false`). θ=0.5, policy `max_dof=600`, `max_steps=12`, `n_simulations=8`,
+`top_k_actions=8`, `ResidualPriorErrorValueEvaluator`, `search_mode=single_agent`,
+`add_noise=False`, `temperature=0`, seeds `{42, 1051, 2060}` (identical
+trajectories).
+
+| Metric | Value | Gated? |
+|---|---|---|
+| `l2_error_ratio_at_matched_dof` | **0.9532** (matched DOF 287) | yes (`< 1`) — **Win** |
+| `l2_error_ratio_at_matched_solves` | 9.23 | no |
+| `error_per_dof_ratio_mcts_over_dorfler` | ~30.8 | no |
+
+Adequacy abort did not fire (adaptive `N^-1.31` vs uniform `N^-0.67` on
+`(200, 4000)`). Those rates are **gate evidence**, not a look-ahead win. Do not
+present the 0.9532 ratio as if it were fitted over that adequacy window.
+
 ## Regression Surface
 
 ```bash

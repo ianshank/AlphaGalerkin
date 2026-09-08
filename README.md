@@ -54,6 +54,13 @@ transparent compute budget — not multi-step reasoning as such (see
 - **Provable stability** — LBB / inf-sup condition monitored during training.
 - **Spec-driven & agentic tooling** — every feature starts as a
   [spec](specs/README.md); [`.claude/`](.claude/) ships hooks, skills, and subagents.
+- **Element-local AMR arena** — untrained MCTS vs Dörfler on `SkfemTriSubstrate`
+  at θ=0.5, policy `max_dof=600` (matched DOF 287): median ratio **0.9532**
+  (MCTS ~4.7% better at matched DOF; evaporates at matched solves, ratio 9.23
+  ungated). Artifacts: [`results/mcts_classical_amr_arena.csv`](results/mcts_classical_amr_arena.csv),
+  [`results/mcts_classical_amr_arena.run.json`](results/mcts_classical_amr_arena.run.json).
+  Legacy [`results/lshape_mcts_vs_dorfler.csv`](results/lshape_mcts_vs_dorfler.csv)
+  is **non-informative for element-local policy**.
 
 ## Installation
 
@@ -448,6 +455,7 @@ same code path is safe everywhere.
 - [x] ~~Migrate Trainer to BaseTrainer inheritance~~ (`src/training/trainer.py::Trainer(BaseTrainer)`; `DistributedTrainer` too. `OperatorTrainer` was never migrated — it has zero production callers, so it stays a plain class until a caller needs it; see `docs/CODE_HYGIENE_AUDIT.md`)
 - [x] ~~Element-local refinement substrate + adequacy gate~~ (`src/refinement/substrate.py`, `src/research/substrates/`) — the project's central claim was previously **unmeasurable**: on the only substrate that existed, refining one element inserted full tensor-product grid *lines*, so adaptive marking converged worse than uniform refinement and any comparison measured the substrate rather than the policy. Now two substrates behind one stepwise interface, with a gate that asserts adaptive beats uniform on the element-local one **and fails on the tensor-product control** — a gate that passes on both measures nothing. Measured at θ=0.5 over DOF ∈ (200, 4000): element-local adaptive `N^-1.31` vs uniform `N^-0.67` (adaptive ~10× better at matched DOF); tensor-product adaptive `N^-0.23` vs uniform `N^-0.65` (adaptive ~13× *worse*). Those rates are **gate evidence, not a look-ahead win**. See `specs/refinement_substrate.spec.md`
 - [x] ~~Wire the substrate into a `RefinementGame`~~ (`SubstrateRefinementGame` via `src/pde/register_refinement_games.py`, fingerprint-keyed `FingerprintSolveCache`) — production registry lookup by `kind`; real `MCTS.get_action` smoke on `tensor_grid` (always) and `skfem_tri` (`fem_required`). The MCTS-vs-classical **policy** comparison is `specs/mcts_classical_amr_arena.spec.md` / `mcts_classical_amr_arena`, not this registrant.
+- [x] ~~MCTS vs Dörfler on `skfem_tri` (scored arena)~~ (`scripts/run_mcts_classical_amr_arena.py`, `results/mcts_classical_amr_arena.{csv,run.json}`) — untrained MCTS (`ResidualPriorErrorValueEvaluator`, `search_mode=single_agent`, `add_noise=False`, `temperature=0`) vs Dörfler at θ=0.5, policy `max_dof=600` (matched DOF 287). Median ratio **0.9532** (MCTS wins ~4.7% at matched DOF; 3 identical seeds). Evaporates at matched solves (ratio 9.23, ungated). Adequacy rates over (200, 4000) are **gate evidence, not this result**. Legacy `results/lshape_mcts_vs_dorfler.csv` remains **non-informative for element-local policy**.
 - [ ] Multi-field PDE support — **`ModelOutput.vector_fields`/`with_vector_fields()` already exist** (`src/modeling/model.py`) but nothing produces or consumes them yet. What's actually open: a spec naming a pilot operator (`NavierStokesOperator` is the only vector-valued one today) and what `BasisSelectionGame`'s scalar `(N,)` fit, the loss functions, and the MCTS `Evaluator` protocol need to change to support it
 - [ ] PETSc/MFEM compatibility layer for DOE ASCR proposals — no code exists; this is a proposal-narrative/business decision, not scoped engineering work (see `docs/CODE_HYGIENE_AUDIT.md`)
 - [ ] Capture proposal-grade Tesla P40 numbers from `scripts/run_sbir_p40.py` once a sm_61-compatible PyTorch wheel is available — code side is done; blocked on procuring P40 hardware + a compatible wheel

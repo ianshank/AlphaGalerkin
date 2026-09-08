@@ -19,25 +19,25 @@ Phase 2 is blocked on `refinement-game-registrant` exit criteria.
 
 - [x] 1.1 Dörfler arm on `skfem_tri` via `sweep.py` under Phase 0 config
 - [x] 1.2 Uniform arm on the same substrate/config
-- [ ] 1.3 Commit raw artifacts under `results/` with valid manifests (no unknown hashes)
-- [ ] 1.4 Verify adequacy precondition still passes for the locked config
+- [x] 1.3 Commit raw artifacts under `results/` with valid manifests (no unknown hashes)
+- [x] 1.4 Verify adequacy precondition still passes for the locked config
 
 ## Phase 2 — MCTS arm (blocked on registrant)
 
-- [ ] 2.1 Confirm `refinement-game-registrant` exit criteria (pure game, registry, cache, governance)
-- [ ] 2.2 MCTS arm via registered `RefinementGame` + `RefinementGameAdapter`
-- [ ] 2.3 Matched-DOF primary comparison vs classical; record compute secondary ungated
-- [ ] 2.4 Multi-seed run per pre-reg; commit CSV + run.json
-- [ ] 2.5 Human number-match review against committed artifacts before any doc claim
+- [x] 2.1 Confirm `refinement-game-registrant` exit criteria (pure game, registry, cache, governance)
+- [x] 2.2 MCTS arm via registered `RefinementGame` + `RefinementGameAdapter`
+- [x] 2.3 Matched-DOF primary comparison vs classical; record compute secondary ungated
+- [x] 2.4 Multi-seed run per pre-reg; commit CSV + run.json
+- [x] 2.5 Human number-match review against committed artifacts before any doc claim
 
 ## Phase 3 — Reporting
 
-- [ ] 3.1 README / charter evidence updates **only** from Phase 2 artifacts
-- [ ] 3.2 Quote all rates with θ + DOF window
-- [ ] 3.3 Label legacy `lshape_mcts_vs_dorfler` / tensor-grid rows as non-informative for
+- [x] 3.1 README / charter evidence updates **only** from Phase 2 artifacts
+- [x] 3.2 Quote all rates with θ + DOF window
+- [x] 3.3 Label legacy `lshape_mcts_vs_dorfler` / tensor-grid rows as non-informative for
       element-local policy (if not already done in registrant supersession)
-- [ ] 3.4 FOCUS freeze-lift note: interpretable answer recorded (win **or** honest negative)
-- [ ] 3.5 `CHANGELOG.md` + CLAUDE milestone
+- [x] 3.4 FOCUS freeze-lift note: interpretable answer recorded (win **or** honest negative)
+- [x] 3.5 `CHANGELOG.md` + CLAUDE milestone
 
 ## Explicit non-tasks
 

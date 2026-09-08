@@ -1,0 +1,58 @@
+# MCTS vs classical AMR arena — headline (proposal-grade) YAML.
+#
+# Pinned for specs/mcts_classical_amr_arena.spec.md:
+#   kind=skfem_tri, P1, operator_name=lshape_poisson, θ=0.5
+#   adequacy window (200, 4000) via AdequacyGateConfig defaults
+#   policy window max_dof=600, max_steps=12, n_simulations=8, top_k=8
+#   search_mode=single_agent, add_noise=false, temperature=0
+#   headline evaluator=ResidualPriorErrorValueEvaluator
+#
+# Adequacy rates from this config are a PRECONDITION, not a look-ahead win.
+# Do not quote N^-1.31 / ~10× as MCTS progress.
+#
+# Run from a clean worktree (so dirty: false) then:
+#   python -m scripts.run_mcts_classical_amr_arena \
+#     --config config/scenarios/mcts_classical_amr_arena.yaml --proposal-grade
+
+defaults:
+  seed: 42
+  timeout_seconds: 3600
+
+scenarios:
+  - name: mcts_classical_amr_arena
+    description: "MCTS vs Dörfler/uniform on SkfemTriSubstrate (headline)."
+    tier: functional
+    enabled: true
+    device: cpu
+    substrate:
+      name: arena_skfem
+      kind: skfem_tri
+      element_type: P1
+      initial_refinements: 2
+      error_metric: quadrature
+      marking_variant: squared
+      enforce_immutable_meshes: true
+      solve_cache_max_entries: 8192
+    operator_name: lshape_poisson
+    lshape_scale: 1.0
+    marking_fraction: 0.5
+    max_dof: 600
+    max_steps: 12
+    max_refinements_classical: 16
+    error_tolerance: 1.0e-8
+    n_simulations: 8
+    top_k_actions: 8
+    max_action_space: 16384
+    n_seeds: 3
+    seed_stride: 1009
+    value_scale: 4.0
+    c_puct: 1.4
+    add_noise: false
+    temperature: 0.0
+    search_mode: single_agent
+    evaluator_name: ResidualPriorErrorValueEvaluator
+    use_intermediate_rewards: false
+    require_adequacy_precondition: true
+    max_l2_ratio_at_matched_dof: 1.0
+    output_dir: results
+    artifact_basename: mcts_classical_amr_arena

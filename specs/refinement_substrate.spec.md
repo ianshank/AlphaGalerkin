@@ -61,7 +61,7 @@ Every tunable is a typed Pydantic `Field`. No hardcoded values.
 | `marking_variant` | `Literal["squared","linear"]` | `"squared"` | — | Dörfler bulk quantity. `squared` is the textbook form; `linear` reproduces `fem_baseline`'s existing behaviour. |
 | `error_metric` | `Literal["quadrature","nodal_rms"]` | `"quadrature"` | — | Which L2 the substrate reports. See AC6 — `nodal_rms` exists only to reproduce legacy numbers. |
 | `enforce_immutable_meshes` | `bool` | `True` | — | Clear numpy write flags on mesh arrays. See AC3. |
-| `solve_cache_max_entries` | `int` | `4096` | `ge=1, le=1e6` | Fingerprint-keyed solve cache bound. **Not yet wired** — no substrate memoises solves today; declared alongside `RefinementSubstrate.fingerprint`, its only consumer, which lands with Slice E task 7.1. |
+| `solve_cache_max_entries` | `int` | `4096` | `ge=1, le=1e6` | Fingerprint-keyed solve cache bound. **Wired** by `FingerprintSolveCache` in `SubstrateRefinementGame` (Slice E). Classical `run_refinement_sweep` still does not memoize; sharing the MCTS cache with Dörfler is a fairness bug. |
 
 **`marking_fraction` was added and then removed (2026-09-02).** It briefly appeared in this
 contract to close a "θ is an unvalidated positional float" finding, and reproduced the exact
@@ -230,13 +230,11 @@ ALPHAGALERKIN_REQUIRE_EXTRAS=1 pytest tests/research/test_skfem_substrate.py -v 
 - **A trained evaluator.** Deliberately excluded so the eventual comparison isolates planning
   depth; training a prior is its own workstream.
 - **Replacing `LShapeAMRGame` / `lshape_amr_compare.py`.** They are **frozen as the
-  back-compat golden reference** — not extended, not deleted. **Correction:** an earlier
-  version of this line said they were "marked superseded in
-  `specs/lshape_amr_compare.spec.md`". They are not — that edit is Slice E's task 8.3 and has
-  not landed, so the claim was false when written. It will read *"and marked superseded in
-  ..."* once that task is done, not before. The two-path period is recorded as a time-boxed charter
-  deviation with its retirement condition stated (the golden test is the only remaining
-  consumer), so it is disclosed rather than accidental.
+  back-compat golden reference** — not extended, not deleted — and **marked superseded**
+  in `specs/lshape_amr_compare.spec.md` for element-local policy comparisons. Legacy
+  MCTS-vs-Dörfler numbers remain golden and **non-informative for element-local policy**.
+  The two-path period is recorded as a time-boxed charter deviation with its retirement
+  condition stated (the golden test is the only remaining consumer).
 - **Estimator vectorisation.** `_compute_zz_indicator` is a Python loop over elements with an
   inner loop over vertices, and the spike measured the estimator at ~2.5× the solve — it is the
   dominant cost inside MCTS, not mesh cloning. Vectorising perturbs floating-point results, so

@@ -17,11 +17,13 @@ This module contains the core PoC scenarios for AlphaGalerkin:
     - StochasticGalerkinCompareScenario: Fokker-Planck/OU density benchmark —
       deterministic Galerkin attention vs the stochastic Galerkin
       moment-projection layer (NKE).
+    - MCTSClassicalAMRArenaScenario: MCTS vs Dörfler/uniform on SkfemTriSubstrate.
 """
 
 from src.poc.scenarios.complexity import ComplexityScenario
 from src.poc.scenarios.llm_prior_ablation import LLMPriorAblationScenario
 from src.poc.scenarios.lshape_amr_compare import LShapeAMRCompareScenario
+from src.poc.scenarios.mcts_classical_amr_arena import MCTSClassicalAMRArenaScenario
 from src.poc.scenarios.noyron_basis import NoyronBasisScenario
 from src.poc.scenarios.noyron_hx import NoyronHXScenario
 from src.poc.scenarios.scaling_law import ScalingLawScenario
@@ -34,6 +36,7 @@ __all__ = [
     "ComplexityScenario",
     "LLMPriorAblationScenario",
     "LShapeAMRCompareScenario",
+    "MCTSClassicalAMRArenaScenario",
     "NoyronBasisScenario",
     "NoyronHXScenario",
     "ScalingLawScenario",

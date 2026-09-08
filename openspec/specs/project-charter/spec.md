@@ -124,8 +124,9 @@ written in response to.
 | Zero-shot transfer MSE, 19×19 from 9×9 training | ≈2.3e-3 (3-seed median) | `results/transfer_baseline_compare.csv` |
 | Retrained-CNN baseline MSE, 19×19 | ≈1.6e-4 | `config/baselines/transfer_ci.json` |
 | Operator-vs-retrained-CNN ratio | ≈14× (operator loses) | `specs/transfer_baseline_compare.spec.md` |
-| L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 1.0996 (MCTS **loses** ~10%), wins 1/5 seeds | `results/lshape_mcts_vs_dorfler.csv` |
-| L-shape AMR at matched compute | median ratio 2.04, MCTS wins 0/5 seeds | `specs/lshape_amr_compare.spec.md` |
+| L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 1.0996 (MCTS **loses** ~10%), wins 1/5 seeds; **non-informative for element-local policy** (tensor-product substrate) | `results/lshape_mcts_vs_dorfler.csv` |
+| L-shape AMR at matched compute | median ratio 2.04, MCTS wins 0/5 seeds; **non-informative for element-local policy** | `specs/lshape_amr_compare.spec.md` |
+| Element-local AMR, MCTS vs Dörfler at matched DOF (θ=0.5, policy max_dof=600, matched_dof=287) | median ratio 0.9532 (MCTS **wins** ~4.7%; 3 identical seeds; evaporates at matched solves, ratio 9.23 ungated). Adequacy rates over (200, 4000) are **not** this result. | `results/mcts_classical_amr_arena.{csv,run.json}` |
 | L-shape substrate, uniform-refinement L2 rate | O(h^1.31) ≈ O(N^-0.65) | `tests/research/test_lshape_convergence_gate.py` |
 | L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler **worse**, 1.5× at 56 DOF rising to 10.5× at 2847; convergence N^-0.14 vs uniform's N^-0.63 (tensor-product refinement defect) | `results/lshape_adaptive_vs_uniform.{csv,run.json}` |
 | Stochastic Galerkin density MSE | 2.3e-8 | `results/stochastic_galerkin_compare.csv` |
@@ -144,6 +145,17 @@ written in response to.
 - WHEN it is quoted as the project's headline
 - THEN this is a charter violation
 - AND the claim SHALL be either backed by a committed artifact or labelled a spike
+
+#### Scenario: A new MCTS-vs-Dörfler AMR ratio lacks a provenance sidecar
+- GIVEN README or the charter states an MCTS-vs-Dörfler AMR policy ratio
+- WHEN the alignment tests run
+- THEN the claim SHALL cite a `results/*.csv` artifact
+- AND unless that CSV is the documented pre-manifest golden
+  (`results/lshape_mcts_vs_dorfler.csv`) **labelled non-informative for
+  element-local policy**, a sibling `.run.json` SHALL exist
+- AND today's existence-only sidecar check is not sufficient for this class
+  (the golden is exempt from sidecar existence, which is why a new ratio
+  pointing at it would otherwise go green)
 
 ### Requirement: UI Claim Fidelity
 
@@ -185,7 +197,14 @@ mesh *generation*, a distinct problem.
 
 Novelty is a *method* delta, not a demonstrated win. The honest `lshape_amr_compare` result — MCTS
 **losing** at matched DOF (ratio 1.0996, wins 1/5 seeds) and losing further at matched compute
-(ratio 2.04, 0/5 seeds) — SHALL be reported alongside any favourable framing.
+(ratio 2.04, 0/5 seeds) — SHALL be reported alongside any favourable framing. Those figures are
+**non-informative for element-local policy** (tensor-product substrate / legacy harness); the
+cycle thesis is measured by `mcts_classical_amr_arena` on `SkfemTriSubstrate`.
+Committed Phase 2 result (`results/mcts_classical_amr_arena.csv`, θ=0.5, policy
+`max_dof=600`, matched DOF 287): median `l2_error_ratio_at_matched_dof` **0.9532**
+(MCTS ~4.7% better at matched DOF; 3 identical seeds). Look-ahead does **not** win
+at matched solves (ratio 9.23, ungated). Do **not** quote adequacy `N^-1.31` / ~10×
+rates as this result — those are gate evidence on `(200, 4000)`.
 
 The previously reported "~4% matched-DOF win" (ratio 0.9605) is **retracted (2026-08-16)**: it was
 produced by a boundary-condition defect in `lshape_inside_predicate`, which removed the *open*
@@ -223,10 +242,10 @@ the prior-art analysis.
 The charter's capability register SHALL equal the PoC scenarios registered at runtime.
 
 The registry — not this table, and not any grep — is the source of truth. Scenario decorators take
-module constants, so a string-literal grep finds only 4 of the 10 scenarios. The guard SHALL
+module constants, so a string-literal grep finds only 4 of the 11 scenarios. The guard SHALL
 enumerate `ScenarioRegistry().list_scenarios()` **in a subprocess**: the registry is a
 process-wide singleton that `tests/poc/*` autouse fixtures `clear()` without teardown, which makes
-an in-process read order-dependent (measured: 10 scenarios under `pytest tests/poc tests/docs`,
+an in-process read order-dependent (measured: 11 scenarios under `pytest tests/poc tests/docs`,
 but 0 under a narrower `tests/poc` selection).
 
 <!-- charter:capabilities:start -->
@@ -234,7 +253,8 @@ but 0 under a narrower `tests/poc` selection).
 | --- | --- |
 | `complexity` | O(N) attention scaling benchmark |
 | `llm_prior_ablation` | LLM-prior MCTS basis selection vs random/trained |
-| `lshape_amr_compare` | MCTS vs Dörfler on L-shaped Poisson AMR |
+| `lshape_amr_compare` | MCTS vs Dörfler on L-shaped Poisson AMR (tensor-grid golden; non-informative for element-local policy) |
+| `mcts_classical_amr_arena` | MCTS vs Dörfler/uniform on SkfemTriSubstrate (cycle thesis) |
 | `noyron_basis` | MCTS basis selection on the Leap 71 helical operator |
 | `noyron_hx` | Zero-shot 3D heat-transfer transfer on a helical SDF |
 | `scaling_law` | Residual vs MCTS-simulation-budget scaling fit |

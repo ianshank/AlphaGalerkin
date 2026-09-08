@@ -18,6 +18,12 @@ This module treats PDE solving as a game for MCTS. It defines abstract PDE games
 - **Target**: `GameInterface` (board-game semantics: state, legal actions, winner)
 - Translates error reduction to win/loss/draw outcomes
 
+`SubstrateRefinementGame` is **not** a `PDEGame`. It is a `RefinementGame` (ABC in
+`src/refinement/`) registered on `RefinementGameRegistry` via
+`src/pde/register_refinement_games.py`. Wrap it with `RefinementGameAdapter` and
+pass `search_mode=adapter.search_mode` (`SINGLE_AGENT`) into `MCTS`. Do not look
+it up on `GameRegistry`.
+
 ### 2. Abstract Base + Concrete Implementations
 - `PDEGame` (ABC) → `BasisSelectionGame`, `MeshRefinementGame`
 - `PDEOperator` (ABC) → `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator`
@@ -84,6 +90,8 @@ pytest tests/pde/test_mcts_adapter.py -v
 | `mcts_adapter.py` | PDE-to-MCTS bridge | `PDEGameAdapter` |
 | `games/basis_selection.py` | Galerkin basis selection game | `BasisSelectionGame`, `BasisFunction` |
 | `games/mesh_refinement/` | Adaptive mesh refinement game (`mesh.py` pure quadtree + `game.py` MCTS game, split 2026-09-01, docs/CODE_HYGIENE_AUDIT.md B4) | `MeshRefinementGame`, `Mesh`, `MeshElement` |
+| `games/substrate_refinement.py` | Element-local `RefinementGame` over a registry-resolved substrate | `SubstrateRefinementGame`, `SubstrateEpisodeState` |
+| `register_refinement_games.py` | Side-effect registration (never from `__init__.py`) | `@register_refinement_game("substrate_refinement")` |
 
 ## Dependencies
 

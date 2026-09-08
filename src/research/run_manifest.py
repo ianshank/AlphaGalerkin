@@ -279,6 +279,37 @@ def manifest_path_for(artifact: str | Path) -> Path:
     return target.with_suffix(".run.json")
 
 
+class ProposalGradeError(ValueError):
+    """A claim-commit artifact failed the dirty / unknown-hash contract.
+
+    Collectors in this module never raise. Proposal-grade rejection is a
+    separate, explicit check on committed sidecars (and on ``--proposal-grade``
+    CLI runs), so a degraded collector cannot destroy the run it documents.
+    """
+
+
+def assert_proposal_grade(manifest: RunManifest) -> None:
+    """Reject ``dirty: true`` and ``config_hash: "unknown"`` at claim-commit.
+
+    ``dirty is None`` (probe failed) is also rejected: a sidecar that cannot
+    prove cleanliness is not proposal-grade. Collectors may still write that
+    state; this function is what forbids promoting it to a headline.
+    """
+    problems: list[str] = []
+    if manifest.git.dirty is not False:
+        problems.append(
+            f"git.dirty={manifest.git.dirty!r}; proposal-grade artifacts must "
+            "be produced from a clean worktree (dirty is False)"
+        )
+    if not manifest.config_hash or manifest.config_hash == UNKNOWN:
+        problems.append(
+            f"config_hash={manifest.config_hash!r}; proposal-grade artifacts "
+            "must record a real config hash, not 'unknown'"
+        )
+    if problems:
+        raise ProposalGradeError("; ".join(problems))
+
+
 def collect_hardware_tag() -> str:
     """Best-effort host/accelerator label for a run manifest. Never raises.
 
@@ -337,7 +368,9 @@ __all__ = [
     "ArmProvenance",
     "GitProvenance",
     "PackageVersions",
+    "ProposalGradeError",
     "RunManifest",
+    "assert_proposal_grade",
     "collect_git_provenance",
     "collect_hardware_tag",
     "collect_package_versions",

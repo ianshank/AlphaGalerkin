@@ -265,5 +265,48 @@ class TestManifestPath:
         assert manifest_path_for("results/x.csv") == manifest_path_for("results/x.png")
 
 
+class TestProposalGrade:
+    """Claim-commit rejects dirty/unknown; collectors still never raise."""
+
+    def test_rejects_dirty_true(self) -> None:
+        from src.research.run_manifest import ProposalGradeError, assert_proposal_grade
+
+        manifest = _manifest(
+            config_hash="abc123",
+            git=GitProvenance(sha="deadbeef", dirty=True),
+        )
+        with pytest.raises(ProposalGradeError, match="dirty"):
+            assert_proposal_grade(manifest)
+
+    def test_rejects_unknown_config_hash(self) -> None:
+        from src.research.run_manifest import ProposalGradeError, assert_proposal_grade
+
+        manifest = _manifest(
+            config_hash=UNKNOWN,
+            git=GitProvenance(sha="deadbeef", dirty=False),
+        )
+        with pytest.raises(ProposalGradeError, match="config_hash"):
+            assert_proposal_grade(manifest)
+
+    def test_rejects_undetermined_dirty(self) -> None:
+        from src.research.run_manifest import ProposalGradeError, assert_proposal_grade
+
+        manifest = _manifest(
+            config_hash="abc123",
+            git=GitProvenance(sha="deadbeef", dirty=None),
+        )
+        with pytest.raises(ProposalGradeError, match="dirty"):
+            assert_proposal_grade(manifest)
+
+    def test_accepts_clean_known_hash(self) -> None:
+        from src.research.run_manifest import assert_proposal_grade
+
+        manifest = _manifest(
+            config_hash="abc123def456",
+            git=GitProvenance(sha="deadbeef", dirty=False),
+        )
+        assert_proposal_grade(manifest)
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

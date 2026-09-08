@@ -459,6 +459,16 @@ def load_config_from_dict(
 
         type_map["stochastic_galerkin_compare"] = StochasticGalerkinCompareConfig
 
+    # Same lazy-resolution rationale: the arena config is light but its scenario
+    # module pulls in MCTS + skfem substrates, so resolve only the config class
+    # on demand.
+    if inferred_name == "mcts_classical_amr_arena":
+        from src.poc.scenarios.mcts_classical_amr_arena_config import (
+            MCTSClassicalAMRArenaConfig,
+        )
+
+        type_map["mcts_classical_amr_arena"] = MCTSClassicalAMRArenaConfig
+
     # Determine type
     if scenario_type:
         config_cls = type_map.get(scenario_type)

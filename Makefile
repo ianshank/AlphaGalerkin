@@ -226,6 +226,8 @@ test-substrate:
 		tests/research/test_tensor_grid_substrate.py \
 		tests/research/test_skfem_substrate.py \
 		tests/research/test_amr_arena_interpretability.py \
+		tests/research/substrates/test_solve_cache.py \
+		tests/research/substrates/test_residual_evaluator.py \
 		--cov=src/research/substrates \
 		--cov-config=.coveragerc.substrates \
 		--cov-branch --cov-fail-under=$(SUBSTRATE_COV_THRESHOLD) -q --no-header

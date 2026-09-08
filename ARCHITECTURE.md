@@ -69,7 +69,7 @@ code not on the production import path.
 | `src/mcts/` | shared | core | Monte Carlo Tree Search engine (PUCT + Gumbel), FNet-accelerated rollouts, `Evaluator`/`GameInterface` protocols. |
 | `src/modeling/` | shared | core | Neural architectures — Galerkin & softmax attention, FNet blocks, LBB stability guard, the full model + heads. |
 | `src/math_kernel/` | pde | core | Basis functions and integral approximations (Chebyshev/Fourier), Torch + optional JAX. |
-| `src/pde/` | pde | core | PDE-solving-as-a-game framework: operators, geometry/SDF, `mcts_adapter`, `games/`, `stochastic/`, time-stepping. |
+| `src/pde/` | pde | core | PDE-solving-as-a-game framework: operators, geometry/SDF, `mcts_adapter`, `games/` (`PDEGame` implementations + `SubstrateRefinementGame`, a `RefinementGame` registrant — not a `PDEGame`), `stochastic/`, time-stepping. |
 | `src/refinement/` | pde | core | Domain-free sequential-refinement engine (`RefinementGame` + adapter + registry, and the `RefinementSubstrate` protocol + its registry) that `src/pde/` and `src/research/substrates/` implement. |
 | `src/alphagalerkin/` | pde | core | Unified `AlphaGalerkinSolver` wrapper matching the baseline protocol for apples-to-apples benchmarking. |
 | `src/training/` | shared | core | Training infrastructure — trainers, losses, replay buffer, self-play, checkpointing. |
@@ -141,6 +141,13 @@ out of the drift-guarded package map above, which enumerates `src/*/__init__.py`
   `src*`/`config*`/`dashboard*`) and for the docs site.
 - **`results/` holds committed artifacts** (CSV/PNG) referenced by specs and the
   changelog; they are outputs kept in-tree deliberately, not build cruft.
+- **`src/pde/` does not implement `RefinementGame`.** The ABC, adapter, and
+  registry live in `src/refinement/` (domain-free). `src/pde/games/` implements
+  `PDEGame` (basis/mesh/L-shape), registered on `GameRegistry` via
+  `src/pde/register_games.py`. The substrate-backed `SubstrateRefinementGame` is
+  a `RefinementGame`, registered on `RefinementGameRegistry` **only** via
+  `src/pde/register_refinement_games.py` — never from a package `__init__.py`.
+  Do not wrap it in `PDEGameAdapter` or look it up on `GameRegistry`.
 - **Business/proposal prose lives under [`docs/business/`](docs/business/)**;
   the machine-readable SBIR *configs* stay in `config/proposals/` (loaded by
   `scripts/run_sbir_*.py`).

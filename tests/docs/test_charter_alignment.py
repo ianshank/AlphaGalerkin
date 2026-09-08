@@ -19,7 +19,7 @@ Design notes (see ``openspec/changes/project-charter-alignment/design.md``):
   and nine ``tests/poc/*`` modules ``clear()`` it in autouse fixtures without teardown, which
   makes an in-process read *order-dependent*. Measured, not assumed::
 
-      pytest tests/poc tests/docs                      # in-process read sees 10 (recovers)
+      pytest tests/poc tests/docs                      # in-process read sees 11 (recovers)
       pytest tests/poc/test_complexity_scenario.py \
              tests/poc/test_registry.py <probe>        # in-process read sees 0
 
@@ -443,6 +443,111 @@ def test_evidence_artifacts_carry_run_provenance() -> None:
     )
 
 
+README = REPO_ROOT / "README.md"
+_LEGACY_AMR_GOLDEN = "results/lshape_mcts_vs_dorfler.csv"
+_RATIO_HINT = re.compile(
+    r"median\s+ratio\s+\d+\.\d+|ratio\s+\d+\.\d+|l2_error_ratio_at_matched_dof|"
+    r"\b\d+\.\d{3,}\b",
+    re.IGNORECASE,
+)
+
+
+def _mentions_mcts_and_dorfler(text: str) -> bool:
+    # Strip `path` spans so `results/lshape_mcts_vs_dorfler.csv` cannot satisfy
+    # the Dörfler vocabulary by itself (the umlaut lives in the claim prose).
+    prose = re.sub(r"`[^`]+`", " ", text).lower()
+    return "mcts" in prose and ("dörfler" in prose or "dorfler" in prose)
+
+
+def _csv_citations_in(text: str) -> list[str]:
+    found: list[str] = []
+    for citation in re.findall(r"`([^`]+)`", text):
+        if not _looks_like_repo_path(citation):
+            continue
+        for candidate in _expand_braces(citation):
+            if candidate.endswith(".csv"):
+                found.append(candidate)
+    return found
+
+
+def _amr_policy_ratio_subjects() -> list[tuple[str, str]]:
+    """(source, body) pairs that look like an MCTS-vs-Dörfler policy ratio claim."""
+    subjects: list[tuple[str, str]] = []
+    for cells in _row_lines("evidence"):
+        body = " | ".join(cells)
+        if _mentions_mcts_and_dorfler(body) and _RATIO_HINT.search(body):
+            subjects.append((f"charter evidence:{cells[0]}", body))
+    readme = README.read_text(encoding="utf-8")
+    for line in readme.splitlines():
+        if _mentions_mcts_and_dorfler(line) and _RATIO_HINT.search(line):
+            subjects.append(("README.md", line))
+    return subjects
+
+
+def test_amr_policy_ratio_scan_is_not_vacuous() -> None:
+    """Without this, an empty scan would pass every README/charter ratio.
+
+    Mutation-killed: dropping the umlaut spelling of Dörfler used to skip the
+    live 1.0996 evidence row (``test_amr_policy_ratio_scan_is_not_vacuous``)
+    once backtick paths were stripped — the CSV filename
+    ``lshape_mcts_vs_dorfler.csv`` used to keep the scan non-empty without
+    reading the claim prose. Requiring a sidecar on the exempted golden
+    without a non-informative label used to stay green
+    (``test_amr_policy_ratios_cite_a_manifest``).
+    """
+    subjects = _amr_policy_ratio_subjects()
+    assert subjects, (
+        "no MCTS-vs-Dörfler AMR ratio claims were found in the charter evidence "
+        "register or README.md, so test_amr_policy_ratios_cite_a_manifest is inert"
+    )
+    assert any("1.0996" in body for _, body in subjects), (
+        "the live tensor-grid golden (ratio 1.0996) is no longer visible to the "
+        "scan; the vocabulary drifted"
+    )
+
+
+def test_amr_policy_ratios_cite_a_manifest() -> None:
+    """New MCTS-vs-Dörfler AMR ratios without a provenance sidecar fail CI.
+
+    Defect class: a README or charter policy ratio that cites nothing, or that
+    reuses ``results/lshape_mcts_vs_dorfler.csv`` (sidecar-exempt) without
+    labelling it non-informative for element-local policy. Today's
+    ``test_evidence_artifacts_carry_run_provenance`` only checks sidecar
+    *existence* and skips that golden, so a new ratio pointing at it would
+    go green.
+
+    3/3 mutation-killed: (1) a README line ``MCTS vs Dörfler median ratio 0.87``
+    with no ``results/`` citation fails this test; (2) citing the legacy golden
+    without a non-informative marker fails this test; (3) dropping the umlaut
+    from the matcher fails ``test_amr_policy_ratio_scan_is_not_vacuous`` after
+    backtick paths are stripped. None is ``gpu_required`` / ``fem_required``.
+    """
+    failures: list[str] = []
+    for source, body in _amr_policy_ratio_subjects():
+        csvs = _csv_citations_in(body)
+        if not csvs:
+            failures.append(f"{source}: MCTS-vs-Dörfler ratio with no results/*.csv citation")
+            continue
+        for csv_path in csvs:
+            if csv_path == _LEGACY_AMR_GOLDEN:
+                # Broader markers (tensor-product, …) describe the substrate;
+                # the golden exemption requires the explicit non-informative
+                # label so a new ratio cannot hide behind the same CSV.
+                if "non-informative" not in body.lower():
+                    failures.append(
+                        f"{source}: cites {_LEGACY_AMR_GOLDEN} without labelling it "
+                        "non-informative for element-local policy"
+                    )
+                continue
+            sidecar = Path(csv_path).with_suffix(".run.json")
+            if not (REPO_ROOT / sidecar).exists():
+                failures.append(f"{source}: {csv_path} has no sibling {sidecar}")
+    assert not failures, (
+        "MCTS-vs-Dörfler AMR ratios missing a proposal-grade manifest pointer:\n  "
+        + "\n  ".join(failures)
+    )
+
+
 #: Evidence claims stated as a *floor* ("N+ test functions"). A floor is the right shape
 #: for a growing suite -- it stays true as tests are added -- but only if something checks
 #: it. Typing a number into a table and never verifying it is how "705+ tests" and
@@ -804,7 +909,7 @@ def _registered_scenarios() -> set[str]:
 
     In-process is not safe: ``tests/poc/*`` autouse fixtures ``clear()`` the singleton without
     restoring it and purge ``src.poc.scenarios*`` from ``sys.modules``. Whether a later
-    in-process read sees 10 scenarios or 0 depends on which of those modules ran — see the
+    in-process read sees 11 scenarios or 0 depends on which of those modules ran — see the
     measured orderings in this module's docstring.
     """
     code = (

@@ -1,0 +1,50 @@
+# MCTS vs classical AMR arena — CI / E2E mechanism smoke.
+#
+# Tiny budgets. Adequacy abort OFF: the (200, 4000) gate already runs in
+# tests/research/test_amr_arena_interpretability.py and must not be re-quoted
+# as a policy result. This YAML only proves the wiring:
+# register_refinement_games → SubstrateRefinementGame(skfem_tri) →
+# RefinementGameAdapter → MCTS(search_mode=SINGLE_AGENT).
+
+defaults:
+  seed: 7
+  timeout_seconds: 300
+
+scenarios:
+  - name: mcts_classical_amr_arena
+    description: "MCTS vs Dörfler/uniform on SkfemTriSubstrate (CI smoke)."
+    tier: functional
+    enabled: true
+    device: cpu
+    substrate:
+      name: arena_skfem_ci
+      kind: skfem_tri
+      element_type: P1
+      initial_refinements: 1
+      error_metric: quadrature
+      marking_variant: squared
+      enforce_immutable_meshes: true
+      solve_cache_max_entries: 256
+    operator_name: lshape_poisson
+    lshape_scale: 1.0
+    marking_fraction: 0.5
+    max_dof: 80
+    max_steps: 2
+    max_refinements_classical: 2
+    error_tolerance: 1.0e-8
+    n_simulations: 2
+    top_k_actions: 4
+    max_action_space: 512
+    n_seeds: 1
+    seed_stride: 1009
+    value_scale: 4.0
+    c_puct: 1.4
+    add_noise: false
+    temperature: 0.0
+    search_mode: single_agent
+    evaluator_name: ResidualPriorErrorValueEvaluator
+    use_intermediate_rewards: false
+    require_adequacy_precondition: false
+    max_l2_ratio_at_matched_dof: 1.0
+    output_dir: results
+    artifact_basename: mcts_classical_amr_arena_ci

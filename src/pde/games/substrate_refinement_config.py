@@ -72,6 +72,25 @@ class SubstrateRefinementConfig(BaseModuleConfig):
         gt=0.0,
         description="Terminal winner=1 iff error_estimate is strictly below this.",
     )
+    value_scale: float = Field(
+        default=4.0,
+        gt=0.0,
+        le=100.0,
+        description=(
+            "Steepness of tanh(-log(error_per_dof)/value_scale) written to the "
+            "leaf-value channel of to_tensor. Larger → flatter."
+        ),
+    )
+    top_k_actions: int = Field(
+        default=0,
+        ge=0,
+        le=1_000_000,
+        description=(
+            "If >0, legal actions are the top-k refinable units by residual "
+            "indicator (PUCT coverage). 0 means every refinable unit in "
+            "[0, min(n_units, max_action_space))."
+        ),
+    )
 
     @field_validator("substrate")
     @classmethod

@@ -1351,6 +1351,8 @@ jobs:
             tests/research/test_tensor_grid_substrate.py \
             tests/research/test_substrates_config.py \
             tests/research/test_substrates_sweep.py \
+            tests/research/substrates/test_solve_cache.py \
+            tests/research/substrates/test_residual_evaluator.py \
             --cov=src/research/substrates \
             --cov-config=.coveragerc.substrates \
             --cov-branch --cov-fail-under=95 -q --no-header

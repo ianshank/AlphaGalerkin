@@ -9,11 +9,12 @@ when immutable), never as mutable instance fields. Solves go through
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 import structlog
 
+from src.constants import DEFAULT_RATIO_FLOOR
 from src.pde.games.substrate_refinement_config import SubstrateRefinementConfig
 from src.refinement.game import RefinementGame
 from src.refinement.registry import register_refinement_game
@@ -29,6 +30,12 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 GAME_REGISTRY_NAME = "substrate_refinement"
+
+#: Extra trailing slot on ``to_tensor`` holding the leaf value (error-per-DOF),
+#: so residual indicators stay aligned with action indices. Slot 0 is action 0's
+#: indicator, **not** a value — reusing ``EncodedValueEvaluator`` here would
+#: treat the first residual as the search objective.
+VALUE_CHANNEL_SIZE: Final[int] = 1
 
 
 @dataclass
@@ -164,7 +171,20 @@ class SubstrateRefinementGame(RefinementGame):
         mask = self._substrate.refinable_mask(state.mesh)
         n_units = int(self._substrate.n_units(state.mesh))
         limit = min(n_units, self.action_space_size, len(mask))
-        return sorted(int(i) for i in range(limit) if bool(mask[i]))
+        refinable = [int(i) for i in range(limit) if bool(mask[i])]
+        top_k = int(self._config.top_k_actions)
+        if top_k <= 0 or top_k >= len(refinable):
+            return refinable
+        indicators = np.asarray(state.indicators, dtype=np.float64).reshape(-1)
+        scored = [
+            (
+                float(indicators[idx]) if 0 <= idx < indicators.shape[0] else 0.0,
+                idx,
+            )
+            for idx in refinable
+        ]
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [idx for _, idx in scored[:top_k]]
 
     def apply_action(self, state: RefinementState, action: int) -> SubstrateEpisodeState:
         """Refine a single unit; pure in ``(state, action)`` — no instance mutation."""
@@ -218,17 +238,26 @@ class SubstrateRefinementGame(RefinementGame):
         return 1 if state.error_estimate < self._config.winner_error_threshold else -1
 
     def to_tensor(self, state: RefinementState) -> NDArray[np.float32]:
-        """Pad/truncate indicators into a fixed-width float32 vector for evaluators."""
+        """Indicators (action-aligned) plus a trailing error-per-DOF leaf value.
+
+        Layout: ``out[:action_space_size]`` = residual indicators (pad/truncate);
+        ``out[-1]`` = ``tanh(-log(error_per_dof) / value_scale)`` in ``(-1, 1)``,
+        higher = better. Do not read ``out[0]`` as the leaf value.
+        """
         width = self.action_space_size
-        out = np.zeros(width, dtype=np.float32)
+        out = np.zeros(width + VALUE_CHANNEL_SIZE, dtype=np.float32)
         indicators = np.asarray(state.indicators, dtype=np.float32).reshape(-1)
         n = min(width, indicators.shape[0])
         out[:n] = indicators[:n]
+        epd = float(state.error_estimate) / max(int(state.dof), 1)
+        scale = float(self._config.value_scale)
+        out[-1] = np.float32(np.tanh(-np.log(epd + DEFAULT_RATIO_FLOOR) / scale))
         return out
 
 
 __all__ = [
     "GAME_REGISTRY_NAME",
+    "VALUE_CHANNEL_SIZE",
     "SubstrateEpisodeState",
     "SubstrateRefinementGame",
 ]

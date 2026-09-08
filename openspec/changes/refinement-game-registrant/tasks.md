@@ -5,9 +5,9 @@ Critical path: 1 → 2 → 3 → 4 → 5.
 
 ## 0. Alignment with parent change
 
-- [ ] 0.1 Add a pointer in `openspec/changes/element-local-substrate/tasks.md` §7–8 that Slice E
+- [x] 0.1 Add a pointer in `openspec/changes/element-local-substrate/tasks.md` §7–8 that Slice E
       execution is owned by this change (avoid two sources of unchecked truth)
-- [ ] 0.2 Confirm `tests/research/test_amr_arena_interpretability.py` still green on current main
+- [x] 0.2 Confirm `tests/research/test_amr_arena_interpretability.py` still green on current main
 
 ## 1. Minimal `RefinementGame`
 
@@ -51,13 +51,13 @@ Critical path: 1 → 2 → 3 → 4 → 5.
 - [x] 5.3 Mark `specs/lshape_amr_compare.spec.md` superseded → point at substrate + this change /
       arena successor
 - [x] 5.4 `CLAUDE.md` Regression Surface rows + `CHANGELOG.md` entry
-- [ ] 5.5 Run manifests for any new committed artifact (no dirty/`config_hash=unknown` proposal-grade claims)
+- [x] 5.5 Run manifests for any new committed artifact (no dirty/`config_hash=unknown` proposal-grade claims)
 - [x] 5.6 Fix stale FOCUS/proposal present tense: adequacy gated; MCTS-on-skfem still untested
-- [ ] 5.7 Soft-fix `ARCHITECTURE.md` if it still claims `src/pde/` "implements" `RefinementGame`
+- [x] 5.7 Soft-fix `ARCHITECTURE.md` if it still claims `src/pde/` "implements" `RefinementGame`
       without distinguishing `PDEGame` / `GameRegistry`
 
 ## 6. Exit criteria
 
-- [ ] 6.1 Charter guards green; focus check green; adequacy gate still passes/fails correctly
-- [ ] 6.2 Parent `element-local-substrate` tasks 7.1–8.5 checked off with pointer here
-- [ ] 6.3 Sibling `mcts-classical-amr-arena` unblocked for Phase 0 pre-registration commit
+- [x] 6.1 Charter guards green; focus check green; adequacy gate still passes/fails correctly
+- [x] 6.2 Parent `element-local-substrate` tasks 7.1–8.5 checked off with pointer here
+- [x] 6.3 Sibling `mcts-classical-amr-arena` unblocked for Phase 0 pre-registration commit

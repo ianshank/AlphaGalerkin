@@ -6,7 +6,23 @@
 - Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
   `src/pde/register_refinement_games.py`, config-driven substrate factory with
   `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production
-  reader of `RefinementSubstrate.fingerprint`).
+  reader of `RefinementSubstrate.fingerprint`). Honest closeout: real
+  `MCTS.get_action` micro-run on `tensor_grid` and `fem_required` `skfem_tri`;
+  `to_tensor` trailing error-per-DOF value; `ResidualPriorErrorValueEvaluator`
+  as the named headline leaf evaluator (`EncodedValueEvaluator` / `RandomEvaluator`
+  forbidden as the published arm).
+- MCTS vs classical AMR arena (`mcts_classical_amr_arena`): spec, pinned YAML,
+  harness, PoC scenario, and `scripts/run_mcts_classical_amr_arena.py`. Adequacy
+  abort, per-seed solve cache, locked `search_mode=single_agent` /
+  `add_noise=False` / `temperature=0`. Proposal-grade sidecars reject dirty /
+  unknown-hash at claim-commit (git snapshotted before CSV/PNG write).
+  README/charter AMR-ratio guard requires a manifest pointer.
+- Committed Phase 2 artifacts `results/mcts_classical_amr_arena.{csv,png,run.json}`
+  (θ=0.5, policy `max_dof=600`, matched DOF 287): median
+  `l2_error_ratio_at_matched_dof` **0.9532** (MCTS wins ~4.7% at matched DOF;
+  3 identical seeds). Matched-solves 9.23 and error-per-DOF ~30.8 recorded
+  ungated. Adequacy rates are gate evidence, not this result. FOCUS freeze
+  lifts on that signed answer.
 
 ### Changed
 - Retired charter deviations for empty `RefinementGameRegistry`, zero substrate

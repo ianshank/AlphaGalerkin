@@ -124,12 +124,9 @@ class SubstrateConfig(BaseModuleConfig):
         ge=1,
         le=1_000_000,
         description=(
-            "Fingerprint-keyed solve cache bound. NOT YET WIRED: no substrate "
-            "memoises solves today. Declared here alongside "
-            "RefinementSubstrate.fingerprint, its only consumer, which lands "
-            "with element-local-substrate Slice E (task 7.1) -- the same task "
-            "that retires fingerprint's entry in "
-            "scripts/audit_abstractions.py::_STAGED_FOR_UPCOMING_TASK."
+            "Fingerprint-keyed solve cache bound. Consumed by "
+            "FingerprintSolveCache in src/research/substrates/solve_cache.py "
+            "(Slice E); substrates themselves stay cache-agnostic."
         ),
     )
 

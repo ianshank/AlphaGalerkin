@@ -110,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-adequacy",
         dest="require_adequacy",
         action="store_false",
+        default=None,
         help="Disable the adequacy abort (CI / tensor_grid hosts).",
     )
     parser.add_argument(

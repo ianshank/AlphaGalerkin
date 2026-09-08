@@ -5,20 +5,20 @@ Phase 2 is blocked on `refinement-game-registrant` exit criteria.
 
 ## Phase 0 — Pre-registration (no numbers)
 
-- [ ] 0.1 Add `specs/mcts_classical_amr_arena.spec.md` with hypothesis, falsifiers, metric
+- [x] 0.1 Add `specs/mcts_classical_amr_arena.spec.md` with hypothesis, falsifiers, metric
       hierarchy, artifact contract, and AQA scenarios
-- [ ] 0.2 Add pinned config YAML (kind, θ, DOF window, seeds, search, estimator/metric)
-- [ ] 0.3 Manifest schema: config hash, git SHA, dirty flag policy, `dof_convention`, substrate
+- [x] 0.2 Add pinned config YAML (kind, θ, DOF window, seeds, search, estimator/metric)
+- [x] 0.3 Manifest schema: config hash, git SHA, dirty flag policy, `dof_convention`, substrate
       `describe()` dump
-- [ ] 0.4 Document adequacy precondition (abort if gate fails on this config)
-- [ ] 0.5 Explicit out-of-scope block: trained evaluator, frozen tracks, PETSc/MFEM
-- [ ] 0.6 Guard or checklist: reject new README/charter AMR ratios that lack a manifest pointer
-- [ ] 0.7 Update `docs/FOCUS.md` present tense (measurement blocker ≠ "substrate still wrong")
+- [x] 0.4 Document adequacy precondition (abort if gate fails on this config)
+- [x] 0.5 Explicit out-of-scope block: trained evaluator, frozen tracks, PETSc/MFEM
+- [x] 0.6 Guard or checklist: reject new README/charter AMR ratios that lack a manifest pointer
+- [x] 0.7 Update `docs/FOCUS.md` present tense (measurement blocker ≠ "substrate still wrong")
 
 ## Phase 1 — Classical arms (shared substrate)
 
-- [ ] 1.1 Dörfler arm on `skfem_tri` via `sweep.py` under Phase 0 config
-- [ ] 1.2 Uniform arm on the same substrate/config
+- [x] 1.1 Dörfler arm on `skfem_tri` via `sweep.py` under Phase 0 config
+- [x] 1.2 Uniform arm on the same substrate/config
 - [ ] 1.3 Commit raw artifacts under `results/` with valid manifests (no unknown hashes)
 - [ ] 1.4 Verify adequacy precondition still passes for the locked config
 

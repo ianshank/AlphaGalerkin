@@ -56,9 +56,10 @@ deliberately avoid that.
 |---|---|---|
 | [`noyron_basis.spec.md`](noyron_basis.spec.md) | v2.2 MCTS basis selection on the Leap 71 helical operator | Draft |
 | [`llm_prior_ood.spec.md`](llm_prior_ood.spec.md) | LLM-prior OOD expansion (helmholtz / biharmonic) | Implemented (CPU wiring) + Runbook (GPU headline) |
-| [`lshape_amr_compare.spec.md`](lshape_amr_compare.spec.md) | Competitive AMR baseline — L-shaped Poisson MCTS vs Dörfler | Implemented |
+| [`lshape_amr_compare.spec.md`](lshape_amr_compare.spec.md) | Competitive AMR baseline — L-shaped Poisson MCTS vs Dörfler | Superseded (tensor-grid golden; non-informative for element-local policy) |
 | [`transfer_baseline_compare.spec.md`](transfer_baseline_compare.spec.md) | Honest zero-shot transfer — operator vs a retrained CNN | Implemented |
 | [`stochastic_galerkin_nke.spec.md`](stochastic_galerkin_nke.spec.md) | NKE stochastic Galerkin operator-splitting layer (additive) | Implemented |
 | [`headline_runs.spec.md`](headline_runs.spec.md) | GPU / hardware-gated headline runbooks | Runbook |
 | [`verified_error_certificate.spec.md`](verified_error_certificate.spec.md) | Two-track certified error bounds | Draft (unimplemented; `src/pde/certificate/` is a declared forward reference) |
 | [`refinement_substrate.spec.md`](refinement_substrate.spec.md) | Element-local refinement substrate (the prerequisite for any marking-policy comparison) | Draft |
+| [`mcts_classical_amr_arena.spec.md`](mcts_classical_amr_arena.spec.md) | MCTS vs Dörfler/uniform on `SkfemTriSubstrate` (cycle thesis) | Implemented |

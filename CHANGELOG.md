@@ -6,7 +6,17 @@
 - Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
   `src/pde/register_refinement_games.py`, config-driven substrate factory with
   `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production
-  reader of `RefinementSubstrate.fingerprint`).
+  reader of `RefinementSubstrate.fingerprint`). Honest closeout: real
+  `MCTS.get_action` micro-run on `tensor_grid` and `fem_required` `skfem_tri`;
+  `to_tensor` trailing error-per-DOF value; `ResidualPriorErrorValueEvaluator`
+  as the named headline leaf evaluator (`EncodedValueEvaluator` / `RandomEvaluator`
+  forbidden as the published arm).
+- MCTS vs classical AMR arena (`mcts_classical_amr_arena`): spec, pinned YAML,
+  harness, PoC scenario, and `scripts/run_mcts_classical_amr_arena.py`. Adequacy
+  abort, per-seed solve cache, locked `search_mode=single_agent` /
+  `add_noise=False` / `temperature=0`. Proposal-grade sidecars reject dirty /
+  unknown-hash at claim-commit. README/charter AMR-ratio guard requires a
+  manifest pointer.
 
 ### Changed
 - Retired charter deviations for empty `RefinementGameRegistry`, zero substrate

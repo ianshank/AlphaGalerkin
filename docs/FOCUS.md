@@ -14,12 +14,12 @@ other fails the build. Prose that CI cannot read is a suggestion.
 ## The current focus
 
 The cycle's thesis is that **multi-step tree search beats greedy marking for
-adaptive mesh refinement** — and that thesis is, as of today, still *untested
-on an interpretable substrate*. The classical adequacy gate on
-`SkfemTriSubstrate` is green (and correctly fails on the tensor-product
-control); what remains is running the MCTS-vs-classical arena through the
-registered `SubstrateRefinementGame`. Everything in the active set exists to
-get that experiment to an interpretable answer either way.
+adaptive mesh refinement**. The substrate is interpretable (`SkfemTriSubstrate`
+adequacy gate green; the same gate fails on the tensor-product control). Slice E
+registered `SubstrateRefinementGame` with a real MCTS smoke. What remains is the
+**scored** MCTS-vs-classical arena (`specs/mcts_classical_amr_arena.spec.md`) —
+a win or an honest negative lifts the freeze. Adequacy rates are gate evidence,
+not a look-ahead win.
 
 Active surfaces: `src/refinement/`, `src/pde/`, `src/mcts/`, `src/research/`,
 and the governance layer (`openspec/`, `specs/`, `tests/docs/`,

@@ -198,10 +198,10 @@ Task 0 is already complete and is what justifies the rest.
 
 > **Slice E ownership:** remaining tasks 7.x–8.x are executed via `openspec/changes/refinement-game-registrant/` (implementation PR).
 
-- [ ] 7.1 Minimal `RefinementGame` over the substrate, `@register_refinement_game`.
-- [ ] 7.2 Registration only via an explicit `register_games` module — **never** from
+- [x] 7.1 Minimal `RefinementGame` over the substrate, `@register_refinement_game`.
+- [x] 7.2 Registration only via an explicit `register_games` module — **never** from
       `__init__.py` (the documented SIGSEGV class).
-- [ ] 7.3 Import-graph test pinning that.
+- [x] 7.3 Import-graph test pinning that.
 
 ## 8. Governance
 
@@ -212,13 +212,14 @@ Task 0 is already complete and is what justifies the rest.
       assertions in both directions — on a guard that is otherwise green. `src/research/` already
       covers the subpackage. See the amended Scope Integrity Requirement in
       `specs/project-charter/spec.md` (this change's delta).
-- [ ] 8.1b The `RefinementGameRegistry`-has-no-registrants deviation is retired — depends on
-      task 7.1 (Slice E's `RefinementGame`), not yet done.
-- [ ] 8.2 Charter: add the **time-boxed** two-path deviation, with its retirement condition
+- [x] 8.1b The `RefinementGameRegistry`-has-no-registrants deviation is retired — depends on
+      task 7.1 (Slice E's `RefinementGame`), done in `refinement-game-registrant`.
+- [x] 8.2 Charter: add the **time-boxed** two-path deviation, with its retirement condition
       (the golden test is the only remaining consumer of the legacy harness).
-- [ ] 8.3 `specs/lshape_amr_compare.spec.md`: mark superseded, pointing here.
-- [ ] 8.4 `CLAUDE.md` Regression Surface rows; `CHANGELOG.md`.
-- [ ] 8.5 Run manifest for any artifact this change commits.
+- [x] 8.3 `specs/lshape_amr_compare.spec.md`: mark superseded, pointing here.
+- [x] 8.4 `CLAUDE.md` Regression Surface rows; `CHANGELOG.md`.
+- [x] 8.5 Run manifest for any artifact this change commits. (None: Slice E commits no
+      `results/` numbers.)
 
 ## Deferred — deliberately not in this change
 

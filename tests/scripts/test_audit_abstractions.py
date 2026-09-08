@@ -307,7 +307,7 @@ def test_staged_allowlist_does_not_cover_members_that_gained_a_reader(
 
 def test_staged_allowlist_empty_after_slice_e() -> None:
     """Slice E retired the last production staged member (fingerprint)."""
-    assert audit_module._STAGED_FOR_UPCOMING_TASK == frozenset()
+    assert not audit_module._STAGED_FOR_UPCOMING_TASK
 
 
 @pytest.mark.parametrize(

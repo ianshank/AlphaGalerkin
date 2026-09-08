@@ -6,11 +6,13 @@ Peer-reviewed plan (Product / Architect / SQE / codebase reality check + Cody).
 element-local-substrate (tasks 0–6) ✅
         │
         ▼
-refinement-game-registrant   ←── implement NEXT (Slice E)
+refinement-game-registrant   ✅ (Slice E: real MCTS smoke, not adapter-only)
         │
-        │     ┌── mcts-classical-amr-arena Phase 0–1 (parallel OK)
-        ▼     ▼
-mcts-classical-amr-arena Phase 2 (MCTS arm) → Phase 3 reporting
+        ▼
+mcts-classical-amr-arena Phase 0 ✅ → Phase 1 (classical in harness) → Phase 2 scored run
+        │
+        ▼
+Phase 3 reporting + freeze lift (from committed artifacts only)
 ```
 
 ## Package map

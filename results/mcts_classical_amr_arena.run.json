@@ -1,0 +1,159 @@
+{
+  "arms": [
+    {
+      "counters": {
+        "final_dof": 887.0,
+        "n_levels": 10.0
+      },
+      "name": "dorfler",
+      "parameters": {
+        "cache": "none",
+        "dof_convention": "fem_basis_dofs",
+        "marking_fraction": 0.5,
+        "max_dof": 600,
+        "substrate_describe": {
+          "dof_convention": "fem_basis_dofs",
+          "element_type": "P1",
+          "kind": "skfem_tri"
+        }
+      }
+    },
+    {
+      "counters": {
+        "n_levels": 2.0
+      },
+      "name": "uniform",
+      "parameters": {
+        "cache": "none",
+        "max_dof": 600
+      }
+    },
+    {
+      "counters": {
+        "median_l2_ratio": 0.9531782126653989,
+        "n_seeds": 3.0
+      },
+      "name": "mcts",
+      "parameters": {
+        "add_noise": false,
+        "cache": "per_seed_FingerprintSolveCache",
+        "evaluator": "ResidualPriorErrorValueEvaluator",
+        "max_action_space": 16384,
+        "n_simulations": 8,
+        "search_mode": "single_agent",
+        "temperature": 0.0,
+        "top_k_actions": 8,
+        "use_intermediate_rewards": false
+      }
+    }
+  ],
+  "artifacts": {
+    "csv": "results/mcts_classical_amr_arena.csv",
+    "png": "results/mcts_classical_amr_arena.png"
+  },
+  "config": {
+    "add_noise": false,
+    "artifact_basename": "mcts_classical_amr_arena",
+    "c_puct": 1.4,
+    "description": "MCTS vs D\u00f6rfler/uniform on SkfemTriSubstrate (headline).",
+    "device": "cpu",
+    "enabled": true,
+    "error_tolerance": 1e-08,
+    "estimated_duration_seconds": 60,
+    "evaluator_name": "ResidualPriorErrorValueEvaluator",
+    "lshape_scale": 1.0,
+    "marking_fraction": 0.5,
+    "max_action_space": 16384,
+    "max_dof": 600,
+    "max_l2_ratio_at_matched_dof": 1.0,
+    "max_refinements_classical": 16,
+    "max_steps": 12,
+    "n_seeds": 3,
+    "n_simulations": 8,
+    "name": "mcts_classical_amr_arena",
+    "operator_name": "lshape_poisson",
+    "output_dir": "results",
+    "require_adequacy_precondition": true,
+    "requires_gpu": false,
+    "retry_count": 0,
+    "search_mode": "single_agent",
+    "seed": 42,
+    "seed_stride": 1009,
+    "substrate": {
+      "created_at": "2026-09-08T23:11:38.100791Z",
+      "debug": false,
+      "description": "",
+      "element_type": "P1",
+      "enforce_immutable_meshes": true,
+      "error_metric": "quadrature",
+      "initial_refinements": 2,
+      "initial_side": 4,
+      "kind": "skfem_tri",
+      "marking_variant": "squared",
+      "name": "arena_skfem",
+      "seed": 42,
+      "solve_cache_max_entries": 8192,
+      "timeout_seconds": 3600
+    },
+    "temperature": 0.0,
+    "thresholds": [
+      {
+        "description": "MCTS/D\u00f6rfler quadrature-L2 ratio at matched DOF must be < 1.0 (policy at least as good).",
+        "name": "l2_error_ratio_at_matched_dof",
+        "operator": "<",
+        "value": 1.0
+      }
+    ],
+    "tier": "functional",
+    "timeout_seconds": 3600,
+    "top_k_actions": 8,
+    "use_intermediate_rewards": false,
+    "value_scale": 4.0
+  },
+  "config_hash": "80f39466392dbf90",
+  "created_at_utc": "2026-09-08T23:11:42.833683+00:00",
+  "git": {
+    "branch": "cursor/mcts-classical-amr-arena-0139",
+    "dirty": false,
+    "sha": "19609d4001c38d16b355682a8583fbc4623b1b69"
+  },
+  "hardware_tag": "x86_64-4cpu",
+  "harness": "scripts.run_mcts_classical_amr_arena",
+  "metrics": {
+    "adequacy_adaptive_rate": -1.3109253898792455,
+    "adequacy_error_ratio": 0.09458438514863396,
+    "adequacy_matched_dof": 4079.0,
+    "adequacy_uniform_rate": -0.6709849620221033,
+    "error_per_dof_ratio_mcts_over_dorfler": 30.83725698363711,
+    "l2_error_ratio_at_matched_dof": 0.9531782126653989,
+    "l2_error_ratio_at_matched_solves": 9.231951512014659,
+    "l2_ratio_seed_max": 0.9531782126653989,
+    "l2_ratio_seed_min": 0.9531782126653989,
+    "l2_ratio_seed_std": 0.0,
+    "marking_fraction": 0.5,
+    "matched_dof": 287.0,
+    "matched_solves": 10.0,
+    "matched_wall_time_seconds": 0.16329428300014115,
+    "mcts_win_fraction": 1.0,
+    "n_seeds": 3.0
+  },
+  "notes": "Primary metric is matched-DOF quadrature L2 (MCTS/D\u00f6rfler). Matched-solves uses cache misses, not apply_action replay. \u03b8=0.5; policy max_dof=600; adequacy window=(200.0, 4000.0); dof_convention=fem_basis_dofs. Adequacy rates are gate evidence, not a look-ahead win. Legacy results/lshape_mcts_vs_dorfler.csv is non-informative for element-local policy.",
+  "packages": {
+    "packages": {
+      "matplotlib": "3.11.1",
+      "numpy": "2.4.4",
+      "pydantic": "2.9.2",
+      "scikit-fem": "12.0.2",
+      "scipy": "1.18.1",
+      "torch": "2.14.0+cpu"
+    },
+    "python": "3.12.3"
+  },
+  "run_id": "80f39466392dbf90",
+  "schema_version": 1,
+  "seeds": [
+    42,
+    1051,
+    2060
+  ]
+}

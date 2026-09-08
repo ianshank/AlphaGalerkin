@@ -98,6 +98,19 @@ def test_build_parser_help() -> None:
     assert "--config" in help_text
 
 
+def test_adequacy_flags_are_tristate_and_default_none() -> None:
+    """Neither flag may override YAML when omitted.
+
+    ``store_true``/``store_false`` sharing ``dest`` keep a tri-state default of
+    ``None`` so ``apply_overrides`` leaves ``require_adequacy_precondition`` to
+    the scenario YAML. ``default=None`` on both flags makes that order-independent.
+    """
+    parser = build_parser()
+    assert parser.parse_args([]).require_adequacy is None
+    assert parser.parse_args(["--require-adequacy"]).require_adequacy is True
+    assert parser.parse_args(["--skip-adequacy"]).require_adequacy is False
+
+
 def test_build_config_and_main_micro(tmp_path: Path) -> None:
     path = tmp_path / "arena.yaml"
     entry = _entry(output_dir=str(tmp_path), artifact_basename="cli_micro")

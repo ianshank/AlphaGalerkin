@@ -24,6 +24,15 @@
   ungated. Adequacy rates are gate evidence, not this result. FOCUS freeze
   lifts on that signed answer.
 
+### Fixed
+- `ensure_substrate_registrants` re-registers missing `tensor_grid` /
+  `skfem_tri` kinds after a process-global `RefinementSubstrateRegistry.clear()`.
+  Import-only ensure was a no-op once the modules were loaded, which emptied
+  the map for later tests in the same process (CI run 34291592000: six
+  `KeyError: 'tensor_grid' not registered`). Zero-marked refine warnings now
+  spy on the module logger instead of `capture_logs`, which records nothing
+  after `cache_logger_on_first_use=True`.
+
 ### Changed
 - Retired charter deviations for empty `RefinementGameRegistry`, zero substrate
   lookups, and the staged `fingerprint` audit exemption; added time-boxed

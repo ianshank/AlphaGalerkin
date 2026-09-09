@@ -32,12 +32,18 @@ def test_ensure_registrants_re_registers_after_clear() -> None:
     ``KeyError: 'tensor_grid' not registered`` failures in the combined
     fast lane.
 
+    The first ``ensure`` here is load-bearing: without it this test would
+    pass on the import-only body whenever it ran first in a fresh process
+    (the decorator would still fire). CI's failure was the opposite order.
+
     Mutations: (1) restore the import-only body — this named test fails on
     the post-ensure ``get``; (2) re-register unconditionally — the second
-    ``ensure`` raises ``ValueError`` duplicate. Not ``gpu_required`` /
-    ``fem_required``.
+    ``ensure`` after clear raises ``ValueError`` duplicate. Not
+    ``gpu_required`` / ``fem_required``.
     """
     registry = RefinementSubstrateRegistry()
+    ensure_substrate_registrants()
+    assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is not None
     registry.clear()
     try:
         assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is None

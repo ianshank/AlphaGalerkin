@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from structlog.testing import capture_logs
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator
@@ -238,6 +237,11 @@ class TestSkfemTriSubstrateRegistry:
 
     def teardown_method(self) -> None:
         RefinementSubstrateRegistry().clear()
+        # Production lookups go through ``ensure_substrate_registrants``; restore
+        # so a later test in this process is not left with ``Available: []``.
+        from src.research.substrates.factory import ensure_substrate_registrants
+
+        ensure_substrate_registrants()
 
     def test_register_and_retrieve(self) -> None:
         register_refinement_substrate("skfem_tri")(SkfemTriSubstrate)
@@ -380,10 +384,35 @@ class TestSkfemTriMirrorsTheTensorGridContract:
             substrate.solve(mesh)
 
 
+class _RecordingLogger:
+    """Double for a cached structlog logger; ``bind`` returns self.
+
+    Same ``cache_logger_on_first_use`` trap as the tensor-grid twin: see
+    ``tests/pde/test_mesh_refinement.py::test_degenerate_triangulation_is_logged``.
+    """
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def bind(self, **_kwargs: object) -> _RecordingLogger:
+        return self
+
+    def warning(self, event: str, **_kwargs: object) -> None:
+        self.events.append(event)
+
+    def info(self, event: str, **_kwargs: object) -> None:
+        return None
+
+    def debug(self, event: str, **_kwargs: object) -> None:
+        return None
+
+
 class TestSkfemZeroMarkedRefineWarns:
     """The pre-existing twin of the tensor-grid guard -- previously untested."""
 
-    def test_empty_selection_emits_a_warning(self) -> None:
+    def test_empty_selection_emits_a_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(skfem_tri_module, "logger", recorder)
         operator = LShapedPoissonOperator(
             PDEConfig(
                 name="lshaped_noop",
@@ -396,6 +425,5 @@ class TestSkfemZeroMarkedRefineWarns:
         substrate = SkfemTriSubstrate(operator)
         mesh = substrate.initial_mesh()
         empty = np.zeros(substrate.n_units(mesh), dtype=bool)
-        with capture_logs() as events:
-            substrate.refine(mesh, empty)
-        assert any(e["event"] == "substrate_refine_noop" for e in events), events
+        substrate.refine(mesh, empty)
+        assert "substrate_refine_noop" in recorder.events, recorder.events

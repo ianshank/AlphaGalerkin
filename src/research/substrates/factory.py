@@ -13,8 +13,12 @@ import structlog
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator, PoissonOperator
-from src.refinement.substrate_registry import RefinementSubstrateRegistry
+from src.refinement.substrate_registry import (
+    RefinementSubstrateRegistry,
+    register_refinement_substrate,
+)
 from src.research.substrates.config import (
+    SUBSTRATE_KIND_SKFEM_TRI,
     SUBSTRATE_KIND_TENSOR_GRID,
     SubstrateConfig,
 )
@@ -27,17 +31,39 @@ logger = structlog.get_logger(__name__)
 OperatorName = Literal["poisson", "lshape_poisson"]
 
 
-# Side-effect imports: register concrete substrates so registry lookups resolve.
-# Kept in a dedicated helper so importing ``factory`` is the explicit act that
-# populates the registry (mirrors ``src.pde.register_games``).
-def ensure_substrate_registrants() -> None:
-    """Import concrete substrate modules so their ``@register_*`` decorators run."""
-    import src.research.substrates.skfem_tri as _skfem_tri_registrant
-    import src.research.substrates.tensor_grid as _tensor_grid_registrant
+def _register_kind_if_missing(kind: str, cls: type[Any]) -> None:
+    """Register ``cls`` under ``kind`` only when the singleton map lacks it.
 
-    # Keep references so the imports are not "unused" under ruff while still
-    # executing the ``@register_refinement_substrate`` side effects.
-    _ = (_skfem_tri_registrant, _tensor_grid_registrant)
+    ``register()`` raises ``ValueError`` on duplicates, so this must check
+    first: ``ensure_substrate_registrants`` is called from production lookup
+    *and* from tests that already imported the modules.
+    """
+    if RefinementSubstrateRegistry().get(kind) is not None:
+        return
+    register_refinement_substrate(kind)(cls)
+
+
+def ensure_substrate_registrants() -> None:
+    """Import *and* re-register production substrates if the registry was cleared.
+
+    ``RefinementSubstrateRegistry`` is a process-global singleton. Importing
+    ``tensor_grid`` / ``skfem_tri`` runs ``@register_refinement_substrate``
+    once; a later ``clear()`` (test isolation in
+    ``tests/refinement/test_substrate.py`` and
+    ``tests/research/test_skfem_substrate.py``) leaves the map empty, and a
+    second import is a no-op. Re-registering a *missing* kind is therefore
+    the production path, not a test helper — ``build_substrate_from_config``
+    is the first non-test lookup and must survive a prior test's teardown.
+
+    CI run 34291592000 failed six fast-lane tests with
+    ``KeyError: 'tensor_grid' not registered`` because this helper used to
+    import only.
+    """
+    from src.research.substrates.skfem_tri import SkfemTriSubstrate
+    from src.research.substrates.tensor_grid import TensorGridSubstrate
+
+    _register_kind_if_missing(SUBSTRATE_KIND_TENSOR_GRID, TensorGridSubstrate)
+    _register_kind_if_missing(SUBSTRATE_KIND_SKFEM_TRI, SkfemTriSubstrate)
 
 
 def build_default_operator(

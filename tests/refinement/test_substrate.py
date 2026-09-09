@@ -171,6 +171,13 @@ class TestRefinementSubstrateRegistry:
 
     def teardown_method(self) -> None:
         RefinementSubstrateRegistry().clear()
+        # This class is the poisoner of the process-global production registry.
+        # Restore so later tests in the combined fast lane are not left with
+        # ``Available: []``. ``ensure_substrate_registrants`` also re-registers
+        # after a clear; calling it here is the neighborly half of that fix.
+        from src.research.substrates.factory import ensure_substrate_registrants
+
+        ensure_substrate_registrants()
 
     def test_register_and_retrieve(self) -> None:
         register_refinement_substrate("toy")(_ToySubstrate)

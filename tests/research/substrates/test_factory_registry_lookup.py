@@ -25,10 +25,11 @@ def test_ensure_registrants_re_registers_after_clear() -> None:
     """Import-only ensure cannot recover from ``RefinementSubstrateRegistry.clear``.
 
     The registry is a process-global singleton. Two suites ``clear()`` it
-    without restoring (``tests/refinement/test_substrate.py``,
-    ``tests/research/test_skfem_substrate.py``). After the modules are
-    imported, a second ``import`` is a no-op, so an ensure that only
-    imports leaves ``Available: []``. That is CI run 34291592000: six
+    without restoring on the failing default tip (``tests/refinement/test_substrate.py``,
+    ``tests/research/test_skfem_substrate.py``); those teardowns now call
+    ``ensure_substrate_registrants``. After the modules are imported, a
+    second ``import`` is a no-op, so an ensure that only imports leaves
+    ``Available: []``. That is CI run 34292047225 on ``a85d265``: six
     ``KeyError: 'tensor_grid' not registered`` failures in the combined
     fast lane.
 

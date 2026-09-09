@@ -19,9 +19,14 @@ rather than editing history.
 | [0001](0001-chess-self-play.md) | Chess self-play training architecture | Accepted |
 | [0002](0002-mouse-droid-fusion-integration.md) | Mouse-Droid-AGI fusion-head integration (stable `src.modeling` surface) | Accepted |
 | [0004](0004-licensing-and-ip-posture.md) | Licensing and IP posture: MIT stays, and disclosure has already happened | Accepted |
+| [0005](0005-registry-clear-ensure-lifecycle.md) | Process-global registry `clear` / `ensure` lifecycle | Accepted |
 
 > ADR 0002 is enforced in CI: `tests/modeling/test_public_surface_contract.py`
 > turns its "frozen signatures" rule into a mechanical check.
+
+> ADR 0005 is enforced in CI:
+> `tests/research/substrates/test_factory_registry_lookup.py::test_ensure_registrants_re_registers_after_clear`
+> (import-only ensure cannot recover from `clear()`).
 
 > ADR 0003 is deliberately unallocated: it is claimed by the unmerged PR #118
 > (`docs/adr/0003-jax-track-b-verifier.md`). Numbering around it avoids a collision

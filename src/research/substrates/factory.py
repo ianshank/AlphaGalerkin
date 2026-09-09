@@ -55,9 +55,9 @@ def ensure_substrate_registrants() -> None:
     the production path, not a test helper — ``build_substrate_from_config``
     is the first non-test lookup and must survive a prior test's teardown.
 
-    CI run 34291592000 failed six fast-lane tests with
-    ``KeyError: 'tensor_grid' not registered`` because this helper used to
-    import only.
+    CI run 34292047225 (default tip ``a85d265``) failed six fast-lane tests
+    with ``KeyError: 'tensor_grid' not registered`` because this helper used
+    to import only.
     """
     from src.research.substrates.skfem_tri import SkfemTriSubstrate
     from src.research.substrates.tensor_grid import TensorGridSubstrate

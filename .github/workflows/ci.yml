@@ -396,6 +396,9 @@ jobs:
             -q
 
       - name: Run fast unit tests
+        # Canonical owner/reason/reopen: docs/ci-exclusion-ledger.md
+        # Duplicated in the coverage job and Makefile CI_TEST_EXCLUDES.
+        # Extracting to one args file is hygiene B7 — not this change.
         run: |
           pytest tests/ \
             -m "not slow and not e2e and not gpu_required" \
@@ -628,6 +631,9 @@ jobs:
           pip install pytest-cov matplotlib
 
       - name: Run tests with coverage
+        # Canonical owner/reason/reopen: docs/ci-exclusion-ledger.md
+        # Duplicated in test-fast and Makefile CI_TEST_EXCLUDES.
+        # Extracting to one args file is hygiene B7 — not this change.
         run: |
           pytest tests/ \
             -m "not slow and not e2e and not gpu_required" \

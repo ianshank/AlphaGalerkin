@@ -19,7 +19,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from structlog.testing import capture_logs
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator, PoissonOperator
@@ -628,6 +627,33 @@ class TestSubstratesAreRegistered:
         assert "register_refinement_substrate" in refinement.__all__
 
 
+class _RecordingLogger:
+    """Double for a cached structlog logger; ``bind`` returns self.
+
+    ``structlog.testing.capture_logs`` / ``caplog`` silently record nothing
+    once ``configure_logging`` has set ``cache_logger_on_first_use=True``:
+    the module logger has already cached a stdlib-backed bound logger.
+    That is CI run 34291592000's seventh fast-lane failure — this test
+    passed in isolation and failed in the combined process. See
+    ``tests/pde/test_mesh_refinement.py::test_degenerate_triangulation_is_logged``.
+    """
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def bind(self, **_kwargs: object) -> _RecordingLogger:
+        return self
+
+    def warning(self, event: str, **_kwargs: object) -> None:
+        self.events.append(event)
+
+    def info(self, event: str, **_kwargs: object) -> None:
+        return None
+
+    def debug(self, event: str, **_kwargs: object) -> None:
+        return None
+
+
 class TestZeroMarkedRefineWarns:
     """Both substrates must warn on an empty selection, not spin silently.
 
@@ -640,14 +666,14 @@ class TestZeroMarkedRefineWarns:
     unexecuted code until now.
     """
 
-    def test_empty_selection_emits_a_warning_and_leaves_the_mesh_unrefined(self) -> None:
+    def test_empty_selection_emits_a_warning_and_leaves_the_mesh_unrefined(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        recorder = _RecordingLogger()
+        monkeypatch.setattr(tensor_grid_module, "logger", recorder)
         substrate = TensorGridSubstrate(_build_operator(1.0), inside=lshape_inside_predicate(1.0))
         mesh = substrate.initial_mesh()
         empty = np.zeros(substrate.n_units(mesh), dtype=bool)
-        # structlog, not stdlib logging -- ``caplog`` sees nothing here, which is
-        # itself worth recording: the first version of this test passed an empty
-        # string into an ``in`` check and would have gone green on a deleted warning.
-        with capture_logs() as events:
-            refined = substrate.refine(mesh, empty)
-        assert any(e["event"] == "substrate_refine_noop" for e in events), events
+        refined = substrate.refine(mesh, empty)
+        assert "substrate_refine_noop" in recorder.events, recorder.events
         assert substrate.n_units(refined) == substrate.n_units(mesh)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import src.pde.register_refinement_games  # noqa: F401
 from src.refinement.substrate_registry import RefinementSubstrateRegistry
 from src.research.substrates.config import (
+    SUBSTRATE_KIND_SKFEM_TRI,
     SUBSTRATE_KIND_TENSOR_GRID,
     SubstrateConfig,
 )
@@ -18,6 +19,43 @@ def test_ensure_registrants_populates_registry() -> None:
     ensure_substrate_registrants()
     registry = RefinementSubstrateRegistry()
     assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is not None
+
+
+def test_ensure_registrants_re_registers_after_clear() -> None:
+    """Import-only ensure cannot recover from ``RefinementSubstrateRegistry.clear``.
+
+    The registry is a process-global singleton. Two suites ``clear()`` it
+    without restoring on the failing default tip (``tests/refinement/test_substrate.py``,
+    ``tests/research/test_skfem_substrate.py``); those teardowns now call
+    ``ensure_substrate_registrants``. After the modules are imported, a
+    second ``import`` is a no-op, so an ensure that only imports leaves
+    ``Available: []``. That is CI run 34292047225 on ``a85d265``: six
+    ``KeyError: 'tensor_grid' not registered`` failures in the combined
+    fast lane.
+
+    The first ``ensure`` here is load-bearing: without it this test would
+    pass on the import-only body whenever it ran first in a fresh process
+    (the decorator would still fire). CI's failure was the opposite order.
+
+    Mutations: (1) restore the import-only body — this named test fails on
+    the post-ensure ``get``; (2) drop the missing-kind guard — ``ensure``
+    raises ``ValueError`` duplicate once the decorator has already
+    registered the kind. Not ``gpu_required`` / ``fem_required``.
+    """
+    registry = RefinementSubstrateRegistry()
+    ensure_substrate_registrants()
+    assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is not None
+    registry.clear()
+    try:
+        assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is None
+        assert registry.get(SUBSTRATE_KIND_SKFEM_TRI) is None
+        ensure_substrate_registrants()
+        assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is not None
+        assert registry.get(SUBSTRATE_KIND_SKFEM_TRI) is not None
+        ensure_substrate_registrants()
+        assert registry.get(SUBSTRATE_KIND_TENSOR_GRID) is not None
+    finally:
+        ensure_substrate_registrants()
 
 
 def test_build_substrate_uses_registry_lookup() -> None:

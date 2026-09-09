@@ -24,6 +24,24 @@
   ungated. Adequacy rates are gate evidence, not this result. FOCUS freeze
   lifts on that signed answer.
 
+### Fixed
+- `ensure_substrate_registrants` re-registers missing `tensor_grid` /
+  `skfem_tri` kinds after a process-global `RefinementSubstrateRegistry.clear()`.
+  Import-only ensure was a no-op once the modules were loaded, which emptied
+  the map for later tests in the same process (default tip `a85d265`, CI run
+  34292047225: six `KeyError: 'tensor_grid' not registered`). Zero-marked
+  refine warnings now spy on the module logger instead of `capture_logs`,
+  which records nothing after `cache_logger_on_first_use=True`.
+
+### Added
+- CI `--ignore` / `--deselect` ledger (`docs/ci-exclusion-ledger.md`) with
+  owner / reason / reopen criteria. Unit Tests (Fast) and Test Coverage
+  duplicate the list; Makefile `CI_TEST_EXCLUDES` is the third copy.
+  Shared args-file extraction is still hygiene B7 (deferred). Guard:
+  `tests/docs/test_ci_exclusion_ledger.py`.
+- ADR 0005: process-global registry `clear` / `ensure` lifecycle. Does not
+  rewrite every registry.
+
 ### Changed
 - Retired charter deviations for empty `RefinementGameRegistry`, zero substrate
   lookups, and the staged `fingerprint` audit exemption; added time-boxed

@@ -88,7 +88,8 @@ SUBSTRATE_COV_THRESHOLD ?= 95
 # Known duplication: this is a THIRD copy (ci.yml holds two). Collapsing all
 # three onto one shared args file is tracked as backlog B7 -- deliberately not
 # done here, because rewriting CI's test invocation risks a green PR for a
-# cosmetic win. Keep this block in step with ci.yml by hand until then.
+# cosmetic win. Keep this block in step with ci.yml and
+# docs/ci-exclusion-ledger.md by hand until then.
 CI_TEST_EXCLUDES := \
 	--ignore=tests/e2e/ \
 	--ignore=tests/integration/ \

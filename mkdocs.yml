@@ -84,6 +84,7 @@ nav:
       - PDE game C4: architecture/pde_game_c4.md
       - Components: architecture/components.md
       - Decision records: adr/README.md
+      - CI exclusion ledger: ci-exclusion-ledger.md
   - Reference:
       - Glossary: GLOSSARY.md
       - Mathematical foundation: mathematical-foundation.md

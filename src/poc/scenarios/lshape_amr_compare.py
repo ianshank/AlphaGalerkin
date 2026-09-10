@@ -18,31 +18,27 @@ arms are always available on CPU. See ``specs/lshape_amr_compare.spec.md``.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import torch
-
 from src.poc.config import ScenarioResult, ScenarioStatus
-from src.poc.device import resolve_device
-from src.poc.logging import ScenarioLogger
-from src.poc.registry import BaseScenario, scenario
+from src.poc.registry import scenario
+from src.poc.scenarios._compare_common import CompareScenarioBase
 from src.poc.scenarios.lshape_amr_compare_config import (
     SCENARIO_NAME,
     LShapeAMRCompareConfig,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from src.pde.operators import PDEOperator
     from src.research.lshape_amr_compare import (
         ComparisonParams,
-        ComparisonResult,
-        MultiSeedComparison,
     )
 
 
 @scenario(SCENARIO_NAME)
-class LShapeAMRCompareScenario(BaseScenario):
+class LShapeAMRCompareScenario(CompareScenarioBase):
     """MCTS refinement vs Dörfler marking on the L-shaped Poisson benchmark."""
 
     config_class = LShapeAMRCompareConfig
@@ -50,35 +46,14 @@ class LShapeAMRCompareScenario(BaseScenario):
     def __init__(self, config: LShapeAMRCompareConfig | None = None, **kwargs: Any) -> None:
         super().__init__(config, **kwargs)
         self.config: LShapeAMRCompareConfig  # type narrowing
-        self._device: torch.device | None = None
-        self._scenario_logger: ScenarioLogger | None = None
 
-    # ------------------------------------------------------------------ #
-    # Lifecycle                                                           #
-    # ------------------------------------------------------------------ #
-
-    def setup(self) -> None:
-        """Resolve the device, build the logger, and install the threshold."""
-        self._device = resolve_device(self.config.device, context=SCENARIO_NAME)
-        self._scenario_logger = ScenarioLogger(
-            scenario_name=self.name,
-            run_id=self.config.compute_hash(),
-            device=str(self._device),
-        )
-        if not self.config.thresholds:
-            self.config.thresholds = self.config.get_default_thresholds()
-        self._scenario_logger.info(
-            "setup_complete",
-            scale=self.config.scale,
-            max_dof=self.config.max_dof,
-            n_simulations=self.config.n_simulations,
-            seed=self.config.seed,
-        )
-
-    def teardown(self) -> None:
-        """Release GPU memory (no-op on CPU)."""
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    def _setup_log_fields(self) -> dict[str, Any]:
+        return {
+            "scale": self.config.scale,
+            "max_dof": self.config.max_dof,
+            "n_simulations": self.config.n_simulations,
+            "seed": self.config.seed,
+        }
 
     def execute(self) -> ScenarioResult:
         """Sweep seeds, record the median headline, and write the artifacts."""
@@ -98,13 +73,9 @@ class LShapeAMRCompareScenario(BaseScenario):
         multiseed = run_multiseed_comparison(operator, game_config, params)
         self._record_metrics(multiseed)
         # The committed artifact uses the median (representative) seed's run.
-        self._write_artifacts(multiseed.representative, export_csv, export_plot)
+        self._write_csv_png_artifacts(multiseed.representative, export_csv, export_plot)
 
         return self._create_result(status=ScenarioStatus.RUNNING)
-
-    # ------------------------------------------------------------------ #
-    # Construction helpers                                                #
-    # ------------------------------------------------------------------ #
 
     def _build_pde_config(self) -> Any:
         """Build the shared L-shaped Poisson PDEConfig.
@@ -167,17 +138,13 @@ class LShapeAMRCompareScenario(BaseScenario):
             n_seeds=self.config.n_seeds,
         )
 
-    # ------------------------------------------------------------------ #
-    # Recording                                                           #
-    # ------------------------------------------------------------------ #
-
-    def _record_metrics(self, multiseed: MultiSeedComparison) -> None:
-        """Record the median headline + per-seed spread metrics."""
+    def _log_metrics_recorded(
+        self,
+        comparison: object,
+        metrics: Mapping[str, float],
+    ) -> None:
+        del comparison
         assert self._scenario_logger is not None
-        metrics = multiseed.metrics()
-        for name, value in metrics.items():
-            self.record_metric(name, value)
-            self._scenario_logger.metric(name, value)
         self._scenario_logger.info(
             "comparison_recorded",
             l2_error_ratio_at_matched_dof=metrics["l2_error_ratio_at_matched_dof"],
@@ -185,23 +152,3 @@ class LShapeAMRCompareScenario(BaseScenario):
             mcts_win_fraction=metrics["mcts_win_fraction"],
             n_seeds=metrics["n_seeds"],
         )
-
-    def _write_artifacts(
-        self,
-        result: ComparisonResult,
-        export_csv: Any,
-        export_plot: Any,
-    ) -> None:
-        """Write and register the committed CSV/PNG artifacts."""
-        assert self._scenario_logger is not None
-        # Append extensions by string concatenation (not Path.with_suffix, which
-        # would truncate an internal dot in a custom artifact_basename, e.g.
-        # "lshape.v2" -> "lshape.csv").
-        base_str = str(Path(self.config.output_dir) / self.config.artifact_basename)
-        csv_path = export_csv(result, Path(f"{base_str}.csv"))
-        self.record_artifact("csv", str(csv_path))
-        png_path = export_plot(result, Path(f"{base_str}.png"))
-        if png_path is not None:
-            self.record_artifact("png", str(png_path))
-        else:
-            self._scenario_logger.warning("artifact_png_skipped", reason="matplotlib unavailable")

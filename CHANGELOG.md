@@ -14,6 +14,13 @@
   `TestPhysicsPackagePublicAPI`. `src/training/physics_loss.py` shim and
   `src/training/losses/__init__.py` still import the package. mypy override
   glob `src.training.losses.physics.*`.
+- **Compare-scenario shared lifecycle (B2).** `src/poc/scenarios/_compare_lock.py`
+  holds `lock_scenario_name` (a function, not a config field) so config
+  imports stay torch-free. `src/poc/scenarios/_compare_common.py` holds
+  CUDA teardown, `comparison_metrics` (method vs mapping), and
+  `CompareScenarioBase`. Arena keeps `write_arena_manifest` + `.run.json`.
+  Default-config `compute_hash()` is pinned for the three datetime-free
+  families.
 - **`src/research/baselines.py` → `src/research/baselines/` package (B34).**
   Import-compatible re-exports; public names frozen in
   `TestBaselinesPackagePublicAPI` (not raw `dir()` identity). `extra_solvers`

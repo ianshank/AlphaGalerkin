@@ -62,11 +62,11 @@ are later waves.
 
 ## Wave B2 — CompareScenarioBase
 
-- [ ] 6.1 B2a: `_compare_common.py` teardown + `lock_scenario_name` function;
-      stochastic `_name_locked` alias if tests assert the symbol
-- [ ] 6.2 B2b: `setup` / `_record_metrics` / `_write_artifacts`; arena keeps
-      `write_arena_manifest`; hashes byte-stable
-- [ ] 6.3 Run all four scenario surfaces in one pytest process
+- [x] 6.1 B2a: `_compare_lock.py` + `_compare_common.py` teardown +
+      `lock_scenario_name` function; stochastic `_name_locked` alias
+- [x] 6.2 B2b: `setup` / `_record_metrics` / `_write_csv_png_artifacts`;
+      arena keeps `write_arena_manifest`; hashes byte-stable
+- [x] 6.3 Run all four scenario surfaces in one pytest process (161 passed)
 - [ ] 6.4 B15 script CLI dedup stays deferred
 
 ## Wave D — Coverage (core-only)

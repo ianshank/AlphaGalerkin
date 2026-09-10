@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.poc.scenarios._compare_common import (
-    CompareScenarioBase,
     comparison_metrics,
     empty_cuda_cache,
     lock_scenario_name,
@@ -123,14 +122,17 @@ class TestEmptyCudaCache:
 
 class TestCompareScenarioBaseTeardown:
     def test_teardown_delegates_to_empty_cuda_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Patch and subclass through the current sys.modules object (poc conftest rule 1)."""
+        import src.poc.scenarios._compare_common as compare_common
+
         called = {"n": 0}
 
         def _empty() -> None:
             called["n"] += 1
 
-        monkeypatch.setattr("src.poc.scenarios._compare_common.empty_cuda_cache", _empty)
+        monkeypatch.setattr(compare_common, "empty_cuda_cache", _empty)
 
-        class _Stub(CompareScenarioBase):
+        class _Stub(compare_common.CompareScenarioBase):
             def execute(self) -> MagicMock:  # pragma: no cover - unused
                 raise AssertionError("execute must not run")
 

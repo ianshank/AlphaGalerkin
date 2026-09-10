@@ -21,7 +21,7 @@ from typing import Any
 
 import structlog
 import torch
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch import Tensor
 
 from src.templates.config import BaseModuleConfig
@@ -61,22 +61,25 @@ class TimeSteppingConfig(BaseModuleConfig):
     )
     adaptive_dt: bool = Field(
         default=False,
-        description="Enable adaptive time step control.",
+        description=(
+            "Adaptive time-step control. Not implemented: True is rejected at "
+            "validation. dt_min / dt_max / error_tolerance are unused until it is."
+        ),
     )
     dt_min: float = Field(
         default=1e-6,
         gt=0.0,
-        description="Minimum time step for adaptive control.",
+        description="Reserved for adaptive control (unread while adaptive_dt is False).",
     )
     dt_max: float = Field(
         default=0.1,
         gt=0.0,
-        description="Maximum time step for adaptive control.",
+        description="Reserved for adaptive control (unread while adaptive_dt is False).",
     )
     error_tolerance: float = Field(
         default=1e-5,
         gt=0.0,
-        description="Error tolerance for adaptive time stepping.",
+        description="Reserved for adaptive control (unread while adaptive_dt is False).",
     )
     max_steps: int = Field(
         default=100000,
@@ -101,6 +104,16 @@ class TimeSteppingConfig(BaseModuleConfig):
             "with ``t_end`` rather than being absolute."
         ),
     )
+
+    @model_validator(mode="after")
+    def _reject_unimplemented_adaptive_dt(self) -> TimeSteppingConfig:
+        if self.adaptive_dt:
+            raise ValueError(
+                "adaptive_dt is not implemented; dt_min, dt_max, and "
+                "error_tolerance are unused. Set adaptive_dt=False and use a "
+                "fixed dt."
+            )
+        return self
 
 
 class TimeStepper(ABC):

@@ -20,7 +20,9 @@ pre-commit install
 ```
 
 See [`docs/getting-started.md`](docs/getting-started.md) for a clone-to-first-run
-walkthrough and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the repository map.
+walkthrough (optional extras: `dev`, `viz`, `test-extras`, `fem`, `jax` /
+`jax-gpu`, `picogk`, `lm-studio`, `docs`; no `dashboard` extra) and
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the repository map.
 
 ## 2. Scope and spec-driven development
 

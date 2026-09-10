@@ -17,10 +17,15 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from src.pde.geometry import GeometryConfig
 from src.templates.config import BaseModuleConfig, MetricDefinition, ThresholdOperator
+
+#: Only kernel ``BasisFunction.evaluate`` actually implements (Gaussian RBF).
+#: The Literal on ``BasisSelectionConfig.rbf_kernel`` documents intended
+#: future kernels; constructing any other value is a validation error.
+IMPLEMENTED_RBF_KERNELS: frozenset[str] = frozenset({"gaussian"})
 
 
 class PDEType(str, Enum):
@@ -218,7 +223,11 @@ class BasisSelectionConfig(BaseModuleConfig):
     # RBF-specific parameters
     rbf_kernel: Literal["gaussian", "multiquadric", "inverse", "thin_plate"] = Field(
         default="gaussian",
-        description="RBF kernel type",
+        description=(
+            "RBF kernel type. Only 'gaussian' is implemented "
+            "(``BasisFunction.evaluate`` uses exp(-r^2/(2 sigma^2))). "
+            "Other Literal members are rejected at validation."
+        ),
     )
 
     # Numerical parameters
@@ -253,6 +262,18 @@ class BasisSelectionConfig(BaseModuleConfig):
         if low >= high:
             raise ValueError(f"Invalid basis_scale_range: {low} >= {high}")
         return self
+
+    @field_validator("rbf_kernel")
+    @classmethod
+    def _rbf_kernel_must_be_implemented(cls, value: str) -> str:
+        if value not in IMPLEMENTED_RBF_KERNELS:
+            raise ValueError(
+                f"rbf_kernel={value!r} is not implemented; "
+                "BasisFunction.evaluate always uses a Gaussian "
+                "exp(-r^2/(2 sigma^2)). "
+                f"Implemented: {sorted(IMPLEMENTED_RBF_KERNELS)}."
+            )
+        return value
 
 
 class MeshRefinementConfig(BaseModuleConfig):
@@ -533,7 +554,11 @@ class PDEGameConfig(BaseModuleConfig):
                 threshold=0.1,
             ),
         ],
-        description="Metrics for evaluating game success",
+        description=(
+            "Reserved: no production reader in src/. Defaults kept for "
+            "compute_hash() stability. Wiring a consumer must delete "
+            "TestSuccessMetricsUnread in tests/pde/test_unread_config_fields.py."
+        ),
     )
 
     # Phase detection thresholds (for curriculum learning)

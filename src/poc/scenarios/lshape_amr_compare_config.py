@@ -26,6 +26,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from src.poc.config import BaseScenarioConfig, MetricThreshold
+from src.poc.scenarios._compare_lock import lock_scenario_name
 
 SCENARIO_NAME = "lshape_amr_compare"
 """Registry / YAML dispatch key for the scenario."""
@@ -150,9 +151,7 @@ class LShapeAMRCompareConfig(BaseScenarioConfig):
     @field_validator("name")
     @classmethod
     def _lock_name(cls, v: str) -> str:
-        if v != SCENARIO_NAME:
-            raise ValueError(f"name must be {SCENARIO_NAME!r}, got {v!r}")
-        return v
+        return lock_scenario_name(SCENARIO_NAME, v)
 
     @field_validator("initial_side")
     @classmethod

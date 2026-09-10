@@ -2,7 +2,75 @@
 
 ## [Unreleased]
 
+### Changed
+- **Wave E (zero numeric change).** Named `POLICY_LOG_PROB_FLOOR = -100.0`
+  at the three policy-CE / entropy clamp sites. Trainer start-buffer uses
+  `TrainingConfig.start_min_buffer_size()` with
+  `start_buffer_batch_multiplier` / `start_buffer_capacity_divisor`
+  defaulting to **10** (historical literals; defaults unchanged). Cole-Hopf
+  clamp / term count were already named — skipped. Unimplemented RBF kernels
+  (`multiquadric`, `inverse`, `thin_plate`) are rejected at validation.
+  `adaptive_dt=True` is rejected on `TimeSteppingConfig` (TimeStepper still
+  raises if constructed unsafely). `StrangParallelTrainer` requires
+  `data.particles.shape[1] == config.n_particles`. `PDEGameConfig.success_metrics`
+  is documented reserved; its default list is unchanged for `compute_hash()`
+  stability. Modeling LBB `* 10` and FNO `128` stay parked.
+- **B39: one `get_dofs()` per scikit-fem assemble.** `dirichlet_dof_indices`
+  accepts an optional precomputed Dof. `assemble_and_solve` returns a fourth
+  value (flattened Dirichlet indices from that same object) so
+  `SkfemTriSubstrate.solve` no longer queries DOFs a third time. The solver
+  wrapper still returns the historical 3-tuple. `basis.get_dofs()` at assemble
+  is kept — `skfem.condense(D=)` needs the raw Dof.
+- **B40: `p_adaptive` / `hp_adaptive` FEM strategies are tested.** Parametrized
+  strategy run, P3 saturation at `max_element_order`, hp h-refine when
+  smoothness is below threshold, unknown-element raise. fem_baseline gate
+  stays 83 (arcs covered; threshold not ratcheted).
+- **`src/training/trainer.py` facade (C2).** `fill_replay_buffer` lives in
+  `buffer_fill.py`; evaluation / checkpoint-tournament / engine helpers live
+  in `trainer_eval.py`. `Trainer` methods remain the patch targets.
+  `Trainer.__init__` still does not call `super().__init__()`.
+  `BufferFillError` is re-exported from the facade. `DistributedTrainer` and
+  `OperatorTrainer` are untouched. Tournament stays unwired (B10).
+- **`src/training/losses/physics.py` → `src/training/losses/physics/` package (C3).**
+  Import-compatible re-exports; public names frozen in
+  `TestPhysicsPackagePublicAPI`. `src/training/physics_loss.py` shim and
+  `src/training/losses/__init__.py` still import the package. mypy override
+  glob `src.training.losses.physics.*`.
+- **Compare-scenario shared lifecycle (B2).** `src/poc/scenarios/_compare_lock.py`
+  holds `lock_scenario_name` (a function, not a config field) so config
+  imports stay torch-free. `src/poc/scenarios/_compare_common.py` holds
+  CUDA teardown, `comparison_metrics` (method vs mapping), and
+  `CompareScenarioBase`. Arena keeps `write_arena_manifest` + `.run.json`.
+  Default-config `compute_hash()` is pinned for the three datetime-free
+  families.
+- **B23 nightly skip is ledger-complete.** `docs/CODE_HYGIENE_AUDIT.md` row
+  B23 (1) is DONE: non-`test-slow` jobs skip `schedule`. The skip predicate
+  rejects `!= 'schedule' || ...` (substring presence alone would still fire
+  on cron). `comparison_metrics` is typed on `SupportsMetricsMethod` /
+  `SupportsMetricsMapping`; dispatch stays ``callable`` (runtime-checkable
+  Protocols cannot tell a metrics dict from a method).
+- **`src/research/baselines.py` → `src/research/baselines/` package (B34).**
+  Import-compatible re-exports; public names frozen in
+  `TestBaselinesPackagePublicAPI` (not raw `dir()` identity). `extra_solvers`
+  still register into `SOLVER_REGISTRY`. SBIR coverage `--include` lists both
+  `*/src/research/baselines.py` and `*/src/research/baselines/*`. mypy override
+  glob `src.research.baselines.*`. Reference-baselines import contract now
+  scans the package directory.
+
 ### Added
+- **Wave F AGENT.md + B8.** Every `src/` package now has `AGENT.md` (B12), including
+  `src/research/` and four B10 keep-reason files (`prototyping`, `analysis`,
+  `curriculum`, `tournament`: test-held, not production-wired, not a
+  2026-07-22-style cut). `src/pde/AGENT.md` sub-agent row points at
+  `src/pde/operators/`. B19 extras (`dev`, `viz`, `test-extras`, `fem`, `jax`,
+  `picogk`, `lm-studio`, `docs`) documented in README / getting-started /
+  CONTRIBUTING; no `dashboard` extra. B8: CLAUDE.md Regression Surface
+  coverage-gate rows ⊆ `ci.yml` (`tests/docs/test_claude_coverage_gates.py`,
+  mutation-killed).
+- **`tests/support` coverage gate at 85** (`coverage-gates` job). Selection is
+  the docs / import-graph consumers that actually import the helpers. Measured
+  ~95% branch; first landing capped at 85. templates / math_kernel / backend
+  54 / deployment 25 / B37 eval_harness stay parked.
 - Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
   `src/pde/register_refinement_games.py`, config-driven substrate factory with
   `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production
@@ -25,6 +93,10 @@
   lifts on that signed answer.
 
 ### Fixed
+- **Generic self-play rank-1 boards fail loud.** `_play_game_generic`
+  used to silently substitute `board_size=8` when `state.board.ndim < 2`
+  (chess's size, wrong for every other game). `board_size_from_state`
+  now raises; rank-2+ still uses `shape[0]`.
 - `ensure_substrate_registrants` re-registers missing `tensor_grid` /
   `skfem_tri` kinds after a process-global `RefinementSubstrateRegistry.clear()`.
   Import-only ensure was a no-op once the modules were loaded, which emptied

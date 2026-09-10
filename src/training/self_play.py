@@ -34,6 +34,21 @@ logger = structlog.get_logger(__name__)
 _DEFAULT_MAX_WORKERS = 8
 
 
+def board_size_from_state(board: np.ndarray) -> int:
+    """Leading spatial dimension of a rank-2+ board.
+
+    Generic self-play used to silently substitute ``8`` when ``ndim < 2``
+    (chess's size, and wrong for every other game). Fail loud instead.
+    Rank-2+ behaviour is unchanged: ``shape[0]``.
+    """
+    if board.ndim < 2:
+        raise ValueError(
+            "generic self-play requires a rank-2+ board tensor; "
+            f"got ndim={board.ndim} shape={tuple(board.shape)}"
+        )
+    return int(board.shape[0])
+
+
 @dataclass
 class GameRecord:
     """Record of a complete self-play game.
@@ -216,7 +231,7 @@ class SelfPlayWorker:
         assert self.game is not None
         game = self.game
         state = game.initial_state()
-        board_size = state.board.shape[0] if state.board.ndim >= 2 else 8
+        board_size = board_size_from_state(state.board)
         n_actions = game.action_space_size
         mcts = self._create_mcts()
 

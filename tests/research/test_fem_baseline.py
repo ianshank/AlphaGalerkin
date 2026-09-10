@@ -305,7 +305,7 @@ class TestQuadratureL2Error:
         )
         element = _make_element("P1", skfem)
         solver = ScikitFEMPoissonSolver(FEMConfig())
-        u, _coords, nodal_rms = assemble_and_solve(
+        u, _coords, nodal_rms, _dof_idx = assemble_and_solve(
             mesh, element, operator, skfem, solver._compute_l2_error
         )
         quad_l2 = quadrature_l2_error(mesh, element, u, operator, skfem)
@@ -333,7 +333,7 @@ class TestQuadratureL2Error:
                 min_mesh_side=3,
                 initial_mesh_refinements=refinements,
             )
-            u, _coords, _nodal_rms = assemble_and_solve(
+            u, _coords, _nodal_rms, _dof_idx = assemble_and_solve(
                 mesh, element, operator, skfem, solver._compute_l2_error
             )
             errors.append(quadrature_l2_error(mesh, element, u, operator, skfem))
@@ -462,6 +462,106 @@ class TestDirichletDofIndicesCompatChain:
 
         np.testing.assert_array_equal(dirichlet_dof_indices(_Basis()), [5, 6, 9])
 
+    def test_precomputed_dofs_skip_get_dofs(self) -> None:
+        """B39: passing dofs= must not call basis.get_dofs() again."""
+
+        class _Dofs:
+            def flatten(self) -> np.ndarray:
+                return np.array([4, 5])
+
+        class _Basis:
+            def get_dofs(self) -> _Dofs:
+                raise AssertionError("get_dofs must not run when dofs= is passed")
+
+        np.testing.assert_array_equal(dirichlet_dof_indices(_Basis(), dofs=_Dofs()), [4, 5])
+
+
+class TestAssembleAndSolveSharesDofQuery:
+    """B39: one get_dofs() feeds both condense(D=) and flattened BC indices."""
+
+    def test_returns_indices_from_the_same_get_dofs_object(self) -> None:
+        skfem = _require_skfem()
+        operator = _make_poisson_2d()
+        mesh = build_initial_mesh(
+            operator, 9, skfem, min_initial_dof_hint=9, min_mesh_side=3, initial_mesh_refinements=1
+        )
+        element = _make_element("P1", skfem)
+        basis = skfem.Basis(mesh, element)
+        calls = {"n": 0}
+        real_get_dofs = basis.get_dofs
+
+        def _spy() -> object:
+            calls["n"] += 1
+            return real_get_dofs()
+
+        basis.get_dofs = _spy  # type: ignore[method-assign]
+        u, _coords, nodal_rms, dof_idx = assemble_and_solve(
+            mesh,
+            element,
+            operator,
+            skfem,
+            ScikitFEMPoissonSolver(FEMConfig())._compute_l2_error,
+            basis=basis,
+        )
+        assert calls["n"] == 1
+        assert np.isfinite(u).all()
+        np.testing.assert_array_equal(dof_idx, dirichlet_dof_indices(basis, dofs=real_get_dofs()))
+        assert nodal_rms is None or np.isfinite(nodal_rms)
+
+
+class TestPAndHpAdaptiveStrategies:
+    """B40: the p_adaptive / hp_adaptive blocks were unmeasured under the 83 gate."""
+
+    @pytest.mark.parametrize("strategy", ["p_adaptive", "hp_adaptive"])
+    def test_strategy_runs_and_records_metadata(self, strategy: str) -> None:
+        config = FEMConfig(
+            element_type="P1",
+            refinement_strategy=strategy,  # type: ignore[arg-type]
+            max_refinement_levels=3,
+            initial_mesh_refinements=1,
+            max_element_order=3,
+        )
+        result = ScikitFEMPoissonSolver(config).solve(_make_poisson_2d(), n_dof=25)
+        assert result.n_dof > 0
+        assert result.metadata["strategy"] == strategy
+        assert result.metadata["method"] == "scikit_fem_hp_adaptive"
+
+    def test_p_adaptive_saturates_at_max_element_order(self) -> None:
+        config = FEMConfig(
+            element_type="P3",
+            refinement_strategy="p_adaptive",
+            max_refinement_levels=4,
+            initial_mesh_refinements=1,
+            max_element_order=3,
+        )
+        result = ScikitFEMPoissonSolver(config).solve(_make_poisson_2d(), n_dof=25)
+        assert result.metadata["element_type"] == "P3"
+        assert result.metadata["refinement_levels"] == 1
+
+    def test_hp_adaptive_h_refines_when_smoothness_is_below_threshold(self) -> None:
+        config = FEMConfig(
+            element_type="P1",
+            refinement_strategy="hp_adaptive",
+            max_refinement_levels=2,
+            initial_mesh_refinements=1,
+            smoothness_threshold=1e6,
+            max_element_order=3,
+        )
+        result = ScikitFEMPoissonSolver(config).solve(_make_poisson_2d(), n_dof=25)
+        assert result.n_dof > 0
+        assert result.metadata["strategy"] == "hp_adaptive"
+
+
+class TestMakeElementUnknown:
+    def test_unknown_element_type_raises(self) -> None:
+        class _Skfem:
+            ElementTriP1 = object
+            ElementTriP2 = object
+            ElementTriP3 = object
+
+        with pytest.raises(ValueError, match="Unknown element_type"):
+            _make_element("P9", _Skfem())
+
 
 class TestTorchReturningOperatorIsUnwrapped:
     """One fixture, three unwrap sites."""
@@ -475,7 +575,7 @@ class TestTorchReturningOperatorIsUnwrapped:
         )
         element = _make_element("P1", skfem)
         solver = ScikitFEMPoissonSolver(FEMConfig())
-        u, _coords, nodal_rms = assemble_and_solve(
+        u, _coords, nodal_rms, _dof_idx = assemble_and_solve(
             mesh, element, operator, skfem, solver._compute_l2_error
         )
         assert np.isfinite(u).all()

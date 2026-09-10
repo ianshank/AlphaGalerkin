@@ -10,6 +10,20 @@ import torch
 from src.poc.device import resolve_device
 
 
+class TestShimIsIdentity:
+    """The PoC path must be the same function object as ``src.device``.
+
+    A wrapper that delegates would keep every behavioural test green and
+    hide the promotion. Mutation-killed by replacing the re-export with a
+    forwarding function.
+    """
+
+    def test_resolve_device_is_src_device_resolve_device(self) -> None:
+        from src.device import resolve_device as canonical
+
+        assert resolve_device is canonical
+
+
 class TestResolveDevice:
     def test_cpu_always_resolves(self) -> None:
         assert resolve_device("cpu") == torch.device("cpu")

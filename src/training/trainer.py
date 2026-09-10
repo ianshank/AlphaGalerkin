@@ -25,11 +25,11 @@ from src.constants import (
     DEFAULT_CURRICULUM_SCHEDULE,
     DEFAULT_PER_ALPHA,
     DEFAULT_PER_BETA,
-    WIN_RATE_ACCEPT_THRESHOLD,
-    WIN_RATE_REJECT_THRESHOLD,
 )
 from src.data.collate import TrainingBatch, VariableSizeCollator
 from src.training.base_trainer import BaseTrainer
+from src.training.buffer_fill import BufferFillError as BufferFillError
+from src.training.buffer_fill import fill_replay_buffer as _fill_replay_buffer
 from src.training.callbacks import (
     Callback,
     build_callbacks_from_specs,
@@ -61,6 +61,18 @@ from src.training.stability import (
     PlateauDetector,
     TrainingStabilityMonitor,
 )
+from src.training.trainer_eval import (
+    extract_step_from_checkpoint as _extract_step_from_checkpoint_impl,
+)
+from src.training.trainer_eval import (
+    run_checkpoint_tournament as _run_checkpoint_tournament_impl,
+)
+from src.training.trainer_eval import (
+    run_engine_evaluation as _run_engine_evaluation_impl,
+)
+from src.training.trainer_eval import (
+    run_evaluation as _run_evaluation_impl,
+)
 
 if TYPE_CHECKING:
     from config.schemas import AlphaGalerkinConfig
@@ -69,22 +81,6 @@ if TYPE_CHECKING:
     from src.training.losses.physics import CombinedAlphaGalerkinPhysicsLoss
 
 logger = structlog.get_logger(__name__)
-
-
-class BufferFillError(RuntimeError):
-    """Raised when the replay buffer cannot be filled within the call budget.
-
-    Raised by :meth:`Trainer._fill_buffer` when it cannot reach the target
-    replay-buffer size within ``TrainingConfig.max_buffer_fill_iterations``
-    calls to ``SelfPlayWorker.generate_experiences``.
-
-    This guards the self-play buffer-fill loop against hot-looping
-    indefinitely when self-play stops yielding usable experiences (e.g. a
-    game-length or self-play configuration bug): a buffer that never fills
-    is a real configuration/environment problem the caller needs to know
-    about, not something to silently give up on and continue training with
-    an under-filled buffer.
-    """
 
 
 @dataclass
@@ -150,6 +146,10 @@ class Trainer(BaseTrainer):
     does **not** call ``super().__init__()`` because the AlphaGalerkin
     trainer has a substantially different setup flow; instead it
     sets the attributes that ``BaseTrainer`` helpers rely on directly.
+
+    Evaluation, checkpoint-tournament, engine-eval, and buffer-fill
+    bodies live in ``trainer_eval`` / ``buffer_fill``; this class remains
+    the facade those tests patch.
     """
 
     def __init__(
@@ -617,92 +617,7 @@ class Trainer(BaseTrainer):
                 generation calls.
 
         """
-        fill_start = time.time()
-        initial_size = len(self.buffer)
-        max_iterations = self.training_config.max_buffer_fill_iterations
-        iterations = 0
-
-        while len(self.buffer) < min_size:
-            if iterations >= max_iterations:
-                elapsed = time.time() - fill_start
-                raise BufferFillError(
-                    f"_fill_buffer did not reach the minimum buffer size of "
-                    f"{min_size} experiences after {iterations} self-play "
-                    f"generation call(s) ({elapsed:.1f}s elapsed): buffer "
-                    f"holds {len(self.buffer)} experiences (started at "
-                    f"{initial_size}). generate_experiences() is likely "
-                    "yielding zero or too few usable experiences per call "
-                    "-- check the self-play/game configuration (board size, "
-                    "game-length limits, curriculum settings) or the "
-                    "self-play worker for a bug before retrying. Raise "
-                    "TrainingConfig.max_buffer_fill_iterations (currently "
-                    f"{max_iterations}) if more self-play iterations are "
-                    "genuinely expected to be needed."
-                )
-            iterations += 1
-            n_games = self.training_config.n_self_play_games
-            logger.info(
-                "generating_self_play_games",
-                n_games=n_games,
-                buffer_size=len(self.buffer),
-                target_size=min_size,
-                iteration=iterations,
-                max_iterations=max_iterations,
-            )
-
-            # Generate games (use curriculum board size if enabled)
-            self.model.eval()
-            board_size = None
-            if self.curriculum is not None:
-                board_size = self.curriculum.sample_board_size(self.global_step)
-            experiences = self.self_play_worker.generate_experiences(n_games, board_size=board_size)
-            self.model.train()
-
-            # Add to buffer
-            self.buffer.add_batch(experiences)
-            self.total_games_generated += n_games
-
-            # Log self-play progress to W&B
-            if self.tracker is not None:
-                stats = self.self_play_worker.get_stats()
-                self.tracker.log_metrics(
-                    {
-                        "self_play/games_completed": stats["games_played"],
-                        "self_play/avg_game_length": stats["avg_game_length"],
-                        "self_play/buffer_size": len(self.buffer),
-                        "self_play/black_wins": stats["outcomes"]["black"],
-                        "self_play/white_wins": stats["outcomes"]["white"],
-                        "self_play/draws": stats["outcomes"]["draw"],
-                    },
-                    step=self.global_step,
-                )
-
-        # Log buffer fill statistics
-        fill_time = time.time() - fill_start
-        experiences_added = len(self.buffer) - initial_size
-        fill_rate = experiences_added / max(fill_time, 0.001)
-        logger.info(
-            "buffer_filled",
-            initial_size=initial_size,
-            final_size=len(self.buffer),
-            target_size=min_size,
-            experiences_added=experiences_added,
-            fill_time_seconds=round(fill_time, 2),
-            fill_rate_per_second=round(fill_rate, 1),
-            iterations=iterations,
-        )
-
-        # Log buffer fill summary to W&B
-        if self.tracker is not None:
-            self.tracker.log_metrics(
-                {
-                    "self_play/fill_time_seconds": round(fill_time, 2),
-                    "self_play/experiences_added": experiences_added,
-                    "self_play/fill_rate_per_second": round(fill_rate, 1),
-                    "self_play/total_games_generated": self.total_games_generated,
-                },
-                step=self.global_step,
-            )
+        _fill_replay_buffer(self, min_size)
 
     def _sample_batch(self) -> TrainingBatch:
         """Sample and collate a training batch.
@@ -874,10 +789,7 @@ class Trainer(BaseTrainer):
         eval_interval = eval_interval or self.training_config.eval_interval
 
         # Minimum buffer size before training
-        min_buffer_size = min(
-            self.training_config.batch_size * 10,
-            self.training_config.replay_buffer_size // 10,
-        )
+        min_buffer_size = self.training_config.start_min_buffer_size()
 
         logger.info(
             "training_started",
@@ -1143,69 +1055,7 @@ class Trainer(BaseTrainer):
             Average win rate across board sizes (for early stopping).
 
         """
-        logger.info("evaluation_starting", step=step)
-        self.model.eval()
-
-        n_games = self.training_config.eval_games
-        use_multi_res = self.training_config.multi_resolution_eval
-
-        win_rates: list[float] = []
-
-        if use_multi_res and hasattr(self.evaluator, "evaluate_multi_resolution"):
-            # Use multi-resolution evaluation
-            results = self.evaluator.evaluate_multi_resolution(n_games_per_size=n_games)
-            for board_size, result in results.items():
-                win_rates.append(result.win_rate)
-                if self.tracker is not None:
-                    self.tracker.log_evaluation(
-                        result=result,
-                        prefix=f"eval/{board_size}x{board_size}",
-                        step=step,
-                    )
-        else:
-            # Evaluate on each board size individually
-            for board_size in self.config.board_sizes:
-                result = self.evaluator.evaluate_vs_random(
-                    n_games=n_games,
-                    board_size=board_size,
-                )
-                win_rates.append(result.win_rate)
-                if self.tracker is not None:
-                    self.tracker.log_evaluation(
-                        result=result,
-                        prefix=f"eval/{board_size}x{board_size}",
-                        step=step,
-                    )
-
-        # Checkpoint tournament evaluation (Elo tracking)
-        if self.elo_tracker is not None:
-            self._run_checkpoint_tournament(step, n_games)
-
-        # Engine evaluation (Stockfish benchmark)
-        if (
-            self.training_config.engine_eval_enabled
-            and self.training_config.engine_eval_path is not None
-            and self.evaluator.game is not None
-        ):
-            self._run_engine_evaluation(step)
-
-        # Measure policy agreement
-        policy_agreement = self.evaluator.measure_policy_agreement(
-            n_positions=100,
-            board_size=9,
-        )
-
-        if self.tracker is not None:
-            self.tracker.log_metrics(
-                {"eval/policy_agreement": policy_agreement},
-                step=step,
-            )
-
-        self.model.train()
-        logger.info("evaluation_completed", step=step)
-
-        # Return average win rate for early stopping
-        return sum(win_rates) / len(win_rates) if win_rates else 0.0
+        return _run_evaluation_impl(self, step)
 
     def _run_checkpoint_tournament(self, step: int, n_games: int) -> None:
         """Run tournament against previous checkpoints for Elo tracking.
@@ -1215,73 +1065,7 @@ class Trainer(BaseTrainer):
             n_games: Number of games per opponent.
 
         """
-        if self.elo_tracker is None:
-            return
-
-        # Get list of available checkpoints
-        checkpoint_paths = self.checkpoint_manager.get_all_checkpoints()
-        n_opponents = min(
-            len(checkpoint_paths),
-            self.training_config.n_tournament_opponents,
-        )
-
-        if n_opponents == 0:
-            return
-
-        logger.info(
-            "checkpoint_tournament_starting",
-            step=step,
-            n_opponents=n_opponents,
-        )
-
-        # Select recent checkpoints as opponents
-        opponent_paths = checkpoint_paths[-n_opponents:]
-
-        for opponent_path in opponent_paths:
-            try:
-                result = self.evaluator.evaluate_vs_checkpoint(
-                    checkpoint_path=opponent_path,
-                    n_games=n_games,
-                )
-
-                # Extract opponent step from checkpoint filename
-                opponent_step = self._extract_step_from_checkpoint(opponent_path)
-
-                # Determine score: 1.0=win, 0.5=draw, 0.0=loss
-                if result.win_rate > WIN_RATE_ACCEPT_THRESHOLD:
-                    score = 1.0
-                elif result.win_rate < WIN_RATE_REJECT_THRESHOLD:
-                    score = 0.0
-                else:
-                    score = 0.5
-
-                # Update Elo ratings
-                self.elo_tracker.update_ratings(step, opponent_step, score)
-
-                # Log to W&B
-                if self.tracker is not None:
-                    current_rating = self.elo_tracker.get_rating(step)
-                    self.tracker.log_metrics(
-                        {
-                            f"elo/vs_step_{opponent_step}": result.win_rate,
-                            "elo/current_rating": current_rating,
-                        },
-                        step=step,
-                    )
-
-                logger.debug(
-                    "checkpoint_match_completed",
-                    opponent_step=opponent_step,
-                    win_rate=result.win_rate,
-                    score=score,
-                )
-
-            except Exception as e:
-                logger.warning(
-                    "checkpoint_match_failed",
-                    opponent_path=str(opponent_path),
-                    error=str(e),
-                )
+        _run_checkpoint_tournament_impl(self, step, n_games)
 
     def _run_engine_evaluation(self, step: int) -> None:
         """Run evaluation against external UCI engine (e.g., Stockfish).
@@ -1293,78 +1077,7 @@ class Trainer(BaseTrainer):
             step: Current training step.
 
         """
-        if self.training_config.engine_eval_path is None:
-            return
-
-        from pathlib import Path
-
-        from src.engines.config import MatchConfig, UCIConfig
-
-        engine_path = self.training_config.engine_eval_path
-        depth = self.training_config.engine_eval_depth
-        n_games = self.training_config.engine_eval_games
-        movetime = self.training_config.engine_eval_movetime_ms
-
-        try:
-            engine_config = UCIConfig(
-                name="stockfish_eval",
-                engine_path=Path(engine_path),
-                depth_limit=depth if movetime is None else None,
-                movetime_ms=movetime,
-            )
-            match_config = MatchConfig(
-                name="engine_eval_match",
-                n_games=n_games,
-            )
-
-            logger.info(
-                "engine_evaluation_starting",
-                step=step,
-                engine_path=engine_path,
-                depth=depth,
-                n_games=n_games,
-            )
-
-            result = self.evaluator.evaluate_vs_engine(
-                engine_config=engine_config,
-                match_config=match_config,
-            )
-
-            # Log Elo metrics to W&B
-            elo_metrics: dict[str, float | int] = {
-                "eval/engine/win_rate": result.win_rate,
-                "eval/engine/wins": result.wins,
-                "eval/engine/losses": result.losses,
-                "eval/engine/draws": result.draws,
-                "eval/engine/n_games": result.n_games,
-                "eval/engine/avg_game_length": result.avg_game_length,
-            }
-
-            # Extract Elo estimate from metadata if available
-            if "elo_difference" in result.metadata:
-                elo_metrics["eval/engine/elo_diff"] = result.metadata["elo_difference"]
-            if "los" in result.metadata:
-                elo_metrics["eval/engine/los"] = result.metadata["los"]
-
-            if self.tracker is not None:
-                self.tracker.log_metrics(
-                    elo_metrics,
-                    step=step,
-                )
-
-            logger.info(
-                "engine_evaluation_completed",
-                step=step,
-                win_rate=f"{result.win_rate:.2%}",
-                elo_diff=result.metadata.get("elo_difference", "N/A"),
-            )
-
-        except Exception as e:
-            logger.warning(
-                "engine_evaluation_failed",
-                step=step,
-                error=str(e),
-            )
+        _run_engine_evaluation_impl(self, step)
 
     def _extract_step_from_checkpoint(self, checkpoint_path: Path) -> int:
         """Extract training step from checkpoint filename.
@@ -1376,13 +1089,7 @@ class Trainer(BaseTrainer):
             Training step number.
 
         """
-        # Filename format: checkpoint_00010000.pt
-        import re
-
-        match = re.search(r"checkpoint_(\d+)", checkpoint_path.stem)
-        if match:
-            return int(match.group(1))
-        return 0
+        return _extract_step_from_checkpoint_impl(checkpoint_path)
 
     def save_checkpoint(
         self,

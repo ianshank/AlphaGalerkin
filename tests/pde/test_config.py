@@ -156,6 +156,15 @@ class TestBasisSelectionConfig:
         )
         assert config.rbf_kernel == "gaussian"
 
+    @pytest.mark.parametrize("kernel", ["multiquadric", "inverse", "thin_plate"])
+    def test_unimplemented_rbf_kernel_is_rejected(self, kernel: str) -> None:
+        with pytest.raises(ValidationError, match="not implemented"):
+            BasisSelectionConfig(
+                name="test_rbf",
+                basis_type="rbf",
+                rbf_kernel=kernel,  # type: ignore[arg-type]
+            )
+
     def test_initial_vs_max_validation(self) -> None:
         """Test that initial <= max basis functions."""
         with pytest.raises(ValidationError):

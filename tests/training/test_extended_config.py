@@ -221,6 +221,27 @@ class TestBufferCapacity:
         assert batches_in_buffer >= 50
 
 
+class TestStartMinBufferSize:
+    """Wave E: start-buffer formula uses typed fields; defaults are historical."""
+
+    def test_defaults_match_the_historical_literals(self) -> None:
+        config = TrainingConfig()
+        assert config.start_buffer_batch_multiplier == 10
+        assert config.start_buffer_capacity_divisor == 10
+        assert config.start_min_buffer_size() == min(
+            config.batch_size * 10,
+            config.replay_buffer_size // 10,
+        )
+
+    def test_trainer_train_no_longer_inlines_the_literals(self) -> None:
+        from pathlib import Path
+
+        source = Path("src/training/trainer.py").read_text(encoding="utf-8")
+        assert "start_min_buffer_size()" in source
+        assert "batch_size * 10" not in source
+        assert "replay_buffer_size // 10" not in source
+
+
 class TestGradientClipping:
     """Verify gradient clipping settings for higher learning rates."""
 

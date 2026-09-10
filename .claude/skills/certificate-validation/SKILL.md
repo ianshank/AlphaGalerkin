@@ -24,7 +24,7 @@ Every gate below is a command with a binary pass/fail — no judgment calls.
    (`specs/` currently holds no `operator_gate.spec.md`) — so design the registry standalone and
    do not block on it.
 4. **Track A audit first:** review `DorflerAMRSolver._compute_indicators_2d`
-   (`src/research/baselines.py`) against rigorous-estimator constants before reuse.
+   (`src/research/baselines/`) against rigorous-estimator constants before reuse.
    The SBIR P40 surface must stay green (Gate 8).
 5. **Sequencing:** an operator-gate spec does not exist yet. If one is authored while this work
    is in flight, land it first — the gate protects live `llm_prior_ablation` runs.
@@ -96,7 +96,7 @@ Pass: ≥ 85% branch coverage on `src/pde/certificate/`.
 pytest tests/research/test_baselines.py tests/research/test_baselines_2d.py \
        tests/research/test_pde_benchmarks.py tests/research/test_ns_baseline.py -q
 ```
-Pass: all green (any touch of `src/research/baselines.py` — byte-for-byte
+Pass: all green (any touch of `src/research/baselines/` — byte-for-byte
 `inside=None` behaviour preserved, per `lshape_amr_compare` AC1).
 
 ## Guardrails

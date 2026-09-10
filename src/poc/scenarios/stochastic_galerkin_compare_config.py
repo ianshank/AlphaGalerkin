@@ -21,6 +21,7 @@ from __future__ import annotations
 from pydantic import Field, field_validator, model_validator
 
 from src.poc.config import BaseScenarioConfig, MetricThreshold
+from src.poc.scenarios._compare_lock import lock_scenario_name
 
 SCENARIO_NAME = "stochastic_galerkin_compare"
 """Registry / YAML dispatch key for the scenario."""
@@ -119,10 +120,7 @@ class StochasticGalerkinCompareConfig(BaseScenarioConfig):
     @field_validator("name")
     @classmethod
     def _name_locked(cls, value: str) -> str:
-        if value != SCENARIO_NAME:
-            msg = f"name must be {SCENARIO_NAME!r} (YAML dispatch key); got {value!r}"
-            raise ValueError(msg)
-        return value
+        return lock_scenario_name(SCENARIO_NAME, value, yaml_dispatch_note=True)
 
     @field_validator("artifact_basename")
     @classmethod

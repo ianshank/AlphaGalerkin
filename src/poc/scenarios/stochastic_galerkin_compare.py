@@ -11,29 +11,26 @@ Spec: specs/stochastic_galerkin_nke.spec.md (AC8).
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import torch
-
 from src.poc.config import ScenarioResult, ScenarioStatus
-from src.poc.device import resolve_device
-from src.poc.logging import ScenarioLogger
-from src.poc.registry import BaseScenario, scenario
+from src.poc.registry import scenario
+from src.poc.scenarios._compare_common import CompareScenarioBase
 from src.poc.scenarios.stochastic_galerkin_compare_config import (
     SCENARIO_NAME,
     StochasticGalerkinCompareConfig,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from src.research.stochastic_galerkin_compare import (
-        MultiSeedStochasticComparison,
         StochasticCompareParams,
     )
 
 
 @scenario(SCENARIO_NAME)
-class StochasticGalerkinCompareScenario(BaseScenario):
+class StochasticGalerkinCompareScenario(CompareScenarioBase):
     """Galerkin attention vs stochastic Galerkin projection on shared FP/OU data."""
 
     config_class = StochasticGalerkinCompareConfig
@@ -43,30 +40,13 @@ class StochasticGalerkinCompareScenario(BaseScenario):
     ) -> None:
         super().__init__(config, **kwargs)
         self.config: StochasticGalerkinCompareConfig  # type narrowing
-        self._device: torch.device | None = None
-        self._scenario_logger: ScenarioLogger | None = None
 
-    def setup(self) -> None:
-        """Resolve the device, build the logger, and install the threshold."""
-        self._device = resolve_device(self.config.device, context=SCENARIO_NAME)
-        self._scenario_logger = ScenarioLogger(
-            scenario_name=self.name,
-            run_id=self.config.compute_hash(),
-            device=str(self._device),
-        )
-        if not self.config.thresholds:
-            self.config.thresholds = self.config.get_default_thresholds()
-        self._scenario_logger.info(
-            "setup_complete",
-            grid_n=self.config.grid_n,
-            n_seeds=self.config.n_seeds,
-            seed=self.config.seed,
-        )
-
-    def teardown(self) -> None:
-        """Release GPU memory (no-op on CPU)."""
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    def _setup_log_fields(self) -> dict[str, Any]:
+        return {
+            "grid_n": self.config.grid_n,
+            "n_seeds": self.config.n_seeds,
+            "seed": self.config.seed,
+        }
 
     def execute(self) -> ScenarioResult:
         """Run both arms, record metrics, and write the CSV/PNG artifacts."""
@@ -81,7 +61,7 @@ class StochasticGalerkinCompareScenario(BaseScenario):
         params = self._build_params()
         comparison = run_multiseed_comparison(params, seeds=self.config.resolved_seeds())
         self._record_metrics(comparison)
-        self._write_artifacts(comparison, export_csv, export_plot)
+        self._write_csv_png_artifacts(comparison, export_csv, export_plot)
         return self._create_result(status=ScenarioStatus.RUNNING)
 
     def _build_params(self) -> StochasticCompareParams:
@@ -123,31 +103,15 @@ class StochasticGalerkinCompareScenario(BaseScenario):
             eval_seed_base=cfg.eval_seed_base,
         )
 
-    def _record_metrics(self, comparison: MultiSeedStochasticComparison) -> None:
-        """Record the gated MSE plus the ungated comparison diagnostics."""
+    def _log_metrics_recorded(
+        self,
+        comparison: object,
+        metrics: Mapping[str, float],
+    ) -> None:
+        del comparison
         assert self._scenario_logger is not None
-        for name, value in comparison.metrics.items():
-            self.record_metric(name, value)
-            self._scenario_logger.metric(name, value)
         self._scenario_logger.info(
             "comparison_recorded",
             gated_metric="stochastic_density_mse",
-            stochastic_density_mse=comparison.metrics["stochastic_density_mse"],
+            stochastic_density_mse=metrics["stochastic_density_mse"],
         )
-
-    def _write_artifacts(
-        self,
-        comparison: MultiSeedStochasticComparison,
-        export_csv: Any,
-        export_plot: Any,
-    ) -> None:
-        """Write and register the CSV/PNG artifacts."""
-        assert self._scenario_logger is not None
-        base_str = str(Path(self.config.output_dir) / self.config.artifact_basename)
-        csv_path = export_csv(comparison, Path(f"{base_str}.csv"))
-        self.record_artifact("csv", str(csv_path))
-        png_path = export_plot(comparison, Path(f"{base_str}.png"))
-        if png_path is not None:
-            self.record_artifact("png", str(png_path))
-        else:
-            self._scenario_logger.warning("artifact_png_skipped", reason="matplotlib unavailable")

@@ -29,7 +29,7 @@ command(s) that must stay green when it changes. This skill selects and runs the
    - `src/agents/**` → Centaur research-loop + agents coverage rows.
    - `src/research/transfer_baseline_compare.py`, `src/experiments/cnn_baseline.py`,
      `src/poc/scenarios/transfer_baseline_compare*` → Honest zero-shot transfer row.
-   - **`src/research/baselines.py` → BOTH the L-shape AMR row AND the SBIR P40 row.** The table
+   - **`src/research/baselines/` → BOTH the L-shape AMR row AND the SBIR P40 row.** The table
      carries an explicit shared-code warning here: the AMR comparison reuses the same masked
      solver, so an edit that looks AMR-local silently moves the SBIR benchmark too.
    - `src/research/**` (other) → SBIR P40 hardening surface row.

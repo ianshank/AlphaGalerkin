@@ -9,6 +9,7 @@ import pytest
 import torch
 from torch import Tensor, nn
 
+import src.training.losses.physics as physics_package
 from src.pde.operators import PDEResidual
 from src.training.losses.physics import (
     BoundaryLoss,
@@ -21,6 +22,53 @@ from src.training.losses.physics import (
     ResidualLoss,
     _get_device_from_model,
 )
+
+# Frozen at the 2026-09-10 physics.py -> physics/ package split. Every public
+# name the old flat module exposed is still exposed, including leaked imports.
+# Dunders (``__path__``, ``__all__``) are excluded.
+_PHYSICS_PACKAGE_PUBLIC_API = frozenset(
+    {
+        "BaseModuleConfig",
+        "BoundaryLoss",
+        "Callable",
+        "CombinedAlphaGalerkinPhysicsLoss",
+        "ConservationLoss",
+        "Field",
+        "Float",
+        "InitialConditionLoss",
+        "Literal",
+        "LossBalancingConfig",
+        "PhysicsInformedLoss",
+        "PhysicsLossConfig",
+        "PhysicsLossOutput",
+        "ResidualLoss",
+        "TYPE_CHECKING",
+        "Tensor",
+        "create_loss_balancer",
+        "dataclass",
+        "logger",
+        "nn",
+        "np",
+        "register_loss",
+        "structlog",
+        "torch",
+    }
+)
+
+
+class TestPhysicsPackagePublicAPI:
+    """The real, narrower guarantee the physics.py -> physics/ split made."""
+
+    def test_public_names_match_frozen_pre_split_surface(self) -> None:
+        public_names = {n for n in dir(physics_package) if not n.startswith("_")}
+        assert public_names == _PHYSICS_PACKAGE_PUBLIC_API
+
+    def test_dunder_all_covers_the_frozen_public_surface(self) -> None:
+        assert _PHYSICS_PACKAGE_PUBLIC_API - {"annotations"} <= set(physics_package.__all__)
+
+    def test_private_get_device_from_model_still_reachable(self) -> None:
+        assert physics_package._get_device_from_model is _get_device_from_model
+
 
 # ---------------------------------------------------------------------------
 # Helpers

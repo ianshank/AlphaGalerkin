@@ -20,29 +20,26 @@ Like ``lshape_amr_compare`` there is no arm gating — both arms are always avai
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import torch
-
 from src.poc.config import ScenarioResult, ScenarioStatus
-from src.poc.device import resolve_device
-from src.poc.logging import ScenarioLogger
-from src.poc.registry import BaseScenario, scenario
+from src.poc.registry import scenario
+from src.poc.scenarios._compare_common import CompareScenarioBase
 from src.poc.scenarios.transfer_baseline_compare_config import (
     SCENARIO_NAME,
     TransferBaselineCompareConfig,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from src.research.transfer_baseline_compare import (
-        MultiSeedTransferComparison,
         TransferComparisonParams,
     )
 
 
 @scenario(SCENARIO_NAME)
-class TransferBaselineCompareScenario(BaseScenario):
+class TransferBaselineCompareScenario(CompareScenarioBase):
     """AlphaGalerkin operator zero-shot vs a retrained discrete CNN."""
 
     config_class = TransferBaselineCompareConfig
@@ -50,35 +47,14 @@ class TransferBaselineCompareScenario(BaseScenario):
     def __init__(self, config: TransferBaselineCompareConfig | None = None, **kwargs: Any) -> None:
         super().__init__(config, **kwargs)
         self.config: TransferBaselineCompareConfig  # type narrowing
-        self._device: torch.device | None = None
-        self._scenario_logger: ScenarioLogger | None = None
 
-    # ------------------------------------------------------------------ #
-    # Lifecycle                                                           #
-    # ------------------------------------------------------------------ #
-
-    def setup(self) -> None:
-        """Resolve the device, build the logger, and install the threshold."""
-        self._device = resolve_device(self.config.device, context=SCENARIO_NAME)
-        self._scenario_logger = ScenarioLogger(
-            scenario_name=self.name,
-            run_id=self.config.compute_hash(),
-            device=str(self._device),
-        )
-        if not self.config.thresholds:
-            self.config.thresholds = self.config.get_default_thresholds()
-        self._scenario_logger.info(
-            "setup_complete",
-            train_resolution=self.config.train_resolution,
-            target_resolution=self.config.target_resolution,
-            n_seeds=self.config.n_seeds,
-            seed=self.config.seed,
-        )
-
-    def teardown(self) -> None:
-        """Release GPU memory (no-op on CPU)."""
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+    def _setup_log_fields(self) -> dict[str, Any]:
+        return {
+            "train_resolution": self.config.train_resolution,
+            "target_resolution": self.config.target_resolution,
+            "n_seeds": self.config.n_seeds,
+            "seed": self.config.seed,
+        }
 
     def execute(self) -> ScenarioResult:
         """Sweep seeds, record the median headline, and write the artifacts."""
@@ -95,13 +71,9 @@ class TransferBaselineCompareScenario(BaseScenario):
         params = self._build_params(str(self._device))
         multiseed = run_multiseed_transfer_comparison(params)
         self._record_metrics(multiseed)
-        self._write_artifacts(multiseed, export_csv, export_plot)
+        self._write_csv_png_artifacts(multiseed, export_csv, export_plot)
 
         return self._create_result(status=ScenarioStatus.RUNNING)
-
-    # ------------------------------------------------------------------ #
-    # Construction helpers                                                #
-    # ------------------------------------------------------------------ #
 
     def _build_params(self, device: str) -> TransferComparisonParams:
         """Assemble the harness params from the validated config."""
@@ -139,17 +111,13 @@ class TransferBaselineCompareScenario(BaseScenario):
             n_seeds=cfg.n_seeds,
         )
 
-    # ------------------------------------------------------------------ #
-    # Recording                                                           #
-    # ------------------------------------------------------------------ #
-
-    def _record_metrics(self, multiseed: MultiSeedTransferComparison) -> None:
-        """Record the median headline + per-seed spread metrics."""
+    def _log_metrics_recorded(
+        self,
+        comparison: object,
+        metrics: Mapping[str, float],
+    ) -> None:
+        del comparison
         assert self._scenario_logger is not None
-        metrics = multiseed.metrics()
-        for name, value in metrics.items():
-            self.record_metric(name, value)
-            self._scenario_logger.metric(name, value)
         self._scenario_logger.info(
             "comparison_recorded",
             gated_metric=self.config.target_metric_name,
@@ -157,22 +125,3 @@ class TransferBaselineCompareScenario(BaseScenario):
             alphagalerkin_win_fraction=metrics["alphagalerkin_win_fraction"],
             n_seeds=metrics["n_seeds"],
         )
-
-    def _write_artifacts(
-        self,
-        multiseed: MultiSeedTransferComparison,
-        export_csv: Any,
-        export_plot: Any,
-    ) -> None:
-        """Write and register the committed CSV/PNG artifacts (all seeds in the CSV)."""
-        assert self._scenario_logger is not None
-        # Append extensions by string concatenation (not Path.with_suffix, which would
-        # truncate an internal dot in a custom artifact_basename).
-        base_str = str(Path(self.config.output_dir) / self.config.artifact_basename)
-        csv_path = export_csv(multiseed, Path(f"{base_str}.csv"))
-        self.record_artifact("csv", str(csv_path))
-        png_path = export_plot(multiseed, Path(f"{base_str}.png"))
-        if png_path is not None:
-            self.record_artifact("png", str(png_path))
-        else:
-            self._scenario_logger.warning("artifact_png_skipped", reason="matplotlib unavailable")

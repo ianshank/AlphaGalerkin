@@ -18,6 +18,7 @@ from typing import Final, Literal
 from pydantic import Field, field_validator, model_validator
 
 from src.poc.config import BaseScenarioConfig, MetricThreshold
+from src.poc.scenarios._compare_lock import lock_scenario_name
 from src.research.substrates.config import AdequacyGateConfig, SubstrateConfig
 
 SCENARIO_NAME: Final[str] = "mcts_classical_amr_arena"
@@ -180,9 +181,7 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
     @field_validator("name")
     @classmethod
     def _lock_name(cls, value: str) -> str:
-        if value != SCENARIO_NAME:
-            raise ValueError(f"name must be {SCENARIO_NAME!r}, got {value!r}")
-        return value
+        return lock_scenario_name(SCENARIO_NAME, value)
 
     @field_validator("evaluator_name")
     @classmethod

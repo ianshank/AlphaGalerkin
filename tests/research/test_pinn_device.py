@@ -22,6 +22,21 @@ from src.research.baselines import (
     SolverResult,
 )
 
+
+class TestShimIsIdentity:
+    """PoC re-export must be the same object as ``src.device.resolve_device``.
+
+    Lives on the SBIR pytest list so the coverage include of both
+    ``src/device.py`` and ``src/poc/device.py`` is exercised together.
+    Mutation-killed by making the shim a wrapper function.
+    """
+
+    def test_resolve_device_is_src_device_resolve_device(self) -> None:
+        from src.device import resolve_device as canonical
+
+        assert resolve_device is canonical
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

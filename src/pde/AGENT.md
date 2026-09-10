@@ -61,7 +61,7 @@ Rich config hierarchy: `PDEConfig` → `PDEGameConfig` (with nested `BasisSelect
 
 | Sub-Agent | Scope | When to Invoke |
 |-----------|-------|----------------|
-| **PDE Operator Specialist** | `operators.py` | Adding new PDE types (Navier-Stokes, Wave, etc.) |
+| **PDE Operator Specialist** | `src/pde/operators/` | Adding new PDE types (Navier-Stokes, Wave, etc.) |
 | **Basis Selection Expert** | `games/basis_selection.py` | Modifying basis types, candidate generation |
 | **Mesh Refinement Expert** | `games/mesh_refinement/` (`mesh.py` quadtree, `game.py` MCTS game) | Modifying refinement strategies, DOF calculations |
 | **Adapter Engineer** | `mcts_adapter.py` | Changing PDE-to-MCTS mapping, error-to-outcome thresholds |
@@ -85,7 +85,7 @@ pytest tests/pde/test_mcts_adapter.py -v
 |------|---------|-------------|
 | `config.py` | Pydantic configuration | `PDEConfig`, `PDEGameConfig`, `BasisSelectionConfig`, `MeshRefinementConfig`, `PDEType`, `BoundaryCondition`, `RefinementStrategy`, `ActionSpace` |
 | `game.py` | Abstract PDE game interface | `PDEGame`, `PDEState`, `GamePhase` |
-| `operators.py` | PDE operator definitions | `PDEOperator` (ABC), `PDEResidual`, `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator` |
+| `operators/` | PDE operator definitions (one class per file; package split PR #140) | `PDEOperator` (ABC), `PDEResidual`, `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator` |
 | `registry.py` | PDE operator registration | `PDEOperatorRegistry`, `@register_pde_operator()` |
 | `mcts_adapter.py` | PDE-to-MCTS bridge | `PDEGameAdapter` |
 | `games/basis_selection.py` | Galerkin basis selection game | `BasisSelectionGame`, `BasisFunction` |

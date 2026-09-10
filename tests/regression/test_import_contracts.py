@@ -98,7 +98,7 @@ CONTRACTS: Final[tuple[ImportContract, ...]] = (
     ),
     ImportContract(
         name="reference-baselines-do-not-import-the-candidate",
-        scope=("src/research/baselines.py", "src/research/fem_baseline.py"),
+        scope=("src/research/baselines", "src/research/fem_baseline.py"),
         forbidden=("src.mcts", "src.refinement"),
         reason=(
             "These are the classical reference implementations an experiment "
@@ -107,7 +107,9 @@ CONTRACTS: Final[tuple[ImportContract, ...]] = (
             "defect in the shared code moves both arms in the same direction -- "
             "which is invisible in a ratio. The harness that *drives* both arms "
             "(src/research/lshape_amr_compare.py) must import both and is "
-            "deliberately outside this contract's scope."
+            "deliberately outside this contract's scope. After the B34 package "
+            "split, scope is the baselines/ directory (not a deleted .py file) "
+            "so a submodule cannot import src.mcts undetected."
         ),
     ),
     ImportContract(

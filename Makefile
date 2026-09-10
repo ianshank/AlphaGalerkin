@@ -96,15 +96,8 @@ CI_TEST_EXCLUDES := \
 	--ignore=tests/demos/ \
 	--ignore=tests/training/test_extended_config.py \
 	--ignore=tests/notebooks/ \
-	--ignore=tests/distributed/test_multiprocess.py \
-	--deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
-	--deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
-	--deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
-	--deselect=tests/experiments/test_physics_loss.py::TestPhysicsLossComputeLaplacian::test_laplacian_of_linear \
 	--deselect=tests/games/test_chess.py::TestChessEdgeCases::test_invalid_move_notation \
 	--deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
-	--deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
-	--deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
 	--deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error
 
 # ---------------------------------------------------------------------------

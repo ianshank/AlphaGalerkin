@@ -102,17 +102,22 @@ class TestTimeSteppingConfig:
         with pytest.raises(ValidationError):
             TimeSteppingConfig(name="t", max_steps=0)
 
-    def test_adaptive_dt_fields(self):
-        cfg = TimeSteppingConfig(
-            name="test",
-            adaptive_dt=True,
-            dt_min=1e-8,
-            dt_max=0.5,
-            error_tolerance=1e-4,
-        )
-        assert cfg.adaptive_dt is True
-        assert cfg.dt_min > 0
-        assert cfg.dt_max > cfg.dt_min
+    def test_adaptive_dt_is_rejected_at_validation(self) -> None:
+        with pytest.raises(ValidationError, match="adaptive_dt is not implemented"):
+            TimeSteppingConfig(
+                name="test",
+                adaptive_dt=True,
+                dt_min=1e-8,
+                dt_max=0.5,
+                error_tolerance=1e-4,
+            )
+
+    def test_time_stepper_still_rejects_adaptive_dt_if_constructed_unsafely(
+        self,
+    ) -> None:
+        cfg = TimeSteppingConfig.model_construct(name="unsafe", adaptive_dt=True, dt=0.01)
+        with pytest.raises(NotImplementedError, match="Adaptive time-stepping"):
+            ForwardEuler(cfg)
 
     @pytest.mark.parametrize("method_str", ["forward_euler", "rk4", "crank_nicolson"])
     def test_method_from_string(self, method_str: str):

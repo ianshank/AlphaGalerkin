@@ -29,8 +29,6 @@ import, and does **not** import ``extra_solvers`` itself (the old module did
 not either).
 """
 
-from __future__ import annotations
-
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable

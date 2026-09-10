@@ -25,8 +25,6 @@ continues to work. See
 ``tests/training/test_losses_physics.py::TestPhysicsPackagePublicAPI``.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal

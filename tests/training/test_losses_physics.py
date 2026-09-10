@@ -44,7 +44,6 @@ _PHYSICS_PACKAGE_PUBLIC_API = frozenset(
         "ResidualLoss",
         "TYPE_CHECKING",
         "Tensor",
-        "annotations",  # `from __future__ import annotations` leaks this name
         "create_loss_balancer",
         "dataclass",
         "logger",

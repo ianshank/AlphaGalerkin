@@ -71,7 +71,6 @@ _BASELINES_PACKAGE_PUBLIC_API = frozenset(
         "SolverResult",
         "UniformFDMSolver",
         "abstractmethod",
-        "annotations",  # `from __future__ import annotations` leaks this name
         "dataclass",
         "dorfler_mark",
         "element_inside_mask",

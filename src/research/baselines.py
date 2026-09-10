@@ -23,9 +23,9 @@ import torch
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.device import resolve_device
 from src.pde.config import PDEType
 from src.pde.operators import PDEOperator
-from src.poc.device import resolve_device
 from src.research.gpu_profiler import GpuUtilizationProfiler
 from src.research.marking import dorfler_mark
 

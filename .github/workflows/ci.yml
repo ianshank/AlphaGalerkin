@@ -922,13 +922,13 @@ jobs:
         if: always() && hashFiles('tests/scripts/test_run_sbir_p40.py') != ''
         run: |
           python -m coverage run --branch \
-            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
+            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py,*/src/device.py" \
             -m pytest tests/research/test_baselines.py tests/research/test_pinn_device.py \
             tests/research/test_gpu_profiler.py tests/research/test_pde_benchmarks.py \
             tests/research/test_ns_baseline.py tests/pde/test_taylor_green_invariants.py \
             tests/scripts/test_run_sbir_p40.py -q -p no:cov
           python -m coverage report \
-            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py" \
+            --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/pde_benchmarks.py,*/src/poc/device.py,*/src/device.py" \
             --fail-under=85
 
       # Phase-2c (B20 close-out, docs/CODE_HYGIENE_AUDIT.md §7.4): six packages

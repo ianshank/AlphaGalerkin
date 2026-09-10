@@ -96,10 +96,12 @@ code not on the production import path.
 | `src/video_compression/` | video | experimental | Learned video codec: MCTS rate-control, hyperprior entropy model, encoder/decoder, RD-curve analysis, ONNX/TensorRT runtime. |
 <!-- package-map:end -->
 
-Plus three root-level modules: `src/constants.py` (centralized numerical constants),
-`src/seeding.py` (global RNG seeding + deterministic multi-seed derivation), and
+Plus four root-level modules: `src/constants.py` (centralized numerical constants),
+`src/seeding.py` (global RNG seeding + deterministic multi-seed derivation),
+`src/device.py` (GPU-preferred fail-loud device resolution), and
 `src/__init__.py`. These are deliberately plain modules rather than packages so they stay
 out of the drift-guarded package map above, which enumerates `src/*/__init__.py`.
+`src.poc.device` re-exports `src.device` identically.
 
 ## Layering (dependency direction)
 

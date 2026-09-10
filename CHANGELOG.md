@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Changed
+- **B39: one `get_dofs()` per scikit-fem assemble.** `dirichlet_dof_indices`
+  accepts an optional precomputed Dof. `assemble_and_solve` returns a fourth
+  value (flattened Dirichlet indices from that same object) so
+  `SkfemTriSubstrate.solve` no longer queries DOFs a third time. The solver
+  wrapper still returns the historical 3-tuple. `basis.get_dofs()` at assemble
+  is kept — `skfem.condense(D=)` needs the raw Dof.
+- **B40: `p_adaptive` / `hp_adaptive` FEM strategies are tested.** Parametrized
+  strategy run, P3 saturation at `max_element_order`, hp h-refine when
+  smoothness is below threshold, unknown-element raise. fem_baseline gate
+  stays 83 (arcs covered; threshold not ratcheted).
 - **`src/training/trainer.py` facade (C2).** `fill_replay_buffer` lives in
   `buffer_fill.py`; evaluation / checkpoint-tournament / engine helpers live
   in `trainer_eval.py`. `Trainer` methods remain the patch targets.
@@ -30,6 +40,10 @@
   scans the package directory.
 
 ### Added
+- **`tests/support` coverage gate at 85** (`coverage-gates` job). Selection is
+  the docs / import-graph consumers that actually import the helpers. Measured
+  ~95% branch; first landing capped at 85. templates / math_kernel / backend
+  54 / deployment 25 / B37 eval_harness stay parked.
 - Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
   `src/pde/register_refinement_games.py`, config-driven substrate factory with
   `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production

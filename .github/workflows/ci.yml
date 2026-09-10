@@ -1208,6 +1208,22 @@ jobs:
         run: |
           pytest tests/dashboard/ --cov=dashboard --cov-branch --cov-fail-under=84 -q --no-header
 
+      # tests/support backs the hermetic docs / import-graph guards. It was
+      # exercised by those suites and measured by nothing (CLAUDE.md Next Steps
+      # "tests/support is exercised but never measured"). Not in pyproject
+      # omit, so a bare --cov=tests/support is a real gate. Measured ~95%
+      # branch from the docs + import-contract consumers; first landing
+      # capped at 85 (add-coverage-gate skill). templates / math_kernel /
+      # backend-54 / deployment-25 / B37 eval_harness stay parked.
+      - name: Per-module coverage gate (tests/support)
+        if: always() && hashFiles('tests/support/') != ''
+        run: |
+          pytest tests/docs/ \
+            tests/regression/test_import_contracts.py \
+            tests/pde/stochastic/test_import_isolation.py \
+            tests/regression/test_retracted_claims_guard.py \
+            --cov=tests/support --cov-branch --cov-fail-under=85 -q --no-header
+
   # ============================================================
   # Stage 6: JAX Backend Tests
   # ============================================================

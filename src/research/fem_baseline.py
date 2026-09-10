@@ -274,7 +274,10 @@ def build_lshaped_initial_mesh(
     return mesh
 
 
-def dirichlet_dof_indices(basis: Any) -> NDArray[np.int64]:
+def dirichlet_dof_indices(
+    basis: Any,
+    dofs: Any | None = None,
+) -> NDArray[np.int64]:
     """Extract Dirichlet DOF indices from a basis, across skfem API versions.
 
     Module-level rather than inlined so ``assemble_and_solve`` and any
@@ -282,8 +285,18 @@ def dirichlet_dof_indices(basis: Any) -> NDArray[np.int64]:
     version-compat chain. It was briefly duplicated into
     ``SkfemTriSubstrate``; a compat fallback with two copies, neither
     individually tested, is worse than one tested copy.
+
+    Args:
+        basis: scikit-fem ``Basis`` (or a stub exposing ``get_dofs``).
+        dofs: Optional precomputed ``basis.get_dofs()`` result. When provided,
+            ``get_dofs`` is not called again. ``assemble_and_solve`` needs the
+            **raw** skfem Dof object for ``condense(D=...)`` *and* flattened
+            indices for fancy-indexing BC values; threading the same object
+            here is how those two uses share one query (B39).
+
     """
-    dofs = basis.get_dofs()
+    if dofs is None:
+        dofs = basis.get_dofs()
     if hasattr(dofs, "flatten"):
         return np.asarray(dofs.flatten())
     if hasattr(dofs, "nodal"):
@@ -298,7 +311,7 @@ def assemble_and_solve(
     skfem: Any,
     l2_error_fn: L2ErrorFn,
     basis: Any | None = None,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], float | None]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], float | None, NDArray[np.int64]]:
     """Assemble the Poisson system and solve it.
 
     Args:
@@ -317,6 +330,13 @@ def assemble_and_solve(
             in rather than paying for a third assembly. Basis construction is
             not free, and the spec's Out of Scope section notes this path is
             the dominant cost inside MCTS.
+
+    Returns:
+        ``(u, coords, l2_error, dirichlet_dof_indices)``. The fourth value is
+        the flattened Dirichlet index array derived from the **same**
+        ``basis.get_dofs()`` object passed to ``skfem.condense(D=...)``.
+        Callers that previously called ``dirichlet_dof_indices(basis)`` a
+        third time (``SkfemTriSubstrate.solve``) must use this instead.
 
     """
     from scipy.sparse.linalg import spsolve
@@ -347,7 +367,7 @@ def assemble_and_solve(
     # Dirichlet boundary conditions via operator.boundary_value,
     # evaluated at the actual DOF locations (covers P2/P3 edge dofs).
     dirichlet_dofs = basis.get_dofs()
-    dof_indices = dirichlet_dof_indices(basis)
+    dof_indices = dirichlet_dof_indices(basis, dofs=dirichlet_dofs)
 
     dof_locs = basis.doflocs  # (dim, n_dof)
     bc_pts = np.asarray(dof_locs[:, dof_indices].T, dtype=np.float32)
@@ -369,7 +389,7 @@ def assemble_and_solve(
     coords = basis.doflocs.T.astype(np.float64)
     l2_err = l2_error_fn(u, coords, operator)
 
-    return u.astype(np.float64), coords, l2_err
+    return u.astype(np.float64), coords, l2_err, dof_indices
 
 
 def quadrature_l2_error(
@@ -656,7 +676,10 @@ class ScikitFEMPoissonSolver(BaseSolver):
         ``self._compute_l2_error`` (inherited from ``BaseSolver``) so
         ``SolverResult.l2_error``'s nodal-RMS meaning is unchanged.
         """
-        return assemble_and_solve(mesh, element, operator, skfem, self._compute_l2_error)
+        u, coords, l2, _dof_indices = assemble_and_solve(
+            mesh, element, operator, skfem, self._compute_l2_error
+        )
+        return u, coords, l2
 
     # ------------------------------------------------------------------
     # Zienkiewicz-Zhu error estimator

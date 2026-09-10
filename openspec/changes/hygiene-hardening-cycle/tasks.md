@@ -71,11 +71,11 @@ are later waves.
 
 ## Wave D — Coverage (core-only)
 
-- [ ] 7.1 B40: parametrize `fem_baseline.py` `p_adaptive` / `hp_adaptive`
-- [ ] 7.2 B39: thread raw skfem Dof through `dirichlet_dof_indices`; do not
-      delete `assemble_and_solve` L349 `basis.get_dofs()`
-- [ ] 7.3 `tests/support`: gate or written transitive-coverage decision
-- [ ] 7.4 Park templates / math_kernel / backend 54 / deployment 25 / B37
+- [x] 7.1 B40: parametrize `fem_baseline.py` `p_adaptive` / `hp_adaptive`
+- [x] 7.2 B39: thread raw skfem Dof through `dirichlet_dof_indices`; do not
+      delete `assemble_and_solve` `basis.get_dofs()` (needed for `condense(D=)`)
+- [x] 7.3 `tests/support`: gated at 85 from docs + import-graph consumers
+- [x] 7.4 Park templates / math_kernel / backend 54 / deployment 25 / B37
 
 ## Wave E — Hardcoded / unread (zero numeric change)
 

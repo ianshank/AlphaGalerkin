@@ -307,6 +307,7 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/backend` | 54 |
 | `src/core` | 85 |
 | `src/deployment` | 25 |
+| `tests/support` | 85 |
 <!-- charter:gates:end -->
 
 #### Scenario: A documented gate is not enforced

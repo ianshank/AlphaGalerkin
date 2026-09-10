@@ -33,7 +33,6 @@ from src.research.fem_baseline import (
     _require_skfem,
     assemble_and_solve,
     build_lshaped_initial_mesh,
-    dirichlet_dof_indices,
     quadrature_l2_error,
     zz_indicator,
 )
@@ -104,11 +103,10 @@ class SkfemTriSubstrate:
         # spec names as the dominant cost inside MCTS.
         basis = self._skfem.Basis(mesh.mesh, element)
         n_dof = int(basis.N)
-        n_dof_free = n_dof - len(dirichlet_dof_indices(basis))
-
-        u, _coords, nodal_rms = assemble_and_solve(
+        u, _coords, nodal_rms, dof_indices = assemble_and_solve(
             mesh.mesh, element, self._operator, self._skfem, nodal_rms_l2_error, basis=basis
         )
+        n_dof_free = n_dof - len(dof_indices)
         quad_l2 = quadrature_l2_error(
             mesh.mesh, element, u, self._operator, self._skfem, basis=basis
         )

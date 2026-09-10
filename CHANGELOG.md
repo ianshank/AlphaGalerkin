@@ -78,6 +78,10 @@
   lifts on that signed answer.
 
 ### Fixed
+- **Generic self-play rank-1 boards fail loud.** `_play_game_generic`
+  used to silently substitute `board_size=8` when `state.board.ndim < 2`
+  (chess's size, wrong for every other game). `board_size_from_state`
+  now raises; rank-2+ still uses `shape[0]`.
 - `ensure_substrate_registrants` re-registers missing `tensor_grid` /
   `skfem_tri` kinds after a process-global `RefinementSubstrateRegistry.clear()`.
   Import-only ensure was a no-op once the modules were loaded, which emptied

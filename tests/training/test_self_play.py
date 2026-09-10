@@ -6,7 +6,7 @@ including sequential fallback, worker-count clamping, and game distribution.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
@@ -18,6 +18,7 @@ from src.training.self_play import (
     GameRecord,
     ParallelSelfPlayWorker,
     SelfPlayWorker,
+    board_size_from_state,
 )
 
 
@@ -375,3 +376,48 @@ class TestParallelSelfPlayWorker:
         ):
             games = worker.generate_games(n_games=2, board_size=9)
             assert len(games) == 2
+
+
+class TestBoardSizeFromState:
+    """Wave E: rank-1 boards fail loud instead of silently becoming 8."""
+
+    def test_rank2_uses_leading_dimension(self) -> None:
+        import numpy as np
+
+        assert board_size_from_state(np.zeros((9, 9))) == 9
+        assert board_size_from_state(np.zeros((8, 8))) == 8
+        assert board_size_from_state(np.zeros((3, 16, 16))) == 3
+
+    def test_rank1_raises(self) -> None:
+        import numpy as np
+
+        with pytest.raises(ValueError, match="rank-2"):
+            board_size_from_state(np.zeros(8))
+
+    def test_generic_self_play_rejects_rank1_board(
+        self,
+        small_model: AlphaGalerkinModel,
+        mcts_config: MCTSConfig,
+    ) -> None:
+        import numpy as np
+
+        from src.games.state import GameState
+
+        game = MagicMock()
+        game.initial_state.return_value = GameState(board=np.zeros(8, dtype=np.int8))
+        game.action_space_size = 8
+        worker = SelfPlayWorker(
+            model=small_model,
+            mcts_config=mcts_config,
+            device="cpu",
+            game=game,
+        )
+        with pytest.raises(ValueError, match="rank-2"):
+            worker._play_game_generic(max_moves=1, add_noise=False)
+
+    def test_source_no_longer_silently_substitutes_eight(self) -> None:
+        from pathlib import Path
+
+        source = Path("src/training/self_play.py").read_text(encoding="utf-8")
+        assert "board_size_from_state" in source
+        assert "else 8" not in source

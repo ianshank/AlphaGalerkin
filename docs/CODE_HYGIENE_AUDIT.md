@@ -753,8 +753,9 @@ policy-CE floor `clamp(min=-100.0)`~~ **DONE (hygiene Wave E, 2026-09-10)**: nam
 `POLICY_LOG_PROB_FLOOR = -100.0` (three call sites) and
 `TrainingConfig.start_min_buffer_size()` with multiplier/divisor fields defaulting to 10.
 Cole-Hopf `n_terms = 50` / `COLE_HOPF_CLAMP_EPS = 1e-14` were already named (not `1e-10`).
-`board_size = ... else 8` fallback in self-play (a silent wrong shape) — fail-loud in the
-follow-up commit; the FNO projection head fixed at 128 while every sibling dimension is a
+~~`board_size = ... else 8` fallback in self-play~~ **DONE (hygiene Wave E, 2026-09-10)**:
+`board_size_from_state` raises on `ndim < 2`; rank-2+ still uses `shape[0]`.
+The FNO projection head fixed at 128 while every sibling dimension is a
 parameter (parked with the modeling LBB `* 10`).
 
 #### P2 — Zero-logging packages

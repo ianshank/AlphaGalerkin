@@ -83,7 +83,7 @@ are later waves.
 - [x] 8.2 Trainer start-buffer `min(batch_size * 10, replay_buffer_size // 10)`
       → typed fields / constants, same defaults
 - [x] 8.3 Cole-Hopf already named — skip
-- [ ] 8.4 Self-play fallback `8`: fail-loud preferred (own behavior-change)
+- [x] 8.4 Self-play fallback `8`: fail-loud preferred (own behavior-change)
 - [x] 8.5 Reject or document-as-reserved: `rbf_kernel`, `success_metrics`,
       `StrangTrainerConfig.n_particles`, `dt_min`/`dt_max` with `adaptive_dt`
 

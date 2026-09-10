@@ -25,7 +25,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol
 
 import torch
 
@@ -46,14 +46,12 @@ def empty_cuda_cache() -> None:
         torch.cuda.empty_cache()
 
 
-@runtime_checkable
 class SupportsMetricsMapping(Protocol):
     """Stochastic comparison: ``comparison.metrics`` is a mapping."""
 
     metrics: Mapping[str, float]
 
 
-@runtime_checkable
 class SupportsMetricsMethod(Protocol):
     """L-shape / transfer / arena: ``comparison.metrics()`` returns a mapping."""
 
@@ -62,10 +60,16 @@ class SupportsMetricsMethod(Protocol):
         ...
 
 
-def comparison_metrics(comparison: object) -> Mapping[str, float]:
+def comparison_metrics(
+    comparison: SupportsMetricsMapping | SupportsMetricsMethod,
+) -> Mapping[str, float]:
     """Read metrics from either a ``.metrics()`` method or a ``.metrics`` mapping.
 
     Unify the two comparison types without forcing one harness shape.
+
+    Dispatch is ``callable``-based, not ``isinstance`` on these Protocols:
+    ``@runtime_checkable`` treats a ``metrics`` mapping as a method member
+    (the attribute exists), so ``comparison.metrics()`` would call a dict.
     """
     raw = getattr(comparison, "metrics", None)
     if raw is None:
@@ -118,7 +122,10 @@ class CompareScenarioBase(BaseScenario):
     def _setup_log_fields(self) -> dict[str, Any]:
         """Structured extras for the ``setup_complete`` log event."""
 
-    def _record_metrics(self, comparison: object) -> Mapping[str, float]:
+    def _record_metrics(
+        self,
+        comparison: SupportsMetricsMapping | SupportsMetricsMethod,
+    ) -> Mapping[str, float]:
         """Record every metric from the comparison object.
 
         Returns the mapping so subclasses can log extra fields (arena's

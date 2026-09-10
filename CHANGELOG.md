@@ -43,6 +43,12 @@
   `CompareScenarioBase`. Arena keeps `write_arena_manifest` + `.run.json`.
   Default-config `compute_hash()` is pinned for the three datetime-free
   families.
+- **B23 nightly skip is ledger-complete.** `docs/CODE_HYGIENE_AUDIT.md` row
+  B23 (1) is DONE: non-`test-slow` jobs skip `schedule`. The skip predicate
+  rejects `!= 'schedule' || ...` (substring presence alone would still fire
+  on cron). `comparison_metrics` is typed on `SupportsMetricsMethod` /
+  `SupportsMetricsMapping`; dispatch stays ``callable`` (runtime-checkable
+  Protocols cannot tell a metrics dict from a method).
 - **`src/research/baselines.py` → `src/research/baselines/` package (B34).**
   Import-compatible re-exports; public names frozen in
   `TestBaselinesPackagePublicAPI` (not raw `dir()` identity). `extra_solvers`

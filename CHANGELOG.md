@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Changed
+- **`src/training/trainer.py` facade (C2).** `fill_replay_buffer` lives in
+  `buffer_fill.py`; evaluation / checkpoint-tournament / engine helpers live
+  in `trainer_eval.py`. `Trainer` methods remain the patch targets.
+  `Trainer.__init__` still does not call `super().__init__()`.
+  `BufferFillError` is re-exported from the facade. `DistributedTrainer` and
+  `OperatorTrainer` are untouched. Tournament stays unwired (B10).
+- **`src/training/losses/physics.py` → `src/training/losses/physics/` package (C3).**
+  Import-compatible re-exports; public names frozen in
+  `TestPhysicsPackagePublicAPI`. `src/training/physics_loss.py` shim and
+  `src/training/losses/__init__.py` still import the package. mypy override
+  glob `src.training.losses.physics.*`.
 - **`src/research/baselines.py` → `src/research/baselines/` package (B34).**
   Import-compatible re-exports; public names frozen in
   `TestBaselinesPackagePublicAPI` (not raw `dir()` identity). `extra_solvers`

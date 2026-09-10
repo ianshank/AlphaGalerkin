@@ -55,10 +55,10 @@ are later waves.
 
 ## Wave C2 / C3 — trainer then physics
 
-- [ ] 5.1 Trainer facade without `super().__init__()`; do not reorder `_log`
-- [ ] 5.2 `src/training/losses/physics.py` → package; one file per
+- [x] 5.1 Trainer facade without `super().__init__()`; do not reorder `_log`
+- [x] 5.2 `src/training/losses/physics.py` → package; one file per
       `@register_loss`; public-name freeze + `del` submodules
-- [ ] 5.3 Skip `chess.py`, `agents/config.py`, codec, `lshape_amr_compare.py`
+- [x] 5.3 Skip `chess.py`, `agents/config.py`, codec, `lshape_amr_compare.py`
 
 ## Wave B2 — CompareScenarioBase
 

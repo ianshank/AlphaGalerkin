@@ -460,6 +460,7 @@ module = [
     "src.training.evaluation",
     "src.training.loss_balancing",
     "src.training.losses.physics",
+    "src.training.losses.physics.*",
     "src.experiments.train_physics",
     "src.experiments.verify_transfer",
     "src.experiments.benchmark_fnet",

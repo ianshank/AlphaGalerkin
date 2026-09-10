@@ -79,11 +79,11 @@ grab-bag (`wc -l`, 2026-08):
 | File | LOC | Shape |
 |---|---|---|
 | ~~`src/pde/operators.py`~~ | ~~1841~~ | **DONE (2026-09-01, PR #140)** — split into `src/pde/operators/` (10 files, 2516 lines total; largest is `base.py` at 487). The path in this row no longer exists; kept struck through so the backlog reads as a record rather than a to-do list. |
-| `src/training/trainer.py` | **1539** (was 1476 when audited) | One 1304-line `Trainer` class that re-overrides 5 methods `BaseTrainer` already provides |
+| ~~`src/training/trainer.py`~~ | ~~1539~~ | **DONE (2026-09-10, C2)** — facade: `_fill_buffer` / `_run_evaluation` / `_run_checkpoint_tournament` / `_run_engine_evaluation` bodies live in `buffer_fill.py` / `trainer_eval.py`. ``Trainer.__init__`` still does **not** call ``super().__init__()``. |
 | ~~`src/research/baselines.py`~~ | ~~1578~~ | **DONE (2026-09-10, B34)** — split into `src/research/baselines/` (`schemas.py`, `predicates.py`, `base.py`, `fdm.py`, `amr.py`, `pinn.py`, `navier_stokes.py`, `registry.py`). The path in this row no longer exists; kept struck through so the backlog reads as a record rather than a to-do list. |
 | `src/games/chess.py` | 1242 | One 1114-line `ChessGame` class mixing move generation, action encoding, tensor/symmetry, and rules/termination |
 | ~~`src/pde/games/mesh_refinement.py`~~ | ~~1117~~ | **DONE (2026-09-01)** — split into `src/pde/games/mesh_refinement/` (`game.py` 731, `mesh.py` 400, `__init__.py` 115). Path no longer exists. |
-| `src/training/losses/physics.py` | 819 | 6 registered losses; siblings in the same package are already one-loss-per-file |
+| ~~`src/training/losses/physics.py`~~ | ~~819~~ | **DONE (2026-09-10, C3)** — split into `src/training/losses/physics/` (one `@register_loss` class per file). Path no longer exists. |
 | `src/agents/config.py` | **750** (was 703) | 16 config classes for 14 sibling modules — every module in `src/agents/` reaches back into this one hub |
 
 The three `*_compare` scenario families (`lshape_amr_compare`,

@@ -392,6 +392,7 @@ module = [
     "src.physics.darcy",
     "src.backend.jax_backend",
     "src.research.baselines",
+    "src.research.baselines.*",
 ]
 disable_error_code = ["no-untyped-call"]
 

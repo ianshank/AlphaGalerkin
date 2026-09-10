@@ -18,40 +18,40 @@ are later waves.
 
 ## Wave B21 — skill before any split
 
-- [ ] 1.1 Add `.claude/skills/god-file-split/SKILL.md` (public-name freeze,
+- [x] 1.1 Add `.claude/skills/god-file-split/SKILL.md` (public-name freeze,
       `__all__` one-directional, `del` submodules, mypy `<pkg>.*`, grep old
       path ± directory prefix, coverage `--include` package + `pkg/*`)
-- [ ] 1.2 Update CLAUDE.md Agentic-harness row 14 skills → 15
+- [x] 1.2 Update CLAUDE.md Agentic-harness row 14 skills → 15
 
 ## Wave A — CI hardness
 
-- [ ] 2.1 Document `transfer-baseline-regression` as a disclosed soft job
+- [x] 2.1 Document `transfer-baseline-regression` as a disclosed soft job
       next to `focus`/`secrets` (no `exit 1`; do not mix with exclusion edits)
-- [ ] 2.2 B23: skip non-`test-slow` jobs on `schedule`; keep `test-slow`
+- [x] 2.2 B23: skip non-`test-slow` jobs on `schedule`; keep `test-slow`
       runnable when `test-fast` is skipped
-- [ ] 2.3 Reopen `covered_by: ~` clusters one at a time; if still red, keep
+- [x] 2.3 Reopen `covered_by: ~` clusters one at a time; if still red, keep
       the deselect and write the real exception into the ledger
-- [ ] 2.4 Do **not** flip mypy / ONNX / backend audit; do **not** land B37
+- [x] 2.4 Do **not** flip mypy / ONNX / backend audit; do **not** land B37
       or B7; do **not** collapse the e2e chess `-k` split
 
 ## Wave B1 — `src/device.py`
 
-- [ ] 3.1 Move body from `src/poc/device.py`; shim is identity re-export
-- [ ] 3.2 Migrate only `src/research/baselines.py` import
-- [ ] 3.3 SBIR `--include` adds `*/src/device.py` and keeps `*/src/poc/device.py`
-- [ ] 3.4 Identity test: `src.poc.device.resolve_device is src.device.resolve_device`
-- [ ] 3.5 ARCHITECTURE.md “three root-level modules” → four. No charter
+- [x] 3.1 Move body from `src/poc/device.py`; shim is identity re-export
+- [x] 3.2 Migrate only `src/research/baselines.py` import
+- [x] 3.3 SBIR `--include` adds `*/src/device.py` and keeps `*/src/poc/device.py`
+- [x] 3.4 Identity test: `src.poc.device.resolve_device is src.device.resolve_device`
+- [x] 3.5 ARCHITECTURE.md “three root-level modules” → four. No charter
       scope row. No `video_compression` / `hf_space` / solver.py edits
 
 ## Wave C1 — `src/research/baselines.py` → package
 
-- [ ] 4.1 Freeze public `dir()` names before the split
-- [ ] 4.2 Split at documented line bands; `del` submodule names
-- [ ] 4.3 Bind `SOLVER_REGISTRY` before any extra_solvers import; do not
+- [x] 4.1 Freeze public `dir()` names before the split
+- [x] 4.2 Split at documented line bands; `del` submodule names
+- [x] 4.3 Bind `SOLVER_REGISTRY` before any extra_solvers import; do not
       import extra_solvers from baselines `__init__`
-- [ ] 4.4 mypy override `"src.research.baselines.*"`
-- [ ] 4.5 SBIR `--include` adds `*/src/research/baselines/*`
-- [ ] 4.6 Combined pytest block from the cycle plan, one process
+- [x] 4.4 mypy override `"src.research.baselines.*"`
+- [x] 4.5 SBIR `--include` adds `*/src/research/baselines/*`
+- [x] 4.6 Combined pytest block from the cycle plan, one process
 
 ## Wave C2 / C3 — trainer then physics
 

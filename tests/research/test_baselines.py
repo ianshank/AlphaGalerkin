@@ -1,4 +1,4 @@
-"""Tests for src/research/baselines.py.
+"""Tests for src.research.baselines.
 
 Covers SolverResult, SolverConfig, UniformFDMSolver, DorflerAMRSolver,
 SimplePINNSolver (smoke tests only due to training cost), get_solver,
@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 import torch
 
+import src.research.baselines as baselines_package
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import BurgersOperator, PoissonOperator
 from src.research.baselines import (
@@ -38,6 +39,73 @@ from src.research.baselines import (
 )
 
 scipy = pytest.importorskip("scipy", reason="scipy required for FDM/AMR tests")
+
+
+# Frozen at the 2026-09-10 baselines.py -> baselines/ package split
+# (docs/CODE_HYGIENE_AUDIT.md B34). Every public name the old flat module
+# exposed is still exposed, including leaked imports. Dunders (``__path__``,
+# ``__all__``) are excluded: becoming a package unavoidably adds them.
+_BASELINES_PACKAGE_PUBLIC_API = frozenset(
+    {
+        "ABC",
+        "AMRConfig",
+        "Any",
+        "BaseModel",
+        "BaseSolver",
+        "Callable",
+        "ConfigDict",
+        "DorflerAMRSolver",
+        "FDMConfig",
+        "Field",
+        "GpuUtilizationProfiler",
+        "InsidePredicate",
+        "NDArray",
+        "NavierStokesConfig",
+        "NavierStokesFDMSolver",
+        "PDEOperator",
+        "PDEType",
+        "PINNConfig",
+        "SOLVER_REGISTRY",
+        "SimplePINNSolver",
+        "SolverConfig",
+        "SolverResult",
+        "UniformFDMSolver",
+        "abstractmethod",
+        "annotations",  # `from __future__ import annotations` leaks this name
+        "dataclass",
+        "dorfler_mark",
+        "element_inside_mask",
+        "field",
+        "get_solver",
+        "list_solvers",
+        "logger",
+        "nodal_rms_l2_error",
+        "np",
+        "require_exact_solution",
+        "require_measurable_l2",
+        "resolve_device",
+        "structlog",
+        "time",
+        "torch",
+    }
+)
+
+
+class TestBaselinesPackagePublicAPI:
+    """The real, narrower guarantee the baselines.py -> baselines/ split made."""
+
+    def test_public_names_match_frozen_pre_split_surface(self) -> None:
+        public_names = {n for n in dir(baselines_package) if not n.startswith("_")}
+        assert public_names == _BASELINES_PACKAGE_PUBLIC_API
+
+    def test_dunder_all_covers_the_frozen_public_surface(self) -> None:
+        # __all__ (new -- the old flat module had none) is not required to
+        # equal dir()'s public names exactly: it has no reason to list the
+        # incidental `annotations` future-import leak. The real invariant is
+        # one-directional: every name this test freezes as public must be
+        # explicitly exported, so `from src.research.baselines import *`
+        # cannot silently drop one.
+        assert _BASELINES_PACKAGE_PUBLIC_API - {"annotations"} <= set(baselines_package.__all__)
 
 
 # ---------------------------------------------------------------------------

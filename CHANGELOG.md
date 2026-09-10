@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+- **`src/research/baselines.py` → `src/research/baselines/` package (B34).**
+  Import-compatible re-exports; public names frozen in
+  `TestBaselinesPackagePublicAPI` (not raw `dir()` identity). `extra_solvers`
+  still register into `SOLVER_REGISTRY`. SBIR coverage `--include` lists both
+  `*/src/research/baselines.py` and `*/src/research/baselines/*`. mypy override
+  glob `src.research.baselines.*`. Reference-baselines import contract now
+  scans the package directory.
+
 ### Added
 - Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
   `src/pde/register_refinement_games.py`, config-driven substrate factory with

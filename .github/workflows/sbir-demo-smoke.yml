@@ -26,7 +26,7 @@ on:
     paths:
       - "src/demos/sbir_demo.py"
       - "src/demos/config.py"
-      - "src/research/baselines.py"
+      - "src/research/baselines/**"
       - "src/research/pde_benchmarks.py"
       - "src/research/reporter.py"
       - "src/poc/visualization/**"
@@ -38,7 +38,7 @@ on:
     paths:
       - "src/demos/sbir_demo.py"
       - "src/demos/config.py"
-      - "src/research/baselines.py"
+      - "src/research/baselines/**"
       - "src/research/pde_benchmarks.py"
       - "src/research/reporter.py"
       - "src/poc/visualization/**"

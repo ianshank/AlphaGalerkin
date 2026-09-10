@@ -72,8 +72,10 @@ pip install -e ".[dev]"
 ```
 
 Requires Python 3.10+ and PyTorch 2.0+ (CUDA 12.x recommended for GPU paths).
-Optional extras: `test-extras`, `fem`, `jax` / `jax-gpu`, `picogk`, `lm-studio`, `docs`
+Optional extras: `dev`, `viz`, `test-extras`, `fem`, `jax` / `jax-gpu`, `picogk`,
+`lm-studio`, `docs`
 (see [Getting Started](docs/getting-started.md#1-clone-and-install)).
+There is no `dashboard` extra (FOCUS-frozen interactive-surfaces track).
 
 ## Quick start
 

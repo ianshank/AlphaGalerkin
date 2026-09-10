@@ -52,6 +52,15 @@
   scans the package directory.
 
 ### Added
+- **Wave F AGENT.md + B8.** Every `src/` package now has `AGENT.md` (B12), including
+  `src/research/` and four B10 keep-reason files (`prototyping`, `analysis`,
+  `curriculum`, `tournament`: test-held, not production-wired, not a
+  2026-07-22-style cut). `src/pde/AGENT.md` sub-agent row points at
+  `src/pde/operators/`. B19 extras (`dev`, `viz`, `test-extras`, `fem`, `jax`,
+  `picogk`, `lm-studio`, `docs`) documented in README / getting-started /
+  CONTRIBUTING; no `dashboard` extra. B8: CLAUDE.md Regression Surface
+  coverage-gate rows ⊆ `ci.yml` (`tests/docs/test_claude_coverage_gates.py`,
+  mutation-killed).
 - **`tests/support` coverage gate at 85** (`coverage-gates` job). Selection is
   the docs / import-graph consumers that actually import the helpers. Measured
   ~95% branch; first landing capped at 85. templates / math_kernel / backend

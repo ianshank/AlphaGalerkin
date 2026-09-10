@@ -25,13 +25,16 @@ Optional extras (install only what you need):
 
 | Extra | Enables |
 | --- | --- |
-| `dev` | Test + lint toolchain (start here). |
+| `dev` | Test + lint toolchain (start here). Includes matplotlib. |
+| `viz` | matplotlib alone, for PoC / research CSV+PNG artifacts. |
 | `test-extras` | FEM baseline, ONNX export/validate, PettingZoo. |
 | `fem` | `scikit-fem` alone — the hp-adaptive FEM classical baseline (`src/research/fem_baseline.py`). |
 | `jax` / `jax-gpu` | JAX backend + cross-backend tests. |
 | `picogk` | Leap 71 PicoGK voxel/SDF kernel (Noyron HX). |
 | `lm-studio` | OpenAI-compatible local-LLM client (LLM-prior MCTS). |
 | `docs` | MkDocs docs-site toolchain. |
+
+There is no `dashboard` extra (FOCUS-frozen interactive-surfaces track).
 
 ## 2. Run your first scenario (CPU-safe)
 

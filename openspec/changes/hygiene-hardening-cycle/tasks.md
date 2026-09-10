@@ -89,12 +89,13 @@ are later waves.
 
 ## Wave F — Enterprise docs
 
-- [ ] 9.1 `src/research/AGENT.md` (and other in-scope missing AGENT.md)
-- [ ] 9.2 Four B10 keep-reason AGENT.md files
-- [ ] 9.3 Fix stale `operators.py` sub-agent row in `src/pde/AGENT.md`
-- [ ] 9.4 B19 extras in README / getting-started (skip dashboard extra)
-- [ ] 9.5 B8 CLAUDE.md coverage-gate rows ⊆ CI; mutation-kill a planted row
+- [x] 9.1 `src/research/AGENT.md` (and other in-scope missing AGENT.md)
+- [x] 9.2 Four B10 keep-reason AGENT.md files
+- [x] 9.3 Fix stale `operators.py` sub-agent row in `src/pde/AGENT.md`
+- [x] 9.4 B19 extras in README / getting-started (skip dashboard extra)
+- [x] 9.5 B8 CLAUDE.md coverage-gate rows ⊆ CI; mutation-kill a planted row
 - [ ] 9.6 CHANGELOG release cut after several hygiene commits, not first
+      (deferred: own PR, not this cycle)
 
 ## Explicit non-tasks / deferred
 

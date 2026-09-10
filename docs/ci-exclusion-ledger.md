@@ -19,7 +19,11 @@ matches). Until B7 lands, update the YAML block, both `ci.yml` steps, and
 
 `covered_by: ~` means no other CI job runs the excluded tests. That is a
 disclosed gap, not an accident of an `--ignore` whose covering job was
-deleted.
+deleted. **None remain** after 2026-09-10: the cabb5ff/17612ee
+`covered_by: ~` clusters (multiprocess file ignore, DataLoader trio,
+autodiff Laplacian, two MCTS nodeids) were isolation-green and green in a
+combined process of `tests/{data,mcts,experiments,distributed,training,pde}`
+(2825 passed) and were dropped from the three invocation copies.
 
 <!-- ci-exclusion-ledger:begin -->
 ```yaml
@@ -81,55 +85,7 @@ ignores:
       Delete from the broad run only if the dedicated step is removed
       and notebooks are merged into pytest tests/. Never delete both.
 
-  - path: tests/distributed/test_multiprocess.py
-    owner: src/distributed
-    covered_by: ~
-    reason: >
-      Ignored since cabb5ff / 17612ee as a pre-existing broken
-      multiprocess suite. No other workflow job selects this file.
-    reopen: >
-      Give it a named job, or delete the ignore after isolation plus
-      combined-lane green. Do not delete the ignore while covered_by
-      is null — that is the invisibility this ledger exists to name.
-
 deselects:
-  - nodeid: tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader
-    owner: src/data
-    covered_by: ~
-    reason: >
-      Point-deselected in cabb5ff (2026-04-01) as a pre-existing
-      broken collation / DataLoader test.
-    reopen: >
-      Re-enable after green in isolation and in the combined fast
-      lane. Combined-lane order bugs are this repo's usual lie.
-
-  - nodeid: tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader
-    owner: src/data
-    covered_by: ~
-    reason: >
-      Point-deselected in cabb5ff as a pre-existing broken
-      collation / DataLoader test.
-    reopen: >
-      Re-enable after isolation plus combined-lane green.
-
-  - nodeid: tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset
-    owner: src/data
-    covered_by: ~
-    reason: >
-      Point-deselected in cabb5ff as a pre-existing broken
-      collation / DataLoader test.
-    reopen: >
-      Re-enable after isolation plus combined-lane green.
-
-  - nodeid: tests/experiments/test_physics_loss.py::TestPhysicsLossComputeLaplacian::test_laplacian_of_linear
-    owner: src/experiments
-    covered_by: ~
-    reason: >
-      Point-deselected in cabb5ff as a pre-existing broken
-      autodiff Laplacian assertion.
-    reopen: >
-      Re-enable after isolation plus combined-lane green.
-
   - nodeid: tests/games/test_chess.py::TestChessEdgeCases::test_invalid_move_notation
     owner: src/games
     covered_by: test-chess
@@ -151,24 +107,6 @@ deselects:
     reopen: >
       Drop from the fast-lane deselect after proving green in the
       combined fast lane.
-
-  - nodeid: tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child
-    owner: src/mcts
-    covered_by: ~
-    reason: >
-      Point-deselected in cabb5ff as a pre-existing MCTS tree-prune
-      assertion.
-    reopen: >
-      Re-enable after isolation plus combined-lane green.
-
-  - nodeid: tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree
-    owner: src/mcts
-    covered_by: ~
-    reason: >
-      Point-deselected in cabb5ff as a pre-existing subtree-reuse
-      assertion.
-    reopen: >
-      Re-enable after isolation plus combined-lane green.
 
   - nodeid: tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error
     owner: src/training

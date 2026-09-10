@@ -33,6 +33,10 @@ on:
   # [main, develop] filter silently disabled CI for every pull request.
   pull_request:
   schedule:
+    # B23: this cron exists so `test-slow` runs on an unchanged SHA. Every
+    # other job sets `if: github.event_name != 'schedule'` so the nightly does
+    # not re-run the ~55 min PR matrix. Guarded by
+    # tests/docs/test_nightly_schedule.py.
     - cron: '0 4 * * *'  # Run nightly at 4am UTC
   workflow_dispatch:
 
@@ -81,6 +85,7 @@ jobs:
     name: Lint & Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -290,6 +295,7 @@ jobs:
     name: Secret Scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -308,6 +314,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: lint
+    if: github.event_name != 'schedule'
 
     strategy:
       fail-fast: false
@@ -408,15 +415,8 @@ jobs:
             --ignore=tests/demos/ \
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
-            --ignore=tests/distributed/test_multiprocess.py \
-            --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
-            --deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
-            --deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
-            --deselect=tests/experiments/test_physics_loss.py::TestPhysicsLossComputeLaplacian::test_laplacian_of_linear \
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_invalid_move_notation \
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
-            --deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
-            --deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
             -q 2>&1 | tee /tmp/pytest-output.txt; exit ${PIPESTATUS[0]}
 
@@ -440,7 +440,21 @@ jobs:
     # github.event.head_commit, which only `push` payloads carry, and push: is now
     # restricted to post-merge branches -- so on a feature branch the hatch is dead.
     # A manual dispatch works on any branch and replaces it.
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) || contains(github.event.head_commit.message, '[full-test]') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # B23: on schedule, test-fast is skipped. `!cancelled()` lets this job
+    # still run when a needed job is skipped (GitHub otherwise skips
+    # dependents). On every other event, still require test-fast success.
+    if: >-
+      !cancelled() && (
+        github.event_name == 'schedule' ||
+        (
+          needs.test-fast.result == 'success' &&
+          (
+            github.ref == format('refs/heads/{0}', github.event.repository.default_branch) ||
+            contains(github.event.head_commit.message, '[full-test]') ||
+            github.event_name == 'workflow_dispatch'
+          )
+        )
+      )
 
     steps:
       - name: Checkout repository
@@ -473,6 +487,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: test-fast
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -524,6 +539,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: test-fast
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -613,6 +629,7 @@ jobs:
     # grew with every gate added. Keep new whole-suite work out of here.
     timeout-minutes: 45
     needs: lint
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -642,15 +659,8 @@ jobs:
             --ignore=tests/demos/ \
             --ignore=tests/training/test_extended_config.py \
             --ignore=tests/notebooks/ \
-            --ignore=tests/distributed/test_multiprocess.py \
-            --deselect=tests/data/test_dataset.py::TestReplayDataset::test_iteration_with_dataloader \
-            --deselect=tests/data/test_dataset.py::TestExperienceListDataset::test_with_dataloader \
-            --deselect=tests/data/test_dataset.py::TestDatasetIntegration::test_batch_sampler_with_list_dataset \
-            --deselect=tests/experiments/test_physics_loss.py::TestPhysicsLossComputeLaplacian::test_laplacian_of_linear \
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_invalid_move_notation \
             --deselect=tests/games/test_chess.py::TestChessEdgeCases::test_illegal_move_notation \
-            --deselect=tests/mcts/test_node.py::TestPruneExcept::test_prune_except_returns_child \
-            --deselect=tests/mcts/test_search.py::TestMCTSTreeManagement::test_advance_reuses_subtree \
             --deselect=tests/training/test_self_play.py::TestParallelSelfPlayWorker::test_generate_games_sequential_fallback_on_error \
             --cov=src \
             --cov-report=xml \
@@ -698,6 +708,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: lint
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -1205,6 +1216,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -1242,6 +1254,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint
+    if: github.event_name != 'schedule'
 
     steps:
       - name: Checkout repository
@@ -1292,6 +1305,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: test-fast
+    if: github.event_name != 'schedule'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -1432,12 +1446,17 @@ jobs:
   # regression (direction-aware, 40% tolerance absorbs cross-runner BLAS drift), so a
   # broken operator/CNN arm is visible. It is reported SOFTLY in ci-success (not a hard
   # merge block) until its cross-runner stability is characterised — promote to a
-  # required gate afterwards.
+  # required gate afterwards. This cycle documents it as a *disclosed soft job*
+  # (in `ci-success.needs` so the job still runs on PRs; `ci-success` only
+  # `echo NOTE`s a non-green result, no `exit 1`). Same convention as
+  # `focus`/`secrets`, which are omitted from `needs` entirely. Do not mix
+  # this disclosure with exclusion-list edits.
   transfer-baseline-regression:
     name: Transfer Baseline Regression
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: lint
+    if: github.event_name != 'schedule'
     permissions:
       contents: read
     steps:
@@ -1481,7 +1500,7 @@ jobs:
     # see result=cancelled, and report a spurious red X for a run nobody was
     # waiting on. Skipping on cancellation keeps the aggregate gate honest while
     # still running -- and failing -- whenever a needed job genuinely fails.
-    if: ${{ !cancelled() }}
+    if: ${{ github.event_name != 'schedule' && !cancelled() }}
 
     steps:
       - name: Check required jobs passed

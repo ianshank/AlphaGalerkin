@@ -789,10 +789,7 @@ class Trainer(BaseTrainer):
         eval_interval = eval_interval or self.training_config.eval_interval
 
         # Minimum buffer size before training
-        min_buffer_size = min(
-            self.training_config.batch_size * 10,
-            self.training_config.replay_buffer_size // 10,
-        )
+        min_buffer_size = self.training_config.start_min_buffer_size()
 
         logger.info(
             "training_started",

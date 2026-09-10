@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Changed
+- **Wave E (zero numeric change).** Named `POLICY_LOG_PROB_FLOOR = -100.0`
+  at the three policy-CE / entropy clamp sites. Trainer start-buffer uses
+  `TrainingConfig.start_min_buffer_size()` with
+  `start_buffer_batch_multiplier` / `start_buffer_capacity_divisor`
+  defaulting to **10** (historical literals; defaults unchanged). Cole-Hopf
+  clamp / term count were already named — skipped. Unimplemented RBF kernels
+  (`multiquadric`, `inverse`, `thin_plate`) are rejected at validation.
+  `adaptive_dt=True` is rejected on `TimeSteppingConfig` (TimeStepper still
+  raises if constructed unsafely). `StrangParallelTrainer` requires
+  `data.particles.shape[1] == config.n_particles`. `PDEGameConfig.success_metrics`
+  is documented reserved; its default list is unchanged for `compute_hash()`
+  stability. Modeling LBB `* 10` and FNO `128` stay parked.
 - **B39: one `get_dofs()` per scikit-fem assemble.** `dirichlet_dof_indices`
   accepts an optional precomputed Dof. `assemble_and_solve` returns a fourth
   value (flattened Dirichlet indices from that same object) so

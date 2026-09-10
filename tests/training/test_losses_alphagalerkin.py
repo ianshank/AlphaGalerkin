@@ -437,3 +437,17 @@ class TestEdgeCases:
 
         result = loss_fn(policy_logits, value, target_policy, target_value)
         assert result.total.isfinite()
+
+
+class TestPolicyLogProbFloor:
+    """Wave E: the CE / entropy clamp is named once; the number did not move."""
+
+    def test_floor_is_the_historical_minus_100(self) -> None:
+        from pathlib import Path
+
+        from src.training.losses.alphagalerkin import POLICY_LOG_PROB_FLOOR
+
+        assert POLICY_LOG_PROB_FLOOR == -100.0
+        source = Path("src/training/losses/alphagalerkin.py").read_text(encoding="utf-8")
+        assert source.count("clamp(min=POLICY_LOG_PROB_FLOOR)") == 3
+        assert "clamp(min=-100.0)" not in source

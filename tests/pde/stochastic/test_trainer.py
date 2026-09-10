@@ -215,6 +215,12 @@ class TestTrainerValidation:
         with pytest.raises(StochasticConfigurationError, match="slices"):
             StrangParallelTrainer(bad_cfg, proj, mdn, trainer.data)
 
+    def test_particle_count_mismatch_rejected(self) -> None:
+        trainer, proj, mdn = _build(max_steps=1)
+        bad_cfg = StrangTrainerConfig(n_particles=32, n_time_slices=11, sim_dt=0.005, max_steps=1)
+        with pytest.raises(StochasticConfigurationError, match="particles"):
+            StrangParallelTrainer(bad_cfg, proj, mdn, trainer.data)
+
     def test_nonuniform_grid_rejected(self):
         trainer, proj, mdn = _build(max_steps=1)
         bad_times = torch.tensor([0.0, 0.1, 0.3], dtype=F64)

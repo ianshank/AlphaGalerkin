@@ -723,10 +723,14 @@ under default settings, not just when explicitly toggled. New deterministic test
 budget-starved root and prove each knob's effect exactly (a toggle flips `best_action`; a
 `discount < 1.0` scales `value_sum` by the exact factor), rather than re-asserting the fields
 exist.**]
-`PDEGameConfig.error_metric` (`h1` silently yields l2), `BaseScenarioConfig.requires_gpu` (set by 4
+`PDEGameConfig.error_metric` (`h1` silently yields l2) — **the field does not exist**; live sibling
+is `SubstrateConfig.error_metric`. `BaseScenarioConfig.requires_gpu` (set by 4
 scenarios, never checked — a `requires_gpu=True` scenario runs to completion on CPU and reports
-PASS), `BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented), `PDEGameConfig.success_metrics`,
-`StrangTrainerConfig.n_particles`, `dt_min`/`dt_max`.
+PASS) stays parked (poc). ~~`BasisSelectionConfig.rbf_kernel` (3 of 4 options unimplemented),
+`PDEGameConfig.success_metrics`, `StrangTrainerConfig.n_particles`, `dt_min`/`dt_max`~~
+**DONE (hygiene Wave E, 2026-09-10)**: unimplemented RBF kernels rejected at validation;
+`success_metrics` reserved + unread AST guard (defaults unchanged); `n_particles` checked
+against `data.particles.shape[1]`; `adaptive_dt=True` rejected at config validation.
 
 #### P2 — Lint rules worth enabling (~60 real fixes, no suppressions)
 
@@ -744,10 +748,14 @@ contextual exception messages are a feature).
 Ordered by blast radius, not count: the LBB regularization margin multiplier `* 10` in
 `src/modeling/galerkin_operator.py` (the same concept is already named **twice** in
 `src/modeling/stability.py` — three copies, one literal, and it shapes the training gradient);
-`min(batch_size * 10, replay_buffer_size // 10)` deciding when training starts; the triplicated
-policy-CE floor `clamp(min=-100.0)`; Cole-Hopf `n_terms = 50` and its `1e-10` denominator floor
-(the L2 reference for SBIR rows); `board_size = ... else 8` fallback in self-play (a silent wrong
-shape); the FNO projection head fixed at 128 while every sibling dimension is a parameter.
+~~`min(batch_size * 10, replay_buffer_size // 10)` deciding when training starts; the triplicated
+policy-CE floor `clamp(min=-100.0)`~~ **DONE (hygiene Wave E, 2026-09-10)**: named
+`POLICY_LOG_PROB_FLOOR = -100.0` (three call sites) and
+`TrainingConfig.start_min_buffer_size()` with multiplier/divisor fields defaulting to 10.
+Cole-Hopf `n_terms = 50` / `COLE_HOPF_CLAMP_EPS = 1e-14` were already named (not `1e-10`).
+`board_size = ... else 8` fallback in self-play (a silent wrong shape) — fail-loud in the
+follow-up commit; the FNO projection head fixed at 128 while every sibling dimension is a
+parameter (parked with the modeling LBB `* 10`).
 
 #### P2 — Zero-logging packages
 

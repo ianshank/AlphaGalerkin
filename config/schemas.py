@@ -188,6 +188,23 @@ class TrainingConfig(BaseModel):
     # Self-play
     n_self_play_games: int = Field(default=100, description="Self-play games per iteration")
     replay_buffer_size: int = Field(default=500000, description="Replay buffer capacity")
+    start_buffer_batch_multiplier: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Trainer.train fills the replay buffer to "
+            "min(batch_size * this, replay_buffer_size // start_buffer_capacity_divisor) "
+            "before the first step. Default 10 is the historical literal."
+        ),
+    )
+    start_buffer_capacity_divisor: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Divisor applied to replay_buffer_size in the start-buffer formula. "
+            "Default 10 is the historical literal."
+        ),
+    )
     max_buffer_fill_iterations: int = Field(
         default=50,
         ge=1,
@@ -423,6 +440,18 @@ class TrainingConfig(BaseModel):
         ge=100,
         description="Engine move time limit in ms (alternative to depth)",
     )
+
+    def start_min_buffer_size(self) -> int:
+        """Experiences required before ``Trainer.train`` takes the first step.
+
+        Historical formula: ``min(batch_size * 10, replay_buffer_size // 10)``.
+        The multipliers are the two fields above; do not change the defaults
+        without treating it as a training-trajectory change.
+        """
+        return min(
+            self.batch_size * self.start_buffer_batch_multiplier,
+            self.replay_buffer_size // self.start_buffer_capacity_divisor,
+        )
 
 
 class DistributedConfig(BaseModel):

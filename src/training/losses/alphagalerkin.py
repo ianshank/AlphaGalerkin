@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+#: Floor on ``log_softmax`` outputs in policy CE and entropy. Prevents
+#: ``-inf * 0 = NaN`` when a masked action has zero target mass. Named once;
+#: the three call sites must stay identical (hygiene Wave E).
+POLICY_LOG_PROB_FLOOR: float = -100.0
+
 
 @register_loss("alphagalerkin")
 class AlphaGalerkinLoss(nn.Module):
@@ -123,7 +128,7 @@ class AlphaGalerkinLoss(nn.Module):
 
         # Compute log softmax with clamping to prevent -inf * 0 = NaN
         log_probs = torch.log_softmax(policy_logits, dim=-1)
-        log_probs = log_probs.clamp(min=-100.0)
+        log_probs = log_probs.clamp(min=POLICY_LOG_PROB_FLOOR)
 
         # Apply label smoothing if configured
         if self.label_smoothing > 0:
@@ -331,7 +336,7 @@ class EntropyRegularizer(nn.Module):
             log_probs = torch.log_softmax(masked_logits, dim=-1)
 
             # Clamp log_probs to prevent -inf * 0 = NaN edge cases
-            log_probs = log_probs.clamp(min=-100.0)
+            log_probs = log_probs.clamp(min=POLICY_LOG_PROB_FLOOR)
 
             # Compute entropy: -sum(p * log(p))
             entropy = -(probs * log_probs).sum(dim=-1)
@@ -348,7 +353,7 @@ class EntropyRegularizer(nn.Module):
             # No mask - compute normally
             probs = torch.softmax(policy_logits, dim=-1)
             log_probs = torch.log_softmax(policy_logits, dim=-1)
-            log_probs = log_probs.clamp(min=-100.0)
+            log_probs = log_probs.clamp(min=POLICY_LOG_PROB_FLOOR)
 
             entropy = -(probs * log_probs).sum(dim=-1)
             max_entropy = torch.log(torch.tensor(n_actions, dtype=torch.float32, device=device))

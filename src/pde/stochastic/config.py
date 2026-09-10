@@ -274,7 +274,10 @@ class StrangTrainerConfig(BaseModuleConfig):
     n_particles: int = Field(
         ge=16,
         le=100_000,
-        description="SDE particle count for the precomputed dataset.",
+        description=(
+            "SDE particle count for the precomputed dataset. "
+            "StrangParallelTrainer requires data.particles.shape[1] to match."
+        ),
     )
     n_time_slices: int = Field(ge=3, description="Coarse time-grid points M.")
     sim_dt: float = Field(gt=0.0, description="Fine Euler–Maruyama simulation step.")

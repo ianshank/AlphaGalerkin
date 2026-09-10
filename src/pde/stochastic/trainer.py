@@ -107,6 +107,10 @@ class StrangParallelTrainer:
         if data.n_slices != config.n_time_slices:
             msg = f"data has {data.n_slices} slices but config.n_time_slices={config.n_time_slices}"
             raise StochasticConfigurationError(msg)
+        n_particles = int(data.particles.shape[1])
+        if n_particles != config.n_particles:
+            msg = f"data has {n_particles} particles but config.n_particles={config.n_particles}"
+            raise StochasticConfigurationError(msg)
         intervals = data.times[1:] - data.times[:-1]
         dt = float(intervals[0])
         if not torch.allclose(intervals, intervals[0], rtol=_UNIFORM_GRID_RTOL, atol=0.0):

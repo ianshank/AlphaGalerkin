@@ -79,12 +79,12 @@ are later waves.
 
 ## Wave E — Hardcoded / unread (zero numeric change)
 
-- [ ] 8.1 Name policy CE `clamp(min=-100.0)` once; three call sites
-- [ ] 8.2 Trainer start-buffer `min(batch_size * 10, replay_buffer_size // 10)`
+- [x] 8.1 Name policy CE `clamp(min=-100.0)` once; three call sites
+- [x] 8.2 Trainer start-buffer `min(batch_size * 10, replay_buffer_size // 10)`
       → typed fields / constants, same defaults
-- [ ] 8.3 Cole-Hopf already named — skip
+- [x] 8.3 Cole-Hopf already named — skip
 - [ ] 8.4 Self-play fallback `8`: fail-loud preferred (own behavior-change)
-- [ ] 8.5 Reject or document-as-reserved: `rbf_kernel`, `success_metrics`,
+- [x] 8.5 Reject or document-as-reserved: `rbf_kernel`, `success_metrics`,
       `StrangTrainerConfig.n_particles`, `dt_min`/`dt_max` with `adaptive_dt`
 
 ## Wave F — Enterprise docs

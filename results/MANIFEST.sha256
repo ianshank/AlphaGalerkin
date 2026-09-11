@@ -1,0 +1,21 @@
+# AlphaGalerkin artifact-freeze manifest (R-05). Do not edit by hand.
+# Regenerate ONLY when an artifact is deliberately produced or replaced, via the
+# claims-ledger / run-provenance skill:  python -m scripts.artifact_manifest write
+# Verify from the repo root:  sha256sum -c results/MANIFEST.sha256
+#                        or:  python -m scripts.artifact_manifest check
+# Presence-only lines are comments so plain sha256sum still verifies the rest.
+80158cf90c188151140bb01967847d407f76bdba89675fdbf1d87b1a66716407  config/baselines/stochastic_galerkin_ci.json
+687bfdf5eb8ca6bb8ecfa870d7e4dbd303eaeb34f3e4d10cc7a2bb876229e9a9  config/baselines/transfer_ci.json
+8b1f458989140c0c53f798c41bddb75047cc4d868488ac58967dffeb5f17e20b  results/lambda_scheduling.csv
+# presence-only: results/lambda_scheduling.png
+188b263e317ca206352f5b77a13af103e3ec000b4892e868bd0ae0938ebb2bdc  results/lshape_adaptive_vs_uniform.csv
+b3442fb0b90eff5fd2b34636a414baff820d270310482dfe2b8010556d6ef5f5  results/lshape_adaptive_vs_uniform.run.json
+52553c6176eaefc7ebf24b2fae5a1f796139af6ae47493e41b666c0f78b568b8  results/lshape_mcts_vs_dorfler.csv
+# presence-only: results/lshape_mcts_vs_dorfler.png
+18ed88f753eebb09bf84ab1471f9b6f0268aa3d62088dff3c73574a0df008f73  results/mcts_classical_amr_arena.csv
+# presence-only: results/mcts_classical_amr_arena.png
+7a8ae2357fff7283f07e0af3402a0e5af879221607117b1e89fef593e7222183  results/mcts_classical_amr_arena.run.json
+22d5970d59ddaacc69b5652c2735e76ca8377957739b0553783b347fef784f50  results/stochastic_galerkin_compare.csv
+# presence-only: results/stochastic_galerkin_compare.png
+0d4ac6a18b5527f1ba4e4593e44242c95cca3a1eb17d271682f42454df25ae1d  results/transfer_baseline_compare.csv
+# presence-only: results/transfer_baseline_compare.png

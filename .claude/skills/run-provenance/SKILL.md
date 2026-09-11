@@ -59,10 +59,21 @@ arm is *worse*, or that a figure predates a caching change and is not comparable
 not exist. Guarded by `tests/research/test_run_manifest.py`; if you add a new artifact directory,
 check its JSON is committable before trusting that a file you wrote is in the tree.
 
+## Then freeze it
+
+The sidecar and the artifact it describes are both hashed into `results/MANIFEST.sha256`
+(the `claims-ledger` skill, step 4). Regenerating an artifact without regenerating the
+manifest fails `tests/docs/test_artifact_manifest.py` and CI's `lint` job:
+
+```bash
+python -m scripts.artifact_manifest write
+```
+
 ## Verify
 
 ```bash
 pytest tests/research/test_run_manifest.py -v
 pytest tests/docs/test_charter_alignment.py -v     # cited CSVs must carry a sidecar
-git status --short results/                        # the sidecar must actually stage
+pytest tests/docs/test_artifact_manifest.py -v     # artifact + sidecar bytes match the manifest
+git status --short results/                        # the sidecar AND the manifest must stage
 ```

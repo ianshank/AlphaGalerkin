@@ -6,6 +6,7 @@
 #
 # Usage:
 #   make lint          # ruff check + format check
+#   make artifact-manifest # verify results/MANIFEST.sha256 against the tree
 #   make format        # ruff auto-format
 #   make mypy          # strict type check (informational)
 #   make test-fast     # fast unit tests (excludes slow/e2e/gpu)
@@ -26,7 +27,7 @@
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
         test-regression test-sanity test-security test-demos test-claude \
-        test-substrate docker-build docker-test
+        test-substrate docker-build docker-test artifact-manifest
 
 # ---------------------------------------------------------------------------
 # Tool resolution
@@ -109,6 +110,16 @@ lint:
 
 format:
 	$(RUFF) format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
+
+# ---------------------------------------------------------------------------
+# Artifact-freeze manifest (R-05) -- mirrors the `lint` job's step in ci.yml.
+# results/MANIFEST.sha256 freezes the committed benchmark artifacts the charter
+# quotes. Regenerate it ONLY when an artifact is deliberately replaced (the
+# claims-ledger / run-provenance skills), with
+#   $(PYTHON) -m scripts.artifact_manifest write
+# ---------------------------------------------------------------------------
+artifact-manifest:
+	$(PYTHON) -m scripts.artifact_manifest check
 
 # ---------------------------------------------------------------------------
 # Type Checking (informational — not a blocking gate)
@@ -324,5 +335,5 @@ clean:
 # Pre-PR Comprehensive Gate (lint + mypy + sanity + security + regression +
 # benchmarks + core + agents + e2e + fast + coverage[85% global gate])
 # ---------------------------------------------------------------------------
-pre-pr: lint mypy gitleaks test-claude test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-demos test-fast coverage
+pre-pr: lint artifact-manifest mypy gitleaks test-claude test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-demos test-fast coverage
 check: pre-pr

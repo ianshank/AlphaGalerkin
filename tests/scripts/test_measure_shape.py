@@ -2,9 +2,47 @@
 
 Every metric function is exercised on a small fake repository built under
 ``tmp_path`` (the real ``src/`` is never read here), the ruff subprocess is
-mocked everywhere except one deliberate smoke test, and the CLI is driven end
+mocked everywhere except two deliberate smoke tests, and the CLI is driven end
 to end through ``main(argv)``. The live-tree comparison lives in
 ``tests/docs/test_shape_baseline.py``.
+
+Mutations from the PR #151 review hardening (each the literal pre-fix code
+planted in ``scripts/measure_shape.py`` with an anchor assertion, the module
+run whole, the NAMED test recorded, the file restored byte-identical; none of
+the killers carries ``gpu_required`` / ``fem_required``):
+
+1. **Finding 1, src-only provenance** -- ``inputs_unchanged`` replaced by the
+   schema-1 rule ``recorded.content_hash == current.content_hash``. Killed by
+   ``TestProvenance::test_an_improvement_in_an_importer_root_is_not_a_hand_edit``
+   and ``test_an_improvement_in_the_mirror_root_is_not_a_hand_edit`` (the
+   finding itself: a real improvement in ``scripts/`` / ``hf_space/`` exited 1
+   as "edited by hand"), plus ``test_compare_scopes_hand_edit_detection_per_metric``,
+   ``test_compare_honours_a_custom_config``,
+   ``test_inputs_unchanged_treats_an_unrecorded_input_as_changed``,
+   ``test_a_schema_1_baseline_migrates_and_still_gates`` and
+   ``TestCompare::test_format_report_states_each_input_root_separately``
+   (7 failed, 136 passed).
+1b. **Finding 1, the adjacent design** -- one hash over the *union* of every
+   input (``all(... for name in recorded ∪ current)``), the simpler alternative
+   the review allowed. Killed by
+   ``TestProvenance::test_an_edit_outside_a_metrics_inputs_keeps_hand_edit_detection_live``:
+   an unrelated ``scripts/`` edit let a padded ``complexity_findings`` through
+   (6 failed, 136 passed). This is why provenance is per input.
+2. **Finding 2, ruff paths against CWD** -- the ``if not path.is_absolute()``
+   resolution deleted. Killed by
+   ``TestRuffMetrics::test_parse_ruff_json_resolves_relative_filenames_against_repo_root_not_cwd``
+   (``ValueError`` from ``relative_to`` when run from another directory).
+   ``test_run_ruff_real_subprocess_from_another_cwd`` survives it because the
+   installed ruff emits absolute filenames -- it guards the end-to-end
+   journey, not this defect, and is recorded as such.
+3. **Finding 3, untracked files not dirty** -- ``--untracked-files=all`` ->
+   ``no``. Killed by
+   ``TestShapeBaseline::test_git_head_sha_counts_an_untracked_file_as_dirty``
+   (real ``git init``; the ignored-file leg stays green either way).
+4. **Finding 4, ``import a, b`` keeps ``names[0]``** -- the alias loop
+   replaced by ``[sub.names[0].name]``. Killed by
+   ``TestLazyImports::test_every_alias_of_a_multi_name_import_is_a_site``
+   (``import os, src.q, src.r`` counted zero sites).
 """
 
 from __future__ import annotations
@@ -26,6 +64,8 @@ from scripts.measure_shape import (
     REGENERATE_HINT,
     SHAPE_BASELINE_SCHEMA_VERSION,
     TABLE_KEY_SEPARATOR,
+    TABLE_METRIC,
+    TABLE_NAMES,
     MirrorReport,
     RuffFinding,
     ShapeBaseline,
@@ -43,6 +83,9 @@ from scripts.measure_shape import (
     format_report,
     git_head_sha,
     hard_dependencies,
+    input_hashes,
+    input_roots,
+    inputs_unchanged,
     lazy_first_party_imports,
     library_print_findings,
     load_baseline,
@@ -50,6 +93,8 @@ from scripts.measure_shape import (
     magic_value_table,
     main,
     measure,
+    metric_inputs,
+    migrate_baseline_document,
     mirror_divergence,
     normalise_distribution_name,
     orphan_modules,
@@ -389,6 +434,40 @@ class TestRuffMetrics:
         findings = parse_ruff_json(json.dumps(payload), fake_repo)
         assert findings == [RuffFinding("T201", "src/lib.py", 2)]
 
+    def test_parse_ruff_json_resolves_relative_filenames_against_repo_root_not_cwd(
+        self, fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """PR #151 finding 2: ruff runs under ``repo_root``; its relative paths are relative to it.
+
+        The parser resolved them against the *caller's* working directory;
+        from anywhere but the repo root that raised (``relative_to`` fails)
+        or, worse, attributed a finding to a same-named file elsewhere.
+        """
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        payload = [{"code": "T201", "filename": "src/lib.py", "location": {"row": 2}}]
+        assert parse_ruff_json(json.dumps(payload), fake_repo) == [
+            RuffFinding("T201", "src/lib.py", 2)
+        ]
+
+    def test_parse_ruff_json_relative_cache_paths_are_still_dropped(
+        self, fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        payload = [{"code": "T201", "filename": "src/__pycache__/junk.py", "location": {"row": 1}}]
+        assert parse_ruff_json(json.dumps(payload), fake_repo) == []
+
+    def test_run_ruff_real_subprocess_from_another_cwd(
+        self, fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End to end: ``--root`` elsewhere, invoked from a directory that is not the repo."""
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        findings = run_ruff(fake_repo, "src", ("T201",))
+        assert {f.path for f in findings} == {"src/cli.py", "src/lib.py"}
+
     def test_run_ruff_raises_when_ruff_cannot_run(
         self, monkeypatch: pytest.MonkeyPatch, fake_repo: Path
     ) -> None:
@@ -487,6 +566,18 @@ class TestLazyImports:
         _write(root, "src/m.py", "def f():\n    import mypkg.sub\n    import src.q\n")
         sites = lazy_first_party_imports(root, ShapeConfig(first_party_package="mypkg"))
         assert [s.detail for s in sites] == ["mypkg.sub"]
+
+    def test_every_alias_of_a_multi_name_import_is_a_site(self, tmp_path: Path) -> None:
+        """PR #151 finding 4: ``import os, src.q, src.r`` is two lazy first-party imports.
+
+        The metric read ``names[0]`` only, so a first-party module listed
+        after a third-party one was invisible to the shrink-only gate: the
+        cheapest way to hide a lazy import was a comma.
+        """
+        root = tmp_path / "r"
+        _write(root, "src/m.py", "def f():\n    import os, src.q, src.r\n    import src.s, sys\n")
+        sites = lazy_first_party_imports(root, ShapeConfig())
+        assert [(s.line, s.detail) for s in sites] == [(2, "src.q"), (2, "src.r"), (3, "src.s")]
 
 
 class TestDeviceSites:
@@ -678,6 +769,7 @@ class TestContentHash:
 
 
 def _baseline(**overrides: object) -> ShapeBaseline:
+    """A schema-2 record; ``input_hashes`` follows ``content_hash`` unless given explicitly."""
     payload: dict[str, object] = {
         "generated_from": FAKE_SHA,
         "content_hash": "0" * 64,
@@ -685,7 +777,13 @@ def _baseline(**overrides: object) -> ShapeBaseline:
         "tables": {"magic_values": {"src/a.py::PLR2004": 1}},
     }
     payload.update(overrides)
+    payload.setdefault("input_hashes", {"src": payload["content_hash"]})
     return ShapeBaseline.model_validate(payload)
+
+
+def _hashes(**per_root: str) -> dict[str, str]:
+    """Every default input root at ``"0" * 64`` unless overridden -- ``src`` first."""
+    return {root: per_root.get(root, "0" * 64) for root in input_roots(ShapeConfig())}
 
 
 class TestShapeBaseline:
@@ -788,6 +886,81 @@ class TestShapeBaseline:
         subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
         assert git_head_sha(tmp_path) == ("unknown", False)
 
+    def test_git_head_sha_counts_an_untracked_file_as_dirty(self, tmp_path: Path) -> None:
+        """PR #151 finding 3: the hashes read the working tree, so an untracked file is a change.
+
+        ``--untracked-files=no`` reported a tree with a brand-new
+        ``src/new.py`` as clean while that file moved every ``src`` metric,
+        so ``write`` could record ``git_dirty: false`` on numbers the
+        recorded commit cannot reproduce. Ignored files stay clean: they are
+        outside the tracked tree the SHA describes, and outside the caches
+        the metrics skip.
+        """
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "init", "-q", str(tmp_path)], check=True)
+        _write(tmp_path, "src/a.py", "x = 1\n")
+        _write(tmp_path, ".gitignore", "*.log\n")
+        subprocess.run([*git, "-C", str(tmp_path), "add", "-A"], check=True)
+        subprocess.run([*git, "-C", str(tmp_path), "commit", "-q", "-m", "init"], check=True)
+        sha, dirty = git_head_sha(tmp_path)
+        assert len(sha) == 40 and dirty is False
+
+        _write(tmp_path, "src/ignored.log", "")
+        assert git_head_sha(tmp_path) == (sha, False)
+
+        _write(tmp_path, "src/new.py", "y = 2\n")
+        assert git_head_sha(tmp_path) == (sha, True)
+
+    def test_write_does_not_count_its_own_output_as_dirt(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The output file is excluded from the check; anything else untracked still counts.
+
+        Real git, real ``git_head_sha``: only the ruff collaborators are
+        mocked. Without the exclusion a baseline written *inside* the repo
+        is itself the untracked file that makes the tree dirty, so a second
+        ``write`` could never record ``git_dirty: false``.
+        """
+        monkeypatch.setattr(ms, "run_ruff", lambda root, target, rules: [])
+        monkeypatch.setattr(ms, "ruff_version", lambda: "ruff 9.9.9")
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "init", "-q", str(tmp_path)], check=True)
+        _write(tmp_path, "pyproject.toml", FAKE_PYPROJECT)
+        _write(tmp_path, "src/a.py", "x = 1\n")
+        subprocess.run([*git, "-C", str(tmp_path), "add", "-A"], check=True)
+        subprocess.run([*git, "-C", str(tmp_path), "commit", "-q", "-m", "init"], check=True)
+        out = tmp_path / "config" / "shape_baseline.yaml"
+        common = ["--root", str(tmp_path), "--log-level", "ERROR"]
+
+        assert main([*common, "write", "--output", str(out)]) == 0
+        first = load_baseline(out)
+        assert first.git_dirty is False and len(first.generated_from) == 40
+        assert main([*common, "write", "--output", str(out)]) == 0  # output now untracked
+        assert load_baseline(out).git_dirty is False
+
+        _write(tmp_path, "src/new.py", "y = 2\n")
+        assert main([*common, "write", "--output", str(out)]) == 0
+        assert load_baseline(out).git_dirty is True
+
+    def test_output_pathspec_is_repo_relative_or_empty(self, tmp_path: Path) -> None:
+        assert ms.output_pathspec(tmp_path / "config" / "b.yaml", tmp_path) == ("config/b.yaml",)
+        assert ms.output_pathspec(tmp_path.parent / "elsewhere.yaml", tmp_path) == ()
+
+    def test_git_head_sha_exclude_is_a_pathspec(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: list[list[str]] = []
+        outputs = iter([FAKE_SHA + "\n", ""])
+
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            seen.append(command)
+            return subprocess.CompletedProcess(
+                args=command, returncode=0, stdout=next(outputs), stderr=""
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert git_head_sha(Path("."), exclude=("config/shape_baseline.yaml",)) == (FAKE_SHA, False)
+        assert seen[1][-3:] == ["--", ".", ":(exclude)config/shape_baseline.yaml"]
+        assert "--untracked-files=all" in seen[1]
+
     def test_git_head_sha_reads_sha_and_dirty_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         outputs = iter([FAKE_SHA + "\n", " M src/a.py\n"])
 
@@ -862,6 +1035,259 @@ class TestCompare:
         assert "src/ is changed" in text
         assert "1 violation(s):" in text
         assert violation.message in text
+
+    def test_format_report_states_each_input_root_separately(self) -> None:
+        """One line per input: the reader sees *which* input moved, and which was never hashed."""
+        recorded = _baseline(input_hashes={"src": "0" * 64, "scripts": "0" * 64})
+        current = _baseline(input_hashes=_hashes(scripts="1" * 64))
+        text = format_report(recorded, current, ())
+        assert "src/ is unchanged" in text
+        assert "scripts/ is changed" in text
+        assert "hf_space/src/ is not recorded" in text
+        assert "pyproject.toml is not recorded" in text, "a file input carries no directory slash"
+
+
+# ---------------------------------------------------------------------------
+# Per-input provenance (PR #151 finding 1)
+# ---------------------------------------------------------------------------
+
+
+class TestProvenance:
+    """Hand-edit detection is scoped to the inputs each metric reads, not to ``src/`` alone.
+
+    Defect class: a provenance hash that covers fewer files than the metrics
+    read, so an improvement in an uncovered input is rejected as a hand edit
+    and a change in a covered one silences detection for metrics that never
+    read it.
+    """
+
+    def test_metric_inputs_cover_every_metric_and_every_root(self) -> None:
+        """Vacuity: the contract names every metric, and every root is read by some metric."""
+        config = ShapeConfig()
+        reads = metric_inputs(config)
+        assert tuple(reads) == METRIC_NAMES
+        assert all(inputs for inputs in reads.values()), "a metric declaring no input is untracked"
+        assert {root for inputs in reads.values() for root in inputs} == set(input_roots(config))
+        assert all(config.src_root in inputs for inputs in reads.values())
+        assert set(TABLE_METRIC) == set(TABLE_NAMES)
+        assert set(TABLE_METRIC.values()) <= set(METRIC_NAMES)
+
+    def test_input_roots_are_derived_from_the_config_and_deduplicated(self) -> None:
+        config = ShapeConfig(
+            src_root="lib", importer_roots=("lib", "apps"), mirror_root="mirror", pyproject="p.toml"
+        )
+        assert input_roots(config) == ("lib", "apps", "mirror", "p.toml")
+        assert metric_inputs(config)["orphan_modules"] == ("lib", "apps")
+        assert metric_inputs(config)["mirror_diverged_files"] == ("lib", "mirror")
+        assert metric_inputs(config)["dead_import_error_guards"] == ("lib", "p.toml")
+
+    def test_input_hashes_record_every_root_and_content_hash_is_the_src_entry(
+        self, fake_repo: Path, fake_config: ShapeConfig, mocked_toolchain: None
+    ) -> None:
+        hashes = input_hashes(fake_repo, fake_config)
+        assert tuple(hashes) == input_roots(fake_config)
+        assert hashes["src"] == content_hash(fake_repo, fake_config)
+        assert len(set(hashes.values())) == len(hashes), "distinct inputs, distinct digests"
+        baseline = measure(fake_repo, fake_config)
+        assert baseline.input_hashes == hashes
+        assert baseline.content_hash == hashes["src"]
+        assert baseline.schema_version == SHAPE_BASELINE_SCHEMA_VERSION
+
+    def test_each_input_hash_moves_only_with_its_own_root(
+        self, fake_repo: Path, fake_config: ShapeConfig
+    ) -> None:
+        before = input_hashes(fake_repo, fake_config)
+        _write(fake_repo, "scripts/new.py", "x = 1\n")
+        after = input_hashes(fake_repo, fake_config)
+        moved = {root for root in before if before[root] != after[root]}
+        assert moved == {"scripts"}
+        (fake_repo / "pyproject.toml").write_text(FAKE_PYPROJECT + "\n# edited\n", encoding="utf-8")
+        assert input_hashes(fake_repo, fake_config)["pyproject.toml"] != after["pyproject.toml"]
+
+    def test_an_improvement_in_an_importer_root_is_not_a_hand_edit(
+        self, fake_repo: Path, mocked_toolchain: None, tmp_path: Path
+    ) -> None:
+        """The literal finding: a new ``scripts/`` importer reaches an orphan, ``src/`` untouched.
+
+        Under schema 1 the content hash (``src/`` only) matched, so the drop
+        21 -> 20 was "edited by hand" and ``check`` exited 1.
+        """
+        out = tmp_path / "baseline.yaml"
+        common = ["--root", str(fake_repo), "--log-level", "ERROR"]
+        assert main([*common, "write", "--output", str(out)]) == 0
+        _write(fake_repo, "scripts/reach_d.py", "import src.d\n")
+        assert main([*common, "check", "--baseline", str(out)]) == 0
+
+    def test_an_improvement_in_the_mirror_root_is_not_a_hand_edit(
+        self, fake_repo: Path, mocked_toolchain: None, tmp_path: Path
+    ) -> None:
+        """Same finding, other root: re-syncing a diverged mirror file lowers the count honestly."""
+        out = tmp_path / "baseline.yaml"
+        common = ["--root", str(fake_repo), "--log-level", "ERROR"]
+        assert main([*common, "write", "--output", str(out)]) == 0
+        (fake_repo / "hf_space/src/b.py").write_bytes((fake_repo / "src/b.py").read_bytes())
+        assert main([*common, "check", "--baseline", str(out)]) == 0
+
+    def test_an_edit_outside_a_metrics_inputs_keeps_hand_edit_detection_live(
+        self,
+        fake_repo: Path,
+        mocked_toolchain: None,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The reason for per-input rather than one hash over the union of every input.
+
+        A union hash would fix the finding above and, in exchange, let an
+        edit to ``scripts/`` (read only by ``orphan_modules``) switch off
+        hand-edit detection for all nine metrics. Here ``scripts/`` changes
+        and a padded ``complexity_findings`` -- which reads ``src/`` alone --
+        is still caught.
+        """
+        out = tmp_path / "baseline.yaml"
+        common = ["--root", str(fake_repo), "--log-level", "ERROR"]
+        assert main([*common, "write", "--output", str(out)]) == 0
+        _write(fake_repo, "scripts/unrelated.py", "# a script nobody measures\n")
+        document = yaml.safe_load(out.read_text(encoding="utf-8"))
+        document["metrics"]["complexity_findings"] += 10
+        out.write_text(yaml.safe_dump(document), encoding="utf-8")
+        assert main([*common, "check", "--baseline", str(out)]) == 1
+        assert "edited by hand" in capsys.readouterr().out
+
+    def test_inputs_unchanged_treats_an_unrecorded_input_as_changed(self) -> None:
+        recorded = _baseline(input_hashes={"src": "0" * 64})
+        current = _baseline(input_hashes=_hashes())
+        assert inputs_unchanged(recorded, current, ("src",))
+        assert not inputs_unchanged(recorded, current, ("src", "scripts"))
+        assert not inputs_unchanged(current, recorded, ("src", "scripts"))
+        assert inputs_unchanged(recorded, current, ())
+
+    def test_compare_scopes_hand_edit_detection_per_metric(self) -> None:
+        """``scripts/`` changed: orphans may improve, a ``src``-only metric may not."""
+        metrics = dict.fromkeys(METRIC_NAMES, 5)
+        recorded = _baseline(metrics=metrics, input_hashes=_hashes())
+        improved = dict.fromkeys(METRIC_NAMES, 5)
+        improved["orphan_modules"] = 4
+        improved["complexity_findings"] = 4
+        current = _baseline(metrics=improved, input_hashes=_hashes(scripts="1" * 64))
+        assert [(v.metric, v.kind) for v in compare(recorded, current)] == [
+            ("complexity_findings", "hand_edited")
+        ]
+
+    def test_compare_honours_a_custom_config(self) -> None:
+        """The importer roots come from the config passed in, not from the defaults.
+
+        Same two records, two configs: one where ``orphan_modules`` reads
+        the changed ``apps`` root (improvement accepted) and one where it
+        reads ``src`` alone (the same drop is a hand edit).
+        """
+        metrics = dict.fromkeys(METRIC_NAMES, 5)
+        improved = dict(metrics, orphan_modules=4)
+        recorded = _baseline(metrics=metrics, input_hashes={"src": "0" * 64, "apps": "0" * 64})
+        current = _baseline(metrics=improved, input_hashes={"src": "0" * 64, "apps": "1" * 64})
+        assert compare(recorded, current, ShapeConfig(importer_roots=("src", "apps"))) == []
+        narrow = compare(recorded, current, ShapeConfig(importer_roots=("src",)))
+        assert [(v.metric, v.kind) for v in narrow] == [("orphan_modules", "hand_edited")]
+
+    def test_a_schema_1_baseline_migrates_and_still_gates(
+        self,
+        fake_repo: Path,
+        mocked_toolchain: None,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A file written by the schema-1 tool keeps working: growth gated, src hand-edits caught.
+
+        Its one hash becomes the ``src`` input hash; the inputs it never
+        recorded count as changed, so a padded ``orphan_modules`` is *not*
+        provable until the file is regenerated -- the disclosed, safe
+        direction, asserted here so the limitation is visible.
+        """
+        out = tmp_path / "baseline.yaml"
+        common = ["--root", str(fake_repo), "--log-level", "ERROR"]
+        assert main([*common, "write", "--output", str(out)]) == 0
+        document = yaml.safe_load(out.read_text(encoding="utf-8"))
+        document["schema_version"] = 1
+        del document["input_hashes"]
+        legacy = tmp_path / "legacy.yaml"
+        legacy.write_text(yaml.safe_dump(document), encoding="utf-8")
+
+        loaded = load_baseline(legacy)
+        assert loaded.schema_version == SHAPE_BASELINE_SCHEMA_VERSION
+        assert loaded.input_hashes == {"src": loaded.content_hash}
+        assert main([*common, "check", "--baseline", str(legacy)]) == 0
+        assert "scripts/ is not recorded" in capsys.readouterr().out
+
+        padded = dict(document)
+        padded["metrics"] = dict(document["metrics"], complexity_findings=99)
+        legacy.write_text(yaml.safe_dump(padded), encoding="utf-8")
+        assert main([*common, "check", "--baseline", str(legacy)]) == 1
+        assert "edited by hand" in capsys.readouterr().out
+
+        padded["metrics"] = dict(document["metrics"], orphan_modules=99)
+        legacy.write_text(yaml.safe_dump(padded), encoding="utf-8")
+        assert main([*common, "check", "--baseline", str(legacy)]) == 0
+
+    def test_migrate_baseline_document_copies_and_is_idempotent(self) -> None:
+        legacy: dict[str, object] = {"schema_version": 1, "content_hash": "a" * 64}
+        migrated = migrate_baseline_document(legacy, src_root="lib")
+        assert legacy == {"schema_version": 1, "content_hash": "a" * 64}
+        assert migrated == {
+            "schema_version": SHAPE_BASELINE_SCHEMA_VERSION,
+            "content_hash": "a" * 64,
+            "input_hashes": {"lib": "a" * 64},
+        }
+        again = migrate_baseline_document(migrated, src_root="other")
+        assert again == migrated and again is not migrated
+
+    def test_migrate_baseline_document_edge_shapes(self) -> None:
+        """Unversioned is schema 1; a bad version or a bad hashes field is left to validation."""
+        assert migrate_baseline_document({"content_hash": "b" * 64}) == {
+            "schema_version": SHAPE_BASELINE_SCHEMA_VERSION,
+            "content_hash": "b" * 64,
+            "input_hashes": {"src": "b" * 64},
+        }
+        assert migrate_baseline_document({}) == {
+            "schema_version": SHAPE_BASELINE_SCHEMA_VERSION,
+            "input_hashes": {},
+        }
+        assert migrate_baseline_document({"schema_version": "x"}) == {"schema_version": "x"}
+        partial: dict[str, object] = {
+            "schema_version": 1,
+            "content_hash": "c" * 64,
+            "input_hashes": "junk",
+        }
+        assert migrate_baseline_document(partial)["input_hashes"] == {"src": "c" * 64}
+
+    def test_load_baseline_migrates_under_the_given_config(self, tmp_path: Path) -> None:
+        document = {
+            "schema_version": 1,
+            "generated_from": FAKE_SHA,
+            "content_hash": "d" * 64,
+            "metrics": dict.fromkeys(METRIC_NAMES, 1),
+        }
+        path = tmp_path / "legacy.yaml"
+        path.write_text(yaml.safe_dump(document), encoding="utf-8")
+        assert load_baseline(path).input_hashes == {"src": "d" * 64}
+        assert load_baseline(path, ShapeConfig(src_root="lib")).input_hashes == {"lib": "d" * 64}
+
+    def test_a_schema_2_document_without_input_hashes_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="requires input_hashes"):
+            _baseline(input_hashes={})
+
+    def test_a_malformed_input_hash_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="sha256 hex digests"):
+            _baseline(input_hashes={"src": "0" * 64, "scripts": "nope"})
+
+    def test_content_hash_must_be_one_of_the_input_hashes(self) -> None:
+        with pytest.raises(ValidationError, match="must appear there"):
+            _baseline(content_hash="0" * 64, input_hashes={"src": "1" * 64})
+
+    def test_round_trip_keeps_input_hashes(self, tmp_path: Path) -> None:
+        baseline = _baseline(input_hashes=_hashes(scripts="2" * 64))
+        path = tmp_path / "shape.yaml"
+        write_baseline(baseline, path)
+        assert load_baseline(path) == baseline
+        assert "input_hashes:" in path.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------

@@ -50,8 +50,11 @@ from tests.support.workflows import (
     load_workflow,
 )
 
-#: Jobs promoted into the merge gate by R-09. Both must be in ``needs`` and hard.
-PROMOTED_JOBS: Final[tuple[str, ...]] = ("focus", "secrets")
+#: Jobs this cycle placed into the merge gate: ``focus`` and ``secrets`` were
+#: promoted by R-09; ``typecheck`` was split out of ``lint`` by R-12a and
+#: carries the abstraction audit, which was already a hard gate there. Each
+#: must be in ``needs`` and hard.
+PROMOTED_JOBS: Final[tuple[str, ...]] = ("focus", "secrets", "typecheck")
 
 #: The pull-request-only job whose ``skipped`` result needs explaining.
 FOCUS_JOB: Final[str] = "focus"

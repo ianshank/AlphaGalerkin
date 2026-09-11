@@ -52,8 +52,10 @@ AUDIT_MODULE = "scripts.audit_abstractions"
 EXIT_OK = 0
 
 #: The workflow carrying the blocking gate, and the job the audit runs in.
+#: The audit lived in ``lint`` until 2026-09-11, when the torch-dependent
+#: static checks were split into their own ``typecheck`` job (plan R-12a).
 CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
-LINT_JOB = "lint"
+AUDIT_JOB = "typecheck"
 
 #: The flag that turns the audit from a report into a gate.
 FAIL_ON_MISSING_FLAG = "--fail-on-missing"
@@ -97,10 +99,10 @@ def _lint_job_steps() -> list[dict[str, Any]]:
     assert isinstance(document, dict), f"{CI_WORKFLOW} did not parse to a mapping"
     jobs = document.get("jobs")
     assert isinstance(jobs, dict), f"{CI_WORKFLOW} declares no jobs"
-    job = jobs.get(LINT_JOB)
-    assert isinstance(job, dict), f"{CI_WORKFLOW} has no '{LINT_JOB}' job"
+    job = jobs.get(AUDIT_JOB)
+    assert isinstance(job, dict), f"{CI_WORKFLOW} has no '{AUDIT_JOB}' job"
     steps = job.get("steps")
-    assert isinstance(steps, list), f"{CI_WORKFLOW}::{LINT_JOB} has no steps"
+    assert isinstance(steps, list), f"{CI_WORKFLOW}::{AUDIT_JOB} has no steps"
     return [step for step in steps if isinstance(step, dict)]
 
 
@@ -132,7 +134,7 @@ def _first_gated_audit_command() -> list[str]:
                 continue
             return shlex.split(command)
     raise AssertionError(
-        f"{CI_WORKFLOW}::{LINT_JOB} has no '{AUDIT_MODULE} ... {FAIL_ON_MISSING_FLAG}' "
+        f"{CI_WORKFLOW}::{AUDIT_JOB} has no '{AUDIT_MODULE} ... {FAIL_ON_MISSING_FLAG}' "
         "step with explicit (non-substituted) roots"
     )
 

@@ -3,6 +3,41 @@
 ## [Unreleased]
 
 ### Changed
+- **R-12: `lint` split from `typecheck`; `coverage-gates` sharded 4-way.**
+  (a) `lint` is ruff-only and installs only ruff (it used to pull torch so
+  mypy could resolve tensor types, making every `needs: lint` edge wait
+  minutes for a 30 MB check); mypy and both abstraction-audit steps moved to
+  a new `typecheck` job that runs in parallel and is a hard gate in
+  `ci-success` (the audit was already hard inside `lint`; moving it must not
+  downgrade it). `test-integration`, `test-e2e` and `test-extras` now depend
+  on `lint` instead of `test-fast`, so they start seconds after checkout
+  rather than after the 45-minute unit matrix; `test-slow` keeps
+  `needs: test-fast` because its own `if:` reads that result. Job id `lint`
+  is kept for `tests/docs/test_e2e_visibility.py`'s blocking-set anchor;
+  `tests/e2e/test_governance_cli_journey.py` now parses `typecheck` for the
+  gated audit argv. (b) The 44 per-module gate steps run under
+  `strategy.matrix.shard: [1, 2, 3, 4]` with `matrix.shard == N` in each
+  step's `if:` (balanced by test-function count, ~2.4k per shard); the steps
+  stay in `ci.yml` so the charter and coverage-gate-integrity guards keep
+  reading their `run:` bodies. New guard
+  `tests/docs/test_coverage_gate_shards.py` (3 planted mutations killed):
+  every gate step names exactly one shard that exists, every shard has ≥ 1
+  step, setup steps carry no shard condition, `always()` survives on every
+  gate, `fail-fast` is off, and no shard carries > 2× the mean load.
+- **R-11: shape baseline.** `scripts/measure_shape.py` computes nine
+  code-shape metrics over `src/` (ruff `C901` complexity findings, `PLR2004`
+  magic values per `(file, rule)`, `T201` library prints, lazy first-party
+  imports, ad-hoc device-resolution sites, orphan modules, dead `ImportError`
+  guards, shim files without a deprecation warning, `hf_space` mirror
+  divergence) and records them with a sha256 content hash of `src/**/*.py`
+  in `config/shape_baseline.yaml`. `tests/docs/test_shape_baseline.py`
+  fails when any metric **grows** (a ratchet, not a target) and when a
+  recorded count is hand-edited rather than regenerated (the recorded value
+  must equal the live measurement when the hash matches). A mutation check
+  found and fixed a weakness in the first draft: `__main__` detection was a
+  substring test, so a comment mentioning `__main__` exempted a library
+  file from the print rule; it is now an AST check. 3/3 mutations killed;
+  `tests/scripts/test_measure_shape.py` covers the script at 99% branch.
 - **R-09: `focus` and `secrets` are hard merge gates.** Both jobs ran on
   every pull request since they landed (2026-09-08 and 2026-08-21) and could
   not fail the build; their comments promised promotion "once green across a

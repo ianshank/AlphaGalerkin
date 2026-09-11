@@ -296,7 +296,7 @@ Guards: CLAUDE.md row *"Abstraction audit (F0/F1 screen)"*.
 
 | Test | Journey | Asserts |
 | --- | --- | --- |
-| `test_audit_abstractions_with_the_ci_gated_argv_is_clean` | parse the `lint` job for the **first** `python -m scripts.audit_abstractions … --fail-on-missing` line — the one with explicit roots (the second step expands `$(ls -d src/*/ …)` and is not hermetically parseable, so it is deliberately not the source); run it | exit 0; the parsed root set equals the four CLAUDE.md names — a fifth or a missing one fails, so the row and the workflow cannot diverge |
+| `test_audit_abstractions_with_the_ci_gated_argv_is_clean` | parse the `typecheck` job (the audit lived in `lint` until the 2026-09-11 split) for the **first** `python -m scripts.audit_abstractions … --fail-on-missing` line — the one with explicit roots (the second step expands `$(ls -d src/*/ …)` and is not hermetically parseable, so it is deliberately not the source); run it | exit 0; the parsed root set equals the four CLAUDE.md names — a fifth or a missing one fails, so the row and the workflow cannot diverge |
 | `test_audit_report_only_root_exits_zero_with_findings` | `python -m scripts.audit_abstractions src/backend` | exit 0 *(measured)*; findings printed |
 
 Dropped from v1: `check_focus --base HEAD --head HEAD` (empty diff by construction — nothing

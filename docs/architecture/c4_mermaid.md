@@ -1788,7 +1788,7 @@ C4Component
 | `tests/claude/` | blocking CI step | A skill citing a deleted path, an agent declaring a non-existent tool, or a permission naming a renamed module — each fails only when someone relies on it |
 | gitleaks | blocking CI step | A committed secret. Previously unenforced: config present, scanner never invoked |
 | 45 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
-| Abstraction audit | blocking `lint` job | A dead `@abstractmethod` accumulating call-site-free API |
+| Abstraction audit | blocking `typecheck` job (split out of `lint` 2026-09-11) | A dead `@abstractmethod` accumulating call-site-free API |
 | `make pre-pr` | local | Local/CI drift. Kept in step by hand; the duplication is tracked as backlog B7 |
 
 **Deliberately not gated**, with reasons rather than numbers: `src/integrations`

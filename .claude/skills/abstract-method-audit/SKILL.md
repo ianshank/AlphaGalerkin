@@ -41,7 +41,7 @@ Treat it as a *screen*, not a proof — a hit is a strong signal, a clean run is
 ## Policy
 
 - **`src/mcts`, `src/refinement` and `src/pde` are clean and must stay clean.** All three are
-  gated with `--fail-on-missing` **in CI** (`.github/workflows/ci.yml`, `lint` job), so a newly
+  gated with `--fail-on-missing` **in CI** (`.github/workflows/ci.yml`, `typecheck` job), so a newly
   dead abstraction on these surfaces fails the build:
 
       python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing

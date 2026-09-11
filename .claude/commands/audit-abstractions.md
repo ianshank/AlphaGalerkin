@@ -15,7 +15,7 @@ Interpretation:
 - **Report mode is non-blocking** — triage the hits, don't batch-fix. Known pre-existing dead
   abstractions live in the domain PoCs (`src/backend`).
 - `src/mcts`, `src/refinement` and `src/pde` **are clean and must stay clean** — CI runs them
-  with `--fail-on-missing` (`.github/workflows/ci.yml`, `lint` job), so treat any hit as a
+  with `--fail-on-missing` (`.github/workflows/ci.yml`, `typecheck` job), so treat any hit as a
   blocker:
 
   ```bash

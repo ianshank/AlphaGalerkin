@@ -1,7 +1,9 @@
 # Scope-containment configuration for the current implementation cycle.
 #
 # Prose lives in `docs/FOCUS.md`; this file is the machine-readable half, read
-# by `scripts/check_focus.py` (wired into CI's `lint` job). The two are kept in
+# by `scripts/check_focus.py` (CI's own `focus` job, a hard gate in
+# `ci-success` since 2026-09-11 -- pull-request runs only, with the visible
+# `focus-override` label as the escape hatch). The two are kept in
 # step by `tests/scripts/test_check_focus.py`, which asserts every track named
 # here appears in the doc and vice versa -- a frozen track nobody wrote down is
 # indistinguishable from an accident.

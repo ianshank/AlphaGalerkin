@@ -338,6 +338,29 @@ _IF_BLOCK = re.compile(r"if\s*\[\[(?P<cond>.*?)\]\]\s*;\s*then(?P<body>.*?)\bfi\
 _NEEDS_RESULT = re.compile(r"needs\.(?P<job>[A-Za-z0-9_.-]+)\.result")
 
 
+def hard_gate_conditions(script: str) -> list[str]:
+    """The ``[[ ... ]]`` condition of every ``if`` block whose body reaches ``exit 1``.
+
+    The raw condition text is what a guard needs when the *shape* of a gate
+    matters and not only which job it names -- ``ci-success``'s ``focus`` gate,
+    for example, must accept ``skipped`` on a push and reject it on an
+    unlabelled pull request, and only the condition can show that.
+
+    Args:
+        script: The body of a ``run:`` step (typically ``ci-success``'s).
+
+    Returns:
+        Condition strings in source order, one per ``exit 1`` block. Blocks
+        that only ``echo`` are not included.
+
+    """
+    return [
+        block.group("cond")
+        for block in _IF_BLOCK.finditer(script)
+        if "exit 1" in block.group("body")
+    ]
+
+
 def hard_gate_jobs(script: str) -> set[str]:
     """Job names this script *fails the build* on, as opposed to merely reporting.
 
@@ -354,8 +377,6 @@ def hard_gate_jobs(script: str) -> set[str]:
 
     """
     gated: set[str] = set()
-    for block in _IF_BLOCK.finditer(script):
-        if "exit 1" not in block.group("body"):
-            continue
-        gated.update(_NEEDS_RESULT.findall(block.group("cond")))
+    for condition in hard_gate_conditions(script):
+        gated.update(_NEEDS_RESULT.findall(condition))
     return gated

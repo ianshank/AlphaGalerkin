@@ -211,13 +211,15 @@ jobs:
   # deliberately shallow (fetch-depth 1). Deepening it would slow every step in
   # that job to serve one check.
   #
-  # NOT in `ci-success`'s needs list, deliberately and temporarily -- the same
-  # convention the `secrets` job above documents. It was verified clean against
-  # this branch's own diff before landing, and it is mutation-tested (8/8), but
-  # a brand-new gate promoted into someone's merge path by the same pull request
-  # that introduces it gives a first red no way to be triaged. Promote it into
-  # the merge gate once it has been green across a few pull requests. Leaving
-  # that unsaid would make its absence look like an oversight.
+  # A HARD merge gate since 2026-09-11 (plan R-09): in `ci-success.needs` and
+  # its `exit 1` block. It landed outside the merge gate on purpose -- a
+  # brand-new gate promoted into someone's merge path by the same pull request
+  # that introduces it gives a first red no way to be triaged -- and was
+  # promoted once it had been green across several pull requests. Because the
+  # job is `pull_request`-only, `ci-success` accepts `skipped` from it exactly
+  # when the event is not a pull request or the `focus-override` label is
+  # present; a skip on a plain pull request fails the build. Guarded by
+  # tests/docs/test_ci_success_hard_gates.py.
   focus:
     name: Scope Containment
     runs-on: ubuntu-latest
@@ -295,11 +297,13 @@ jobs:
   # Narrowing that allowlist is tracked separately -- widening the scan and
   # wiring it in one change makes a first run's failures impossible to triage.
   #
-  # NOT in `ci-success`'s needs list, deliberately and temporarily: this job has
-  # never completed a green run, and its first attempt failed for a harness
-  # reason rather than a finding. It reports now and blocks later -- promote it
-  # into the merge gate once it has been green across a few pushes. Leaving that
-  # unsaid would make its absence look like an oversight.
+  # A HARD merge gate since 2026-09-11 (plan R-09): in `ci-success.needs` and
+  # its `exit 1` block. Its first attempt failed for a harness reason rather
+  # than a finding (the shallow-clone problem above), so it reported without
+  # blocking until it had been green across several pushes, then was promoted.
+  # It shares `ci-success`'s own `if:`, so it is never `skipped` when the gate
+  # runs and needs no skip handling. Guarded by
+  # tests/docs/test_ci_success_hard_gates.py.
   secrets:
     name: Secret Scan
     runs-on: ubuntu-latest
@@ -1475,9 +1479,11 @@ jobs:
   # merge block) until its cross-runner stability is characterised — promote to a
   # required gate afterwards. This cycle documents it as a *disclosed soft job*
   # (in `ci-success.needs` so the job still runs on PRs; `ci-success` only
-  # `echo NOTE`s a non-green result, no `exit 1`). Same convention as
-  # `focus`/`secrets`, which are omitted from `needs` entirely. Do not mix
-  # this disclosure with exclusion-list edits.
+  # `echo NOTE`s a non-green result, no `exit 1`). `focus` and `secrets` used
+  # the same report-then-block convention and were promoted on 2026-09-11
+  # (R-09); this job is the last disclosed soft job, and R-07 decides whether
+  # it flips hard or becomes a charter deviation. Do not mix this disclosure
+  # with exclusion-list edits.
   transfer-baseline-regression:
     name: Transfer Baseline Regression
     runs-on: ubuntu-latest
@@ -1520,7 +1526,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-e2e, test-jax, test-chess]
+    needs: [lint, focus, secrets, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-e2e, test-jax, test-chess]
     # !cancelled() rather than always(): a run superseded by the concurrency
     # group (push + pull_request for the same branch, or a newer push) has its
     # needed jobs cancelled, and under always() this job would still execute,
@@ -1534,6 +1540,8 @@ jobs:
         run: |
           echo "=== CI Gate Results ==="
           echo "  lint:                        ${{ needs.lint.result }}"
+          echo "  focus:                       ${{ needs.focus.result }}"
+          echo "  secrets:                     ${{ needs.secrets.result }}"
           echo "  test-fast:                   ${{ needs.test-fast.result }}"
           echo "  coverage:                    ${{ needs.coverage.result }}"
           echo "  coverage-gates:              ${{ needs.coverage-gates.result }}"
@@ -1554,6 +1562,30 @@ jobs:
           # Required gates: lint must pass
           if [[ "${{ needs.lint.result }}" != "success" ]]; then
             echo "FAIL: Lint & Type Check failed (result=${{ needs.lint.result }})"
+            exit 1
+          fi
+
+          # Scope containment (promoted 2026-09-11, R-09). The job is
+          # pull_request-only, so `skipped` is legitimate on a push -- but a
+          # skip on a pull request is legitimate ONLY under the visible
+          # `focus-override` label. A bare `!= success` would either fail
+          # every push run or, written `== failure`, let a skipped-by-accident
+          # gate through; both clauses are needed and both are guarded by
+          # tests/docs/test_ci_success_hard_gates.py.
+          if [[ "${{ needs.focus.result }}" != "success" && "${{ needs.focus.result }}" != "skipped" ]]; then
+            echo "FAIL: Scope containment failed (result=${{ needs.focus.result }})"
+            exit 1
+          fi
+          if [[ "${{ needs.focus.result }}" == "skipped" && "${{ github.event_name }}" == "pull_request" \
+                && "${{ contains(github.event.pull_request.labels.*.name, 'focus-override') }}" != "true" ]]; then
+            echo "FAIL: Scope containment skipped on a pull request without the focus-override label"
+            exit 1
+          fi
+
+          # Secret scan (promoted 2026-09-11, R-09). Shares this job's own
+          # `if:`, so it is never skipped when this runs: a bare check is exact.
+          if [[ "${{ needs.secrets.result }}" != "success" ]]; then
+            echo "FAIL: Secret scan failed (result=${{ needs.secrets.result }})"
             exit 1
           fi
 
@@ -1591,7 +1623,7 @@ jobs:
           # The three below were NEVER in `needs` (B38, 2026-09-02): hard-failing
           # jobs that ran on every PR with no `if:` and could not block a merge.
           # test-chess even carries its own --cov-fail-under=80 on src/games that
-          # enforced nothing. focus/secrets stay out per their own comments;
+          # enforced nothing. focus/secrets joined on 2026-09-11 (R-09, above);
           # test-slow stays out because it is PR-invisible by design.
           if [[ "${{ needs.test-integration.result }}" != "success" ]]; then
             echo "FAIL: Integration tests failed (result=${{ needs.test-integration.result }})"

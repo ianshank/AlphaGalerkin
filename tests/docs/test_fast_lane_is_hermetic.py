@@ -30,14 +30,15 @@ Mutation kills (each planted, run, reverted):
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Final
 
 import pytest
-import tomllib
 
+from tests.docs.test_marker_vocabulary import registered_markers
 from tests.support.workflows import (
     REPO_ROOT,
     load_workflow,
@@ -120,15 +121,32 @@ def _makefile_variable(name: str) -> str:
     raise AssertionError(f"Makefile defines no variable {name}")
 
 
+#: The ``dev = [ ... ]`` list inside ``[project.optional-dependencies]``.
+#: Anchored regex rather than ``tomllib``, following the sibling
+#: ``tests/docs/test_marker_vocabulary.py``: ``tomllib`` is stdlib only from
+#: 3.11 and this repo's declared floor is 3.10, so importing it here would be
+#: a *collection* error on the oldest supported interpreter -- the exact
+#: defect ``tests/docs/test_python_floor_compatibility.py`` exists to catch,
+#: and it caught the first draft of this file.
+_DEV_EXTRA_BLOCK: Final[re.Pattern[str]] = re.compile(r"^dev\s*=\s*\[(?P<body>.*?)^\]", re.M | re.S)
+_REQUIREMENT_ENTRY: Final[re.Pattern[str]] = re.compile(r'^\s*"(?P<entry>[^"]+)",?\s*$')
+
+
 def _dev_requirements() -> list[str]:
-    document = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-    return list(document["project"]["optional-dependencies"]["dev"])
+    text = PYPROJECT.read_text(encoding="utf-8")
+    match = _DEV_EXTRA_BLOCK.search(text)
+    assert match, f"could not locate the `dev` extra in {PYPROJECT.name}"
+    entries = [
+        entry.group("entry")
+        for entry in map(_REQUIREMENT_ENTRY.match, match.group("body").splitlines())
+        if entry is not None
+    ]
+    assert entries, "the `dev` extra parsed empty -- the dependency check would be inert"
+    return entries
 
 
-def _registered_markers() -> list[str]:
-    document = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-    markers = document["tool"]["pytest"]["ini_options"]["markers"]
-    return [entry.split(":", 1)[0].strip() for entry in markers]
+def _registered_markers() -> set[str]:
+    return registered_markers(PYPROJECT)
 
 
 def _marker_expression(script_or_command: str) -> str:

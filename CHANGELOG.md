@@ -3,6 +3,43 @@
 ## [Unreleased]
 
 ### Changed
+- **R-09: `focus` and `secrets` are hard merge gates.** Both jobs ran on
+  every pull request since they landed (2026-09-08 and 2026-08-21) and could
+  not fail the build; their comments promised promotion "once green across a
+  few runs" and nothing read the promise. Both now sit in `ci-success.needs`
+  and its `exit 1` block. The `focus` gate is event-aware (it is
+  `pull_request`-only, so `ci-success` accepts `skipped` exactly when the
+  event is not a pull request or the visible `focus-override` label is
+  present, and fails the build on any other skip); `secrets` shares
+  `ci-success`'s own `if:` and gets a bare check. New guard
+  `tests/docs/test_ci_success_hard_gates.py` (4 planted mutations killed)
+  asserts membership, the shape of the `focus` condition, that the label is
+  spelled identically in both places, and that **every** job in `ci.yml` is
+  either a hard gate or a disclosed, self-expiring exception (`test-slow`,
+  `transfer-baseline-regression`). `tests/support/workflows.py` gains
+  `hard_gate_conditions`; `hard_gate_jobs` is re-expressed over it. Charter
+  frozen-tracks deviation row amended via
+  `openspec/changes/focus-secrets-merge-gate/`; `config/focus.yaml`'s header
+  no longer claims the check runs inside the `lint` job. Nothing in the
+  YAML's tracks changed (decision D9).
+- **R-02: the fast lane is hermetic.** CI's `test-fast` and `coverage` steps
+  and the Makefile's `test-fast` / `coverage` targets run under
+  `pytest-socket` (`--disable-socket --allow-unix-socket
+  --allow-hosts=127.0.0.1,localhost`, one canonical set carried as the
+  workflow-level `HERMETIC_PYTEST_FLAGS` env and a Makefile variable) and
+  deselect the new `network` marker. Two `video_compression` "unit" tests
+  downloaded ImageNet VGG weights (hygiene B35) and now use an `offline_vgg`
+  fixture. `tests/security/conftest.py` pins every security test to a
+  temporary CWD, so `test_path_traversal_in_config` no longer passes by
+  accident of where pytest was launched. Guard
+  `tests/docs/test_fast_lane_is_hermetic.py` keeps the three copies equal
+  and proves in a subprocess that an outbound connect is refused while a
+  loopback bind still works.
+- **R-10: module size budget.** `tests/docs/test_module_size_budget.py`
+  freezes every `src/` module over 600 lines (44 rows) and every test module
+  over 1000 lines (8 rows) at its recorded size: an unlisted module may not
+  cross the ceiling, a listed one may not grow, and a listed one that shrinks
+  below the ceiling must drop its row.
 - **R-03: `mypy --strict` to zero unsuppressed errors.** Removed the
   `[unused-ignore]` on `src/training/base_trainer.py:45` and made
   `SupportsMetricsMapping.metrics` (`src/poc/scenarios/_compare_common.py`) a

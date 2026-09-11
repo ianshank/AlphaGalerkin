@@ -327,6 +327,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `openspec/changes/focus-secrets-merge-gate/`; `config/focus.yaml`'s header
   no longer claims the check runs inside the `lint` job. Nothing in the
   YAML's tracks changed (decision D9).
+- **R-14 / B22 — concurrent-subagent worktree-isolation rule.** Root `AGENT.md` gains `## Concurrent subagents` (anchor sentence + four clauses + the PR #140 `git stash` incident); the anchor is repeated verbatim in all six `.claude/agents/*.md` (every one declares `Bash`). New guard `tests/claude/test_worktree_rule.py`: anchor exactly once in `AGENT.md`, the test constant read back from the doc, every Bash agent carries the anchor + clause 4 (discovered on disk, non-vacuous), `settings.json` grants `Bash(git worktree:*)`. 5/5 mutation-killed of six planted; the sixth (Bash stripped, sentence kept) survives by design. No skill/agent/command added. Companion: `tests/claude/test_harness_validation.py` no longer scans `.claude/worktrees/` (nested subagent checkouts), which produced ~250 spurious failures while agents ran.
 - **R-13: `tests/integrations/eval_harness/` is countable, hard-failable and
   gated.** Eight of its eleven files opened with a module-level
   `pytest.importorskip("eval_harness")`, which yields zero items -- so the

@@ -665,7 +665,7 @@ PR #151's branch. "Guard" is the test file that turns the ticket into a check.
 | R-08 CHANGELOG structure | yes | `d6550c1` (merge) | `tests/docs/test_changelog_headers.py` | 206/206 bullets preserved; no version bump (owner's call, D8) |
 | R-04a lockfile foundation | **blocked** | `impl/r04a` @ `a9cd02d`, unmerged | `tests/docs/test_uv_lock.py` | `uv lock` needs egress to `download.pytorch.org`, denied by the implementing sandbox's policy; the branch carries the `cpu` extra, pins, ADR 0006 and the guard, and lands once the lock is generated on a host with egress |
 | R-05 artifact manifest | in progress | `impl/r05` | `tests/docs/test_artifact_manifest.py` | — |
-| R-14 worktree rule | in progress | `impl/r14` | `tests/claude/test_worktree_rule.py` | — |
+| R-14 worktree rule | yes | `1b5be92` (merge) | `tests/claude/test_worktree_rule.py` | 5/5 of six planted; the sixth survives by design (Bash ⇒ anchor, not the converse) |
 | R-04b, R-06, R-07 | not started | — | — | R-04b/R-06 wait on the lock; R-07 needs three stable transfer runs after it |
 | R-01 | owner | — | — | merge dependabot, close #139, disposition stale PRs |
 
@@ -864,7 +864,7 @@ uv lock --dry-run --python 3.10     # 206 packages, ~10 s
 | B15 script CLI boilerplate | open | 3.4 |
 | B16 fixture prune / shim policy | open | 3.6, 5.8 |
 | B21 god-file-split skill | done | used by WS1 |
-| B22 subagent worktree isolation | open | R-14 |
+| B22 subagent worktree isolation | done (2026-09-11, R-14) | R-14 |
 | B35 network-fetching unit tests | open; reproduced | R-02 |
 | B37 eval-harness ungated | open | R-13 |
 | CHANGELOG parked LBB `* 10` / FNO `128` | open | 2.2 |

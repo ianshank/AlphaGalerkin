@@ -554,7 +554,7 @@ half of Phase 2c only — B20's own literal list (`src/poc/cli.py`,
 | tests/support | ~95 | docs + import-graph consumers | **Gated at 85** (2026-09-10) in `coverage-gates`. First-landing cap. Not in pyproject `omit`. |
 | src/backend | 56 | 213 | Stays at **54** — raising needs `logging.py`/`rng.py` tests first. Parked. |
 | src/deployment | 27.91 | — | Stays at **25** tripwire. Raising is real test work. Parked. |
-| src/integrations/eval_harness | — | 11 passed / 8 skipped | **B37 parked** this cycle: extra is installed in `test-extras` but those tests are not selected. |
+| src/integrations/eval_harness | — (unmeasured) | 39 collected, all `eval_harness_required` | **B37 closed 2026-09-11 (R-13)**: gated in `test-extras` at a **1 tripwire** (inline coveragerc overrides the omit; `-m "eval_harness_required"` selects the whole suite). The real `floor(measured)-2` is set from the first green run; no figure is quoted until then. |
 
 ### 7.5 Mypy override debt (measured)
 

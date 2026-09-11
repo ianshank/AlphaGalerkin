@@ -26,7 +26,7 @@
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
         test-regression test-sanity test-security test-demos test-claude \
-        test-substrate docker-build docker-test
+        test-substrate test-eval-harness docker-build docker-test
 
 # ---------------------------------------------------------------------------
 # Tool resolution
@@ -75,6 +75,12 @@ STOCH_COV_THRESHOLD    ?= 85
 # substrates package is 272 statements at 99%, so an 85 gate would carry 14
 # points of slack. Must match ci.yml's test-extras step.
 SUBSTRATE_COV_THRESHOLD ?= 95
+# A TRIPWIRE, not a measurement (R-13): proves the step measures something
+# and cannot pass on an omit collision (0.00%). The [eval-harness] git extra
+# could not be installed where this was authored, so no percentage exists yet;
+# set floor(measured)-2 from the first green test-extras run that reports one.
+# Must match ci.yml's test-extras step.
+EVAL_HARNESS_COV_THRESHOLD ?= 1
 
 # ---------------------------------------------------------------------------
 # Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02)
@@ -240,6 +246,21 @@ test-substrate:
 		--cov=src/research/substrates \
 		--cov-config=.coveragerc.substrates \
 		--cov-branch --cov-fail-under=$(SUBSTRATE_COV_THRESHOLD) -q --no-header
+
+# Mirrors ci.yml's test-extras "Coverage gate (src/integrations/eval_harness)"
+# step (R-13). REQUIRES the optional [eval-harness] git extra, so like
+# `test-substrate` it is deliberately NOT chained into `pre-pr`.
+# ALPHAGALERKIN_REQUIRE_EXTRAS=1 turns a missing extra into a loud collection
+# error rather than 28 counted skips and a "coverage too low" that names the
+# symptom. The heredoc'd rcfile drops the package from pyproject.toml's global
+# coverage `omit` for this run only.
+test-eval-harness:
+	@printf '[run]\nbranch = true\n\n[report]\nshow_missing = true\n' > .coveragerc.eval-harness
+	ALPHAGALERKIN_REQUIRE_EXTRAS=1 $(PYTEST) tests/integrations/eval_harness/ \
+		-m "eval_harness_required" \
+		--cov=src/integrations/eval_harness \
+		--cov-config=.coveragerc.eval-harness \
+		--cov-branch --cov-fail-under=$(EVAL_HARNESS_COV_THRESHOLD) -q --no-header
 
 test-all:
 	$(PYTEST) tests/ -q --no-header

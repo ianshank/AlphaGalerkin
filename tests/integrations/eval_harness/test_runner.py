@@ -13,9 +13,11 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("torch")
-pytest.importorskip("eval_harness")
 
-from src.integrations.eval_harness.runner import run_eval
+# ``runner`` imports the harness at module scope, so it is resolved inside the
+# test rather than here: this file must collect on a base install so the root
+# ``conftest.py`` ``eval_harness_required`` hook can count (or hard-fail) it.
+pytestmark = pytest.mark.eval_harness_required
 
 
 def _config(results_dir: Path) -> dict[str, object]:
@@ -50,6 +52,8 @@ def _config(results_dir: Path) -> dict[str, object]:
 
 
 def test_run_eval_offline_end_to_end(tmp_path: Path) -> None:
+    from src.integrations.eval_harness.runner import run_eval
+
     results_dir = tmp_path / "poc"
     config_path = tmp_path / "cfg.json"  # yaml.safe_load parses JSON
     config_path.write_text(json.dumps(_config(results_dir)))

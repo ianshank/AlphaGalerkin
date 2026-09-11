@@ -8,16 +8,19 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("torch")
-pytest.importorskip("eval_harness")
 
 from src.integrations.eval_harness.config import OracleDatasetParams
-from src.integrations.eval_harness.dataset import (
-    BasisOracleDataset,
-    build_dataset_jsonl,
-)
+
+# ``dataset`` subclasses the harness ``DatasetSource`` at import time, so it is
+# resolved inside each test rather than here: this file must collect on a base
+# install so the root ``conftest.py`` ``eval_harness_required`` hook can count
+# (or hard-fail) it (R-13).
+pytestmark = pytest.mark.eval_harness_required
 
 
 def test_basis_oracle_dataset_yields_labeled_items() -> None:
+    from src.integrations.eval_harness.dataset import BasisOracleDataset
+
     dataset = BasisOracleDataset(
         pde_families=["poisson"],
         seeds=[0, 1],
@@ -37,6 +40,8 @@ def test_basis_oracle_dataset_yields_labeled_items() -> None:
 
 
 def test_build_dataset_jsonl_round_trip(tmp_path: Path) -> None:
+    from src.integrations.eval_harness.dataset import build_dataset_jsonl
+
     params = OracleDatasetParams(pde_families=["poisson"], seeds=[0], n_candidate_bases=8)
     path = tmp_path / "labels.jsonl"
     count = build_dataset_jsonl(params, path)

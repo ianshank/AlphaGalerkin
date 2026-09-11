@@ -7,6 +7,12 @@ from pydantic import ValidationError
 
 from src.integrations.eval_harness.config import BasisCellParams, OracleDatasetParams
 
+# Needs only the base install, but marked anyway (R-13): the suite is gated by
+# `-m "eval_harness_required"` in test-extras, and an unmarked file would sit
+# OUTSIDE the measurement of the very package the gate exists for. On a base
+# install these are counted skips, not silent ones.
+pytestmark = pytest.mark.eval_harness_required
+
 
 def test_basis_cell_params_defaults() -> None:
     params = BasisCellParams(pde_family="poisson")

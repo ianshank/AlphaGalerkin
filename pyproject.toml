@@ -532,6 +532,7 @@ markers = [
     "e2e: end-to-end integration tests",
     "gpu_required: tests requiring GPU",
     "fem_required: tests requiring the optional scikit-fem extra ([fem])",
+    "eval_harness_required: tests requiring the optional langfuse-eval-harness git extra ([eval-harness])",
     "onnx_required: tests requiring ONNX",
     "jax: JAX-specific tests",
     "cross_backend: cross-backend equivalence tests",
@@ -565,10 +566,14 @@ omit = [
     "src/research/fem_baseline.py",
     "src/research/substrates/skfem_tri.py",
     # The eval-harness adapter requires the optional [eval-harness] git dependency
-    # (langfuse-eval-harness, not on PyPI). Its tests use ``pytest.importorskip``
-    # and skip cleanly in the default CI matrix, so it is omitted from the global
-    # gate (like fem_baseline); per-module coverage is enforced by the dedicated
-    # "Eval-harness adapter" Regression Surface command when the extra is present.
+    # (langfuse-eval-harness, not on PyPI). Its tests carry ``eval_harness_required``
+    # (root conftest.py skips them *visibly* with a count when the extra is absent,
+    # and hard-fails collection under ALPHAGALERKIN_REQUIRE_EXTRAS=1), so it is
+    # omitted from the global gate like fem_baseline. Per-module coverage is gated
+    # by the `test-extras` job's "Coverage gate (src/integrations/eval_harness)"
+    # step in ci.yml, which installs the extra and overrides this omit with an
+    # inline coveragerc (R-13). Until 2026-09-11 this comment cited an
+    # "Eval-harness adapter" Regression Surface command that never existed.
     "src/integrations/eval_harness/*",
     # Retired sub-projects excluded from the active AlphaGalerkin physics charter
     "src/video_compression/*",

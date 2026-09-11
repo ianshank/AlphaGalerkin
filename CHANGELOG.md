@@ -22,6 +22,33 @@
   `openspec/changes/focus-secrets-merge-gate/`; `config/focus.yaml`'s header
   no longer claims the check runs inside the `lint` job. Nothing in the
   YAML's tracks changed (decision D9).
+- **R-13: `tests/integrations/eval_harness/` is countable, hard-failable and
+  gated.** Eight of its eleven files opened with a module-level
+  `pytest.importorskip("eval_harness")`, which yields zero items -- so the
+  root hook could not count them, `ALPHAGALERKIN_REQUIRE_EXTRAS=1` could not
+  fail them, and `test-extras` installed the extra "specifically to un-skip"
+  them and then selected none (hygiene B37; the integrity guard's exemption
+  cited a Regression Surface row that never existed). New registered
+  `eval_harness_required` marker on every file; the four files importing
+  `eval_harness.*` at module scope (`contract`, `plugins`, `scorers`, `sink`)
+  and the two whose adapter modules do (`dataset`, `runner`) moved those
+  imports into fixtures, so the suite collects without the extra (39 items).
+  Root `conftest.py` mirrors the `fem_required` block via
+  `importlib.util.find_spec` through one shared `_gate_optional_extra` body:
+  a counted skip, or `pytest.UsageError` naming
+  `pip install -e '.[eval-harness]'` under `ALPHAGALERKIN_REQUIRE_EXTRAS=1`.
+  New `test-extras` step gates `--cov=src/integrations/eval_harness` with an
+  inline coveragerc (the package is in the global `omit`) at
+  `--cov-fail-under=1` -- **a tripwire, not a measurement**: the git extra
+  could not be installed where this was authored, so no percentage exists;
+  set `floor(measured)-2` from the first green run and mirror it into the
+  charter gates row. `make test-eval-harness` mirrors the step (not chained
+  into `pre-pr`, like `test-substrate`). `_OMIT_WITHOUT_A_CI_GATE` is now
+  empty. Guard `tests/docs/test_eval_harness_gating.py` (7 planted mutations
+  killed) drives the hook and the Makefile rather than grepping them. The
+  three base-install files are marked too, so their 11 tests now run in
+  `test-extras` instead of the fast lane -- inside the gate's measurement
+  rather than outside it.
 - **R-02: the fast lane is hermetic.** CI's `test-fast` and `coverage` steps
   and the Makefile's `test-fast` / `coverage` targets run under
   `pytest-socket` (`--disable-socket --allow-unix-socket

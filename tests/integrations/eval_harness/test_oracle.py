@@ -12,6 +12,11 @@ from src.poc.scenarios._centaur_common import (
     build_pde_operator,
 )
 
+# Needs only the base install, but marked anyway (R-13): the suite is gated by
+# `-m "eval_harness_required"` in test-extras, and an unmarked file would sit
+# OUTSIDE the measurement of the very package the gate exists for.
+pytestmark = pytest.mark.eval_harness_required
+
 
 def test_greedy_oracle_matches_bruteforce() -> None:
     operator = build_pde_operator("poisson")

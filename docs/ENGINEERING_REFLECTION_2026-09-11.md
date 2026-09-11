@@ -42,18 +42,18 @@ or in the tree.
 | ID | Week | Ticket | Size | Guard / acceptance | Route |
 |---|---|---|---|---|---|
 | R-01 | 1 | PR hygiene: merge #136, #138; rebase-merge #103, #135; **close #139** (violates the repo's own dependabot ignore rule); disposition #48, #57, #118 (release or keep ADR 0003), #128 (unblocks the soft ONNX step) | S | zero dependabot PRs > 14 days | direct |
-| R-02 | 1 | Hermetic fast lane: `pytest-socket` with `--allow-hosts=127.0.0.1,localhost --allow-unix-socket`; `network` marker; the two VGG-download tests mocked (own PR, ≤ 20 lines) | S | a planted socket-opening test goes red | direct + `frozen` (test file) |
-| R-03 | 1 | `mypy --strict` to zero: fix `src/training/base_trainer.py:45` `[unused-ignore]` and `src/poc/scenarios/stochastic_galerkin_compare.py:63` `[arg-type]`; documented override block for `src/video_compression/codec/codec.py` naming its three real `Tensor \| None` defects | S | `python -m mypy src/ --strict --ignore-missing-imports` exits 0 | direct (`pyproject.toml` is not frozen) |
-| R-04 | 1 | Lockfile: universal `uv.lock` (**remove the `.gitignore:132` entry that ignores it** — the file's own comment at :203 says the project standardises on `uv.lock`); composite action that syncs it and puts `.venv/bin` on `GITHUB_PATH`; CPU torch index; `uv lock --check` in lint; Dockerfile `COPY uv.lock`; hook fallback; dependabot `uv` block. Seed from the arena sidecar's `packages` | M | `uv lock --check` fails on an un-relocked floor bump; guard that `.github/actions/**` runs no `pytest`/`--cov` | direct (ADR for tool choice, D2) |
+| R-02 | 1 | Hermetic fast lane: add `pytest-socket` to the `dev` extra and register a `network` marker in `pyproject.toml` (`--strict-markers` is on); run the fast-lane steps with `--disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket`; the two VGG-download tests mocked (own PR, ≤ 20 lines) | S | a planted socket-opening test goes red | direct + `frozen` (test file) |
+| R-03 | 1 | `mypy --strict` to zero: fix `src/training/base_trainer.py:45` `[unused-ignore]` and `src/poc/scenarios/stochastic_galerkin_compare.py:63` `[arg-type]`; documented override block for `src/video_compression/codec/codec.py` naming its three real `Tensor \| None` defects, with `remove_when: codec freeze lifts` recorded in the WS3.6 ledger and the defects listed in `CHANGELOG.md` `[Unreleased]` so the KPI reads "zero **unsuppressed** errors", not "type-correct" | S | `python -m mypy src/ --strict --ignore-missing-imports` exits 0; the override block names exactly one module and a removal condition | direct (`pyproject.toml` is not frozen) |
+| R-04 | 1 | Lockfile: universal `uv.lock` (**remove the `.gitignore:132` entry that ignores it** — the file's own comment at :203 says the project standardises on `uv.lock`); composite action that syncs it and puts `.venv/bin` on `GITHUB_PATH`; `uv lock --check` in lint; Dockerfile `COPY uv.lock`; hook fallback; dependabot `uv` block. The arena sidecar records only six distributions (`src/research/run_manifest.py`), so: pin those six to the sidecar's versions, let `uv lock` resolve the rest of the ~206-package graph, and record the lockfile hash in future sidecars. The CPU torch wheel is selected by the composite action's `--index` for CI/lint only, **not** baked into the universal lock — CUDA hosts keep the default index | M | `uv lock --check` fails on an un-relocked floor bump; guard that `.github/actions/**` runs no `pytest`/`--cov` | direct (ADR for tool choice, D2) |
 | R-05 | 1 | Artifact-freeze manifest: sha256 of `results/*` and `config/baselines/*`, checked by a `tests/docs/` test; edits only via `claims-ledger` | S | alter one CSV byte → red | direct |
 | R-06 | 2 | Hard mypy gate in CI **and** drop `\|\| true` from `Makefile` `mypy`; fix the now-false `ci.yml:175-177` comment; retire the pre-commit mypy hook or make it the CI invocation | S | `test_lint_has_no_soft_gate` (allowlist: backend audit, ONNX until #128); `MYPY=false make mypy` exits non-zero | `openspec-change` (deviation row :328) |
 | R-07 | 2 | Transfer tripwire: three lockfile-pinned re-runs of `transfer-baseline-regression`; if stable, flip to hard in `ci-success`; else ledger it with a reopen criterion | S–M | `ci-success` script has no soft branch, or the ledger row exists | direct / ledger |
 | R-08 | 2 | Release: merge the duplicate `[Unreleased]`, changelog guard (one header, monotonic versions), cut `0.4.0`, fix `RELEASING.md` "0.1.0" and `SECURITY.md` "pinned" claims, re-lock | S | guard fails on a second `[Unreleased]` | direct (D8) |
-| R-09 | 2 | Scope gate: re-scope `config/focus.yaml`, add `focus` **and** `secrets` to `ci-success.needs` (both green; the `secrets` comment saying it never ran green is stale) | S | new `test_ci_success_hard_gates` (on `tests/support/workflows.py::job_needs`/`hard_gate_jobs`): both jobs in `ci-success.needs` **and** in its `exit 1` block — `test_e2e_visibility` checks only E2E-selecting jobs and cannot see these two | `openspec-change` (deviation row :334) |
+| R-09 | 2 | Scope gate: re-scope `config/focus.yaml`, add `focus` **and** `secrets` to `ci-success.needs` (both green; the `secrets` comment saying it never ran green is stale) | S | new `test_ci_success_hard_gates` (on `tests/support/workflows.py::job_needs`/`hard_gate_jobs`): both jobs in `ci-success.needs` **and** in its `exit 1` block. Event-aware fan-in is part of the ticket: `focus` runs only on `pull_request` and is skipped by the `focus-override` label, while `ci-success` runs on push under `!cancelled()`, so a bare `needs` entry would read `skipped` and fail every post-merge run — the check must accept `skipped` exactly when `github.event_name != 'pull_request'` or the label is present, and the guard asserts that conditional. `test_e2e_visibility` checks only E2E-selecting jobs and cannot see these two | `openspec-change` (deviation row :334) |
 | R-10 | 3 | Module-size budget guard (dict allowlist with a *reason* column, ceiling 600; 44 entries today) | S | three planted mutations killed | direct |
-| R-11 | 3 | Shape baseline: `scripts/measure_shape.py` emits `config/shape_baseline.yaml` (complexity, magic values, lazy imports, device-resolution sites, prints, orphan modules); one `tests/docs/test_shape_baseline.py` asserts actual ≤ recorded **and** recorded not stale | S–M | raise any recorded count → red; lower it without code change → red | direct |
-| R-12 | 3 | CI critical path, three steps: (a) test jobs `needs` a ruff-only prerequisite instead of `test-fast` (interim ~16 min); (b) 4-shard `coverage-gates` in-file with a shard-assignment guard (~12 min); (c) mypy/audit split out of `lint` (~10.5 min) | M | default-branch run **< 12 min** after (b) — the §7 KPI; every gate step names an existing non-empty shard | direct |
-| R-13 | 3 | `eval_harness` gate in `test-extras` (inline coveragerc); `eval_harness_required` marker so its 8 `importorskip` skips hard-fail under `ALPHAGALERKIN_REQUIRE_EXTRAS=1`; drop the disclosed-gap exemption | S | `test_coverage_gate_integrity` passes with the exemption removed | direct |
+| R-11 | 3 | Shape baseline: `scripts/measure_shape.py` emits `config/shape_baseline.yaml` (complexity, magic values, lazy imports, device-resolution sites, prints, orphan modules) **plus the `git rev-parse HEAD:src` tree hash it was generated from**; one `tests/docs/test_shape_baseline.py` asserts actual ≤ recorded, and when actual < recorded requires the recorded tree hash to differ from the current one (a legitimate improvement regenerates the file; an edited number without a source change is rejected) | S–M | raise any recorded count → red; lower a count by hand with `src/` unchanged → red; lower it and regenerate after a real change → green | direct |
+| R-12 | 3 | CI critical path, three steps: (a) test jobs `needs` a ruff-only prerequisite instead of `test-fast` (interim ~16 min); (b) 4-shard `coverage-gates` in-file with a shard-assignment guard (~12 min); (c) mypy/audit split out of `lint` (~10.5 min) — the new job joins `ci-success.needs` **and** its `exit 1` block in the same PR, or the R-06 hard gate silently becomes advisory | M | default-branch run **< 12 min** after (b) — the §7 KPI; every gate step names an existing non-empty shard; `test_ci_success_hard_gates` lists the typecheck job | direct |
+| R-13 | 3 | `eval_harness` gate in `test-extras` (inline coveragerc, because the package is in `omit`); register an `eval_harness_required` marker and extend the root `conftest.py` hook — which today special-cases only `fem_required` — so the marker hard-fails under `ALPHAGALERKIN_REQUIRE_EXTRAS=1`; replace the 8 module-level `pytest.importorskip` calls with the marker; drop the disclosed-gap exemption | S | `test_coverage_gate_integrity` passes with the exemption removed | direct |
 | R-14 | 3 | Worktree-isolation rule for concurrent subagents in `AGENT.md` and the concurrent `.claude/agents/*.md` | S | `tests/claude/` path guard | direct |
 
 **Decisions due** (full register in [§8](#8-owner-decisions)): D2 lockfile tool
@@ -115,9 +115,10 @@ Appendix A"; the review found that promise partly false — the same
   dead and ~45 % were public API reached only by tests (a product decision).
   Start with the **orphan-module guard** — reproducibly, 24 `src/` modules
   (7,215 LOC) have no importer in `src/`, `scripts/` or `dashboard/`; **21
-  (6,274 LOC)** after excluding the three `python -m` CLI entry modules; 3 are
-  imported by nothing at all, tests included (Appendix A snippet) — and vulture
-  at 80 % report-only.
+  (6,274 LOC)** after excluding the three `python -m` CLI entry modules; **2**
+  (`backend/logging.py`, `backend/rng.py`, 373 LOC) are imported by nothing at
+  all, tests included (Appendix A snippet, both variants) — and vulture at 80 %
+  report-only.
 - **WS3.6 `filterwarnings = error::DeprecationWarning`** is the wrong mechanism
   for "shims cannot rot": with `stacklevel=2` the warning is attributed to the
   caller, so a `src.*` filter fires only when `src` calls a shim, never for
@@ -161,12 +162,12 @@ stretch list.
 | Dimension | Measured | Gated today? |
 |---|---|---|
 | CI, default branch | green; 16 jobs; 19.3 min; critical path `lint → test-fast → test-e2e`; `coverage-gates` 13.8 min off-path (44 serial steps); all 12 installs cached, 56–84 s each | 9 hard + 1 soft in `ci-success`; `focus`/`secrets`/`test-slow` outside; ONNX step soft |
-| Fast lane, egress-blocked sandbox | 10,028 passed, 293 skipped, **2 failed** (VGG16 download, B35); under concurrent load 2 more wall-clock ratio tests fail | green only with egress |
+| Fast lane, egress-blocked sandbox | 10,028 passed, 293 skipped, **2 failed** (VGG16 download, B35). *Report-only:* during the adversarial review's concurrent measurements the same lane also failed `test_fnet_vs_attention[cpu]` and `test_galerkin_attention_scaling[cpu]`, the load-sensitive ratio assertions CLAUDE.md already records | green only with egress |
 | `mypy --strict` | 7 errors / 3 files; 5 in frozen `codec.py`, 1 unused-ignore, 1 `arg-type` introduced by PR #150; `Makefile` masks with `\|\| true`; pre-commit mypy hook is `stages: [manual]` (never runs) | **no** |
 | Complexity (`C901`, `PLR091x`) | 162; 17 functions > 50 statements (max 85) | no |
 | `PLR2004` | 159 = 136 int + 23 float; 20 frozen | no |
 | Module size | > 900: 5 (+1 at exactly 900); > 600: 44; tests > 1,000: 8 | no |
-| Dead / orphan code | vulture 80 %: 14 (6 `__exit__` args, 8 real); 60 %: 893 (15–25 % real on a sample, report-only); **21 orphan library modules** (6,274 LOC; e.g. `mcts/gumbel.py` 712, `research/scaling_runner.py` 467, `data/dataset.py` 315); `core.registry.Registry` has no consumer outside `src/core/__init__.py`'s re-export; `backend/logging.py`, `backend/rng.py`, `eval_harness/_import_harness.py` imported by nothing, tests included | no |
+| Dead / orphan code | vulture 80 %: 14 (6 `__exit__` args, 8 real); 60 %: 893 (15–25 % real on a sample, report-only); **21 orphan library modules** (6,274 LOC; e.g. `mcts/gumbel.py` 712, `research/scaling_runner.py` 467, `data/dataset.py` 315); `core.registry.Registry` has no consumer outside `src/core/__init__.py`'s re-export; `backend/logging.py`, `backend/rng.py` imported by nothing, tests included | no |
 | Zero-inbound packages | `prototyping`, `analysis`, `curriculum`, `tournament` (charter row :335), `deployment` (CLI-addressable) | charter records disposition |
 | Lazy imports (AST, non-`TYPE_CHECKING`) | 154 in 65 files; 89 without a reason; module-level SCCs `{data,training}`, `{pde,experiments,research}` | no |
 | Device resolution | 6 named `resolve_device`/`_resolve_device` defs (12 device-resolving functions by a broader survey); 10 ad-hoc `"cuda" if is_available()` sites outside `src/device.py`; 19 consumers of the `poc.device` identity shim | no |
@@ -178,7 +179,7 @@ stretch list.
 | Shims | ~28 back-compat sites; 3 warn; no ledger; no removal dates | no |
 | Coverage, parked | `templates` 72.4, `math_kernel` 61.5 (not in `omit`), `backend` 56.5, `deployment` 27.9 (its ONNX suites are soft), `eval_harness` 11 pass / 8 silent skips; 12 gates below 85 | partial |
 | `hf_space/` | 58,315 LOC; `hf_space/src` 55,038; 98 of 155 mirrored files diverge | frozen; B14 |
-| Docs / release | `CHANGELOG.md` 1,864 lines, two `[Unreleased]`; `CLAUDE.md` 898 lines; 7 planning docs; **no git tag ever**; `RELEASING.md` says 0.1.0 (pyproject 0.4.0-dev); `SECURITY.md` claims pinned deps (none exist); ADR 0003 reserved for PR #118 | partial |
+| Docs / release | `CHANGELOG.md` 1,864 lines, two `[Unreleased]`; `CLAUDE.md` 898 lines; 7 planning docs; **no git tag ever**; `RELEASING.md` says 0.1.0 (pyproject 0.4.0-dev); `SECURITY.md` says dependencies are "pinned in `pyproject.toml`" — only `ruff==0.15.8`, a mypy/pydantic range and the eval-harness git SHA are pinned; the resolved graph is not; ADR 0003 reserved for PR #118 | partial |
 | PRs | 5 dependabot (#139 must close), 4 stale (#48, #57, #118, #128) | monthly Routine reports |
 | Dependencies | no lockfile; `>=` floors; `uv lock --dry-run` resolves 206 packages incl. both jax extras and the git dep in 10 s | no |
 
@@ -252,7 +253,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 | 0.8 | PR hygiene | — | S | — | owner | R-01 |
 | 0.9 | Full fast-lane run under `-W error::DeprecationWarning` (1,118-test sample clean); then a *scoped* filter after the `pytest.warns` audit | hygiene | S | — | direct | stretch 6 |
 | 0.10 | Transfer tripwire hard-or-ledgered | **honesty** | S–M | no soft branch or ledger row | direct (D10) | R-07 |
-| 0.11 | `focus` + `secrets` into `ci-success`; `focus.yaml` re-scope (keep both tracks; `frozen_tracks` min 1) | honesty | S | `test_ci_success_hard_gates` (new) | `openspec-change` (:334) | R-09 |
+| 0.11 | `focus` + `secrets` into `ci-success` with event-aware skip handling (see R-09); `focus.yaml` re-scope (keep both tracks; `frozen_tracks` min 1) | honesty | S | `test_ci_success_hard_gates` (new) | `openspec-change` (:334) | R-09 |
 | 0.12 | ONNX suites hard once #128 lands (`dynamo=False` pin) | defect class | S | soft-gate allowlist shrinks | direct | stretch 4 |
 
 ### WS1 — Module size
@@ -283,7 +284,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 
 | ID | Item | Mission | Size | Guard | Route | When |
 |---|---|---|---|---|---|---|
-| 3.1 | Orphan-module guard (21 rows, allowlist with reason; CLI entry modules and `[project.scripts]`/entry-point targets are not orphans) + vulture 80 % report-only; delete `backend/logging.py`, `backend/rng.py`, `eval_harness/_import_harness.py` after triage; `core.registry.Registry` is re-exported by `src/core/__init__.py` (`__all__`), so its removal is a documented public-API change with a one-release `DeprecationWarning` shim (WS3.6 ledger), not a silent delete | hygiene | S+M | orphan list shrink-only | direct | stretch 3 |
+| 3.1 | Orphan-module guard (21 rows, allowlist with reason; CLI entry modules and `[project.scripts]`/entry-point targets are not orphans) + vulture 80 % report-only; delete `backend/logging.py`, `backend/rng.py` after triage (the only two modules imported by nothing, tests included); `core.registry.Registry` is re-exported by `src/core/__init__.py` (`__all__`), so its removal is a documented public-API change with a one-release `DeprecationWarning` shim (WS3.6 ledger), not a silent delete | hygiene | S+M | orphan list shrink-only | direct | stretch 3 |
 | 3.2 | `write_csv` + matplotlib-guard helper in **`src/research/`** (not `poc`, which would create the `research → poc` edge WS4 forbids); four exporters call it; **byte-identical golden** on committed CSV rows | honesty | S | golden test | direct | stretch 12 |
 | 3.3 | One `add_unsafe_pickle_argument(parser)`; one `SAFE_GLOBALS` builder for the 2 non-frozen allowlists; reflection test extended | defect class | S | reflection test | direct (+`frozen` for codec) | stretch 13 |
 | 3.4 | Scripts onto `src/templates/cli.py` (three `run_*_compare.py` first); gate `templates` via a native `--include` over `tests/templates/` + `tests/agents/test_cli.py` | hygiene | M | `add-coverage-gate` | direct | stretch 14 |
@@ -310,7 +311,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 | 5.1 | `templates` gate via native `--include` over both suites (with 3.4) | S | `add-coverage-gate` | stretch 14 |
 | 5.2 | `math_kernel`: add `tests/math_kernel/` to `test-jax`, plain `--cov` (not in `omit`), gate at measured − 2 | M | — | stretch 18 |
 | 5.3 | `eval_harness` gate + `eval_harness_required` marker | S | integrity guard | R-13 |
-| 5.4 | `backend`: delete-first (`logging.py`, `rng.py`), then raise 54 → measured − 2; JAX fate with D1 | M | — | stretch 19 |
+| 5.4 | `backend`: delete-first (`logging.py`, `rng.py`), then raise 54 → measured − 2 in the existing inline-coveragerc step (`src/backend/*` is in the global `omit`; a bare `--cov=src/backend` measures nothing — the false-pass class `test_coverage_gate_integrity` exists for); JAX fate with D1 | M | integrity guard | stretch 19 |
 | 5.5 | `deployment` 25 → ≥ 60: blocked on 0.12 (soft ONNX step) | L | — | deferred |
 | 5.6 | Planted-defect runner: `tests/docs/mutations/<guard>/<n>.patch` + expected-failing nodeid, applied in a `git worktree` (guards resolve `REPO_ROOT` from `__file__`); vacuity guard on an empty dir; mutmut only ever for `tests/support/` | M | runner itself mutation-tested | stretch 20 |
 | 5.7 | Ratchet policy: gate := max(current, floor(measured) − 2) capped 85, re-measured quarterly by the monthly Routine (report-only, never calendar-red in `ci-success`) | S | `config/coverage_ratchet.yaml` | D7 |
@@ -320,7 +321,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 
 | ID | Item | Size | Route | When |
 |---|---|---|---|---|
-| 6.1 | `src/distributed/worker.py:429,464`: replace `pickle` on `all_gather` with a tensor-only dict via `torch.save` and `torch.load(weights_only=True)`; marker-payload regression test | M | direct | stretch 9 |
+| 6.1 | `src/distributed/worker.py`: **all four** pickle sites — `_serialize_experiences` (:415 `dumps`), `_deserialize_experiences` (:429 `loads`), and `_all_gather_experiences` (:464 `loads`, :467 returns `dumps`) — move to a tensor-only dict via `torch.save` / `torch.load(weights_only=True)`; a marker-payload regression test per public path, so no deserializer or returned byte string is still pickle | M | direct | stretch 9 |
 | 6.2 | Graceful-shutdown spike for training (flag per step + pool termination + emergency checkpoint) | M | direct | deferred |
 | 6.3 | `.gitleaks.toml`: **after** #135 (v3) and a local full-history `gitleaks detect`, drop `tests/.*` and `docs/.*` (there is no `tests/fixtures/`; 432 test files and full history become in scope) | S ×2 PRs | direct | stretch 22 |
 | 6.4 | `supply-chain` job: `pip-audit -r <(uv export --frozen)` (`uv audit` does not exist) + `bandit -ll`, report-only, outside `ci-success`; SBOM once a release workflow exists (R-08 creates none — disclosed) | S | direct | stretch 23 |
@@ -455,17 +456,23 @@ All from the repository root on `ba03b43` after `pip install -e '.[dev]'`.
 There is no lockfile yet, so two fresh installs can resolve different
 versions; the set these numbers were measured with is Python 3.11.15,
 torch 2.14.0+cu130, numpy 2.4.6, scipy 1.17.1, pydantic 2.9.2, coverage 7.16.0,
-pytest 9.1.1, ruff 0.15.8 (the CI pin). `uv` is **not** in any extra —
-`pip install uv==0.8.17` first. CI's `lint` job installs a pinned minimal set on
-3.11, so its mypy count can differ from a local `.[dev]` env — which is the
-R-04 argument. Static counts (grep/AST/ruff) do not depend on the package set;
-coverage percentages and the mypy count can.
+pytest 9.1.1, ruff 0.15.8 (the CI pin). `uv` and `vulture` are **not** in any
+extra — `pip install uv==0.8.17 vulture==2.16` first. CI's `lint` job installs a
+pinned minimal set on 3.11, so its mypy count can differ from a local `.[dev]`
+env — which is the R-04 argument. Static counts (grep/AST/ruff) do not depend
+on the package set; coverage percentages and the mypy count can. GitHub-side
+figures (run timings, PR counts) come from the API commands below.
 
 ```bash
-# CI (GitHub API, run 34476775571 on ba03b43)
+# CI timeline (GitHub API, run 34476775571 on ba03b43; started_at/completed_at per job)
+curl -s https://api.github.com/repos/ianshank/AlphaGalerkin/actions/runs/34476775571/jobs?per_page=30 \
+  | python -c "import json,sys;[print(j['name'],j['started_at'],j['completed_at']) for j in json.load(sys.stdin)['jobs']]"
 #   16 jobs; lint 12:27:01-12:29:34; test-fast(3.11) 12:29:38-12:38:14;
 #   test-e2e 12:38:18-12:46:11; ci-success 12:46:17  -> 19.3 min critical path
 #   coverage-gates 12:29:37-12:43:28 (off path); install steps 56-84 s, all with cache: "pip"
+# Open PRs (5 dependabot + 4 stale + this one at the time of writing)
+curl -s "https://api.github.com/repos/ianshank/AlphaGalerkin/pulls?state=open&per_page=50" \
+  | python -c "import json,sys;[print(p['number'],p['user']['login'],p['title'][:60]) for p in json.load(sys.stdin)]"
 grep -c 'cache: "pip"' .github/workflows/ci.yml                     # 12
 grep -n "continue-on-error" .github/workflows/ci.yml                # 171, 183, 1451
 grep -nF 'needs: [' .github/workflows/ci.yml                        # ci-success list (10)
@@ -501,42 +508,85 @@ find tests -name '*.py' -exec wc -l {} + | awk '$1>1000 && $2!="total"' | wc -l 
 # Dead / orphan code
 vulture src/ --min-confidence 80 | wc -l      # 14
 vulture src/ --min-confidence 60 | wc -l      # 893
-# Orphan modules (executable; 24 raw / 7,215 LOC; 21 / 6,274 LOC excluding
-# the python -m CLI entry modules src.{agents,poc,tools}.cli)
+# Orphan modules, three variants in one run:
+#   production-orphan raw            24 modules / 7,215 LOC
+#   production-orphan excl. CLI      21 / 6,274   (the R-11 / WS3.1 figure)
+#   orphan incl. tests, excl. CLI     2 / 373     (backend/logging.py, backend/rng.py)
 python - <<'EOF'
 import ast, sys
 from pathlib import Path
 sys.path.insert(0, ".")
 from tests.support.import_graph import imported_modules, module_name_for, python_files_under
 root = Path(".").resolve()
-importers = {}
-for base in ("src", "scripts", "dashboard"):
-    for p in python_files_under(root / base):
-        names = set(imported_modules(p, root))
-        for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-                names.update(f"{node.module}.{a.name}" for a in node.names)
-        importers[module_name_for(p, root)] = names
-orphans = []
-for p in python_files_under(root / "src"):
-    if p.name in ("__init__.py", "__main__.py"):
-        continue
-    m = module_name_for(p, root)
-    if any(m in names for who, names in importers.items() if who != m):
-        continue
-    orphans.append((m, sum(1 for _ in p.open())))
-print(len(orphans), "orphan modules;", sum(n for _, n in orphans), "LOC")
-for m, n in sorted(orphans):
-    print(f"  {n:5d} {m}")
+CLI_ENTRY = {"src.agents.cli", "src.poc.cli", "src.tools.cli"}  # python -m / [project.scripts] targets
+def importers_for(bases):
+    out = {}
+    for base in bases:
+        for p in python_files_under(root / base):
+            names = set(imported_modules(p, root))
+            for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                    names.update(f"{node.module}.{a.name}" for a in node.names)
+            out[module_name_for(p, root)] = names
+    return out
+def orphans(importers, exclude=frozenset()):
+    res = []
+    for p in python_files_under(root / "src"):
+        if p.name in ("__init__.py", "__main__.py"):
+            continue
+        m = module_name_for(p, root)
+        if m in exclude or any(m in names for who, names in importers.items() if who != m):
+            continue
+        res.append((m, sum(1 for _ in p.open())))
+    return res
+prod = importers_for(("src", "scripts", "dashboard"))
+for label, found in (
+    ("production-orphan raw", orphans(prod)),
+    ("production-orphan excl. CLI", orphans(prod, CLI_ENTRY)),
+    ("orphan incl. tests, excl. CLI", orphans(importers_for(("src", "scripts", "dashboard", "tests")), CLI_ENTRY)),
+):
+    print(f"{label}: {len(found)} modules / {sum(n for _, n in found)} LOC")
+    for m, n in sorted(found):
+        print(f"  {n:5d} {m}")
 EOF
+
+# Lazy in-function src.* imports by AST, excluding TYPE_CHECKING blocks -> 154 in 65 files
+# (a naive grep '^\s{4,}from src\.' gives 368: +131 TYPE_CHECKING, +75 docstring lines)
+python - <<'EOF'
+import ast, pathlib
+n, files = 0, set()
+for p in pathlib.Path("src").rglob("*.py"):
+    if "__pycache__" in p.parts:
+        continue
+    tree = ast.parse(p.read_text(encoding="utf-8"))
+    tc = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            tc.update(id(s) for s in ast.walk(node))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for sub in ast.walk(node):
+                if isinstance(sub, (ast.Import, ast.ImportFrom)) and id(sub) not in tc:
+                    mod = sub.module if isinstance(sub, ast.ImportFrom) else sub.names[0].name
+                    if mod and (mod == "src" or mod.startswith("src.")):
+                        n += 1
+                        files.add(p)
+print(n, "in-function src imports in", len(files), "files")
+EOF
+# The cycle / registry / optional / no-reason classification of those 154 is a review-report
+# measurement (transitive module-level graph per site); the module-level SCCs are reproducible
+# with tests/support/import_graph.imported_modules and any SCC routine.
+
+# Registry-like objects (heuristic: class *Registry or UPPER_REGISTRY names) -> 10 by this grep;
+# the ~16 in §2 adds the create_registry(...) products, counted by hand (report-only)
+grep -rhoE "class \w+Registry\b|\b[A-Z_]+_REGISTRY\b" src/ --include=*.py | sort -u | wc -l
+# Back-compat shim sites (heuristic: files mentioning back-compat) -> 28 files
+grep -rliE "back-?compat|backwards.compat" src/ --include=*.py | wc -l
 grep -rn "src.core.registry\|from src.core import" src/ dashboard/ scripts/ --include=*.py \
   | grep -v "^src/core/"                                              # none; src/core/__init__.py re-exports Registry in __all__
 
 # URL / endpoint literals (string defaults, excluding comments)
 grep -rnE "\"https?://[^\"]+\"" src/ --include=*.py | grep -v "^\s*#" | wc -l   # 8
-
-# Lazy imports (AST, in-function, excluding TYPE_CHECKING)  -> 154 in 65 files
-#   (the naive grep '^\s{4,}from src\.' gives 368: +131 TYPE_CHECKING, +75 docstrings)
 
 # Device
 grep -rnE "\"cuda\"|'cuda'" src/ --include=*.py | wc -l                                     # 121

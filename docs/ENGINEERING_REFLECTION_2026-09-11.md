@@ -1,11 +1,19 @@
-# Engineering Reflection & Optimisation Plan — 2026-09-11 (rev 3)
+# Engineering Reflection & Optimisation Plan — 2026-09-11 (rev 4)
 
-> **Status:** proposed plan, not a delivery record. Nothing here is implemented by
-> the change that adds it. Every number was measured on default-branch tip
-> `ba03b43` (merge of PR #150); the command for each is in
-> [Appendix A](#appendix-a--reproduction-commands), or the figure is labelled
-> *report-only*. Figures corrected by review are listed with old and new value
-> in [§1](#1-what-review-changed).
+> **Status:** a plan **and** the implementation landing behind it, in the same pull
+> request (#151). Rev 3 said "nothing here is implemented by the change that adds
+> it"; that was true of the commit that added rev 3 and false of the PR as it now
+> stands, which a reviewer rightly flagged. The
+> [implementation ledger](#implementation-ledger) at the end of this document is
+> the record of what has landed, by ticket and commit. Every *measurement* in
+> [§1](#1-what-review-changed) and the KPI tables is the **pre-implementation
+> baseline** taken on default-branch tip `ba03b43` (merge of PR #150); the command
+> for each is in [Appendix A](#appendix-a--reproduction-commands), or the figure
+> is labelled *report-only*. Where a landed ticket has changed a measured fact
+> (the `lint`/`typecheck` split, the merge-gate membership, the install-step
+> count), the table keeps the baseline value and the ledger states the new one —
+> the numbers are not rewritten in place, so the before/after stays legible.
+> Figures corrected by review are listed with old and new value in §1.
 >
 > **Scope authority:** the project charter
 > (`openspec/specs/project-charter/spec.md`) is supreme. Items tagged
@@ -83,9 +91,9 @@ is re-measured.
 | Rev 1 said | Measured | Consequence |
 |---|---|---|
 | 3 of 12 CI install steps cache pip | all 12 do; install still costs 56–84 s (CUDA torch wheel from PyPI) | the lever is a CPU-wheel lock + venv cache, not a composite action |
-| 12 install steps | **23** across five workflows (12 `ci.yml`, 7 `regression-surface.yml`, 2 `sbir-demo-smoke.yml`, 1 `docs.yml`, 1 frozen `phase2`) plus Dockerfile, hook, CONTRIBUTING | R-04b scope |
+| 12 install steps | **23** across five workflows (12 `ci.yml`, 7 `regression-surface.yml`, 2 `sbir-demo-smoke.yml`, 1 `docs.yml`, 1 frozen `phase2`) plus Dockerfile, hook, CONTRIBUTING | R-04b scope. *Baseline; the R-12a `typecheck` split added a 13th `ci.yml` install (24 total) — see the ledger* |
 | `coverage-gates` (14 min) drives wall-clock | finishes 2 min 43 s before `test-e2e`; critical path `lint 2.5 → test-fast 8.6 → test-e2e 7.9 = 19.3 min`; the `coverage` sweep alone is 9.7 min (push) to 12.4 min (PR) | rewire first; < 12 min needs the sweep, not sharding |
-| `CI Success` gates 10 jobs | 9 hard + 1 soft (transfer); `focus`, `secrets`, `test-slow` outside `needs`; a third soft step (ONNX, `ci.yml:1451`) | R-07, R-09, 0.12 |
+| `CI Success` gates 10 jobs | 9 hard + 1 soft (transfer); `focus`, `secrets`, `test-slow` outside `needs`; a third soft step (ONNX, `ci.yml:1451`) | R-07, R-09, 0.12. *Baseline; after R-09 + R-12a the gate is 12 hard + 1 soft with only `test-slow` outside `needs` — see the ledger* |
 | 0 shims warn | 3 of ~28 shim sites emit `DeprecationWarning` | KPI reworded |
 | 368 lazy imports / 139 files | **154 / 65** by AST; classification (9 cycle, 10 registry, 31 optional, 15 torch/scipy, 89 no reason) is report-only | target ≤ 60 |
 | `poc ↔ research` cycle | none at module level; real SCCs `{data, training}`, `{pde, experiments, research}` | 4.2 |
@@ -154,7 +162,7 @@ is re-measured.
 |---|---|---|
 | CI, default branch | green; 16 jobs; 19.3 min; critical path `lint → test-fast → test-e2e`; `coverage` sweep 9.7–12.4 min; `coverage-gates` 13.8 min off-path (44 serial steps); all 12 `ci.yml` installs cached, 56–84 s each | 9 hard + 1 soft in `ci-success`; `focus`/`secrets`/`test-slow` outside; ONNX step soft |
 | Fast lane, egress-blocked sandbox | 10,028 passed, 293 skipped, **2 failed** (VGG16 download, B35). *Report-only:* under the adversarial review's concurrent load the same lane also failed `test_fnet_vs_attention[cpu]` and `test_galerkin_attention_scaling[cpu]` | green only with egress |
-| `mypy --strict` | 7 errors / 3 files in a `.[dev]` env (5 in frozen `codec.py`, 1 unused-ignore, 1 `arg-type` introduced by PR #150); the `lint` job installs a different minimal set, so its count can differ; `Makefile` masks with `\|\| true`; pre-commit mypy hook is `stages: [manual]` | **no** |
+| `mypy --strict` | 7 errors / 3 files in a `.[dev]` env (5 in frozen `codec.py`, 1 unused-ignore, 1 `arg-type` introduced by PR #150); the `lint` job (now `typecheck`, R-12a) installs a different minimal set, so its count can differ; `Makefile` masks with `\|\| true`; pre-commit mypy hook is `stages: [manual]` | **no** |
 | Complexity (`C901`, `PLR091x`) | 162; 17 functions > 50 statements (max 85) | no |
 | `PLR2004` | 159 = 136 int + 23 float; 20 frozen | no |
 | Module size | > 900: 5 (+1 at exactly 900); > 600: 44 (4 frozen codec, 4 demos); tests > 1,000: 8 (one is `tests/docs/test_e2e_visibility.py`) | no |
@@ -254,8 +262,9 @@ comparison's `metrics` is a read-only `dict`); `pyproject.toml` override block
 `disable_error_code = ["operator", "union-attr", "arg-type"]` for
 `src.video_compression.codec.codec` (exactly the three codes at :392/:515/:518/
 :520/:531) with the removal condition in its comment; `CHANGELOG.md`. No guard
-parses the mypy overrides. **Blocker:** re-measure in the `lint` job's
-environment after R-04b and before R-06.
+parses the mypy overrides. **Blocker:** re-measure in the `typecheck` job's
+environment (the mypy step moved there from `lint` in R-12a) after R-04b and
+before R-06.
 
 **R-04a.** `uv lock` is universal across 3.10–3.12. CPU torch: `cpu` extra,
 `[tool.uv] conflicts = [[{extra = "cpu"}, {extra = "cu126"}]]`,
@@ -306,8 +315,9 @@ as an additional dependency, `stages: [manual]`, so it never runs — also
 `ci: skip: [mypy]`); `CONTRIBUTING.md:55`; `CLAUDE.md:352,406`; charter :328 via
 `openspec/changes/<id>/{proposal,design,tasks}.md` + delta; audit B6 status.
 Guard `test_no_soft_gate_steps`: every `continue-on-error: true` across all
-workflows ∈ allowlist `{("lint", backend audit), ("test-extras", ONNX until
-#128)}`, self-expiring; the `mypy` recipe contains no bare `true`. Mutations:
+workflows ∈ allowlist `{("typecheck", backend audit), ("test-extras", ONNX until
+#128)}` (the backend audit moved from `lint` to `typecheck` in R-12a),
+self-expiring; the `mypy` recipe contains no bare `true`. Mutations:
 re-add the soft flag; re-add `|| true`; keep an allowlist row for a step that is
 no longer soft.
 
@@ -350,9 +360,10 @@ if [[ "${{ needs.secrets.result }}" != "success" ]]; then
 fi
 ```
 
-Files: `ci.yml:1512` `needs`, the echo table, stale comments at :205-211,
-:289-293, :1580-1584; `config/focus.yaml:4` (says the check is "wired into
-CI's `lint` job"; it is its own job); `docs/FOCUS.md:27-28`
+Files (line numbers as of `ba03b43`, before the edits): `ci.yml:1512` `needs`,
+the echo table, stale comments at :205-211, :289-293, :1580-1584;
+`config/focus.yaml:4` (**said**, until R-09 corrected it, that the check was
+"wired into CI's `lint` job"; it is its own job); `docs/FOCUS.md:27-28`
 (`tests/scripts/test_check_focus.py` keeps it in step with the YAML); charter
 :334 rewrite. "Re-scope" is nil in YAML (both tracks stay; `frozen_tracks` min
 1) — D9 records that. Guard: (1) `{focus, secrets} ⊆ job_needs(ci-success)`;
@@ -384,8 +395,12 @@ and PR checkouts are synthetic merge commits). Ruff counts via a pinned
 `ruff==0.15.8` subprocess in-test (~2 s). Each Appendix A snippet becomes a
 function in the script — that is the real size.
 
-**R-12.** (a) `ci.yml:438,489,541,1323` `needs: test-fast` → `needs: lint`;
-keep job id `lint` for the ruff-only job (`test_e2e_visibility.py:708` asserts
+**R-12.** (a) `ci.yml:489,541,1323` (`test-integration`, `test-e2e`,
+`test-extras`) `needs: test-fast` → `needs: lint`. **Not** `test-slow` (`:438`,
+listed in rev 3 by a line-number sweep): its job-level `if:` reads
+`needs.test-fast.result`, so rewiring it would leave that condition referring to
+a job outside its `needs` and change whether the scheduled/default-branch run
+fires; it keeps `needs: test-fast`. Keep job id `lint` for the ruff-only job (`test_e2e_visibility.py:708` asserts
 `{"lint","test-fast"} ⊆ blocking`); new job `typecheck` (mypy + both audit
 steps, `if: github.event_name != 'schedule'` — `test_nightly_schedule`) added
 to `needs`, the `exit 1` block, and R-09's expected set; update CLAUDE.md's
@@ -563,10 +578,15 @@ Guarded by the end of the MVC:
 | Ungated `src/` packages | 3 | 2 | integrity guard + per-package gate test |
 | Default-branch CI wall-clock | 19.3 min | ≤ 15 min (< 12 after 0.14) | report (Routine) |
 
-Measured by `scripts/measure_shape.py` and gated shrink-only from R-11 on:
-complexity 162, `PLR2004` 159, library `T201` 17, lazy imports 154, ad-hoc device
-resolution 10, orphan modules 21, dead `ImportError` guards 25, shims without
-warning ~25, mirror divergence 98.
+Measured by `scripts/measure_shape.py` and gated shrink-only from R-11 on
+(`config/shape_baseline.yaml` is the source of truth; the hand counts in rev 3
+read 10 / 25 / ~25 for the last three because they counted conditional
+expressions, guarded import statements, and an eyeballed shim list rather than
+the script's units — bare `torch.device("cuda")` sites, `try` statements whose
+every protected import is a hard dependency, and files): complexity 162,
+`PLR2004` 159, library `T201` 17, lazy imports 154, ad-hoc device resolution
+**11**, orphan modules 21, dead `ImportError` guards **26**, shims without
+warning **26**, mirror divergence 98.
 
 Not gated this cycle and said so: vulture 60 % count, dependabot age, CI p95.
 
@@ -626,6 +646,28 @@ with core-path work, does not raise any gate by editing a number, and proposes
 no product scope.
 
 ---
+
+## Implementation ledger
+
+Appended in rev 4. One row per ticket, in landing order; commit SHAs are on
+PR #151's branch. "Guard" is the test file that turns the ticket into a check.
+
+| Ticket | Landed | Commit(s) | Guard | Notes |
+|---|---|---|---|---|
+| R-02 hermetic fast lane | yes | `cafd998` (+ floor fix in `a9092f7`) | `tests/docs/test_fast_lane_is_hermetic.py` | first draft imported `tomllib` against the 3.10 floor; `test_python_floor_compatibility` caught it |
+| R-03 mypy to zero unsuppressed | yes | `1a37665` | pyproject mypy override + CHANGELOG | 5 remaining diagnostics scoped to frozen `codec.py` by a `disable_error_code` override; remove when the freeze lifts |
+| R-10 module size budget | yes | `b9fe859` (merge) | `tests/docs/test_module_size_budget.py` | 44 `src/` rows at ceiling 600, 8 test rows at 1000; 5/5 mutations |
+| R-11 shape baseline | yes | `d80d8fe` (merge), `3eea67c` (regenerated at the merged tip) | `tests/docs/test_shape_baseline.py`, `tests/scripts/test_measure_shape.py` | 11 / 26 / 26 for the last three metrics (units, not drift — see §8); provenance hardening from review is a follow-up commit |
+| R-09 focus + secrets hard gates | yes | `a9092f7` | `tests/docs/test_ci_success_hard_gates.py` | charter row amended via `openspec/changes/focus-secrets-merge-gate/`; 6 mutations after review |
+| R-12a lint / typecheck split | yes | `7d62012` | `tests/docs/test_ci_success_hard_gates.py` (`typecheck` in the expected set) | `test-slow` deliberately keeps `needs: test-fast`; `ci.yml` install steps now 13 |
+| R-12b coverage-gates 4-way shard | yes | `7d62012` | `tests/docs/test_coverage_gate_shards.py` | gate set derived from coverage commands, not names; 5 mutations after review |
+| R-13 eval_harness marker + tripwire gate | yes | `b5dc832` (merge `694188c`) | `tests/docs/test_eval_harness_gating.py` | `--cov-fail-under=1` is a tripwire; set `floor(measured)-2` from the first green `test-extras` run |
+| R-08 CHANGELOG structure | yes | `d6550c1` (merge) | `tests/docs/test_changelog_headers.py` | 206/206 bullets preserved; no version bump (owner's call, D8) |
+| R-04a lockfile foundation | **blocked** | `impl/r04a` @ `a9cd02d`, unmerged | `tests/docs/test_uv_lock.py` | `uv lock` needs egress to `download.pytorch.org`, denied by the implementing sandbox's policy; the branch carries the `cpu` extra, pins, ADR 0006 and the guard, and lands once the lock is generated on a host with egress |
+| R-05 artifact manifest | in progress | `impl/r05` | `tests/docs/test_artifact_manifest.py` | — |
+| R-14 worktree rule | in progress | `impl/r14` | `tests/claude/test_worktree_rule.py` | — |
+| R-04b, R-06, R-07 | not started | — | — | R-04b/R-06 wait on the lock; R-07 needs three stable transfer runs after it |
+| R-01 | owner | — | — | merge dependabot, close #139, disposition stale PRs |
 
 ## Appendix A — Reproduction commands
 

@@ -1719,11 +1719,14 @@ jobs:
             exit 1
           fi
 
-          # The three below were NEVER in `needs` (B38, 2026-09-02): hard-failing
-          # jobs that ran on every PR with no `if:` and could not block a merge.
-          # test-chess even carries its own --cov-fail-under=80 on src/games that
-          # enforced nothing. focus/secrets joined on 2026-09-11 (R-09, above);
-          # test-slow stays out because it is PR-invisible by design.
+          # History of the four checks below. test-integration, test-jax and
+          # test-chess were NEVER in `needs` until B38 (2026-09-02): hard-failing
+          # jobs that ran on every PR with no `if:` and could not block a merge
+          # (test-chess even carries its own --cov-fail-under=80 on src/games
+          # that enforced nothing). test-e2e was added to `needs` the day it was
+          # created (2026-09-04) -- see its own comment. focus/secrets/typecheck
+          # joined on 2026-09-11 (R-09 / R-12a, above); test-slow stays out
+          # because it is PR-invisible by design.
           if [[ "${{ needs.test-integration.result }}" != "success" ]]; then
             echo "FAIL: Integration tests failed (result=${{ needs.test-integration.result }})"
             exit 1

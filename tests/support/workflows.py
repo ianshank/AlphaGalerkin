@@ -357,8 +357,31 @@ def hard_gate_conditions(script: str) -> list[str]:
     return [
         block.group("cond")
         for block in _IF_BLOCK.finditer(script)
-        if "exit 1" in block.group("body")
+        if body_exits_nonzero(block.group("body"))
     ]
+
+
+#: A shell ``exit`` with a non-zero literal status, as a whole command.
+_EXIT_NONZERO = re.compile(r"^exit\s+(?!0\b)\d+\b")
+
+
+def body_exits_nonzero(body: str) -> bool:
+    """True iff ``body`` contains a standalone ``exit <non-zero>`` *command*.
+
+    A substring test for ``exit 1`` also matches a comment, a variable's
+    contents, or ``echo "would exit 1"`` -- report-only blocks that would then
+    be classified as hard gates, letting the merge-gate guard pass while the
+    job cannot fail the build. Splitting into commands first (comments
+    stripped, quotes respected) means only a real ``exit`` command counts.
+
+    Args:
+        body: The text between ``then`` and ``fi``.
+
+    Returns:
+        Whether some command in ``body`` is ``exit N`` with ``N != 0``.
+
+    """
+    return any(_EXIT_NONZERO.match(command) for command in iter_commands(body))
 
 
 def hard_gate_jobs(script: str) -> set[str]:

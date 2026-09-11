@@ -39,10 +39,24 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_DIR = REPO_ROOT / ".claude"
 
+#: Claude Code materialises each isolated subagent as a full checkout under
+#: ``.claude/worktrees/<agent-id>/`` (gitignored, never in CI). A guard that
+#: ``rglob``s ``.claude`` walks into every sibling checkout's ``docs/`` and
+#: ``.claude/`` and reports *their* files as harness defects -- observed as
+#: ~250 spurious failures while five agents ran (2026-09-11). Excluded here at
+#: discovery, so the guard measures the harness and nothing else.
+WORKTREES_DIR = CLAUDE_DIR / "worktrees"
+
+
+def _outside_worktrees(paths: list[Path]) -> list[Path]:
+    """Drop every path under :data:`WORKTREES_DIR` (a nested checkout, not the harness)."""
+    return [p for p in paths if WORKTREES_DIR not in p.parents]
+
+
 SKILLS = sorted(CLAUDE_DIR.glob("skills/*/SKILL.md"))
 AGENTS = sorted(CLAUDE_DIR.glob("agents/*.md"))
 COMMANDS = sorted(CLAUDE_DIR.glob("commands/*.md"))
-ALL_MARKDOWN = sorted(CLAUDE_DIR.rglob("*.md"))
+ALL_MARKDOWN = _outside_worktrees(sorted(CLAUDE_DIR.rglob("*.md")))
 
 # Tool names Claude Code actually provides. An agent declaring anything else
 # silently gets no such tool at runtime.

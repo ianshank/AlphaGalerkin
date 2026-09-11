@@ -41,6 +41,7 @@ import pytest
 from tests.docs.test_marker_vocabulary import registered_markers
 from tests.support.workflows import (
     REPO_ROOT,
+    iter_commands,
     load_workflow,
     makefile_target_recipe,
 )
@@ -202,13 +203,26 @@ def test_makefile_flags_match_canonical() -> None:
     assert tuple(_makefile_variable(FLAGS_VARIABLE).split()) == HERMETIC_FLAGS
 
 
+def _pytest_commands(script: str) -> list[str]:
+    """The pytest invocations in a step script, one logical command each.
+
+    Comments stripped, continuations joined, separators split -- so a flag
+    that appears only in an ``echo`` or a comment is not credited to the
+    ``pytest`` command (Copilot review, PR #151).
+    """
+    return [c for c in iter_commands(script) if "pytest" in c.split()[:4]]
+
+
 @pytest.mark.parametrize(("job", "step"), CI_FAST_LANE_STEPS, ids=_STEP_IDS)
 def test_ci_fast_lane_steps_apply_the_flags(job: str, step: str) -> None:
-    script = _ci_step_script(job, step)
-    assert f"${{{{ env.{FLAGS_VARIABLE} }}}}" in script, (
-        f"{job}::{step} does not expand ${{{{ env.{FLAGS_VARIABLE} }}}}; "
-        "the step would run with sockets open"
-    )
+    commands = _pytest_commands(_ci_step_script(job, step))
+    assert commands, f"{job}::{step} runs no pytest command"
+    expansion = f"${{{{ env.{FLAGS_VARIABLE} }}}}"
+    for command in commands:
+        assert expansion in command, (
+            f"{job}::{step}: the pytest command does not expand {expansion} "
+            f"(it may appear elsewhere in the step, which is not the same thing): {command[:120]}"
+        )
 
 
 @pytest.mark.parametrize(("job", "step"), CI_FAST_LANE_STEPS, ids=_STEP_IDS)

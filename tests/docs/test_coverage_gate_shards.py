@@ -28,6 +28,14 @@ Mutation kills (each planted, run, reverted):
   ``test_every_gate_step_names_an_existing_shard``
 * add ``5`` to the matrix with no step assigned ->
   ``test_every_shard_has_at_least_one_gate_step``
+* ``always() || matrix.shard == 1`` on one gate step (Copilot review, PR #151:
+  the clause is present, one shard exists, and the step runs everywhere) ->
+  ``test_shard_clause_restricts_rather_than_decorates``
+* rename one gate step away from the ``Per-module coverage gate`` prefix
+  (Copilot review: a name-derived gate set silently shrinks) ->
+  ``test_named_gate_steps_and_coverage_commands_agree`` -- and because the
+  gate set is now derived from the coverage *command*, the renamed step is
+  still held to exactly one shard by every per-step test above
 """
 
 from __future__ import annotations
@@ -37,7 +45,7 @@ from typing import Any, Final
 
 import pytest
 
-from tests.support.workflows import CI_WORKFLOW, load_workflow
+from tests.support.workflows import CI_WORKFLOW, iter_commands, load_workflow
 
 #: The sharded job.
 COVERAGE_GATES_JOB: Final[str] = "coverage-gates"
@@ -45,8 +53,13 @@ COVERAGE_GATES_JOB: Final[str] = "coverage-gates"
 #: The matrix axis name.
 SHARD_AXIS: Final[str] = "shard"
 
-#: Prefix every per-module gate step's ``name:`` carries.
+#: Prefix every per-module gate step's ``name:`` carries (a naming convention,
+#: cross-checked against the command-derived gate set; not the source of truth).
 GATE_STEP_PREFIX: Final[str] = "Per-module coverage gate"
+
+#: Tokens whose presence in a command makes a step a coverage gate: the
+#: pytest-cov threshold flag and the native runner's report threshold.
+COVERAGE_GATE_TOKENS: Final[tuple[str, ...]] = ("--cov-fail-under", "--fail-under")
 
 #: The condition fragment that pins a step to a shard.
 _SHARD_CONDITION: Final[re.Pattern[str]] = re.compile(rf"matrix\.{SHARD_AXIS}\s*==\s*(?P<n>\d+)")
@@ -91,16 +104,45 @@ def _steps() -> list[dict[str, Any]]:
     return [s for s in steps if isinstance(s, dict)]
 
 
-def _is_gate_step(step: dict[str, Any]) -> bool:
+def _runs_a_coverage_gate(step: dict[str, Any]) -> bool:
+    """A step is a gate iff one of its *commands* carries a coverage threshold.
+
+    Derived from the ``run:`` body, not the display name: a renamed step, or a
+    coverage invocation added under some other name, must still be held to
+    exactly one shard. The name prefix is checked separately, as a
+    consistency cross-check, never as the source of truth.
+    """
+    script = step.get("run")
+    if not isinstance(script, str):
+        return False
+    return any(
+        any(token in command for token in COVERAGE_GATE_TOKENS) for command in iter_commands(script)
+    )
+
+
+def _is_named_gate_step(step: dict[str, Any]) -> bool:
     return str(step.get("name", "")).startswith(GATE_STEP_PREFIX)
 
 
 def _gate_steps() -> list[dict[str, Any]]:
-    return [s for s in _steps() if _is_gate_step(s)]
+    return [s for s in _steps() if _runs_a_coverage_gate(s)]
 
 
 def _setup_steps() -> list[dict[str, Any]]:
-    return [s for s in _steps() if not _is_gate_step(s)]
+    return [s for s in _steps() if not _runs_a_coverage_gate(s)]
+
+
+def shard_clause_is_required(condition: str | None) -> bool:
+    """True iff ``matrix.shard == N`` is a top-level ``&&`` conjunct of ``condition``.
+
+    Presence is not restriction: ``always() || matrix.shard == 1`` names one
+    existing shard and still runs on every shard. The clause must be joined to
+    the rest of the expression by ``&&`` only, with no ``||`` anywhere.
+    """
+    if not condition or "||" in condition:
+        return False
+    conjuncts = [part.strip() for part in condition.split("&&")]
+    return any(_SHARD_CONDITION.fullmatch(part) for part in conjuncts)
 
 
 def shards_named(condition: str | None) -> list[int]:
@@ -175,6 +217,51 @@ def test_every_gate_step_names_an_existing_shard(step: dict[str, Any]) -> None:
         f"{_step_id(step)!r}: if: names shard {named} but the matrix is {matrix}; the step "
         "runs on no shard at all and the gate it carries enforces nothing"
     )
+
+
+@pytest.mark.parametrize("step", _gate_steps(), ids=_step_id)
+def test_shard_clause_restricts_rather_than_decorates(step: dict[str, Any]) -> None:
+    """``always() || matrix.shard == 1`` names one existing shard and runs on all four.
+
+    Counting the clause is not enough; it must be a top-level ``&&`` conjunct
+    with no ``||`` in the expression, or the shard assignment is decoration.
+    """
+    condition = step.get("if")
+    assert shard_clause_is_required(condition), (
+        f"{_step_id(step)!r}: if: {condition!r} does not *require* its shard clause "
+        "(an `||` or a missing `&&` conjunct lets the step run on every shard)"
+    )
+
+
+def test_named_gate_steps_and_coverage_commands_agree() -> None:
+    """The name prefix is a convention; the coverage command is the fact.
+
+    A step renamed away from the prefix, or a coverage threshold added under
+    another name, would otherwise drift out of the human-readable set while
+    the per-step assertions above (driven by the command) still cover it --
+    or, before this cross-check existed, the reverse.
+    """
+    by_name = {_step_id(s) for s in _steps() if _is_named_gate_step(s)}
+    by_command = {_step_id(s) for s in _gate_steps()}
+    assert by_name == by_command, (
+        f"named-but-not-gating: {sorted(by_name - by_command)}; "
+        f"gating-but-not-named: {sorted(by_command - by_name)}"
+    )
+
+
+class TestShardClauseIsRequired:
+    def test_conjunct_form_passes(self) -> None:
+        assert shard_clause_is_required("always() && matrix.shard == 2 && hashFiles('x') != ''")
+
+    def test_disjunction_fails(self) -> None:
+        assert not shard_clause_is_required("always() || matrix.shard == 1")
+
+    def test_disjunction_anywhere_fails(self) -> None:
+        assert not shard_clause_is_required("matrix.shard == 1 && (a || b)")
+
+    def test_absent_fails(self) -> None:
+        assert not shard_clause_is_required("always() && hashFiles('x') != ''")
+        assert not shard_clause_is_required(None)
 
 
 @pytest.mark.parametrize("step", _gate_steps(), ids=_step_id)

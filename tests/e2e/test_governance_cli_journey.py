@@ -12,7 +12,7 @@ parses the workflow, asserts the root *set* equals the four the row names, and
 then runs exactly that argv — so the documentation, the gate's scope, and the
 gate's verdict are asserted together.
 
-**Parsing scope, deliberately narrow.** The ``lint`` job runs
+**Parsing scope, deliberately narrow.** The ``typecheck`` job (``lint`` until 2026-09-11) runs
 ``scripts.audit_abstractions`` three times. Only the *first* has explicit roots
 plus ``--fail-on-missing``; the second expands ``$(ls -d src/*/ | grep -v ...)``
 in the shell and so is not hermetically parseable (a test that tried would have
@@ -88,8 +88,8 @@ EXPECTED_COMMAND_PREFIX = ("python", "-m", AUDIT_MODULE)
 _CONTINUATION = re.compile(r"\\\n\s*")
 
 
-def _lint_job_steps() -> list[dict[str, Any]]:
-    """Return the ``lint`` job's steps, parsed from ``ci.yml``.
+def _audit_job_steps() -> list[dict[str, Any]]:
+    """Return the audit job's (:data:`AUDIT_JOB`) steps, parsed from ``ci.yml``.
 
     Returns:
         One mapping per step, in workflow order.
@@ -107,7 +107,7 @@ def _lint_job_steps() -> list[dict[str, Any]]:
 
 
 def _first_gated_audit_command() -> list[str]:
-    """The first ``lint`` command that gates on the audit with explicit roots.
+    """The first command in the audit job that gates on the audit with explicit roots.
 
     Backslash continuations are folded first, because the workflow wraps the
     invocation across two lines and the roots and the flag are only on one
@@ -122,7 +122,7 @@ def _first_gated_audit_command() -> list[str]:
             returning an empty list.
 
     """
-    for step in _lint_job_steps():
+    for step in _audit_job_steps():
         script = step.get("run")
         if not isinstance(script, str):
             continue

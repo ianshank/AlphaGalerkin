@@ -31,6 +31,12 @@ Mutation kills (each planted, run, reverted):
   labelled-skip block) -> ``test_focus_gate_accepts_skipped_only_when_explained``
 * a new ``if: github.event_name != 'schedule'`` job outside ``needs`` ->
   ``test_every_job_is_a_hard_gate_or_a_disclosed_exception``
+* ``!= "success"`` -> ``== "failure"`` on the ``secrets`` block (Copilot review,
+  PR #151: cancelled/skipped would merge) ->
+  ``test_hard_gate_rejects_every_non_success_result[secrets]``
+* ``exit 1`` -> ``echo "would exit 1"`` (Copilot review: a substring match
+  credited text as a gate) -> ``test_promoted_job_is_hard_gated[secrets]``,
+  because the parser now requires a standalone ``exit <non-zero>`` command
 """
 
 from __future__ import annotations
@@ -43,6 +49,7 @@ from tests.support.workflows import (
     CI_SUCCESS_JOB,
     CI_WORKFLOW,
     CI_WORKFLOW_FILENAME,
+    body_exits_nonzero,
     hard_gate_conditions,
     hard_gate_jobs,
     iter_run_scripts,
@@ -171,6 +178,25 @@ class TestHardGateConditionsParser:
         assert "needs.b.result" in conditions[0]
         assert "needs.a.result" not in conditions[0]
 
+    def test_exit_1_in_text_only_is_not_a_gate(self) -> None:
+        """``echo "would exit 1"`` and a comment are not an ``exit`` command."""
+        script = (
+            'if [[ "${{ needs.a.result }}" != "success" ]]; then\n'
+            '  echo "NOTE: soft -- a hard gate would exit 1 here"\n'
+            "  # exit 1\n"
+            "fi\n"
+            'if [[ "${{ needs.b.result }}" != "success" ]]; then\n'
+            "  exit 2\n"
+            "fi\n"
+            'if [[ "${{ needs.c.result }}" != "success" ]]; then\n'
+            "  exit 0\n"
+            "fi\n"
+        )
+        conditions = hard_gate_conditions(script)
+        assert [("needs.b.result" in c) for c in conditions] == [True]
+        assert body_exits_nonzero('echo "x"; exit 1')
+        assert not body_exits_nonzero('echo "exit 1"')
+
     def test_a_multi_line_condition_is_returned_whole(self) -> None:
         script = (
             'if [[ "${{ needs.a.result }}" == "skipped" && "${{ github.event_name }}" == "x" \\\n'
@@ -212,6 +238,22 @@ def test_promoted_job_is_hard_gated(job: str) -> None:
     assert job in _hard_gates(), (
         f"{job!r} is echoed but not gated in {CI_SUCCESS_JOB}: no `if ... exit 1` block names "
         "needs.{job}.result, so it reports and cannot fail the build"
+    )
+
+
+@pytest.mark.parametrize("job", sorted(hard_gate_jobs(_ci_success_script())), ids=str)
+def test_hard_gate_rejects_every_non_success_result(job: str) -> None:
+    """A gate written ``== "failure"`` lets ``cancelled`` and ``skipped`` merge.
+
+    ``hard_gate_jobs`` reports any exit-1 block naming the job; this asserts
+    the *semantics* (Copilot review, PR #151): at least one such block must
+    reject everything that is not ``success``. The ``focus`` skip clause is a
+    second block and is checked for its own shape separately.
+    """
+    conditions = _conditions_naming(job)
+    assert any('!= "success"' in c for c in conditions), (
+        f'no exit-1 condition naming needs.{job}.result is of the form `!= "success"`; '
+        f'a positive `== "failure"` test passes on cancelled/skipped: {conditions}'
     )
 
 

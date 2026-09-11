@@ -327,6 +327,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `openspec/changes/focus-secrets-merge-gate/`; `config/focus.yaml`'s header
   no longer claims the check runs inside the `lint` job. Nothing in the
   YAML's tracks changed (decision D9).
+- **Docs synced to the reflection tree (R-02/08/09/10/11/12/13/14).**
+  `docs/architecture/c4_mermaid.md` redraws the test-enforcement view as the
+  current job graph (ruff-only `lint` → nine `needs: lint` jobs; `typecheck` /
+  `focus` / `secrets` parallel; `coverage-gates` 4-way sharded; `ci-success`
+  with 13 hard gates and the shaped `focus` clause; `test-slow` nightly-only)
+  and adds a governance-guards boundary plus one quality-gate row per new
+  guard; harness inventory re-measured (15 / 6 / 5, 155 tests). README and
+  CONTRIBUTING document the hermetic fast lane (`make test-fast` blocks
+  sockets; `@pytest.mark.network`), `eval_harness_required` +
+  `ALPHAGALERKIN_REQUIRE_EXTRAS=1`, explicit merge-gate membership, the
+  module-size budget and shape baseline (`measure_shape check` / `write`),
+  `focus-override`, the CHANGELOG structure rule, and the concurrent-agent
+  worktree rule. Hygiene B35 and B37 flipped to DONE; B38's `focus`/`secrets`
+  remainder closed. E2E plan's "guards in `lint`" corrected to `test-fast`.
 - **Shape guard hardening (R-11, PR #151 review).** `scripts/measure_shape.py` provenance is now per input (schema 2): one hash per root a metric reads (`src`, `importer_roots`, `mirror_root`, `pyproject`, derived from `ShapeConfig`), so an improvement in `scripts/` or `hf_space/` is no longer rejected as a hand edit and an unrelated edit disables hand-edit detection only for the metrics that read it; schema-1 baselines migrate on load. Also: ruff's relative filenames resolve against `--root`, not the caller's CWD; `git_dirty` counts untracked files (the tool's own output excluded); `import a, b` counts every first-party alias. 5 planted defects each killed by a named test; script at 99% branch. Baseline regenerated on a clean checkout (`generated_from` = the code commit, `git_dirty: false`), metric values unchanged (162/159/17/154/11/21/26/26/98).
 - **R-14 / B22 — concurrent-subagent worktree-isolation rule.** Root `AGENT.md` gains `## Concurrent subagents` (anchor sentence + four clauses + the PR #140 `git stash` incident); the anchor is repeated verbatim in all six `.claude/agents/*.md` (every one declares `Bash`). New guard `tests/claude/test_worktree_rule.py`: anchor exactly once in `AGENT.md`, the test constant read back from the doc, every Bash agent carries the anchor + clause 4 (discovered on disk, non-vacuous), `settings.json` grants `Bash(git worktree:*)`. 5/5 mutation-killed of six planted; the sixth (Bash stripped, sentence kept) survives by design. No skill/agent/command added. Companion: `tests/claude/test_harness_validation.py` no longer scans `.claude/worktrees/` (nested subagent checkouts), which produced ~250 spurious failures while agents ran.
 - **R-13: `tests/integrations/eval_harness/` is countable, hard-failable and

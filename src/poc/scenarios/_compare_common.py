@@ -47,9 +47,19 @@ def empty_cuda_cache() -> None:
 
 
 class SupportsMetricsMapping(Protocol):
-    """Stochastic comparison: ``comparison.metrics`` is a mapping."""
+    """Stochastic comparison: ``comparison.metrics`` is a read-only mapping.
 
-    metrics: Mapping[str, float]
+    Declared as a read-only ``@property`` member, not a bare attribute: a bare
+    ``metrics: Mapping[str, float]`` is a *settable* member, which a class
+    exposing ``metrics`` through ``@property`` (``MultiSeedStochasticComparison``)
+    does not satisfy. A read-only member is satisfied by a property **and** by
+    a plain attribute, and ``dict[str, float]`` is accepted covariantly.
+    """
+
+    @property
+    def metrics(self) -> Mapping[str, float]:
+        """Headline + spread metrics for the comparison."""
+        ...
 
 
 class SupportsMetricsMethod(Protocol):

@@ -504,6 +504,24 @@ disable_error_code = ["assignment", "arg-type", "return-value", "operator", "uni
                       "call-overload", "no-untyped-call", "no-untyped-def",
                       "type-abstract", "has-type", "unused-ignore", "type-var"]
 
+# R-03 (docs/ENGINEERING_REFLECTION_2026-09-11.md): the ONLY module in src/ still
+# emitting mypy --strict diagnostics. The 5 diagnostics come from 3 real defects
+# at the cited lines, all of them union types never narrowed before use:
+#   :392 and :515 -- `self.entropy_model` is typed as the base `nn.Module`, so
+#     `.compress` / `.hyper_synthesis` resolve through `Module.__getattr__` to
+#     `Tensor | Module`; the `Tensor` arm is not callable  [operator]
+#   :518 / :520 / :531 -- the `scales: Tensor | None` parameter (declared :463)
+#     is reassigned from the `.hyper_synthesis` call and used without a None
+#     guard  [union-attr] / [arg-type]
+# Exactly these three codes are disabled, NOT `ignore_errors = true`, so any new
+# class of error in the file still fails. The fix is a `Tensor | None` narrowing
+# plus a concrete `entropy_model` annotation inside a frozen track.
+# remove_when: the codec freeze in config/focus.yaml lifts (frozen_tracks: codec).
+# tracked in CHANGELOG.md ([Unreleased] / Changed).
+[[tool.mypy.overrides]]
+module = "src.video_compression.codec.codec"
+disable_error_code = ["operator", "union-attr", "arg-type"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

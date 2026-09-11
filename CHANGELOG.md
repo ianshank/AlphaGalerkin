@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Changed
+- **R-03: `mypy --strict` to zero unsuppressed errors.** Removed the
+  `[unused-ignore]` on `src/training/base_trainer.py:45` and made
+  `SupportsMetricsMapping.metrics` (`src/poc/scenarios/_compare_common.py`) a
+  read-only property member so `MultiSeedStochasticComparison`'s `@property`
+  satisfies it. The remaining 5 diagnostics are all in the frozen
+  `src/video_compression/codec/codec.py` and come from 3 real defects:
+  `entropy_model` typed as bare `nn.Module` so `.compress` (:392) and
+  `.hyper_synthesis` (:515) resolve to `Tensor | Module` [operator], and the
+  `scales: Tensor | None` parameter used un-narrowed at :518/:520/:531
+  [union-attr]/[arg-type]. Suppressed by a `[[tool.mypy.overrides]]` block
+  disabling exactly those three codes for that one module (not
+  `ignore_errors`); **remove when the `codec` freeze in `config/focus.yaml`
+  lifts** and fix the three sites instead.
 - **Wave E (zero numeric change).** Named `POLICY_LOG_PROB_FLOOR = -100.0`
   at the three policy-CE / entropy clamp sites. Trainer start-buffer uses
   `TrainingConfig.start_min_buffer_size()` with

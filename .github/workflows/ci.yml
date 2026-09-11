@@ -76,6 +76,15 @@ env:
   MPLBACKEND: Agg
   # Reproducible builds
   PYTHONHASHSEED: "0"
+  # Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02).
+  # pytest-socket blocks every socket except loopback and unix sockets --
+  # torch.multiprocessing / DataLoader workers / gloo on localhost need those.
+  # A test that reaches the network is a false pass that depends on runner
+  # egress; hygiene B35 (two "unit" tests downloading ImageNet weights) is the
+  # case. Applied to the `test-fast` and `coverage` steps; mirrored by the
+  # Makefile's HERMETIC_PYTEST_FLAGS; tests/docs/test_fast_lane_is_hermetic.py
+  # keeps the copies equal and proves the flags actually block.
+  HERMETIC_PYTEST_FLAGS: "--disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost"
 
 jobs:
   # ============================================================
@@ -408,7 +417,8 @@ jobs:
         # Extracting to one args file is hygiene B7 — not this change.
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required and not network" \
+            ${{ env.HERMETIC_PYTEST_FLAGS }} \
             --tb=short \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
@@ -653,7 +663,8 @@ jobs:
         # Extracting to one args file is hygiene B7 — not this change.
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required and not network" \
+            ${{ env.HERMETIC_PYTEST_FLAGS }} \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \

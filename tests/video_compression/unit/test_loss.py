@@ -20,6 +20,28 @@ from src.video_compression.training.loss import (
 )
 
 
+@pytest.fixture
+def offline_vgg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Build the perceptual-loss VGG16 with random weights instead of downloading.
+
+    ``PerceptualLoss._get_vgg`` calls ``torchvision.models.vgg16(weights=...)``,
+    which fetches ~500 MB of ImageNet weights from ``download.pytorch.org``.
+    Two "unit" tests reached that path and passed only on runners with egress
+    (hygiene B35); under the hermetic fast lane (plan R-02) the download is a
+    ``SocketBlockedError``. The loss's arithmetic does not depend on the weight
+    values, so an untrained network exercises the same code path offline.
+    """
+    torchvision_models = pytest.importorskip("torchvision.models")
+    real_vgg16 = torchvision_models.vgg16
+
+    def _offline_vgg16(*args: object, **kwargs: object) -> object:
+        kwargs.pop("weights", None)
+        kwargs.pop("pretrained", None)
+        return real_vgg16(*args, weights=None, **kwargs)
+
+    monkeypatch.setattr(torchvision_models, "vgg16", _offline_vgg16)
+
+
 class TestDistortionLoss:
     """Tests for DistortionLoss module."""
 
@@ -233,9 +255,10 @@ class TestCompressionLoss:
         assert "mse" in output
         assert "psnr" in output
 
-    def test_perceptual_loss_enabled(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
+    def test_perceptual_loss_enabled(
+        self, sample_data: tuple[Tensor, Tensor, Tensor], offline_vgg: None
+    ) -> None:
         """Test with perceptual loss enabled."""
-        pytest.importorskip("torchvision", reason="torchvision not installed")
         pred, target, rate = sample_data
         loss = CompressionLoss(use_perceptual=True, perceptual_weight=0.1)
 
@@ -262,9 +285,10 @@ class TestCompressionLoss:
 
         assert "ms_ssim_loss" in output
 
-    def test_total_combines_all_losses(self, sample_data: tuple[Tensor, Tensor, Tensor]) -> None:
+    def test_total_combines_all_losses(
+        self, sample_data: tuple[Tensor, Tensor, Tensor], offline_vgg: None
+    ) -> None:
         """Test that total includes all components."""
-        pytest.importorskip("torchvision", reason="torchvision not installed")
         pred, target, rate = sample_data
 
         # Without perceptual

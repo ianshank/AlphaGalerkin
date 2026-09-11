@@ -115,6 +115,14 @@ dev = [
     "ruff==0.15.8",
     # Pin pydantic to align with lint step and avoid 2.10+ behavioural changes
     "pydantic>=2.7,<2.10",
+    # Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02): the
+    # blocking CI lanes run with `--disable-socket --allow-unix-socket
+    # --allow-hosts=127.0.0.1,localhost` so a test that reaches the network is
+    # a visible failure rather than a false pass that depends on runner egress
+    # (hygiene B35). The flags live in ci.yml's HERMETIC_PYTEST_FLAGS and the
+    # Makefile's variable of the same name; tests/docs/test_fast_lane_is_hermetic.py
+    # keeps the copies equal.
+    "pytest-socket>=0.7",
     # Dashboard test dependencies
     "gradio>=6.0.0",
     "matplotlib>=3.7.0",
@@ -516,6 +524,7 @@ markers = [
     "benchmark: performance and scaling benchmark tests",
     "sanity: import and config schema smoke tests",
     "video: video compression codec and benchmark tests",
+    "network: needs real network egress; deselected from the hermetic fast lane (deselect with '-m \"not network\"')",
 ]
 
 [tool.coverage.run]

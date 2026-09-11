@@ -77,6 +77,20 @@ STOCH_COV_THRESHOLD    ?= 85
 SUBSTRATE_COV_THRESHOLD ?= 95
 
 # ---------------------------------------------------------------------------
+# Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02)
+# ---------------------------------------------------------------------------
+# Mirrors ci.yml's HERMETIC_PYTEST_FLAGS: pytest-socket (in the `dev` extra)
+# blocks every socket except loopback and unix sockets, so a test that reaches
+# the network fails here the same way it fails in CI instead of passing on
+# whatever egress the developer's machine happens to have. Overridable
+# (`HERMETIC_PYTEST_FLAGS= make test-fast` runs unsandboxed);
+# tests/docs/test_fast_lane_is_hermetic.py keeps this in step with ci.yml.
+HERMETIC_PYTEST_FLAGS ?= --disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost
+# The fast-lane `-m` expression stays a literal in each recipe (not a variable):
+# tests/docs/test_marker_vocabulary.py reads every `-m` expression verbatim and
+# would report a `$(...)` reference as an unregistered marker.
+
+# ---------------------------------------------------------------------------
 # Test-selection parity with CI
 # ---------------------------------------------------------------------------
 # `ci.yml` applies these SAME exclusions in both its `test-fast` and `coverage`
@@ -121,7 +135,8 @@ mypy:
 # ---------------------------------------------------------------------------
 test-fast:
 	$(PYTEST) tests/ \
-		-m "not slow and not e2e and not gpu_required" \
+		-m "not slow and not e2e and not gpu_required and not network" \
+		$(HERMETIC_PYTEST_FLAGS) \
 		$(CI_TEST_EXCLUDES) \
 		-q --no-header
 
@@ -234,7 +249,8 @@ test-all:
 # ---------------------------------------------------------------------------
 coverage:
 	$(PYTEST) tests/ \
-		-m "not slow and not e2e and not gpu_required" \
+		-m "not slow and not e2e and not gpu_required and not network" \
+		$(HERMETIC_PYTEST_FLAGS) \
 		$(CI_TEST_EXCLUDES) \
 		--cov=src \
 		--cov-fail-under=$(GLOBAL_COV_THRESHOLD) \

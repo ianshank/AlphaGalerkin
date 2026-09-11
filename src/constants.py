@@ -157,6 +157,40 @@ band. Do not merge them.
 """
 
 # ---------------------------------------------------------------------------
+# External engine (UCI) I/O defaults
+# ---------------------------------------------------------------------------
+DEFAULT_UCI_STDOUT_QUEUE_MAXSIZE: Final[int] = 10_000
+"""Bound on the number of engine stdout lines buffered ahead of the consumer.
+
+The reader thread that pumps engine stdout into ``UCIEngine``'s queue used to
+write into an *unbounded* ``queue.Queue``. Any producer that emits faster than
+the consumer drains -- a real engine spewing ``info`` lines during a long
+search nobody is reading, or a mock whose stdout is an infinite generator --
+grew the process without limit (the E2E chess tier climbed to 13.6 GB and
+killed the CI runner). At this bound the reader blocks instead, which is
+ordinary pipe backpressure: the consumer drains FIFO on the next
+``_read_until``, so no command/response ordering changes. ``0`` restores the
+unbounded historical behaviour and is not recommended.
+"""
+
+DEFAULT_UCI_READER_POLL_SECONDS: Final[float] = 0.1
+"""How long the stdout reader blocks on a full queue before re-checking stop.
+
+The reader must notice ``quit()`` / garbage collection even while blocked on a
+full queue, so it puts with this timeout and re-checks its stop flag on each
+``queue.Full``. Small enough that shutdown is prompt; large enough that a
+saturated queue does not busy-spin.
+"""
+
+DEFAULT_UCI_READER_JOIN_TIMEOUT_SECONDS: Final[float] = 1.0
+"""How long ``UCIEngine.quit()`` waits for the stdout reader thread to exit.
+
+Bounded because a reader blocked on a live pipe cannot be interrupted from
+Python; it exits on its own once the process closes stdout. A thread that
+outlives this window is logged, not raised on.
+"""
+
+# ---------------------------------------------------------------------------
 # Checkpoint naming
 # ---------------------------------------------------------------------------
 CHECKPOINT_BEST: Final[str] = "best.pt"
@@ -192,6 +226,9 @@ __all__ = [
     "DEFAULT_TEMPERATURE_SCHEDULE",
     "DEFAULT_RATIO_FLOOR",
     "DEFAULT_TRANSFER_RATIO_FLOOR",
+    "DEFAULT_UCI_READER_JOIN_TIMEOUT_SECONDS",
+    "DEFAULT_UCI_READER_POLL_SECONDS",
+    "DEFAULT_UCI_STDOUT_QUEUE_MAXSIZE",
     "DEFAULT_VIRTUAL_LOSS",
     "LAYER_NORM_EPSILON",
     "NUMERIC_EPSILON",

@@ -35,6 +35,10 @@ Please include:
 
 ## Scope
 
-This policy covers the code in this repository. Dependencies are pinned in
-`pyproject.toml`; vulnerabilities in third-party packages should be reported to
-their respective maintainers, though we welcome a heads-up so we can bump the pin.
+This policy covers the code in this repository. Dependency version constraints
+live in `pyproject.toml` — floors and upper bounds for most packages, a few
+exact pins (such as `ruff`), and a git commit SHA for the optional eval-harness
+extra. The *resolved* dependency graph is not yet locked: a `uv.lock` is being
+introduced by a parallel change. Vulnerabilities in third-party packages should
+be reported to their respective maintainers, though we welcome a heads-up so we
+can tighten the constraint.

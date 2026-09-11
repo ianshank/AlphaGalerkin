@@ -7,17 +7,39 @@ back-compat shims, and a diverged deploy mirror -- was measured once in prose
 and gated by nothing. A number in a Markdown table drifts the moment the next
 commit lands. This tool makes the numbers data:
 
-* ``write`` measures nine metrics plus a content hash over ``src/**/*.py`` and
-  emits ``config/shape_baseline.yaml`` (values, hash, generating git SHA, tool
-  versions).
+* ``write`` measures nine metrics plus one content hash per *input* a metric
+  reads and emits ``config/shape_baseline.yaml`` (values, hashes, generating
+  git SHA, tool versions).
 * ``check`` re-measures and compares. A metric may only *shrink*. A recorded
-  value that is **larger** than the live measurement while the content hash is
-  **unchanged** was edited by hand (nothing can have improved on an identical
-  tree), not measured, and is rejected with an instruction to regenerate.
+  value that is **larger** than the live measurement while every input that
+  metric reads is **unchanged** was edited by hand (nothing can have improved
+  on identical inputs), not measured, and is rejected with an instruction to
+  regenerate.
 
 ``tests/docs/test_shape_baseline.py`` runs the same comparison in CI, one named
 test per metric, so a regression is attributable to a metric rather than to
 "the shape guard".
+
+Provenance is tracked **per input, not per tree** (schema 2). The nine metrics
+do not all read the same files: ``orphan_modules`` also reads
+``importer_roots`` (``scripts/``, ``dashboard/``), ``mirror_diverged_files``
+reads ``mirror_root`` and ``dead_import_error_guards`` reads ``pyproject``.
+Schema 1 hashed ``src/**/*.py`` alone, with two consequences (PR #151 review):
+an improvement made in ``scripts/`` or ``hf_space/`` was rejected as a hand
+edit (``src/`` had not changed, so "nothing can have improved"), and any
+``src/`` edit switched hand-edit detection off for every metric at once. The
+alternative -- one hash over the union of every input -- fixes only the first:
+it would make an edit to ``scripts/`` disable detection for all nine metrics,
+where today only ``orphan_modules`` reads ``scripts/``. So the baseline records
+one hash per input root (:func:`input_hashes`, the set derived from
+:class:`ShapeConfig`), each metric declares the inputs it reads
+(:func:`metric_inputs`), and a count is "hand-edited" only when *that
+metric's* inputs are all unchanged. ``content_hash`` is kept as the
+``src_root`` entry so schema-1 files migrate on load
+(:func:`migrate_baseline_document`): their one hash becomes the ``src_root``
+input hash and the inputs they never recorded count as changed, which keeps
+``check`` on an old baseline working (growth is still gated; only hand-edit
+detection on the three multi-input metrics waits for a regeneration).
 
 Every rule set, path root, allowlist and regex is a field on
 :class:`ShapeConfig` (overridable with ``--config``), and every metric is a
@@ -62,7 +84,15 @@ REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 DEFAULT_BASELINE: Final[Path] = REPO_ROOT / "config" / "shape_baseline.yaml"
 
 #: Bumped when the on-disk shape of ``config/shape_baseline.yaml`` changes incompatibly.
-SHAPE_BASELINE_SCHEMA_VERSION: Final[int] = 1
+#: 1: a single ``content_hash`` over ``src_root``. 2: adds ``input_hashes``, one per
+#: input root a metric reads; ``content_hash`` stays as the ``src_root`` entry.
+SHAPE_BASELINE_SCHEMA_VERSION: Final[int] = 2
+
+#: The schema a document without a ``schema_version`` key is taken to be.
+_UNVERSIONED_SCHEMA_VERSION: Final[int] = 1
+
+#: sha256 hex digest, the form every recorded hash takes.
+_HEX_DIGEST: Final[str] = r"^[0-9a-f]{64}$"
 
 #: A hung ruff or git child in CI is indistinguishable from a wedged runner. Bound both.
 RUFF_SUBPROCESS_TIMEOUT_S: Final[float] = 180.0
@@ -83,6 +113,9 @@ METRIC_NAMES: Final[tuple[str, ...]] = (
 
 #: Per-``(file, rule)`` tables recorded alongside the scalar metrics.
 TABLE_NAMES: Final[tuple[str, ...]] = ("magic_values",)
+
+#: The scalar metric each table breaks down; a table reads what its metric reads.
+TABLE_METRIC: Final[dict[str, str]] = {"magic_values": "magic_value_findings"}
 
 #: Separator between the file path and the rule code in table keys.
 TABLE_KEY_SEPARATOR: Final[str] = "::"
@@ -357,6 +390,11 @@ def parse_ruff_json(text: str, repo_root: Path) -> list[RuffFinding]:
     Code-less entries (syntax errors) are skipped with a warning, and files
     under a bytecode cache are dropped so the ruff-counted file set is the
     same one :func:`python_files_under` gives the AST metrics.
+
+    A relative ``filename`` is resolved against ``repo_root`` -- the directory
+    :func:`run_ruff` runs ruff in -- never against the caller's working
+    directory, so ``measure --root /elsewhere`` from another directory
+    attributes findings to the right tree (PR #151 review).
     """
     findings: list[RuffFinding] = []
     for entry in json.loads(text):
@@ -365,6 +403,8 @@ def parse_ruff_json(text: str, repo_root: Path) -> list[RuffFinding]:
             logger.warning("ruff_entry_without_code", filename=entry.get("filename"))
             continue
         path = Path(entry["filename"])
+        if not path.is_absolute():
+            path = repo_root / path
         if is_cache_path(path):
             continue
         findings.append(
@@ -466,8 +506,16 @@ def lazy_first_party_imports(repo_root: Path, config: ShapeConfig) -> list[Site]
     A lazy import is how a layering cycle hides from the static import graph;
     counting them is the first step to unwinding the SCCs the reflection
     named (``{data, training}``, ``{pde, experiments, research}``).
+
+    Every alias of an ``import a, b`` statement is a site of its own: a
+    first-party module hidden behind a third-party one (``import os, src.x``)
+    is exactly the import this metric exists to count (PR #151 review).
     """
     package = config.first_party_package
+
+    def is_first_party(module: str | None) -> bool:
+        return bool(module) and (module == package or str(module).startswith(package + "."))
+
     sites: list[Site] = []
     for path in python_files_under(repo_root / config.src_root):
         tree = _parse(path)
@@ -487,9 +535,14 @@ def lazy_first_party_imports(repo_root: Path, config: ShapeConfig) -> list[Site]
                     continue
                 if id(sub) in static_only:
                     continue
-                module = sub.module if isinstance(sub, ast.ImportFrom) else sub.names[0].name
-                if module and (module == package or module.startswith(package + ".")):
-                    sites.append(Site(relative_posix(path, repo_root), sub.lineno, module))
+                modules = (
+                    [sub.module]
+                    if isinstance(sub, ast.ImportFrom)
+                    else [alias.name for alias in sub.names]
+                )
+                for module in modules:
+                    if is_first_party(module):
+                        sites.append(Site(relative_posix(path, repo_root), sub.lineno, str(module)))
     return sites
 
 
@@ -699,20 +752,82 @@ def mirror_divergence(repo_root: Path, config: ShapeConfig) -> MirrorReport:
     return MirrorReport(identical, diverged, mirror_only, tuple(diverged_paths))
 
 
-def content_hash(repo_root: Path, config: ShapeConfig) -> str:
-    """sha256 over sorted repo-relative paths and bytes of every ``src_root/**/*.py``.
+def _dedup(items: Iterable[str]) -> tuple[str, ...]:
+    """Unique items in first-seen order."""
+    seen: dict[str, None] = {}
+    for item in items:
+        seen.setdefault(item, None)
+    return tuple(seen)
 
-    Computed from the working tree, never from ``git rev-parse HEAD:src``:
-    local improvements are uncommitted when a contributor runs ``check``, and
-    a pull-request checkout is a synthetic merge commit.
+
+def input_roots(config: ShapeConfig) -> tuple[str, ...]:
+    """Every repo-relative input some metric reads, derived from ``config`` (never a literal list).
+
+    ``src_root`` (every metric), ``importer_roots`` (orphans), ``mirror_root``
+    (mirror divergence) and ``pyproject`` (dead import guards), deduplicated
+    in that order -- ``src`` is normally both the measured tree and an
+    importer root.
     """
+    return _dedup((config.src_root, *config.importer_roots, config.mirror_root, config.pyproject))
+
+
+def metric_inputs(config: ShapeConfig) -> dict[str, tuple[str, ...]]:
+    """The inputs each metric reads, keyed by :data:`METRIC_NAMES`.
+
+    This is the provenance contract: a recorded count is "hand-edited" only
+    when *these* inputs are all unchanged. A metric that starts reading a new
+    root must be added here, and ``tests/scripts/test_measure_shape.py``
+    asserts the union equals :func:`input_roots` so a root no metric declares
+    (or a metric that declares nothing) fails there.
+    """
+    src = (config.src_root,)
+    return {
+        "complexity_findings": src,
+        "magic_value_findings": src,
+        "library_print_findings": src,
+        "lazy_first_party_imports": src,
+        "adhoc_device_resolution_sites": src,
+        "orphan_modules": _dedup((config.src_root, *config.importer_roots)),
+        "dead_import_error_guards": _dedup((config.src_root, config.pyproject)),
+        "shim_files_without_deprecation_warning": src,
+        "mirror_diverged_files": _dedup((config.src_root, config.mirror_root)),
+    }
+
+
+def _hash_input(repo_root: Path, root: str) -> str:
+    """sha256 over sorted repo-relative paths and bytes of one input.
+
+    A directory contributes every ``*.py`` under it (what the metrics read);
+    a file (``pyproject.toml``) contributes itself. A missing input hashes
+    to the empty digest, deterministically.
+    """
+    target = repo_root / root
+    files = [target] if target.is_file() else python_files_under(target)
     digest = hashlib.sha256()
-    for path in python_files_under(repo_root / config.src_root):
+    for path in files:
         digest.update(relative_posix(path, repo_root).encode("utf-8"))
         digest.update(b"\n")
         digest.update(path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def content_hash(repo_root: Path, config: ShapeConfig) -> str:
+    """sha256 over ``src_root/**/*.py`` -- the ``src_root`` entry of :func:`input_hashes`.
+
+    Byte-identical to the schema-1 definition, which is what lets a schema-1
+    baseline migrate: its one hash *is* this one.
+
+    Computed from the working tree, never from ``git rev-parse HEAD:src``:
+    local improvements are uncommitted when a contributor runs ``check``, and
+    a pull-request checkout is a synthetic merge commit.
+    """
+    return _hash_input(repo_root, config.src_root)
+
+
+def input_hashes(repo_root: Path, config: ShapeConfig) -> dict[str, str]:
+    """One :func:`_hash_input` digest per :func:`input_roots` entry, in root order."""
+    return {root: _hash_input(repo_root, root) for root in input_roots(config)}
 
 
 # ---------------------------------------------------------------------------
@@ -727,9 +842,16 @@ class ShapeBaseline(BaseModel):
 
     schema_version: int = Field(default=SHAPE_BASELINE_SCHEMA_VERSION, ge=1)
     generated_from: str = Field(min_length=1, description="git SHA the baseline was measured at.")
-    git_dirty: bool = Field(default=False, description="Whether that tree had uncommitted changes.")
+    git_dirty: bool = Field(
+        default=False,
+        description="Whether that tree had uncommitted changes, untracked files included.",
+    )
     tool_versions: dict[str, str] = Field(default_factory=dict)
-    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_hash: str = Field(pattern=_HEX_DIGEST, description="The src_root input hash.")
+    input_hashes: dict[str, str] = Field(
+        default_factory=dict,
+        description="One hash per input root a metric reads (schema 2); see metric_inputs().",
+    )
     metrics: dict[str, int]
     tables: dict[str, dict[str, int]] = Field(default_factory=dict)
 
@@ -739,6 +861,19 @@ class ShapeBaseline(BaseModel):
             raise ValueError(
                 f"baseline schema_version {self.schema_version} is newer than this tool "
                 f"understands ({SHAPE_BASELINE_SCHEMA_VERSION}); upgrade the tool"
+            )
+        if self.schema_version >= SHAPE_BASELINE_SCHEMA_VERSION and not self.input_hashes:
+            raise ValueError(
+                f"schema_version {self.schema_version} requires input_hashes; a schema-1 "
+                f"file carries only content_hash and is migrated by load_baseline()"
+            )
+        bad_hashes = {k: v for k, v in self.input_hashes.items() if not re.match(_HEX_DIGEST, v)}
+        if bad_hashes:
+            raise ValueError(f"input_hashes must be sha256 hex digests: {bad_hashes}")
+        if self.input_hashes and self.content_hash not in self.input_hashes.values():
+            raise ValueError(
+                "content_hash is the src_root entry of input_hashes and must appear there; "
+                "one of the two was edited by hand"
             )
         expected = set(METRIC_NAMES)
         actual = set(self.metrics)
@@ -760,8 +895,22 @@ class ShapeBaseline(BaseModel):
         return self
 
 
-def git_head_sha(repo_root: Path) -> tuple[str, bool]:
-    """``(HEAD sha, dirty)``; ``("unknown", False)`` when git is unavailable."""
+def git_head_sha(repo_root: Path, *, exclude: Sequence[str] = ()) -> tuple[str, bool]:
+    """``(HEAD sha, dirty)``; ``("unknown", False)`` when git is unavailable.
+
+    ``dirty`` counts **untracked** files (``--untracked-files=all``), not only
+    modified tracked ones: the hashes are computed from the working tree, so
+    a new, not-yet-added ``src/x.py`` changes the metrics, and a baseline
+    written then must not record ``git_dirty: false`` (PR #151 review).
+    Ignored files stay excluded, as they are from the tracked tree.
+
+    ``exclude`` lists repo-relative paths left out of the check -- ``write``
+    passes its own output file, which is being rewritten and is not a change
+    in the tree the numbers came from (a second ``write`` without a commit in
+    between would otherwise always be dirty).
+    """
+    status_command = ["git", "status", "--porcelain", "--untracked-files=all", "--", "."]
+    status_command.extend(f":(exclude){path}" for path in exclude)
     try:
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -772,7 +921,7 @@ def git_head_sha(repo_root: Path) -> tuple[str, bool]:
             check=False,
         )
         status = subprocess.run(
-            ["git", "status", "--porcelain", "--untracked-files=no"],
+            status_command,
             cwd=str(repo_root),
             capture_output=True,
             text=True,
@@ -801,7 +950,13 @@ def measure(
     """
     runner = run_ruff if ruff_runner is None else ruff_runner
     version_probe = ruff_version if ruff_version_probe is None else ruff_version_probe
-    sha_probe = git_head_sha if git_probe is None else git_probe
+    # if/else, not a ternary: mypy joins the keyword-only-parameter function
+    # and the Callable to bare ``function`` and then refuses to call it.
+    sha_probe: Callable[[Path], tuple[str, bool]]
+    if git_probe is None:
+        sha_probe = git_head_sha
+    else:
+        sha_probe = git_probe
     log = logger.bind(root=str(repo_root))
     findings = runner(repo_root, config.src_root, config.ruff_rules)
     log.debug("ruff_findings", count=len(findings), rules=list(config.ruff_rules))
@@ -827,6 +982,7 @@ def measure(
         log.info("shape_metric", metric=name, value=value)
     log.debug("mirror_detail", identical=mirror.identical, mirror_only=mirror.mirror_only)
     sha, dirty = sha_probe(repo_root)
+    hashes = input_hashes(repo_root, config)
     return ShapeBaseline(
         generated_from=sha,
         git_dirty=dirty,
@@ -835,7 +991,8 @@ def measure(
             "ruff": version_probe(),
             "measure_shape_schema": str(SHAPE_BASELINE_SCHEMA_VERSION),
         },
-        content_hash=content_hash(repo_root, config),
+        content_hash=hashes[config.src_root],
+        input_hashes=hashes,
         metrics=metrics,
         tables={"magic_values": magic_value_table(findings, config.magic_value_rules)},
     )
@@ -855,13 +1012,42 @@ def write_baseline(baseline: ShapeBaseline, path: Path) -> None:
     path.write_text(dump_baseline(baseline), encoding="utf-8")
 
 
-def load_baseline(path: Path) -> ShapeBaseline:
-    """Load and validate a baseline file."""
+def migrate_baseline_document(
+    document: dict[str, object], *, src_root: str = ShapeConfig().src_root
+) -> dict[str, object]:
+    """Lift a schema-1 document to schema 2 without touching the caller's mapping.
+
+    Schema 1 recorded one ``content_hash`` over ``src_root``; schema 2
+    records ``input_hashes`` per input. The migration records the old hash
+    under ``src_root`` and nothing else, so every metric that also reads
+    another input (orphans, dead guards, mirror) sees that input as *not
+    recorded* -- treated as changed by :func:`inputs_unchanged`, which keeps
+    growth gated and merely defers hand-edit detection on those three
+    metrics until the file is regenerated. A schema-2 document is returned
+    as a copy, unchanged.
+    """
+    migrated = dict(document)
+    version = migrated.get("schema_version", _UNVERSIONED_SCHEMA_VERSION)
+    if not isinstance(version, int) or version >= SHAPE_BASELINE_SCHEMA_VERSION:
+        return migrated
+    migrated["schema_version"] = SHAPE_BASELINE_SCHEMA_VERSION
+    hashes = migrated.get("input_hashes")
+    if not isinstance(hashes, dict):
+        hashes = {}
+    if "content_hash" in migrated:
+        hashes = {src_root: migrated["content_hash"], **hashes}
+    migrated["input_hashes"] = hashes
+    return migrated
+
+
+def load_baseline(path: Path, config: ShapeConfig | None = None) -> ShapeBaseline:
+    """Load, migrate (:func:`migrate_baseline_document`) and validate a baseline file."""
     with path.open(encoding="utf-8") as handle:
         document = yaml.safe_load(handle)
     if not isinstance(document, dict):
         raise ValueError(f"{path} must contain a YAML mapping, got {type(document).__name__}")
-    return ShapeBaseline.model_validate(document)
+    src_root = (ShapeConfig() if config is None else config).src_root
+    return ShapeBaseline.model_validate(migrate_baseline_document(document, src_root=src_root))
 
 
 # ---------------------------------------------------------------------------
@@ -887,9 +1073,10 @@ class Violation:
                 f"and justify it"
             )
         return (
-            f"{self.metric}: recorded {self.recorded} > measured {self.actual} while src/ is "
-            f"byte-identical to the tree the baseline was generated on -- nothing can have "
-            f"improved, so the recorded number was edited by hand; {REGENERATE_HINT}"
+            f"{self.metric}: recorded {self.recorded} > measured {self.actual} while every "
+            f"input this metric reads is byte-identical to the tree the baseline was generated "
+            f"on -- nothing can have improved, so the recorded number was edited by hand; "
+            f"{REGENERATE_HINT}"
         )
 
 
@@ -904,10 +1091,11 @@ def compare_count(
     """The shrink-only rule for one count.
 
     * ``actual > recorded`` is a regression, whatever the tree did.
-    * ``actual < recorded`` is an improvement -- unless ``src_unchanged``, in
-      which case nothing can have improved and the recorded number was edited
-      by hand (a lowered count that has not been re-measured, or padding
-      above the measurement to buy slack).
+    * ``actual < recorded`` is an improvement -- unless ``src_unchanged``
+      (every input *this metric* reads is unchanged; the keyword keeps its
+      schema-1 name), in which case nothing can have improved and the
+      recorded number was edited by hand (a lowered count that has not been
+      re-measured, or padding above the measurement to buy slack).
     """
     if actual > recorded:
         return Violation(metric, recorded, actual, "grew")
@@ -916,22 +1104,48 @@ def compare_count(
     return None
 
 
-def compare(recorded: ShapeBaseline, current: ShapeBaseline) -> list[Violation]:
-    """Apply :func:`compare_count` to every metric and every table entry."""
-    src_unchanged = recorded.content_hash == current.content_hash
+def inputs_unchanged(
+    recorded: ShapeBaseline, current: ShapeBaseline, inputs: Iterable[str]
+) -> bool:
+    """True iff every named input is recorded on both sides with the same hash.
+
+    An input the recorded baseline never hashed (a schema-1 file, or a root
+    added to the config since) is *not* provably unchanged, so it counts as
+    changed: the rule then cannot call an improvement a hand edit, which is
+    the safe direction -- growth is gated by :func:`compare_count` regardless.
+    """
+    return all(
+        name in recorded.input_hashes
+        and recorded.input_hashes[name] == current.input_hashes.get(name)
+        for name in inputs
+    )
+
+
+def compare(
+    recorded: ShapeBaseline, current: ShapeBaseline, config: ShapeConfig | None = None
+) -> list[Violation]:
+    """Apply :func:`compare_count` to every metric and every table entry.
+
+    Each metric's ``src_unchanged`` is :func:`inputs_unchanged` over the
+    inputs :func:`metric_inputs` declares for it under ``config`` (defaults
+    when ``None``); a table inherits its metric's (:data:`TABLE_METRIC`).
+    """
+    reads = metric_inputs(ShapeConfig() if config is None else config)
     violations: list[Violation] = []
     for name in METRIC_NAMES:
+        unchanged = inputs_unchanged(recorded, current, reads[name])
         found = compare_count(
-            name, recorded.metrics[name], current.metrics[name], src_unchanged=src_unchanged
+            name, recorded.metrics[name], current.metrics[name], src_unchanged=unchanged
         )
         if found is not None:
             violations.append(found)
     for table in TABLE_NAMES:
+        unchanged = inputs_unchanged(recorded, current, reads[TABLE_METRIC[table]])
         old = recorded.tables.get(table, {})
         new = current.tables.get(table, {})
         for key in sorted(set(old) | set(new)):
             found = compare_count(
-                f"{table}[{key}]", old.get(key, 0), new.get(key, 0), src_unchanged=src_unchanged
+                f"{table}[{key}]", old.get(key, 0), new.get(key, 0), src_unchanged=unchanged
             )
             if found is not None:
                 violations.append(found)
@@ -939,9 +1153,13 @@ def compare(recorded: ShapeBaseline, current: ShapeBaseline) -> list[Violation]:
 
 
 def format_report(
-    recorded: ShapeBaseline | None, current: ShapeBaseline, violations: Sequence[Violation]
+    recorded: ShapeBaseline | None,
+    current: ShapeBaseline,
+    violations: Sequence[Violation],
+    config: ShapeConfig | None = None,
 ) -> str:
     """Human-readable summary of a measurement and (optionally) its comparison."""
+    roots = input_roots(ShapeConfig() if config is None else config)
     lines = ["=== Repository shape ==="]
     for name in METRIC_NAMES:
         actual = current.metrics[name]
@@ -951,8 +1169,17 @@ def format_report(
             lines.append(f"{name:40s} {actual:6d}  (recorded {recorded.metrics[name]})")
     lines.append(f"content_hash {current.content_hash}")
     if recorded is not None:
-        same = "unchanged" if recorded.content_hash == current.content_hash else "changed"
-        lines.append(f"src/ is {same} relative to the baseline ({recorded.generated_from[:12]})")
+        for root in roots:
+            if root not in recorded.input_hashes:
+                state = "not recorded"
+            elif inputs_unchanged(recorded, current, (root,)):
+                state = "unchanged"
+            else:
+                state = "changed"
+            label = root if Path(root).suffix else f"{root}/"  # pyproject.toml vs src/
+            lines.append(
+                f"{label} is {state} relative to the baseline ({recorded.generated_from[:12]})"
+            )
     if violations:
         lines.append("")
         lines.append(f"{len(violations)} violation(s):")
@@ -1007,26 +1234,36 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def output_pathspec(output: Path, repo_root: Path) -> tuple[str, ...]:
+    """``output`` as a repo-relative path to exclude from the dirtiness check; ``()`` if outside."""
+    try:
+        return (output.resolve().relative_to(repo_root.resolve()).as_posix(),)
+    except ValueError:
+        return ()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point. ``write`` exits 0; ``check`` exits 1 on violations, 2 on a bad baseline."""
     args = build_parser().parse_args(argv)
     configure_logging(args.log_level)
     config = load_config(args.config)
     root: Path = args.root.resolve()
-    current = measure(root, config)
+    exclude = output_pathspec(args.output, root) if args.command == "write" else ()
+    git_probe = (lambda r: git_head_sha(r, exclude=exclude)) if exclude else None
+    current = measure(root, config, git_probe=git_probe)
     if args.command == "write":
         write_baseline(current, args.output)
         print(format_report(None, current, ()))
         logger.info("baseline_written", path=str(args.output), sha=current.generated_from)
         return 0
     try:
-        recorded = load_baseline(args.baseline)
+        recorded = load_baseline(args.baseline, config)
     except (OSError, ValueError) as exc:
         logger.error("baseline_unreadable", path=str(args.baseline), error=str(exc))
         print(f"cannot read baseline {args.baseline}: {exc}", file=sys.stderr)
         return 2
-    violations = compare(recorded, current)
-    print(format_report(recorded, current, violations))
+    violations = compare(recorded, current, config)
+    print(format_report(recorded, current, violations, config))
     return 1 if violations else 0
 
 

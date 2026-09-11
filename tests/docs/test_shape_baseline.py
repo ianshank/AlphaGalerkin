@@ -11,10 +11,11 @@ metrics with the same functions and applies
 ``scripts.measure_shape.compare_count`` per metric:
 
 * ``actual <= recorded`` -- the shape may only shrink;
-* ``actual < recorded`` is accepted only when ``src/`` differs from the tree
-  the baseline was generated on (its content hash). With ``src/``
-  byte-identical nothing can have improved, so a larger recorded number was
-  edited by hand and the failure names the regeneration command.
+* ``actual < recorded`` is accepted only when some input *that metric reads*
+  differs from the tree the baseline was generated on (one hash per input
+  root, ``scripts.measure_shape.metric_inputs``; schema 2, PR #151). With
+  those inputs byte-identical nothing can have improved, so a larger recorded
+  number was edited by hand and the failure names the regeneration command.
 
 Hermetic except for one ``ruff`` subprocess (``ruff==0.15.8`` pinned in the
 ``dev`` extra, which every CI lane that runs ``tests/docs/`` installs). Three
@@ -65,14 +66,18 @@ from scripts.measure_shape import (
     DEFAULT_BASELINE,
     METRIC_NAMES,
     REGENERATE_HINT,
+    SHAPE_BASELINE_SCHEMA_VERSION,
     TABLE_NAMES,
     VIOLATION_KINDS,
     ShapeBaseline,
     ShapeConfig,
     compare,
     compare_count,
+    input_roots,
+    inputs_unchanged,
     load_baseline,
     measure,
+    metric_inputs,
     python_files_under,
     ruff_version,
 )
@@ -136,6 +141,37 @@ def test_the_baseline_records_a_real_git_sha(recorded: ShapeBaseline) -> None:
     assert _GIT_SHA.match(recorded.generated_from), recorded.generated_from
 
 
+def test_the_baseline_was_generated_on_a_clean_tree(recorded: ShapeBaseline) -> None:
+    """``generated_from`` must be the revision the numbers came from (PR #151 provenance note).
+
+    ``git_dirty`` counts untracked files, so a baseline written over an
+    unstaged ``src/x.py`` records ``true`` here and fails: its numbers
+    belong to no commit. The workflow this pins: commit the code, then
+    ``write``, then commit the baseline (the tool's own output file is not
+    counted as dirt, so that second commit is always reachable).
+    """
+    assert recorded.git_dirty is False, (
+        f"the baseline was written on a dirty tree, so {recorded.generated_from[:12]} cannot "
+        f"reproduce its numbers; commit first, then {REGENERATE_HINT}, then commit the baseline"
+    )
+
+
+def test_the_baseline_records_a_hash_for_every_input(recorded: ShapeBaseline) -> None:
+    """The committed file must be a full schema-2 record, not a migrated schema-1 one.
+
+    ``load_baseline`` migrates a schema-1 file by recording its one hash
+    under ``src`` and nothing else; that keeps ``check`` working but leaves
+    hand-edit detection off for the three multi-input metrics. The file in
+    the tree may not rely on that leniency.
+    """
+    assert recorded.schema_version == SHAPE_BASELINE_SCHEMA_VERSION
+    assert set(recorded.input_hashes) == set(input_roots(ShapeConfig())), (
+        f"inputs recorded {sorted(recorded.input_hashes)} != read "
+        f"{sorted(input_roots(ShapeConfig()))}; {REGENERATE_HINT}"
+    )
+    assert recorded.input_hashes[ShapeConfig().src_root] == recorded.content_hash
+
+
 def test_the_baseline_ruff_version_matches_the_installed_one(recorded: ShapeBaseline) -> None:
     """Three counts are ruff's; a different ruff makes the comparison meaningless."""
     assert recorded.tool_versions["ruff"] == ruff_version(), (
@@ -172,16 +208,16 @@ def test_metric_has_not_grown(metric: str, recorded: ShapeBaseline, current: Sha
 def test_recorded_count_is_not_hand_edited(
     metric: str, recorded: ShapeBaseline, current: ShapeBaseline
 ) -> None:
-    """A recorded count above the measurement with ``src/`` unchanged was typed, not measured.
+    """A recorded count above the measurement with its inputs unchanged was typed, not measured.
 
-    Live only while the content hash matches (the committed state); once
-    ``src/`` changes the improvement is real and regenerating is how it is
-    recorded. Growth is owned by ``test_metric_has_not_grown`` and is not
-    re-asserted here.
+    Live only while every input *this metric* reads hashes the same as at
+    generation (the committed state); once one of them changes the
+    improvement is real and regenerating is how it is recorded. Growth is
+    owned by ``test_metric_has_not_grown`` and is not re-asserted here.
     """
-    src_unchanged = recorded.content_hash == current.content_hash
+    unchanged = inputs_unchanged(recorded, current, metric_inputs(ShapeConfig())[metric])
     violation = compare_count(
-        metric, recorded.metrics[metric], current.metrics[metric], src_unchanged=src_unchanged
+        metric, recorded.metrics[metric], current.metrics[metric], src_unchanged=unchanged
     )
     if violation is not None and violation.kind == "hand_edited":
         pytest.fail(violation.message)

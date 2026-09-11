@@ -148,6 +148,12 @@ ALLOWLIST_SRC: dict[str, tuple[int, str]] = {
 ALLOWLIST_TESTS: dict[str, tuple[int, str]] = {
     "tests/pde/test_operators.py": (1717, "one suite per operator family"),
     "tests/pde/test_mesh_refinement.py": (1507, "mesh + game suite"),
+    "tests/scripts/test_measure_shape.py": (
+        1381,
+        "R-11 shape-guard unit suite; the PR #151 hardening added per-input provenance, "
+        "migration and CWD/untracked/alias regression tests (one file: the documented "
+        "coverage gate names it)",
+    ),
     "tests/training/test_trainer_coverage.py": (1377, "trainer coverage sweep"),
     "tests/poc/test_complexity_scenario.py": (1148, "scenario suite"),
     "tests/training/test_checkpoint.py": (1102, "checkpoint suite; follows plan 1.3"),

@@ -175,65 +175,106 @@ C4Container
 ## Level 2: Container Diagram — Test Enforcement
 
 The repository's most-repeated defect is not in the solver: it is a suite, a
-package or a gate that *appears* enforced and enforces nothing. Seven instances
-are recorded in `CLAUDE.md`, and every one was found by a person reading a
-config file rather than by a check.
+package or a gate that *appears* enforced and enforces nothing. Eight instances
+are recorded in `CLAUDE.md` (the eighth, `tests/integrations/eval_harness/`
+collapsing to zero items under a module-level `importorskip`, closed 2026-09-11),
+and almost every one was found by a person reading a config file rather than by
+a check.
 
 This view exists because that path — **test tier → CI job → blocking gate** — was
 documented nowhere, which is precisely how a tier can run nowhere without anyone
 noticing. A tier is enforced only if there is an unbroken path from it to
 `ci-success`'s `exit 1`.
 
+The job graph below is the one `.github/workflows/ci.yml` runs as of 2026-09-11
+(reflection tickets R-02, R-09, R-12, R-13 in
+`docs/ENGINEERING_REFLECTION_2026-09-11.md`). Stage 1 has no predecessors:
+`lint` is ruff-only and installs nothing but the ruff wheel, so the nine
+`needs: lint` edges cost seconds; the torch-dependent checks (abstraction audit,
+mypy) run in parallel in `typecheck`. `ci-success` names all thirteen non-nightly
+jobs in `needs` and fails on any result other than `success` — `focus` being the
+one shaped exception (it is `pull_request`-only, so a `skipped` result is accepted
+exactly when the event is not a pull request or the `focus-override` label is
+present). `test-slow` is nightly / opt-in and is deliberately **not** a merge gate.
+
 ```mermaid
 graph TB
     subgraph tiers["Test tiers (tests/)"]
-        FAST["tests/ (fast lane)<br/>unit + integration"]
+        FAST["tests/ (hermetic fast lane)<br/>-m 'not slow and not e2e and not gpu_required and not network'<br/>sockets blocked except loopback"]
         E2E["tests/e2e/<br/>process-level journeys"]
         DOCS["tests/docs/<br/>hermetic config guards"]
         CLAUDET["tests/claude/<br/>harness validation"]
-        EXTRAS["fem_required half<br/>needs [fem] extra"]
+        EXTRAS["fem_required / eval_harness_required<br/>need the [fem] / [eval-harness] extras"]
+        SLOW["slow marker<br/>nightly only"]
     end
 
-    subgraph jobs["CI jobs (.github/workflows/ci.yml)"]
+    subgraph stage1["Stage 1: no predecessors, run in parallel"]
+        JLINT["lint<br/>ruff check + format only (no torch)"]
+        JTYPE["typecheck<br/>abstraction audit (hard) + mypy (advisory)"]
+        JFOCUS["focus<br/>pull_request only; focus-override label skips"]
+        JSECRETS["secrets<br/>gitleaks"]
+    end
+
+    subgraph stage2["Stage 2: needs lint"]
         JFAST["test-fast<br/>3.10 / 3.11 / 3.12"]
+        JCOV["coverage<br/>global 85% branch"]
+        JGATES["coverage-gates<br/>4 shards, per-module gates"]
+        JINT["test-integration"]
         JE2E["test-e2e<br/>split: -k chess / not chess"]
-        JEXTRAS["test-extras"]
-        JCOV["coverage + coverage-gates<br/>43 per-module gates"]
+        JJAX["test-jax"]
+        JCHESS["test-chess"]
+        JEXTRAS["test-extras<br/>[fem] + [eval-harness]"]
+        JTBR["transfer-baseline-regression"]
     end
 
-    GATE["ci-success<br/>if result != success: exit 1"]
+    JSLOW["test-slow<br/>needs test-fast; schedule / default branch /<br/>[full-test] / workflow_dispatch -- not a merge gate"]
+
+    GATE["ci-success<br/>13 jobs in needs; if result != success: exit 1<br/>(focus: skipped accepted only off-PR or with the label)"]
     LOCAL["make pre-pr<br/>developer mirror"]
 
     FAST --> JFAST
+    FAST --> JCOV
     DOCS --> JFAST
+    DOCS --> JGATES
     CLAUDET --> JFAST
     E2E --> JE2E
     EXTRAS --> JEXTRAS
+    SLOW --> JSLOW
 
-    JFAST --> GATE
-    JE2E --> GATE
-    JEXTRAS --> GATE
-    JCOV --> GATE
+    JLINT --> stage2
+    JFAST --> JSLOW
 
-    JFAST -.mirrors.-> LOCAL
-    JE2E -.mirrors.-> LOCAL
+    JLINT --> GATE
+    JTYPE --> GATE
+    JFOCUS --> GATE
+    JSECRETS --> GATE
+    stage2 --> GATE
 
-    DOCS -.guards the arrows themselves.-> jobs
-    CLAUDET -.guards .claude/ + settings.-> GATE
+    JFAST -.->|mirrors| LOCAL
+    JE2E -.->|mirrors| LOCAL
+
+    DOCS -.->|guards the arrows themselves| stage2
+    DOCS -.->|guards membership and the focus clause shape| GATE
+    CLAUDET -.->|guards the .claude/ harness and settings| GATE
 
     style GATE fill:#c62828,color:#fff
     style E2E fill:#1565c0,color:#fff
     style JE2E fill:#1565c0,color:#fff
     style DOCS fill:#2e7d32,color:#fff
+    style JSLOW fill:#616161,color:#fff
 ```
 
 ### Why each edge is load-bearing
 
 | Edge | What breaks if it is missing | Guarded by |
 |---|---|---|
-| tier → job | the tier runs nowhere (`tests/e2e/`: 137 tests, one file named in one job) | `test_e2e_visibility.py` clause (b) |
-| job → `ci-success.needs` | the job runs but cannot block a merge | clause (c) |
-| `needs` → `exit 1` | an `echo` of the result reads identically in review and gates nothing | clause (c), via `hard_gate_jobs` |
+| tier → job | the tier runs nowhere (`tests/e2e/`: 137 tests, one file named in one job; `tests/integrations/eval_harness/`: 39 tests that `importorskip`'d to zero items until R-13) | `test_e2e_visibility.py` clause (b); `test_eval_harness_gating.py` |
+| job → `ci-success.needs` | the job runs but cannot block a merge (`focus` and `secrets` ran on every PR for weeks and could not fail one — B38, closed by R-09) | clause (c); `test_ci_success_hard_gates.py` (every job is either a hard gate or a disclosed, self-expiring `DISCLOSED_NOT_HARD` entry) |
+| `needs` → `exit 1` | an `echo` of the result reads identically in review and gates nothing | clause (c), via `hard_gate_conditions` in `tests/support/workflows.py` |
+| `focus` → `ci-success` (shape) | a bare `!= success` fails every push run (the job is `pull_request`-only); a bare `== failure` lets an accidental skip merge | `test_ci_success_hard_gates.py`: one clause must accept `skipped`, one must reject it on an unlabelled PR, and the label must be spelled identically in the job's own `if:` |
+| `lint` → `typecheck` split | moving the abstraction audit out of `lint` could have downgraded it to a report | `typecheck` is asserted in the hard-gate set (R-12a) |
+| `coverage-gates` → shard | a gate step with no `matrix.shard == N` runs on every shard; one naming a shard outside the matrix runs on none; an empty shard installs torch and exits green | `test_coverage_gate_shards.py` (R-12b) |
+| fast lane → hermetic flags | a test that reaches the network passes on runner egress and fails everywhere else (B35: two "unit" tests fetched 500 MB of VGG weights) | `test_fast_lane_is_hermetic.py` keeps the three flag copies equal and *drives* a planted outbound connect to prove they block (R-02) |
 | job → `make pre-pr` | the developer mirror is narrower than CI (`make test-e2e` once ran **3 of 81** tests) | clause (d) + the `pre-pr` parametrize list |
 | CI command → `CLAUDE.md` row | the documented command diverges from the enforced one | clause (i) |
 
@@ -1738,11 +1779,11 @@ C4Component
     title Component Diagram - Quality Gates & Agentic Harness
 
     Container_Boundary(harness, ".claude/ Agentic Harness") {
-        Component(skills, "Skills (12)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, openspec-change, claims-ledger, run-provenance, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference)")
+        Component(skills, "Skills (15)", "SKILL.md + YAML frontmatter", "Repeatable procedures: coverage-gate, add-coverage-gate, regression-surface, pr-preflight, abstract-method-audit, surface-hardcoded-value, new-pde-operator, spec-new, openspec-change, claims-ledger, run-provenance, harden-a-guard, wire-a-ci-job, god-file-split, certificate-validation (a KICKOFF skill whose src/pde/certificate/ target is a declared forward reference). The count is machine-checked by tests/claude/")
 
-        Component(subagents, "Subagents (5)", "Markdown + tools frontmatter", "reviewer (adversarial diff review), sqe (tests + coverage), pde-solver, mcts-engineer, integration-engineer. Tool grants are validated against the real tool set")
+        Component(subagents, "Subagents (6)", "Markdown + tools frontmatter", "reviewer (adversarial diff review), sqe (tests + coverage), pde-solver, mcts-engineer, integration-engineer, build-engineer (owns ci.yml, the Makefile and the CI-to-docs mirror). Tool grants are validated against the real tool set; every Bash-granted agent repeats the worktree rule verbatim (R-14)")
 
-        Component(commands, "Slash Commands (4)", "Markdown + argument-hint", "audit-abstractions, poc-run, record-baseline, agents-research. A declared argument-hint must actually consume $ARGUMENTS")
+        Component(commands, "Slash Commands (5)", "Markdown + argument-hint", "audit-abstractions, poc-run, record-baseline, agents-research, babysit-pr. A declared argument-hint must actually consume $ARGUMENTS")
 
         Component(hook, "SessionStart Hook", "bash", "Bootstraps the editable install with the SETUPTOOLS_USE_DISTUTILS=stdlib antlr fix; registered in settings.json")
 
@@ -1750,23 +1791,47 @@ C4Component
     }
 
     Container_Boundary(gates, "CI Enforcement (ci.yml)") {
-        Component(lint, "Lint & Type Check", "ruff + mypy", "ruff check/format over 899 files; mypy --strict --ignore-missing-imports (continue-on-error: 8-error documented baseline)")
+        Component(lint, "Lint", "ruff only", "ruff check + format over src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py. Installs only the pinned ruff wheel, so the nine needs-lint edges cost seconds rather than a torch install (split 2026-09-11, R-12a)")
 
-        Component(secrets, "Secret Scan", "gitleaks-action", "Runs .gitleaks.toml. Wired 2026-08-21 -- the config and a `make gitleaks` target had both existed for months while NOTHING invoked either")
+        Component(typecheck, "Type Check", "abstraction audit + mypy", "Split out of lint 2026-09-11 and kept a HARD gate. scripts/audit_abstractions blocks for every package except src/backend; mypy --strict --ignore-missing-imports stays continue-on-error until R-06")
 
-        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "87 hermetic tests: frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism")
+        Component(hermetic, "Hermetic fast lane", "pytest-socket", "test-fast and coverage run under HERMETIC_PYTEST_FLAGS (sockets blocked except loopback and unix) with the network marker deselected; the Makefile carries the same flags (R-02)")
 
-        Component(security_gate, "Security suite", "pytest tests/security/", "Pickle-RCE payload tests, allowlist purity, path containment. 69 tests")
+        Component(focus, "Scope containment", "scripts/check_focus", "pull_request-only. HARD merge gate since 2026-09-11 (R-09); the focus-override label skips it visibly and ci-success accepts skipped only then")
 
-        Component(coverage_gate, "Test Coverage + Per-Module Coverage Gates", "pytest --cov", "Global 85% branch gate in the coverage job, plus 45 named per-module gates split into their own coverage-gates job (2026-09-02, when the combined job blew its 45-minute cap)")
+        Component(secrets, "Secret Scan", "gitleaks-action", "Runs .gitleaks.toml. Wired 2026-08-21 and promoted to a hard merge gate 2026-09-11 (R-09) -- the config and a make gitleaks target had both existed for months while NOTHING invoked either")
 
-        Component(abstraction_gate, "Abstraction audit", "scripts/audit_abstractions", "Blocking for every package except src/backend: an @abstractmethod with no call site fails the build")
+        Component(harness_gate, "Validate .claude harness", "pytest tests/claude/", "155 hermetic tests collected (2026-09-11): frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, parse determinism, tracked-file check, worktree rule")
+
+        Component(security_gate, "Security suite", "pytest tests/security/", "Pickle-RCE payload tests, allowlist purity, path containment. CWD pinned to a temp dir by tests/security/conftest.py")
+
+        Component(coverage_gate, "Test Coverage + Per-Module Coverage Gates", "pytest --cov", "Global 85% branch gate in the coverage job; the per-module gates live in coverage-gates, sharded 4-way by step if (R-12b); test-extras carries the [fem] and [eval-harness] gates, the latter a 1% tripwire until first measured (R-13)")
+
+        Component(cisuccess, "ci-success", "exit 1 block", "Names all 13 non-nightly jobs in needs and fails on any result other than success; test-slow is nightly and deliberately outside it")
+    }
+
+    Container_Boundary(guards, "Governance guards (tests/docs/, tests/claude/ -- hermetic, run in the fast lane)") {
+        Component(g_gates, "test_ci_success_hard_gates", "R-09", "Every job is a hard gate or a disclosed DISCLOSED_NOT_HARD entry; the focus clause shape is asserted")
+
+        Component(g_hermetic, "test_fast_lane_is_hermetic", "R-02", "Three flag copies equal; network marker registered and deselected; a planted outbound connect is refused")
+
+        Component(g_shards, "test_coverage_gate_shards", "R-12b", "No unsharded gate step, no step naming a shard outside the matrix, no empty shard, fail-fast off")
+
+        Component(g_size, "test_module_size_budget", "R-10", "Freezes every src/ module over 600 lines and test module over 1000 at its recorded size")
+
+        Component(g_shape, "test_shape_baseline + scripts/measure_shape", "R-11", "Nine code-shape metrics ratcheted against config/shape_baseline.yaml; regenerate with measure_shape write after a genuine reduction")
+
+        Component(g_eval, "test_eval_harness_gating", "R-13", "eval_harness_required marker on every file; conftest gate driven through both branches; the test-extras step selects and measures the suite")
+
+        Component(g_changelog, "test_changelog_headers", "R-08", "One preamble, one Unreleased block, canonical groups, PEP 440 ladder")
+
+        Component(g_worktree, "test_worktree_rule", "R-14", "The concurrent-subagent rule in AGENT.md and every Bash-granted agent file agree verbatim")
     }
 
     Container_Boundary(local, "Local Parity") {
-        Component(makefile, "Makefile", "make pre-pr", "Chains lint, mypy, gitleaks, test-claude, security, regression, benchmarks, core, agents, e2e, demos, fast, coverage. CI_TEST_EXCLUDES mirrors ci.yml's 6 --ignore + 9 --deselect by hand")
+        Component(makefile, "Makefile", "make pre-pr", "Chains lint, mypy, gitleaks, test-claude, security, regression, benchmarks, core, agents, e2e, demos, fast, coverage. HERMETIC_PYTEST_FLAGS and CI_TEST_EXCLUDES mirror ci.yml by hand (B7)")
 
-        Component(precommit, "pre-commit", ".pre-commit-config.yaml", "ruff with no files: filter -- so it rewrites dashboard/ too, which is why CI lints dashboard/ as well")
+        Component(precommit, "pre-commit", ".pre-commit-config.yaml", "ruff with no files filter -- so it rewrites dashboard/ too, which is why CI lints dashboard/ as well")
     }
 
     Rel(skills, coverage_gate, "encode the same thresholds as")
@@ -1775,11 +1840,22 @@ C4Component
     Rel(hook, settings, "registered in")
     Rel(settings, harness_gate, "validated by")
     Rel(makefile, coverage_gate, "mirrors")
+    Rel(makefile, hermetic, "mirrors")
     Rel(precommit, lint, "must agree with")
-    Rel(secrets, harness_gate, "sibling step")
+    Rel(g_gates, cisuccess, "guards")
+    Rel(g_hermetic, hermetic, "guards")
+    Rel(g_shards, coverage_gate, "guards")
+    Rel(g_eval, coverage_gate, "guards")
+    Rel(g_worktree, subagents, "guards")
 
     UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
 ```
+
+Redrawn 2026-09-11 against the R-02 / R-08 / R-09 / R-10 / R-11 / R-12 / R-13 /
+R-14 tickets in `docs/ENGINEERING_REFLECTION_2026-09-11.md`; the harness counts
+(15 / 6 / 5) and the `tests/claude/` collected count were re-measured from disk
+at the same time — the previous 12 / 5 / 4 and "87 tests" had drifted, which is
+why `tests/claude/` machine-checks the inventory.
 
 ### Quality-Gate Components
 
@@ -1787,8 +1863,17 @@ C4Component
 |---|---|---|
 | `tests/claude/` | blocking CI step | A skill citing a deleted path, an agent declaring a non-existent tool, or a permission naming a renamed module — each fails only when someone relies on it |
 | gitleaks | blocking CI step | A committed secret. Previously unenforced: config present, scanner never invoked |
-| 45 per-module coverage gates | blocking CI job | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
+| 45 per-module coverage gates | blocking CI job (`coverage-gates`, 4 shards) | A package silently falling below the repo standard. Five were added 2026-08-21 for packages that had none |
 | Abstraction audit | blocking `typecheck` job (split out of `lint` 2026-09-11) | A dead `@abstractmethod` accumulating call-site-free API |
+| Hermetic fast lane (R-02) | `HERMETIC_PYTEST_FLAGS` on `test-fast` / `coverage`; `network` marker; `tests/docs/test_fast_lane_is_hermetic.py` | A test that passes on runner egress and fails everywhere else (B35). The guard drives a planted outbound connect rather than reading the flag |
+| Merge-gate membership (R-09) | `ci-success.needs` + `exit 1`; `tests/docs/test_ci_success_hard_gates.py` | A job that runs on every PR and cannot fail one (`focus`, `secrets` until 2026-09-11; B38). Every job must be a hard gate or a disclosed, self-expiring exemption |
+| `lint` / `typecheck` split (R-12a) | both hard gates; `typecheck` in the expected hard set | Moving the abstraction audit out of `lint` silently downgrading it to advisory |
+| Coverage-gate sharding (R-12b) | `tests/docs/test_coverage_gate_shards.py` | A gate step with no shard condition (runs on every shard), one naming a shard outside the matrix (runs on none), an empty shard that installs torch and exits green |
+| Module-size budget (R-10) | `tests/docs/test_module_size_budget.py` | An over-ceiling module growing while nobody looks; a stale row after a split |
+| Shape baseline (R-11) | `config/shape_baseline.yaml` + `scripts/measure_shape check`; `tests/docs/test_shape_baseline.py` | Any of nine code-shape metrics growing, or a count hand-edited instead of regenerated (`measure_shape write`) |
+| Eval-harness gating (R-13) | `eval_harness_required` marker; `test-extras` step with an inline coveragerc; `tests/docs/test_eval_harness_gating.py` | A suite collapsing to zero items under `importorskip` so no hook, `-m` or gate can see it (B37 — the eighth invisibility instance) |
+| CHANGELOG structure (R-08) | `tests/docs/test_changelog_headers.py` | Two `[Unreleased]` blocks or a duplicated `### Added` after a merge, so a release cut renames one of two changelogs |
+| Worktree rule (R-14) | `AGENT.md` + every Bash-granted `.claude/agents/*.md`; `tests/claude/test_worktree_rule.py` | A concurrent subagent's `git stash` / `git reset` reaching another agent's uncommitted edits in a shared tree (B22) |
 | `make pre-pr` | local | Local/CI drift. Kept in step by hand; the duplication is tracked as backlog B7 |
 
 **Deliberately not gated**, with reasons rather than numbers: `src/integrations`

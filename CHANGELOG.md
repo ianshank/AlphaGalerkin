@@ -327,6 +327,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `openspec/changes/focus-secrets-merge-gate/`; `config/focus.yaml`'s header
   no longer claims the check runs inside the `lint` job. Nothing in the
   YAML's tracks changed (decision D9).
+- **Auxiliary gate jobs skip on cancellation.** `regression-surface.yml` `surface-success` and `sbir-demo-smoke.yml` `smoke-success` ran under `if: always()` and treated `cancelled` as failure, so a run superseded by the concurrency group stapled a red X to a SHA nobody was waiting on (run 34659426510, 2026-09-11) -- the defect `ci-success` fixed on 2026-09-08 (B38). Both now use `!cancelled()`. New guard `tests/docs/test_gate_jobs_skip_on_cancel.py` finds every fan-in gate job across all workflows (≥2 `needs`, a standalone non-zero `exit`) and requires the cancel-safe form; 2/2 planted mutations killed.
 - **Docs synced to the reflection tree (R-02/08/09/10/11/12/13/14).**
   `docs/architecture/c4_mermaid.md` redraws the test-enforcement view as the
   current job graph (ruff-only `lint` → nine `needs: lint` jobs; `typecheck` /

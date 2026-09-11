@@ -233,10 +233,16 @@ reports 0.00% and can never fail) or written as a `--cov=<...>.py` file-path spe
 (silently ignored by coverage 7.x). Both had shipped, three times.
 
 ```bash
+# The hermetic fast lane, exactly as CI's test-fast job runs it (2026-09-11):
+# pytest-socket blocks every socket except loopback/unix, and tests carrying
+# @pytest.mark.network are deselected. A test that needs egress must be marked
+# `network` or it fails here the same way it fails in CI.
+make test-fast
+
 # No COVERAGE_CORE pin needed: the `pytrace` export this block used to carry was
 # retired 2026-09-02 -- the crash it guarded against does not reproduce, and the
 # default C tracer is ~3x faster on CI's coverage job.
-pytest -m "not gpu_required"          # CPU-only default surface
+pytest -m "not gpu_required"          # CPU-only default surface, unsandboxed
 ruff check src/ && ruff format --check src/
 
 make pre-pr                            # the developer mirror of CI
@@ -244,13 +250,25 @@ make pre-pr                            # the developer mirror of CI
 
 **Enforcement is itself tested.** The recurring defect in this repository has not
 been a wrong answer; it has been a suite, package or gate that *looked* enforced
-and enforced nothing — seven recorded instances, every one found by a person
-reading a config file. Two hermetic suites (`tests/docs/`, `tests/claude/`; no
+and enforced nothing — eight recorded instances, almost every one found by a
+person reading a config file. Two hermetic suites (`tests/docs/`, `tests/claude/`; no
 network, no model calls, ~2 s) parse `ci.yml`, the `Makefile`, `pyproject.toml`
 and the docs *as data* and assert the path from each test tier to `ci-success`'s
 `exit 1` is unbroken — including that `make pre-pr` is not narrower than CI, and
 that a documented command matches the one CI runs. The wiring is drawn in
 [the C4 test-enforcement view](docs/architecture/c4_mermaid.md#level-2-container-diagram--test-enforcement).
+
+**Merge-gate membership is explicit, not implied.** `ci-success` names every
+non-nightly job in `needs` and fails on any result other than `success`;
+`tests/docs/test_ci_success_hard_gates.py` requires each job in `ci.yml` to be
+either a hard gate or a disclosed, self-expiring exemption, so a job cannot run
+on every pull request while blocking nothing (the `focus` and `secrets` jobs did
+exactly that for weeks before being promoted on 2026-09-11). `lint` is ruff-only;
+the abstraction audit and mypy run in a parallel `typecheck` job that is itself a
+hard gate. The fast lane is hermetic (`tests/docs/test_fast_lane_is_hermetic.py`
+proves the socket block actually refuses an outbound connect rather than merely
+reading the flag), and the workflow-level shape of the pipeline is drawn in the
+C4 view linked above.
 
 Every guard in those suites is **mutation-tested**: the defect it claims to catch
 is planted, a *named* test must go red, and the kill is recorded. The procedure is

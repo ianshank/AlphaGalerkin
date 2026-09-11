@@ -358,7 +358,7 @@ Measured where a measurement exists; otherwise per-process torch import ≈ 3–
 
 | Phase | Files | Tests | Runtime (CPU) | CI job | Markers |
 | --- | --- | --- | --- | --- | --- |
-| 0 | 2 guards + wiring + 7 assertion fixes + 2 src fixes | ~14 | < 2 s hermetic; existing suite 130–310 s *(measured)* | `test-e2e` (new), guards in `lint` | — |
+| 0 | 2 guards + wiring + 7 assertion fixes + 2 src fixes | ~14 | < 2 s hermetic; existing suite 130–310 s *(measured)* | `test-e2e` (new); the guards run in the fast lane (`test-fast`, where every `tests/docs/` guard runs — this row said `lint` when written, and since the 2026-09-11 R-12a split `lint` is ruff-only) | — |
 | 1 | 3 | ~14 | 4.1 < 5 s/run; 4.2 6 s/run × 3; 4.3 tensor < 5 s, fem unmeasured | `test-e2e`; 4.3 fem in `test-extras` | `e2e`; `fem_required` on one |
 | 2 | 2 | ~10 | ~1 min transfer/stochastic pairs (est.); 5.2 8 s/run *(measured)* | `test-e2e` | `e2e` |
 | 3 | 3 | ~8 | ~40 s, process startup (est.) | `test-e2e` | `e2e` |

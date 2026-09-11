@@ -80,7 +80,7 @@ SUBSTRATE_COV_THRESHOLD ?= 95
 # could not be installed where this was authored, so no percentage exists yet;
 # set floor(measured)-2 from the first green test-extras run that reports one.
 # Must match ci.yml's test-extras step.
-EVAL_HARNESS_COV_THRESHOLD ?= 1
+EVAL_HARNESS_COV_THRESHOLD ?= 96
 
 # ---------------------------------------------------------------------------
 # Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02)

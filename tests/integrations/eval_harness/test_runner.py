@@ -40,7 +40,7 @@ def _config(results_dir: Path) -> dict[str, object]:
         },
         "target": {
             "type": "callable",
-            "params": {"function": "src.integrations.eval_harness.target:run_basis_cell"},
+            "params": {"path": "src.integrations.eval_harness.target:run_basis_cell"},
         },
         "scorers": [
             {"type": "final_residual", "params": {"target_residual": 1e-2}},

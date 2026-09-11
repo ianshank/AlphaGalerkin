@@ -14,9 +14,11 @@ zero items, which no hook can count and no gate can fail (R-13).
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
 from types import ModuleType
 
 import pytest
+import yaml
 
 pytestmark = pytest.mark.eval_harness_required
 
@@ -110,3 +112,35 @@ def test_eval_config_requires_schema_version() -> None:
             dataset={"type": "inline", "params": {}},
             target={"type": "echo", "params": {}},
         )
+
+
+#: The shipped harness config. Its ``target.params`` must construct the pinned
+#: harness's ``CallableTarget`` exactly -- the parameter was renamed once
+#: (``function`` -> ``path``) and the YAML, the smoke test and the runner test
+#: all carried the stale name while the only test that would have caught it was
+#: silently skipped (module-level ``importorskip`` yields zero items).
+SHIPPED_HARNESS_CONFIG = (
+    Path(__file__).resolve().parents[3] / "config" / "eval_harness" / "basis_eval.yaml"
+)
+
+
+def test_shipped_config_target_params_match_the_pinned_harness(
+    harness_plugins: ModuleType,
+) -> None:
+    """``config/eval_harness/basis_eval.yaml``'s target constructs without error.
+
+    The parameter names in the YAML are not validated by the harness's config
+    model (``params`` is an open dict); they are validated only when the
+    registry instantiates the target, which the shipped YAML had never
+    reached under CI. Construct it here, from the file, so a harness-side
+    rename fails this test rather than the next user's run.
+    """
+    document = yaml.safe_load(SHIPPED_HARNESS_CONFIG.read_text(encoding="utf-8"))
+    target = document["target"]
+    harness_plugins.bootstrap()
+    instance = harness_plugins.TARGETS.create(target["type"], target["params"])
+    assert instance is not None
+    resolved = target["params"].get("path")
+    assert resolved and ":" in resolved, (
+        f"target params must carry a module:function path: {target}"
+    )

@@ -1,7 +1,7 @@
 """The harness ``callable`` target: run one MCTS basis-selection cell.
 
 Wired into a harness ``EvalConfig`` as
-``{type: callable, params: {function: "src.integrations.eval_harness.target:run_basis_cell"}}``.
+``{type: callable, params: {path: "src.integrations.eval_harness.target:run_basis_cell"}}``.
 The built-in ``CallableTarget`` calls ``run_basis_cell(item.inputs)`` (a dict) and
 wraps the returned dict in a ``TargetOutput`` (capturing latency/errors), so this
 function takes a dict and returns a dict.

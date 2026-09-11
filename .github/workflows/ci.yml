@@ -1505,14 +1505,14 @@ jobs:
       # substrates, dropping the omit for this step only. Directory --cov spec:
       # coverage 7.x silently drops --cov=<...>.py.
       #
-      # THE THRESHOLD IS A TRIPWIRE, NOT A MEASUREMENT. --cov-fail-under=1
-      # proves the step measures something (an omit collision reports 0.00% and
-      # fails here) and is non-vacuous; it is NOT a coverage claim. The extra is
-      # a git dependency that could not be installed where this step was
-      # authored, so no percentage has been measured. Set the real value --
-      # floor(measured)-2 capped at 85, or triage-before-gating if measured < 75
-      # (add-coverage-gate skill) -- from the FIRST green run of this job that
-      # reports the number, and only then quote a figure for this package.
+      # Landed at --cov-fail-under=1 as a tripwire (the git extra could not be
+      # installed where the step was authored). The first run that reported a
+      # number (run 34658949836, 2026-09-11) measured 98.16% branch -- and
+      # failed on a real defect the tripwire exposed: the shipped YAML passed
+      # `function:` to a CallableTarget whose parameter is `path`, a test that
+      # had been silently skipped (module-level importorskip yields zero items)
+      # since it was written. Gated at floor(98)-2 = 96 per the
+      # add-coverage-gate convention; mirrored in the charter gates row.
       - name: Coverage gate (src/integrations/eval_harness, needs [eval-harness])
         run: |
           cat > .coveragerc.eval-harness <<'COVEOF'
@@ -1525,7 +1525,7 @@ jobs:
           ALPHAGALERKIN_REQUIRE_EXTRAS=1 python -m pytest tests/integrations/eval_harness/ \
             -m "eval_harness_required" \
             --cov=src/integrations/eval_harness --cov-config=.coveragerc.eval-harness \
-            --cov-branch --cov-fail-under=1 -q --no-header
+            --cov-branch --cov-fail-under=96 -q --no-header
 
       # The fem_required half of the E2E tier. `test-e2e` deliberately excludes
       # it (-m "not fem_required") because that job does not install [fem]; this

@@ -308,14 +308,16 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/core` | 85 |
 | `src/deployment` | 25 |
 | `tests/support` | 85 |
-| `src/integrations/eval_harness` | 1 |
+| `src/integrations/eval_harness` | 96 |
 <!-- charter:gates:end -->
 
-The `src/integrations/eval_harness` value is a **tripwire pending measurement** (R-13,
-2026-09-11), not a coverage claim: the `[eval-harness]` git extra could not be installed where
-the gate was authored, so `1` records only that the `test-extras` step measures the package at
-all (an omit collision reports 0.00% and fails it). Replace it with `floor(measured) - 2` from
-the first green `test-extras` run that reports a number; the guard then holds CI to that value.
+The `src/integrations/eval_harness` row landed at `1` as a **tripwire pending measurement**
+(R-13, 2026-09-11) because the `[eval-harness]` git extra could not be installed where the gate
+was authored. The first `test-extras` run that reported a number (run 34658949836, the same day)
+measured **98.16%** branch — and failed on a real defect the tripwire exposed: the shipped
+`config/eval_harness/basis_eval.yaml` passed `function:` to a `CallableTarget` whose parameter is
+`path`, in a test that had been silently skipped since it was written. The row is now the
+convention's `floor(measured) - 2 = 96`.
 
 #### Scenario: A documented gate is not enforced
 - GIVEN the charter records `src/mcts` at 90

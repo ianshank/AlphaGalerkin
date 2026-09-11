@@ -348,7 +348,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--cov-fail-under=1` -- **a tripwire, not a measurement**: the git extra
   could not be installed where this was authored, so no percentage exists;
   set `floor(measured)-2` from the first green run and mirror it into the
-  charter gates row. `make test-eval-harness` mirrors the step (not chained
+  charter gates row. **Done the same day**: the first run that reported a
+  number measured 98.16% branch and failed on a real defect the tripwire
+  exposed -- `config/eval_harness/basis_eval.yaml`, the smoke test and the
+  runner test all passed `function:` to a `CallableTarget` whose parameter
+  is `path`, in a test that had been silently skipped since it was written.
+  Fixed at all four sites; `test_contract.py` now constructs the shipped
+  YAML's target from the file; gate raised to 96 in CI, `Makefile` and the
+  charter row. `make test-eval-harness` mirrors the step (not chained
   into `pre-pr`, like `test-substrate`). `_OMIT_WITHOUT_A_CI_GATE` is now
   empty. Guard `tests/docs/test_eval_harness_gating.py` (7 planted mutations
   killed) drives the hook and the Makefile rather than grepping them. The

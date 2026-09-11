@@ -3,9 +3,10 @@
 > **Status:** proposed plan, not a delivery record. Nothing here is implemented by
 > the change that adds it. Every number was measured on default-branch tip
 > `ba03b43` (merge of PR #150); the command for each is in
-> [Appendix A](#appendix-a--reproduction-commands). Numbers marked † were
-> **corrected in rev 2** after a five-lens peer review plus the Copilot review of
-> PR #151 — see [§1](#1-what-the-peer-review-changed).
+> [Appendix A](#appendix-a--reproduction-commands), or the figure is labelled
+> *report-only*. Every figure **corrected in rev 2** after a five-lens peer
+> review plus two Copilot reviews of PR #151 is listed with its old and new
+> value in [§1](#1-what-the-peer-review-changed).
 >
 > **Scope authority:** the project charter
 > (`openspec/specs/project-charter/spec.md`) is supreme. Items tagged
@@ -32,23 +33,26 @@ type checker is a soft gate that let a regression merge this week, and the fast
 lane passes only because GitHub runners have network egress.
 
 **Minimum viable cycle — 3 weeks, 14 PR-sized tickets, one concern each.**
-A ticket is done when its named guard is green on the default branch and its
-planted mutation is recorded as killed.
+A ticket that lands a guard is done when that guard is green on the default
+branch and its planted mutation is recorded as killed. A governance or
+administrative ticket (R-01; the ledger branch of R-07; R-14) has no mutation
+target: it is done when the acceptance column's state is observable on GitHub
+or in the tree.
 
 | ID | Week | Ticket | Size | Guard / acceptance | Route |
 |---|---|---|---|---|---|
 | R-01 | 1 | PR hygiene: merge #136, #138; rebase-merge #103, #135; **close #139** (violates the repo's own dependabot ignore rule); disposition #48, #57, #118 (release or keep ADR 0003), #128 (unblocks the soft ONNX step) | S | zero dependabot PRs > 14 days | direct |
 | R-02 | 1 | Hermetic fast lane: `pytest-socket` with `--allow-hosts=127.0.0.1,localhost --allow-unix-socket`; `network` marker; the two VGG-download tests mocked (own PR, ≤ 20 lines) | S | a planted socket-opening test goes red | direct + `frozen` (test file) |
-| R-03 | 1 | `mypy --strict` to zero: fix `base_trainer.py:45` and `stochastic_galerkin_compare.py:63`; documented override block for `codec.py` naming its three real `Tensor \| None` defects | S | `python -m mypy src/ --strict --ignore-missing-imports` exits 0 | direct (`pyproject.toml` is not frozen) |
-| R-04 | 1 | Lockfile: universal `uv.lock`; composite action that syncs it and puts `.venv/bin` on `GITHUB_PATH`; CPU torch index; `uv lock --check` in lint; Dockerfile `COPY uv.lock`; hook fallback; dependabot `uv` block. Seed from the arena sidecar's `packages` | M | `uv lock --check` fails on an un-relocked floor bump; guard that `.github/actions/**` runs no `pytest`/`--cov` | direct (ADR for tool choice, D2) |
+| R-03 | 1 | `mypy --strict` to zero: fix `src/training/base_trainer.py:45` `[unused-ignore]` and `src/poc/scenarios/stochastic_galerkin_compare.py:63` `[arg-type]`; documented override block for `src/video_compression/codec/codec.py` naming its three real `Tensor \| None` defects | S | `python -m mypy src/ --strict --ignore-missing-imports` exits 0 | direct (`pyproject.toml` is not frozen) |
+| R-04 | 1 | Lockfile: universal `uv.lock` (**remove the `.gitignore:132` entry that ignores it** — the file's own comment at :203 says the project standardises on `uv.lock`); composite action that syncs it and puts `.venv/bin` on `GITHUB_PATH`; CPU torch index; `uv lock --check` in lint; Dockerfile `COPY uv.lock`; hook fallback; dependabot `uv` block. Seed from the arena sidecar's `packages` | M | `uv lock --check` fails on an un-relocked floor bump; guard that `.github/actions/**` runs no `pytest`/`--cov` | direct (ADR for tool choice, D2) |
 | R-05 | 1 | Artifact-freeze manifest: sha256 of `results/*` and `config/baselines/*`, checked by a `tests/docs/` test; edits only via `claims-ledger` | S | alter one CSV byte → red | direct |
 | R-06 | 2 | Hard mypy gate in CI **and** drop `\|\| true` from `Makefile` `mypy`; fix the now-false `ci.yml:175-177` comment; retire the pre-commit mypy hook or make it the CI invocation | S | `test_lint_has_no_soft_gate` (allowlist: backend audit, ONNX until #128); `MYPY=false make mypy` exits non-zero | `openspec-change` (deviation row :328) |
 | R-07 | 2 | Transfer tripwire: three lockfile-pinned re-runs of `transfer-baseline-regression`; if stable, flip to hard in `ci-success`; else ledger it with a reopen criterion | S–M | `ci-success` script has no soft branch, or the ledger row exists | direct / ledger |
 | R-08 | 2 | Release: merge the duplicate `[Unreleased]`, changelog guard (one header, monotonic versions), cut `0.4.0`, fix `RELEASING.md` "0.1.0" and `SECURITY.md` "pinned" claims, re-lock | S | guard fails on a second `[Unreleased]` | direct (D8) |
-| R-09 | 2 | Scope gate: re-scope `config/focus.yaml`, add `focus` **and** `secrets` to `ci-success.needs` (both green; the `secrets` comment saying it never ran green is stale) | S | `test_e2e_visibility` hard-gate set includes both | `openspec-change` (deviation row :334) |
+| R-09 | 2 | Scope gate: re-scope `config/focus.yaml`, add `focus` **and** `secrets` to `ci-success.needs` (both green; the `secrets` comment saying it never ran green is stale) | S | new `test_ci_success_hard_gates` (on `tests/support/workflows.py::job_needs`/`hard_gate_jobs`): both jobs in `ci-success.needs` **and** in its `exit 1` block — `test_e2e_visibility` checks only E2E-selecting jobs and cannot see these two | `openspec-change` (deviation row :334) |
 | R-10 | 3 | Module-size budget guard (dict allowlist with a *reason* column, ceiling 600; 44 entries today) | S | three planted mutations killed | direct |
 | R-11 | 3 | Shape baseline: `scripts/measure_shape.py` emits `config/shape_baseline.yaml` (complexity, magic values, lazy imports, device-resolution sites, prints, orphan modules); one `tests/docs/test_shape_baseline.py` asserts actual ≤ recorded **and** recorded not stale | S–M | raise any recorded count → red; lower it without code change → red | direct |
-| R-12 | 3 | CI critical path: test jobs `needs: lint`→ ruff-only prerequisite; split mypy/audit into its own job; then 4-shard `coverage-gates` in-file with a shard-assignment guard | M | run < 12 min; every gate step names an existing non-empty shard | direct |
+| R-12 | 3 | CI critical path, three steps: (a) test jobs `needs` a ruff-only prerequisite instead of `test-fast` (interim ~16 min); (b) 4-shard `coverage-gates` in-file with a shard-assignment guard (~12 min); (c) mypy/audit split out of `lint` (~10.5 min) | M | default-branch run **< 12 min** after (b) — the §7 KPI; every gate step names an existing non-empty shard | direct |
 | R-13 | 3 | `eval_harness` gate in `test-extras` (inline coveragerc); `eval_harness_required` marker so its 8 `importorskip` skips hard-fail under `ALPHAGALERKIN_REQUIRE_EXTRAS=1`; drop the disclosed-gap exemption | S | `test_coverage_gate_integrity` passes with the exemption removed | direct |
 | R-14 | 3 | Worktree-isolation rule for concurrent subagents in `AGENT.md` and the concurrent `.claude/agents/*.md` | S | `tests/claude/` path guard | direct |
 
@@ -106,11 +110,14 @@ Appendix A"; the review found that promise partly false — the same
 - **WS2.2 must not set `allow-magic-value-types = ["int"]`**: 136 of 159
   findings are ints and they *are* the domain values; that is "widen to get
   green" by configuration.
-- **WS3.1 vulture at 60 % is the wrong first tool**: sampled real-dead fraction
-  is 15–25 %; ~45 % are public API reached only by tests (a product decision).
-  Start with the **orphan-module guard** (21 library modules, 5,974 LOC, with no
-  importer in `src/`, `scripts/` or `dashboard/`; 3 imported by nothing at all)
-  and vulture at 80 % report-only.
+- **WS3.1 vulture at 60 % is the wrong first tool**: on a 20-candidate sample
+  (review-report measurement, not reproduced in Appendix A) 15–25 % were truly
+  dead and ~45 % were public API reached only by tests (a product decision).
+  Start with the **orphan-module guard** — reproducibly, 24 `src/` modules
+  (7,215 LOC) have no importer in `src/`, `scripts/` or `dashboard/`; **21
+  (6,274 LOC)** after excluding the three `python -m` CLI entry modules; 3 are
+  imported by nothing at all, tests included (Appendix A snippet) — and vulture
+  at 80 % report-only.
 - **WS3.6 `filterwarnings = error::DeprecationWarning`** is the wrong mechanism
   for "shims cannot rot": with `stacklevel=2` the warning is attributed to the
   caller, so a `src.*` filter fires only when `src` calls a shim, never for
@@ -159,7 +166,7 @@ stretch list.
 | Complexity (`C901`, `PLR091x`) | 162; 17 functions > 50 statements (max 85) | no |
 | `PLR2004` | 159 = 136 int + 23 float; 20 frozen | no |
 | Module size | > 900: 5 (+1 at exactly 900); > 600: 44; tests > 1,000: 8 | no |
-| Dead / orphan code | vulture 80 %: 14 (6 `__exit__` args, 8 real); 60 %: 893 (15–25 % real); **21 orphan library modules** (5,974 LOC); `core.registry.Registry` unused; `backend/logging.py`, `backend/rng.py` imported by nothing | no |
+| Dead / orphan code | vulture 80 %: 14 (6 `__exit__` args, 8 real); 60 %: 893 (15–25 % real on a sample, report-only); **21 orphan library modules** (6,274 LOC; e.g. `mcts/gumbel.py` 712, `research/scaling_runner.py` 467, `data/dataset.py` 315); `core.registry.Registry` has no consumer outside `src/core/__init__.py`'s re-export; `backend/logging.py`, `backend/rng.py`, `eval_harness/_import_harness.py` imported by nothing, tests included | no |
 | Zero-inbound packages | `prototyping`, `analysis`, `curriculum`, `tournament` (charter row :335), `deployment` (CLI-addressable) | charter records disposition |
 | Lazy imports (AST, non-`TYPE_CHECKING`) | 154 in 65 files; 89 without a reason; module-level SCCs `{data,training}`, `{pde,experiments,research}` | no |
 | Device resolution | 6 named `resolve_device`/`_resolve_device` defs (12 device-resolving functions by a broader survey); 10 ad-hoc `"cuda" if is_available()` sites outside `src/device.py`; 19 consumers of the `poc.device` identity shim | no |
@@ -237,7 +244,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 | 0.1 | mypy to zero incl. documented codec override | defect class | S | mypy exit 0 | direct | R-03 |
 | 0.2 | Hard mypy in CI + Makefile + retire manual pre-commit hook; fix `ci.yml:175` comment | defect class | S | `test_lint_has_no_soft_gate` | `openspec-change` (:328) | R-06 |
 | 0.3 | Universal `uv.lock`, composite sync action, CPU torch index, `uv lock --check`, Dockerfile/hook/dependabot in lockstep; `phase2-zoo-validation.yml` left alone (frozen) | honesty (reproducible `packages`) | M | lock-check; no-pytest-in-actions guard | direct + ADR (D2) | R-04 |
-| 0.4 | Critical-path rewiring: ruff-only prerequisite; test jobs `needs` it; mypy/audit as its own job (`if: != schedule`) | speed | S | run < 16 min | direct | R-12 |
+| 0.4 | Critical-path rewiring: ruff-only prerequisite; test jobs `needs` it; mypy/audit as its own job (`if: != schedule`) | speed | S | interim: run < 16 min on its own; the R-12 KPI (< 12 min) needs 0.5 as well | direct | R-12 |
 | 0.5 | 4-shard `coverage-gates` in-file matrix (steps stay in `ci.yml` — the charter and B8 guards read `run:` bodies); shard-assignment guard | speed | M | every gate step names an existing shard | direct | R-12 |
 | 0.6a | `benchmark` marker deselected from `test-fast`, `coverage`, Makefile (fourth copy → ledger it); absolute floors in `test_sbir_demo.py:167,180` and `test_mcts_perf.py:71` scaled | defect class | S | `test_ci_exclusion_ledger` | direct | stretch 1 |
 | 0.6b | Rewrite the 7 ratio assertions as complexity-scaling fits; dedicated non-contended `benchmark` job | honesty (the O(N) claim) | M | slope assertion with a vacuity check | direct | stretch 2 |
@@ -245,7 +252,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 | 0.8 | PR hygiene | — | S | — | owner | R-01 |
 | 0.9 | Full fast-lane run under `-W error::DeprecationWarning` (1,118-test sample clean); then a *scoped* filter after the `pytest.warns` audit | hygiene | S | — | direct | stretch 6 |
 | 0.10 | Transfer tripwire hard-or-ledgered | **honesty** | S–M | no soft branch or ledger row | direct (D10) | R-07 |
-| 0.11 | `focus` + `secrets` into `ci-success`; `focus.yaml` re-scope (keep both tracks; `frozen_tracks` min 1) | honesty | S | `test_e2e_visibility` | `openspec-change` (:334) | R-09 |
+| 0.11 | `focus` + `secrets` into `ci-success`; `focus.yaml` re-scope (keep both tracks; `frozen_tracks` min 1) | honesty | S | `test_ci_success_hard_gates` (new) | `openspec-change` (:334) | R-09 |
 | 0.12 | ONNX suites hard once #128 lands (`dynamo=False` pin) | defect class | S | soft-gate allowlist shrinks | direct | stretch 4 |
 
 ### WS1 — Module size
@@ -253,7 +260,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 | ID | Item | Mission | Size | Guard | Route | When |
 |---|---|---|---|---|---|---|
 | 1.1 | Size-budget guard: dict allowlist **with reason** (44 rows at 600; e.g. `chess.py` "rules class", `agents/config.py` "schema module"); rules: unlisted ≤ ceiling, listed not grown, listed still needed, keys exist, scan non-empty | hygiene | S | 3 mutations | direct | R-10 |
-| 1.2 | `training/trainer.py`: extract the six `_create_*` factories + `__init__` wiring to `trainer_setup.py` (pattern of `trainer_eval.py`); periodic hooks of `train()` to methods; name the `super().__init__()` contract hole | hygiene | M | public-API freeze; 12 test files import it | direct | deferred (when touched) |
+| 1.2 | `training/trainer.py`: extract the six `_create_*` factories + `__init__` wiring to `trainer_setup.py` (pattern of `trainer_eval.py`); periodic hooks of `train()` to methods. `Trainer` deliberately does **not** call `super().__init__()` (documented at `base_trainer.py:13-16`, it drives its own loop) — preserve that contract; the extraction must not add a second initialisation path | hygiene | M | public-API freeze; 12 test files import it | direct | deferred (when touched) |
 | 1.3 | `training/checkpoint.py` → `checkpoint/{safety,manager,model_io}.py` (`migration` already separate); patch targets in `tests/security/test_checkpoint_safety.py:462,507` move to `checkpoint.safety.torch.load`; permanent re-exports (frozen scripts import it); route `evaluation.py:321` through the chokepoint in the same PR | defect class (security) | M | `test_checkpoint_safety` intent unchanged | direct | stretch 9 |
 | 1.4 | `games/chess.py`: extract move encoding (~230 lines) only; 16 private test refs updated | hygiene | S | chess pipeline gate 80 | direct | deferred |
 | 1.5 | `pde/games/basis_selection.py`: extract `basis_library.py` (`BasisFunction` + candidate generation) — where the v2.2 geometry-aware library must live anyway | **core loop** | M | F1/F3 rows green | direct | stretch 8 |
@@ -276,7 +283,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 
 | ID | Item | Mission | Size | Guard | Route | When |
 |---|---|---|---|---|---|---|
-| 3.1 | Orphan-module guard (21 rows, allowlist with reason) + vulture 80 % report-only; delete `core.registry.Registry`, `backend/logging.py`, `backend/rng.py`, `eval_harness/_import_harness.py` after triage | hygiene | S+M | orphan list shrink-only | direct | stretch 3 |
+| 3.1 | Orphan-module guard (21 rows, allowlist with reason; CLI entry modules and `[project.scripts]`/entry-point targets are not orphans) + vulture 80 % report-only; delete `backend/logging.py`, `backend/rng.py`, `eval_harness/_import_harness.py` after triage; `core.registry.Registry` is re-exported by `src/core/__init__.py` (`__all__`), so its removal is a documented public-API change with a one-release `DeprecationWarning` shim (WS3.6 ledger), not a silent delete | hygiene | S+M | orphan list shrink-only | direct | stretch 3 |
 | 3.2 | `write_csv` + matplotlib-guard helper in **`src/research/`** (not `poc`, which would create the `research → poc` edge WS4 forbids); four exporters call it; **byte-identical golden** on committed CSV rows | honesty | S | golden test | direct | stretch 12 |
 | 3.3 | One `add_unsafe_pickle_argument(parser)`; one `SAFE_GLOBALS` builder for the 2 non-frozen allowlists; reflection test extended | defect class | S | reflection test | direct (+`frozen` for codec) | stretch 13 |
 | 3.4 | Scripts onto `src/templates/cli.py` (three `run_*_compare.py` first); gate `templates` via a native `--include` over `tests/templates/` + `tests/agents/test_cli.py` | hygiene | M | `add-coverage-gate` | direct | stretch 14 |
@@ -291,7 +298,7 @@ removes a defect class that has bitten / hygiene. **Route** = `direct`,
 |---|---|---|---|---|---|---|
 | 4.1 | Tiers as an ADR + import contract: **L0** `core, constants, seeding, device, templates, math_kernel, backend`; **L1** `pde, refinement, mcts, games, modeling, physics, data, engines`; **L2** `training, research, agents, distributed, integrations, experiments`; **L3** `poc, tools, demos, deployment, alphagalerkin (facade), dashboard/, scripts/`; B10 packages tiered on decision. Day-one exemption list (12 sites): `pde → research` (5, substrates), `research → experiments` (3, `PhysicsOperator`/`cnn_baseline` are models, tier them L1 or move), `agents → poc` (2, `_centaur_common` should move below `poc`), `training → tools` (2, `SimpleGoGame` belongs in `games`) | core loop | M | contract in `test_import_contracts.py`; exemptions shrink-only | ADR | stretch 16 |
 | 4.2 | Lazy-import baseline 154 → ≤ 60: hoist the 89 no-reason ones (intra-package first); break `{data,training}` by moving `Experience` to `src/data`; B1 = the 19 shim sites | hygiene | M | R-11 | direct | stretch 17 |
-| 4.3 | Registries: delete `core.Registry`; migrate `ScenarioRegistry`/`GameRegistry` onto `templates.BaseRegistry`; any lifecycle change follows **D13** (ADR 0005 `clear`/`ensure` unless new measurements beat audit §6) | defect class | L | subprocess capability guard | ADR | deferred (D13) |
+| 4.3 | Registries: retire `core.Registry` via the 3.1 shim; migrate `ScenarioRegistry`/`GameRegistry` onto `templates.BaseRegistry`; any lifecycle change follows **D13** (ADR 0005 `clear`/`ensure` unless new measurements beat audit §6) | defect class | L | subprocess capability guard | ADR | deferred (D13) |
 | 4.4 | Config/logging: unify the two logging modules (real duplicate); migrate the ~2 CLI dataclass configs; **do not** rebase `BaseScenarioConfig` on `BaseModuleConfig` (`name` required, `created_at: datetime` widens the pickle allowlist and destabilises hashes) — share a slim hash mixin | hygiene | M | `compute_hash()` pins; hash-pin protocol | direct | deferred |
 | 4.5 | Console entry points: extend the existing `[project.scripts] alphagalerkin` rather than add parallel names; `python -m src.poc.cli` is cited 27× and driven by E2E | hygiene | S | E2E `--help` journeys | direct | deferred |
 | ~~4.6~~ | `src` → `alphagalerkin` rename | — | — | — | — | **cut** (name collision; depends on B14) |
@@ -374,7 +381,7 @@ Guarded by the end of MVC (baseline → target, guard):
 | KPI | Baseline | Target | Guard |
 |---|---|---|---|
 | Soft steps across all jobs | 3 (backend audit, mypy, ONNX) | 1 (backend audit) | `test_lint_has_no_soft_gate` (all jobs, allowlist) |
-| Jobs outside `ci-success.needs` that run on PRs | 2 (`focus`, `secrets`) | 0 | `test_e2e_visibility` hard-gate set |
+| Jobs outside `ci-success.needs` that run on PRs | 2 (`focus`, `secrets`) | 0 | `test_ci_success_hard_gates` (new) |
 | Soft branches inside `ci-success` | 1 (transfer) | 0 or ledgered | script parse / ledger |
 | `mypy --strict` errors | 7 | 0 | hard CI step |
 | Fast lane hermetic | no | yes | planted socket test |
@@ -444,10 +451,15 @@ no product scope.
 
 ## Appendix A — Reproduction commands
 
-All from the repository root on `ba03b43`, `pip install -e '.[dev]'`
-(Python 3.11 and 3.12 reproduce identically except where noted). CI's `lint`
-job installs a pinned minimal set on 3.11, so its mypy count can differ from a
-local `.[dev]` env — which is the R-04 argument.
+All from the repository root on `ba03b43` after `pip install -e '.[dev]'`.
+There is no lockfile yet, so two fresh installs can resolve different
+versions; the set these numbers were measured with is Python 3.11.15,
+torch 2.14.0+cu130, numpy 2.4.6, scipy 1.17.1, pydantic 2.9.2, coverage 7.16.0,
+pytest 9.1.1, ruff 0.15.8 (the CI pin). `uv` is **not** in any extra —
+`pip install uv==0.8.17` first. CI's `lint` job installs a pinned minimal set on
+3.11, so its mypy count can differ from a local `.[dev]` env — which is the
+R-04 argument. Static counts (grep/AST/ruff) do not depend on the package set;
+coverage percentages and the mypy count can.
 
 ```bash
 # CI (GitHub API, run 34476775571 on ba03b43)
@@ -456,7 +468,7 @@ local `.[dev]` env — which is the R-04 argument.
 #   coverage-gates 12:29:37-12:43:28 (off path); install steps 56-84 s, all with cache: "pip"
 grep -c 'cache: "pip"' .github/workflows/ci.yml                     # 12
 grep -n "continue-on-error" .github/workflows/ci.yml                # 171, 183, 1451
-grep -nA1 "needs: \[" .github/workflows/ci.yml                      # ci-success list (10)
+grep -nF 'needs: [' .github/workflows/ci.yml                        # ci-success list (10)
 
 # Fast lane exactly as CI selects it (Makefile CI_TEST_EXCLUDES); egress-blocked sandbox
 python -m pytest tests/ -m "not slow and not e2e and not gpu_required" \
@@ -489,8 +501,39 @@ find tests -name '*.py' -exec wc -l {} + | awk '$1>1000 && $2!="total"' | wc -l 
 # Dead / orphan code
 vulture src/ --min-confidence 80 | wc -l      # 14
 vulture src/ --min-confidence 60 | wc -l      # 893
-# orphan modules: tests/support/import_graph.imported_modules over src/ scripts/ dashboard/  -> 21 (see R-11 script)
-grep -rn "src.core.registry" src/ dashboard/ scripts/ --include=*.py | grep -v "^src/core/"   # none
+# Orphan modules (executable; 24 raw / 7,215 LOC; 21 / 6,274 LOC excluding
+# the python -m CLI entry modules src.{agents,poc,tools}.cli)
+python - <<'EOF'
+import ast, sys
+from pathlib import Path
+sys.path.insert(0, ".")
+from tests.support.import_graph import imported_modules, module_name_for, python_files_under
+root = Path(".").resolve()
+importers = {}
+for base in ("src", "scripts", "dashboard"):
+    for p in python_files_under(root / base):
+        names = set(imported_modules(p, root))
+        for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                names.update(f"{node.module}.{a.name}" for a in node.names)
+        importers[module_name_for(p, root)] = names
+orphans = []
+for p in python_files_under(root / "src"):
+    if p.name in ("__init__.py", "__main__.py"):
+        continue
+    m = module_name_for(p, root)
+    if any(m in names for who, names in importers.items() if who != m):
+        continue
+    orphans.append((m, sum(1 for _ in p.open())))
+print(len(orphans), "orphan modules;", sum(n for _, n in orphans), "LOC")
+for m, n in sorted(orphans):
+    print(f"  {n:5d} {m}")
+EOF
+grep -rn "src.core.registry\|from src.core import" src/ dashboard/ scripts/ --include=*.py \
+  | grep -v "^src/core/"                                              # none; src/core/__init__.py re-exports Registry in __all__
+
+# URL / endpoint literals (string defaults, excluding comments)
+grep -rnE "\"https?://[^\"]+\"" src/ --include=*.py | grep -v "^\s*#" | wc -l   # 8
 
 # Lazy imports (AST, in-function, excluding TYPE_CHECKING)  -> 154 in 65 files
 #   (the naive grep '^\s{4,}from src\.' gives 368: +131 TYPE_CHECKING, +75 docstrings)

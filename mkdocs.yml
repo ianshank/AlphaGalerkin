@@ -28,6 +28,7 @@ exclude_docs: |
   FOCUS.md
   E2E_TEST_PLAN.md
   PLAN_2026-04-27.md
+  ENGINEERING_REFLECTION_2026-09-11.md
 
 theme:
   name: material

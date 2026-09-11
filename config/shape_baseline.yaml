@@ -2,13 +2,13 @@
 # tests/docs/test_shape_baseline.py rejects a lowered count whose content hash
 # is unchanged. Improve the tree, then regenerate.
 schema_version: 1
-generated_from: 3d9a9efafdba286749ee5e9dbf0c6bdc515bba70
+generated_from: 7d620121aedc59d40944559ae98db7560a3f3d73
 git_dirty: false
 tool_versions:
   python: 3.11.15
   ruff: ruff 0.15.8
   measure_shape_schema: '1'
-content_hash: 9cdc0d3e1c8777ed2d6c95293919e6b437516f4bc5b205a6705a16c1ae75fcf2
+content_hash: f6c3a6d4c8d38d6c766b571b5d1128e39718eb2980fd874a389ce989f2a5a4ce
 metrics:
   complexity_findings: 162
   magic_value_findings: 159

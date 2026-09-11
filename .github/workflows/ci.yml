@@ -1398,10 +1398,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # eval-harness included for the same reason as test-extras: without it
-          # 8 of the 11 modules under tests/integrations/eval_harness/ skip at
-          # import, masking ~900 LOC as "passing". This job exists to stop
-          # exactly that.
+          # eval-harness included for the same reason as test-extras: the suite
+          # under tests/integrations/eval_harness/ carries eval_harness_required
+          # and is gated below under ALPHAGALERKIN_REQUIRE_EXTRAS=1, so a missing
+          # extra is a collection error here rather than 39 counted skips. Until
+          # 2026-09-11 (R-13) those files importorskip'd the extra -- zero items,
+          # uncountable -- and this job installed it and then selected none of
+          # them, masking ~900 LOC as "passing". This job exists to stop that.
           pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
@@ -1486,6 +1489,43 @@ jobs:
             tests/research/test_skfem_substrate.py -q -p no:cov
           python -m coverage report --rcfile=.coveragerc.fem \
             --include="*/src/research/fem_baseline.py" --fail-under=83
+
+      # src/integrations/eval_harness/* is in pyproject.toml's global omit (it
+      # needs the optional [eval-harness] git extra, which only this job
+      # installs) and until 2026-09-11 (R-13, hygiene B37) had NO gate anywhere:
+      # this job installed the extra "specifically to un-skip" the eight modules
+      # under tests/integrations/eval_harness/ and then selected none of them,
+      # while their module-level `pytest.importorskip("eval_harness")` made each
+      # yield ZERO items -- uncountable by any hook and unfailable by any gate.
+      # The suite now carries `eval_harness_required` (root conftest.py counts
+      # the skips, and hard-fails collection under ALPHAGALERKIN_REQUIRE_EXTRAS=1
+      # exactly like fem_required), and this step selects it POSITIVELY.
+      #
+      # Same inline-coveragerc technique as demos / video_compression /
+      # substrates, dropping the omit for this step only. Directory --cov spec:
+      # coverage 7.x silently drops --cov=<...>.py.
+      #
+      # THE THRESHOLD IS A TRIPWIRE, NOT A MEASUREMENT. --cov-fail-under=1
+      # proves the step measures something (an omit collision reports 0.00% and
+      # fails here) and is non-vacuous; it is NOT a coverage claim. The extra is
+      # a git dependency that could not be installed where this step was
+      # authored, so no percentage has been measured. Set the real value --
+      # floor(measured)-2 capped at 85, or triage-before-gating if measured < 75
+      # (add-coverage-gate skill) -- from the FIRST green run of this job that
+      # reports the number, and only then quote a figure for this package.
+      - name: Coverage gate (src/integrations/eval_harness, needs [eval-harness])
+        run: |
+          cat > .coveragerc.eval-harness <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          ALPHAGALERKIN_REQUIRE_EXTRAS=1 python -m pytest tests/integrations/eval_harness/ \
+            -m "eval_harness_required" \
+            --cov=src/integrations/eval_harness --cov-config=.coveragerc.eval-harness \
+            --cov-branch --cov-fail-under=1 -q --no-header
 
       # The fem_required half of the E2E tier. `test-e2e` deliberately excludes
       # it (-m "not fem_required") because that job does not install [fem]; this

@@ -15,9 +15,12 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("torch")
-pytest.importorskip("eval_harness")
 
-pytestmark = [pytest.mark.gpu_required, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.gpu_required,
+    pytest.mark.integration,
+    pytest.mark.eval_harness_required,
+]
 
 _REQUIRED_ENV = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LM_STUDIO_URL")
 

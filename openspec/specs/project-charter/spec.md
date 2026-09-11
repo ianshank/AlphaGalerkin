@@ -308,7 +308,14 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/core` | 85 |
 | `src/deployment` | 25 |
 | `tests/support` | 85 |
+| `src/integrations/eval_harness` | 1 |
 <!-- charter:gates:end -->
+
+The `src/integrations/eval_harness` value is a **tripwire pending measurement** (R-13,
+2026-09-11), not a coverage claim: the `[eval-harness]` git extra could not be installed where
+the gate was authored, so `1` records only that the `test-extras` step measures the package at
+all (an omit collision reports 0.00% and fails it). Replace it with `floor(measured) - 2` from
+the first green `test-extras` run that reports a number; the guard then holds CI to that value.
 
 #### Scenario: A documented gate is not enforced
 - GIVEN the charter records `src/mcts` at 90

@@ -196,6 +196,7 @@ class TestHardGateConditionsParser:
         assert [("needs.b.result" in c) for c in conditions] == [True]
         assert body_exits_nonzero('echo "x"; exit 1')
         assert not body_exits_nonzero('echo "exit 1"')
+        assert not body_exits_nonzero("exit 00")
 
     def test_a_multi_line_condition_is_returned_whole(self) -> None:
         script = (

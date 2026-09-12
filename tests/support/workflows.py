@@ -362,7 +362,7 @@ def hard_gate_conditions(script: str) -> list[str]:
 
 
 #: A shell ``exit`` with a non-zero literal status, as a whole command.
-_EXIT_NONZERO = re.compile(r"^exit\s+(?!0\b)\d+\b")
+_EXIT_NONZERO = re.compile(r"^exit\s+(?!0+\b)\d+\b")
 
 
 def body_exits_nonzero(body: str) -> bool:

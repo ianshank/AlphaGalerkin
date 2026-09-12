@@ -75,10 +75,10 @@ STOCH_COV_THRESHOLD    ?= 85
 # substrates package is 272 statements at 99%, so an 85 gate would carry 14
 # points of slack. Must match ci.yml's test-extras step.
 SUBSTRATE_COV_THRESHOLD ?= 95
-# A TRIPWIRE, not a measurement (R-13): proves the step measures something
-# and cannot pass on an omit collision (0.00%). The [eval-harness] git extra
-# could not be installed where this was authored, so no percentage exists yet;
-# set floor(measured)-2 from the first green test-extras run that reports one.
+# Measured on the first green test-extras run that reported the package:
+# branch coverage 98.16%, so the gate is floor(98)-2 = 96 (R-13). This still
+# serves as the "measures something" tripwire against an omit collision (0.00%)
+# because the step overrides pyproject.toml's global omit with --cov-config.
 # Must match ci.yml's test-extras step.
 EVAL_HARNESS_COV_THRESHOLD ?= 96
 

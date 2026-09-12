@@ -9,7 +9,10 @@
 > [§1](#1-what-review-changed) and the KPI tables is the **pre-implementation
 > baseline** taken on default-branch tip `ba03b43` (merge of PR #150); the command
 > for each is in [Appendix A](#appendix-a--reproduction-commands), or the figure
-> is labelled *report-only*. Where a landed ticket has changed a measured fact
+> is labelled *report-only*. The one committed measurement artifact added by this
+> PR, `config/shape_baseline.yaml`, records its own later provenance
+> (`generated_from: efdf4c871ca9bf92889980a4c350ae7cee0fe2c8`) because the file
+> did not exist on `ba03b43`. Where a landed ticket has changed a measured fact
 > (the `lint`/`typecheck` split, the merge-gate membership, the install-step
 > count), the table keeps the baseline value and the ledger states the new one —
 > the numbers are not rewritten in place, so the before/after stays legible.
@@ -657,7 +660,7 @@ PR #151's branch. "Guard" is the test file that turns the ticket into a check.
 | R-02 hermetic fast lane | yes | `cafd998` (+ floor fix in `a9092f7`) | `tests/docs/test_fast_lane_is_hermetic.py` | first draft imported `tomllib` against the 3.10 floor; `test_python_floor_compatibility` caught it |
 | R-03 mypy to zero unsuppressed | yes | `1a37665` | pyproject mypy override + CHANGELOG | 5 remaining diagnostics scoped to frozen `codec.py` by a `disable_error_code` override; remove when the freeze lifts |
 | R-10 module size budget | yes | `b9fe859` (merge) | `tests/docs/test_module_size_budget.py` | 44 `src/` rows at ceiling 600, 8 test rows at 1000; 5/5 mutations |
-| R-11 shape baseline | yes | `d80d8fe` (merge), `3eea67c` (regenerated at the merged tip) | `tests/docs/test_shape_baseline.py`, `tests/scripts/test_measure_shape.py` | 11 / 26 / 26 for the last three metrics (units, not drift — see §8); provenance hardening from review is a follow-up commit |
+| R-11 shape baseline | yes | `d80d8fe` (merge), `3eea67c` (regenerated at merged tip `efdf4c871ca9bf92889980a4c350ae7cee0fe2c8`) | `tests/docs/test_shape_baseline.py`, `tests/scripts/test_measure_shape.py` | 11 / 26 / 26 for the last three metrics (units, not drift — see §8); the committed YAML records post-landing provenance, while §1/§8 keep the pre-implementation baseline numbers |
 | R-09 focus + secrets hard gates | yes | `a9092f7` | `tests/docs/test_ci_success_hard_gates.py` | charter row amended via `openspec/changes/focus-secrets-merge-gate/`; 6 mutations after review |
 | R-12a lint / typecheck split | yes | `7d62012` | `tests/docs/test_ci_success_hard_gates.py` (`typecheck` in the expected set) | `test-slow` deliberately keeps `needs: test-fast`; `ci.yml` install steps now 13 |
 | R-12b coverage-gates 4-way shard | yes | `7d62012` | `tests/docs/test_coverage_gate_shards.py` | gate set derived from coverage commands, not names; 5 mutations after review |
@@ -671,7 +674,9 @@ PR #151's branch. "Guard" is the test file that turns the ticket into a check.
 
 ## Appendix A — Reproduction commands
 
-All from the repository root on `ba03b43` after `pip install -e '.[dev]'`.
+All from the repository root on `ba03b43` after `pip install -e '.[dev]'`,
+except the committed `config/shape_baseline.yaml` artifact noted above, whose
+`generated_from` is `efdf4c871ca9bf92889980a4c350ae7cee0fe2c8`.
 There is no lockfile yet, so two fresh installs can resolve different versions;
 the set these numbers were measured with is Python 3.11.15, torch 2.14.0+cu130,
 numpy 2.4.6, scipy 1.17.1, pydantic 2.9.2, coverage 7.16.0, pytest 9.1.1,

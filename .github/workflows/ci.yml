@@ -124,6 +124,10 @@ jobs:
           # breaking this gate on files unrelated to the change under review.
           # Keep this aligned with the `ruff` pin in pyproject.toml [dev].
           pip install "ruff==0.15.8"
+          # For the artifact-freeze manifest check below (R-05): the script's
+          # module-scope imports. Small pure-Python wheels, seconds to install;
+          # tests/docs/test_artifact_manifest.py asserts they stay listed here.
+          pip install "pydantic>=2.7,<2.10" structlog pyyaml
 
       # Scope is exactly the complement of pre-commit's ruff `exclude:`
       # (^(hf_space|notebooks|claude-code-platform)/) — i.e. every tracked *.py
@@ -141,6 +145,23 @@ jobs:
 
       - name: Run Ruff formatting check
         run: ruff format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --check
+
+      # Artifact-freeze manifest (R-05). Every headline number in the charter's
+      # evidence register is quoted from a committed file under results/ or
+      # config/baselines/; results/MANIFEST.sha256 freezes those bytes and is
+      # regenerated only by the claims-ledger / run-provenance skills, i.e.
+      # when an artifact is deliberately produced or replaced. Any other byte
+      # change is a defect. Runs here, in the job with the smallest install:
+      # the script's module-scope imports are stdlib + structlog + pydantic,
+      # both named in this job's install step above -- `lint` is ruff-only
+      # since the R-12a split, so those two are installed there explicitly
+      # for this step (guarded by
+      # tests/docs/test_artifact_manifest.py, so a new import that this job
+      # does not install fails a test, not the build). Same verdict as
+      # `sha256sum -c results/MANIFEST.sha256` plus the tree<->manifest set
+      # comparison coreutils cannot do. Mirrored by `make artifact-manifest`.
+      - name: Check the artifact-freeze manifest
+        run: python -m scripts.artifact_manifest check
 
   # The torch-dependent static checks, split out of `lint` on 2026-09-11
   # (R-12a) so ruff no longer waits on a torch install. Nothing depends on
@@ -1603,12 +1624,17 @@ jobs:
             --config config/scenarios/transfer_baseline_compare_ci.yaml \
             --baseline config/baselines/transfer_ci.json \
             --output-dir outputs/transfer_ci --log-level WARNING
+      # The run above writes `outputs/transfer_ci`; upload THAT. This step used
+      # to upload `results/transfer_baseline_compare.*` -- the committed files,
+      # which the run never touches -- so the "artifact" was the repo, not the
+      # run (R-05). Guarded by tests/docs/test_artifact_manifest.py, which
+      # requires this path to sit under the run step's `--output-dir`.
       - name: Upload transfer benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: transfer-baseline-results
-          path: results/transfer_baseline_compare.*
+          path: outputs/transfer_ci/**
           retention-days: 30
 
   # ============================================================

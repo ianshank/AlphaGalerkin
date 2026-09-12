@@ -21,12 +21,42 @@ before, or instead of, the artifact that would support it.
    holding *both arms*. The charter's adaptive-vs-uniform row cited a CSV whose `method` column
    held only `{dorfler, mcts}`; a correct number traced to prose, and the existence guard could
    not see it because the file existed.
-4. **Add the register row** between the `<!-- charter:evidence -->` markers. State the measured
+4. **Regenerate the artifact-freeze manifest.** `results/MANIFEST.sha256` freezes the bytes of
+   every committed `results/*.csv`, `results/*.run.json` and `config/baselines/*.json` (PNGs
+   presence-only) and is verified by CI's `lint` job, `make artifact-manifest`, and
+   `tests/docs/test_artifact_manifest.py`. It is regenerated **only** here and in
+   `run-provenance` — i.e. when an artifact is deliberately produced or replaced:
+
+   ```bash
+   python -m scripts.artifact_manifest write     # rewrites results/MANIFEST.sha256
+   python -m scripts.artifact_manifest check     # exit 0; sha256sum -c results/MANIFEST.sha256 also works
+   git add results/MANIFEST.sha256               # commit it WITH the artifact and its sidecar
+   ```
+
+   Any other change to a frozen artifact is a defect; the guard names the file that moved.
+5. **Add the register row** between the `<!-- charter:evidence -->` markers. State the measured
    range, not a remembered band — "1.5× at 56 DOF rising to 10.5× at 2847" beats "5–9×" and is
    harder to drift.
-5. **Prefer a rate to a ratio** where one exists. A convergence exponent does not depend on
+6. **Prefer a rate to a ratio** where one exists. A convergence exponent does not depend on
    where the reader takes the reading; a ratio does.
-6. **Verify**: `pytest tests/docs/test_charter_alignment.py -v`
+7. **Verify**: `pytest tests/docs/test_charter_alignment.py tests/docs/test_artifact_manifest.py -v`
+
+## Live runs dirty the tree by design
+
+The shipped scenario YAMLs under `config/scenarios/` default to `output_dir: results`, so the
+documented live-run commands (`python -m src.poc.cli run --config ...` and the
+`scripts/run_*.py` harnesses without `--output-dir`) **overwrite the committed artifacts in
+place**. That is deliberate — it is how a headline artifact gets replaced — but it means an
+exploratory run leaves `results/` modified and the manifest check red. CI never writes
+`results/` (`transfer-baseline-regression` writes and uploads `outputs/transfer_ci`; E2E
+tests write `tmp_path`), and `tests/docs/test_artifact_manifest.py` asserts that.
+
+- **Exploring / reproducing**: prefer `--output-dir outputs/<name>` (gitignored), e.g.
+  `python -m scripts.run_transfer_baseline_compare --config config/scenarios/transfer_baseline_compare_ci.yaml --output-dir outputs/transfer_ci`.
+  `poc.cli run` has no such flag; copy the YAML and set `output_dir` instead.
+- **Replacing the headline artifact**: run into `results/` on purpose, then do step 4 above.
+  A modified `results/` file with an unchanged `results/MANIFEST.sha256` is the guard doing
+  its job, not a flaky test.
 
 ## Retracting a claim
 

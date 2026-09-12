@@ -3,25 +3,53 @@
 The adapter depends on a non-PyPI git dependency pinned to a commit SHA. If that
 pin is ever moved and the harness's public types/registries drift, these
 assertions fail loudly rather than the adapter breaking mysteriously at runtime.
+
+The harness is imported inside fixtures, not at module scope, so this file
+*collects* on a base install and its tests are then skipped -- counted, by the
+root ``conftest.py`` ``eval_harness_required`` hook -- or hard-fail collection
+under ``ALPHAGALERKIN_REQUIRE_EXTRAS=1``. A module-level ``importorskip`` yielded
+zero items, which no hook can count and no gate can fail (R-13).
 """
 
 from __future__ import annotations
 
 import dataclasses
+from pathlib import Path
+from types import ModuleType
 
 import pytest
+import yaml
 
-pytest.importorskip("eval_harness")
+pytestmark = pytest.mark.eval_harness_required
 
-from eval_harness.core import interfaces, types
-from eval_harness.plugins import DATASETS, SCORERS, SINKS, TARGETS
+
+@pytest.fixture(scope="module")
+def harness_types() -> ModuleType:
+    from eval_harness.core import types
+
+    return types
+
+
+@pytest.fixture(scope="module")
+def harness_interfaces() -> ModuleType:
+    from eval_harness.core import interfaces
+
+    return interfaces
+
+
+@pytest.fixture(scope="module")
+def harness_plugins() -> ModuleType:
+    from eval_harness import plugins
+
+    return plugins
 
 
 def _field_names(cls: type) -> set[str]:
     return {f.name for f in dataclasses.fields(cls)}
 
 
-def test_core_dataclass_fields_are_stable() -> None:
+def test_core_dataclass_fields_are_stable(harness_types: ModuleType) -> None:
+    types = harness_types
     assert _field_names(types.EvalItem) == {"id", "inputs", "expected", "metadata"}
     assert _field_names(types.TargetOutput) == {"output", "latency_ms", "error", "metadata"}
     assert _field_names(types.ScoreResult) == {"name", "value", "passed", "comment", "metadata"}
@@ -36,34 +64,38 @@ def test_core_dataclass_fields_are_stable() -> None:
     }
 
 
-def test_interface_methods_are_stable() -> None:
+def test_interface_methods_are_stable(harness_interfaces: ModuleType) -> None:
+    interfaces = harness_interfaces
     assert hasattr(interfaces.Scorer, "score")
     assert hasattr(interfaces.DatasetSource, "load")
     assert hasattr(interfaces.ResultSink, "emit")
 
 
-def test_registry_contract_is_stable() -> None:
-    for registry in (SCORERS, DATASETS, SINKS, TARGETS):
+def test_registry_contract_is_stable(harness_plugins: ModuleType) -> None:
+    plugins = harness_plugins
+    for registry in (plugins.SCORERS, plugins.DATASETS, plugins.SINKS, plugins.TARGETS):
         assert hasattr(registry, "register_class")
         assert hasattr(registry, "create")
         assert hasattr(registry, "__contains__")
 
 
-def test_callable_target_passes_inputs_dict() -> None:
+def test_callable_target_passes_inputs_dict(
+    harness_types: ModuleType, harness_plugins: ModuleType
+) -> None:
     # The adapter's run_basis_cell relies on the callable target handing it
     # item.inputs (a dict) and wrapping the raw return in a TargetOutput.
     import sys
     import types as pytypes
 
-    from eval_harness.plugins import bootstrap
-
-    bootstrap()  # load the built-in `callable` target
+    harness_plugins.bootstrap()  # load the built-in `callable` target
     module = pytypes.ModuleType("_ag_eval_contract_probe")
     module.echo_inputs = lambda inputs: {"seen": inputs}  # type: ignore[attr-defined]
     sys.modules["_ag_eval_contract_probe"] = module
     try:
-        target = TARGETS.create("callable", {"path": "_ag_eval_contract_probe:echo_inputs"})
-        out = target.run(types.EvalItem(id="1", inputs={"x": 1}))
+        target = harness_plugins.TARGETS.create(
+            "callable", {"path": "_ag_eval_contract_probe:echo_inputs"}
+        )
+        out = target.run(harness_types.EvalItem(id="1", inputs={"x": 1}))
         assert out.output == {"seen": {"x": 1}}
         assert out.error is None
         assert out.latency_ms is not None
@@ -80,3 +112,35 @@ def test_eval_config_requires_schema_version() -> None:
             dataset={"type": "inline", "params": {}},
             target={"type": "echo", "params": {}},
         )
+
+
+#: The shipped harness config. Its ``target.params`` must construct the pinned
+#: harness's ``CallableTarget`` exactly -- the parameter was renamed once
+#: (``function`` -> ``path``) and the YAML, the smoke test and the runner test
+#: all carried the stale name while the only test that would have caught it was
+#: silently skipped (module-level ``importorskip`` yields zero items).
+SHIPPED_HARNESS_CONFIG = (
+    Path(__file__).resolve().parents[3] / "config" / "eval_harness" / "basis_eval.yaml"
+)
+
+
+def test_shipped_config_target_params_match_the_pinned_harness(
+    harness_plugins: ModuleType,
+) -> None:
+    """``config/eval_harness/basis_eval.yaml``'s target constructs without error.
+
+    The parameter names in the YAML are not validated by the harness's config
+    model (``params`` is an open dict); they are validated only when the
+    registry instantiates the target, which the shipped YAML had never
+    reached under CI. Construct it here, from the file, so a harness-side
+    rename fails this test rather than the next user's run.
+    """
+    document = yaml.safe_load(SHIPPED_HARNESS_CONFIG.read_text(encoding="utf-8"))
+    target = document["target"]
+    harness_plugins.bootstrap()
+    instance = harness_plugins.TARGETS.create(target["type"], target["params"])
+    assert instance is not None
+    resolved = target["params"].get("path")
+    assert resolved and ":" in resolved, (
+        f"target params must carry a module:function path: {target}"
+    )

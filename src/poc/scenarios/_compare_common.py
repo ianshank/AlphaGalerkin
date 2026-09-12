@@ -47,9 +47,19 @@ def empty_cuda_cache() -> None:
 
 
 class SupportsMetricsMapping(Protocol):
-    """Stochastic comparison: ``comparison.metrics`` is a mapping."""
+    """Stochastic comparison: ``comparison.metrics`` is a read-only mapping.
 
-    metrics: Mapping[str, float]
+    Declared as a read-only ``@property`` member, not a bare attribute: a bare
+    ``metrics: Mapping[str, float]`` is a *settable* member, which a class
+    exposing ``metrics`` through ``@property`` (``MultiSeedStochasticComparison``)
+    does not satisfy. A read-only member is satisfied by a property **and** by
+    a plain attribute, and ``dict[str, float]`` is accepted covariantly.
+    """
+
+    @property
+    def metrics(self) -> Mapping[str, float]:
+        """Headline + spread metrics for the comparison."""
+        ...
 
 
 class SupportsMetricsMethod(Protocol):
@@ -71,7 +81,15 @@ def comparison_metrics(
     ``@runtime_checkable`` treats a ``metrics`` mapping as a method member
     (the attribute exists), so ``comparison.metrics()`` would call a dict.
     """
-    raw = getattr(comparison, "metrics", None)
+    # Attribute access, not ``getattr(comparison, "metrics", None)``: the
+    # abstraction audit (scripts/audit_abstractions.py) credits a Protocol
+    # member with a reader only on the ``.metrics`` form, so the ``getattr``
+    # spelling left ``SupportsMetricsMapping.metrics`` looking unread
+    # (Copilot review, PR #151). Same semantics: a missing attribute raises.
+    try:
+        raw = comparison.metrics
+    except AttributeError as exc:
+        raise TypeError(f"{type(comparison).__name__} has no metrics attribute") from exc
     if raw is None:
         raise TypeError(f"{type(comparison).__name__} has no metrics attribute")
     mapping: object = raw() if callable(raw) else raw

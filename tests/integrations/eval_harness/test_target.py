@@ -8,6 +8,11 @@ pytest.importorskip("torch")
 
 from src.integrations.eval_harness.target import run_basis_cell
 
+# Needs only the base install, but marked anyway (R-13): the suite is gated by
+# `-m "eval_harness_required"` in test-extras, and an unmarked file would sit
+# OUTSIDE the measurement of the very package the gate exists for.
+pytestmark = pytest.mark.eval_harness_required
+
 _CELL = {
     "pde_family": "poisson",
     "seed": 0,

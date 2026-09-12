@@ -21,3 +21,13 @@ Working rules:
 - CPU CI mocks the SDK at the boundary (`tests/integrations/conftest.py`); real-server smokes carry
   `@pytest.mark.gpu_required` and gate on `LM_STUDIO_URL`.
 - Run the LLM-prior + backend-registry Regression-Surface rows; keep the package ≥85% (branch).
+
+## Concurrent subagents
+
+Concurrent subagents work in their own `git worktree` and never run `git stash`, `git reset`, `git checkout -- <path>` or `git clean` in a shared working tree.
+
+Before the lockfile lands, `cd` into the worktree and run `python -m …` from the worktree root —
+the editable install resolves `src` to the *primary* checkout from anywhere else. The full rule
+(worktree placement, which git commands are safe in a shared tree, branch hand-back) and the
+PR #140 incident are under `## Concurrent subagents` in root `AGENT.md`;
+`tests/claude/test_worktree_rule.py` keeps this sentence and that one identical.

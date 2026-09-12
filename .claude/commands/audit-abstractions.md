@@ -11,21 +11,25 @@ class.
 python -m scripts.audit_abstractions ${ARGUMENTS:-src}
 ```
 
-Interpretation:
-- **Report mode is non-blocking** — triage the hits, don't batch-fix. Known pre-existing dead
-  abstractions live in the domain PoCs (`src/backend`).
-- `src/mcts`, `src/refinement` and `src/pde` **are clean and must stay clean** — CI runs them
-  with `--fail-on-missing` (`.github/workflows/ci.yml`, `lint` job), so treat any hit as a
-  blocker:
+Interpretation (this mirrors the `typecheck` job in `.github/workflows/ci.yml`; when they
+disagree, the workflow wins and this file is stale):
+- **Report mode is non-blocking** — triage the hits, don't batch-fix. The only package with a
+  known, untriaged backlog is `src/backend` (the domain-PoC `BackendInterface` members,
+  `docs/CODE_HYGIENE_AUDIT.md` B10); CI runs it with `continue-on-error`.
+- **The four refinement roots are gated hard, in ONE invocation** — the audit resolves call
+  sites within the union of the roots it is given, so scanning them one at a time is strictly
+  stricter and flags cross-package readers as missing (`src/research` drives
+  `src/refinement`'s `RefinementSubstrate`):
 
   ```bash
-  python -m scripts.audit_abstractions src/mcts src/refinement src/pde --fail-on-missing
+  python -m scripts.audit_abstractions src/mcts src/refinement src/pde src/research --fail-on-missing
   ```
 
-- `src/training` has **one accepted baseline** (`BaseLoss.forward`,
-  `src/training/losses/base.py:40` — a Protocol member with no reader), recorded in
-  `docs/CODE_HYGIENE_AUDIT.md` §7.3. It is *not* in the blocking set; run it without
-  `--fail-on-missing` and treat anything beyond that one hit as a blocker.
+- **Every other package except `src/backend` is gated hard too**, again in one combined
+  invocation (`$(ls -d src/*/ | grep -v 'src/backend/') --fail-on-missing`). The former
+  `src/training` "accepted baseline" (`BaseLoss.forward`) is not a baseline any more: the combined
+  scan finds its reader outside `src/training`, which is exactly why the roots must be passed
+  together. A hit in *any* of these packages is a blocker.
 - A hit is fixed by wiring the method to a call site, deleting it (and its docstring), or confirming
   the protocol member has a reader. `PDEGame.get_result` (`docs/CODE_HYGIENE_AUDIT.md` **B17**) is
   the worked example of the delete path — and of extracting the one genuinely-wanted piece

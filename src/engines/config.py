@@ -12,6 +12,11 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
+from src.constants import (
+    DEFAULT_UCI_READER_JOIN_TIMEOUT_SECONDS,
+    DEFAULT_UCI_READER_POLL_SECONDS,
+    DEFAULT_UCI_STDOUT_QUEUE_MAXSIZE,
+)
 from src.engines.protocol import EngineProtocol
 from src.templates.config import BaseModuleConfig
 
@@ -104,6 +109,28 @@ class UCIConfig(EngineConfig):
         ge=1,
         le=512,
         description="Number of search threads",
+    )
+    stdout_queue_maxsize: int = Field(
+        default=DEFAULT_UCI_STDOUT_QUEUE_MAXSIZE,
+        ge=0,
+        description=(
+            "Maximum engine stdout lines buffered ahead of the consumer; the reader "
+            "thread blocks (backpressure) when full. 0 means unbounded (the historical "
+            "behaviour, which let a runaway producer grow the process without limit)."
+        ),
+    )
+    reader_poll_seconds: float = Field(
+        default=DEFAULT_UCI_READER_POLL_SECONDS,
+        gt=0,
+        description=(
+            "Seconds the stdout reader blocks on a full queue before re-checking its "
+            "stop flag, so quit()/garbage collection can end it while it is blocked."
+        ),
+    )
+    reader_join_timeout_seconds: float = Field(
+        default=DEFAULT_UCI_READER_JOIN_TIMEOUT_SECONDS,
+        gt=0,
+        description="Seconds quit() waits for the stdout reader thread to exit.",
     )
 
     @model_validator(mode="after")

@@ -130,7 +130,14 @@ jobs:
     needs:
       - sbir-demo-end-to-end
       - sbir-html-report-only
-    if: always()
+    # `!cancelled()` rather than `always()`: a run superseded by the
+    # concurrency group has its needed jobs cancelled, and under `always()`
+    # this gate still executed, read `cancelled`, and stapled a red X to a
+    # SHA nobody was waiting on -- mis-triaged as a CI failure (the same
+    # defect ci.yml's `ci-success` fixed on 2026-09-08; found again on
+    # 2026-09-11, run 34659426510). Skipping on cancellation keeps the gate
+    # honest while it still fails whenever a needed job genuinely fails.
+    if: ${{ !cancelled() }}
     steps:
       - name: Verify all SBIR-demo jobs passed
         run: |

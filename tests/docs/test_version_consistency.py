@@ -33,6 +33,9 @@ PYPROJECT: Final[Path] = REPO_ROOT / "pyproject.toml"
 SCANNED_FILES: Final[tuple[str, ...]] = (
     "README.md",
     "hf_space/src/__init__.py",
+    # RELEASING.md states the current version in its "Current state" section
+    # (R-08); scanning it keeps that statement true across bumps.
+    "RELEASING.md",
 )
 
 #: ``x.y.z`` optionally followed by a pre/dev suffix, inside backticks (Markdown)

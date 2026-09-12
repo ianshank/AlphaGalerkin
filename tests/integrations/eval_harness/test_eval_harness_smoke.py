@@ -15,9 +15,12 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("torch")
-pytest.importorskip("eval_harness")
 
-pytestmark = [pytest.mark.gpu_required, pytest.mark.integration]
+pytestmark = [
+    pytest.mark.gpu_required,
+    pytest.mark.integration,
+    pytest.mark.eval_harness_required,
+]
 
 _REQUIRED_ENV = ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LM_STUDIO_URL")
 
@@ -48,7 +51,7 @@ def test_online_eval_smoke(tmp_path: Path) -> None:
         },
         "target": {
             "type": "callable",
-            "params": {"function": "src.integrations.eval_harness.target:run_basis_cell"},
+            "params": {"path": "src.integrations.eval_harness.target:run_basis_cell"},
         },
         "scorers": [
             {"type": "final_residual", "params": {"target_residual": 1e-2}},

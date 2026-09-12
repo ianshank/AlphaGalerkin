@@ -198,7 +198,10 @@ class TestTheGuardItself:
     def test_known_expressions_are_found_verbatim(self) -> None:
         """Anchors the extractor to expressions that demonstrably exist today."""
         expressions = {use.expression for use in MARKER_USES}
-        assert "not slow and not e2e and not gpu_required" in expressions
+        # The fast lane's expression gained `and not network` with the hermetic
+        # fast lane (R-02); the Makefile's copy is a `$(FAST_LANE_MARKERS)`
+        # variable reference, so the literal anchor is ci.yml's.
+        assert "not slow and not e2e and not gpu_required and not network" in expressions
         assert "not gpu_required and not fem_required" in expressions
 
     def test_no_module_name_is_mistaken_for_an_expression(self) -> None:

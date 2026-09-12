@@ -1,8 +1,426 @@
 # Changelog
 
+All notable changes to AlphaGalerkin will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
 
+### Added
+- **`/merge-agent-branch` slash command** (sixth command; harness inventory now
+  15 skills / 6 subagents / 6 commands, machine-checked by `tests/claude/`).
+  Encodes the subagent-branch merge ritual this cycle ran eight times by hand:
+  verify in the worktree → `git merge --no-ff` → derived guard sweep → worktree
+  and branch cleanup with `-d` (never `-D`) → three ledger rows → push after the
+  sweep. `/babysit-pr` triage table gains two rows for the failure classes this
+  cycle root-caused (E2E runner shutdown → UCI stdout-reader leak; 403 /
+  `SocketBlockedError` → hermetic fast lane, mark the test `network`).
+- **Wave F AGENT.md + B8.** Every `src/` package now has `AGENT.md` (B12), including
+  `src/research/` and four B10 keep-reason files (`prototyping`, `analysis`,
+  `curriculum`, `tournament`: test-held, not production-wired, not a
+  2026-07-22-style cut). `src/pde/AGENT.md` sub-agent row points at
+  `src/pde/operators/`. B19 extras (`dev`, `viz`, `test-extras`, `fem`, `jax`,
+  `picogk`, `lm-studio`, `docs`) documented in README / getting-started /
+  CONTRIBUTING; no `dashboard` extra. B8: CLAUDE.md Regression Surface
+  coverage-gate rows ⊆ `ci.yml` (`tests/docs/test_claude_coverage_gates.py`,
+  mutation-killed).
+- **`tests/support` coverage gate at 85** (`coverage-gates` job). Selection is
+  the docs / import-graph consumers that actually import the helpers. Measured
+  ~95% branch; first landing capped at 85. templates / math_kernel / backend
+  54 / deployment 25 / B37 eval_harness stay parked.
+- Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
+  `src/pde/register_refinement_games.py`, config-driven substrate factory with
+  `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production
+  reader of `RefinementSubstrate.fingerprint`). Honest closeout: real
+  `MCTS.get_action` micro-run on `tensor_grid` and `fem_required` `skfem_tri`;
+  `to_tensor` trailing error-per-DOF value; `ResidualPriorErrorValueEvaluator`
+  as the named headline leaf evaluator (`EncodedValueEvaluator` / `RandomEvaluator`
+  forbidden as the published arm).
+- MCTS vs classical AMR arena (`mcts_classical_amr_arena`): spec, pinned YAML,
+  harness, PoC scenario, and `scripts/run_mcts_classical_amr_arena.py`. Adequacy
+  abort, per-seed solve cache, locked `search_mode=single_agent` /
+  `add_noise=False` / `temperature=0`. Proposal-grade sidecars reject dirty /
+  unknown-hash at claim-commit (git snapshotted before CSV/PNG write).
+  README/charter AMR-ratio guard requires a manifest pointer.
+- Committed Phase 2 artifacts `results/mcts_classical_amr_arena.{csv,png,run.json}`
+  (θ=0.5, policy `max_dof=600`, matched DOF 287): median
+  `l2_error_ratio_at_matched_dof` **0.9532** (MCTS wins ~4.7% at matched DOF;
+  3 identical seeds). Matched-solves 9.23 and error-per-DOF ~30.8 recorded
+  ungated. Adequacy rates are gate evidence, not this result. FOCUS freeze
+  lifts on that signed answer.
+- CI `--ignore` / `--deselect` ledger (`docs/ci-exclusion-ledger.md`) with
+  owner / reason / reopen criteria. Unit Tests (Fast) and Test Coverage
+  duplicate the list; Makefile `CI_TEST_EXCLUDES` is the third copy.
+  Shared args-file extraction is still hygiene B7 (deferred). Guard:
+  `tests/docs/test_ci_exclusion_ledger.py`.
+- ADR 0005: process-global registry `clear` / `ensure` lifecycle. Does not
+  rewrite every registry.
+
+#### the E2E tier, which CI had never run, and a device contract for it
+
+- **`tests/e2e/` gated nothing, and the reason recorded in `ci.yml` was wrong.** The fast lane
+  passed `--ignore=tests/e2e/` **and** `-m "not e2e"` (the `coverage` job repeated both), and
+  exactly **one** of the directory's 11 test files was named by any step in any workflow. 81
+  tests, invisible. This is the fourth instance of that defect class here, after
+  `tests/demos/` + `tests/notebooks/` (226 tests, until `18f533d`), `src/backend` (213 tests)
+  and the three omit-collision false passes — every previous one found by a person reading the
+  workflow. The `ci.yml` comment blamed `test_train_physics_minimal`'s fixed 120 s timeout;
+  that attribution was **wrong**: the run was never minimal (`--train-size` is the grid side,
+  not the sample count, so it built the default 5000 samples and needed ~1.7 h), so no budget
+  could have made `returncode in [0, 1]` hold. Bounding the sample counts fixed it — measured
+  **15 s**. New blocking `test-e2e` job (in `ci-success.needs`, with a hard `exit 1`), a
+  positively-selecting `fem_required` step in `test-extras`, and `make test-e2e` now running the
+  whole directory instead of a glob that selected **3 of 81** tests — so `make pre-pr` had been
+  certifying every PR against three E2E tests.
+- **`tests/docs/test_e2e_visibility.py` + `tests/docs/test_marker_vocabulary.py`** (94 tests,
+  hermetic, ~1.8 s) so the fifth instance fails the build instead of waiting to be noticed.
+  The visibility guard's first draft was **defeated by its own mutation**: as specified, the
+  `test-extras` fem step satisfied the "a step selects tests/e2e/" clause on its own, so
+  deleting the entire `test-e2e` job left it green. Strengthened so a qualifying step also must
+  not narrow the run to another positively-required marker. The vocabulary guard exists because
+  `--strict-markers` rejects an unknown marker on a *test* but **not** an unknown identifier
+  inside a `-m` expression — verified: `-m "not gpu_requried"` runs everything and exits 0.
+  **9/9 mutation-killed**, two of them written because the `gpu_required` clause passes
+  vacuously today and an empty-set scanner must still be able to fail. Shared parsers in
+  `tests/support/{workflows,marker_expr}.py`.
+- **A device contract that makes the tier GPU/CPU agnostic**, which is three properties the repo
+  satisfied none of. `E2E_DEVICE` (default `auto`) takes exactly `resolve_device`'s four forms
+  and is resolved **once at conftest import**, so `E2E_DEVICE=cuda` on a CPU box is a collection
+  error for the whole directory rather than a skip — `cuda` *is* the require form, so there is
+  no second env var. Tests forward the resolved *concrete* device to every child, so none of the
+  repo's five device-resolution policies is ever handed an ambiguous `auto`. `pin_scenario_yaml`
+  steers `poc.cli run` (which has no `--device`, and deliberately does not gain one) by copying
+  the shipped YAML, and **refuses to pin a key the config does not declare** so the pin cannot
+  silently no-op. One negative test per script runs identically on both host types via
+  `CUDA_VISIBLE_DEVICES=""`. Numpy-only surfaces are stated as device-irrelevant rather than
+  described as exercising the GPU.
+- **Nine E2E journey files** driving the shipped entry points as processes — the exit code a
+  shell sees, the parser, and the on-disk artifact together, which the in-process `main(argv)`
+  tests in `tests/scripts/` cannot reach. Notably: `scripts/run_adaptive_vs_uniform.py`'s
+  `main()` and its provenance-sidecar write were exercised by **nothing**; the L-shape journey
+  derives its expected exit code from the run's own verdict rather than asserting 0, because
+  the gate is `ratio < 1.0` and the honest headline fails it (asserting 0 would encode a
+  research outcome); the substrate registry is driven in a **subprocess**, since two suites
+  `clear()` that process-global singleton.
+
+#### harness: two skills, the missing agent role, two hooks, one command
+
+- **`harden-a-guard`** turns this repo's most important convention from a *value* stated in two
+  agent files into an eight-step procedure with a completion bar. It was enforced by nothing, and
+  five of this branch's seven self-corrections were mutation-survival findings.
+- **`wire-a-ci-job`** does for a test job what `add-coverage-gate` already does for a gate: the
+  six coupled edits, of which this branch got two wrong. Includes the `make <t> PYTEST=<stub>`
+  check that catches a status-propagation rewrite a grep cannot.
+- **`build-engineer`** — the missing agent role. Nothing in `.claude/agents/` owned `ci.yml`, the
+  `Makefile`, markers/omit, or the CI↔docs mirror, yet **all seven** of this repo's recorded
+  invisibility defects lived there and **not one** was caught by a check.
+- **Two path-gated `PostToolUse` hooks.** The build-config guard runs the hermetic enforcement
+  suites when one of five paths is edited (~6 firings per branch, ~13 s each); the doc-link guard
+  moves an existing pre-commit check to authorship time (0.10 s). Both report and never block —
+  CI is the gate, and a blocking hook gets disabled. `ALPHAGALERKIN_HOOK_DRY_RUN=1` makes the
+  gating decision testable in milliseconds; 20 tests drive both hooks against synthetic payloads,
+  4 of which fail when the path gate is narrowed to nothing.
+- **`/babysit-pr`** encodes the PR-to-green loop that was re-improvised every session, including
+  the triage table for this repo's known failure classes and the constraint (`gh` is unavailable
+  here) that had been rediscovered by hand more than once.
+- **The harness inventory is now machine-checked.** CLAUDE.md's "N skills, N subagents, N slash
+  commands" had drifted twice and recorded both drifts in its own prose. Correcting it a third
+  time by hand would repeat the mistake; `TestTheDocumentedInventoryMatchesDisk` fails until the
+  row matches the directories. It caught the new slash command immediately.
+
+#### Gap analysis: three ungated packages, a blind spot in the gate guard, and an unbuilt Dockerfile
+
+- **`src/backend` was invisible to every coverage gate in the repository.** `src/backend/*` sits
+  in pyproject.toml's global `[tool.coverage.run] omit` — a legitimate origin (`jax_backend.py`
+  needs the optional `[jax]` extra) applied at *package* granularity — **and** it had no
+  per-module gate, so its 213 passing tests measured nothing anywhere. Real branch coverage is
+  **56%**, and the omit was hiding `logging.py` and `rng.py` at literally **0%**, not just the
+  JAX module it was written for. Gated at 54 via the inline-coveragerc technique. This is the
+  fourth instance of the omit-collision false pass in this repo, after `video_compression`,
+  `demos` and `skfem_tri.py`.
+- **The coverage-gate integrity guard could not have caught it, and that is the finding.**
+  `tests/docs/test_coverage_gate_integrity.py` verified that a gate a workflow *declares* is not
+  secretly neutered by the omit. It said nothing about a package that is omitted **and never
+  gated at all** — not a fake gate, but no gate, invisible for exactly the same reason. Added
+  the missing direction: every `omit` entry must be gated by a step that both selects it *and*
+  overrides the omit, or carry an entry in `_OMIT_WITHOUT_A_CI_GATE` with a reason. Self-expiring
+  in both directions — a stale exemption fails the moment a gate appears, and an exemption for a
+  pattern no longer in `omit` fails as vacuous, the same way the import contracts guard against
+  a rule about nothing. 20 tests; 2 further mutations killed.
+- **Gates for the last two ungated `src/` packages**: `src/core` at 85 (measured 97.67%) and
+  `src/deployment` at **25** (measured 27.91% — 626 statements, 416 missed). 25 is stated as a
+  regression tripwire, not a standard: it stops the largest genuinely under-tested surface in
+  `src/` sliding further, and raising it is test work, not a number to edit in CI.
+- **`docker/Dockerfile` shipped on 2026-08-16 (`61c1e93`) and was built by nothing** — no CI job,
+  no Makefile target, no test — while `CLAUDE.md`'s Next Steps recorded, "verified 2026-08-21",
+  that no Dockerfile existed anywhere in the tree. The verification was wrong five days after
+  the fact and nothing caught it for two weeks, because nothing exercised the file. Verified by
+  hand that the image's `CMD` currently works, by materialising the real build context
+  (git-tracked files minus `.dockerignore`) and running it: **510 passed, 6 skipped**. Closed
+  with `tests/docs/test_dockerfile_context.py` — **hermetic, no daemon, builds nothing**:
+  every `COPY` source must survive `.dockerignore`, every copied path must exist, and every path
+  the `CMD` runs must be both un-ignored and actually brought in by some `COPY`. Two vacuity
+  guards, because a deleted Dockerfile would otherwise make every parametrised assertion iterate
+  an empty list and pass. 2/2 mutation-killed. Companion `make docker-build` / `make docker-test`
+  take `DOCKER_IMAGE` / `DOCKER_CONTEXT` / `DOCKERFILE` as overridable variables.
+- **`src/refinement/AGENT.md`** — the package this branch created had none, which was the least
+  defensible entry on the missing-AGENT.md list. Documents the domain-free contract and the
+  import rule that enforces it, the numpy-only constraint on `substrate.py` (and why
+  `get_type_hints` forced runtime imports), the mandatory `SearchMode.SINGLE_AGENT`, and the
+  self-expiring staged-exemption rule. The count itself was stale: **15 of 28** packages lack
+  one, not "14 of 26" — the old figure predated `src/core` and `src/refinement`.
+- **Recorded, not fixed, with reasons**: `src/research/baselines.py` is now the largest file in
+  the repo at 1540 lines and this work *added* to it (B34 — splitting it belongs in its own PR,
+  not one already at 5k additions whose CI had never completed a run); and two
+  `tests/video_compression/unit/test_loss.py` cases download 500 MB of ImageNet VGG16 weights
+  from `download.pytorch.org`, so they fail in any air-gapped environment and pass on GitHub's
+  networked runners, which is why CI has never flagged them (B35 — an unrelated subsystem, and
+  `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
+  passed**, 208 skipped, those 2 network failures the entire delta.
+
+#### `element-local-substrate` Slice A: shared marking + substrate protocol
+
+- **One `dorfler_mark` function replaces two independently-drifting Dörfler bulk-marking implementations** (`src/research/marking.py`) — `DorflerAMRSolver._dorfler_mark` (`src/research/baselines.py`, squared bulk quantity, marks ≥1 element on an all-zero indicator array) and `ScikitFEMPoissonSolver._dorfler_mark` (`src/research/fem_baseline.py`, linear bulk quantity, returns all-False on all-zeros) now both delegate to it (`variant="squared"`/`"linear"`), byte-for-byte, Hypothesis-verified against frozen reference re-derivations of each original formula plus the two solvers' own 85-test regression suite. **Lives under `src.research`, not `src.refinement`** as originally planned: CI's `reference-baselines-do-not-import-the-candidate` architectural contract (`tests/regression/test_import_contracts.py`) forbids `baselines.py`/`fem_baseline.py` from importing anything under `src.refinement` at all, and `dorfler_mark` is active marking behaviour, not the inert protocol/type import the contract's one exemption (`src/mcts/gumbel.py`) tolerates — caught by that contract's own test failing in CI, fixed by relocating rather than exempting.
+- **`RefinementSubstrate` Protocol + `SubstrateSolveResult`** (`src/refinement/substrate.py`, numpy-only per `src/pde/games/__init__.py`'s documented SIGSEGV rationale) and its registry (`substrate_registry.py`) — the stepwise interface `openspec/changes/element-local-substrate/design.md` specifies, that `TensorGridSubstrate` and `SkfemTriSubstrate` will implement in later slices. `@runtime_checkable` so a concrete substrate satisfies it structurally, without inheriting from it. `SubstrateSolveResult.__post_init__` enforces AC5's `n_dof_free <= n_dof` invariant (both non-negative) at construction, not just by convention.
+- **`SubstrateConfig`** (`src/research/substrates/config.py`) — the Pydantic data contract from `specs/refinement_substrate.spec.md`'s Data Contract table (`kind`, `element_type`, `marking_variant`, `error_metric`, `enforce_immutable_meshes`, `solve_cache_max_entries`, and the even-`initial_side` invariant), plus the named numerical-stability constants `RATIO_FLOOR`/`AREA_FLOOR`/`RATE_FIT_MIN_POINTS`. Not in the original 27-task checklist; added after an independent adversarial review of the implementation plan found no task owned it.
+- **Fixed a real bug in `scripts/audit_abstractions.py`**, found while gating this change: a generic `Protocol[T]` base parses as `ast.Subscript`, not `ast.Name`/`ast.Attribute`, so `_is_protocol_class` silently returned `False` for any generic Protocol — `RefinementSubstrate`'s 8 members were invisible to the audit entirely, not "verified live", and the CI gate that scans `src/refinement` (`.github/workflows/ci.yml`'s "Audit abstractions (refinement surfaces)" step) would have passed on dead code by tool blind spot rather than genuine compliance. Fixed the AST unwrap; the resulting real finding (8 declared-but-uncalled members, since Slice A intentionally ships ahead of its first concrete consumer) is exempted via a new, explicitly time-boxed `_STAGED_FOR_UPCOMING_TASK` allowlist — distinct from the existing `_KNOWN_LIVE` (a real caller the AST heuristic can't see) — naming Slice E's task 7.1 (`RefinementGame` subclass over the substrate) as the entry it retires. 4 new regression tests, including one that would have caught the original bug.
+- Coverage: `src/refinement` 100% branch, `src/research/marking.py` 100% branch, `src/research/substrates` 100% branch.
+
+#### `element-local-substrate` Slice B: `TensorGridSubstrate`, the back-compat proof
+
+- **`TensorGridSubstrate`** (`src/research/substrates/tensor_grid.py`) wraps `DorflerAMRSolver`'s existing static solve/indicator/refine primitives and `lshape_amr_compare._area_weighted_l2` behind `RefinementSubstrate`, reproducing today's `run_dorfler_arm` trajectory. `mark()`/`refine()` split `_dorfler_mark_2d`'s single call (element selection + x/y-axis projection) into two Protocol-compliant primitives — `mark()` returns the shared `dorfler_mark`'s flat element selection, `refine()` does the axis projection plus `DorflerAMRSolver._refine_grid` (unmodified) — a composition proven bitwise-equivalent to the fused legacy call by the golden test, not by inspection.
+- **AC1 golden test** (`tests/research/test_tensor_grid_substrate.py`): the full `initial_mesh -> solve -> mark -> refine` loop matches a live `run_dorfler_arm` call bitwise (7 refinement levels, identical `n_dof`/`l2_error` at every level) and the committed `results/lshape_mcts_vs_dorfler.csv` `dorfler` rows to float tolerance. Mutation-checked: forcing `mark()` to the wrong bulk-marking variant diverges the trajectory at level 2 (`n_dof` 46 vs 34), confirming the test discriminates a wrong marking policy rather than passing vacuously.
+- Coverage: `src/research/substrates` (now including `tensor_grid.py`) 100% branch.
+
+#### `element-local-substrate` Slice C: `fem_baseline` decomposition + `SkfemTriSubstrate`
+
+- **`fem_baseline.py` decomposed into module-level primitives** (`build_initial_mesh`, `build_lshaped_initial_mesh`, `assemble_and_solve`, `zz_indicator`, `element_gradients`, `triangle_area`, `estimate_smoothness`, plus the new `quadrature_l2_error`) — `ScikitFEMPoissonSolver`/`ScikitFEMLShapedSolver` re-expressed as thin delegates. Byte-identical before/after (`solution`, `l2_error`, `metadata` all match across `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`); the existing 23-test file passes untouched, plus 2 new tests for `quadrature_l2_error`.
+- **Re-measured the AC7 adequacy-gate risk an independent adversarial review of the implementation plan surfaced**: the task-zero spike's headline rate-separation numbers (`-1.256`/`-0.710`) came from the spike's own stronger, non-production ZZ estimator, not the weaker production one this slice actually extracts. Measured through the real production primitives on the real L-shaped Poisson benchmark: adaptive **-1.3109**, uniform **-0.6710**, at θ=0.5 over `RATE_FIT_DOF_RANGE = (200, 4000)` — both comfortably inside the planned Slice D thresholds. No recalibration needed. **Corrected twice in Slice D**, both times by the gap-analysis review's rule that a number must come from committed code: (1) this line originally read "adaptive -1.322, uniform -0.671", which mixed two different fitting *windows* — the adaptive figure was fitted over `(200, 2600)`, the uniform over `(200, 4000)`, because the narrower window cannot hold three uniform points at all; (2) the replacement figure `-1.2515` was measured at **θ=0.3**, while the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Same substrate, same window, different θ, 5% different rate. Both figures above are now from the gate's own configuration, and both are **bounded by a committed test** (adaptive ≤ `-1.10`, uniform ∈ `(-0.85, -0.55)`) rather than resting on a transcribed local run. **Quote θ and the window with any rate in this repo** — a bare convergence rate is not a fact.
+- **`SkfemTriSubstrate`** (`src/research/substrates/skfem_tri.py`) — the element-local substrate the charter's own adequacy claim needs to be measurable at all. Verified end-to-end: marking a single element grows the mesh 384 → 391 (local) vs 384 → 1536 for `mesh.refined()` with no marks (uniform) — genuinely element-local, not the tensor-grid substrate's full-grid-line defect. Reports quadrature L2 as the primary metric (configurable), nodal RMS additive in `extra` (AC6); clears mesh write flags behind `enforce_immutable_meshes` (AC3, verified both enforced and opt-out); the reentrant corner is confirmed a mesh node at the origin on the real mesh builder's output (AC8). 20 new tests.
+- **`fem_required` marker + visible skip discipline**: registered in `pyproject.toml`; a root `conftest.py` hook mirrors the existing `gpu_required` skip but additionally reports a skip count via `pytest_terminal_summary` (`gpu_required` does not), and `ALPHAGALERKIN_REQUIRE_EXTRAS=1` raises `pytest.UsageError` (exit 4) instead of skipping — closing a real gap in the `test-extras` CI job's own stated purpose (a half-succeeded `scikit-fem` install would otherwise skip silently and still go green). `test_fem_baseline.py`/`test_skfem_substrate.py` switched from `pytest.importorskip` to `pytestmark = pytest.mark.fem_required`, manually verified both ways (uninstalling scikit-fem: visible `skipped 45 test(s)`; same run under the env var: hard failure with the install hint). Wired into `test-extras`; `skfem_tri.py` added to the coverage `omit` alongside `fem_baseline.py`.
+- Coverage: `src/research/substrates/skfem_tri.py` 89% (native-runner measurement; the file rides `fem_baseline.py`'s existing omit-list treatment, so no dedicated CI gate — remaining gaps are version-dependent defensive branches, same class as `fem_baseline.py`'s own pre-existing gaps).
+
+#### `element-local-substrate` Slice D: the adequacy gate (AC7)
+
+- **`tests/research/test_amr_arena_interpretability.py`** — the gate that makes the charter's central claim measurable at all. Asserts adaptive marking beats uniform refinement on the L-shaped Poisson singularity, **and** that the *identical* predicate rejects `TensorGridSubstrate`: a gate that passes on both substrates is not a gate. Both halves share one `gate_violations()` function, so "the same assertion fails there" is literally rather than approximately true. Measured at θ=0.5 over `(200, 4000)` — `SkfemTriSubstrate`: adaptive **-1.3109**, uniform **-0.6710**, error ratio **0.0946** at matched DOF (passes); `TensorGridSubstrate`: adaptive **-0.2325**, uniform **-0.6489**, ratio **13.35** (fails).  Adaptive is thus ~10x *better* than uniform on the element-local substrate and ~13x *worse* on the tensor-product one — the substrate, not the marking policy, decides the sign. The tensor-grid half deliberately carries **no** `fem_required` marker, so the discriminating half runs on every CPU CI job with no optional dependency.
+- **5/5 mutations killed.** One initially survived and is worth recording: widening `UNIFORM_RATE_BAND` to `(-5.0, 0.0)` left every solve-driven test green, because both substrates' uniform rates sit comfortably inside the band — so AC8's "a rate that is too *good* is also a defect" tripwire was documented but asserted nowhere. Closed by `TestGatePredicate`, which unit-tests the predicate on synthetic `RateSeparation` values (including the `-1.05` both-arms rate that was the task-zero spike's actual wrong result) with no PDE solve.
+- **`src/research/substrates/sweep.py`** — the sweep/rate-fit machinery lives in a reusable, substrate-agnostic module rather than inside the test file, so the eventual arena change consumes it instead of growing a second, subtly-different copy (the exact failure mode that made `dorfler_mark` necessary). `run_refinement_sweep` / `fit_log_log_rate` / `measure_rate_separation` / `warn_on_degenerate_units`, with structlog events throughout (`refinement_sweep_start` / `_level` / `_stop` carrying its stop *reason* / `_done`, `rate_fit`, `rate_separation`, `degenerate_units`). `fit_log_log_rate` **refuses** to fit fewer than `RATE_FIT_MIN_POINTS` points rather than returning a meaningless slope. 100% branch coverage; 22 unit tests drive it entirely through a synthetic substrate, which is what makes "substrate-agnostic" a tested claim rather than a docstring.
+- **Three dead constants got real consumers.** `RATIO_FLOOR`, `AREA_FLOOR` and `RATE_FIT_MIN_POINTS` had *no* production reader, and `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant defined as `1e-15` — a tautology guarding nothing. `sweep.py` now consumes all three, with behavioural coverage for each; the value-pinning test is retained but relabelled for what it actually guards (doc/code drift against the spec table). **CORRECTED 2026-09-02**: true for `RATIO_FLOOR` and `RATE_FIT_MIN_POINTS`, false for `AREA_FLOOR` -- its only consumer was `warn_on_degenerate_units`, which itself had zero production callers, so the "real consumer" was a dead function with four tests written for it. Both deleted.
+- **Spec correction, disclosed**: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`. The original window is *physically* incapable of holding three **uniform** points — a 2D uniform arm quadruples DOF per level, so a 13× window spans at most two. Not a judgement call: `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than fitting a two-point slope, which is how it surfaced. Verified on both substrates (`skfem_tri` uniform lands on `[225, 833, 3201]`, `tensor_grid` on `[208, 800, 3136]`). A window-*width* correction, not a threshold loosening — the other three constants hold at their originally pinned values. Recorded with its reason in `specs/refinement_substrate.spec.md`.
+- **Abstraction-audit allowlist shrunk 8 → 1, and made self-expiring.** `sweep.py` is a real, non-test reader of seven of the eight `RefinementSubstrate` members, so those seven left `_STAGED_FOR_UPCOMING_TASK` rather than staying exempted — an allowlist entry covering a live member silently stops guarding it, which is the opposite of the gate's purpose. Only `fingerprint` remains staged (its consumer, the fingerprint-keyed solve cache bounded by `solve_cache_max_entries`, lands with Slice E). CI's blocking "Audit abstractions (refinement surfaces)" step gained `src/research` as a fourth root, because the declaration and its driver live in different packages and the narrower scan reported live members as dead — the cross-package false positive that step's own comment warns against. New `test_every_staged_exemption_is_still_forward` drops the allowlist, re-runs the audit over exactly CI's roots, and requires every staged member to *still* be unread — so a stale exemption fails rather than rotting (same discipline as the import-contract meta-guards and `.claude`'s `FORWARD_REFERENCES`). Mutation-verified: re-adding `solve` to the allowlist turns it red.
+
+#### A guard for the false pass this repo has now written three times
+
+- **`tests/docs/test_coverage_gate_integrity.py`** — the "identify areas to improve hooks/validations" ask, answered with the failure that actually keeps happening rather than a proposal. `video_compression`, `demos` and `src/research/substrates/skfem_tri.py` each shipped a coverage gate that measured **nothing** while reporting green, and each was found by a human reading the workflow. The two mechanisms are entirely mechanical, so they are now checked: a `--cov` target swallowed by pyproject.toml's global `omit` (coverage reports `0.00%` with `No data was collected`, and `--cov-fail-under` cannot fail), and a `--cov=<...>.py` file-path spec, which coverage 7.x silently ignores. Also asserts every `--cov` target exists on disk. Hermetic — parses YAML and the TOML omit block, runs nothing.
+- **Exemptions are falsifiable, not documentary.** An entry claiming a module is "gated elsewhere" must name a step that *both* selects it **and** overrides the omit (`--cov-config=` / `--rcfile=`); an ancestor `--cov` is explicitly rejected as proof, because it inherits the same omit. A stale exemption whose omit pattern is gone, or one with an empty reason, fails.
+- **7/7 mutations killed**, and three of them mattered. The first version only detected an omit that was an *ancestor* of the target, so dropping `--cov-config` from the substrates gate — where the omit is a *descendant* — passed; that is precisely how the third instance got written, since the package total would have read ~99% from four files while the fifth contributed nothing. The second version accepted an ancestor `--cov` as proof of "gated elsewhere", which the repo-wide `--cov=src` satisfies while inheriting the same omit. The third used substring matching, so `--cov=src/research` matched inside `--cov=src/research/substrates` and one gate stood in as proof for a sibling file.
+- **It found a real gap on its first run**: `src/research/fem_baseline.py` (249 statements) is in the global `omit`, so the `coverage` job's `--cov=src/research` gate at 85 had **never measured it** — invisible inside a package percentage that looked healthy. Now gated at 83 (measured 85%) in `test-extras`, the only job that installs the `[fem]` extra. Native-runner form for two independent reasons: a file-path `--cov` spec is dropped, *and* `coverage run` reads pyproject.toml's omit too, so `--include` alone does not override it.
+- **A different existing guard caught this one**: `test_python_floor_compatibility` rejected `import tomllib` (3.11+) against the declared 3.10 floor, where it would have been a *collection* error taking the whole run down. Replaced with the anchored-regex parse the sibling `test_version_consistency.py` already uses — and that parser is itself pinned by a test, after its first version harvested a comment string as if it were an omit pattern.
+
+#### Tech-debt Phase 2b: fail-fast PDE validation, stale-PR triage
+
+- **`id_pde`/`PDEName`/`ResearchPDEName` now reject `heat`/`advection_diffusion` at config construction** (docs/CODE_HYGIENE_AUDIT.md B24) instead of letting a scenario run crash on `ExactSolutionUnavailableError` partway through, after other arms/seeds already spent compute. Considered and rejected: threading a `skipped` signal through `_centaur_common.run_basis_selection_cell`'s `CellOutcome` (5 call sites unpack it positionally; a NaN-residual sentinel risked silently entering a median calculation, worse than the crash it would replace). A `@field_validator` on each of the three config classes is small, local, and fails loud at the right time.
+- **B24 correction: `navier_stokes` was also unsafe, for a different reason** (GitHub Copilot review, PR #140) — it *has* an `exact_solution()`, but returns a vector `(N, 2)` velocity field, which `BasisSelectionGame`'s scalar `(N,)` fit cannot subtract without a numpy broadcasting `ValueError` (reproduced before fixing). Every other reachable PDE (`poisson`, `burgers`, `poisson_lshaped`, `helmholtz`, `biharmonic`) was checked and confirmed scalar-safe. Each file's rejection set renamed to `_PDES_INCOMPATIBLE_WITH_BASIS_SELECTION` and extended with `"navier_stokes"`; `llm_prior_config.py` gained a new `ood_pde` validator since that PDE is only reachable there via `ood_pde`, not `id_pde`. Three existing tests' error-match pattern widened from `"ExactSolutionUnavailableError"` to `"incompatible with BasisSelectionGame"` to match the more general message.
+- **Monthly stale-PR triage Routine** (docs/CODE_HYGIENE_AUDIT.md B23) — lists open PRs and flags ones with a stale base or 30+ days of inactivity. Reporting-only; a human decides what to do with a flagged PR.
+
+#### Tech-debt Phase 2a: B20 coverage gates closed
+
+- **Five remaining per-module coverage gates wired** (docs/CODE_HYGIENE_AUDIT.md B20): `src/poc/cli.py`, `src/poc/visualization/*`, the 3 classic scenarios (`transfer`/`complexity`/`stability`), `src/constants.py`, `src/seeding.py` — previously covered only by the global 85% gate. `transfer.py` was the one real gap (25% branch: `execute()`/`_train_model()`/`_evaluate_at_resolution()`/`_save_model()` had zero coverage); a real CPU micro-run suite now exercises it end-to-end. `cli.py`'s `cmd_eval_harness` and `visualization`'s `pareto_frontier` plot type were the other two real gaps, both now tested. All five gate at 85+ (cli.py 99%, visualization 100%, scenario set 94%, constants/seeding 100%).
+
+#### Earlier entries (untitled)
+
+- **Architectural import contracts are now executable** (`tests/regression/test_import_contracts.py`, `tests/support/import_graph.py`) — `scripts/audit_abstractions.py` already guards the *vertical* layering direction (an abstraction with no call site). Nothing guarded the *horizontal* one, and that is the direction that breaks silently: a single `from src.pde import ...` in the wrong file is a one-line diff that reads as convenience. Four declarative contracts, three of them scientifically rather than stylistically load-bearing. `src/refinement/` must stay domain-free, or "a refinement game is reusable across domains" is an unfalsifiable claim rather than a property. The **reference baselines** (`baselines.py`, `fem_baseline.py`) must not import the candidate search engine — if they did, the two arms of a comparison would share an *implementation* rather than an interface, and a defect in the shared code moves both arms in the same direction, which is invisible in a ratio. And `src/templates/` + `src/math_kernel/` must carry no domain dependency, or the reusable substrate is un-reusable by construction. Every contract carries a mandatory `reason`, for the same purpose the charter's deviations register does: an unexplained rule gets deleted the first time it is inconvenient. Three findings while measuring rather than asserting: `src/mcts/gumbel.py` genuinely imports `src.games.interface`/`state`, so `src.games` is in the forbidden list with `gumbel.py` a **recorded exemption** rather than being quietly dropped from the rule — and the guard's own `test_every_exemption_is_still_needed` caught the first draft, where the "exemption" explained an omission and therefore guarded nothing. `src/research/lshape_amr_compare.py` legitimately imports MCTS because it *is* the harness that drives both arms, so the baseline contract scopes to the baseline modules alone. Meta-guards throughout: a contract whose scope no longer resolves is **vacuous** and must fail rather than pass, and the exemption mechanism itself is proven against a synthetic contract rather than trusted. **7/7 mutation-killed**, including a planted leak and a planted relative import. The AST helpers were *extracted* from the stochastic layer's existing AC7 guard rather than forked, and that guard now delegates to them — two AST walks that must agree are two AST walks that will eventually disagree, and the payoff was immediate: a mutation of the shared boundary matcher was killed by the stochastic guard's parametrized test.
+- **Scope containment is a check, not a paragraph** (`docs/FOCUS.md`, `config/focus.yaml`, `scripts/check_focus.py`, the `focus` CI job) — an owner decision froze two tracks for this cycle (the codec model-zoo, and `dashboard/` + its `hf_space/` deploy mirror). A freeze recorded only in prose is a suggestion, so this makes it mechanical. The rule is deliberately **not** "do not touch frozen code": a freeze is a pause, not a ban, and this repository's own history shows what deleting too early costs — `video_compression` was cut on 2026-07-22 and reinstated the next day. It is "do not make a *substantive* change to a frozen track in the same changeset as core solver work", because that is what split attention looks like in a diff. "Substantive" is a line budget rather than a file count, and the distinction does real work immediately: this very branch edits `hf_space/src/__init__.py` to single-source a version string alongside a new `src/research/` module, and that is a seven-line shim, not codec work. A budget states the intent — *feature work is never seven lines* — in one auditable number that lives in the config; the alternative, an exemption list, only ever grows until each entry has silently narrowed the gate to nothing. Both halves are kept in step in **both directions**: a frozen track named in the config but missing from the doc fails, and a doc claiming a freeze the gate does not enforce fails too — the second being the failure mode the whole file exists to prevent. 45 tests, **8/8 mutation-killed**, including three that only became discriminating after a first mutation survived: the original exact-vs-prefix test compared `deploy_space.py` against `deploy_space_helpers.py`, which does not prefix-match either way, so it proved nothing; the real hazard is a config entry written `src/pde` silently swallowing `src/pde_extras/`. Runs on `pull_request` only, as its own job because the diff needs the merge base and `lint`'s checkout is deliberately shallow. It is **not** in `ci-success`'s `needs` yet — the same convention the `secrets` job documents, and for the same reason: a brand-new gate promoted into the merge path by the pull request that introduces it gives a first red no way to be triaged. The `focus-override` label is the escape hatch, deliberately visible, because an override nobody can see is the same as no gate.
+- **Governance surfaces are review-routed** (`.github/CODEOWNERS`) — `openspec/`, `evidence/`, `results/`, `config/baselines/` and the new focus files now appear in CODEOWNERS, so a change to what the project *claims* is never invisible in a pull request's file list. Recorded honestly as routing rather than enforcement: every path resolves to the same single owner, and CODEOWNERS cannot separate an author from an approver when there is one of them. Genuine separation needs distinct GitHub identities plus admin-enforced branch protection, none of which is repository-side config — so it is named as out of reach rather than implied.
+- **Agentic harness brought up to date: 4 new subagents, 3 new skills** (`.claude/`, now 9 agents / 12 skills / 4 commands, from 5/9/4) — each addition is grounded in a failure this project actually had rather than a role-coverage checklist. `numerics-verifier` (read-only, adversarial) exists because both retracted headlines were *correct code measuring the wrong thing*, and carries the four failure modes as a checklist: a degenerate substrate, a boundary condition never imposed, a norm that biases the comparison, and a convergence rate that is *too good* — the last being how a mid-spike geometry error was caught. `claims-auditor` (read-only, cannot author what it audits) checks that comparison claims cite artifacts containing both arms, that artifacts carry provenance, and — the part usually missed — that guards are not inert. `spec-author` (no `Edit`, so it cannot touch `src/`) is where the single human gate sits. `prior-art-scout` records the pattern behind all three retracted novelty claims: the danger is not a missing citation but a *misclassified* one, since VDGN was already cited in the repo's own prior-art table, labelled only "MARL". New skills: `openspec-change` (the supreme spec system had no scaffold — only `specs/` did), `run-provenance`, `claims-ledger`. Existing agents and skills updated for the substrate layer, opt-in MCTS instrumentation under a 90% branch gate, visible-skip discipline, the `[dev,fem]` preflight install, and the Python 3.10 floor. The harness suite grew 71 → 103 tests and earned its keep immediately: the cited-path check caught a new agent referencing `specs/project-charter/` when the delta actually lives at `openspec/changes/<id>/specs/project-charter/`.
+
+- **Gate 1 spec and change package for the element-local refinement substrate** (`specs/refinement_substrate.spec.md`, `openspec/changes/element-local-substrate/`) — **Draft, awaiting review before implementation.** Defines a stepwise `RefinementSubstrate` interface so both arms of any refinement comparison provably share one discretisation and differ only in how they choose what to refine, plus an *adequacy gate*: adaptive marking must beat uniform refinement at matched DOF, asserted as a log-log rate separation over a pinned DOF range — and the same assertion must **fail** on the tensor-grid control, because a gate that passes on both substrates is not a gate. Eight acceptance criteria, each grounded in a measurement from the task-zero spike rather than an argument: the two-error design is justified by the measured nodal-RMS drift (0.34→0.53 uniform vs 0.34→0.76 adaptive), mesh immutability by `mesh.p.flags.writeable` being `True`, the cost model by the estimator measuring ~2.5× the solve, and the geometry assertion by a wrong result the spike actually produced. Also adds `verified_error_certificate.spec.md` to the `specs/README.md` index, which had been missing since it was written.
+
+- **`.gitignore`'s blanket `*.json` would have silently swallowed every provenance sidecar** — found while committing the first one. The rule at `.gitignore:121` has a handful of negations, none covering `results/`, so `results/*.run.json` was ignored and **nothing errored**: the artifact would simply land alone, exactly as if the provenance module did not exist. Added `!results/**/*.json`, narrow enough that scratch JSON under `outputs/` stays ignored, and guarded by `TestSidecarsAreCommittable` — mutation-tested by removing the negation. This is the failure mode a guard is most needed for, because it is invisible rather than loud.
+- **Run provenance for committed artifacts** (`src/research/run_manifest.py`) — the charter requires every numeric headline claim to cite a committed artifact, but not that the artifact say *how it was produced*, and the gap is not theoretical: `results/lshape_mcts_vs_dorfler.csv` carries exactly one provenance column, `seed`. Not the search mode, not the marking fraction, not a git SHA — so it cannot be dated against the 2026-08-16 backup fix, while the harness still exposes the `legacy_adversarial` mode that produced the retracted number. A `RunManifest` is written beside an artifact as `<stem>.run.json` and records the config hash, git SHA and dirty flag, package versions, resolved seeds, per-arm parameters and counters, and the thresholds actually gated. Schema versioning follows `src/poc/baselines` (integer constant, `extra="ignore"`, explicit migration with a documented table). `collect_git_provenance` and `collect_package_versions` **never raise** — a provenance collector that throws inside a benchmark destroys the run it exists to document — and "unknown" is recorded rather than guessed, with `dirty=None` deliberately distinct from `False`. 100% branch coverage, 26 tests including a Hypothesis migration-idempotence property.
+- **The missing uniform-refinement arm is now a committed artifact** (`results/lshape_adaptive_vs_uniform.{csv,run.json}`, `scripts/run_adaptive_vs_uniform.py`) — see *Fixed* below. Both arms share one solver, one geometry predicate and one refinement primitive; only the marking differs.
+
+- **Retracted claims are guarded on the outward-facing SBIR surface** — three retraction guards already existed and between them left the highest-stakes surface uncovered: they scan the charter, `docs/related-work.md` + `README.md`, and `dashboard/` + `hf_space/`, but **nothing scanned `docs/business/`**. New `tests/regression/test_retracted_claims_guard.py` covers `docs/business/**`, `docs/doe_genesis/**`, `README.md` and `CLAUDE.md` for four retracted claim shapes. Two deliberate choices: markers are matched per **block** rather than per line, because the charter's line-level convention is wrong for prose — a correction note is inherently a multi-line blockquote and the marker word cannot appear on every line; and `docs/archive/**` is out of scope by construction, since archived PR reviews quote the fabricated figure legitimately under a banner and a guard that reverts on false positives is worse than none (the lesson of `check_doc_links.py`'s inline-span attempt, 105 false positives across 21 files). Mutation-tested four ways, each caught by a *named* test: the original violation restored verbatim, "uniformly single-step" reintroduced into an SBIR template, the fabricated transfer figure planted in a business document, and the scan roots emptied — because a guard that scans nothing passes everything. The exemption mechanism ships **empty**: the meta-test asserting every exemption is still needed immediately proved the one drafted for `CLAUDE.md` was already stale, because its milestone line carries its own markers.
+- **Element-local AMR substrate spike, with evidence** (`scripts/spikes/skfem_substrate_spike.py`, `evidence/spikes/2026-08-23-skfem-substrate.md`) — `tests/research/test_fem_baseline.py` had never executed in this environment (module-level `pytest.importorskip("skfem")`, so it skipped silently) and the `[fem]` extra was pinned `>=9.0` against a current 12.0.2. It passes **23/23 on 12.0.2** with no API drift; the extra is now pinned to the verified range `>=9.0,<13`. The decisive measurement: on the standard L-shaped Poisson benchmark with P1 elements, a ZZ recovered-gradient estimator and Dörfler marking at θ=0.5, the element-local substrate gives uniform `L2 ~ N^-0.710` against adaptive `L2 ~ N^-1.256` — adaptive beats uniform by **4–10× at matched DOF, widening**. On the current tensor-product substrate adaptive is 5–9× *worse*. The rates are the textbook AFEM result: uniform is rate-limited by the `r^(2/3)` corner singularity while element-local adaptive recovers the optimal P1 rate.
+
+- **Deterministic validation for the `.claude/` agentic harness** — 9 skills, 5 subagents, 4 slash commands, the SessionStart hook and `settings.json` are executable configuration that had **no tests at all**: a skill citing a deleted path, an agent declaring a tool that does not exist, or a permission naming a renamed module each failed only at the moment someone relied on it. New `tests/claude/` suite (71 tests, hermetic and deterministic — no network, no model calls, ~0.25 s) checks frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, name collisions, parse determinism, and that every non-elided python snippet compiles. Data-driven rather than enumerated, so a new artifact is validated the moment it is added. Deliberate forward references (`src/pde/certificate/`, which the `certificate-validation` *kickoff* skill instructs you to create) are declared with a reason **and** asserted to still be forward, so a stale exemption fails rather than silently weakening the check — the distinction that makes this gateable where `check_doc_links.py`'s naive form was not. Mutation-tested four ways.
+- **gitleaks actually runs** — `.gitleaks.toml` and a `make gitleaks` target had both existed for months while **nothing invoked either**, in CI or pre-commit. A secret scanner that never runs is worse than none, because its presence in the tree reads as coverage. Now a dedicated `Secret Scan` **job** in `ci.yml` (`fetch-depth: 0`). It first landed as a step inside the 3-way `test-fast` matrix, which was wrong twice over and failed on its first run: it executed three times per push, and `actions/checkout`'s default shallow clone left the action's diff scan unable to resolve the base revision — `git` errored, the scan covered **~0 bytes**, and it still logged "no leaks found in partial scan" before exiting 1. A scanner reporting clean over zero bytes is exactly the failure mode being corrected here, so the fix is full history plus a single run. Deliberately **not** in `ci-success`'s needs list yet: it reports now and blocks once it has been green across a few pushes. the Makefile target degrades *loudly* (it prints that the scan did NOT run and names CI as the enforcing copy) rather than passing quietly on a machine without the binary, since it is now chained into `make pre-pr`.
+- **`make pre-pr` covers what CI covers again** — new `test-demos` and `test-claude` targets mirror their CI steps and are chained in. Without them `pre-pr` was narrower than CI, which is the same drift that let `tests/demos/` and `tests/notebooks/` go unexecuted in CI for months.
+- **Next Steps Review (2026-08-18)** — Added `docs/NEXT_STEPS_REVIEW_2026-08-18.md`, a peer-reviewed, evidence-based case for the highest-leverage next engineering steps (P0-1 OOD-reward defect scope, the JAX/`src/backend` keep-or-cut decision, PR #118/#57 salvage triage, and a re-scoped, effort-estimated plan for the `lshape_amr_compare` AMR novelty-claim fork).
+- **Code Hygiene & Correctness Review (2026-08-19)** — Added `docs/CODE_HYGIENE_REVIEW_2026-08-19.md`: a hands-on, execution-verified pass across `src/mcts/`, `src/pde/`, `src/refinement/`, `src/integrations/`, and `src/data/` by four repo-specific specialist agents plus an adversarial verification pass. Coverage raised on `src/data/physics_dataset.py` (23%→100%), `src/refinement` (96%→100%), `src/mcts` (96.29%→96.95%), `src/integrations/lm_studio` (94.77%→95.62%). ~130 new/extended tests. Also surfaces (report-only, not fixed): a stale `video_compression`-was-deleted claim at `CLAUDE.md:115` (4 of 5 named paths actually exist, 28 undocumented `mypy --strict` errors and no coverage gate on that package), several hardcoded-value findings in `src/pde/games/`, a broken `make demo` target and a silently-drifted `make test-stoch` coverage command, and an unbounded self-play buffer-fill loop with no SIGINT/SIGTERM handling anywhere in the training stack. **Round 2 (same day) appended to the same doc**: executed most of that report-only list plus the packages round 1 never reached, via 8 parallel agent waves — see the Fixed/Changed/Removed entries above. ~5,018 tests passing, 0 failures.
+- **Per-module coverage gate for `src/video_compression`** — the package ran 933 tests in CI with **no coverage gate at all**, because `pyproject.toml` still omits it from `--cov=src` (a leftover from when it was believed retired, so a bare `--cov=src/video_compression` silently measured 0%). Gated at 83 against a measured 85.43% using the same inline-coveragerc technique `phase2-zoo-validation.yml` already uses for the identical collision; charter gates register updated. Separately, `src/distributed` coverage rose 68.91%→82.34% (`worker.py` 22%→99%).
+- **Tests for previously-unexercised reachable code** — Go illegal-move rejection, `get_result()`'s White/draw branches, and `get_winner()`; Chess queenside-castling *execution* and threefold-repetition (both claimed by module docstrings but never actually driven by a test); `CalibrationDataReader`; and all of `src/distributed/worker.py`. The last of these surfaced a real bug, reported not fixed: `SelfPlayWorker.generate_batch` over-counts `games_completed` when `stop()` triggers its early break.
+
 ### Changed
+- **R-08: `CHANGELOG.md` has one preamble and one `[Unreleased]` block; the
+  release process is documented as the hand-cut process it is.** The file had
+  grown two preambles (the "Keep a Changelog" sentence sat between two
+  `[Unreleased]` headers) and two `[Unreleased]` blocks, each with its own
+  `### Added` / `### Changed` / `### Fixed` groups. Merged into one block whose
+  groups hold the union — **206 bullets before and after** (Added 68, Changed
+  34, Fixed 91, Removed 8, Security 5), every bullet byte-for-byte and in its
+  original order within its group. Only heading lines were added: the older
+  block's titled `### <Group> — <title>` sections became `#### <title>`
+  sub-headings under the single group heading, `### Recorded, not fixed` (not a
+  Keep a Changelog group) is filed under `### Changed` with its title kept, and
+  each group's trailing untitled bullets sit under `#### Earlier entries
+  (untitled)` so they do not attach to the wrong sub-section. Nothing below
+  `## [0.4.0-dev]` changed; `## [0.3.0]` still heads two blocks (`2026-07-22`,
+  `2026-04-01`) as append-only history. New guard
+  `tests/docs/test_changelog_headers.py` (7 planted mutations killed, each by a
+  named test): exactly one `[Unreleased]` and it is first; the format sentence
+  once, in the preamble; release versions PEP 440-parseable, non-increasing
+  top-to-bottom and unique except a self-expiring `DUPLICATE_VERSIONS`
+  allowlist; ISO dates non-increasing; `[Unreleased]` `###` groups drawn from
+  the six canonical names, each at most once. `RELEASING.md` now states the
+  truth (`0.4.0-dev`, classifier `4 - Beta`, no tag ever cut, no on-tag
+  workflow, Commitizen validates messages but no `cz bump` is configured,
+  cadence monthly or at each `openspec/changes/` archive — decision D8) and is
+  added to `test_version_consistency.py`'s scan set so its stated version
+  cannot drift. `SECURITY.md` no longer implies the resolved dependency graph
+  is locked: constraints live in `pyproject.toml`; a `uv.lock` arrives with
+  R-04a. The version itself is **not** bumped here (owner's call).
+- **R-12: `lint` split from `typecheck`; `coverage-gates` sharded 4-way.**
+  (a) `lint` is ruff-only and installs only ruff (it used to pull torch so
+  mypy could resolve tensor types, making every `needs: lint` edge wait
+  minutes for a 30 MB check); mypy and both abstraction-audit steps moved to
+  a new `typecheck` job that runs in parallel and is a hard gate in
+  `ci-success` (the audit was already hard inside `lint`; moving it must not
+  downgrade it). `test-integration`, `test-e2e` and `test-extras` now depend
+  on `lint` instead of `test-fast`, so they start seconds after checkout
+  rather than after the 45-minute unit matrix; `test-slow` keeps
+  `needs: test-fast` because its own `if:` reads that result. Job id `lint`
+  is kept for `tests/docs/test_e2e_visibility.py`'s blocking-set anchor;
+  `tests/e2e/test_governance_cli_journey.py` now parses `typecheck` for the
+  gated audit argv. (b) The 44 per-module gate steps run under
+  `strategy.matrix.shard: [1, 2, 3, 4]` with `matrix.shard == N` in each
+  step's `if:` (balanced by test-function count, ~2.4k per shard); the steps
+  stay in `ci.yml` so the charter and coverage-gate-integrity guards keep
+  reading their `run:` bodies. New guard
+  `tests/docs/test_coverage_gate_shards.py` (3 planted mutations killed):
+  every gate step names exactly one shard that exists, every shard has ≥ 1
+  step, setup steps carry no shard condition, `always()` survives on every
+  gate, `fail-fast` is off, and no shard carries > 2× the mean load.
+- **R-11: shape baseline.** `scripts/measure_shape.py` computes nine
+  code-shape metrics over `src/` (ruff `C901` complexity findings, `PLR2004`
+  magic values per `(file, rule)`, `T201` library prints, lazy first-party
+  imports, ad-hoc device-resolution sites, orphan modules, dead `ImportError`
+  guards, shim files without a deprecation warning, `hf_space` mirror
+  divergence) and records them with a sha256 content hash of `src/**/*.py`
+  in `config/shape_baseline.yaml`. `tests/docs/test_shape_baseline.py`
+  fails when any metric **grows** (a ratchet, not a target) and when a
+  recorded count is hand-edited rather than regenerated (the recorded value
+  must equal the live measurement when the hash matches). A mutation check
+  found and fixed a weakness in the first draft: `__main__` detection was a
+  substring test, so a comment mentioning `__main__` exempted a library
+  file from the print rule; it is now an AST check. 3/3 mutations killed;
+  `tests/scripts/test_measure_shape.py` covers the script at 99% branch.
+- **R-09: `focus` and `secrets` are hard merge gates.** Both jobs ran on
+  every pull request since they landed (2026-09-08 and 2026-08-21) and could
+  not fail the build; their comments promised promotion "once green across a
+  few runs" and nothing read the promise. Both now sit in `ci-success.needs`
+  and its `exit 1` block. The `focus` gate is event-aware (it is
+  `pull_request`-only, so `ci-success` accepts `skipped` exactly when the
+  event is not a pull request or the visible `focus-override` label is
+  present, and fails the build on any other skip); `secrets` shares
+  `ci-success`'s own `if:` and gets a bare check. New guard
+  `tests/docs/test_ci_success_hard_gates.py` (4 planted mutations killed)
+  asserts membership, the shape of the `focus` condition, that the label is
+  spelled identically in both places, and that **every** job in `ci.yml` is
+  either a hard gate or a disclosed, self-expiring exception (`test-slow`,
+  `transfer-baseline-regression`). `tests/support/workflows.py` gains
+  `hard_gate_conditions`; `hard_gate_jobs` is re-expressed over it. Charter
+  frozen-tracks deviation row amended via
+  `openspec/changes/focus-secrets-merge-gate/`; `config/focus.yaml`'s header
+  no longer claims the check runs inside the `lint` job. Nothing in the
+  YAML's tracks changed (decision D9).
+- **Fixed the UCIEngine stdout-reader leak that killed the E2E chess tier.** The root cause of CLAUDE.md's "E2E tier cannot run as one process" row and its recurrence in CI run 34636706039 was not chess or MCTS: `src/engines/uci.py` spawned a daemon thread doing `for line in process.stdout: queue.put(line)` into an **unbounded** queue with no stop signal, and the thread's frame held `self`. Against the E2E mock engine, whose stdout is an infinite generator that never blocks, every reader spun at CPU speed forever, every line was retained, and no engine could be collected (`threading._active -> Thread -> frame -> UCIEngine -> queue -> deque -> str x millions`). Measured on the CI invocation (`-k chess`, 32 tests): before 602 -> 4,695 MB in 100 s; after 602 -> 629 MB in 10 s (coordinator re-measure: 2.2 s, 658 MB peak). Fix, backwards compatible: a module-level `_pump_stdout(stream, sink, stop_event, poll_seconds, label)` that never references the engine; a bounded queue (`UCIConfig.stdout_queue_maxsize`, default `DEFAULT_UCI_STDOUT_QUEUE_MAXSIZE = 10_000`; `0` = historical unbounded) applying ordinary FIFO backpressure; a per-start `threading.Event` stopped from `quit()` / `_kill_process()` / `__del__`, polled at `reader_poll_seconds`, joined for `reader_join_timeout_seconds` with `engine_reader_still_alive` logged rather than raised; `engine_stdout_backpressure` logged once per start. Regression test `tests/engines/test_uci_reader_lifecycle.py` (red on the pre-fix code). The CI `-k chess` / `-k "not chess"` split stays until one green run proves the tier can run as one process again.
+- **`guard_build_config.sh` derives its guard set and fires on `CLAUDE.md`.** The PostToolUse hook ran a hand-maintained list of four guard modules (predating every guard added this cycle) and did not fire on `CLAUDE.md` at all -- so the 2026-09-11 red build (a Regression Surface row saying `--cov-fail-under=1` while CI enforced 96, caught in CI by `tests/docs/test_claude_coverage_gates.py`) passed every guard the hook ran locally. It now selects every module under `tests/docs/` and `tests/claude/` that *reads* the edited file (keyword table per file; workflow readers are recognised by the literal `ci.yml` or by importing the shared parser), also fires on `CLAUDE.md` and every `.claude/` harness path, and prints the selection in dry-run so `tests/claude/test_harness_validation.py::TestBuildConfigHookSelectsTheGuardsThatReadTheFile` asserts the decision (known file→reader pairs, a vacuity floor, and the reverse direction: every module mentioning the file is selected). 2/2 planted mutations killed. Still never blocks; CI is the gate.
+- **R-05: artifact-freeze manifest.** `results/MANIFEST.sha256` freezes the bytes of every committed `results/*.csv`, `results/*.run.json` and `config/baselines/*.json` the charter's evidence register quotes (PNGs presence-only; the `poc_headline.example.json` template excluded) in `sha256sum -c`-compatible form -- 10 hashed + 6 presence entries, verified with real coreutils. `scripts/artifact_manifest.py` provides `write` / `check` (structlog events, a small Pydantic config with an optional YAML override, exit codes 0/1/2); regenerate only through the `claims-ledger` / `run-provenance` skills, i.e. when an artifact is deliberately produced or replaced. CI's ruff-only `lint` job runs the check as a hard step (its two module-scope imports, `structlog` and `pydantic`, are installed there explicitly; `yaml` is lazy); `make artifact-manifest` mirrors it and is chained into `pre-pr`. The `transfer-baseline-regression` upload now ships the run's own `outputs/transfer_ci/**` instead of the committed `results/` files it never touched. Guard `tests/docs/test_artifact_manifest.py`: tree <-> manifest in both directions, hashes recomputed independently, vacuity floor of 10, byte-for-byte regeneration, coreutils compatibility, and the CI/Makefile wiring including the upload path and "no workflow writes into `results/`"; 12 planted defects each killed by a named test. Also fixed: `configure_logging` bound `sys.stderr` at configure time, so a mismatch logged after pytest swapped the stream died with "I/O operation on closed file"; the logger factory now resolves it per call. The shipped scenario YAMLs default to `output_dir: results` and dirty the tree by design -- the `claims-ledger` / `run-provenance` skills now say so and prefer `--output-dir outputs/…`.
+- **Auxiliary gate jobs skip on cancellation.** `regression-surface.yml` `surface-success` and `sbir-demo-smoke.yml` `smoke-success` ran under `if: always()` and treated `cancelled` as failure, so a run superseded by the concurrency group stapled a red X to a SHA nobody was waiting on (run 34659426510, 2026-09-11) -- the defect `ci-success` fixed on 2026-09-08 (B38). Both now use `!cancelled()`. New guard `tests/docs/test_gate_jobs_skip_on_cancel.py` finds every fan-in gate job across all workflows (≥2 `needs`, a standalone non-zero `exit`) and requires the cancel-safe form; 2/2 planted mutations killed.
+- **Docs synced to the reflection tree (R-02/08/09/10/11/12/13/14).**
+  `docs/architecture/c4_mermaid.md` redraws the test-enforcement view as the
+  current job graph (ruff-only `lint` → nine `needs: lint` jobs; `typecheck` /
+  `focus` / `secrets` parallel; `coverage-gates` 4-way sharded; `ci-success`
+  with 13 hard gates and the shaped `focus` clause; `test-slow` nightly-only)
+  and adds a governance-guards boundary plus one quality-gate row per new
+  guard; harness inventory re-measured (15 / 6 / 5, 155 tests — the command count
+  moved to 6 with `/merge-agent-branch` the same day, above). README and
+  CONTRIBUTING document the hermetic fast lane (`make test-fast` blocks
+  sockets; `@pytest.mark.network`), `eval_harness_required` +
+  `ALPHAGALERKIN_REQUIRE_EXTRAS=1`, explicit merge-gate membership, the
+  module-size budget and shape baseline (`measure_shape check` / `write`),
+  `focus-override`, the CHANGELOG structure rule, and the concurrent-agent
+  worktree rule. Hygiene B35 and B37 flipped to DONE; B38's `focus`/`secrets`
+  remainder closed. E2E plan's "guards in `lint`" corrected to `test-fast`.
+- **Shape guard hardening (R-11, PR #151 review).** `scripts/measure_shape.py` provenance is now per input (schema 2): one hash per root a metric reads (`src`, `importer_roots`, `mirror_root`, `pyproject`, derived from `ShapeConfig`), so an improvement in `scripts/` or `hf_space/` is no longer rejected as a hand edit and an unrelated edit disables hand-edit detection only for the metrics that read it; schema-1 baselines migrate on load. Also: ruff's relative filenames resolve against `--root`, not the caller's CWD; `git_dirty` counts untracked files (the tool's own output excluded); `import a, b` counts every first-party alias. 5 planted defects each killed by a named test; script at 99% branch. Baseline regenerated on a clean checkout (`generated_from` = the code commit, `git_dirty: false`), metric values unchanged (162/159/17/154/11/21/26/26/98).
+- **R-14 / B22 — concurrent-subagent worktree-isolation rule.** Root `AGENT.md` gains `## Concurrent subagents` (anchor sentence + four clauses + the PR #140 `git stash` incident); the anchor is repeated verbatim in all six `.claude/agents/*.md` (every one declares `Bash`). New guard `tests/claude/test_worktree_rule.py`: anchor exactly once in `AGENT.md`, the test constant read back from the doc, every Bash agent carries the anchor + clause 4 (discovered on disk, non-vacuous), `settings.json` grants `Bash(git worktree:*)`. 5/5 mutation-killed of six planted; the sixth (Bash stripped, sentence kept) survives by design. No skill/agent/command added. Companion: `tests/claude/test_harness_validation.py` no longer scans `.claude/worktrees/` (nested subagent checkouts), which produced ~250 spurious failures while agents ran.
+- **R-13: `tests/integrations/eval_harness/` is countable, hard-failable and
+  gated.** Eight of its eleven files opened with a module-level
+  `pytest.importorskip("eval_harness")`, which yields zero items -- so the
+  root hook could not count them, `ALPHAGALERKIN_REQUIRE_EXTRAS=1` could not
+  fail them, and `test-extras` installed the extra "specifically to un-skip"
+  them and then selected none (hygiene B37; the integrity guard's exemption
+  cited a Regression Surface row that never existed). New registered
+  `eval_harness_required` marker on every file; the four files importing
+  `eval_harness.*` at module scope (`contract`, `plugins`, `scorers`, `sink`)
+  and the two whose adapter modules do (`dataset`, `runner`) moved those
+  imports into fixtures, so the suite collects without the extra (39 items).
+  Root `conftest.py` mirrors the `fem_required` block via
+  `importlib.util.find_spec` through one shared `_gate_optional_extra` body:
+  a counted skip, or `pytest.UsageError` naming
+  `pip install -e '.[eval-harness]'` under `ALPHAGALERKIN_REQUIRE_EXTRAS=1`.
+  New `test-extras` step gates `--cov=src/integrations/eval_harness` with an
+  inline coveragerc (the package is in the global `omit`) at
+  `--cov-fail-under=1` -- **a tripwire, not a measurement**: the git extra
+  could not be installed where this was authored, so no percentage exists;
+  set `floor(measured)-2` from the first green run and mirror it into the
+  charter gates row. **Done the same day**: the first run that reported a
+  number measured 98.16% branch and failed on a real defect the tripwire
+  exposed -- `config/eval_harness/basis_eval.yaml`, the smoke test and the
+  runner test all passed `function:` to a `CallableTarget` whose parameter
+  is `path`, in a test that had been silently skipped since it was written.
+  Fixed at all four sites; `test_contract.py` now constructs the shipped
+  YAML's target from the file; gate raised to 96 in CI, `Makefile` and the
+  charter row. `make test-eval-harness` mirrors the step (not chained
+  into `pre-pr`, like `test-substrate`). `_OMIT_WITHOUT_A_CI_GATE` is now
+  empty. Guard `tests/docs/test_eval_harness_gating.py` (7 planted mutations
+  killed) drives the hook and the Makefile rather than grepping them. The
+  three base-install files are marked too, so their 11 tests now run in
+  `test-extras` instead of the fast lane -- inside the gate's measurement
+  rather than outside it.
+- **R-02: the fast lane is hermetic.** CI's `test-fast` and `coverage` steps
+  and the Makefile's `test-fast` / `coverage` targets run under
+  `pytest-socket` (`--disable-socket --allow-unix-socket
+  --allow-hosts=127.0.0.1,localhost`, one canonical set carried as the
+  workflow-level `HERMETIC_PYTEST_FLAGS` env and a Makefile variable) and
+  deselect the new `network` marker. Two `video_compression` "unit" tests
+  downloaded ImageNet VGG weights (hygiene B35) and now use an `offline_vgg`
+  fixture. `tests/security/conftest.py` pins every security test to a
+  temporary CWD, so `test_path_traversal_in_config` no longer passes by
+  accident of where pytest was launched. Guard
+  `tests/docs/test_fast_lane_is_hermetic.py` keeps the three copies equal
+  and proves in a subprocess that an outbound connect is refused while a
+  loopback bind still works.
+- **R-10: module size budget.** `tests/docs/test_module_size_budget.py`
+  freezes every `src/` module over 600 lines (44 rows) and every test module
+  over 1000 lines (8 rows) at its recorded size: an unlisted module may not
+  cross the ceiling, a listed one may not grow, and a listed one that shrinks
+  below the ceiling must drop its row.
+- **R-03: `mypy --strict` to zero unsuppressed errors.** Removed the
+  `[unused-ignore]` on `src/training/base_trainer.py:45` and made
+  `SupportsMetricsMapping.metrics` (`src/poc/scenarios/_compare_common.py`) a
+  read-only property member so `MultiSeedStochasticComparison`'s `@property`
+  satisfies it. The remaining 5 diagnostics are all in the frozen
+  `src/video_compression/codec/codec.py` and come from 3 real defects:
+  `entropy_model` typed as bare `nn.Module` so `.compress` (:392) and
+  `.hyper_synthesis` (:515) resolve to `Tensor | Module` [operator], and the
+  `scales: Tensor | None` parameter used un-narrowed at :518/:520/:531
+  [union-attr]/[arg-type]. Suppressed by a `[[tool.mypy.overrides]]` block
+  disabling exactly those three codes for that one module (not
+  `ignore_errors`); **remove when the `codec` freeze in `config/focus.yaml`
+  lifts** and fix the three sites instead.
 - **Wave E (zero numeric change).** Named `POLICY_LOG_PROB_FLOOR = -100.0`
   at the three policy-CE / entropy clamp sites. Trainer start-buffer uses
   `TrainingConfig.start_min_buffer_size()` with
@@ -56,41 +474,131 @@
   `*/src/research/baselines.py` and `*/src/research/baselines/*`. mypy override
   glob `src.research.baselines.*`. Reference-baselines import contract now
   scans the package directory.
+- Retired charter deviations for empty `RefinementGameRegistry`, zero substrate
+  lookups, and the staged `fingerprint` audit exemption; added time-boxed
+  two-path AMR harness deviation.
+- Marked `specs/lshape_amr_compare.spec.md` superseded for element-local policy
+  comparisons (legacy numbers remain golden / non-informative for policy).
 
-### Added
-- **Wave F AGENT.md + B8.** Every `src/` package now has `AGENT.md` (B12), including
-  `src/research/` and four B10 keep-reason files (`prototyping`, `analysis`,
-  `curriculum`, `tournament`: test-held, not production-wired, not a
-  2026-07-22-style cut). `src/pde/AGENT.md` sub-agent row points at
-  `src/pde/operators/`. B19 extras (`dev`, `viz`, `test-extras`, `fem`, `jax`,
-  `picogk`, `lm-studio`, `docs`) documented in README / getting-started /
-  CONTRIBUTING; no `dashboard` extra. B8: CLAUDE.md Regression Surface
-  coverage-gate rows ⊆ `ci.yml` (`tests/docs/test_claude_coverage_gates.py`,
-  mutation-killed).
-- **`tests/support` coverage gate at 85** (`coverage-gates` job). Selection is
-  the docs / import-graph consumers that actually import the helpers. Measured
-  ~95% branch; first landing capped at 85. templates / math_kernel / backend
-  54 / deployment 25 / B37 eval_harness stay parked.
-- Slice E (`refinement-game-registrant`): `SubstrateRefinementGame` registered via
-  `src/pde/register_refinement_games.py`, config-driven substrate factory with
-  `RefinementSubstrateRegistry` lookup, and `FingerprintSolveCache` (production
-  reader of `RefinementSubstrate.fingerprint`). Honest closeout: real
-  `MCTS.get_action` micro-run on `tensor_grid` and `fem_required` `skfem_tri`;
-  `to_tensor` trailing error-per-DOF value; `ResidualPriorErrorValueEvaluator`
-  as the named headline leaf evaluator (`EncodedValueEvaluator` / `RandomEvaluator`
-  forbidden as the published arm).
-- MCTS vs classical AMR arena (`mcts_classical_amr_arena`): spec, pinned YAML,
-  harness, PoC scenario, and `scripts/run_mcts_classical_amr_arena.py`. Adequacy
-  abort, per-seed solve cache, locked `search_mode=single_agent` /
-  `add_noise=False` / `temperature=0`. Proposal-grade sidecars reject dirty /
-  unknown-hash at claim-commit (git snapshotted before CSV/PNG write).
-  README/charter AMR-ratio guard requires a manifest pointer.
-- Committed Phase 2 artifacts `results/mcts_classical_amr_arena.{csv,png,run.json}`
-  (θ=0.5, policy `max_dof=600`, matched DOF 287): median
-  `l2_error_ratio_at_matched_dof` **0.9532** (MCTS wins ~4.7% at matched DOF;
-  3 identical seeds). Matched-solves 9.23 and error-per-DOF ~30.8 recorded
-  ungated. Adequacy rates are gate evidence, not this result. FOCUS freeze
-  lifts on that signed answer.
+#### one abstraction promoted out of a test file
+
+- **The substrate adequacy gate is now callable.** `AdequacyGateConfig`, `gate_violations`,
+  `measure_adequacy` and `default_adequacy_gate` moved from
+  `tests/research/test_amr_arena_interpretability.py` into `src/research/substrates/`. The
+  verdict the spec calls "the gate that makes any comparison meaningful" was reachable only from
+  pytest: a caller who ran a sweep through the public API had no way to ask whether the
+  substrate was adequate. Defaults are byte-identical and the per-threshold provenance comments
+  moved with them — a move, not a retune; `max_sweep_dof` returns `int`, which both satisfies
+  `run_refinement_sweep(max_dof: int)` under `mypy --strict` and restores exact value identity
+  with the int-pair constant it replaced. The test file keeps re-exports, so `TestGatePredicate`
+  exercises the promoted function rather than a copy that could drift from it.
+
+#### Recorded, not fixed
+
+- **Running the E2E tier whole surfaced a pre-existing memory leak.** Traced with a 2 s RSS
+  sampler over the full 136-test selection: the pytest **parent** holds flat at **594 MB**
+  through the three new subprocess-driven journeys (t=0-113 s), jumps to **2,125 MB** the moment
+  `test_chess_engine_e2e.py` starts (pre-existing, 29 in-process tests), and then climbs
+  monotonically to **13.2 GB**, never releasing. Two separate full runs were OOM-killed
+  (SIGKILL, exit 137) at ~84%, at slightly different tests -- the signature of a cumulative
+  allocation plus whatever peak lands on top, not one greedy test. The new journeys do not leak
+  (the substrate journey measured alone peaks at 1.1 GB in 8 s), and a first hypothesis --
+  captured subprocess output -- was measured and **disproved**: each child emits 4-20 KB, ~3 MB
+  across the tier, three orders of magnitude short. It was invisible because the directory was
+  never run whole: CI ran exactly one of these files, alone, in the chess job. Root-causing it
+  is chess/MCTS work, not E2E-test work. **It then failed on a GitHub runner exactly as
+  predicted** -- run 863's `test-e2e` died at ~58% with "The runner has received a shutdown
+  signal", right after the chess files and following a four-minute stall on nine trivial config
+  tests, while every other job in that run passed. The job (and `make test-e2e`) now runs the
+  tier as **two invocations** split at the first in-process file: `-k "not chess"` (103 passed
+  + 1 xfailed, peak **1,451 MB**) and `-k "chess"` (32 passed, peak **3,614 MB**), against
+  **13,649 MB** for the single process that died. 104 + 32 = 136 = the marker-selected count,
+  so the partition is complete. This is a workaround and is labelled as one in the workflow;
+  it caps the peak without touching the leak. Two things keep it from becoming a second
+  invisibility problem: the partition is exhaustive by construction (`X` / `not X`), and
+  `test_the_e2e_k_partition_is_complete` asserts the pair is whole -- mutation-killed by
+  deleting the chess step and by narrowing it to `chess and engine`. The guard already accepts
+  a single unfiltered step, so collapsing the split once the leak is fixed needs no edit to it.
+
+- **No shipped command produces a PDE-consumable checkpoint.** `scripts/train.py +game=pde_basis`
+  crashes in `src/modeling/embeddings.py` with a tensor-shape mismatch, because
+  `config/train_fast.yaml`'s `operator.input_channels` is Go-shaped (17) and nothing reconciles
+  it with the selected game's encoding. Pinned as a **strict xfail** so it flips visibly when
+  fixed rather than sitting in a comment. Fixing it is PDE-model work, not E2E-test work.
+- **CLAUDE.md's Multi-Game Commands section documents `python -m scripts.train game=go`**, which
+  errors: `game` is not a key in `config/train.yaml`, so Hydra requires `+game=go`.
+
+#### one ratio floor, three declarations
+
+- `1e-15` was declared independently in `research/lshape_amr_compare.py`,
+  `research/transfer_baseline_compare.py` and `research/substrates/config.py`. The last carried a
+  provenance comment wrong on every count: it cited `src/experiments/transfer_baseline_compare`
+  (no such module) and claimed to mirror `DEFAULT_TRANSFER_RATIO_FLOOR`, which is `1e-12` — a
+  thousandfold different. All three now source `src.constants.DEFAULT_RATIO_FLOOR`. **Values
+  unchanged** (asserted: all three still `1e-15`), and deliberately **not** unified with
+  `DEFAULT_TRANSFER_RATIO_FLOOR`: same knob, different live values, which is the case
+  `surface-hardcoded-value` Step 1 says to keep apart. Both constants now cross-reference each other.
+- Substrate kind and error-metric strings, and the three `extra` key names, surfaced as constants
+  in `research/substrates/config.py` — each was previously a bare literal at up to nine sites, and
+  `"nodal_rms"` was never spelled at all (the implicit `else`, so a third metric would have fallen
+  through silently).
+- `MAX_SWEEP_DOF` now derives from `RATE_FIT_DOF_RANGE[1]` instead of retyping `4000`; the coupling
+  previously lived only in a comment.
+- `fit_log_log_rate` takes an `arm=` label bound onto its `rate_fit` log line.
+  `measure_rate_separation` calls it twice in succession, and the two lines were previously
+  byte-indistinguishable — in the code that produces the charter's headline rate separation.
+  Default keeps every existing caller unchanged.
+- `TensorGridSubstrate.refine` warns on an empty selection, matching `SkfemTriSubstrate`. Both read
+  the same `marking_variant` and run in the same sweep loop, but only one warned.
+
+#### Tech-debt Phase 2a: god-file split
+
+- **`src/pde/operators.py` (2233 lines, 10 classes) split into a package** (docs/CODE_HYGIENE_AUDIT.md B4) — `src/pde/operators/` now holds one file per operator (`poisson.py`, `burgers.py`, `advection_diffusion.py`, `heat.py`, `navier_stokes.py`, `lshaped_poisson.py`, `helmholtz.py`, `biharmonic.py`) plus `base.py` for the shared `PDEResidual`/`PDEOperator` ABC, mirroring the pattern `operators_picogk.py` already used. Fully import-compatible: every *public* name (`dir()` excluding dunders) is unchanged, frozen and regression-tested in `tests/pde/test_operators.py::TestOperatorsPackagePublicAPI`. **Corrected**: this and the split's own commit message originally claimed the stronger "`dir(m)` is byte-identical before/after"; a peer review of PR #140 found that false (becoming a package unavoidably adds `__path__`, and the new explicit `__all__` adds itself as a `dir()` entry — both harmless, since nothing in this codebase introspects `dir()` on this module, but not what was actually verified or claimed). One real dedup along the way (`HelmholtzOperator`/`BiharmonicOperator`'s byte-identical `_manufactured` helper extracted to `base._manufactured_sine_product`). `mypy --strict` is byte-identical before/after.
+
+#### Earlier entries (untitled)
+
+- **Every resampled p-value and confidence interval is now reproducible on request** (`src/poc/statistics/significance.py`) — `StatisticalAnalyzer` drew from NumPy's *global, unseeded* stream at **four** separate sites, not the one an earlier audit named: `_bootstrap_test`'s shuffle, `_permutation_test`'s shuffle, and both `choice` calls inside `_bootstrap_ci`. Two runs over identical inputs therefore returned different intervals — in the one module whose entire job is rigour, inside a project whose governance position is that every number traces to a committed artifact. Fixed with a typed `SignificanceTest.random_seed` field plus an injectable `resampler` on the analyzer, resolved by precedence (explicit override → configured seed → global stream). The unseeded path is left **byte-identical**, deliberately: it is the only fallback under which a caller who already does `np.random.seed(...)` keeps getting today's results, and all 52 pre-existing tests pass untouched. The cost of that default is stated in the field's own description rather than glossed. Wired through in `ScalingLawScenario`, whose recorded `arm_comparison_p` is now derivable from the scenario's declared seed. 20 new tests, **8/8 mutation-killed** — including that a seed *accepted and then ignored* must not look like success, and that zero is a legal seed rather than an absent one. Two test-authoring traps are recorded in the tests themselves because each produced a *passing* non-test first: well-separated arms pin a permutation p-value to 0.0 for every seed, so the RNG cannot show through; and the scaling-law scenario's default `significance_test_type` is `mann_whitney`, which is deterministic and never reaches an RNG at all, so a test left on the default could not detect an unseeded draw.
+- **Licensing and IP posture settled and recorded** (`docs/adr/0004-licensing-and-ip-posture.md`) — an external strategy review flagged this as the one decision that is irreversible, costs no engineering time, and blocks nothing, and therefore should be settled explicitly rather than discovered later. **MIT stays and development continues in the open.** The reasoning is the disclosure that has already happened: a public repository with 663 commits and a public HuggingFace Space mirror, against an `IP_STRATEGY.md` whose three provisional patent claims are still listed as *Pending*. US filing runs on a 12-month clock from public disclosure and most other jurisdictions apply absolute novelty, so filing on what is already published here is largely unavailable — the operative rule going forward is that a provisional must **precede** the disclosure it protects. The employment-IP question about `src/video_compression/` is recorded as an open owner decision rather than answered; the subsystem is frozen for this cycle, so it blocks nothing. ADR 0003 is deliberately left unallocated because unmerged PR #118 claims it.
+- **OpenSpec archive convention documented** (`openspec/project.md`) — a change package is active while `tasks.md` has unchecked boxes, and moves to `openspec/changes/archive/<change-id>/` once complete. Without a convention, completed and in-flight work are indistinguishable in a directory listing and the tree grows monotonically — which matters now that six more change packages are planned. `project-charter-alignment/` (36/36 complete) is an explicit, reasoned exception: it is cited by name from `CHANGELOG.md`, which is append-only so the reference cannot be repointed, and from `tests/docs/test_charter_alignment.py`'s docstring. Archiving it would break a historical citation to gain tidiness.
+
+- **C4 architecture gains a Quality Gates & Agentic Harness component diagram** (`docs/architecture/c4_mermaid.md`, v3.0.0 → v3.1.0) — the `.claude/` harness and the CI gate layer are enforced on every push but appeared in no architecture diagram. Includes the "deliberately not gated" register with reasons rather than numbers. Diagram validated as rendering (C4, 37 KB SVG).
+- **README claim corrections** — the file contradicted itself on test counts ("7,000+ test functions" in prose vs "3,000+ tests" in the tree); measured and reconciled to **8,573 test functions / 9,770 collected**. The per-module gate count is stated as **34** (measured: 30 inline `--cov-fail-under` plus 4 native-runner `coverage report --fail-under`) — an initial draft of this same change asserted 31 without counting, and was corrected before commit. Dropped the stale `src/mcts/constants.py` reference (that module was deleted in the round-2 hygiene pass as a zero-consumer re-export shim), and surfaced the `claude/`, `demos/` and `notebooks/` test tiers.
+- **Config-bound values surfaced** — `MeshRefinementConfig.hp_switchover_level` gained `le=20` and a cross-field check inside the *existing* `validate_mesh_config` validator: it must be strictly less than `max_refinement_level`, since the p-refinement branch of `HP_REFINEMENT` is reachable only on `[hp_switchover_level, max_refinement_level−1]` and an equal-or-greater value silently degenerated hp-refinement into a pure h-refiner. `POTENTIAL_FIELD_MIN_DISTANCE` moved from a module constant to `SwarmPlanningConfig.potential_field_min_distance` (`gt=0`), with its 12-line comment — which had argued *against* surfacing it — rewritten to state what the value actually does. Value-preserving, proven bitwise across 240 float values in both nominal and floor-binding geometries. No shipped YAML sets any of these fields.
+- **`src/video_compression` type safety** — fixed 23 of 28 `mypy --strict` errors (missing `register_buffer` companion annotations, a systemic `np.ndarray[np.int32, ...]` shape/dtype type-parameter typo, list/dict annotations, a return type needing narrowing, a stale ignore). Repo-wide `mypy src/ --strict` is now **31 → 8 errors**; the remaining 8 are the 5 `codec/codec.py` errors needing real interface design plus 3 pre-existing torch-version-dependent `unused-ignore`s CI already documents as accepted.
+- **Hardcoded values surfaced as config fields / named constants** — `basis_selection.py` RBF candidate centers now sample the operator's real `domain_min`/`domain_max` instead of a hardcoded `[0,1]` unit square (wrong for e.g. `LShapedPoissonOperator`'s `[-1,1]²`); the budget-decrement path in `basis_selection.py`/`mesh_refinement.py` now uses the same `cost_per_dof * dof_added` the reward path in those files already used (**behavior change**: the old flat `cost = 1.0` exhausted the budget ~100× faster than the reward accounted for); phase detection delegates to the config-driven, scale-normalized `PDEGame.get_phase()`; `mesh_refinement.py`'s h-vs-p switchover became an `hp_switchover_level` field; `swarm_planning.py`'s obstacle floor and `operators.py`'s duplicated Cole-Hopf constants became named constants; 7 `src/mcts/` call sites now use the existing `DEFAULT_TEMPERATURE`.
+
+### Removed
+
+#### dead code the audit found, four items of it mine
+
+- **`warn_on_degenerate_units` + `AREA_FLOOR`**: zero production callers; the constant's only
+  reader was the dead function; the function's only callers were four tests written for it.
+  Wiring it needs per-element areas the `RefinementSubstrate` Protocol does not expose. Deleted,
+  with the four tests and `test_named_constants_match_spec`'s third assertion. The earlier
+  CHANGELOG line claiming `sweep.py` "now consumes all three" constants is corrected in place.
+- **`ERROR_METRIC_NODAL_RMS` had zero readers** one commit after being added "so the implicit
+  `else` is spelled" — both ternaries still compared only against the quadrature member. Now
+  consumed by a shared `select_primary_l2(config, *, quadrature, nodal)` that dispatches on both
+  members and **raises on an unknown metric** (reachable only past Pydantic's `Literal`, tested
+  via `model_construct`), replacing the last duplicated metric-selection block between the two
+  substrates.
+- **`SUBSTRATE_AREA_WEIGHTED_L2_KEY` had zero test readers** — the tests written alongside it
+  still indexed `extra` with the bare string. Fixed.
+- **A fourth `1e-15`** sat in `scripts/run_adaptive_vs_uniform.py` while `DEFAULT_RATIO_FLOOR`'s
+  docstring promised "a fourth copy cannot drift". Sourced from the constant; docstring corrected.
+- **A `# pragma: no cover` on a tested line** (`tensor_grid.py`'s scipy guard, driven by a
+  `builtins.__import__` monkeypatch). Removed — a covered line marked uncovered corrupts the number
+  the gate reads.
+- **Two docs made stale by registering the substrates**: the charter deviation row and README both
+  said "zero runtime registrants". Accurate: two registrants, zero runtime lookups.
+- Test hygiene: a bounds test probing `initial_side` with `[1, 65]` — both odd, so the parity
+  validator rejected them with the bounds deleted; two byte-identical tests differing only in
+  `match=` merged; `scripts/audit_abstractions.py`'s "real, non-test reader" wording softened
+  (the reader is entered only from the adequacy-gate test).
+
+#### Earlier entries (untitled)
+
+- **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
 - **Generic self-play rank-1 boards fail loud.** `_play_game_generic`
@@ -105,78 +613,7 @@
   refine warnings now spy on the module logger instead of `capture_logs`,
   which records nothing after `cache_logger_on_first_use=True`.
 
-### Added
-- CI `--ignore` / `--deselect` ledger (`docs/ci-exclusion-ledger.md`) with
-  owner / reason / reopen criteria. Unit Tests (Fast) and Test Coverage
-  duplicate the list; Makefile `CI_TEST_EXCLUDES` is the third copy.
-  Shared args-file extraction is still hygiene B7 (deferred). Guard:
-  `tests/docs/test_ci_exclusion_ledger.py`.
-- ADR 0005: process-global registry `clear` / `ensure` lifecycle. Does not
-  rewrite every registry.
-
-### Changed
-- Retired charter deviations for empty `RefinementGameRegistry`, zero substrate
-  lookups, and the staged `fingerprint` audit exemption; added time-boxed
-  two-path AMR harness deviation.
-- Marked `specs/lshape_amr_compare.spec.md` superseded for element-local policy
-  comparisons (legacy numbers remain golden / non-informative for policy).
-
-
-All notable changes to AlphaGalerkin will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Added — the E2E tier, which CI had never run, and a device contract for it
-
-- **`tests/e2e/` gated nothing, and the reason recorded in `ci.yml` was wrong.** The fast lane
-  passed `--ignore=tests/e2e/` **and** `-m "not e2e"` (the `coverage` job repeated both), and
-  exactly **one** of the directory's 11 test files was named by any step in any workflow. 81
-  tests, invisible. This is the fourth instance of that defect class here, after
-  `tests/demos/` + `tests/notebooks/` (226 tests, until `18f533d`), `src/backend` (213 tests)
-  and the three omit-collision false passes — every previous one found by a person reading the
-  workflow. The `ci.yml` comment blamed `test_train_physics_minimal`'s fixed 120 s timeout;
-  that attribution was **wrong**: the run was never minimal (`--train-size` is the grid side,
-  not the sample count, so it built the default 5000 samples and needed ~1.7 h), so no budget
-  could have made `returncode in [0, 1]` hold. Bounding the sample counts fixed it — measured
-  **15 s**. New blocking `test-e2e` job (in `ci-success.needs`, with a hard `exit 1`), a
-  positively-selecting `fem_required` step in `test-extras`, and `make test-e2e` now running the
-  whole directory instead of a glob that selected **3 of 81** tests — so `make pre-pr` had been
-  certifying every PR against three E2E tests.
-- **`tests/docs/test_e2e_visibility.py` + `tests/docs/test_marker_vocabulary.py`** (94 tests,
-  hermetic, ~1.8 s) so the fifth instance fails the build instead of waiting to be noticed.
-  The visibility guard's first draft was **defeated by its own mutation**: as specified, the
-  `test-extras` fem step satisfied the "a step selects tests/e2e/" clause on its own, so
-  deleting the entire `test-e2e` job left it green. Strengthened so a qualifying step also must
-  not narrow the run to another positively-required marker. The vocabulary guard exists because
-  `--strict-markers` rejects an unknown marker on a *test* but **not** an unknown identifier
-  inside a `-m` expression — verified: `-m "not gpu_requried"` runs everything and exits 0.
-  **9/9 mutation-killed**, two of them written because the `gpu_required` clause passes
-  vacuously today and an empty-set scanner must still be able to fail. Shared parsers in
-  `tests/support/{workflows,marker_expr}.py`.
-- **A device contract that makes the tier GPU/CPU agnostic**, which is three properties the repo
-  satisfied none of. `E2E_DEVICE` (default `auto`) takes exactly `resolve_device`'s four forms
-  and is resolved **once at conftest import**, so `E2E_DEVICE=cuda` on a CPU box is a collection
-  error for the whole directory rather than a skip — `cuda` *is* the require form, so there is
-  no second env var. Tests forward the resolved *concrete* device to every child, so none of the
-  repo's five device-resolution policies is ever handed an ambiguous `auto`. `pin_scenario_yaml`
-  steers `poc.cli run` (which has no `--device`, and deliberately does not gain one) by copying
-  the shipped YAML, and **refuses to pin a key the config does not declare** so the pin cannot
-  silently no-op. One negative test per script runs identically on both host types via
-  `CUDA_VISIBLE_DEVICES=""`. Numpy-only surfaces are stated as device-irrelevant rather than
-  described as exercising the GPU.
-- **Nine E2E journey files** driving the shipped entry points as processes — the exit code a
-  shell sees, the parser, and the on-disk artifact together, which the in-process `main(argv)`
-  tests in `tests/scripts/` cannot reach. Notably: `scripts/run_adaptive_vs_uniform.py`'s
-  `main()` and its provenance-sidecar write were exercised by **nothing**; the L-shape journey
-  derives its expected exit code from the run's own verdict rather than asserting 0, because
-  the gate is `ratio < 1.0` and the honest headline fails it (asserting 0 would encode a
-  research outcome); the substrate registry is driven in a **subprocess**, since two suites
-  `clear()` that process-global singleton.
-
-### Fixed — the audit of this branch's own work: seven defects, five of them guards that could not fail
+#### the audit of this branch's own work: seven defects, five of them guards that could not fail
 
 An adversarial review of everything above, with every finding verified by applying the mutation
 and re-running before it was accepted. Five of the seven are in code this branch added, which is
@@ -238,32 +675,7 @@ the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped
   runs, and new guard clause `(i)` makes the drift a build failure rather than a correction —
   which is backlog **B8**, whose case this branch made concretely.
 
-### Added — harness: two skills, the missing agent role, two hooks, one command
-
-- **`harden-a-guard`** turns this repo's most important convention from a *value* stated in two
-  agent files into an eight-step procedure with a completion bar. It was enforced by nothing, and
-  five of this branch's seven self-corrections were mutation-survival findings.
-- **`wire-a-ci-job`** does for a test job what `add-coverage-gate` already does for a gate: the
-  six coupled edits, of which this branch got two wrong. Includes the `make <t> PYTEST=<stub>`
-  check that catches a status-propagation rewrite a grep cannot.
-- **`build-engineer`** — the missing agent role. Nothing in `.claude/agents/` owned `ci.yml`, the
-  `Makefile`, markers/omit, or the CI↔docs mirror, yet **all seven** of this repo's recorded
-  invisibility defects lived there and **not one** was caught by a check.
-- **Two path-gated `PostToolUse` hooks.** The build-config guard runs the hermetic enforcement
-  suites when one of five paths is edited (~6 firings per branch, ~13 s each); the doc-link guard
-  moves an existing pre-commit check to authorship time (0.10 s). Both report and never block —
-  CI is the gate, and a blocking hook gets disabled. `ALPHAGALERKIN_HOOK_DRY_RUN=1` makes the
-  gating decision testable in milliseconds; 20 tests drive both hooks against synthetic payloads,
-  4 of which fail when the path gate is narrowed to nothing.
-- **`/babysit-pr`** encodes the PR-to-green loop that was re-improvised every session, including
-  the triage table for this repo's known failure classes and the constraint (`gh` is unavailable
-  here) that had been rediscovered by hand more than once.
-- **The harness inventory is now machine-checked.** CLAUDE.md's "N skills, N subagents, N slash
-  commands" had drifted twice and recorded both drifts in its own prose. Correcting it a third
-  time by hand would repeat the mistake; `TestTheDocumentedInventoryMatchesDisk` fails until the
-  row matches the directories. It caught the new slash command immediately.
-
-### Fixed — four defects the journeys surfaced, each in code the tests had to touch
+#### four defects the journeys surfaced, each in code the tests had to touch
 
 - **`ScenarioResult.device` recorded the wrong thing.** Documented as "Computation device used",
   both construction sites filled it with `"cuda" if torch.cuda.is_available() else "cpu"` —
@@ -293,106 +705,7 @@ the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped
   makes sampling "deterministic on CPU and GPU alike"; it sets no cuDNN flag. Corrected, because
   a test would otherwise be written against it.
 
-### Changed — one abstraction promoted out of a test file
-
-- **The substrate adequacy gate is now callable.** `AdequacyGateConfig`, `gate_violations`,
-  `measure_adequacy` and `default_adequacy_gate` moved from
-  `tests/research/test_amr_arena_interpretability.py` into `src/research/substrates/`. The
-  verdict the spec calls "the gate that makes any comparison meaningful" was reachable only from
-  pytest: a caller who ran a sweep through the public API had no way to ask whether the
-  substrate was adequate. Defaults are byte-identical and the per-threshold provenance comments
-  moved with them — a move, not a retune; `max_sweep_dof` returns `int`, which both satisfies
-  `run_refinement_sweep(max_dof: int)` under `mypy --strict` and restores exact value identity
-  with the int-pair constant it replaced. The test file keeps re-exports, so `TestGatePredicate`
-  exercises the promoted function rather than a copy that could drift from it.
-
-### Recorded, not fixed
-
-- **Running the E2E tier whole surfaced a pre-existing memory leak.** Traced with a 2 s RSS
-  sampler over the full 136-test selection: the pytest **parent** holds flat at **594 MB**
-  through the three new subprocess-driven journeys (t=0-113 s), jumps to **2,125 MB** the moment
-  `test_chess_engine_e2e.py` starts (pre-existing, 29 in-process tests), and then climbs
-  monotonically to **13.2 GB**, never releasing. Two separate full runs were OOM-killed
-  (SIGKILL, exit 137) at ~84%, at slightly different tests -- the signature of a cumulative
-  allocation plus whatever peak lands on top, not one greedy test. The new journeys do not leak
-  (the substrate journey measured alone peaks at 1.1 GB in 8 s), and a first hypothesis --
-  captured subprocess output -- was measured and **disproved**: each child emits 4-20 KB, ~3 MB
-  across the tier, three orders of magnitude short. It was invisible because the directory was
-  never run whole: CI ran exactly one of these files, alone, in the chess job. Root-causing it
-  is chess/MCTS work, not E2E-test work. **It then failed on a GitHub runner exactly as
-  predicted** -- run 863's `test-e2e` died at ~58% with "The runner has received a shutdown
-  signal", right after the chess files and following a four-minute stall on nine trivial config
-  tests, while every other job in that run passed. The job (and `make test-e2e`) now runs the
-  tier as **two invocations** split at the first in-process file: `-k "not chess"` (103 passed
-  + 1 xfailed, peak **1,451 MB**) and `-k "chess"` (32 passed, peak **3,614 MB**), against
-  **13,649 MB** for the single process that died. 104 + 32 = 136 = the marker-selected count,
-  so the partition is complete. This is a workaround and is labelled as one in the workflow;
-  it caps the peak without touching the leak. Two things keep it from becoming a second
-  invisibility problem: the partition is exhaustive by construction (`X` / `not X`), and
-  `test_the_e2e_k_partition_is_complete` asserts the pair is whole -- mutation-killed by
-  deleting the chess step and by narrowing it to `chess and engine`. The guard already accepts
-  a single unfiltered step, so collapsing the split once the leak is fixed needs no edit to it.
-
-- **No shipped command produces a PDE-consumable checkpoint.** `scripts/train.py +game=pde_basis`
-  crashes in `src/modeling/embeddings.py` with a tensor-shape mismatch, because
-  `config/train_fast.yaml`'s `operator.input_channels` is Go-shaped (17) and nothing reconciles
-  it with the selected game's encoding. Pinned as a **strict xfail** so it flips visibly when
-  fixed rather than sitting in a comment. Fixing it is PDE-model work, not E2E-test work.
-- **CLAUDE.md's Multi-Game Commands section documents `python -m scripts.train game=go`**, which
-  errors: `game` is not a key in `config/train.yaml`, so Hydra requires `+game=go`.
-
-
-### Added — Gap analysis: three ungated packages, a blind spot in the gate guard, and an unbuilt Dockerfile
-
-- **`src/backend` was invisible to every coverage gate in the repository.** `src/backend/*` sits
-  in pyproject.toml's global `[tool.coverage.run] omit` — a legitimate origin (`jax_backend.py`
-  needs the optional `[jax]` extra) applied at *package* granularity — **and** it had no
-  per-module gate, so its 213 passing tests measured nothing anywhere. Real branch coverage is
-  **56%**, and the omit was hiding `logging.py` and `rng.py` at literally **0%**, not just the
-  JAX module it was written for. Gated at 54 via the inline-coveragerc technique. This is the
-  fourth instance of the omit-collision false pass in this repo, after `video_compression`,
-  `demos` and `skfem_tri.py`.
-- **The coverage-gate integrity guard could not have caught it, and that is the finding.**
-  `tests/docs/test_coverage_gate_integrity.py` verified that a gate a workflow *declares* is not
-  secretly neutered by the omit. It said nothing about a package that is omitted **and never
-  gated at all** — not a fake gate, but no gate, invisible for exactly the same reason. Added
-  the missing direction: every `omit` entry must be gated by a step that both selects it *and*
-  overrides the omit, or carry an entry in `_OMIT_WITHOUT_A_CI_GATE` with a reason. Self-expiring
-  in both directions — a stale exemption fails the moment a gate appears, and an exemption for a
-  pattern no longer in `omit` fails as vacuous, the same way the import contracts guard against
-  a rule about nothing. 20 tests; 2 further mutations killed.
-- **Gates for the last two ungated `src/` packages**: `src/core` at 85 (measured 97.67%) and
-  `src/deployment` at **25** (measured 27.91% — 626 statements, 416 missed). 25 is stated as a
-  regression tripwire, not a standard: it stops the largest genuinely under-tested surface in
-  `src/` sliding further, and raising it is test work, not a number to edit in CI.
-- **`docker/Dockerfile` shipped on 2026-08-16 (`61c1e93`) and was built by nothing** — no CI job,
-  no Makefile target, no test — while `CLAUDE.md`'s Next Steps recorded, "verified 2026-08-21",
-  that no Dockerfile existed anywhere in the tree. The verification was wrong five days after
-  the fact and nothing caught it for two weeks, because nothing exercised the file. Verified by
-  hand that the image's `CMD` currently works, by materialising the real build context
-  (git-tracked files minus `.dockerignore`) and running it: **510 passed, 6 skipped**. Closed
-  with `tests/docs/test_dockerfile_context.py` — **hermetic, no daemon, builds nothing**:
-  every `COPY` source must survive `.dockerignore`, every copied path must exist, and every path
-  the `CMD` runs must be both un-ignored and actually brought in by some `COPY`. Two vacuity
-  guards, because a deleted Dockerfile would otherwise make every parametrised assertion iterate
-  an empty list and pass. 2/2 mutation-killed. Companion `make docker-build` / `make docker-test`
-  take `DOCKER_IMAGE` / `DOCKER_CONTEXT` / `DOCKERFILE` as overridable variables.
-- **`src/refinement/AGENT.md`** — the package this branch created had none, which was the least
-  defensible entry on the missing-AGENT.md list. Documents the domain-free contract and the
-  import rule that enforces it, the numpy-only constraint on `substrate.py` (and why
-  `get_type_hints` forced runtime imports), the mandatory `SearchMode.SINGLE_AGENT`, and the
-  self-expiring staged-exemption rule. The count itself was stale: **15 of 28** packages lack
-  one, not "14 of 26" — the old figure predated `src/core` and `src/refinement`.
-- **Recorded, not fixed, with reasons**: `src/research/baselines.py` is now the largest file in
-  the repo at 1540 lines and this work *added* to it (B34 — splitting it belongs in its own PR,
-  not one already at 5k additions whose CI had never completed a run); and two
-  `tests/video_compression/unit/test_loss.py` cases download 500 MB of ImageNet VGG16 weights
-  from `download.pytorch.org`, so they fail in any air-gapped environment and pass on GitHub's
-  networked runners, which is why CI has never flagged them (B35 — an unrelated subsystem, and
-  `scripts/check_focus.py` exists to stop exactly that widening). `make test-fast`: **9600
-  passed**, 208 skipped, those 2 network failures the entire delta.
-
-### Fixed — the "CI error" that was not one, and what the audits found underneath it
+#### the "CI error" that was not one, and what the audits found underneath it
 
 - **B38 closed: every push fired CI twice and cancelled one.** `push:` listed `"claude/*"` and
   three other globs, so a push to a branch with an open PR fired both `push` and `pull_request`
@@ -446,34 +759,7 @@ the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped
   return type), `quadrature_l2_error`'s no-exact-solution raise, `_element_gradients`' singular
   element, and `build_lshaped_initial_mesh`'s `except TypeError` fallback.
 
-### Removed — dead code the audit found, four items of it mine
-
-- **`warn_on_degenerate_units` + `AREA_FLOOR`**: zero production callers; the constant's only
-  reader was the dead function; the function's only callers were four tests written for it.
-  Wiring it needs per-element areas the `RefinementSubstrate` Protocol does not expose. Deleted,
-  with the four tests and `test_named_constants_match_spec`'s third assertion. The earlier
-  CHANGELOG line claiming `sweep.py` "now consumes all three" constants is corrected in place.
-- **`ERROR_METRIC_NODAL_RMS` had zero readers** one commit after being added "so the implicit
-  `else` is spelled" — both ternaries still compared only against the quadrature member. Now
-  consumed by a shared `select_primary_l2(config, *, quadrature, nodal)` that dispatches on both
-  members and **raises on an unknown metric** (reachable only past Pydantic's `Literal`, tested
-  via `model_construct`), replacing the last duplicated metric-selection block between the two
-  substrates.
-- **`SUBSTRATE_AREA_WEIGHTED_L2_KEY` had zero test readers** — the tests written alongside it
-  still indexed `extra` with the bare string. Fixed.
-- **A fourth `1e-15`** sat in `scripts/run_adaptive_vs_uniform.py` while `DEFAULT_RATIO_FLOOR`'s
-  docstring promised "a fourth copy cannot drift". Sourced from the constant; docstring corrected.
-- **A `# pragma: no cover` on a tested line** (`tensor_grid.py`'s scipy guard, driven by a
-  `builtins.__import__` monkeypatch). Removed — a covered line marked uncovered corrupts the number
-  the gate reads.
-- **Two docs made stale by registering the substrates**: the charter deviation row and README both
-  said "zero runtime registrants". Accurate: two registrants, zero runtime lookups.
-- Test hygiene: a bounds test probing `initial_side` with `[1, 65]` — both odd, so the parity
-  validator rejected them with the bounds deleted; two byte-identical tests differing only in
-  `match=` merged; `scripts/audit_abstractions.py`'s "real, non-test reader" wording softened
-  (the reader is entered only from the adequacy-gate test).
-
-### Fixed — five defects in the element-local substrate surface, and a false guard exemption
+#### five defects in the element-local substrate surface, and a false guard exemption
 
 - **`build_lshaped_initial_mesh` silently meshed the wrong domain.** It hardcoded
   `linspace(-1.0, 0.0, 3)` and never read `operator.domain_min`/`domain_max`, unlike its sibling
@@ -529,30 +815,7 @@ the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped
   declared in no dependency file; no fixture named `benchmark` exists) and a duplicate marker
   registration that shadowed pyproject.toml's with different wording.
 
-### Changed — one ratio floor, three declarations
-
-- `1e-15` was declared independently in `research/lshape_amr_compare.py`,
-  `research/transfer_baseline_compare.py` and `research/substrates/config.py`. The last carried a
-  provenance comment wrong on every count: it cited `src/experiments/transfer_baseline_compare`
-  (no such module) and claimed to mirror `DEFAULT_TRANSFER_RATIO_FLOOR`, which is `1e-12` — a
-  thousandfold different. All three now source `src.constants.DEFAULT_RATIO_FLOOR`. **Values
-  unchanged** (asserted: all three still `1e-15`), and deliberately **not** unified with
-  `DEFAULT_TRANSFER_RATIO_FLOOR`: same knob, different live values, which is the case
-  `surface-hardcoded-value` Step 1 says to keep apart. Both constants now cross-reference each other.
-- Substrate kind and error-metric strings, and the three `extra` key names, surfaced as constants
-  in `research/substrates/config.py` — each was previously a bare literal at up to nine sites, and
-  `"nodal_rms"` was never spelled at all (the implicit `else`, so a third metric would have fallen
-  through silently).
-- `MAX_SWEEP_DOF` now derives from `RATE_FIT_DOF_RANGE[1]` instead of retyping `4000`; the coupling
-  previously lived only in a comment.
-- `fit_log_log_rate` takes an `arm=` label bound onto its `rate_fit` log line.
-  `measure_rate_separation` calls it twice in succession, and the two lines were previously
-  byte-indistinguishable — in the code that produces the charter's headline rate separation.
-  Default keeps every existing caller unchanged.
-- `TensorGridSubstrate.refine` warns on an empty selection, matching `SkfemTriSubstrate`. Both read
-  the same `marking_variant` and run in the same sweep loop, but only one warned.
-
-### Fixed — CI coverage jobs no longer pin the pure-Python coverage tracer
+#### CI coverage jobs no longer pin the pure-Python coverage tracer
 
 - **`COVERAGE_CORE=pytrace` was retired from the `coverage` and `coverage-gates` jobs.** The pin
   dated to two documented claims that this session directly re-verified and found no longer
@@ -599,7 +862,7 @@ the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped
 - **Also closes `docs/CODE_HYGIENE_AUDIT.md` B7's third sub-item** ("`COVERAGE_CORE`
   centralization") by deletion: there is nothing left to centralize. Tracked as **B36**.
 
-### Fixed — PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
+#### PR #143 triage: a CI timeout, two review findings, and a hardcoded dimension
 
 - **`CI Success` was red on a run in which nothing failed.** All 47 steps of the `coverage`
   job reported `success`; the job was then killed by `timeout-minutes: 45` after 54 minutes and
@@ -647,47 +910,12 @@ the uncomfortable part: the tier built to remove checks-that-cannot-fail shipped
   released heading and measures a tree that still contained `src/thermo` (cut 2026-07-22). That
   is append-only history, not a competing claim.
 
-### Added — `element-local-substrate` Slice A: shared marking + substrate protocol
-- **One `dorfler_mark` function replaces two independently-drifting Dörfler bulk-marking implementations** (`src/research/marking.py`) — `DorflerAMRSolver._dorfler_mark` (`src/research/baselines.py`, squared bulk quantity, marks ≥1 element on an all-zero indicator array) and `ScikitFEMPoissonSolver._dorfler_mark` (`src/research/fem_baseline.py`, linear bulk quantity, returns all-False on all-zeros) now both delegate to it (`variant="squared"`/`"linear"`), byte-for-byte, Hypothesis-verified against frozen reference re-derivations of each original formula plus the two solvers' own 85-test regression suite. **Lives under `src.research`, not `src.refinement`** as originally planned: CI's `reference-baselines-do-not-import-the-candidate` architectural contract (`tests/regression/test_import_contracts.py`) forbids `baselines.py`/`fem_baseline.py` from importing anything under `src.refinement` at all, and `dorfler_mark` is active marking behaviour, not the inert protocol/type import the contract's one exemption (`src/mcts/gumbel.py`) tolerates — caught by that contract's own test failing in CI, fixed by relocating rather than exempting.
-- **`RefinementSubstrate` Protocol + `SubstrateSolveResult`** (`src/refinement/substrate.py`, numpy-only per `src/pde/games/__init__.py`'s documented SIGSEGV rationale) and its registry (`substrate_registry.py`) — the stepwise interface `openspec/changes/element-local-substrate/design.md` specifies, that `TensorGridSubstrate` and `SkfemTriSubstrate` will implement in later slices. `@runtime_checkable` so a concrete substrate satisfies it structurally, without inheriting from it. `SubstrateSolveResult.__post_init__` enforces AC5's `n_dof_free <= n_dof` invariant (both non-negative) at construction, not just by convention.
-- **`SubstrateConfig`** (`src/research/substrates/config.py`) — the Pydantic data contract from `specs/refinement_substrate.spec.md`'s Data Contract table (`kind`, `element_type`, `marking_variant`, `error_metric`, `enforce_immutable_meshes`, `solve_cache_max_entries`, and the even-`initial_side` invariant), plus the named numerical-stability constants `RATIO_FLOOR`/`AREA_FLOOR`/`RATE_FIT_MIN_POINTS`. Not in the original 27-task checklist; added after an independent adversarial review of the implementation plan found no task owned it.
-- **Fixed a real bug in `scripts/audit_abstractions.py`**, found while gating this change: a generic `Protocol[T]` base parses as `ast.Subscript`, not `ast.Name`/`ast.Attribute`, so `_is_protocol_class` silently returned `False` for any generic Protocol — `RefinementSubstrate`'s 8 members were invisible to the audit entirely, not "verified live", and the CI gate that scans `src/refinement` (`.github/workflows/ci.yml`'s "Audit abstractions (refinement surfaces)" step) would have passed on dead code by tool blind spot rather than genuine compliance. Fixed the AST unwrap; the resulting real finding (8 declared-but-uncalled members, since Slice A intentionally ships ahead of its first concrete consumer) is exempted via a new, explicitly time-boxed `_STAGED_FOR_UPCOMING_TASK` allowlist — distinct from the existing `_KNOWN_LIVE` (a real caller the AST heuristic can't see) — naming Slice E's task 7.1 (`RefinementGame` subclass over the substrate) as the entry it retires. 4 new regression tests, including one that would have caught the original bug.
-- Coverage: `src/refinement` 100% branch, `src/research/marking.py` 100% branch, `src/research/substrates` 100% branch.
-
-### Added — `element-local-substrate` Slice B: `TensorGridSubstrate`, the back-compat proof
-- **`TensorGridSubstrate`** (`src/research/substrates/tensor_grid.py`) wraps `DorflerAMRSolver`'s existing static solve/indicator/refine primitives and `lshape_amr_compare._area_weighted_l2` behind `RefinementSubstrate`, reproducing today's `run_dorfler_arm` trajectory. `mark()`/`refine()` split `_dorfler_mark_2d`'s single call (element selection + x/y-axis projection) into two Protocol-compliant primitives — `mark()` returns the shared `dorfler_mark`'s flat element selection, `refine()` does the axis projection plus `DorflerAMRSolver._refine_grid` (unmodified) — a composition proven bitwise-equivalent to the fused legacy call by the golden test, not by inspection.
-- **AC1 golden test** (`tests/research/test_tensor_grid_substrate.py`): the full `initial_mesh -> solve -> mark -> refine` loop matches a live `run_dorfler_arm` call bitwise (7 refinement levels, identical `n_dof`/`l2_error` at every level) and the committed `results/lshape_mcts_vs_dorfler.csv` `dorfler` rows to float tolerance. Mutation-checked: forcing `mark()` to the wrong bulk-marking variant diverges the trajectory at level 2 (`n_dof` 46 vs 34), confirming the test discriminates a wrong marking policy rather than passing vacuously.
-- Coverage: `src/research/substrates` (now including `tensor_grid.py`) 100% branch.
-
-### Added — `element-local-substrate` Slice C: `fem_baseline` decomposition + `SkfemTriSubstrate`
-- **`fem_baseline.py` decomposed into module-level primitives** (`build_initial_mesh`, `build_lshaped_initial_mesh`, `assemble_and_solve`, `zz_indicator`, `element_gradients`, `triangle_area`, `estimate_smoothness`, plus the new `quadrature_l2_error`) — `ScikitFEMPoissonSolver`/`ScikitFEMLShapedSolver` re-expressed as thin delegates. Byte-identical before/after (`solution`, `l2_error`, `metadata` all match across `uniform/P1`, `h_adaptive/P1`, `hp_adaptive/P2`); the existing 23-test file passes untouched, plus 2 new tests for `quadrature_l2_error`.
-- **Re-measured the AC7 adequacy-gate risk an independent adversarial review of the implementation plan surfaced**: the task-zero spike's headline rate-separation numbers (`-1.256`/`-0.710`) came from the spike's own stronger, non-production ZZ estimator, not the weaker production one this slice actually extracts. Measured through the real production primitives on the real L-shaped Poisson benchmark: adaptive **-1.3109**, uniform **-0.6710**, at θ=0.5 over `RATE_FIT_DOF_RANGE = (200, 4000)` — both comfortably inside the planned Slice D thresholds. No recalibration needed. **Corrected twice in Slice D**, both times by the gap-analysis review's rule that a number must come from committed code: (1) this line originally read "adaptive -1.322, uniform -0.671", which mixed two different fitting *windows* — the adaptive figure was fitted over `(200, 2600)`, the uniform over `(200, 4000)`, because the narrower window cannot hold three uniform points at all; (2) the replacement figure `-1.2515` was measured at **θ=0.3**, while the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Same substrate, same window, different θ, 5% different rate. Both figures above are now from the gate's own configuration, and both are **bounded by a committed test** (adaptive ≤ `-1.10`, uniform ∈ `(-0.85, -0.55)`) rather than resting on a transcribed local run. **Quote θ and the window with any rate in this repo** — a bare convergence rate is not a fact.
-- **`SkfemTriSubstrate`** (`src/research/substrates/skfem_tri.py`) — the element-local substrate the charter's own adequacy claim needs to be measurable at all. Verified end-to-end: marking a single element grows the mesh 384 → 391 (local) vs 384 → 1536 for `mesh.refined()` with no marks (uniform) — genuinely element-local, not the tensor-grid substrate's full-grid-line defect. Reports quadrature L2 as the primary metric (configurable), nodal RMS additive in `extra` (AC6); clears mesh write flags behind `enforce_immutable_meshes` (AC3, verified both enforced and opt-out); the reentrant corner is confirmed a mesh node at the origin on the real mesh builder's output (AC8). 20 new tests.
-- **`fem_required` marker + visible skip discipline**: registered in `pyproject.toml`; a root `conftest.py` hook mirrors the existing `gpu_required` skip but additionally reports a skip count via `pytest_terminal_summary` (`gpu_required` does not), and `ALPHAGALERKIN_REQUIRE_EXTRAS=1` raises `pytest.UsageError` (exit 4) instead of skipping — closing a real gap in the `test-extras` CI job's own stated purpose (a half-succeeded `scikit-fem` install would otherwise skip silently and still go green). `test_fem_baseline.py`/`test_skfem_substrate.py` switched from `pytest.importorskip` to `pytestmark = pytest.mark.fem_required`, manually verified both ways (uninstalling scikit-fem: visible `skipped 45 test(s)`; same run under the env var: hard failure with the install hint). Wired into `test-extras`; `skfem_tri.py` added to the coverage `omit` alongside `fem_baseline.py`.
-- Coverage: `src/research/substrates/skfem_tri.py` 89% (native-runner measurement; the file rides `fem_baseline.py`'s existing omit-list treatment, so no dedicated CI gate — remaining gaps are version-dependent defensive branches, same class as `fem_baseline.py`'s own pre-existing gaps).
-
-### Added — `element-local-substrate` Slice D: the adequacy gate (AC7)
-- **`tests/research/test_amr_arena_interpretability.py`** — the gate that makes the charter's central claim measurable at all. Asserts adaptive marking beats uniform refinement on the L-shaped Poisson singularity, **and** that the *identical* predicate rejects `TensorGridSubstrate`: a gate that passes on both substrates is not a gate. Both halves share one `gate_violations()` function, so "the same assertion fails there" is literally rather than approximately true. Measured at θ=0.5 over `(200, 4000)` — `SkfemTriSubstrate`: adaptive **-1.3109**, uniform **-0.6710**, error ratio **0.0946** at matched DOF (passes); `TensorGridSubstrate`: adaptive **-0.2325**, uniform **-0.6489**, ratio **13.35** (fails).  Adaptive is thus ~10x *better* than uniform on the element-local substrate and ~13x *worse* on the tensor-product one — the substrate, not the marking policy, decides the sign. The tensor-grid half deliberately carries **no** `fem_required` marker, so the discriminating half runs on every CPU CI job with no optional dependency.
-- **5/5 mutations killed.** One initially survived and is worth recording: widening `UNIFORM_RATE_BAND` to `(-5.0, 0.0)` left every solve-driven test green, because both substrates' uniform rates sit comfortably inside the band — so AC8's "a rate that is too *good* is also a defect" tripwire was documented but asserted nowhere. Closed by `TestGatePredicate`, which unit-tests the predicate on synthetic `RateSeparation` values (including the `-1.05` both-arms rate that was the task-zero spike's actual wrong result) with no PDE solve.
-- **`src/research/substrates/sweep.py`** — the sweep/rate-fit machinery lives in a reusable, substrate-agnostic module rather than inside the test file, so the eventual arena change consumes it instead of growing a second, subtly-different copy (the exact failure mode that made `dorfler_mark` necessary). `run_refinement_sweep` / `fit_log_log_rate` / `measure_rate_separation` / `warn_on_degenerate_units`, with structlog events throughout (`refinement_sweep_start` / `_level` / `_stop` carrying its stop *reason* / `_done`, `rate_fit`, `rate_separation`, `degenerate_units`). `fit_log_log_rate` **refuses** to fit fewer than `RATE_FIT_MIN_POINTS` points rather than returning a meaningless slope. 100% branch coverage; 22 unit tests drive it entirely through a synthetic substrate, which is what makes "substrate-agnostic" a tested claim rather than a docstring.
-- **Three dead constants got real consumers.** `RATIO_FLOOR`, `AREA_FLOOR` and `RATE_FIT_MIN_POINTS` had *no* production reader, and `test_named_constants_match_spec` was asserting `RATIO_FLOOR == 1e-15` against a constant defined as `1e-15` — a tautology guarding nothing. `sweep.py` now consumes all three, with behavioural coverage for each; the value-pinning test is retained but relabelled for what it actually guards (doc/code drift against the spec table). **CORRECTED 2026-09-02**: true for `RATIO_FLOOR` and `RATE_FIT_MIN_POINTS`, false for `AREA_FLOOR` -- its only consumer was `warn_on_degenerate_units`, which itself had zero production callers, so the "real consumer" was a dead function with four tests written for it. Both deleted.
-- **Spec correction, disclosed**: `RATE_FIT_DOF_RANGE` `(200, 2600)` → `(200, 4000)`. The original window is *physically* incapable of holding three **uniform** points — a 2D uniform arm quadruples DOF per level, so a 13× window spans at most two. Not a judgement call: `fit_log_log_rate` raised `InsufficientSweepPointsError` rather than fitting a two-point slope, which is how it surfaced. Verified on both substrates (`skfem_tri` uniform lands on `[225, 833, 3201]`, `tensor_grid` on `[208, 800, 3136]`). A window-*width* correction, not a threshold loosening — the other three constants hold at their originally pinned values. Recorded with its reason in `specs/refinement_substrate.spec.md`.
-- **Abstraction-audit allowlist shrunk 8 → 1, and made self-expiring.** `sweep.py` is a real, non-test reader of seven of the eight `RefinementSubstrate` members, so those seven left `_STAGED_FOR_UPCOMING_TASK` rather than staying exempted — an allowlist entry covering a live member silently stops guarding it, which is the opposite of the gate's purpose. Only `fingerprint` remains staged (its consumer, the fingerprint-keyed solve cache bounded by `solve_cache_max_entries`, lands with Slice E). CI's blocking "Audit abstractions (refinement surfaces)" step gained `src/research` as a fourth root, because the declaration and its driver live in different packages and the narrower scan reported live members as dead — the cross-package false positive that step's own comment warns against. New `test_every_staged_exemption_is_still_forward` drops the allowlist, re-runs the audit over exactly CI's roots, and requires every staged member to *still* be unread — so a stale exemption fails rather than rotting (same discipline as the import-contract meta-guards and `.claude`'s `FORWARD_REFERENCES`). Mutation-verified: re-adding `solve` to the allowlist turns it red.
-
-### Added — A guard for the false pass this repo has now written three times
-
-- **`tests/docs/test_coverage_gate_integrity.py`** — the "identify areas to improve hooks/validations" ask, answered with the failure that actually keeps happening rather than a proposal. `video_compression`, `demos` and `src/research/substrates/skfem_tri.py` each shipped a coverage gate that measured **nothing** while reporting green, and each was found by a human reading the workflow. The two mechanisms are entirely mechanical, so they are now checked: a `--cov` target swallowed by pyproject.toml's global `omit` (coverage reports `0.00%` with `No data was collected`, and `--cov-fail-under` cannot fail), and a `--cov=<...>.py` file-path spec, which coverage 7.x silently ignores. Also asserts every `--cov` target exists on disk. Hermetic — parses YAML and the TOML omit block, runs nothing.
-- **Exemptions are falsifiable, not documentary.** An entry claiming a module is "gated elsewhere" must name a step that *both* selects it **and** overrides the omit (`--cov-config=` / `--rcfile=`); an ancestor `--cov` is explicitly rejected as proof, because it inherits the same omit. A stale exemption whose omit pattern is gone, or one with an empty reason, fails.
-- **7/7 mutations killed**, and three of them mattered. The first version only detected an omit that was an *ancestor* of the target, so dropping `--cov-config` from the substrates gate — where the omit is a *descendant* — passed; that is precisely how the third instance got written, since the package total would have read ~99% from four files while the fifth contributed nothing. The second version accepted an ancestor `--cov` as proof of "gated elsewhere", which the repo-wide `--cov=src` satisfies while inheriting the same omit. The third used substring matching, so `--cov=src/research` matched inside `--cov=src/research/substrates` and one gate stood in as proof for a sibling file.
-- **It found a real gap on its first run**: `src/research/fem_baseline.py` (249 statements) is in the global `omit`, so the `coverage` job's `--cov=src/research` gate at 85 had **never measured it** — invisible inside a package percentage that looked healthy. Now gated at 83 (measured 85%) in `test-extras`, the only job that installs the `[fem]` extra. Native-runner form for two independent reasons: a file-path `--cov` spec is dropped, *and* `coverage run` reads pyproject.toml's omit too, so `--include` alone does not override it.
-- **A different existing guard caught this one**: `test_python_floor_compatibility` rejected `import tomllib` (3.11+) against the declared 3.10 floor, where it would have been a *collection* error taking the whole run down. Replaced with the anchored-regex parse the sibling `test_version_consistency.py` already uses — and that parser is itself pinned by a test, after its first version harvested a comment string as if it were an omit pattern.
-
-### Fixed — `make` could not run any test target, in any environment where the console scripts differ from the interpreter
+#### `make` could not run any test target, in any environment where the console scripts differ from the interpreter
 
 - `PYTEST ?= pytest` (and `mypy`, `coverage`) resolved to whichever interpreter installed those console scripts, which need not be the one holding the project's dependencies. Measured in a working container: every `make test-*`, `make mypy`, `make coverage` and therefore **`make pre-pr` — the documented pre-PR gate — died at `ModuleNotFoundError: No module named 'hypothesis'`**, while `python -m pytest` ran the full suite. Only `make lint` worked, because `ruff` is a standalone binary that imports nothing. Now routed through `$(PYTHON) -m`, which also still prefers an activated venv (its `python` is first on PATH), so this is strictly better at what the old comment claimed. Every variable stays overridable.
 - New `make test-substrate` target mirroring the `test-extras` coverage step. Deliberately **not** chained into `pre-pr`: it requires the optional `[fem]` extra, and without scikit-fem the tests skip, the measured percentage collapses, and the gate would fail for entirely the wrong reason.
 
-### Fixed — `element-local-substrate`: gap-analysis remediation (4 blockers, 15 findings)
+#### `element-local-substrate`: gap-analysis remediation (4 blockers, 15 findings)
 
 An adversarial gap analysis against `main` verified 19 findings across Slices A–D. The ones that were real defects, not style:
 
@@ -703,74 +931,36 @@ An adversarial gap analysis against `main` verified 19 findings across Slices A�
 - **Two numeric claims corrected**, both traceable to the same root cause: a figure transcribed from an exploratory script rather than read out of committed code. The Slice C rate pair mixed two fitting *windows*; its replacement was measured at **θ=0.3** while the committed gate passes `ComparisonParams.marking_fraction = 0.5`. Convention adopted repo-wide: **a convergence rate is quoted with its θ and its DOF window, or it is not quoted.**
 - **Documentation drift closed**: a Regression Surface row for all seven new test files (CLAUDE.md had none), three new rows in the charter's deviations register (the zero-registrant substrate registry, the staged audit exemption, the omitted module — each previously an undisclosed deviation a reviewer would have had to find), `ARCHITECTURE.md`'s `src/refinement`/`src/research` descriptions, a **Refinement Substrates** container plus five components and seven relations in the C4 diagrams, and a `docs/CODE_HYGIENE_AUDIT.md` §7.4 entry. One spec claim was simply **false** and is now marked as such: `specs/refinement_substrate.spec.md` stated that `specs/lshape_amr_compare.spec.md` is "marked superseded" — it is not; that edit is Slice E's task 8.3 and has not landed.
 
-### Fixed — Next-steps case follow-through: OperatorTrainer.load_checkpoint had zero test coverage (B30)
+#### Next-steps case follow-through: OperatorTrainer.load_checkpoint had zero test coverage (B30)
+
 - **Two new tests close a real gap**: `OperatorTrainer.load_checkpoint` — including the `allow_unsafe_pickle` opt-in added 2026-08-21 — was never exercised by anything. The existing `TestOperatorTrainerRoundTrip` tests `load_torch_checkpoint` directly against hand-built dicts and never constructs an `OperatorTrainer`. Added `test_load_checkpoint_restores_state` (real save/load round trip through the public API) and `test_load_checkpoint_allow_unsafe_pickle_flag_is_plumbed_through` (`tests/test_operator_training.py::TestOperatorTrainer`).
 - **New dedicated CI gate** (`Per-module coverage gate (training/operator_trainer)`): the module's two test files live outside `tests/training/`, so the whole-package `src/training` gate never measured it (25% in-scope vs 88% with its own tests). Gated at 85, native-runner form. See `docs/CODE_HYGIENE_AUDIT.md` B30.
 
-### Fixed — Next-steps case follow-through: coverage-gate slack, stale docs (B28, B29)
+#### Next-steps case follow-through: coverage-gate slack, stale docs (B28, B29)
+
 - **`src/pde` coverage gate raised 75 → 85** (`.github/workflows/ci.yml`, `openspec/specs/project-charter/spec.md`) — measured branch coverage is 93.5%, so the gate carried 18 points of slack, unchanged since 2026-04-10. A prior PR claiming this raise (#57, open since April) never actually landed it. See `docs/CODE_HYGIENE_AUDIT.md` B28.
 - **`README.md`'s Near-Term checklist corrected**: `Trainer` already inherits `BaseTrainer` (has for 5 months); ticked. `ModelOutput.vector_fields` scaffolding already exists and is unconsumed — reworded from "extend ModelOutput" to name what's actually open (`BasisSelectionGame`/losses/evaluator, needs a spec first). `OperatorTrainer`'s BaseTrainer migration noted as low-priority (zero production callers). See `docs/CODE_HYGIENE_AUDIT.md` B29.
 - **`docs/CODE_HYGIENE_AUDIT.md`'s P0-1 heading corrected** from "3 of 8" to "2 of 8" — the Burgers OOD-reward defect it originally described was fixed 2026-08-19, verified at runtime through the real `_centaur_common` path (six distinct rewards, monotone error decrease). The heading and its pre-split `src/pde/operators.py` path citation were stale relative to the section's own status block.
 
-### Fixed — Tech-debt Phase 2c: stale line citations in mdp_specification.md (B27)
+#### Tech-debt Phase 2c: stale line citations in mdp_specification.md (B27)
+
 - **`docs/doe_genesis/mdp_specification.md`'s `MeshRefinementGame` line citations were stale independent of any PR** — GitHub Copilot review on PR #140 flagged two dangling `mesh_refinement.py:321`/`:540` references (post-B4-split) and suggested retargeting to `mesh_refinement/game.py:41`/`:420`. Verified against the pre-split flat file at the merge-base rather than trusting the suggestion: every mesh-related citation in this doc was already off by 30-350+ lines before this PR touched the file, drifted from a much older module version. Fixed all 7+ citations (not just the 2 Copilot named) against the real current line numbers in the split `mesh_refinement/{mesh,game}.py`, verified by direct read of each cited symbol.
 
-### Fixed — Tech-debt Phase 2c: OpenSpec skill conflict (B26)
+#### Tech-debt Phase 2c: OpenSpec skill conflict (B26)
+
 - **`add-coverage-gate` and `openspec-change` gave conflicting guidance on editing the charter's coverage-gate register**, flagged by a GitHub Copilot review on PR #140 (the `src/poc/visualization` gate row from the B20 close-out). Investigated rather than reverted: `add-coverage-gate` SKILL.md's Step 5 already instructed a direct charter edit as one of five coupled mechanical steps, so the finding was a genuine tooling inconsistency, not a process violation — the *Quality Gate Fidelity* Requirement's text/scenario is unchanged, only a guard-verified data row was added. `openspec-change` SKILL.md's routing table now carves out this mechanical case for `add-coverage-gate`, reserving the full proposal/design/tasks process for a genuine policy call on gates (raising the ceiling, dropping a gate, changing the ⊆-direction rule).
 
-### Fixed — Tech-debt Phase 2c: Gumbel MCTS opponent-perspective sign bug (B25)
+#### Tech-debt Phase 2c: Gumbel MCTS opponent-perspective sign bug (B25)
+
 - **`GumbelMCTS._sequential_halving` backed up child values from the wrong player's perspective** (GitHub Copilot review, PR #140, `gumbel.py:537`) — `_simulate(child)` returns a value from the child's own current-player perspective (root's opponent, one ply below root; `GumbelMCTS` drives only standard alternating two-player games, with no single-agent search mode), but this was accumulated into `child.value_sum` unnegated. Every consumer of that value (root's own action-selection score, and this PR's own new `_gumbel_mixed_value` mixing it with root-perspective `raw_value`) assumes root's perspective, so a guaranteed win for root scored identically to a guaranteed loss. Predates this PR (confirmed against the merge-base diff); this PR's `_gumbel_mixed_value` addition made the inconsistency directly visible rather than introducing it. Fixed with a one-line negation before backup. New regression test constructs two terminal root actions with different winners and is mutation-tested (fails with `best_action == 1` instead of `0` when the fix is reverted); three pre-existing tests' input literals were sign-corrected to match the now-correct perspective, with their asserted outputs unchanged.
 
-### Added — Tech-debt Phase 2b: fail-fast PDE validation, stale-PR triage
-- **`id_pde`/`PDEName`/`ResearchPDEName` now reject `heat`/`advection_diffusion` at config construction** (docs/CODE_HYGIENE_AUDIT.md B24) instead of letting a scenario run crash on `ExactSolutionUnavailableError` partway through, after other arms/seeds already spent compute. Considered and rejected: threading a `skipped` signal through `_centaur_common.run_basis_selection_cell`'s `CellOutcome` (5 call sites unpack it positionally; a NaN-residual sentinel risked silently entering a median calculation, worse than the crash it would replace). A `@field_validator` on each of the three config classes is small, local, and fails loud at the right time.
-- **B24 correction: `navier_stokes` was also unsafe, for a different reason** (GitHub Copilot review, PR #140) — it *has* an `exact_solution()`, but returns a vector `(N, 2)` velocity field, which `BasisSelectionGame`'s scalar `(N,)` fit cannot subtract without a numpy broadcasting `ValueError` (reproduced before fixing). Every other reachable PDE (`poisson`, `burgers`, `poisson_lshaped`, `helmholtz`, `biharmonic`) was checked and confirmed scalar-safe. Each file's rejection set renamed to `_PDES_INCOMPATIBLE_WITH_BASIS_SELECTION` and extended with `"navier_stokes"`; `llm_prior_config.py` gained a new `ood_pde` validator since that PDE is only reachable there via `ood_pde`, not `id_pde`. Three existing tests' error-match pattern widened from `"ExactSolutionUnavailableError"` to `"incompatible with BasisSelectionGame"` to match the more general message.
-- **Monthly stale-PR triage Routine** (docs/CODE_HYGIENE_AUDIT.md B23) — lists open PRs and flags ones with a stale base or 30+ days of inactivity. Reporting-only; a human decides what to do with a flagged PR.
+#### Tech-debt Phase 2a: dead config fields, degenerate residual fallback
 
-### Fixed — Tech-debt Phase 2a: dead config fields, degenerate residual fallback
 - **`GumbelMCTSConfig.use_mixed_value`/`.discount` were declared but never read** (`src/mcts/gumbel.py`) — toggling either changed nothing. `use_mixed_value` now gates a new `_gumbel_mixed_value()` implementing Gumbel AlphaZero's `v_mix` estimator (Danihelka et al. 2022, Appendix B): unvisited root children are completed with a value mixed from the root's raw network value and its visited siblings' Q, instead of a flat `0.0`. `discount` now scales the one-step backup into a child's `value_sum`. Both defaults are unchanged, but `use_mixed_value` defaults to `True`, so this changes actual Gumbel search output under default settings. New tests prove each knob has a real effect (a designed budget-starvation scenario flips `best_action` on the toggle) rather than re-asserting the field exists.
 - **`BasisSelectionGame` reported a structurally-degenerate residual as convergence** (docs/CODE_HYGIENE_AUDIT.md P0-1, step 2) — for operators with no exact solution (`HeatOperator`; `AdvectionDiffusionOperator` called without `time`), the game's every state is grad-disconnected from `coords`, so `PDEOperator.compute_derivatives` always returns all-zero derivative terms and the "residual" collapses to a constant independent of the fitted solution or DOF. Both `get_initial_state` and `compute_exact_error` now raise a new `ExactSolutionUnavailableError` instead. `get_initial_state` is the one that mattered in practice — it sets `PDEState.error_estimate` at episode start, which `_centaur_common`'s cell runner checks before `compute_exact_error` is ever reached, so guarding only the latter (the audit's literal wording) would have left it unreachable dead code.
 
-### Changed — Tech-debt Phase 2a: god-file split
-- **`src/pde/operators.py` (2233 lines, 10 classes) split into a package** (docs/CODE_HYGIENE_AUDIT.md B4) — `src/pde/operators/` now holds one file per operator (`poisson.py`, `burgers.py`, `advection_diffusion.py`, `heat.py`, `navier_stokes.py`, `lshaped_poisson.py`, `helmholtz.py`, `biharmonic.py`) plus `base.py` for the shared `PDEResidual`/`PDEOperator` ABC, mirroring the pattern `operators_picogk.py` already used. Fully import-compatible: every *public* name (`dir()` excluding dunders) is unchanged, frozen and regression-tested in `tests/pde/test_operators.py::TestOperatorsPackagePublicAPI`. **Corrected**: this and the split's own commit message originally claimed the stronger "`dir(m)` is byte-identical before/after"; a peer review of PR #140 found that false (becoming a package unavoidably adds `__path__`, and the new explicit `__all__` adds itself as a `dir()` entry — both harmless, since nothing in this codebase introspects `dir()` on this module, but not what was actually verified or claimed). One real dedup along the way (`HelmholtzOperator`/`BiharmonicOperator`'s byte-identical `_manufactured` helper extracted to `base._manufactured_sine_product`). `mypy --strict` is byte-identical before/after.
+#### Earlier entries (untitled)
 
-### Added — Tech-debt Phase 2a: B20 coverage gates closed
-- **Five remaining per-module coverage gates wired** (docs/CODE_HYGIENE_AUDIT.md B20): `src/poc/cli.py`, `src/poc/visualization/*`, the 3 classic scenarios (`transfer`/`complexity`/`stability`), `src/constants.py`, `src/seeding.py` — previously covered only by the global 85% gate. `transfer.py` was the one real gap (25% branch: `execute()`/`_train_model()`/`_evaluate_at_resolution()`/`_save_model()` had zero coverage); a real CPU micro-run suite now exercises it end-to-end. `cli.py`'s `cmd_eval_harness` and `visualization`'s `pareto_frontier` plot type were the other two real gaps, both now tested. All five gate at 85+ (cli.py 99%, visualization 100%, scenario set 94%, constants/seeding 100%).
-
-### Security
-- **Second unsafe-pickle-retry path, in the codec loaders (breaking for one flag-less flow)** — the same inversion fixed in the module-level `load_model_only()` existed again in the video-compression stack, and there it was *routinely reached* rather than latent. `load_codec` deserialized with a bare `torch.load`, which from torch 2.6 means `weights_only=True`; that rejects the three `Enum` members and the `created_at: datetime` every `CodecConfig.model_dump()` carries, so `load_codec` **failed on valid input**. `scripts/decode_video.py` caught that failure and retried with `weights_only=False` under a comment reading "fallback: manual loading for robustness" — so for every genuine checkpoint the unsafe path was the normal path, and a malicious file was executed precisely because it had failed the safe check. Proven end-to-end with a marker payload before fixing, and again after (payload no longer runs). Fixed at both ends: `SAFE_CODEC_GLOBALS` (the config module's own pure-data enums) is passed via a new `load_torch_checkpoint(..., extra_safe_globals=...)` parameter so the safe path *works*, and the fallback now uses the same chokepoint so falling back cannot escalate privilege. A loader whose safe path cannot succeed is a loader whose unsafe path becomes routine — that is the general lesson, and why the completeness of `SAFE_CODEC_GLOBALS` is asserted by reflection over the config module rather than restated as a list.
-- **Every first-party checkpoint loader is now safe by default** — the five CLI entry points that take a checkpoint path straight from an argument (`src/experiments/verify_transfer.py`, `scripts/play_engine.py`, `scripts/encode_video.py`, `scripts/decode_video.py`, and `scripts/inspect_checkpoint.py` — the fifth found by the adversarial pass, and the one most likely to be pointed at an unfamiliar file) route through `load_torch_checkpoint`, each exposing the hatch as an explicit `--allow-unsafe-pickle` flag so unpickling an untrusted file is a deliberate operator action rather than the default. `src/training/checkpoint.py`'s module docstring previously had to scope its safety claim to two modules and name these as exceptions; it now states the repo-wide position, with the two genuine caveats (`zoo/storage.py`'s own documented policy, and the CI-excluded `hf_space` snapshot) named rather than glossed.
-- **Public HuggingFace Space carried the same ACE path** — `hf_space/src/training/checkpoint.py::load_model_only` held a byte-for-byte copy of the original try-safe/except-unsafe fallback, and `deploy_space.py` uploads that bundle to a publicly reachable Space. Its module Security Note actively recommended that function ("for loading untrusted model weights only, use `load_model_only()`"). The fix is *ported* rather than imported, since the bundle must stand alone; it is CI-excluded, so it was verified by a manual six-point smoke (imports, datetime-carrying checkpoint still loads, payload blocked and not executed via both entry points, opt-in hatch still works as a control). **Corrected after review**: `load_model_only` turned out to have zero callers in that bundle, so fixing it alone would have remediated a dead function while the Space's *live* loads stayed open. Three live paths are now fixed too — `app.py`'s module-scope `MODEL = load_model(...)`, which unpickled a file `hf_hub_download` may have just fetched and was the highest-exposure deserialization in the bundle; the `verify_transfer.py` mirror; and `tools/gtp.py`'s load of `args.model`. No `weights_only=False` remains in `hf_space/` outside the opt-in hatch.
-- **Unsafe-pickle retry removed (breaking)** — the module-level `load_model_only()` caught *any* exception from the `weights_only=True` load and retried with `weights_only=False`, so a malicious pickle was executed **because** it failed the safe check. Reproduced with a benign marker payload. The obvious fix (deleting the fallback) is wrong and the test suite proved it: `BaseTrainer.save_checkpoint` stores `config.model_dump()`, which carries a `created_at: datetime`, so one first-party path genuinely needs non-tensor globals. Replaced with a single `load_torch_checkpoint()` chokepoint doing `weights_only=True` inside a **scoped** `torch.serialization.safe_globals` allowlist of exactly three pure-data constructors (`datetime`, `timezone`, `timedelta`). ~~Scoped rather than process-global so it cannot leak into unrelated `torch.load` calls.~~ **Corrected**: `torch.serialization.safe_globals` unions into a module-global set, so the widening *is* process-wide while the window is open. The leak is inherent to the torch API and is documented rather than denied; the resulting race between overlapping windows was real and is fixed with a module-level `RLock`. Failure raises `RuntimeError` and never retries; passing `allow_unsafe_pickle=True` (keyword-only; it defaults to `False`) is the explicit hatch for foreign files. A fourth unguarded load site (`_load_training_state`) was found and routed through the same chokepoint. Loading a checkpoint containing arbitrary pickled objects now raises unless the flag is passed; no first-party save path is affected.
-- **Checkpoint path traversal** — `CheckpointManager.load` performed no path validation whatsoever (no join against `checkpoint_dir`, no `resolve()`, no containment) and then pickle-loaded the result. Proven by probe: a manager rooted in a temp dir opened and read `/etc/hostname`. The security test that claimed to guard this had only ever passed by accident, via `PermissionError` on non-root CI runners. Relative paths now resolve against `checkpoint_dir` rather than CWD (a latent bug in its own right), the resolved path must be contained within it, and `allow_external=False` is threaded through `create_trainer` → `load_checkpoint` → `restore` → `load` so resume-from-elsewhere still works explicitly. Containment is checked *before* existence, preserving the `FileNotFoundError` contract for in-dir missing files.
-
-### Added
-- **Architectural import contracts are now executable** (`tests/regression/test_import_contracts.py`, `tests/support/import_graph.py`) — `scripts/audit_abstractions.py` already guards the *vertical* layering direction (an abstraction with no call site). Nothing guarded the *horizontal* one, and that is the direction that breaks silently: a single `from src.pde import ...` in the wrong file is a one-line diff that reads as convenience. Four declarative contracts, three of them scientifically rather than stylistically load-bearing. `src/refinement/` must stay domain-free, or "a refinement game is reusable across domains" is an unfalsifiable claim rather than a property. The **reference baselines** (`baselines.py`, `fem_baseline.py`) must not import the candidate search engine — if they did, the two arms of a comparison would share an *implementation* rather than an interface, and a defect in the shared code moves both arms in the same direction, which is invisible in a ratio. And `src/templates/` + `src/math_kernel/` must carry no domain dependency, or the reusable substrate is un-reusable by construction. Every contract carries a mandatory `reason`, for the same purpose the charter's deviations register does: an unexplained rule gets deleted the first time it is inconvenient. Three findings while measuring rather than asserting: `src/mcts/gumbel.py` genuinely imports `src.games.interface`/`state`, so `src.games` is in the forbidden list with `gumbel.py` a **recorded exemption** rather than being quietly dropped from the rule — and the guard's own `test_every_exemption_is_still_needed` caught the first draft, where the "exemption" explained an omission and therefore guarded nothing. `src/research/lshape_amr_compare.py` legitimately imports MCTS because it *is* the harness that drives both arms, so the baseline contract scopes to the baseline modules alone. Meta-guards throughout: a contract whose scope no longer resolves is **vacuous** and must fail rather than pass, and the exemption mechanism itself is proven against a synthetic contract rather than trusted. **7/7 mutation-killed**, including a planted leak and a planted relative import. The AST helpers were *extracted* from the stochastic layer's existing AC7 guard rather than forked, and that guard now delegates to them — two AST walks that must agree are two AST walks that will eventually disagree, and the payoff was immediate: a mutation of the shared boundary matcher was killed by the stochastic guard's parametrized test.
-- **Scope containment is a check, not a paragraph** (`docs/FOCUS.md`, `config/focus.yaml`, `scripts/check_focus.py`, the `focus` CI job) — an owner decision froze two tracks for this cycle (the codec model-zoo, and `dashboard/` + its `hf_space/` deploy mirror). A freeze recorded only in prose is a suggestion, so this makes it mechanical. The rule is deliberately **not** "do not touch frozen code": a freeze is a pause, not a ban, and this repository's own history shows what deleting too early costs — `video_compression` was cut on 2026-07-22 and reinstated the next day. It is "do not make a *substantive* change to a frozen track in the same changeset as core solver work", because that is what split attention looks like in a diff. "Substantive" is a line budget rather than a file count, and the distinction does real work immediately: this very branch edits `hf_space/src/__init__.py` to single-source a version string alongside a new `src/research/` module, and that is a seven-line shim, not codec work. A budget states the intent — *feature work is never seven lines* — in one auditable number that lives in the config; the alternative, an exemption list, only ever grows until each entry has silently narrowed the gate to nothing. Both halves are kept in step in **both directions**: a frozen track named in the config but missing from the doc fails, and a doc claiming a freeze the gate does not enforce fails too — the second being the failure mode the whole file exists to prevent. 45 tests, **8/8 mutation-killed**, including three that only became discriminating after a first mutation survived: the original exact-vs-prefix test compared `deploy_space.py` against `deploy_space_helpers.py`, which does not prefix-match either way, so it proved nothing; the real hazard is a config entry written `src/pde` silently swallowing `src/pde_extras/`. Runs on `pull_request` only, as its own job because the diff needs the merge base and `lint`'s checkout is deliberately shallow. It is **not** in `ci-success`'s `needs` yet — the same convention the `secrets` job documents, and for the same reason: a brand-new gate promoted into the merge path by the pull request that introduces it gives a first red no way to be triaged. The `focus-override` label is the escape hatch, deliberately visible, because an override nobody can see is the same as no gate.
-- **Governance surfaces are review-routed** (`.github/CODEOWNERS`) — `openspec/`, `evidence/`, `results/`, `config/baselines/` and the new focus files now appear in CODEOWNERS, so a change to what the project *claims* is never invisible in a pull request's file list. Recorded honestly as routing rather than enforcement: every path resolves to the same single owner, and CODEOWNERS cannot separate an author from an approver when there is one of them. Genuine separation needs distinct GitHub identities plus admin-enforced branch protection, none of which is repository-side config — so it is named as out of reach rather than implied.
-- **Agentic harness brought up to date: 4 new subagents, 3 new skills** (`.claude/`, now 9 agents / 12 skills / 4 commands, from 5/9/4) — each addition is grounded in a failure this project actually had rather than a role-coverage checklist. `numerics-verifier` (read-only, adversarial) exists because both retracted headlines were *correct code measuring the wrong thing*, and carries the four failure modes as a checklist: a degenerate substrate, a boundary condition never imposed, a norm that biases the comparison, and a convergence rate that is *too good* — the last being how a mid-spike geometry error was caught. `claims-auditor` (read-only, cannot author what it audits) checks that comparison claims cite artifacts containing both arms, that artifacts carry provenance, and — the part usually missed — that guards are not inert. `spec-author` (no `Edit`, so it cannot touch `src/`) is where the single human gate sits. `prior-art-scout` records the pattern behind all three retracted novelty claims: the danger is not a missing citation but a *misclassified* one, since VDGN was already cited in the repo's own prior-art table, labelled only "MARL". New skills: `openspec-change` (the supreme spec system had no scaffold — only `specs/` did), `run-provenance`, `claims-ledger`. Existing agents and skills updated for the substrate layer, opt-in MCTS instrumentation under a 90% branch gate, visible-skip discipline, the `[dev,fem]` preflight install, and the Python 3.10 floor. The harness suite grew 71 → 103 tests and earned its keep immediately: the cited-path check caught a new agent referencing `specs/project-charter/` when the delta actually lives at `openspec/changes/<id>/specs/project-charter/`.
-
-- **Gate 1 spec and change package for the element-local refinement substrate** (`specs/refinement_substrate.spec.md`, `openspec/changes/element-local-substrate/`) — **Draft, awaiting review before implementation.** Defines a stepwise `RefinementSubstrate` interface so both arms of any refinement comparison provably share one discretisation and differ only in how they choose what to refine, plus an *adequacy gate*: adaptive marking must beat uniform refinement at matched DOF, asserted as a log-log rate separation over a pinned DOF range — and the same assertion must **fail** on the tensor-grid control, because a gate that passes on both substrates is not a gate. Eight acceptance criteria, each grounded in a measurement from the task-zero spike rather than an argument: the two-error design is justified by the measured nodal-RMS drift (0.34→0.53 uniform vs 0.34→0.76 adaptive), mesh immutability by `mesh.p.flags.writeable` being `True`, the cost model by the estimator measuring ~2.5× the solve, and the geometry assertion by a wrong result the spike actually produced. Also adds `verified_error_certificate.spec.md` to the `specs/README.md` index, which had been missing since it was written.
-
-- **`.gitignore`'s blanket `*.json` would have silently swallowed every provenance sidecar** — found while committing the first one. The rule at `.gitignore:121` has a handful of negations, none covering `results/`, so `results/*.run.json` was ignored and **nothing errored**: the artifact would simply land alone, exactly as if the provenance module did not exist. Added `!results/**/*.json`, narrow enough that scratch JSON under `outputs/` stays ignored, and guarded by `TestSidecarsAreCommittable` — mutation-tested by removing the negation. This is the failure mode a guard is most needed for, because it is invisible rather than loud.
-- **Run provenance for committed artifacts** (`src/research/run_manifest.py`) — the charter requires every numeric headline claim to cite a committed artifact, but not that the artifact say *how it was produced*, and the gap is not theoretical: `results/lshape_mcts_vs_dorfler.csv` carries exactly one provenance column, `seed`. Not the search mode, not the marking fraction, not a git SHA — so it cannot be dated against the 2026-08-16 backup fix, while the harness still exposes the `legacy_adversarial` mode that produced the retracted number. A `RunManifest` is written beside an artifact as `<stem>.run.json` and records the config hash, git SHA and dirty flag, package versions, resolved seeds, per-arm parameters and counters, and the thresholds actually gated. Schema versioning follows `src/poc/baselines` (integer constant, `extra="ignore"`, explicit migration with a documented table). `collect_git_provenance` and `collect_package_versions` **never raise** — a provenance collector that throws inside a benchmark destroys the run it exists to document — and "unknown" is recorded rather than guessed, with `dirty=None` deliberately distinct from `False`. 100% branch coverage, 26 tests including a Hypothesis migration-idempotence property.
-- **The missing uniform-refinement arm is now a committed artifact** (`results/lshape_adaptive_vs_uniform.{csv,run.json}`, `scripts/run_adaptive_vs_uniform.py`) — see *Fixed* below. Both arms share one solver, one geometry predicate and one refinement primitive; only the marking differs.
-
-- **Retracted claims are guarded on the outward-facing SBIR surface** — three retraction guards already existed and between them left the highest-stakes surface uncovered: they scan the charter, `docs/related-work.md` + `README.md`, and `dashboard/` + `hf_space/`, but **nothing scanned `docs/business/`**. New `tests/regression/test_retracted_claims_guard.py` covers `docs/business/**`, `docs/doe_genesis/**`, `README.md` and `CLAUDE.md` for four retracted claim shapes. Two deliberate choices: markers are matched per **block** rather than per line, because the charter's line-level convention is wrong for prose — a correction note is inherently a multi-line blockquote and the marker word cannot appear on every line; and `docs/archive/**` is out of scope by construction, since archived PR reviews quote the fabricated figure legitimately under a banner and a guard that reverts on false positives is worse than none (the lesson of `check_doc_links.py`'s inline-span attempt, 105 false positives across 21 files). Mutation-tested four ways, each caught by a *named* test: the original violation restored verbatim, "uniformly single-step" reintroduced into an SBIR template, the fabricated transfer figure planted in a business document, and the scan roots emptied — because a guard that scans nothing passes everything. The exemption mechanism ships **empty**: the meta-test asserting every exemption is still needed immediately proved the one drafted for `CLAUDE.md` was already stale, because its milestone line carries its own markers.
-- **Element-local AMR substrate spike, with evidence** (`scripts/spikes/skfem_substrate_spike.py`, `evidence/spikes/2026-08-23-skfem-substrate.md`) — `tests/research/test_fem_baseline.py` had never executed in this environment (module-level `pytest.importorskip("skfem")`, so it skipped silently) and the `[fem]` extra was pinned `>=9.0` against a current 12.0.2. It passes **23/23 on 12.0.2** with no API drift; the extra is now pinned to the verified range `>=9.0,<13`. The decisive measurement: on the standard L-shaped Poisson benchmark with P1 elements, a ZZ recovered-gradient estimator and Dörfler marking at θ=0.5, the element-local substrate gives uniform `L2 ~ N^-0.710` against adaptive `L2 ~ N^-1.256` — adaptive beats uniform by **4–10× at matched DOF, widening**. On the current tensor-product substrate adaptive is 5–9× *worse*. The rates are the textbook AFEM result: uniform is rate-limited by the `r^(2/3)` corner singularity while element-local adaptive recovers the optimal P1 rate.
-
-- **Deterministic validation for the `.claude/` agentic harness** — 9 skills, 5 subagents, 4 slash commands, the SessionStart hook and `settings.json` are executable configuration that had **no tests at all**: a skill citing a deleted path, an agent declaring a tool that does not exist, or a permission naming a renamed module each failed only at the moment someone relied on it. New `tests/claude/` suite (71 tests, hermetic and deterministic — no network, no model calls, ~0.25 s) checks frontmatter, name-to-path agreement, tool-name validity, cited-path existence, permission-module resolution, hook shell syntax, name collisions, parse determinism, and that every non-elided python snippet compiles. Data-driven rather than enumerated, so a new artifact is validated the moment it is added. Deliberate forward references (`src/pde/certificate/`, which the `certificate-validation` *kickoff* skill instructs you to create) are declared with a reason **and** asserted to still be forward, so a stale exemption fails rather than silently weakening the check — the distinction that makes this gateable where `check_doc_links.py`'s naive form was not. Mutation-tested four ways.
-- **gitleaks actually runs** — `.gitleaks.toml` and a `make gitleaks` target had both existed for months while **nothing invoked either**, in CI or pre-commit. A secret scanner that never runs is worse than none, because its presence in the tree reads as coverage. Now a dedicated `Secret Scan` **job** in `ci.yml` (`fetch-depth: 0`). It first landed as a step inside the 3-way `test-fast` matrix, which was wrong twice over and failed on its first run: it executed three times per push, and `actions/checkout`'s default shallow clone left the action's diff scan unable to resolve the base revision — `git` errored, the scan covered **~0 bytes**, and it still logged "no leaks found in partial scan" before exiting 1. A scanner reporting clean over zero bytes is exactly the failure mode being corrected here, so the fix is full history plus a single run. Deliberately **not** in `ci-success`'s needs list yet: it reports now and blocks once it has been green across a few pushes. the Makefile target degrades *loudly* (it prints that the scan did NOT run and names CI as the enforcing copy) rather than passing quietly on a machine without the binary, since it is now chained into `make pre-pr`.
-- **`make pre-pr` covers what CI covers again** — new `test-demos` and `test-claude` targets mirror their CI steps and are chained in. Without them `pre-pr` was narrower than CI, which is the same drift that let `tests/demos/` and `tests/notebooks/` go unexecuted in CI for months.
-
-### Changed
-- **Every resampled p-value and confidence interval is now reproducible on request** (`src/poc/statistics/significance.py`) — `StatisticalAnalyzer` drew from NumPy's *global, unseeded* stream at **four** separate sites, not the one an earlier audit named: `_bootstrap_test`'s shuffle, `_permutation_test`'s shuffle, and both `choice` calls inside `_bootstrap_ci`. Two runs over identical inputs therefore returned different intervals — in the one module whose entire job is rigour, inside a project whose governance position is that every number traces to a committed artifact. Fixed with a typed `SignificanceTest.random_seed` field plus an injectable `resampler` on the analyzer, resolved by precedence (explicit override → configured seed → global stream). The unseeded path is left **byte-identical**, deliberately: it is the only fallback under which a caller who already does `np.random.seed(...)` keeps getting today's results, and all 52 pre-existing tests pass untouched. The cost of that default is stated in the field's own description rather than glossed. Wired through in `ScalingLawScenario`, whose recorded `arm_comparison_p` is now derivable from the scenario's declared seed. 20 new tests, **8/8 mutation-killed** — including that a seed *accepted and then ignored* must not look like success, and that zero is a legal seed rather than an absent one. Two test-authoring traps are recorded in the tests themselves because each produced a *passing* non-test first: well-separated arms pin a permutation p-value to 0.0 for every seed, so the RNG cannot show through; and the scaling-law scenario's default `significance_test_type` is `mann_whitney`, which is deterministic and never reaches an RNG at all, so a test left on the default could not detect an unseeded draw.
-- **Licensing and IP posture settled and recorded** (`docs/adr/0004-licensing-and-ip-posture.md`) — an external strategy review flagged this as the one decision that is irreversible, costs no engineering time, and blocks nothing, and therefore should be settled explicitly rather than discovered later. **MIT stays and development continues in the open.** The reasoning is the disclosure that has already happened: a public repository with 663 commits and a public HuggingFace Space mirror, against an `IP_STRATEGY.md` whose three provisional patent claims are still listed as *Pending*. US filing runs on a 12-month clock from public disclosure and most other jurisdictions apply absolute novelty, so filing on what is already published here is largely unavailable — the operative rule going forward is that a provisional must **precede** the disclosure it protects. The employment-IP question about `src/video_compression/` is recorded as an open owner decision rather than answered; the subsystem is frozen for this cycle, so it blocks nothing. ADR 0003 is deliberately left unallocated because unmerged PR #118 claims it.
-- **OpenSpec archive convention documented** (`openspec/project.md`) — a change package is active while `tasks.md` has unchecked boxes, and moves to `openspec/changes/archive/<change-id>/` once complete. Without a convention, completed and in-flight work are indistinguishable in a directory listing and the tree grows monotonically — which matters now that six more change packages are planned. `project-charter-alignment/` (36/36 complete) is an explicit, reasoned exception: it is cited by name from `CHANGELOG.md`, which is append-only so the reference cannot be repointed, and from `tests/docs/test_charter_alignment.py`'s docstring. Archiving it would break a historical citation to gain tidiness.
-
-- **C4 architecture gains a Quality Gates & Agentic Harness component diagram** (`docs/architecture/c4_mermaid.md`, v3.0.0 → v3.1.0) — the `.claude/` harness and the CI gate layer are enforced on every push but appeared in no architecture diagram. Includes the "deliberately not gated" register with reasons rather than numbers. Diagram validated as rendering (C4, 37 KB SVG).
-- **README claim corrections** — the file contradicted itself on test counts ("7,000+ test functions" in prose vs "3,000+ tests" in the tree); measured and reconciled to **8,573 test functions / 9,770 collected**. The per-module gate count is stated as **34** (measured: 30 inline `--cov-fail-under` plus 4 native-runner `coverage report --fail-under`) — an initial draft of this same change asserted 31 without counting, and was corrected before commit. Dropped the stale `src/mcts/constants.py` reference (that module was deleted in the round-2 hygiene pass as a zero-consumer re-export shim), and surfaced the `claude/`, `demos/` and `notebooks/` test tiers.
-
-### Fixed
 - **CI's 3.10 job broke at collection on stdlib that is 3.11+** — `tests/docs/test_version_consistency.py` imported `tomllib` and `scripts/run_adaptive_vs_uniform.py` used `datetime.UTC`, both added in Python 3.11, while `pyproject.toml` declares `requires-python = ">=3.10"` and CI runs a 3.10 job. An unimportable test module is a **collection** error, so this aborted the entire fast lane on 3.10 rather than failing one test. Neither is caught by ruff: `target-version = "py310"` governs which *rewrites* ruff suggests, not which stdlib you reach for. The version reader now parses `[project].version` with a table-anchored regex (no dependency, works on every supported version), and the timestamp uses `timezone.utc`. New guard `tests/docs/test_python_floor_compatibility.py` AST-scans `src/`, `tests/`, `scripts/`, `dashboard/`, `config/` and `conftest.py` for stdlib newer than the declared floor, reading the floor **from `pyproject.toml`** so raising `requires-python` relaxes the guard automatically instead of stranding a stale rule. Guarded use — `try`/`except ImportError`, or behind a `sys.version_info` check — is deliberately not flagged. Mutation-tested three ways, including restoring each of the two real failures verbatim, and the tree-wide scan confirms no other instances exist.
 
 - **The test-suite-size claim was typed, not measured** — the charter's evidence register said "7,000+ test functions" citing `tests/`, the weakest citation in the register (a whole directory proves nothing), while `CLAUDE.md`'s 2026-08-16 milestone said "705+ tests" with no indication whether that meant *added by that sprint* or *total*. The real tree has **8,628 test functions across 432 files**. Both claims are now unambiguous, and the floor is **machine-checked**: a new guard AST-counts the tree and fails if the claimed floor exceeds it, or if the floor has drifted so far below reality that it is a fossil rather than a claim. AST rather than `pytest --collect-only` so counting is deterministic, needs no imports (an absent optional dependency cannot skew it), takes milliseconds, and counts *functions* rather than parametrized cases — which is what the claim says. Mutation-tested three ways: an overclaim, a fossil floor, and removing the claim entirely, since a guard whose subject disappears must fail rather than go quietly inert.
@@ -806,19 +996,12 @@ An adversarial gap analysis against `main` verified 19 findings across Slices A�
 - **Three factually-incorrect code comments corrected** — the 1D RBF "center_y is inert" claim (disproved above), the phase-delegation "scale-normalized" claim (`get_phase` divides by `_initial_error`, which `BasisSelectionGame` never sets, so it falls back to 1.0), and the mesh-refinement "~100× slower budget drain" claim (dimension-dependent, and inverts in 3D at high polynomial degree). Also: `CLAUDE.md`'s 2026-08-16 milestone still listed the three deleted `constants.py` modules as delivered, and `make format` was narrower than the widened `make lint`.
 - **`CLAUDE.md` claimed `video_compression` "no longer exists"** — false for 4 of the 5 paths it named (the package was cut 2026-07-22 and reinstated the next day for the Codec Model-Zoo work). Corrected, along with a second copy of the same false claim elsewhere in the file. A migration guide recommending the now-deleted `src.*.constants` modules as the "preferred v0.4+" import path was also corrected.
 
-### Changed
-- **Config-bound values surfaced** — `MeshRefinementConfig.hp_switchover_level` gained `le=20` and a cross-field check inside the *existing* `validate_mesh_config` validator: it must be strictly less than `max_refinement_level`, since the p-refinement branch of `HP_REFINEMENT` is reachable only on `[hp_switchover_level, max_refinement_level−1]` and an equal-or-greater value silently degenerated hp-refinement into a pure h-refiner. `POTENTIAL_FIELD_MIN_DISTANCE` moved from a module constant to `SwarmPlanningConfig.potential_field_min_distance` (`gt=0`), with its 12-line comment — which had argued *against* surfacing it — rewritten to state what the value actually does. Value-preserving, proven bitwise across 240 float values in both nominal and floor-binding geometries. No shipped YAML sets any of these fields.
-- **`src/video_compression` type safety** — fixed 23 of 28 `mypy --strict` errors (missing `register_buffer` companion annotations, a systemic `np.ndarray[np.int32, ...]` shape/dtype type-parameter typo, list/dict annotations, a return type needing narrowing, a stale ignore). Repo-wide `mypy src/ --strict` is now **31 → 8 errors**; the remaining 8 are the 5 `codec/codec.py` errors needing real interface design plus 3 pre-existing torch-version-dependent `unused-ignore`s CI already documents as accepted.
-- **Hardcoded values surfaced as config fields / named constants** — `basis_selection.py` RBF candidate centers now sample the operator's real `domain_min`/`domain_max` instead of a hardcoded `[0,1]` unit square (wrong for e.g. `LShapedPoissonOperator`'s `[-1,1]²`); the budget-decrement path in `basis_selection.py`/`mesh_refinement.py` now uses the same `cost_per_dof * dof_added` the reward path in those files already used (**behavior change**: the old flat `cost = 1.0` exhausted the budget ~100× faster than the reward accounted for); phase detection delegates to the config-driven, scale-normalized `PDEGame.get_phase()`; `mesh_refinement.py`'s h-vs-p switchover became an `hp_switchover_level` field; `swarm_planning.py`'s obstacle floor and `operators.py`'s duplicated Cole-Hopf constants became named constants; 7 `src/mcts/` call sites now use the existing `DEFAULT_TEMPERATURE`.
-
-### Removed
-- **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
-
-### Added
-- **Next Steps Review (2026-08-18)** — Added `docs/NEXT_STEPS_REVIEW_2026-08-18.md`, a peer-reviewed, evidence-based case for the highest-leverage next engineering steps (P0-1 OOD-reward defect scope, the JAX/`src/backend` keep-or-cut decision, PR #118/#57 salvage triage, and a re-scoped, effort-estimated plan for the `lshape_amr_compare` AMR novelty-claim fork).
-- **Code Hygiene & Correctness Review (2026-08-19)** — Added `docs/CODE_HYGIENE_REVIEW_2026-08-19.md`: a hands-on, execution-verified pass across `src/mcts/`, `src/pde/`, `src/refinement/`, `src/integrations/`, and `src/data/` by four repo-specific specialist agents plus an adversarial verification pass. Coverage raised on `src/data/physics_dataset.py` (23%→100%), `src/refinement` (96%→100%), `src/mcts` (96.29%→96.95%), `src/integrations/lm_studio` (94.77%→95.62%). ~130 new/extended tests. Also surfaces (report-only, not fixed): a stale `video_compression`-was-deleted claim at `CLAUDE.md:115` (4 of 5 named paths actually exist, 28 undocumented `mypy --strict` errors and no coverage gate on that package), several hardcoded-value findings in `src/pde/games/`, a broken `make demo` target and a silently-drifted `make test-stoch` coverage command, and an unbounded self-play buffer-fill loop with no SIGINT/SIGTERM handling anywhere in the training stack. **Round 2 (same day) appended to the same doc**: executed most of that report-only list plus the packages round 1 never reached, via 8 parallel agent waves — see the Fixed/Changed/Removed entries above. ~5,018 tests passing, 0 failures.
-- **Per-module coverage gate for `src/video_compression`** — the package ran 933 tests in CI with **no coverage gate at all**, because `pyproject.toml` still omits it from `--cov=src` (a leftover from when it was believed retired, so a bare `--cov=src/video_compression` silently measured 0%). Gated at 83 against a measured 85.43% using the same inline-coveragerc technique `phase2-zoo-validation.yml` already uses for the identical collision; charter gates register updated. Separately, `src/distributed` coverage rose 68.91%→82.34% (`worker.py` 22%→99%).
-- **Tests for previously-unexercised reachable code** — Go illegal-move rejection, `get_result()`'s White/draw branches, and `get_winner()`; Chess queenside-castling *execution* and threefold-repetition (both claimed by module docstrings but never actually driven by a test); `CalibrationDataReader`; and all of `src/distributed/worker.py`. The last of these surfaced a real bug, reported not fixed: `SelfPlayWorker.generate_batch` over-counts `games_completed` when `stop()` triggers its early break.
+### Security
+- **Second unsafe-pickle-retry path, in the codec loaders (breaking for one flag-less flow)** — the same inversion fixed in the module-level `load_model_only()` existed again in the video-compression stack, and there it was *routinely reached* rather than latent. `load_codec` deserialized with a bare `torch.load`, which from torch 2.6 means `weights_only=True`; that rejects the three `Enum` members and the `created_at: datetime` every `CodecConfig.model_dump()` carries, so `load_codec` **failed on valid input**. `scripts/decode_video.py` caught that failure and retried with `weights_only=False` under a comment reading "fallback: manual loading for robustness" — so for every genuine checkpoint the unsafe path was the normal path, and a malicious file was executed precisely because it had failed the safe check. Proven end-to-end with a marker payload before fixing, and again after (payload no longer runs). Fixed at both ends: `SAFE_CODEC_GLOBALS` (the config module's own pure-data enums) is passed via a new `load_torch_checkpoint(..., extra_safe_globals=...)` parameter so the safe path *works*, and the fallback now uses the same chokepoint so falling back cannot escalate privilege. A loader whose safe path cannot succeed is a loader whose unsafe path becomes routine — that is the general lesson, and why the completeness of `SAFE_CODEC_GLOBALS` is asserted by reflection over the config module rather than restated as a list.
+- **Every first-party checkpoint loader is now safe by default** — the five CLI entry points that take a checkpoint path straight from an argument (`src/experiments/verify_transfer.py`, `scripts/play_engine.py`, `scripts/encode_video.py`, `scripts/decode_video.py`, and `scripts/inspect_checkpoint.py` — the fifth found by the adversarial pass, and the one most likely to be pointed at an unfamiliar file) route through `load_torch_checkpoint`, each exposing the hatch as an explicit `--allow-unsafe-pickle` flag so unpickling an untrusted file is a deliberate operator action rather than the default. `src/training/checkpoint.py`'s module docstring previously had to scope its safety claim to two modules and name these as exceptions; it now states the repo-wide position, with the two genuine caveats (`zoo/storage.py`'s own documented policy, and the CI-excluded `hf_space` snapshot) named rather than glossed.
+- **Public HuggingFace Space carried the same ACE path** — `hf_space/src/training/checkpoint.py::load_model_only` held a byte-for-byte copy of the original try-safe/except-unsafe fallback, and `deploy_space.py` uploads that bundle to a publicly reachable Space. Its module Security Note actively recommended that function ("for loading untrusted model weights only, use `load_model_only()`"). The fix is *ported* rather than imported, since the bundle must stand alone; it is CI-excluded, so it was verified by a manual six-point smoke (imports, datetime-carrying checkpoint still loads, payload blocked and not executed via both entry points, opt-in hatch still works as a control). **Corrected after review**: `load_model_only` turned out to have zero callers in that bundle, so fixing it alone would have remediated a dead function while the Space's *live* loads stayed open. Three live paths are now fixed too — `app.py`'s module-scope `MODEL = load_model(...)`, which unpickled a file `hf_hub_download` may have just fetched and was the highest-exposure deserialization in the bundle; the `verify_transfer.py` mirror; and `tools/gtp.py`'s load of `args.model`. No `weights_only=False` remains in `hf_space/` outside the opt-in hatch.
+- **Unsafe-pickle retry removed (breaking)** — the module-level `load_model_only()` caught *any* exception from the `weights_only=True` load and retried with `weights_only=False`, so a malicious pickle was executed **because** it failed the safe check. Reproduced with a benign marker payload. The obvious fix (deleting the fallback) is wrong and the test suite proved it: `BaseTrainer.save_checkpoint` stores `config.model_dump()`, which carries a `created_at: datetime`, so one first-party path genuinely needs non-tensor globals. Replaced with a single `load_torch_checkpoint()` chokepoint doing `weights_only=True` inside a **scoped** `torch.serialization.safe_globals` allowlist of exactly three pure-data constructors (`datetime`, `timezone`, `timedelta`). ~~Scoped rather than process-global so it cannot leak into unrelated `torch.load` calls.~~ **Corrected**: `torch.serialization.safe_globals` unions into a module-global set, so the widening *is* process-wide while the window is open. The leak is inherent to the torch API and is documented rather than denied; the resulting race between overlapping windows was real and is fixed with a module-level `RLock`. Failure raises `RuntimeError` and never retries; passing `allow_unsafe_pickle=True` (keyword-only; it defaults to `False`) is the explicit hatch for foreign files. A fourth unguarded load site (`_load_training_state`) was found and routed through the same chokepoint. Loading a checkpoint containing arbitrary pickled objects now raises unless the flag is passed; no first-party save path is affected.
+- **Checkpoint path traversal** — `CheckpointManager.load` performed no path validation whatsoever (no join against `checkpoint_dir`, no `resolve()`, no containment) and then pickle-loaded the result. Proven by probe: a manager rooted in a temp dir opened and read `/etc/hostname`. The security test that claimed to guard this had only ever passed by accident, via `PermissionError` on non-root CI runners. Relative paths now resolve against `checkpoint_dir` rather than CWD (a latent bug in its own right), the resolved path must be contained within it, and `allow_external=False` is threaded through `create_trainer` → `load_checkpoint` → `restore` → `load` so resume-from-elsewhere still works explicitly. Containment is checked *before* existence, preserving the `FileNotFoundError` contract for in-dir missing files.
 
 ## [0.4.0-dev] - 2026-08-16
 

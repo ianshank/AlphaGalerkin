@@ -115,6 +115,14 @@ dev = [
     "ruff==0.15.8",
     # Pin pydantic to align with lint step and avoid 2.10+ behavioural changes
     "pydantic>=2.7,<2.10",
+    # Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02): the
+    # blocking CI lanes run with `--disable-socket --allow-unix-socket
+    # --allow-hosts=127.0.0.1,localhost` so a test that reaches the network is
+    # a visible failure rather than a false pass that depends on runner egress
+    # (hygiene B35). The flags live in ci.yml's HERMETIC_PYTEST_FLAGS and the
+    # Makefile's variable of the same name; tests/docs/test_fast_lane_is_hermetic.py
+    # keeps the copies equal.
+    "pytest-socket>=0.7",
     # Dashboard test dependencies
     "gradio>=6.0.0",
     "matplotlib>=3.7.0",
@@ -496,6 +504,24 @@ disable_error_code = ["assignment", "arg-type", "return-value", "operator", "uni
                       "call-overload", "no-untyped-call", "no-untyped-def",
                       "type-abstract", "has-type", "unused-ignore", "type-var"]
 
+# R-03 (docs/ENGINEERING_REFLECTION_2026-09-11.md): the ONLY module in src/ still
+# emitting mypy --strict diagnostics. The 5 diagnostics come from 3 real defects
+# at the cited lines, all of them union types never narrowed before use:
+#   :392 and :515 -- `self.entropy_model` is typed as the base `nn.Module`, so
+#     `.compress` / `.hyper_synthesis` resolve through `Module.__getattr__` to
+#     `Tensor | Module`; the `Tensor` arm is not callable  [operator]
+#   :518 / :520 / :531 -- the `scales: Tensor | None` parameter (declared :463)
+#     is reassigned from the `.hyper_synthesis` call and used without a None
+#     guard  [union-attr] / [arg-type]
+# Exactly these three codes are disabled, NOT `ignore_errors = true`, so any new
+# class of error in the file still fails. The fix is a `Tensor | None` narrowing
+# plus a concrete `entropy_model` annotation inside a frozen track.
+# remove_when: the codec freeze in config/focus.yaml lifts (frozen_tracks: codec).
+# tracked in CHANGELOG.md ([Unreleased] / Changed).
+[[tool.mypy.overrides]]
+module = "src.video_compression.codec.codec"
+disable_error_code = ["operator", "union-attr", "arg-type"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -506,6 +532,7 @@ markers = [
     "e2e: end-to-end integration tests",
     "gpu_required: tests requiring GPU",
     "fem_required: tests requiring the optional scikit-fem extra ([fem])",
+    "eval_harness_required: tests requiring the optional langfuse-eval-harness git extra ([eval-harness])",
     "onnx_required: tests requiring ONNX",
     "jax: JAX-specific tests",
     "cross_backend: cross-backend equivalence tests",
@@ -516,6 +543,7 @@ markers = [
     "benchmark: performance and scaling benchmark tests",
     "sanity: import and config schema smoke tests",
     "video: video compression codec and benchmark tests",
+    "network: needs real network egress; deselected from the hermetic fast lane (deselect with '-m \"not network\"')",
 ]
 
 [tool.coverage.run]
@@ -538,10 +566,14 @@ omit = [
     "src/research/fem_baseline.py",
     "src/research/substrates/skfem_tri.py",
     # The eval-harness adapter requires the optional [eval-harness] git dependency
-    # (langfuse-eval-harness, not on PyPI). Its tests use ``pytest.importorskip``
-    # and skip cleanly in the default CI matrix, so it is omitted from the global
-    # gate (like fem_baseline); per-module coverage is enforced by the dedicated
-    # "Eval-harness adapter" Regression Surface command when the extra is present.
+    # (langfuse-eval-harness, not on PyPI). Its tests carry ``eval_harness_required``
+    # (root conftest.py skips them *visibly* with a count when the extra is absent,
+    # and hard-fails collection under ALPHAGALERKIN_REQUIRE_EXTRAS=1), so it is
+    # omitted from the global gate like fem_baseline. Per-module coverage is gated
+    # by the `test-extras` job's "Coverage gate (src/integrations/eval_harness)"
+    # step in ci.yml, which installs the extra and overrides this omit with an
+    # inline coveragerc (R-13). Until 2026-09-11 this comment cited an
+    # "Eval-harness adapter" Regression Surface command that never existed.
     "src/integrations/eval_harness/*",
     # Retired sub-projects excluded from the active AlphaGalerkin physics charter
     "src/video_compression/*",

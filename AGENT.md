@@ -141,6 +141,43 @@ poc/ ──→ [validates modeling, training, math_kernel]
 deployment/ ←── modeling/ (exports trained models)
 ```
 
+## Concurrent subagents
+
+Concurrent subagents work in their own `git worktree` and never run `git stash`, `git reset`, `git checkout -- <path>` or `git clean` in a shared working tree.
+
+That sentence is the rule's anchor: it is repeated verbatim in every `.claude/agents/*.md` whose
+frontmatter grants `Bash`, and `tests/claude/test_worktree_rule.py` fails if either copy drifts.
+The rule in full:
+
+1. **One worktree per concurrent subagent.** Create it with
+   `git worktree add <path> -b <branch>` as a **sibling directory outside the repository**
+   (`../AlphaGalerkin-<task>`), never inside it — a nested worktree is a directory the primary
+   checkout's own tooling (`ruff`, pytest collection, `git add -A`, the Docker build context)
+   walks into. `settings.json` already allows `Bash(git worktree:*)`.
+2. **No tree-wide git commands in a shared working tree.** `git stash`, `git reset`,
+   `git checkout -- <path>` and `git clean` act on the whole working tree, not on the caller's
+   file scope, so in a shared tree each one reaches every other agent's uncommitted edits.
+   Read-only commands (`git status`, `git diff`, `git log`) and pathspec-narrowed staging
+   (`git add <explicit paths>`) are fine anywhere.
+3. **Commit on a dedicated branch and hand the branch name back.** The orchestrator merges,
+   rebases or cherry-picks; a subagent never pushes, never rebases, and never switches the
+   primary checkout's branch.
+4. **Before the lockfile lands, run `python -m …` from the worktree root.** The editable install
+   (`pip install -e .`) points at the *primary* checkout, so a module imported from anywhere else
+   resolves to the primary tree's code rather than the worktree's. `cd` into the worktree first,
+   then `python -m pytest …` / `python -m scripts.<entry> …`. (The lockfile is reflection ticket
+   R-04b in `docs/ENGINEERING_REFLECTION_2026-09-11.md`; this clause retires with it.)
+
+**The incident — B22 in `docs/CODE_HYGIENE_AUDIT.md`.** During PR #140 three background agents
+were dispatched against *non-overlapping* file sets in the *same* working tree. One agent ran
+`git stash` / `git reset` internally — not instructed — and stashed a second agent's uncommitted,
+unrelated test-file edits together with its own in-progress work. Nothing was lost that time
+(`git reset` with no target is index-only; the second agent recovered its files with
+`git checkout stash@{0} -- <its files>`), but the mechanism is general: any subagent with Bash
+access can run tree-wide git commands that affect every agent sharing that tree, whether or not
+their file scopes overlap. Non-overlapping *file* scopes do not isolate agents; separate
+*worktrees* do.
+
 ## Global Constraints
 
 1. **Resolution Independence**: Never hardcode board sizes or spatial dimensions. Use normalized coordinates on [0,1]^d.

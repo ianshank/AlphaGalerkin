@@ -38,7 +38,7 @@ dataset:
 target:
   type: callable
   params:
-    function: src.integrations.eval_harness.target:run_basis_cell
+    path: src.integrations.eval_harness.target:run_basis_cell
 
 scorers:
   - type: final_residual

@@ -296,7 +296,7 @@ Guards: CLAUDE.md row *"Abstraction audit (F0/F1 screen)"*.
 
 | Test | Journey | Asserts |
 | --- | --- | --- |
-| `test_audit_abstractions_with_the_ci_gated_argv_is_clean` | parse the `lint` job for the **first** `python -m scripts.audit_abstractions … --fail-on-missing` line — the one with explicit roots (the second step expands `$(ls -d src/*/ …)` and is not hermetically parseable, so it is deliberately not the source); run it | exit 0; the parsed root set equals the four CLAUDE.md names — a fifth or a missing one fails, so the row and the workflow cannot diverge |
+| `test_audit_abstractions_with_the_ci_gated_argv_is_clean` | parse the `typecheck` job (the audit lived in `lint` until the 2026-09-11 split) for the **first** `python -m scripts.audit_abstractions … --fail-on-missing` line — the one with explicit roots (the second step expands `$(ls -d src/*/ …)` and is not hermetically parseable, so it is deliberately not the source); run it | exit 0; the parsed root set equals the four CLAUDE.md names — a fifth or a missing one fails, so the row and the workflow cannot diverge |
 | `test_audit_report_only_root_exits_zero_with_findings` | `python -m scripts.audit_abstractions src/backend` | exit 0 *(measured)*; findings printed |
 
 Dropped from v1: `check_focus --base HEAD --head HEAD` (empty diff by construction — nothing
@@ -358,7 +358,7 @@ Measured where a measurement exists; otherwise per-process torch import ≈ 3–
 
 | Phase | Files | Tests | Runtime (CPU) | CI job | Markers |
 | --- | --- | --- | --- | --- | --- |
-| 0 | 2 guards + wiring + 7 assertion fixes + 2 src fixes | ~14 | < 2 s hermetic; existing suite 130–310 s *(measured)* | `test-e2e` (new), guards in `lint` | — |
+| 0 | 2 guards + wiring + 7 assertion fixes + 2 src fixes | ~14 | < 2 s hermetic; existing suite 130–310 s *(measured)* | `test-e2e` (new); the guards run in the fast lane (`test-fast`, where every `tests/docs/` guard runs — this row said `lint` when written, and since the 2026-09-11 R-12a split `lint` is ruff-only) | — |
 | 1 | 3 | ~14 | 4.1 < 5 s/run; 4.2 6 s/run × 3; 4.3 tensor < 5 s, fem unmeasured | `test-e2e`; 4.3 fem in `test-extras` | `e2e`; `fem_required` on one |
 | 2 | 2 | ~10 | ~1 min transfer/stochastic pairs (est.); 5.2 8 s/run *(measured)* | `test-e2e` | `e2e` |
 | 3 | 3 | ~8 | ~40 s, process startup (est.) | `test-e2e` | `e2e` |

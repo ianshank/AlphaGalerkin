@@ -24,8 +24,14 @@ element-local policy**.
 
 The freeze **lifts** on that signed result. `config/focus.yaml` still lists
 `codec` and `interactive-surfaces` so the split-attention gate keeps working
-until a follow-up re-scopes tracks (empty `frozen_tracks` is rejected; promoting
-the `focus` job into `ci-success` is a separate PR).
+until a follow-up re-scopes tracks (empty `frozen_tracks` is rejected). The
+`focus` job is a **hard merge gate** in `ci-success` since 2026-09-11 (plan
+R-09): it runs on pull requests only, so `ci-success` accepts a `skipped`
+result exactly when the event is not a pull request or the visible
+`focus-override` label is present, and fails the build on a skip it cannot
+explain. `tests/docs/test_ci_success_hard_gates.py` keeps both clauses in
+place. Nothing in the YAML changed for that promotion (decision D9 of
+`docs/ENGINEERING_REFLECTION_2026-09-11.md`).
 
 Active surfaces: `src/refinement/`, `src/pde/`, `src/mcts/`, `src/research/`,
 and the governance layer (`openspec/`, `specs/`, `tests/docs/`,

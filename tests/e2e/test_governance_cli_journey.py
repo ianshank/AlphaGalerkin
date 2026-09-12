@@ -12,7 +12,7 @@ parses the workflow, asserts the root *set* equals the four the row names, and
 then runs exactly that argv — so the documentation, the gate's scope, and the
 gate's verdict are asserted together.
 
-**Parsing scope, deliberately narrow.** The ``lint`` job runs
+**Parsing scope, deliberately narrow.** The ``typecheck`` job (``lint`` until 2026-09-11) runs
 ``scripts.audit_abstractions`` three times. Only the *first* has explicit roots
 plus ``--fail-on-missing``; the second expands ``$(ls -d src/*/ | grep -v ...)``
 in the shell and so is not hermetically parseable (a test that tried would have
@@ -52,8 +52,10 @@ AUDIT_MODULE = "scripts.audit_abstractions"
 EXIT_OK = 0
 
 #: The workflow carrying the blocking gate, and the job the audit runs in.
+#: The audit lived in ``lint`` until 2026-09-11, when the torch-dependent
+#: static checks were split into their own ``typecheck`` job (plan R-12a).
 CI_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
-LINT_JOB = "lint"
+AUDIT_JOB = "typecheck"
 
 #: The flag that turns the audit from a report into a gate.
 FAIL_ON_MISSING_FLAG = "--fail-on-missing"
@@ -86,8 +88,8 @@ EXPECTED_COMMAND_PREFIX = ("python", "-m", AUDIT_MODULE)
 _CONTINUATION = re.compile(r"\\\n\s*")
 
 
-def _lint_job_steps() -> list[dict[str, Any]]:
-    """Return the ``lint`` job's steps, parsed from ``ci.yml``.
+def _audit_job_steps() -> list[dict[str, Any]]:
+    """Return the audit job's (:data:`AUDIT_JOB`) steps, parsed from ``ci.yml``.
 
     Returns:
         One mapping per step, in workflow order.
@@ -97,15 +99,15 @@ def _lint_job_steps() -> list[dict[str, Any]]:
     assert isinstance(document, dict), f"{CI_WORKFLOW} did not parse to a mapping"
     jobs = document.get("jobs")
     assert isinstance(jobs, dict), f"{CI_WORKFLOW} declares no jobs"
-    job = jobs.get(LINT_JOB)
-    assert isinstance(job, dict), f"{CI_WORKFLOW} has no '{LINT_JOB}' job"
+    job = jobs.get(AUDIT_JOB)
+    assert isinstance(job, dict), f"{CI_WORKFLOW} has no '{AUDIT_JOB}' job"
     steps = job.get("steps")
-    assert isinstance(steps, list), f"{CI_WORKFLOW}::{LINT_JOB} has no steps"
+    assert isinstance(steps, list), f"{CI_WORKFLOW}::{AUDIT_JOB} has no steps"
     return [step for step in steps if isinstance(step, dict)]
 
 
 def _first_gated_audit_command() -> list[str]:
-    """The first ``lint`` command that gates on the audit with explicit roots.
+    """The first command in the audit job that gates on the audit with explicit roots.
 
     Backslash continuations are folded first, because the workflow wraps the
     invocation across two lines and the roots and the flag are only on one
@@ -120,7 +122,7 @@ def _first_gated_audit_command() -> list[str]:
             returning an empty list.
 
     """
-    for step in _lint_job_steps():
+    for step in _audit_job_steps():
         script = step.get("run")
         if not isinstance(script, str):
             continue
@@ -132,7 +134,7 @@ def _first_gated_audit_command() -> list[str]:
                 continue
             return shlex.split(command)
     raise AssertionError(
-        f"{CI_WORKFLOW}::{LINT_JOB} has no '{AUDIT_MODULE} ... {FAIL_ON_MISSING_FLAG}' "
+        f"{CI_WORKFLOW}::{AUDIT_JOB} has no '{AUDIT_MODULE} ... {FAIL_ON_MISSING_FLAG}' "
         "step with explicit (non-substituted) roots"
     )
 

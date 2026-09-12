@@ -308,7 +308,16 @@ deliberately unchecked — adding a CI gate should not nag a charter edit.
 | `src/core` | 85 |
 | `src/deployment` | 25 |
 | `tests/support` | 85 |
+| `src/integrations/eval_harness` | 96 |
 <!-- charter:gates:end -->
+
+The `src/integrations/eval_harness` row landed at `1` as a **tripwire pending measurement**
+(R-13, 2026-09-11) because the `[eval-harness]` git extra could not be installed where the gate
+was authored. The first `test-extras` run that reported a number (run 34658949836, the same day)
+measured **98.16%** branch — and failed on a real defect the tripwire exposed: the shipped
+`config/eval_harness/basis_eval.yaml` passed `function:` to a `CallableTarget` whose parameter is
+`path`, in a test that had been silently skipped since it was written. The row is now the
+convention's `floor(measured) - 2 = 96`.
 
 #### Scenario: A documented gate is not enforced
 - GIVEN the charter records `src/mcts` at 90
@@ -331,7 +340,7 @@ with a stated reason. An undisclosed deviation is indistinguishable from drift.
 | `results/lambda_scheduling.{csv,png}` outlive their producer | The `thermo` module was cut, but these are the only in-tree evidence of that negative result, and `ARCHITECTURE.md` declares changelog-referenced artifacts deliberate. |
 | Two-path AMR harness (legacy `LShapeAMRGame` + substrate `RefinementGame`) | Time-boxed: legacy `LShapeAMRGame` / `lshape_amr_compare` remain as golden back-compat while production/arena paths use `SubstrateRefinementGame` (`openspec/changes/refinement-game-registrant`). **Retirement condition:** the golden test is the sole remaining consumer of the legacy harness. |
 | `src/research/substrates/skfem_tri.py` is in the global coverage `omit` | It requires the optional `[fem]` extra, so the repo-wide `--cov=src` gate would report it as 0% ("never imported") on every job without scikit-fem. Not ungated, though: the `test-extras` job — the only one that installs the extra — runs a dedicated `--cov=src/research/substrates` step at `--cov-fail-under=95` against an inline `.coveragerc` that drops the omit, the same technique already used for `video_compression` and `demos`. |
-| Two tracks are frozen rather than active or removed | The refinement thesis now has a committed interpretable answer (`results/mcts_classical_amr_arena.csv`, median `l2_error_ratio_at_matched_dof` **0.9532**). The thesis freeze lifted on that signed result. `codec` and `interactive-surfaces` remain paused so the split-attention gate keeps working until a follow-up edits `config/focus.yaml` (empty `frozen_tracks` is rejected). Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py`. **Retirement:** rewrite or remove this row when `config/focus.yaml` is re-scoped. |
+| Two tracks are frozen rather than active or removed | The refinement thesis now has a committed interpretable answer (`results/mcts_classical_amr_arena.csv`, median `l2_error_ratio_at_matched_dof` **0.9532**). The thesis freeze lifted on that signed result. `codec` and `interactive-surfaces` remain paused so the split-attention gate keeps working until a follow-up edits `config/focus.yaml` (empty `frozen_tracks` is rejected). Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py` through CI's `focus` job, which is a **hard merge gate** in `ci-success` since 2026-09-11 (pull-request runs only; `ci-success` accepts `skipped` from it exactly when the event is not a pull request or the visible `focus-override` label is present, and fails the build on any other skip — `tests/docs/test_ci_success_hard_gates.py` guards both clauses). **Retirement:** rewrite or remove this row when `config/focus.yaml` is re-scoped. |
 | Four B10 packages stay in scope without a production caller | `src/prototyping/`, `src/analysis/`, `src/curriculum/`, and `src/tournament/` are in-tree, test-held, and not production-wired. They remain in the scope register. This is not a 2026-07-22-style cut (`video_compression` was restored the next day). **Retirement:** remove this row when a dedicated change wires a production `src/` caller outside each package’s tests, or cuts a package through Non-Goal Exclusion with a `CUT_MODULES` entry. |
 <!-- charter:deviations:end -->
 

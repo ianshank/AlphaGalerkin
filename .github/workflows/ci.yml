@@ -76,13 +76,31 @@ env:
   MPLBACKEND: Agg
   # Reproducible builds
   PYTHONHASHSEED: "0"
+  # Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02).
+  # pytest-socket blocks every socket except loopback and unix sockets --
+  # torch.multiprocessing / DataLoader workers / gloo on localhost need those.
+  # A test that reaches the network is a false pass that depends on runner
+  # egress; hygiene B35 (two "unit" tests downloading ImageNet weights) is the
+  # case. Applied to the `test-fast` and `coverage` steps; mirrored by the
+  # Makefile's HERMETIC_PYTEST_FLAGS; tests/docs/test_fast_lane_is_hermetic.py
+  # keeps the copies equal and proves the flags actually block.
+  HERMETIC_PYTEST_FLAGS: "--disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost"
 
 jobs:
   # ============================================================
-  # Stage 1: Lint & Type Check
+  # Stage 1: Lint (ruff only) and Type Check (mypy + abstraction audit)
   # ============================================================
+  # Split on 2026-09-11 (plan R-12a). `lint` used to carry ruff, mypy and the
+  # abstraction audit in one job, and its install step pulled torch (~2 GB) so
+  # that mypy could resolve tensor types -- which made the job every other
+  # job's `needs:` predecessor wait several minutes for a check that needs
+  # nothing but a 30 MB ruff wheel. `lint` is now ruff-only and installs only
+  # ruff; the torch-dependent checks moved to `typecheck` below, which runs in
+  # parallel with it. Job id `lint` is kept because `tests/docs/
+  # test_e2e_visibility.py` asserts `{lint, test-fast}` are blocking, and
+  # every other job's `needs: lint` edge now costs seconds rather than minutes.
   lint:
-    name: Lint & Type Check
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: github.event_name != 'schedule'
@@ -106,10 +124,10 @@ jobs:
           # breaking this gate on files unrelated to the change under review.
           # Keep this aligned with the `ruff` pin in pyproject.toml [dev].
           pip install "ruff==0.15.8"
-          # Pin mypy + pydantic for plugin compatibility
-          pip install "mypy>=1.10,<1.12" "pydantic>=2.7,<2.10"
-          # Install minimal deps for type checking
-          pip install torch einops jaxtyping hydra-core structlog numpy scipy
+          # For the artifact-freeze manifest check below (R-05): the script's
+          # module-scope imports. Small pure-Python wheels, seconds to install;
+          # tests/docs/test_artifact_manifest.py asserts they stay listed here.
+          pip install "pydantic>=2.7,<2.10" structlog pyyaml
 
       # Scope is exactly the complement of pre-commit's ruff `exclude:`
       # (^(hf_space|notebooks|claude-code-platform)/) — i.e. every tracked *.py
@@ -127,6 +145,54 @@ jobs:
 
       - name: Run Ruff formatting check
         run: ruff format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py --check
+
+      # Artifact-freeze manifest (R-05). Every headline number in the charter's
+      # evidence register is quoted from a committed file under results/ or
+      # config/baselines/; results/MANIFEST.sha256 freezes those bytes and is
+      # regenerated only by the claims-ledger / run-provenance skills, i.e.
+      # when an artifact is deliberately produced or replaced. Any other byte
+      # change is a defect. Runs here, in the job with the smallest install:
+      # the script's module-scope imports are stdlib + structlog + pydantic,
+      # both named in this job's install step above -- `lint` is ruff-only
+      # since the R-12a split, so those two are installed there explicitly
+      # for this step (guarded by
+      # tests/docs/test_artifact_manifest.py, so a new import that this job
+      # does not install fails a test, not the build). Same verdict as
+      # `sha256sum -c results/MANIFEST.sha256` plus the tree<->manifest set
+      # comparison coreutils cannot do. Mirrored by `make artifact-manifest`.
+      - name: Check the artifact-freeze manifest
+        run: python -m scripts.artifact_manifest check
+
+  # The torch-dependent static checks, split out of `lint` on 2026-09-11
+  # (R-12a) so ruff no longer waits on a torch install. Nothing depends on
+  # this job, so it runs in parallel with everything; it is a HARD merge gate
+  # (in `ci-success.needs` and its `exit 1` block) because the abstraction
+  # audit was already a hard gate inside `lint` and moving it must not
+  # silently downgrade it to advisory. mypy keeps its `continue-on-error`
+  # until plan R-06 makes it deterministic.
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name != 'schedule'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Pin mypy + pydantic for plugin compatibility
+          pip install "mypy>=1.10,<1.12" "pydantic>=2.7,<2.10"
+          # Install minimal deps for type checking
+          pip install torch einops jaxtyping hydra-core structlog numpy scipy
 
       # F0/F1 screen: an @abstractmethod that every subclass overrides but
       # nothing ever *calls* is dead code — a docstring describing an algorithm
@@ -202,13 +268,15 @@ jobs:
   # deliberately shallow (fetch-depth 1). Deepening it would slow every step in
   # that job to serve one check.
   #
-  # NOT in `ci-success`'s needs list, deliberately and temporarily -- the same
-  # convention the `secrets` job above documents. It was verified clean against
-  # this branch's own diff before landing, and it is mutation-tested (8/8), but
-  # a brand-new gate promoted into someone's merge path by the same pull request
-  # that introduces it gives a first red no way to be triaged. Promote it into
-  # the merge gate once it has been green across a few pull requests. Leaving
-  # that unsaid would make its absence look like an oversight.
+  # A HARD merge gate since 2026-09-11 (plan R-09): in `ci-success.needs` and
+  # its `exit 1` block. It landed outside the merge gate on purpose -- a
+  # brand-new gate promoted into someone's merge path by the same pull request
+  # that introduces it gives a first red no way to be triaged -- and was
+  # promoted once it had been green across several pull requests. Because the
+  # job is `pull_request`-only, `ci-success` accepts `skipped` from it exactly
+  # when the event is not a pull request or the `focus-override` label is
+  # present; a skip on a plain pull request fails the build. Guarded by
+  # tests/docs/test_ci_success_hard_gates.py.
   focus:
     name: Scope Containment
     runs-on: ubuntu-latest
@@ -286,11 +354,13 @@ jobs:
   # Narrowing that allowlist is tracked separately -- widening the scan and
   # wiring it in one change makes a first run's failures impossible to triage.
   #
-  # NOT in `ci-success`'s needs list, deliberately and temporarily: this job has
-  # never completed a green run, and its first attempt failed for a harness
-  # reason rather than a finding. It reports now and blocks later -- promote it
-  # into the merge gate once it has been green across a few pushes. Leaving that
-  # unsaid would make its absence look like an oversight.
+  # A HARD merge gate since 2026-09-11 (plan R-09): in `ci-success.needs` and
+  # its `exit 1` block. Its first attempt failed for a harness reason rather
+  # than a finding (the shallow-clone problem above), so it reported without
+  # blocking until it had been green across several pushes, then was promoted.
+  # It shares `ci-success`'s own `if:`, so it is never `skipped` when the gate
+  # runs and needs no skip handling. Guarded by
+  # tests/docs/test_ci_success_hard_gates.py.
   secrets:
     name: Secret Scan
     runs-on: ubuntu-latest
@@ -408,7 +478,8 @@ jobs:
         # Extracting to one args file is hygiene B7 — not this change.
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required and not network" \
+            ${{ env.HERMETIC_PYTEST_FLAGS }} \
             --tb=short \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
@@ -486,7 +557,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: test-fast
+    needs: lint
     if: github.event_name != 'schedule'
 
     steps:
@@ -538,7 +609,7 @@ jobs:
     name: E2E Journeys
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: test-fast
+    needs: lint
     if: github.event_name != 'schedule'
 
     steps:
@@ -653,7 +724,8 @@ jobs:
         # Extracting to one args file is hygiene B7 — not this change.
         run: |
           pytest tests/ \
-            -m "not slow and not e2e and not gpu_required" \
+            -m "not slow and not e2e and not gpu_required and not network" \
+            ${{ env.HERMETIC_PYTEST_FLAGS }} \
             --ignore=tests/e2e/ \
             --ignore=tests/integration/ \
             --ignore=tests/demos/ \
@@ -704,11 +776,25 @@ jobs:
   # gates re-run files the sweep already covered. Collapsing that duplication so
   # each file is measured once would shrink both halves.
   coverage-gates:
-    name: Per-Module Coverage Gates
+    name: Per-Module Coverage Gates (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: lint
     if: github.event_name != 'schedule'
+    # Sharded on 2026-09-11 (plan R-12b): the 44 gate steps ran serially in one
+    # job and were the long pole of every pull request. Each step carries
+    # `matrix.shard == N` in its `if:`, so the steps stay in this file where
+    # the charter and B8 guards can read their `run:` bodies; the shard
+    # assignment is balanced by test-function count (~2.4k per shard) and is
+    # data, not policy -- move a step by changing its N. tests/docs/
+    # test_coverage_gate_shards.py asserts every gate step names exactly one
+    # shard that exists, every shard has at least one step, and the setup
+    # steps carry no shard condition. `ci-success` reads the matrix's
+    # aggregate result, so one red shard still fails the build.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout repository
@@ -729,7 +815,7 @@ jobs:
       # Per-module coverage gates — ratcheted up as part of tech-debt reduction.
       # Each gate ensures no single subsystem regresses below its threshold.
       - name: Per-module coverage gate (pde)
-        if: always() && hashFiles('tests/pde/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/pde/') != ''
         run: |
           pytest tests/pde/ --cov=src/pde --cov-fail-under=85 -q --no-header
 
@@ -738,7 +824,7 @@ jobs:
       # contained a correctness bug (single-agent backup, F0). Branch coverage
       # is currently 96%.
       - name: Per-module coverage gate (mcts)
-        if: always() && hashFiles('tests/mcts/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/mcts/') != ''
         run: |
           pytest tests/mcts/ --cov=src/mcts --cov-branch --cov-fail-under=90 -q --no-header
 
@@ -746,22 +832,22 @@ jobs:
       # 12 branches, 0 missed; re-measured 2026-09-02). The 96% previously
       # stated here predated Slice A's substrate.py/substrate_registry.py.
       - name: Per-module coverage gate (refinement)
-        if: always() && hashFiles('tests/refinement/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/refinement/') != ''
         run: |
           pytest tests/refinement/ --cov=src/refinement --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (modeling)
-        if: always() && hashFiles('tests/modeling/') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/modeling/') != ''
         run: |
           pytest tests/modeling/ --cov=src/modeling --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (training)
-        if: always() && hashFiles('tests/training/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/training/') != ''
         run: |
           pytest tests/training/ --cov=src/training --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (training/operator_trainer)
-        if: always() && hashFiles('tests/test_operator_training.py') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/test_operator_training.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/training/operator_trainer.py" \
@@ -770,29 +856,29 @@ jobs:
           python -m coverage report --include="*/src/training/operator_trainer.py" --fail-under=85
 
       - name: Per-module coverage gate (research)
-        if: always() && hashFiles('tests/research/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/research/') != ''
         run: |
           pytest tests/research/ --cov=src/research --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (games)
-        if: always() && hashFiles('tests/games/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/games/') != ''
         run: |
           pytest tests/games/ --cov=src/games --cov-fail-under=80 -q --no-header
 
       - name: Per-module coverage gate (distributed)
-        if: always() && hashFiles('tests/distributed/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/distributed/') != ''
         run: |
           pytest tests/distributed/ --cov=src/distributed --cov-fail-under=60 -q --no-header
 
       - name: Per-module coverage gate (physics)
-        if: always() && hashFiles('tests/physics/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/physics/') != ''
         run: |
           pytest tests/physics/ --cov=src/physics --cov-fail-under=75 -q --no-header
 
       # Gates previously documented in CLAUDE.md's Regression Surface table but
       # never wired into CI. Each mirrors the documented Verification command.
       - name: Per-module coverage gate (alphagalerkin)
-        if: always() && hashFiles('tests/alphagalerkin/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/alphagalerkin/') != ''
         run: |
           pytest tests/alphagalerkin/ --cov=src/alphagalerkin --cov-fail-under=85 -q --no-header
 
@@ -805,7 +891,7 @@ jobs:
       # separate native-runner step (path-glob --include), the same pattern as
       # the scaling_law/agents/transfer/stochastic gates.
       - name: Per-module coverage gate (integrations/lm_studio)
-        if: always() && hashFiles('tests/integrations/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/integrations/') != ''
         run: |
           pytest tests/integrations tests/poc/test_llm_prior_ablation_config.py \
             tests/poc/test_llm_prior_ablation_scenario.py -m "not gpu_required" \
@@ -819,7 +905,7 @@ jobs:
       # test selection. 79 = measured − 2. Ratcheting back toward 85+ is tracked
       # in docs/CODE_HYGIENE_AUDIT.md.
       - name: Per-module coverage gate (poc/llm_prior scenario modules)
-        if: always() && hashFiles('tests/poc/test_llm_prior_ablation_scenario.py') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/poc/test_llm_prior_ablation_scenario.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/poc/scenarios/llm_prior_ablation.py,*/src/poc/scenarios/llm_prior_config.py" \
@@ -830,13 +916,13 @@ jobs:
             --fail-under=79
 
       - name: Per-module coverage gate (integrations/openai_compat)
-        if: always() && hashFiles('tests/integrations/test_backend_registry.py') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/integrations/test_backend_registry.py') != ''
         run: |
           pytest tests/integrations/test_backend_registry.py \
             --cov=src/integrations/openai_compat --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (poc/baselines)
-        if: always() && hashFiles('tests/poc/test_scenario_baselines.py') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/poc/test_scenario_baselines.py') != ''
         run: |
           pytest tests/poc/test_scenario_baselines.py tests/poc/test_cli_baselines.py \
             tests/poc/test_baseline_cli_support.py \
@@ -850,7 +936,7 @@ jobs:
       # fixes it. The native runner with path globs measures the same modules
       # without importing them for source discovery.
       - name: Per-module coverage gate (poc/scaling_law + centaur-common)
-        if: always() && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/poc/test_scaling_law_scenario.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/poc/scenarios/scaling_law.py,*/src/poc/scenarios/scaling_law_config.py,*/src/poc/scenarios/_centaur_common.py" \
@@ -861,7 +947,7 @@ jobs:
             --fail-under=85
 
       - name: Per-module coverage gate (agents/research_loop + config)
-        if: always() && hashFiles('tests/agents/test_research_loop.py') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/agents/test_research_loop.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/agents/research_loop.py,*/src/agents/config.py" \
@@ -873,7 +959,7 @@ jobs:
       # Path-glob --include (not dotted --cov) to avoid the torch C-extension
       # collision during tracer source discovery, matching the two gates above.
       - name: Per-module coverage gate (transfer_baseline_compare)
-        if: always() && hashFiles('tests/research/test_transfer_baseline_compare.py') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/research/test_transfer_baseline_compare.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/research/transfer_baseline_compare.py,*/src/experiments/cnn_baseline.py,*/src/poc/scenarios/transfer_baseline_compare.py,*/src/poc/scenarios/transfer_baseline_compare_config.py" \
@@ -888,7 +974,7 @@ jobs:
       # Path-glob --include (not dotted --cov) to avoid the torch C-extension
       # collision during tracer source discovery, matching the gates above.
       - name: Per-module coverage gate (stochastic Galerkin / NKE layer)
-        if: always() && hashFiles('tests/pde/stochastic/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/pde/stochastic/') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/pde/stochastic/*,*/src/research/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare.py,*/src/poc/scenarios/stochastic_galerkin_compare_config.py" \
@@ -908,7 +994,7 @@ jobs:
       # --cov specs, both of which fail under the installed coverage stack (see
       # the CAUTION note on the lm_studio gate and the torch-collision note above).
       - name: Per-module coverage gate (noyron_basis v2.2)
-        if: always() && hashFiles('tests/poc/test_noyron_basis_scenario.py') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/poc/test_noyron_basis_scenario.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/poc/scenarios/noyron_basis.py,*/src/poc/scenarios/noyron_basis_config.py" \
@@ -919,7 +1005,7 @@ jobs:
             --fail-under=85
 
       - name: Per-module coverage gate (Noyron HX surface)
-        if: always() && hashFiles('tests/poc/test_noyron_hx_scenario.py') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/poc/test_noyron_hx_scenario.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/pde/sdf.py,*/src/pde/geometry_picogk.py,*/src/poc/scenarios/noyron_hx.py,*/src/poc/config_noyron.py" \
@@ -930,7 +1016,7 @@ jobs:
             --fail-under=85
 
       - name: Per-module coverage gate (SBIR P40 surface)
-        if: always() && hashFiles('tests/scripts/test_run_sbir_p40.py') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/scripts/test_run_sbir_p40.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/research/gpu_profiler.py,*/src/research/baselines.py,*/src/research/baselines/*,*/src/research/pde_benchmarks.py,*/src/poc/device.py,*/src/device.py" \
@@ -949,27 +1035,27 @@ jobs:
       #   agents 95.42 -> 85 (capped) | tools 91.86 -> 89 | experiments 89.76 -> 87
       #   curriculum 89.06 -> 87 | engines 84.26 -> 82 | data 79.81 -> 77
       - name: Per-module coverage gate (agents)
-        if: always() && hashFiles('tests/agents/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/agents/') != ''
         run: |
           pytest tests/agents/ --cov=src/agents --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (tools)
-        if: always() && hashFiles('tests/tools/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/tools/') != ''
         run: |
           pytest tests/tools/ --cov=src/tools --cov-branch --cov-fail-under=89 -q --no-header
 
       - name: Per-module coverage gate (experiments)
-        if: always() && hashFiles('tests/experiments/') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/experiments/') != ''
         run: |
           pytest tests/experiments/ --cov=src/experiments --cov-branch --cov-fail-under=87 -q --no-header
 
       - name: Per-module coverage gate (curriculum)
-        if: always() && hashFiles('tests/curriculum/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/curriculum/') != ''
         run: |
           pytest tests/curriculum/ --cov=src/curriculum --cov-branch --cov-fail-under=87 -q --no-header
 
       - name: Per-module coverage gate (engines)
-        if: always() && hashFiles('tests/engines/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/engines/') != ''
         run: |
           pytest tests/engines/ --cov=src/engines --cov-branch --cov-fail-under=82 -q --no-header
 
@@ -978,7 +1064,7 @@ jobs:
       # 100% and the package measures 97.83%, so 77 had 20 points of slack and
       # would not have caught a large regression.
       - name: Per-module coverage gate (data)
-        if: always() && hashFiles('tests/data/') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/data/') != ''
         run: |
           pytest tests/data/ --cov=src/data --cov-branch --cov-fail-under=85 -q --no-header
 
@@ -1003,7 +1089,7 @@ jobs:
       #   src/prototyping  93.16%  -> 85
       #   src/demos        83.28%  -> 81   (below the cap, so floor(measured)-2 applies)
       - name: Per-module coverage gate (poc)
-        if: always() && hashFiles('tests/poc/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/poc/') != ''
         run: |
           pytest tests/poc/ -m "not gpu_required" \
             --cov=src/poc --cov-branch --cov-fail-under=85 -q --no-header
@@ -1049,7 +1135,7 @@ jobs:
       # with no torch-import-order collision, so it uses the simpler --cov=DIR
       # form like most other per-package gates.
       - name: Per-module coverage gate (poc/cli)
-        if: always() && hashFiles('tests/poc/test_cli_commands.py') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/poc/test_cli_commands.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/poc/cli.py" \
@@ -1058,14 +1144,14 @@ jobs:
           python -m coverage report --include="*/src/poc/cli.py" --fail-under=85
 
       - name: Per-module coverage gate (poc/visualization)
-        if: always() && hashFiles('tests/poc/test_visualization.py') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/poc/test_visualization.py') != ''
         run: |
           pytest tests/poc/visualization tests/poc/test_visualization.py \
             tests/poc/test_reports_coverage.py \
             --cov=src/poc/visualization --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (poc/scenarios classic - transfer, complexity, stability)
-        if: always() && hashFiles('tests/poc/test_transfer_scenario.py') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/poc/test_transfer_scenario.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/poc/scenarios/transfer.py,*/src/poc/scenarios/complexity.py,*/src/poc/scenarios/stability.py" \
@@ -1076,7 +1162,7 @@ jobs:
             --fail-under=85
 
       - name: Per-module coverage gate (constants)
-        if: always() && hashFiles('tests/test_constants.py') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/test_constants.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/constants.py" \
@@ -1084,7 +1170,7 @@ jobs:
           python -m coverage report --include="*/src/constants.py" --fail-under=85
 
       - name: Per-module coverage gate (seeding)
-        if: always() && hashFiles('tests/test_seeding.py') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/test_seeding.py') != ''
         run: |
           python -m coverage run --branch \
             --include="*/src/seeding.py" \
@@ -1092,17 +1178,17 @@ jobs:
           python -m coverage report --include="*/src/seeding.py" --fail-under=85
 
       - name: Per-module coverage gate (analysis)
-        if: always() && hashFiles('tests/analysis/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/analysis/') != ''
         run: |
           pytest tests/analysis/ --cov=src/analysis --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (tournament)
-        if: always() && hashFiles('tests/tournament/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/tournament/') != ''
         run: |
           pytest tests/tournament/ --cov=src/tournament --cov-branch --cov-fail-under=85 -q --no-header
 
       - name: Per-module coverage gate (prototyping)
-        if: always() && hashFiles('tests/prototyping/') != ''
+        if: always() && matrix.shard == 3 && hashFiles('tests/prototyping/') != ''
         run: |
           pytest tests/prototyping/ --cov=src/prototyping --cov-branch --cov-fail-under=85 -q --no-header
 
@@ -1118,7 +1204,7 @@ jobs:
       # floor(measured 56) - 2, measured in THIS lane (no JAX installed, so the
       # 118 jax_backend tests skip); the test-jax job covers the other lane.
       - name: Per-module coverage gate (backend)
-        if: always() && hashFiles('tests/backend/') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/backend/') != ''
         run: |
           cat > .coveragerc.backend <<'COVEOF'
           [run]
@@ -1135,7 +1221,7 @@ jobs:
       # no gate and rode only the global --cov=src. Measured 97.67% branch; gated
       # 85 per the floor(measured)-2-capped-at-85 convention.
       - name: Per-module coverage gate (core)
-        if: always() && hashFiles('tests/core/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/core/') != ''
         run: |
           pytest tests/core/ --cov=src/core --cov-branch --cov-fail-under=85 -q --no-header
 
@@ -1145,7 +1231,7 @@ jobs:
       # largest genuinely under-tested surface in src/. Raising it is real test
       # work, tracked in docs/CODE_HYGIENE_AUDIT.md, not a number to edit here.
       - name: Per-module coverage gate (deployment)
-        if: always() && hashFiles('tests/deployment/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/deployment/') != ''
         run: |
           pytest tests/deployment/ --cov=src/deployment --cov-branch --cov-fail-under=25 -q --no-header
 
@@ -1155,7 +1241,7 @@ jobs:
       # false-pass failure mode a gate must not have. Same inline-coveragerc
       # technique, dropping the omit for this step only.
       - name: Per-module coverage gate (demos)
-        if: always() && hashFiles('tests/demos/') != ''
+        if: always() && matrix.shard == 4 && hashFiles('tests/demos/') != ''
         run: |
           cat > .coveragerc.demos <<'COVEOF'
           [run]
@@ -1183,7 +1269,7 @@ jobs:
       # measured percentage untouched. Measured branch coverage 85.43%;
       # gated at 83 (floor(measured)-2).
       - name: Per-module coverage gate (video_compression)
-        if: always() && hashFiles('tests/video_compression/') != ''
+        if: always() && matrix.shard == 2 && hashFiles('tests/video_compression/') != ''
         run: |
           cat > .coveragerc.video-compression <<'COVEOF'
           [run]
@@ -1204,7 +1290,7 @@ jobs:
       # makes that code testable. --cov-fail-under overrides [tool.coverage.report]
       # fail_under=85 in pyproject.toml, as the src/distributed gate at 60 demonstrates.
       - name: Per-module coverage gate (dashboard)
-        if: always() && hashFiles('tests/dashboard/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/dashboard/') != ''
         run: |
           pytest tests/dashboard/ --cov=dashboard --cov-branch --cov-fail-under=84 -q --no-header
 
@@ -1214,9 +1300,10 @@ jobs:
       # omit, so a bare --cov=tests/support is a real gate. Measured ~95%
       # branch from the docs + import-contract consumers; first landing
       # capped at 85 (add-coverage-gate skill). templates / math_kernel /
-      # backend-54 / deployment-25 / B37 eval_harness stay parked.
+      # backend-54 / deployment-25 stay parked; B37 eval_harness is gated at 96
+      # in test-extras since 2026-09-11 (R-13; measured 98.16%).
       - name: Per-module coverage gate (tests/support)
-        if: always() && hashFiles('tests/support/') != ''
+        if: always() && matrix.shard == 1 && hashFiles('tests/support/') != ''
         run: |
           pytest tests/docs/ \
             tests/regression/test_import_contracts.py \
@@ -1320,7 +1407,7 @@ jobs:
     name: Optional-Dependency Suites
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: test-fast
+    needs: lint
     if: github.event_name != 'schedule'
     steps:
       - name: Checkout repository
@@ -1333,10 +1420,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # eval-harness included for the same reason as test-extras: without it
-          # 8 of the 11 modules under tests/integrations/eval_harness/ skip at
-          # import, masking ~900 LOC as "passing". This job exists to stop
-          # exactly that.
+          # eval-harness included for the same reason as test-extras: the suite
+          # under tests/integrations/eval_harness/ carries eval_harness_required
+          # and is gated below under ALPHAGALERKIN_REQUIRE_EXTRAS=1, so a missing
+          # extra is a collection error here rather than 39 counted skips. Until
+          # 2026-09-11 (R-13) those files importorskip'd the extra -- zero items,
+          # uncountable -- and this job installed it and then selected none of
+          # them, masking ~900 LOC as "passing". This job exists to stop that.
           pip install -e ".[dev,test-extras,eval-harness]"
 
       # Verified green locally with scikit-fem + pettingzoo installed.
@@ -1422,6 +1512,43 @@ jobs:
           python -m coverage report --rcfile=.coveragerc.fem \
             --include="*/src/research/fem_baseline.py" --fail-under=83
 
+      # src/integrations/eval_harness/* is in pyproject.toml's global omit (it
+      # needs the optional [eval-harness] git extra, which only this job
+      # installs) and until 2026-09-11 (R-13, hygiene B37) had NO gate anywhere:
+      # this job installed the extra "specifically to un-skip" the eight modules
+      # under tests/integrations/eval_harness/ and then selected none of them,
+      # while their module-level `pytest.importorskip("eval_harness")` made each
+      # yield ZERO items -- uncountable by any hook and unfailable by any gate.
+      # The suite now carries `eval_harness_required` (root conftest.py counts
+      # the skips, and hard-fails collection under ALPHAGALERKIN_REQUIRE_EXTRAS=1
+      # exactly like fem_required), and this step selects it POSITIVELY.
+      #
+      # Same inline-coveragerc technique as demos / video_compression /
+      # substrates, dropping the omit for this step only. Directory --cov spec:
+      # coverage 7.x silently drops --cov=<...>.py.
+      #
+      # Landed at --cov-fail-under=1 as a tripwire (the git extra could not be
+      # installed where the step was authored). The first run that reported a
+      # number (run 34658949836, 2026-09-11) measured 98.16% branch -- and
+      # failed on a real defect the tripwire exposed: the shipped YAML passed
+      # `function:` to a CallableTarget whose parameter is `path`, a test that
+      # had been silently skipped (module-level importorskip yields zero items)
+      # since it was written. Gated at floor(98)-2 = 96 per the
+      # add-coverage-gate convention; mirrored in the charter gates row.
+      - name: Coverage gate (src/integrations/eval_harness, needs [eval-harness])
+        run: |
+          cat > .coveragerc.eval-harness <<'COVEOF'
+          [run]
+          branch = true
+
+          [report]
+          show_missing = true
+          COVEOF
+          ALPHAGALERKIN_REQUIRE_EXTRAS=1 python -m pytest tests/integrations/eval_harness/ \
+            -m "eval_harness_required" \
+            --cov=src/integrations/eval_harness --cov-config=.coveragerc.eval-harness \
+            --cov-branch --cov-fail-under=96 -q --no-header
+
       # The fem_required half of the E2E tier. `test-e2e` deliberately excludes
       # it (-m "not fem_required") because that job does not install [fem]; this
       # job is the only one that does. Selecting it POSITIVELY here is what stops
@@ -1464,9 +1591,11 @@ jobs:
   # merge block) until its cross-runner stability is characterised — promote to a
   # required gate afterwards. This cycle documents it as a *disclosed soft job*
   # (in `ci-success.needs` so the job still runs on PRs; `ci-success` only
-  # `echo NOTE`s a non-green result, no `exit 1`). Same convention as
-  # `focus`/`secrets`, which are omitted from `needs` entirely. Do not mix
-  # this disclosure with exclusion-list edits.
+  # `echo NOTE`s a non-green result, no `exit 1`). `focus` and `secrets` used
+  # the same report-then-block convention and were promoted on 2026-09-11
+  # (R-09); this job is the last disclosed soft job, and R-07 decides whether
+  # it flips hard or becomes a charter deviation. Do not mix this disclosure
+  # with exclusion-list edits.
   transfer-baseline-regression:
     name: Transfer Baseline Regression
     runs-on: ubuntu-latest
@@ -1495,12 +1624,17 @@ jobs:
             --config config/scenarios/transfer_baseline_compare_ci.yaml \
             --baseline config/baselines/transfer_ci.json \
             --output-dir outputs/transfer_ci --log-level WARNING
+      # The run above writes `outputs/transfer_ci`; upload THAT. This step used
+      # to upload `results/transfer_baseline_compare.*` -- the committed files,
+      # which the run never touches -- so the "artifact" was the repo, not the
+      # run (R-05). Guarded by tests/docs/test_artifact_manifest.py, which
+      # requires this path to sit under the run step's `--output-dir`.
       - name: Upload transfer benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: transfer-baseline-results
-          path: results/transfer_baseline_compare.*
+          path: outputs/transfer_ci/**
           retention-days: 30
 
   # ============================================================
@@ -1509,7 +1643,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
-    needs: [lint, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-e2e, test-jax, test-chess]
+    needs: [lint, typecheck, focus, secrets, test-fast, coverage, coverage-gates, test-extras, transfer-baseline-regression, test-integration, test-e2e, test-jax, test-chess]
     # !cancelled() rather than always(): a run superseded by the concurrency
     # group (push + pull_request for the same branch, or a newer push) has its
     # needed jobs cancelled, and under always() this job would still execute,
@@ -1523,6 +1657,9 @@ jobs:
         run: |
           echo "=== CI Gate Results ==="
           echo "  lint:                        ${{ needs.lint.result }}"
+          echo "  typecheck:                   ${{ needs.typecheck.result }}"
+          echo "  focus:                       ${{ needs.focus.result }}"
+          echo "  secrets:                     ${{ needs.secrets.result }}"
           echo "  test-fast:                   ${{ needs.test-fast.result }}"
           echo "  coverage:                    ${{ needs.coverage.result }}"
           echo "  coverage-gates:              ${{ needs.coverage-gates.result }}"
@@ -1542,7 +1679,39 @@ jobs:
 
           # Required gates: lint must pass
           if [[ "${{ needs.lint.result }}" != "success" ]]; then
-            echo "FAIL: Lint & Type Check failed (result=${{ needs.lint.result }})"
+            echo "FAIL: Lint failed (result=${{ needs.lint.result }})"
+            exit 1
+          fi
+
+          # typecheck carries the abstraction audit, which was a hard gate
+          # inside `lint` before the 2026-09-11 split (R-12a). Gating the job
+          # here is what keeps that a gate rather than a report.
+          if [[ "${{ needs.typecheck.result }}" != "success" ]]; then
+            echo "FAIL: Type check / abstraction audit failed (result=${{ needs.typecheck.result }})"
+            exit 1
+          fi
+
+          # Scope containment (promoted 2026-09-11, R-09). The job is
+          # pull_request-only, so `skipped` is legitimate on a push -- but a
+          # skip on a pull request is legitimate ONLY under the visible
+          # `focus-override` label. A bare `!= success` would either fail
+          # every push run or, written `== failure`, let a skipped-by-accident
+          # gate through; both clauses are needed and both are guarded by
+          # tests/docs/test_ci_success_hard_gates.py.
+          if [[ "${{ needs.focus.result }}" != "success" && "${{ needs.focus.result }}" != "skipped" ]]; then
+            echo "FAIL: Scope containment failed (result=${{ needs.focus.result }})"
+            exit 1
+          fi
+          if [[ "${{ needs.focus.result }}" == "skipped" && "${{ github.event_name }}" == "pull_request" \
+                && "${{ contains(github.event.pull_request.labels.*.name, 'focus-override') }}" != "true" ]]; then
+            echo "FAIL: Scope containment skipped on a pull request without the focus-override label"
+            exit 1
+          fi
+
+          # Secret scan (promoted 2026-09-11, R-09). Shares this job's own
+          # `if:`, so it is never skipped when this runs: a bare check is exact.
+          if [[ "${{ needs.secrets.result }}" != "success" ]]; then
+            echo "FAIL: Secret scan failed (result=${{ needs.secrets.result }})"
             exit 1
           fi
 
@@ -1577,11 +1746,14 @@ jobs:
             exit 1
           fi
 
-          # The three below were NEVER in `needs` (B38, 2026-09-02): hard-failing
-          # jobs that ran on every PR with no `if:` and could not block a merge.
-          # test-chess even carries its own --cov-fail-under=80 on src/games that
-          # enforced nothing. focus/secrets stay out per their own comments;
-          # test-slow stays out because it is PR-invisible by design.
+          # History of the four checks below. test-integration, test-jax and
+          # test-chess were NEVER in `needs` until B38 (2026-09-02): hard-failing
+          # jobs that ran on every PR with no `if:` and could not block a merge
+          # (test-chess even carries its own --cov-fail-under=80 on src/games
+          # that enforced nothing). test-e2e was added to `needs` the day it was
+          # created (2026-09-04) -- see its own comment. focus/secrets/typecheck
+          # joined on 2026-09-11 (R-09 / R-12a, above); test-slow stays out
+          # because it is PR-invisible by design.
           if [[ "${{ needs.test-integration.result }}" != "success" ]]; then
             echo "FAIL: Integration tests failed (result=${{ needs.test-integration.result }})"
             exit 1

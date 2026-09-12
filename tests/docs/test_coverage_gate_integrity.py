@@ -253,17 +253,17 @@ def _is_omitted(target: str, patterns: list[str]) -> str | None:
 #: false reason satisfied both forever. ``test_regression_surface_rows_cited_by_
 #: exemptions_exist`` below closes the half of that hole which is mechanically
 #: decidable.
-_OMIT_WITHOUT_A_CI_GATE: dict[str, str] = {
-    "src/integrations/eval_harness/*": (
-        "needs the optional [eval-harness] git dependency (langfuse-eval-harness, "
-        "a git URL, not on PyPI). The test-extras CI job DOES install it, but runs "
-        "no test under tests/integrations/eval_harness/, so 8 of those 11 modules "
-        "skip at import and 914 LOC is measured by nothing anywhere. This is a "
-        "DISCLOSED GAP, not a justified exemption: the fix is a per-module gate in "
-        "test-extras, which already has the extra installed. Tracked as B37 in "
-        "docs/CODE_HYGIENE_AUDIT.md."
-    ),
-}
+#:
+#: CLOSED 2026-09-11 (R-13). The one entry -- ``src/integrations/eval_harness/*``,
+#: a disclosed gap since the correction above -- was deleted when ``test-extras``
+#: gained a "Coverage gate (src/integrations/eval_harness, needs [eval-harness])"
+#: step that selects ``tests/integrations/eval_harness/`` and overrides the omit
+#: with an inline coveragerc. ``test_every_omit_entry_is_gated_somewhere`` now
+#: fails if that step is deleted, which is the whole point of deleting the
+#: exemption rather than rewording it. The dict is kept (empty) so the next
+#: omit entry has somewhere to disclose itself; ``tests/docs/
+#: test_eval_harness_gating.py`` asserts this pattern never returns here.
+_OMIT_WITHOUT_A_CI_GATE: dict[str, str] = {}
 
 #: Marker an exemption reason uses when it claims a ``CLAUDE.md`` Regression
 #: Surface row enforces the module instead. Any such claim is checkable, so it

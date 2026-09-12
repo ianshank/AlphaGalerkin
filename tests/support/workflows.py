@@ -235,6 +235,55 @@ def join_line_continuations(script: str) -> str:
 
 _COMMAND_SEPARATOR = re.compile(r"\n|;|&&|\|\||\|")
 
+#: Two-character separators checked before the single-character ones.
+_DOUBLE_SEPARATORS: Final[tuple[str, ...]] = ("&&", "||")
+_SINGLE_SEPARATORS: Final[frozenset[str]] = frozenset("\n;|")
+
+
+def split_shell_commands(text: str) -> list[str]:
+    r"""Split shell text into commands at separators that are *outside quotes*.
+
+    A regex split on ``;``/``&&``/``||``/``|``/newline also fires inside a
+    quoted string, so ``echo "report-only; exit 1"`` came back as two
+    commands and the second read as a standalone ``exit 1`` -- a report-only
+    block classified as a hard gate (Copilot review, PR #151). Quote state is
+    tracked the same way :func:`strip_shell_comments` tracks it; callers pass
+    text that function has already validated, so quotes are balanced here.
+
+    Args:
+        text: Shell source with comments stripped and continuations joined.
+
+    Returns:
+        Whitespace-stripped, non-empty commands in source order.
+
+    """
+    parts: list[str] = []
+    buffer: list[str] = []
+    in_single = False
+    in_double = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif not in_single and not in_double:
+            if text.startswith(_DOUBLE_SEPARATORS, index):
+                parts.append("".join(buffer))
+                buffer = []
+                index += 2
+                continue
+            if char in _SINGLE_SEPARATORS:
+                parts.append("".join(buffer))
+                buffer = []
+                index += 1
+                continue
+        buffer.append(char)
+        index += 1
+    parts.append("".join(buffer))
+    return [part.strip() for part in parts if part.strip()]
+
 
 def iter_commands(script: str) -> list[str]:
     """Split a shell script into individual, non-empty commands.
@@ -250,7 +299,7 @@ def iter_commands(script: str) -> list[str]:
 
     """
     normalised = join_line_continuations(strip_shell_comments(script))
-    return [part.strip() for part in _COMMAND_SEPARATOR.split(normalised) if part.strip()]
+    return split_shell_commands(normalised)
 
 
 _MAKE_TARGET = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)\s*:(?!=)")
@@ -338,6 +387,53 @@ _IF_BLOCK = re.compile(r"if\s*\[\[(?P<cond>.*?)\]\]\s*;\s*then(?P<body>.*?)\bfi\
 _NEEDS_RESULT = re.compile(r"needs\.(?P<job>[A-Za-z0-9_.-]+)\.result")
 
 
+def hard_gate_conditions(script: str) -> list[str]:
+    """The ``[[ ... ]]`` condition of every ``if`` block whose body reaches ``exit 1``.
+
+    The raw condition text is what a guard needs when the *shape* of a gate
+    matters and not only which job it names -- ``ci-success``'s ``focus`` gate,
+    for example, must accept ``skipped`` on a push and reject it on an
+    unlabelled pull request, and only the condition can show that.
+
+    Args:
+        script: The body of a ``run:`` step (typically ``ci-success``'s).
+
+    Returns:
+        Condition strings in source order, one per ``exit 1`` block. Blocks
+        that only ``echo`` are not included.
+
+    """
+    return [
+        block.group("cond")
+        for block in _IF_BLOCK.finditer(script)
+        if body_exits_nonzero(block.group("body"))
+    ]
+
+
+#: A shell ``exit`` with a non-zero literal status, as a whole command.
+_EXIT_NONZERO = re.compile(r"^exit\s+(?!0+\b)\d+\b")
+
+
+def body_exits_nonzero(body: str) -> bool:
+    """True iff ``body`` contains a standalone ``exit <non-zero>`` *command*.
+
+    A substring test for ``exit 1`` also matches a comment, a variable's
+    contents, or ``echo "would exit 1"`` -- report-only blocks that would then
+    be classified as hard gates, letting the merge-gate guard pass while the
+    job cannot fail the build. Splitting into commands first (comments
+    stripped, and separators inside quotes ignored by
+    :func:`split_shell_commands`) means only a real ``exit`` command counts.
+
+    Args:
+        body: The text between ``then`` and ``fi``.
+
+    Returns:
+        Whether some command in ``body`` is ``exit N`` with ``N != 0``.
+
+    """
+    return any(_EXIT_NONZERO.match(command) for command in iter_commands(body))
+
+
 def hard_gate_jobs(script: str) -> set[str]:
     """Job names this script *fails the build* on, as opposed to merely reporting.
 
@@ -354,8 +450,6 @@ def hard_gate_jobs(script: str) -> set[str]:
 
     """
     gated: set[str] = set()
-    for block in _IF_BLOCK.finditer(script):
-        if "exit 1" not in block.group("body"):
-            continue
-        gated.update(_NEEDS_RESULT.findall(block.group("cond")))
+    for condition in hard_gate_conditions(script):
+        gated.update(_NEEDS_RESULT.findall(condition))
     return gated

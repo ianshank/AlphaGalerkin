@@ -6,6 +6,7 @@
 #
 # Usage:
 #   make lint          # ruff check + format check
+#   make artifact-manifest # verify results/MANIFEST.sha256 against the tree
 #   make format        # ruff auto-format
 #   make mypy          # strict type check (informational)
 #   make test-fast     # fast unit tests (excludes slow/e2e/gpu)
@@ -26,7 +27,7 @@
         gitleaks pre-commit docs-serve clean check gpu-smoke \
         demo pre-pr test-agents test-benchmarks test-core test-e2e \
         test-regression test-sanity test-security test-demos test-claude \
-        test-substrate docker-build docker-test
+        test-substrate test-eval-harness docker-build docker-test artifact-manifest
 
 # ---------------------------------------------------------------------------
 # Tool resolution
@@ -75,6 +76,26 @@ STOCH_COV_THRESHOLD    ?= 85
 # substrates package is 272 statements at 99%, so an 85 gate would carry 14
 # points of slack. Must match ci.yml's test-extras step.
 SUBSTRATE_COV_THRESHOLD ?= 95
+# Measured on the first green test-extras run that reported the package:
+# branch coverage 98.16%, so the gate is floor(98)-2 = 96 (R-13). This still
+# serves as the "measures something" tripwire against an omit collision (0.00%)
+# because the step overrides pyproject.toml's global omit with --cov-config.
+# Must match ci.yml's test-extras step.
+EVAL_HARNESS_COV_THRESHOLD ?= 96
+
+# ---------------------------------------------------------------------------
+# Hermetic fast lane (docs/ENGINEERING_REFLECTION_2026-09-11.md R-02)
+# ---------------------------------------------------------------------------
+# Mirrors ci.yml's HERMETIC_PYTEST_FLAGS: pytest-socket (in the `dev` extra)
+# blocks every socket except loopback and unix sockets, so a test that reaches
+# the network fails here the same way it fails in CI instead of passing on
+# whatever egress the developer's machine happens to have. Overridable
+# (`HERMETIC_PYTEST_FLAGS= make test-fast` runs unsandboxed);
+# tests/docs/test_fast_lane_is_hermetic.py keeps this in step with ci.yml.
+HERMETIC_PYTEST_FLAGS ?= --disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost
+# The fast-lane `-m` expression stays a literal in each recipe (not a variable):
+# tests/docs/test_marker_vocabulary.py reads every `-m` expression verbatim and
+# would report a `$(...)` reference as an unregistered marker.
 
 # ---------------------------------------------------------------------------
 # Test-selection parity with CI
@@ -111,6 +132,16 @@ format:
 	$(RUFF) format src/ tests/ dashboard/ scripts/ config/ conftest.py deploy_space.py
 
 # ---------------------------------------------------------------------------
+# Artifact-freeze manifest (R-05) -- mirrors the `lint` job's step in ci.yml.
+# results/MANIFEST.sha256 freezes the committed benchmark artifacts the charter
+# quotes. Regenerate it ONLY when an artifact is deliberately replaced (the
+# claims-ledger / run-provenance skills), with
+#   $(PYTHON) -m scripts.artifact_manifest write
+# ---------------------------------------------------------------------------
+artifact-manifest:
+	$(PYTHON) -m scripts.artifact_manifest check
+
+# ---------------------------------------------------------------------------
 # Type Checking (informational — not a blocking gate)
 # ---------------------------------------------------------------------------
 mypy:
@@ -121,7 +152,8 @@ mypy:
 # ---------------------------------------------------------------------------
 test-fast:
 	$(PYTEST) tests/ \
-		-m "not slow and not e2e and not gpu_required" \
+		-m "not slow and not e2e and not gpu_required and not network" \
+		$(HERMETIC_PYTEST_FLAGS) \
 		$(CI_TEST_EXCLUDES) \
 		-q --no-header
 
@@ -226,6 +258,22 @@ test-substrate:
 		--cov-config=.coveragerc.substrates \
 		--cov-branch --cov-fail-under=$(SUBSTRATE_COV_THRESHOLD) -q --no-header
 
+# Mirrors ci.yml's test-extras "Coverage gate (src/integrations/eval_harness)"
+# step (R-13). REQUIRES the optional [eval-harness] git extra, so like
+# `test-substrate` it is deliberately NOT chained into `pre-pr`.
+# ALPHAGALERKIN_REQUIRE_EXTRAS=1 turns a missing extra into a loud collection
+# error rather than 39 counted skips and a "coverage too low" that names the
+# symptom. Gated at EVAL_HARNESS_COV_THRESHOLD (96 = floor(98.16)-2, measured on
+# the first green test-extras run, 2026-09-11; B37 is closed, not parked). The heredoc'd rcfile drops the package from pyproject.toml's global
+# coverage `omit` for this run only.
+test-eval-harness:
+	@printf '[run]\nbranch = true\n\n[report]\nshow_missing = true\n' > .coveragerc.eval-harness
+	ALPHAGALERKIN_REQUIRE_EXTRAS=1 $(PYTEST) tests/integrations/eval_harness/ \
+		-m "eval_harness_required" \
+		--cov=src/integrations/eval_harness \
+		--cov-config=.coveragerc.eval-harness \
+		--cov-branch --cov-fail-under=$(EVAL_HARNESS_COV_THRESHOLD) -q --no-header
+
 test-all:
 	$(PYTEST) tests/ -q --no-header
 
@@ -234,7 +282,8 @@ test-all:
 # ---------------------------------------------------------------------------
 coverage:
 	$(PYTEST) tests/ \
-		-m "not slow and not e2e and not gpu_required" \
+		-m "not slow and not e2e and not gpu_required and not network" \
+		$(HERMETIC_PYTEST_FLAGS) \
 		$(CI_TEST_EXCLUDES) \
 		--cov=src \
 		--cov-fail-under=$(GLOBAL_COV_THRESHOLD) \
@@ -324,5 +373,5 @@ clean:
 # Pre-PR Comprehensive Gate (lint + mypy + sanity + security + regression +
 # benchmarks + core + agents + e2e + fast + coverage[85% global gate])
 # ---------------------------------------------------------------------------
-pre-pr: lint mypy gitleaks test-claude test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-demos test-fast coverage
+pre-pr: lint artifact-manifest mypy gitleaks test-claude test-sanity test-security test-regression test-benchmarks test-core test-agents test-e2e test-demos test-fast coverage
 check: pre-pr

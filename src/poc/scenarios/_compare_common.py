@@ -81,7 +81,15 @@ def comparison_metrics(
     ``@runtime_checkable`` treats a ``metrics`` mapping as a method member
     (the attribute exists), so ``comparison.metrics()`` would call a dict.
     """
-    raw = getattr(comparison, "metrics", None)
+    # Attribute access, not ``getattr(comparison, "metrics", None)``: the
+    # abstraction audit (scripts/audit_abstractions.py) credits a Protocol
+    # member with a reader only on the ``.metrics`` form, so the ``getattr``
+    # spelling left ``SupportsMetricsMapping.metrics`` looking unread
+    # (Copilot review, PR #151). Same semantics: a missing attribute raises.
+    try:
+        raw = comparison.metrics
+    except AttributeError as exc:
+        raise TypeError(f"{type(comparison).__name__} has no metrics attribute") from exc
     if raw is None:
         raise TypeError(f"{type(comparison).__name__} has no metrics attribute")
     mapping: object = raw() if callable(raw) else raw

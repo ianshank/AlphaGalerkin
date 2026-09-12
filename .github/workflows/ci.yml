@@ -1279,7 +1279,8 @@ jobs:
       # omit, so a bare --cov=tests/support is a real gate. Measured ~95%
       # branch from the docs + import-contract consumers; first landing
       # capped at 85 (add-coverage-gate skill). templates / math_kernel /
-      # backend-54 / deployment-25 / B37 eval_harness stay parked.
+      # backend-54 / deployment-25 stay parked; B37 eval_harness is gated at 96
+      # in test-extras since 2026-09-11 (R-13; measured 98.16%).
       - name: Per-module coverage gate (tests/support)
         if: always() && matrix.shard == 1 && hashFiles('tests/support/') != ''
         run: |

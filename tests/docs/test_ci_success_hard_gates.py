@@ -197,6 +197,11 @@ class TestHardGateConditionsParser:
         assert body_exits_nonzero('echo "x"; exit 1')
         assert not body_exits_nonzero('echo "exit 1"')
         assert not body_exits_nonzero("exit 00")
+        # A separator inside a quoted string is not a command boundary
+        # (Copilot review, PR #151): the old regex split produced `exit 1`.
+        assert not body_exits_nonzero('echo "report-only; exit 1"')
+        assert not body_exits_nonzero("echo 'a && exit 1'")
+        assert body_exits_nonzero('echo "a; b" && exit 2')
 
     def test_a_multi_line_condition_is_returned_whole(self) -> None:
         script = (

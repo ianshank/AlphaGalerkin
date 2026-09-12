@@ -251,8 +251,9 @@ test-substrate:
 # step (R-13). REQUIRES the optional [eval-harness] git extra, so like
 # `test-substrate` it is deliberately NOT chained into `pre-pr`.
 # ALPHAGALERKIN_REQUIRE_EXTRAS=1 turns a missing extra into a loud collection
-# error rather than 28 counted skips and a "coverage too low" that names the
-# symptom. The heredoc'd rcfile drops the package from pyproject.toml's global
+# error rather than 39 counted skips and a "coverage too low" that names the
+# symptom. Gated at EVAL_HARNESS_COV_THRESHOLD (96 = floor(98.16)-2, measured on
+# the first green test-extras run, 2026-09-11; B37 is closed, not parked). The heredoc'd rcfile drops the package from pyproject.toml's global
 # coverage `omit` for this run only.
 test-eval-harness:
 	@printf '[run]\nbranch = true\n\n[report]\nshow_missing = true\n' > .coveragerc.eval-harness

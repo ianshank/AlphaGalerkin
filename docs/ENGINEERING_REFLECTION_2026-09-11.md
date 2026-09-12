@@ -664,7 +664,7 @@ PR #151's branch. "Guard" is the test file that turns the ticket into a check.
 | R-09 focus + secrets hard gates | yes | `a9092f7` | `tests/docs/test_ci_success_hard_gates.py` | charter row amended via `openspec/changes/focus-secrets-merge-gate/`; 6 mutations after review |
 | R-12a lint / typecheck split | yes | `7d62012` | `tests/docs/test_ci_success_hard_gates.py` (`typecheck` in the expected set) | `test-slow` deliberately keeps `needs: test-fast`; `ci.yml` install steps now 13 |
 | R-12b coverage-gates 4-way shard | yes | `7d62012` | `tests/docs/test_coverage_gate_shards.py` | gate set derived from coverage commands, not names; 5 mutations after review |
-| R-13 eval_harness marker + tripwire gate | yes | `b5dc832` (merge `694188c`) | `tests/docs/test_eval_harness_gating.py` | `--cov-fail-under=1` is a tripwire; set `floor(measured)-2` from the first green `test-extras` run |
+| R-13 eval_harness marker + tripwire gate | yes | `b5dc832` (merge `694188c`) | `tests/docs/test_eval_harness_gating.py` | landed as a `--cov-fail-under=1` tripwire; the first green-reporting run measured 98.16% and exposed a `function:`/`path` contract defect in the shipped YAML (fixed in `b4b242c`); gate now 96 |
 | R-08 CHANGELOG structure | yes | `d6550c1` (merge) | `tests/docs/test_changelog_headers.py` | 206/206 bullets preserved; no version bump (owner's call, D8) |
 | R-04a lockfile foundation | **blocked** | `impl/r04a` @ `a9cd02d`, unmerged | `tests/docs/test_uv_lock.py` | `uv lock` needs egress to `download.pytorch.org`, denied by the implementing sandbox's policy; the branch carries the `cpu` extra, pins, ADR 0006 and the guard, and lands once the lock is generated on a host with egress |
 | R-05 artifact manifest | in progress | `impl/r05` | `tests/docs/test_artifact_manifest.py` | — |
@@ -871,7 +871,7 @@ uv lock --dry-run --python 3.10     # 206 packages, ~10 s
 | B21 god-file-split skill | done | used by WS1 |
 | B22 subagent worktree isolation | done (2026-09-11, R-14) | R-14 |
 | B35 network-fetching unit tests | open; reproduced | R-02 |
-| B37 eval-harness ungated | open | R-13 |
+| B37 eval-harness ungated | done (2026-09-11, R-13; gated at 96) | R-13 |
 | CHANGELOG parked LBB `* 10` / FNO `128` | open | 2.2 |
 | 2026-08-19 `pickle.loads` on `all_gather` | open | 6.1 |
 | 2026-08-19 SIGINT handling | deferred | 6.2 |

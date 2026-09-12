@@ -550,6 +550,8 @@ class TestPostToolUseHooks:
             ("guard_build_config.sh", "Makefile"),
             ("guard_build_config.sh", "pyproject.toml"),
             ("guard_build_config.sh", "conftest.py"),
+            ("guard_build_config.sh", "CLAUDE.md"),
+            ("guard_build_config.sh", ".claude/skills/harden-a-guard/SKILL.md"),
             ("check_doc_links.sh", "CLAUDE.md"),
         ],
     )
@@ -588,6 +590,87 @@ class TestPostToolUseHooks:
             check=False,
         )
         assert result.returncode == 0
+
+
+class TestBuildConfigHookSelectsTheGuardsThatReadTheFile:
+    """``guard_build_config.sh`` derives its guard set; it does not list one.
+
+    The hook used to run a hand-maintained list of four guard modules and did
+    not fire on ``CLAUDE.md`` at all. On 2026-09-11 that list predated every
+    guard added that day, and a ``CLAUDE.md`` row that CI reads as data went
+    red in CI (``test_claude_coverage_gates.py``) after passing every guard the
+    hook ran locally. The selection is now computed from which modules under
+    ``tests/docs/`` and ``tests/claude/`` mention the edited file, and the
+    dry-run prints it so this class can assert the *decision* in milliseconds.
+
+    Mutation kills (each planted, run, reverted):
+
+    * drop the ``CLAUDE.md`` keyword row -> ``test_selection_names_the_guard_that_reads[CLAUDE.md]``
+    * narrow the workflow keywords to the literal ``ci.yml`` only (dropping the shared-parser
+      import) -> ``test_every_module_that_mentions_the_file_is_selected[ci.yml]``
+      (``test_gate_jobs_skip_on_cancel.py`` reads workflows through the parser and
+      never spells ``ci.yml``)
+    """
+
+    HOOK = TestPostToolUseHooks.HOOKS_DIR / "guard_build_config.sh"
+
+    #: An edited file -> a guard module that is known to read it. The pairs are
+    #: the ones whose absence has already cost a red build or would.
+    KNOWN_READERS: tuple[tuple[str, str], ...] = (
+        (".github/workflows/ci.yml", "tests/docs/test_ci_success_hard_gates.py"),
+        (".github/workflows/ci.yml", "tests/docs/test_coverage_gate_shards.py"),
+        (".github/workflows/ci.yml", "tests/docs/test_gate_jobs_skip_on_cancel.py"),
+        ("CLAUDE.md", "tests/docs/test_claude_coverage_gates.py"),
+        ("Makefile", "tests/docs/test_fast_lane_is_hermetic.py"),
+        ("pyproject.toml", "tests/docs/test_python_floor_compatibility.py"),
+    )
+
+    #: Vacuity floor for the workflow selection: many guards read ci.yml.
+    MIN_WORKFLOW_GUARDS = 8
+
+    @classmethod
+    def _selected(cls, file_path: str) -> list[str]:
+        result = TestPostToolUseHooks._run_hook(cls.HOOK, file_path)
+        assert result.returncode == 0, result.stderr
+        for line in result.stdout.splitlines():
+            if line.startswith("[hook] selected: "):
+                return line.removeprefix("[hook] selected: ").split()
+        raise AssertionError(f"dry-run printed no selection for {file_path!r}:\n{result.stdout}")
+
+    @pytest.mark.parametrize(("edited", "reader"), KNOWN_READERS, ids=lambda x: Path(x).name)
+    def test_selection_names_the_guard_that_reads(self, edited: str, reader: str) -> None:
+        assert reader in self._selected(edited), (
+            f"editing {edited} would not run {reader}, which reads it; the keyword table "
+            "in guard_build_config.sh no longer covers that file"
+        )
+
+    def test_workflow_selection_is_not_vacuous(self) -> None:
+        selected = self._selected(".github/workflows/ci.yml")
+        assert len(selected) >= self.MIN_WORKFLOW_GUARDS, selected
+
+    @pytest.mark.parametrize("edited", ["ci.yml", "CLAUDE.md", "Makefile"])
+    def test_every_module_that_mentions_the_file_is_selected(self, edited: str) -> None:
+        """Consistency in the other direction: a reader the table misses is a gap.
+
+        Modules that read workflows through ``tests/support/workflows.py`` never
+        spell ``ci.yml``, so the check for workflows accepts either the literal
+        or the shared-parser import -- the same rule the hook applies.
+        """
+        path = ".github/workflows/ci.yml" if edited == "ci.yml" else edited
+        selected = set(self._selected(path))
+        needles = ("ci.yml", "tests.support.workflows") if edited == "ci.yml" else (edited,)
+        mentioning = {
+            module.as_posix()
+            for module in sorted((REPO_ROOT / "tests" / "docs").glob("test_*.py"))
+            if any(n in module.read_text(encoding="utf-8") for n in needles)
+        }
+        assert mentioning, f"no tests/docs module mentions {edited}; the check is vacuous"
+        missing = sorted(m for m in mentioning if not any(m.endswith(s) for s in selected))
+        assert not missing, f"guards that mention {edited} but would not run: {missing}"
+
+    def test_a_source_edit_selects_nothing_and_prints_nothing(self) -> None:
+        result = TestPostToolUseHooks._run_hook(self.HOOK, "src/mcts/search.py")
+        assert result.returncode == 0 and not result.stdout.strip()
 
 
 class TestTheHarnessIsActuallyTracked:

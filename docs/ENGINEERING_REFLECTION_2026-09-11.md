@@ -667,7 +667,7 @@ PR #151's branch. "Guard" is the test file that turns the ticket into a check.
 | R-13 eval_harness marker + tripwire gate | yes | `b5dc832` (merge `694188c`) | `tests/docs/test_eval_harness_gating.py` | landed as a `--cov-fail-under=1` tripwire; the first green-reporting run measured 98.16% and exposed a `function:`/`path` contract defect in the shipped YAML (fixed in `b4b242c`); gate now 96 |
 | R-08 CHANGELOG structure | yes | `d6550c1` (merge) | `tests/docs/test_changelog_headers.py` | 206/206 bullets preserved; no version bump (owner's call, D8) |
 | R-04a lockfile foundation | **blocked** | `impl/r04a` @ `a9cd02d`, unmerged | `tests/docs/test_uv_lock.py` | `uv lock` needs egress to `download.pytorch.org`, denied by the implementing sandbox's policy; the branch carries the `cpu` extra, pins, ADR 0006 and the guard, and lands once the lock is generated on a host with egress |
-| R-05 artifact manifest | in progress | `impl/r05` | `tests/docs/test_artifact_manifest.py` | — |
+| R-05 artifact manifest | yes | `c177091` (merge `7a18e9a`) | `tests/docs/test_artifact_manifest.py` | 10 hashed + 6 presence entries; check runs in the ruff-only `lint` job (imports installed explicitly); 12/12 mutations; recovered from a stalled agent branch |
 | R-14 worktree rule | yes | `1b5be92` (merge) | `tests/claude/test_worktree_rule.py` | 5/5 of six planted; the sixth survives by design (Bash ⇒ anchor, not the converse) |
 | R-04b, R-06, R-07 | not started | — | — | R-04b/R-06 wait on the lock; R-07 needs three stable transfer runs after it |
 | R-01 | owner | — | — | merge dependabot, close #139, disposition stale PRs |

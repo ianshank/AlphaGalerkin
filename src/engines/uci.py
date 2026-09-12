@@ -12,8 +12,8 @@ from __future__ import annotations
 import subprocess
 import threading
 from collections.abc import Callable
-from queue import Empty, Queue
-from typing import Any
+from queue import Empty, Full, Queue
+from typing import IO, Any
 
 import structlog
 
@@ -27,6 +27,58 @@ from src.engines.protocol import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _pump_stdout(
+    stream: IO[str],
+    sink: Queue[str],
+    stop_event: threading.Event,
+    poll_seconds: float,
+    engine_label: str,
+) -> None:
+    """Copy *stream* lines into *sink* until EOF or *stop_event* is set.
+
+    Runs on the daemon reader thread. Deliberately a module-level function
+    that receives only what it needs: it must **not** hold a reference to the
+    :class:`UCIEngine`, or the engine can never be garbage-collected while
+    the thread lives -- and the thread lives as long as the stream does.
+    That reference cycle (thread frame -> engine -> queue -> lines) is what
+    kept every mock engine in the E2E chess tier alive and allocating.
+
+    *sink* is bounded (see ``UCIConfig.stdout_queue_maxsize``); when full the
+    put blocks for *poll_seconds* and re-checks *stop_event*, so a producer
+    that outruns the consumer applies backpressure instead of growing the
+    process, and ``quit()`` can end the thread even while it is blocked.
+
+    Args:
+        stream: The engine's stdout (text mode).
+        sink: Queue drained by ``UCIEngine._read_until``.
+        stop_event: Set by ``quit()`` / ``_kill_process()`` / ``__del__``.
+        poll_seconds: Timeout per blocked put before re-checking the flag.
+        engine_label: Config name, for log context only.
+
+    """
+    backpressure_logged = False
+    try:
+        for line in stream:
+            while not stop_event.is_set():
+                try:
+                    sink.put(line, timeout=poll_seconds)
+                    break
+                except Full:
+                    if not backpressure_logged:
+                        backpressure_logged = True
+                        logger.warning(
+                            "engine_stdout_backpressure",
+                            engine=engine_label,
+                            maxsize=sink.maxsize,
+                        )
+            if stop_event.is_set():
+                break
+    except ValueError:
+        # Stream closed underneath us.
+        pass
+    logger.debug("engine_reader_stopped", engine=engine_label, stopped=stop_event.is_set())
 
 
 class UCIEngine(BaseEngine):
@@ -44,7 +96,8 @@ class UCIEngine(BaseEngine):
     def __init__(self, config: UCIConfig) -> None:
         self._config = config
         self._process: subprocess.Popen[str] | None = None
-        self._stdout_queue: Queue[str] = Queue()
+        self._stop_event = threading.Event()
+        self._stdout_queue: Queue[str] = Queue(maxsize=config.stdout_queue_maxsize)
         self._reader_thread: threading.Thread | None = None
         self._started = False
         self._engine_name: str = "unknown"
@@ -92,9 +145,25 @@ class UCIEngine(BaseEngine):
         except OSError as e:
             raise EngineStartupError(f"Failed to start engine: {e}") from e
 
-        # Start stdout reader thread
+        stdout = self._process.stdout
+        if stdout is None:  # pragma: no cover - Popen(stdout=PIPE) always provides one
+            self._kill_process()
+            raise EngineStartupError("Engine process has no stdout pipe")
+
+        # Start stdout reader thread. Fresh queue + stop event per start so a
+        # reader left over from a previous session (quit() then start()) can
+        # neither feed stale lines into this one nor be stopped by mistake.
+        self._stop_event = threading.Event()
+        self._stdout_queue = Queue(maxsize=self._config.stdout_queue_maxsize)
         self._reader_thread = threading.Thread(
-            target=self._read_stdout,
+            target=_pump_stdout,
+            args=(
+                stdout,
+                self._stdout_queue,
+                self._stop_event,
+                self._config.reader_poll_seconds,
+                self._config.name,
+            ),
             daemon=True,
             name=f"uci-reader-{self._config.name}",
         )
@@ -306,8 +375,9 @@ class UCIEngine(BaseEngine):
         finally:
             self._started = False
             self._process = None
+            reader_stopped = self._stop_reader()
 
-        logger.debug("engine_quit", engine=self._engine_name)
+        logger.debug("engine_quit", engine=self._engine_name, reader_stopped=reader_stopped)
 
     def _send(self, command: str) -> None:
         """Send a command to the engine via stdin.
@@ -332,17 +402,31 @@ class UCIEngine(BaseEngine):
         except BrokenPipeError as e:
             raise EngineCrashError("Engine process pipe is broken") from e
 
-    def _read_stdout(self) -> None:
-        """Read stdout lines into the queue (runs in daemon thread)."""
-        if self._process is None or self._process.stdout is None:
-            return
+    def _stop_reader(self) -> bool:
+        """Signal the stdout reader to exit and wait briefly for it.
 
-        try:
-            for line in self._process.stdout:
-                self._stdout_queue.put(line)
-        except ValueError:
-            # Stream closed
-            pass
+        Returns:
+            True if no reader is running afterwards; False if it is still
+            alive after ``reader_join_timeout_seconds`` (a reader blocked on
+            a live pipe cannot be interrupted from Python and exits on its
+            own once the process closes stdout).
+
+        """
+        self._stop_event.set()
+        thread = self._reader_thread
+        if thread is None or thread is threading.current_thread():
+            return True
+        if thread.is_alive():
+            thread.join(timeout=self._config.reader_join_timeout_seconds)
+        if thread.is_alive():
+            logger.warning(
+                "engine_reader_still_alive",
+                engine=self._engine_name,
+                join_timeout_seconds=self._config.reader_join_timeout_seconds,
+            )
+            return False
+        self._reader_thread = None
+        return True
 
     def _read_until(
         self,
@@ -475,7 +559,8 @@ class UCIEngine(BaseEngine):
             raise EngineCrashError(f"Engine process exited with code {self._process.returncode}")
 
     def _kill_process(self) -> None:
-        """Force-kill the engine process."""
+        """Force-kill the engine process and release its stdout reader."""
+        self._stop_event.set()
         if self._process:
             try:
                 self._process.kill()
@@ -484,6 +569,16 @@ class UCIEngine(BaseEngine):
                 pass
 
     def __del__(self) -> None:
-        """Ensure engine process is cleaned up."""
-        if self._process is not None and self._process.poll() is None:
+        """Ensure the engine process and its stdout reader are released.
+
+        Only signals the reader (no join): finalizers run on whatever thread
+        triggered collection and must not block. The reader exits within one
+        ``reader_poll_seconds`` if blocked on a full queue, or on the next
+        line / EOF otherwise.
+        """
+        stop_event = getattr(self, "_stop_event", None)
+        if stop_event is not None:
+            stop_event.set()
+        process = getattr(self, "_process", None)
+        if process is not None and process.poll() is None:
             self._kill_process()

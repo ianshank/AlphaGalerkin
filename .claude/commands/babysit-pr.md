@@ -23,12 +23,12 @@ rediscovered by hand more than once — it is written here so it is not rediscov
 
 | Symptom | Class | Action |
 |---|---|---|
-| `test-e2e` stalls then "runner has received a shutdown signal" | the pre-existing chess/MCTS leak (`docs/E2E_TEST_PLAN.md` §12.4) — measured 13,649 MB whole-tier vs 1,451/3,614 MB split | a **finer** split, never a bigger runner or a deleted test |
+| `test-e2e` stalls then "runner has received a shutdown signal" | **was** the `src/engines/uci.py` stdout-reader leak (an unbounded queue pumped by a thread whose frame held the engine; mis-attributed to chess/MCTS until 2026-09-11 — `tests/engines/test_uci_reader_lifecycle.py`). Fixed: the `-k chess` half fell from 4,695 MB / 100 s to 658 MB / 2 s | if it recurs, the reader lifecycle regressed — run that test file first; a **finer** split is a workaround, never a bigger runner or a deleted test |
 | a `tests/benchmarks/` ratio assertion, red in a full run and green alone | load sensitivity, recorded in CLAUDE.md Next Steps (measured 2026-08-21: failed under load, passed 2 s later at load 0.96) | re-run once to confirm; **never** widen the threshold |
 | a `[fem]`-gated step fails at import | the optional extra did not install | fix the install, not the gate |
 | a coverage gate reports `0.00%` with `CoverageWarning: No data was collected` | `omit` collision, or a `--cov=<file>.py` spec coverage 7.x drops | see `add-coverage-gate`; the gate was measuring nothing |
 | a gate passes but a module inside it is near-0% | the step's *test selection* excludes that module's tests | add the test file to the step |
-| a torchvision/HF download 403s | sandbox proxy, environmental | not a code defect; say so |
+| a torchvision/HF download 403s, or `SocketBlockedError` / `SocketConnectBlockedError` | the fast lane is hermetic (R-02, `pytest-socket`): a test reached the network | the test is the defect — mark it `network` and move it out of the fast lane, or make it offline (`offline_vgg` is the pattern); never widen `--allow-hosts` |
 
 Anything not in this table is this PR's to root-cause. "Flake" is not a root cause.
 

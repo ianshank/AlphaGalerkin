@@ -1853,7 +1853,7 @@ C4Component
 
 Redrawn 2026-09-11 against the R-02 / R-08 / R-09 / R-10 / R-11 / R-12 / R-13 /
 R-14 tickets in `docs/ENGINEERING_REFLECTION_2026-09-11.md`; the harness counts
-(15 / 6 / 5) and the `tests/claude/` collected count were re-measured from disk
+(15 / 6 / 6) and the `tests/claude/` collected count were re-measured from disk
 at the same time — the previous 12 / 5 / 4 and "87 tests" had drifted, which is
 why `tests/claude/` machine-checks the inventory.
 

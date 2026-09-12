@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`/merge-agent-branch` slash command** (sixth command; harness inventory now
+  15 skills / 6 subagents / 6 commands, machine-checked by `tests/claude/`).
+  Encodes the subagent-branch merge ritual this cycle ran eight times by hand:
+  verify in the worktree → `git merge --no-ff` → derived guard sweep → worktree
+  and branch cleanup with `-d` (never `-D`) → three ledger rows → push after the
+  sweep. `/babysit-pr` triage table gains two rows for the failure classes this
+  cycle root-caused (E2E runner shutdown → UCI stdout-reader leak; 403 /
+  `SocketBlockedError` → hermetic fast lane, mark the test `network`).
 - **Wave F AGENT.md + B8.** Every `src/` package now has `AGENT.md` (B12), including
   `src/research/` and four B10 keep-reason files (`prototyping`, `analysis`,
   `curriculum`, `tournament`: test-held, not production-wired, not a
@@ -337,7 +345,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `focus` / `secrets` parallel; `coverage-gates` 4-way sharded; `ci-success`
   with 13 hard gates and the shaped `focus` clause; `test-slow` nightly-only)
   and adds a governance-guards boundary plus one quality-gate row per new
-  guard; harness inventory re-measured (15 / 6 / 5, 155 tests). README and
+  guard; harness inventory re-measured (15 / 6 / 5, 155 tests — the command count
+  moved to 6 with `/merge-agent-branch` the same day, above). README and
   CONTRIBUTING document the hermetic fast lane (`make test-fast` blocks
   sockets; `@pytest.mark.network`), `eval_harness_required` +
   `ALPHAGALERKIN_REQUIRE_EXTRAS=1`, explicit merge-gate membership, the

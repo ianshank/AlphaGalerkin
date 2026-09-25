@@ -26,7 +26,7 @@ partner outreach — consolidated here from the previously scattered top-level
 
 | Doc | Content |
 | --- | --- |
-| [Commercialization peer review](COMMERCIALIZATION_PEER_REVIEW.md) | Adjudicates a three-model commercialization meta-analysis against the code at `6052281`; scores each premise, and replaces the proposed plan with one sequenced to clear the `focus` merge gate. |
+| [Commercialization peer review](COMMERCIALIZATION_PEER_REVIEW.md) | Adjudicates a three-model commercialization meta-analysis against the code at `6052281` (revision 2). Finds the committed MCTS arena trajectory identical to greedy marking, rescores every premise, and replaces the plan with an evidence-first go/no-go sized for one maintainer. |
 
 ## Proposal narrative (`proposal/`)
 

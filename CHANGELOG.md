@@ -8,23 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`** — adjudicates a three-model
-  commercialization meta-analysis against the tree, scoring each premise as
-  true/false/partial rather than accepting the narrative. Records four findings
-  that change the proposed plan: `picogk` is a stub (`PicoGKSDFEvaluator.__init__`
-  raises `NotImplementedError`; the extra ships only `pythonnet`), so there is no
-  generative-design lane; the quoted "9.23× at matched wall-clock" is
-  `l2_error_ratio_at_matched_solves`, while the wall-clock proxy in the same
-  sidecar is 30.84; dual-budget accounting and MCTS/domain decoupling already
-  exist and are CI-gated (the `search-engine-does-not-know-its-domains` import
-  contract), so neither is new work; and the AMR ↔ rate-control isomorphism has
-  already been acted on by *copying* the search engine — `src/mcts/node.py` and
-  `src/video_compression/mcts/rate_control.py` implement the same PUCT formula
-  with no shared code, a silent-divergence risk of the F0 class. The revised plan
-  is sequenced to clear the `focus` merge gate (`src/video_compression/` is a
-  frozen track, so unification lands core-only then codec-only) and recommends
-  against the `src/mcts` → `src/planning` rename. Also records the real provenance
-  gap: four of six committed `results/*.csv` have no `.run.json` sidecar.
+- **`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`** (revision 2) — adjudicates a
+  three-model commercialization meta-analysis against the tree, re-measuring every
+  empirical premise. Central finding: the committed MCTS trajectory in
+  `results/mcts_classical_amr_arena.csv` is bit-for-bit identical to a
+  `--n-simulations 1` run (greedy single-element maximum marking), and stays
+  identical from 1 to 128 simulations under the committed `top_k_actions=8` filter;
+  the only configuration where deep search overrode greedy (`top_k_actions=2`,
+  64 simulations) finished at a matched-DOF ratio of 1.0289 against greedy's
+  0.9532. The 0.9532 therefore measures marking granularity, not look-ahead, and
+  the cycle thesis stays untested — both arms the arena compares are greedy, and
+  the single-element greedy control that would isolate look-ahead is absent. Exploratory and
+  uncommitted; no charter row is changed here (the correction is proposed as an
+  owner decision). Also records: the codec's MCTS rate controller is untrained
+  MuZero-style scaffolding (default-off, budget absent from its state,
+  `GOPPlanner` discards its per-frame target), not a copy of `src/mcts`; a
+  charter-cited sidecar (`lshape_adaptive_vs_uniform.run.json`) fails
+  `assert_proposal_grade`; `README.md`'s RTX 3090 benchmark table has no
+  artifact; the swarm pivot's host game already exists, dormant. Corrects
+  revision 1 point by point and replaces its plan with an evidence-first
+  go/no-go sized for one maintainer.
 - **`/merge-agent-branch` slash command** (sixth command; harness inventory now
   15 skills / 6 subagents / 6 commands, machine-checked by `tests/claude/`).
   Encodes the subagent-branch merge ritual this cycle ran eight times by hand:

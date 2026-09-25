@@ -1,292 +1,309 @@
 # Commercialization peer review — adjudicating the three-model meta-analysis
 
-**Reviewed at:** `6052281` (2026-09-25) · **Method:** every load-bearing premise checked
-against code on disk, not against the narrative.
+**Revision 2** · reviewed at `6052281` (2026-09-25) · **Method:** every premise checked against
+the code on disk, and every empirical premise re-measured. Revision 1 is in git history; §2 lists
+what it got wrong.
 
-A prior meta-analysis fused three frontier-model reviews of this repository and concluded
-that the project is "a domain-agnostic constrained-allocation engine bundled with
-enterprise-grade DevOps tooling", then proposed a four-phase extract-and-pivot plan. The
-strategic reading is largely right. Roughly half of the *factual* premises under it are
-not.
-
-This document does three things: it scores each premise against the code, it identifies
-the four findings that change the plan, and it replaces the plan with one that can
-actually merge through this repository's own gates.
-
----
-
-## 1. Verification scorecard
-
-| # | Premise from the meta-analysis | Verdict | Evidence |
-|---|---|---|---|
-| 1 | `picogk` is an unstated generative-design prototype | **False** | `src/pde/sdf.py:437` raises `NotImplementedError` unconditionally. The `[picogk]` extra ships only `pythonnet>=3.0` — not PicoGK. Everything runs on `AnalyticalHelixSDF`. |
-| 2 | "MCTS loses by 9.23× at matched wall-clock compute" | **Mislabelled** | `9.23` is `l2_error_ratio_at_matched_solves`. The wall-clock-proxy metric is `error_per_dof_ratio_mcts_over_dorfler` = **30.84**. The review understated the loss on the axis it named. |
-| 3 | `video_compression` is decoupled from `pde` | **True** | One import in either direction: `src/video_compression/perf/device.py:16` → `src.poc.device`. No `src/pde`, `src/mcts`, `src/refinement` or `src/research` import at all. |
-| 4 | `tests/claude/` is extractable today | **True** | 3 files, 1,014 LOC, **zero** `src.*` imports. |
-| 5 | `tests/docs/` is extractable today | **Partial** | 22 files, 8,104 LOC, imports `src.poc`, `src.templates`, `src.tools`. Most of it is charter/CI-alignment logic that is meaningless outside this repo. |
-| 6 | `tests/security/` is extractable today | **False as stated** | Imports six `src` packages including `src.video_compression`. The *payload corpus* is portable; the tests around it are not. |
-| 7 | `device_planner.py` exists | **True** | `src/video_compression/zoo/device_planner.py` — `scan_devices()`, `assign_devices()`, `VRAM_AWARE` best-fit. Named correctly. |
-| 8 | Dual-budget accounting is a new contribution | **Already implemented** | `results/mcts_classical_amr_arena.csv` already carries `wall_time_seconds`, `n_apply_actions`, `n_cache_misses`, `n_cache_hits`; the sidecar already reports three separate ratios. |
-| 9 | Phase 2 must "sever MCTS from the Go/PDE legacy" | **Already done and CI-gated** | `tests/regression/test_import_contracts.py` contract `search-engine-does-not-know-its-domains` forbids `src.mcts` importing `src.pde`, `src.refinement`, `src.research`, `src.poc`, `src.games`. |
-| 10 | `GameInterface` is vestigial | **False — it is the boundary** | Two deliberate definitions: `src/mcts/search.py:85` (`Protocol`, structural, domain-free) and `src/games/interface.py:56` (`ABC`, game-AI base). The Protocol exists *precisely so* `src/mcts` need not import `src/games`. Deleting it breaks contract #9. |
-| 11 | Hardware provenance is an open honour-system loophole | **Partial** | `collect_hardware_tag()` already exists (`src/research/run_manifest.py:313`) and calls `torch.cuda.get_device_name()`. The real gap is narrower and worse — see finding C. |
-| 12 | Pivot A (video rate control) must be built | **Already partly built** | `src/video_compression/mcts/rate_control.py` — 500 LOC, `MCTSRateController` + `GOPPlanner`, already wired into `codec.py:170`. |
-| 13 | Agent-count independence for swarms | **Architecturally plausible** | `GalerkinAttention.forward` operates on `b n (h d)` (`src/modeling/attention.py:108`) with no grid assumption, and normalises by `1/n`. The claim is untested, but nothing in the architecture forbids it. |
-
-**Score: 4 true, 4 false, 3 partial, 1 mislabelled, 1 plausible-but-untested.**
+> **Summary.** The meta-analysis — and revision 1 of this review — built a commercialization
+> strategy on a premise nobody had tested: that the tree search does something. On the only
+> committed result, it does not. The published MCTS trajectory is bit-for-bit identical to greedy
+> single-element marking, and stays identical at every simulation budget tried (1 to 128) under the
+> committed action filter. That reorders the plan. Before any pivot, spin-out or SDK, the project
+> needs the one experiment it has never run — a problem where greedy is myopic — and a go/no-go
+> decision on its outcome.
 
 ---
 
-## 2. The four findings that change the plan
+## 1. The finding that reorders everything
 
-### A. The isomorphism is not a discovery — it is already in the tree, as a copy-paste
+### The committed "MCTS wins at matched DOF" result contains no look-ahead
 
-The meta-analysis credits Opus with recognising that adaptive mesh refinement and video
-rate control are the same MDP. That recognition already happened, and somebody already
-acted on it — by duplicating the search engine rather than sharing it.
+`results/mcts_classical_amr_arena.csv` is the artifact that the charter's evidence register, its
+Novelty requirement, `docs/FOCUS.md` and `README.md` all cite as the answer to the cycle thesis:
+median `l2_error_ratio_at_matched_dof` **0.9532**, "MCTS ~4.7% better at matched DOF".
 
-```
-src/mcts/node.py:84                          UCB(s,a) = Q + c_puct · P · √N_parent / (1 + N)
-src/video_compression/mcts/rate_control.py:84  exploration = c_puct * prior * sqrt(parent_visits) / (1 + visit_count)
-```
+Re-running the committed configuration with only the search budget changed:
 
-Two `MCTSNode` classes. Two `ucb_score` methods. Identical formula. Zero shared code.
-`src/video_compression/mcts/` (900 LOC) imports nothing from `src/mcts/` (2,057 LOC).
+| Search configuration | Legal actions per step | MCTS trajectory vs greedy | Matched-DOF ratio vs Dörfler | Real solves |
+|---|---|---|---|---|
+| `n_simulations=1` (cannot compare alternatives) | 8 | — (this *is* greedy) | 0.9532 | 13 |
+| `n_simulations=2` | 8 | identical, bit for bit | 0.9532 | 13 |
+| `n_simulations=4` | 8 | identical | 0.9532 | 14 |
+| **`n_simulations=8` (committed)** | 8 | **identical** | **0.9532** | **43** |
+| `n_simulations=16` | 8 | identical | 0.9532 | 121 |
+| `n_simulations=32` | 8 | identical | 0.9532 | 290 |
+| `top_k_actions=4`, `n_simulations=64` (deep tree) | 4 | identical | 0.9532 | 521 |
+| `top_k_actions=8`, `n_simulations=128` (deep tree) | 8 | identical | 0.9532 | 559 |
+| `top_k_actions=2`, `n_simulations=64` (deepest tree) | 2 | diverges at step 3 | **1.0289** (gate fails) | 433 |
 
-This inverts the plan's premise. The work is not *"abstract MCTS into a planning SDK, then
-port it to video."* The work is *"two implementations of the same algorithm already exist
-and are free to drift; unify them."* That is a smaller, better-defined, and far more
-defensible change — and it converts Pivot A from a port into a configuration change.
+**Why.** Three settings make multi-step look-ahead structurally impossible at the committed budget:
+`get_legal_actions` pre-filters to the top 8 elements by residual indicator, sorted descending
+(`src/pde/games/substrate_refinement.py:175-187`); the prior is a softmax over those same indicators
+(`src/research/substrates/residual_evaluator.py`); and 8 simulations over 8 children is a one-ply
+sweep. The search can at most confirm the indicator ranking one step deep, and on this problem it
+always does. Given room for a real tree (4 children and 64 simulations; 8 and 128), it *still*
+always agrees. In the one configuration where deep search overrode the indicator, it finished on
+the wrong side of the Dörfler reference curve: **1.0289**, where greedy sits at 0.9532.
 
-It is also a live correctness risk today: a fix to selection, backup or exploration
-semantics in one implementation silently does not reach the other. This repository already
-paid for exactly that class of defect once — the F0 two-player backup applied to a
-single-agent game, which produced a retracted headline.
+**What 0.9532 actually measures.** Single-element maximum marking (refine the largest-indicator
+element, one per step) against Dörfler bulk marking at θ=0.5 — the expected trade of finer marking
+in adaptive FEM (more solve iterations for more DOF-efficient meshes), not a search effect. At equal
+accuracy the greedy mesh needs 2.6% fewer DOF (287 vs ≈294.7) for about twice the solves (13 vs
+≈6.2): a trade that pays back after roughly 180–240 downstream reuses of the mesh, if downstream
+solve cost scales between DOF¹ and DOF^1.5. The search layer on top produces the *identical* mesh
+with 30 more solves, so it never pays back.
 
-### B. The plan's headline sequencing is illegal under this repo's own merge gate
+**What it means.**
 
-`config/focus.yaml` freezes two tracks. `src/video_compression/` is one of them
-(track `codec`), with an `incidental_line_budget` of **20 changed lines**. `core_paths`
-are `src/mcts/`, `src/pde/`, `src/refinement/`, `src/research/`. The `focus` job has been
-a **hard merge gate** in `ci-success` since 2026-09-11 (`docs/FOCUS.md`).
+- The charter evidence row (`openspec/specs/project-charter/spec.md:129`), its Novelty text
+  (`:203-207`), its frozen-tracks deviation row (`:343`), `docs/FOCUS.md:19`, `README.md:58-59`
+  and the 2026-09-08 `CLAUDE.md` milestone all attribute to MCTS a result produced by greedy marking.
+- The cycle thesis — *"MCTS multi-step look-ahead beats classical greedy marking"*
+  (`specs/mcts_classical_amr_arena.spec.md:11`) — is **not answered** by this artifact. Both arms
+  it compares are greedy: Dörfler bulk marking, and an MCTS arm that reduces to single-element greedy
+  marking. The control that separates look-ahead from marking granularity — a single-element greedy
+  arm — is absent.
+- The meta-analysis read the 9.23× matched-solves loss as the price of a quality edge; revision 1
+  called it "converting a budget you have into a budget you don't". There is no trade. Greedy reaches
+  the same mesh at 13 solves, so the search's extra cost buys nothing.
 
-The rule: a changeset may touch a frozen track, or a core path, but a *substantive* change
-to both at once fails the build.
+**What it does not mean.** This is one problem (L-shape Poisson, P1, `SkfemTriSubstrate`), one
+Dörfler θ, an untrained evaluator, and a 12-step cap. It does not show that look-ahead can never
+help. It shows that the committed evidence contains none, and — consistent with the repo's own
+2026-07-05 note that greedy residual marking is near-optimal for local elliptic singularities — that
+this testbed cannot show it.
 
-The proposed Phase 3 Pivot A — "wire the `PlanningEnvironment` to the video codec lab" — is
-precisely the diff shape that gate exists to reject. So is any single PR that both extracts
-a planner from `src/mcts/` and adopts it in `src/video_compression/`.
+**Status of these numbers.** Exploratory and uncommitted — not headline claims. The full table
+reproduces in a few minutes on CPU. The one claim checkable against committed data takes a single
+run of about ten seconds:
 
-This is not an obstacle to route around. It is a sequencing instruction, and honouring it
-produces a better plan (see §4, Phase 1): one core-only PR, then one codec-only PR.
-
-### C. The provenance gap is real, but it is not the one identified
-
-The review proposed a CI guard that parses Markdown performance tables and asserts the GPU
-name matches. The capture machinery for that already exists. The actual gap is cruder:
-
-**Four of six committed result CSVs have no provenance sidecar at all.**
-
-```
-results/lambda_scheduling.csv              — no .run.json
-results/lshape_mcts_vs_dorfler.csv         — no .run.json
-results/stochastic_galerkin_compare.csv    — no .run.json
-results/transfer_baseline_compare.csv      — no .run.json
+```bash
+pip install -e '.[fem]'
+python -m scripts.run_mcts_classical_amr_arena --n-simulations 1 --output-dir /tmp/arena_greedy
+python - <<'EOF'
+import csv
+mcts = lambda p: [(r["seed"], r["n_dof"], r["l2_error"])
+                  for r in csv.DictReader(open(p)) if r["method"] == "mcts"]
+print(mcts("results/mcts_classical_amr_arena.csv")
+      == mcts("/tmp/arena_greedy/mcts_classical_amr_arena.csv"))  # True
+EOF
 ```
 
-And of the two that do, `lshape_adaptive_vs_uniform.run.json` records
-`hardware_tag: "unknown"`. So the field exists, is schema-versioned, is checked by
-`assert_proposal_grade` — and is empty on the artifact that has it.
-
-A guard that cross-checks a *claimed* GPU against a *measured* one is the right idea aimed
-at the wrong layer. The cheaper, higher-value fix is to require a sidecar with a non-`unknown`
-hardware tag for every committed artifact the charter's evidence register cites. The
-`run-provenance` and `claims-ledger` skills already encode the ritual; nothing enforces
-completeness across the set.
-
-### D. The strategic verdict survives, but the evidence is worse than stated
-
-On the arena's own artifact (`results/mcts_classical_amr_arena.run.json`, `dirty: false`,
-SHA `19609d4`):
-
-| Metric | Value | Reading |
-|---|---|---|
-| `l2_error_ratio_at_matched_dof` | **0.9532** | Below 1.0 — favours look-ahead when the budget is degrees of freedom |
-| `l2_error_ratio_at_matched_solves` | **9.23** | Look-ahead loses heavily when the budget is solver calls |
-| `error_per_dof_ratio_mcts_over_dorfler` | **30.84** | Look-ahead loses by ~31× end-to-end on wall-clock |
-| `adequacy_error_ratio` | 0.0946 | Substrate gate passed; not a policy result |
-
-The conclusion — *this is not a faster solver* — holds, and holds harder than the review
-argued. But note what the same artifact says: the sign of the answer **depends on which
-budget you charge for**. That is not a consolation prize; it is the actual product thesis,
-and it is the one thing all three models circled without naming. The technology is not
-"search finds better refinements". It is **"search converts a budget you have into a budget
-you don't"** — spend CPU cycles offline to buy degrees of freedom, bits, or spatial
-footprint at deployment. Every credible pivot below is an instance of that trade, and it is
-only credible where the deployment budget is genuinely scarcer than the planning budget.
+The other rows vary `--n-simulations`; the `top_k_actions` rows copy
+`config/scenarios/mcts_classical_amr_arena.yaml` with that one field changed and pass `--config`.
 
 ---
 
-## 3. Adjudicating the three models
+## 2. Corrections to revision 1
 
-The meta-analysis's adjudication is fair in outline and wrong in attribution.
+Revision 1 scored the meta-analysis and was itself wrong on these points:
 
-**Opus — product visionary.** Correctly credited for the AMR↔rate-control isomorphism and
-the agent-count-independence reframing, which is the one speculative claim that survives
-contact with the code (finding #13). But the forensic call it was most praised for — the
-`picogk` prototype — is its worst error: the class raises `NotImplementedError` on the
-first line of its constructor. Treating a stub as hidden capability is the exact failure
-mode this repository has a retraction ledger for.
-
-**Sol — pragmatic architect.** Credited with dual-budget accounting as the fix that
-"neutralises the scientific critique". The repo has had it since the arena landed:
-three ratios in the sidecar, per-solve counters in the CSV. Sol's contribution is real but
-different from the one claimed — it is the observation that the accounting should be a
-*contract* rather than a convention. That reframing is worth keeping and is cheap to
-enforce (Phase 2 below).
-
-**Nemotron — meta-observer.** Correct and under-credited. `.claude/` and `openspec/` are a
-tested agent harness: `tests/claude/` is 1,014 LOC with zero `src` imports — the single
-cleanest extraction in the tree, and the only Phase 1 candidate that survives inspection
-intact.
-
-**On the monorepo-vs-split question**, the meta-analysis's verdict (reject the split, adopt
-the SDK refactor) is right, for a reason none of the three models gave: the split is not
-blocked by cohesion, it is blocked by *governance surface*. Charter alignment, the
-architecture map, the shape baseline, the artifact manifest and the `hf_space` mirror all
-bind `src/` package identity to tests that fail on drift. Splitting the repo means
-rewriting that machinery; keeping it means the machinery keeps working for free.
-
-**On the rename** (`src/mcts/` → `src/planning/`): **do not do it.** It touches 54 importing
-files across 13 packages, plus the `hf_space` mirror, plus `ARCHITECTURE.md`, the charter
-scope register, `config/shape_baseline.yaml` hashes and the import contracts. It buys
-nothing that contract #9 does not already guarantee, and it would burn the exact review
-attention the commercial work needs. Terminology in docstrings is free; package identity is
-not.
-
----
-
-## 4. The revised plan
-
-Each phase names the PR shape, the gate it must clear, and a falsifiable exit criterion.
-Phases 0–2 are sequenced so that no single PR is both core-touching and codec-touching.
-
-### Phase 0 — Delete the false premises (days 1–3)
-
-| Task | Action | Exit criterion |
-|---|---|---|
-| **0.1 `picogk` decision** | It is a stub behind an extra that installs only `pythonnet`. Either retitle the Noyron surface honestly as an *analytical-surrogate* benchmark, or drop the extra. Do **not** market a 3D-printing lane. | `docs/` contains no claim implying live PicoGK geometry ingestion. |
-| **0.2 Provenance completeness** | Regenerate the four missing `.run.json` sidecars; fix `hardware_tag: unknown`. | Every `results/*.csv` cited by the evidence register has a sidecar with a non-`unknown` hardware tag. |
-| **0.3 Provenance guard** | Extend the existing manifest guard: a cited artifact without a complete sidecar fails CI. Mutation-kill it per `harden-a-guard`. | Deleting any sidecar turns a *named* test red. |
-
-Phase 0 touches `docs/`, `results/` and `tests/` only — no frozen track, no core path.
-
-### Phase 1 — Unify the two search engines (weeks 1–3) — *the highest-value work in this plan*
-
-Two PRs, in this order, because the `focus` gate requires it:
-
-**PR-1 (core only — zero codec lines).** Inside `src/mcts/`, extract the selection/backup/
-expansion core that both implementations share, behind the existing domain-free `Protocol`.
-Do not rename the package. Do not import anything new. Contract #9 must stay green
-unmodified.
-*Exit:* `src/mcts` tests green at its existing 90 branch gate; `audit_abstractions` clean;
-import contracts unchanged.
-
-**PR-2 (codec only — zero core lines).** Delete `MCTSNode`/`ucb_score` from
-`rate_control.py`; adopt the core planner. `MCTSRateController` and `GOPPlanner` keep their
-public signatures.
-*Exit:* codec coverage gate (83) holds; a planted change to the core UCB formula visibly
-changes rate-control behaviour — proving the duplication is gone rather than merely hidden.
-
-**Why this is worth doing first:** it is the only item in the entire plan that is
-simultaneously a correctness fix, a maintenance win, and a commercial enabler. It converts
-Pivot A from a port into a config change, and it removes a silent-divergence risk of the
-same class as the F0 defect.
-
-*Contingency:* if PR-1 cannot be built without a core-path change that the `focus` gate
-reads as substantive alongside anything else in flight, land it alone on a quiet branch
-rather than reaching for the `focus-override` label. The label exists; using it to dodge a
-gate that is correctly firing would forfeit the thing that makes this repo's numbers worth
-anything.
-
-### Phase 2 — Promote dual-budget from convention to contract (week 3, parallel)
-
-The data already exists. Make it a rule: any comparative claim must report **both** the
-domain budget (DOF / bits / footprint) and the planning budget (solves / wall-clock), and a
-claim that reports only the favourable one fails CI. This is one guard over the evidence
-register, in the idiom `test_amr_policy_ratios_cite_a_manifest` already uses.
-
-*Exit:* a synthetic single-budget claim planted in the register turns a named test red.
-
-**This is the highest strategic-value-per-line item in the plan.** It converts the 0.9532 /
-9.23 / 30.84 spread from an embarrassment into the product's defining specification.
-
-### Phase 3 — Extraction, honestly scoped (weeks 2–5, parallel, low risk)
-
-Ranked by *verified* extractability, not by narrative appeal:
-
-1. **`tests/claude/` → agent-harness conformance suite.** 1,014 LOC, zero `src` imports.
-   Ships today. This is the cleanest asset in the repository and the meta-analysis
-   under-rated it.
-2. **`device_planner.py` → VRAM-aware scheduler.** Self-contained, real, correctly named.
-   Note it lives in a frozen track: extract by *copy* to a new package, leave the original
-   untouched, and the gate never fires.
-3. **`tests/security/` payload corpus → reusable fixture.** Extract the *corpus*, not the
-   tests. The tests import six `src` packages.
-4. **`tests/docs/` → CI-integrity linter.** The generalisable core is the coverage-gate
-   integrity check and the "can this job actually fail?" parser. Budget for real work: 8,104
-   LOC, most of it charter-specific.
-5. **SBIR scaffold fork.** `docs/business/` + `config/proposals/` both exist as described.
-   Lowest engineering cost, genuine developer-relations value.
-
-### Phase 4 — Pivots, ranked by distance-to-evidence (months 2–4)
-
-| Pivot | Distance | Honest status |
-|---|---|---|
-| **A. Predictive transcoding** | **Closest** | `MCTSRateController` + `GOPPlanner` exist and are wired. After Phase 1 PR-2 this is a measurement task, not a build. First deliverable is a BD-rate number against `h265_baseline.py` with both budgets reported. |
-| **B. Content-aware bitrate for detection** | Near | The genuinely novel framing: optimise QP against downstream detector confidence, not PSNR. Needs a detector in the loop; nothing in-repo blocks it. Strongest fit to stated domain expertise. |
-| **C. Agent-count-independent swarms** | Far but real | Architecturally plausible (finding #13) and completely unbuilt. The one-week falsification test: train on N=4, evaluate at N=16, report whether the attention's `1/n` normalisation holds. Cheap to disprove — run it before committing a roadmap to it. |
-| **D. Adaptive CI test selection** | Furthest | Greenfield, and competes with mature commercial tools. The repo's CI-integrity assets (Phase 3.4) are the more defensible play in the same market. Deprioritise. |
-
----
-
-## 5. What to drop, and why
-
-| Dropped | Reason |
+| Revision 1 said | What the code says |
 |---|---|
-| `src/mcts/` → `src/planning/` rename | 54 files + mirror + charter + shape baseline, for zero guarantee that contract #9 does not already provide. |
-| "Delete the vestigial `GameInterface`" | It is not vestigial. It is the `Protocol` that keeps the search engine domain-free; deleting it breaks the contract the same plan wants to establish. |
-| "Build dual-budget accounting" | Already exists at the data layer. Re-scoped to *enforcing* it (Phase 2). |
-| GPU-name-vs-Markdown-table CI guard | Aimed at the wrong layer. Replaced by sidecar completeness (Phase 0.3). |
-| Physically splitting the repository | Blocked by governance surface, not by cohesion. The monorepo keeps the guard machinery working for free. |
-| 3D-printing / generative-design lane | The dependency is a stub that raises on construction. There is no lane. |
+| The codec's MCTS copies `src/mcts` ("identical formula … unify them") | A different algorithm. The codec controller is MuZero-style — learned `representation`/`dynamics`/`prediction` networks (`src/video_compression/mcts/rate_control.py:100-129`). `src/mcts` is AlphaZero-style over a real environment. They share only the PUCT selection formula. |
+| The duplication is "a silent-divergence risk of the F0 class" | The codec backup is correct single-agent code, with no sign inversion (`rate_control.py:333-336`). Its real defects are different ones — §4. |
+| Pivot A is "closest … after unification, a measurement task" | Search-based rate control is unbuilt: default-off, never trained, budget-blind (§4). The only H.265 reference is labelled `hardware_tag: placeholder` by its own file. |
+| `video_compression` has "one import in either direction" | It imports `src.templates` (15×), `src.training` (2×), `src.poc` and `src.constants`. What is true: nothing from `src/pde`, `src/mcts`, `src/refinement` or `src/research`, in either direction. |
+| 30.84 is "the wall-clock-proxy metric" | Precisely `error_per_dof_ratio_at_matched_wall_clock`. It survives; re-measured at 31.32 (wall-clock noise). |
+| "Regenerate the four missing sidecars" | One is impossible (`lambda_scheduling.csv`'s producer was cut; the charter pins the file). One is the charter-exempt golden. Two fall outside the charter's sidecar rule, which covers only AMR policy ratios. The real provenance defects are in §5. |
+| The hardware-provenance guard is "aimed at the wrong layer" | Wrong. The meta-analysis was pointing at a live claim (`README.md:352-360`). |
+| `docs/FOCUS.md` and `config/focus.yaml` contradict each other | They do not. The charter's deviation register (`spec.md:343`) records `codec` as "remains paused" pending a follow-up edit. The `focus` gate admits a frozen-track-only PR of any size, so un-pausing is a policy decision, not a gate. |
+| `tests/claude/` "ships today" | It has zero `src` imports, but `test_harness_validation.py` has about twenty lines bound to this repo's own files and inventory. The pattern ships; the file needs parameterising. |
+| `device_planner.py` extracts "by copy" | `assign_devices` takes a `ModelZooManifestConfig`, so extraction needs a generic entry type. |
+| The swarm pivot is "completely unbuilt" | `src/pde/games/swarm_planning.py` (644 LOC), 474 LOC of tests and `src/games/pettingzoo_adapter.py` exist. They are dormant: no consumer, scenario or result. |
+| `sdf.py:437` | The raise is at `sdf.py:435`. |
 
 ---
 
-## 6. Open questions for the owner
+## 3. The meta-analysis, rescored
 
-1. **Does the `codec` freeze lift?** `docs/FOCUS.md` says the freeze lifted on the signed
-   arena result, but `config/focus.yaml` still lists `codec`. Phase 1 PR-2 and all of Pivot A
-   depend on the answer. Re-scoping the YAML is a one-PR `openspec` change and should happen
-   before Phase 1 starts, not during it.
-2. **Is Pivot B (detector-aware bitrate) in scope?** It is the strongest commercial fit and
-   the only pivot that is both novel and close to existing code, but it needs a detection
-   model in-repo, which is a new dependency and a charter scope change.
-3. **Who owns the extracted packages?** Phase 3 produces four shippable artifacts with no
-   home. Extraction without a maintenance owner produces four more unmaintained repositories.
+| # | Premise | Verdict | Evidence |
+|---|---|---|---|
+| 1 | The repo is secretly a domain-agnostic allocation engine | **Stated, not hidden** | The charter's Purpose (`spec.md:8-16`): "`src/mcts/` is the domain-agnostic engine, and each domain adapts into it." |
+| 2 | Look-ahead buys a matched-DOF edge at a compute cost | **False** | §1 — the edge comes from greedy marking; search adds only cost. |
+| 3 | "MCTS loses 9.23× at matched wall-clock" | **Mislabelled** | 9.23 is matched *solves*; the matched-wall-clock figure is error-per-DOF 30.84. Neither measures look-ahead. |
+| 4 | `picogk` hides a generative-design prototype | **False** | `PicoGKSDFEvaluator.__init__` raises `NotImplementedError` (`src/pde/sdf.py:435`); the extra installs only `pythonnet`. |
+| 5 | Hardware provenance is an honour-system loophole | **True** | `README.md:352-360`: three latency and simulations-per-second rows on an "NVIDIA RTX 3090" — no artifact, no guard, and none of the rigs the repo documents (RTX 5060 Ti / 5060, GTX 1660 Ti, Tesla P40). |
+| 6 | Video rate control can reuse the search | **True in principle, false in the tree** | §4. |
+| 7 | Swarms are "agent-count independent" | **Untested; the nearest precedent is costly** | The host game exists (§2). The committed transfer benchmark goes from 81 to 361 tokens and loses ≈14× to a retrained specialist (`spec.md:124-126`). A 4→16-agent transfer is a comparable scale-up. |
+| 8 | MCTS must be severed from its domains | **Done, CI-gated** | `tests/regression/test_import_contracts.py`, contract `search-engine-does-not-know-its-domains`. |
+| 9 | `GameInterface` is vestigial | **False** | The `Protocol` at `src/mcts/search.py:85` is the boundary that contract depends on. |
+| 10 | Dual-budget accounting is new | **Exists as data** | The arena CSV carries solves, cache hits and wall time; the sidecar reports three ratios. What is missing is a rule that claims report both. |
+| 11 | `tests/claude`, `tests/docs`, `tests/security` and `device_planner` extract cleanly | **Pattern yes, code no** | §2; `tests/security` imports six `src` packages. |
+| 12 | The tooling can fix a "2-star adoption problem" | **Premise true** | 2 stars, 0 forks. |
+| 13 | Swarms are a new defence-grade capability | **Re-treads a cut domain** | `intercept` (MCTS missile defence, 6-DOF dynamics) was built, then removed on 2026-07-22 as "Domain PoC; not on the core solver path" (`spec.md:94-97`). |
 
 ---
 
-## 7. Bottom line
+## 4. What is real, and what is scaffold
 
-The meta-analysis is right that this is not a faster PDE solver, right that the enterprise
-tooling is the most immediately liquid asset, and right to reject the repo split. It is
-wrong about `picogk`, wrong about which budget the 9.23× figure describes, wrong that
-`GameInterface` is vestigial, wrong that dual-budget accounting and MCTS/domain decoupling
-still need building, and wrong about three of its five extraction candidates.
+The meta-analysis inventoried mechanisms and read them as capabilities. Separating the two:
 
-The single largest finding it missed is sitting in the tree: **the isomorphism it proposes
-to discover has already been acted on, by copying the search engine instead of sharing it.**
-Unifying those two implementations is a correctness fix, a maintenance win and the enabler
-for the most valuable pivot — and it is, conveniently, the one piece of work that this
-repository's own merge gates are already shaped to accept.
+| Component | Status | Evidence |
+|---|---|---|
+| Element-local AMR substrate and adequacy gate | **Real, measured** | The arena's policy metrics reproduce bit for bit; adaptive-vs-uniform separation is gated in CI. |
+| Search engine (`src/mcts`) | **Real, correct, domain-free** — but contributes no decisions to the committed result | §1; single-agent backup, 90% coverage gate, import contract. |
+| Operator transfer | **Real, honest** — zero retraining at ≈14× accuracy cost | Charter evidence rows at `spec.md:124-126`. |
+| Neural codec, zoo, runtimes, BD-rate pipeline | **Real code, no committed result** | Coverage gate at 83; no `results/` artifact; the H.265 anchors are placeholders by their own label. |
+| Codec MCTS rate control | **Scaffold with defects** | See below. |
+| Swarm planning game | **Dormant code** | 644 LOC and 50 tests; no consumer, scenario or result; round-robin single-agent control; no learned evaluator. |
+| PicoGK geometry | **Stub** | Raises on construction. |
+| README performance table | **Unbacked claim** | No artifact; the hardware matches no documented rig. |
+| Governance and evidence tooling | **Real, mutation-tested** | Dozens of guards with recorded kills, and eight recorded incidents of checks that ran green while measuring nothing. |
+
+**The codec rate controller, specifically:**
+
+- It is off by default (`use_mcts_rate_control=False`), and no training loop exists anywhere for its
+  three networks — the only `backward()` calls on them are single-pass gradient-flow unit tests.
+  Enabled, it searches randomly initialised models.
+- `bits_used` and `target_bits_per_frame` are assigned (`rate_control.py:132-133`) and never read,
+  so the rate budget is absent from the search state.
+- `GOPPlanner.plan_gop` computes `_frame_target_bits` and discards it (`:472`); the underscore
+  silences ruff's unused-variable rule. The planner is a per-frame loop.
+- A first-visited leaf takes its value from the most recent prediction of a *different* node
+  (`:226-228`), and children are created with their parent's state (`:264-270`).
+- Q-values are not min-max normalised, while the value support spans ±25.
+- The one test named for its purpose, `test_mcts_adapts_to_content`, is
+  `pytest.skip("Requires trained MCTS model for meaningful results")`.
+
+**The pattern.** Mechanisms keep shipping ahead of the evidence that they work: a controller with no
+training loop, a game with no consumer, a stub behind an extra, a benchmark table with no run — and
+now an arena whose search layer never changes a decision. The charter was written because *numbers*
+outran evidence. The same failure recurs one level up, as *mechanisms* outrunning evidence, and a
+strategy built by inventorying the tree — as both the meta-analysis and revision 1 were — inherits
+it. The remedy is not more building. It is converting one mechanism into evidence, end to end.
+
+---
+
+## 5. Provenance defects (replacing revision 1's Finding C)
+
+1. **A charter-cited sidecar fails the repo's own proposal-grade check.**
+   `results/lshape_adaptive_vs_uniform.run.json`, cited at `spec.md:131`, records
+   `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejects it. It
+   predates that check, but it is neither re-recorded nor disclosed as a deviation.
+2. **An unbacked, unguarded performance table.** `README.md:352-360`. The README evidence guard
+   covers only AMR policy ratios. `tests/benchmarks/test_mcts_perf.py` already measures simulations
+   per second, so the table can be backed rather than deleted.
+3. **Seeds that cannot differ.** The arena's three seeds are identical by construction
+   (`add_noise=False`, `temperature=0`; the sidecar records `l2_ratio_seed_std = 0.0`). A "median
+   over 3 seeds" is one measurement.
+4. **The binding limit is misreported.** Every citation says "policy `max_dof=600`", but the MCTS
+   arm stops at `max_steps=12`, which is what sets matched DOF at 287.
+
+---
+
+## 6. Rewritten plan
+
+### Constraints the plan is sized to
+
+- **One maintainer.** `CODEOWNERS` routes every path to a single owner. The repo's own norm is one
+  concern per PR and at most 300 diff lines where possible
+  (`docs/ENGINEERING_REFLECTION_2026-09-11.md`); review time, not compute, is the bottleneck.
+- **"Prefer deletion to abstraction"** is the repo's stated principle. The meta-analysis's SDK layer
+  runs the other way.
+- **The charter is supreme.** Scope and claim changes go through `openspec-change` and `claims-ledger`.
+- **The `focus` gate** blocks core and frozen-track work in the same PR; either alone is legal.
+
+The meta-analysis proposed three packages, an SDK refactor and three pivots in four months. At this
+repo's review bandwidth that is likely closer to a year — spent before learning whether the search
+does anything.
+
+### Gate 0 — Correct the record (week 1 · five small PRs)
+
+| # | PR | Why now | Exit criterion |
+|---|---|---|---|
+| 0.1 | Add a **single-element greedy arm** (`n_simulations=1`) and a `decisions_diverging_from_greedy` metric to the arena. Correct the claim — the charter's evidence row, Novelty text and frozen-tracks deviation row, `docs/FOCUS.md`, `README.md`, `CLAUDE.md` and the arena spec's "Win" row — via `openspec-change` + `claims-ledger`. Add a guard: a register row that attributes a result to look-ahead must cite a run with divergence above zero. | The cycle thesis is recorded as answered by a result that does not test it. | A planted row attributing 0.9532 to look-ahead turns a named test red. |
+| 0.2 | Re-record `lshape_adaptive_vs_uniform` from a clean tree (hash-pin protocol), or disclose it as a deviation. | A charter-cited artifact fails the repo's own standard. | `assert_proposal_grade` passes on every register-cited sidecar, or a deviation row names the exception. |
+| 0.3 | Back the README performance table with `test_mcts_perf.py` output plus a sidecar recorded on real hardware, or remove it. Extend the README guard to unit-bearing numbers (`ms`, `/sec`). | A live unbacked claim. | A planted unbacked `ms` figure turns a named test red. |
+| 0.4 | Deprecate `use_mcts_rate_control` with a warning that says why (untrained, budget-blind), and remove it after the deprecation window. A codec-only PR is gate-legal, but the track is paused, so this is the owner's call. | A public API advertises a controller that does not control. | The warning is emitted and the removal is dated. |
+| 0.5 | Retitle Noyron as an analytical-surrogate benchmark, with no geometry-ingestion claims. | A stub behind an extra. | No document implies live PicoGK ingestion. |
+
+### Gate 1 — The go/no-go (from week 2; the decisive testbed is the long pole): can look-ahead beat greedy anywhere?
+
+Pre-register it with `spec-new` on problems where greedy has a structural reason to fail. For
+elliptic problems with a reliable estimator, adaptive-FEM optimality theory already shows that
+estimator-driven marking with a small enough marking fraction reaches the optimal convergence rate —
+consistent with what §1 observed — so the candidates are ranked by how much room they leave for
+look-ahead:
+
+| Testbed | Why greedy could be myopic | Cost on existing code | Role |
+|---|---|---|---|
+| A moving front (advection, or Burgers before shock formation) | The current residual is blind to where error *will* appear. This is the regime of VDGN's anticipatory refinement, which uses RL without an explicit tree — the sharpest statement of the novelty boundary. | High — needs a time-dependent substrate | **The real test** |
+| Goal-oriented refinement for a quantity of interest | The primal residual is the wrong signal (the fair baseline is a dual-weighted greedy) | Medium | Secondary |
+| Two reentrant corners of unequal strength under a hard DOF budget | Budget allocation across competing singularities | Low — a new geometry predicate on `SkfemTriSubstrate` | A two-day check that §1's null is not L-shape-specific |
+
+Every testbed needs the same arms: greedy (single-element maximum marking); Dörfler at
+θ ∈ {0.1, 0.3, 0.5}; and MCTS with `n_simulations` well above `top_k_actions`, so the tree can reach
+three or more plies. Seeds must actually vary (root noise on, or perturbed initial meshes), or be
+reported as n = 1. Every row reports both budgets.
+
+**Pre-registered exit — written before any run:**
+
+- **GO** if MCTS beats the *best* classical arm (not Dörfler at a single θ) at matched DOF on a
+  majority of seeds, with `decisions_diverging_from_greedy > 0`, and a finite, stated break-even
+  reuse count against greedy.
+- **NO-GO** otherwise. The AMR look-ahead thesis closes honestly, with the result committed.
+
+### Gate 2 — Conditional on Gate 1
+
+- **If GO:** the project has a demonstrated method delta. The commercial framing becomes "planning
+  compute for mesh efficiency", and the break-even reuse count is the buyer's test — the value holds
+  wherever one mesh is reused more often than that count (parametric sweeps, design loops, digital
+  twins).
+  Only then is a second domain worth building: a *budgeted* rate-control game on `src/mcts`, with the
+  budget in the state and real bit counts from the entropy model, preceded by a measured H.265
+  reference from `FFmpegBaselineRunner`. Not the MuZero scaffold.
+- **If NO-GO:** lead with what is verified — the evidence-governance tooling, and the operator's
+  zero-retraining transfer at a stated accuracy cost. Both are true today.
+
+Either way: **no** `src/planning` SDK or `PlanningEnvironment` protocol until two domains work. An
+abstraction extracted from one working example and one scaffold encodes the scaffold's mistakes.
+
+### Track T — one extraction, not four (parallel, from week 2)
+
+With 2 stars, each spin-out is another repository for one maintainer to keep alive. Ship **one**,
+chosen for generality: the **CI-gate integrity checker** (`tests/docs/test_coverage_gate_integrity.py`,
+`tests/support/workflows.py`, `tests/support/marker_expr.py`). It answers "does this gate measure
+anything, and can this job fail?" — a problem every CI user has — and the repo's recorded incidents
+are ready-made case studies. Its repo-specific exemption tables need lifting into configuration.
+
+Deferred until a user asks for them: the harness validator (`tests/claude`), `device_planner` (which
+needs a generic entry type), the pickle-payload corpus, and the SBIR scaffold fork.
+
+### Dropped
+
+| Item | Reason |
+|---|---|
+| `src/mcts` → `src/planning` rename | 54 importing files, plus the mirror, charter and shape baseline, for nothing the import contract does not already give. |
+| `PlanningEnvironment` / state-encoder abstraction | One working domain; the abstraction would precede the evidence. |
+| "Unifying" the codec MCTS into `src/mcts` | It is a scaffold, not a duplicate. Deprecate it (0.4); build properly if Gate 2 calls for it. |
+| Adaptive CI test selection | No code, and mature competitors. |
+| The swarm pivot, now | It waits on Gate 1 and on decision 5. If un-deferred, the one-week falsifier is an operator evaluator trained at N=4 and evaluated at N=16, reporting the accuracy penalty the transfer benchmark predicts. |
+
+---
+
+## 7. Owner decisions
+
+Only these need you; everything else is sequenced.
+
+1. **Accept the arena-claim correction (0.1).** The most important decision here, because it changes
+   what the charter says the project has shown.
+2. **Choose the Gate 1 testbed and pre-register its thresholds** before any run.
+3. **Codec MCTS:** deprecate then remove (recommended), or keep it with a disclosed-defects deviation row.
+4. **Which single extraction**, if any, before Gate 1 closes.
+5. **Is defence robotics in scope?** `intercept` was cut once for being off the core path. A swarm
+   product is a charter Purpose amendment, not an engineering task.
+
+---
+
+## 8. Bottom line
+
+The meta-analysis is right that this is not a faster PDE solver, right that the governance tooling is
+the most liquid asset, right about hardware provenance and adoption, and right to keep the monorepo.
+Revision 1 of this review corrected several of its facts — and got its own central finding wrong.
+
+What neither saw is that **the result every strategy was built on does not contain the search it is
+attributed to.** The published MCTS trajectory is greedy marking, decision for decision. That does not
+end the project. It means the thesis has not been tested yet. The cheapest test takes days on
+existing code; the decisive one — a moving front — needs a time-dependent substrate, and is still
+smaller than any pivot on the table. Every pivot should wait for that answer.

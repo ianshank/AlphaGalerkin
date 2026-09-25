@@ -36,14 +36,16 @@ Re-running the committed configuration with only the search budget changed:
 | `top_k_actions=8`, `n_simulations=128` (deep tree) | 8 | identical | 0.9532 | 559 |
 | `top_k_actions=2`, `n_simulations=64` (deepest tree) | 2 | diverges at step 3 | **1.0289** (gate fails) | 433 |
 
-**Why.** Three settings make multi-step look-ahead structurally impossible at the committed budget:
+**Why the search never departs from greedy here.** Three settings leave it little room:
 `get_legal_actions` pre-filters to the top 8 elements by residual indicator, sorted descending
 (`src/pde/games/substrate_refinement.py:175-187`); the prior is a softmax over those same indicators
-(`src/research/substrates/residual_evaluator.py`); and 8 simulations over 8 children is a one-ply
-sweep. The search can at most confirm the indicator ranking one step deep, and on this problem it
-always does. Given room for a real tree (4 children and 64 simulations; 8 and 128), it *still*
-always agrees. In the one configuration where deep search overrode the indicator, it finished on
-the wrong side of the Dörfler reference curve: **1.0289**, where greedy sits at 0.9532.
+(`src/research/substrates/residual_evaluator.py`); and 8 simulations over 8 candidates rarely afford
+PUCT a revisit. Depth is possible — `_simulate` in `src/mcts/search.py` descends through children
+that are already expanded — just seldom paid for at this budget. So the identical trajectories are an
+empirical result of these runs, not a structural guarantee. The deep-tree rows are the stronger
+evidence: given ample room to grow (4 candidates and 64 simulations; 8 and 128), the search *still*
+always agrees with greedy. In the one configuration where deep search overrode the indicator, it
+finished on the wrong side of the Dörfler reference curve: **1.0289**, where greedy sits at 0.9532.
 
 **What 0.9532 actually measures.** Single-element maximum marking (refine the largest-indicator
 element, one per step) against Dörfler bulk marking at θ=0.5 — the expected trade of finer marking
@@ -233,8 +235,9 @@ look-ahead:
 | Two reentrant corners of unequal strength under a hard DOF budget | Budget allocation across competing singularities | Low — a new geometry predicate on `SkfemTriSubstrate` | A two-day check that §1's null is not L-shape-specific |
 
 Every testbed needs the same arms: greedy (single-element maximum marking); Dörfler at
-θ ∈ {0.1, 0.3, 0.5}; and MCTS with `n_simulations` well above `top_k_actions`, so the tree can reach
-three or more plies. Seeds must actually vary (root noise on, or perturbed initial meshes), or be
+θ ∈ {0.1, 0.3, 0.5}; and MCTS with `n_simulations` well above `top_k_actions`, so the tree has room
+to grow several plies — with the realized depth recorded per run rather than assumed from that
+ratio. Seeds must actually vary (root noise on, or perturbed initial meshes), or be
 reported as n = 1. Every row reports both budgets.
 
 **Pre-registered exit — written before any run:**

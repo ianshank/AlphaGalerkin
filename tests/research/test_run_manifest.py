@@ -308,5 +308,128 @@ class TestProposalGrade:
         assert_proposal_grade(manifest)
 
 
+#: A snapshot of a tree that is provably clean, and three that are not.
+_CLEAN = GitProvenance(sha="c" * 40, branch="main", dirty=False)
+_DIRTY = GitProvenance(sha="d" * 40, branch="main", dirty=True)
+_UNDETERMINED = GitProvenance(dirty=None)
+_HASH = "0123456789abcdef"
+
+
+def _snapshot(monkeypatch: pytest.MonkeyPatch, git: GitProvenance) -> list[int]:
+    """Make the git probe return ``git``; the returned list counts probe calls."""
+    calls: list[int] = []
+
+    def _probe(repo_root: Path | None = None) -> GitProvenance:
+        calls.append(1)
+        return git
+
+    monkeypatch.setattr("src.research.run_manifest.collect_git_provenance", _probe)
+    return calls
+
+
+class TestRunRecorder:
+    """The snapshot -> artifacts -> sidecar -> proposal-grade sequence, in one place."""
+
+    def test_start_snapshots_once_and_writing_does_not_reprobe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A second probe after the artifacts exist is the defect the order prevents."""
+        from src.research.run_manifest import RunRecorder
+
+        calls = _snapshot(monkeypatch, _CLEAN)
+        recorder = RunRecorder.start(config_hash=_HASH)
+        assert recorder.git == _CLEAN
+        recorder.write_sidecar(
+            tmp_path / "x.csv", _manifest(git=recorder.git, config_hash=recorder.config_hash)
+        )
+        assert len(calls) == 1, "write_sidecar must reuse the start() snapshot, not re-probe"
+
+    @pytest.mark.parametrize("git", [_DIRTY, _UNDETERMINED], ids=["dirty", "undetermined"])
+    def test_without_proposal_grade_a_dirty_tree_is_recorded_not_rejected(
+        self, git: GitProvenance, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.research.run_manifest import RunRecorder
+
+        _snapshot(monkeypatch, git)
+        recorder = RunRecorder.start(config_hash=UNKNOWN)
+        sidecar = recorder.write_sidecar(tmp_path / "x.csv", _manifest(git=git))
+        assert load_run_manifest(sidecar).git.dirty is git.dirty
+
+    @pytest.mark.parametrize(
+        ("git", "config_hash", "match"),
+        [
+            (_DIRTY, _HASH, "dirty=True"),
+            (_UNDETERMINED, _HASH, "dirty=None"),
+            (_CLEAN, UNKNOWN, "config_hash='unknown'"),
+            (_CLEAN, "", "config_hash=''"),
+        ],
+        ids=["dirty", "undetermined", "unknown-hash", "empty-hash"],
+    )
+    def test_proposal_grade_start_is_a_preflight(
+        self,
+        git: GitProvenance,
+        config_hash: str,
+        match: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """It raises before the caller has computed or written anything."""
+        from src.research.run_manifest import ProposalGradeError, RunRecorder
+
+        _snapshot(monkeypatch, git)
+        with pytest.raises(ProposalGradeError, match=match):
+            RunRecorder.start(config_hash=config_hash, proposal_grade=True)
+
+    def test_proposal_grade_run_writes_a_sidecar_that_passes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.research.run_manifest import RunRecorder, assert_proposal_grade
+
+        _snapshot(monkeypatch, _CLEAN)
+        recorder = RunRecorder.start(config_hash=_HASH, proposal_grade=True)
+        sidecar = recorder.write_sidecar(
+            tmp_path / "nested" / "x.csv", _manifest(git=_CLEAN, config_hash=_HASH)
+        )
+        assert sidecar == tmp_path / "nested" / "x.run.json"
+        assert_proposal_grade(load_run_manifest(sidecar))
+
+    def test_a_manifest_carrying_a_fresh_probe_is_refused_before_writing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The arena's chicken-and-egg: a post-write probe would report the artifacts."""
+        from src.research.run_manifest import RunRecorder
+
+        _snapshot(monkeypatch, _CLEAN)
+        recorder = RunRecorder.start(config_hash=_HASH)
+        with pytest.raises(ValueError, match="not the snapshot this run started from"):
+            recorder.write_sidecar(tmp_path / "x.csv", _manifest(git=_DIRTY, config_hash=_HASH))
+        assert not (tmp_path / "x.run.json").exists()
+
+    def test_a_manifest_carrying_another_hash_is_refused_before_writing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.research.run_manifest import RunRecorder
+
+        _snapshot(monkeypatch, _CLEAN)
+        recorder = RunRecorder.start(config_hash=_HASH)
+        with pytest.raises(ValueError, match="not the hash this run started with"):
+            recorder.write_sidecar(tmp_path / "x.csv", _manifest(git=_CLEAN, config_hash="f" * 16))
+        assert not (tmp_path / "x.run.json").exists()
+
+    def test_proposal_grade_reverifies_the_bytes_on_disk(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The committed file is what must pass, not the in-memory object."""
+        from src.research.run_manifest import ProposalGradeError, RunRecorder
+
+        _snapshot(monkeypatch, _CLEAN)
+        recorder = RunRecorder.start(config_hash=_HASH, proposal_grade=True)
+        monkeypatch.setattr(
+            "src.research.run_manifest.load_run_manifest",
+            lambda path: _manifest(git=_DIRTY, config_hash=_HASH),
+        )
+        with pytest.raises(ProposalGradeError, match="dirty=True"):
+            recorder.write_sidecar(tmp_path / "x.csv", _manifest(git=_CLEAN, config_hash=_HASH))
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

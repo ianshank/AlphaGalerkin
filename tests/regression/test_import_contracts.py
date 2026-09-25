@@ -98,7 +98,11 @@ CONTRACTS: Final[tuple[ImportContract, ...]] = (
     ),
     ImportContract(
         name="reference-baselines-do-not-import-the-candidate",
-        scope=("src/research/baselines", "src/research/fem_baseline.py"),
+        scope=(
+            "src/research/baselines",
+            "src/research/fem_baseline.py",
+            "src/research/greedy_control.py",
+        ),
         forbidden=("src.mcts", "src.refinement"),
         reason=(
             "These are the classical reference implementations an experiment "
@@ -109,7 +113,11 @@ CONTRACTS: Final[tuple[ImportContract, ...]] = (
             "(src/research/lshape_amr_compare.py) must import both and is "
             "deliberately outside this contract's scope. After the B34 package "
             "split, scope is the baselines/ directory (not a deleted .py file) "
-            "so a submodule cannot import src.mcts undetected."
+            "so a submodule cannot import src.mcts undetected. The arena's "
+            "single-element greedy control (src/research/greedy_control.py) is a "
+            "reference too: it shares the MCTS arm's game by design, through "
+            "src/research/amr_arena_episode.py (a control isolates one variable), "
+            "and must never share its search."
         ),
     ),
     ImportContract(

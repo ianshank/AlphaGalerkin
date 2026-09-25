@@ -166,6 +166,16 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
         default=True,
         description="Abort if gate_violations() is nonempty on this substrate/θ.",
     )
+    include_greedy_control: bool = Field(
+        default=True,
+        description=(
+            "Also run the single-element greedy control: refine the legal element "
+            "with the largest residual indicator each step, no search, on the MCTS "
+            "arm's game with its own solve cache. MCTS/greedy then isolates "
+            "look-ahead and greedy/Dörfler isolates marking granularity. False "
+            "writes exactly the legacy uniform/dorfler/mcts CSV."
+        ),
+    )
     max_l2_ratio_at_matched_dof: float = Field(
         default=1.0,
         gt=0.0,

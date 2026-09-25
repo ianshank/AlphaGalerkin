@@ -170,4 +170,20 @@ class TestDefaultConfigHashesAreStable:
         frozen = datetime(2026, 1, 1, tzinfo=timezone.utc)
         cfg = MCTSClassicalAMRArenaConfig(name=ARENA_NAME)
         cfg.substrate.created_at = frozen
-        assert cfg.compute_hash() == "ec589acdca20a4f9"
+        # Re-pinned 2026-09-25: include_greedy_control (default True) joined the
+        # config -- a deliberate artifact-identity change, since a run with the
+        # greedy control writes different artifacts.
+        assert cfg.compute_hash() == "889f0e81d4d5cc65"
+
+    def test_arena_hash_moved_only_by_the_greedy_control_field(self) -> None:
+        """The re-pin above hides nothing else: drop that one field, get the old pin."""
+        import hashlib
+        import json
+        from datetime import datetime, timezone
+
+        cfg = MCTSClassicalAMRArenaConfig(name=ARENA_NAME)
+        cfg.substrate.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        data = cfg.model_dump(exclude={"created_at"})
+        assert data.pop("include_greedy_control") is True
+        encoded = json.dumps(data, sort_keys=True, default=str).encode()
+        assert hashlib.sha256(encoded).hexdigest()[:16] == "ec589acdca20a4f9"

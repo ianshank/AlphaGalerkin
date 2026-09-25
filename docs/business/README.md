@@ -22,6 +22,12 @@ partner outreach — consolidated here from the previously scattered top-level
 | [Valuation framework](proposals/VALUATION_FRAMEWORK.md) · [M&A landscape](proposals/MA_LANDSCAPE.md) | Valuation & exit analysis. |
 | [Phase I template](proposals/templates/sbir_phase1.md) | SBIR Phase I proposal template. |
 
+## Strategy review
+
+| Doc | Content |
+| --- | --- |
+| [Commercialization peer review](COMMERCIALIZATION_PEER_REVIEW.md) | Adjudicates a three-model commercialization meta-analysis against the code at `6052281`; scores each premise, and replaces the proposed plan with one sequenced to clear the `focus` merge gate. |
+
 ## Proposal narrative (`proposal/`)
 
 - [Concept note](proposal/concept_note.md), [outline](proposal/outline.md),

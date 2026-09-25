@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`** (revision 2) — adjudicates a
+  three-model commercialization meta-analysis against the tree, re-measuring every
+  empirical premise. Central finding: the committed MCTS trajectory in
+  `results/mcts_classical_amr_arena.csv` is bit-for-bit identical to a
+  `--n-simulations 1` run (greedy single-element maximum marking), and stays
+  identical from 1 to 128 simulations under the committed `top_k_actions=8` filter;
+  the only configuration where deep search overrode greedy (`top_k_actions=2`,
+  64 simulations) finished at a matched-DOF ratio of 1.0289 against greedy's
+  0.9532. The 0.9532 therefore measures marking granularity, not look-ahead, and
+  the cycle thesis stays untested — both arms the arena compares are greedy, and
+  the single-element greedy control that would isolate look-ahead is absent. Exploratory and
+  uncommitted; no charter row is changed here (the correction is proposed as an
+  owner decision). Also records: the codec's MCTS rate controller is untrained
+  MuZero-style scaffolding (default-off, budget absent from its state,
+  `GOPPlanner` discards its per-frame target), not a copy of `src/mcts`; a
+  charter-cited sidecar (`lshape_adaptive_vs_uniform.run.json`) fails
+  `assert_proposal_grade`; `README.md`'s RTX 3090 benchmark table has no
+  artifact; the swarm pivot's host game already exists, dormant. Corrects
+  revision 1 point by point and replaces its plan with an evidence-first
+  go/no-go sized for one maintainer.
 - **`/merge-agent-branch` slash command** (sixth command; harness inventory now
   15 skills / 6 subagents / 6 commands, machine-checked by `tests/claude/`).
   Encodes the subagent-branch merge ritual this cycle ran eight times by hand:

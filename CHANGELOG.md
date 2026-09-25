@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`** — adjudicates a three-model
+  commercialization meta-analysis against the tree, scoring each premise as
+  true/false/partial rather than accepting the narrative. Records four findings
+  that change the proposed plan: `picogk` is a stub (`PicoGKSDFEvaluator.__init__`
+  raises `NotImplementedError`; the extra ships only `pythonnet`), so there is no
+  generative-design lane; the quoted "9.23× at matched wall-clock" is
+  `l2_error_ratio_at_matched_solves`, while the wall-clock proxy in the same
+  sidecar is 30.84; dual-budget accounting and MCTS/domain decoupling already
+  exist and are CI-gated (the `search-engine-does-not-know-its-domains` import
+  contract), so neither is new work; and the AMR ↔ rate-control isomorphism has
+  already been acted on by *copying* the search engine — `src/mcts/node.py` and
+  `src/video_compression/mcts/rate_control.py` implement the same PUCT formula
+  with no shared code, a silent-divergence risk of the F0 class. The revised plan
+  is sequenced to clear the `focus` merge gate (`src/video_compression/` is a
+  frozen track, so unification lands core-only then codec-only) and recommends
+  against the `src/mcts` → `src/planning` rename. Also records the real provenance
+  gap: four of six committed `results/*.csv` have no `.run.json` sidecar.
 - **`/merge-agent-branch` slash command** (sixth command; harness inventory now
   15 skills / 6 subagents / 6 commands, machine-checked by `tests/claude/`).
   Encodes the subagent-branch merge ritual this cycle ran eight times by hand:

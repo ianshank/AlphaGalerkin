@@ -7,11 +7,11 @@ says.
 
 It happened. ``results/lshape_adaptive_vs_uniform.run.json``, cited by the
 register's adaptive-vs-uniform row, recorded ``git.dirty: true`` and
-``config_hash: "unknown"`` from 2026-08-23, and
-:func:`~src.research.run_manifest.assert_proposal_grade` rejected it the whole
-time (``docs/business/COMMERCIALIZATION_PEER_REVIEW.md`` §5, finding 1) while
-``test_evidence_artifacts_carry_run_provenance`` stayed green, because the file
-existed.
+``config_hash: "unknown"`` from 2026-08-23 until its clean re-record on
+2026-09-25, and :func:`~src.research.run_manifest.assert_proposal_grade`
+rejected it the whole time (``docs/business/COMMERCIALIZATION_PEER_REVIEW.md``
+§5, finding 1) while ``test_evidence_artifacts_carry_run_provenance`` stayed
+green, because the file existed.
 
 Scope: every ``.run.json`` beside a ``.csv`` the ``<!-- charter:evidence -->``
 region cites, or cited directly -- brace-expanded, because the register writes
@@ -70,9 +70,13 @@ committed artifact was edited for any of them.
     REPO_ROOT while existence did not. Killed by
     ``TestPlantedDefects::test_a_root_without_the_sidecars_turns_the_scan_red``,
     written for it.
+15. **A real stale exemption.** This guard landed exempting the adaptive
+    sidecar until its re-record; once the clean re-record was on disk,
+    ``test_proposal_grade_exemptions_are_still_needed`` FAILED on the real tree
+    naming it, and the entry was deleted in the same commit as the sidecar.
 
-14 planted defects, each killed by a named test; the test count is larger and is
-not the number being claimed.
+15 defects (13 planted, 2 observed on the real tree), each killed by a named
+test; the test count is larger and is not the number being claimed.
 """
 
 from __future__ import annotations
@@ -105,13 +109,9 @@ from tests.support.charter import (
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 
 #: Cited sidecar (repo-relative) -> why it may stay below the proposal-grade bar.
-PROPOSAL_GRADE_EXEMPTIONS: dict[str, str] = {
-    "results/lshape_adaptive_vs_uniform.run.json": (
-        "Recorded 2026-08-23 from a dirty tree, before the script computed a config "
-        "hash; its re-record from a clean tree lands in the next commit, which must "
-        "delete this entry (test_proposal_grade_exemptions_are_still_needed)."
-    ),
-}
+#: Empty: every cited sidecar passes. An entry is a charter deviation and must also
+#: be disclosed as one in the charter's deviations register.
+PROPOSAL_GRADE_EXEMPTIONS: dict[str, str] = {}
 
 #: An exemption reason shorter than this says nothing a reviewer can check.
 MIN_EXEMPTION_REASON_CHARS: Final[int] = 40

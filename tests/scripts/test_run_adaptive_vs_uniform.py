@@ -31,6 +31,7 @@ import pytest
 
 from scripts.run_adaptive_vs_uniform import (
     CONFIG_HASH_HEX_CHARS,
+    DEFAULT_OUTPUT,
     DORFLER_MAX_REFINEMENTS,
     ERROR_TOLERANCE,
     EXIT_NOT_PROPOSAL_GRADE,
@@ -59,6 +60,11 @@ from src.research.run_manifest import (
     load_run_manifest,
     manifest_path_for,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+#: The committed artifact's sidecar. Read-only here: no test regenerates it.
+COMMITTED_SIDECAR = REPO_ROOT / manifest_path_for(DEFAULT_OUTPUT)
 
 #: A deliberately small budget for the in-process ``main`` runs: fast, yet each arm
 #: still produces enough levels for ``compare`` to fit a rate.
@@ -416,6 +422,25 @@ class TestProposalGrade:
         assert _run(tmp_path, "--proposal-grade")[0] == EXIT_OK
         assert csv_path.read_bytes() == plain_csv
         assert load_run_manifest(manifest_path_for(csv_path)).stable_fields() == plain
+
+
+class TestCommittedSidecar:
+    """Hash-pin: the committed sidecar must still be reproducible by today's code.
+
+    Proposal grade itself is ``tests/docs/test_proposal_grade_sidecars.py``'s job;
+    these pin what that guard cannot see.
+    """
+
+    def test_its_config_hash_recomputes_from_its_recorded_config(self) -> None:
+        """A ``compute_hash()`` change invalidates the sidecar: re-record it, do not edit it."""
+        manifest = load_run_manifest(COMMITTED_SIDECAR)
+        assert AdaptiveVsUniformConfig(**manifest.config).compute_hash() == manifest.config_hash
+
+    def test_its_config_is_the_documented_default_invocation(self) -> None:
+        """``python -m scripts.run_adaptive_vs_uniform`` is what produced it."""
+        manifest = load_run_manifest(COMMITTED_SIDECAR)
+        assert AdaptiveVsUniformConfig(**manifest.config) == AdaptiveVsUniformConfig()
+        assert manifest.harness == HARNESS
 
 
 if __name__ == "__main__":  # pragma: no cover

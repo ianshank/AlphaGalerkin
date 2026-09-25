@@ -6,6 +6,11 @@ at higher density. Reports MSE on the steady-state temperature field
 against either an analytical harmonic reference (CI-friendly) or the
 in-repo voxel-FDM solver (headline run).
 
+The geometry is the closed-form ``AnalyticalHelixSDF`` surrogate of Leap 71's
+helical HX. ``use_picogk=True`` routes to ``PicoGKSDFEvaluator``, which
+raises: PicoGK voxel/STL geometry ingestion is not implemented, so this is an
+analytical-surrogate benchmark, not a result on a real Leap 71 part.
+
 GPU is the preferred device. Setting ``config.device='cuda'`` (the default)
 fails loud if CUDA is unavailable so we never silently fall back to a
 20-minute CPU run.
@@ -65,7 +70,7 @@ EVAL_SEED_STRIDE = 9973
 
 @scenario("noyron_hx")
 class NoyronHXScenario(BaseScenario):
-    """Zero-shot 3D heat-equation transfer on Leap 71's helical HX."""
+    """Zero-shot 3D heat-equation transfer on the analytical helix surrogate of Leap 71's HX."""
 
     config_class = NoyronHXScenarioConfig
 

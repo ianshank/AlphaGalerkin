@@ -76,6 +76,9 @@ Optional extras: `dev`, `viz`, `test-extras`, `fem`, `jax` / `jax-gpu`, `picogk`
 `lm-studio`, `docs`
 (see [Getting Started](docs/getting-started.md#1-clone-and-install)).
 There is no `dashboard` extra (FOCUS-frozen interactive-surfaces track).
+The `picogk` extra installs only the `pythonnet` .NET bridge: PicoGK voxel/STL geometry ingestion
+is not implemented (`PicoGKSDFEvaluator` raises `NotImplementedError`), and the Noyron scenarios
+run on the analytical helix surrogate (`AnalyticalHelixSDF`).
 
 ## Quick start
 

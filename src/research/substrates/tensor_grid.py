@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import structlog
 
+from src.pde.geometry_polyomino import polyomino_domain_of
 from src.refinement.substrate import SubstrateSolveResult
 from src.refinement.substrate_registry import register_refinement_substrate
 from src.research.baselines import (
@@ -114,7 +115,24 @@ class TensorGridSubstrate:
                 ``tests/research/test_lshape_convergence_gate.py::TestReentrantEdgesArePinned``.
             config: ``SubstrateConfig``; ``initial_side`` drives the coarse grid.
 
+        Raises:
+            NotImplementedError: If ``operator`` carries a ``PolyominoDomain``
+                (e.g. the Z-shape). Solving it here would mesh the bounding box
+                -- straight across the notches and through the branch cuts of
+                its exact solution -- and still report finite, plausible errors.
+                Masking it correctly needs a polyomino interior-unknown
+                predicate, grid lines through every cell edge, and its own
+                convergence gate; none exist, so this refuses instead. Use
+                ``kind="skfem_tri"``.
+
         """
+        if polyomino_domain_of(operator) is not None:
+            raise NotImplementedError(
+                f"TensorGridSubstrate cannot mask the polyomino domain carried by "
+                f"{type(operator).__name__}: it would solve the bounding box "
+                f"{list(operator.domain_min)}..{list(operator.domain_max)} as if it were the "
+                f"domain. Use SubstrateConfig(kind='skfem_tri') for polyomino operators."
+            )
         try:
             from scipy import sparse
             from scipy.sparse.linalg import spsolve

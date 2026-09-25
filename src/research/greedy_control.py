@@ -11,7 +11,8 @@ This control removes the search and keeps everything else. Every step it
 refines the legal element with the largest residual indicator, ties to the
 lowest index, on the game, adapter and stopping rules the MCTS arm uses
 (``src.research.amr_arena_episode``), through its own solve cache. MCTS over
-greedy isolates look-ahead; greedy over Dörfler isolates marking granularity.
+greedy isolates what the search adds; greedy over Dörfler isolates marking
+granularity.
 
 :func:`greedy_action` is the one definition of the greedy choice. It ranks with
 :func:`src.pde.games.substrate_refinement.rank_by_indicator`, the rule behind
@@ -102,7 +103,13 @@ def greedy_action(indicators: ArrayLike, legal_actions: Sequence[int]) -> int:
 
 @dataclass
 class GreedyDivergence:
-    """Counts decisions that differ from :func:`greedy_action` on the same state."""
+    """Counts decisions that differ from :func:`greedy_action` on the same state.
+
+    A divergence is necessary, not sufficient, evidence of look-ahead. With an
+    unranked legal set (``top_k_actions=0``) even a one-simulation search
+    diverges: at an unvisited root every PUCT score is 0, so the first child
+    in index order wins, not the largest indicator.
+    """
 
     seed: int
     count: int = 0

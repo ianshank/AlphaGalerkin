@@ -171,8 +171,8 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
         description=(
             "Also run the single-element greedy control: refine the legal element "
             "with the largest residual indicator each step, no search, on the MCTS "
-            "arm's game with its own solve cache. MCTS/greedy then isolates "
-            "look-ahead and greedy/Dörfler isolates marking granularity. False "
+            "arm's game with its own solve cache. MCTS/greedy then isolates what "
+            "the search adds, greedy/Dörfler marking granularity. False "
             "writes exactly the legacy uniform/dorfler/mcts CSV."
         ),
     )

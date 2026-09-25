@@ -10,8 +10,8 @@ greedy control (``src.research.greedy_control``) drive the same
 Primary metric: matched-DOF quadrature L2 (MCTS / Dörfler, ``< 1`` means MCTS
 wins). Matched-solves uses cache **misses** (unique meshes), not path-replay
 ``apply_action`` counts. Wall-clock is recorded ungated. The greedy control
-splits the primary ratio in two: MCTS / greedy isolates look-ahead, greedy /
-Dörfler isolates marking granularity. ``decisions_diverging_from_greedy``
+splits the primary ratio in two: MCTS / greedy isolates what the search adds,
+greedy / Dörfler isolates marking granularity. ``decisions_diverging_from_greedy``
 counts the MCTS steps that chose something other than greedy.
 
 The result records live in ``src.research.amr_arena_types``; this module
@@ -569,7 +569,7 @@ def write_arena_manifest(
             "steps whose action differed from single-element greedy marking. "
             + (
                 "Greedy control (own cache, same game): MCTS/greedy isolates "
-                "look-ahead, greedy/Dörfler isolates marking granularity."
+                "what search adds, greedy/Dörfler isolates marking granularity."
                 if result.greedy is not None
                 else "The greedy control arm did not run."
             )

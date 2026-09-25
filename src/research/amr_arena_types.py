@@ -39,7 +39,7 @@ DETERMINISTIC_ARM_SEED: Final[int] = -1
 DIVERGENCE_METRIC: Final[str] = "decisions_diverging_from_greedy"
 #: Largest per-seed count of those decisions.
 DIVERGENCE_MAX_METRIC: Final[str] = "decisions_diverging_from_greedy_max"
-#: Median over seeds of MCTS / greedy quadrature L2 at matched DOF (isolates look-ahead).
+#: Median over seeds of MCTS / greedy quadrature L2 at matched DOF (what search adds).
 MCTS_OVER_GREEDY_METRIC: Final[str] = "l2_error_ratio_mcts_over_greedy_at_matched_dof"
 #: Greedy / Dörfler quadrature L2 at matched DOF (isolates marking granularity).
 GREEDY_OVER_DORFLER_METRIC: Final[str] = "l2_error_ratio_greedy_over_dorfler_at_matched_dof"

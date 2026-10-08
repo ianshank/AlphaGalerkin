@@ -374,14 +374,21 @@ Spectral methods enable zero-shot transfer:
 
 No measured latency or throughput table is committed. The inference-latency and
 MCTS-simulations-per-second table that stood here, captioned as run on an NVIDIA RTX 3090 (a card
-none of this project's documented rigs use), had no artifact behind it and was removed. To measure
-on your own hardware, run `python -m src.experiments.benchmark_fnet --device auto` (FNet vs
-softmax attention timing; writes `fnet_benchmark.json` to `--output-dir`, default
-`outputs/benchmarks`) or `python -m pytest tests/benchmarks/ -q` (asserts relative speedups and
-an MCTS throughput floor; it records no figures). Any number published here must cite a committed
-artifact whose `.run.json` sidecar records a `hardware_tag` (written by
-`src/research/run_manifest.py`); `tests/docs/test_performance_claims.py` fails the build
-otherwise.
+none of this project's documented rigs use), had no artifact behind it and was removed.
+
+You can time the code on your own hardware with
+`python -m src.experiments.benchmark_fnet --device auto` (FNet vs softmax attention timing; writes
+`fnet_benchmark.json` to `--output-dir`, default `outputs/benchmarks`) or
+`python -m pytest tests/benchmarks/ -q` (asserts relative speedups and an MCTS throughput floor; it
+records no figures). Neither writes a run sidecar, so neither produces evidence that can back a
+figure published here.
+
+A figure published here must be one of the named timing measurements a committed run records (a
+`metrics` or arm `counters` value in its `.run.json` sidecar, written by
+`src/research/run_manifest.py`, or a `config/baselines/` entry), stated to at least two significant
+digits, and that run's provenance must record a `hardware_tag`;
+`tests/docs/test_performance_claims.py` fails the build otherwise. Publishing a benchmark figure
+therefore first needs a benchmark harness that records its timings that way. None exists yet.
 
 ---
 

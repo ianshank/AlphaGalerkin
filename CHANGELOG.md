@@ -698,6 +698,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **An order-dependent arena pre-flight test kept the fast lane red.**
+  `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
+  import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and
+  `main()` builds its config through `load_config_from_dict`'s call-time import -- a new class,
+  so the patch never fired in CI's full run (it passed alone). The test now resolves the class
+  the way `main` does (`tests/poc/conftest.py`, rule 1); run after the purging module it fails
+  with the old patch and passes with the fix.
 - **Multi-corner operator review findings; the adaptive-vs-uniform sidecar re-recorded.**
   A corner declared twice within `CORNER_POSITION_ATOL` (such as (0, 0) and (5e-13, 0)) doubled
   its singular term; duplicates are now detected on the matched geometric corner. The polyomino

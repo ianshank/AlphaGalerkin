@@ -35,17 +35,20 @@ statement can cite it) → 3.x → 4.1 (the guard reads the corrected text) → 
 
 ## 4 — Guard
 
-- [ ] 4.1 Move `_amr_policy_ratio_subjects` / `_csv_citations_in` (and their helpers) into
+- [x] 4.1 Move `_amr_policy_ratio_subjects` / `_csv_citations_in` (and their helpers) into
       `tests/support/charter.py`; import them back into `test_charter_alignment.py`
-- [ ] 4.2 README subjects read block by block (`tests/support/perf_claims.py::split_blocks`)
-- [ ] 4.3 `tests/docs/test_lookahead_attribution.py`: label required on a no-divergence
+- [x] 4.2 README subjects read block by block (`tests/support/perf_claims.py::split_blocks`)
+- [x] 4.3 `tests/docs/test_lookahead_attribution.py`: label required on a no-divergence
       citation; label not stale; arena sidecars carry both divergence metrics; vacuity on
-      both surfaces and on the label's presence in the evidence register
-- [ ] 4.4 Plant and revert the mutations named in the module docstring
+      both surfaces, on README claims wrapped across lines, and on the label's presence in
+      the evidence register
+- [x] 4.4 Plant and revert the mutations named in the module docstring (16/16 killed)
+- [x] 4.5 `tests/research/test_greedy_control.py`'s byte-for-byte round-trip of the committed
+      CSV carries the new greedy rows (it assumed an artifact without the control)
 
 ## 5 — Verify
 
-- [ ] 5.1 `pytest tests/docs tests/claude tests/regression -q`; the arena and greedy-control
+- [x] 5.1 `pytest tests/docs tests/claude tests/regression -q`; the arena and greedy-control
       Regression Surface rows; `TestCommittedArtifacts`; `test_proposal_grade_sidecars.py`;
       `python -m scripts.check_doc_links`; `python -m scripts.artifact_manifest check`;
       `python -m scripts.measure_shape check`; the `tests/support` coverage gate

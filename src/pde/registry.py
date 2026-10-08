@@ -25,10 +25,13 @@ from src.pde.operators import (
     HeatOperator,
     HelmholtzOperator,
     LShapedPoissonOperator,
-    MultiCornerPoissonOperator,
     NavierStokesOperator,
     PDEOperator,
     PoissonOperator,
+)
+from src.pde.operators.multi_corner_poisson import (
+    LShapeMultiCornerPoissonOperator,
+    ZShapeMultiCornerPoissonOperator,
 )
 from src.pde.operators_picogk import (
     HelicalHeatOperator,
@@ -44,51 +47,37 @@ if TYPE_CHECKING:
 PDEOperatorRegistry, register_pde_operator = create_registry("PDEOperator", PDEOperator)
 
 
-def _register_builtin_operators() -> None:
-    """Register built-in PDE operators."""
-    registry = PDEOperatorRegistry()
-
-    # Only register if not already registered
-    if not registry.is_registered("poisson"):
-        register_pde_operator("poisson")(PoissonOperator)
-
-    if not registry.is_registered("burgers"):
-        register_pde_operator("burgers")(BurgersOperator)
-
-    if not registry.is_registered("advection_diffusion"):
-        register_pde_operator("advection_diffusion")(AdvectionDiffusionOperator)
-
-    if not registry.is_registered("heat"):
-        register_pde_operator("heat")(HeatOperator)
-
-    if not registry.is_registered("navier_stokes"):
-        register_pde_operator("navier_stokes")(NavierStokesOperator)
-
-    if not registry.is_registered("poisson_lshaped"):
-        register_pde_operator("poisson_lshaped")(LShapedPoissonOperator)
-
-    # Polyomino generalisation of the L-shape (several reentrant corners). Its
-    # constructor also takes the ``domain`` and ``corners`` a PDEConfig cannot
-    # carry; the presets live in ``src.pde.operators.multi_corner_poisson``.
-    if not registry.is_registered("poisson_multi_corner"):
-        register_pde_operator("poisson_multi_corner")(MultiCornerPoissonOperator)
-
+#: Built-in operators by registry key, in registration order. Every caller
+#: constructs a registered operator as ``cls(config)``, so every entry must build
+#: from a config alone (``tests/pde/test_pde_registry_contract.py``).
+_BUILTIN_OPERATORS: tuple[tuple[str, type[PDEOperator]], ...] = (
+    ("poisson", PoissonOperator),
+    ("burgers", BurgersOperator),
+    ("advection_diffusion", AdvectionDiffusionOperator),
+    ("heat", HeatOperator),
+    ("navier_stokes", NavierStokesOperator),
+    ("poisson_lshaped", LShapedPoissonOperator),
+    # Polyomino presets of MultiCornerPoissonOperator (several reentrant corners).
+    # The generic class also needs the ``domain`` and ``corners`` a PDEConfig
+    # cannot carry, so it is not registered; each preset fixes both.
+    (LShapeMultiCornerPoissonOperator.name, LShapeMultiCornerPoissonOperator),
+    (ZShapeMultiCornerPoissonOperator.name, ZShapeMultiCornerPoissonOperator),
     # Out-of-distribution operators for held-out generalisation benchmarks.
-    if not registry.is_registered("helmholtz"):
-        register_pde_operator("helmholtz")(HelmholtzOperator)
-
-    if not registry.is_registered("biharmonic"):
-        register_pde_operator("biharmonic")(BiharmonicOperator)
-
+    ("helmholtz", HelmholtzOperator),
+    ("biharmonic", BiharmonicOperator),
     # Leap 71 / Noyron-targeted SDF-aware operators.
-    if not registry.is_registered("helical_heat"):
-        register_pde_operator("helical_heat")(HelicalHeatOperator)
+    ("helical_heat", HelicalHeatOperator),
+    ("helical_stokes", HelicalStokesOperator),
+    ("helical_magnetostatics", HelicalMagnetostaticsOperator),
+)
 
-    if not registry.is_registered("helical_stokes"):
-        register_pde_operator("helical_stokes")(HelicalStokesOperator)
 
-    if not registry.is_registered("helical_magnetostatics"):
-        register_pde_operator("helical_magnetostatics")(HelicalMagnetostaticsOperator)
+def _register_builtin_operators() -> None:
+    """Register each built-in operator under its key, unless the key is taken."""
+    registry = PDEOperatorRegistry()
+    for name, operator_cls in _BUILTIN_OPERATORS:
+        if not registry.is_registered(name):
+            register_pde_operator(name)(operator_cls)
 
 
 # Register built-in operators on import

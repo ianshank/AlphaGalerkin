@@ -10,11 +10,12 @@ Guards (per ``docs/E2E_TEST_PLAN.md`` §4.1):
 - CLAUDE.md Regression Surface row *"L-shape AMR MCTS-vs-Dörfler baseline"*,
   whose shared substrate this script exercises.
 
-Why an E2E tier at all for this script: ``tests/scripts/test_run_adaptive_vs_uniform.py``
-never imports ``main``. It covers ``build_parser`` / ``run_uniform_arm`` /
-``compare`` / ``export_csv`` only, so **the entry point and the provenance
-sidecar write are exercised by nothing** -- the gap peer review found in v1 of
-the plan. Everything here therefore goes through the real process.
+Why an E2E tier at all for this script: when this tier was written,
+``tests/scripts/test_run_adaptive_vs_uniform.py`` never imported ``main``. It
+covered ``build_parser`` / ``run_uniform_arm`` / ``compare`` / ``export_csv``
+only, so **the entry point and the provenance sidecar write were exercised by
+nothing** -- the gap peer review found in v1 of the plan. That file now drives
+``main`` in-process; everything here still goes through the real process.
 
 **Surface: numpy-only.** ``scripts/run_adaptive_vs_uniform`` and
 ``src/research/substrates/*`` import no torch, the script has no ``--device``
@@ -244,7 +245,10 @@ def test_sidecar_round_trips_and_echoes_argv(
     a committed artifact must say how it was produced. ``config`` is compared as
     parsed numbers rather than strings, and ``artifacts["csv"]`` verbatim against
     argv (the script writes ``str(output)``, i.e. exactly what was passed, which
-    is absolute here because argv was).
+    is absolute here because argv was). ``--output`` is where the run wrote, not
+    what it computed, so it is recorded under ``artifacts`` and kept out of
+    ``config`` -- which ``config_hash`` covers -- or a scratch-path reproduction
+    could never hash like the committed run.
     """
     run = adaptive_vs_uniform_run
     assert run.result.returncode == EXIT_SUCCESS, run.result.output
@@ -252,14 +256,14 @@ def test_sidecar_round_trips_and_echoes_argv(
     manifest = load_run_manifest(run.manifest_path)
     assert manifest.harness == EXPECTED_HARNESS
 
-    assert set(manifest.config) == set(EXPECTED_NUMERIC_CONFIG) | {"output"}, (
-        f"the sidecar must echo the whole resolved config; got {sorted(manifest.config)}"
+    assert set(manifest.config) == set(EXPECTED_NUMERIC_CONFIG), (
+        "the sidecar must echo every resolved option that changes the computation, and "
+        f"only those (--output is recorded under artifacts); got {sorted(manifest.config)}"
     )
     for key, expected in EXPECTED_NUMERIC_CONFIG.items():
         assert float(manifest.config[key]) == pytest.approx(expected), (
             f"config[{key!r}] = {manifest.config[key]!r}"
         )
-    assert manifest.config["output"] == run.argv_output
 
     assert manifest.artifacts["csv"] == run.argv_output
 

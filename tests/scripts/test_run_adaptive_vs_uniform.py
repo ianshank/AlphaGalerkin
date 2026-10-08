@@ -15,6 +15,15 @@ real, deterministic hash of exactly the ``config`` it records, and
 ``--proposal-grade`` must refuse -- before computing or writing anything -- to
 produce a sidecar the charter could not cite. Every provenance test below runs
 into ``tmp_path`` with the git probe monkeypatched; none touches ``results/``.
+
+``--output`` is a run-mode option: where a run writes is recorded under
+``artifacts``, never in ``config`` or its hash. Planted defects, each killed by a
+named test: ``output`` restored as a hashed config field (the pre-fix shape) ->
+``TestConfigHash::test_the_output_path_changes_neither_config_nor_hash`` and
+``TestDefaultInvocation::test_a_scratch_path_reproduction_records_the_same_config_and_hash``;
+the path folded into ``config_hash`` while ``config`` stays clean -> the second
+one (the parser-level test cannot see it); the path recorded in ``config`` but not
+hashed -> the second one and ``::test_sidecar_keeps_its_shape_and_gains_a_real_hash``.
 """
 
 from __future__ import annotations
@@ -220,7 +229,12 @@ def _run(output_dir: Path, *extra: str) -> tuple[int, Path]:
 
 
 class TestConfigHash:
-    """``config_hash`` is real, deterministic, and covers exactly the recorded config."""
+    """``config_hash`` is real, deterministic, and covers exactly the recorded config.
+
+    It must not depend on where the run wrote: ``--output`` is a run-mode option,
+    recorded under ``artifacts``, or a scratch-path reproduction could never match
+    the committed sidecar.
+    """
 
     def test_is_deterministic(self) -> None:
         assert AdaptiveVsUniformConfig().compute_hash() == AdaptiveVsUniformConfig().compute_hash()
@@ -246,6 +260,17 @@ class TestConfigHash:
         assert graded == plain
         assert graded.compute_hash() == plain.compute_hash()
 
+    def test_the_output_path_changes_neither_config_nor_hash(self) -> None:
+        """A scratch-path reproduction hashes like the committed run.
+
+        The reviewer's case: one computation hashed to ``865edce78a6a9453`` with the
+        default output and to ``d0b9aa3758603076`` with ``--output /tmp/check.csv``.
+        """
+        default = config_from_args(build_parser().parse_args([]))
+        scratch = config_from_args(build_parser().parse_args(["--output", "/tmp/check.csv"]))
+        assert scratch == default
+        assert scratch.compute_hash() == default.compute_hash()
+
 
 class TestConfigFromArgs:
     """Every CLI knob reaches the config, so none can escape the hash."""
@@ -258,11 +283,11 @@ class TestConfigFromArgs:
     def test_parser_defaults_are_the_config_defaults(self) -> None:
         assert config_from_args(build_parser().parse_args([])) == AdaptiveVsUniformConfig()
 
-    def test_every_flag_reaches_the_config(self) -> None:
+    def test_every_computational_flag_reaches_the_config(self) -> None:
+        """Every flag but the run-mode ones; ``--output`` goes to ``artifacts``."""
         argv = ["--output", "o.csv", "--initial-side", "8", "--max-dof", "99"]
         argv += ["--marking-fraction", "0.3", "--scale", "2.0"]
         assert config_from_args(build_parser().parse_args(argv)).model_dump() == {
-            "output": "o.csv",
             "initial_side": 8,
             "max_dof": 99,
             "marking_fraction": 0.3,
@@ -300,7 +325,7 @@ class TestDefaultInvocation:
         assert code == EXIT_OK
         manifest = load_run_manifest(manifest_path_for(csv_path))
         assert set(manifest.config) == set(AdaptiveVsUniformConfig.model_fields)
-        assert manifest.config["output"] == str(csv_path)
+        assert "output" not in manifest.config
         assert manifest.artifacts == {"csv": str(csv_path)}
         assert manifest.harness == HARNESS
         assert manifest.run_id == "adaptive-vs-uniform-4-120"
@@ -331,6 +356,22 @@ class TestDefaultInvocation:
             [(p.level, p.n_dof, p.l2_error) for p in dorfler.points],
         )
         assert csv_path.read_bytes() == expected.read_bytes()
+
+    def test_a_scratch_path_reproduction_records_the_same_config_and_hash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two runs of one computation into different paths differ only in ``artifacts``."""
+        _snapshot(monkeypatch, _CLEAN)
+        manifests = []
+        for subdirectory in ("committed_path", "scratch_path"):
+            code, csv_path = _run(tmp_path / subdirectory)
+            assert code == EXIT_OK
+            manifests.append(load_run_manifest(manifest_path_for(csv_path)))
+        first, second = manifests
+        expected = config_from_args(build_parser().parse_args(list(SMALL_BUDGET_ARGV)))
+        assert first.config == second.config == expected.model_dump(mode="json")
+        assert first.config_hash == second.config_hash == expected.compute_hash()
+        assert first.artifacts != second.artifacts
 
     def test_git_is_snapshotted_before_the_artifact_is_rewritten(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -440,6 +481,7 @@ class TestCommittedSidecar:
         """``python -m scripts.run_adaptive_vs_uniform`` is what produced it."""
         manifest = load_run_manifest(COMMITTED_SIDECAR)
         assert AdaptiveVsUniformConfig(**manifest.config) == AdaptiveVsUniformConfig()
+        assert manifest.artifacts == {"csv": DEFAULT_OUTPUT}
         assert manifest.harness == HARNESS
 
 

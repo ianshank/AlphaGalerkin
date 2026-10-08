@@ -698,6 +698,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **Front-door performance figures must be recorded measurements, not merely hardware-tagged
+  citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
+  is backed only when it equals, at its written precision and to at least two significant
+  digits, a *named* timing measurement (sidecar `metrics` or arm `counters`, or a
+  `config/baselines/` entry) of a run cited in the same block whose provenance records a real
+  `hardware_tag`. Before, any tagged artifact backed any figure: "12 ms per move" citing
+  `results/lshape_adaptive_vs_uniform.csv`, and the removed RTX 3090 table with one cell citing the
+  arena CSV, both passed; both are pinned verbatim. Raw CSV rows are not evidence (12% to 46% of
+  2-digit durations matched one by chance; named measurements match at most 3%, bounded at 10% by a
+  test). The scanner catches the 14 phrasings the review found it missed ("Runtime (s)" headers,
+  "speeds up ... by 10x", "10-fold", "games per minute", "900 Hz", "reduces latency by
+  80%", ...) and no longer flags settings (timeout, time limit, cap, tolerance). Four mutation
+  kills that depended on committed files -- one had died when its sidecar was re-recorded -- are
+  re-planted on synthetic repositories; 32/32 planted defects killed. README's Performance section
+  now says neither measuring command writes a run sidecar, so neither can back a published figure.
 - **An order-dependent arena pre-flight test kept the fast lane red.**
   `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
   import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and

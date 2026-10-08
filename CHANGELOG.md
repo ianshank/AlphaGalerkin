@@ -8,6 +8,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`** (revision 2) — adjudicates a
+  three-model commercialization meta-analysis against the tree, re-measuring every
+  empirical premise. Central finding: the committed MCTS trajectory in
+  `results/mcts_classical_amr_arena.csv` is bit-for-bit identical to a
+  `--n-simulations 1` run (greedy single-element maximum marking), and stays
+  identical from 1 to 128 simulations under the committed `top_k_actions=8` filter;
+  the only configuration where deep search overrode greedy (`top_k_actions=2`,
+  64 simulations) finished at a matched-DOF ratio of 1.0289 against greedy's
+  0.9532. The 0.9532 therefore measures marking granularity, not look-ahead, and
+  the cycle thesis stays untested — both arms the arena compares are greedy, and
+  the single-element greedy control that would isolate look-ahead is absent. Exploratory and
+  uncommitted; no charter row is changed here (the correction is proposed as an
+  owner decision). Also records: the codec's MCTS rate controller is untrained
+  MuZero-style scaffolding (default-off, budget absent from its state,
+  `GOPPlanner` discards its per-frame target), not a copy of `src/mcts`; a
+  charter-cited sidecar (`lshape_adaptive_vs_uniform.run.json`) fails
+  `assert_proposal_grade`; `README.md`'s RTX 3090 benchmark table has no
+  artifact; the swarm pivot's host game already exists, dormant. Corrects
+  revision 1 point by point and replaces its plan with an evidence-first
+  go/no-go sized for one maintainer.
+- **Gate 1, look-ahead vs greedy: pre-registered, run, and NO-GO on both testbeds.** The
+  pre-registration (`specs/lookahead_vs_greedy.spec.md`, committed alone first as `38ed247`)
+  fixes the testbeds, arms, budgets, metric and five GO criteria before any run. New
+  `lookahead_vs_greedy` scenario, harness `src/research/lookahead_vs_greedy{,_metrics,_verdict,_artifacts}.py`,
+  CLI `scripts/run_lookahead_vs_greedy.py` (its exit code reports aborts and errors, never the
+  verdict) and T1/T2 YAMLs. On one `skfem_tri` substrate it compares single-element greedy,
+  Dörfler θ ∈ {0.1, 0.3, 0.5}, uniform, deterministic MCTS (64 simulations, top-4 ranked legal
+  set, `SINGLE_AGENT`, `ResidualPriorErrorValueEvaluator`) and a 5-seed root-noise arm, scoring
+  MCTS against the *best* classical arm at matched DOF with a break-even reuse count K* for
+  α ∈ {1, 1.5}. `MCTS.root` and `src.mcts.node.subtree_depth` record the realized tree depth;
+  the arena config accepts `zshape_poisson`. **Result** (proposal grade,
+  `results/lookahead_vs_greedy_{lshape,zshape}.{csv,png,run.json}`): NO-GO on T1 (L-shape) and
+  T2 (Z-tetromino), 0/5 criteria each. The deterministic search made greedy's decision at all 30
+  steps on both, at a median realized depth of 10, so search contributed no decisions. The best
+  classical arm beat it at matched DOF: MCTS/best classical 1.0216 (Dörfler θ=0.3, DOF 361) and
+  1.0296 (Dörfler θ=0.5, DOF 398). Root-noise medians were 1.0539 and 1.0616, with 0/5 seeds
+  below 1. Per the pre-registration this elliptic control does not close the thesis; the
+  moving-front testbed (T3) decides it and is not built. The charter (two evidence rows, the
+  Novelty paragraph, the frozen-tracks row), README, `docs/FOCUS.md`, the arena spec and the
+  peer review's status table state the result (OpenSpec `lookahead-vs-greedy`, task 4).
+  `tests/docs/test_lookahead_attribution.py` now reads each harness's own divergence metric
+  (`DIVERGENCE_SCHEMAS`), so a Gate 1 claim must carry the label "search contributed no
+  decisions". It previously read only the arena's metric and could not see Gate 1 sidecars.
+  A committed sidecar that records a divergence count under an undeclared harness now fails
+  the guard. The charter's comparison-arm guard
+  (`test_comparison_claims_cite_an_artifact_containing_the_arms`) now accepts a parameterised arm
+  label (`dorfler_theta0.3`, `mcts_primary`) as its arm, separator required, and `greedy` joins
+  its vocabulary; it had matched arm names exactly and rejected the Gate 1 rows (3/3 mutations
+  killed). 185 Gate 1 tests (46/46 planted defects killed); 12/12 for the attribution-guard
+  extension.
+- **Arena single-element greedy control + `decisions_diverging_from_greedy`** (peer-review
+  Gate 0.1, code half). `src/research/greedy_control.py` refines the legal element with the
+  largest residual indicator (ties → lowest index), ranking through the game's own
+  `rank_by_indicator` — extracted from `SubstrateRefinementGame` with no behaviour change, so
+  greedy and the top-k legal set cannot drift. It runs the MCTS arm's exact game via the shared
+  `src/research/amr_arena_episode.py` driver with its own solve cache, and never imports
+  `src.mcts` (added to the `reference-baselines-do-not-import-the-candidate` contract, plus a
+  behaviour test for the indirect route the static contract cannot see). The MCTS arm now counts
+  decisions that differ from greedy on the same state. New metrics:
+  `decisions_diverging_from_greedy`(`_max`), `l2_error_ratio_mcts_over_greedy_at_matched_dof`,
+  `l2_error_ratio_greedy_over_dorfler_at_matched_dof`; greedy CSV rows (seed −1, columns
+  unchanged), plot line and manifest arm; `include_greedy_control` (default true; false writes the
+  legacy CSV). Every legacy metric key, CSV column and public name is unchanged; result records
+  moved to `src/research/amr_arena_types.py` and are re-exported (harness 628 → 602 lines). Cache
+  fairness is now checked by object identity — CPython reuses a freed cache's `id`. Verified on the
+  merged tree: divergence 0, MCTS/greedy 1.0, greedy/Dörfler 0.9532, legacy rows bit-identical to
+  the committed artifact. Caveat found while building it: at `top_k_actions=0` the legal set is in
+  index order and one simulation diverges from greedy by tie-break alone, so divergence above zero
+  is necessary but not sufficient evidence of look-ahead. 14/14 planted defects killed.
+- **Second AMR testbed: polyomino domains + a verified multi-corner Poisson operator** (Gate 1
+  prerequisite). `src/pde/geometry_polyomino.py` (`PolyominoDomain`: exact reentrant-corner and
+  branch-cut analysis) and `src/pde/operators/multi_corner_poisson.py`
+  (`MultiCornerPoissonOperator`, registered `poisson_multi_corner` -- **superseded**: that key could
+  not be constructed and is now the presets `poisson_multi_corner_lshape` /
+  `poisson_multi_corner_zshape`, see `### Fixed`): u = Σ cᵢ·rᵢ^λᵢ sin(λᵢφᵢ) with
+  the angle wrap on each corner's exterior bisector, and a constructor that refuses any branch cut
+  reaching the closed domain — the silent-divergence class of the 2026-08-16 L-shape retraction.
+  The L preset equals `LShapedPoissonOperator` to ≈1e-15; the Z-tetromino preset (two 270° corners,
+  c₁ = 1.0, c₂ = 0.25) meshes on `skfem_tri` as `OperatorName` `"zshape_poisson"`, and the existing
+  L-shape mesh is byte-identical. On the Z at θ=0.5: uniform rate −0.692, adaptive −1.404, error
+  ratio 0.094 at 5306 DOF, no gate violations (adequacy window (200, 5000), derived from the Z's
+  DOF ladder; thresholds unchanged). `TensorGridSubstrate` refuses polyomino operators. These are
+  correctness gates, not a look-ahead result. 23/23 planted defects killed.
 - **`/merge-agent-branch` slash command** (sixth command; harness inventory now
   15 skills / 6 subagents / 6 commands, machine-checked by `tests/claude/`).
   Encodes the subagent-branch merge ritual this cycle ran eight times by hand:
@@ -567,6 +650,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`src/video_compression` type safety** — fixed 23 of 28 `mypy --strict` errors (missing `register_buffer` companion annotations, a systemic `np.ndarray[np.int32, ...]` shape/dtype type-parameter typo, list/dict annotations, a return type needing narrowing, a stale ignore). Repo-wide `mypy src/ --strict` is now **31 → 8 errors**; the remaining 8 are the 5 `codec/codec.py` errors needing real interface design plus 3 pre-existing torch-version-dependent `unused-ignore`s CI already documents as accepted.
 - **Hardcoded values surfaced as config fields / named constants** — `basis_selection.py` RBF candidate centers now sample the operator's real `domain_min`/`domain_max` instead of a hardcoded `[0,1]` unit square (wrong for e.g. `LShapedPoissonOperator`'s `[-1,1]²`); the budget-decrement path in `basis_selection.py`/`mesh_refinement.py` now uses the same `cost_per_dof * dof_added` the reward path in those files already used (**behavior change**: the old flat `cost = 1.0` exhausted the budget ~100× faster than the reward accounted for); phase detection delegates to the config-driven, scale-normalized `PDEGame.get_phase()`; `mesh_refinement.py`'s h-vs-p switchover became an `hp_switchover_level` field; `swarm_planning.py`'s obstacle floor and `operators.py`'s duplicated Cole-Hopf constants became named constants; 7 `src/mcts/` call sites now use the existing `DEFAULT_TEMPERATURE`.
 
+### Deprecated
+- **`MCTSRateController` / `use_mcts_rate_control=True`** — constructing the controller
+  (directly, or through `VideoCodec`, `create_codec` or `load_codec` with
+  `use_mcts_rate_control=True`) now emits a `DeprecationWarning`; removal is scheduled for
+  **0.6.0** (two minor releases, per the deprecation policy). Nothing trains its
+  representation/dynamics/prediction networks, so the search runs on random weights, and the bit
+  budget (`target_bits_per_frame`, `bits_used`) never enters the search state. The default
+  `use_mcts_rate_control=False` stays silent. Message and version are the `Final` constants
+  `MCTS_RATE_CONTROL_DEPRECATION` / `MCTS_RATE_CONTROL_REMOVE_IN` in
+  `src/video_compression/mcts/rate_control.py`. Limitation: on the codec paths the warning is
+  attributed to `codec.py`, so outside test runners Python's default filters show it only under
+  `-W default` or `-X dev`. Exactly 20 lines in the frozen `codec` track (the `focus` gate's
+  incidental budget). (Peer-review Gate 0, item 0.4.)
+
 ### Removed
 
 #### dead code the audit found, four items of it mine
@@ -601,6 +698,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **Multi-corner operator review findings; the adaptive-vs-uniform sidecar re-recorded.**
+  A corner declared twice within `CORNER_POSITION_ATOL` (such as (0, 0) and (5e-13, 0)) doubled
+  its singular term; duplicates are now detected on the matched geometric corner. The polyomino
+  box check let `np.allclose`'s default `rtol=1e-5` override `DOMAIN_BOUNDS_ATOL`; it now uses
+  `DOMAIN_BOUNDS_RTOL = 0.0`, and `src/research/fem_baseline.py`'s L-shape domain check had the
+  same hole (a domain off by 5e-6 passed as the canonical L-shape) and now pins
+  `LSHAPE_DOMAIN_RTOL = 0.0`. `poisson_multi_corner` was registered but raised `TypeError` when
+  built as `cls(config)`, the way every registry caller builds; the constructible presets
+  `poisson_multi_corner_lshape` and `poisson_multi_corner_zshape` replace it, with
+  `build_default_operator("zshape_poisson")` returning the Z preset and every measured gate
+  bit-identical (`tests/pde/test_pde_registry_contract.py` constructs every registered name the
+  way its callers do; built-ins register from one table). `docs/architecture/components.md`'s
+  runtime key list is checked against the registry, read in a subprocess
+  (`tests/docs/test_components_pde_registry.py`). `--output` no longer enters
+  `scripts/run_adaptive_vs_uniform.py`'s `config_hash` (it is recorded under `artifacts`), and
+  `results/lshape_adaptive_vs_uniform.run.json` was re-recorded proposal-grade: hash
+  `865edce78a6a9453` -> `50d464fb95cca18d`, CSV byte-identical. 17/17 planted defects killed,
+  plus the `fem_baseline` bracket, which fails on the pre-fix code in all 8 rejected cases.
+- **`tests/poc/test_compare_common.py` re-pinned to the timestamp-free arena hash.** The
+  config-hash fix (`4574475`) moved the arena's default-config hash without updating this pin
+  (`889f0e81d4d5cc65` -> `6013f7c983e67151`), which turned the branch red. The test now also
+  asserts that the config's contents did not change, only the hash function.
+- **The arena's matched-DOF 0.9532 is greedy marking, not look-ahead; the claim is corrected
+  everywhere it was stated.** `results/mcts_classical_amr_arena.{csv,png,run.json}` is re-recorded
+  with the single-element greedy control (proposal grade, `dirty: false`; `config_hash`
+  `80f39466392dbf90` -> `d6993a0dfd1ab778`: the config now records `include_greedy_control`,
+  and the hash no longer folds in a construction timestamp -- see the next bullet). The 51 uniform/Dörfler/MCTS rows match the previous artifact in every
+  column but wall time, and the 13 greedy rows equal every MCTS seed's trajectory:
+  `decisions_diverging_from_greedy_max` 0, MCTS/greedy 1.0, greedy/Dörfler 0.9532 -- search
+  contributed no decisions, so the artifact does not test look-ahead. The wall-clock
+  `error_per_dof_ratio_mcts_over_dorfler` moved 30.84 -> 32.10 with machine load (ungated). OpenSpec
+  change `arena-lookahead-attribution` modifies three charter Requirements (the evidence row, the
+  Novelty arena paragraph and the frozen-tracks deviation row) and is applied in place; README,
+  `docs/FOCUS.md`, the arena spec (annotated in place -- it is a pre-registration) and the
+  2026-09-08 CLAUDE.md milestone are corrected with the corrections left visible. The scenario gate
+  (MCTS/Dörfler < 1) is unchanged and still passes. New guard `tests/docs/test_lookahead_attribution.py`
+  (16/16 planted defects killed). The arena CLI now pre-flights `--proposal-grade` with `RunRecorder`
+  before it writes into `results/` (5/5 killed) and leaves the directionless divergence count out of
+  its regression baseline; `include_greedy_control=False` is documented as writing the legacy rows,
+  not the legacy sidecar. (Gate 0, item 0.1.)
+- **Config hashes no longer depend on when the config object was built.** A scenario config
+  nesting a module config (the arena's `SubstrateConfig`) folded that module's auto-populated
+  `created_at` into `compute_hash`, so loading `config/scenarios/mcts_classical_amr_arena.yaml`
+  twice gave two hashes (`7a722438499daefb`, `5a2d3a76e539e949`) and no recorded `config_hash`
+  could ever be reproduced -- the property the hash-pin protocol rests on. `BaseModuleConfig`
+  had the same hole one level down. One helper in `src/templates/config.py`
+  (`VOLATILE_CONFIG_FIELDS`, `stable_config_payload`, `config_hash`) now strips volatile keys at
+  every depth for both bases; a payload without one hashes byte-identically to before (Hypothesis
+  property plus golden checks), so only configs that nested a timestamp move. The arena artifact
+  was re-recorded on `4574475`: every row unchanged except wall time, `config_hash`
+  `d6993a0dfd1ab778`, now recomputable. 5/5 planted mutations killed.
+- **`SubstrateRefinementGame` no longer chooses its injected cache or substrate by truthiness.**
+  `solve_cache or FingerprintSolveCache(...)` (and the same for `substrate`) would silently replace
+  any injected object that is falsy -- an empty cache, the moment the class gains a `__len__`. The
+  arena keeps the cache it injects and reads hit/miss counts from it, so that one-line change would
+  zero every arm's solve count without an error. Now `is None`; a falsy-cache test kills both
+  restored forms. Latent today: `FingerprintSolveCache` defines no `__len__`.
+- **A charter-cited sidecar now passes the repo's own proposal-grade check.**
+  `results/lshape_adaptive_vs_uniform.run.json` (cited by the evidence register) recorded
+  `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejected it. Re-recorded
+  from a clean tree under the hash-pin protocol: the CSV is byte-identical, so no charter value
+  moves; the sidecar now carries `config_hash` `865edce78a6a9453` (**superseded** by
+  `50d464fb95cca18d` once `--output` left the hashed config, see the `### Fixed` entry on the
+  multi-corner review findings), `dirty: false` and a hardware
+  tag. `scripts/run_adaptive_vs_uniform.py` gains a frozen `AdaptiveVsUniformConfig` whose hash is
+  recomputable from the recorded config, and `--proposal-grade`.
+  `src/research/run_manifest.RunRecorder` is the one shared snapshot-first recording helper: it
+  takes the git snapshot before anything is written, refuses to start under proposal grade on a
+  dirty tree, and re-checks the sidecar as read back from disk. New guard
+  `tests/docs/test_proposal_grade_sidecars.py`: every charter-cited sidecar (brace form included)
+  must pass `assert_proposal_grade` or carry a reasoned, self-expiring exemption — the table ships
+  empty. The charter parser moved to `tests/support/charter.py` (`test_charter_alignment.py`
+  996 → 915 lines). 15/15 guard and 11/11 helper mutations killed. (Gate 0, item 0.2.)
+- **Unbacked README benchmark table removed; front-door performance claims and the `picogk` extra
+  are now guarded.** The Performance section's inference-ms and MCTS-sims/sec rows ("NVIDIA RTX
+  3090", a card no documented rig uses) had no artifact. They are replaced by measure-it-yourself
+  instructions and the rule that a figure must cite a committed artifact whose `.run.json` records a
+  `hardware_tag`. `tests/docs/test_performance_claims.py` fails any unbacked latency, throughput or
+  speedup on README.md or any docs-site nav page (read from `mkdocs.yml`, so moving a table does not
+  escape it); two c4 speedups are allowlisted as disclosed, self-expiring debt. Docs, Noyron YAML
+  descriptions and Noyron/SDF docstrings now state that `[picogk]` installs only `pythonnet`,
+  PicoGK ingestion is not implemented, and Noyron runs on `AnalyticalHelixSDF`;
+  `tests/docs/test_picogk_disclosure.py` fails if that stops being disclosed while the stub remains.
+  17/17 mutations killed. (Gate 0, items 0.3 and 0.5.)
 - **Generic self-play rank-1 boards fail loud.** `_play_game_generic`
   used to silently substitute `board_size=8` when `state.board.ndim < 2`
   (chess's size, wrong for every other game). `board_size_from_state`

@@ -24,6 +24,15 @@ deviations register does: an unexplained rule gets deleted the first time it is
 inconvenient. Every contract is also asserted to be **non-vacuous** -- a
 renamed package would otherwise turn a rule into a rule about nothing, and it
 would still pass.
+
+Greedy-control scope (2026-09-25): planting `from src.mcts.search import MCTS`
+in `src/research/greedy_control.py` fails
+`test_contract_is_upheld[reference-baselines-do-not-import-the-candidate]`; the
+same plant with the scope entry removed passes, so the entry is what kills it.
+These checks are static and read direct imports only, so the greedy control
+delegating to the MCTS arm through a lazy import of the harness stays green
+here. `TestRunGreedyArm::test_never_constructs_the_search_engine` in
+`tests/research/test_greedy_control.py` kills that one.
 """
 
 from __future__ import annotations
@@ -98,7 +107,11 @@ CONTRACTS: Final[tuple[ImportContract, ...]] = (
     ),
     ImportContract(
         name="reference-baselines-do-not-import-the-candidate",
-        scope=("src/research/baselines", "src/research/fem_baseline.py"),
+        scope=(
+            "src/research/baselines",
+            "src/research/fem_baseline.py",
+            "src/research/greedy_control.py",
+        ),
         forbidden=("src.mcts", "src.refinement"),
         reason=(
             "These are the classical reference implementations an experiment "
@@ -109,7 +122,11 @@ CONTRACTS: Final[tuple[ImportContract, ...]] = (
             "(src/research/lshape_amr_compare.py) must import both and is "
             "deliberately outside this contract's scope. After the B34 package "
             "split, scope is the baselines/ directory (not a deleted .py file) "
-            "so a submodule cannot import src.mcts undetected."
+            "so a submodule cannot import src.mcts undetected. The arena's "
+            "single-element greedy control (src/research/greedy_control.py) is a "
+            "reference too: it shares the MCTS arm's game by design, through "
+            "src/research/amr_arena_episode.py (a control isolates one variable), "
+            "and must never share its search."
         ),
     ),
     ImportContract(

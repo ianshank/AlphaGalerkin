@@ -31,11 +31,19 @@ from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator
 from src.research.lshape_amr_compare import ComparisonParams, lshape_inside_predicate
 from src.research.substrates.config import SubstrateConfig
+from src.research.substrates.factory import (
+    ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE,
+    adequacy_gate_for_operator,
+    build_substrate_from_config,
+)
 from src.research.substrates.sweep import (
+    InsufficientSweepPointsError,
     RateSeparation,
     default_adequacy_gate,
+    fit_log_log_rate,
     gate_violations,
     measure_adequacy,
+    run_refinement_sweep,
 )
 from src.research.substrates.tensor_grid import TensorGridSubstrate
 
@@ -271,3 +279,126 @@ class TestAdequacyGateFailsOnTensorGridSubstrate:
     def test_adaptive_loses_to_uniform_at_matched_dof(self, separation: RateSeparation) -> None:
         """The inversion the charter records: adaptive is *worse* here."""
         assert separation.error_ratio_at_matched_dof > ADAPTIVE_VS_UNIFORM_MAX_RATIO
+
+
+# --------------------------------------------------------------------------
+# The second testbed: the Z-tetromino (two 270-degree corners, strengths 1 and
+# 0.25; src/pde/operators/multi_corner_poisson.py). Same predicate, same
+# thresholds -- only the rate-fitting *window* follows the Z's uniform DOF
+# ladder (factory.ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE, derived from the ladder
+# before anything was measured). Like the L-shape half above, this reproduces a
+# textbook AFEM result on a new geometry: an implementation-correctness gate,
+# not a research finding, and never a look-ahead result.
+#
+# Mutation kills (planted defect -> named test that went red):
+#   * an extra threshold smuggled into the Z gate (uniform_rate_band widened to
+#     (-1.2, -0.3) in adequacy_gate_for_operator) ->
+#     TestZShapeGateIsTheLShapeGate::test_only_the_window_differs.
+#   * ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE reverted to (200, 4000) ->
+#     TestZShapeGateIsTheLShapeGate::test_the_window_only_moves_its_upper_bound
+#     (no solve, every lane), and every TestAdequacyGatePassesOnTheZShape test
+#     errors in the fixture with InsufficientSweepPointsError.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def zshape_separation(params: ComparisonParams) -> RateSeparation:
+    """Measured once per module through the production factory (~2 s)."""
+    substrate = build_substrate_from_config(
+        SubstrateConfig(name="zshape_gate", kind="skfem_tri"),
+        operator_name="zshape_poisson",
+    )
+    return measure_adequacy(
+        substrate,
+        theta=params.marking_fraction,
+        gate=adequacy_gate_for_operator("zshape_poisson"),
+    )
+
+
+class TestZShapeGateIsTheLShapeGate:
+    """Config-only, no solve: runs on every lane."""
+
+    def test_only_the_window_differs(self) -> None:
+        zshape = adequacy_gate_for_operator("zshape_poisson")
+        assert zshape.rate_fit_dof_range == ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE
+        assert zshape.uniform_rate_band == UNIFORM_RATE_BAND
+        assert zshape.adaptive_rate_min == ADAPTIVE_RATE_MIN
+        assert zshape.adaptive_vs_uniform_max_ratio == ADAPTIVE_VS_UNIFORM_MAX_RATIO
+        assert zshape.max_levels_uniform == MAX_LEVELS_UNIFORM
+        assert zshape.max_levels_adaptive == MAX_LEVELS_ADAPTIVE
+
+    def test_the_window_only_moves_its_upper_bound(self) -> None:
+        low, high = ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE
+        assert low == RATE_FIT_DOF_RANGE[0]
+        assert high > RATE_FIT_DOF_RANGE[1]
+
+    @pytest.mark.parametrize("operator_name", ["lshape_poisson", "poisson"])
+    def test_every_other_testbed_gets_the_default_gate(self, operator_name: str) -> None:
+        gate = adequacy_gate_for_operator(operator_name)  # type: ignore[arg-type]
+        assert gate.rate_fit_dof_range == RATE_FIT_DOF_RANGE
+        assert gate.uniform_rate_band == UNIFORM_RATE_BAND
+
+    def test_the_gate_runs_at_the_arenas_theta(self, params: ComparisonParams) -> None:
+        """The Z gate's theta is the arena's -- checked, not stated in a comment."""
+        from src.poc.scenarios.mcts_classical_amr_arena_config import DEFAULT_MARKING_FRACTION
+
+        assert params.marking_fraction == DEFAULT_MARKING_FRACTION
+
+
+@pytest.mark.fem_required
+class TestAdequacyGatePassesOnTheZShape:
+    """AC7 on the second testbed.
+
+    Measured (theta=0.5, window (200, 5000), scikit-fem 12.0.2): adaptive
+    **-1.4037**, uniform **-0.6923**, error ratio at matched DOF (5306)
+    **0.0941**; 15 adaptive and 3 uniform points in the fit. For comparison the
+    L-shape reads -1.3109 / -0.6710 / 0.0946 on the same predicate.
+    """
+
+    @pytest.fixture(autouse=True)
+    def separation(self, zshape_separation: RateSeparation) -> RateSeparation:
+        return zshape_separation
+
+    def test_gate_passes(self, separation: RateSeparation) -> None:
+        gate = adequacy_gate_for_operator("zshape_poisson")
+        assert gate_violations(separation, gate) == [], (
+            f"the Z-shape must satisfy the adequacy gate on skfem_tri; measured {separation}"
+        )
+
+    def test_uniform_rate_is_in_band(self, separation: RateSeparation) -> None:
+        low, high = UNIFORM_RATE_BAND
+        assert low <= separation.uniform_rate <= high
+
+    def test_adaptive_rate_is_steep_enough(self, separation: RateSeparation) -> None:
+        assert separation.adaptive_rate <= ADAPTIVE_RATE_MIN
+
+    def test_adaptive_beats_uniform_at_matched_dof(self, separation: RateSeparation) -> None:
+        assert separation.error_ratio_at_matched_dof < ADAPTIVE_VS_UNIFORM_MAX_RATIO
+
+    def test_both_fits_used_enough_points(self, separation: RateSeparation) -> None:
+        from src.research.substrates.config import RATE_FIT_MIN_POINTS
+
+        assert separation.n_adaptive_points >= RATE_FIT_MIN_POINTS
+        assert separation.n_uniform_points >= RATE_FIT_MIN_POINTS
+
+
+@pytest.mark.fem_required
+def test_the_default_window_cannot_fit_the_zshape_uniform_ladder() -> None:
+    """Why the Z has its own window: the default one holds two uniform points (297, 1105).
+
+    Without this, the window would be an unexplained tuning knob; with it, it is
+    the smallest change that makes the pinned fit *possible* on this ladder.
+    """
+    gate = default_adequacy_gate()
+    uniform = run_refinement_sweep(
+        build_substrate_from_config(
+            SubstrateConfig(name="zshape_default_window", kind="skfem_tri"),
+            operator_name="zshape_poisson",
+        ),
+        policy="uniform",
+        theta=ComparisonParams().marking_fraction,
+        max_levels=gate.max_levels_uniform,
+        max_dof=gate.max_sweep_dof,
+    )
+    with pytest.raises(InsufficientSweepPointsError, match="got 2"):
+        fit_log_log_rate(uniform, gate.rate_fit_dof_range, arm="uniform")

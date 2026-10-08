@@ -40,6 +40,7 @@ class MCTSClassicalAMRArenaScenario(CompareScenarioBase):
             "theta": self.config.marking_fraction,
             "n_simulations": self.config.n_simulations,
             "require_adequacy": self.config.require_adequacy_precondition,
+            "include_greedy_control": self.config.include_greedy_control,
         }
 
     def execute(self) -> ScenarioResult:
@@ -75,6 +76,16 @@ class MCTSClassicalAMRArenaScenario(CompareScenarioBase):
             mcts_win_fraction=metrics["mcts_win_fraction"],
             n_seeds=metrics["n_seeds"],
             dof_convention=dof_convention,
+            # None when not measured (see MultiSeedArena.metrics). Literal keys:
+            # a module-level src.research import here closes the poc<->research
+            # cycle, and a function-level one is a lazy import.
+            decisions_diverging_from_greedy=metrics.get("decisions_diverging_from_greedy"),
+            l2_error_ratio_mcts_over_greedy=metrics.get(
+                "l2_error_ratio_mcts_over_greedy_at_matched_dof"
+            ),
+            l2_error_ratio_greedy_over_dorfler=metrics.get(
+                "l2_error_ratio_greedy_over_dorfler_at_matched_dof"
+            ),
         )
 
     def _write_artifacts(

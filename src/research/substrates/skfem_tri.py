@@ -11,16 +11,25 @@ Reuses ``src.research.fem_baseline``'s module-level primitives
 ``quadrature_l2_error``, ``zz_indicator``) rather than re-implementing mesh
 construction/assembly/estimation a second time -- the same solver code the
 classical ``ScikitFEMLShapedSolver`` baseline uses.
+
+Two coarse meshes, chosen by the operator's geometry
+(:func:`~src.pde.geometry_polyomino.polyomino_domain_of`): an operator carrying
+a ``PolyominoDomain`` (e.g. the Z-shape of
+:func:`~src.pde.operators.multi_corner_poisson.build_zshape_poisson_operator`)
+gets :func:`build_polyomino_initial_mesh`; every other operator keeps
+``build_lshaped_initial_mesh`` byte for byte -- the committed arena artifact
+(``results/mcts_classical_amr_arena.csv``) was produced on it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 import structlog
 
+from src.pde.geometry_polyomino import PolyominoDomain, polyomino_domain_of
 from src.refinement.substrate import SubstrateSolveResult
 from src.refinement.substrate_registry import register_refinement_substrate
 from src.research.baselines import (
@@ -29,6 +38,7 @@ from src.research.baselines import (
     require_measurable_l2,
 )
 from src.research.fem_baseline import (
+    LSHAPE_NODES_PER_SQUARE,
     _make_element,
     _require_skfem,
     assemble_and_solve,
@@ -53,6 +63,70 @@ if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
 
 logger = structlog.get_logger(__name__)
+
+#: Nodes per axis in each polyomino cell's coarse tensor mesh. The L-shape's own
+#: value, so the canonical L polyomino reproduces ``build_lshaped_initial_mesh``
+#: byte for byte; every cell uses the same count, which is what keeps the join
+#: conforming along the (whole, validated) edges cells share.
+POLYOMINO_NODES_PER_CELL: Final[int] = LSHAPE_NODES_PER_SQUARE
+
+#: Fewest nodes per axis that still make a cell a tensor mesh (one element).
+MIN_POLYOMINO_NODES_PER_CELL: Final[int] = 2
+
+
+def build_polyomino_initial_mesh(
+    domain: PolyominoDomain,
+    skfem: Any,
+    *,
+    initial_mesh_refinements: int,
+    nodes_per_cell: int = POLYOMINO_NODES_PER_CELL,
+) -> Any:
+    """Build a conforming triangular mesh of a polyomino, cell by cell.
+
+    Mirrors ``fem_baseline.build_lshaped_initial_mesh``: ``MeshTri.init_tensor``
+    per cell, joined with ``+`` in cell order (skfem merges the shared nodes),
+    then ``initial_mesh_refinements`` uniform ``refined()`` passes. Conformity
+    rests on :class:`PolyominoDomain` having rejected T-junctions -- two cells
+    touching along part of an edge would leave hanging nodes here.
+
+    Args:
+        domain: The polyomino to mesh.
+        skfem: The imported ``skfem`` module (passed in, as the baseline does).
+        initial_mesh_refinements: Uniform refinements after the join.
+        nodes_per_cell: Nodes per axis per cell.
+
+    Raises:
+        ValueError: If ``nodes_per_cell`` is below two, or
+            ``initial_mesh_refinements`` is negative (``range`` would silently
+            skip refinement).
+
+    """
+    if nodes_per_cell < MIN_POLYOMINO_NODES_PER_CELL:
+        raise ValueError(
+            f"nodes_per_cell must be >= {MIN_POLYOMINO_NODES_PER_CELL}, got {nodes_per_cell}"
+        )
+    if initial_mesh_refinements < 0:
+        raise ValueError(f"initial_mesh_refinements must be >= 0, got {initial_mesh_refinements}")
+    meshes = [
+        skfem.MeshTri.init_tensor(
+            np.linspace(cell.x0, cell.x1, nodes_per_cell),
+            np.linspace(cell.y0, cell.y1, nodes_per_cell),
+        )
+        for cell in domain.cells
+    ]
+    mesh = meshes[0]
+    for other in meshes[1:]:
+        mesh = mesh + other
+    for _ in range(initial_mesh_refinements):
+        mesh = mesh.refined()
+    logger.debug(
+        "polyomino_initial_mesh_built",
+        n_cells=len(domain.cells),
+        nodes_per_cell=nodes_per_cell,
+        initial_mesh_refinements=initial_mesh_refinements,
+        n_units=int(mesh.t.shape[1]),
+    )
+    return mesh
 
 
 @dataclass(frozen=True)
@@ -80,6 +154,7 @@ class SkfemTriSubstrate:
         )
         self._skfem = _require_skfem()
         require_exact_solution(operator, "SkfemTriSubstrate")
+        self._polyomino = polyomino_domain_of(operator)
         self._log = logger.bind(**self.describe())
         self._log.info(
             "substrate_initialised",
@@ -87,13 +162,28 @@ class SkfemTriSubstrate:
         )
 
     def initial_mesh(self) -> SkfemTriMesh:
-        """The coarse L-shaped mesh (three unit squares), per AC8."""
-        mesh = build_lshaped_initial_mesh(
-            self._operator,
-            self._skfem,
-            initial_mesh_refinements=self._config.initial_refinements,
+        """The coarse mesh: the operator's polyomino, else the L-shape (AC8).
+
+        The L branch is unchanged code, so an L-shape operator's mesh is
+        byte-identical to before polyomino support existed.
+        """
+        if self._polyomino is not None:
+            mesh = build_polyomino_initial_mesh(
+                self._polyomino,
+                self._skfem,
+                initial_mesh_refinements=self._config.initial_refinements,
+            )
+        else:
+            mesh = build_lshaped_initial_mesh(
+                self._operator,
+                self._skfem,
+                initial_mesh_refinements=self._config.initial_refinements,
+            )
+        self._log.debug(
+            "substrate_initial_mesh",
+            n_units=int(mesh.t.shape[1]),
+            geometry="polyomino" if self._polyomino is not None else "lshape",
         )
-        self._log.debug("substrate_initial_mesh", n_units=int(mesh.t.shape[1]))
         return SkfemTriMesh(mesh=self._maybe_freeze(mesh))
 
     def solve(self, mesh: SkfemTriMesh) -> SubstrateSolveResult:
@@ -167,7 +257,7 @@ class SkfemTriSubstrate:
         return int(mesh.mesh.t.shape[1])
 
     def refinable_mask(self, mesh: SkfemTriMesh) -> NDArray[np.bool_]:
-        """Every triangle is refinable: the L-shape mesh has no masked-out elements."""
+        """Every triangle is refinable: both meshes cover exactly the domain, no masking."""
         return np.ones(self.n_units(mesh), dtype=bool)
 
     def fingerprint(self, mesh: SkfemTriMesh) -> bytes:

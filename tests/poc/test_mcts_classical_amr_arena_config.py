@@ -14,7 +14,8 @@ from src.poc.scenarios.mcts_classical_amr_arena_config import (
     SCENARIO_NAME,
     MCTSClassicalAMRArenaConfig,
 )
-from src.research.substrates.config import SubstrateConfig
+from src.research.substrates.config import AdequacyGateConfig, SubstrateConfig
+from src.research.substrates.sweep import default_adequacy_gate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -77,6 +78,69 @@ class TestValidation:
     def test_resolved_seeds_use_stride(self) -> None:
         cfg = _config(seed=10, n_seeds=3, seed_stride=1009)
         assert cfg.resolved_seeds() == [10, 1019, 2028]
+
+
+class TestGreedyControlField:
+    """``include_greedy_control`` is additive: default on, old YAMLs unchanged."""
+
+    def test_defaults_to_true_and_is_described(self) -> None:
+        assert _config().include_greedy_control is True
+        field = MCTSClassicalAMRArenaConfig.model_fields["include_greedy_control"]
+        assert field.description is not None
+        assert "greedy" in field.description
+
+    def test_false_is_accepted(self) -> None:
+        assert _config(include_greedy_control=False).include_greedy_control is False
+
+    @pytest.mark.parametrize(
+        "basename",
+        ["mcts_classical_amr_arena.yaml", "mcts_classical_amr_arena_ci.yaml"],
+    )
+    def test_a_yaml_without_the_field_parses_to_the_default(self, basename: str) -> None:
+        path = REPO_ROOT / "config" / "scenarios" / basename
+        entry = yaml.safe_load(path.read_text(encoding="utf-8"))["scenarios"][0]
+        entry.pop("include_greedy_control", None)
+        cfg = load_config_from_dict(entry)
+        # By name, not isinstance: some tests/poc modules purge
+        # sys.modules['src.poc.scenarios*'] (tests/poc/conftest.py, rule 2).
+        assert type(cfg).__name__ == MCTSClassicalAMRArenaConfig.__name__
+        assert cfg.model_dump()["include_greedy_control"] is True
+
+    def test_toggling_it_leaves_the_gate_and_the_scored_locks_alone(self) -> None:
+        off = _config(include_greedy_control=False)
+        assert off.get_default_thresholds() == _config().get_default_thresholds()
+        assert (off.search_mode, off.add_noise, off.temperature) == ("single_agent", False, 0.0)
+        assert off.evaluator_name == HEADLINE_EVALUATOR_NAME
+
+
+class TestZShapeTestbed:
+    """Gate 1 T2: the arena config accepts the Z-tetromino with its own adequacy gate.
+
+    The L-shape gate must stay field for field what the committed arena artifact
+    was produced under (name, window, thresholds).
+    """
+
+    def test_zshape_is_accepted_with_the_adequacy_precondition(self) -> None:
+        cfg = _config(operator_name="zshape_poisson")
+        assert cfg.require_adequacy_precondition is True
+        assert cfg.adequacy_gate().rate_fit_dof_range == (200.0, 5000.0)
+        assert cfg.adequacy_gate().name == "arena_adequacy_precondition"
+
+    def test_the_lshape_gate_is_unchanged(self) -> None:
+        """Every field but the construction timestamp equals the pre-Gate-1 gate."""
+        gate = _config().adequacy_gate()
+        legacy = AdequacyGateConfig(name="arena_adequacy_precondition")
+        assert gate.model_dump(exclude={"created_at"}) == legacy.model_dump(exclude={"created_at"})
+        assert gate.rate_fit_dof_range == (200.0, 4000.0)
+        assert gate.rate_fit_dof_range == default_adequacy_gate().rate_fit_dof_range
+
+    def test_the_z_testbed_ignores_no_scale(self) -> None:
+        with pytest.raises(ValidationError, match="unit Z-tetromino"):
+            _config(operator_name="zshape_poisson", lshape_scale=2.0)
+
+    def test_the_unit_square_still_has_no_adequacy_gate(self) -> None:
+        with pytest.raises(ValidationError, match="adequacy precondition"):
+            _config(operator_name="poisson")
 
 
 class TestThresholdsAQA:

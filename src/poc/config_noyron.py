@@ -16,11 +16,13 @@ from src.poc.config import BaseScenarioConfig, ScenarioTier
 
 
 class NoyronHXScenarioConfig(BaseScenarioConfig):
-    """Zero-shot transfer scenario on Leap 71's helical heat exchanger.
+    """Zero-shot transfer scenario on the analytical surrogate of Leap 71's helical HX.
 
     Train a 3D PINN-style ``PhysicsOperator`` at low collocation-point
     density on an SDF-bounded helical tube, evaluate at higher density,
-    report MSE on the steady-state temperature field.
+    report MSE on the steady-state temperature field. The tube is the
+    closed-form ``AnalyticalHelixSDF``; PicoGK voxel/STL geometry ingestion
+    is not implemented, so ``use_picogk=True`` fails at setup.
 
     Most fields mirror ``TransferScenarioConfig`` so consumers familiar
     with the existing ``transfer`` scenario can read this config without
@@ -29,7 +31,7 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
 
     name: str = Field(default="noyron_hx", description="Scenario identifier.")
     description: str = Field(
-        default="Zero-shot 3D heat-equation transfer on Leap 71 helical HX.",
+        default="Zero-shot 3D heat-equation transfer on the analytical Leap 71 helix surrogate.",
         description="Scenario description.",
     )
     tier: ScenarioTier = ScenarioTier.INTEGRATION
@@ -49,13 +51,18 @@ class NoyronHXScenarioConfig(BaseScenarioConfig):
     use_picogk: bool = Field(
         default=False,
         description=(
-            "If True, attempt to load a PicoGK voxel STL via the optional "
-            "[picogk] extra; if False, use the closed-form analytical helix."
+            "Keep False: the closed-form analytical helix is the only working "
+            "geometry. True routes to PicoGKSDFEvaluator, which raises -- PicoGK "
+            "voxel/STL ingestion is not implemented, and the [picogk] extra "
+            "installs only the pythonnet bridge."
         ),
     )
     picogk_voxel_path: str | None = Field(
         default=None,
-        description="Path to a PicoGK voxel STL (only when use_picogk=True).",
+        description=(
+            "Path a future PicoGK voxel/STL loader would read (required when "
+            "use_picogk=True); never read today, since ingestion is not implemented."
+        ),
     )
 
     # ----- training data -----

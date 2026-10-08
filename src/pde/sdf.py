@@ -1,20 +1,20 @@
-"""Signed distance field (SDF) abstractions for Leap 71 / PicoGK integration.
+"""Signed distance field (SDF) abstractions for the Leap 71 / Noyron scenarios.
 
 Leap 71's Noyron Computational Engineering Models generate 3D parts on top of
 PicoGK's open-source voxel/SDF kernel. This module provides:
 
 - ``SDFEvaluator``: a minimal Protocol that any SDF backend must satisfy.
 - ``AnalyticalHelixSDF``: a closed-form signed distance field for a helical
-  tube (the canonical Leap 71 helical heat-exchanger shape). Used for
-  reproducible CI, tests, and the headline demo; does not require the PicoGK
-  .NET runtime.
-- ``PicoGKSDFEvaluator``: a stub that lazy-imports ``pythonnet`` / PicoGK's
-  Python bindings and raises a clean ``ImportError`` with install instructions
-  when the optional extra is missing.
+  tube, modelled on Leap 71's helical heat-exchanger shape. It is the only
+  working backend: every Noyron scenario, test and demo runs on it, and it
+  needs no .NET runtime.
+- ``PicoGKSDFEvaluator``: a **stub**. PicoGK voxel/STL geometry ingestion is
+  not implemented -- construction raises ``ImportError`` when ``pythonnet`` or
+  a ``PicoGK`` module cannot be imported and ``NotImplementedError`` when both
+  can. The ``[picogk]`` extra installs only the ``pythonnet`` bridge.
 
-The separation keeps all Python-only tests and CI completely independent of
-the .NET dependency; the real PicoGK only needs to be available when a
-reviewer explicitly runs on a downloaded Leap 71 STL.
+No code path in this repository loads a Leap 71 STL, so the analytical
+surrogate's fidelity to a real Leap 71 part has never been measured.
 """
 
 from __future__ import annotations
@@ -100,10 +100,12 @@ class SDFEvaluator(Protocol):
 class AnalyticalHelixSDF:
     """Closed-form SDF for a helical tube of constant circular cross-section.
 
-    Parameters match the geometry emitted by Leap 71's Noyron HX helical
+    Parameters are modelled on those of Leap 71's Noyron HX helical
     heat-exchanger generator (outer helix radius, tube cross-section radius,
-    pitch, number of turns), so a tuned ``AnalyticalHelixSDF`` is a faithful
-    parametric surrogate for the downloadable STL.
+    pitch, number of turns), making this a parametric surrogate for that part.
+    Its fidelity to the real STL is unmeasured: no code path here loads one
+    (``PicoGKSDFEvaluator`` is a stub), so every Noyron result is a result on
+    this surrogate.
 
     The helical centerline is::
 
@@ -391,25 +393,27 @@ class AnalyticalHelixSDF:
 
 
 class PicoGKSDFEvaluator:
-    """Lazy wrapper around a PicoGK voxel-SDF for a downloaded Leap 71 STL.
+    """Placeholder for a PicoGK voxel-SDF backend. Not implemented: always raises.
 
-    The real implementation requires the ``pythonnet`` extra (which in turn
-    drags in the .NET runtime) and the PicoGK Python bindings. Keeping the
-    import inside ``__init__`` means base CI never pays the dependency cost
-    and can still type-check the module.
-
-    Instantiating this class without the optional extras installed raises a
-    clean ``ImportError`` pointing at the right install command.
+    PicoGK voxel/STL geometry ingestion does not exist in this repository.
+    Construction probes for ``pythonnet`` and a ``PicoGK`` module and then
+    raises ``NotImplementedError``; nothing is ever read from ``voxel_path``,
+    and ``dim`` / ``bounding_box`` / ``sdf`` are unreachable. Use
+    ``AnalyticalHelixSDF`` -- every Noyron scenario does. Keeping the probe
+    inside ``__init__`` means base CI never pays the .NET dependency cost and
+    can still type-check the module.
 
     Args:
     ----
-        voxel_path: Path to a PicoGK-compatible voxel/STL file on disk.
+        voxel_path: Path a future implementation would load; stored, never read.
 
     Raises:
     ------
-        ImportError: if ``pythonnet`` or PicoGK's Python bindings cannot be
-            resolved. Callers should catch this and fall back to an
-            analytical surrogate for CI/tests.
+        ImportError: if ``pythonnet`` or a ``PicoGK`` module cannot be
+            imported. The ``[picogk]`` extra installs only ``pythonnet``, so
+            this is raised even with the extra installed unless a ``PicoGK``
+            module is provided separately.
+        NotImplementedError: otherwise; voxel/STL ingestion is not implemented.
 
     """
 
@@ -417,16 +421,18 @@ class PicoGKSDFEvaluator:
         self.voxel_path = Path(voxel_path)
         try:
             # pythonnet is the standard bridge to .NET assemblies from
-            # Python; PicoGK ships a Python wrapper on top of it. Both
-            # are gated behind the optional [picogk] extra so neither
-            # has a stub package available in CI; the import is purely
-            # a presence-check and we re-raise as ImportError below.
+            # Python; PicoGK itself is a .NET library. The [picogk] extra
+            # installs only pythonnet -- nothing in this repository
+            # provides a ``PicoGK`` Python module -- and neither has a stub
+            # package in CI. The import is purely a presence-check; a
+            # failure is re-raised as ImportError below.
             import PicoGK  # noqa: F401  # pragma: no cover
             import pythonnet  # noqa: F401  # pragma: no cover
         except ImportError as exc:
             raise ImportError(
-                "PicoGKSDFEvaluator requires the optional [picogk] extra. "
-                "Install with: pip install alphagalerkin[picogk]"
+                "PicoGKSDFEvaluator needs pythonnet (pip install alphagalerkin[picogk]) AND "
+                "Leap 71's PicoGK .NET library, which this repository does not provide; voxel "
+                "ingestion is not implemented either. Use AnalyticalHelixSDF."
             ) from exc
         # Real integration would load voxel_path here and cache a signed
         # distance grid. That work is deferred to the PicoGK integration

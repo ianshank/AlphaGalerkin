@@ -9,11 +9,13 @@ Tests the complete MCTS-based rate controller including:
 from __future__ import annotations
 
 import math
+import warnings
 
 import pytest
 import torch
 from torch import Tensor
 
+from src.video_compression.codec.codec import VideoCodec
 from src.video_compression.config import MCTSRateControlConfig, RateControlMode
 from src.video_compression.mcts.networks import (
     DynamicsNetwork,
@@ -552,3 +554,11 @@ class TestMCTSRateControlIntegration:
         decision2 = controller2.select_qp(sample_latent, "P")
 
         assert decision1.qp == decision2.qp
+
+    def test_deprecated_only_when_enabled(self, codec_config) -> None:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            VideoCodec(codec_config)
+        assert not [w for w in caught if "MCTSRateController" in str(w.message)]
+        with pytest.warns(DeprecationWarning, match=r"use_mcts.*untrained.*budget.*0\.6\.0"):
+            VideoCodec(codec_config, use_mcts_rate_control=True)

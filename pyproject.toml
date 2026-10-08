@@ -178,10 +178,10 @@ jax-gpu = [
     "orbax-checkpoint>=0.5.0,<0.10",
     "chex>=0.1.85,<0.1.91",
 ]
-# Optional bridge to Leap 71's PicoGK voxel/SDF kernel for the Noyron HX
-# integration scenario. Not installed in CI; the analytical-helix SDF in
-# src/pde/sdf.py keeps the test suite and headline demo independent of
-# the .NET runtime that pythonnet pulls in.
+# Installs only pythonnet, the .NET bridge Leap 71's PicoGK would need.
+# PicoGK itself is not provided, and voxel ingestion
+# (src/pde/sdf.py::PicoGKSDFEvaluator) is not implemented -- Noyron runs on the
+# analytical-helix SDF, which keeps tests and demos free of the .NET runtime.
 picogk = [
     "pythonnet>=3.0",
 ]

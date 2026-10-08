@@ -84,6 +84,70 @@ class TestMatchedMetrics:
         assert np.isfinite(solve_ratio)
 
 
+class TestPublicSurfaceAfterTheTypesMove:
+    """The result records moved to ``amr_arena_types``; the harness path must not notice."""
+
+    #: The harness ``__all__`` before the greedy-control change, verbatim.
+    LEGACY_ALL = (
+        "CSV_COLUMNS",
+        "AdequacyPreconditionError",
+        "ArenaPoint",
+        "ArenaTrajectory",
+        "MultiSeedArena",
+        "SeedComparison",
+        "abort_if_inadequate",
+        "compare_mcts_vs_dorfler",
+        "export_csv",
+        "export_plot",
+        "run_classical_arm",
+        "run_comparison",
+        "run_mcts_arm",
+        "write_arena_manifest",
+    )
+
+    def test_every_legacy_name_is_still_exported_from_the_harness(self) -> None:
+        import src.research.mcts_classical_amr_arena as harness
+
+        assert set(self.LEGACY_ALL) <= set(harness.__all__)
+        for name in (*self.LEGACY_ALL, "ArmName", "HARNESS_NAME"):
+            assert hasattr(harness, name), name
+
+    def test_moved_names_are_the_same_objects(self) -> None:
+        import src.research.amr_arena_types as types_module
+        import src.research.mcts_classical_amr_arena as harness
+
+        for name in ("CSV_COLUMNS", "ArenaPoint", "ArenaTrajectory", "MultiSeedArena"):
+            assert getattr(harness, name) is getattr(types_module, name), name
+        assert harness.SeedComparison is types_module.SeedComparison
+
+    def test_csv_columns_are_unchanged(self) -> None:
+        from src.research.mcts_classical_amr_arena import CSV_COLUMNS
+
+        assert CSV_COLUMNS == (
+            "method",
+            "seed",
+            "level",
+            "n_dof",
+            "l2_error",
+            "wall_time_seconds",
+            "n_cache_misses",
+            "n_cache_hits",
+            "n_apply_actions",
+        )
+
+    def test_compare_mcts_vs_dorfler_is_the_generic_read_as_a_six_tuple(self) -> None:
+        from src.research.mcts_classical_amr_arena import compare_trajectories
+
+        dorfler = _traj("dorfler", [100, 200], [1.0, 0.4], [1, 2])
+        mcts = _traj("mcts", [100, 150, 200], [1.0, 0.5, 0.2], [1, 4, 8])
+        legacy = compare_mcts_vs_dorfler(dorfler, mcts)
+        generic = compare_trajectories(reference=dorfler, candidate=mcts)
+        assert len(legacy) == 6
+        assert tuple(legacy) == tuple(generic)
+        assert generic.l2_error_ratio_at_matched_dof == pytest.approx(0.5)
+        assert generic.matched_dof == pytest.approx(200.0)
+
+
 class TestForbiddenEvaluators:
     def test_harness_does_not_name_encoded_or_random(self) -> None:
         tree = ast.parse(HARNESS.read_text(encoding="utf-8"))

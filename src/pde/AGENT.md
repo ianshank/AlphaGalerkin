@@ -85,7 +85,8 @@ pytest tests/pde/test_mcts_adapter.py -v
 |------|---------|-------------|
 | `config.py` | Pydantic configuration | `PDEConfig`, `PDEGameConfig`, `BasisSelectionConfig`, `MeshRefinementConfig`, `PDEType`, `BoundaryCondition`, `RefinementStrategy`, `ActionSpace` |
 | `game.py` | Abstract PDE game interface | `PDEGame`, `PDEState`, `GamePhase` |
-| `operators/` | PDE operator definitions (one class per file; package split PR #140) | `PDEOperator` (ABC), `PDEResidual`, `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator` |
+| `operators/` | PDE operator definitions (one class per file; package split PR #140) | `PDEOperator` (ABC), `PDEResidual`, `PoissonOperator`, `BurgersOperator`, `AdvectionDiffusionOperator`, `HeatOperator`, `LShapedPoissonOperator`, `MultiCornerPoissonOperator` (harmonic multi-reentrant-corner solution; constructor refuses branch cuts that reach the closed domain) |
+| `geometry_polyomino.py` | Union-of-cells domains with exact reentrant-corner and branch-cut analysis (Gate 1 two-corner testbed) | `PolyominoDomain` |
 | `registry.py` | PDE operator registration | `PDEOperatorRegistry`, `@register_pde_operator()` |
 | `mcts_adapter.py` | PDE-to-MCTS bridge | `PDEGameAdapter` |
 | `games/basis_selection.py` | Galerkin basis selection game | `BasisSelectionGame`, `BasisFunction` |

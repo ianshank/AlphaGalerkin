@@ -1,9 +1,11 @@
 """Configuration for the ``noyron_basis`` PoC scenario (Leap 71 v2.2).
 
 Drives MCTS-guided Galerkin basis selection on an SDF-defined helical operator
-(``helical_heat`` / ``helical_stokes`` / ``helical_magnetostatics``). Every
-tunable — including the helix geometry — is a typed Pydantic field with bounds
-and a docstring; there are no hardcoded numerical values in the scenario.
+(``helical_heat`` / ``helical_stokes`` / ``helical_magnetostatics``) over the
+closed-form ``AnalyticalHelixSDF`` surrogate; PicoGK voxel/STL geometry
+ingestion is not implemented. Every tunable — including the helix geometry — is
+a typed Pydantic field with bounds and a docstring; there are no hardcoded
+numerical values in the scenario.
 
 See ``specs/noyron_basis.spec.md`` for the contract this config implements.
 """
@@ -29,11 +31,11 @@ _SEED_PRIME_STRIDE = 7919
 
 
 class NoyronBasisConfig(BaseScenarioConfig):
-    """Config for MCTS basis selection on a Leap 71 helical operator."""
+    """Config for MCTS basis selection on a helical operator (analytical helix surrogate)."""
 
     name: str = Field(default=SCENARIO_NAME, description="Scenario dispatch key.")
     description: str = Field(
-        default="MCTS-guided Galerkin basis selection on a Leap 71 helical SDF operator.",
+        default="MCTS-guided Galerkin basis selection on the analytical Leap 71 helix surrogate.",
         description="Human-readable description.",
     )
 

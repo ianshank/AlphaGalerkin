@@ -37,8 +37,9 @@ Terminology used across AlphaGalerkin's game-AI and PDE/scientific-computing cod
 - **PINN** — Physics-Informed Neural Network; a baseline that trains a net to
   minimize the PDE residual directly.
 - **FDM** — Finite-Difference Method; a classical baseline solver.
-- **SDF** — Signed Distance Function; implicit geometry representation (Leap 71
-  / Noyron helical domains).
+- **SDF** — Signed Distance Function; implicit geometry representation (the Noyron
+  helical domains, which use the closed-form `AnalyticalHelixSDF` surrogate; PicoGK
+  geometry ingestion is not implemented).
 - **Manufactured solution** — A chosen exact `u` from which `f` is derived, giving
   a ground truth to measure error against.
 - **Stochastic Galerkin / NKE** — Projecting a Kolmogorov-forward generator onto a

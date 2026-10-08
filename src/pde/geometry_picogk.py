@@ -1,9 +1,14 @@
-"""PicoGK-backed domain geometry for Leap 71 Noyron integration.
+"""SDF-backed domain geometry for the Leap 71 / Noyron scenarios.
 
-This module wires an arbitrary ``SDFEvaluator`` (analytical or voxel-backed)
-into the existing ``DomainGeometry`` ABC so every operator in
-``src/pde/operators/`` can solve on a PicoGK-generated part without code
-changes.
+Despite the module and class names, nothing here touches PicoGK:
+``PicoGKDomain`` adapts any ``SDFEvaluator`` to the existing
+``DomainGeometry`` ABC so every operator in ``src/pde/operators/`` can solve
+on an SDF-bounded domain without code changes. The only working evaluator is
+the closed-form ``AnalyticalHelixSDF`` surrogate -- PicoGK voxel/STL geometry
+ingestion is not implemented (``PicoGKSDFEvaluator`` raises on construction)
+-- so the analytical helix is the only real geometry the adapter has run on
+(the unit tests add synthetic failure-path stubs). The names are kept so
+configs and imports stay stable.
 
 Rejection sampling is used for ``sample_interior`` because Leap 71 parts are
 typically non-convex (helical channels, branching lattices) with ill-shaped
@@ -66,11 +71,16 @@ DEFAULT_BISECTION_BRACKET_FACTOR = 4.0
 
 
 class PicoGKDomain(DomainGeometry):
-    """Domain geometry backed by a signed distance field.
+    """SDF-backed domain adapter, currently exercised with ``AnalyticalHelixSDF``.
+
+    A generic ``SDFEvaluator`` -> ``DomainGeometry`` adapter; "PicoGK" in the
+    name is historical. No PicoGK voxel backend exists --
+    ``PicoGKSDFEvaluator`` is a stub that raises on construction -- so the
+    analytical helix surrogate is the only real geometry it is used with.
 
     Attributes
     ----------
-        sdf_evaluator: any ``SDFEvaluator`` (analytical or PicoGK voxel).
+        sdf_evaluator: any ``SDFEvaluator``; in practice ``AnalyticalHelixSDF``.
         oversample_factor: initial multiplier for rejection sampling; grows
             adaptively if acceptance is low.
         boundary_tolerance: default tolerance used by ``is_boundary``.

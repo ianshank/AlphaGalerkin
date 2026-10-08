@@ -336,3 +336,35 @@ class MCTSNode:
             f"N={self.visit_count}, Q={self.q_value:.3f}, "
             f"P={self.prior:.3f}, children={len(self.children)})"
         )
+
+
+def subtree_depth(node: MCTSNode) -> int:
+    """Realized depth of the search tree below ``node``.
+
+    The largest number of edges from ``node`` to a descendant that at least
+    one simulation has visited (``visit_count > 0``). ``expand`` creates every
+    child of a leaf it evaluates, holding only a prior: no state was evaluated
+    at a child no simulation reached, so it is not part of the realized tree.
+    Counting it would report one ply more than the search looked ahead.
+
+    Visits propagate to every ancestor on backup, so the visited nodes form a
+    connected subtree and the walk can stop at the first unvisited child. The
+    walk is iterative, so a deep tree cannot hit the recursion limit. Pure: the
+    tree is read, never modified.
+
+    Args:
+        node: Root of the subtree to measure (typically ``MCTS.root``).
+
+    Returns:
+        ``0`` when no child of ``node`` has been visited.
+
+    """
+    deepest = 0
+    frontier: list[tuple[MCTSNode, int]] = [(node, 0)]
+    while frontier:
+        current, depth = frontier.pop()
+        deepest = max(deepest, depth)
+        frontier.extend(
+            (child, depth + 1) for child in current.children.values() if child.visit_count > 0
+        )
+    return deepest

@@ -22,12 +22,18 @@ Design note, load-bearing: :func:`collect_git_provenance` and
 throws inside a benchmark destroys the run it exists to document, so every
 failure degrades to a default-populated object and the fields say ``unknown``
 rather than the call propagating.
+
+Recording order, also load-bearing: :class:`RunRecorder` snapshots git **before**
+a run writes any artifact, because an artifact written into a clean tree makes
+that tree report dirty. It is the one helper that owns the snapshot -> write
+artifacts -> write sidecar -> optional proposal-grade sequence.
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _package_version
 from pathlib import Path
@@ -288,6 +294,28 @@ class ProposalGradeError(ValueError):
     """
 
 
+def _require_proposal_grade(git: GitProvenance, config_hash: str) -> None:
+    """Raise :class:`ProposalGradeError` unless ``(git, config_hash)`` is proposal-grade.
+
+    The single definition of the bar, shared by :func:`assert_proposal_grade`
+    (a finished manifest) and :meth:`RunRecorder.start` (the pre-flight, before
+    any manifest exists), so the two cannot disagree about what it means.
+    """
+    problems: list[str] = []
+    if git.dirty is not False:
+        problems.append(
+            f"git.dirty={git.dirty!r}; proposal-grade artifacts must "
+            "be produced from a clean worktree (dirty is False)"
+        )
+    if not config_hash or config_hash == UNKNOWN:
+        problems.append(
+            f"config_hash={config_hash!r}; proposal-grade artifacts "
+            "must record a real config hash, not 'unknown'"
+        )
+    if problems:
+        raise ProposalGradeError("; ".join(problems))
+
+
 def assert_proposal_grade(manifest: RunManifest) -> None:
     """Reject ``dirty: true`` and ``config_hash: "unknown"`` at claim-commit.
 
@@ -295,19 +323,101 @@ def assert_proposal_grade(manifest: RunManifest) -> None:
     prove cleanliness is not proposal-grade. Collectors may still write that
     state; this function is what forbids promoting it to a headline.
     """
-    problems: list[str] = []
-    if manifest.git.dirty is not False:
-        problems.append(
-            f"git.dirty={manifest.git.dirty!r}; proposal-grade artifacts must "
-            "be produced from a clean worktree (dirty is False)"
+    _require_proposal_grade(manifest.git, manifest.config_hash)
+
+
+@dataclass(frozen=True)
+class RunRecorder:
+    """Write a run's sidecar in the one order that yields honest provenance.
+
+    1. :meth:`start` snapshots git **before** the run computes or writes
+       anything. A probe taken after the artifacts exist reports them as dirt:
+       an untracked CSV, or a committed one being regenerated, flips ``dirty``
+       on a clean source tree -- the chicken-and-egg ``write_arena_manifest``
+       documents. Under ``proposal_grade`` it is also the pre-flight: a tree
+       that cannot be proven clean, or an unknown config hash, raises before
+       anything has been computed or overwritten.
+    2. The caller computes and writes its artifacts.
+    3. :meth:`write_sidecar` writes ``<artifact>.run.json`` from a manifest
+       that must carry *this* snapshot and hash, never a fresh probe; under
+       ``proposal_grade`` it re-verifies the sidecar as read back from disk,
+       i.e. the bytes that get committed.
+
+    Without ``proposal_grade`` a dirty or undetermined tree is *recorded*, not
+    rejected -- the collectors-never-raise rule is unchanged.
+    """
+
+    git: GitProvenance
+    config_hash: str
+    proposal_grade: bool = False
+
+    @classmethod
+    def start(cls, *, config_hash: str, proposal_grade: bool = False) -> RunRecorder:
+        """Snapshot git now, before any artifact exists.
+
+        Args:
+            config_hash: Hash of the run's validated configuration.
+            proposal_grade: Refuse to start unless the result can be
+                proposal-grade (see :func:`assert_proposal_grade`).
+
+        Returns:
+            A recorder holding the snapshot.
+
+        Raises:
+            ProposalGradeError: ``proposal_grade`` is set and the tree is not
+                provably clean, or ``config_hash`` is empty or ``unknown``.
+
+        """
+        recorder = cls(
+            git=collect_git_provenance(),
+            config_hash=config_hash,
+            proposal_grade=proposal_grade,
         )
-    if not manifest.config_hash or manifest.config_hash == UNKNOWN:
-        problems.append(
-            f"config_hash={manifest.config_hash!r}; proposal-grade artifacts "
-            "must record a real config hash, not 'unknown'"
+        if proposal_grade:
+            _require_proposal_grade(recorder.git, recorder.config_hash)
+        return recorder
+
+    def write_sidecar(self, artifact: str | Path, manifest: RunManifest) -> Path:
+        """Write ``manifest`` beside ``artifact``; re-verify it under proposal grade.
+
+        Args:
+            artifact: The primary artifact; the sidecar is
+                :func:`manifest_path_for` of it.
+            manifest: The run's manifest, built with ``git=recorder.git`` and
+                ``config_hash=recorder.config_hash``.
+
+        Returns:
+            The sidecar path.
+
+        Raises:
+            ValueError: ``manifest`` carries a different git state or config
+                hash than this run started from. Nothing is written.
+            ProposalGradeError: ``proposal_grade`` is set and the sidecar read
+                back from disk fails :func:`assert_proposal_grade`.
+
+        """
+        if manifest.git != self.git:
+            raise ValueError(
+                f"manifest.git {manifest.git!r} is not the snapshot this run started "
+                f"from ({self.git!r}); build the manifest with git=recorder.git -- a "
+                "probe taken after the artifacts exist reports them as a dirty tree"
+            )
+        if manifest.config_hash != self.config_hash:
+            raise ValueError(
+                f"manifest.config_hash {manifest.config_hash!r} is not the hash this "
+                f"run started with ({self.config_hash!r})"
+            )
+        sidecar = write_run_manifest(manifest, manifest_path_for(artifact))
+        logger.debug(
+            "run_sidecar_written",
+            sidecar=str(sidecar),
+            git_dirty=self.git.dirty,
+            config_hash=self.config_hash,
+            proposal_grade=self.proposal_grade,
         )
-    if problems:
-        raise ProposalGradeError("; ".join(problems))
+        if self.proposal_grade:
+            assert_proposal_grade(load_run_manifest(sidecar))
+        return sidecar
 
 
 def collect_hardware_tag() -> str:
@@ -370,6 +480,7 @@ __all__ = [
     "PackageVersions",
     "ProposalGradeError",
     "RunManifest",
+    "RunRecorder",
     "assert_proposal_grade",
     "collect_git_provenance",
     "collect_hardware_tag",

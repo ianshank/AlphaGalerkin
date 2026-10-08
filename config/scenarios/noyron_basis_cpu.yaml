@@ -5,7 +5,8 @@
 # random arm only, with no CUDA and no LM Studio server. This is the CPU-
 # runnable counterpart to noyron_basis_demo.yaml: it proves the first
 # MCTS-on-Noyron pipeline runs end-to-end and produces a monotone (>=0) error
-# reduction on a real Leap 71 helical SDF geometry.
+# reduction on the closed-form AnalyticalHelixSDF surrogate of a Leap 71 helical
+# geometry (PicoGK voxel/STL geometry ingestion is not implemented).
 #
 # Run with:
 #   python -m src.poc.cli run --config config/scenarios/noyron_basis_cpu.yaml
@@ -21,7 +22,7 @@ defaults:
 
 scenarios:
   - name: noyron_basis
-    description: "CPU smoke: MCTS basis selection on the Leap 71 helical heat operator (random arm)."
+    description: "CPU smoke: MCTS basis selection, helical heat operator on the analytical helix surrogate."
     tier: integration
     enabled: true
 

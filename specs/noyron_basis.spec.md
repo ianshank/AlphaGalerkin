@@ -15,7 +15,8 @@ selection on SDF-defined helical geometries: `HelicalBasisSelectionInterface` (g
 **first documented MCTS-on-Noyron result** — a PoC scenario that drives basis selection on the
 helical operator, aggregates per-seed error reduction, and gates on physics-meaningful thresholds.
 This is the v2.2 roadmap item; it produces the headline datapoint that basis selection reduces the
-Galerkin error on a real Leap 71 geometry.
+Galerkin error on the analytical helix surrogate of a Leap 71 geometry (`AnalyticalHelixSDF`;
+PicoGK voxel ingestion is not implemented — `PicoGKSDFEvaluator` raises `NotImplementedError`).
 
 ## User Story
 

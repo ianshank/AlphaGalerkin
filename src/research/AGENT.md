@@ -19,7 +19,10 @@ Map (do not treat `baselines.py` as a file — it is a package after hygiene B34
 | `marking.py` | Shared Dörfler marking (legacy `_dorfler_mark*` delegates here) |
 | `pde_benchmarks.py` | `PDEBenchmarkRunner` (SBIR P40; `--heavy` opt-in) |
 | `lshape_amr_compare.py` | Legacy tensor-grid MCTS vs Dörfler (golden, **non-informative** for element-local policy) |
-| `mcts_classical_amr_arena.py` | Headline arena on `SkfemTriSubstrate` |
+| `mcts_classical_amr_arena.py` | Headline arena on `SkfemTriSubstrate` (result records re-exported from `amr_arena_types.py`) |
+| `greedy_control.py` | Single-element greedy control arm: `greedy_action`, `GreedyDivergence`, `run_greedy_arm`. A reference baseline — must not import `src.mcts` (import contract) |
+| `amr_arena_episode.py` | One game builder + episode driver shared by the arena's MCTS and greedy arms (same game, fresh solve cache per episode) |
+| `amr_arena_types.py` | Arena result records (`ArenaPoint`, `ArenaTrajectory`, `SeedComparison`, `MultiSeedArena`) and metric keys |
 | `transfer_baseline_compare.py` | Operator vs retrained CNN (honest zero-shot) |
 | `stochastic_galerkin_compare.py` | NKE layer vs deterministic arm |
 | `seed_sweep.py` | Multi-seed median / spread |

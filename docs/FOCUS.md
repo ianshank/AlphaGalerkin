@@ -14,15 +14,34 @@ other fails the build. Prose that CI cannot read is a suggestion.
 ## The current focus
 
 The cycle's thesis — **multi-step tree search beats greedy marking for
-adaptive mesh refinement** — now has an interpretable answer on the element-local
-substrate. Untrained MCTS vs Dörfler on `SkfemTriSubstrate` at θ=0.5, policy
-`max_dof=600` (matched DOF 287): median `l2_error_ratio_at_matched_dof` **0.9532**
-(`results/mcts_classical_amr_arena.csv`). Look-ahead does **not** win at matched
-solves (ratio 9.23, ungated). Adequacy rates remain gate evidence, not this
-result. Legacy `results/lshape_mcts_vs_dorfler.csv` is **non-informative for
-element-local policy**.
+adaptive mesh refinement** — is **not yet decided**: it has been tested only on
+elliptic controls, where it failed, and the testbed that can decide it is not
+built. The committed arena
+(`results/mcts_classical_amr_arena.{csv,run.json}`: untrained MCTS vs Dörfler on
+`SkfemTriSubstrate` at θ=0.5, matched DOF 287; the binding limit is
+`max_steps=12`, not `max_dof=600`) reports a median
+`l2_error_ratio_at_matched_dof` of **0.9532**, but that is single-element greedy
+marking against Dörfler bulk marking: the artifact's greedy control makes the
+same 12 decisions as the MCTS arm on every seed (MCTS/greedy 1.0,
+`decisions_diverging_from_greedy_max` 0), so **search contributed no
+decisions**. Reading 0.9532 as an MCTS win was corrected on 2026-10-08. At
+matched solves MCTS is at 9.23 (ungated). Gate 1 of
+`docs/business/COMMERCIALIZATION_PEER_REVIEW.md`, pre-registered in
+`specs/lookahead_vs_greedy.spec.md`, asked whether look-ahead beats greedy on two
+elliptic testbeds (the L-shape and a two-corner Z-tetromino) and returned
+**NO-GO** on both: the deterministic search made greedy's 30 decisions on each, and
+the best classical arm (Dörfler θ=0.3 / θ=0.5) beat it at matched DOF
+(`results/lookahead_vs_greedy_lshape.{csv,run.json}`,
+`results/lookahead_vs_greedy_zshape.{csv,run.json}`). That is the expected
+control result; the thesis stays open until the deferred moving-front testbed
+(T3) runs. Adequacy rates remain gate evidence, not this result. Legacy
+`results/lshape_mcts_vs_dorfler.csv` is **non-informative for element-local
+policy**.
 
-The freeze **lifts** on that signed result. `config/focus.yaml` still lists
+The freeze **lifted** on that signed result's pre-registered verdict
+(`l2_error_ratio_at_matched_dof < 1`), which still holds: the correction changes
+what the verdict is evidence of, not the verdict, and re-freezing is an owner
+decision it does not make. `config/focus.yaml` still lists
 `codec` and `interactive-surfaces` so the split-attention gate keeps working
 until a follow-up re-scopes tracks (empty `frozen_tracks` is rejected). The
 `focus` job is a **hard merge gate** in `ci-success` since 2026-09-11 (plan
@@ -93,9 +112,14 @@ nobody can see is the same as no gate.
 ## When the freeze lifts
 
 The freeze lifted on the committed Phase 2 artifacts
-(`results/mcts_classical_amr_arena.{csv,run.json}`): a matched-DOF win (median
-ratio 0.9532 at θ=0.5, policy `max_dof=600`) that evaporates at matched compute.
-That is an interpretable answer either way — not a smoke pass. Parked work
+(`results/mcts_classical_amr_arena.{csv,run.json}`): a pre-registered matched-DOF
+verdict (median ratio 0.9532 at θ=0.5; the binding limit is `max_steps=12`, not
+`max_dof=600`) that evaporates at matched compute — a signed result, not a smoke
+pass. Since the 2026-10-08 re-record with a greedy control, that ratio is known
+to be single-element greedy marking (**search contributed no decisions**), so the
+lift rests on the verdict, not on an answer to the look-ahead question. Gate 1
+returned NO-GO on its two elliptic testbeds (search again contributed no
+decisions); the question stays open until the moving-front testbed runs. Parked work
 (certificates, Noyron geometry, dashboard WS3–5, codec B35, LLM GPU smokes)
 may resume in **separate** changesets; do not mix it with a new solver number
 in the same PR. The `codec` / `interactive-surfaces` rows below remain the

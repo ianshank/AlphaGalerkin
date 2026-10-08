@@ -698,6 +698,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **A `fem_required` test that had never run in CI now runs, and the class is guarded.**
+  `TestSkfemTriMctsSmoke` (`tests/pde/games/test_substrate_refinement_game.py`, PR #148) was a counted
+  skip in the fast lane, which lacks scikit-fem, and `test-extras` -- the only job that installs
+  `[fem]` -- names its suites file by file and never named it. `test-extras` gains a step that
+  selects the module with `-m "fem_required and not gpu_required"` under
+  `ALPHAGALERKIN_REQUIRE_EXTRAS=1` (1 passed, 11 deselected; with scikit-fem hidden it exits 4
+  naming the install command). New guard `tests/docs/test_fem_required_visibility.py`: every module
+  that applies the marker, found by AST (never prose) with a `tokenize` cross-check for spellings the
+  scan cannot follow, must be selected -- path, ancestor or node id; not ignored, deselected or
+  `-k`-filtered; `-m` evaluated by pytest's own compiler -- by a fail-loud step of a hard-gate job
+  whose install names an extra `pyproject.toml` declares with scikit-fem. Shared helpers are
+  additive in `tests/support/{marker_expr,workflows}.py` (`tests/support` 91.9%, gate 85). 5/5 live
+  mutations killed. The ninth recorded instance of this repo's CI-invisibility defect.
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

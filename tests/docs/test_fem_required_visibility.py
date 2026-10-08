@@ -50,6 +50,22 @@ be flagged -- are re-planted on copies by :class:`TestPlantedDefects`, so they
 keep running in CI.
 
 Hermetic except the root-conftest drive, which imports ``conftest.py``.
+
+Live mutation kills (``harden-a-guard``, 2026-10-08): each planted on the real tree --
+``.github/workflows/ci.yml`` edited, or a module created under ``tests/pde/`` -- run against
+this module, then restored byte-for-byte (sha256-checked) or deleted:
+
+1. The selecting ``test-extras`` step deleted ->
+   ``test_every_fem_test_is_selected_by_a_fem_job_step``.
+2. Its ``-m`` flipped to ``not fem_required and not gpu_required`` -> the same test.
+3. ``ALPHAGALERKIN_REQUIRE_EXTRAS`` dropped from the step ->
+   ``test_a_step_selecting_it_fails_loud``.
+4. A decorator-applied ``fem_required`` test in a new module no step names ->
+   ``test_every_fem_test_is_selected_by_a_fem_job_step``.
+5. A module that mentions ``pytest.mark.fem_required`` only in docstrings -> no test fails
+   (the false positive this scan must not have).
+
+5/5 as required; ``TestPlantedDefects`` keeps the same plants running in CI on copies.
 """
 
 from __future__ import annotations

@@ -535,13 +535,13 @@ class MCTS:
             return []
         return self._root.get_pv()
 
+    @property
+    def root(self) -> MCTSNode | None:
+        """The current search root, read-only (``None`` before the first search)."""
+        return self._root
+
     def get_root_value(self) -> float:
-        """Get value estimate at root.
-
-        Returns:
-            Root Q-value.
-
-        """
+        """Q-value at the root (``0.0`` before the first search)."""
         if self._root is None:
             return 0.0
         return self._root.q_value

@@ -34,6 +34,7 @@ from src.research.lookahead_vs_greedy import (
 from src.research.run_manifest import GitProvenance
 from src.research.substrates.config import SubstrateConfig
 from src.research.substrates.sweep import RateSeparation
+from src.templates.config import stable_config_payload
 
 pytest.importorskip("scipy", reason="scipy required for the tensor-grid solve")
 
@@ -143,6 +144,11 @@ class TestProvenanceOrder:
         sidecar = json.loads(Path(result.artifacts["run_json"]).read_text(encoding="utf-8"))
         assert sidecar["config"]["thresholds"], "vacuity: the post-setup config is recorded"
         assert load_config_from_dict(sidecar["config"]).compute_hash() == sidecar["config_hash"]
+        # A fresh construction, as a re-run builds it: replaying the recorded
+        # created_at would pass even if a timestamp reached the hash.
+        fresh = stable_config_payload(sidecar["config"])
+        assert "created_at" in sidecar["config"]["substrate"], "vacuity: a timestamp was recorded"
+        assert load_config_from_dict(fresh).compute_hash() == sidecar["config_hash"]
 
     def test_a_proposal_grade_run_on_a_dirty_tree_computes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

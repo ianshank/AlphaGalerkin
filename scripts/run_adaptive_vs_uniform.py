@@ -22,9 +22,12 @@ Run::
 Writes ``results/lshape_adaptive_vs_uniform.csv`` and its ``.run.json`` sidecar.
 The sidecar's ``config_hash`` is :meth:`AdaptiveVsUniformConfig.compute_hash`
 over exactly the ``config`` it records, so it can be recomputed from the sidecar
-alone. ``--proposal-grade`` refuses to start -- before computing or writing
-anything -- unless the working tree is provably clean, then re-verifies the
-sidecar it wrote; either failure exits ``2``, as
+alone. ``--output`` says where the run writes, not what it computes, so it is
+recorded under the sidecar's ``artifacts`` and kept out of ``config``: a
+reproduction into a scratch path hashes like the committed run.
+``--proposal-grade`` refuses to start -- before computing or writing anything --
+unless the working tree is provably clean, then re-verifies the sidecar it
+wrote; either failure exits ``2``, as
 ``scripts.run_mcts_classical_amr_arena`` does.
 """
 
@@ -100,10 +103,11 @@ HARNESS: Final[str] = "scripts.run_adaptive_vs_uniform"
 #: convention (``BaseModuleConfig``, ``BaseScenarioConfig``), so a future shared
 #: hash mixin can absorb this one without invalidating the committed sidecar.
 CONFIG_HASH_HEX_CHARS: Final[int] = 16
-#: Parser options that change how a run is *verified*, not what it computes. They
-#: are not configuration: a proposal-grade run and a plain run of one configuration
-#: must record the same ``config`` and hash identically.
-RUN_MODE_FLAGS: Final[frozenset[str]] = frozenset({"proposal_grade"})
+#: Parser options that change how a run is *verified* or *where it writes*, not what
+#: it computes. They are not configuration: a proposal-grade run, or a run into a
+#: scratch path, of one configuration must record the same ``config`` and hash
+#: identically. Where the run wrote is recorded under the sidecar's ``artifacts``.
+RUN_MODE_FLAGS: Final[frozenset[str]] = frozenset({"output", "proposal_grade"})
 
 EXIT_OK: Final[int] = 0
 #: Mirrors ``scripts.run_mcts_classical_amr_arena``: the tree or sidecar cannot be
@@ -112,10 +116,11 @@ EXIT_NOT_PROPOSAL_GRADE: Final[int] = 2
 
 
 class AdaptiveVsUniformConfig(BaseModel):
-    """Everything a user can set on this run, resolved -- and nothing else.
+    """Everything a user can set that changes what this run computes, resolved.
 
     Exactly what the sidecar's ``config`` records and what ``config_hash``
-    covers, so the hash can be recomputed from the sidecar alone. Range checks
+    covers, so the hash can be recomputed from the sidecar alone. The output
+    path is not here: it is a run-mode option (:data:`RUN_MODE_FLAGS`). Range checks
     deliberately stay where they already live (``ComparisonParams`` rejects an
     odd ``initial_side``; ``dorfler_mark`` rejects θ outside ``(0, 1]``): a
     second copy of those invariants here would be a second copy to drift.
@@ -123,7 +128,6 @@ class AdaptiveVsUniformConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    output: str = Field(default=DEFAULT_OUTPUT, description="CSV artifact path.")
     initial_side: int = Field(
         default=DEFAULT_INITIAL_SIDE, description="Coarse-grid elements per side."
     )
@@ -299,8 +303,14 @@ def build_manifest(
     uniform: list[tuple[int, int, float]],
     dorfler_rows: list[tuple[int, int, float]],
     metrics: dict[str, float],
+    *,
+    output: Path,
 ) -> RunManifest:
-    """The run's sidecar, carrying the recorder's pre-write snapshot and hash."""
+    """The run's sidecar, carrying the recorder's pre-write snapshot and hash.
+
+    ``output`` is recorded under ``artifacts`` only: it is where this run wrote,
+    not configuration (see :data:`RUN_MODE_FLAGS`).
+    """
     return RunManifest(
         run_id=f"adaptive-vs-uniform-{params.initial_side}-{params.max_dof}",
         created_at_utc=datetime.now(timezone.utc).isoformat(),
@@ -323,7 +333,7 @@ def build_manifest(
             ),
         ],
         metrics=metrics,
-        artifacts={"csv": str(Path(config.output))},
+        artifacts={"csv": str(output)},
         notes=(
             "Evidences the charter row 'L-shape adaptive Doerfler vs uniform at "
             "matched DOF'. Both arms share one solver, one geometry predicate and "
@@ -378,11 +388,12 @@ def main(argv: list[str] | None = None) -> int:
         np.array([r[2] for r in dorfler_rows], dtype=np.float64),
     )
 
-    output = Path(config.output)
+    output = Path(args.output)
     export_csv(output, uniform, dorfler_rows)
     try:
         sidecar = recorder.write_sidecar(
-            output, build_manifest(config, recorder, params, uniform, dorfler_rows, metrics)
+            output,
+            build_manifest(config, recorder, params, uniform, dorfler_rows, metrics, output=output),
         )
     except ProposalGradeError as exc:
         return _not_proposal_grade(exc)

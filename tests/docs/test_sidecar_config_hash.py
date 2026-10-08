@@ -61,6 +61,12 @@ def _scenario_config_hash(config: Mapping[str, Any]) -> str:
 
 
 def _adaptive_vs_uniform_hash(config: Mapping[str, Any]) -> str:
+    """What ``scripts.run_adaptive_vs_uniform.main`` hashes and records as ``config``.
+
+    ``config_from_args`` keeps every option except ``RUN_MODE_FLAGS``
+    (``--output``, ``--proposal-grade``): where a run writes is recorded under
+    ``artifacts``, so a scratch-path reproduction hashes like the committed run.
+    """
     from scripts.run_adaptive_vs_uniform import AdaptiveVsUniformConfig
 
     return AdaptiveVsUniformConfig(**config).compute_hash()

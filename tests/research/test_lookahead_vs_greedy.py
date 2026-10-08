@@ -41,7 +41,7 @@ from src.mcts.search import MCTS
 from src.pde.games.substrate_refinement import SubstrateEpisodeState
 from src.poc.scenarios.lookahead_vs_greedy_config import LookaheadVsGreedyConfig
 from src.research.amr_arena_types import CSV_COLUMNS, DETERMINISTIC_ARM_SEED
-from src.research.greedy_control import GreedyDivergence
+from src.research.greedy_control import GreedyDivergence, greedy_action
 from src.research.lookahead_vs_greedy import (
     PRIMARY_ARM,
     ROBUST_ARM,
@@ -263,6 +263,20 @@ class _RecordingMCTS(MCTS):
         return action
 
 
+class _ContrarianMCTS(MCTS):
+    """The real search, then always a legal action other than greedy's.
+
+    Makes the divergence count non-zero by construction, so a harness that
+    drops or zeroes the count it measured cannot pass as "never diverged".
+    """
+
+    def get_action(self, game: Any, temperature: float = 1.0, add_noise: bool = True) -> int:
+        super().get_action(game, temperature=temperature, add_noise=add_noise)
+        legal = game.get_legal_actions()
+        greedy = greedy_action(game.state.indicators, legal)
+        return int(next(action for action in legal if action != greedy))
+
+
 class TestSearchArms:
     def test_the_game_is_built_with_noise_off_and_only_the_robust_rule_turns_it_on(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -295,6 +309,17 @@ class TestSearchArms:
         )
         assert all(1 <= step.tree_depth <= config.n_simulations for step in first.steps)
         assert cache.misses > len(first.steps)
+
+    def test_a_departing_search_is_counted_into_the_trajectory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """H2: every departure from greedy reaches the trajectory's count and the step record."""
+        config = micro_config(tmp_path)
+        monkeypatch.setattr(harness, "MCTS", _ContrarianMCTS)
+        run, _ = run_search_arm(config, PRIMARY_ARM, config.seed)
+        assert len(run.steps) == config.max_steps
+        assert all(step.diverged for step in run.steps)
+        assert run.trajectory.decisions_diverging_from_greedy == config.max_steps
 
 
 class TestAdequacy:

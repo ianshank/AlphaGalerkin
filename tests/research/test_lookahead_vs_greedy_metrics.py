@@ -111,6 +111,19 @@ class TestMatchedReading:
         assert reading.ratio == pytest.approx(cand / dorf)
         assert reading.ratio_vs(GREEDY_LABEL) == pytest.approx(cand / 0.4)
 
+    def test_a_candidate_that_stops_first_sets_the_matched_dof(self) -> None:
+        """M1: the candidate is one of the arms N* is taken over, not only the classical ones."""
+        candidate = traj([100, 250], [1.0, 0.3])
+        classical = {
+            GREEDY_LABEL: traj([100, 400], [1.0, 0.25], method="greedy"),
+            UNIFORM_LABEL: traj([100, 900], [1.0, 0.5], method="uniform"),
+        }
+        reading = matched_reading(candidate, classical)
+        assert reading.matched_dof == pytest.approx(250.0)
+        assert reading.candidate_l2 == pytest.approx(0.3)
+        greedy = 1.0 * (250 / 100) ** (math.log(0.25) / math.log(4.0))
+        assert reading.classical_l2[GREEDY_LABEL] == pytest.approx(greedy)
+
     def test_a_tie_goes_to_the_arm_listed_first(self) -> None:
         same = [100, 200], [1.0, 0.5]
         reading = matched_reading(
@@ -134,6 +147,13 @@ class TestClassicalSpan:
         assert_classical_span(
             {"dorfler_theta0.1": traj([10, 500], [1, 0.1])},
             [traj([10, 300], [1, 0.2]), traj([10, 499], [1, 0.2])],
+        )
+
+    def test_an_arm_reaching_exactly_the_game_driven_dof_spans_it(self) -> None:
+        """M2 boundary: reaching the largest game-driven DOF exactly is enough."""
+        assert_classical_span(
+            {UNIFORM_LABEL: traj([10, 300], [1, 0.1])},
+            [traj([10, 300], [1, 0.2]), traj([10, 120], [1, 0.3])],
         )
 
     def test_a_short_arm_is_named(self) -> None:

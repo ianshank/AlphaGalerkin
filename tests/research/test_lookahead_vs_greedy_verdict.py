@@ -301,6 +301,31 @@ class TestCollectTestbedMetrics:
             primary.reading.classical_l2["dorfler_theta0.5"]
         )
 
+    def test_the_robust_aggregate_is_the_median_not_the_mean(self) -> None:
+        """V4: ratios 0.4, 0.8, 1.0 (against greedy's 0.25) -- median 0.8, mean 0.733."""
+        robust = [scored(0.1, seed=1), scored(0.2, seed=2), scored(0.25, seed=3)]
+        ratios = [run.reading.ratio for run in robust]
+        assert ratios == pytest.approx([0.4, 0.8, 1.0])
+        assert sum(ratios) / len(ratios) != pytest.approx(0.8), "vacuity: mean != median"
+        metrics = collect_testbed_metrics(scored(0.1), robust, robust_win_ratio=1.0)
+        assert metrics[ROBUST_MEDIAN_RATIO_METRIC] == pytest.approx(0.8)
+
+    def test_c1_reads_the_best_classical_arm_even_when_it_is_not_greedy(self) -> None:
+        """V4: C1 is against the best arm at N* (Dörfler here), never greedy by default."""
+        dorfler_best = {
+            GREEDY_LABEL: traj([100, 400], [1.0, 0.4], method="greedy"),
+            "dorfler_theta0.5": traj([100, 400], [1.0, 0.2], method="dorfler"),
+            UNIFORM_LABEL: traj([100, 400], [1.0, 0.5], method="uniform"),
+        }
+        primary = scored(0.1, classical=dorfler_best)
+        assert primary.reading.best_classical == "dorfler_theta0.5"
+        metrics = collect_testbed_metrics(
+            primary, [scored(0.1, classical=dorfler_best)], robust_win_ratio=1.0
+        )
+        assert metrics[PRIMARY_RATIO_METRIC] == pytest.approx(0.1 / 0.2)
+        assert metrics["primary_l2_ratio_vs_greedy"] == pytest.approx(0.1 / 0.4)
+        assert metrics[ROBUST_MEDIAN_RATIO_METRIC] == pytest.approx(0.1 / 0.2)
+
     def test_a_seed_exactly_at_the_win_bar_is_not_a_win(self) -> None:
         """V4: 'ratio < 1.0' is strict, as pre-registered."""
         tie = scored(0.25)  # equal to greedy, the best classical arm here

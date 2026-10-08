@@ -312,6 +312,35 @@ class TestSearchArms:
         assert all(1 <= step.tree_depth <= config.n_simulations for step in first.steps)
         assert cache.misses > len(first.steps)
 
+    def test_each_robust_run_reseeds_its_root_noise_from_its_own_seed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """H1: the robustness seeds are real -- same seed, same noise, whatever ran before.
+
+        The engine draws root noise from numpy's global stream, so a run that
+        did not reseed it would inherit whatever state the previous run left.
+        """
+        config = micro_config(tmp_path)
+        real = np.random.dirichlet
+        draws: list[np.ndarray] = []
+
+        def recording(alpha: Any, size: Any = None) -> Any:
+            sample = real(alpha, size)
+            draws.append(np.array(sample, copy=True))
+            return sample
+
+        monkeypatch.setattr(np.random, "dirichlet", recording)
+        per_run: list[list[np.ndarray]] = []
+        for seed in (config.seed, config.seed, config.seed + 1):
+            draws.clear()
+            np.random.random()  # an unrelated draw from the global stream in between
+            run_search_arm(config, ROBUST_ARM, seed)
+            per_run.append(list(draws))
+        assert per_run[0], "vacuity: the robustness arm drew root noise"
+        same, other = per_run[1], per_run[2]
+        assert all(np.array_equal(a, b) for a, b in zip(per_run[0], same, strict=True))
+        assert not np.array_equal(per_run[0][0], other[0])
+
     def test_a_departing_search_is_counted_into_the_trajectory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -610,6 +639,68 @@ class TestArtifacts:
         assert list(tmp_path.iterdir()) == []
 
 
-# Mutation-kill record (Gate 1 surface, 2026-10-08) is appended by the
-# harden-a-guard pass; see the report for the planted defects and the named
-# killers.
+# Mutation-kill record (Gate 1 surface, 2026-10-08): 46/46 planted defects
+# killed, each by a named CPU test (none carries fem_required / gpu_required).
+# Modules: V = tests/research/test_lookahead_vs_greedy_verdict.py, M = ..._metrics.py,
+# H = this module, C = tests/poc/test_lookahead_vs_greedy_config.py, S = ..._scenario.py,
+# X = tests/scripts/test_run_lookahead_vs_greedy.py, D = tests/mcts/test_tree_depth.py.
+#
+# Verdict / aggregation (7)
+#   vacuous GO on no criteria; empty threshold list accepted (2 plants)
+#     -> V test_no_criterion_is_refused_not_a_vacuous_go
+#   fail-open on a non-finite value -> V test_a_non_finite_measurement_fails_closed
+#   robust win counted at ratio == 1 -> V test_a_seed_exactly_at_the_win_bar_is_not_a_win
+#   robust median read as a mean -> V test_the_robust_aggregate_is_the_median_not_the_mean
+#   C1 read against greedy, not the best classical arm
+#     -> V test_c1_reads_the_best_classical_arm_even_when_it_is_not_greedy
+#   non-finite metrics recorded -> V test_every_non_finite_key_is_named
+# Matched DOF / span / break-even (12)
+#   matched DOF = max over arms; best classical = worst (2 plants)
+#     -> M test_one_matched_dof_for_every_arm_and_the_best_classical
+#   candidate left out of N* -> M test_a_candidate_that_stops_first_sets_the_matched_dof
+#   equal accuracy = the better of the two -> M test_a_worse_candidate_has_a_negative_saving
+#   DOF-saving sign flipped in BreakEven.dof_saving
+#     -> M test_a_leaner_slower_candidate_pays_back_after_the_formula_count
+#   DOF-saving sign flipped in break_even -> M test_a_faster_leaner_candidate_pays_back_at_once
+#   no saving read as immediate payback -> M test_finite_iff_the_saving_is_positive
+#   calibration counts the initial point
+#     -> M test_measured_seconds_over_modelled_solve_cost
+#   passage wall-clock not interpolated
+#     -> M test_log_log_dof_and_linear_wall_inside_the_crossing_segment
+#   extra wall-clock not floored at 0 -> M test_a_faster_leaner_candidate_pays_back_at_once
+#   first passage without ulp slack
+#     -> M test_an_arm_reaches_its_own_point_despite_a_one_ulp_round_trip
+#   span refuses an exact reach (<=)
+#     -> M test_an_arm_reaching_exactly_the_game_driven_dof_spans_it
+# Harness (10)
+#   robust rule without root noise; primary arm with root noise (2 plants)
+#     -> H test_the_game_is_built_with_noise_off_and_only_the_robust_rule_turns_it_on
+#   robust seed not applied to numpy
+#     -> H test_each_robust_run_reseeds_its_root_noise_from_its_own_seed
+#   depth read after the action; divergence read against legal[0] (2 plants)
+#     -> H test_records_depth_greedy_and_divergence_then_advances
+#   divergence count zeroed; step record stores the action as greedy's (2 plants)
+#     -> H test_a_departing_search_is_counted_into_the_trajectory
+#   adequacy measured after an arm ran -> H test_an_abort_happens_before_any_arm_runs
+#   private-cache check dropped -> H test_a_shared_solve_cache_is_refused
+#   classical span check dropped -> H test_a_classical_arm_that_stops_short_is_an_error
+# Provenance / config hash (5)
+#   timestamped (raw-dump) scenario hash
+#     -> C test_each_yaml_hashes_the_same_however_often_it_is_loaded
+#   write_artifacts writes before the check; build_run_manifest unchecked (2 plants)
+#     -> H test_a_config_changed_after_the_snapshot_is_refused_before_anything_is_written
+#   sidecar records the pre-setup config; scenario hashes another config (2 plants)
+#     -> S test_the_sidecar_config_reproduces_the_sidecar_hash
+# Config, the pre-registration (8)
+#   unranked legal set accepted -> C test_the_legal_set_must_be_ranked
+#   one-ply tree accepted (n_simulations == top_k) -> C test_the_tree_needs_room_past_one_ply
+#   max_steps 30 -> 31; robust seed set shifted (2 plants) -> C test_budgets_arms_and_seeds
+#   C1 operator <= -> <; C1 bar 0.98 -> 0.99 (2 plants)
+#     -> C test_thresholds_equal_the_spec_table
+#   hand-written threshold list -> C test_thresholds_can_only_be_the_pre_registered_ones
+#   unreachable C3 bar accepted -> C test_c3_must_be_reachable
+# CLI and depth helper (4)
+#   exit code follows the verdict -> X test_go_and_no_go_both_exit_zero
+#   adequacy abort exits 1 -> X test_an_abort_exits_three
+#   unvisited children counted as a ply -> D test_unvisited_children_are_not_a_ply
+#   MCTS.root hides the tree -> D test_is_the_search_root_and_follows_advance

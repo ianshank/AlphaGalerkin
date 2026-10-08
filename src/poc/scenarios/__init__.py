@@ -18,10 +18,13 @@ This module contains the core PoC scenarios for AlphaGalerkin:
       deterministic Galerkin attention vs the stochastic Galerkin
       moment-projection layer (NKE).
     - MCTSClassicalAMRArenaScenario: MCTS vs Dörfler/uniform on SkfemTriSubstrate.
+    - LookaheadVsGreedyScenario: Gate 1 go/no-go -- MCTS look-ahead vs the best
+      classical marking policy on the L- and Z-shape testbeds.
 """
 
 from src.poc.scenarios.complexity import ComplexityScenario
 from src.poc.scenarios.llm_prior_ablation import LLMPriorAblationScenario
+from src.poc.scenarios.lookahead_vs_greedy import LookaheadVsGreedyScenario
 from src.poc.scenarios.lshape_amr_compare import LShapeAMRCompareScenario
 from src.poc.scenarios.mcts_classical_amr_arena import MCTSClassicalAMRArenaScenario
 from src.poc.scenarios.noyron_basis import NoyronBasisScenario
@@ -35,6 +38,7 @@ from src.poc.scenarios.transfer_baseline_compare import TransferBaselineCompareS
 __all__ = [
     "ComplexityScenario",
     "LLMPriorAblationScenario",
+    "LookaheadVsGreedyScenario",
     "LShapeAMRCompareScenario",
     "MCTSClassicalAMRArenaScenario",
     "NoyronBasisScenario",

@@ -18,7 +18,7 @@ from typing import Any
 
 import structlog
 
-from src.research.config import ExperimentConfig
+from src.research.config import ExperimentConfig, ExperimentType
 
 
 @dataclass
@@ -570,8 +570,6 @@ def create_experiment(
         Experiment instance.
 
     """
-    from src.research.config import ExperimentType
-
     config = ExperimentConfig(
         name=name,
         experiment_type=ExperimentType(experiment_type),

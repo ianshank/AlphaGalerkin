@@ -12,18 +12,18 @@ No comparison run on either testbed happens before task 1.3 is committed.
 
 ## 2 — Implementation
 
-- [ ] 2.1 `MCTS.root` (read-only) + `subtree_depth(node)` with tests; F0/F1 surfaces green;
+- [x] 2.1 `MCTS.root` (read-only) + `subtree_depth(node)` with tests; F0/F1 surfaces green;
       `src/mcts/search.py` within its size budget
-- [ ] 2.2 Arena config: `zshape_poisson`, operator-aware `adequacy_gate()`, relaxed adequacy
+- [x] 2.2 Arena config: `zshape_poisson`, operator-aware `adequacy_gate()`, relaxed adequacy
       validator; arena artifact still reproduces
-- [ ] 2.3 `src/research/lookahead_vs_greedy_metrics.py`: matched DOF, best classical, first passage,
+- [x] 2.3 `src/research/lookahead_vs_greedy_metrics.py`: matched DOF, best classical, first passage,
       break-even, verdict
-- [ ] 2.4 `src/research/lookahead_vs_greedy.py`: adequacy abort, classical arms, greedy, MCTS
+- [x] 2.4 `src/research/lookahead_vs_greedy.py`: adequacy abort, classical arms, greedy, MCTS
       decision rule (depth + divergence per step), span check, artifacts via `RunRecorder`
-- [ ] 2.5 `LookaheadVsGreedyConfig` + `@scenario("lookahead_vs_greedy")` + `load_config_from_dict`
+- [x] 2.5 `LookaheadVsGreedyConfig` + `@scenario("lookahead_vs_greedy")` + `load_config_from_dict`
       dispatch; YAMLs for T1 and T2
-- [ ] 2.6 `scripts/run_lookahead_vs_greedy.py` (exit code ≠ verdict)
-- [ ] 2.7 Charter capability row (capability region only)
+- [x] 2.6 `scripts/run_lookahead_vs_greedy.py` (exit code ≠ verdict)
+- [x] 2.7 Charter capability row (capability region only)
 - [ ] 2.8 Tests: unit (config, verdict incl. each criterion failing alone, K* incl. ∞, depth),
       Hypothesis (verdict monotone), tensor_grid integration, E2E `--help` + one `fem_required`
       skfem smoke under `tests/e2e/`; coverage gates; shape ratchet; import contracts;

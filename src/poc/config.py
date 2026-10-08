@@ -16,7 +16,7 @@ import hashlib
 import json
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -367,6 +367,12 @@ class ScenarioResult(BaseModel):
         return "\n".join(lines)
 
 
+#: Scenarios whose configs live in the AMR-arena family of config modules and
+#: resolve together in :func:`load_config_from_dict`.
+_AMR_ARENA_FAMILY: Final[frozenset[str]] = frozenset(
+    {"mcts_classical_amr_arena", "lookahead_vs_greedy"}
+)
+
 # Type alias for config union
 ScenarioConfigUnion = TransferScenarioConfig | ComplexityScenarioConfig | StabilityScenarioConfig
 
@@ -461,13 +467,17 @@ def load_config_from_dict(
 
     # Same lazy-resolution rationale: the arena config is light but its scenario
     # module pulls in MCTS + skfem substrates, so resolve only the config class
-    # on demand.
-    if inferred_name == "mcts_classical_amr_arena":
+    # on demand. The Gate 1 look-ahead config (`lookahead_vs_greedy`) builds an
+    # arena config for its shared game, so the two resolve together -- one branch,
+    # which keeps this dispatcher under the complexity ceiling.
+    if inferred_name in _AMR_ARENA_FAMILY:
+        from src.poc.scenarios.lookahead_vs_greedy_config import LookaheadVsGreedyConfig
         from src.poc.scenarios.mcts_classical_amr_arena_config import (
             MCTSClassicalAMRArenaConfig,
         )
 
         type_map["mcts_classical_amr_arena"] = MCTSClassicalAMRArenaConfig
+        type_map["lookahead_vs_greedy"] = LookaheadVsGreedyConfig
 
     # Determine type
     if scenario_type:

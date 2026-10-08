@@ -92,6 +92,7 @@ from src.pde.operators.helmholtz import (  # noqa: E402
     HelmholtzOperator,
 )
 from src.pde.operators.lshaped_poisson import LShapedPoissonOperator  # noqa: E402
+from src.pde.operators.multi_corner_poisson import MultiCornerPoissonOperator  # noqa: E402
 from src.pde.operators.navier_stokes import NavierStokesOperator  # noqa: E402
 from src.pde.operators.poisson import PoissonOperator  # noqa: E402
 
@@ -114,6 +115,7 @@ del (
     heat,
     helmholtz,
     lshaped_poisson,
+    multi_corner_poisson,
     navier_stokes,
     poisson,
 )
@@ -141,6 +143,7 @@ __all__ = [
     "HelmholtzOperator",
     "LShapedDomain",
     "LShapedPoissonOperator",
+    "MultiCornerPoissonOperator",
     "NDArray",
     "NavierStokesOperator",
     "PDEConfig",

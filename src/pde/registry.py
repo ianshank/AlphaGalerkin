@@ -25,6 +25,7 @@ from src.pde.operators import (
     HeatOperator,
     HelmholtzOperator,
     LShapedPoissonOperator,
+    MultiCornerPoissonOperator,
     NavierStokesOperator,
     PDEOperator,
     PoissonOperator,
@@ -65,6 +66,12 @@ def _register_builtin_operators() -> None:
 
     if not registry.is_registered("poisson_lshaped"):
         register_pde_operator("poisson_lshaped")(LShapedPoissonOperator)
+
+    # Polyomino generalisation of the L-shape (several reentrant corners). Its
+    # constructor also takes the ``domain`` and ``corners`` a PDEConfig cannot
+    # carry; the presets live in ``src.pde.operators.multi_corner_poisson``.
+    if not registry.is_registered("poisson_multi_corner"):
+        register_pde_operator("poisson_multi_corner")(MultiCornerPoissonOperator)
 
     # Out-of-distribution operators for held-out generalisation benchmarks.
     if not registry.is_registered("helmholtz"):

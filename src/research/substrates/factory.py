@@ -7,12 +7,13 @@ importing ``tensor_grid`` / ``skfem_tri`` directly at the call site.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal, get_args
 
 import structlog
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator, PoissonOperator
+from src.pde.operators.multi_corner_poisson import build_zshape_poisson_operator
 from src.refinement.substrate_registry import (
     RefinementSubstrateRegistry,
     register_refinement_substrate,
@@ -20,15 +21,38 @@ from src.refinement.substrate_registry import (
 from src.research.substrates.config import (
     SUBSTRATE_KIND_SKFEM_TRI,
     SUBSTRATE_KIND_TENSOR_GRID,
+    AdequacyGateConfig,
     SubstrateConfig,
 )
+from src.research.substrates.sweep import ADEQUACY_GATE_NAME, default_adequacy_gate
 
 if TYPE_CHECKING:
     from src.pde.operators import PDEOperator
 
 logger = structlog.get_logger(__name__)
 
-OperatorName = Literal["poisson", "lshape_poisson"]
+OperatorName = Literal["poisson", "lshape_poisson", "zshape_poisson"]
+
+#: The Z preset is the unit Z-tetromino; ``build_default_operator`` refuses any
+#: other ``scale`` rather than ignoring it. Coefficients (and any other variant)
+#: go through ``build_substrate_from_config(..., operator=...)``.
+ZSHAPE_SCALE: Final[float] = 1.0
+
+#: Rate-fitting DOF window for the Z preset's adequacy gate. Only the *window*
+#: differs from :class:`AdequacyGateConfig`'s default -- every threshold (uniform
+#: band, adaptive rate floor, ratio ceiling) is shared, pinned and unchanged.
+#:
+#: Derived before measuring anything, from the DOF ladder alone. A 2-D uniform
+#: arm quadruples DOF per level, so a window holds ``RATE_FIT_MIN_POINTS = 3``
+#: uniform points only if its first in-window point ``a`` has ``16a <= high``.
+#: The L-shape's ladder under the shared defaults (``initial_refinements=2``,
+#: three nodes per cell) is ``225 -> 833 -> 3201``, which the default
+#: ``(200, 4000)`` holds. The Z-shape's is ``297 -> 1105 -> 4257``
+#: (``4(m+1)^2 - 3(m+1)`` nodes for ``m`` intervals per unit cell), so the
+#: default window holds two points and the fit raises. The upper bound moves to
+#: the first round number above ``4257``; the lower bound is unchanged. Both fits
+#: then span the same three-level, ~14x lever arm the L-shape's do.
+ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE: Final[tuple[float, float]] = (200.0, 5000.0)
 
 
 def _register_kind_if_missing(kind: str, cls: type[Any]) -> None:
@@ -74,11 +98,17 @@ def build_default_operator(
     """Build a Pydantic-configured Poisson operator for substrate games.
 
     Args:
-        operator_name: ``poisson`` (unit square) or ``lshape_poisson`` (L-shaped).
-        scale: Domain scale for the L-shaped operator (ignored for rectangular).
+        operator_name: ``poisson`` (unit square), ``lshape_poisson`` (L-shaped),
+            or ``zshape_poisson`` (the two-corner Z-tetromino with its default
+            strengths; see ``build_zshape_poisson_operator`` for other ones).
+        scale: Domain scale for the L-shaped operator (ignored for rectangular;
+            must be ``ZSHAPE_SCALE`` for the Z preset).
 
     Returns:
         A concrete ``PDEOperator`` with an exact solution (required by substrates).
+
+    Raises:
+        ValueError: On an unknown name, or a ``scale`` the Z preset would ignore.
 
     """
     if operator_name == "poisson":
@@ -101,9 +131,31 @@ def build_default_operator(
                 domain_max=[scale, scale],
             )
         )
+    if operator_name == "zshape_poisson":
+        if scale != ZSHAPE_SCALE:
+            raise ValueError(
+                f"operator_name='zshape_poisson' is the unit Z-tetromino; scale={scale} would "
+                f"be silently ignored. Pass a pre-built operator as `operator=` instead."
+            )
+        return build_zshape_poisson_operator()
     raise ValueError(
-        f"unknown operator_name {operator_name!r}; expected 'poisson' or 'lshape_poisson'"
+        f"unknown operator_name {operator_name!r}; expected one of {list(get_args(OperatorName))}"
     )
+
+
+def adequacy_gate_for_operator(operator_name: OperatorName) -> AdequacyGateConfig:
+    """The pinned adequacy gate for ``operator_name``'s testbed.
+
+    Thresholds are shared by every testbed; only the rate-fitting window follows
+    the testbed's uniform DOF ladder (see ``ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE``).
+    Every other name gets :func:`~src.research.substrates.sweep.default_adequacy_gate`.
+    """
+    if operator_name == "zshape_poisson":
+        return AdequacyGateConfig(
+            name=f"{ADEQUACY_GATE_NAME}_zshape",
+            rate_fit_dof_range=ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE,
+        )
+    return default_adequacy_gate()
 
 
 def build_substrate_from_config(
@@ -146,7 +198,9 @@ def build_substrate_from_config(
 
 
 __all__ = [
+    "ZSHAPE_ADEQUACY_RATE_FIT_DOF_RANGE",
     "OperatorName",
+    "adequacy_gate_for_operator",
     "build_default_operator",
     "build_substrate_from_config",
     "ensure_substrate_registrants",

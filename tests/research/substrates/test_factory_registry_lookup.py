@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
+import pytest
+
 import src.pde.register_refinement_games  # noqa: F401
+from src.pde.games.substrate_refinement_config import SubstrateRefinementConfig
+from src.pde.operators import LShapedPoissonOperator, MultiCornerPoissonOperator, PoissonOperator
+from src.pde.operators.multi_corner_poisson import (
+    DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
+    DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
+)
 from src.refinement.substrate_registry import RefinementSubstrateRegistry
 from src.research.substrates.config import (
     SUBSTRATE_KIND_SKFEM_TRI,
@@ -10,6 +20,9 @@ from src.research.substrates.config import (
     SubstrateConfig,
 )
 from src.research.substrates.factory import (
+    ZSHAPE_SCALE,
+    OperatorName,
+    build_default_operator,
     build_substrate_from_config,
     ensure_substrate_registrants,
 )
@@ -70,3 +83,47 @@ def test_build_substrate_uses_registry_lookup() -> None:
     result = substrate.solve(mesh)
     assert result.n_dof > 0
     assert result.l2_error >= 0.0
+
+
+class TestBuildDefaultOperator:
+    """Every ``OperatorName`` dispatches to its operator; nothing else is accepted.
+
+    Mutation kill: the ``scale != ZSHAPE_SCALE`` check deleted ->
+    ``test_a_zshape_scale_is_refused_not_ignored`` (the scale is silently dropped).
+    """
+
+    def test_operator_names_include_the_zshape(self) -> None:
+        assert get_args(OperatorName) == ("poisson", "lshape_poisson", "zshape_poisson")
+
+    @pytest.mark.parametrize(
+        ("name", "cls"),
+        [
+            ("poisson", PoissonOperator),
+            ("lshape_poisson", LShapedPoissonOperator),
+            ("zshape_poisson", MultiCornerPoissonOperator),
+        ],
+    )
+    def test_each_name_builds_its_operator(self, name: OperatorName, cls: type) -> None:
+        assert type(build_default_operator(name)) is cls
+
+    def test_the_zshape_uses_the_named_default_strengths(self) -> None:
+        operator = build_default_operator("zshape_poisson")
+        assert isinstance(operator, MultiCornerPoissonOperator)
+        assert [t.coefficient for t in operator.corners] == [
+            DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
+            DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
+        ]
+        assert build_default_operator("zshape_poisson", scale=ZSHAPE_SCALE) is not None
+
+    def test_a_zshape_scale_is_refused_not_ignored(self) -> None:
+        with pytest.raises(ValueError, match="silently ignored"):
+            build_default_operator("zshape_poisson", scale=2.0)
+
+    def test_an_unknown_name_lists_every_valid_one(self) -> None:
+        with pytest.raises(ValueError, match="zshape_poisson"):
+            build_default_operator("hexagon_poisson")  # type: ignore[arg-type]
+
+    def test_the_refinement_game_config_accepts_the_zshape(self) -> None:
+        """``SubstrateRefinementConfig.operator_name`` is typed by this Literal."""
+        config = SubstrateRefinementConfig(name="z_game", operator_name="zshape_poisson")
+        assert config.operator_name == "zshape_poisson"

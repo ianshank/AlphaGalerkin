@@ -85,7 +85,7 @@ class TestOperatorsPackagePublicAPI:
 
     def test_public_names_match_frozen_pre_split_surface(self) -> None:
         public_names = {n for n in dir(operators_package) if not n.startswith("_")}
-        assert public_names == _OPERATORS_PACKAGE_PUBLIC_API
+        assert public_names == _OPERATORS_PACKAGE_PUBLIC_API | {"MultiCornerPoissonOperator"}
 
     def test_dunder_all_covers_the_frozen_public_surface(self) -> None:
         # __all__ (new -- the old flat module had none) is not required to

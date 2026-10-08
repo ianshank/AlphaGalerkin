@@ -22,6 +22,10 @@ import pytest
 
 from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import LShapedPoissonOperator, PoissonOperator
+from src.pde.operators.multi_corner_poisson import (
+    build_lshape_multi_corner_operator,
+    build_zshape_poisson_operator,
+)
 from src.research.lshape_amr_compare import (
     ComparisonParams,
     lshape_inside_predicate,
@@ -35,6 +39,7 @@ from src.research.substrates.config import (
     SUBSTRATE_PRIMARY_L2_KEY,
     SubstrateConfig,
 )
+from src.research.substrates.factory import build_substrate_from_config
 from src.research.substrates.tensor_grid import TensorGridSubstrate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -677,3 +682,46 @@ class TestZeroMarkedRefineWarns:
         refined = substrate.refine(mesh, empty)
         assert "substrate_refine_noop" in recorder.events, recorder.events
         assert substrate.n_units(refined) == substrate.n_units(mesh)
+
+
+class TestPolyominoOperatorsAreRefused:
+    """A polyomino operator must never be solved silently on its bounding box.
+
+    The tensor grid has no polyomino interior-unknown predicate, so it would mesh
+    the Z's box ``[-1, 2] x [-1, 1]`` -- across both notches and through the
+    branch cuts of the exact solution -- and still report finite, plausible
+    errors: the 2026-08-16 retraction's signature. No ``fem_required`` marker.
+
+    Mutation kill: the ``polyomino_domain_of`` guard deleted from
+    ``TensorGridSubstrate.__init__`` -> ``test_the_zshape_is_refused``,
+    ``test_a_predicate_does_not_unlock_it`` and ``test_the_factory_path_is_refused``
+    (the substrate constructs, and would solve the bounding box).
+    """
+
+    def test_the_zshape_is_refused(self) -> None:
+        with pytest.raises(NotImplementedError, match="polyomino"):
+            TensorGridSubstrate(build_zshape_poisson_operator())
+
+    def test_a_predicate_does_not_unlock_it(self) -> None:
+        """Even the L polyomino with the L's own predicate: no convergence gate covers it."""
+        with pytest.raises(NotImplementedError, match="skfem_tri"):
+            TensorGridSubstrate(
+                build_lshape_multi_corner_operator(), inside=lshape_inside_predicate(1.0)
+            )
+
+    def test_the_factory_path_is_refused(self) -> None:
+        with pytest.raises(NotImplementedError, match="polyomino"):
+            build_substrate_from_config(
+                SubstrateConfig(name="tensor_grid_z", kind="tensor_grid"),
+                operator_name="zshape_poisson",
+            )
+
+    def test_the_lshape_operator_still_gets_its_notch_mask(self) -> None:
+        substrate = build_substrate_from_config(
+            SubstrateConfig(name="tensor_grid_l", kind="tensor_grid"),
+            operator_name="lshape_poisson",
+        )
+        assert isinstance(substrate, TensorGridSubstrate)
+        mask = substrate.refinable_mask(substrate.initial_mesh())
+        assert mask.any()
+        assert not mask.all(), "the L's notch elements must be masked out"

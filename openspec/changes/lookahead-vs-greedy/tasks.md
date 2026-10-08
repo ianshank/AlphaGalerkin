@@ -24,14 +24,14 @@ No comparison run on either testbed happens before task 1.3 is committed.
       dispatch; YAMLs for T1 and T2
 - [x] 2.6 `scripts/run_lookahead_vs_greedy.py` (exit code ≠ verdict)
 - [x] 2.7 Charter capability row (capability region only)
-- [ ] 2.8 Tests: unit (config, verdict incl. each criterion failing alone, K* incl. ∞, depth),
+- [x] 2.8 Tests: unit (config, verdict incl. each criterion failing alone, K* incl. ∞, depth),
       Hypothesis (verdict monotone), tensor_grid integration, E2E `--help` + one `fem_required`
       skfem smoke under `tests/e2e/`; coverage gates; shape ratchet; import contracts;
       abstraction audit
 
 ## 3 — Runs (clean tree, after task 2 is committed)
 
-- [ ] 3.1 T1 with `--proposal-grade` → `results/lookahead_vs_greedy_lshape.*`
+- [x] 3.1 T1 with `--proposal-grade` → `results/lookahead_vs_greedy_lshape.*`
 - [ ] 3.2 T2 with `--proposal-grade` → `results/lookahead_vs_greedy_zshape.*`
 - [ ] 3.3 `python -m scripts.artifact_manifest write` then `check`; commit artifacts + manifest
 - [ ] 3.4 `assert_proposal_grade` on both sidecars

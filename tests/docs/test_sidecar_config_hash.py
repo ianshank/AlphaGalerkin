@@ -48,7 +48,7 @@ REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 RESULTS_DIR: Final[Path] = REPO_ROOT / "results"
 
 #: Committed sidecars this repo has today; the scan must see at least this many.
-MIN_SIDECARS: Final[int] = 2
+MIN_SIDECARS: Final[int] = 3
 
 HashRecomputer = Callable[[Mapping[str, Any]], str]
 
@@ -71,6 +71,9 @@ def _adaptive_vs_uniform_hash(config: Mapping[str, Any]) -> str:
 HASH_RECOMPUTERS: Final[dict[str, HashRecomputer]] = {
     "scripts.run_mcts_classical_amr_arena": _scenario_config_hash,
     "scripts.run_adaptive_vs_uniform": _adaptive_vs_uniform_hash,
+    # Gate 1: the recorded config is the post-setup LookaheadVsGreedyConfig the
+    # scenario hashed (RunRecorder.start(config_hash=self.config.compute_hash())).
+    "scripts.run_lookahead_vs_greedy": _scenario_config_hash,
 }
 
 #: Sidecar file name -> reason it cannot be recomputed. Ships empty; an entry

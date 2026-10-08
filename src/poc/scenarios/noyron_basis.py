@@ -2,7 +2,9 @@
 
 Drives MCTS-guided Galerkin basis selection on an SDF-defined helical operator
 and records the **first documented MCTS-on-Noyron result**: how much the search
-reduces the Galerkin error estimate on a real Leap 71 geometry.
+reduces the Galerkin error estimate on the closed-form ``AnalyticalHelixSDF``
+surrogate of a Leap 71 helical geometry. PicoGK voxel/STL geometry ingestion is
+not implemented, so no real Leap 71 part is involved.
 
 Design (see ``specs/noyron_basis.spec.md``):
 
@@ -113,7 +115,7 @@ def make_manufactured_operator(operator: PDEOperator, wavenumber: int) -> PDEOpe
 
 @scenario(SCENARIO_NAME)
 class NoyronBasisScenario(BaseScenario):
-    """MCTS basis selection on a Leap 71 helical operator."""
+    """MCTS basis selection on a helical operator over the analytical helix surrogate."""
 
     config_class = NoyronBasisConfig
 

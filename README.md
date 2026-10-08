@@ -76,6 +76,9 @@ Optional extras: `dev`, `viz`, `test-extras`, `fem`, `jax` / `jax-gpu`, `picogk`
 `lm-studio`, `docs`
 (see [Getting Started](docs/getting-started.md#1-clone-and-install)).
 There is no `dashboard` extra (FOCUS-frozen interactive-surfaces track).
+The `picogk` extra installs only the `pythonnet` .NET bridge: PicoGK voxel/STL geometry ingestion
+is not implemented (`PicoGKSDFEvaluator` raises `NotImplementedError`), and the Noyron scenarios
+run on the analytical helix surrogate (`AnalyticalHelixSDF`).
 
 ## Quick start
 
@@ -349,15 +352,18 @@ Spectral methods enable zero-shot transfer:
 | 19×19 board | O(361² × d) | O(361 × d²) |
 | Scaling | Quadratic in N | Linear in N |
 
-### Benchmarks
+### Measured performance
 
-| Model | Board Size | Inference (ms) | MCTS Sims/sec |
-|-------|------------|----------------|---------------|
-| Standard | 19×19 | 45 | 180 |
-| Galerkin | 19×19 | 28 | 290 |
-| Galerkin+FNet | 19×19 | 12 | 670 |
-
-*Benchmarks on NVIDIA RTX 3090, batch size 1*
+No measured latency or throughput table is committed. The inference-latency and
+MCTS-simulations-per-second table that stood here, captioned as run on an NVIDIA RTX 3090 (a card
+none of this project's documented rigs use), had no artifact behind it and was removed. To measure
+on your own hardware, run `python -m src.experiments.benchmark_fnet --device auto` (FNet vs
+softmax attention timing; writes `fnet_benchmark.json` to `--output-dir`, default
+`outputs/benchmarks`) or `python -m pytest tests/benchmarks/ -q` (asserts relative speedups and
+an MCTS throughput floor; it records no figures). Any number published here must cite a committed
+artifact whose `.run.json` sidecar records a `hardware_tag` (written by
+`src/research/run_manifest.py`); `tests/docs/test_performance_claims.py` fails the build
+otherwise.
 
 ---
 

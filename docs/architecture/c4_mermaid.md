@@ -494,14 +494,14 @@ C4Component
 
         Component(scenario_stability, "Stability Scenario", "Python Class", "Monitors LBB condition during training")
 
-        Component(scenario_noyron_hx, "Noyron HX Scenario", "Python Class", "Zero-shot 3D heat-transfer transfer on a Leap 71 helical SDF (analytical or voxel-FDM reference)")
+        Component(scenario_noyron_hx, "Noyron HX Scenario", "Python Class", "Zero-shot 3D heat-transfer transfer on the analytical helix surrogate (AnalyticalHelixSDF) of a Leap 71 HX; analytical or voxel-FDM reference")
 
-        Component(scenario_noyron_basis, "Noyron Basis Scenario (v2.2)", "Python Class", "MCTS Galerkin basis selection on a Leap 71 helical SDF via pde_basis_helical; manufactured target + monotone-reduction thresholds")
+        Component(scenario_noyron_basis, "Noyron Basis Scenario (v2.2)", "Python Class", "MCTS Galerkin basis selection on the analytical helix surrogate via pde_basis_helical; manufactured target + monotone-reduction thresholds")
     }
 
     Component_Ext(neural_operator, "Neural Operator Model", "Model under test")
     Component_Ext(physics_data, "Physics Data Generator", "Synthetic Poisson equation data")
-    Component_Ext(picogk_domain, "PicoGKDomain (SDF-backed)", "Helical tube SDF + bisection-projected boundary sampler")
+    Component_Ext(picogk_domain, "PicoGKDomain (SDF-backed)", "Domain adapter over AnalyticalHelixSDF + bisection-projected boundary sampler; no PicoGK geometry ingestion")
     ComponentDb_Ext(results_store, "Results Store", "JSON/YAML files")
 
     Rel(cli_poc, registry, "Lists scenarios")
@@ -548,7 +548,7 @@ C4Component
 | **Transfer Scenario** | Zero-shot transfer validation | Train 9x9 → eval 19x19, MSE < 0.05 |
 | **Complexity Scenario** | O(N) complexity verification | Timing benchmarks, scaling analysis |
 | **Stability Scenario** | LBB condition monitoring | Singular value tracking, β > 0 check |
-| **Noyron HX Scenario** | Zero-shot 3D heat-transfer on Leap 71 helical SDF | Train at 4k pts → eval at 16k pts, MSE < 1e-3, transfer_ratio < 4 |
+| **Noyron HX Scenario** | Zero-shot 3D heat transfer on the analytical helix surrogate of a Leap 71 HX (no PicoGK geometry ingestion) | Train at 4k pts → eval at 16k pts; default gates MSE < 2e-2 at both densities, transfer_ratio < 1.5 |
 
 #### Noyron HX Scenario — Architecture Notes
 

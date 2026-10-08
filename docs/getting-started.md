@@ -30,7 +30,7 @@ Optional extras (install only what you need):
 | `test-extras` | FEM baseline, ONNX export/validate, PettingZoo. |
 | `fem` | `scikit-fem` alone — the hp-adaptive FEM classical baseline (`src/research/fem_baseline.py`). |
 | `jax` / `jax-gpu` | JAX backend + cross-backend tests. |
-| `picogk` | Leap 71 PicoGK voxel/SDF kernel (Noyron HX). |
+| `picogk` | Only the `pythonnet` .NET bridge. PicoGK voxel/STL geometry ingestion is not implemented (`PicoGKSDFEvaluator` raises `NotImplementedError`); the Noyron scenarios run on the analytical helix surrogate (`AnalyticalHelixSDF`) and need no extra. |
 | `lm-studio` | OpenAI-compatible local-LLM client (LLM-prior MCTS). |
 | `docs` | MkDocs docs-site toolchain. |
 

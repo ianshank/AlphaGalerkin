@@ -15,7 +15,7 @@ defaults:
 
 scenarios:
   - name: noyron_basis
-    description: "Headline: MCTS basis selection on the Leap 71 helical heat operator (random/trained/llm)."
+    description: "Headline: MCTS basis selection, helical heat operator on the analytical helix surrogate."
     tier: functional
     enabled: true
 

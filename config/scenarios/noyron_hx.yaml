@@ -1,8 +1,9 @@
 # Noyron HX Zero-Shot Transfer Scenario (Leap 71 integration)
 #
 # Train a 3D PINN-style PhysicsOperator at 4k collocation points on the
-# analytical helical-tube SDF that mirrors Leap 71's downloadable heat
-# exchanger, then evaluate zero-shot at 16k points. The scenario fails
+# analytical helical-tube SDF (AnalyticalHelixSDF) modelled on Leap 71's
+# downloadable heat exchanger -- a surrogate: PicoGK voxel/STL geometry
+# ingestion is not implemented -- then evaluate zero-shot at 16k points. The scenario fails
 # fast if CUDA is unavailable (device='cuda' is the project default);
 # pass `device=cpu` on the command line for the CPU smoke test.
 #
@@ -19,18 +20,19 @@ defaults:
 
 scenarios:
   - name: noyron_hx
-    description: "Zero-shot 3D heat transfer on Leap 71 helical HX (analytical reference)"
+    description: "Zero-shot 3D heat transfer on the analytical Leap 71 helix surrogate (analytical reference)"
     tier: integration
     enabled: true
     requires_gpu: true
 
-    # Helix geometry (matches the Leap 71 downloadable HX scale).
+    # Helix geometry (modelled on the Leap 71 downloadable HX scale).
     helix_R_major: 0.05
     helix_r_minor: 0.012
     helix_pitch: 0.02
     helix_n_turns: 5
 
-    # Use the closed-form helix SDF for CI / reproducibility.
+    # The closed-form helix SDF is the only working geometry: use_picogk: true
+    # raises, because PicoGK voxel/STL geometry ingestion is not implemented.
     use_picogk: false
 
     # Training point density.

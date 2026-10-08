@@ -13,6 +13,12 @@ and ``generate_boundary_points`` to call ``geometry.sample_interior`` /
 ``geometry.sample_boundary``. Everything else (residual, autodiff Laplacian,
 boundary value, source term) is inherited unchanged.
 
+Every operator here runs on the closed-form ``AnalyticalHelixSDF`` surrogate
+(``GeometryConfig(sdf_kind='analytical_helix')``). ``sdf_kind='picogk'``
+reaches ``PicoGKSDFEvaluator``, which raises: PicoGK voxel/STL geometry
+ingestion is not implemented, so no operator here has solved on a real
+Leap 71 part.
+
 The three concrete operators provided are:
 
 - ``HelicalHeatOperator`` — steady heat equation for Noyron HX (the v1
@@ -43,7 +49,7 @@ logger = structlog.get_logger(__name__)
 
 
 def _require_picogk_3d(config: PDEConfig, operator_name: str) -> None:
-    """Validate that ``config`` describes a 3D PicoGK-backed domain.
+    """Validate that ``config`` describes a 3D SDF-backed (``PICOGK``-typed) domain.
 
     Centralises the geometry/dim assertions shared by every SDF-aware
     helical operator so individual operator constructors stay tiny.
@@ -80,8 +86,9 @@ class HelicalHeatOperator(HeatOperator):
     """Steady-state heat equation on an SDF-bounded helical tube.
 
     Geometry is supplied via the ``GeometryConfig.geometry_type=PICOGK``
-    branch (typically ``sdf_kind='analytical_helix'`` for CI and
-    ``'picogk'`` for production runs against a real Leap 71 STL).
+    branch with ``sdf_kind='analytical_helix'``, the only working option.
+    ``sdf_kind='picogk'`` constructs ``PicoGKSDFEvaluator``, which raises --
+    there is no production path against a real Leap 71 STL.
 
     Boundary conditions:
 

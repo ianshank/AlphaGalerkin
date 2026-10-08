@@ -122,6 +122,30 @@ class TestBaseScenarioConfig:
         assert config1.compute_hash() == config2.compute_hash()
         assert config1.compute_hash() != config3.compute_hash()
 
+    def test_compute_hash_ignores_a_nested_module_configs_construction_time(self) -> None:
+        """The arena's ``substrate`` is a module config with an auto ``created_at``.
+
+        Before volatile fields were stripped in depth, loading the shipped arena YAML
+        twice gave two different ``config_hash`` values, so no recorded sidecar hash
+        could be reproduced. Killed mutation: reverting ``compute_hash`` to hash the
+        raw ``model_dump()`` turns this test red.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from src.poc.scenarios.mcts_classical_amr_arena_config import (
+            MCTSClassicalAMRArenaConfig,
+        )
+        from src.research.substrates.config import SubstrateConfig
+
+        built = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        configs = [
+            MCTSClassicalAMRArenaConfig(
+                substrate=SubstrateConfig(name="s", kind="skfem_tri", created_at=when)
+            )
+            for when in (built, built + timedelta(days=30))
+        ]
+        assert configs[0].compute_hash() == configs[1].compute_hash()
+
 
 class TestTransferScenarioConfig:
     """Tests for TransferScenarioConfig model."""

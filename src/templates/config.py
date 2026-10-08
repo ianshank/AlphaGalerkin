@@ -31,13 +31,48 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, TypeVar, overload
+from typing import Any, Final, TypeVar, overload
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.constants import DEFAULT_BOARD_SIZES
+
+#: Auto-populated metadata that records when a config object was built, not what
+#: it configures. Excluded from every config hash at any nesting depth: a config
+#: that nests a module config (a scenario config holding a ``SubstrateConfig``,
+#: say) would otherwise hash differently on every construction, and no recorded
+#: ``config_hash`` could ever be reproduced.
+VOLATILE_CONFIG_FIELDS: Final[frozenset[str]] = frozenset({"created_at"})
+
+#: Hex digits kept from the sha256 digest of a config.
+CONFIG_HASH_LENGTH: Final[int] = 16
+
+
+def stable_config_payload(data: Any) -> Any:
+    """Return *data* with every :data:`VOLATILE_CONFIG_FIELDS` key removed, at any depth.
+
+    Mappings and sequences are rebuilt; every other value passes through
+    unchanged. A tuple becomes a list, which ``json.dumps`` already writes
+    identically, so a payload with no volatile key hashes exactly as before.
+    """
+    if isinstance(data, Mapping):
+        return {
+            key: stable_config_payload(value)
+            for key, value in data.items()
+            if key not in VOLATILE_CONFIG_FIELDS
+        }
+    if isinstance(data, list | tuple):
+        return [stable_config_payload(item) for item in data]
+    return data
+
+
+def config_hash(data: Mapping[str, Any]) -> str:
+    """Deterministic hash of a config dump, with volatile fields excluded at any depth."""
+    payload = json.dumps(stable_config_payload(data), sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()[:CONFIG_HASH_LENGTH]
 
 
 class ThresholdOperator(str, Enum):
@@ -172,17 +207,15 @@ class BaseModuleConfig(BaseModel):
     def compute_hash(self) -> str:
         """Compute deterministic hash of configuration.
 
-        Used for reproducibility tracking and cache keys.
-        Excludes volatile fields like created_at.
+        Used for reproducibility tracking and cache keys. Excludes
+        :data:`VOLATILE_CONFIG_FIELDS` at every depth, including those of nested
+        module configs.
 
         Returns:
             16-character hex hash string.
 
         """
-        # Exclude volatile fields from hash
-        hash_data = self.model_dump(exclude={"created_at"})
-        config_str = json.dumps(hash_data, sort_keys=True, default=str)
-        return hashlib.sha256(config_str.encode()).hexdigest()[:16]
+        return config_hash(self.model_dump())
 
     def to_yaml_dict(self) -> dict[str, Any]:
         """Convert to YAML-friendly dictionary.

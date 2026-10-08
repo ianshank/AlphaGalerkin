@@ -542,6 +542,39 @@ class TestConstructionGuards:
         with pytest.raises(ValueError, match="more than once"):
             _operator(LSHAPE_POLYOMINO_CELLS, (corner, corner))
 
+    def test_a_near_duplicate_corner_is_rejected(self) -> None:
+        """Two declarations matching ONE geometric corner would add its term twice.
+
+        The reviewer's case: the duplicate check compared declared positions exactly
+        while matching allows ``CORNER_POSITION_ATOL``, so (0, 0) and (5e-13, 0) were
+        both accepted and u(0.5, 0.5) was 0.7937 -- twice the one-corner 0.3969.
+        """
+        first = SingularCornerTerm(x=0.0, y=0.0, exterior_bisector=LSHAPE_EXTERIOR_BISECTOR)
+        near = SingularCornerTerm(x=5e-13, y=0.0, exterior_bisector=LSHAPE_EXTERIOR_BISECTOR)
+        with pytest.raises(ValueError, match="more than once"):
+            _operator(LSHAPE_POLYOMINO_CELLS, (first, near))
+
+    @settings(max_examples=40, deadline=None)
+    @given(
+        dx=st.floats(min_value=-mcp.CORNER_POSITION_ATOL, max_value=mcp.CORNER_POSITION_ATOL),
+        dy=st.floats(min_value=-mcp.CORNER_POSITION_ATOL, max_value=mcp.CORNER_POSITION_ATOL),
+    )
+    def test_every_declaration_matching_a_declared_corner_is_rejected(
+        self, dx: float, dy: float
+    ) -> None:
+        """Across the matching box, on the Z's *secondary* corner (x = 1, not the origin).
+
+        ``assume`` keeps declarations that match: at the box's edge ``1.0 + 1e-12``
+        rounds past the tolerance, and such a point is no corner at all
+        (``CornerDeclarationError``), not a duplicate.
+        """
+        z_corners = build_zshape_poisson_operator().corners
+        near = z_corners[1].model_copy(update={"x": z_corners[1].x + dx, "y": z_corners[1].y + dy})
+        domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
+        assume(domain.corner_at(near.position, atol=mcp.CORNER_POSITION_ATOL) is not None)
+        with pytest.raises(ValueError, match="more than once"):
+            _operator(ZSHAPE_POLYOMINO_CELLS, (*z_corners, near))
+
     def test_all_zero_coefficients_are_rejected(self) -> None:
         """``u == 0`` would make every measured error 0.0 -- the degenerate-substrate class."""
         with pytest.raises(ValueError, match="zero"):

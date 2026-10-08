@@ -235,17 +235,16 @@ def _require_planar_matching_bounds(config: PDEConfig, domain: PolyominoDomain) 
 
 
 def _require_nondegenerate(corners: tuple[SingularCornerTerm, ...]) -> None:
-    """At least one corner, no corner twice, and not every strength zero.
+    """At least one corner, and not every strength zero.
 
     All-zero strengths make ``u == 0``: every error is 0.0 at every DOF count
     and every ratio built on it is meaningless -- the defect that made every
     1-D Poisson AMR row in this repo degenerate (``tests/research/test_baselines.py``).
+    A corner declared twice is refused once each declaration is matched to a
+    geometric corner (:func:`_require_first_declaration`), not here.
     """
     if not corners:
         raise ValueError("at least one singular corner is required")
-    positions = [term.position for term in corners]
-    if len(set(positions)) != len(positions):
-        raise ValueError(f"a corner is declared more than once: {positions}")
     if all(term.coefficient == 0.0 for term in corners):
         raise ValueError(
             "every singular coefficient is zero, so the exact solution is u == 0 and "
@@ -279,6 +278,27 @@ def _matching_corner(
             f"cut through it, and any other one stops s_i vanishing on the corner's edges"
         )
     return corner
+
+
+def _require_first_declaration(
+    matched: dict[tuple[float, float], int],
+    corner: PolyominoCorner,
+    corners: tuple[SingularCornerTerm, ...],
+    index: int,
+) -> None:
+    """Refuse a second declaration of the geometric corner ``corner``, then record it.
+
+    Keyed on the *matched* corner, not the declared position: matching allows
+    ``CORNER_POSITION_ATOL``, so (0, 0) and (5e-13, 0) are one corner, and
+    accepting both silently doubles its singular term.
+    """
+    first = matched.setdefault(corner.position, index)
+    if first != index:
+        raise ValueError(
+            f"corners {first} at {corners[first].position} and {index} at "
+            f"{corners[index].position} both match the domain's corner at {corner.position}: "
+            f"a corner declared more than once would add its singular term twice"
+        )
 
 
 def _seeded_generator(seed: int | None) -> torch.Generator | None:
@@ -331,8 +351,10 @@ class MultiCornerPoissonOperator(PDEOperator):
         self._logged_method_substitution = False
         _require_planar_matching_bounds(config, domain)
         _require_nondegenerate(self._corners)
+        matched: dict[tuple[float, float], int] = {}
         for index, term in enumerate(self._corners):
             corner = _matching_corner(domain, term, index)
+            _require_first_declaration(matched, corner, self._corners, index)
             if domain.open_ray_meets_closure(corner.position, corner.exterior_quadrant):
                 raise BranchCutError(
                     f"corner {index} at {term.position}: its branch cut (the ray along "

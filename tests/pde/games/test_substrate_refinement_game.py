@@ -18,7 +18,10 @@ from src.pde.games.substrate_refinement_config import SubstrateRefinementConfig
 from src.refinement.adapter import RefinementGameAdapter
 from src.refinement.registry import RefinementGameRegistry
 from src.research.substrates.config import SubstrateConfig
+from src.research.substrates.factory import build_default_operator
 from src.research.substrates.residual_evaluator import ResidualPriorErrorValueEvaluator
+from src.research.substrates.solve_cache import FingerprintSolveCache
+from src.research.substrates.tensor_grid import TensorGridSubstrate
 
 
 @pytest.fixture
@@ -82,6 +85,38 @@ class TestSolveCacheIntegration:
         game.solve_cache.get_or_solve(game.substrate, state.mesh)
         assert game.solve_cache.hits >= 1
         assert game.solve_cache.misses == misses_after_init
+
+    def test_injected_falsy_cache_and_substrate_are_used_not_replaced(
+        self, game: SubstrateRefinementGame
+    ) -> None:
+        """An injected object is used even when falsy (``is None``, not truthiness).
+
+        The arena keeps the cache it injects and reads its hit/miss counts from it,
+        so a silently replaced cache would report zero solves for every arm. Killed
+        mutation: restoring ``solve_cache or FingerprintSolveCache(...)`` (or
+        ``substrate or ...``) turns this test red.
+        """
+
+        class _FalsyWhileEmptyCache(FingerprintSolveCache):
+            def __len__(self) -> int:
+                return 0
+
+        class _FalsySubstrate(TensorGridSubstrate):
+            def __len__(self) -> int:
+                return 0
+
+        cache = _FalsyWhileEmptyCache(game.config.substrate.solve_cache_max_entries)
+        substrate = _FalsySubstrate(
+            build_default_operator(game.config.operator_name), config=game.config.substrate
+        )
+        assert not cache and not substrate, "precondition: both injected objects are falsy"
+
+        injected = SubstrateRefinementGame(
+            config=game.config, substrate=substrate, solve_cache=cache
+        )
+
+        assert injected.solve_cache is cache
+        assert injected.substrate is substrate
 
 
 class TestTerminalAndTensor:

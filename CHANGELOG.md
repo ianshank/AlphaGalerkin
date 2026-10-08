@@ -684,6 +684,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before it writes into `results/` (5/5 killed) and leaves the directionless divergence count out of
   its regression baseline; `include_greedy_control=False` is documented as writing the legacy rows,
   not the legacy sidecar. (Gate 0, item 0.1.)
+- **`SubstrateRefinementGame` no longer chooses its injected cache or substrate by truthiness.**
+  `solve_cache or FingerprintSolveCache(...)` (and the same for `substrate`) would silently replace
+  any injected object that is falsy -- an empty cache, the moment the class gains a `__len__`. The
+  arena keeps the cache it injects and reads hit/miss counts from it, so that one-line change would
+  zero every arm's solve count without an error. Now `is None`; a falsy-cache test kills both
+  restored forms. Latent today: `FingerprintSolveCache` defines no `__len__`.
 - **A charter-cited sidecar now passes the repo's own proposal-grade check.**
   `results/lshape_adaptive_vs_uniform.run.json` (cited by the evidence register) recorded
   `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejected it. Re-recorded

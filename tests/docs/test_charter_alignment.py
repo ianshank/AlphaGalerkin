@@ -47,7 +47,9 @@ import pytest
 # The region parser lives in tests/support/charter.py, shared with
 # tests/docs/test_proposal_grade_sidecars.py. The aliases keep every call site below unchanged.
 from tests.support.charter import REGIONS as _REGIONS
+from tests.support.charter import amr_policy_ratio_subjects as _amr_policy_ratio_subjects
 from tests.support.charter import charter_text as _charter_text
+from tests.support.charter import csv_citations_in as _csv_citations_in
 from tests.support.charter import expand_braces as _expand_braces
 from tests.support.charter import looks_like_repo_path as _looks_like_repo_path
 from tests.support.charter import row_lines as _row_lines
@@ -362,45 +364,9 @@ def test_evidence_artifacts_carry_run_provenance() -> None:
     )
 
 
-README = REPO_ROOT / "README.md"
+# The subject scan lives in tests/support/charter.py, shared with
+# tests/docs/test_lookahead_attribution.py so both guards read the same claims.
 _LEGACY_AMR_GOLDEN = "results/lshape_mcts_vs_dorfler.csv"
-_RATIO_HINT = re.compile(
-    r"median\s+ratio\s+\d+\.\d+|ratio\s+\d+\.\d+|l2_error_ratio_at_matched_dof|"
-    r"\b\d+\.\d{3,}\b",
-    re.IGNORECASE,
-)
-
-
-def _mentions_mcts_and_dorfler(text: str) -> bool:
-    # Strip `path` spans so `results/lshape_mcts_vs_dorfler.csv` cannot satisfy
-    # the Dörfler vocabulary by itself (the umlaut lives in the claim prose).
-    prose = re.sub(r"`[^`]+`", " ", text).lower()
-    return "mcts" in prose and ("dörfler" in prose or "dorfler" in prose)
-
-
-def _csv_citations_in(text: str) -> list[str]:
-    found: list[str] = []
-    for citation in re.findall(r"`([^`]+)`", text):
-        if not _looks_like_repo_path(citation):
-            continue
-        for candidate in _expand_braces(citation):
-            if candidate.endswith(".csv"):
-                found.append(candidate)
-    return found
-
-
-def _amr_policy_ratio_subjects() -> list[tuple[str, str]]:
-    """(source, body) pairs that look like an MCTS-vs-Dörfler policy ratio claim."""
-    subjects: list[tuple[str, str]] = []
-    for cells in _row_lines("evidence"):
-        body = " | ".join(cells)
-        if _mentions_mcts_and_dorfler(body) and _RATIO_HINT.search(body):
-            subjects.append((f"charter evidence:{cells[0]}", body))
-    readme = README.read_text(encoding="utf-8")
-    for line in readme.splitlines():
-        if _mentions_mcts_and_dorfler(line) and _RATIO_HINT.search(line):
-            subjects.append(("README.md", line))
-    return subjects
 
 
 def test_amr_policy_ratio_scan_is_not_vacuous() -> None:

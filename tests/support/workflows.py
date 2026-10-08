@@ -16,12 +16,24 @@ nothing passes every assertion it makes.
 
 from __future__ import annotations
 
+import fnmatch
+import posixpath
 import re
+import shlex
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 import yaml
+
+from tests.support.marker_expr import (
+    NODEID_SEPARATOR,
+    PytestInvocation,
+    expression_matches,
+    is_python_program,
+    split_environment,
+)
 
 #: Repository root, resolved from this file's location (``tests/support/``).
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -453,3 +465,326 @@ def hard_gate_jobs(script: str) -> set[str]:
     for condition in hard_gate_conditions(script):
         gated.update(_NEEDS_RESULT.findall(condition))
     return gated
+
+
+# --------------------------------------------------------------------------- #
+# Added for tests/docs/test_fem_required_visibility.py. Additive: nothing above #
+# this banner changed behaviour.                                              #
+# --------------------------------------------------------------------------- #
+
+
+def blocking_jobs(document: dict[str, Any], gate_job: str = CI_SUCCESS_JOB) -> set[str]:
+    """Jobs the aggregate gate both ``needs`` and hard-fails on.
+
+    Either half alone blocks nothing: a job in ``needs`` with no ``exit 1``
+    block is reported and ignored, and an ``exit 1`` block naming a job outside
+    ``needs`` reads an empty result.
+
+    Args:
+        document: A parsed workflow document.
+        gate_job: The aggregate job, ``ci-success`` by default.
+
+    Returns:
+        The intersection of ``gate_job``'s ``needs`` and its hard-gated jobs.
+
+    """
+    jobs = document.get("jobs")
+    entry = jobs.get(gate_job) if isinstance(jobs, dict) else None
+    steps = entry.get("steps") if isinstance(entry, dict) else None
+    gated: set[str] = set()
+    for step in steps if isinstance(steps, list) else []:
+        script = step.get("run") if isinstance(step, dict) else None
+        if isinstance(script, str):
+            gated |= hard_gate_jobs(script)
+    return set(job_needs(document, gate_job)) & gated
+
+
+#: GitHub renders YAML booleans in ``env:`` as these strings.
+_YAML_BOOLEAN_TEXT: Final[dict[bool, str]] = {True: "true", False: "false"}
+
+
+def _env_mapping(value: object) -> dict[str, str]:
+    """An ``env:`` block as the strings a process actually receives."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(name): _YAML_BOOLEAN_TEXT[item] if isinstance(item, bool) else str(item)
+        for name, item in value.items()
+    }
+
+
+def _may_continue_on_error(value: object) -> bool:
+    """True unless ``continue-on-error`` is absent or literally false.
+
+    An expression (``${{ matrix.experimental }}``) is not proof that it is off.
+    """
+    if value is None or value is False:
+        return False
+    return not (isinstance(value, str) and value.strip().lower() == "false")
+
+
+def _default_working_directory(mapping: object) -> str | None:
+    defaults = mapping.get("defaults") if isinstance(mapping, dict) else None
+    run = defaults.get("run") if isinstance(defaults, dict) else None
+    directory = run.get("working-directory") if isinstance(run, dict) else None
+    return str(directory) if directory is not None else None
+
+
+@dataclass(frozen=True)
+class WorkflowStep:
+    """One step of one job, with the context that decides whether it can fail the build.
+
+    ``env`` merges workflow, job and step ``env:`` with the later level winning,
+    as GitHub does. ``continue_on_error`` is set at either the step or the job.
+    ``working_directory`` falls back to the job's and then the workflow's
+    ``defaults.run``.
+    """
+
+    workflow: str
+    job: str
+    index: int
+    name: str
+    script: str | None
+    env: dict[str, str]
+    condition: str | None
+    continue_on_error: bool
+    working_directory: str | None
+
+    def __str__(self) -> str:  # pragma: no cover - failure-message sugar only
+        return f"{self.workflow}::{self.job}::{self.name}"
+
+
+def workflow_steps(path: Path) -> list[WorkflowStep]:
+    """Every step of every job in one workflow file, with its effective context.
+
+    Args:
+        path: A workflow ``.yml`` file.
+
+    Returns:
+        Steps in job then step order. Malformed jobs and steps are skipped.
+
+    """
+    document = load_workflow(path)
+    workflow_env = _env_mapping(document.get("env"))
+    workflow_directory = _default_working_directory(document)
+    jobs = document.get("jobs")
+    found: list[WorkflowStep] = []
+    for job_name, job in (jobs if isinstance(jobs, dict) else {}).items():
+        if not isinstance(job, dict) or not isinstance(job.get("steps"), list):
+            continue
+        job_env = {**workflow_env, **_env_mapping(job.get("env"))}
+        job_continues = _may_continue_on_error(job.get("continue-on-error"))
+        job_directory = _default_working_directory(job) or workflow_directory
+        for index, step in enumerate(job["steps"]):
+            if not isinstance(step, dict):
+                continue
+            script = step.get("run")
+            condition = step.get("if")
+            directory = step.get("working-directory")
+            found.append(
+                WorkflowStep(
+                    workflow=path.name,
+                    job=str(job_name),
+                    index=index,
+                    name=str(step.get("name") or f"step[{index}]"),
+                    script=script if isinstance(script, str) else None,
+                    env={**job_env, **_env_mapping(step.get("env"))},
+                    condition=None if condition is None else str(condition),
+                    continue_on_error=job_continues
+                    or _may_continue_on_error(step.get("continue-on-error")),
+                    working_directory=str(directory) if directory is not None else job_directory,
+                )
+            )
+    return found
+
+
+#: ``pip`` as a program: ``pip``, ``pip3``, ``/usr/bin/pip3.11``.
+_PIP_PROGRAM: Final[re.Pattern[str]] = re.compile(r"^(.*/)?pip[0-9.]*$")
+
+#: The project itself, optionally with extras: ``.``, ``.[dev,fem]``, ``./[fem]``.
+_PROJECT_REQUIREMENT: Final[re.Pattern[str]] = re.compile(r"^\./?(?:\[(?P<extras>[^\]]*)\])?$")
+
+#: ``pip install`` options whose value is the next token.
+_PIP_VALUE_OPTIONS: Final[frozenset[str]] = frozenset(
+    {
+        "-c",
+        "--constraint",
+        "-e",
+        "--editable",
+        "--extra-index-url",
+        "-f",
+        "--find-links",
+        "-i",
+        "--index-url",
+        "--prefix",
+        "-r",
+        "--requirement",
+        "--root",
+        "-t",
+        "--target",
+        "--trusted-host",
+    }
+)
+
+#: The two options above whose value is itself something installed.
+_PIP_EDITABLE: Final[frozenset[str]] = frozenset({"-e", "--editable"})
+
+
+@dataclass(frozen=True)
+class PipInstall:
+    """What one ``pip install`` command asks for."""
+
+    project_extras: frozenset[str]
+    requirements: tuple[str, ...]
+
+
+def pip_install(command: str) -> PipInstall | None:
+    """Read one shell command as a ``pip install``.
+
+    Args:
+        command: One logical shell command (see :func:`iter_commands`).
+
+    Returns:
+        The extras requested on the project itself (``-e ".[dev,fem]"``) and the
+        other requirement tokens, or ``None`` when the command is not a
+        ``pip install`` or cannot be shell-split.
+
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    _, program = split_environment(tokens)
+    if program[:1] and is_python_program(program[0]) and program[1:3] == ["-m", "pip"]:
+        program = program[2:]
+    if not program or not _PIP_PROGRAM.match(program[0]) or "install" not in program:
+        return None
+    arguments = program[program.index("install") + 1 :]
+    extras: set[str] = set()
+    requirements: list[str] = []
+    index = 0
+    while index < len(arguments):
+        token = arguments[index]
+        index += 1
+        if token.startswith("-"):
+            name, attached, value = token.partition("=")
+            if name not in _PIP_VALUE_OPTIONS or (not attached and index >= len(arguments)):
+                continue
+            if not attached:
+                value = arguments[index]
+                index += 1
+            if name not in _PIP_EDITABLE:
+                continue
+            token = value
+        project = _PROJECT_REQUIREMENT.match(token)
+        if project is None:
+            requirements.append(token)
+            continue
+        extras.update(e.strip() for e in (project.group("extras") or "").split(",") if e.strip())
+    return PipInstall(frozenset(extras), tuple(requirements))
+
+
+#: Prefix of the obstacle reported when no path argument reaches the target.
+NOT_SELECTED_BY_PATH: Final[str] = "no path argument selects it"
+
+
+def _resolve(base: str, argument: str) -> str:
+    """``argument`` relative to ``base``, normalised; a ``::node`` suffix is kept."""
+    path, separator, node = argument.partition(NODEID_SEPARATOR)
+    return posixpath.normpath(posixpath.join(base, path)) + separator + node
+
+
+def _within(path: str, directory: str) -> bool:
+    return directory == "." or path == directory or path.startswith(directory + "/")
+
+
+def _path_selects(selection: str, path: str, nodeid: str) -> bool:
+    """Whether one resolved path argument selects all of ``path::nodeid``."""
+    file, separator, node = selection.partition(NODEID_SEPARATOR)
+    if not separator:
+        return _within(path, file)
+    if not nodeid or file != path or "[" in node:
+        return False  # a node id selects part of a module, and [..] one instance
+    return nodeid == node or nodeid.startswith(node + NODEID_SEPARATOR)
+
+
+def _ancestors(path: str) -> list[str]:
+    parts = path.split("/")
+    return ["/".join(parts[:end]) for end in range(len(parts), 0, -1)]
+
+
+def selection_obstacles(
+    invocation: PytestInvocation,
+    *,
+    path: str,
+    nodeid: str,
+    markers: Collection[str],
+    working_directory: str | None = None,
+    testpaths: Sequence[str] = (),
+) -> list[str]:
+    """Why ``invocation`` would not run every test at ``path::nodeid`` -- empty if it would.
+
+    ``nodeid`` empty means the whole of ``path``, which may be a directory. The
+    rules are pytest's: positional paths resolve against the working directory
+    (``testpaths`` apply only from the rootdir, with no paths given);
+    ``--ignore`` removes a path and everything under it; ``--ignore-glob``
+    matches a path or any directory above it; ``--deselect`` is a *raw string
+    prefix* of the node id. Anything this cannot read with confidence -- a
+    ``-k`` filter, an unknown option, a non-executing or config-swapping one --
+    is an obstacle, not a pass.
+
+    Args:
+        invocation: The parsed command (``marker_expr.pytest_invocation``).
+        path: Repo-relative module (or directory) path.
+        nodeid: Node id inside ``path``, ``::``-joined; empty for all of it.
+        markers: Every marker the test carries.
+        working_directory: The step's ``working-directory``, if any.
+        testpaths: ``[tool.pytest.ini_options] testpaths``.
+
+    Returns:
+        Human-readable obstacles; :data:`NOT_SELECTED_BY_PATH` first if no
+        path argument reaches the target at all.
+
+    """
+    base = working_directory or "."
+    if invocation.paths:
+        selections = [_resolve(base, argument) for argument in invocation.paths]
+    elif base == "." and testpaths:
+        selections = [_resolve(base, argument) for argument in testpaths]
+    else:
+        selections = [_resolve(base, ".")]
+    obstacles: list[str] = []
+    if not any(_path_selects(selection, path, nodeid) for selection in selections):
+        obstacles.append(NOT_SELECTED_BY_PATH)
+    is_directory = not path.endswith(".py")
+    for ignored in (_resolve(base, argument) for argument in invocation.ignores):
+        if _within(path, ignored) or _within(ignored, path):
+            obstacles.append(f"--ignore={ignored} removes it")
+    for pattern in (_resolve(base, argument) for argument in invocation.ignore_globs):
+        if is_directory or any(fnmatch.fnmatch(part, pattern) for part in _ancestors(path)):
+            obstacles.append(f"--ignore-glob={pattern} may remove it")
+    full = f"{path}{NODEID_SEPARATOR}{nodeid}" if nodeid else path
+    for prefix in invocation.deselects:
+        if full.startswith(prefix) or (
+            prefix.startswith(full) and prefix[len(full) : len(full) + 1] in ("", ":", "[", "/")
+        ):
+            obstacles.append(f"--deselect={prefix} removes it")
+    if invocation.keyword_expression:
+        obstacles.append(
+            f"-k {invocation.keyword_expression!r} may deselect it; select by path and -m instead"
+        )
+    if not expression_matches(invocation.marker_expression, markers):
+        obstacles.append(
+            f"-m {invocation.marker_expression!r} deselects a test carrying {sorted(markers)}"
+        )
+    if invocation.unknown_options:
+        obstacles.append(
+            f"unrecognised option(s) {list(invocation.unknown_options)}: the argv cannot be "
+            "read with confidence"
+        )
+    if invocation.inert_options:
+        obstacles.append(
+            f"{list(invocation.inert_options)} collects without running, or swaps the "
+            "configuration this check reads"
+        )
+    return obstacles

@@ -1569,6 +1569,25 @@ jobs:
             --tb=short \
             -q
 
+      # The fem_required half of modules whose OTHER tests run in test-fast.
+      # The fast lane lacks scikit-fem, so the root conftest.py turns the marker
+      # into a counted skip there, and no step above names these files -- so
+      # TestSkfemTriMctsSmoke (PR #148, a85d265, 2026-09-08) never ran in CI.
+      # Selecting the marker POSITIVELY runs only that half; the rest already
+      # runs in test-fast. Append a module here when it gains a fem_required
+      # test: tests/docs/test_fem_required_visibility.py fails the build for
+      # any fem_required test that no step of a scikit-fem job runs loudly.
+      #
+      # ALPHAGALERKIN_REQUIRE_EXTRAS=1 for the same reason as the steps above.
+      - name: Run fem_required tests from fast-lane modules
+        env:
+          ALPHAGALERKIN_REQUIRE_EXTRAS: "1"
+        run: |
+          pytest tests/pde/games/test_substrate_refinement_game.py \
+            -m "fem_required and not gpu_required" \
+            --tb=short \
+            -q
+
       # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
       # which these tracer-based tests do not target (src/deployment/export_onnx.py
       # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the

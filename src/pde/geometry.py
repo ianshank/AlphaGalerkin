@@ -81,8 +81,8 @@ class GeometryConfig(BaseModel):
         default="analytical_helix",
         description=(
             "Which SDF backend to use when geometry_type=PICOGK. "
-            "'analytical_helix' is closed-form and CI-safe; 'picogk' "
-            "lazy-imports the optional [picogk] extra."
+            "'analytical_helix' is closed-form and CI-safe; 'picogk' is a stub "
+            "that raises NotImplementedError (ingestion is not implemented)."
         ),
     )
     picogk_voxel_path: str | None = Field(

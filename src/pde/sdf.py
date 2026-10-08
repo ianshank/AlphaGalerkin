@@ -430,8 +430,9 @@ class PicoGKSDFEvaluator:
             import pythonnet  # noqa: F401  # pragma: no cover
         except ImportError as exc:
             raise ImportError(
-                "PicoGKSDFEvaluator requires the optional [picogk] extra. "
-                "Install with: pip install alphagalerkin[picogk]"
+                "PicoGKSDFEvaluator needs pythonnet (pip install alphagalerkin[picogk]) AND "
+                "Leap 71's PicoGK .NET library, which this repository does not provide; voxel "
+                "ingestion is not implemented either. Use AnalyticalHelixSDF."
             ) from exc
         # Real integration would load voxel_path here and cache a signed
         # distance grid. That work is deferred to the PicoGK integration

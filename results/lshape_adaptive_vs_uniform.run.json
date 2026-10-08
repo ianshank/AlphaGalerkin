@@ -29,14 +29,14 @@
     "output": "results/lshape_adaptive_vs_uniform.csv",
     "scale": 1.0
   },
-  "config_hash": "unknown",
-  "created_at_utc": "2026-08-23T17:41:46.443909+00:00",
+  "config_hash": "865edce78a6a9453",
+  "created_at_utc": "2026-09-25T20:49:54.498392+00:00",
   "git": {
-    "branch": "claude/alphagalerkin-council-review-plan-5a63hr",
-    "dirty": true,
-    "sha": "60d9d9fced6e72ce20b34e58f0150ec1a3179898"
+    "branch": "worktree-agent-ae3885d05c0c47962",
+    "dirty": false,
+    "sha": "005d7c63bbb81722ae9efa1ca894dfc89d8bd7a4"
   },
-  "hardware_tag": "unknown",
+  "hardware_tag": "x86_64-4cpu",
   "harness": "scripts.run_adaptive_vs_uniform",
   "metrics": {
     "dorfler_convergence_exponent": -0.13635099017604757,
@@ -53,12 +53,12 @@
   "notes": "Evidences the charter row 'L-shape adaptive Doerfler vs uniform at matched DOF'. Both arms share one solver, one geometry predicate and one refinement primitive; only the marking differs. Ratios are dorfler/uniform, so above 1 means adaptive marking is WORSE -- which is the point: on a tensor-product substrate, refining one element inserts full grid lines, so the refinement budget is spent away from the singularity. This is why no marking-policy comparison on this substrate measures policy quality.",
   "packages": {
     "packages": {
-      "matplotlib": "3.11.1",
+      "matplotlib": "3.11.2",
       "numpy": "2.4.6",
       "pydantic": "2.9.2",
       "scikit-fem": "12.0.2",
       "scipy": "1.17.1",
-      "torch": "2.13.0"
+      "torch": "2.14.0"
     },
     "python": "3.11.15"
   },

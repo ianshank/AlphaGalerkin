@@ -44,10 +44,17 @@ from pathlib import Path
 
 import pytest
 
+# The region parser lives in tests/support/charter.py, shared with
+# tests/docs/test_proposal_grade_sidecars.py. The aliases keep every call site below unchanged.
+from tests.support.charter import REGIONS as _REGIONS
+from tests.support.charter import charter_text as _charter_text
+from tests.support.charter import expand_braces as _expand_braces
+from tests.support.charter import looks_like_repo_path as _looks_like_repo_path
+from tests.support.charter import row_lines as _row_lines
+from tests.support.charter import rows as _rows
 from tests.support.cut_modules import CUT_MODULES, FABRICATED_FIGURE, RETRACTED_BLANKET_CLAIM
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CHARTER = REPO_ROOT / "openspec" / "specs" / "project-charter" / "spec.md"
 ARCHITECTURE = REPO_ROOT / "ARCHITECTURE.md"
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 SRC = REPO_ROOT / "src"
@@ -64,16 +71,6 @@ INTERACTIVE_SURFACES = (DASHBOARD, HF_SPACE)
 # The committed figures are copied into Pydantic defaults by hand, so allow rounding at the
 # last decimal place but nothing that would change a rendered value.
 _CSV_TOLERANCE_PCT = 1.0
-
-# Delimited regions the charter exposes for machine reading.
-_REGIONS = ("scope", "non-goals", "evidence", "capabilities", "gates", "deviations")
-
-# Fenced blocks are stripped before parsing so an illustrative table inside ``` fences is
-# never mistaken for a real register. Same idiom as scripts/check_doc_links.py.
-_FENCED = re.compile(r"```.*?```", re.DOTALL)
-
-# A markdown table separator cell: ---, :---, ---:, :---:
-_SEPARATOR_CELL = re.compile(r"^:?-{3,}:?$")
 
 # Words that mark a mention of a retracted claim as a *retraction* rather than a live claim.
 # The charter must be able to describe the history that motivated it.
@@ -110,92 +107,14 @@ _REGISTRY_SUBPROCESS_TIMEOUT_S = 300
 
 
 # --------------------------------------------------------------------------------------
-# parsing helpers
-# --------------------------------------------------------------------------------------
-
-
-def _charter_text() -> str:
-    assert CHARTER.exists(), f"the charter is missing: {CHARTER}"
-    return CHARTER.read_text(encoding="utf-8")
-
-
-def _region(name: str) -> str:
-    """Return the body of a ``<!-- charter:<name>:start -->`` region, fences stripped."""
-    text = _charter_text()
-    start, end = f"<!-- charter:{name}:start -->", f"<!-- charter:{name}:end -->"
-    assert text.count(start) == 1, f"{start} must appear exactly once in {CHARTER.name}"
-    assert text.count(end) == 1, f"{end} must appear exactly once in {CHARTER.name}"
-    body = text.split(start, 1)[1].split(end, 1)[0]
-    return _FENCED.sub("", body)
-
-
-def _row_lines(name: str) -> list[list[str]]:
-    """Data rows of the markdown table in a region, as lists of cells.
-
-    Header and `| --- |` separator rows are dropped structurally rather than by requiring a
-    backticked first cell: two of the six registers (evidence, deviations) key on a prose
-    claim/deviation label, and a parser that silently skipped them would make their guards
-    vacuous — exactly the failure the meta-guard exists to catch.
-    """
-    table: list[list[str]] = []
-    for line in _region(name).splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("|"):
-            continue
-        table.append([c.strip() for c in stripped.strip("|").split("|")])
-
-    for index, cells in enumerate(table):
-        if cells and all(_SEPARATOR_CELL.match(c) for c in cells if c):
-            return table[index + 1 :]
-    # No separator found: the first row is a header, never data. A table of only a header
-    # (all real rows deleted) must return [] here, not `table` — returning the header row
-    # itself would let the header text pass as a phantom data row. This matters most for the
-    # evidence/deviations regions, which have no external cross-check to catch a phantom row
-    # the way scope/non-goals/capabilities/gates would (each of those diffs against an
-    # external source of truth and would flag a phantom row as an "extra" entry regardless of
-    # its wording).
-    return table[1:] if len(table) > 1 else []
-
-
-def _rows(name: str) -> list[str]:
-    """First-cell token of every data row in a region, backticks stripped."""
-    return [cells[0].strip("`") for cells in _row_lines(name) if cells and cells[0]]
-
-
-def _expand_braces(token: str) -> list[str]:
-    """Expand a single ``{a,b}`` group — the form specs use for ``results/x.{csv,png}``."""
-    match = re.search(r"\{([^{}]*)\}", token)
-    if match is None:
-        return [token]
-    expanded = [
-        token[: match.start()] + option.strip() + token[match.end() :]
-        for option in match.group(1).split(",")
-    ]
-    # Single level only: anything left over is malformed and must fail loudly, never be skipped.
-    for candidate in expanded:
-        assert "{" not in candidate and "}" not in candidate, (
-            f"nested or unbalanced brace expansion in charter citation {token!r}; "
-            "only a single {a,b} group is supported"
-        )
-    return expanded
-
-
-def _looks_like_repo_path(token: str) -> bool:
-    """True for a token that names an in-repo path (not prose, not a URL, not a metric)."""
-    if token.startswith(("/", "http://", "https://")) or ".." in token:
-        return False
-    return "/" in token or bool(re.search(r"\.[a-z]{2,5}$", token))
-
-
-# --------------------------------------------------------------------------------------
 # parser unit tests — exercise _row_lines directly, independent of the live charter content
 # --------------------------------------------------------------------------------------
 
 
 def _with_region(monkeypatch: pytest.MonkeyPatch, name: str, body: str) -> None:
-    """Make ``_charter_text()`` return a synthetic single-region document for this test."""
+    """Make the shared parser read a synthetic single-region document for this test."""
     text = f"<!-- charter:{name}:start -->{body}<!-- charter:{name}:end -->"
-    monkeypatch.setattr("tests.docs.test_charter_alignment._charter_text", lambda: text)
+    monkeypatch.setattr("tests.support.charter.charter_text", lambda: text)
 
 
 def test_row_lines_handles_normal_table(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -17,24 +17,35 @@ marking against "mark every element".
 Run::
 
     python -m scripts.run_adaptive_vs_uniform
+    python -m scripts.run_adaptive_vs_uniform --proposal-grade   # clean tree only
 
 Writes ``results/lshape_adaptive_vs_uniform.csv`` and its ``.run.json`` sidecar.
+The sidecar's ``config_hash`` is :meth:`AdaptiveVsUniformConfig.compute_hash`
+over exactly the ``config`` it records, so it can be recomputed from the sidecar
+alone. ``--proposal-grade`` refuses to start -- before computing or writing
+anything -- unless the working tree is provably clean, then re-verifies the
+sidecar it wrote; either failure exits ``2``, as
+``scripts.run_mcts_classical_amr_arena`` does.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import json
+import sys
 
 # timezone.utc rather than datetime.UTC: the latter is 3.11+ and this repository
 # supports 3.10 (requires-python = ">=3.10", and CI runs a 3.10 job).
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import structlog
 from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.constants import DEFAULT_RATIO_FLOOR
 from src.pde.config import PDEConfig, PDEType
@@ -48,27 +59,89 @@ from src.research.lshape_amr_compare import (
 )
 from src.research.run_manifest import (
     ArmProvenance,
+    ProposalGradeError,
     RunManifest,
-    collect_git_provenance,
+    RunRecorder,
     collect_hardware_tag,
     collect_package_versions,
-    manifest_path_for,
-    write_run_manifest,
 )
 
 logger = structlog.get_logger(__name__)
 
 #: Default artifact location, relative to the repository root.
-DEFAULT_OUTPUT: str = "results/lshape_adaptive_vs_uniform.csv"
+DEFAULT_OUTPUT: Final[str] = "results/lshape_adaptive_vs_uniform.csv"
+#: Elements per side of the coarse grid both arms start from. Must be even, so the
+#: reentrant corner at the origin is a grid node (``ComparisonParams`` enforces it).
+DEFAULT_INITIAL_SIDE: Final[int] = 4
+#: DOF budget. A stopping rule, not a cap: the final level of each arm overshoots it.
+DEFAULT_MAX_DOF: Final[int] = 2200
+#: Dörfler bulk-marking fraction θ.
+DEFAULT_MARKING_FRACTION: Final[float] = 0.5
+#: Half-width of the L-shaped domain ``[-scale, scale]^2`` minus its notch.
+DEFAULT_SCALE: Final[float] = 1.0
+#: Dörfler-arm refinement cap and the error tolerance at which both arms stop. Code,
+#: not configuration: no flag sets them, so the git SHA the sidecar records pins
+#: them, not ``config_hash``.
+DORFLER_MAX_REFINEMENTS: Final[int] = 40
+ERROR_TOLERANCE: Final[float] = 1e-6
 #: Hard ceiling on uniform refinement levels; uniform quadruples DOF each level,
 #: so this is a runaway guard rather than a tuning knob.
-MAX_UNIFORM_LEVELS: int = 12
+MAX_UNIFORM_LEVELS: Final[int] = 12
 #: Matched-DOF readings taken at this many log-spaced points.
-N_MATCHED_READINGS: int = 4
+N_MATCHED_READINGS: Final[int] = 4
 #: Floor applied to any ratio denominator. Sourced from src.constants: this was
 #: the FOURTH independent 1e-15 in the tree, found by a dead-code audit the day
 #: after DEFAULT_RATIO_FLOOR's docstring promised a fourth could not drift.
-RATIO_FLOOR: float = DEFAULT_RATIO_FLOOR
+RATIO_FLOOR: Final[float] = DEFAULT_RATIO_FLOOR
+
+#: ``RunManifest.harness``: the module a reader re-runs to reproduce the artifact.
+HARNESS: Final[str] = "scripts.run_adaptive_vs_uniform"
+#: Hex characters kept from the SHA-256 digest -- the repo-wide ``compute_hash``
+#: convention (``BaseModuleConfig``, ``BaseScenarioConfig``), so a future shared
+#: hash mixin can absorb this one without invalidating the committed sidecar.
+CONFIG_HASH_HEX_CHARS: Final[int] = 16
+#: Parser options that change how a run is *verified*, not what it computes. They
+#: are not configuration: a proposal-grade run and a plain run of one configuration
+#: must record the same ``config`` and hash identically.
+RUN_MODE_FLAGS: Final[frozenset[str]] = frozenset({"proposal_grade"})
+
+EXIT_OK: Final[int] = 0
+#: Mirrors ``scripts.run_mcts_classical_amr_arena``: the tree or sidecar cannot be
+#: proposal-grade. Nothing is computed or written when the pre-flight rejects.
+EXIT_NOT_PROPOSAL_GRADE: Final[int] = 2
+
+
+class AdaptiveVsUniformConfig(BaseModel):
+    """Everything a user can set on this run, resolved -- and nothing else.
+
+    Exactly what the sidecar's ``config`` records and what ``config_hash``
+    covers, so the hash can be recomputed from the sidecar alone. Range checks
+    deliberately stay where they already live (``ComparisonParams`` rejects an
+    odd ``initial_side``; ``dorfler_mark`` rejects θ outside ``(0, 1]``): a
+    second copy of those invariants here would be a second copy to drift.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    output: str = Field(default=DEFAULT_OUTPUT, description="CSV artifact path.")
+    initial_side: int = Field(
+        default=DEFAULT_INITIAL_SIDE, description="Coarse-grid elements per side."
+    )
+    max_dof: int = Field(default=DEFAULT_MAX_DOF, description="DOF budget (stopping rule).")
+    marking_fraction: float = Field(
+        default=DEFAULT_MARKING_FRACTION, description="Dörfler bulk-marking fraction θ."
+    )
+    scale: float = Field(default=DEFAULT_SCALE, description="Half-width of the L-shaped domain.")
+
+    def compute_hash(self) -> str:
+        """Deterministic hash of the resolved configuration.
+
+        The repo's ``compute_hash`` scheme -- SHA-256 over sorted-key JSON,
+        truncated to :data:`CONFIG_HASH_HEX_CHARS` -- applied to the JSON-mode
+        dump, i.e. to exactly the mapping the sidecar records as ``config``.
+        """
+        payload = json.dumps(self.model_dump(mode="json"), sort_keys=True, default=str)
+        return hashlib.sha256(payload.encode()).hexdigest()[:CONFIG_HASH_HEX_CHARS]
 
 
 def build_operator(scale: float) -> LShapedPoissonOperator:
@@ -182,24 +255,116 @@ def build_parser() -> argparse.ArgumentParser:
     """CLI parser (extracted so tests call the real one)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default=DEFAULT_OUTPUT, help="CSV artifact path.")
-    parser.add_argument("--initial-side", type=int, default=4)
-    parser.add_argument("--max-dof", type=int, default=2200)
-    parser.add_argument("--marking-fraction", type=float, default=0.5)
-    parser.add_argument("--scale", type=float, default=1.0)
+    parser.add_argument("--initial-side", type=int, default=DEFAULT_INITIAL_SIDE)
+    parser.add_argument("--max-dof", type=int, default=DEFAULT_MAX_DOF)
+    parser.add_argument("--marking-fraction", type=float, default=DEFAULT_MARKING_FRACTION)
+    parser.add_argument("--scale", type=float, default=DEFAULT_SCALE)
+    parser.add_argument(
+        "--proposal-grade",
+        action="store_true",
+        help=(
+            "Refuse to run unless the working tree is clean, and fail if the written "
+            "sidecar is dirty or has config_hash 'unknown'."
+        ),
+    )
     return parser
+
+
+def config_from_args(args: argparse.Namespace) -> AdaptiveVsUniformConfig:
+    """The resolved configuration a parsed command line describes.
+
+    Every parser option must be either a config field or a run-mode flag
+    (:data:`RUN_MODE_FLAGS`); a new option that is neither would silently escape
+    ``config_hash``, so it raises instead.
+
+    Raises:
+        ValueError: ``args`` carries an option that is neither.
+
+    """
+    values = vars(args)
+    fields = set(AdaptiveVsUniformConfig.model_fields)
+    unaccounted = sorted(set(values) - fields - RUN_MODE_FLAGS)
+    if unaccounted:
+        raise ValueError(
+            f"parser options {unaccounted} are neither AdaptiveVsUniformConfig fields nor "
+            "RUN_MODE_FLAGS, so config_hash would not cover them"
+        )
+    return AdaptiveVsUniformConfig(**{name: values[name] for name in fields})
+
+
+def build_manifest(
+    config: AdaptiveVsUniformConfig,
+    recorder: RunRecorder,
+    params: ComparisonParams,
+    uniform: list[tuple[int, int, float]],
+    dorfler_rows: list[tuple[int, int, float]],
+    metrics: dict[str, float],
+) -> RunManifest:
+    """The run's sidecar, carrying the recorder's pre-write snapshot and hash."""
+    return RunManifest(
+        run_id=f"adaptive-vs-uniform-{params.initial_side}-{params.max_dof}",
+        created_at_utc=datetime.now(timezone.utc).isoformat(),
+        harness=HARNESS,
+        hardware_tag=collect_hardware_tag(),
+        config_hash=recorder.config_hash,
+        config=config.model_dump(mode="json"),
+        git=recorder.git,
+        packages=collect_package_versions(),
+        arms=[
+            ArmProvenance(
+                name="uniform",
+                parameters={"marking": "all elements"},
+                counters={"levels": float(len(uniform))},
+            ),
+            ArmProvenance(
+                name="dorfler",
+                parameters={"marking_fraction": params.marking_fraction},
+                counters={"levels": float(len(dorfler_rows))},
+            ),
+        ],
+        metrics=metrics,
+        artifacts={"csv": str(Path(config.output))},
+        notes=(
+            "Evidences the charter row 'L-shape adaptive Doerfler vs uniform at "
+            "matched DOF'. Both arms share one solver, one geometry predicate and "
+            "one refinement primitive; only the marking differs. Ratios are "
+            "dorfler/uniform, so above 1 means adaptive marking is WORSE -- which "
+            "is the point: on a tensor-product substrate, refining one element "
+            "inserts full grid lines, so the refinement budget is spent away from "
+            "the singularity. This is why no marking-policy comparison on this "
+            "substrate measures policy quality."
+        ),
+    )
+
+
+def _not_proposal_grade(exc: ProposalGradeError) -> int:
+    """Report a proposal-grade rejection the way the arena CLI does."""
+    print(f"proposal-grade: {exc}", file=sys.stderr)
+    return EXIT_NOT_PROPOSAL_GRADE
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run both arms, write the artifact and its provenance sidecar."""
     args = build_parser().parse_args(argv)
+    config = config_from_args(args)
     params = ComparisonParams(
-        scale=args.scale,
-        initial_side=args.initial_side,
-        max_dof=args.max_dof,
-        marking_fraction=args.marking_fraction,
-        max_refinements=40,
-        error_tolerance=1e-6,
+        scale=config.scale,
+        initial_side=config.initial_side,
+        max_dof=config.max_dof,
+        marking_fraction=config.marking_fraction,
+        max_refinements=DORFLER_MAX_REFINEMENTS,
+        error_tolerance=ERROR_TOLERANCE,
     )
+    try:
+        # Snapshot BEFORE anything is computed or written (see RunRecorder). With
+        # --proposal-grade this is also the pre-flight, so a run that cannot be
+        # proposal-grade neither computes nor overwrites the committed artifact.
+        recorder = RunRecorder.start(
+            config_hash=config.compute_hash(), proposal_grade=args.proposal_grade
+        )
+    except ProposalGradeError as exc:
+        return _not_proposal_grade(exc)
+
     operator = build_operator(params.scale)
     solve_fn = make_solve_fn(operator, lshape_inside_predicate(params.scale))
 
@@ -213,56 +378,26 @@ def main(argv: list[str] | None = None) -> int:
         np.array([r[2] for r in dorfler_rows], dtype=np.float64),
     )
 
-    output = Path(args.output)
+    output = Path(config.output)
     export_csv(output, uniform, dorfler_rows)
-    write_run_manifest(
-        RunManifest(
-            run_id=f"adaptive-vs-uniform-{params.initial_side}-{params.max_dof}",
-            created_at_utc=datetime.now(timezone.utc).isoformat(),
-            harness="scripts.run_adaptive_vs_uniform",
-            hardware_tag=collect_hardware_tag(),
-            config=vars(args),
-            git=collect_git_provenance(),
-            packages=collect_package_versions(),
-            arms=[
-                ArmProvenance(
-                    name="uniform",
-                    parameters={"marking": "all elements"},
-                    counters={"levels": float(len(uniform))},
-                ),
-                ArmProvenance(
-                    name="dorfler",
-                    parameters={"marking_fraction": params.marking_fraction},
-                    counters={"levels": float(len(dorfler_rows))},
-                ),
-            ],
-            metrics=metrics,
-            artifacts={"csv": str(output)},
-            notes=(
-                "Evidences the charter row 'L-shape adaptive Doerfler vs uniform at "
-                "matched DOF'. Both arms share one solver, one geometry predicate and "
-                "one refinement primitive; only the marking differs. Ratios are "
-                "dorfler/uniform, so above 1 means adaptive marking is WORSE -- which "
-                "is the point: on a tensor-product substrate, refining one element "
-                "inserts full grid lines, so the refinement budget is spent away from "
-                "the singularity. This is why no marking-policy comparison on this "
-                "substrate measures policy quality."
-            ),
-        ),
-        manifest_path_for(output),
-    )
+    try:
+        sidecar = recorder.write_sidecar(
+            output, build_manifest(config, recorder, params, uniform, dorfler_rows, metrics)
+        )
+    except ProposalGradeError as exc:
+        return _not_proposal_grade(exc)
 
     logger.info(
         "adaptive_vs_uniform_done",
         csv=str(output),
-        manifest=str(manifest_path_for(output)),
+        manifest=str(sidecar),
         ratio_min=metrics["dorfler_over_uniform_min"],
         ratio_max=metrics["dorfler_over_uniform_max"],
     )
-    print(f"wrote {output} and {manifest_path_for(output)}")
+    print(f"wrote {output} and {sidecar}")
     for key in sorted(metrics):
         print(f"  {key}: {metrics[key]:.4f}")
-    return 0
+    return EXIT_OK
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -80,9 +80,9 @@ class GeometryConfig(BaseModel):
     sdf_kind: Literal["analytical_helix", "picogk"] = Field(
         default="analytical_helix",
         description=(
-            "Which SDF backend to use when geometry_type=PICOGK. "
-            "'analytical_helix' is closed-form and CI-safe; 'picogk' is a stub "
-            "that raises NotImplementedError (ingestion is not implemented)."
+            "Which SDF backend to use when geometry_type=PICOGK. 'analytical_helix' is "
+            "closed-form and CI-safe. 'picogk' is a stub: construction raises ImportError "
+            "unless pythonnet and Leap 71's PicoGK are importable, else NotImplementedError."
         ),
     )
     picogk_voxel_path: str | None = Field(

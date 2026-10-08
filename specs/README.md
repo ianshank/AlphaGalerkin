@@ -63,3 +63,4 @@ deliberately avoid that.
 | [`verified_error_certificate.spec.md`](verified_error_certificate.spec.md) | Two-track certified error bounds | Draft (unimplemented; `src/pde/certificate/` is a declared forward reference) |
 | [`refinement_substrate.spec.md`](refinement_substrate.spec.md) | Element-local refinement substrate (the prerequisite for any marking-policy comparison) | Draft |
 | [`mcts_classical_amr_arena.spec.md`](mcts_classical_amr_arena.spec.md) | MCTS vs Dörfler/uniform on `SkfemTriSubstrate` (cycle thesis) | Implemented |
+| [`lookahead_vs_greedy.spec.md`](lookahead_vs_greedy.spec.md) | Gate 1 go/no-go: MCTS look-ahead vs the best classical marking policy on the L- and Z-shape testbeds | Accepted (pre-registered) |

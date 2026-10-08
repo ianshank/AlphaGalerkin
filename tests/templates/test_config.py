@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from pydantic import Field, ValidationError
 
 from src.templates.config import (
+    CONFIG_HASH_LENGTH,
+    VOLATILE_CONFIG_FIELDS,
     BaseModuleConfig,
     BoardSizeConfig,
     MetricDefinition,
     ThresholdOperator,
     TrainableModuleConfig,
+    config_hash,
     create_config_class,
+    stable_config_payload,
 )
 
 
@@ -280,3 +291,84 @@ class TestCreateConfigClass:
         config = MyConfig(name="test")
         assert hasattr(config, "compute_hash")
         assert hasattr(config, "seed")
+
+
+#: Two construction times far enough apart that no clock could round them together.
+_EARLIER = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_LATER = _EARLIER + timedelta(days=30)
+
+
+class _Leaf(BaseModuleConfig):
+    """A module config, as a scenario's nested ``SubstrateConfig`` is one."""
+
+    knob: int = Field(default=1, ge=0)
+
+
+class _Parent(BaseModuleConfig):
+    """A module config nesting another, directly and inside a list."""
+
+    child: _Leaf = Field(default_factory=lambda: _Leaf(name="leaf"))
+    children: list[_Leaf] = Field(default_factory=list)
+
+
+def _pre_change_hash(data: dict[str, Any]) -> str:
+    """The formula every config hash used before volatile fields were stripped in depth."""
+    payload = json.dumps(data, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode()).hexdigest()[:CONFIG_HASH_LENGTH]
+
+
+_JSON_SCALARS = st.none() | st.booleans() | st.integers() | st.text(max_size=8)
+_NON_VOLATILE_KEYS = st.text(min_size=1, max_size=8).filter(
+    lambda key: key not in VOLATILE_CONFIG_FIELDS
+)
+_JSON_PAYLOADS = st.recursive(
+    _JSON_SCALARS,
+    lambda children: (
+        st.lists(children, max_size=4) | st.dictionaries(_NON_VOLATILE_KEYS, children, max_size=4)
+    ),
+    max_leaves=12,
+)
+
+
+class TestConfigHashStability:
+    """A config hash is a function of what the config configures, not of when it was built.
+
+    Killed mutations, each by a named test here:
+    - stripping ``created_at`` only at the top level (the pre-fix ``exclude=``)
+      -> ``test_a_nested_module_config_does_not_leak_its_construction_time``;
+    - not recursing into lists -> ``test_module_configs_inside_lists_are_stripped_too``;
+    - an empty ``VOLATILE_CONFIG_FIELDS`` -> both of the above;
+    - stripping any other key -> ``test_payloads_without_volatile_keys_hash_as_before``.
+    """
+
+    def test_a_nested_module_config_does_not_leak_its_construction_time(self) -> None:
+        early = _Parent(name="p", created_at=_EARLIER, child=_Leaf(name="l", created_at=_EARLIER))
+        late = _Parent(name="p", created_at=_LATER, child=_Leaf(name="l", created_at=_LATER))
+        assert early.compute_hash() == late.compute_hash()
+
+    def test_module_configs_inside_lists_are_stripped_too(self) -> None:
+        early = _Parent(name="p", children=[_Leaf(name="l", created_at=_EARLIER)])
+        late = _Parent(name="p", children=[_Leaf(name="l", created_at=_LATER)])
+        assert early.compute_hash() == late.compute_hash()
+
+    def test_a_nested_value_still_changes_the_hash(self) -> None:
+        one = _Parent(name="p", child=_Leaf(name="l", knob=1))
+        two = _Parent(name="p", child=_Leaf(name="l", knob=2))
+        assert one.compute_hash() != two.compute_hash()
+
+    def test_a_flat_module_config_hashes_exactly_as_before(self) -> None:
+        config = BaseModuleConfig(name="flat", seed=7)
+        assert config.compute_hash() == _pre_change_hash(config.model_dump(exclude={"created_at"}))
+
+    @given(_JSON_PAYLOADS)
+    def test_payloads_without_volatile_keys_hash_as_before(self, value: Any) -> None:
+        payload = {"value": value}
+        assert stable_config_payload(payload) == json.loads(json.dumps(payload))
+        assert config_hash(payload) == _pre_change_hash(payload)
+
+    def test_volatile_keys_are_removed_at_every_depth(self) -> None:
+        payload = {
+            "created_at": 1,
+            "a": {"created_at": 2, "b": [{"created_at": 3, "c": 4}], "t": ({"created_at": 5},)},
+        }
+        assert stable_config_payload(payload) == {"a": {"b": [{"c": 4}], "t": [{}]}}

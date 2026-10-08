@@ -106,9 +106,21 @@ GREEDY_RATIO_KEYS = (
 DIVERGENCE_KEYS = ("decisions_diverging_from_greedy", "decisions_diverging_from_greedy_max")
 
 
+#: The one CSV column that legitimately differs between two identical runs.
+WALL_TIME_COLUMN = "wall_time_seconds"
+
+
 def _csv_methods(path: str) -> set[str]:
     with Path(path).open(encoding="utf-8", newline="") as handle:
         return {row["method"] for row in csv.DictReader(handle)}
+
+
+def _csv_rows_without_wall_time(path: str) -> list[dict[str, str]]:
+    with Path(path).open(encoding="utf-8", newline="") as handle:
+        return [
+            {key: value for key, value in row.items() if key != WALL_TIME_COLUMN}
+            for row in csv.DictReader(handle)
+        ]
 
 
 class TestGreedyControl:
@@ -121,13 +133,27 @@ class TestGreedyControl:
         manifest = load_run_manifest(Path(result.artifacts["run_json"]))
         assert "greedy" in {arm.name for arm in manifest.arms}
 
-    def test_off_writes_exactly_the_legacy_csv(self, tmp_path: Path) -> None:
-        result = MCTSClassicalAMRArenaScenario(
-            _config(tmp_path, include_greedy_control=False)
+    def test_off_writes_the_legacy_rows_unperturbed_by_the_control(self, tmp_path: Path) -> None:
+        """Off writes exactly the on-run's uniform/dorfler/mcts rows, minus greedy.
+
+        That is the CSV half of "off reproduces the legacy artifact". The sidecar
+        half does not hold and is not claimed: the config records
+        ``include_greedy_control`` (so ``config_hash`` differs from a sidecar written
+        before the field existed) and the divergence metrics are recorded either way.
+        """
+        on = MCTSClassicalAMRArenaScenario(_config(tmp_path / "on")).run()
+        off = MCTSClassicalAMRArenaScenario(
+            _config(tmp_path / "off", include_greedy_control=False)
         ).run()
-        assert _csv_methods(result.artifacts["csv"]) == {"uniform", "dorfler", "mcts"}
-        assert set(GREEDY_RATIO_KEYS).isdisjoint(result.metrics)
-        assert set(DIVERGENCE_KEYS) <= set(result.metrics)
+        legacy_rows_of_on = [
+            row
+            for row in _csv_rows_without_wall_time(on.artifacts["csv"])
+            if row["method"] != "greedy"
+        ]
+        assert _csv_methods(off.artifacts["csv"]) == {"uniform", "dorfler", "mcts"}
+        assert _csv_rows_without_wall_time(off.artifacts["csv"]) == legacy_rows_of_on
+        assert set(GREEDY_RATIO_KEYS).isdisjoint(off.metrics)
+        assert set(DIVERGENCE_KEYS) <= set(off.metrics)
 
     def test_setup_and_recorded_events_carry_the_greedy_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

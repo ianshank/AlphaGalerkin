@@ -47,7 +47,9 @@ import pytest
 # The region parser lives in tests/support/charter.py, shared with
 # tests/docs/test_proposal_grade_sidecars.py. The aliases keep every call site below unchanged.
 from tests.support.charter import REGIONS as _REGIONS
+from tests.support.charter import amr_policy_ratio_subjects as _amr_policy_ratio_subjects
 from tests.support.charter import charter_text as _charter_text
+from tests.support.charter import csv_citations_in as _csv_citations_in
 from tests.support.charter import expand_braces as _expand_braces
 from tests.support.charter import looks_like_repo_path as _looks_like_repo_path
 from tests.support.charter import row_lines as _row_lines
@@ -304,10 +306,15 @@ _ARM_SPELLINGS: dict[str, tuple[str, ...]] = {
     "uniform": ("uniform",),
     "dorfler": ("dorfler", "d\u00f6rfler"),
     "mcts": ("mcts",),
+    "greedy": ("greedy",),
 }
 
 #: CSV columns that identify which arm a row belongs to.
 _ARM_COLUMNS: tuple[str, ...] = ("method", "arm")
+
+#: Joins an arm's canonical name to a parameterised variant's suffix in an artifact's arm
+#: column: Gate 1 writes ``dorfler_theta0.3`` and ``mcts_primary``, not ``dorfler``/``mcts``.
+_ARM_VARIANT_SEPARATOR: str = "_"
 
 
 def _arms_named_in(claim: str) -> set[str]:
@@ -318,6 +325,18 @@ def _arms_named_in(claim: str) -> set[str]:
         for canonical, spellings in _ARM_SPELLINGS.items()
         if any(spelling in lowered for spelling in spellings)
     }
+
+
+def _arm_present(arm: str, labels: set[str]) -> bool:
+    """Whether an artifact's arm ``labels`` hold ``arm`` itself or a parameterised variant.
+
+    A variant needs the separator: ``dorfler_theta0.3`` is a Dörfler arm, ``dorflerish``
+    is not -- a bare prefix match would let any label that merely starts with an arm's
+    name stand in for it.
+    """
+    return arm in labels or any(
+        label.startswith(f"{arm}{_ARM_VARIANT_SEPARATOR}") for label in labels
+    )
 
 
 def _csv_arms(path: Path) -> set[str] | None:
@@ -362,45 +381,9 @@ def test_evidence_artifacts_carry_run_provenance() -> None:
     )
 
 
-README = REPO_ROOT / "README.md"
+# The subject scan lives in tests/support/charter.py, shared with
+# tests/docs/test_lookahead_attribution.py so both guards read the same claims.
 _LEGACY_AMR_GOLDEN = "results/lshape_mcts_vs_dorfler.csv"
-_RATIO_HINT = re.compile(
-    r"median\s+ratio\s+\d+\.\d+|ratio\s+\d+\.\d+|l2_error_ratio_at_matched_dof|"
-    r"\b\d+\.\d{3,}\b",
-    re.IGNORECASE,
-)
-
-
-def _mentions_mcts_and_dorfler(text: str) -> bool:
-    # Strip `path` spans so `results/lshape_mcts_vs_dorfler.csv` cannot satisfy
-    # the Dörfler vocabulary by itself (the umlaut lives in the claim prose).
-    prose = re.sub(r"`[^`]+`", " ", text).lower()
-    return "mcts" in prose and ("dörfler" in prose or "dorfler" in prose)
-
-
-def _csv_citations_in(text: str) -> list[str]:
-    found: list[str] = []
-    for citation in re.findall(r"`([^`]+)`", text):
-        if not _looks_like_repo_path(citation):
-            continue
-        for candidate in _expand_braces(citation):
-            if candidate.endswith(".csv"):
-                found.append(candidate)
-    return found
-
-
-def _amr_policy_ratio_subjects() -> list[tuple[str, str]]:
-    """(source, body) pairs that look like an MCTS-vs-Dörfler policy ratio claim."""
-    subjects: list[tuple[str, str]] = []
-    for cells in _row_lines("evidence"):
-        body = " | ".join(cells)
-        if _mentions_mcts_and_dorfler(body) and _RATIO_HINT.search(body):
-            subjects.append((f"charter evidence:{cells[0]}", body))
-    readme = README.read_text(encoding="utf-8")
-    for line in readme.splitlines():
-        if _mentions_mcts_and_dorfler(line) and _RATIO_HINT.search(line):
-            subjects.append(("README.md", line))
-    return subjects
 
 
 def test_amr_policy_ratio_scan_is_not_vacuous() -> None:
@@ -574,6 +557,28 @@ def test_comparison_arm_guard_actually_examines_a_claim() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("arm", "labels", "expected"),
+    [
+        ("dorfler", {"dorfler", "mcts"}, True),
+        ("dorfler", {"dorfler_theta0.3", "greedy"}, True),
+        ("mcts", {"mcts_primary", "mcts_robust"}, True),
+        ("dorfler", {"dorflerish"}, False),
+        ("uniform", {"dorfler", "mcts"}, False),
+    ],
+    ids=["exact", "theta-variant", "named-variant", "prefix-without-separator", "absent"],
+)
+def test_an_arm_is_present_as_itself_or_a_parameterised_variant(
+    arm: str, labels: set[str], expected: bool
+) -> None:
+    """A variant counts only with the separator, and an absent arm stays absent.
+
+    The last case is the defect the guard was written for: a uniform claim citing a CSV
+    holding only Dörfler and MCTS rows.
+    """
+    assert _arm_present(arm, labels) is expected
+
+
 def test_provenance_exemptions_are_still_needed() -> None:
     """A stale exemption is a permanent blind spot; make it fail instead."""
     stale: list[str] = []
@@ -621,7 +626,7 @@ def test_comparison_claims_cite_an_artifact_containing_the_arms() -> None:
                 present |= arms
         if not present:
             continue  # no arm column anywhere; nothing to check
-        missing = sorted(arm for arm in named if arm not in present)
+        missing = sorted(arm for arm in named if not _arm_present(arm, present))
         if missing:
             failures.append(
                 f"{claim!r}: names arm(s) {missing} but the cited artifact(s) "

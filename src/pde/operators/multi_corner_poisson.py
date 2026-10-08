@@ -54,34 +54,30 @@ import numpy as np
 import structlog
 import torch
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor
 
 from src.constants import DEFAULT_BOUNDARY_TOLERANCE
 from src.pde.config import PDEConfig, PDEType
 from src.pde.geometry_polyomino import (
     LSHAPE_POLYOMINO_CELLS,
-    POLYOMINO_REENTRANT_INTERIOR_ANGLE,
     ZSHAPE_POLYOMINO_CELLS,
     PolyominoCorner,
     PolyominoDomain,
 )
 from src.pde.operators.base import PDEOperator, PDEResidual
+from src.pde.operators.corner_singularity import (
+    DEFAULT_CORNER_INTERIOR_ANGLE,
+    DEFAULT_SINGULAR_COEFFICIENT,
+    FULL_TURN,
+    SingularCornerTerm,
+    singular_term_tensor,
+    singular_term_values,
+)
 
 logger = structlog.get_logger(__name__)
 
-#: One full turn, the modulus of the angle wrap.
-FULL_TURN: Final[float] = 2.0 * math.pi
-
 #: This operator is planar: corners, cut rays and polyomino cells are 2-D.
 PLANAR_DIM: Final[int] = 2
-
-#: Default interior angle of a singular corner: the 270-degree reentrant corner
-#: every polyomino has (exponent ``pi / w = 2/3``).
-DEFAULT_CORNER_INTERIOR_ANGLE: Final[float] = POLYOMINO_REENTRANT_INTERIOR_ANGLE
-
-#: Default singular strength ``c``: the canonical benchmark's unit coefficient.
-DEFAULT_SINGULAR_COEFFICIENT: Final[float] = 1.0
 
 #: How far a declared corner position may sit from the geometric corner.
 CORNER_POSITION_ATOL: Final[float] = 1e-12
@@ -95,6 +91,11 @@ CORNER_ANGLE_ATOL: Final[float] = 1e-12
 #: loose enough for a float round-trip through a Pydantic list, tight enough
 #: that any real rescaling is rejected (same role as ``LSHAPE_DOMAIN_ATOL``).
 DOMAIN_BOUNDS_ATOL: Final[float] = 1e-9
+
+#: ``np.allclose``'s relative term, pinned to zero so ``DOMAIN_BOUNDS_ATOL`` is the
+#: tolerance applied: the default ``rtol=1e-5``, scaled by a box coordinate of up
+#: to 2, accepted a Z box off by 1.5e-5 -- 15,000 times the stated tolerance.
+DOMAIN_BOUNDS_RTOL: Final[float] = 0.0
 
 #: The only collocation distribution a polyomino supports (see
 #: :meth:`MultiCornerPoissonOperator.generate_collocation_points`).
@@ -136,79 +137,6 @@ class BranchCutError(ValueError):
     """A singular term's branch-cut ray reaches the closed domain."""
 
 
-class SingularCornerTerm(BaseModel):
-    """One corner's singular harmonic ``c * r**lam * sin(lam * phi)``."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    x: float = Field(description="Corner x coordinate.")
-    y: float = Field(description="Corner y coordinate.")
-    exterior_bisector: float = Field(
-        description=(
-            "Angle (radians) bisecting the exterior wedge at the corner. The branch "
-            "cut runs along it, so it must point out of the domain."
-        ),
-    )
-    interior_angle: float = Field(
-        default=DEFAULT_CORNER_INTERIOR_ANGLE,
-        gt=math.pi,
-        lt=FULL_TURN,
-        description="Interior angle w of the reentrant corner; the exponent is pi / w.",
-    )
-    coefficient: float = Field(
-        default=DEFAULT_SINGULAR_COEFFICIENT,
-        description="Singular strength c of this corner's term.",
-    )
-
-    @property
-    def position(self) -> tuple[float, float]:
-        """The corner as an ``(x, y)`` pair."""
-        return (self.x, self.y)
-
-    @property
-    def exponent(self) -> float:
-        """Singular exponent ``lam = pi / w`` (2/3 for a 270-degree corner)."""
-        return math.pi / self.interior_angle
-
-    @property
-    def wedge_offset(self) -> float:
-        """``(2*pi - w) / 2``: the angle from the cut to either edge of the corner."""
-        return (FULL_TURN - self.interior_angle) / 2.0
-
-
-def singular_term_values(
-    points: NDArray[np.float64], term: SingularCornerTerm
-) -> NDArray[np.float64]:
-    """``s_i`` (no coefficient) at ``(n, 2)`` points, in float64; exactly 0 at the corner."""
-    dx = points[:, 0] - term.x
-    dy = points[:, 1] - term.y
-    r = np.hypot(dx, dy)
-    phi = np.mod(np.arctan2(dy, dx) - term.exterior_bisector, FULL_TURN) - term.wedge_offset
-    lam = term.exponent
-    values = np.power(r, lam) * np.sin(lam * phi)
-    return np.asarray(np.where(r > 0.0, values, 0.0), dtype=np.float64)
-
-
-def singular_term_tensor(points: Tensor, term: SingularCornerTerm) -> Tensor:
-    """Torch twin of :func:`singular_term_values`, in the input's dtype.
-
-    Double-``where``: the corner itself is replaced by a harmless stand-in
-    before ``atan2``/``hypot``/``pow`` see it, so autograd returns a finite
-    (zero) gradient there instead of a NaN that would poison a whole batch.
-    """
-    dx = points[:, 0] - term.x
-    dy = points[:, 1] - term.y
-    at_corner = (dx == 0) & (dy == 0)
-    safe_dx = torch.where(at_corner, torch.ones_like(dx), dx)
-    safe_dy = torch.where(at_corner, torch.zeros_like(dy), dy)
-    r = torch.hypot(safe_dx, safe_dy)
-    theta = torch.atan2(safe_dy, safe_dx)
-    phi = torch.remainder(theta - term.exterior_bisector, FULL_TURN) - term.wedge_offset
-    lam = term.exponent
-    values = r.pow(lam) * torch.sin(lam * phi)
-    return torch.where(at_corner, torch.zeros_like(values), values)
-
-
 def _wrapped_angle_difference(first: float, second: float) -> float:
     """``first - second`` reduced to ``[-pi, pi]``."""
     return math.remainder(first - second, FULL_TURN)
@@ -225,8 +153,8 @@ def _require_planar_matching_bounds(config: PDEConfig, domain: PolyominoDomain) 
         raise ValueError(f"a polyomino operator is planar; got domain_dim={config.domain_dim}")
     low, high = domain.bounding_box()
     if not (
-        np.allclose(config.domain_min, low, atol=DOMAIN_BOUNDS_ATOL)
-        and np.allclose(config.domain_max, high, atol=DOMAIN_BOUNDS_ATOL)
+        np.allclose(config.domain_min, low, rtol=DOMAIN_BOUNDS_RTOL, atol=DOMAIN_BOUNDS_ATOL)
+        and np.allclose(config.domain_max, high, rtol=DOMAIN_BOUNDS_RTOL, atol=DOMAIN_BOUNDS_ATOL)
     ):
         raise ValueError(
             f"config box [{config.domain_min}, {config.domain_max}] is not the polyomino's "
@@ -235,17 +163,16 @@ def _require_planar_matching_bounds(config: PDEConfig, domain: PolyominoDomain) 
 
 
 def _require_nondegenerate(corners: tuple[SingularCornerTerm, ...]) -> None:
-    """At least one corner, no corner twice, and not every strength zero.
+    """At least one corner, and not every strength zero.
 
     All-zero strengths make ``u == 0``: every error is 0.0 at every DOF count
     and every ratio built on it is meaningless -- the defect that made every
     1-D Poisson AMR row in this repo degenerate (``tests/research/test_baselines.py``).
+    A corner declared twice is refused once each declaration is matched to a
+    geometric corner (:func:`_require_first_declaration`), not here.
     """
     if not corners:
         raise ValueError("at least one singular corner is required")
-    positions = [term.position for term in corners]
-    if len(set(positions)) != len(positions):
-        raise ValueError(f"a corner is declared more than once: {positions}")
     if all(term.coefficient == 0.0 for term in corners):
         raise ValueError(
             "every singular coefficient is zero, so the exact solution is u == 0 and "
@@ -279,6 +206,27 @@ def _matching_corner(
             f"cut through it, and any other one stops s_i vanishing on the corner's edges"
         )
     return corner
+
+
+def _require_first_declaration(
+    matched: dict[tuple[float, float], int],
+    corner: PolyominoCorner,
+    corners: tuple[SingularCornerTerm, ...],
+    index: int,
+) -> None:
+    """Refuse a second declaration of the geometric corner ``corner``, then record it.
+
+    Keyed on the *matched* corner, not the declared position: matching allows
+    ``CORNER_POSITION_ATOL``, so (0, 0) and (5e-13, 0) are one corner, and
+    accepting both silently doubles its singular term.
+    """
+    first = matched.setdefault(corner.position, index)
+    if first != index:
+        raise ValueError(
+            f"corners {first} at {corners[first].position} and {index} at "
+            f"{corners[index].position} both match the domain's corner at {corner.position}: "
+            f"a corner declared more than once would add its singular term twice"
+        )
 
 
 def _seeded_generator(seed: int | None) -> torch.Generator | None:
@@ -331,8 +279,10 @@ class MultiCornerPoissonOperator(PDEOperator):
         self._logged_method_substitution = False
         _require_planar_matching_bounds(config, domain)
         _require_nondegenerate(self._corners)
+        matched: dict[tuple[float, float], int] = {}
         for index, term in enumerate(self._corners):
             corner = _matching_corner(domain, term, index)
+            _require_first_declaration(matched, corner, self._corners, index)
             if domain.open_ray_meets_closure(corner.position, corner.exterior_quadrant):
                 raise BranchCutError(
                     f"corner {index} at {term.position}: its branch cut (the ray along "
@@ -499,67 +449,112 @@ class MultiCornerPoissonOperator(PDEOperator):
         return data
 
 
-def _preset_config(name: str, domain: PolyominoDomain) -> PDEConfig:
-    """A config whose box is, by construction, the domain's bounding box."""
+def _preset_config(config: PDEConfig | None, name: str, domain: PolyominoDomain) -> PDEConfig:
+    """``config`` with ``domain``'s box wherever the caller left it unset.
+
+    A preset owns its geometry, so an unset box can only mean the domain's own:
+    that is what lets a registry caller's ``PDEConfig(name=..., pde_type=...)``
+    construct it. A box the caller *set* is kept, and the constructor verifies
+    it (the D1 class). ``None`` gets a fresh config named after the preset.
+    """
     low, high = domain.bounding_box()
-    return PDEConfig(
-        name=name,
-        pde_type=PDEType.POISSON,
-        domain_dim=PLANAR_DIM,
-        domain_min=list(low),
-        domain_max=list(high),
-    )
+    box: dict[str, Any] = {"domain_min": list(low), "domain_max": list(high)}
+    if config is None:
+        return PDEConfig(name=name, pde_type=PDEType.POISSON, domain_dim=PLANAR_DIM, **box)
+    unset = {field: value for field, value in box.items() if field not in config.model_fields_set}
+    return config.model_copy(update=unset)
+
+
+class LShapeMultiCornerPoissonOperator(MultiCornerPoissonOperator):
+    """The canonical L-shape as a one-corner polyomino (``coefficient=1`` is the benchmark).
+
+    A preset fixes the ``domain`` and ``corners`` a ``PDEConfig`` cannot carry,
+    so it constructs from a config alone -- ``cls(config)``, the way every
+    ``src.pde.registry`` caller constructs an operator. The generic class cannot.
+    """
+
+    name = LSHAPE_PRESET_NAME
+
+    def __init__(
+        self, config: PDEConfig | None = None, *, coefficient: float = DEFAULT_SINGULAR_COEFFICIENT
+    ) -> None:
+        """Build the L preset; ``config``'s box is read as :func:`_preset_config` says."""
+        domain = PolyominoDomain(LSHAPE_POLYOMINO_CELLS)
+        corner = SingularCornerTerm(
+            x=LSHAPE_CORNER_POSITION[0],
+            y=LSHAPE_CORNER_POSITION[1],
+            exterior_bisector=LSHAPE_EXTERIOR_BISECTOR,
+            coefficient=coefficient,
+        )
+        config = _preset_config(config, self.name, domain)
+        super().__init__(config, domain=domain, corners=(corner,))
+
+
+class ZShapeMultiCornerPoissonOperator(MultiCornerPoissonOperator):
+    """The Z-tetromino with two 270-degree corners of configurable strength.
+
+    Constructs from a config alone, as :class:`LShapeMultiCornerPoissonOperator` does.
+    """
+
+    name = ZSHAPE_PRESET_NAME
+
+    def __init__(
+        self,
+        config: PDEConfig | None = None,
+        *,
+        primary_coefficient: float = DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
+        secondary_coefficient: float = DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
+    ) -> None:
+        """Build the Z preset; ``config``'s box is read as :func:`_preset_config` says."""
+        domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
+        corners = (
+            SingularCornerTerm(
+                x=ZSHAPE_PRIMARY_CORNER_POSITION[0],
+                y=ZSHAPE_PRIMARY_CORNER_POSITION[1],
+                exterior_bisector=ZSHAPE_PRIMARY_EXTERIOR_BISECTOR,
+                coefficient=primary_coefficient,
+            ),
+            SingularCornerTerm(
+                x=ZSHAPE_SECONDARY_CORNER_POSITION[0],
+                y=ZSHAPE_SECONDARY_CORNER_POSITION[1],
+                exterior_bisector=ZSHAPE_SECONDARY_EXTERIOR_BISECTOR,
+                coefficient=secondary_coefficient,
+            ),
+        )
+        config = _preset_config(config, self.name, domain)
+        super().__init__(config, domain=domain, corners=corners)
 
 
 def build_lshape_multi_corner_operator(
     *, coefficient: float = DEFAULT_SINGULAR_COEFFICIENT
-) -> MultiCornerPoissonOperator:
-    """The canonical L-shape as a one-corner polyomino (``coefficient=1`` is the benchmark)."""
-    domain = PolyominoDomain(LSHAPE_POLYOMINO_CELLS)
-    corner = SingularCornerTerm(
-        x=LSHAPE_CORNER_POSITION[0],
-        y=LSHAPE_CORNER_POSITION[1],
-        exterior_bisector=LSHAPE_EXTERIOR_BISECTOR,
-        coefficient=coefficient,
-    )
-    return MultiCornerPoissonOperator(
-        _preset_config(LSHAPE_PRESET_NAME, domain), domain=domain, corners=(corner,)
-    )
+) -> LShapeMultiCornerPoissonOperator:
+    """The L preset (:class:`LShapeMultiCornerPoissonOperator`) at strength ``coefficient``."""
+    return LShapeMultiCornerPoissonOperator(coefficient=coefficient)
 
 
 def build_zshape_poisson_operator(
     *,
     primary_coefficient: float = DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
     secondary_coefficient: float = DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
-) -> MultiCornerPoissonOperator:
-    """The Z-tetromino with two 270-degree corners of configurable strength."""
-    domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
-    corners = (
-        SingularCornerTerm(
-            x=ZSHAPE_PRIMARY_CORNER_POSITION[0],
-            y=ZSHAPE_PRIMARY_CORNER_POSITION[1],
-            exterior_bisector=ZSHAPE_PRIMARY_EXTERIOR_BISECTOR,
-            coefficient=primary_coefficient,
-        ),
-        SingularCornerTerm(
-            x=ZSHAPE_SECONDARY_CORNER_POSITION[0],
-            y=ZSHAPE_SECONDARY_CORNER_POSITION[1],
-            exterior_bisector=ZSHAPE_SECONDARY_EXTERIOR_BISECTOR,
-            coefficient=secondary_coefficient,
-        ),
-    )
-    return MultiCornerPoissonOperator(
-        _preset_config(ZSHAPE_PRESET_NAME, domain), domain=domain, corners=corners
+) -> ZShapeMultiCornerPoissonOperator:
+    """The Z preset (:class:`ZShapeMultiCornerPoissonOperator`) with the given strengths."""
+    return ZShapeMultiCornerPoissonOperator(
+        primary_coefficient=primary_coefficient, secondary_coefficient=secondary_coefficient
     )
 
 
 __all__ = [
+    "DEFAULT_CORNER_INTERIOR_ANGLE",
+    "DEFAULT_SINGULAR_COEFFICIENT",
     "DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT",
     "DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT",
     "BranchCutError",
     "CornerDeclarationError",
+    "FULL_TURN",
+    "LShapeMultiCornerPoissonOperator",
     "MultiCornerPoissonOperator",
     "SingularCornerTerm",
+    "ZShapeMultiCornerPoissonOperator",
     "build_lshape_multi_corner_operator",
     "build_zshape_poisson_operator",
     "singular_term_tensor",

@@ -12,6 +12,25 @@ what it got wrong.
 > needs the one experiment it has never run — a problem where greedy is myopic — and a go/no-go
 > decision on its outcome.
 
+## Implementation status (updated 2026-10-08)
+
+The plan in §6 is being executed on the branch that carries this document. §1–§5 describe the tree
+as reviewed at `6052281`; where the tree has changed since, the change is recorded here rather than
+by rewriting the review.
+
+| Plan item | Status | Where |
+|---|---|---|
+| 0.1 — greedy control arm and `decisions_diverging_from_greedy` | **Code landed** — the arena runs the control by default (`include_greedy_control`) | `src/research/greedy_control.py`, `src/research/mcts_classical_amr_arena.py` |
+| 0.1 — correct the claim in the charter, README, FOCUS, CLAUDE.md and the arena spec, with an attribution guard | **Done** — artifact re-recorded with the control (divergence 0, MCTS/greedy 1.0); every live statement now says search contributed no decisions | openspec change `arena-lookahead-attribution`, `tests/docs/test_lookahead_attribution.py` |
+| 0.2 — re-record `lshape_adaptive_vs_uniform` | **Done** | `results/lshape_adaptive_vs_uniform.run.json`, `tests/docs/test_proposal_grade_sidecars.py` |
+| 0.3 — README performance table | **Done** — removed, and front-door figures now need a hardware-tagged artifact | `tests/docs/test_performance_claims.py` |
+| 0.4 — deprecate codec MCTS rate control | **Done** — warns on use under test runners and `-W default` (Python's default filters hide it in user scripts; a codec-only follow-up, hygiene B41, makes it visible); removal dated 0.6.0 | `src/video_compression/mcts/rate_control.py` |
+| 0.5 — PicoGK disclosure | **Done** | `src/pde/sdf.py`, `specs/noyron_basis.spec.md`, `tests/docs/test_picogk_disclosure.py` |
+| Gate 1 testbed — two reentrant corners of unequal strength | **Landed** — a Z-tetromino on `SkfemTriSubstrate`; the adequacy gate passes on it | `src/pde/geometry_polyomino.py`, `src/pde/operators/multi_corner_poisson.py` |
+| Gate 1 — pre-registration and runs | **Run on T1 and T2: NO-GO on both** (0/5 criteria each). With 64 simulations over a top-4 ranked legal set, the deterministic search made greedy's 30 decisions on each testbed (search contributed no decisions), and the best classical arm beat it at matched DOF (MCTS/best classical 1.0216 vs Dörfler θ=0.3; 1.0296 vs Dörfler θ=0.5). The pre-registration says a NO-GO on these elliptic controls does not close the thesis; §6's "NO-GO closes the thesis" applies once the decisive testbed runs | `specs/lookahead_vs_greedy.spec.md`, `results/lookahead_vs_greedy_lshape.{csv,run.json}`, `results/lookahead_vs_greedy_zshape.{csv,run.json}` |
+| Moving-front testbed (Gate 1 T3) | Not started — needs a time-dependent substrate; the testbed that decides the thesis | — |
+| Gate 2, Track T | Not started. Gate 2's GO branch has no GO to stand on; until T3 runs, the only framing the evidence supports is its NO-GO lead (the evidence-governance tooling, and zero-retraining transfer at a stated accuracy cost). Track T waits on decision 4 | — |
+
 ---
 
 ## 1. The finding that reorders everything
@@ -64,7 +83,7 @@ with 30 more solves, so it never pays back.
   (`specs/mcts_classical_amr_arena.spec.md:11`) — is **not answered** by this artifact. Both arms
   it compares are greedy: Dörfler bulk marking, and an MCTS arm that reduces to single-element greedy
   marking. The control that separates look-ahead from marking granularity — a single-element greedy
-  arm — is absent.
+  arm — was absent at `6052281`. It has since been added (see *Implementation status*).
 - The meta-analysis read the 9.23× matched-solves loss as the price of a quality edge; revision 1
   called it "converting a budget you have into a budget you don't". There is no trade. Greedy reaches
   the same mesh at 13 solves, so the search's extra cost buys nothing.
@@ -296,6 +315,11 @@ needs a generic entry type), the pickle-payload corpus, and the SBIR scaffold fo
 ## 7. Owner decisions
 
 Only these need you; everything else is sequenced.
+
+**Status (2026-10-08):** implementation was authorised with the recommendations taken for 1–4 —
+correct the claim; the two-corner testbed first, with the moving front deferred; deprecate, then
+remove; no extraction before Gate 1. Decision 5 is untouched. Nothing has reached the default
+branch, so each can still be reversed.
 
 1. **Accept the arena-claim correction (0.1).** The most important decision here, because it changes
    what the charter says the project has shown.

@@ -14,7 +14,8 @@ from src.poc.scenarios.mcts_classical_amr_arena_config import (
     SCENARIO_NAME,
     MCTSClassicalAMRArenaConfig,
 )
-from src.research.substrates.config import SubstrateConfig
+from src.research.substrates.config import AdequacyGateConfig, SubstrateConfig
+from src.research.substrates.sweep import default_adequacy_gate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -110,6 +111,36 @@ class TestGreedyControlField:
         assert off.get_default_thresholds() == _config().get_default_thresholds()
         assert (off.search_mode, off.add_noise, off.temperature) == ("single_agent", False, 0.0)
         assert off.evaluator_name == HEADLINE_EVALUATOR_NAME
+
+
+class TestZShapeTestbed:
+    """Gate 1 T2: the arena config accepts the Z-tetromino with its own adequacy gate.
+
+    The L-shape gate must stay field for field what the committed arena artifact
+    was produced under (name, window, thresholds).
+    """
+
+    def test_zshape_is_accepted_with_the_adequacy_precondition(self) -> None:
+        cfg = _config(operator_name="zshape_poisson")
+        assert cfg.require_adequacy_precondition is True
+        assert cfg.adequacy_gate().rate_fit_dof_range == (200.0, 5000.0)
+        assert cfg.adequacy_gate().name == "arena_adequacy_precondition"
+
+    def test_the_lshape_gate_is_unchanged(self) -> None:
+        """Every field but the construction timestamp equals the pre-Gate-1 gate."""
+        gate = _config().adequacy_gate()
+        legacy = AdequacyGateConfig(name="arena_adequacy_precondition")
+        assert gate.model_dump(exclude={"created_at"}) == legacy.model_dump(exclude={"created_at"})
+        assert gate.rate_fit_dof_range == (200.0, 4000.0)
+        assert gate.rate_fit_dof_range == default_adequacy_gate().rate_fit_dof_range
+
+    def test_the_z_testbed_ignores_no_scale(self) -> None:
+        with pytest.raises(ValidationError, match="unit Z-tetromino"):
+            _config(operator_name="zshape_poisson", lshape_scale=2.0)
+
+    def test_the_unit_square_still_has_no_adequacy_gate(self) -> None:
+        with pytest.raises(ValidationError, match="adequacy precondition"):
+            _config(operator_name="poisson")
 
 
 class TestThresholdsAQA:

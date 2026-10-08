@@ -112,6 +112,7 @@ del (
     base,
     biharmonic,
     burgers,
+    corner_singularity,  # bound when multi_corner_poisson first imports it
     heat,
     helmholtz,
     lshaped_poisson,

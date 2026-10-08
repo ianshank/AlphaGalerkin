@@ -49,6 +49,14 @@ Mutation kills (harden-a-guard; planted defect -> named test that went red):
 * All-zero guard removed -> ``TestConstructionGuards::test_all_zero_coefficients_are_rejected``.
 * Double-``where`` removed -> ``TestCornerGuard::test_gradient_at_the_corner_is_finite``.
 * Box check removed -> ``TestConstructionGuards::test_config_box_must_be_the_domain_box``.
+* Duplicate check keyed on the *declared* position (the pre-fix check) ->
+  ``::test_a_near_duplicate_corner_is_rejected`` and
+  ``::test_every_declaration_matching_a_declared_corner_is_rejected``. Keyed on the
+  declared position rounded to 12 places -> only the Hypothesis sweep; the
+  reviewer's single case stays green, which is why the sweep exists.
+* Box ``rtol`` back to ``np.allclose``'s default (the pre-fix call), dropped on
+  ``domain_max`` only, or pinned to ``1e-9`` ->
+  ``::test_the_box_tolerance_is_the_stated_absolute_one`` ``twice_the_atol`` rows.
 """
 
 from __future__ import annotations
@@ -542,6 +550,39 @@ class TestConstructionGuards:
         with pytest.raises(ValueError, match="more than once"):
             _operator(LSHAPE_POLYOMINO_CELLS, (corner, corner))
 
+    def test_a_near_duplicate_corner_is_rejected(self) -> None:
+        """Two declarations matching ONE geometric corner would add its term twice.
+
+        The reviewer's case: the duplicate check compared declared positions exactly
+        while matching allows ``CORNER_POSITION_ATOL``, so (0, 0) and (5e-13, 0) were
+        both accepted and u(0.5, 0.5) was 0.7937 -- twice the one-corner 0.3969.
+        """
+        first = SingularCornerTerm(x=0.0, y=0.0, exterior_bisector=LSHAPE_EXTERIOR_BISECTOR)
+        near = SingularCornerTerm(x=5e-13, y=0.0, exterior_bisector=LSHAPE_EXTERIOR_BISECTOR)
+        with pytest.raises(ValueError, match="more than once"):
+            _operator(LSHAPE_POLYOMINO_CELLS, (first, near))
+
+    @settings(max_examples=40, deadline=None)
+    @given(
+        dx=st.floats(min_value=-mcp.CORNER_POSITION_ATOL, max_value=mcp.CORNER_POSITION_ATOL),
+        dy=st.floats(min_value=-mcp.CORNER_POSITION_ATOL, max_value=mcp.CORNER_POSITION_ATOL),
+    )
+    def test_every_declaration_matching_a_declared_corner_is_rejected(
+        self, dx: float, dy: float
+    ) -> None:
+        """Across the matching box, on the Z's *secondary* corner (x = 1, not the origin).
+
+        ``assume`` keeps declarations that match: at the box's edge ``1.0 + 1e-12``
+        rounds past the tolerance, and such a point is no corner at all
+        (``CornerDeclarationError``), not a duplicate.
+        """
+        z_corners = build_zshape_poisson_operator().corners
+        near = z_corners[1].model_copy(update={"x": z_corners[1].x + dx, "y": z_corners[1].y + dy})
+        domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
+        assume(domain.corner_at(near.position, atol=mcp.CORNER_POSITION_ATOL) is not None)
+        with pytest.raises(ValueError, match="more than once"):
+            _operator(ZSHAPE_POLYOMINO_CELLS, (*z_corners, near))
+
     def test_all_zero_coefficients_are_rejected(self) -> None:
         """``u == 0`` would make every measured error 0.0 -- the degenerate-substrate class."""
         with pytest.raises(ValueError, match="zero"):
@@ -559,6 +600,38 @@ class TestConstructionGuards:
         config = PDEConfig(name="wrong_box", pde_type=PDEType.POISSON)
         with pytest.raises(ValueError, match="bounding box"):
             MultiCornerPoissonOperator(config, domain=domain, corners=(corner,))
+
+    @pytest.mark.parametrize("coordinate", range(4), ids=["x_min", "y_min", "x_max", "y_max"])
+    @pytest.mark.parametrize(
+        ("offset", "accepted"),
+        [
+            (0.5 * mcp.DOMAIN_BOUNDS_ATOL, True),
+            (2.0 * mcp.DOMAIN_BOUNDS_ATOL, False),
+            (1.5e-5, False),
+        ],
+        ids=["half_the_atol", "twice_the_atol", "reviewer_1.5e-5"],
+    )
+    def test_the_box_tolerance_is_the_stated_absolute_one(
+        self, coordinate: int, offset: float, accepted: bool
+    ) -> None:
+        """``DOMAIN_BOUNDS_ATOL`` is the tolerance applied, on each coordinate of the Z box.
+
+        ``np.allclose``'s default ``rtol=1e-5``, scaled by a coordinate of up to 2,
+        used to dominate it: a box off by 1.5e-5 or by twice the atol was accepted.
+        """
+        domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
+        box = [value for bound in domain.bounding_box() for value in bound]
+        box[coordinate] += offset
+        config = PDEConfig(
+            name="z_box", pde_type=PDEType.POISSON, domain_min=box[:2], domain_max=box[2:]
+        )
+        corners = build_zshape_poisson_operator().corners
+        if accepted:
+            operator = MultiCornerPoissonOperator(config, domain=domain, corners=corners)
+            assert operator.corners == corners
+            return
+        with pytest.raises(ValueError, match="bounding box"):
+            MultiCornerPoissonOperator(config, domain=domain, corners=corners)
 
     def test_config_must_be_planar(self) -> None:
         domain = PolyominoDomain(LSHAPE_POLYOMINO_CELLS)
@@ -591,8 +664,12 @@ class TestConstructionGuards:
 
 class TestOperatorSurface:
     def test_registry_round_trip(self) -> None:
-        assert "poisson_multi_corner" in list_pde_operators()
-        assert get_pde_operator("poisson_multi_corner") is MultiCornerPoissonOperator
+        """The presets are registered by name; the generic class, which needs a domain, is not."""
+        names = list_pde_operators()
+        assert {mcp.LSHAPE_PRESET_NAME, mcp.ZSHAPE_PRESET_NAME} <= set(names)
+        assert "poisson_multi_corner" not in names
+        assert get_pde_operator(mcp.ZSHAPE_PRESET_NAME) is type(build_zshape_poisson_operator())
+        assert issubclass(get_pde_operator(mcp.LSHAPE_PRESET_NAME), MultiCornerPoissonOperator)
 
     def test_exported_from_the_operators_package_like_its_siblings(self) -> None:
         """Re-exported and in ``__all__``; the submodule binding is not leaked."""
@@ -660,7 +737,7 @@ class TestOperatorSurface:
 
     def test_to_dict_carries_the_corners_and_cells(self) -> None:
         data = build_zshape_poisson_operator(secondary_coefficient=0.5).to_dict()
-        assert data["name"] == "poisson_multi_corner"
+        assert data["name"] == mcp.ZSHAPE_PRESET_NAME, "the registry key that rebuilds it"
         assert [c["coefficient"] for c in data["corners"]] == [1.0, 0.5]
         assert len(data["cells"]) == len(ZSHAPE_POLYOMINO_CELLS)
 

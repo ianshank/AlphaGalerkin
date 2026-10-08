@@ -26,15 +26,14 @@
     "initial_side": 4,
     "marking_fraction": 0.5,
     "max_dof": 2200,
-    "output": "results/lshape_adaptive_vs_uniform.csv",
     "scale": 1.0
   },
-  "config_hash": "865edce78a6a9453",
-  "created_at_utc": "2026-09-25T20:49:54.498392+00:00",
+  "config_hash": "50d464fb95cca18d",
+  "created_at_utc": "2026-10-08T02:09:56.967237+00:00",
   "git": {
-    "branch": "worktree-agent-ae3885d05c0c47962",
+    "branch": "worktree-agent-a2b0e4d6f0bd5671c",
     "dirty": false,
-    "sha": "005d7c63bbb81722ae9efa1ca894dfc89d8bd7a4"
+    "sha": "2977963c673dd59f74f4fa691632d9b8237629fc"
   },
   "hardware_tag": "x86_64-4cpu",
   "harness": "scripts.run_adaptive_vs_uniform",

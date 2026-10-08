@@ -28,6 +28,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   artifact; the swarm pivot's host game already exists, dormant. Corrects
   revision 1 point by point and replaces its plan with an evidence-first
   go/no-go sized for one maintainer.
+- **Gate 1, look-ahead vs greedy: pre-registered, run, and NO-GO on both testbeds.** The
+  pre-registration (`specs/lookahead_vs_greedy.spec.md`, committed alone first as `38ed247`)
+  fixes the testbeds, arms, budgets, metric and five GO criteria before any run. New
+  `lookahead_vs_greedy` scenario, harness `src/research/lookahead_vs_greedy{,_metrics,_verdict,_artifacts}.py`,
+  CLI `scripts/run_lookahead_vs_greedy.py` (its exit code reports aborts and errors, never the
+  verdict) and T1/T2 YAMLs. On one `skfem_tri` substrate it compares single-element greedy,
+  Dörfler θ ∈ {0.1, 0.3, 0.5}, uniform, deterministic MCTS (64 simulations, top-4 ranked legal
+  set, `SINGLE_AGENT`, `ResidualPriorErrorValueEvaluator`) and a 5-seed root-noise arm, scoring
+  MCTS against the *best* classical arm at matched DOF with a break-even reuse count K* for
+  α ∈ {1, 1.5}. `MCTS.root` and `src.mcts.node.subtree_depth` record the realized tree depth;
+  the arena config accepts `zshape_poisson`. **Result** (proposal grade,
+  `results/lookahead_vs_greedy_{lshape,zshape}.{csv,png,run.json}`): NO-GO on T1 (L-shape) and
+  T2 (Z-tetromino), 0/5 criteria each. The deterministic search made greedy's decision at all 30
+  steps on both, at a median realized depth of 10, so search contributed no decisions. The best
+  classical arm beat it at matched DOF: MCTS/best classical 1.0216 (Dörfler θ=0.3, DOF 361) and
+  1.0296 (Dörfler θ=0.5, DOF 398). Root-noise medians were 1.0539 and 1.0616, with 0/5 seeds
+  below 1. Per the pre-registration this elliptic control does not close the thesis; the
+  moving-front testbed (T3) decides it and is not built. The charter (two evidence rows, the
+  Novelty paragraph, the frozen-tracks row), README, `docs/FOCUS.md`, the arena spec and the
+  peer review's status table state the result (OpenSpec `lookahead-vs-greedy`, task 4).
+  `tests/docs/test_lookahead_attribution.py` now reads each harness's own divergence metric
+  (`DIVERGENCE_SCHEMAS`), so a Gate 1 claim must carry the label "search contributed no
+  decisions". It previously read only the arena's metric and could not see Gate 1 sidecars.
+  A committed sidecar that records a divergence count under an undeclared harness now fails
+  the guard. The charter's comparison-arm guard
+  (`test_comparison_claims_cite_an_artifact_containing_the_arms`) now accepts a parameterised arm
+  label (`dorfler_theta0.3`, `mcts_primary`) as its arm, separator required, and `greedy` joins
+  its vocabulary; it had matched arm names exactly and rejected the Gate 1 rows (3/3 mutations
+  killed). 185 Gate 1 tests (46/46 planted defects killed); 12/12 for the attribution-guard
+  extension.
 - **Arena single-element greedy control + `decisions_diverging_from_greedy`** (peer-review
   Gate 0.1, code half). `src/research/greedy_control.py` refines the legal element with the
   largest residual indicator (ties → lowest index), ranking through the game's own
@@ -666,6 +696,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **`tests/poc/test_compare_common.py` re-pinned to the timestamp-free arena hash.** The
+  config-hash fix (`4574475`) moved the arena's default-config hash without updating this pin
+  (`889f0e81d4d5cc65` -> `6013f7c983e67151`), which turned the branch red. The test now also
+  asserts that the config's contents did not change, only the hash function.
+- **The arena's matched-DOF 0.9532 is greedy marking, not look-ahead; the claim is corrected
+  everywhere it was stated.** `results/mcts_classical_amr_arena.{csv,png,run.json}` is re-recorded
+  with the single-element greedy control (proposal grade, `dirty: false`; `config_hash`
+  `80f39466392dbf90` -> `d6993a0dfd1ab778`: the config now records `include_greedy_control`,
+  and the hash no longer folds in a construction timestamp -- see the next bullet). The 51 uniform/Dörfler/MCTS rows match the previous artifact in every
+  column but wall time, and the 13 greedy rows equal every MCTS seed's trajectory:
+  `decisions_diverging_from_greedy_max` 0, MCTS/greedy 1.0, greedy/Dörfler 0.9532 -- search
+  contributed no decisions, so the artifact does not test look-ahead. The wall-clock
+  `error_per_dof_ratio_mcts_over_dorfler` moved 30.84 -> 32.10 with machine load (ungated). OpenSpec
+  change `arena-lookahead-attribution` modifies three charter Requirements (the evidence row, the
+  Novelty arena paragraph and the frozen-tracks deviation row) and is applied in place; README,
+  `docs/FOCUS.md`, the arena spec (annotated in place -- it is a pre-registration) and the
+  2026-09-08 CLAUDE.md milestone are corrected with the corrections left visible. The scenario gate
+  (MCTS/Dörfler < 1) is unchanged and still passes. New guard `tests/docs/test_lookahead_attribution.py`
+  (16/16 planted defects killed). The arena CLI now pre-flights `--proposal-grade` with `RunRecorder`
+  before it writes into `results/` (5/5 killed) and leaves the directionless divergence count out of
+  its regression baseline; `include_greedy_control=False` is documented as writing the legacy rows,
+  not the legacy sidecar. (Gate 0, item 0.1.)
+- **Config hashes no longer depend on when the config object was built.** A scenario config
+  nesting a module config (the arena's `SubstrateConfig`) folded that module's auto-populated
+  `created_at` into `compute_hash`, so loading `config/scenarios/mcts_classical_amr_arena.yaml`
+  twice gave two hashes (`7a722438499daefb`, `5a2d3a76e539e949`) and no recorded `config_hash`
+  could ever be reproduced -- the property the hash-pin protocol rests on. `BaseModuleConfig`
+  had the same hole one level down. One helper in `src/templates/config.py`
+  (`VOLATILE_CONFIG_FIELDS`, `stable_config_payload`, `config_hash`) now strips volatile keys at
+  every depth for both bases; a payload without one hashes byte-identically to before (Hypothesis
+  property plus golden checks), so only configs that nested a timestamp move. The arena artifact
+  was re-recorded on `4574475`: every row unchanged except wall time, `config_hash`
+  `d6993a0dfd1ab778`, now recomputable. 5/5 planted mutations killed.
+- **`SubstrateRefinementGame` no longer chooses its injected cache or substrate by truthiness.**
+  `solve_cache or FingerprintSolveCache(...)` (and the same for `substrate`) would silently replace
+  any injected object that is falsy -- an empty cache, the moment the class gains a `__len__`. The
+  arena keeps the cache it injects and reads hit/miss counts from it, so that one-line change would
+  zero every arm's solve count without an error. Now `is None`; a falsy-cache test kills both
+  restored forms. Latent today: `FingerprintSolveCache` defines no `__len__`.
 - **A charter-cited sidecar now passes the repo's own proposal-grade check.**
   `results/lshape_adaptive_vs_uniform.run.json` (cited by the evidence register) recorded
   `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejected it. Re-recorded

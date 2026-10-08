@@ -702,6 +702,9 @@ class TestArtifacts:
             uniform=by_arm[("uniform", -1)],
             per_seed=per_seed,
             seeds=[item.seed for item in per_seed],
+            # The committed artifact carries the greedy control since its 2026-10-08
+            # re-record; an artifact without one round-trips with ``greedy=None``.
+            greedy=by_arm.get((GREEDY_METHOD, -1)),
         )
         exported = export_csv(arena, tmp_path / "roundtrip.csv")
         assert exported.read_bytes() == COMMITTED_CSV.read_bytes()

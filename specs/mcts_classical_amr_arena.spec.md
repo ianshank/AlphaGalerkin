@@ -44,6 +44,14 @@ matched DOF on `SkfemTriSubstrate` / L-shaped Poisson, θ=0.5.
 
 Freeze lifts on Win **or** Null. Smoke passing is not a freeze lift.
 
+> **CORRECTED (2026-10-08), annotation only — the table above is the pre-registration
+> and is unchanged.** A **Win** on this metric does not, by itself, evidence the
+> hypothesis: MCTS / Dörfler mixes *marking granularity* (one element per step vs a
+> bulk fraction) with *search*. The single-element greedy control
+> (`include_greedy_control`, below) separates them — MCTS / greedy isolates what the
+> search adds — and on the committed artifact it shows the search added nothing
+> (see *Measured result*).
+
 ## Data Contract
 
 Configured by `MCTSClassicalAMRArenaConfig`. Headline YAML:
@@ -69,7 +77,7 @@ Configured by `MCTSClassicalAMRArenaConfig`. Headline YAML:
 | `evaluator_name` | `Literal` | `ResidualPriorErrorValueEvaluator` | locked | Headline leaf evaluator. |
 | `use_intermediate_rewards` | `bool` | `False` | locked False | Leaf-value bootstrap only. |
 | `require_adequacy_precondition` | `bool` | `True` | — | Abort if the adequacy gate fails. |
-| `include_greedy_control` | `bool` | `True` | — | Run the single-element greedy control arm (added 2026-10-08, peer-review Gate 0.1). `False` reproduces the legacy CSV/manifest exactly. `decisions_diverging_from_greedy` is recorded either way; it is recorded, not gated. |
+| `include_greedy_control` | `bool` | `True` | — | Run the single-element greedy control arm (added 2026-10-08, peer-review Gate 0.1). `False` writes the legacy uniform/dorfler/mcts CSV rows and columns, unperturbed by the control. The sidecar is **not** the legacy one either way: the config records this field, so `config_hash` differs from a sidecar written before it existed, and `decisions_diverging_from_greedy` is recorded either way. Divergence is recorded, not gated, and is excluded from the CLI's regression baseline (it has no better direction). |
 | `max_l2_ratio_at_matched_dof` | `float` | `1.0` | `gt=0` | Sole gated threshold. |
 
 Named constants: `HEADLINE_EVALUATOR_NAME`, `DEFAULT_SEED_STRIDE=1009`,
@@ -148,17 +156,52 @@ Proposal-grade run on `19609d4` (`results/mcts_classical_amr_arena.{csv,run.json
 `dirty: false`). θ=0.5, policy `max_dof=600`, `max_steps=12`, `n_simulations=8`,
 `top_k_actions=8`, `ResidualPriorErrorValueEvaluator`, `search_mode=single_agent`,
 `add_noise=False`, `temperature=0`, seeds `{42, 1051, 2060}` (identical
-trajectories).
+trajectories). *(Re-recorded 2026-10-08 on `f2c65c4` with the greedy control, and again on
+`4574475` after the config-hash fix, rows unchanged; see the correction below.)*
 
 | Metric | Value | Gated? |
 |---|---|---|
-| `l2_error_ratio_at_matched_dof` | **0.9532** (matched DOF 287) | yes (`< 1`) — **Win** |
+| `l2_error_ratio_at_matched_dof` | **0.9532** (matched DOF 287) | yes (`< 1`) — **Win** · **CORRECTED (2026-10-08):** the verdict stands, but the win is single-element greedy marking, not look-ahead — **search contributed no decisions** |
 | `l2_error_ratio_at_matched_solves` | 9.23 | no |
-| `error_per_dof_ratio_mcts_over_dorfler` | ~30.8 | no |
+| `error_per_dof_ratio_mcts_over_dorfler` | ~30.8 (32.10 and 32.65 in the two 2026-10-08 re-records; wall-clock, moves with load) | no |
 
 Adequacy abort did not fire (adaptive `N^-1.31` vs uniform `N^-0.67` on
 `(200, 4000)`). Those rates are **gate evidence**, not a look-ahead win. Do not
 present the 0.9532 ratio as if it were fitted over that adequacy window.
+
+### Correction (2026-10-08): the Win is greedy marking
+
+Re-recorded from a clean tree with `--proposal-grade` and the greedy control on
+(sidecar `dirty: false`, SHA `f2c65c4`; `docs/business/COMMERCIALIZATION_PEER_REVIEW.md`
+§1, Gate 0.1). Every `uniform` / `dorfler` / `mcts` row is identical to the
+`19609d4` record in every column except `wall_time_seconds`; the matched-DOF and
+matched-solves ratios are bit-identical. Re-recorded once more the same day on `4574475`:
+the earlier `config_hash` folded the nested `SubstrateConfig.created_at` timestamp into the
+hash, so no re-run could reproduce it. Every row again matched except `wall_time_seconds`,
+and the sidecar's `config_hash` (`d6993a0dfd1ab778`) now recomputes from its recorded config.
+
+| Metric | Value | Gated? |
+|---|---|---|
+| `l2_error_ratio_greedy_over_dorfler_at_matched_dof` | **0.9532** | no |
+| `l2_error_ratio_mcts_over_greedy_at_matched_dof` | **1.0** | no |
+| `decisions_diverging_from_greedy` / `_max` | **0 / 0** | no |
+
+The MCTS arm makes the greedy control's identical 12 decisions on every seed, so
+the 0.9532 is single-element greedy marking against Dörfler bulk marking — a
+marking-granularity effect — and **search contributed no decisions**. The
+hypothesis (look-ahead beats greedy marking) is **untested** by this artifact.
+Gate 1 (`specs/lookahead_vs_greedy.spec.md`, pre-registered) tested it on this
+L-shape and on a two-corner Z-tetromino and returned **NO-GO** on both: the
+deterministic search again made greedy's decisions at every step, and the best
+classical arm beat it at matched DOF. That does not close the hypothesis; the
+moving-front testbed that can decide it is deferred. Two further readings are
+corrected:
+
+- **The binding limit is `max_steps=12`, not `max_dof=600`.** Both game-driven arms
+  stop after 12 refinements at 287 DOF, which is what sets matched DOF; the
+  600-DOF policy budget never binds.
+- **9.23 at matched solves is not the price of a quality edge.** The greedy control
+  reaches the same 287-DOF mesh in 13 solves; the MCTS arm spends 43.
 
 ## Regression Surface
 

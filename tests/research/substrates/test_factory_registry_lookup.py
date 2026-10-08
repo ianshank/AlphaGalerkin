@@ -12,6 +12,7 @@ from src.pde.operators import LShapedPoissonOperator, MultiCornerPoissonOperator
 from src.pde.operators.multi_corner_poisson import (
     DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
     DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
+    ZShapeMultiCornerPoissonOperator,
 )
 from src.refinement.substrate_registry import RefinementSubstrateRegistry
 from src.research.substrates.config import (
@@ -100,7 +101,7 @@ class TestBuildDefaultOperator:
         [
             ("poisson", PoissonOperator),
             ("lshape_poisson", LShapedPoissonOperator),
-            ("zshape_poisson", MultiCornerPoissonOperator),
+            ("zshape_poisson", ZShapeMultiCornerPoissonOperator),
         ],
     )
     def test_each_name_builds_its_operator(self, name: OperatorName, cls: type) -> None:

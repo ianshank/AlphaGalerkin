@@ -664,8 +664,12 @@ class TestConstructionGuards:
 
 class TestOperatorSurface:
     def test_registry_round_trip(self) -> None:
-        assert "poisson_multi_corner" in list_pde_operators()
-        assert get_pde_operator("poisson_multi_corner") is MultiCornerPoissonOperator
+        """The presets are registered by name; the generic class, which needs a domain, is not."""
+        names = list_pde_operators()
+        assert {mcp.LSHAPE_PRESET_NAME, mcp.ZSHAPE_PRESET_NAME} <= set(names)
+        assert "poisson_multi_corner" not in names
+        assert get_pde_operator(mcp.ZSHAPE_PRESET_NAME) is type(build_zshape_poisson_operator())
+        assert issubclass(get_pde_operator(mcp.LSHAPE_PRESET_NAME), MultiCornerPoissonOperator)
 
     def test_exported_from_the_operators_package_like_its_siblings(self) -> None:
         """Re-exported and in ``__all__``; the submodule binding is not leaked."""
@@ -733,7 +737,7 @@ class TestOperatorSurface:
 
     def test_to_dict_carries_the_corners_and_cells(self) -> None:
         data = build_zshape_poisson_operator(secondary_coefficient=0.5).to_dict()
-        assert data["name"] == "poisson_multi_corner"
+        assert data["name"] == mcp.ZSHAPE_PRESET_NAME, "the registry key that rebuilds it"
         assert [c["coefficient"] for c in data["corners"]] == [1.0, 0.5]
         assert len(data["cells"]) == len(ZSHAPE_POLYOMINO_CELLS)
 

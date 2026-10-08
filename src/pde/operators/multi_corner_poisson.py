@@ -449,57 +449,97 @@ class MultiCornerPoissonOperator(PDEOperator):
         return data
 
 
-def _preset_config(name: str, domain: PolyominoDomain) -> PDEConfig:
-    """A config whose box is, by construction, the domain's bounding box."""
+def _preset_config(config: PDEConfig | None, name: str, domain: PolyominoDomain) -> PDEConfig:
+    """``config`` with ``domain``'s box wherever the caller left it unset.
+
+    A preset owns its geometry, so an unset box can only mean the domain's own:
+    that is what lets a registry caller's ``PDEConfig(name=..., pde_type=...)``
+    construct it. A box the caller *set* is kept, and the constructor verifies
+    it (the D1 class). ``None`` gets a fresh config named after the preset.
+    """
     low, high = domain.bounding_box()
-    return PDEConfig(
-        name=name,
-        pde_type=PDEType.POISSON,
-        domain_dim=PLANAR_DIM,
-        domain_min=list(low),
-        domain_max=list(high),
-    )
+    box: dict[str, Any] = {"domain_min": list(low), "domain_max": list(high)}
+    if config is None:
+        return PDEConfig(name=name, pde_type=PDEType.POISSON, domain_dim=PLANAR_DIM, **box)
+    unset = {field: value for field, value in box.items() if field not in config.model_fields_set}
+    return config.model_copy(update=unset)
+
+
+class LShapeMultiCornerPoissonOperator(MultiCornerPoissonOperator):
+    """The canonical L-shape as a one-corner polyomino (``coefficient=1`` is the benchmark).
+
+    A preset fixes the ``domain`` and ``corners`` a ``PDEConfig`` cannot carry,
+    so it constructs from a config alone -- ``cls(config)``, the way every
+    ``src.pde.registry`` caller constructs an operator. The generic class cannot.
+    """
+
+    name = LSHAPE_PRESET_NAME
+
+    def __init__(
+        self, config: PDEConfig | None = None, *, coefficient: float = DEFAULT_SINGULAR_COEFFICIENT
+    ) -> None:
+        """Build the L preset; ``config``'s box is read as :func:`_preset_config` says."""
+        domain = PolyominoDomain(LSHAPE_POLYOMINO_CELLS)
+        corner = SingularCornerTerm(
+            x=LSHAPE_CORNER_POSITION[0],
+            y=LSHAPE_CORNER_POSITION[1],
+            exterior_bisector=LSHAPE_EXTERIOR_BISECTOR,
+            coefficient=coefficient,
+        )
+        config = _preset_config(config, self.name, domain)
+        super().__init__(config, domain=domain, corners=(corner,))
+
+
+class ZShapeMultiCornerPoissonOperator(MultiCornerPoissonOperator):
+    """The Z-tetromino with two 270-degree corners of configurable strength.
+
+    Constructs from a config alone, as :class:`LShapeMultiCornerPoissonOperator` does.
+    """
+
+    name = ZSHAPE_PRESET_NAME
+
+    def __init__(
+        self,
+        config: PDEConfig | None = None,
+        *,
+        primary_coefficient: float = DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
+        secondary_coefficient: float = DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
+    ) -> None:
+        """Build the Z preset; ``config``'s box is read as :func:`_preset_config` says."""
+        domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
+        corners = (
+            SingularCornerTerm(
+                x=ZSHAPE_PRIMARY_CORNER_POSITION[0],
+                y=ZSHAPE_PRIMARY_CORNER_POSITION[1],
+                exterior_bisector=ZSHAPE_PRIMARY_EXTERIOR_BISECTOR,
+                coefficient=primary_coefficient,
+            ),
+            SingularCornerTerm(
+                x=ZSHAPE_SECONDARY_CORNER_POSITION[0],
+                y=ZSHAPE_SECONDARY_CORNER_POSITION[1],
+                exterior_bisector=ZSHAPE_SECONDARY_EXTERIOR_BISECTOR,
+                coefficient=secondary_coefficient,
+            ),
+        )
+        config = _preset_config(config, self.name, domain)
+        super().__init__(config, domain=domain, corners=corners)
 
 
 def build_lshape_multi_corner_operator(
     *, coefficient: float = DEFAULT_SINGULAR_COEFFICIENT
-) -> MultiCornerPoissonOperator:
-    """The canonical L-shape as a one-corner polyomino (``coefficient=1`` is the benchmark)."""
-    domain = PolyominoDomain(LSHAPE_POLYOMINO_CELLS)
-    corner = SingularCornerTerm(
-        x=LSHAPE_CORNER_POSITION[0],
-        y=LSHAPE_CORNER_POSITION[1],
-        exterior_bisector=LSHAPE_EXTERIOR_BISECTOR,
-        coefficient=coefficient,
-    )
-    return MultiCornerPoissonOperator(
-        _preset_config(LSHAPE_PRESET_NAME, domain), domain=domain, corners=(corner,)
-    )
+) -> LShapeMultiCornerPoissonOperator:
+    """The L preset (:class:`LShapeMultiCornerPoissonOperator`) at strength ``coefficient``."""
+    return LShapeMultiCornerPoissonOperator(coefficient=coefficient)
 
 
 def build_zshape_poisson_operator(
     *,
     primary_coefficient: float = DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT,
     secondary_coefficient: float = DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT,
-) -> MultiCornerPoissonOperator:
-    """The Z-tetromino with two 270-degree corners of configurable strength."""
-    domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
-    corners = (
-        SingularCornerTerm(
-            x=ZSHAPE_PRIMARY_CORNER_POSITION[0],
-            y=ZSHAPE_PRIMARY_CORNER_POSITION[1],
-            exterior_bisector=ZSHAPE_PRIMARY_EXTERIOR_BISECTOR,
-            coefficient=primary_coefficient,
-        ),
-        SingularCornerTerm(
-            x=ZSHAPE_SECONDARY_CORNER_POSITION[0],
-            y=ZSHAPE_SECONDARY_CORNER_POSITION[1],
-            exterior_bisector=ZSHAPE_SECONDARY_EXTERIOR_BISECTOR,
-            coefficient=secondary_coefficient,
-        ),
-    )
-    return MultiCornerPoissonOperator(
-        _preset_config(ZSHAPE_PRESET_NAME, domain), domain=domain, corners=corners
+) -> ZShapeMultiCornerPoissonOperator:
+    """The Z preset (:class:`ZShapeMultiCornerPoissonOperator`) with the given strengths."""
+    return ZShapeMultiCornerPoissonOperator(
+        primary_coefficient=primary_coefficient, secondary_coefficient=secondary_coefficient
     )
 
 
@@ -511,8 +551,10 @@ __all__ = [
     "BranchCutError",
     "CornerDeclarationError",
     "FULL_TURN",
+    "LShapeMultiCornerPoissonOperator",
     "MultiCornerPoissonOperator",
     "SingularCornerTerm",
+    "ZShapeMultiCornerPoissonOperator",
     "build_lshape_multi_corner_operator",
     "build_zshape_poisson_operator",
     "singular_term_tensor",

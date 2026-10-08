@@ -25,10 +25,13 @@ from src.pde.operators import (
     HeatOperator,
     HelmholtzOperator,
     LShapedPoissonOperator,
-    MultiCornerPoissonOperator,
     NavierStokesOperator,
     PDEOperator,
     PoissonOperator,
+)
+from src.pde.operators.multi_corner_poisson import (
+    LShapeMultiCornerPoissonOperator,
+    ZShapeMultiCornerPoissonOperator,
 )
 from src.pde.operators_picogk import (
     HelicalHeatOperator,
@@ -67,11 +70,13 @@ def _register_builtin_operators() -> None:
     if not registry.is_registered("poisson_lshaped"):
         register_pde_operator("poisson_lshaped")(LShapedPoissonOperator)
 
-    # Polyomino generalisation of the L-shape (several reentrant corners). Its
-    # constructor also takes the ``domain`` and ``corners`` a PDEConfig cannot
-    # carry; the presets live in ``src.pde.operators.multi_corner_poisson``.
-    if not registry.is_registered("poisson_multi_corner"):
-        register_pde_operator("poisson_multi_corner")(MultiCornerPoissonOperator)
+    # Polyomino presets of MultiCornerPoissonOperator (several reentrant corners).
+    # Every caller constructs a registered operator as ``cls(config)``. The generic
+    # class also needs the ``domain`` and ``corners`` a PDEConfig cannot carry, so
+    # it is not registered; each preset fixes both and registers under its name.
+    for preset in (LShapeMultiCornerPoissonOperator, ZShapeMultiCornerPoissonOperator):
+        if not registry.is_registered(preset.name):
+            register_pde_operator(preset.name)(preset)
 
     # Out-of-distribution operators for held-out generalisation benchmarks.
     if not registry.is_registered("helmholtz"):

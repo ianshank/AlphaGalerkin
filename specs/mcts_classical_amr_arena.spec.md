@@ -77,7 +77,7 @@ Configured by `MCTSClassicalAMRArenaConfig`. Headline YAML:
 | `evaluator_name` | `Literal` | `ResidualPriorErrorValueEvaluator` | locked | Headline leaf evaluator. |
 | `use_intermediate_rewards` | `bool` | `False` | locked False | Leaf-value bootstrap only. |
 | `require_adequacy_precondition` | `bool` | `True` | — | Abort if the adequacy gate fails. |
-| `include_greedy_control` | `bool` | `True` | — | Run the single-element greedy control arm (added 2026-10-08, peer-review Gate 0.1). `False` reproduces the legacy CSV/manifest exactly. `decisions_diverging_from_greedy` is recorded either way; it is recorded, not gated. |
+| `include_greedy_control` | `bool` | `True` | — | Run the single-element greedy control arm (added 2026-10-08, peer-review Gate 0.1). `False` writes the legacy uniform/dorfler/mcts CSV rows and columns, unperturbed by the control. The sidecar is **not** the legacy one either way: the config records this field, so `config_hash` differs from a sidecar written before it existed, and `decisions_diverging_from_greedy` is recorded either way. Divergence is recorded, not gated, and is excluded from the CLI's regression baseline (it has no better direction). |
 | `max_l2_ratio_at_matched_dof` | `float` | `1.0` | `gt=0` | Sole gated threshold. |
 
 Named constants: `HEADLINE_EVALUATOR_NAME`, `DEFAULT_SEED_STRIDE=1009`,

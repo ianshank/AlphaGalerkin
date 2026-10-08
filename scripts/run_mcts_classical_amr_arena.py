@@ -34,6 +34,7 @@ from src.poc.scenarios.mcts_classical_amr_arena_config import (
     SCENARIO_NAME,
     MCTSClassicalAMRArenaConfig,
 )
+from src.research.amr_arena_types import DIVERGENCE_MAX_METRIC, DIVERGENCE_METRIC
 from src.research.run_manifest import (
     ProposalGradeError,
     RunRecorder,
@@ -44,6 +45,21 @@ from src.research.run_manifest import (
 
 #: Exit code when a ``--proposal-grade`` run cannot be proposal-grade.
 EXIT_NOT_PROPOSAL_GRADE: Final[int] = 2
+
+#: Substrings of metric names that move with machine load; never baselined.
+WALL_CLOCK_METRIC_TOKENS: Final[tuple[str, ...]] = (
+    "wall",
+    "time",
+    "error_per_dof_ratio_mcts_over_dorfler",
+)
+
+#: Recorded diagnostics with no better direction, never baselined. The divergence
+#: count says whether the search changed a decision greedy would have made, not
+#: whether the result improved; recorded as lower-better (the registry's default),
+#: it would fail the gate on exactly the configuration where search starts to matter.
+UNGATED_DIAGNOSTIC_METRICS: Final[frozenset[str]] = frozenset(
+    {DIVERGENCE_METRIC, DIVERGENCE_MAX_METRIC}
+)
 
 
 def load_scenario_dict(config_path: str | Path) -> dict[str, Any]:
@@ -132,12 +148,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def stable_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
-    """Drop wall-clock-derived keys from regression baselines."""
-    blocked = ("wall", "time", "error_per_dof_ratio_mcts_over_dorfler")
+    """Drop wall-clock-derived keys and directionless diagnostics from regression baselines."""
     return {
         name: float(value)
         for name, value in metrics.items()
-        if not any(token in name for token in blocked)
+        if name not in UNGATED_DIAGNOSTIC_METRICS
+        and not any(token in name for token in WALL_CLOCK_METRIC_TOKENS)
     }
 
 

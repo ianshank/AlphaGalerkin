@@ -21,7 +21,7 @@ by rewriting the review.
 | Plan item | Status | Where |
 |---|---|---|
 | 0.1 — greedy control arm and `decisions_diverging_from_greedy` | **Code landed** — the arena runs the control by default (`include_greedy_control`) | `src/research/greedy_control.py`, `src/research/mcts_classical_amr_arena.py` |
-| 0.1 — correct the claim in the charter, README, FOCUS, CLAUDE.md and the arena spec, with an attribution guard | In progress | openspec change `arena-lookahead-attribution` |
+| 0.1 — correct the claim in the charter, README, FOCUS, CLAUDE.md and the arena spec, with an attribution guard | **Done** — artifact re-recorded with the control (divergence 0, MCTS/greedy 1.0); every live statement now says search contributed no decisions | openspec change `arena-lookahead-attribution`, `tests/docs/test_lookahead_attribution.py` |
 | 0.2 — re-record `lshape_adaptive_vs_uniform` | **Done** | `results/lshape_adaptive_vs_uniform.run.json`, `tests/docs/test_proposal_grade_sidecars.py` |
 | 0.3 — README performance table | **Done** — removed, and front-door figures now need a hardware-tagged artifact | `tests/docs/test_performance_claims.py` |
 | 0.4 — deprecate codec MCTS rate control | **Done** — warns on use; removal dated 0.6.0 | `src/video_compression/mcts/rate_control.py` |

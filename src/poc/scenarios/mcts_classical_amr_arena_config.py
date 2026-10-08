@@ -8,6 +8,11 @@ quadrature L2 over Dörfler at the largest common DOF). Matched-solves and
 wall-clock ratios are recorded and **ungated**. Adequacy-gate rates are a
 precondition, not a look-ahead result.
 
+The Gate 1 testbed ``zshape_poisson`` (two reentrant corners) is accepted
+alongside the L-shape, each with its own pinned adequacy gate
+(``adequacy_gate_for_operator``); the L-shape gate, defaults and hash are
+unchanged.
+
 See ``specs/mcts_classical_amr_arena.spec.md``.
 """
 
@@ -19,7 +24,16 @@ from pydantic import Field, field_validator, model_validator
 
 from src.poc.config import BaseScenarioConfig, MetricThreshold
 from src.poc.scenarios._compare_lock import lock_scenario_name
-from src.research.substrates.config import AdequacyGateConfig, SubstrateConfig
+from src.research.substrates.config import (
+    SUBSTRATE_KIND_SKFEM_TRI,
+    AdequacyGateConfig,
+    SubstrateConfig,
+)
+from src.research.substrates.factory import (
+    ZSHAPE_SCALE,
+    OperatorName,
+    adequacy_gate_for_operator,
+)
 
 SCENARIO_NAME: Final[str] = "mcts_classical_amr_arena"
 HEADLINE_EVALUATOR_NAME: Final[Literal["ResidualPriorErrorValueEvaluator"]] = (
@@ -29,6 +43,13 @@ DEFAULT_SEED_STRIDE: Final[int] = 1009
 DEFAULT_MARKING_FRACTION: Final[float] = 0.5
 DEFAULT_POLICY_MAX_DOF: Final[int] = 600
 DEFAULT_MAX_ACTION_SPACE: Final[int] = 16384
+#: ``name`` of the arena's adequacy gate (every testbed; no numeric effect).
+ARENA_ADEQUACY_GATE_NAME: Final[str] = "arena_adequacy_precondition"
+#: Operators with a pinned adequacy gate: the reentrant-corner testbeds, where
+#: adaptive marking has a singularity to beat uniform refinement on.
+ADEQUACY_OPERATORS: Final[frozenset[str]] = frozenset({"lshape_poisson", "zshape_poisson"})
+#: The operator whose domain is the fixed unit Z-tetromino (``lshape_scale`` unused).
+ZSHAPE_OPERATOR_NAME: Final[str] = "zshape_poisson"
 
 
 class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
@@ -55,9 +76,12 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
         ),
         description="Shared substrate for every arm (looked up by kind).",
     )
-    operator_name: Literal["poisson", "lshape_poisson"] = Field(
+    operator_name: OperatorName = Field(
         default="lshape_poisson",
-        description="Exact-solution operator paired with the substrate.",
+        description=(
+            "Exact-solution operator paired with the substrate: poisson (unit square), "
+            "lshape_poisson, or zshape_poisson (the two-corner Z-tetromino, Gate 1 T2)."
+        ),
     )
     lshape_scale: float = Field(
         default=1.0,
@@ -218,11 +242,18 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
         if self.use_intermediate_rewards:
             raise ValueError("scored arena requires use_intermediate_rewards=False")
         if self.require_adequacy_precondition and (
-            self.substrate.kind != "skfem_tri" or self.operator_name != "lshape_poisson"
+            self.substrate.kind != SUBSTRATE_KIND_SKFEM_TRI
+            or self.operator_name not in ADEQUACY_OPERATORS
         ):
             raise ValueError(
-                "adequacy precondition is defined for skfem_tri + lshape_poisson; "
+                "adequacy precondition is defined for skfem_tri + "
+                f"{' / '.join(sorted(ADEQUACY_OPERATORS))}; "
                 "set require_adequacy_precondition=False for other hosts"
+            )
+        if self.operator_name == ZSHAPE_OPERATOR_NAME and self.lshape_scale != ZSHAPE_SCALE:
+            raise ValueError(
+                f"operator_name={ZSHAPE_OPERATOR_NAME!r} is the unit Z-tetromino; "
+                f"lshape_scale={self.lshape_scale} would be ignored (it must be {ZSHAPE_SCALE})"
             )
         return self
 
@@ -231,8 +262,16 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
         return [int(self.seed) + i * int(self.seed_stride) for i in range(int(self.n_seeds))]
 
     def adequacy_gate(self) -> AdequacyGateConfig:
-        """Pinned adequacy thresholds (θ quoted separately as marking_fraction)."""
-        return AdequacyGateConfig(name="arena_adequacy_precondition")
+        """Pinned adequacy thresholds for ``operator_name``'s testbed (θ quoted separately).
+
+        Thresholds are shared by every testbed; only the rate-fitting window
+        follows the testbed's DOF ladder (``adequacy_gate_for_operator``). The
+        gate keeps the arena's name, so the L-shape gate is field for field the
+        one the committed arena artifact was produced under.
+        """
+        return adequacy_gate_for_operator(self.operator_name).model_copy(
+            update={"name": ARENA_ADEQUACY_GATE_NAME}
+        )
 
     def get_default_thresholds(self) -> list[MetricThreshold]:
         """Single gated metric; matched-solves / wall-clock stay ungated."""
@@ -250,6 +289,8 @@ class MCTSClassicalAMRArenaConfig(BaseScenarioConfig):
 
 
 __all__ = [
+    "ADEQUACY_OPERATORS",
+    "ARENA_ADEQUACY_GATE_NAME",
     "DEFAULT_MARKING_FRACTION",
     "DEFAULT_MAX_ACTION_SPACE",
     "DEFAULT_POLICY_MAX_DOF",

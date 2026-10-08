@@ -183,9 +183,15 @@ it. The remedy is not more building. It is converting one mechanism into evidenc
    `results/lshape_adaptive_vs_uniform.run.json`, cited at `spec.md:131`, records
    `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejects it. It
    predates that check, but it is neither re-recorded nor disclosed as a deviation.
+   **Fixed 2026-10-08:** re-recorded from a clean tree (CSV byte-identical, so no charter value
+   moves), and every charter-cited sidecar is now required to be proposal-grade by
+   `tests/docs/test_proposal_grade_sidecars.py`.
 2. **An unbacked, unguarded performance table.** `README.md:352-360`. The README evidence guard
-   covers only AMR policy ratios. `tests/benchmarks/test_mcts_perf.py` already measures simulations
-   per second, so the table can be backed rather than deleted.
+   covered only AMR policy ratios. Nothing in the tree could have backed the table:
+   `tests/benchmarks/test_mcts_perf.py` times a mock game with a random evaluator, not the per-model
+   inference the table claimed. **Fixed 2026-10-08:** the table is removed, and any front-door
+   performance figure must now cite an artifact whose sidecar records a `hardware_tag`
+   (`tests/docs/test_performance_claims.py`).
 3. **Seeds that cannot differ.** The arena's three seeds are identical by construction
    (`add_noise=False`, `temperature=0`; the sidecar records `l2_ratio_seed_std = 0.0`). A "median
    over 3 seeds" is one measurement.
@@ -243,8 +249,10 @@ reported as n = 1. Every row reports both budgets.
 **Pre-registered exit — written before any run:**
 
 - **GO** if MCTS beats the *best* classical arm (not Dörfler at a single θ) at matched DOF on a
-  majority of seeds, with `decisions_diverging_from_greedy > 0`, and a finite, stated break-even
-  reuse count against greedy.
+  majority of seeds, with `decisions_diverging_from_greedy > 0` on a ranked legal set, and a
+  finite, stated break-even reuse count against greedy. Divergence is necessary, not sufficient:
+  at `top_k_actions=0` the legal set is in index order and a single simulation diverges from greedy
+  by tie-break alone, so a divergence count only evidences search when the legal set is ranked.
 - **NO-GO** otherwise. The AMR look-ahead thesis closes honestly, with the result committed.
 
 ### Gate 2 — Conditional on Gate 1

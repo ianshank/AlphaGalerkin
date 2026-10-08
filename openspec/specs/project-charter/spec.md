@@ -126,7 +126,7 @@ written in response to.
 | Operator-vs-retrained-CNN ratio | ≈14× (operator loses) | `specs/transfer_baseline_compare.spec.md` |
 | L-shape AMR, MCTS vs Dörfler at matched DOF | median ratio 1.0996 (MCTS **loses** ~10%), wins 1/5 seeds; **non-informative for element-local policy** (tensor-product substrate) | `results/lshape_mcts_vs_dorfler.csv` |
 | L-shape AMR at matched compute | median ratio 2.04, MCTS wins 0/5 seeds; **non-informative for element-local policy** | `specs/lshape_amr_compare.spec.md` |
-| Element-local AMR, MCTS vs Dörfler at matched DOF (θ=0.5, policy max_dof=600, matched_dof=287) | median ratio 0.9532 (MCTS **wins** ~4.7%; 3 identical seeds; evaporates at matched solves, ratio 9.23 ungated). Adequacy rates over (200, 4000) are **not** this result. | `results/mcts_classical_amr_arena.{csv,run.json}` |
+| Element-local AMR, MCTS vs Dörfler at matched DOF, with a single-element greedy control (θ=0.5, matched_dof=287; the binding limit is `max_steps=12`, not `max_dof=600`) | median ratio 0.9532 (3 identical seeds) is **single-element greedy marking** vs Dörfler bulk marking, not look-ahead: MCTS/greedy 1.0 and greedy/Dörfler 0.9532, because the MCTS arm makes the greedy control's identical 12 decisions on every seed (`decisions_diverging_from_greedy_max` 0) — **search contributed no decisions**, and look-ahead is untested by this artifact (Gate 1 pending). MCTS at matched solves 9.23 (ungated). Adequacy rates over (200, 4000) are **not** this result. | `results/mcts_classical_amr_arena.{csv,run.json}` |
 | L-shape substrate, uniform-refinement L2 rate | O(h^1.31) ≈ O(N^-0.65) | `tests/research/test_lshape_convergence_gate.py` |
 | L-shape adaptive Dörfler vs uniform at matched DOF | Dörfler **worse**, 1.5× at 56 DOF rising to 10.5× at 2847; convergence N^-0.14 vs uniform's N^-0.63 (tensor-product refinement defect) | `results/lshape_adaptive_vs_uniform.{csv,run.json}` |
 | Stochastic Galerkin density MSE | 2.3e-8 | `results/stochastic_galerkin_compare.csv` |
@@ -156,6 +156,21 @@ written in response to.
 - AND today's existence-only sidecar check is not sufficient for this class
   (the golden is exempt from sidecar existence, which is why a new ratio
   pointing at it would otherwise go green)
+
+#### Scenario: A greedy-marking result is attributed to look-ahead
+- GIVEN an MCTS-vs-Dörfler AMR policy-ratio claim in README or this evidence register
+- AND it cites an artifact whose `.run.json` records `decisions_diverging_from_greedy_max == 0`
+- WHEN `tests/docs/test_lookahead_attribution.py` runs
+- THEN the claim SHALL carry the label "search contributed no decisions"
+- AND the guard SHALL fail naming the claim otherwise, and SHALL fail on a label whose cited
+  arena run records divergence above zero (a disclosure that outlived its fact)
+
+#### Scenario: An old-schema arena artifact dodges the label
+- GIVEN a `.run.json` whose `harness` is `scripts.run_mcts_classical_amr_arena`
+- AND it does not record `decisions_diverging_from_greedy` and
+  `decisions_diverging_from_greedy_max` as finite, non-negative numbers
+- WHEN the guard runs
+- THEN it SHALL fail naming the sidecar
 
 ### Requirement: UI Claim Fidelity
 
@@ -198,13 +213,19 @@ mesh *generation*, a distinct problem.
 Novelty is a *method* delta, not a demonstrated win. The honest `lshape_amr_compare` result — MCTS
 **losing** at matched DOF (ratio 1.0996, wins 1/5 seeds) and losing further at matched compute
 (ratio 2.04, 0/5 seeds) — SHALL be reported alongside any favourable framing. Those figures are
-**non-informative for element-local policy** (tensor-product substrate / legacy harness); the
-cycle thesis is measured by `mcts_classical_amr_arena` on `SkfemTriSubstrate`.
-Committed Phase 2 result (`results/mcts_classical_amr_arena.csv`, θ=0.5, policy
-`max_dof=600`, matched DOF 287): median `l2_error_ratio_at_matched_dof` **0.9532**
-(MCTS ~4.7% better at matched DOF; 3 identical seeds). Look-ahead does **not** win
-at matched solves (ratio 9.23, ungated). Do **not** quote adequacy `N^-1.31` / ~10×
-rates as this result — those are gate evidence on `(200, 4000)`.
+**non-informative for element-local policy** (tensor-product substrate / legacy harness). The
+cycle thesis is meant to be measured by `mcts_classical_amr_arena` on `SkfemTriSubstrate`, and
+its committed result does **not** measure it (`results/mcts_classical_amr_arena.{csv,run.json}`,
+θ=0.5, matched DOF 287; the binding limit is `max_steps=12`, not `max_dof=600`). Its median
+`l2_error_ratio_at_matched_dof` **0.9532** (3 identical seeds) is **single-element greedy
+marking** against Dörfler bulk marking, a marking-granularity effect: the artifact's greedy
+control makes the same 12 decisions as the MCTS arm on every seed
+(`decisions_diverging_from_greedy_max` 0, MCTS/greedy 1.0), so **search contributed no
+decisions**. Look-ahead is untested by this artifact; whether it beats greedy anywhere is Gate 1
+of `docs/business/COMMERCIALIZATION_PEER_REVIEW.md`. At matched solves MCTS is at 9.23
+(ungated). The earlier reading of 0.9532 as "MCTS ~4.7% better at matched DOF" is **corrected
+(2026-10-08)**, and no text SHALL attribute this result to look-ahead. Do **not** quote adequacy
+`N^-1.31` / ~10× rates as this result — those are gate evidence on `(200, 4000)`.
 
 The previously reported "~4% matched-DOF win" (ratio 0.9605) is **retracted (2026-08-16)**: it was
 produced by a boundary-condition defect in `lshape_inside_predicate`, which removed the *open*
@@ -341,7 +362,7 @@ with a stated reason. An undisclosed deviation is indistinguishable from drift.
 | `results/lambda_scheduling.{csv,png}` outlive their producer | The `thermo` module was cut, but these are the only in-tree evidence of that negative result, and `ARCHITECTURE.md` declares changelog-referenced artifacts deliberate. |
 | Two-path AMR harness (legacy `LShapeAMRGame` + substrate `RefinementGame`) | Time-boxed: legacy `LShapeAMRGame` / `lshape_amr_compare` remain as golden back-compat while production/arena paths use `SubstrateRefinementGame` (`openspec/changes/refinement-game-registrant`). **Retirement condition:** the golden test is the sole remaining consumer of the legacy harness. |
 | `src/research/substrates/skfem_tri.py` is in the global coverage `omit` | It requires the optional `[fem]` extra, so the repo-wide `--cov=src` gate would report it as 0% ("never imported") on every job without scikit-fem. Not ungated, though: the `test-extras` job — the only one that installs the extra — runs a dedicated `--cov=src/research/substrates` step at `--cov-fail-under=95` against an inline `.coveragerc` that drops the omit, the same technique already used for `video_compression` and `demos`. |
-| Two tracks are frozen rather than active or removed | The refinement thesis now has a committed interpretable answer (`results/mcts_classical_amr_arena.csv`, median `l2_error_ratio_at_matched_dof` **0.9532**). The thesis freeze lifted on that signed result. `codec` and `interactive-surfaces` remain paused so the split-attention gate keeps working until a follow-up edits `config/focus.yaml` (empty `frozen_tracks` is rejected). Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py` through CI's `focus` job, which is a **hard merge gate** in `ci-success` since 2026-09-11 (pull-request runs only; `ci-success` accepts `skipped` from it exactly when the event is not a pull request or the visible `focus-override` label is present, and fails the build on any other skip — `tests/docs/test_ci_success_hard_gates.py` guards both clauses). **Retirement:** rewrite or remove this row when `config/focus.yaml` is re-scoped. |
+| Two tracks are frozen rather than active or removed | The thesis freeze lifted on the committed arena result (`results/mcts_classical_amr_arena.{csv,run.json}`, median `l2_error_ratio_at_matched_dof` **0.9532**, the pre-registered gate). **Corrected 2026-10-08:** that result does not answer the refinement thesis. It is single-element greedy marking against Dörfler — the MCTS arm makes the greedy control's identical decisions (`decisions_diverging_from_greedy_max` 0, MCTS/greedy 1.0), so **search contributed no decisions** — and the thesis question is open until Gate 1. The lift stands on the pre-registered verdict, which still holds; re-freezing is an owner decision this correction does not make. `codec` and `interactive-surfaces` remain paused so the split-attention gate keeps working until a follow-up edits `config/focus.yaml` (empty `frozen_tracks` is rejected). Frozen code stays in the tree, green in CI, and keeps its coverage gate. Recorded in `docs/FOCUS.md`, enforced by `scripts/check_focus.py` through CI's `focus` job, which is a **hard merge gate** in `ci-success` since 2026-09-11 (pull-request runs only; `ci-success` accepts `skipped` from it exactly when the event is not a pull request or the visible `focus-override` label is present, and fails the build on any other skip — `tests/docs/test_ci_success_hard_gates.py` guards both clauses). **Retirement:** rewrite or remove this row when `config/focus.yaml` is re-scoped. |
 | Four B10 packages stay in scope without a production caller | `src/prototyping/`, `src/analysis/`, `src/curriculum/`, and `src/tournament/` are in-tree, test-held, and not production-wired. They remain in the scope register. This is not a 2026-07-22-style cut (`video_compression` was restored the next day). **Retirement:** remove this row when a dedicated change wires a production `src/` caller outside each package’s tests, or cuts a package through Non-Goal Exclusion with a `CUT_MODULES` entry. |
 <!-- charter:deviations:end -->
 

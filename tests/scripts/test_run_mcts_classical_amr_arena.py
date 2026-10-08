@@ -14,8 +14,16 @@ from scripts.run_mcts_classical_amr_arena import (
     build_parser,
     load_scenario_dict,
     main,
+    stable_metrics,
 )
+from src.poc.baselines.registry import ScenarioBaselineRegistry
 from src.poc.scenarios.mcts_classical_amr_arena_config import SCENARIO_NAME
+from src.research.amr_arena_types import (
+    DIVERGENCE_MAX_METRIC,
+    DIVERGENCE_METRIC,
+    GREEDY_OVER_DORFLER_METRIC,
+    MCTS_OVER_GREEDY_METRIC,
+)
 
 pytest.importorskip("scipy", reason="scipy required when main() runs the scenario")
 
@@ -120,3 +128,44 @@ def test_build_config_and_main_micro(tmp_path: Path) -> None:
     code = main(["--config", str(path), "--output-dir", str(tmp_path)])
     assert code in (0, 1)
     assert (tmp_path / "cli_micro.csv").exists() or list(tmp_path.glob("*.csv"))
+
+
+#: An arena metrics dict as the scenario reports it: policy ratios, the two
+#: divergence diagnostics, and the wall-clock-derived keys.
+_ARENA_METRICS: dict[str, float] = {
+    "l2_error_ratio_at_matched_dof": 0.9532,
+    MCTS_OVER_GREEDY_METRIC: 1.0,
+    GREEDY_OVER_DORFLER_METRIC: 0.9532,
+    DIVERGENCE_METRIC: 0.0,
+    DIVERGENCE_MAX_METRIC: 0.0,
+    "matched_wall_time_seconds": 0.27,
+    "error_per_dof_ratio_mcts_over_dorfler": 32.1,
+}
+
+
+def test_stable_metrics_keeps_policy_ratios_and_drops_diagnostics_and_wall_clock() -> None:
+    assert stable_metrics(_ARENA_METRICS) == {
+        "l2_error_ratio_at_matched_dof": 0.9532,
+        MCTS_OVER_GREEDY_METRIC: 1.0,
+        GREEDY_OVER_DORFLER_METRIC: 0.9532,
+    }
+
+
+def test_a_search_that_starts_diverging_does_not_fail_the_baseline_gate() -> None:
+    """Divergence going 0 -> n is the search starting to matter, not a regression.
+
+    Driven through the real registry: the registry records every metric it is
+    given as lower-better unless told otherwise, so a divergence count that
+    reached the baseline would turn the first configuration where MCTS departs
+    from greedy into a gate failure. Killed mutation: dropping the diagnostic
+    exclusion from ``stable_metrics`` turns this test red.
+    """
+    registry = ScenarioBaselineRegistry.from_observed(
+        {SCENARIO_NAME: stable_metrics(_ARENA_METRICS)},
+        higher_better_metrics=("mcts_win_fraction",),
+    )
+    later = {**_ARENA_METRICS, DIVERGENCE_METRIC: 3.0, DIVERGENCE_MAX_METRIC: 5.0}
+
+    report = registry.compare({SCENARIO_NAME: later})
+
+    assert report.is_clean, report.summary()

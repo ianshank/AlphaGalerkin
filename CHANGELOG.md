@@ -666,6 +666,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **The arena's matched-DOF 0.9532 is greedy marking, not look-ahead; the claim is corrected
+  everywhere it was stated.** `results/mcts_classical_amr_arena.{csv,png,run.json}` is re-recorded
+  with the single-element greedy control (proposal grade, `dirty: false`; `config_hash`
+  `80f39466392dbf90` -> `ccb72ad2c13b4111`, because the config now records
+  `include_greedy_control`). The 51 uniform/Dörfler/MCTS rows match the previous artifact in every
+  column but wall time, and the 13 greedy rows equal every MCTS seed's trajectory:
+  `decisions_diverging_from_greedy_max` 0, MCTS/greedy 1.0, greedy/Dörfler 0.9532 -- search
+  contributed no decisions, so the artifact does not test look-ahead. The wall-clock
+  `error_per_dof_ratio_mcts_over_dorfler` moved 30.84 -> 32.10 with machine load (ungated). OpenSpec
+  change `arena-lookahead-attribution` modifies three charter Requirements (the evidence row, the
+  Novelty arena paragraph and the frozen-tracks deviation row) and is applied in place; README,
+  `docs/FOCUS.md`, the arena spec (annotated in place -- it is a pre-registration) and the
+  2026-09-08 CLAUDE.md milestone are corrected with the corrections left visible. The scenario gate
+  (MCTS/Dörfler < 1) is unchanged and still passes. New guard `tests/docs/test_lookahead_attribution.py`
+  (16/16 planted defects killed). The arena CLI now pre-flights `--proposal-grade` with `RunRecorder`
+  before it writes into `results/` (5/5 killed) and leaves the directionless divergence count out of
+  its regression baseline; `include_greedy_control=False` is documented as writing the legacy rows,
+  not the legacy sidecar. (Gate 0, item 0.1.)
+- **`SubstrateRefinementGame` no longer chooses its injected cache or substrate by truthiness.**
+  `solve_cache or FingerprintSolveCache(...)` (and the same for `substrate`) would silently replace
+  any injected object that is falsy -- an empty cache, the moment the class gains a `__len__`. The
+  arena keeps the cache it injects and reads hit/miss counts from it, so that one-line change would
+  zero every arm's solve count without an error. Now `is None`; a falsy-cache test kills both
+  restored forms. Latent today: `FingerprintSolveCache` defines no `__len__`.
 - **A charter-cited sidecar now passes the repo's own proposal-grade check.**
   `results/lshape_adaptive_vs_uniform.run.json` (cited by the evidence register) recorded
   `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejected it. Re-recorded

@@ -24,7 +24,7 @@ by rewriting the review.
 | 0.1 — correct the claim in the charter, README, FOCUS, CLAUDE.md and the arena spec, with an attribution guard | **Done** — artifact re-recorded with the control (divergence 0, MCTS/greedy 1.0); every live statement now says search contributed no decisions | openspec change `arena-lookahead-attribution`, `tests/docs/test_lookahead_attribution.py` |
 | 0.2 — re-record `lshape_adaptive_vs_uniform` | **Done** | `results/lshape_adaptive_vs_uniform.run.json`, `tests/docs/test_proposal_grade_sidecars.py` |
 | 0.3 — README performance table | **Done** — removed, and front-door figures now need a hardware-tagged artifact | `tests/docs/test_performance_claims.py` |
-| 0.4 — deprecate codec MCTS rate control | **Done** — warns on use; removal dated 0.6.0 | `src/video_compression/mcts/rate_control.py` |
+| 0.4 — deprecate codec MCTS rate control | **Done** — warns on use under test runners and `-W default` (Python's default filters hide it in user scripts; a codec-only follow-up, hygiene B41, makes it visible); removal dated 0.6.0 | `src/video_compression/mcts/rate_control.py` |
 | 0.5 — PicoGK disclosure | **Done** | `src/pde/sdf.py`, `specs/noyron_basis.spec.md`, `tests/docs/test_picogk_disclosure.py` |
 | Gate 1 testbed — two reentrant corners of unequal strength | **Landed** — a Z-tetromino on `SkfemTriSubstrate`; the adequacy gate passes on it | `src/pde/geometry_polyomino.py`, `src/pde/operators/multi_corner_poisson.py` |
 | Gate 1 — pre-registration and runs | In progress | `specs/lookahead_vs_greedy.spec.md` |

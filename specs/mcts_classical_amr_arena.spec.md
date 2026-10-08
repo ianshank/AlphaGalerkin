@@ -189,8 +189,13 @@ and the sidecar's `config_hash` (`d6993a0dfd1ab778`) now recomputes from its rec
 The MCTS arm makes the greedy control's identical 12 decisions on every seed, so
 the 0.9532 is single-element greedy marking against Dörfler bulk marking — a
 marking-granularity effect — and **search contributed no decisions**. The
-hypothesis (look-ahead beats greedy marking) is **untested** by this artifact;
-Gate 1 tests it. Two further readings are corrected:
+hypothesis (look-ahead beats greedy marking) is **untested** by this artifact.
+Gate 1 (`specs/lookahead_vs_greedy.spec.md`, pre-registered) tested it on this
+L-shape and on a two-corner Z-tetromino and returned **NO-GO** on both: the
+deterministic search again made greedy's decisions at every step, and the best
+classical arm beat it at matched DOF. That does not close the hypothesis; the
+moving-front testbed that can decide it is deferred. Two further readings are
+corrected:
 
 - **The binding limit is `max_steps=12`, not `max_dof=600`.** Both game-driven arms
   stop after 12 refinements at 287 DOF, which is what sets matched DOF; the

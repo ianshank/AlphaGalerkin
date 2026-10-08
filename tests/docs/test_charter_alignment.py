@@ -306,10 +306,15 @@ _ARM_SPELLINGS: dict[str, tuple[str, ...]] = {
     "uniform": ("uniform",),
     "dorfler": ("dorfler", "d\u00f6rfler"),
     "mcts": ("mcts",),
+    "greedy": ("greedy",),
 }
 
 #: CSV columns that identify which arm a row belongs to.
 _ARM_COLUMNS: tuple[str, ...] = ("method", "arm")
+
+#: Joins an arm's canonical name to a parameterised variant's suffix in an artifact's arm
+#: column: Gate 1 writes ``dorfler_theta0.3`` and ``mcts_primary``, not ``dorfler``/``mcts``.
+_ARM_VARIANT_SEPARATOR: str = "_"
 
 
 def _arms_named_in(claim: str) -> set[str]:
@@ -320,6 +325,18 @@ def _arms_named_in(claim: str) -> set[str]:
         for canonical, spellings in _ARM_SPELLINGS.items()
         if any(spelling in lowered for spelling in spellings)
     }
+
+
+def _arm_present(arm: str, labels: set[str]) -> bool:
+    """Whether an artifact's arm ``labels`` hold ``arm`` itself or a parameterised variant.
+
+    A variant needs the separator: ``dorfler_theta0.3`` is a Dörfler arm, ``dorflerish``
+    is not -- a bare prefix match would let any label that merely starts with an arm's
+    name stand in for it.
+    """
+    return arm in labels or any(
+        label.startswith(f"{arm}{_ARM_VARIANT_SEPARATOR}") for label in labels
+    )
 
 
 def _csv_arms(path: Path) -> set[str] | None:
@@ -540,6 +557,28 @@ def test_comparison_arm_guard_actually_examines_a_claim() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("arm", "labels", "expected"),
+    [
+        ("dorfler", {"dorfler", "mcts"}, True),
+        ("dorfler", {"dorfler_theta0.3", "greedy"}, True),
+        ("mcts", {"mcts_primary", "mcts_robust"}, True),
+        ("dorfler", {"dorflerish"}, False),
+        ("uniform", {"dorfler", "mcts"}, False),
+    ],
+    ids=["exact", "theta-variant", "named-variant", "prefix-without-separator", "absent"],
+)
+def test_an_arm_is_present_as_itself_or_a_parameterised_variant(
+    arm: str, labels: set[str], expected: bool
+) -> None:
+    """A variant counts only with the separator, and an absent arm stays absent.
+
+    The last case is the defect the guard was written for: a uniform claim citing a CSV
+    holding only Dörfler and MCTS rows.
+    """
+    assert _arm_present(arm, labels) is expected
+
+
 def test_provenance_exemptions_are_still_needed() -> None:
     """A stale exemption is a permanent blind spot; make it fail instead."""
     stale: list[str] = []
@@ -587,7 +626,7 @@ def test_comparison_claims_cite_an_artifact_containing_the_arms() -> None:
                 present |= arms
         if not present:
             continue  # no arm column anywhere; nothing to check
-        missing = sorted(arm for arm in named if arm not in present)
+        missing = sorted(arm for arm in named if not _arm_present(arm, present))
         if missing:
             failures.append(
                 f"{claim!r}: names arm(s) {missing} but the cited artifact(s) "

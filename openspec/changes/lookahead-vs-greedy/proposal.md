@@ -44,11 +44,19 @@ corners of unequal strength (`zshape_poisson`, merged in C1).
 6. **Capability register** — one row, `lookahead_vs_greedy`, in the charter's capability region.
 7. **Artifacts** — proposal-grade `results/lookahead_vs_greedy_{lshape,zshape}.{csv,png,run.json}`
    and a regenerated `results/MANIFEST.sha256`.
+8. **Reporting, after the runs (task 4)** — two evidence-register rows (NO-GO on T1 and T2), the
+   Novelty paragraph and the frozen-tracks deviation row state the result; `README.md`,
+   `docs/FOCUS.md`, the arena spec and the peer review's status table follow; and
+   `tests/docs/test_lookahead_attribution.py` reads Gate 1 sidecars through their own divergence
+   metric (`primary_decisions_diverging_from_greedy`), so a Gate 1 claim must carry the
+   "search contributed no decisions" label exactly as an arena claim must.
 
 ## Impact
 
-- Charter: the *Capability Register Accuracy* Requirement gains one register row (see the delta).
-  No other Requirement, and no evidence, novelty or deviation row, changes here.
+- Charter: the *Capability Register Accuracy* Requirement gains one register row, landed with the
+  code. After the runs, *Evidence-Backed Claims* gains two rows, and *Novelty Claim Discipline*
+  and *Accepted Deviation Disclosure* state the result (see the delta). The result's wording was
+  written after the runs, from the sidecars; no threshold or pre-registered value changed.
 - `src/mcts/search.py` stays at its 716-line size budget: the `root` property's lines are offset by
   condensing `get_root_value`'s docstring.
 - The shape ratchet's lazy-import count is unchanged: the config dispatch for the new scenario adds
@@ -60,9 +68,9 @@ corners of unequal strength (`zshape_poisson`, merged in C1).
 
 - It does not build T3 (the moving front), the testbed the plan calls decisive.
 - It does not train an evaluator, tune any search knob, or change a threshold after a result.
-- It does not write the charter evidence, novelty or deviations rows, `README.md`, `docs/FOCUS.md`,
-  `CLAUDE.md` or `CHANGELOG.md` — the result's wording for those is proposed in the run report and
-  owned elsewhere.
+- It did not write the charter evidence, novelty or deviations rows, `README.md`, `docs/FOCUS.md`,
+  `CLAUDE.md` or `CHANGELOG.md` before the runs. The result's wording was proposed in the run
+  report and landed afterwards through `claims-ledger` (task 4).
 - It does not change `MCTS`'s default `search_mode`, the arena's scored locks, or the committed
   arena artifact.
 - A NO-GO on T1/T2 does not close the thesis; a GO needs replication before any claim.

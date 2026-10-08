@@ -27,9 +27,9 @@ by rewriting the review.
 | 0.4 — deprecate codec MCTS rate control | **Done** — warns on use under test runners and `-W default` (Python's default filters hide it in user scripts; a codec-only follow-up, hygiene B41, makes it visible); removal dated 0.6.0 | `src/video_compression/mcts/rate_control.py` |
 | 0.5 — PicoGK disclosure | **Done** | `src/pde/sdf.py`, `specs/noyron_basis.spec.md`, `tests/docs/test_picogk_disclosure.py` |
 | Gate 1 testbed — two reentrant corners of unequal strength | **Landed** — a Z-tetromino on `SkfemTriSubstrate`; the adequacy gate passes on it | `src/pde/geometry_polyomino.py`, `src/pde/operators/multi_corner_poisson.py` |
-| Gate 1 — pre-registration and runs | In progress | `specs/lookahead_vs_greedy.spec.md` |
-| Moving-front testbed | Not started — needs a time-dependent substrate | — |
-| Gate 2, Track T | Not started — conditional on Gate 1, or on decision 4 | — |
+| Gate 1 — pre-registration and runs | **Run on T1 and T2: NO-GO on both** (0/5 criteria each). With 64 simulations over a top-4 ranked legal set, the deterministic search made greedy's 30 decisions on each testbed (search contributed no decisions), and the best classical arm beat it at matched DOF (MCTS/best classical 1.0216 vs Dörfler θ=0.3; 1.0296 vs Dörfler θ=0.5). The pre-registration says a NO-GO on these elliptic controls does not close the thesis; §6's "NO-GO closes the thesis" applies once the decisive testbed runs | `specs/lookahead_vs_greedy.spec.md`, `results/lookahead_vs_greedy_lshape.{csv,run.json}`, `results/lookahead_vs_greedy_zshape.{csv,run.json}` |
+| Moving-front testbed (Gate 1 T3) | Not started — needs a time-dependent substrate; the testbed that decides the thesis | — |
+| Gate 2, Track T | Not started. Gate 2's GO branch has no GO to stand on; until T3 runs, the only framing the evidence supports is its NO-GO lead (the evidence-governance tooling, and zero-retraining transfer at a stated accuracy cost). Track T waits on decision 4 | — |
 
 ---
 

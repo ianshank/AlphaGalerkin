@@ -1,4 +1,4 @@
-"""A claim citing an arena run whose search never left greedy marking must say so.
+"""A claim citing an arena-family run whose search never left greedy marking must say so.
 
 Defect class, in one sentence: **an AMR policy-ratio claim attributes to look-ahead a
 result whose own run record shows the search made no decision that single-element
@@ -13,22 +13,33 @@ control, the sidecar says so itself: ``decisions_diverging_from_greedy_max`` 0, 
 1.0. Every check that existed asked whether a claim *cited* an artifact; none asked what the
 artifact said about the claim.
 
+The same held for Gate 1 (``specs/lookahead_vs_greedy.spec.md``): both pre-registered
+testbeds came out NO-GO with the deterministic search making greedy's 30 decisions, and its
+sidecars record that as ``primary_decisions_diverging_from_greedy`` -- a metric the guard's
+first version, which read only the arena's ``decisions_diverging_from_greedy_max``, could not
+see. The *arena family* is therefore declared in :data:`DIVERGENCE_SCHEMAS`: each harness whose
+sidecars record a greedy-divergence count, with the metric that decides the label (the
+arena's maximum over seeds; Gate 1's deterministic primary arm -- its root-noise arm departs
+from greedy through noise, not search, and neither requires nor excuses the label).
+
 The trigger is the artifact, not the prose, so no paraphrase escapes it:
 
 * **(a)** an MCTS-vs-Dörfler policy-ratio subject -- a charter evidence row or a ``README.md``
   paragraph, list item or table row, read by ``tests/support/charter.py``'s shared
   :func:`~tests.support.charter.amr_policy_ratio_subjects` -- that cites a run (a ``.csv``,
-  brace form included, or its ``.run.json``) whose sidecar records
-  ``decisions_diverging_from_greedy_max == 0`` must carry
-  :data:`~tests.support.charter.NO_LOOKAHEAD_LABEL`; and the label may not outlive its fact
-  (a claim whose cited arena runs all record divergence above zero may not carry it);
-* **(b)** every sidecar written by the arena harness records both divergence metrics as
-  finite, non-negative numbers -- otherwise an old-schema artifact needs no label and dodges
-  (a) exactly when it matters;
-* **(c)** vacuity: the scan finds an arena sidecar; it examines an arena claim on *both*
-  surfaces; no README paragraph or list item that states an arena ratio goes unexamined (the
-  README's main arena bullet wraps over seven lines and was invisible to the old per-line
-  scan); and the label is stated in the charter's evidence register.
+  brace form included, or its ``.run.json``) whose sidecar records its harness's label metric
+  as 0 must carry :data:`~tests.support.charter.NO_LOOKAHEAD_LABEL`; and the label may not
+  outlive its fact (a claim whose cited arena-family runs all diverged may not carry it);
+* **(b)** every sidecar written by an arena-family harness -- cited or not -- records its
+  schema's metrics as finite, non-negative numbers; otherwise an old-schema artifact needs no
+  label and dodges (a) exactly when it matters;
+* **(c)** vacuity: the scan finds a sidecar of *each* declared harness; every committed
+  sidecar that records a divergence count belongs to a declared harness (an undeclared one is
+  invisible to (a)); each harness has a claim the subject scan examines in the evidence
+  register; an arena claim is examined on *both* surfaces; no README paragraph or list item
+  that states an arena-family ratio goes unexamined (the README's main arena bullet wraps over
+  seven lines and was invisible to the old per-line scan); and the label is stated in the
+  charter's evidence register.
 
 Divergence above zero is not evidence of look-ahead either (``src/research/greedy_control.py``:
 at ``top_k_actions=0`` one simulation diverges by tie-break alone), so nothing is *required*
@@ -43,8 +54,11 @@ sidecar copy, through a throwaway pytest plugin, and each is also pinned below a
 
 1. **The literal historical defect** -- the pre-correction evidence row ("MCTS **wins**
    ~4.7%", no label) restored -> ``test_claims_citing_a_no_divergence_run_carry_the_label``
-   and ``test_the_label_is_stated_in_the_evidence_register``.
-2. The label removed from the charter's arena row -> the same two tests.
+   (and, while it was the only labelled row, ``test_the_label_is_stated_in_the_evidence_register``).
+2. The label removed from the charter's arena row -> the first of those tests, naming the row.
+   Since the Gate 1 rows also carry the label, the register-wide check fires only when no row
+   does: ``TestPlantedDefects::``
+   ``test_an_evidence_register_without_the_label_turns_the_vacuity_check_red``.
 3. The label removed from ``README.md`` ->
    ``test_claims_citing_a_no_divergence_run_carry_the_label``, naming both README arena claims.
 4. A sidecar copy with both divergence metrics set to 1, label kept ->
@@ -83,6 +97,39 @@ sidecar copy, through a throwaway pytest plugin, and each is also pinned below a
 3 also exposed a defect in the first draft: one check read ``README.md`` through a name bound
 at import, so a substituted README reached the subject scan and not that check (a spurious
 second failure). Every document is now read through ``tests.support.charter`` at call time.
+
+The Gate 1 extension (2026-10-08) was mutation-tested the same way; each defect edited this
+module and was restored byte-for-byte, and the planted twin keeps it running in CI:
+
+17. **The label read only from the arena's maximum** (the guard before the extension) ->
+    ``TestPlantedDefects::test_removing_the_label_from_a_gate1_row_turns_the_guard_red``.
+18. Gate 1's label read from the root-noise arm (23 departures) ->
+    ``test_the_label_does_not_outlive_its_fact`` (and
+    ``TestPlantedDefects::test_a_gate1_label_read_from_the_noise_arm_is_stale``).
+19. Gate 1's schema deleted -> ``test_every_harness_recording_divergence_is_declared``.
+20. The divergence stem matching nothing ->
+    ``TestPlantedDefects::test_an_undeclared_divergence_harness_turns_the_vocabulary_check_red``.
+21. Vacuity counted in total rather than per harness ->
+    ``TestPlantedDefects::test_a_harness_with_no_sidecar_in_view_turns_the_vacuity_check_red``.
+22. The ledger check not filtered by harness ->
+    ``TestPlantedDefects::test_gate1_rows_the_scan_cannot_see_turn_the_ledger_check_red``.
+23. The label-metric meta-check emptied ->
+    ``TestPlantedDefects::test_a_label_metric_outside_the_required_set_turns_the_meta_check_red``.
+24. (b) reading the arena's metrics for every harness ->
+    ``test_arena_sidecars_record_the_divergence_metrics``.
+25. "Stale" read as *any* cited run diverging, not *every* one ->
+    ``TestPlantedDefects::test_a_label_stays_while_any_cited_run_stayed_greedy``.
+26. The plants' label pattern matching only an unwrapped label ->
+    ``TestPlantedDefects::test_a_diverging_run_requires_no_label`` (README's Gate 1 bullet
+    wraps the label across two lines; ``_unlabelled`` now also asserts no statement survives).
+27. The harness filter admitting every sidecar ->
+    ``test_arena_sidecars_record_the_divergence_metrics``.
+28. The committed-sidecar scan globbing the real root instead of ``REPO_ROOT`` ->
+    ``TestPlantedDefects::test_an_uncited_committed_sidecar_is_held_to_the_schema``. Before
+    that plant it survived: every committed arena-family sidecar is also cited, so the
+    citation half of the scan masked the committed half.
+
+12/12 killed.
 """
 
 from __future__ import annotations
@@ -92,13 +139,19 @@ import math
 import re
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 import pytest
 
 from src.research.amr_arena_types import DIVERGENCE_MAX_METRIC, DIVERGENCE_METRIC
-from src.research.mcts_classical_amr_arena import HARNESS_NAME
+from src.research.lookahead_vs_greedy_artifacts import HARNESS_NAME as GATE1_HARNESS_NAME
+from src.research.lookahead_vs_greedy_metrics import (
+    PRIMARY_DIVERGENCE_METRIC,
+    ROBUST_DIVERGENCE_MAX_METRIC,
+)
+from src.research.mcts_classical_amr_arena import HARNESS_NAME as ARENA_HARNESS_NAME
 from src.research.run_manifest import RunManifest, load_run_manifest
 from tests.support import charter as charter_support
 from tests.support.charter import (
@@ -133,8 +186,43 @@ NO_DIVERGENCE: Final[float] = 0.0
 #: Metrics every arena sidecar must record, so a claim citing it can be checked.
 DIVERGENCE_METRICS: Final[tuple[str, ...]] = (DIVERGENCE_METRIC, DIVERGENCE_MAX_METRIC)
 
-#: Vacuity floor: arena sidecars the scan must find.
-MIN_ARENA_SIDECARS: Final[int] = 1
+#: Vacuity floor: sidecars the scan must find for each declared harness.
+MIN_SIDECARS_PER_HARNESS: Final[int] = 1
+
+#: Every greedy-divergence metric name carries this stem, whatever its prefix or
+#: suffix; a sidecar recording one under an undeclared harness is one (a) cannot read.
+DIVERGENCE_METRIC_STEM: Final[str] = DIVERGENCE_METRIC
+
+
+@dataclass(frozen=True)
+class DivergenceSchema:
+    """Where one harness of the arena family records whether its search left greedy.
+
+    ``label_metric`` decides the label: a claim citing a run that recorded it as zero
+    must say :data:`NO_LOOKAHEAD_LABEL`. Each of ``required_metrics`` must be a finite,
+    non-negative count in every sidecar the harness writes, so a claim cannot dodge (a)
+    by citing a run that recorded nothing.
+    """
+
+    label_metric: str
+    required_metrics: tuple[str, ...]
+
+
+#: The arena family, keyed by the ``harness`` a sidecar names. A harness that records a
+#: divergence count and is missing here is caught by
+#: ``test_every_harness_recording_divergence_is_declared``.
+DIVERGENCE_SCHEMAS: Final[dict[str, DivergenceSchema]] = {
+    # Per-seed counts; the label reads the maximum, so one seed that diverged drops it.
+    ARENA_HARNESS_NAME: DivergenceSchema(
+        label_metric=DIVERGENCE_MAX_METRIC, required_metrics=DIVERGENCE_METRICS
+    ),
+    # Gate 1: the deterministic primary arm is the search its verdict reads (criterion
+    # C2). The root-noise arm departs from greedy through noise in its decision rule,
+    # not through search, so its count neither requires nor excuses the label.
+    GATE1_HARNESS_NAME: DivergenceSchema(
+        label_metric=PRIMARY_DIVERGENCE_METRIC, required_metrics=(PRIMARY_DIVERGENCE_METRIC,)
+    ),
+}
 
 
 def _read_sidecar(relative: str) -> tuple[RunManifest | None, str | None]:
@@ -153,7 +241,7 @@ def _read_sidecar(relative: str) -> tuple[RunManifest | None, str | None]:
 
 
 def _arena_sidecars() -> tuple[list[tuple[str, RunManifest]], list[str]]:
-    """Arena-harness sidecars among the committed and the cited ones, and read problems."""
+    """Arena-family sidecars among the committed and the cited ones, and read problems."""
     candidates = {
         path.relative_to(REPO_ROOT).as_posix() for path in REPO_ROOT.glob(COMMITTED_SIDECARS_GLOB)
     }
@@ -166,9 +254,22 @@ def _arena_sidecars() -> tuple[list[tuple[str, RunManifest]], list[str]]:
         manifest, problem = _read_sidecar(relative)
         if problem is not None:
             problems.append(problem)
-        elif manifest is not None and manifest.harness == HARNESS_NAME:
+        elif manifest is not None and manifest.harness in DIVERGENCE_SCHEMAS:
             arena.append((relative, manifest))
     return arena, problems
+
+
+def _sidecars_of(harness: str) -> set[str]:
+    """The arena-family sidecars in view that one harness wrote."""
+    return {relative for relative, manifest in _arena_sidecars()[0] if manifest.harness == harness}
+
+
+def _label_reading(manifest: RunManifest) -> tuple[str, float] | None:
+    """``(label metric, recorded value)`` for an arena-family run; ``None`` otherwise."""
+    schema = DIVERGENCE_SCHEMAS.get(manifest.harness)
+    if schema is None or schema.label_metric not in manifest.metrics:
+        return None
+    return schema.label_metric, manifest.metrics[schema.label_metric]
 
 
 def _is_count(value: float | None) -> bool:
@@ -190,13 +291,13 @@ def test_claims_citing_a_no_divergence_run_carry_the_label() -> None:
             manifest, problem = _read_sidecar(sidecar)
             if problem is not None:
                 failures.append(f"{source}: {problem}")
-            elif manifest is not None:
-                if manifest.metrics.get(DIVERGENCE_MAX_METRIC) == NO_DIVERGENCE:
-                    no_divergence.append(sidecar)
+            elif manifest is not None and (reading := _label_reading(manifest)) is not None:
+                metric, value = reading
+                if value == NO_DIVERGENCE:
+                    no_divergence.append(f"{sidecar} ({metric} == 0)")
         if no_divergence and not carries_no_lookahead_label(body):
             failures.append(
-                f"{source}: cites {no_divergence}, which records {DIVERGENCE_MAX_METRIC} == 0, "
-                f"but does not say {NO_LOOKAHEAD_LABEL!r}"
+                f"{source}: cites {no_divergence}, but does not say {NO_LOOKAHEAD_LABEL!r}"
             )
     assert not failures, (
         "AMR policy-ratio claims attribute to look-ahead a run whose search made no decision "
@@ -214,16 +315,16 @@ def test_the_label_does_not_outlive_its_fact() -> None:
         if not carries_no_lookahead_label(body):
             continue
         recorded = {
-            sidecar: manifest.metrics[DIVERGENCE_MAX_METRIC]
+            sidecar: reading
             for sidecar in cited_sidecars_in(body)
             if (manifest := _read_sidecar(sidecar)[0]) is not None
-            and DIVERGENCE_MAX_METRIC in manifest.metrics
+            and (reading := _label_reading(manifest)) is not None
         }
-        if recorded and NO_DIVERGENCE not in recorded.values():
+        if recorded and all(value != NO_DIVERGENCE for _, value in recorded.values()):
             stale.append(f"{source}: says {NO_LOOKAHEAD_LABEL!r}, but its runs record {recorded}")
     assert not stale, (
-        "claims carry the no-look-ahead label although every arena run they cite records "
-        f"{DIVERGENCE_MAX_METRIC} above zero -- the disclosure outlived its fact:\n  "
+        "claims carry the no-look-ahead label although every arena-family run they cite "
+        "records its search diverging from greedy -- the disclosure outlived its fact:\n  "
         + "\n  ".join(stale)
     )
 
@@ -233,31 +334,82 @@ def test_arena_sidecars_record_the_divergence_metrics() -> None:
     arena, problems = _arena_sidecars()
     failures = list(problems)
     for relative, manifest in arena:
-        for key in DIVERGENCE_METRICS:
+        for key in DIVERGENCE_SCHEMAS[manifest.harness].required_metrics:
             value = manifest.metrics.get(key)
             if not _is_count(value):
                 failures.append(f"{relative}: {key}={value!r}")
     assert not failures, (
-        f"sidecars written by {HARNESS_NAME} must record {list(DIVERGENCE_METRICS)} as finite, "
-        "non-negative counts:\n  "
+        "sidecars written by an arena-family harness must record their schema's divergence "
+        "metrics as finite, non-negative counts:\n  "
         + "\n  ".join(failures)
         + "\n\nRe-record the artifact with the greedy control (include_greedy_control, the "
         "default) -- the claims-ledger / run-provenance skills."
     )
 
 
-def test_the_arena_sidecar_scan_is_not_vacuous() -> None:
-    """(c) Without an arena sidecar in view, (a) and (b) check nothing."""
-    arena, _ = _arena_sidecars()
-    assert len(arena) >= MIN_ARENA_SIDECARS, (
-        f"found {len(arena)} sidecar(s) written by {HARNESS_NAME}; at least "
-        f"{MIN_ARENA_SIDECARS} expected under {COMMITTED_SIDECARS_GLOB} or cited by a claim"
+@pytest.mark.parametrize("harness", sorted(DIVERGENCE_SCHEMAS))
+def test_the_arena_sidecar_scan_is_not_vacuous(harness: str) -> None:
+    """(c) Without a sidecar of each declared harness in view, (a) and (b) check nothing.
+
+    Per harness, not in total: one harness still matching would mask a renamed other.
+    """
+    found = _sidecars_of(harness)
+    assert len(found) >= MIN_SIDECARS_PER_HARNESS, (
+        f"found {len(found)} sidecar(s) written by {harness}; at least "
+        f"{MIN_SIDECARS_PER_HARNESS} expected under {COMMITTED_SIDECARS_GLOB} or cited by a claim"
     )
+
+
+def test_every_harness_recording_divergence_is_declared() -> None:
+    """(c) A sidecar counting greedy divergence under an undeclared harness escapes (a)."""
+    undeclared: list[str] = []
+    for path in sorted(REPO_ROOT.glob(COMMITTED_SIDECARS_GLOB)):
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        manifest, problem = _read_sidecar(relative)
+        if problem is not None:
+            undeclared.append(problem)
+        elif (
+            manifest is not None
+            and manifest.harness not in DIVERGENCE_SCHEMAS
+            and any(DIVERGENCE_METRIC_STEM in key for key in manifest.metrics)
+        ):
+            undeclared.append(f"{relative} (harness {manifest.harness!r})")
+    assert not undeclared, (
+        "sidecars record a greedy-divergence count under a harness DIVERGENCE_SCHEMAS does "
+        "not declare, so no claim citing them is held to the label:\n  " + "\n  ".join(undeclared)
+    )
+
+
+@pytest.mark.parametrize("harness", sorted(DIVERGENCE_SCHEMAS))
+def test_each_harness_has_a_claim_examined_in_the_evidence_register(harness: str) -> None:
+    """(c) The ledger states every arena-family result, and the subject scan reads it.
+
+    A row the scan cannot see -- one that drops the Dörfler vocabulary, say -- is a row
+    (a) never holds to the label.
+    """
+    sidecars = _sidecars_of(harness)
+    examined = [
+        source
+        for source, body in amr_policy_ratio_subjects()
+        if source.startswith(EVIDENCE_SOURCE_PREFIX) and sidecars & set(cited_sidecars_in(body))
+    ]
+    assert examined, (
+        f"no evidence-register claim citing a {harness} run was examined (its sidecars: "
+        f"{sorted(sidecars)}); state the result in the register, in words the subject scan "
+        "recognises"
+    )
+
+
+@pytest.mark.parametrize("harness", sorted(DIVERGENCE_SCHEMAS))
+def test_each_schema_requires_its_own_label_metric(harness: str) -> None:
+    """A label metric outside (b)'s required set could be misspelled and read as absent."""
+    schema = DIVERGENCE_SCHEMAS[harness]
+    assert schema.label_metric in schema.required_metrics
 
 
 def test_an_arena_claim_is_examined_on_each_surface() -> None:
     """(c) Coverage, not "something matched": one surface still matching can mask the other."""
-    arena = {relative for relative, _ in _arena_sidecars()[0]}
+    arena = _sidecars_of(ARENA_HARNESS_NAME)
     sources = [
         source
         for source, body in amr_policy_ratio_subjects()
@@ -295,10 +447,11 @@ def test_no_readme_arena_claim_goes_unexamined() -> None:
 
 
 def test_the_label_is_stated_in_the_evidence_register() -> None:
-    """(c) The charter's own arena row carries the disclosure."""
+    """(c) The register states the disclosure at all; (a) holds each row to it."""
     assert carries_no_lookahead_label(region("evidence")), (
         f"the charter's evidence register does not state {NO_LOOKAHEAD_LABEL!r}; the arena "
-        "row must say the 0.9532 is greedy marking, not look-ahead"
+        "row must say the 0.9532 is greedy marking, and the Gate 1 rows that the search made "
+        "greedy's decisions"
     )
 
 
@@ -382,12 +535,28 @@ HISTORICAL_EVIDENCE_ROW: Final[str] = (
 #: What a plant writes in place of the label.
 _NOT_THE_LABEL: Final[str] = "look-ahead won"
 
-_LABEL_PATTERN: Final[re.Pattern[str]] = re.compile(re.escape(NO_LOOKAHEAD_LABEL), re.IGNORECASE)
+#: The label as a plant must find it: any whitespace, line breaks included, between
+#: its words -- a label wrapped across two Markdown lines is still the label.
+_LABEL_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\s+".join(map(re.escape, NO_LOOKAHEAD_LABEL.split())), re.IGNORECASE
+)
+
+
+def _cited_in_evidence(harness: str) -> list[str]:
+    """Sidecars of ``harness`` the live charter evidence register cites, in row order."""
+    written = _sidecars_of(harness)
+    return [
+        sidecar
+        for source, body in amr_policy_ratio_subjects()
+        if source.startswith(EVIDENCE_SOURCE_PREFIX)
+        for sidecar in cited_sidecars_in(body)
+        if sidecar in written
+    ]
 
 
 def _arena_sidecar() -> str:
     """The arena sidecar the live charter evidence register cites."""
-    arena = {relative for relative, _ in _arena_sidecars()[0]}
+    arena = _sidecars_of(ARENA_HARNESS_NAME)
     cited = [
         sidecar
         for source, body in amr_policy_ratio_subjects()
@@ -399,18 +568,39 @@ def _arena_sidecar() -> str:
     return cited[0]
 
 
-def _arena_evidence_row() -> str:
-    """The live evidence-register line citing the arena sidecar."""
-    sidecar = _arena_sidecar()
+def _evidence_row_citing(sidecar: str) -> str:
+    """The one live evidence-register line citing ``sidecar``."""
     rows = [line for line in region("evidence").splitlines() if sidecar in cited_sidecars_in(line)]
     assert len(rows) == 1, rows
     return rows[0]
 
 
+def _arena_evidence_row() -> str:
+    """The live evidence-register line citing the arena sidecar."""
+    return _evidence_row_citing(_arena_sidecar())
+
+
+def _gate1_sidecar() -> str:
+    """The first Gate 1 sidecar the live charter evidence register cites."""
+    cited = _cited_in_evidence(GATE1_HARNESS_NAME)
+    assert cited, "no charter evidence row cites a Gate 1 sidecar"
+    return cited[0]
+
+
+def _claim_of(row: str) -> str:
+    """An evidence row's claim cell: what a subject's source names after the prefix."""
+    return row.split("|")[1].strip()
+
+
 def _unlabelled(text: str) -> str:
-    """``text`` with every statement of the label replaced; asserts it had one."""
+    """``text`` with every statement of the label replaced; asserts it had one.
+
+    And asserts none survives as the guard reads it: a plant that misses one statement
+    (a wrapped one, say) leaves a claim labelled and silently weakens the test using it.
+    """
     planted, count = _LABEL_PATTERN.subn(_NOT_THE_LABEL, text)
     assert count, "the plant found no label to remove -- it would silently no-op"
+    assert not carries_no_lookahead_label(planted), "the plant left a statement of the label"
     return planted
 
 
@@ -449,15 +639,32 @@ def _set_metrics(path: Path, **values: float | None) -> None:
     path.write_text(json.dumps(document), encoding="utf-8")
 
 
+def _set_family_divergence(root: Path, value: float | None) -> None:
+    """Set (``None``: delete) every schema metric in every arena-family sidecar under ``root``."""
+    for relative, manifest in _arena_sidecars()[0]:
+        schema = DIVERGENCE_SCHEMAS[manifest.harness]
+        _set_metrics(root / relative, **dict.fromkeys(schema.required_metrics, value))
+
+
+def _run_every_guard() -> None:
+    """Every guard above, each parametrised one over every declared harness."""
+    test_claims_citing_a_no_divergence_run_carry_the_label()
+    test_the_label_does_not_outlive_its_fact()
+    test_arena_sidecars_record_the_divergence_metrics()
+    test_every_harness_recording_divergence_is_declared()
+    for harness in DIVERGENCE_SCHEMAS:
+        test_the_arena_sidecar_scan_is_not_vacuous(harness)
+        test_each_harness_has_a_claim_examined_in_the_evidence_register(harness)
+        test_each_schema_requires_its_own_label_metric(harness)
+    test_an_arena_claim_is_examined_on_each_surface()
+    test_no_readme_arena_claim_goes_unexamined()
+    test_the_label_is_stated_in_the_evidence_register()
+
+
 class TestPlantedDefects:
     def test_the_unplanted_copy_passes_every_guard(self, planted_root: Path) -> None:
         """Control: the planted runs below fail because of the plant, not the copy."""
-        test_claims_citing_a_no_divergence_run_carry_the_label()
-        test_the_label_does_not_outlive_its_fact()
-        test_arena_sidecars_record_the_divergence_metrics()
-        test_the_arena_sidecar_scan_is_not_vacuous()
-        test_an_arena_claim_is_examined_on_each_surface()
-        test_no_readme_arena_claim_goes_unexamined()
+        _run_every_guard()
 
     def test_the_pre_correction_evidence_row_turns_the_guard_red(
         self, monkeypatch: pytest.MonkeyPatch
@@ -478,8 +685,19 @@ class TestPlantedDefects:
         _plant_documents(
             monkeypatch, charter=charter_support.charter_text().replace(row, _unlabelled(row), 1)
         )
-        with pytest.raises(AssertionError, match=re.escape(EVIDENCE_SOURCE_PREFIX)):
+        source = f"{EVIDENCE_SOURCE_PREFIX}{_claim_of(row)}"
+        with pytest.raises(AssertionError, match=re.escape(source)):
             test_claims_citing_a_no_divergence_run_carry_the_label()
+
+    def test_an_evidence_register_without_the_label_turns_the_vacuity_check_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Every row unlabelled: the register no longer states the disclosure at all."""
+        text = charter_support.charter_text()
+        evidence = region("evidence")
+        planted = text.replace(evidence, _unlabelled(evidence), 1)
+        assert planted != text
+        _plant_documents(monkeypatch, charter=planted)
         with pytest.raises(AssertionError, match="evidence register does not state"):
             test_the_label_is_stated_in_the_evidence_register()
 
@@ -494,7 +712,7 @@ class TestPlantedDefects:
         self, planted_root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Positive direction: with divergence above zero, unlabelled claims pass (a)."""
-        _set_metrics(planted_root / _arena_sidecar(), **dict.fromkeys(DIVERGENCE_METRICS, 1.0))
+        _set_family_divergence(planted_root, 1.0)
         _plant_documents(
             monkeypatch,
             charter=_unlabelled(charter_support.charter_text()),
@@ -521,7 +739,7 @@ class TestPlantedDefects:
         self, planted_root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Why (b) exists: with the metrics gone, (a) alone passes an unlabelled claim."""
-        _set_metrics(planted_root / _arena_sidecar(), **dict.fromkeys(DIVERGENCE_METRICS))
+        _set_family_divergence(planted_root, None)
         _plant_documents(
             monkeypatch,
             charter=_unlabelled(charter_support.charter_text()),
@@ -557,8 +775,10 @@ class TestPlantedDefects:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(_GUARD_MODULE, "REPO_ROOT", tmp_path)
-        with pytest.raises(AssertionError, match=f"at least {MIN_ARENA_SIDECARS} expected"):
-            test_the_arena_sidecar_scan_is_not_vacuous()
+        expected = f"at least {MIN_SIDECARS_PER_HARNESS} expected"
+        for harness in DIVERGENCE_SCHEMAS:
+            with pytest.raises(AssertionError, match=expected):
+                test_the_arena_sidecar_scan_is_not_vacuous(harness)
 
     def test_a_per_line_readme_scan_turns_the_coverage_check_red(
         self, monkeypatch: pytest.MonkeyPatch
@@ -571,3 +791,110 @@ class TestPlantedDefects:
         monkeypatch.setattr("tests.support.charter.markdown_units", per_line)
         with pytest.raises(AssertionError, match="never examined"):
             test_no_readme_arena_claim_goes_unexamined()
+
+    # -- Gate 1: the second harness of the arena family -----------------------------
+
+    def test_removing_the_label_from_a_gate1_row_turns_the_guard_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A Gate 1 row is read through its own label metric, not the arena's.
+
+        Before ``DIVERGENCE_SCHEMAS`` the guard read only the arena's maximum, which a
+        Gate 1 sidecar does not record, so this row would pass unlabelled.
+        """
+        row = _evidence_row_citing(_gate1_sidecar())
+        _plant_documents(
+            monkeypatch, charter=charter_support.charter_text().replace(row, _unlabelled(row), 1)
+        )
+        source = f"{EVIDENCE_SOURCE_PREFIX}{_claim_of(row)}"
+        with pytest.raises(AssertionError, match=re.escape(source)):
+            test_claims_citing_a_no_divergence_run_carry_the_label()
+        test_the_label_is_stated_in_the_evidence_register()  # the arena row still says it
+
+    def test_a_gate1_label_read_from_the_noise_arm_is_stale(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Root noise departs from greedy without search; reading it would flip the label."""
+        noise = DivergenceSchema(
+            label_metric=ROBUST_DIVERGENCE_MAX_METRIC,
+            required_metrics=(ROBUST_DIVERGENCE_MAX_METRIC,),
+        )
+        monkeypatch.setitem(DIVERGENCE_SCHEMAS, GATE1_HARNESS_NAME, noise)
+        with pytest.raises(AssertionError, match="outlived its fact"):
+            test_the_label_does_not_outlive_its_fact()
+
+    def test_an_undeclared_divergence_harness_turns_the_vocabulary_check_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sidecar = _gate1_sidecar()
+        monkeypatch.delitem(DIVERGENCE_SCHEMAS, GATE1_HARNESS_NAME)
+        with pytest.raises(AssertionError, match=re.escape(sidecar)):
+            test_every_harness_recording_divergence_is_declared()
+
+    def test_a_harness_with_no_sidecar_in_view_turns_the_vacuity_check_red(self) -> None:
+        """Per harness: the arena's sidecars must not stand in for a renamed Gate 1."""
+        renamed = f"{GATE1_HARNESS_NAME}_renamed"
+        with pytest.raises(AssertionError, match=re.escape(f"written by {renamed}")):
+            test_the_arena_sidecar_scan_is_not_vacuous(renamed)
+
+    def test_a_gate1_sidecar_without_its_metric_turns_the_schema_check_red(
+        self, planted_root: Path
+    ) -> None:
+        sidecar = _gate1_sidecar()
+        _set_metrics(planted_root / sidecar, **{PRIMARY_DIVERGENCE_METRIC: None})
+        with pytest.raises(
+            AssertionError, match=re.escape(f"{sidecar}: {PRIMARY_DIVERGENCE_METRIC}=None")
+        ):
+            test_arena_sidecars_record_the_divergence_metrics()
+
+    def test_gate1_rows_the_scan_cannot_see_turn_the_ledger_check_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rows without the Dörfler vocabulary are not subjects, so (a) never reads them."""
+        text = charter_support.charter_text()
+        planted = text
+        for sidecar in _cited_in_evidence(GATE1_HARNESS_NAME):
+            row = _evidence_row_citing(sidecar)
+            planted = planted.replace(row, row.replace("Dörfler", "classical"), 1)
+        assert planted != text
+        _plant_documents(monkeypatch, charter=planted)
+        with pytest.raises(AssertionError, match=re.escape(f"citing a {GATE1_HARNESS_NAME} run")):
+            test_each_harness_has_a_claim_examined_in_the_evidence_register(GATE1_HARNESS_NAME)
+
+    def test_a_label_metric_outside_the_required_set_turns_the_meta_check_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        typo = DivergenceSchema(
+            label_metric=f"{PRIMARY_DIVERGENCE_METRIC}_typo",
+            required_metrics=(PRIMARY_DIVERGENCE_METRIC,),
+        )
+        monkeypatch.setitem(DIVERGENCE_SCHEMAS, GATE1_HARNESS_NAME, typo)
+        with pytest.raises(AssertionError):
+            test_each_schema_requires_its_own_label_metric(GATE1_HARNESS_NAME)
+
+    def test_a_label_stays_while_any_cited_run_stayed_greedy(self, planted_root: Path) -> None:
+        """Only one Gate 1 testbed diverges: its own row's label is stale, no other is.
+
+        README's Gate 1 claims cite both testbeds and still need the label for the one
+        that stayed greedy; reading "stale" as "any cited run diverged" would flag them.
+        """
+        sidecar = _gate1_sidecar()
+        _set_metrics(planted_root / sidecar, **{PRIMARY_DIVERGENCE_METRIC: 1.0})
+        test_claims_citing_a_no_divergence_run_carry_the_label()
+        with pytest.raises(AssertionError) as raised:
+            test_the_label_does_not_outlive_its_fact()
+        message = str(raised.value)
+        assert _claim_of(_evidence_row_citing(sidecar)) in message
+        assert README_SOURCE_PREFIX not in message, message
+
+    def test_an_uncited_committed_sidecar_is_held_to_the_schema(self, planted_root: Path) -> None:
+        """(b) reads every committed arena-family sidecar, not only the ones a claim cites.
+
+        Every committed one is cited today, so without this plant the committed-file
+        scan could read the wrong root and nothing would notice.
+        """
+        uncited = Path(_arena_sidecar()).with_name(f"uncited{SIDECAR_SUFFIX}").as_posix()
+        shutil.copyfile(planted_root / _arena_sidecar(), planted_root / uncited)
+        _set_metrics(planted_root / uncited, **{DIVERGENCE_MAX_METRIC: None})
+        with pytest.raises(AssertionError, match=re.escape(f"{uncited}: {DIVERGENCE_MAX_METRIC}")):
+            test_arena_sidecars_record_the_divergence_metrics()

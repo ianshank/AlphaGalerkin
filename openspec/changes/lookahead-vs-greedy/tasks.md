@@ -36,11 +36,19 @@ No comparison run on either testbed happens before task 1.3 is committed.
 - [x] 3.3 `python -m scripts.artifact_manifest write` then `check`; commit artifacts + manifest
 - [x] 3.4 `assert_proposal_grade` on both sidecars
 
-## 4 — Reporting (owned elsewhere; proposed text only)
+## 4 — Reporting (through `claims-ledger`, after the runs)
 
-- [ ] 4.1 Charter evidence-register row (proposed in the run report)
-- [ ] 4.2 `CHANGELOG.md` bullet and `CLAUDE.md` Regression Surface row (proposed in the run report)
-- [ ] 4.3 Archive this change once the proposed rows land
+- [x] 4.1 Charter: two evidence-register rows (NO-GO on T1 and T2), the arena row's pointer, the
+      Novelty paragraph and the frozen-tracks deviation row (delta here; live text applied);
+      `README.md` (feature bullet and roadmap), `docs/FOCUS.md`, `specs/mcts_classical_amr_arena.spec.md`
+      and the peer review's status table follow
+- [x] 4.2 `CHANGELOG.md` bullets and the `CLAUDE.md` Regression Surface row and milestone
+- [x] 4.4 `tests/docs/test_lookahead_attribution.py` reads Gate 1 sidecars through
+      `primary_decisions_diverging_from_greedy` (`DIVERGENCE_SCHEMAS`); every committed sidecar
+      recording a divergence count must belong to a declared harness; 12/12 planted defects killed
+- [ ] 4.3 Archive this change. Deferred: no change package in this repository has been archived
+      yet (`openspec/changes/archive/` holds only `.gitkeep`), and the specs and docs that cite
+      `openspec/changes/lookahead-vs-greedy/` would need repointing in the same step
 
 ## Deferred (out of this change)
 

@@ -51,6 +51,10 @@ ROBUST_LABEL: Final[str] = "mcts_robust"
 PRIMARY_RATIO_METRIC: Final[str] = "primary_l2_ratio_vs_best_classical"
 #: C2 -- MCTS-primary decisions that differ from greedy on the same state.
 PRIMARY_DIVERGENCE_METRIC: Final[str] = "primary_decisions_diverging_from_greedy"
+#: Recorded, ungated -- the same count over the robustness seeds. Root noise lives
+#: in that arm's decision rule, so its departures from greedy are not search.
+ROBUST_DIVERGENCE_MEDIAN_METRIC: Final[str] = "robust_decisions_diverging_from_greedy_median"
+ROBUST_DIVERGENCE_MAX_METRIC: Final[str] = "robust_decisions_diverging_from_greedy_max"
 #: C3 -- median over the robustness seeds of the same ratio.
 ROBUST_MEDIAN_RATIO_METRIC: Final[str] = "robust_median_l2_ratio_vs_best_classical"
 #: C3 -- robustness seeds whose ratio is below the win bar.
@@ -389,6 +393,8 @@ __all__ = [
     "PRIMARY_LABEL",
     "PRIMARY_RATIO_METRIC",
     "RATIO_DENOMINATOR_FLOOR",
+    "ROBUST_DIVERGENCE_MAX_METRIC",
+    "ROBUST_DIVERGENCE_MEDIAN_METRIC",
     "ROBUST_LABEL",
     "ROBUST_MEDIAN_RATIO_METRIC",
     "ROBUST_WINS_METRIC",

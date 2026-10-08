@@ -49,6 +49,14 @@ Mutation kills (harden-a-guard; planted defect -> named test that went red):
 * All-zero guard removed -> ``TestConstructionGuards::test_all_zero_coefficients_are_rejected``.
 * Double-``where`` removed -> ``TestCornerGuard::test_gradient_at_the_corner_is_finite``.
 * Box check removed -> ``TestConstructionGuards::test_config_box_must_be_the_domain_box``.
+* Duplicate check keyed on the *declared* position (the pre-fix check) ->
+  ``::test_a_near_duplicate_corner_is_rejected`` and
+  ``::test_every_declaration_matching_a_declared_corner_is_rejected``. Keyed on the
+  declared position rounded to 12 places -> only the Hypothesis sweep; the
+  reviewer's single case stays green, which is why the sweep exists.
+* Box ``rtol`` back to ``np.allclose``'s default (the pre-fix call), dropped on
+  ``domain_max`` only, or pinned to ``1e-9`` ->
+  ``::test_the_box_tolerance_is_the_stated_absolute_one`` ``twice_the_atol`` rows.
 """
 
 from __future__ import annotations
@@ -592,6 +600,38 @@ class TestConstructionGuards:
         config = PDEConfig(name="wrong_box", pde_type=PDEType.POISSON)
         with pytest.raises(ValueError, match="bounding box"):
             MultiCornerPoissonOperator(config, domain=domain, corners=(corner,))
+
+    @pytest.mark.parametrize("coordinate", range(4), ids=["x_min", "y_min", "x_max", "y_max"])
+    @pytest.mark.parametrize(
+        ("offset", "accepted"),
+        [
+            (0.5 * mcp.DOMAIN_BOUNDS_ATOL, True),
+            (2.0 * mcp.DOMAIN_BOUNDS_ATOL, False),
+            (1.5e-5, False),
+        ],
+        ids=["half_the_atol", "twice_the_atol", "reviewer_1.5e-5"],
+    )
+    def test_the_box_tolerance_is_the_stated_absolute_one(
+        self, coordinate: int, offset: float, accepted: bool
+    ) -> None:
+        """``DOMAIN_BOUNDS_ATOL`` is the tolerance applied, on each coordinate of the Z box.
+
+        ``np.allclose``'s default ``rtol=1e-5``, scaled by a coordinate of up to 2,
+        used to dominate it: a box off by 1.5e-5 or by twice the atol was accepted.
+        """
+        domain = PolyominoDomain(ZSHAPE_POLYOMINO_CELLS)
+        box = [value for bound in domain.bounding_box() for value in bound]
+        box[coordinate] += offset
+        config = PDEConfig(
+            name="z_box", pde_type=PDEType.POISSON, domain_min=box[:2], domain_max=box[2:]
+        )
+        corners = build_zshape_poisson_operator().corners
+        if accepted:
+            operator = MultiCornerPoissonOperator(config, domain=domain, corners=corners)
+            assert operator.corners == corners
+            return
+        with pytest.raises(ValueError, match="bounding box"):
+            MultiCornerPoissonOperator(config, domain=domain, corners=corners)
 
     def test_config_must_be_planar(self) -> None:
         domain = PolyominoDomain(LSHAPE_POLYOMINO_CELLS)

@@ -96,6 +96,11 @@ CORNER_ANGLE_ATOL: Final[float] = 1e-12
 #: that any real rescaling is rejected (same role as ``LSHAPE_DOMAIN_ATOL``).
 DOMAIN_BOUNDS_ATOL: Final[float] = 1e-9
 
+#: ``np.allclose``'s relative term, pinned to zero so ``DOMAIN_BOUNDS_ATOL`` is the
+#: tolerance applied: the default ``rtol=1e-5``, scaled by a box coordinate of up
+#: to 2, accepted a Z box off by 1.5e-5 -- 15,000 times the stated tolerance.
+DOMAIN_BOUNDS_RTOL: Final[float] = 0.0
+
 #: The only collocation distribution a polyomino supports (see
 #: :meth:`MultiCornerPoissonOperator.generate_collocation_points`).
 COLLOCATION_METHOD_RANDOM: Final[str] = "random"
@@ -225,8 +230,8 @@ def _require_planar_matching_bounds(config: PDEConfig, domain: PolyominoDomain) 
         raise ValueError(f"a polyomino operator is planar; got domain_dim={config.domain_dim}")
     low, high = domain.bounding_box()
     if not (
-        np.allclose(config.domain_min, low, atol=DOMAIN_BOUNDS_ATOL)
-        and np.allclose(config.domain_max, high, atol=DOMAIN_BOUNDS_ATOL)
+        np.allclose(config.domain_min, low, rtol=DOMAIN_BOUNDS_RTOL, atol=DOMAIN_BOUNDS_ATOL)
+        and np.allclose(config.domain_max, high, rtol=DOMAIN_BOUNDS_RTOL, atol=DOMAIN_BOUNDS_ATOL)
     ):
         raise ValueError(
             f"config box [{config.domain_min}, {config.domain_max}] is not the polyomino's "

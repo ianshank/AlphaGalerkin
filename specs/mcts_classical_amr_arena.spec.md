@@ -156,14 +156,14 @@ Proposal-grade run on `19609d4` (`results/mcts_classical_amr_arena.{csv,run.json
 `dirty: false`). θ=0.5, policy `max_dof=600`, `max_steps=12`, `n_simulations=8`,
 `top_k_actions=8`, `ResidualPriorErrorValueEvaluator`, `search_mode=single_agent`,
 `add_noise=False`, `temperature=0`, seeds `{42, 1051, 2060}` (identical
-trajectories). *(Re-recorded 2026-10-08 on `f2c65c4` with the greedy control; see the
-correction below.)*
+trajectories). *(Re-recorded 2026-10-08 on `f2c65c4` with the greedy control, and again on
+`4574475` after the config-hash fix, rows unchanged; see the correction below.)*
 
 | Metric | Value | Gated? |
 |---|---|---|
 | `l2_error_ratio_at_matched_dof` | **0.9532** (matched DOF 287) | yes (`< 1`) — **Win** · **CORRECTED (2026-10-08):** the verdict stands, but the win is single-element greedy marking, not look-ahead — **search contributed no decisions** |
 | `l2_error_ratio_at_matched_solves` | 9.23 | no |
-| `error_per_dof_ratio_mcts_over_dorfler` | ~30.8 (32.10 in the 2026-10-08 re-record; wall-clock, moves with load) | no |
+| `error_per_dof_ratio_mcts_over_dorfler` | ~30.8 (32.10 and 32.65 in the two 2026-10-08 re-records; wall-clock, moves with load) | no |
 
 Adequacy abort did not fire (adaptive `N^-1.31` vs uniform `N^-0.67` on
 `(200, 4000)`). Those rates are **gate evidence**, not a look-ahead win. Do not
@@ -175,7 +175,10 @@ Re-recorded from a clean tree with `--proposal-grade` and the greedy control on
 (sidecar `dirty: false`, SHA `f2c65c4`; `docs/business/COMMERCIALIZATION_PEER_REVIEW.md`
 §1, Gate 0.1). Every `uniform` / `dorfler` / `mcts` row is identical to the
 `19609d4` record in every column except `wall_time_seconds`; the matched-DOF and
-matched-solves ratios are bit-identical.
+matched-solves ratios are bit-identical. Re-recorded once more the same day on `4574475`:
+the earlier `config_hash` folded the nested `SubstrateConfig.created_at` timestamp into the
+hash, so no re-run could reproduce it. Every row again matched except `wall_time_seconds`,
+and the sidecar's `config_hash` (`d6993a0dfd1ab778`) now recomputes from its recorded config.
 
 | Metric | Value | Gated? |
 |---|---|---|

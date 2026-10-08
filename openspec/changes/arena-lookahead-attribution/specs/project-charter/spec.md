@@ -16,7 +16,8 @@ The Requirement text is unchanged. One register row is amended and one scenario 
 
 **Amended.** *"Element-local AMR, MCTS vs Dörfler at matched DOF"* read 0.9532 as "MCTS
 **wins** ~4.7%" and named "policy max_dof=600". The re-recorded artifact
-(`results/mcts_classical_amr_arena.{csv,run.json}`, proposal-grade, SHA `f2c65c4`) carries a
+(`results/mcts_classical_amr_arena.{csv,run.json}`, proposal-grade, SHA `f2c65c4`; re-recorded on `4574475` after the
+config-hash fix, every row unchanged) carries a
 single-element greedy control: MCTS/greedy 1.0, greedy/Dörfler 0.9532,
 `decisions_diverging_from_greedy_max` 0 over three seeds. Every policy row is bit-identical to
 the 2026-09-08 record. The row now attributes the ratio to greedy marking, carries the label

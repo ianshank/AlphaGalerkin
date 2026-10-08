@@ -48,7 +48,7 @@ REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 RESULTS_DIR: Final[Path] = REPO_ROOT / "results"
 
 #: Committed sidecars this repo has today; the scan must see at least this many.
-MIN_SIDECARS: Final[int] = 3
+MIN_SIDECARS: Final[int] = 4
 
 HashRecomputer = Callable[[Mapping[str, Any]], str]
 

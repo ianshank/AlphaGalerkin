@@ -32,9 +32,9 @@ No comparison run on either testbed happens before task 1.3 is committed.
 ## 3 — Runs (clean tree, after task 2 is committed)
 
 - [x] 3.1 T1 with `--proposal-grade` → `results/lookahead_vs_greedy_lshape.*`
-- [ ] 3.2 T2 with `--proposal-grade` → `results/lookahead_vs_greedy_zshape.*`
-- [ ] 3.3 `python -m scripts.artifact_manifest write` then `check`; commit artifacts + manifest
-- [ ] 3.4 `assert_proposal_grade` on both sidecars
+- [x] 3.2 T2 with `--proposal-grade` → `results/lookahead_vs_greedy_zshape.*`
+- [x] 3.3 `python -m scripts.artifact_manifest write` then `check`; commit artifacts + manifest
+- [x] 3.4 `assert_proposal_grade` on both sidecars
 
 ## 4 — Reporting (owned elsewhere; proposed text only)
 

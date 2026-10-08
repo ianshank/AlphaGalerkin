@@ -159,21 +159,28 @@ class TestDefaultConfigHashesAreStable:
         assert cfg.compute_hash() == _PINNED_DEFAULT_HASHES["stochastic_galerkin_compare"]
 
     def test_arena_hash_stable_with_frozen_substrate_timestamp(self) -> None:
-        """Arena hash is stable once SubstrateConfig.created_at is frozen.
+        """Arena hash is stable, and independent of SubstrateConfig.created_at.
 
         Arena nests SubstrateConfig (BaseModuleConfig), whose created_at
-        default_factory is wall-clock. Freeze it so the lock-function
-        extraction cannot hide behind timestamp noise.
+        default_factory is wall-clock. Before 4574475 the timestamp reached the
+        hash, so it had to be frozen here; ``config_hash`` now strips it at
+        every depth, so a frozen and a fresh construction hash alike.
         """
+        import hashlib
+        import json
         from datetime import datetime, timezone
 
         frozen = datetime(2026, 1, 1, tzinfo=timezone.utc)
         cfg = MCTSClassicalAMRArenaConfig(name=ARENA_NAME)
         cfg.substrate.created_at = frozen
-        # Re-pinned 2026-09-25: include_greedy_control (default True) joined the
-        # config -- a deliberate artifact-identity change, since a run with the
-        # greedy control writes different artifacts.
-        assert cfg.compute_hash() == "889f0e81d4d5cc65"
+        # Re-pinned 2026-10-08 (was 889f0e81d4d5cc65, itself re-pinned 2026-09-25
+        # when include_greedy_control joined the config): 4574475 moved the hash
+        # FUNCTION, excluding created_at at every depth. The dump did not move --
+        # the old raw-dump hash of the same frozen config is still the old pin.
+        assert cfg.compute_hash() == "6013f7c983e67151"
+        assert MCTSClassicalAMRArenaConfig(name=ARENA_NAME).compute_hash() == cfg.compute_hash()
+        raw = json.dumps(cfg.model_dump(), sort_keys=True, default=str).encode()
+        assert hashlib.sha256(raw).hexdigest()[:16] == "889f0e81d4d5cc65"
 
     def test_arena_hash_moved_only_by_the_greedy_control_field(self) -> None:
         """The re-pin above hides nothing else: drop that one field, get the old pin."""

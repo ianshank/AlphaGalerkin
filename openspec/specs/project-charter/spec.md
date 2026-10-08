@@ -274,6 +274,7 @@ but 0 under a narrower `tests/poc` selection).
 | --- | --- |
 | `complexity` | O(N) attention scaling benchmark |
 | `llm_prior_ablation` | LLM-prior MCTS basis selection vs random/trained |
+| `lookahead_vs_greedy` | Gate 1 go/no-go: MCTS look-ahead vs the best classical marking policy (greedy, Dörfler θ ∈ {0.1, 0.3, 0.5}, uniform) on the L- and Z-shape testbeds |
 | `lshape_amr_compare` | MCTS vs Dörfler on L-shaped Poisson AMR (tensor-grid golden; non-informative for element-local policy) |
 | `mcts_classical_amr_arena` | MCTS vs Dörfler/uniform on SkfemTriSubstrate (cycle thesis) |
 | `noyron_basis` | MCTS basis selection on the Leap 71 helical operator |

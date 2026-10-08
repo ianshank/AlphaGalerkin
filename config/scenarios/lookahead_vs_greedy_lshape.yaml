@@ -1,0 +1,64 @@
+# Gate 1 look-ahead vs greedy -- T1 (L-shape, one 270-degree corner).
+#
+# Pre-registered in specs/lookahead_vs_greedy.spec.md. Every value below restates
+# a LookaheadVsGreedyConfig default, and tests/poc/test_lookahead_vs_greedy_config.py
+# pins this file against the spec. Do not change a threshold after a result; a
+# reasoned objection goes in a NEW pre-registration.
+#
+#   arms: greedy, Dörfler θ ∈ {0.1, 0.3, 0.5}, uniform, MCTS-primary (deterministic,
+#         top_k 4, 64 simulations), MCTS-robustness (Dirichlet root noise, 5 seeds)
+#   budgets: 30 game-driven steps; classical max_dof 1000 (span checked at runtime)
+#   adequacy: measure_adequacy at θ = 0.5 with adequacy_gate_for_operator(lshape_poisson),
+#             abort on any violation (exit code 3)
+#
+# Run from a clean worktree (exit code 0 on GO and on NO-GO):
+#   python -m scripts.run_lookahead_vs_greedy \
+#     --config config/scenarios/lookahead_vs_greedy_lshape.yaml --proposal-grade
+
+scenarios:
+  - name: lookahead_vs_greedy
+    description: "Gate 1 T1: MCTS look-ahead vs the best classical marking policy (L-shape, one 270-degree corner)."
+    tier: functional
+    enabled: true
+    device: cpu
+    seed: 42
+    substrate:
+      name: lookahead_skfem
+      kind: skfem_tri
+      element_type: P1
+      initial_refinements: 2
+      error_metric: quadrature
+      marking_variant: squared
+      enforce_immutable_meshes: true
+      solve_cache_max_entries: 8192
+    operator_name: lshape_poisson
+    lshape_scale: 1.0
+    max_steps: 30
+    classical_max_dof: 1000
+    max_refinements_classical: 1000
+    error_tolerance: 1.0e-8
+    dorfler_thetas: [0.1, 0.3, 0.5]
+    n_simulations: 64
+    top_k_actions: 4
+    max_action_space: 16384
+    c_puct: 1.4
+    value_scale: 4.0
+    prior_temperature: 1.0
+    dirichlet_alpha: 0.03
+    dirichlet_epsilon: 0.25
+    robust_n_seeds: 5
+    seed_stride: 1009
+    temperature: 0.0
+    search_mode: single_agent
+    evaluator_name: ResidualPriorErrorValueEvaluator
+    require_adequacy_precondition: true
+    adequacy_theta: 0.5
+    max_primary_ratio: 0.98
+    min_primary_divergences: 1
+    max_robust_median_ratio: 1.0
+    robust_win_ratio: 1.0
+    min_robust_wins: 3
+    min_dof_saving_vs_greedy: 0.0
+    break_even_alphas: [1.0, 1.5]
+    output_dir: results
+    artifact_basename: lookahead_vs_greedy_lshape

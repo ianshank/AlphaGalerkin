@@ -54,34 +54,30 @@ import numpy as np
 import structlog
 import torch
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field
 from torch import Tensor
 
 from src.constants import DEFAULT_BOUNDARY_TOLERANCE
 from src.pde.config import PDEConfig, PDEType
 from src.pde.geometry_polyomino import (
     LSHAPE_POLYOMINO_CELLS,
-    POLYOMINO_REENTRANT_INTERIOR_ANGLE,
     ZSHAPE_POLYOMINO_CELLS,
     PolyominoCorner,
     PolyominoDomain,
 )
 from src.pde.operators.base import PDEOperator, PDEResidual
+from src.pde.operators.corner_singularity import (
+    DEFAULT_CORNER_INTERIOR_ANGLE,
+    DEFAULT_SINGULAR_COEFFICIENT,
+    FULL_TURN,
+    SingularCornerTerm,
+    singular_term_tensor,
+    singular_term_values,
+)
 
 logger = structlog.get_logger(__name__)
 
-#: One full turn, the modulus of the angle wrap.
-FULL_TURN: Final[float] = 2.0 * math.pi
-
 #: This operator is planar: corners, cut rays and polyomino cells are 2-D.
 PLANAR_DIM: Final[int] = 2
-
-#: Default interior angle of a singular corner: the 270-degree reentrant corner
-#: every polyomino has (exponent ``pi / w = 2/3``).
-DEFAULT_CORNER_INTERIOR_ANGLE: Final[float] = POLYOMINO_REENTRANT_INTERIOR_ANGLE
-
-#: Default singular strength ``c``: the canonical benchmark's unit coefficient.
-DEFAULT_SINGULAR_COEFFICIENT: Final[float] = 1.0
 
 #: How far a declared corner position may sit from the geometric corner.
 CORNER_POSITION_ATOL: Final[float] = 1e-12
@@ -139,79 +135,6 @@ class CornerDeclarationError(ValueError):
 
 class BranchCutError(ValueError):
     """A singular term's branch-cut ray reaches the closed domain."""
-
-
-class SingularCornerTerm(BaseModel):
-    """One corner's singular harmonic ``c * r**lam * sin(lam * phi)``."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    x: float = Field(description="Corner x coordinate.")
-    y: float = Field(description="Corner y coordinate.")
-    exterior_bisector: float = Field(
-        description=(
-            "Angle (radians) bisecting the exterior wedge at the corner. The branch "
-            "cut runs along it, so it must point out of the domain."
-        ),
-    )
-    interior_angle: float = Field(
-        default=DEFAULT_CORNER_INTERIOR_ANGLE,
-        gt=math.pi,
-        lt=FULL_TURN,
-        description="Interior angle w of the reentrant corner; the exponent is pi / w.",
-    )
-    coefficient: float = Field(
-        default=DEFAULT_SINGULAR_COEFFICIENT,
-        description="Singular strength c of this corner's term.",
-    )
-
-    @property
-    def position(self) -> tuple[float, float]:
-        """The corner as an ``(x, y)`` pair."""
-        return (self.x, self.y)
-
-    @property
-    def exponent(self) -> float:
-        """Singular exponent ``lam = pi / w`` (2/3 for a 270-degree corner)."""
-        return math.pi / self.interior_angle
-
-    @property
-    def wedge_offset(self) -> float:
-        """``(2*pi - w) / 2``: the angle from the cut to either edge of the corner."""
-        return (FULL_TURN - self.interior_angle) / 2.0
-
-
-def singular_term_values(
-    points: NDArray[np.float64], term: SingularCornerTerm
-) -> NDArray[np.float64]:
-    """``s_i`` (no coefficient) at ``(n, 2)`` points, in float64; exactly 0 at the corner."""
-    dx = points[:, 0] - term.x
-    dy = points[:, 1] - term.y
-    r = np.hypot(dx, dy)
-    phi = np.mod(np.arctan2(dy, dx) - term.exterior_bisector, FULL_TURN) - term.wedge_offset
-    lam = term.exponent
-    values = np.power(r, lam) * np.sin(lam * phi)
-    return np.asarray(np.where(r > 0.0, values, 0.0), dtype=np.float64)
-
-
-def singular_term_tensor(points: Tensor, term: SingularCornerTerm) -> Tensor:
-    """Torch twin of :func:`singular_term_values`, in the input's dtype.
-
-    Double-``where``: the corner itself is replaced by a harmless stand-in
-    before ``atan2``/``hypot``/``pow`` see it, so autograd returns a finite
-    (zero) gradient there instead of a NaN that would poison a whole batch.
-    """
-    dx = points[:, 0] - term.x
-    dy = points[:, 1] - term.y
-    at_corner = (dx == 0) & (dy == 0)
-    safe_dx = torch.where(at_corner, torch.ones_like(dx), dx)
-    safe_dy = torch.where(at_corner, torch.zeros_like(dy), dy)
-    r = torch.hypot(safe_dx, safe_dy)
-    theta = torch.atan2(safe_dy, safe_dx)
-    phi = torch.remainder(theta - term.exterior_bisector, FULL_TURN) - term.wedge_offset
-    lam = term.exponent
-    values = r.pow(lam) * torch.sin(lam * phi)
-    return torch.where(at_corner, torch.zeros_like(values), values)
 
 
 def _wrapped_angle_difference(first: float, second: float) -> float:
@@ -581,10 +504,13 @@ def build_zshape_poisson_operator(
 
 
 __all__ = [
+    "DEFAULT_CORNER_INTERIOR_ANGLE",
+    "DEFAULT_SINGULAR_COEFFICIENT",
     "DEFAULT_ZSHAPE_PRIMARY_COEFFICIENT",
     "DEFAULT_ZSHAPE_SECONDARY_COEFFICIENT",
     "BranchCutError",
     "CornerDeclarationError",
+    "FULL_TURN",
     "MultiCornerPoissonOperator",
     "SingularCornerTerm",
     "build_lshape_multi_corner_operator",

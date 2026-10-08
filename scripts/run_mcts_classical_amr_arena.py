@@ -8,7 +8,11 @@ Usage:
 
 Exit code is 0 iff ``l2_error_ratio_at_matched_dof < 1.0`` (an honest FAIL is
 a legitimate research outcome, not a crash). ``--proposal-grade`` additionally
-rejects ``dirty: true`` / ``config_hash: unknown`` on the sidecar.
+rejects ``dirty: true`` / ``config_hash: unknown`` on the sidecar, and refuses
+to start -- before computing or overwriting anything -- on a tree it cannot
+prove clean (``RunRecorder``'s pre-flight). The shipped YAML writes into
+``results/``, so without that pre-flight a dirty-tree run overwrote the
+committed artifacts first and was rejected only afterwards.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ import argparse
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 import yaml
 
@@ -32,10 +36,14 @@ from src.poc.scenarios.mcts_classical_amr_arena_config import (
 )
 from src.research.run_manifest import (
     ProposalGradeError,
+    RunRecorder,
     assert_proposal_grade,
     load_run_manifest,
     manifest_path_for,
 )
+
+#: Exit code when a ``--proposal-grade`` run cannot be proposal-grade.
+EXIT_NOT_PROPOSAL_GRADE: Final[int] = 2
 
 
 def load_scenario_dict(config_path: str | Path) -> dict[str, Any]:
@@ -133,11 +141,57 @@ def stable_metrics(metrics: Mapping[str, float]) -> dict[str, float]:
     }
 
 
+def _not_proposal_grade(reason: object) -> int:
+    """Report a proposal-grade rejection on stderr and return its exit code."""
+    print(f"proposal-grade: {reason}", file=sys.stderr)
+    return EXIT_NOT_PROPOSAL_GRADE
+
+
+def verify_sidecar(recorder: RunRecorder, sidecar: Path) -> None:
+    """Re-check a sidecar, as read back from disk, against the run's pre-flight.
+
+    The scenario writes the sidecar from its own pre-write git snapshot. This
+    asserts that snapshot is the one the pre-flight approved, and that the bytes
+    on disk -- what gets committed -- pass
+    :func:`~src.research.run_manifest.assert_proposal_grade`.
+
+    The config hash is held to the proposal-grade bar (real, not ``unknown``)
+    but not compared with the pre-flight's: the scenario's ``setup`` installs
+    the default thresholds into the config after the pre-flight, so the hash
+    the sidecar records is, correctly, the post-setup one.
+
+    Args:
+        recorder: The run's pre-flight (:meth:`RunRecorder.start`).
+        sidecar: The ``*.run.json`` the run wrote.
+
+    Raises:
+        ProposalGradeError: The sidecar records another git state than the
+            pre-flight snapshot, or is not proposal-grade.
+
+    """
+    manifest = load_run_manifest(sidecar)
+    if manifest.git != recorder.git:
+        raise ProposalGradeError(
+            f"{sidecar} records git={manifest.git!r}, not the pre-flight snapshot "
+            f"git={recorder.git!r}"
+        )
+    assert_proposal_grade(manifest)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the arena and return an exit code."""
     args = build_parser().parse_args(argv)
     configure_logging(level=args.log_level)
     config = build_config(args.config, args)
+    try:
+        # Snapshot BEFORE anything is computed or written (RunRecorder). With
+        # --proposal-grade this is also the pre-flight: a tree that cannot be
+        # proven clean neither computes nor overwrites the committed artifacts.
+        recorder = RunRecorder.start(
+            config_hash=config.compute_hash(), proposal_grade=args.proposal_grade
+        )
+    except ProposalGradeError as exc:
+        return _not_proposal_grade(exc)
     scenario = MCTSClassicalAMRArenaScenario(config)
     result = scenario.run()
     print(result.summary())
@@ -151,13 +205,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.proposal_grade:
         csv_path = result.artifacts.get("csv")
         if not csv_path:
-            print("proposal-grade: no CSV artifact", file=sys.stderr)
-            return 2
+            return _not_proposal_grade("no CSV artifact")
         try:
-            assert_proposal_grade(load_run_manifest(manifest_path_for(csv_path)))
+            verify_sidecar(recorder, manifest_path_for(csv_path))
         except ProposalGradeError as exc:
-            print(f"proposal-grade: {exc}", file=sys.stderr)
-            return 2
+            return _not_proposal_grade(exc)
 
     observed: ObservedMetrics = {
         SCENARIO_NAME: {key: float(value) for key, value in result.metrics.items()}

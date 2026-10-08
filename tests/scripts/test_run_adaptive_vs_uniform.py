@@ -15,6 +15,15 @@ real, deterministic hash of exactly the ``config`` it records, and
 ``--proposal-grade`` must refuse -- before computing or writing anything -- to
 produce a sidecar the charter could not cite. Every provenance test below runs
 into ``tmp_path`` with the git probe monkeypatched; none touches ``results/``.
+
+``--output`` is a run-mode option: where a run writes is recorded under
+``artifacts``, never in ``config`` or its hash. Planted defects, each killed by a
+named test: ``output`` restored as a hashed config field (the pre-fix shape) ->
+``TestConfigHash::test_the_output_path_changes_neither_config_nor_hash`` and
+``TestDefaultInvocation::test_a_scratch_path_reproduction_records_the_same_config_and_hash``;
+the path folded into ``config_hash`` while ``config`` stays clean -> the second
+one (the parser-level test cannot see it); the path recorded in ``config`` but not
+hashed -> the second one and ``::test_sidecar_keeps_its_shape_and_gains_a_real_hash``.
 """
 
 from __future__ import annotations

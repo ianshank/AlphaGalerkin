@@ -22,6 +22,9 @@ from src.pde.config import PDEConfig, PDEType
 from src.pde.operators import PoissonOperator
 from src.research.baselines import SOLVER_REGISTRY, BaseSolver, SolverResult
 from src.research.fem_baseline import (
+    LSHAPE_DOMAIN_ATOL,
+    LSHAPE_DOMAIN_MAX,
+    LSHAPE_DOMAIN_MIN,
     FEMConfig,
     ScikitFEMLShapedSolver,
     ScikitFEMPoissonSolver,
@@ -388,6 +391,46 @@ class TestLShapedMeshMatchesOperatorDomain:
             build_lshaped_initial_mesh(
                 self._operator(scale), _require_skfem(), initial_mesh_refinements=0
             )
+
+    @pytest.mark.parametrize("coordinate", range(4), ids=["x_min", "y_min", "x_max", "y_max"])
+    @pytest.mark.parametrize(
+        ("offset", "accepted"),
+        [
+            (0.5 * LSHAPE_DOMAIN_ATOL, True),
+            (1e-6, False),
+            (5e-6, False),
+        ],
+        ids=["half_the_atol", "1e-6", "5e-6"],
+    )
+    def test_the_domain_tolerance_is_the_stated_absolute_one(
+        self, coordinate: int, offset: float, accepted: bool
+    ) -> None:
+        """``LSHAPE_DOMAIN_ATOL`` is the tolerance applied, on each coordinate.
+
+        ``np.allclose``'s default ``rtol=1e-5`` used to dominate it, so a domain off by
+        1e-6 or 5e-6 passed as the canonical unit L-shape. The operator stores its
+        bounds in float32, so the rejected offsets are chosen to survive that rounding
+        (one float32 ulp at 1.0 is ~1.2e-7); the accepted one does not, and stands for
+        any sub-tolerance round-trip error.
+        """
+        box = [LSHAPE_DOMAIN_MIN, LSHAPE_DOMAIN_MIN, LSHAPE_DOMAIN_MAX, LSHAPE_DOMAIN_MAX]
+        box[coordinate] += offset
+        operator = PoissonOperator(
+            PDEConfig(
+                name="lshaped_offset",
+                pde_type=PDEType.POISSON,
+                domain_dim=2,
+                domain_min=box[:2],
+                domain_max=box[2:],
+            )
+        )
+        skfem = _require_skfem()
+        if accepted:
+            mesh = build_lshaped_initial_mesh(operator, skfem, initial_mesh_refinements=0)
+            assert float(mesh.p[0].max()) == pytest.approx(LSHAPE_DOMAIN_MAX)
+            return
+        with pytest.raises(NotImplementedError, match="unit L-shape"):
+            build_lshaped_initial_mesh(operator, skfem, initial_mesh_refinements=0)
 
     def test_the_reentrant_corner_is_still_a_node(self) -> None:
         """AC8 must survive the added validation."""

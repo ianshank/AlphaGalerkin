@@ -67,6 +67,9 @@ LSHAPE_NODES_PER_SQUARE: int = 3
 #: (which stores the bounds as a list), tight enough that any real rescaling --
 #: the smallest the callers use is 0.5 -- is rejected.
 LSHAPE_DOMAIN_ATOL: float = 1e-9
+#: ``np.allclose``'s relative term, pinned to 0 so the atol above is the one applied
+#: (its default 1e-5 let a domain off by 5e-6 pass as the canonical L-shape).
+LSHAPE_DOMAIN_RTOL: float = 0.0
 
 
 class FEMConfig(SolverConfig):
@@ -234,12 +237,9 @@ def build_lshaped_initial_mesh(
 
     lo = np.asarray(operator.domain_min, dtype=float)[:2]
     hi = np.asarray(operator.domain_max, dtype=float)[:2]
-    expected_lo = np.full(2, LSHAPE_DOMAIN_MIN)
-    expected_hi = np.full(2, LSHAPE_DOMAIN_MAX)
-    if not (
-        np.allclose(lo, expected_lo, atol=LSHAPE_DOMAIN_ATOL)
-        and np.allclose(hi, expected_hi, atol=LSHAPE_DOMAIN_ATOL)
-    ):
+    canonical = np.repeat([LSHAPE_DOMAIN_MIN, LSHAPE_DOMAIN_MAX], 2)  # x_min, y_min, x_max, y_max
+    bounds = np.concatenate([lo, hi])
+    if not np.allclose(bounds, canonical, rtol=LSHAPE_DOMAIN_RTOL, atol=LSHAPE_DOMAIN_ATOL):
         raise NotImplementedError(
             f"build_lshaped_initial_mesh emits the canonical unit L-shape "
             f"[{LSHAPE_DOMAIN_MIN}, {LSHAPE_DOMAIN_MAX}]^2 \\ "

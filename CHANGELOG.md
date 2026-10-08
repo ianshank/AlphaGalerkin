@@ -80,7 +80,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Second AMR testbed: polyomino domains + a verified multi-corner Poisson operator** (Gate 1
   prerequisite). `src/pde/geometry_polyomino.py` (`PolyominoDomain`: exact reentrant-corner and
   branch-cut analysis) and `src/pde/operators/multi_corner_poisson.py`
-  (`MultiCornerPoissonOperator`, registered `poisson_multi_corner`): u = Σ cᵢ·rᵢ^λᵢ sin(λᵢφᵢ) with
+  (`MultiCornerPoissonOperator`, registered `poisson_multi_corner` -- **superseded**: that key could
+  not be constructed and is now the presets `poisson_multi_corner_lshape` /
+  `poisson_multi_corner_zshape`, see `### Fixed`): u = Σ cᵢ·rᵢ^λᵢ sin(λᵢφᵢ) with
   the angle wrap on each corner's exterior bisector, and a constructor that refuses any branch cut
   reaching the closed domain — the silent-divergence class of the 2026-08-16 L-shape retraction.
   The L preset equals `LShapedPoissonOperator` to ≈1e-15; the Z-tetromino preset (two 270° corners,
@@ -696,6 +698,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **An order-dependent arena pre-flight test kept the fast lane red.**
+  `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
+  import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and
+  `main()` builds its config through `load_config_from_dict`'s call-time import -- a new class,
+  so the patch never fired in CI's full run (it passed alone). The test now resolves the class
+  the way `main` does (`tests/poc/conftest.py`, rule 1); run after the purging module it fails
+  with the old patch and passes with the fix.
+- **Multi-corner operator review findings; the adaptive-vs-uniform sidecar re-recorded.**
+  A corner declared twice within `CORNER_POSITION_ATOL` (such as (0, 0) and (5e-13, 0)) doubled
+  its singular term; duplicates are now detected on the matched geometric corner. The polyomino
+  box check let `np.allclose`'s default `rtol=1e-5` override `DOMAIN_BOUNDS_ATOL`; it now uses
+  `DOMAIN_BOUNDS_RTOL = 0.0`, and `src/research/fem_baseline.py`'s L-shape domain check had the
+  same hole (a domain off by 5e-6 passed as the canonical L-shape) and now pins
+  `LSHAPE_DOMAIN_RTOL = 0.0`. `poisson_multi_corner` was registered but raised `TypeError` when
+  built as `cls(config)`, the way every registry caller builds; the constructible presets
+  `poisson_multi_corner_lshape` and `poisson_multi_corner_zshape` replace it, with
+  `build_default_operator("zshape_poisson")` returning the Z preset and every measured gate
+  bit-identical (`tests/pde/test_pde_registry_contract.py` constructs every registered name the
+  way its callers do; built-ins register from one table). `docs/architecture/components.md`'s
+  runtime key list is checked against the registry, read in a subprocess
+  (`tests/docs/test_components_pde_registry.py`). `--output` no longer enters
+  `scripts/run_adaptive_vs_uniform.py`'s `config_hash` (it is recorded under `artifacts`), and
+  `results/lshape_adaptive_vs_uniform.run.json` was re-recorded proposal-grade: hash
+  `865edce78a6a9453` -> `50d464fb95cca18d`, CSV byte-identical. 17/17 planted defects killed,
+  plus the `fem_baseline` bracket, which fails on the pre-fix code in all 8 rejected cases.
 - **`tests/poc/test_compare_common.py` re-pinned to the timestamp-free arena hash.** The
   config-hash fix (`4574475`) moved the arena's default-config hash without updating this pin
   (`889f0e81d4d5cc65` -> `6013f7c983e67151`), which turned the branch red. The test now also
@@ -739,7 +766,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `results/lshape_adaptive_vs_uniform.run.json` (cited by the evidence register) recorded
   `git.dirty: true` and `config_hash: "unknown"`, and `assert_proposal_grade` rejected it. Re-recorded
   from a clean tree under the hash-pin protocol: the CSV is byte-identical, so no charter value
-  moves; the sidecar now carries `config_hash` `865edce78a6a9453`, `dirty: false` and a hardware
+  moves; the sidecar now carries `config_hash` `865edce78a6a9453` (**superseded** by
+  `50d464fb95cca18d` once `--output` left the hashed config, see the `### Fixed` entry on the
+  multi-corner review findings), `dirty: false` and a hardware
   tag. `scripts/run_adaptive_vs_uniform.py` gains a frozen `AdaptiveVsUniformConfig` whose hash is
   recomputable from the recorded config, and `--proposal-grade`.
   `src/research/run_manifest.RunRecorder` is the one shared snapshot-first recording helper: it

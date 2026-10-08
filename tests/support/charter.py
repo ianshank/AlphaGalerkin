@@ -10,12 +10,17 @@ are two that will eventually disagree -- the lesson ``tests/support/workflows.py
 and ``tests/support/import_graph.py`` were extracted for -- so the parser lives
 here once, moved out of the charter guard rather than copied from it.
 
-Stdlib-only and side-effect free: it reads one Markdown file. The charter guard
+The AMR policy-ratio *subject scan* (:func:`amr_policy_ratio_subjects`) lives here
+for the same reason: the charter guard's manifest-pointer check and
+``tests/docs/test_lookahead_attribution.py`` must read the same claims, from the
+evidence register and from ``README.md``.
+
+Stdlib-only and side-effect free: it reads Markdown files. The charter guard
 relies on that to keep its own import surface stdlib-only.
 
-The readers resolve :func:`charter_text` through this module's namespace at call
-time, so a test can substitute a synthetic charter with
-``monkeypatch.setattr("tests.support.charter.charter_text", ...)``.
+The readers resolve :func:`charter_text` and :func:`readme_text` through this
+module's namespace at call time, so a test can substitute a synthetic document
+with ``monkeypatch.setattr("tests.support.charter.charter_text", ...)``.
 """
 
 from __future__ import annotations
@@ -24,11 +29,16 @@ import re
 from pathlib import Path
 from typing import Final
 
+from tests.support.perf_claims import split_blocks
+
 #: Repository root, resolved from this file's location (``tests/support/``).
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 
 #: The supreme scope document.
 CHARTER: Final[Path] = REPO_ROOT / "openspec" / "specs" / "project-charter" / "spec.md"
+
+#: The other surface the AMR policy-ratio guards read.
+README: Final[Path] = REPO_ROOT / "README.md"
 
 #: Delimited regions the charter exposes for machine reading.
 REGIONS: Final[tuple[str, ...]] = (
@@ -57,11 +67,50 @@ _EXTENSION: Final[re.Pattern[str]] = re.compile(r"\.[a-z]{2,5}$")
 #: A single ``{a,b}`` brace group.
 _BRACE_GROUP: Final[re.Pattern[str]] = re.compile(r"\{([^{}]*)\}")
 
+#: Text that marks an MCTS-vs-Dörfler statement as quoting a policy *ratio*.
+AMR_RATIO_HINT: Final[re.Pattern[str]] = re.compile(
+    r"median\s+ratio\s+\d+\.\d+|ratio\s+\d+\.\d+|l2_error_ratio_at_matched_dof|"
+    r"\b\d+\.\d{3,}\b",
+    re.IGNORECASE,
+)
+
+#: Suffix of a cited tabular artifact.
+CSV_SUFFIX: Final[str] = ".csv"
+
+#: Suffix of the run-provenance sidecar written beside an artifact.
+SIDECAR_SUFFIX: Final[str] = ".run.json"
+
+#: The disclosure an AMR policy-ratio claim must carry when it cites a run whose
+#: search made no decision single-element greedy marking would not have made
+#: (``tests/docs/test_lookahead_attribution.py``). Defined once; the charter,
+#: README and the guard all use this exact phrase.
+NO_LOOKAHEAD_LABEL: Final[str] = "search contributed no decisions"
+
+#: Source prefix of a subject read from the charter's evidence register.
+EVIDENCE_SOURCE_PREFIX: Final[str] = "charter evidence:"
+
+#: Source prefix of a subject read from ``README.md`` (followed by its first line).
+README_SOURCE_PREFIX: Final[str] = f"{README.name}:"
+
+#: The ``Block.kind`` ``tests/support/perf_claims.py::split_blocks`` gives a table.
+TABLE_BLOCK_KIND: Final[str] = "table"
+
+#: Markdown emphasis characters, ignored when looking for the label.
+_EMPHASIS: Final[re.Pattern[str]] = re.compile(r"[*_]")
+
+#: Any run of whitespace, collapsed when looking for the label.
+_WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
+
 
 def charter_text() -> str:
     """The charter's full text."""
     assert CHARTER.exists(), f"the charter is missing: {CHARTER}"
     return CHARTER.read_text(encoding="utf-8")
+
+
+def readme_text() -> str:
+    """``README.md``'s full text."""
+    return README.read_text(encoding="utf-8")
 
 
 def region(name: str) -> str:
@@ -147,3 +196,96 @@ def cited_paths(cell: str) -> list[str]:
         if looks_like_repo_path(token)
         for candidate in expand_braces(token)
     ]
+
+
+def csv_citations_in(text: str) -> list[str]:
+    """Every ``.csv`` path ``text`` cites, brace-expanded, in citation order."""
+    return [path for path in cited_paths(text) if path.endswith(CSV_SUFFIX)]
+
+
+def cited_sidecars_in(text: str) -> list[str]:
+    """The run sidecars ``text`` cites, once each, in citation order.
+
+    A cited ``.csv`` stands for its sibling ``<stem>.run.json``; a cited
+    ``.run.json`` is itself. So ``results/x.{csv,run.json}``, ``results/x.csv``
+    and ``results/x.run.json`` all reach the same sidecar.
+    """
+    found: list[str] = []
+    for path in cited_paths(text):
+        if path.endswith(SIDECAR_SUFFIX):
+            sidecar = path
+        elif path.endswith(CSV_SUFFIX):
+            sidecar = path.removesuffix(CSV_SUFFIX) + SIDECAR_SUFFIX
+        else:
+            continue
+        if sidecar not in found:
+            found.append(sidecar)
+    return found
+
+
+def carries_no_lookahead_label(text: str) -> bool:
+    """Whether ``text`` states :data:`NO_LOOKAHEAD_LABEL`.
+
+    Case, emphasis and line wrapping are ignored: a label wrapped across two
+    Markdown lines, or set in bold, is still the label.
+    """
+    flat = _WHITESPACE.sub(" ", _EMPHASIS.sub("", text)).lower()
+    return NO_LOOKAHEAD_LABEL.lower() in flat
+
+
+def mentions_mcts_and_dorfler(text: str) -> bool:
+    """True when ``text``'s prose names both MCTS and Dörfler.
+
+    Inline code spans are stripped first, so a path such as
+    ``results/lshape_mcts_vs_dorfler.csv`` cannot satisfy the Dörfler vocabulary
+    by itself (the umlaut lives in the claim prose).
+    """
+    prose = _CODE_SPAN.sub(" ", text).lower()
+    return "mcts" in prose and ("dörfler" in prose or "dorfler" in prose)
+
+
+def is_amr_policy_ratio_claim(text: str) -> bool:
+    """Whether ``text`` states an MCTS-vs-Dörfler policy ratio."""
+    return mentions_mcts_and_dorfler(text) and AMR_RATIO_HINT.search(text) is not None
+
+
+def markdown_units(markdown: str) -> list[tuple[int, str]]:
+    """``(first line number, text)`` units a Markdown claim is read in, in order.
+
+    A paragraph or a list item is one unit, continuation lines included: a claim
+    wrapped across lines is still one claim, and reading it line by line misses
+    it when no single line names both arms and a ratio. A table row is its own
+    unit, like a charter register row. Fenced code is not prose, but each fenced
+    line stays a unit of its own so a claim cannot hide in a code block.
+    """
+    units: list[tuple[int, str]] = []
+    covered: set[int] = set()
+    for block in split_blocks(markdown):
+        covered.update(line_no for line_no, _ in block.lines)
+        if block.kind == TABLE_BLOCK_KIND:
+            units.extend(block.lines)
+        else:
+            units.append((block.lines[0][0], block.text))
+    units.extend(
+        (line_no, line)
+        for line_no, line in enumerate(markdown.splitlines(), start=1)
+        if line_no not in covered and line.strip()
+    )
+    return sorted(units)
+
+
+def amr_policy_ratio_subjects() -> list[tuple[str, str]]:
+    """(source, body) pairs that look like an MCTS-vs-Dörfler policy ratio claim.
+
+    Charter evidence rows are read whole (cells joined); ``README.md`` is read in
+    :func:`markdown_units`, each source naming the unit's first line.
+    """
+    subjects: list[tuple[str, str]] = []
+    for cells in row_lines("evidence"):
+        body = " | ".join(cells)
+        if is_amr_policy_ratio_claim(body):
+            subjects.append((f"{EVIDENCE_SOURCE_PREFIX}{cells[0]}", body))
+    for line_no, body in markdown_units(readme_text()):
+        if is_amr_policy_ratio_claim(body):
+            subjects.append((f"{README_SOURCE_PREFIX}{line_no}", body))
+    return subjects

@@ -12,8 +12,6 @@ Design Principles:
 
 from __future__ import annotations
 
-import hashlib
-import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
@@ -21,6 +19,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.constants import DEFAULT_BOARD_SIZES
+from src.templates.config import config_hash
 
 
 class ScenarioTier(str, Enum):
@@ -108,10 +107,14 @@ class BaseScenarioConfig(BaseModel):
     )
 
     def compute_hash(self) -> str:
-        """Compute deterministic hash of configuration for reproducibility."""
-        # Sort keys for determinism
-        config_str = json.dumps(self.model_dump(), sort_keys=True, default=str)
-        return hashlib.sha256(config_str.encode()).hexdigest()[:16]
+        """Compute deterministic hash of configuration for reproducibility.
+
+        Excludes construction timestamps at every depth (see
+        :data:`src.templates.config.VOLATILE_CONFIG_FIELDS`): a scenario config
+        nesting a module config, such as a ``SubstrateConfig``, otherwise hashes
+        differently every time the same YAML is loaded.
+        """
+        return config_hash(self.model_dump())
 
 
 class TransferScenarioConfig(BaseScenarioConfig):

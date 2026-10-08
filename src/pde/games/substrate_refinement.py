@@ -133,13 +133,22 @@ class SubstrateRefinementGame(RefinementGame):
 
         """
         self._config = config or SubstrateRefinementConfig(name="substrate_refinement")
-        self._substrate: RefinementSubstrate[Any] = substrate or build_substrate_from_config(
-            self._config.substrate,
-            operator_name=self._config.operator_name,
-            scale=self._config.lshape_scale,
+        # `is None`, not truthiness: an injected object that happens to be falsy (an
+        # empty cache gaining `__len__`) must still be the one used. The arena keeps
+        # the cache it passes and reads its hit/miss counts from it.
+        self._substrate: RefinementSubstrate[Any] = (
+            substrate
+            if substrate is not None
+            else build_substrate_from_config(
+                self._config.substrate,
+                operator_name=self._config.operator_name,
+                scale=self._config.lshape_scale,
+            )
         )
-        self._cache = solve_cache or FingerprintSolveCache(
-            self._config.substrate.solve_cache_max_entries
+        self._cache = (
+            solve_cache
+            if solve_cache is not None
+            else FingerprintSolveCache(self._config.substrate.solve_cache_max_entries)
         )
         # Stateless w.r.t. episode: all per-episode data lives on SubstrateEpisodeState.
         self._log = logger.bind(

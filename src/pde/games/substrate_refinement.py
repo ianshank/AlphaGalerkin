@@ -23,7 +23,9 @@ from src.research.substrates.factory import build_substrate_from_config
 from src.research.substrates.solve_cache import FingerprintSolveCache
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    from collections.abc import Iterable
+
+    from numpy.typing import ArrayLike, NDArray
 
     from src.refinement.substrate import RefinementSubstrate, SubstrateSolveResult
 
@@ -83,6 +85,30 @@ def _state_from_solve(
         history=list(history),
         mesh=mesh,
     )
+
+
+def indicator_score(indicators: NDArray[np.float64], action: int) -> float:
+    """Score of ``action`` under the residual ranking: its indicator, else ``0.0``.
+
+    ``indicators`` is the flattened float64 indicator array. An index outside it
+    scores ``0.0`` -- a unit the estimator reported nothing for ranks as unmarked.
+    """
+    return float(indicators[action]) if 0 <= action < indicators.shape[0] else 0.0
+
+
+def rank_by_indicator(indicators: ArrayLike, candidates: Iterable[int]) -> list[tuple[float, int]]:
+    """``(score, action)`` for each candidate, largest :func:`indicator_score` first.
+
+    The sort is stable, so equal scores keep the order of ``candidates``: pass
+    them in ascending index order and ties resolve to the lowest index. This is
+    the one definition of "largest residual first". The top-k legal set below
+    and the arena's greedy control (``src.research.greedy_control``) both read
+    it, so the two rankings cannot drift apart.
+    """
+    flat = np.asarray(indicators, dtype=np.float64).reshape(-1)
+    scored = [(indicator_score(flat, idx), idx) for idx in candidates]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored
 
 
 @register_refinement_game(GAME_REGISTRY_NAME)
@@ -175,16 +201,8 @@ class SubstrateRefinementGame(RefinementGame):
         top_k = int(self._config.top_k_actions)
         if top_k <= 0 or top_k >= len(refinable):
             return refinable
-        indicators = np.asarray(state.indicators, dtype=np.float64).reshape(-1)
-        scored = [
-            (
-                float(indicators[idx]) if 0 <= idx < indicators.shape[0] else 0.0,
-                idx,
-            )
-            for idx in refinable
-        ]
-        scored.sort(key=lambda item: item[0], reverse=True)
-        return [idx for _, idx in scored[:top_k]]
+        ranked = rank_by_indicator(state.indicators, refinable)
+        return [idx for _, idx in ranked[:top_k]]
 
     def apply_action(self, state: RefinementState, action: int) -> SubstrateEpisodeState:
         """Refine a single unit; pure in ``(state, action)`` — no instance mutation."""
@@ -260,4 +278,6 @@ __all__ = [
     "VALUE_CHANNEL_SIZE",
     "SubstrateEpisodeState",
     "SubstrateRefinementGame",
+    "indicator_score",
+    "rank_by_indicator",
 ]

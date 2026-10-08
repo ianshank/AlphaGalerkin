@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import numpy as np
@@ -96,3 +97,60 @@ class TestMicroRun:
         loaded = load_run_manifest(sidecar)
         assert loaded.git.dirty is False
         assert loaded.git.sha == "snap"
+
+
+GREEDY_RATIO_KEYS = (
+    "l2_error_ratio_mcts_over_greedy_at_matched_dof",
+    "l2_error_ratio_greedy_over_dorfler_at_matched_dof",
+)
+DIVERGENCE_KEYS = ("decisions_diverging_from_greedy", "decisions_diverging_from_greedy_max")
+
+
+def _csv_methods(path: str) -> set[str]:
+    with Path(path).open(encoding="utf-8", newline="") as handle:
+        return {row["method"] for row in csv.DictReader(handle)}
+
+
+class TestGreedyControl:
+    def test_records_the_greedy_metrics_rows_and_arm(self, tmp_path: Path) -> None:
+        from src.research.run_manifest import load_run_manifest
+
+        result = MCTSClassicalAMRArenaScenario(_config(tmp_path)).run()
+        assert set(GREEDY_RATIO_KEYS + DIVERGENCE_KEYS) <= set(result.metrics)
+        assert _csv_methods(result.artifacts["csv"]) == {"uniform", "dorfler", "mcts", "greedy"}
+        manifest = load_run_manifest(Path(result.artifacts["run_json"]))
+        assert "greedy" in {arm.name for arm in manifest.arms}
+
+    def test_off_writes_exactly_the_legacy_csv(self, tmp_path: Path) -> None:
+        result = MCTSClassicalAMRArenaScenario(
+            _config(tmp_path, include_greedy_control=False)
+        ).run()
+        assert _csv_methods(result.artifacts["csv"]) == {"uniform", "dorfler", "mcts"}
+        assert set(GREEDY_RATIO_KEYS).isdisjoint(result.metrics)
+        assert set(DIVERGENCE_KEYS) <= set(result.metrics)
+
+    def test_setup_and_recorded_events_carry_the_greedy_fields(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.poc.logging import ScenarioLogger
+
+        events: dict[str, dict[str, object]] = {}
+        original = ScenarioLogger.info
+
+        def spy(self: ScenarioLogger, event: str, **kwargs: object) -> None:
+            events[event] = kwargs
+            original(self, event, **kwargs)
+
+        monkeypatch.setattr(ScenarioLogger, "info", spy)
+        result = MCTSClassicalAMRArenaScenario(_config(tmp_path)).run()
+        assert events["setup_complete"]["include_greedy_control"] is True
+        recorded = events["arena_recorded"]
+        assert recorded["decisions_diverging_from_greedy"] == pytest.approx(
+            result.metrics["decisions_diverging_from_greedy"]
+        )
+        assert recorded["l2_error_ratio_mcts_over_greedy"] == pytest.approx(
+            result.metrics["l2_error_ratio_mcts_over_greedy_at_matched_dof"]
+        )
+        assert recorded["l2_error_ratio_greedy_over_dorfler"] == pytest.approx(
+            result.metrics["l2_error_ratio_greedy_over_dorfler_at_matched_dof"]
+        )

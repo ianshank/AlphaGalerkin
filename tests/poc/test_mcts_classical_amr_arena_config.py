@@ -79,6 +79,39 @@ class TestValidation:
         assert cfg.resolved_seeds() == [10, 1019, 2028]
 
 
+class TestGreedyControlField:
+    """``include_greedy_control`` is additive: default on, old YAMLs unchanged."""
+
+    def test_defaults_to_true_and_is_described(self) -> None:
+        assert _config().include_greedy_control is True
+        field = MCTSClassicalAMRArenaConfig.model_fields["include_greedy_control"]
+        assert field.description is not None
+        assert "greedy" in field.description
+
+    def test_false_is_accepted(self) -> None:
+        assert _config(include_greedy_control=False).include_greedy_control is False
+
+    @pytest.mark.parametrize(
+        "basename",
+        ["mcts_classical_amr_arena.yaml", "mcts_classical_amr_arena_ci.yaml"],
+    )
+    def test_a_yaml_without_the_field_parses_to_the_default(self, basename: str) -> None:
+        path = REPO_ROOT / "config" / "scenarios" / basename
+        entry = yaml.safe_load(path.read_text(encoding="utf-8"))["scenarios"][0]
+        entry.pop("include_greedy_control", None)
+        cfg = load_config_from_dict(entry)
+        # By name, not isinstance: some tests/poc modules purge
+        # sys.modules['src.poc.scenarios*'] (tests/poc/conftest.py, rule 2).
+        assert type(cfg).__name__ == MCTSClassicalAMRArenaConfig.__name__
+        assert cfg.model_dump()["include_greedy_control"] is True
+
+    def test_toggling_it_leaves_the_gate_and_the_scored_locks_alone(self) -> None:
+        off = _config(include_greedy_control=False)
+        assert off.get_default_thresholds() == _config().get_default_thresholds()
+        assert (off.search_mode, off.add_noise, off.temperature) == ("single_agent", False, 0.0)
+        assert off.evaluator_name == HEADLINE_EVALUATOR_NAME
+
+
 class TestThresholdsAQA:
     def test_single_matched_dof_gate(self) -> None:
         thresholds = _config().get_default_thresholds()

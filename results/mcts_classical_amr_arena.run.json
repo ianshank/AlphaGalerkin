@@ -97,7 +97,7 @@
     "seed": 42,
     "seed_stride": 1009,
     "substrate": {
-      "created_at": "2026-10-08T00:36:14.946321Z",
+      "created_at": "2026-10-08T01:32:27.514112Z",
       "debug": false,
       "description": "",
       "element_type": "P1",
@@ -127,12 +127,12 @@
     "use_intermediate_rewards": false,
     "value_scale": 4.0
   },
-  "config_hash": "ccb72ad2c13b4111",
-  "created_at_utc": "2026-10-08T00:36:23.922244+00:00",
+  "config_hash": "d6993a0dfd1ab778",
+  "created_at_utc": "2026-10-08T01:32:39.575291+00:00",
   "git": {
-    "branch": "worktree-agent-a886380b112a25ecf",
+    "branch": "claude/peer-review-commercialization-694pom",
     "dirty": false,
-    "sha": "f2c65c462b6aa5846e091279a2c64510a7a6a504"
+    "sha": "45744756c8767714138add05a9976dd1bf18591b"
   },
   "hardware_tag": "x86_64-4cpu",
   "harness": "scripts.run_mcts_classical_amr_arena",
@@ -143,7 +143,7 @@
     "adequacy_uniform_rate": -0.6709849620221033,
     "decisions_diverging_from_greedy": 0.0,
     "decisions_diverging_from_greedy_max": 0.0,
-    "error_per_dof_ratio_mcts_over_dorfler": 32.10294014530385,
+    "error_per_dof_ratio_mcts_over_dorfler": 32.647347692525834,
     "l2_error_ratio_at_matched_dof": 0.9531782126653989,
     "l2_error_ratio_at_matched_solves": 9.231951512014659,
     "l2_error_ratio_greedy_over_dorfler_at_matched_dof": 0.9531782126653989,
@@ -154,7 +154,7 @@
     "marking_fraction": 0.5,
     "matched_dof": 287.0,
     "matched_solves": 10.0,
-    "matched_wall_time_seconds": 0.27353520499991646,
+    "matched_wall_time_seconds": 0.34594819000000143,
     "mcts_win_fraction": 1.0,
     "n_seeds": 3.0
   },
@@ -170,7 +170,7 @@
     },
     "python": "3.11.15"
   },
-  "run_id": "ccb72ad2c13b4111",
+  "run_id": "d6993a0dfd1ab778",
   "schema_version": 1,
   "seeds": [
     42,

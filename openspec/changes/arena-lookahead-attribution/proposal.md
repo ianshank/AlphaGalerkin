@@ -14,7 +14,8 @@ Gate 0.1 (code half, merged 2026-10-08) added the control that separates the two
 a single-element greedy arm on the MCTS arm's exact game (`src/research/greedy_control.py`)
 and a `decisions_diverging_from_greedy` counter -- and this change re-records the artifact
 with it, from a clean tree under `--proposal-grade`
-(`results/mcts_classical_amr_arena.{csv,run.json}`, sidecar `dirty: false`, SHA `f2c65c4`):
+(`results/mcts_classical_amr_arena.{csv,run.json}`, sidecar `dirty: false`, SHA `f2c65c4`; re-recorded on `4574475` after the
+config-hash fix, every row unchanged):
 
 | Metric | Value |
 | --- | --- |

@@ -266,13 +266,43 @@ def _notes(result: LookaheadVsGreedyResult, config: LookaheadVsGreedyConfig) -> 
     )
 
 
+class SidecarHashMismatchError(ValueError):
+    """The config about to be recorded does not reproduce the hash the run started with."""
+
+
+def require_reproducible_hash(config: LookaheadVsGreedyConfig, recorder: RunRecorder) -> None:
+    """Refuse a config whose hash is not the one the run started with.
+
+    The sidecar records this config's JSON dump beside the recorder's pre-run
+    hash, so ``load_config_from_dict(sidecar["config"]).compute_hash()`` must
+    reproduce ``sidecar["config_hash"]``. A config that changed after the
+    snapshot would break that silently; it is refused instead.
+
+    Raises:
+        SidecarHashMismatchError: ``config.compute_hash()`` is not ``recorder.config_hash``.
+
+    """
+    current = config.compute_hash()
+    if current != recorder.config_hash:
+        raise SidecarHashMismatchError(
+            f"config hashes to {current!r}, but the run started with "
+            f"{recorder.config_hash!r}: the recorded config would not reproduce its hash"
+        )
+
+
 def build_run_manifest(
     result: LookaheadVsGreedyResult,
     config: LookaheadVsGreedyConfig,
     recorder: RunRecorder,
     artifacts: dict[str, str],
 ) -> RunManifest:
-    """The run's sidecar, carrying the recorder's pre-write snapshot and hash."""
+    """The run's sidecar, carrying the recorder's pre-write snapshot and hash.
+
+    Raises:
+        SidecarHashMismatchError: ``config`` no longer hashes to ``recorder.config_hash``.
+
+    """
+    require_reproducible_hash(config, recorder)
     return RunManifest(
         run_id=f"lookahead-vs-greedy-{result.testbed}-{recorder.config_hash}",
         created_at_utc=datetime.now(timezone.utc).isoformat(),
@@ -298,7 +328,14 @@ def write_artifacts(
     config: LookaheadVsGreedyConfig,
     recorder: RunRecorder,
 ) -> dict[str, Path]:
-    """Write the CSV and PNG, then the sidecar through ``recorder``; return every path."""
+    """Write the CSV and PNG, then the sidecar through ``recorder``; return every path.
+
+    Raises:
+        SidecarHashMismatchError: Before anything is written, when ``config`` no
+            longer hashes to ``recorder.config_hash``.
+
+    """
+    require_reproducible_hash(config, recorder)
     base = Path(config.output_dir) / config.artifact_basename
     csv_path = export_csv(result, Path(f"{base}.csv"))
     png_path = export_plot(result, Path(f"{base}.png"))
@@ -320,8 +357,10 @@ def write_artifacts(
 
 __all__ = [
     "HARNESS_NAME",
+    "SidecarHashMismatchError",
     "build_run_manifest",
     "export_csv",
     "export_plot",
+    "require_reproducible_hash",
     "write_artifacts",
 ]

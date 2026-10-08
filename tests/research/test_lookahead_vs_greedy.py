@@ -39,6 +39,7 @@ import src.research.lookahead_vs_greedy_artifacts as artifacts
 from src.mcts.node import MCTSNode
 from src.mcts.search import MCTS
 from src.pde.games.substrate_refinement import SubstrateEpisodeState
+from src.poc.config import load_config_from_dict
 from src.poc.scenarios.lookahead_vs_greedy_config import LookaheadVsGreedyConfig
 from src.research.amr_arena_types import CSV_COLUMNS, DETERMINISTIC_ARM_SEED
 from src.research.greedy_control import GreedyDivergence, greedy_action
@@ -56,6 +57,7 @@ from src.research.lookahead_vs_greedy import (
 )
 from src.research.lookahead_vs_greedy_artifacts import (
     HARNESS_NAME,
+    SidecarHashMismatchError,
     build_run_manifest,
     export_csv,
     export_plot,
@@ -535,8 +537,8 @@ class TestArtifacts:
         assert manifest.git == CLEAN
         assert manifest.harness == HARNESS_NAME
         assert manifest.config_hash == config.compute_hash()
-        recomputed = LookaheadVsGreedyConfig.model_validate(manifest.config).compute_hash()
-        assert recomputed == manifest.config_hash
+        # The committed-sidecar guard's expression, verbatim (dispatch by name).
+        assert load_config_from_dict(manifest.config).compute_hash() == manifest.config_hash
         assert manifest.metrics == result.metrics()
         assert manifest.seeds == [run.seed for run in result.runs()]
         arms = {arm.name: arm for arm in manifest.arms}
@@ -585,9 +587,27 @@ class TestArtifacts:
         monkeypatch.setattr(artifacts, "export_plot", lambda result, path: None)
         monkeypatch.setattr("src.research.run_manifest.collect_git_provenance", lambda: CLEAN)
         here = config.model_copy(update={"output_dir": str(tmp_path)})
-        written = write_artifacts(result, here, RunRecorder.start(config_hash="abc"))
+        written = write_artifacts(result, here, RunRecorder.start(config_hash=here.compute_hash()))
         assert set(written) == {"csv", "run_json"}
         assert set(load_run_manifest(written["run_json"]).artifacts) == {"csv"}
+
+    def test_a_config_changed_after_the_snapshot_is_refused_before_anything_is_written(
+        self,
+        micro: tuple[LookaheadVsGreedyConfig, LookaheadVsGreedyResult],
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """H6: the recorded config must reproduce the recorded (pre-run) hash."""
+        config, result = micro
+        monkeypatch.setattr("src.research.run_manifest.collect_git_provenance", lambda: CLEAN)
+        recorder = RunRecorder.start(config_hash=config.compute_hash())
+        drifted = config.model_copy(update={"output_dir": str(tmp_path)})
+        assert drifted.compute_hash() != recorder.config_hash
+        with pytest.raises(SidecarHashMismatchError, match="would not reproduce its hash"):
+            build_run_manifest(result, drifted, recorder, {})
+        with pytest.raises(SidecarHashMismatchError):
+            write_artifacts(result, drifted, recorder)
+        assert list(tmp_path.iterdir()) == []
 
 
 # Mutation-kill record (Gate 1 surface, 2026-10-08) is appended by the

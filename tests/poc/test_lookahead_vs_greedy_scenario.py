@@ -7,6 +7,8 @@ Defect classes:
 * **S2 abort scored** -- an adequacy abort writes artifacts or a verdict.
 * **S3 late snapshot** -- git is probed after an artifact exists (a clean tree
   then reads dirty), or a proposal-grade run computes on a dirty tree.
+* **S4 unreproducible sidecar** -- the sidecar's ``config`` does not reproduce
+  its ``config_hash`` through ``load_config_from_dict``.
 
 Per ``tests/poc/conftest.py``: every patch goes through the same module object
 the scenario is instantiated from.
@@ -14,6 +16,7 @@ the scenario is instantiated from.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +25,7 @@ import pytest
 import src.poc.scenarios.lookahead_vs_greedy as scenario_module
 import src.research.lookahead_vs_greedy as harness_module
 import src.research.lookahead_vs_greedy_artifacts as artifacts_module
-from src.poc.config import ScenarioStatus
+from src.poc.config import ScenarioStatus, load_config_from_dict
 from src.poc.scenarios.lookahead_vs_greedy_config import LookaheadVsGreedyConfig
 from src.research.lookahead_vs_greedy import (
     ADEQUACY_ABORTED_METRIC,
@@ -128,6 +131,18 @@ class TestProvenanceOrder:
         ).run()
         assert order == ["git", "run", "write"]
         assert result.status in {ScenarioStatus.PASSED, ScenarioStatus.FAILED}
+
+    def test_the_sidecar_config_reproduces_the_sidecar_hash(self, tmp_path: Path) -> None:
+        """S4: the committed-sidecar guard's expression, through the real lifecycle.
+
+        ``setup()`` installs the default thresholds after construction, so the
+        hashed and recorded config must both be the post-setup one; a sidecar
+        recording one and hashing the other is unreproducible.
+        """
+        result = scenario_module.LookaheadVsGreedyScenario(_config(tmp_path)).run()
+        sidecar = json.loads(Path(result.artifacts["run_json"]).read_text(encoding="utf-8"))
+        assert sidecar["config"]["thresholds"], "vacuity: the post-setup config is recorded"
+        assert load_config_from_dict(sidecar["config"]).compute_hash() == sidecar["config_hash"]
 
     def test_a_proposal_grade_run_on_a_dirty_tree_computes_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

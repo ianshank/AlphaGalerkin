@@ -10,6 +10,8 @@ arm, seed and threshold before any run. Defect classes:
   temperature, an unreachable C3 bar, or a hand-written threshold list.
 * **C3 broken dispatch** -- ``load_config_from_dict`` returns a base config
   for the shipped YAMLs, which would reject their fields.
+* **C4 unstable hash** -- the same YAML hashes differently on two loads (a
+  nested construction timestamp in the hash), so no sidecar hash reproduces.
 """
 
 from __future__ import annotations
@@ -138,6 +140,26 @@ class TestShippedYamls:
         assert cfg.artifact_basename == f"lookahead_vs_greedy_{operator_name.split('_')[0]}"
         assert cfg.output_dir == "results"
         assert not cfg.thresholds
+
+    @pytest.mark.parametrize("operator_name", sorted(YAMLS))
+    def test_each_yaml_hashes_the_same_however_often_it_is_loaded(self, operator_name: str) -> None:
+        """C4: a nested ``SubstrateConfig``'s ``created_at`` never reaches the hash.
+
+        It is the construction time, so if it did, the same YAML would hash
+        differently on every load and no recorded ``config_hash`` could ever be
+        recomputed. The second load pins a different timestamp explicitly, so
+        the check does not depend on two loads landing in different microseconds.
+        """
+        first = load_config_from_dict(_yaml_entry(operator_name))
+        assert "created_at" in first.model_dump()["substrate"], "vacuity: the timestamp exists"
+        entry = _yaml_entry(operator_name)
+        entry["substrate"] = {**entry["substrate"], "created_at": "2000-01-01T00:00:00Z"}
+        second = load_config_from_dict(entry)
+        assert first.model_dump()["substrate"] != second.model_dump()["substrate"]
+        assert second.compute_hash() == first.compute_hash()
+        assert load_config_from_dict(_yaml_entry(operator_name)).compute_hash() == (
+            first.compute_hash()
+        )
 
     def test_the_two_testbeds_differ_only_in_their_identity(self) -> None:
         lshape, zshape = _yaml_entry("lshape_poisson"), _yaml_entry("zshape_poisson")

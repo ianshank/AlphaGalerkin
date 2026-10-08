@@ -13,8 +13,9 @@ Key features:
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 import torch
 from jaxtyping import Float
@@ -26,6 +27,12 @@ from src.video_compression.mcts.networks import (
     PredictionNetwork,
     PredictionOutput,
     RepresentationNetwork,
+)
+
+MCTS_RATE_CONTROL_REMOVE_IN: Final[str] = "0.6.0"
+MCTS_RATE_CONTROL_DEPRECATION: Final[str] = (
+    "MCTSRateController (use_mcts_rate_control=True) is deprecated: its networks are untrained and "
+    f"the search never sees the bit budget. It will be removed in {MCTS_RATE_CONTROL_REMOVE_IN}."
 )
 
 
@@ -115,6 +122,7 @@ class MCTSRateController:
             device: Device for computation.
 
         """
+        warnings.warn(MCTS_RATE_CONTROL_DEPRECATION, DeprecationWarning, stacklevel=2)
         self.config = config
         self.device = device
 

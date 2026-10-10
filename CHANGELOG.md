@@ -739,6 +739,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kills that depended on committed files -- one had died when its sidecar was re-recorded -- are
   re-planted on synthetic repositories; 32/32 planted defects killed. README's Performance section
   now says neither measuring command writes a run sidecar, so neither can back a published figure.
+- **A performance-claims allowlist entry exempts only the figure inside its fragment** (Copilot
+  review of PR #160). `_allowlisted` (`tests/docs/test_performance_claims.py`) matched a fragment
+  anywhere on a line, so every unbacked figure on that line was exempt, and the stale check stayed
+  green while any figure sat there: a second, unreviewed figure appended to or written before an
+  allowlisted line was reported by nothing (reproduced; an empty fragment exempted a whole page).
+  The scanner now records each figure's column (`PerformanceNumber.column`, additive, outside
+  equality), an entry exempts a figure only when its whole token lies inside one occurrence of the
+  fragment, and staleness is judged per entry. 13/13 further planted defects killed (33-45), 291
+  tests across the two suites, `perf_claims.py` at 100% branch; both live entries stay exempt.
 - **An order-dependent arena pre-flight test kept the fast lane red.**
   `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
   import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and

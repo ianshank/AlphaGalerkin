@@ -65,6 +65,11 @@ PYTHON_VARIABLES = frozenset({"$(PYTHON)", "${PYTHON}"})
 #: Make variables that expand to a ``pytest`` invocation.
 PYTEST_VARIABLES = frozenset({"$(PYTEST)", "${PYTEST}"})
 
+#: Make variables that expand to a ``coverage`` invocation (``COV ?= $(PYTHON) -m coverage``).
+COVERAGE_VARIABLES = frozenset({"$(COV)", "${COV}"})
+
+_COVERAGE_PROGRAM = re.compile(r"^(.*/)?coverage[0-9.]*$")
+
 
 @dataclass(frozen=True)
 class MarkerTerm:
@@ -775,6 +780,17 @@ _INERT_OPTIONS: Final[frozenset[str]] = frozenset(
 #: ``NAME=value`` before the program: an environment assignment for one command.
 _ENV_ASSIGNMENT: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
+#: ``python -m``; interpreter options after which argv is no module's, and ones taking a value.
+_MODULE_OPTION: Final[str] = "-m"
+_INTERPRETER_CODE_OPTIONS: Final[frozenset[str]] = frozenset({"-c", "-"})
+_INTERPRETER_VALUE_OPTIONS: Final[frozenset[str]] = frozenset({"-W", "-X"})
+#: ``coverage run -m pytest``, and the ``run`` options that take a value without ``=``.
+_COVERAGE: Final[str] = "coverage"
+_COVERAGE_RUN: Final[str] = "run"
+_COVERAGE_RUN_VALUE_OPTIONS: Final[frozenset[str]] = frozenset(
+    "--concurrency --context --data-file --debug --include --omit --rcfile --source".split()  # noqa: SIM905
+)
+
 
 @dataclass(frozen=True)
 class PytestInvocation:
@@ -815,16 +831,54 @@ def split_environment(tokens: Sequence[str]) -> tuple[dict[str, str], list[str]]
     return env, list(tokens[index:])
 
 
+def is_coverage_program(token: str) -> bool:
+    """Whether a command's first token invokes ``coverage`` directly (or ``$(COV)``)."""
+    return token in COVERAGE_VARIABLES or bool(_COVERAGE_PROGRAM.match(token))
+
+
+def _interpreter_module(arguments: list[str]) -> tuple[str, list[str]] | None:
+    """``(module, argv)`` for ``python [options] -m module``; ``None`` for a script/``-c``/``-``."""
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument.startswith(_MODULE_OPTION):  # `-m module`, or attached `-mmodule`
+            rest = arguments[index + 1 :]
+            module = argument[len(_MODULE_OPTION) :] or (rest.pop(0) if rest else "")
+            return (module, rest) if module else None
+        if argument in _INTERPRETER_CODE_OPTIONS or not argument.startswith("-"):
+            return None  # what follows is that program's argv, `-m pytest` included
+        index += 2 if argument in _INTERPRETER_VALUE_OPTIONS else 1
+    return None
+
+
+def _coverage_run_pytest(arguments: list[str]) -> list[str] | None:
+    """Pytest's argv from ``coverage``'s own argv: ``run [options] -m pytest ...``."""
+    if not arguments or arguments[0] != _COVERAGE_RUN:
+        return None
+    index = 1
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == _MODULE_OPTION:
+            return arguments[index + 2 :] if arguments[index + 1 : index + 2] == [_PYTEST] else None
+        if not argument.startswith("-"):
+            return None  # `coverage run some/program.py`: not modelled, so not counted
+        index += 2 if argument in _COVERAGE_RUN_VALUE_OPTIONS else 1
+    return None
+
+
 def _pytest_arguments(tokens: list[str]) -> list[str] | None:
-    """The arguments pytest itself receives, or ``None`` if this is not a pytest run."""
+    """Pytest's own argv, or ``None`` -- ``echo -m pytest ...`` runs nothing (PR #160)."""
     if not tokens:
         return None
-    if is_pytest_program(tokens[0]):
-        return tokens[1:]
-    for index in range(len(tokens) - 1):
-        if tokens[index] == "-m" and tokens[index + 1] == _PYTEST:
-            return tokens[index + 2 :]
-    return None
+    program, arguments = tokens[0], tokens[1:]
+    if is_pytest_program(program):
+        return arguments
+    if is_coverage_program(program):
+        return _coverage_run_pytest(arguments)
+    found = _interpreter_module(arguments) if is_python_program(program) else None
+    if found is None or found[0] not in (_PYTEST, _COVERAGE):
+        return None
+    return found[1] if found[0] == _PYTEST else _coverage_run_pytest(found[1])
 
 
 @dataclass
@@ -897,8 +951,11 @@ class _ArgvReader:
 def pytest_invocation(command: str, *, addopts: Sequence[str] = ()) -> PytestInvocation | None:
     """Read one shell command as a pytest invocation.
 
-    Recognised entry points: ``pytest``/``$(PYTEST)``, ``python -m pytest`` and
-    ``... coverage run ... -m pytest``. Leading ``NAME=value`` assignments are
+    Recognised entry points: ``pytest``/``$(PYTEST)``, ``python [interpreter
+    options] -m pytest``, and ``coverage run [options] -m pytest`` with
+    ``coverage`` as a program, ``$(COV)`` or ``python -m coverage``. A program
+    that merely carries ``-m pytest`` in its argv (``echo``, ``python
+    script.py``) is not one. Leading ``NAME=value`` assignments are
     returned as ``env``. ``addopts`` are prepended to the arguments, which is
     where pytest inserts ``[tool.pytest.ini_options] addopts`` and
     ``PYTEST_ADDOPTS``.

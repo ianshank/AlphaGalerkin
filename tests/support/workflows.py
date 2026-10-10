@@ -269,7 +269,12 @@ def split_shell_commands(text: str) -> list[str]:
         Whitespace-stripped, non-empty commands in source order.
 
     """
-    parts: list[str] = []
+    return [part.strip() for part, _ in _split_at_separators(text) if part.strip()]
+
+
+def _split_at_separators(text: str) -> list[tuple[str, str]]:
+    """``(part, separator after it)`` pairs, quote-aware; the last separator is ``""``."""
+    pieces: list[tuple[str, str]] = []
     buffer: list[str] = []
     in_single = False
     in_double = False
@@ -281,20 +286,67 @@ def split_shell_commands(text: str) -> list[str]:
         elif char == '"' and not in_single:
             in_double = not in_double
         elif not in_single and not in_double:
-            if text.startswith(_DOUBLE_SEPARATORS, index):
-                parts.append("".join(buffer))
+            double = next((s for s in _DOUBLE_SEPARATORS if text.startswith(s, index)), None)
+            separator = double or (char if char in _SINGLE_SEPARATORS else None)
+            if separator is not None:
+                pieces.append(("".join(buffer), separator))
                 buffer = []
-                index += 2
-                continue
-            if char in _SINGLE_SEPARATORS:
-                parts.append("".join(buffer))
-                buffer = []
-                index += 1
+                index += len(separator)
                 continue
         buffer.append(char)
         index += 1
-    parts.append("".join(buffer))
-    return [part.strip() for part in parts if part.strip()]
+    pieces.append(("".join(buffer), ""))
+    return pieces
+
+
+#: The list operators that make one command's status depend on, or absorb, its neighbour's.
+PIPE: Final[str] = "|"
+AND_LIST: Final[str] = "&&"
+OR_LIST: Final[str] = "||"
+_JOINING_OPERATORS: Final[tuple[str, ...]] = (OR_LIST, AND_LIST, PIPE)
+SEQUENCE: Final[str] = ";"
+NEWLINE: Final[str] = "\n"
+
+
+@dataclass(frozen=True)
+class ShellCommand:
+    """One command of a script, with the operators joining it to its neighbours.
+
+    ``before``/``after`` are ``""`` at the script's ends, otherwise ``||``, ``&&``,
+    ``|``, ``;`` or a newline. A list operator wins over the newline that may
+    follow it (``pytest ... ||`` then ``true`` on the next line is one list).
+    """
+
+    text: str
+    before: str
+    after: str
+
+
+def _joining_operator(separators: list[str]) -> str:
+    """The operator a run of separators amounts to between two commands."""
+    joining = next((s for s in separators if s in _JOINING_OPERATORS), None)
+    return joining or (SEQUENCE if SEQUENCE in separators else NEWLINE)
+
+
+def iter_shell_commands(script: str) -> list[ShellCommand]:
+    """:func:`iter_commands`, with the operators around each command kept.
+
+    The command texts are exactly :func:`iter_commands`'s -- one scanner, not two.
+    """
+    normalised = join_line_continuations(strip_shell_comments(script))
+    texts: list[str] = []
+    joins: list[str] = []
+    gap: list[str] = []
+    for part, separator in _split_at_separators(normalised):
+        if part.strip():
+            if texts:
+                joins.append(_joining_operator(gap))
+            texts.append(part.strip())
+            gap = []
+        if separator:
+            gap.append(separator)
+    edges = ["", *joins, ""]
+    return [ShellCommand(text, edges[i], edges[i + 1]) for i, text in enumerate(texts)]
 
 
 def iter_commands(script: str) -> list[str]:
@@ -523,11 +575,15 @@ def _may_continue_on_error(value: object) -> bool:
     return not (isinstance(value, str) and value.strip().lower() == "false")
 
 
-def _default_working_directory(mapping: object) -> str | None:
+def _default_run_setting(mapping: object, key: str) -> str | None:
     defaults = mapping.get("defaults") if isinstance(mapping, dict) else None
     run = defaults.get("run") if isinstance(defaults, dict) else None
-    directory = run.get("working-directory") if isinstance(run, dict) else None
-    return str(directory) if directory is not None else None
+    value = run.get(key) if isinstance(run, dict) else None
+    return str(value) if value is not None else None
+
+
+def _default_working_directory(mapping: object) -> str | None:
+    return _default_run_setting(mapping, "working-directory")
 
 
 @dataclass(frozen=True)
@@ -536,8 +592,9 @@ class WorkflowStep:
 
     ``env`` merges workflow, job and step ``env:`` with the later level winning,
     as GitHub does. ``continue_on_error`` is set at either the step or the job.
-    ``working_directory`` falls back to the job's and then the workflow's
-    ``defaults.run``.
+    ``working_directory`` and ``shell`` fall back to the job's and then the
+    workflow's ``defaults.run``; a ``shell`` of ``None`` is GitHub's default
+    (``bash -e {0}`` on Linux).
     """
 
     workflow: str
@@ -549,6 +606,7 @@ class WorkflowStep:
     condition: str | None
     continue_on_error: bool
     working_directory: str | None
+    shell: str | None = None
 
     def __str__(self) -> str:  # pragma: no cover - failure-message sugar only
         return f"{self.workflow}::{self.job}::{self.name}"
@@ -567,6 +625,7 @@ def workflow_steps(path: Path) -> list[WorkflowStep]:
     document = load_workflow(path)
     workflow_env = _env_mapping(document.get("env"))
     workflow_directory = _default_working_directory(document)
+    workflow_shell = _default_run_setting(document, "shell")
     jobs = document.get("jobs")
     found: list[WorkflowStep] = []
     for job_name, job in (jobs if isinstance(jobs, dict) else {}).items():
@@ -575,12 +634,14 @@ def workflow_steps(path: Path) -> list[WorkflowStep]:
         job_env = {**workflow_env, **_env_mapping(job.get("env"))}
         job_continues = _may_continue_on_error(job.get("continue-on-error"))
         job_directory = _default_working_directory(job) or workflow_directory
+        job_shell = _default_run_setting(job, "shell") or workflow_shell
         for index, step in enumerate(job["steps"]):
             if not isinstance(step, dict):
                 continue
             script = step.get("run")
             condition = step.get("if")
             directory = step.get("working-directory")
+            shell = step.get("shell")
             found.append(
                 WorkflowStep(
                     workflow=path.name,
@@ -593,9 +654,141 @@ def workflow_steps(path: Path) -> list[WorkflowStep]:
                     continue_on_error=job_continues
                     or _may_continue_on_error(step.get("continue-on-error")),
                     working_directory=str(directory) if directory is not None else job_directory,
+                    shell=str(shell) if shell is not None else job_shell,
                 )
             )
     return found
+
+
+# --------------------------------------------------------------------------- #
+# Whether one command's failure fails its step                                 #
+# --------------------------------------------------------------------------- #
+
+#: The runner shells whose exit semantics are modelled, mapped to whether they set
+#: ``pipefail``; all three set ``errexit``. ``None`` is a step with no ``shell:``
+#: (GitHub runs ``bash -e {0}``), ``bash`` runs ``bash --noprofile --norc -eo
+#: pipefail {0}``, ``sh`` runs ``sh -e {0}``.
+SHELL_PIPEFAIL: Final[dict[str | None, bool]] = {None: False, "bash": True, "sh": False}
+
+#: First words that open / close a compound command or a function body.
+_COMPOUND_OPENERS: Final[frozenset[str]] = frozenset(
+    {"if", "while", "until", "for", "case", "select", "{", "(", "function"}
+)
+_COMPOUND_CLOSERS: Final[frozenset[str]] = frozenset({"fi", "done", "esac", "}", ")"})
+_FUNCTION_DEFINITION_SUFFIX: Final[str] = "()"
+_LEAVING_COMMANDS: Final[frozenset[str]] = frozenset({"exit", "return"})
+_BACKGROUND: Final[str] = "&"
+_SET_BUILTIN: Final[str] = "set"
+_ERREXIT_LETTER: Final[str] = "e"
+_NAMED_OPTION_LETTER: Final[str] = "o"
+_ERREXIT: Final[str] = "errexit"
+_PIPEFAIL: Final[str] = "pipefail"
+_SET_PREFIXES: Final[str] = "-+"
+_END_OF_OPTIONS: Final[str] = "--"
+
+
+def _words(text: str) -> list[str]:
+    try:
+        return shlex.split(text)
+    except ValueError:
+        return text.split()
+
+
+def _apply_set(arguments: list[str], errexit: bool, pipefail: bool) -> tuple[bool, bool]:
+    """``set``'s effect on ``errexit`` and ``pipefail`` (``+e``, ``-o pipefail``, ``-euo ...``)."""
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        index += 1
+        if len(argument) < 2 or argument[0] not in _SET_PREFIXES or argument == _END_OF_OPTIONS:
+            break  # positional parameters from here on
+        enable = argument[0] == "-"
+        letters = argument[1:]
+        if _ERREXIT_LETTER in letters:
+            errexit = enable
+        if _NAMED_OPTION_LETTER in letters and index < len(arguments):
+            name = arguments[index]
+            index += 1
+            errexit = enable if name == _ERREXIT else errexit
+            pipefail = enable if name == _PIPEFAIL else pipefail
+    return errexit, pipefail
+
+
+def _may_leave_cleanly(words: list[str]) -> bool:
+    """An ``exit``/``return`` that can end the script with status 0."""
+    code = words[1] if len(words) > 1 else ""
+    return not (code.isdigit() and int(code) != 0)
+
+
+def _list_reaches_end(commands: Sequence[ShellCommand], index: int) -> bool:
+    """Whether the ``&&``/``|`` chain from ``commands[index]`` is the script's last list."""
+    while commands[index].after in (AND_LIST, PIPE):
+        index += 1
+    return commands[index].after == ""
+
+
+def exit_status_obstacles(
+    commands: Sequence[ShellCommand], position: int, shell: str | None
+) -> list[str]:
+    """Why the step could stay green when ``commands[position]`` fails, or never run it.
+
+    A conservative model of the runner's shell, not an interpreter: what it does not
+    model (an unknown ``shell:``, a compound command) is reported rather than passed.
+    Under errexit, ``pytest ...; true`` *does* fail the step -- the shell exits at
+    ``pytest`` -- so a plain sequence is accepted; ``|| true``, a pipe without
+    ``pipefail``, ``set +e``, ``&``, an earlier ``exit 0`` and an enclosing ``if`` are
+    not (Copilot review, PR #160: the guard read only the step's metadata).
+
+    Args:
+        commands: The step's commands (:func:`iter_shell_commands`).
+        position: Index of the command whose failure must fail the step.
+        shell: The step's effective ``shell:`` (:attr:`WorkflowStep.shell`).
+
+    Returns:
+        One reason per way its status can be lost; empty if it reaches the step.
+
+    """
+    if shell not in SHELL_PIPEFAIL:
+        return [f"shell {shell!r}: only GitHub's default, `bash` and `sh` are modelled"]
+    errexit, pipefail = True, SHELL_PIPEFAIL[shell]
+    depth = 0
+    obstacles: list[str] = []
+    for command in commands[:position]:
+        words = _words(command.text) or [""]
+        first = words[0]
+        if first in _COMPOUND_OPENERS or first.endswith(_FUNCTION_DEFINITION_SUFFIX):
+            depth += 1
+        elif first in _COMPOUND_CLOSERS:
+            depth = max(0, depth - 1)
+        elif first == _SET_BUILTIN:
+            errexit, pipefail = _apply_set(words[1:], errexit, pipefail)
+        elif first in _LEAVING_COMMANDS and depth == 0 and _may_leave_cleanly(words):
+            obstacles.append(f"`{command.text}` before it can end the step green first")
+    if depth:
+        obstacles.append("inside a compound command (if/while/for/case/{ }/( )/function)")
+    if _BACKGROUND in _words(commands[position].text):
+        obstacles.append("backgrounded with `&`: the step does not wait for its status")
+    start = end = position
+    while commands[start].before == PIPE:
+        start -= 1
+    while commands[end].after == PIPE:
+        end += 1
+    if end > position and not pipefail:
+        obstacles.append("piped on without pipefail: the pipeline's status is its last command's")
+    before, after = commands[start].before, commands[end].after
+    if before == OR_LIST:
+        obstacles.append("after `||`: it runs only if the command before it fails")
+    elif before == AND_LIST and not _list_reaches_end(commands, end):
+        obstacles.append(
+            "after `&&` mid-script: if that command fails, the step goes on without it"
+        )
+    if after == OR_LIST:
+        obstacles.append("followed by `||`: the right-hand side absorbs its failure")
+    elif after == AND_LIST and not _list_reaches_end(commands, end):
+        obstacles.append("followed by `&&` mid-script: errexit does not fire for it")
+    elif not errexit and not _list_reaches_end(commands, end):
+        obstacles.append("errexit is off (`set +e`): a later command decides the step's status")
+    return obstacles
 
 
 #: ``pip`` as a program: ``pip``, ``pip3``, ``/usr/bin/pip3.11``.

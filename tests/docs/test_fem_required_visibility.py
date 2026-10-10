@@ -30,11 +30,15 @@ Clauses, each cheap and each falsifiable:
   ``--ignore``d, ``--ignore-glob``bed or ``--deselect``ed; no ``-k``; and the
   effective ``-m`` (``addopts`` first) evaluated by pytest's own compiler
   against the test's full marker set, so ``not fem_required`` *and* a filter
-  narrowed to some other marker both fail.
+  narrowed to some other marker both fail. Only a real entry point runs pytest:
+  ``echo -m pytest <paths>`` carries the words and runs nothing.
 * **(d)** ...by a step that fails loud: ``ALPHAGALERKIN_REQUIRE_EXTRAS=1`` in
   effect, no ``continue-on-error``, no ``if:`` that can skip it, in a hard merge
-  gate. The root hook is *driven* to show the variable turns a missing
-  scikit-fem into a usage error rather than a skip.
+  gate -- and pytest's own exit status reaches the step: no ``|| true``, no pipe
+  without ``pipefail``, no ``set +e``, no ``&``, no earlier ``exit 0``, no
+  enclosing ``if`` (``; true`` is fine: GitHub's ``bash -e`` exits at pytest).
+  The root hook is *driven* to show the variable turns a missing scikit-fem into
+  a usage error rather than a skip.
 * **(e)** A ``[fem]`` job is one whose ``pip install`` names an extra that
   ``pyproject.toml`` declares with scikit-fem -- derived, never spelled --
   before the step runs; ``test-extras`` must be one.
@@ -42,6 +46,13 @@ Clauses, each cheap and each falsifiable:
   (``collect_ignore``, ``collect_ignore_glob``, ``pytest_ignore_collect``,
   ``pytest_collection_modifyitems``): the edit that would hide a module from
   every step while (c) stays green.
+* **(g)** No fem module skips its tests before the root hook sees them: no
+  ``importorskip`` anywhere (at module scope the module yields zero items, so
+  ``ALPHAGALERKIN_REQUIRE_EXTRAS`` has nothing to escalate), no import-time
+  ``skip(allow_module_level=True)``, no ``skip``/``skipif`` mark on a fem test.
+
+(c)'s entry points, (d)'s exit status and (g) answer a Copilot review of PR #160;
+the first version read a step's metadata and its paths, never what ran.
 
 The required mutations -- the selecting step deleted, its ``-m`` flipped to
 ``not fem_required``, ``ALPHAGALERKIN_REQUIRE_EXTRAS`` dropped, a marker in a
@@ -66,6 +77,21 @@ this module, then restored byte-for-byte (sha256-checked) or deleted:
    (the false positive this scan must not have).
 
 5/5 as required; ``TestPlantedDefects`` keeps the same plants running in CI on copies.
+
+Copilot-review kills (2026-10-10), same protocol, each passing on the pre-review guard:
+
+6. ``pytest`` -> ``echo -m pytest`` in the selecting step ->
+   ``test_every_fem_test_is_selected_by_a_fem_job_step`` (and ``..._fails_loud``).
+7. ``|| true`` after its pytest command -> ``test_a_step_selecting_it_fails_loud``.
+8. ``set +e`` before it and ``; true`` after -> ``test_a_step_selecting_it_fails_loud``.
+9. ``| tee pytest.log`` after it (no ``pipefail``) -> ``test_a_step_selecting_it_fails_loud``.
+10. Module-level ``pytest.importorskip("skfem")`` in the instance module ->
+    ``test_no_fem_module_can_skip_its_tests_before_they_run``.
+11. Module-level ``pytest.skip(..., allow_module_level=True)`` there -> the same test.
+12. Control: ``; true`` after it under the default ``bash -e`` -> no test fails.
+
+11/11 planted defects killed, plus the control; ``TestPlantedDefects`` re-plants 6-11 on
+copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``, the no-op).
 """
 
 from __future__ import annotations
@@ -73,9 +99,11 @@ from __future__ import annotations
 import ast
 import fnmatch
 import importlib.util
+import io
 import posixpath
 import re
 import shlex
+import tokenize
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -106,9 +134,12 @@ from tests.support.workflows import (
     CI_WORKFLOW_FILENAME,
     NOT_SELECTED_BY_PATH,
     REPO_ROOT,
+    ShellCommand,
     WorkflowStep,
     blocking_jobs,
+    exit_status_obstacles,
     iter_commands,
+    iter_shell_commands,
     load_workflow,
     pip_install,
     selection_obstacles,
@@ -180,6 +211,61 @@ MIN_PROSE_CORPUS: Final[int] = 10
 
 #: A quoted ``-m`` filter inside a ``run:`` script (planted defects only).
 _QUOTED_MARKER_FILTER: Final[re.Pattern[str]] = re.compile(r"""-m\s+(["'])[^"']*\1""")
+
+#: (g) What skips a fem test before it runs, unseen by the root hook: an ``importorskip``
+#: (zero items at module scope -- no hook ever sees them), an import-time
+#: ``skip(allow_module_level=True)``, and a skip mark on the test itself.
+IMPORTORSKIP: Final[str] = "importorskip"
+ALLOW_MODULE_LEVEL: Final[str] = "allow_module_level"
+SKIPPING_MARKS: Final[frozenset[str]] = frozenset({"skip", "skipif"})
+
+#: Fem modules that skip themselves before the root hook sees a test (Copilot, PR #160),
+#: ``name -> (source, reported)``. The control: a skip *inside* a test runs after the hook.
+_FEM_TEST: Final[str] = f"@pytest.mark.{FEM_MARKER}\ndef test_x() -> None:\n    pass\n"
+EARLY_SKIP_PLANTS: Final[dict[str, tuple[str, bool]]] = {
+    "module-importorskip": (
+        f'import pytest\nskfem = pytest.importorskip("skfem")\n{_FEM_TEST}',
+        True,
+    ),
+    "aliased-importorskip": (
+        f'from pytest import importorskip as need\nneed("skfem")\n{_FEM_TEST}',
+        True,
+    ),
+    "class-body-importorskip": (
+        'import pytest\n\n\nclass TestX:\n    skfem = pytest.importorskip("skfem")\n\n'
+        f"    @pytest.mark.{FEM_MARKER}\n    def test_x(self) -> None:\n        pass\n",
+        True,
+    ),
+    "module-level-skip": (
+        f'import pytest\npytest.skip("no skfem", allow_module_level=True)\n{_FEM_TEST}',
+        True,
+    ),
+    "skip-mark": (f'import pytest\n@pytest.mark.skip(reason="later")\n{_FEM_TEST}', True),
+    "skip-inside-a-test": (
+        f'import pytest\n@pytest.mark.{FEM_MARKER}\ndef test_x() -> None:\n    pytest.skip("v")\n',
+        False,
+    ),
+}
+
+#: The selecting step's program, and the no-op Copilot planted in its place (PR #160).
+PYTEST_PROGRAM: Final[str] = "pytest"
+NO_OP_PYTEST: Final[str] = "echo -m pytest "
+
+#: Rewrites of the selecting step's script, ``name -> (prefix, suffix, shell:, still loud)``.
+#: ``|| true`` is Copilot's (PR #160); ``; true`` and the pipe under ``shell: bash`` are the
+#: controls a reject-everything model would fail -- GitHub's ``bash -e`` exits at ``pytest``,
+#: and ``bash`` adds ``pipefail``.
+STATUS_PLANTS: Final[dict[str, tuple[str, str, str | None, bool]]] = {
+    "or-true": ("", " || true", None, False),
+    "set-plus-e": ("set +e\n", "; true", None, False),
+    "semicolon-true": ("", "; true", None, True),
+    "pipe-tee": ("", " | tee pytest.log", None, False),
+    "pipe-tee-pipefail": ("", " | tee pytest.log", "bash", True),
+    "and-mid-script": ("", " && echo ok\necho done", None, False),
+    "exit-zero-first": ("exit 0\n", "", None, False),
+    "if-wrapper": ('if [ -n "$CI" ]; then\n', "\nfi", None, False),
+    "background": ("", " &\nwait", None, False),
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -371,10 +457,15 @@ def fem_targets(scanned: ScannedFile) -> list[FemTarget]:
 
 @dataclass(frozen=True)
 class Candidate:
-    """One pytest command in a ``[fem]`` job, with the step that runs it."""
+    """One pytest command in a ``[fem]`` job, with the step that runs it.
+
+    ``commands``/``position`` place it in its script, for the exit-status half of (d).
+    """
 
     step: WorkflowStep
     invocation: PytestInvocation
+    commands: tuple[ShellCommand, ...]
+    position: int
 
 
 def fem_install_steps(steps: list[WorkflowStep], extras: frozenset[str]) -> dict[str, int]:
@@ -405,14 +496,15 @@ def fem_candidates(workflow: Path, extras: frozenset[str], ini: dict[str, Any]) 
         installed = installed_at.get(step.job)
         if step.script is None or installed is None or step.index <= installed:
             continue
-        for command in iter_commands(step.script):
-            first = pytest_invocation(command)
+        commands = tuple(iter_shell_commands(step.script))
+        for position, command in enumerate(commands):
+            first = pytest_invocation(command.text)
             if first is None:
                 continue
             extra = shlex.split({**step.env, **first.env}.get(PYTEST_ADDOPTS_ENV, ""))
-            invocation = pytest_invocation(command, addopts=(*addopts, *extra))
+            invocation = pytest_invocation(command.text, addopts=(*addopts, *extra))
             assert invocation is not None  # the same command parsed a line above
-            found.append(Candidate(step, invocation))
+            found.append(Candidate(step, invocation, commands, position))
     return found
 
 
@@ -444,6 +536,7 @@ def loudness_obstacles(candidate: Candidate, blocking: set[str]) -> list[str]:
         obstacles.append(f"if: {step.condition!r} can skip the step")
     if step.job not in blocking:
         obstacles.append(f"job {step.job!r} is not a hard gate in ci-success")
+    obstacles.extend(exit_status_obstacles(candidate.commands, candidate.position, step.shell))
     return obstacles
 
 
@@ -668,6 +761,72 @@ def collection_filters(source: str) -> set[str]:
     return found
 
 
+def name_lines(source: str, name: str) -> list[int]:
+    """Lines where ``name`` is a NAME token -- code only, never a string or comment.
+
+    Alias-proof where an AST call-name match is not: ``from pytest import
+    importorskip as need`` still spells the name once.
+    """
+    tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+    return [t.start[0] for t in tokens if t.type == tokenize.NAME and t.string == name]
+
+
+def import_time_calls_with(source: str, keyword: str) -> list[int]:
+    """Lines of calls passing ``keyword=`` that run at import: outside every function body.
+
+    Decorators and argument defaults run at import too, so they are walked; a body
+    is not, since it runs only when called.
+    """
+    found: list[int] = []
+
+    def walk(node: ast.AST) -> None:
+        if isinstance(node, ast.Call) and any(k.arg == keyword for k in node.keywords):
+            found.append(node.lineno)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
+            for part in [*getattr(node, "decorator_list", []), *defaults]:
+                walk(part)
+            return
+        for child in ast.iter_child_nodes(node):
+            walk(child)
+
+    walk(ast.parse(source))
+    return found
+
+
+def early_skips(source: str, targets: list[FemTarget]) -> list[str]:
+    """How a fem module's tests could be skipped before they run, unseen by the root hook."""
+    problems = [
+        f"line {line}: `{IMPORTORSKIP}` -- at module scope the module yields no items, so "
+        f"{REQUIRE_EXTRAS_ENV} cannot fire; the root hook already turns a missing scikit-fem "
+        "into an error, so it is never needed"
+        for line in name_lines(source, IMPORTORSKIP)
+    ]
+    problems.extend(
+        f"line {line}: `{ALLOW_MODULE_LEVEL}=` at import time -- the module yields no items"
+        for line in import_time_calls_with(source, ALLOW_MODULE_LEVEL)
+    )
+    problems.extend(
+        f"{t}: marked {sorted(t.markers & SKIPPING_MARKS)} -- whether it runs is not static"
+        for t in targets
+        if t.markers & SKIPPING_MARKS
+    )
+    return problems
+
+
+@pytest.mark.parametrize("module", FEM_MODULES)
+def test_no_fem_module_can_skip_its_tests_before_they_run(module: str) -> None:
+    """(g) Selected by path is not collected (Copilot review, PR #160).
+
+    A module-level ``pytest.importorskip("skfem")`` raises during import: the
+    module yields zero items, the root hook never sees a fem test, and
+    ``ALPHAGALERKIN_REQUIRE_EXTRAS=1`` has nothing to escalate -- while (c) and
+    (d), which read paths and steps, stay green.
+    """
+    problems = early_skips((REPO_ROOT / module).read_text(encoding="utf-8"), TARGETS[module])
+    assert not problems, f"{module}:\n  " + "\n  ".join(problems)
+
+
 @pytest.mark.parametrize("module", FEM_MODULES)
 def test_no_conftest_on_its_path_filters_collection(module: str) -> None:
     """The root ``conftest.py`` is exempt: its hook is the one driven in (d)."""
@@ -705,6 +864,17 @@ def _selecting_steps() -> list[tuple[str, int]]:
     return sorted(found)
 
 
+def _selecting_command(job: str, index: int) -> str:
+    """The text of the pytest command in step ``(job, index)`` that runs the instance."""
+    (command,) = {
+        c.commands[c.position].text
+        for c in CANDIDATES
+        if (c.step.job, c.step.index) == (job, index)
+        and any(not obstacles_for(t, c, INI) for t in _instance_targets())
+    }
+    return command
+
+
 def _mutated(tmp_path: Path, mutate: Callable[[dict[str, Any]], None]) -> list[Candidate]:
     document = load_workflow(CI_WORKFLOW)
     mutate(document)
@@ -722,7 +892,7 @@ def _plant(tmp_path: Path, relative: str, source: str) -> ScannedFile:
 
 
 class TestPlantedDefects:
-    """The five required mutations, planted on copies so they keep running in CI.
+    """The required mutations and the Copilot-review ones, planted on copies so they keep running.
 
     A refactor that stopped reporting one would otherwise pass every live
     assertion above while the protection quietly went away.
@@ -764,6 +934,36 @@ class TestPlantedDefects:
         assert not uncovered(_instance_targets(), candidates, INI), "still selected"
         assert uncovered(_instance_targets(), candidates, INI, BLOCKING), "but not loud"
 
+    def test_a_no_op_carrying_dash_m_pytest_selects_nothing(self, tmp_path: Path) -> None:
+        """Copilot, PR #160: ``echo -m pytest <paths>`` was read as the step running them."""
+
+        def mutate(document: dict[str, Any]) -> None:
+            for job, index in _selecting_steps():
+                step = document["jobs"][job]["steps"][index]
+                assert step["run"].startswith(f"{PYTEST_PROGRAM} "), "anchor not found"
+                step["run"] = step["run"].replace(f"{PYTEST_PROGRAM} ", NO_OP_PYTEST, 1)
+
+        assert uncovered(_instance_targets(), _mutated(tmp_path, mutate), INI)
+
+    @pytest.mark.parametrize("plant", sorted(STATUS_PLANTS))
+    def test_a_masked_exit_status_is_not_loud(self, tmp_path: Path, plant: str) -> None:
+        """Copilot, PR #160: the step's metadata was read, never where pytest's status goes."""
+        prefix, suffix, shell, loud = STATUS_PLANTS[plant]
+
+        def mutate(document: dict[str, Any]) -> None:
+            for job, index in _selecting_steps():
+                step = document["jobs"][job]["steps"][index]
+                # Built around the pytest command itself, not appended to the whole script:
+                # a later line in the live step must not decide what the operator follows.
+                step["run"] = f"{prefix}{_selecting_command(job, index)}{suffix}\n"
+                if shell is not None:
+                    step["shell"] = shell
+
+        candidates = _mutated(tmp_path, mutate)
+        assert not uncovered(_instance_targets(), candidates, INI), "still selected"
+        failures = uncovered(_instance_targets(), candidates, INI, BLOCKING)
+        assert (not failures) == loud, failures
+
     def test_a_marker_outside_every_selected_path_is_reported(self, tmp_path: Path) -> None:
         source = f"import pytest\n\n\n@pytest.mark.{FEM_MARKER}\ndef test_x() -> None:\n    pass\n"
         scanned = _plant(tmp_path, "tests/pde/test_planted_fem.py", source)
@@ -779,3 +979,12 @@ class TestPlantedDefects:
         )
         scanned = _plant(tmp_path, "tests/test_prose_only.py", source)
         assert (scanned.applications(), scanned.accesses, fem_targets(scanned)) == ([], {}, [])
+
+    @pytest.mark.parametrize("plant", sorted(EARLY_SKIP_PLANTS))
+    def test_a_skip_before_the_hook_sees_it_is_reported(self, tmp_path: Path, plant: str) -> None:
+        """Copilot, PR #160: zero items at collection pass every path and step check."""
+        source, reported = EARLY_SKIP_PLANTS[plant]
+        scanned = _plant(tmp_path, "tests/pde/test_planted_skip.py", source)
+        targets = fem_targets(scanned)
+        assert targets, "the plant must carry a fem test, or the row proves nothing"
+        assert bool(early_skips(source, targets)) is reported

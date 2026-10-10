@@ -303,11 +303,17 @@ the `.run.json` (`metrics` and `notes`), which the manifest hashes.
 
 ```bash
 pytest tests/mcts/test_tree_depth.py tests/research/test_lookahead_vs_greedy_metrics.py \
-  tests/research/test_lookahead_vs_greedy.py tests/poc/test_lookahead_vs_greedy_config.py \
-  tests/poc/test_lookahead_vs_greedy_scenario.py tests/scripts/test_run_lookahead_vs_greedy.py \
-  tests/e2e/test_lookahead_vs_greedy.py -v -m "not gpu_required and not fem_required"
+  tests/research/test_lookahead_vs_greedy.py tests/research/test_lookahead_vs_greedy_verdict.py \
+  tests/poc/test_lookahead_vs_greedy_config.py tests/poc/test_lookahead_vs_greedy_scenario.py \
+  tests/scripts/test_run_lookahead_vs_greedy.py tests/e2e/test_lookahead_vs_greedy.py \
+  tests/docs/test_sidecar_config_hash.py -v -m "not gpu_required and not fem_required"
 # skfem half (CI test-extras): tests/e2e/test_lookahead_vs_greedy.py -m fem_required
 ```
+
+> **Amended 2026-10-08, after the runs:** the verdict suite
+> (`tests/research/test_lookahead_vs_greedy_verdict.py`) and the sidecar-hash guard
+> (`tests/docs/test_sidecar_config_hash.py`) were missing from this list. Adding test files to
+> the regression command changes no question, testbed, arm, budget, metric or threshold above.
 
 ## Out of Scope
 

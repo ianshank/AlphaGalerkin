@@ -698,6 +698,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead code** — `src/mcts/constants.py`, `src/physics/constants.py`, `src/training/constants.py` (three re-export modules with zero consumers; every real call site imports flat `src.constants`); `BaseTrainer.evaluate()` plus both concrete stubs (`Trainer.evaluate`, `DistributedTrainer.evaluate`) — an abstract method with no call site anywhere; and a duplicate `FNetMixingLayer` declaration in `benchmark_fnet.py`, which now imports the canonical `src.modeling.fnet` version.
 
 ### Fixed
+- **A `fem_required` test that had never run in CI now runs, and the class is guarded.**
+  `TestSkfemTriMctsSmoke` (`tests/pde/games/test_substrate_refinement_game.py`, PR #148) was a counted
+  skip in the fast lane, which lacks scikit-fem, and `test-extras` -- the only job that installs
+  `[fem]` -- names its suites file by file and never named it. `test-extras` gains a step that
+  selects the module with `-m "fem_required and not gpu_required"` under
+  `ALPHAGALERKIN_REQUIRE_EXTRAS=1` (1 passed, 11 deselected; with scikit-fem hidden it exits 4
+  naming the install command). New guard `tests/docs/test_fem_required_visibility.py`: every module
+  that applies the marker, found by AST (never prose) with a `tokenize` cross-check for spellings the
+  scan cannot follow, must be selected -- path, ancestor or node id; not ignored, deselected or
+  `-k`-filtered; `-m` evaluated by pytest's own compiler -- by a fail-loud step of a hard-gate job
+  whose install names an extra `pyproject.toml` declares with scikit-fem. Shared helpers are
+  additive in `tests/support/{marker_expr,workflows}.py` (`tests/support` 91.9%, gate 85). 5/5 live
+  mutations killed. The ninth recorded instance of this repo's CI-invisibility defect.
+- **The `fem_required` visibility guard reads what runs, not just a step's metadata** (Copilot
+  review of PR #160). Three bypasses, each reproduced first and now killed by a named test. A
+  program merely carrying `-m pytest` (`echo -m pytest tests/...`) was parsed as a pytest run, so a
+  no-op could stand in for the selecting step; `-m pytest` now counts only after an interpreter's
+  own options or `coverage run`'s. `pytest ... || true` passed the fail-loud clause, which read the
+  step's env, `continue-on-error`, `if:` and gate but never where pytest's status went; the shared
+  scanner now keeps the operators around each command (`iter_shell_commands`, the same texts as
+  `iter_commands`) and `exit_status_obstacles` models GitHub's shells -- `|| true`, a pipe without
+  `pipefail`, `set +e`, `&`, an earlier `exit 0` and an enclosing `if` are not loud, while `; true`
+  under the default `bash -e` is. And a module-level `pytest.importorskip("skfem")` yields zero
+  items, so neither the root hook nor `ALPHAGALERKIN_REQUIRE_EXTRAS` ever sees the fem tests; new
+  clause (g) bans `importorskip` in fem modules, import-time `skip(allow_module_level=True)` and
+  skip marks on fem tests. Six more live mutations killed (11/11), with the `; true` control green.
+- **Front-door performance figures must be recorded measurements, not merely hardware-tagged
+  citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
+  is backed only when it equals, at its written precision and to at least two significant
+  digits, a *named* timing measurement (sidecar `metrics` or arm `counters`, or a
+  `config/baselines/` entry) of a run cited in the same block whose provenance records a real
+  `hardware_tag`. Before, any tagged artifact backed any figure: "12 ms per move" citing
+  `results/lshape_adaptive_vs_uniform.csv`, and the removed RTX 3090 table with one cell citing the
+  arena CSV, both passed; both are pinned verbatim. Raw CSV rows are not evidence (12% to 46% of
+  2-digit durations matched one by chance; named measurements match at most 3%, bounded at 10% by a
+  test). The scanner catches the 14 phrasings the review found it missed ("Runtime (s)" headers,
+  "speeds up ... by 10x", "10-fold", "games per minute", "900 Hz", "reduces latency by
+  80%", ...) and no longer flags settings (timeout, time limit, cap, tolerance). Four mutation
+  kills that depended on committed files -- one had died when its sidecar was re-recorded -- are
+  re-planted on synthetic repositories; 32/32 planted defects killed. README's Performance section
+  now says neither measuring command writes a run sidecar, so neither can back a published figure.
+- **A performance-claims allowlist entry exempts only the figure inside its fragment** (Copilot
+  review of PR #160). `_allowlisted` (`tests/docs/test_performance_claims.py`) matched a fragment
+  anywhere on a line, so every unbacked figure on that line was exempt, and the stale check stayed
+  green while any figure sat there: a second, unreviewed figure appended to or written before an
+  allowlisted line was reported by nothing (reproduced; an empty fragment exempted a whole page).
+  The scanner now records each figure's column (`PerformanceNumber.column`, additive, outside
+  equality), an entry exempts a figure only when its whole token lies inside one occurrence of the
+  fragment, and staleness is judged per entry. 13/13 further planted defects killed (33-45), 291
+  tests across the two suites, `perf_claims.py` at 100% branch; both live entries stay exempt.
+- **An order-dependent arena pre-flight test kept the fast lane red.**
+  `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
+  import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and
+  `main()` builds its config through `load_config_from_dict`'s call-time import -- a new class,
+  so the patch never fired in CI's full run (it passed alone). The test now resolves the class
+  the way `main` does (`tests/poc/conftest.py`, rule 1); run after the purging module it fails
+  with the old patch and passes with the fix.
 - **Multi-corner operator review findings; the adaptive-vs-uniform sidecar re-recorded.**
   A corner declared twice within `CORNER_POSITION_ATOL` (such as (0, 0) and (5e-13, 0)) doubled
   its singular term; duplicates are now detected on the matched geometric corner. The polyomino

@@ -711,6 +711,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose install names an extra `pyproject.toml` declares with scikit-fem. Shared helpers are
   additive in `tests/support/{marker_expr,workflows}.py` (`tests/support` 91.9%, gate 85). 5/5 live
   mutations killed. The ninth recorded instance of this repo's CI-invisibility defect.
+- **The `fem_required` visibility guard reads what runs, not just a step's metadata** (Copilot
+  review of PR #160). Three bypasses, each reproduced first and now killed by a named test. A
+  program merely carrying `-m pytest` (`echo -m pytest tests/...`) was parsed as a pytest run, so a
+  no-op could stand in for the selecting step; `-m pytest` now counts only after an interpreter's
+  own options or `coverage run`'s. `pytest ... || true` passed the fail-loud clause, which read the
+  step's env, `continue-on-error`, `if:` and gate but never where pytest's status went; the shared
+  scanner now keeps the operators around each command (`iter_shell_commands`, the same texts as
+  `iter_commands`) and `exit_status_obstacles` models GitHub's shells -- `|| true`, a pipe without
+  `pipefail`, `set +e`, `&`, an earlier `exit 0` and an enclosing `if` are not loud, while `; true`
+  under the default `bash -e` is. And a module-level `pytest.importorskip("skfem")` yields zero
+  items, so neither the root hook nor `ALPHAGALERKIN_REQUIRE_EXTRAS` ever sees the fem tests; new
+  clause (g) bans `importorskip` in fem modules, import-time `skip(allow_module_level=True)` and
+  skip marks on fem tests. Six more live mutations killed (11/11), with the `; true` control green.
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

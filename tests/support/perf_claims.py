@@ -59,6 +59,9 @@ weaker rules were measured against the committed runs on 2026-10-08 and rejected
   the rate is at most 3%, and 16% at one significant digit -- hence the precision floor.
   ``test_named_measurements_rarely_coincide`` keeps the 2-digit rate under its bound.
 
+Every number also records the column its token starts at, so the guard's allowlist can exempt
+the one figure an entry names rather than every figure on its line.
+
 Disclosed limits. One citation covers its whole block, a table included, but every figure must
 trace on its own. Traceability matches values, not meaning: a figure equal to an unrelated named
 measurement of the cited run is accepted. Units are read from field names, so a name reusing a
@@ -74,7 +77,7 @@ import json
 import math
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Final
 
@@ -350,6 +353,8 @@ _TABLE_DELIMITER_CELL: Final[re.Pattern[str]] = re.compile(r"^:?-{3,}:?$")
 _SENTENCE_BREAK: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?;])\s+")
 _ESCAPED_PIPE: Final[str] = "\\|"
 _PIPE_PLACEHOLDER: Final[str] = "\x00"
+#: A cell separator: a pipe that is not the second character of :data:`_ESCAPED_PIPE`.
+_UNESCAPED_PIPE: Final[re.Pattern[str]] = re.compile(r"(?<!\\)\|")
 
 #: A repository path under a citation root. The look-behind admits ``/`` so a link written
 #: ``../results/x.csv`` or ``blob/HEAD/results/x.csv`` from a docs page still resolves.
@@ -377,7 +382,9 @@ class PerformanceNumber:
     """One performance number, located in its source document.
 
     ``header`` is the column header a :data:`TABLE_COLUMN_KIND` number sits under -- where a bare
-    cell's unit is written -- and empty for every other kind.
+    cell's unit is written -- and empty for every other kind. ``column`` is the 0-based offset in
+    ``line`` where ``token`` starts; :func:`performance_numbers` sets it for every kind. ``None``
+    means unlocated (a number built by hand). It is left out of equality, which is unchanged.
     """
 
     line_no: int
@@ -385,6 +392,7 @@ class PerformanceNumber:
     kind: str
     token: str
     header: str = ""
+    column: int | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -478,6 +486,33 @@ def _table_cells(line: str) -> list[str]:
     return [cell.replace(_PIPE_PLACEHOLDER, "|").strip() for cell in row.split("|")]
 
 
+def _cell_starts(line: str) -> list[int]:
+    """Where each cell of :func:`_table_cells` starts in ``line``: its first non-blank character.
+
+    The same reading -- outer blanks and outer pipes dropped, an escaped pipe kept inside its
+    cell -- in ``line``'s own coordinates, where that function's cells have none.
+    """
+    lo, hi = len(line) - len(line.lstrip()), len(line.rstrip())
+    pipes = [match.start() for match in _UNESCAPED_PIPE.finditer(line, lo, hi)]
+    if pipes and pipes[0] == lo:
+        lo = pipes.pop(0) + 1
+    if pipes and pipes[-1] == hi - 1:
+        hi = pipes.pop()
+    bounds = zip([lo, *(pipe + 1 for pipe in pipes)], [*pipes, hi], strict=True)
+    return [left + len(line[left:right]) - len(line[left:right].lstrip()) for left, right in bounds]
+
+
+def _line_column(line: str, start: int, index: int) -> int:
+    """``line``'s offset of character ``index`` of the cell that starts at ``line[start]``.
+
+    An escaped pipe is one character of the cell and two of the line.
+    """
+    column = start
+    for _ in range(index):
+        column += len(_ESCAPED_PIPE) if line.startswith(_ESCAPED_PIPE, column) else 1
+    return column
+
+
 def is_measurement_header(header: str) -> bool:
     """Whether a table header cell names a measured, hardware-dependent quantity.
 
@@ -562,12 +597,13 @@ def _column_numbers(block: Block) -> list[PerformanceNumber]:
         cells = _table_cells(line)
         if all(_TABLE_DELIMITER_CELL.match(cell) for cell in cells if cell):
             continue
-        for index, cell in enumerate(cells):
+        for index, (cell, start) in enumerate(zip(cells, _cell_starts(line), strict=True)):
             if index not in measured or inline_numbers(cell):
                 continue
             if match := _CELL_FIGURE_PATTERN.search(cell):
                 kind, token = TABLE_COLUMN_KIND, match.group(0)
-                found.append(PerformanceNumber(line_no, line, kind, token, header[index]))
+                column = _line_column(line, start, match.start())
+                found.append(PerformanceNumber(line_no, line, kind, token, header[index], column))
     return found
 
 
@@ -580,14 +616,15 @@ def performance_numbers(block: Block) -> list[PerformanceNumber]:
     Returns:
         Prose is scanned as a whole so a sentence wrapped across lines keeps its measured
         quantity; a table row is its own sentence, and a table additionally contributes every
-        number under a measurement header (:func:`is_measurement_header`).
+        number under a measurement header (:func:`is_measurement_header`). Each number carries
+        the line its token starts on and its column there; a prose token may run onto the next.
 
     """
     if block.kind == "table":
         found = [
-            PerformanceNumber(line_no, line, kind, token)
+            PerformanceNumber(line_no, line, kind, token, column=offset)
             for line_no, line in block.lines
-            for _, kind, token in inline_numbers(line)
+            for offset, kind, token in inline_numbers(line)
         ]
         return found + _column_numbers(block)
     text = block.text
@@ -596,8 +633,10 @@ def performance_numbers(block: Block) -> list[PerformanceNumber]:
         line_starts.append(line_starts[-1] + len(line) + 1)
     numbers = []
     for offset, kind, token in inline_numbers(text):
-        line_no, line = block.lines[bisect.bisect_right(line_starts, offset) - 1]
-        numbers.append(PerformanceNumber(line_no, line, kind, token))
+        index = bisect.bisect_right(line_starts, offset) - 1
+        line_no, line = block.lines[index]
+        column = offset - line_starts[index]
+        numbers.append(PerformanceNumber(line_no, line, kind, token, column=column))
     return numbers
 
 

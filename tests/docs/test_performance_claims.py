@@ -143,8 +143,9 @@ MIN_ALLOWLIST_REASON_CHARS: Final[int] = 40
 #: for each Gate 1 run; tracing to their CSV rows instead measured 12%, 42% and 46%.
 MAX_COINCIDENCE_RATE: Final[float] = 0.10
 
-#: ``(document, literal line fragment) -> reason``. Exempts the unbacked performance numbers on
-#: lines of ``document`` that contain the fragment. A disclosed debt, not an endorsement.
+#: ``(document, literal line fragment) -> reason``. Exempts an unbacked performance number on a
+#: line of ``document`` only when its whole figure lies inside an occurrence of the fragment --
+#: never another figure on that line. A disclosed debt, not an endorsement.
 ALLOWLIST: Final[dict[tuple[str, str], str]] = {
     ("docs/architecture/c4_mermaid.md", "N=361, d=32 → **10x speedup**"): (
         "An operation-count ratio (N/d = 361/32 for a 19x19 board) worded as a measured "
@@ -199,30 +200,89 @@ def _unbacked(repo_root: Path, document: str) -> list[UnbackedNumber]:
     return unbacked_performance_numbers(text, repo_root)
 
 
-def _allowlisted(document: str, line: str, allowlist: Mapping[tuple[str, str], str]) -> bool:
-    return any(doc == document and fragment in line for doc, fragment in allowlist)
+def _occurrences(line: str, fragment: str) -> list[tuple[int, int]]:
+    """``[start, end)`` of every occurrence of ``fragment`` in ``line``, overlapping ones too.
+
+    An empty fragment occurs nowhere: it names no claim.
+    """
+    spans: list[tuple[int, int]] = []
+    start = line.find(fragment) if fragment else -1
+    while start >= 0:
+        spans.append((start, start + len(fragment)))
+        start = line.find(fragment, start + 1)
+    return spans
+
+
+def _exempting_entries(
+    document: str, number: PerformanceNumber, allowlist: Mapping[tuple[str, str], str]
+) -> list[tuple[str, str]]:
+    """The entries with an occurrence of their fragment, on its line, that holds its whole token.
+
+    An entry exempts the figure it was written for, never a neighbour on its line. There is no
+    fallback to "the token occurs in the fragment", which exempts a second, identical figure
+    anywhere on the line; a number without a column -- the scanner returns none -- cannot be
+    located, so nothing exempts it. A token wrapped onto the next line ends past every fragment.
+    """
+    if number.column is None:
+        return []
+    start, end = number.column, number.column + len(number.token)
+    return [
+        (doc, fragment)
+        for doc, fragment in allowlist
+        if doc == document
+        and any(lo <= start and end <= hi for lo, hi in _occurrences(number.line, fragment))
+    ]
+
+
+def _allowlisted(
+    document: str, number: PerformanceNumber, allowlist: Mapping[tuple[str, str], str]
+) -> bool:
+    return bool(_exempting_entries(document, number, allowlist))
+
+
+def unexempted_numbers(
+    repo_root: Path, allowlist: Mapping[tuple[str, str], str]
+) -> list[tuple[str, UnbackedNumber]]:
+    """``(document, number)`` per unbacked front-door number that no ``allowlist`` entry exempts."""
+    return [
+        (document, u)
+        for document in front_door_documents(repo_root)
+        for u in _unbacked(repo_root, document)
+        if not _allowlisted(document, u.number, allowlist)
+    ]
 
 
 def front_door_failures(repo_root: Path, allowlist: Mapping[tuple[str, str], str]) -> list[str]:
-    """One line per unbacked, non-allowlisted performance number on ``repo_root``'s front doors."""
-    return [
-        f"{document}:{u.number.line_no}: {u.number.kind} {u.number.token!r} -- "
-        f"{'; '.join(u.reasons)}\n      {u.number.line.strip()}"
-        for document in front_door_documents(repo_root)
-        for u in _unbacked(repo_root, document)
-        if not _allowlisted(document, u.number.line, allowlist)
-    ]
+    """One line per unbacked, non-allowlisted performance number on ``repo_root``'s front doors.
+
+    Located ``document:line:column`` (1-based column, as editors read it): an entry may exempt
+    one figure on a line and not another, so the line alone does not say which was reported.
+    """
+    failures = []
+    for document, u in unexempted_numbers(repo_root, allowlist):
+        column = "" if u.number.column is None else f":{u.number.column + 1}"
+        failures.append(
+            f"{document}:{u.number.line_no}{column}: {u.number.kind} {u.number.token!r} -- "
+            f"{'; '.join(u.reasons)}\n      {u.number.line.strip()}"
+        )
+    return failures
 
 
 def stale_allowlist_entries(repo_root: Path, allowlist: Mapping[tuple[str, str], str]) -> list[str]:
-    """Entries that match no unbacked number on a front door, so exempt nothing."""
-    documents = set(front_door_documents(repo_root))
-    return [
-        f"{document}: {fragment!r}"
-        for document, fragment in allowlist
-        if document not in documents
-        or not any(fragment in u.number.line for u in _unbacked(repo_root, document))
-    ]
+    """Entries that exempt no unbacked front-door number: none lies inside their fragment.
+
+    Judged per entry, not per line: a fragment that still matches a line whose own figure was
+    backed, reworded or deleted is stale even while another unbacked figure sits on that line --
+    a figure the entry never exempted.
+    """
+    scanned = {document for document, _ in allowlist} & set(front_door_documents(repo_root))
+    live = {
+        entry
+        for document in scanned
+        for u in _unbacked(repo_root, document)
+        for entry in _exempting_entries(document, u.number, allowlist)
+    }
+    return [f"{doc}: {fragment!r}" for doc, fragment in allowlist if (doc, fragment) not in live]
 
 
 def _committed_runs() -> dict[str, list[RecordedValue]]:

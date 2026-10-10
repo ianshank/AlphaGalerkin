@@ -97,7 +97,10 @@ repository in ``tmp_path``; the committed-tree tests are kept as pins, never as 
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -193,6 +196,83 @@ COINCIDENCE_PROBES: Final[tuple[str, ...]] = tuple(
     for mantissa in range(10, 100)
     for token in (f"{mantissa} ms", f"0.{mantissa} s", f"{mantissa / 10:.1f} s", f"{mantissa} s")
 )
+
+#: Planted on every live allowlisted line as ``id -> (text written just before the fragment, text
+#: appended to the line, the planted figure)``: a claim nobody reviewed, beside one somebody did.
+PLANTED_CLAIMS: Final[dict[str, tuple[str, str, str]]] = {
+    "appended": ("", " and search is 3.5× faster", "3.5×"),
+    "prepended": ("Inference takes 40 ms per move; ", "", "40 ms"),
+}
+
+#: Runs of characters a pytest id should not carry; an entry's id is its fragment's ASCII words.
+_UNSAFE_ID_CHARACTERS: Final[re.Pattern[str]] = re.compile(r"[^A-Za-z0-9]+")
+ALLOWLIST_IDS: Final[tuple[str, ...]] = tuple(
+    _UNSAFE_ID_CHARACTERS.sub("-", fragment).strip("-") for _, fragment in ALLOWLIST
+)
+
+#: One README line, the fragment of the entry written for one of its figures, and the figures
+#: that must still be reported: ``id -> (line, fragment, reported tokens)``.
+NEIGHBOURING_FIGURES: Final[dict[str, tuple[str, str, tuple[str, ...]]]] = {
+    "appended": (
+        "Search is 5× faster, and inference takes 40 ms per move.",
+        "Search is 5× faster",
+        ("40 ms",),
+    ),
+    "prepended": (
+        "Inference takes 40 ms per move, and search is 5× faster.",
+        "search is 5× faster",
+        ("40 ms",),
+    ),
+    # The second 5× is the entry's token, outside its fragment: "the token is in it" exempts both.
+    "same-figure-twice": (
+        "Search is 5× faster, and leaf evaluation is 5× faster too.",
+        "Search is 5× faster",
+        ("5×",),
+    ),
+    # The fragment ends inside "40 ms": a figure must lie wholly inside, not merely start there.
+    "fragment-cuts-a-figure": (
+        "Search is 5× faster, and inference takes 40 ms per move.",
+        "Search is 5× faster, and inference takes 40",
+        ("40 ms",),
+    ),
+}
+
+#: A tagged run recording 10x as a named measurement, so a figure of 10x citing it is backed.
+BENCH_RUN: Final[dict[str, str]] = {
+    f"{RESULTS_ROOT}bench.csv": "a,b\n",
+    f"{RESULTS_ROOT}bench{SIDECAR_SUFFIX}": json.dumps(
+        {"hardware_tag": "x86_64-4cpu", "metrics": {"fnet_speedup": 10.0}}
+    ),
+}
+
+#: Fragments that still match their README text but hold no unbacked figure, so their entry
+#: exempts nothing and is stale: ``id -> (text, fragment, tokens reported)``.
+EXEMPTS_NOTHING: Final[dict[str, tuple[str, str, tuple[str, ...]]]] = {
+    "figure-outside-the-fragment": (
+        "- **Rationale**: 5× speedup for leaf evaluation",
+        "**Rationale**:",
+        ("5×",),
+    ),
+    "empty-fragment": ("- **Rationale**: 5× speedup for leaf evaluation", "", ("5×",)),
+    # The fragment's 5× is no longer read as a claim (no speed word in its sentence); the other is.
+    "figure-no-longer-a-claim": (
+        "The 5× case is an old design note; search is now 5× faster.",
+        "The 5× case",
+        ("5×",),
+    ),
+    # The fragment's 10x is backed by the run it cites; 3.5× on the same line is not.
+    "figure-now-backed": (
+        f"FNet gives a 10x speedup and search is 3.5× faster (`{RESULTS_ROOT}bench.csv`).",
+        "10x speedup",
+        ("3.5×",),
+    ),
+    # "45\nms" starts inside the fragment and ends on the next line, past any one-line fragment.
+    "figure-wrapped-across-lines": (
+        "Inference takes 45\nms per move.",
+        "Inference takes 45",
+        ("45\nms",),
+    ),
+}
 
 
 def _unbacked(repo_root: Path, document: str) -> list[UnbackedNumber]:
@@ -469,3 +549,105 @@ def test_front_doors_put_readme_first_once_with_the_default_docs_dir(tmp_path: P
 @pytest.mark.parametrize("config", ["site_name: x\n", "nav: []\n"])
 def test_a_site_without_a_nav_has_only_the_readme(tmp_path: Path, config: str) -> None:
     assert front_door_documents(_site(tmp_path, config)) == [README]
+
+
+# --------------------------------------------------------------------------------------
+# an allowlist entry exempts the figure inside its fragment, and nothing beside it
+# --------------------------------------------------------------------------------------
+
+
+def _readme_site(tmp_path: Path, text: str) -> Path:
+    pages = {README: f"{text}\n", f"{DEFAULT_DOCS_DIR}/index.md": "Welcome.\n", **BENCH_RUN}
+    return _site(tmp_path, "nav:\n  - index.md\n", pages)
+
+
+def _copy_of_front_door(tmp_path: Path, document: str, text: str) -> Path:
+    """A site whose front doors are README and ``document``, holding ``text``.
+
+    ``results/`` and ``config/baselines/`` link to this repository's, so the copy's citations
+    resolve exactly as the live page's do.
+    """
+    if document == README:
+        root = _site(tmp_path, "nav: []\n", {README: text})
+    else:
+        assert document.startswith(f"{DEFAULT_DOCS_DIR}/"), f"{document} is not a docs page"
+        nav = f"nav:\n  - {document.removeprefix(f'{DEFAULT_DOCS_DIR}/')}\n"
+        root = _site(tmp_path, nav, {README: "# Project\n", document: text})
+    for evidence in (RESULTS_ROOT, BASELINES_ROOT):
+        link = root / evidence
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(REPO_ROOT / evidence, target_is_directory=True)
+    return root
+
+
+@pytest.mark.parametrize("planted", PLANTED_CLAIMS)
+@pytest.mark.parametrize(("document", "fragment"), ALLOWLIST, ids=ALLOWLIST_IDS)
+def test_a_figure_planted_on_a_live_allowlisted_line_is_reported(
+    tmp_path: Path, document: str, fragment: str, planted: str
+) -> None:
+    """The reviewed defect, on every live entry: an unreviewed figure on an allowlisted line.
+
+    On a copy of the live page, a figure appended to the line or written before the fragment is
+    reported, and the figure the entry was written for stays exempt.
+    """
+    before, after, token = PLANTED_CLAIMS[planted]
+    own = {key: reason for key, reason in ALLOWLIST.items() if key[0] == document}
+    lines = (REPO_ROOT / document).read_text(encoding="utf-8").splitlines()
+    hits = [index for index, line in enumerate(lines) if fragment in line]
+    assert hits, f"{fragment!r} is on no line of {document}"
+    root = _copy_of_front_door(tmp_path, document, "\n".join(lines) + "\n")
+    assert unexempted_numbers(root, own) == [], "the copy must start as clean as the live page"
+    for index in hits:
+        lines[index] = lines[index].replace(fragment, before + fragment, 1) + after
+    (root / document).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    reported = [(u.number.line_no, u.number.token) for _, u in unexempted_numbers(root, own)]
+    assert reported == [(index + 1, token) for index in hits]
+    assert stale_allowlist_entries(root, own) == []
+
+
+@pytest.mark.parametrize(
+    ("line", "fragment", "tokens"), NEIGHBOURING_FIGURES.values(), ids=NEIGHBOURING_FIGURES
+)
+def test_an_exemption_covers_only_the_figure_inside_its_fragment(
+    tmp_path: Path, line: str, fragment: str, tokens: tuple[str, ...]
+) -> None:
+    """The defect class on a constant: an entry exempts its own figure and nothing beside it."""
+    allowlist = {(README, fragment): "live: exempts the one figure inside its fragment"}
+    root = _readme_site(tmp_path, line)
+    reported = [(u.number.token, u.number.column) for _, u in unexempted_numbers(root, allowlist)]
+    assert reported == [(token, line.rindex(token)) for token in tokens]
+    assert stale_allowlist_entries(root, allowlist) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "fragment", "tokens"), EXEMPTS_NOTHING.values(), ids=EXEMPTS_NOTHING
+)
+def test_an_entry_whose_fragment_holds_no_unbacked_figure_is_stale(
+    tmp_path: Path, text: str, fragment: str, tokens: tuple[str, ...]
+) -> None:
+    """Judged per entry: an unbacked figure elsewhere on the line keeps no entry alive."""
+    allowlist = {(README, fragment): "stale: no unbacked figure lies inside the fragment"}
+    root = _readme_site(tmp_path, text)
+    assert stale_allowlist_entries(root, allowlist) == [f"{README}: {fragment!r}"]
+    assert [u.number.token for _, u in unexempted_numbers(root, allowlist)] == list(tokens)
+
+
+def test_a_number_without_a_column_is_never_exempt() -> None:
+    """Unlocated, a figure cannot be shown to lie inside a fragment, so no entry exempts it.
+
+    The refused fallback -- "the token occurs in the fragment" -- would exempt a second,
+    identical figure anywhere on the line (``NEIGHBOURING_FIGURES["same-figure-twice"]``).
+    """
+    line = "Search is 5× faster."
+    allowlist = {(README, "Search is 5× faster"): "live: exempts the one figure inside it"}
+    located = PerformanceNumber(1, line, "speedup", "5×", column=line.index("5×"))
+    assert _allowlisted(README, located, allowlist)
+    assert not _allowlisted(README, replace(located, column=None), allowlist)
+
+
+def test_failures_name_the_column_of_the_reported_figure(tmp_path: Path) -> None:
+    """Two equal figures on one line, one exempt: the report must say which was not."""
+    line, fragment, _ = NEIGHBOURING_FIGURES["same-figure-twice"]
+    root = _readme_site(tmp_path, line)
+    (failure,) = front_door_failures(root, {(README, fragment): "live: exempts the first 5×"})
+    assert failure.startswith(f"{README}:1:{line.rindex('5×') + 1}: speedup '5×' -- ")

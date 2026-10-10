@@ -27,9 +27,12 @@ is not an evasion. ``README.md``'s Performance section states the same rule and 
 documented measuring command writes the sidecar it needs, so the prose promises nothing the gate
 does not enforce.
 
-``ALLOWLIST`` holds the exceptions: each is a disclosed debt with a stated reason, and each
-expires -- an entry that no longer matches an *unbacked* number (the claim was backed, reworded
-or deleted) fails ``test_allowlist_entries_are_still_needed``.
+``ALLOWLIST`` holds the exceptions: each is a disclosed debt with a stated reason, bound to the
+figure it was written for -- a number is exempt only when its whole token lies inside an
+occurrence of the entry's fragment on its line, so a second figure on that line is reported like
+any other. Each expires: an entry under whose fragment no *unbacked* number lies any more (the
+claim was backed, reworded or deleted, even if the fragment still matches the line) fails
+``test_allowlist_entries_are_still_needed``.
 
 Mutation kills -- 32/32 planted defects, each failing a NAMED test, none of them
 ``gpu_required`` or ``fem_required``. Kills 6, 7, 8 and 10 were re-planted on 2026-10-08:
@@ -93,6 +96,48 @@ repository in ``tmp_path``; the committed-tree tests are kept as pins, never as 
     (s)]``.
 32. ``FIELD_UNIT_EXCLUSIONS`` emptied, so ``min`` (minimum) reads as minutes ->
     ``S::test_field_unit_ignores_names_that_state_no_timing_unit[l2_ratio_seed_min]``.
+
+Allowlist binding -- 12/12 further planted defects (COPILOT-3, 2026-10-10), numbered on from the
+32 above, each confirmed applied by hash and killed under CI's own ``-m`` filter. Defect class,
+in one sentence: an exemption whose scope is wider than the claim it was written for exempts
+claims nobody reviewed. Copilot's review of PR #160 found it: ``_allowlisted`` tested
+``fragment in line``, so every unbacked figure on an allowlisted line was exempt, and the stale
+check passed while *any* unbacked figure sat on a matching line. Reproduced before the fix on a
+synthetic copy of the live page: "and 40 ms per move" appended to either live line, or written
+before its fragment, was reported by nothing, and an empty fragment exempted every figure on its
+page without going stale. Below, ``E::`` is
+``test_an_exemption_covers_only_the_figure_inside_its_fragment``, ``St::`` is
+``test_an_entry_whose_fragment_holds_no_unbacked_figure_is_stale`` and ``L::`` is
+``S::test_a_figure_is_located_at_its_own_occurrence``.
+
+33. ``_allowlisted`` restored to whole-line matching (the reviewed defect) -> all four
+    ``test_a_figure_planted_on_a_live_allowlisted_line_is_reported`` cases (both live entries,
+    appended and prepended), ``E::[appended]``, ``[prepended]``, ``[same-figure-twice]`` and
+    ``[fragment-cuts-a-figure]``, and every ``St::`` case.
+34. The per-line stale check restored -> every ``St::`` case.
+35. Containment by token text -- the fallback the binding refuses -> ``E::[same-figure-twice]``,
+    ``St::[figure-no-longer-a-claim]`` and ``test_failures_name_the_column_of_the_reported_figure``.
+36. A per-entry stale check judged by token text -> ``St::[figure-no-longer-a-claim]``.
+37. An unlocated number exempted by its token text (fail open) ->
+    ``test_a_number_without_a_column_is_never_exempt``.
+38. Containment by the token's first character only -> ``E::[fragment-cuts-a-figure]`` and
+    ``St::[figure-wrapped-across-lines]``.
+39. Prose columns measured from the block, not the line -> ``L::[wrapped]``,
+    ``L::[indented-continuation]`` and ``S::test_every_number_records_where_its_token_starts``.
+40. Prose columns by the token's first occurrence -> ``L::[equal-figures]`` and
+    ``E::[same-figure-twice]``.
+41. An escaped pipe counted once in a cell's column -> ``L::[escaped-pipe]`` and the Hypothesis
+    property ``S::test_a_figure_on_any_table_row_is_located``.
+42. Table-cell columns by the token's first occurrence -> ``L::[digits-in-another-cell]``.
+43. A table row's inline numbers left unlocated -> ``L::[table-inline]``.
+44. An escaped pipe read as a cell separator -> ``L::[escaped-pipe]``,
+    ``S::test_table_cells_honour_escaped_pipes`` and
+    ``test_front_door_performance_numbers_are_backed``: live ``c4_mermaid.md`` tables escape the
+    pipes of their LaTeX norms, and the strict cell alignment turns the misreading into a crash of
+    the real scan rather than a silently misplaced column.
+
+Kill 11 was re-planted against the rewritten stale check;
+``test_a_stale_allowlist_entry_is_reported`` still kills it.
 """
 
 from __future__ import annotations

@@ -97,7 +97,7 @@ repository in ``tmp_path``; the committed-tree tests are kept as pins, never as 
 32. ``FIELD_UNIT_EXCLUSIONS`` emptied, so ``min`` (minimum) reads as minutes ->
     ``S::test_field_unit_ignores_names_that_state_no_timing_unit[l2_ratio_seed_min]``.
 
-Allowlist binding -- 12/12 further planted defects (COPILOT-3, 2026-10-10), numbered on from the
+Allowlist binding -- 13/13 further planted defects (COPILOT-3, 2026-10-10), numbered on from the
 32 above, each confirmed applied by hash and killed under CI's own ``-m`` filter. Defect class,
 in one sentence: an exemption whose scope is wider than the claim it was written for exempts
 claims nobody reviewed. Copilot's review of PR #160 found it: ``_allowlisted`` tested
@@ -135,6 +135,9 @@ page without going stale. Below, ``E::`` is
     ``test_front_door_performance_numbers_are_backed``: live ``c4_mermaid.md`` tables escape the
     pipes of their LaTeX norms, and the strict cell alignment turns the misreading into a crash of
     the real scan rather than a silently misplaced column.
+45. The opening-pipe check made unconditional, so a row's first separator is read as its opening
+    pipe -> ``S::test_cell_starts_mirror_table_cells[no-opening-pipe]`` and
+    ``[no-opening-pipe-escaped]``, the only killers: no scanned table row lacks that pipe.
 
 Kill 11 was re-planted against the rewritten stale check;
 ``test_a_stale_allowlist_entry_is_reported`` still kills it.

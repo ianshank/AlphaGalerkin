@@ -40,6 +40,8 @@ from tests.support.perf_claims import (
     PerformanceNumber,
     RecordedValue,
     Unit,
+    _cell_starts,
+    _table_cells,
     citation_problem,
     cited_artifacts,
     field_unit,
@@ -209,6 +211,19 @@ LOCATED_FIGURES: Final[dict[str, tuple[str, list[tuple[int, int, str]]]]] = {
         "| Model | Latency (ms) |\n|---|---|\n| a \\| b | n/a \\| 7 |",
         [(3, 18, "7")],
     ),
+}
+
+#: Table rows whose cells :func:`_cell_starts` must locate exactly as :func:`_table_cells` reads.
+TABLE_ROWS: Final[dict[str, str]] = {
+    "outer-pipes": "| a | b |",
+    "no-closing-pipe": "|a|b",
+    "no-opening-pipe": "a | b",
+    "escaped-pipe-and-blanks": "  | a \\| b |  c |  ",
+    "lone-pipe": "|",
+    "two-pipes": "||",
+    "only-an-escaped-pipe": "| \\| |",
+    "blank-cell": "|   |",
+    "no-opening-pipe-escaped": "a\\|b | c",
 }
 
 #: Pieces of a table cell, chosen to collide: figures, units, escaped pipes and bare backslashes.
@@ -435,6 +450,19 @@ def test_every_number_records_where_its_token_starts() -> None:
     kinds = {number.kind for number in reported}
     assert kinds >= {"latency", "throughput", "speedup", TABLE_COLUMN_KIND}, kinds
     assert [problem for text in corpus for problem in _unlocated(text)] == []
+
+
+@pytest.mark.parametrize("row", TABLE_ROWS.values(), ids=TABLE_ROWS)
+def test_cell_starts_mirror_table_cells(row: str) -> None:
+    """One start per cell :func:`_table_cells` reads, at that cell's first non-blank character.
+
+    "a | b" has no opening pipe: no table block holds such a row, but the mirror must not care.
+    """
+    cells, starts = _table_cells(row), _cell_starts(row)
+    assert len(starts) == len(cells), (cells, starts)
+    for cell, start in zip(cells, starts, strict=True):
+        assert row[start:].replace("\\|", "|").startswith(cell), (cell, start)
+        assert start == 0 or not row[start - 1 : start].strip() or row[start - 1] == "|"
 
 
 @given(

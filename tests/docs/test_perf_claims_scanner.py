@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Final
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from tests.support.perf_claims import (
     DURATION,
@@ -188,6 +190,29 @@ TABLE_HEADER: Final[str] = (
     "| Model | Board Size | Inference (ms) | MCTS Sims/sec |\n"
     "|-------|------------|----------------|---------------|"
 )
+
+#: ``id -> (text, [(line_no, column, token), ...])``: where each figure starts, in shapes where a
+#: column is easy to get wrong -- the allowlist binds an exemption to exactly this position.
+LOCATED_FIGURES: Final[dict[str, tuple[str, list[tuple[int, int, str]]]]] = {
+    "equal-figures": (
+        "Inference takes 12 ms, then 12 ms more.",
+        [(1, 16, "12 ms"), (1, 28, "12 ms")],
+    ),
+    "wrapped": (
+        "Inference on the 19×19 board at batch size 1\ntakes 0.4 s on a laptop.",
+        [(2, 6, "0.4 s")],
+    ),
+    "indented-continuation": ("- Search is fast,\n  taking 12 ms per move.", [(2, 9, "12 ms")]),
+    "table-inline": ("| Model | Note |\n|---|---|\n| a | 2 s per epoch |", [(3, 6, "2 s")]),
+    "digits-in-another-cell": ("| Model | Latency (ms) |\n|---|---|\n| m12 | 12 |", [(3, 8, "12")]),
+    "escaped-pipe": (
+        "| Model | Latency (ms) |\n|---|---|\n| a \\| b | n/a \\| 7 |",
+        [(3, 18, "7")],
+    ),
+}
+
+#: Pieces of a table cell, chosen to collide: figures, units, escaped pipes and bare backslashes.
+CELL_PIECES: Final[tuple[str, ...]] = ("7", "12", "0.4", "x", "ms", " ", "a", "-", "\\", "\\|")
 
 
 @pytest.mark.parametrize(("text", "token"), SYNTHETIC_POSITIVES.values(), ids=SYNTHETIC_POSITIVES)
@@ -367,6 +392,60 @@ def test_a_cell_keeps_its_own_unit_under_a_header() -> None:
 def test_a_header_only_table_reports_nothing() -> None:
     (block,) = split_blocks("| Latency (ms) |\n|---|")
     assert performance_numbers(block) == []
+
+
+# --------------------------------------------------------------------------------------
+# locating a figure in its line: what an allowlist entry's exemption is bound to
+# --------------------------------------------------------------------------------------
+
+
+def _unlocated(markdown: str) -> list[str]:
+    """Numbers whose ``column`` is missing or not where their token starts (it may wrap on)."""
+    found = []
+    for block in split_blocks(markdown):
+        for number in performance_numbers(block):
+            tail = "\n".join(line for line_no, line in block.lines if line_no >= number.line_no)
+            if number.column is None or not tail[number.column :].startswith(number.token):
+                found.append(f"{number.line_no}:{number.column} {number.token!r}")
+    return found
+
+
+@pytest.mark.parametrize(("text", "expected"), LOCATED_FIGURES.values(), ids=LOCATED_FIGURES)
+def test_a_figure_is_located_at_its_own_occurrence(
+    text: str, expected: list[tuple[int, int, str]]
+) -> None:
+    """Its line and its column there: not the block's offset, nor the token's first occurrence."""
+    located = [
+        (number.line_no, number.column, number.token)
+        for block in split_blocks(text)
+        for number in performance_numbers(block)
+    ]
+    assert located == expected
+
+
+def test_every_number_records_where_its_token_starts() -> None:
+    """Every detection path -- prose, a table row, a table column -- locates what it reports."""
+    corpus = [text for text, _ in SYNTHETIC_POSITIVES.values()]
+    corpus += [text for text, _ in LOCATED_FIGURES.values()]
+    corpus += [f"{TABLE_HEADER}\n{REMOVED_ROW}", "Inference takes 45\nms per move."]
+    reported = [
+        number for text in corpus for b in split_blocks(text) for number in performance_numbers(b)
+    ]
+    assert len(reported) >= len(corpus), "the corpus must exercise the scanner"
+    kinds = {number.kind for number in reported}
+    assert kinds >= {"latency", "throughput", "speedup", TABLE_COLUMN_KIND}, kinds
+    assert [problem for text in corpus for problem in _unlocated(text)] == []
+
+
+@given(
+    cells=st.lists(st.lists(st.sampled_from(CELL_PIECES), max_size=5).map("".join), max_size=4),
+    separator=st.sampled_from(("|", " | ")),
+)
+def test_a_figure_on_any_table_row_is_located(cells: list[str], separator: str) -> None:
+    """Escaped pipes, bare backslashes and blank cells never shift a figure off its token."""
+    header = "| " + " | ".join(["Latency (ms)"] * max(1, len(cells))) + " |"
+    rule = "|" + "---|" * max(1, len(cells))
+    assert _unlocated(f"{header}\n{rule}\n|{separator.join(cells)}|") == []
 
 
 # --------------------------------------------------------------------------------------

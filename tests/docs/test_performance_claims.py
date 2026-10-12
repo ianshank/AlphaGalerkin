@@ -137,10 +137,74 @@ page without going stale. Below, ``E::`` is
     the real scan rather than a silently misplaced column.
 45. The opening-pipe check made unconditional, so a row's first separator is read as its opening
     pipe -> ``S::test_cell_starts_mirror_table_cells[no-opening-pipe]`` and
-    ``[no-opening-pipe-escaped]``, the only killers: no scanned table row lacks that pipe.
+    ``[no-opening-pipe-escaped]``, then the only killers: no scanned table row lacked that pipe.
+    Re-planted once kills 56-70 let a scanned row lack it, it also fails ``T::[no-outer-pipes]``
+    and ``test_the_removed_table_is_caught_without_its_outer_pipes``.
 
 Kill 11 was re-planted against the rewritten stale check;
 ``test_a_stale_allowlist_entry_is_reported`` still kills it.
+
+Signs and pipe-less tables -- 25/25 further planted defects (Copilot's second review of PR #160,
+2026-10-12), numbered on from 45, each confirmed applied by hash, restored byte-for-byte and
+killed under CI's own ``-m`` filter. Defect classes, one sentence each: a figure whose sign the
+scanner drops traces to a measurement of the opposite sign (R2-2: a ``-20`` cell under ``Latency
+reduction (%)`` was backed by a recorded ``+20``); and a table read as prose hides every bare
+figure under its header (R2-4: GFM needs no outer pipes, so ``Model | Latency (ms)`` / ``--- |
+---`` / ``FNet | 12`` hid its ``12``). Both reproduced before the fix, on the killers' constants.
+``T::`` is ``S::test_a_gfm_table_opens_on_its_delimiter_row``, ``Sg::`` is
+``S::test_a_signed_figure_traces_only_to_a_measurement_of_its_sign`` and ``H::`` is
+``S::test_a_hyphen_is_a_sign_only_where_a_number_may_start``; ``St::`` and ``L::`` are as above.
+
+46. The sign dropped from the token (the reviewed defect) -> ``Sg::[cell-against-plus]``
+    (Copilot's case) and every other ``Sg::`` case but ``[plus-against-plus]``,
+    ``S::test_synthetic_positive_is_detected[sign-minus]`` and ``St::[fragment-drops-the-sign]``.
+47. The sign kept on the token but dropped from the value -> ``Sg::[cell-against-plus]``,
+    ``[cell-against-minus]``, ``S::...traces[minus-sign]`` and ``S::...does_not_trace[sign]``.
+48. The sign counted as a significant digit, so "-5%" states two ->
+    ``S::...does_not_trace[sign-one-digit]`` and
+    ``S::test_figure_of_reads_value_precision_and_unit``.
+49. U+2212 left in the text ``float()`` reads -> ``Sg::[unicode-minus-against-plus]`` and
+    ``[unicode-minus-against-minus]``.
+50. U+2212 dropped from ``SIGNS`` -> ``S::...detected[sign-unicode-minus]`` and ``L::[signed]``.
+51. ``+`` dropped from ``SIGNS`` -> ``S::...detected[sign-plus]`` and ``S::...traces[plus-sign]``.
+52. A sign admitted after a digit (the look-behind moved past it) -> ``H::[range]``, the only
+    killer: ``[model-number]``, ``[date]`` and ``[en-dash-range]`` are controls no mutation of the
+    token reaches, since nothing after their hyphenated numbers carries a unit.
+53. A space admitted between a sign and its digits -> ``H::[list-marker]``.
+54. A prose figure's column put at its digits, past its sign -> ``St::[fragment-drops-the-sign]``
+    (the allowlist binding), ``L::[signed]`` and
+    ``S::test_every_number_records_where_its_token_starts``.
+55. A table cell's column put past its sign -> ``L::[signed-cell]`` and
+    ``S::test_every_number_records_where_its_token_starts``.
+56. ``split_blocks`` restored to its leading-pipe test (the reviewed defect) ->
+    ``T::[no-outer-pipes]`` (Copilot's table), ``[piped-delimiter]``, ``[pipeless-body-row]``
+    and ``test_the_removed_table_is_caught_without_its_outer_pipes``.
+57. The header left in the text block, so the table opens at its delimiter row ->
+    ``T::[no-outer-pipes]`` and ``test_the_removed_table_is_caught_without_its_outer_pipes``.
+58. The text above the header merged into the table -> ``T::[after-prose]``.
+59. The header read from the text block's first line, not the line above the delimiter ->
+    ``T::[after-prose]``.
+60. The header and delimiter cell-count check dropped -> ``T::[cell-count-mismatch]``.
+61. A delimiter row needing one hyphen cell, not every cell (``any`` for ``all``) ->
+    ``T::[non-hyphen-cell]``.
+62. The delimiter row's pipe requirement dropped, so a setext ``---`` opens a table ->
+    ``T::[setext-underline]``.
+63. The header line's pipe requirement dropped -> ``T::[header-without-pipe]``.
+64. ``_TABLE_DELIMITER_CELL`` back to three hyphens -> ``T::[one-hyphen-cells]``.
+65. A delimiter row with a leading pipe opening a headerless table, as before the fix ->
+    ``T::[piped-delimiter]``.
+66. A table going on only over lines that open with a pipe -> ``T::[pipeless-body-row]``,
+    ``[no-outer-pipes]``, ``[list-item-row]`` and
+    ``test_the_removed_table_is_caught_without_its_outer_pipes``.
+67. A table going on over any non-blank line -> ``T::[pipeless-line-ends-it]`` and
+    ``S::test_split_blocks_separates_paragraphs_items_headings_and_tables``.
+68. A heading going on in a table -> ``T::[heading-ends-it]``.
+69. A piped list-item line splitting the table -> ``T::[list-item-row]``.
+70. A heading not flushed at once, so it can head a table -> ``T::[heading-no-header]`` and
+    ``S::test_split_blocks_separates_paragraphs_items_headings_and_tables``.
+
+The Hypothesis property ``S::test_a_figure_on_any_table_row_is_located`` also failed on kills
+45, 54 and 55, on some draws only; it is named for none, as CI draws 20 examples.
 """
 
 from __future__ import annotations
@@ -320,6 +384,8 @@ EXEMPTS_NOTHING: Final[dict[str, tuple[str, str, tuple[str, ...]]]] = {
         "Inference takes 45",
         ("45\nms",),
     ),
+    # The sign is the figure's first character: a fragment that leaves it out holds no figure.
+    "fragment-drops-the-sign": ("Caching cuts latency by -20%.", "20%.", ("-20%",)),
 }
 
 
@@ -446,6 +512,15 @@ def test_the_removed_rtx_3090_table_is_caught() -> None:
     unbacked = unbacked_performance_numbers(REMOVED_RTX_3090_TABLE, REPO_ROOT)
     assert tuple(u.number.token for u in unbacked) == REMOVED_TABLE_FIGURES
     assert {u.number.kind for u in unbacked} == {TABLE_COLUMN_KIND}
+
+
+def test_the_removed_table_is_caught_without_its_outer_pipes() -> None:
+    """GFM renders a table with no outer pipes, so dropping them must not hide one (PR #160)."""
+    rows = REMOVED_RTX_3090_TABLE.splitlines()
+    pipeless = "\n".join(row.strip().strip("|") for row in rows)
+    assert pipeless.splitlines()[0].startswith(" Model"), pipeless
+    unbacked = unbacked_performance_numbers(pipeless, REPO_ROOT)
+    assert tuple(u.number.token for u in unbacked) == REMOVED_TABLE_FIGURES
 
 
 @pytest.mark.parametrize(("text", "figures"), REVIEWED_LEAKS.values(), ids=REVIEWED_LEAKS)

@@ -724,6 +724,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   items, so neither the root hook nor `ALPHAGALERKIN_REQUIRE_EXTRAS` ever sees the fem tests; new
   clause (g) bans `importorskip` in fem modules, import-time `skip(allow_module_level=True)` and
   skip marks on fem tests. Six more live mutations killed (11/11), with the `; true` control green.
+- **The `fem_required` guard reads the root `conftest.py`, and `exec` and early ends inside a
+  compound** (second Copilot review of PR #160). Two bypasses, each reproduced on `4c20d2a` (the
+  guard passed) and now killed by a named test. Clause (f) stopped one directory short of the
+  repository root, so `collect_ignore`, `pytest_ignore_collect` or an item-removing hook added to
+  the root `conftest.py` hid a fem module from every step (65 passed with both planted). The root
+  file is now read like any other conftest; its one collection hook is allowed by name because the
+  new `tests/docs/test_root_conftest_hooks.py` drives it for both optional extras in all four
+  branches (extra installed or not, `ALPHAGALERKIN_REQUIRE_EXTRAS` set or not) and fails it if it
+  removes, adds, reorders or deselects an item, marks a test whose extra is installed, or lets a
+  missing extra go quietly green. The filter list gains the hooks that drop or replace what is
+  collected, and `pytest_plugins`. And `exit_status_obstacles` treated only `exit`/`return` as
+  ending the script before pytest: an `exec` naming a command (`exec true`) now does and a
+  redirect-only `exec 2>&1` does not, and an early end counts inside a compound too (`if ...;
+  then exit 0; fi`), where the model had ignored it; there a `set` can only switch an option off.
+  The shell model moves to `tests/support/shell_status.py` and the conftest helpers to
+  `tests/support/collection_hooks.py` (both 99% branch), keeping `workflows.py` (852 lines) and
+  the guard (959) under the 1000-line budget. Three more live mutations killed (14/14) plus the
+  `exec 2>&1` control; every new check weakened in place was caught (8/8).
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

@@ -35,24 +35,29 @@ Clauses, each cheap and each falsifiable:
 * **(d)** ...by a step that fails loud: ``ALPHAGALERKIN_REQUIRE_EXTRAS=1`` in
   effect, no ``continue-on-error``, no ``if:`` that can skip it, in a hard merge
   gate -- and pytest's own exit status reaches the step: no ``|| true``, no pipe
-  without ``pipefail``, no ``set +e``, no ``&``, no earlier ``exit 0``, no
-  enclosing ``if`` (``; true`` is fine: GitHub's ``bash -e`` exits at pytest).
+  without ``pipefail``, no ``set +e``, no ``&``, no enclosing ``if``, and nothing
+  before it that can end the script green -- ``exit 0`` or an ``exec`` naming a
+  command, at the top level or in a compound (``; true`` and ``exec 2>&1`` are
+  fine: GitHub's ``bash -e`` exits at pytest; a bare-redirection ``exec`` goes on).
   The root hook is *driven* to show the variable turns a missing scikit-fem into
   a usage error rather than a skip.
 * **(e)** A ``[fem]`` job is one whose ``pip install`` names an extra that
   ``pyproject.toml`` declares with scikit-fem -- derived, never spelled --
   before the step runs; ``test-extras`` must be one.
-* **(f)** No conftest on a fem module's path filters collection
-  (``collect_ignore``, ``collect_ignore_glob``, ``pytest_ignore_collect``,
-  ``pytest_collection_modifyitems``): the edit that would hide a module from
-  every step while (c) stays green.
+* **(f)** No conftest on a fem module's path filters collection -- the ignore
+  lists, a hook that drops or replaces what is collected, ``pytest_plugins``
+  (``tests/support/collection_hooks.py``): the edit that would hide a module from
+  every step while (c) stays green. The root ``conftest.py`` included: only its
+  collection hook is allowed, by name, because ``tests/docs/test_root_conftest_hooks.py``
+  drives it in every branch.
 * **(g)** No fem module skips its tests before the root hook sees them: no
   ``importorskip`` anywhere (at module scope the module yields zero items, so
   ``ALPHAGALERKIN_REQUIRE_EXTRAS`` has nothing to escalate), no import-time
   ``skip(allow_module_level=True)``, no ``skip``/``skipif`` mark on a fem test.
 
 (c)'s entry points, (d)'s exit status and (g) answer a Copilot review of PR #160;
-the first version read a step's metadata and its paths, never what ran.
+the first version read a step's metadata and its paths, never what ran. A second
+review added (d)'s ``exec`` and compound-nested early ends, and (f)'s root file.
 
 The required mutations -- the selecting step deleted, its ``-m`` flipped to
 ``not fem_required``, ``ALPHAGALERKIN_REQUIRE_EXTRAS`` dropped, a marker in a
@@ -90,20 +95,28 @@ Copilot-review kills (2026-10-10), same protocol, each passing on the pre-review
 11. Module-level ``pytest.skip(..., allow_module_level=True)`` there -> the same test.
 12. Control: ``; true`` after it under the default ``bash -e`` -> no test fails.
 
-11/11 planted defects killed, plus the control; ``TestPlantedDefects`` re-plants 6-11 on
-copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``, the no-op).
+Copilot review 2 (2026-10-12), same protocol; each passed the guard at ``4c20d2a``:
+
+13. ``exec true`` before the selecting pytest command -> ``test_a_step_selecting_it_fails_loud``.
+14. ``if [ -n "$CI" ]; then exit 0; fi`` before it -> the same test.
+15. ``collect_ignore = ["tests/pde"]`` appended to the root ``conftest.py`` ->
+    ``test_no_conftest_on_its_path_filters_collection``, for all seven fem modules.
+16. Control: ``exec 2>&1`` before it -> ``..._fails_loud`` stays green; only the no-op plant's
+    anchor (the step must start with ``pytest``) notices the edit.
+
+The root hook removing fem items when scikit-fem is installed passes this file -- the hook is
+allowed by name -- and fails ``tests/docs/test_root_conftest_hooks.py``.
+
+14/14 planted defects killed, plus two controls; ``TestPlantedDefects`` re-plants 6-11 and
+13-15 on copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``, ``ROOT_FILTER_PLANTS``, the no-op).
 """
 
 from __future__ import annotations
 
-import ast
 import fnmatch
-import importlib.util
-import io
 import posixpath
 import re
 import shlex
-import tokenize
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -116,6 +129,14 @@ import yaml
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
+from tests.support.collection_hooks import (
+    CONFTEST,
+    FakeItem,
+    conftest_filters_on_path,
+    import_time_calls_with,
+    load_module,
+    name_lines,
+)
 from tests.support.marker_expr import (
     FORM_DYNAMIC,
     FORM_PYTESTMARK,
@@ -124,11 +145,11 @@ from tests.support.marker_expr import (
     MarkerApplication,
     ModuleMarkers,
     PytestInvocation,
-    assigned_names,
     attribute_access_lines,
     pytest_invocation,
     scan_module_markers,
 )
+from tests.support.shell_status import exit_status_obstacles
 from tests.support.workflows import (
     CI_WORKFLOW,
     CI_WORKFLOW_FILENAME,
@@ -137,7 +158,6 @@ from tests.support.workflows import (
     ShellCommand,
     WorkflowStep,
     blocking_jobs,
-    exit_status_obstacles,
     iter_commands,
     iter_shell_commands,
     load_workflow,
@@ -180,20 +200,9 @@ ALWAYS_RUN_CONDITIONS: Final[frozenset[str]] = frozenset(
     {"always()", "${{ always() }}", "success()", "${{ success() }}"}
 )
 
-#: Conftest names that remove modules or items from collection.
-COLLECTION_FILTERS: Final[frozenset[str]] = frozenset(
-    {
-        "collect_ignore",
-        "collect_ignore_glob",
-        "pytest_ignore_collect",
-        "pytest_collection_modifyitems",
-    }
-)
-
 TESTS_ROOT: Final[Path] = REPO_ROOT / "tests"
 PYPROJECT: Final[Path] = REPO_ROOT / "pyproject.toml"
-ROOT_CONFTEST: Final[Path] = REPO_ROOT / "conftest.py"
-CONFTEST: Final[str] = "conftest.py"
+ROOT_CONFTEST: Final[Path] = REPO_ROOT / CONFTEST
 
 #: The module this file was written for; the planted defects mutate its selection.
 INSTANCE_MODULE: Final[str] = "tests/pde/games/test_substrate_refinement_game.py"
@@ -265,6 +274,28 @@ STATUS_PLANTS: Final[dict[str, tuple[str, str, str | None, bool]]] = {
     "exit-zero-first": ("exit 0\n", "", None, False),
     "if-wrapper": ('if [ -n "$CI" ]; then\n', "\nfi", None, False),
     "background": ("", " &\nwait", None, False),
+    # Copilot review 2: an `exec` naming a command ends the script; one that only redirects
+    # does not; and an early end inside a compound counts as if its branch ran.
+    "exec-first": ("exec true\n", "", None, False),
+    "exec-redirect-first": ("exec 2>&1\n", "", None, True),
+    "exit-inside-if": ('if [ -n "$CI" ]; then exit 0; fi\n', "", None, False),
+}
+
+#: Collection filters appended to a copy of the root ``conftest.py`` (Copilot review 2, PR
+#: #160: (f) exempted that file), ``name -> (source, the name bound)``. The last two are the
+#: adjacent ways to the same end: a plugin module, and a hook that drops a function's item.
+ROOT_FILTER_PLANTS: Final[dict[str, tuple[str, str]]] = {
+    "collect-ignore": ('collect_ignore = ["tests/pde"]\n', "collect_ignore"),
+    "collect-ignore-glob": ('collect_ignore_glob = ["*fem*"]\n', "collect_ignore_glob"),
+    "ignore-collect-hook": (
+        "def pytest_ignore_collect(collection_path, config):\n    return None\n",
+        "pytest_ignore_collect",
+    ),
+    "plugins": ('pytest_plugins = ["tests.support.hider"]\n', "pytest_plugins"),
+    "makeitem-hook": (
+        "def pytest_pycollect_makeitem(collector, name, obj):\n    return None\n",
+        "pytest_pycollect_makeitem",
+    ),
 }
 
 
@@ -665,35 +696,12 @@ def test_a_step_selecting_it_fails_loud(module: str) -> None:
     )
 
 
-class _FakeItem:
-    """The two methods of ``pytest.Item`` the root hook calls."""
-
-    def __init__(self, markers: set[str]) -> None:
-        self.markers = markers
-        self.added: list[object] = []
-
-    def get_closest_marker(self, name: str) -> object | None:
-        return name if name in self.markers else None
-
-    def add_marker(self, marker: object) -> None:
-        self.added.append(marker)
-
-
-def _load_root_conftest() -> ModuleType:
-    """A fresh copy of the root ``conftest.py``, reading the environment now."""
-    spec = importlib.util.spec_from_file_location("_fem_guard_root_conftest", ROOT_CONFTEST)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def _driven_hook(monkeypatch: pytest.MonkeyPatch, require: bool) -> ModuleType:
     if require:
         monkeypatch.setenv(REQUIRE_EXTRAS_ENV, REQUIRE_EXTRAS_ON)
     else:
         monkeypatch.delenv(REQUIRE_EXTRAS_ENV, raising=False)
-    hook = _load_root_conftest()
+    hook = load_module(ROOT_CONFTEST, "_fem_guard_root_conftest")
     monkeypatch.setattr(hook, "_HAS_SKFEM", False)
     monkeypatch.setattr(hook, "_HAS_EVAL_HARNESS", True)  # isolate the fem branch
     return hook
@@ -705,7 +713,7 @@ def test_require_extras_turns_a_missing_scikit_fem_into_a_usage_error(
     """What makes (d)'s variable worth requiring: driven, not grepped."""
     hook = _driven_hook(monkeypatch, require=True)
     with pytest.raises(pytest.UsageError, match=re.escape(FEM_INSTALL_HINT)):
-        hook.pytest_collection_modifyitems(None, [_FakeItem({FEM_MARKER})])
+        hook.pytest_collection_modifyitems(None, [FakeItem({FEM_MARKER})])
 
 
 def test_without_require_extras_a_missing_scikit_fem_is_a_skip(
@@ -713,7 +721,7 @@ def test_without_require_extras_a_missing_scikit_fem_is_a_skip(
 ) -> None:
     """The fast lane's behaviour -- the skip (d) exists to keep out of test-extras."""
     hook = _driven_hook(monkeypatch, require=False)
-    item = _FakeItem({FEM_MARKER})
+    item = FakeItem({FEM_MARKER})
     hook.pytest_collection_modifyitems(None, [item])
     assert len(item.added) == 1
 
@@ -748,50 +756,6 @@ def test_at_least_one_fem_step_is_recognised() -> None:
 # --------------------------------------------------------------------------- #
 # (f) no conftest filters a fem module out of collection                       #
 # --------------------------------------------------------------------------- #
-
-
-def collection_filters(source: str) -> set[str]:
-    """Collection-filtering names a conftest binds or defines, at any depth."""
-    found: set[str] = set()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            found |= {node.name} & COLLECTION_FILTERS
-        elif isinstance(node, ast.stmt):
-            found |= assigned_names(node) & COLLECTION_FILTERS
-    return found
-
-
-def name_lines(source: str, name: str) -> list[int]:
-    """Lines where ``name`` is a NAME token -- code only, never a string or comment.
-
-    Alias-proof where an AST call-name match is not: ``from pytest import
-    importorskip as need`` still spells the name once.
-    """
-    tokens = tokenize.generate_tokens(io.StringIO(source).readline)
-    return [t.start[0] for t in tokens if t.type == tokenize.NAME and t.string == name]
-
-
-def import_time_calls_with(source: str, keyword: str) -> list[int]:
-    """Lines of calls passing ``keyword=`` that run at import: outside every function body.
-
-    Decorators and argument defaults run at import too, so they are walked; a body
-    is not, since it runs only when called.
-    """
-    found: list[int] = []
-
-    def walk(node: ast.AST) -> None:
-        if isinstance(node, ast.Call) and any(k.arg == keyword for k in node.keywords):
-            found.append(node.lineno)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
-            for part in [*getattr(node, "decorator_list", []), *defaults]:
-                walk(part)
-            return
-        for child in ast.iter_child_nodes(node):
-            walk(child)
-
-    walk(ast.parse(source))
-    return found
 
 
 def early_skips(source: str, targets: list[FemTarget]) -> list[str]:
@@ -829,16 +793,12 @@ def test_no_fem_module_can_skip_its_tests_before_they_run(module: str) -> None:
 
 @pytest.mark.parametrize("module", FEM_MODULES)
 def test_no_conftest_on_its_path_filters_collection(module: str) -> None:
-    """The root ``conftest.py`` is exempt: its hook is the one driven in (d)."""
-    directory = (REPO_ROOT / module).parent
-    offenders: dict[str, set[str]] = {}
-    while directory != REPO_ROOT and REPO_ROOT in directory.parents:
-        conftest = directory / CONFTEST
-        if conftest.exists():
-            names = collection_filters(conftest.read_text(encoding="utf-8"))
-            if names:
-                offenders[conftest.relative_to(REPO_ROOT).as_posix()] = names
-        directory = directory.parent
+    """The root ``conftest.py`` included (Copilot review 2, PR #160): it used to be exempt.
+
+    Only its collection hook is allowed, by name, because
+    ``tests/docs/test_root_conftest_hooks.py`` drives it in every branch.
+    """
+    offenders = conftest_filters_on_path(REPO_ROOT / module, REPO_ROOT)
     assert not offenders, f"conftest(s) on {module}'s path filter collection: {offenders}"
 
 
@@ -889,6 +849,16 @@ def _plant(tmp_path: Path, relative: str, source: str) -> ScannedFile:
     planted.write_text(source, encoding="utf-8")
     (scanned,) = scan_tree(tmp_path / "tests", tmp_path, INI)
     return scanned
+
+
+def _plant_root(tmp_path: Path, appended: str) -> Path:
+    """A copy of the live root ``conftest.py`` plus ``appended``, and a fem module under it."""
+    live = ROOT_CONFTEST.read_text(encoding="utf-8")
+    (tmp_path / CONFTEST).write_text(f"{live}\n{appended}", encoding="utf-8")
+    module = tmp_path / INSTANCE_MODULE
+    module.parent.mkdir(parents=True)
+    module.write_text(f"import pytest\n\n\n{_FEM_TEST}", encoding="utf-8")
+    return module
 
 
 class TestPlantedDefects:
@@ -988,3 +958,14 @@ class TestPlantedDefects:
         targets = fem_targets(scanned)
         assert targets, "the plant must carry a fem test, or the row proves nothing"
         assert bool(early_skips(source, targets)) is reported
+
+    def test_the_root_conftest_alone_filters_nothing(self, tmp_path: Path) -> None:
+        """The control: a copy of the live root file binds only its driven hook."""
+        assert conftest_filters_on_path(_plant_root(tmp_path, ""), tmp_path) == {}
+
+    @pytest.mark.parametrize("plant", sorted(ROOT_FILTER_PLANTS))
+    def test_a_filter_in_the_root_conftest_is_reported(self, tmp_path: Path, plant: str) -> None:
+        """Copilot review 2, PR #160: (f) stopped one directory short of the root."""
+        source, name = ROOT_FILTER_PLANTS[plant]
+        module = _plant_root(tmp_path, source)
+        assert conftest_filters_on_path(module, tmp_path) == {CONFTEST: {name}}

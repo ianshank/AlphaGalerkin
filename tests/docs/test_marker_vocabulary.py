@@ -48,13 +48,13 @@ from tests.support.marker_expr import (
     parse_terms,
     pytest_invocation,
 )
+from tests.support.shell_status import exit_status_obstacles
 from tests.support.workflows import (
     MAKE_RECIPE_PREFIXES,
     MAKEFILE,
     REPO_ROOT,
     WORKFLOW_DIR,
     UnbalancedQuoteError,
-    exit_status_obstacles,
     iter_commands,
     iter_run_scripts,
     iter_shell_commands,
@@ -560,6 +560,20 @@ _STATUS_CASES: tuple[tuple[str, int, str | None, bool], ...] = (
     ("pytest x &\nwait", 0, None, False),
     ("pytest x", 0, "sh", True),
     ("pytest x", 0, "pwsh", False),
+    # Copilot review 2 (PR #160): an `exec` naming a command replaces the shell; one that only
+    # redirects does not. Then the same early end, and a weakening `set`, inside a compound.
+    ("exec true\npytest x", 1, None, False),
+    ("exec -a name true\npytest x", 1, None, False),
+    ("exec 2>&1\npytest x", 1, None, True),
+    ("exec > >(tee log) 2>&1\npytest x", 1, None, True),
+    ('if [ -n "$CI" ]; then\n  exit 0\nfi\npytest x', 4, None, False),
+    ('if [ -n "$CI" ]; then exit 0; fi\npytest x', 3, None, False),
+    ("{ exec true; }\npytest x", 2, None, False),
+    ('case "$X" in\n  a) exit 0 ;;\nesac\npytest x', 3, None, False),
+    ('if [ -n "$CI" ]; then\n  exit 1\nfi\npytest x', 4, None, True),
+    ("die() {\n  return 0\n}\npytest x", 3, None, True),
+    ('if [ -n "$CI" ]; then set +e; fi\npytest x; true', 3, None, False),
+    ('set +e\nif [ -n "$CI" ]; then\n  set -e\nfi\npytest x; true', 5, None, False),
 )
 
 

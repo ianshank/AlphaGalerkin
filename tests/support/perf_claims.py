@@ -23,6 +23,10 @@ A **performance number** is a hardware-dependent measurement:
   (s)", "Time per move") makes every number under it one. The removed README table needed
   exactly this: its cells were a bare ``45`` and ``670``, the units only in the header.
 
+A figure keeps a sign written directly before its digits ("-20%", "−20%"), so a negative claim
+never traces to a positive measurement; a hyphen after a digit or a word ("10-20 ms",
+"RTX-3090") joins rather than signs.
+
 A unit may be joined to its number by a hyphen ("a 12-ms pass", "10-fold"). A number whose noun
 phrase is a configured setting (:data:`CONFIGURATION_NOUNS`: "a 900 s wall-clock timeout",
 "timeout of 900 s", "a 0.5% tolerance") is not a measurement, nor is a header naming one
@@ -59,14 +63,15 @@ weaker rules were measured against the committed runs on 2026-10-08 and rejected
   the rate is at most 3%, and 16% at one significant digit -- hence the precision floor.
   ``test_named_measurements_rarely_coincide`` keeps the 2-digit rate under its bound.
 
-Every number also records the column its token starts at, so the guard's allowlist can exempt
-the one figure an entry names rather than every figure on its line.
+Every number also records the column its token -- sign included -- starts at, so the guard's
+allowlist can exempt the one figure an entry names rather than every figure on its line.
 
 Disclosed limits. One citation covers its whole block, a table included, but every figure must
 trace on its own. Traceability matches values, not meaning: a figure equal to an unrelated named
 measurement of the cited run is accepted. Units are read from field names, so a name reusing a
 unit token for something else (``ms_ssim``) is misread as a duration. A header naming a duration
 with no unit or rate ("Epoch time") marks no column; a cell stating a sub-second unit still counts.
+A table ends at a line with no unescaped pipe, which GFM would still read as a row of it.
 Resource usage -- GPU utilisation, peak memory -- is measured but is not a performance number here.
 """
 
@@ -224,6 +229,15 @@ ENTRY_VALUE_FIELD: Final[str] = "value"
 #: The kind recorded for a number found under a measurement column header.
 TABLE_COLUMN_KIND: Final[str] = "table-column"
 
+#: The ``Block.kind`` of a table, and of every other block: a paragraph, list item or heading.
+TABLE_BLOCK_KIND: Final[str] = "table"
+TEXT_BLOCK_KIND: Final[str] = "text"
+
+#: Signs a figure may carry directly before its digits, part of its value. U+2212 MINUS SIGN,
+#: which typeset text writes for a negative figure, reads as an ASCII ``-``.
+UNICODE_MINUS: Final[str] = "\u2212"
+SIGNS: Final[str] = f"+-{UNICODE_MINUS}"
+
 #: Returned for a block that carries performance numbers and cites nothing at all.
 NO_CITATION_REASON: Final[str] = "cites no artifact"
 
@@ -275,7 +289,9 @@ _FIELD_DURATION_UNITS: Final[dict[str, float]] = {
     unit: seconds for unit, seconds in _DURATION_UNITS.items() if unit not in FIELD_UNIT_EXCLUSIONS
 }
 
-_NUMBER: Final[str] = r"(?<![\w.])\d[\d,]*(?:\.\d+)?"
+#: A sign joins the digits it precedes, where a number may start: so "10-20", "RTX-3090" and
+#: "2026-10-08" stay unsigned, and so does a list marker's "- 20" (a space before the digits).
+_NUMBER: Final[str] = rf"(?<![\w.])[{re.escape(SIGNS)}]?\d[\d,]*(?:\.\d+)?"
 #: Between a number and its unit: "45 ms", "45ms", "a 12-ms pass", "10-fold".
 _GAP: Final[str] = r"\s*-?"
 _SUBSECOND_UNIT: Final[str] = rf"(?:{_alternation(SUBSECOND_UNITS)})(?!\w)"
@@ -349,7 +365,8 @@ _FIELD_TOKEN_SPLIT: Final[re.Pattern[str]] = re.compile(r"[\W_]+")
 
 _FENCE: Final[re.Pattern[str]] = re.compile(r"^\s*(?:```|~~~)")
 _LIST_ITEM: Final[re.Pattern[str]] = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
-_TABLE_DELIMITER_CELL: Final[re.Pattern[str]] = re.compile(r"^:?-{3,}:?$")
+#: A delimiter-row cell: GFM asks for one hyphen at least (``-``, ``:-:``), not three.
+_TABLE_DELIMITER_CELL: Final[re.Pattern[str]] = re.compile(r"^:?-+:?$")
 _SENTENCE_BREAK: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?;])\s+")
 _ESCAPED_PIPE: Final[str] = "\\|"
 _PIPE_PLACEHOLDER: Final[str] = "\x00"
@@ -444,7 +461,9 @@ def split_blocks(markdown: str) -> list[Block]:
 
     Returns:
         Paragraphs, list items (one block each, continuation lines included), headings and
-        tables, in document order, with 1-based line numbers.
+        tables, in document order, with 1-based line numbers. Outer pipes being optional, a table
+        starts at a line opening with ``|`` or above a delimiter row (:func:`_opens_table`), and
+        runs on over lines with an unescaped pipe to a blank line, a fence or a heading.
 
     """
     blocks: list[Block] = []
@@ -467,9 +486,16 @@ def split_blocks(markdown: str) -> list[Block]:
         if in_fence or not stripped:
             flush()
             continue
-        kind = "table" if stripped.startswith("|") else "text"
+        if current_kind == TEXT_BLOCK_KIND and _opens_table(current[-1][1], line):
+            header = current.pop()
+            flush()
+            current, current_kind = [header, (line_no, line)], TABLE_BLOCK_KIND
+            continue
         is_heading = stripped.startswith("#")
-        if current and (kind != current_kind or is_heading or _LIST_ITEM.match(line)):
+        in_table = current_kind == TABLE_BLOCK_KIND and not is_heading
+        continues = in_table and _UNESCAPED_PIPE.search(line) is not None
+        kind = TABLE_BLOCK_KIND if continues or stripped.startswith("|") else TEXT_BLOCK_KIND
+        if not continues and (kind != current_kind or is_heading or _LIST_ITEM.match(line)):
             flush()
         current_kind = kind
         current.append((line_no, line))
@@ -484,6 +510,18 @@ def _table_cells(line: str) -> list[str]:
     row = line.strip().replace(_ESCAPED_PIPE, _PIPE_PLACEHOLDER)
     row = row.removeprefix("|").removesuffix("|")
     return [cell.replace(_PIPE_PLACEHOLDER, "|").strip() for cell in row.split("|")]
+
+
+def _opens_table(header: str, line: str) -> bool:
+    """Whether ``line`` is a GFM delimiter row making ``header`` a table's header row.
+
+    Both carry an unescaped pipe and split into as many cells, and every cell of ``line`` is
+    hyphens with optional colons (``--- | :-:``). A bare ``---`` is a setext underline.
+    """
+    cells = _table_cells(line)
+    if not all(_UNESCAPED_PIPE.search(row) for row in (header, line)):
+        return False
+    return all(map(_TABLE_DELIMITER_CELL.match, cells)) and len(cells) == len(_table_cells(header))
 
 
 def _cell_starts(line: str) -> list[int]:
@@ -620,7 +658,7 @@ def performance_numbers(block: Block) -> list[PerformanceNumber]:
         the line its token starts on and its column there; a prose token may run onto the next.
 
     """
-    if block.kind == "table":
+    if block.kind == TABLE_BLOCK_KIND:
         found = [
             PerformanceNumber(line_no, line, kind, token, column=offset)
             for line_no, line in block.lines
@@ -696,12 +734,14 @@ def figure_of(number: PerformanceNumber) -> Figure:
     """Read a performance number as a quantity.
 
     Args:
-        number: A number from :func:`performance_numbers`; every token starts with its digits.
+        number: A number from :func:`performance_numbers`; every token starts with its number,
+            a sign (:data:`SIGNS`) or else its first digit.
 
     Returns:
-        Its value; its precision, as decimal places and significant digits written (a trailing
-        zero is written, so "180" is exact to the unit); and its unit -- the one written after
-        the digits, else, under a table header, the header's.
+        Its signed value; its precision, as decimal places and significant digits written (a
+        trailing zero is written, so "180" is exact to the unit; a sign is not a digit, so
+        "-5%" states one); and its unit -- the one written after the digits, else, under a
+        table header, the header's.
 
     Raises:
         ValueError: If the token does not start with a number.
@@ -710,12 +750,13 @@ def figure_of(number: PerformanceNumber) -> Figure:
     match = _ANY_NUMBER.match(number.token)
     if match is None:
         raise ValueError(f"not a performance-number token: {number.token!r}")
-    digits = match.group(0).replace(",", "")
+    written = match.group(0).replace(",", "").replace(UNICODE_MINUS, "-")
+    digits = written.lstrip(SIGNS)
     unit = _tail_unit(number.token[match.end() :])
     if unit is None and number.kind == TABLE_COLUMN_KIND:
         unit = header_unit(number.header)
     return Figure(
-        value=float(digits),
+        value=float(written),
         decimals=len(digits.partition(".")[2]),
         significant_digits=len(digits.replace(".", "").lstrip("0")),
         unit=unit,

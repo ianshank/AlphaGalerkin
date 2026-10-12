@@ -111,6 +111,9 @@ SYNTHETIC_POSITIVES: Final[dict[str, tuple[str, str]]] = {
     "ratio-hyphen-fold": ("FNet gives a 10-fold speedup.", "10-fold"),
     "ratio-fold": ("Search is 4 fold faster.", "4 fold"),
     "ratio-percent": ("The cache made search 30% faster.", "30%"),
+    "sign-minus": ("Caching cuts latency by -20%.", "-20%"),
+    "sign-plus": ("Caching raises throughput by +20%.", "+20%"),
+    "sign-unicode-minus": ("Caching cuts latency by −20%.", "−20%"),
     "word-faster": ("Search got 2× faster.", "2×"),
     "word-slower": ("Search got 2× slower.", "2×"),
     "word-quicker": ("Search is 3× quicker.", "3×"),
@@ -211,6 +214,8 @@ LOCATED_FIGURES: Final[dict[str, tuple[str, list[tuple[int, int, str]]]]] = {
         "| Model | Latency (ms) |\n|---|---|\n| a \\| b | n/a \\| 7 |",
         [(3, 18, "7")],
     ),
+    "signed": ("Latency: -20%, then −20% more.", [(1, 9, "-20%"), (1, 20, "−20%")]),
+    "signed-cell": ("| Model | Latency (ms) |\n|---|---|\n| a | -7 |", [(3, 6, "-7")]),
 }
 
 #: Table rows whose cells :func:`_cell_starts` must locate exactly as :func:`_table_cells` reads.
@@ -228,6 +233,56 @@ TABLE_ROWS: Final[dict[str, str]] = {
 
 #: Pieces of a table cell, chosen to collide: figures, units, escaped pipes and bare backslashes.
 CELL_PIECES: Final[tuple[str, ...]] = ("7", "12", "0.4", "x", "ms", " ", "a", "-", "\\", "\\|")
+
+#: ``id -> (text, tokens)``: a hyphen is a sign only where a number may start -- not after a
+#: digit, a letter or a dot, and not with a space before the digits (a list marker).
+UNSIGNED_HYPHENS: Final[dict[str, tuple[str, list[str]]]] = {
+    "range": ("A forward pass takes 10-20 ms.", ["20 ms"]),
+    "en-dash-range": ("A forward pass takes 10–20 ms.", ["20 ms"]),
+    "model-number": ("An RTX-3090 answers in 45 ms.", ["45 ms"]),
+    "date": ("On 2026-10-08 inference took 45 ms.", ["45 ms"]),
+    "list-marker": ("- 20 ms per move", ["20 ms"]),
+}
+
+#: Copilot's sign case (PR #160 review): a ``-20`` cell under ``Latency reduction (%)``.
+SIGNED_TABLE: Final[str] = "| Model | Latency reduction (%) |\n|---|---|\n| FNet ({cited}) | -20 |"
+
+#: ``id -> (claim, recorded latency_reduction_pct, tokens reported)``: a figure keeps its sign,
+#: so it traces only to a measurement of that sign. ``{cited}`` is the backing run's CSV.
+SIGNED_CLAIMS: Final[dict[str, tuple[str, float, list[str]]]] = {
+    "cell-against-plus": (SIGNED_TABLE, 20.0, ["-20"]),
+    "cell-against-minus": (SIGNED_TABLE, -20.0, []),
+    "inline-against-plus": ("Caching cuts latency by -20% ({cited}).", 20.0, ["-20%"]),
+    "inline-against-minus": ("Caching cuts latency by -20% ({cited}).", -20.0, []),
+    "plus-against-plus": ("Caching moves latency by +20% ({cited}).", 20.0, []),
+    "unicode-minus-against-plus": ("Caching cuts latency by −20% ({cited}).", 20.0, ["−20%"]),
+    "unicode-minus-against-minus": ("Caching cuts latency by −20% ({cited}).", -20.0, []),
+}
+
+#: Copilot's pipe-less table (PR #160 review), verbatim: GFM needs no outer pipes.
+PIPELESS_TABLE: Final[str] = "Model | Latency (ms)\n--- | ---\nFNet | 12"
+
+#: A table's header and delimiter rows with outer pipes, for the shapes below.
+PIPED_HEAD: Final[str] = "| a | Latency (ms) |\n|---|---|"
+
+#: ``id -> (markdown, [(block kind, first line, last line)], figures reported)``. A table opens on
+#: a delimiter row under a piped line with as many cells, and goes on over piped lines.
+TABLE_SHAPES: Final[dict[str, tuple[str, list[tuple[str, int, int]], list[str]]]] = {
+    "no-outer-pipes": (PIPELESS_TABLE, [("table", 1, 3)], ["12"]),
+    "after-prose": (f"Prose.\n{PIPELESS_TABLE}", [("text", 1, 1), ("table", 2, 4)], ["12"]),
+    "piped-delimiter": ("a | Latency (ms)\n| --- | --- |\n| b | 12 |", [("table", 1, 3)], ["12"]),
+    "pipeless-body-row": (f"{PIPED_HEAD}\nb | 12", [("table", 1, 3)], ["12"]),
+    "one-hyphen-cells": ("a | Latency (ms)\n:-: | -\nb | 12", [("table", 1, 3)], ["12"]),
+    "list-item-row": (f"{PIPED_HEAD}\n- b | 12", [("table", 1, 3)], ["12"]),
+    # Controls. A lone "---" is a setext underline, and a heading is never a header.
+    "cell-count-mismatch": ("a | Latency (ms)\n--- | --- | ---\nb | 12", [("text", 1, 3)], []),
+    "non-hyphen-cell": ("a | Latency (ms)\n--- | b\nc | 12", [("text", 1, 3)], []),
+    "setext-underline": ("Latency (ms) |\n---\n12 |", [("text", 1, 3)], []),
+    "header-without-pipe": ("Latency (ms)\n---|\n12|", [("text", 1, 3)], []),
+    "heading-no-header": ("# a | Latency\n--- | ---\nb | 12", [("text", 1, 1), ("text", 2, 3)], []),
+    "heading-ends-it": (f"{PIPED_HEAD}\n# b | 12", [("table", 1, 2), ("text", 3, 3)], []),
+    "pipeless-line-ends-it": (f"{PIPED_HEAD}\n12", [("table", 1, 2), ("text", 3, 3)], []),
+}
 
 
 @pytest.mark.parametrize(("text", "token"), SYNTHETIC_POSITIVES.values(), ids=SYNTHETIC_POSITIVES)
@@ -266,6 +321,11 @@ def test_a_setting_phrase_does_not_hide_a_neighbouring_claim() -> None:
     """Only the figure the setting names is exempt; a comma ends the setting's noun phrase."""
     text = "Inference takes 12 ms, well inside the 900 s wall-clock timeout."
     assert [token for _, _, token in inline_numbers(text)] == ["12 ms"]
+
+
+@pytest.mark.parametrize(("text", "tokens"), UNSIGNED_HYPHENS.values(), ids=UNSIGNED_HYPHENS)
+def test_a_hyphen_is_a_sign_only_where_a_number_may_start(text: str, tokens: list[str]) -> None:
+    assert [token for _, _, token in inline_numbers(text)] == tokens
 
 
 # --------------------------------------------------------------------------------------
@@ -409,6 +469,19 @@ def test_a_header_only_table_reports_nothing() -> None:
     assert performance_numbers(block) == []
 
 
+@pytest.mark.parametrize(("markdown", "shape", "figures"), TABLE_SHAPES.values(), ids=TABLE_SHAPES)
+def test_a_gfm_table_opens_on_its_delimiter_row(
+    markdown: str, shape: list[tuple[str, int, int]], figures: list[str]
+) -> None:
+    """Outer pipes are optional in GFM, so a table is known by its delimiter row, not a ``|``."""
+    blocks = split_blocks(markdown)
+    assert [(block.kind, block.lines[0][0], block.lines[-1][0]) for block in blocks] == shape
+    numbers = [number for block in blocks for number in performance_numbers(block)]
+    assert [(number.token, number.header) for number in numbers] == [
+        (figure, "Latency (ms)") for figure in figures
+    ]
+
+
 # --------------------------------------------------------------------------------------
 # locating a figure in its line: what an allowlist entry's exemption is bound to
 # --------------------------------------------------------------------------------------
@@ -456,7 +529,7 @@ def test_every_number_records_where_its_token_starts() -> None:
 def test_cell_starts_mirror_table_cells(row: str) -> None:
     """One start per cell :func:`_table_cells` reads, at that cell's first non-blank character.
 
-    "a | b" has no opening pipe: no table block holds such a row, but the mirror must not care.
+    "a | b" has no opening pipe, which a GFM table row need not have (``TABLE_SHAPES``).
     """
     cells, starts = _table_cells(row), _cell_starts(row)
     assert len(starts) == len(cells), (cells, starts)
@@ -468,12 +541,13 @@ def test_cell_starts_mirror_table_cells(row: str) -> None:
 @given(
     cells=st.lists(st.lists(st.sampled_from(CELL_PIECES), max_size=5).map("".join), max_size=4),
     separator=st.sampled_from(("|", " | ")),
+    lead=st.sampled_from(("|", "")),
 )
-def test_a_figure_on_any_table_row_is_located(cells: list[str], separator: str) -> None:
-    """Escaped pipes, bare backslashes and blank cells never shift a figure off its token."""
+def test_a_figure_on_any_table_row_is_located(cells: list[str], separator: str, lead: str) -> None:
+    """Escaped pipes, bare backslashes, blank cells and no opening pipe never shift a figure."""
     header = "| " + " | ".join(["Latency (ms)"] * max(1, len(cells))) + " |"
     rule = "|" + "---|" * max(1, len(cells))
-    assert _unlocated(f"{header}\n{rule}\n|{separator.join(cells)}|") == []
+    assert _unlocated(f"{header}\n{rule}\n{lead}{separator.join(cells)}|") == []
 
 
 # --------------------------------------------------------------------------------------
@@ -499,6 +573,12 @@ def _number(token: str, kind: str = "latency", header: str = "") -> PerformanceN
         ("3.2×", "speedup", "", (3.2, 1, 2, Unit(RATIO, 1.0))),
         ("10-fold", "speedup", "", (10.0, 0, 2, Unit(RATIO, 1.0))),
         ("80%", "speedup", "", (80.0, 0, 2, Unit(PERCENT, 1.0))),
+        # A sign is part of the value and none of its precision: "-5%" states one digit.
+        ("-20%", "speedup", "", (-20.0, 0, 2, Unit(PERCENT, 1.0))),
+        ("-5%", "speedup", "", (-5.0, 0, 1, Unit(PERCENT, 1.0))),
+        ("+0.40 s", "latency", "", (0.4, 2, 2, Unit(DURATION, 1.0))),
+        ("−1,200 it/s", "throughput", "", (-1200.0, 0, 4, Unit(RATE, 1.0))),
+        ("-7", TABLE_COLUMN_KIND, "Inference (ms)", (-7.0, 0, 1, Unit(DURATION, 1e-3))),
         ("0.05", TABLE_COLUMN_KIND, "Inference (ms)", (0.05, 2, 1, Unit(DURATION, 1e-3))),
         ("670", TABLE_COLUMN_KIND, "MCTS Sims/sec", (670.0, 0, 3, Unit(RATE, 1.0))),
         ("30", TABLE_COLUMN_KIND, "Speedup (%)", (30.0, 0, 2, Unit(PERCENT, 1.0))),
@@ -599,6 +679,8 @@ def _recorded(field: str, value: float) -> RecordedValue:
         pytest.param("3.2×", "speedup", "", "fnet_speedup", 3.24, id="ratio"),
         pytest.param("80%", "speedup", "", "latency_reduction_pct", 80.3, id="percent"),
         pytest.param("45", TABLE_COLUMN_KIND, "Inference (ms)", "latency_ms", 45.0, id="header"),
+        pytest.param("+20%", "speedup", "", "latency_reduction_pct", 20.0, id="plus-sign"),
+        pytest.param("-20%", "speedup", "", "latency_reduction_pct", -20.0, id="minus-sign"),
     ],
 )
 def test_a_figure_equal_to_a_named_measurement_traces(
@@ -622,6 +704,10 @@ def test_a_figure_equal_to_a_named_measurement_traces(
         pytest.param("5×", "speedup", "", "fnet_speedup", 5.0, "significant digit", id="one-digit"),
         pytest.param(
             "7", TABLE_COLUMN_KIND, "Throughput", "sims_per_second", 7.0, "no unit", id="unitless"
+        ),
+        pytest.param("-20%", "speedup", "", "latency_reduction_pct", 20.0, "is not", id="sign"),
+        pytest.param(
+            "-5%", "speedup", "", "latency_reduction_pct", -5.0, "significant", id="sign-one-digit"
         ),
     ],
 )
@@ -832,6 +918,16 @@ def test_a_figure_that_is_a_named_measurement_is_backed(tmp_path: Path) -> None:
     cited = _tagged_run(tmp_path, "bench", inference_latency_ms=12.0, sims_per_second=670.0)
     claim = f"Inference takes 12 ms per move and MCTS runs 670 sims/sec (`{cited}`)."
     assert unbacked_performance_numbers(claim, tmp_path) == []
+
+
+@pytest.mark.parametrize(("claim", "value", "tokens"), SIGNED_CLAIMS.values(), ids=SIGNED_CLAIMS)
+def test_a_signed_figure_traces_only_to_a_measurement_of_its_sign(
+    tmp_path: Path, claim: str, value: float, tokens: list[str]
+) -> None:
+    """Copilot's case (PR #160 review): a dropped sign let a recorded +20% back a "-20" claim."""
+    cited = _tagged_run(tmp_path, "bench", latency_reduction_pct=value)
+    text = claim.format(cited=f"`{cited}`")
+    assert [u.number.token for u in unbacked_performance_numbers(text, tmp_path)] == tokens
 
 
 @pytest.mark.parametrize(

@@ -766,6 +766,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equality), an entry exempts a figure only when its whole token lies inside one occurrence of the
   fragment, and staleness is judged per entry. 13/13 further planted defects killed (33-45), 291
   tests across the two suites, `perf_claims.py` at 100% branch; both live entries stay exempt.
+- **A performance figure keeps its sign, and a table needs no outer pipes** (second Copilot
+  review of PR #160). Two scanner bypasses in `tests/support/perf_claims.py`, each reproduced
+  first and now killed by named tests. The number token dropped a leading sign, so a `-20` cell
+  under `Latency reduction (%)` read as `20` and a recorded `+20` backed it; a sign written
+  directly before the digits (`-`, `+`, U+2212) is now part of the value and none of its
+  precision (`-5%` states one significant digit), while a hyphen after a digit, letter or dot
+  (`10-20 ms`, `RTX-3090`, a date) or a list marker's `- ` stays unsigned. And `split_blocks`
+  opened a table only on a line starting with `|`, so the GFM form `Model | Latency (ms)` /
+  `--- | ---` / `FNet | 12` was read as prose and its bare `12` was invisible; a table now opens
+  on its delimiter row (one hyphen or more per cell, as many cells as a piped header line, which
+  moves into the table) and runs on over piped rows. A pipe-less line still ends a table -- GFM
+  reads it as a row -- disclosed in the module's limits. 25 more planted defects killed (46-70,
+  plus 45 re-planted), 332 tests across the two suites, `perf_claims.py` at 100% branch; the old
+  and new scanner read all 223 Markdown files in the repo identically, so no live page changes.
 - **An order-dependent arena pre-flight test kept the fast lane red.**
   `TestPreflight::test_refuses_an_unhashed_config` patched the arena config class bound at
   import, but `tests/poc/test_cli_commands.py` purges `sys.modules['src.poc.scenarios*']` and

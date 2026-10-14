@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Final
 
 import pytest
+import yaml
 
 from tests.support.marker_expr import (
     expression_excludes,
@@ -46,6 +47,7 @@ from tests.support.marker_expr import (
     expression_selects_plainly,
     marker_expressions,
 )
+from tests.support.shell_status import step_failure_obstacles
 from tests.support.workflows import (
     CI_SUCCESS_JOB,
     CI_WORKFLOW,
@@ -53,12 +55,16 @@ from tests.support.workflows import (
     MAKEFILE,
     REPO_ROOT,
     RunScript,
+    ShellCommand,
+    WorkflowStep,
     hard_gate_jobs,
     iter_commands,
     iter_run_scripts,
+    iter_shell_commands,
     job_needs,
     load_workflow,
     makefile_target_recipe,
+    workflow_steps,
 )
 
 #: The tier this file guards.
@@ -1066,9 +1072,142 @@ def test_the_clause_count_matches_the_guard() -> None:
         f"documents its own scope"
     )
     (row,) = [r for r in _e2e_surface_rows() if r.startswith("| E2E tier visibility")]
-    spelled = _NUMBER_WORDS[len(clauses)]
-    assert spelled.lower() in row.lower(), (
+    assert states_clause_count(row, len(clauses)), (
         f"this file defines {len(clauses)} clauses ({sorted(clauses)}), but the "
-        f"CLAUDE.md row does not say {spelled!r}. Update the row; a hand-counted "
-        f"number in prose is exactly what drifted before."
+        f"CLAUDE.md row does not say {_NUMBER_WORDS[len(clauses)]!r} clauses. Update the "
+        f"row; a hand-counted number in prose is exactly what drifted before."
     )
+
+
+def states_clause_count(row: str, count: int) -> bool:
+    """Whether ``row`` states ``count`` clauses: the spelled number, as a word, then "clauses".
+
+    A substring test passed vacuously at ten -- "written" contains "ten" -- so adding
+    clause (j) left the row's stale "Nine" unreported (found 2026-10-14).
+    """
+    spelled = re.escape(_NUMBER_WORDS[count])
+    return re.search(rf"\b{spelled}\b\W*clauses\b", row, flags=re.IGNORECASE) is not None
+
+
+@pytest.mark.parametrize(
+    ("row", "count", "states"),
+    [
+        ("**Ten** clauses (`(a)`-`(j)`)", 10, True),
+        ("**Nine** clauses, written before (g)", 10, False),
+        ("ten files, written later; clauses vary", 10, False),
+        ("**Nine** clauses (`(a)`-`(i)`)", 9, True),
+    ],
+)
+def test_a_clause_count_is_a_word_bound_to_clauses(row: str, count: int, states: bool) -> None:
+    assert states_clause_count(row, count) is states
+
+
+# ============================================================================ #
+# Clause (j): every step running the tier must fail loud                       #
+# ============================================================================ #
+#
+# Clause (c) proves the *job* can fail the build; nothing proved each *step* can
+# fail its job. `|| true` after either test-e2e pytest command, `set +e` before it,
+# or `continue-on-error: true` on either step masked every E2E failure while this
+# whole file stayed green -- 71 passed with each planted on ci.yml (verified
+# 2026-10-10 and again 2026-10-14; hygiene B46). The `fem_required` guard closed the
+# same hole after a Copilot review of PR #160, and this clause asks that guard's
+# question through the same function (`tests/support/shell_status.py`) rather than
+# a second shell model.
+#
+# Kills (2026-10-14; each planted on the real ci.yml, restored byte-for-byte):
+# `|| true` on both steps, `set +e` then `; true`, and `continue-on-error` on both
+# -> `test_every_step_running_the_tier_fails_loud`; `; true` alone, the control,
+# stays green. The shared helper weakened in place: `continue-on-error` ignored ->
+# `[continue-on-error]`; `if:` ignored -> `[skippable-if]`; the exit-status model
+# dropped -> `[or-true]`, `[set-plus-e]` and the fem guard's status plants.
+
+#: Rewrites of every step running the tier, ``name -> (prefix, suffix, step keys,
+#: still loud)``. `|| true`, `set +e` then `; true`, `continue-on-error` and an `if:`
+#: are the defects; an untouched round trip and `; true` under GitHub's default
+#: `bash -e` (it exits at the failing pytest) are the controls a model that rejects
+#: everything would fail.
+E2E_STATUS_PLANTS: Final[dict[str, tuple[str, str, dict[str, object], bool]]] = {
+    "unmutated": ("", "", {}, True),
+    "semicolon-true": ("", "; true", {}, True),
+    "or-true": ("", " || true", {}, False),
+    "set-plus-e": ("set +e\n", "; true", {}, False),
+    "continue-on-error": ("", "", {"continue-on-error": True}, False),
+    "skippable-if": ("", "", {"if": "github.event_name == 'schedule'"}, False),
+}
+
+
+def e2e_selecting_steps(
+    workflow: Path = CI_WORKFLOW,
+) -> list[tuple[WorkflowStep, list[ShellCommand], int]]:
+    """``(step, its commands, position)`` for every command that runs the tier broadly.
+
+    The selection :func:`e2e_selecting_ci_commands` makes, read through
+    ``workflow_steps`` so each command carries its step's ``continue-on-error``,
+    ``if:`` and ``shell:``.
+
+    Args:
+        workflow: The workflow file to read (a planted copy in the tests below).
+
+    Returns:
+        One entry per qualifying command, in step order.
+
+    """
+    found: list[tuple[WorkflowStep, list[ShellCommand], int]] = []
+    for step in workflow_steps(workflow):
+        if step.script is None:
+            continue
+        commands = iter_shell_commands(step.script)
+        for position, command in enumerate(commands):
+            expression = effective_marker_expression(command.text)
+            if selects_e2e_directory(command.text) and expression_selects_plainly(
+                expression, E2E_MARKER
+            ):
+                found.append((step, commands, position))
+    return found
+
+
+def unloud_steps(
+    selected: list[tuple[WorkflowStep, list[ShellCommand], int]],
+) -> dict[str, list[str]]:
+    """``"<step>: <command>" -> obstacles`` for each selected command a failure could pass."""
+    failures: dict[str, list[str]] = {}
+    for step, commands, position in selected:
+        obstacles = step_failure_obstacles(step, commands, position)
+        if obstacles:
+            failures[f"{step}: {commands[position].text}"] = obstacles
+    return failures
+
+
+def test_every_step_running_the_tier_fails_loud() -> None:
+    """A step whose pytest status is absorbed reports green on a red tier (B46)."""
+    selected = e2e_selecting_steps()
+    assert selected, "no step runs the tier; clause (b) says why"
+    assert len(selected) == len(e2e_selecting_ci_commands()), (
+        "the step reading and the run-script reading of ci.yml disagree, so this clause "
+        "would be judging a different set of commands than clauses (b) and (g)"
+    )
+    failures = unloud_steps(selected)
+    assert not failures, "E2E command(s) whose failure cannot fail their step:\n" + "\n".join(
+        f"  {where}: " + "; ".join(obstacles) for where, obstacles in failures.items()
+    )
+
+
+class TestPlantedLoudnessDefects:
+    """B46's defects, planted on copies of ``ci.yml`` so they keep running in CI."""
+
+    @pytest.mark.parametrize("plant", sorted(E2E_STATUS_PLANTS))
+    def test_a_masked_step_is_reported(self, tmp_path: Path, plant: str) -> None:
+        prefix, suffix, keys, loud = E2E_STATUS_PLANTS[plant]
+        live = e2e_selecting_steps()
+        document = load_workflow(CI_WORKFLOW)
+        for step, commands, position in live:
+            raw = document["jobs"][step.job]["steps"][step.index]
+            raw["run"] = f"{prefix}{commands[position].text}{suffix}\n"
+            raw.update(keys)
+        planted = tmp_path / CI_WORKFLOW_FILENAME
+        planted.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        mutated = e2e_selecting_steps(planted)
+        assert len(mutated) == len(live) > 0, "the plant must keep every step selecting the tier"
+        failures = unloud_steps(mutated)
+        assert (not failures) == loud, failures

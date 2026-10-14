@@ -7,7 +7,9 @@ runner's shell does with one of those commands' exit status. It was split out of
 taken that module past the 1000-line budget ``tests/docs/test_module_size_budget.py`` sets.
 
 A conservative model of the runner's shell, not an interpreter: what it does not model is
-reported rather than passed.
+reported rather than passed. :func:`step_failure_obstacles` adds the step's own metadata, so
+every guard that needs "this command's failure fails its step" asks one function: the
+``fem_required`` guard and the E2E visibility guard's clause (j) both do.
 """
 
 from __future__ import annotations
@@ -17,7 +19,12 @@ import shlex
 from collections.abc import Sequence
 from typing import Final
 
-from tests.support.workflows import AND_LIST, OR_LIST, PIPE, ShellCommand
+from tests.support.workflows import AND_LIST, OR_LIST, PIPE, ShellCommand, WorkflowStep
+
+#: Step ``if:`` conditions that run whenever the job runs.
+ALWAYS_RUN_CONDITIONS: Final[frozenset[str]] = frozenset(
+    {"always()", "${{ always() }}", "success()", "${{ success() }}"}
+)
 
 #: The runner shells whose exit semantics are modelled, mapped to whether they set
 #: ``pipefail``; all three set ``errexit``. ``None`` is a step with no ``shell:``
@@ -220,4 +227,32 @@ def exit_status_obstacles(
         obstacles.append("followed by `&&` mid-script: errexit does not fire for it")
     elif not errexit and not _list_reaches_end(commands, end):
         obstacles.append("errexit is off (`set +e`): a later command decides the step's status")
+    return obstacles
+
+
+def step_failure_obstacles(
+    step: WorkflowStep, commands: Sequence[ShellCommand], position: int
+) -> list[str]:
+    """Why ``step`` could stay green, or not run, when ``commands[position]`` fails.
+
+    The step's own metadata -- ``continue-on-error`` at the step or its job, an ``if:``
+    that can skip it -- then every way :func:`exit_status_obstacles` finds for the
+    command's status to be lost. Whether the *job* can fail the build is the caller's
+    question: it is ``ci-success``'s gate, not the step's.
+
+    Args:
+        step: The step running the command (:func:`~tests.support.workflows.workflow_steps`).
+        commands: The step's commands (:func:`~tests.support.workflows.iter_shell_commands`).
+        position: Index of the command whose failure must fail the step.
+
+    Returns:
+        One reason per way the failure can be lost; empty if it fails the step.
+
+    """
+    obstacles: list[str] = []
+    if step.continue_on_error:
+        obstacles.append("continue-on-error: the step cannot fail its job")
+    if step.condition is not None and step.condition.strip() not in ALWAYS_RUN_CONDITIONS:
+        obstacles.append(f"if: {step.condition!r} can skip the step")
+    obstacles.extend(exit_status_obstacles(commands, position, step.shell))
     return obstacles

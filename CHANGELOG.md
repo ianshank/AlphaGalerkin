@@ -742,6 +742,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/support/collection_hooks.py` (both 99% branch), keeping `workflows.py` (852 lines) and
   the guard (959) under the 1000-line budget. Three more live mutations killed (14/14) plus the
   `exec 2>&1` control; every new check weakened in place was caught (8/8).
+- **The E2E visibility guard checks that each `test-e2e` step can fail** (hygiene B46). The
+  guard proved the `test-e2e` *job* is a hard gate but never that its *steps* can fail it:
+  `|| true` after either pytest command, `set +e` before it, or `continue-on-error: true` on
+  either step masked every E2E failure while `tests/docs/test_e2e_visibility.py` stayed fully
+  green (71 passed with each planted, re-verified 2026-10-14). New clause (j) holds every step
+  running the tier to the question the `fem_required` guard asks, now one shared function
+  (`tests/support/shell_status.py::step_failure_obstacles`: `continue-on-error` at the step or
+  job, a skippable `if:`, and the exit-status model); `; true` under the default `bash -e` and an
+  untouched round trip stay green as controls. Adding the tenth clause showed the clause-count
+  check was vacuous at ten -- a substring test, and "written" contains "ten" -- so it now matches
+  the spelled number as a whole word bound to "clauses". All defects killed by named tests, live
+  and re-planted on copies; the helper weakened three ways was caught each time.
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

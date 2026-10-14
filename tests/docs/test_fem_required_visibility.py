@@ -149,7 +149,7 @@ from tests.support.marker_expr import (
     pytest_invocation,
     scan_module_markers,
 )
-from tests.support.shell_status import exit_status_obstacles
+from tests.support.shell_status import step_failure_obstacles
 from tests.support.workflows import (
     CI_WORKFLOW,
     CI_WORKFLOW_FILENAME,
@@ -194,11 +194,6 @@ REQUIRE_EXTRAS_ON: Final[str] = "1"
 
 #: pytest inserts this variable's options after the ini ``addopts``.
 PYTEST_ADDOPTS_ENV: Final[str] = "PYTEST_ADDOPTS"
-
-#: Step ``if:`` conditions that run whenever the job runs.
-ALWAYS_RUN_CONDITIONS: Final[frozenset[str]] = frozenset(
-    {"always()", "${{ always() }}", "success()", "${{ success() }}"}
-)
 
 TESTS_ROOT: Final[Path] = REPO_ROOT / "tests"
 PYPROJECT: Final[Path] = REPO_ROOT / "pyproject.toml"
@@ -552,7 +547,11 @@ def obstacles_for(target: FemTarget, candidate: Candidate, ini: dict[str, Any]) 
 
 
 def loudness_obstacles(candidate: Candidate, blocking: set[str]) -> list[str]:
-    """Why a selecting step could stay green with scikit-fem missing or its tests red."""
+    """Why a selecting step could stay green with scikit-fem missing or its tests red.
+
+    The fem-specific variable and the job's gate here; the step itself through the shared
+    ``step_failure_obstacles``, which the E2E visibility guard's clause (j) asks too.
+    """
     step = candidate.step
     value = {**step.env, **candidate.invocation.env}.get(REQUIRE_EXTRAS_ENV)
     obstacles: list[str] = []
@@ -561,13 +560,9 @@ def loudness_obstacles(candidate: Candidate, blocking: set[str]) -> list[str]:
             f"{REQUIRE_EXTRAS_ENV}={value!r}, not {REQUIRE_EXTRAS_ON!r}: a missing scikit-fem "
             "skips every test instead of failing"
         )
-    if step.continue_on_error:
-        obstacles.append("continue-on-error: the step cannot fail its job")
-    if step.condition is not None and step.condition.strip() not in ALWAYS_RUN_CONDITIONS:
-        obstacles.append(f"if: {step.condition!r} can skip the step")
     if step.job not in blocking:
         obstacles.append(f"job {step.job!r} is not a hard gate in ci-success")
-    obstacles.extend(exit_status_obstacles(candidate.commands, candidate.position, step.shell))
+    obstacles.extend(step_failure_obstacles(step, candidate.commands, candidate.position))
     return obstacles
 
 

@@ -775,6 +775,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every masked row must exit 0 or say why the model over-reports. 13 new checks weakened in place,
   each caught; six live plants on the fem guard and three on the E2E guard killed, with an
   unconditional `set -e` as the control.
+- **The real model exports to ONNX, and the ONNX step can fail the build** (hygiene B45).
+  `test-extras`' ONNX step ran under `continue-on-error` and logged 24 failed, 12 passed on every
+  run while the job reported green. Three defects, each hidden by the one before it and each
+  reproduced on the old code by a named test first: `ModelOutput` is a frozen dataclass, not a
+  pytree, so `torch.export` and `torch.jit.trace` both rejected the real model's output; a
+  declared-dynamic batch axis seen at size 1 was pinned to 1 in the exported graph (0/1
+  specialisation, triggered by the coordinate `einsum`); and onnxruntime's dynamic quantizer
+  rejected the shapes the exporter recorded in `graph.value_info`, even for a plain MLP. New
+  `src/deployment/export_adapters.py` flattens a dataclass output to a tuple only when the model
+  returns one (`TupleOutputWrapper`; `ModelValidator` flattens through the same helper) and traces
+  a size-2 sample on exactly the size-1 axes declared dynamic (logged as `sample_axis_enlarged`);
+  `ModelQuantizer` hands onnxruntime the model with `value_info` dropped (`value_info_stripped`),
+  leaving the input file untouched. Tensor- and tuple-returning models reach the exporter as the same
+  object with the same call as before. The step's `continue-on-error` is gone, its comment names the
+  real causes rather than the dynamo default, and an import check fails it when the ONNX stack is
+  missing instead of letting every test skip. 41/41 pass (onnx 1.23.2, onnxruntime 1.31.0,
+  onnxscript 0.7.2); `src/deployment` branch coverage 27.91% -> 51.04% in CI's form. Three findings
+  are recorded as B47-B49, among them that the legacy `dynamo=False` exporter -- the fix the old
+  comment proposed -- produces outputs off by about 0.1.
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

@@ -47,20 +47,22 @@ Clauses, each cheap and each falsifiable:
   ``pyproject.toml`` declares with scikit-fem -- derived, never spelled --
   before the step runs; ``test-extras`` must be one.
 * **(f)** No conftest on a fem module's path binds a collection filter, however bound
-  (an import too) -- the ignore lists, a hook that drops or replaces what is collected,
-  ``pytest_plugins`` (``tests/support/collection_hooks.py``): the edit that would hide a module from
-  every step while (c) stays green. The root ``conftest.py`` included: only its
-  collection hook is allowed, by name, because ``tests/docs/test_root_conftest_hooks.py``
-  drives it in every branch.
+  (an import too): the ignore lists, ``pytest_plugins``, and any hook ``REVIEWED_HOOKS``
+  does not admit (``tests/support/collection_hooks.py``) -- the edit that would hide a module
+  from every step while (c) stays green. The root ``conftest.py`` included: its collection
+  hook is allowed by name because ``tests/docs/test_root_conftest_hooks.py`` drives it in
+  every branch, and a review no conftest here still needs fails as stale.
 * **(g)** No fem module skips its tests before the root hook sees them: no
   ``importorskip`` anywhere (at module scope the module yields zero items, so
-  ``ALPHAGALERKIN_REQUIRE_EXTRAS`` has nothing to escalate), no import-time
-  ``skip(allow_module_level=True)``, no ``skip``/``skipif`` mark on a fem test.
+  ``ALPHAGALERKIN_REQUIRE_EXTRAS`` has nothing to escalate), no
+  ``skip(allow_module_level=True)`` that can run at import -- an eager annotation
+  included -- and no ``skip``/``skipif`` mark on a fem test.
 
 (c)'s entry points, (d)'s exit status and (g) answer a Copilot review of PR #160;
 the first version read a step's metadata and its paths, never what ran. A second
 review added (d)'s ``exec`` and compound-nested early ends, and (f)'s root file; a
-third, (d)'s conditional ``set -e`` and traps (with their neighbours) and (f)'s imports.
+third, (d)'s conditional ``set -e`` and traps (with their neighbours) and (f)'s imports;
+a fourth, (f)'s reviewed-hook allowlist and (g)'s annotations.
 
 The required mutations -- the selecting step deleted, its ``-m`` flipped to
 ``not fem_required``, ``ALPHAGALERKIN_REQUIRE_EXTRAS`` dropped, a marker in a
@@ -120,9 +122,19 @@ noticed 17-20, and nothing noticed 21-22:
     ``test_no_conftest_on_its_path_filters_collection``. 22. ``... import hide as
     pytest_ignore_collect`` -> the same test. 23. Control: an unconditional ``set -e`` instead.
 
-20/20 planted defects killed, plus three controls; ``TestPlantedDefects`` re-plants 6-11,
-13-15 and 17-22 on copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``, ``ROOT_FILTER_PLANTS``,
-the no-op), and ``tests/docs/test_shell_status.py`` runs every status row in the real shell.
+Copilot review 4 (2026-10-15), same protocol; each passed the guard at ``5cc1af8``:
+
+24. ``def pytest_collection_finish(session): session.items[:] = []`` appended to
+    ``tests/pde/conftest.py`` -> ``test_no_conftest_on_its_path_filters_collection``.
+25. The instance module's future import removed and ``def _hidden() -> pytest.skip("x",
+    allow_module_level=True)`` added -> ``test_no_fem_module_can_skip_its_tests_before_they_run``.
+26. A helper calling ``pytest.skip("x", allow_module_level=True)``, called at import there -> the
+    same test. 27. Control: 25 with the future import kept, so the annotation never runs.
+
+23/23 planted defects killed, plus four controls; ``TestPlantedDefects`` re-plants 6-11,
+13-15, 17-22 and 24-26 on copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``,
+``ROOT_FILTER_PLANTS``, the no-op); ``tests/docs/test_shell_status.py`` runs every status row in
+the real shell, and ``tests/docs/test_collection_hooks.py`` pins both source scans.
 """
 
 from __future__ import annotations
@@ -145,9 +157,12 @@ from packaging.utils import canonicalize_name
 
 from tests.support.collection_hooks import (
     CONFTEST,
+    REVIEWED_HOOKS,
     STAR_IMPORT,
     FakeItem,
     conftest_filters_on_path,
+    conftests_on_path,
+    hooks_defined,
     import_time_calls_with,
     load_module,
     name_lines,
@@ -241,6 +256,9 @@ SKIPPING_MARKS: Final[frozenset[str]] = frozenset({"skip", "skipif"})
 #: Fem modules that skip themselves before the root hook sees a test (Copilot, PR #160),
 #: ``name -> (source, reported)``. The control: a skip *inside* a test runs after the hook.
 _FEM_TEST: Final[str] = f"@pytest.mark.{FEM_MARKER}\ndef test_x() -> None:\n    pass\n"
+_SKIPPING_DEF: Final[str] = (
+    f'def test_x() -> pytest.skip("x", {ALLOW_MODULE_LEVEL}=True):\n    pass\n'
+)
 EARLY_SKIP_PLANTS: Final[dict[str, tuple[str, bool]]] = {
     "module-importorskip": (
         f'import pytest\nskfem = pytest.importorskip("skfem")\n{_FEM_TEST}',
@@ -263,6 +281,18 @@ EARLY_SKIP_PLANTS: Final[dict[str, tuple[str, bool]]] = {
     "skip-inside-a-test": (
         f'import pytest\n@pytest.mark.{FEM_MARKER}\ndef test_x() -> None:\n    pytest.skip("v")\n',
         False,
+    ),
+    # Copilot review 4: an eager annotation runs at import; a postponed one never runs.
+    "eager-annotation": (f"import pytest\n@pytest.mark.{FEM_MARKER}\n{_SKIPPING_DEF}", True),
+    "postponed-annotation": (
+        f"from __future__ import annotations\nimport pytest\n@pytest.mark.{FEM_MARKER}\n"
+        f"{_SKIPPING_DEF}",
+        False,
+    ),
+    "helper-called-at-import": (
+        f'import pytest\ndef _need():\n    pytest.skip("x", {ALLOW_MODULE_LEVEL}=True)\n_need()\n'
+        f"{_FEM_TEST}",
+        True,
     ),
 }
 
@@ -311,6 +341,15 @@ ROOT_FILTER_PLANTS: Final[dict[str, tuple[str, str]]] = {
     "makeitem-hook": (
         "def pytest_pycollect_makeitem(collector, name, obj):\n    return None\n",
         "pytest_pycollect_makeitem",
+    ),
+    # Copilot review 4: a hook outside any fixed list empties the run after collection.
+    "collection-finish-hook": (
+        "def pytest_collection_finish(session):\n    session.items[:] = []\n",
+        "pytest_collection_finish",
+    ),
+    "runtestloop-hook": (
+        "def pytest_runtestloop(session):\n    return True\n",
+        "pytest_runtestloop",
     ),
     # Copilot review 3: an import binds a filter as surely as `=`; then the other bindings a
     # name-by-assignment scan missed, and the two whose names cannot be read at all.
@@ -827,6 +866,14 @@ def test_no_conftest_on_its_path_filters_collection(module: str) -> None:
     """
     offenders = conftest_filters_on_path(REPO_ROOT / module, REPO_ROOT)
     assert not offenders, f"conftest(s) on {module}'s path filter collection: {offenders}"
+
+
+def test_every_reviewed_hook_is_still_defined_on_a_fem_path() -> None:
+    """``REVIEWED_HOOKS`` admits hooks unread: an entry no conftest here needs is stale."""
+    conftests = {c for m in FEM_MODULES for c in conftests_on_path(REPO_ROOT / m, REPO_ROOT)}
+    defined = set().union(*(hooks_defined(c.read_text(encoding="utf-8")) for c in conftests))
+    stale = sorted(set(REVIEWED_HOOKS) - defined)
+    assert not stale, f"REVIEWED_HOOKS admits hook(s) no conftest on a fem path defines: {stale}"
 
 
 # --------------------------------------------------------------------------- #

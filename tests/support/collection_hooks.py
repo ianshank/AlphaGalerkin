@@ -2,9 +2,10 @@
 
 Selected by a CI step is not the same as collected. A conftest can drop a module
 (``collect_ignore``, ``pytest_ignore_collect``), drop or deselect items
-(``pytest_collection_modifyitems``), replace collection outright, or load hooks from a plugin
-module that no scan of conftests reads (``pytest_plugins``) -- while every check that reads
-paths and steps stays green. Two guards use this module:
+(``pytest_collection_modifyitems``, ``pytest_collection_finish``), replace collection or the run
+loop outright, or load hooks from a plugin module that no scan of conftests reads
+(``pytest_plugins``) -- while every check that reads paths and steps stays green. Two guards use
+this module:
 
 * ``tests/docs/test_fem_required_visibility.py`` reads every conftest on a fem module's path,
   the root ``conftest.py`` included (clause (f)), and each fem module's own source (clause (g));
@@ -31,24 +32,25 @@ CONFTEST: Final[str] = "conftest.py"
 #: The hook that may rearrange collected items; the root's is driven, not read.
 COLLECTION_HOOK: Final[str] = "pytest_collection_modifyitems"
 
-#: Conftest names that can remove a module or an item from collection, or replace collection:
-#: the two ignore lists, every collection hook able to drop or replace what is collected
-#: (``firstresult`` hooks that return an empty collector included), and ``pytest_plugins``,
+#: Every hook pytest calls on a conftest is named with this prefix, and so is ``pytest_plugins``,
 #: which loads hooks from a module no scan of conftests reads.
-COLLECTION_FILTERS: Final[frozenset[str]] = frozenset(
-    {
-        "collect_ignore",
-        "collect_ignore_glob",
-        "pytest_ignore_collect",
-        COLLECTION_HOOK,
-        "pytest_collection",
-        "pytest_collect_directory",
-        "pytest_make_collect_report",
-        "pytest_pycollect_makemodule",
-        "pytest_pycollect_makeitem",
-        "pytest_plugins",
-    }
-)
+HOOK_PREFIX: Final[str] = "pytest_"
+
+#: The two non-hook names pytest reads from a conftest to leave whole paths uncollected.
+IGNORE_LISTS: Final[frozenset[str]] = frozenset({"collect_ignore", "collect_ignore_glob"})
+
+#: Hooks a conftest may define without being reported, ``name -> the review that admitted it``.
+#: Every other hook is reported: a list of the hooks that can drop, skip or re-rate a test grew
+#: with each review -- ``pytest_collection_finish`` was its third miss (Copilot review 4, PR
+#: #160), and pytest calls 52 hooks. Bodies are not read, since every hook receives objects it
+#: could mutate, so an entry is a review decision, and
+#: ``tests/docs/test_fem_required_visibility.py`` fails one that no conftest it reads defines.
+REVIEWED_HOOKS: Final[dict[str, str]] = {
+    "pytest_terminal_summary": (
+        "called after every test has run, to add lines to the summary: the root's skip "
+        "counts per optional extra and the E2E tier's resolved device"
+    ),
+}
 
 #: What the root ``conftest.py`` may bind: its hook, because a guard drives it in every branch.
 ROOT_DRIVEN_HOOKS: Final[frozenset[str]] = frozenset({COLLECTION_HOOK})
@@ -58,6 +60,9 @@ STAR_IMPORT: Final[str] = "*"
 #: Reported for a call that can bind any name at run time (``globals()["collect_ignore"]
 #: = ...``, ``exec``, ``setattr`` on the module); named, unlike a binding, by the builtin called.
 DYNAMIC_BINDERS: Final[frozenset[str]] = frozenset({"globals", "vars", "exec", "setattr"})
+#: ``from __future__ import annotations`` (PEP 563): annotations become strings that never run.
+_FUTURE_MODULE: Final[str] = "__future__"
+_POSTPONED_ANNOTATIONS: Final[str] = "annotations"
 #: Nodes that bind the name in their ``name`` field (``None`` for a bare ``except:``).
 _NAMED_BINDINGS: Final[tuple[type[ast.AST], ...]] = (
     ast.FunctionDef,
@@ -94,19 +99,40 @@ def bound_names(tree: ast.AST) -> set[str]:
 
 
 def collection_filters(source: str) -> set[str]:
-    """Collection-filtering names a conftest binds or defines, at any depth.
+    """Names a conftest binds, at any depth, that can change what pytest collects or runs.
 
-    Imports count: ``from helpers import collect_ignore`` and ``from helpers import hide as
-    pytest_ignore_collect`` bind a filter as surely as ``=`` (Copilot review 3, PR #160). A
-    star import (:data:`STAR_IMPORT`) and a call that binds at run time
+    Every hook it defines (a :data:`HOOK_PREFIX` name, ``pytest_plugins`` included) unless
+    :data:`REVIEWED_HOOKS` admits it, and the two :data:`IGNORE_LISTS`. Imports count: ``from
+    helpers import collect_ignore`` binds a filter as surely as ``=`` (Copilot review 3, PR #160).
+    A star import (:data:`STAR_IMPORT`) and a call that binds at run time
     (:data:`DYNAMIC_BINDERS`, reported by name) are reported, since what they bind is not
     readable here.
     """
     tree = ast.parse(source)
-    found = bound_names(tree) & (COLLECTION_FILTERS | {STAR_IMPORT})
+    bound = bound_names(tree)
+    found = hooks_defined(source) - set(REVIEWED_HOOKS)
+    found |= bound & (IGNORE_LISTS | {STAR_IMPORT})
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             found |= {node.func.id} & DYNAMIC_BINDERS
+    return found
+
+
+def hooks_defined(source: str) -> set[str]:
+    """Every hook a conftest binds, reviewed or not: what :data:`REVIEWED_HOOKS` must match."""
+    return {name for name in bound_names(ast.parse(source)) if name.startswith(HOOK_PREFIX)}
+
+
+def conftests_on_path(path: Path, root: Path) -> list[Path]:
+    """Every ``conftest.py`` pytest reads for ``path``, from its directory up to ``root``'s."""
+    found: list[Path] = []
+    directory = path.parent
+    while directory == root or root in directory.parents:
+        if (directory / CONFTEST).exists():
+            found.append(directory / CONFTEST)
+        if directory == root:
+            break
+        directory = directory.parent
     return found
 
 
@@ -123,17 +149,11 @@ def conftest_filters_on_path(path: Path, root: Path) -> dict[str, set[str]]:
 
     """
     offenders: dict[str, set[str]] = {}
-    directory = path.parent
-    while directory == root or root in directory.parents:
-        conftest = directory / CONFTEST
-        if conftest.exists():
-            names = collection_filters(conftest.read_text(encoding="utf-8"))
-            names -= ROOT_DRIVEN_HOOKS if directory == root else set()
-            if names:
-                offenders[conftest.relative_to(root).as_posix()] = names
-        if directory == root:
-            break
-        directory = directory.parent
+    for conftest in conftests_on_path(path, root):
+        names = collection_filters(conftest.read_text(encoding="utf-8"))
+        names -= ROOT_DRIVEN_HOOKS if conftest.parent == root else set()
+        if names:
+            offenders[conftest.relative_to(root).as_posix()] = names
     return offenders
 
 
@@ -147,27 +167,56 @@ def name_lines(source: str, name: str) -> list[int]:
     return [t.start[0] for t in tokens if t.type == tokenize.NAME and t.string == name]
 
 
+def postpones_annotations(tree: ast.Module) -> bool:
+    """Whether ``from __future__ import annotations`` makes the module's annotations strings."""
+    return any(
+        isinstance(statement, ast.ImportFrom)
+        and statement.module == _FUTURE_MODULE
+        and any(alias.name == _POSTPONED_ANNOTATIONS for alias in statement.names)
+        for statement in tree.body
+    )
+
+
+def annotations_of(node: ast.AST) -> list[ast.expr]:
+    """The annotations ``node`` carries: a def's parameters and return, or an ``x: T`` target."""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        arguments = node.args
+        parameters = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+        parameters += [p for p in (arguments.vararg, arguments.kwarg) if p is not None]
+        found = [p.annotation for p in parameters if p.annotation is not None]
+        return [*found, node.returns] if node.returns is not None else found
+    if isinstance(node, ast.AnnAssign):
+        return [node.annotation]
+    return []
+
+
 def import_time_calls_with(source: str, keyword: str) -> list[int]:
-    """Lines of calls passing ``keyword=`` that run at import: outside every function body.
+    """Lines of calls passing ``keyword=`` that can run while the module is imported.
 
-    Decorators and argument defaults run at import too, so they are walked; a body
-    is not, since it runs only when called.
+    Module and class bodies, decorators and argument defaults run at import, and so do
+    annotations -- eagerly, on the Pythons CI runs -- unless ``from __future__ import
+    annotations`` postpones them: ``def test_x() -> pytest.skip(..., allow_module_level=True)``
+    skipped its module before collection (Copilot review 4, PR #160). A function body runs when
+    called, and the scan does not follow calls, so a call in any body counts too: a helper the
+    module calls at import is the same gap one level down. Only postponed annotations are left
+    out, since nothing in them runs.
     """
-    found: list[int] = []
-
-    def walk(node: ast.AST) -> None:
-        if isinstance(node, ast.Call) and any(k.arg == keyword for k in node.keywords):
-            found.append(node.lineno)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
-            for part in [*getattr(node, "decorator_list", []), *defaults]:
-                walk(part)
-            return
-        for child in ast.iter_child_nodes(node):
-            walk(child)
-
-    walk(ast.parse(source))
-    return found
+    tree = ast.parse(source)
+    postponed: set[int] = set()
+    if postpones_annotations(tree):
+        postponed = {
+            id(part)
+            for node in ast.walk(tree)
+            for annotation in annotations_of(node)
+            for part in ast.walk(annotation)
+        }
+    return sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and id(node) not in postponed
+        and any(k.arg == keyword for k in node.keywords)
+    )
 
 
 class FakeItem:

@@ -10,8 +10,9 @@ used to exempt the whole file instead, so ``collect_ignore``, ``pytest_ignore_co
 ``items[:] = ...`` added here hid a module from every step while every check stayed green
 (Copilot review 2 of PR #160, reproduced on ``4c20d2a``: 65 passed with both planted).
 
-Clause (f) now reads the root file like any other conftest, allowing only the hook by name;
-this module is why that allowance is safe. For each extra's marker, in all four branches --
+Clause (f) now reads the root file like any other conftest, allowing the hook by name -- and,
+as for every conftest, only the hooks ``REVIEWED_HOOKS`` admits besides; this module is why the
+first allowance is safe. For each extra's marker, in all four branches --
 the extra installed or not, ``ALPHAGALERKIN_REQUIRE_EXTRAS`` set or not -- the hook is run over
 items carrying the marker and must:
 

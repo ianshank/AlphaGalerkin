@@ -794,6 +794,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   onnxscript 0.7.2); `src/deployment` branch coverage 27.91% -> 51.04% in CI's form. Three findings
   are recorded as B47-B49, among them that the legacy `dynamo=False` exporter -- the fix the old
   comment proposed -- produces outputs off by about 0.1.
+- **The `fem_required` guard reviews every conftest hook, and reads the annotations that run at
+  import** (fourth Copilot review of PR #160). Two more gaps, each reproduced with real pytest and
+  passing the guard at `5cc1af8`: a conftest `pytest_collection_finish` that emptied
+  `session.items` left a failing fem test unrun ("1 passed"), and `def test_x() ->
+  pytest.skip(..., allow_module_level=True)` skipped its module before collection ("1 skipped");
+  under `from __future__ import annotations` the same test ran and failed, the control. The list of
+  hooks that can hide a test had grown with each review, so clause (f) now reports every hook a
+  conftest on a fem module's path defines unless `REVIEWED_HOOKS` admits it, each admission with
+  its review and failing as stale once no conftest needs it; the live tree needs one,
+  `pytest_terminal_summary`. The import-time scan reads eager annotations, leaves postponed ones
+  out, and reads function bodies too, since it does not follow calls: a helper called at import
+  was the same gap one level down. New `tests/docs/test_collection_hooks.py` pins both scans
+  (32 tests); 9/9 weakened checks caught, and three live plants killed with a postponed-annotation
+  control. The guard crossed the 1000-line test budget and is recorded there, like the E2E guard.
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

@@ -1,20 +1,26 @@
-"""Structured-output flattening in the ONNX export path (hygiene B45).
+"""Export adapters: structured outputs and size-1 dynamic axes (hygiene B45).
 
-Defect class: a model whose forward returns a dataclass -- ``ModelOutput``
-since PR #77, which made it a frozen dataclass instead of a ``NamedTuple`` --
-reaches the exporter unflattened. A dataclass is not a pytree, so
-``torch.export`` (behind ``torch.onnx.export`` since torch 2.9) and the legacy
-``torch.jit.trace`` both reject it, and every export of the real model fails
-while the tensor-returning toy models the passing suite exercised look fine.
+Two defect classes stopped the real ``AlphaGalerkinModel`` from exporting:
+
+- A model whose forward returns a dataclass -- ``ModelOutput`` since PR #77,
+  which made it a frozen dataclass instead of a ``NamedTuple`` -- reached the
+  exporter unflattened. A dataclass is not a pytree, so ``torch.export``
+  (behind ``torch.onnx.export`` since torch 2.9) and the legacy
+  ``torch.jit.trace`` both reject it, while the tensor-returning toy models
+  the passing suite exercised looked fine.
+- A declared-dynamic axis seen at size 1 in the sample was pinned to 1 by
+  ``torch.export``, so the exported graph failed at any other size. The
+  exporter now traces a size-2 sample on such axes, and nowhere else.
 
 Every test here runs on torch alone, with no onnx, onnxruntime or onnxscript:
 export backends are replaced by recorders, ``ONNXRuntime`` by a stub, and the
 tracer checks call ``torch.export.export`` / ``torch.jit.trace``, which ship
-with torch. The real-ONNX journeys stay in
+with torch. The real-ONNX journeys are in
+``tests/deployment/test_onnx_runtime_regressions.py``,
 ``tests/deployment/test_export_onnx_integration.py`` and
 ``tests/integration/test_onnx_e2e.py``.
 
-Planted defects (harden-a-guard), 6/6 killed, each by the named test(s):
+Planted defects (harden-a-guard), 12/12 killed, each by the named test(s):
 
 1. The wrapper removed from the export path (``export_target = model``), the
    historical state: ``TestExportDispatch::test_dataclass_output_reaches_every
@@ -41,6 +47,28 @@ Planted defects (harden-a-guard), 6/6 killed, each by the named test(s):
 6. The wrapper's training flag copied with ``self.train(model.training)``,
    which recurses and resets the caller's submodules:
    ``TestTupleOutputWrapper::test_wrapping_leaves_the_models_submodule_modes_alone``.
+7. The enlargement removed from the export path (the pre-fix state):
+   ``TestExportDispatch::test_size_one_dynamic_axis_reaches_every_backend
+   _enlarged[trace|dynamo|script]`` and ``...::test_enlargement_is_logged``;
+   with ONNX installed also ``test_onnx_runtime_regressions.py::
+   TestSizeOneDynamicAxis::test_batch_dependent_model_runs_at_every_batch
+   [2]`` and ``[4]``.
+8. Every size-1 axis enlarged, declared dynamic or not:
+   ``TestEnlargeSizeOneDynamicAxes::test_static_axis_at_size_one_is_left
+   _alone`` and ``TestExportDispatch::test_tensor_output_trace_call_is_the
+   _historical_one[static-batch-at-1]``, among five.
+9. Every declared-dynamic axis enlarged at size 1 or more, not only at 1:
+   ``TestEnlargeSizeOneDynamicAxes::test_dynamic_axis_already_at_two_or
+   _more_is_left_alone`` and ``TestExportDispatch::test_tensor_output_trace
+   _call_is_the_historical_one[dynamic-batch-already-2]``, among nine.
+10. The repeat count left at 1, so nothing grows:
+    ``TestEnlargeSizeOneDynamicAxes::test_size_one_dynamic_batch_is_repeated
+    _to_two`` and the enlarged-dispatch tests of (7).
+11. The ``sample_axis_enlarged`` event dropped:
+    ``TestExportDispatch::test_enlargement_is_logged``.
+12. Every input matched to the first name's axes:
+    ``TestEnlargeSizeOneDynamicAxes::test_inputs_are_matched_to_names_by
+    _position``.
 
 All killers run under ``-m "not gpu_required and not fem_required"``.
 """
@@ -60,11 +88,15 @@ from torch import Tensor, nn
 from config.schemas import OperatorConfig
 from src.deployment import runtime as runtime_module
 from src.deployment.config import ExportConfig
-from src.deployment.export_onnx import (
-    ONNXExporter,
+from src.deployment.export_adapters import (
+    DYNAMIC_AXIS_SAMPLE_SIZE,
+    SPECIALIZED_SAMPLE_SIZE,
+    AxisEnlargement,
     TupleOutputWrapper,
+    enlarge_size_one_dynamic_axes,
     flatten_model_output,
 )
+from src.deployment.export_onnx import ONNXExporter
 from src.deployment.validate import ModelValidator
 from src.modeling.model import AlphaGalerkinModel, ModelOutput
 
@@ -91,6 +123,20 @@ BOARD_SIZE = 9
 # Which ModelOutput field each default ExportConfig output name carries.
 FIELD_FOR_OUTPUT_NAME = {"policy": "policy_logits", "value": "value"}
 
+# The default ExportConfig's only input, whose axes 0, 2 and 3 it declares dynamic.
+BOARD_INPUT = ExportConfig().input_names[0]
+
+# Exports in which no axis may be enlarged: (sample shape, dynamic_axes), where
+# None keeps the default ExportConfig's axes.
+UNENLARGED_EXPORTS: dict[str, tuple[tuple[int, ...], dict[str, dict[int, str]] | None]] = {
+    "dynamic-batch-already-2": ((BATCH, IN_FEATURES), None),
+    "static-batch-at-1": ((SPECIALIZED_SAMPLE_SIZE, IN_FEATURES), {}),
+    "batch-at-1-another-axis-dynamic": (
+        (SPECIALIZED_SAMPLE_SIZE, IN_FEATURES),
+        {BOARD_INPUT: {1: "features"}},
+    ),
+}
+
 
 def _inputs(batch: int = BATCH) -> Tensor:
     torch.manual_seed(0)
@@ -100,6 +146,11 @@ def _inputs(batch: int = BATCH) -> Tensor:
 def _heads() -> tuple[Tensor, Tensor, Tensor]:
     torch.manual_seed(1)
     return torch.randn(BATCH, N_ACTIONS), torch.randn(BATCH, 1), torch.rand(BATCH)
+
+
+def _board(batch: int = SPECIALIZED_SAMPLE_SIZE, side: int = BOARD_SIZE) -> Tensor:
+    torch.manual_seed(2)
+    return torch.randn(batch, TINY_OPERATOR_CONFIG["input_channels"], side, side)
 
 
 class _TinyHeads(nn.Module):
@@ -176,15 +227,17 @@ class _RecordingLogger:
 
 
 class _Backends:
-    """Every export backend replaced by a recorder of the module it receives."""
+    """Every export backend replaced by a recorder of the module and inputs it receives."""
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.modules: list[nn.Module] = []
+        self.inputs: list[tuple[Tensor, ...]] = []
         self.onnx_export_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
         recorder = self
 
         def fake_onnx_export(model: nn.Module, args: Any, f: str, **kwargs: Any) -> None:
             recorder.modules.append(model)
+            recorder.inputs.append(tuple(args))
             recorder.onnx_export_calls.append(((model, args, f), kwargs))
             Path(f).write_bytes(b"stub")
 
@@ -196,8 +249,9 @@ class _Backends:
             def save(self, path: str) -> None:
                 Path(path).write_bytes(b"stub")
 
-        def fake_dynamo_export(model: nn.Module, *_: Tensor) -> _Program:
+        def fake_dynamo_export(model: nn.Module, *inputs: Tensor) -> _Program:
             recorder.modules.append(model)
+            recorder.inputs.append(inputs)
             return _Program()
 
         monkeypatch.setattr(torch.onnx, "export", fake_onnx_export)
@@ -211,10 +265,17 @@ def backends(monkeypatch: pytest.MonkeyPatch) -> _Backends:
     return _Backends(monkeypatch)
 
 
-def _export(model: nn.Module, tmp_path: Path, method: str = "trace") -> ONNXExporter:
-    exporter = ONNXExporter(ExportConfig(export_method=method, optimization_level="none"))
+def _export(
+    model: nn.Module,
+    tmp_path: Path,
+    method: str = "trace",
+    sample: Tensor | None = None,
+    **config: Any,
+) -> ONNXExporter:
+    exporter = ONNXExporter(ExportConfig(export_method=method, optimization_level="none", **config))
     exporter._logger = _RecordingLogger()  # type: ignore[assignment]
-    exporter.export(model.eval(), _inputs(), tmp_path / "model.onnx")
+    sample = _inputs() if sample is None else sample
+    exporter.export(model.eval(), sample, tmp_path / "model.onnx")
     return exporter
 
 
@@ -388,6 +449,90 @@ class TestTracersAcceptTheWrapper:
         torch.testing.assert_close(out[0], model(x).policy_logits)
 
 
+class TestEnlargeSizeOneDynamicAxes:
+    """The default ``ExportConfig`` declares ``board_state`` axes 0, 2 and 3 dynamic."""
+
+    @staticmethod
+    def _enlarge(
+        *inputs: Tensor,
+        dynamic_axes: dict[str, dict[int, str]] | None = None,
+        names: list[str] | None = None,
+    ) -> tuple[tuple[Tensor, ...], tuple[AxisEnlargement, ...]]:
+        config = ExportConfig()
+        return enlarge_size_one_dynamic_axes(
+            inputs,
+            config.input_names if names is None else names,
+            config.dynamic_axes if dynamic_axes is None else dynamic_axes,
+        )
+
+    def test_size_one_dynamic_batch_is_repeated_to_two(self) -> None:
+        sample = _board()
+        (enlarged,), records = self._enlarge(sample)
+        assert enlarged.shape == (DYNAMIC_AXIS_SAMPLE_SIZE, *sample.shape[1:])
+        for row in enlarged:
+            torch.testing.assert_close(row, sample[0])
+        assert records == (
+            AxisEnlargement(BOARD_INPUT, 0, SPECIALIZED_SAMPLE_SIZE, DYNAMIC_AXIS_SAMPLE_SIZE),
+        )
+
+    def test_every_size_one_dynamic_axis_is_enlarged_in_axis_order(self) -> None:
+        sample = _board(side=SPECIALIZED_SAMPLE_SIZE)
+        (enlarged,), records = self._enlarge(sample)
+        size = DYNAMIC_AXIS_SAMPLE_SIZE
+        assert enlarged.shape == (size, sample.shape[1], size, size)
+        assert [record.axis for record in records] == [0, 2, 3]
+
+    def test_static_axis_at_size_one_is_left_alone(self) -> None:
+        sample = _board()
+        spatial_only = {BOARD_INPUT: {2: "height", 3: "width"}}
+        (same,), records = self._enlarge(sample, dynamic_axes=spatial_only)
+        assert same is sample
+        assert records == ()
+
+    def test_dynamic_axis_already_at_two_or_more_is_left_alone(self) -> None:
+        sample = _board(batch=DYNAMIC_AXIS_SAMPLE_SIZE)
+        (same,), records = self._enlarge(sample)
+        assert same is sample
+        assert records == ()
+
+    def test_size_zero_axis_is_left_alone(self) -> None:
+        sample = _board(batch=0)
+        (same,), records = self._enlarge(sample)
+        assert same is sample
+        assert records == ()
+
+    def test_axis_outside_the_inputs_rank_is_left_alone(self) -> None:
+        """Axes 2 and 3 do not exist on a 2-D input; torch.onnx reports that, as before."""
+        sample = _inputs()
+        (same,), records = self._enlarge(sample)
+        assert same is sample
+        assert records == ()
+
+    def test_negative_axis_counts_from_the_end(self) -> None:
+        sample = _board()
+        (enlarged,), records = self._enlarge(sample, dynamic_axes={BOARD_INPUT: {-4: "batch"}})
+        assert enlarged.shape[0] == DYNAMIC_AXIS_SAMPLE_SIZE
+        assert [record.axis for record in records] == [-4]
+
+    def test_inputs_are_matched_to_names_by_position(self) -> None:
+        board, extra = _board(), torch.randn(SPECIALIZED_SAMPLE_SIZE, IN_FEATURES)
+        tensors, records = self._enlarge(
+            board,
+            extra,
+            names=[BOARD_INPUT, "extra"],
+            dynamic_axes={BOARD_INPUT: {0: "batch"}, "extra": {1: "features"}},
+        )
+        assert tensors[0].shape[0] == DYNAMIC_AXIS_SAMPLE_SIZE
+        assert tensors[1] is extra
+        assert [record.input_name for record in records] == [BOARD_INPUT]
+
+    def test_an_input_without_a_name_is_left_alone(self) -> None:
+        board, unnamed = _board(), torch.randn(SPECIALIZED_SAMPLE_SIZE, IN_FEATURES)
+        tensors, records = self._enlarge(board, unnamed)
+        assert tensors[1] is unnamed
+        assert [record.input_name for record in records] == [BOARD_INPUT]
+
+
 class TestExportDispatch:
     """Which module each export method receives, with the backends recorded."""
 
@@ -420,16 +565,27 @@ class TestExportDispatch:
         assert backends.modules, "no export backend ran"
         assert all(received is model for received in backends.modules)
 
+    @pytest.mark.parametrize(
+        ("shape", "dynamic_axes"), list(UNENLARGED_EXPORTS.values()), ids=list(UNENLARGED_EXPORTS)
+    )
     def test_tensor_output_trace_call_is_the_historical_one(
-        self, backends: _Backends, tmp_path: Path
+        self,
+        shape: tuple[int, ...],
+        dynamic_axes: dict[str, dict[int, str]] | None,
+        backends: _Backends,
+        tmp_path: Path,
     ) -> None:
-        """The full ``torch.onnx.export`` call for an unwrapped model, argument by argument."""
+        """The full ``torch.onnx.export`` call, argument by argument, where nothing is enlarged."""
         model = _TensorModel()
-        exporter = _export(model, tmp_path)
+        torch.manual_seed(0)
+        sample = torch.randn(*shape)
+        overrides = {} if dynamic_axes is None else {"dynamic_axes": dynamic_axes}
+        exporter = _export(model, tmp_path, sample=sample, **overrides)
         config = exporter.config
         [(args, kwargs)] = backends.onnx_export_calls
         assert args[0] is model
-        torch.testing.assert_close(args[1][0], _inputs())
+        assert len(args[1]) == 1
+        assert args[1][0] is sample
         assert args[2] == str(tmp_path / "model.onnx")
         assert kwargs == {
             "input_names": config.input_names,
@@ -447,6 +603,31 @@ class TestExportDispatch:
         with pytest.raises(TypeError, match="vector_fields"):
             _export(_VectorFieldHeads(), tmp_path)
         assert backends.modules == []
+
+    @pytest.mark.parametrize("method", EXPORT_METHODS)
+    def test_size_one_dynamic_axis_reaches_every_backend_enlarged(
+        self, method: str, backends: _Backends, tmp_path: Path
+    ) -> None:
+        sample = _inputs(batch=SPECIALIZED_SAMPLE_SIZE)
+        _export(_TensorModel(), tmp_path, method, sample=sample)
+        assert backends.inputs, "no export backend received inputs"
+        for (received,) in backends.inputs:
+            assert received.shape == (DYNAMIC_AXIS_SAMPLE_SIZE, IN_FEATURES)
+            for row in received:
+                torch.testing.assert_close(row, sample[0])
+
+    def test_enlargement_is_logged(self, backends: _Backends, tmp_path: Path) -> None:
+        sample = _inputs(batch=SPECIALIZED_SAMPLE_SIZE)
+        exporter = _export(_TensorModel(), tmp_path, sample=sample)
+        events = [f for e, f in exporter._logger.events if e == "sample_axis_enlarged"]  # type: ignore[attr-defined]
+        assert events == [
+            {
+                "input_name": BOARD_INPUT,
+                "axis": 0,
+                "from_size": SPECIALIZED_SAMPLE_SIZE,
+                "to_size": DYNAMIC_AXIS_SAMPLE_SIZE,
+            }
+        ]
 
 
 class _ExactRuntime:

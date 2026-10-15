@@ -24,6 +24,8 @@ from src.deployment.config import QuantizationConfig, QuantizationMode
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    import onnx
+
 logger = structlog.get_logger(__name__)
 
 
@@ -170,6 +172,9 @@ class ModelQuantizer:
     ) -> None:
         """Apply dynamic quantization.
 
+        The model reaches onnxruntime in memory without its recorded
+        intermediate shapes; see :meth:`_load_without_value_info`.
+
         Args:
             model_path: Input model path.
             output_path: Output model path.
@@ -181,7 +186,7 @@ class ModelQuantizer:
             weight_type = self._get_quant_type(self.config.weight_type)
 
             quantize_dynamic(
-                model_input=str(model_path),
+                model_input=self._load_without_value_info(model_path),
                 model_output=str(output_path),
                 weight_type=weight_type,
                 per_channel=self.config.per_channel,
@@ -196,6 +201,37 @@ class ModelQuantizer:
                 message="Install onnxruntime-tools for quantization",
             )
             raise
+
+    def _load_without_value_info(self, model_path: Path) -> onnx.ModelProto:
+        """Load ``model_path`` without its recorded intermediate shapes (``graph.value_info``).
+
+        onnxruntime's dynamic quantizer rewrites each ``Gemm`` with ``transB=1``
+        into a ``MatMul``, transposing the weight in place, but keeps the
+        ``value_info`` the exporter recorded, and its next shape inference rejects
+        the stale shape ("Inferred shape and existing shape differ"). torch.onnx's
+        dynamo exporter, the default since torch 2.9, records ``value_info`` for
+        weights too, so every exported ``Linear`` on a 2-D input failed here.
+        ``value_info`` is optional and shape inference rebuilds it, so dropping it
+        changes no computation; the file at ``model_path`` is left untouched.
+
+        Args:
+            model_path: Input model path.
+
+        Returns:
+            The loaded model, ``graph.value_info`` emptied.
+
+        """
+        import onnx
+
+        model = onnx.load(str(model_path))
+        entries_removed = len(model.graph.value_info)
+        del model.graph.value_info[:]
+        self._logger.info(
+            "value_info_stripped",
+            input_path=str(model_path),
+            entries_removed=entries_removed,
+        )
+        return model
 
     def _quantize_static(
         self,

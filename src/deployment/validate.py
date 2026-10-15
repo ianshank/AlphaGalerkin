@@ -22,7 +22,7 @@ import torch
 from torch import Tensor, nn
 
 from src.constants import DEFAULT_BOARD_SIZES
-from src.deployment.export_onnx import flatten_model_output
+from src.deployment.export_adapters import flatten_model_output
 
 if TYPE_CHECKING:
     pass

@@ -1588,15 +1588,27 @@ jobs:
             --tb=short \
             -q
 
-      # torch.onnx.export uses the dynamo exporter by default on torch>=2.9,
-      # which these tracer-based tests do not target (src/deployment/export_onnx.py
-      # does not pin dynamo=False). Kept non-blocking (continue-on-error) so the
-      # suites RUN and their result is visible, without gating the pipeline on a
-      # torch-version-default until export_onnx.py pins the legacy path.
+      # A real gate since hygiene B45. Until then it ran with continue-on-error
+      # and logged "24 failed, 12 passed" on every run while the job reported
+      # green. The cause was not torch>=2.9's dynamo default (the legacy tracer
+      # rejects the same output) but three defects, each hidden by the one
+      # before it:
+      #  1. ModelOutput is a frozen dataclass, not a pytree, so torch.export
+      #     and torch.jit.trace both rejected the real model's output.
+      #     src/deployment/export_adapters.py flattens it to a tuple.
+      #  2. torch.export pinned a declared-dynamic axis it saw at size 1 (0/1
+      #     specialization), baking batch=1 into the graph. The exporter now
+      #     traces a size-2 sample on such axes.
+      #  3. onnxruntime's dynamic quantizer rewrites Gemm to MatMul and then
+      #     rejected the shapes the dynamo exporter had recorded in value_info.
+      #     ModelQuantizer now drops graph.value_info first.
+      # The import check fails the step when the ONNX stack is missing; without
+      # it every test below would skip and the gate would pass on nothing.
       - name: Run ONNX export/validate suites
-        continue-on-error: true
         run: |
+          python -c "import onnx, onnxruntime, onnxscript"
           pytest tests/deployment/test_export_onnx_integration.py \
+            tests/deployment/test_onnx_runtime_regressions.py \
             tests/integration/test_onnx_e2e.py \
             --tb=short -q
 

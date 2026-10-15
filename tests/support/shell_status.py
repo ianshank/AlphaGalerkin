@@ -16,9 +16,13 @@ it, both reproduced with a stub ``pytest`` exiting 7: a ``set -e`` that may not 
 && set -e``) counted as re-enabling errexit, and a ``trap 'exit 0' ERR`` or ``EXIT`` replaced
 the status. The neighbours of each were reproduced the same way and are handled with them:
 ``shopt -uo errexit``, ``eval``, ``source`` / ``.``, ``builtin`` / ``command set +e``, a
-function definition's head (``function f`` and ``f ()``), and a function or alias named like
-the command itself. ``tests/docs/test_shell_status.py`` runs every row of its table under the
-real shell and fails if the model calls loud a script that shell masks.
+function definition's head (``function f`` and ``f ()``), and a function, alias or ``hash -p``
+entry named like the command itself. ``tests/docs/test_shell_status.py`` runs every row of its
+table under the real shell and fails if the model calls loud a script that shell masks.
+
+Not modelled: what a name resolves to through ``PATH``. A step may legitimately put a
+virtualenv first, and a stub planted on the path is a change to the runner, not to the step's
+script; the guards take ``pytest`` to be pytest, as ``pytest_invocation`` does.
 """
 
 from __future__ import annotations
@@ -79,6 +83,9 @@ _TRAP_RESET: Final[str] = "-"
 #: An alias can stand in for a command name (``sh`` expands aliases in a script).
 _ALIAS: Final[str] = "alias"
 _ALIAS_ASSIGNMENT: Final[str] = "="
+#: ``hash -p FILE NAME...`` makes each ``NAME`` run ``FILE``: ``hash -p /bin/true pytest``.
+_HASH: Final[str] = "hash"
+_HASH_PATH_OPTION: Final[str] = "-p"
 _CASE: Final[str] = "case"
 _CASE_IN: Final[str] = "in"
 _CASE_PATTERN_END: Final[str] = ")"
@@ -228,6 +235,14 @@ def _installs_trap(arguments: list[str]) -> bool:
     return len(operands) > 1 and operands[0] != _TRAP_RESET
 
 
+def _hashed_names(arguments: list[str]) -> set[str]:
+    """The names ``hash -p FILE NAME...`` points at ``FILE``; none for any other ``hash``."""
+    if _HASH_PATH_OPTION not in arguments:
+        return set()
+    names = arguments[arguments.index(_HASH_PATH_OPTION) + 2 :]
+    return {name for name in names if not name.startswith(_OPTION_PREFIX)}
+
+
 def _program(text: str) -> str:
     """The name a command runs: ``A=1 pytest x`` -> ``pytest``; ``builtin cd d`` -> ``cd``."""
     _, words = split_environment(_words(text))
@@ -344,9 +359,13 @@ def exit_status_obstacles(
         elif verb == _ALIAS:
             defined = (word for word in body[1:] if _ALIAS_ASSIGNMENT in word)
             shadows |= {word.partition(_ALIAS_ASSIGNMENT)[0] for word in defined}
+        elif verb == _HASH:
+            shadows |= _hashed_names(body[1:])
     program = _program(commands[position].text)
     if program in shadows:
-        obstacles.append(f"a function or alias named `{program}` defined before it runs instead")
+        obstacles.append(
+            f"a function, alias or `hash -p` entry named `{program}` before it runs instead"
+        )
     if depth:
         obstacles.append("inside a compound command (if/while/for/case/{ }/( )/function)")
     if _BACKGROUND in _words(commands[position].text):

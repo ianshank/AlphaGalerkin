@@ -29,8 +29,11 @@ Review 3's checks weakened in place, each failing a named test here (2026-10-15)
 5. ``builtin`` / ``command`` not seen through -> their rows and ``command exec true``.
 6. ``command -v`` run as the name it describes -> the ``command -v exit`` control.
 7. A function head not read -> the ``function NAME`` and ``NAME ()`` rows.
-8. A function or alias named like the command not reported -> the five shadowing rows.
+8. A function, alias or ``hash -p`` entry named like the command not reported -> the six
+   shadowing rows.
 9. A lone ``-`` read as an option -> the ``trap - ERR EXIT`` control.
+10. ``hash`` read without its ``-p`` -> the ``hash pytest`` control, which only looks the
+    name up; ``hash`` ignored -> the ``hash -p`` row.
 """
 
 from __future__ import annotations
@@ -120,6 +123,8 @@ STATUS_CASES: Final[tuple[tuple[str, int, str | None, bool], ...]] = (
     ("pytest () { true; }\npytest x", 2, None, False),
     ("python() { true; }\npython -m pytest x", 2, None, False),
     ("alias pytest=true\npytest x", 1, "sh", False),
+    ("hash -p /bin/true pytest\npytest x", 1, None, False),
+    ("hash pytest\npytest x", 1, None, True),
     ('note() { echo "$1"; }\npytest x', 2, None, True),
 )
 

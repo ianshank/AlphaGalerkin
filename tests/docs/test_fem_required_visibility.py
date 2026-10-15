@@ -39,7 +39,7 @@ Clauses, each cheap and each falsifiable:
   before it that can end the script green -- ``exit 0`` or an ``exec`` naming a
   command, at the top level or in a compound (``; true`` and ``exec 2>&1`` are
   fine: GitHub's ``bash -e`` exits at pytest; a bare-redirection ``exec`` goes on),
-  a trap, ``eval``/``source``, or a function or alias named like the command; a
+  a trap, ``eval``/``source``, or a function, alias or ``hash -p`` named like it; a
   ``set -e`` behind ``&&``/``||`` or in a pipeline restores nothing.
   The root hook is *driven* to show the variable turns a missing scikit-fem into
   a usage error rather than a skip.

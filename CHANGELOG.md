@@ -765,8 +765,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bash -e` exits 0 for all four. `exit_status_obstacles` now lets a `set` or `shopt -o` switch an
   option back on only where it surely runs in this shell, and reports a trap that installs an
   action -- and the neighbours, each reproduced the same way: `eval`, `source`/`.`, `builtin`/
-  `command set +e`, a function head in `function f` or `f ()` form, and a function or alias named
-  like the command. The conftest scan read only `=` bindings, so `from helpers import
+  `command set +e`, a function head in `function f` or `f ()` form, and a function, alias or
+  `hash -p` entry named like the command; resolution through `PATH` stays out of scope. The conftest scan read only `=` bindings, so `from helpers import
   collect_ignore` or `... import hide as pytest_ignore_collect` hid a module unseen; it now reads
   every binding (imports with their aliases, tuple unpacking, `for`/`with`/`:=` targets, `except
   ... as`) and reports a star import and a run-time binder (`globals()`, `exec`, `setattr`). The

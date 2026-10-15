@@ -38,15 +38,17 @@ Clauses, each cheap and each falsifiable:
   without ``pipefail``, no ``set +e``, no ``&``, no enclosing ``if``, and nothing
   before it that can end the script green -- ``exit 0`` or an ``exec`` naming a
   command, at the top level or in a compound (``; true`` and ``exec 2>&1`` are
-  fine: GitHub's ``bash -e`` exits at pytest; a bare-redirection ``exec`` goes on).
+  fine: GitHub's ``bash -e`` exits at pytest; a bare-redirection ``exec`` goes on),
+  a trap, ``eval``/``source``, or a function or alias named like the command; a
+  ``set -e`` behind ``&&``/``||`` or in a pipeline restores nothing.
   The root hook is *driven* to show the variable turns a missing scikit-fem into
   a usage error rather than a skip.
 * **(e)** A ``[fem]`` job is one whose ``pip install`` names an extra that
   ``pyproject.toml`` declares with scikit-fem -- derived, never spelled --
   before the step runs; ``test-extras`` must be one.
-* **(f)** No conftest on a fem module's path filters collection -- the ignore
-  lists, a hook that drops or replaces what is collected, ``pytest_plugins``
-  (``tests/support/collection_hooks.py``): the edit that would hide a module from
+* **(f)** No conftest on a fem module's path binds a collection filter, however bound
+  (an import too) -- the ignore lists, a hook that drops or replaces what is collected,
+  ``pytest_plugins`` (``tests/support/collection_hooks.py``): the edit that would hide a module from
   every step while (c) stays green. The root ``conftest.py`` included: only its
   collection hook is allowed, by name, because ``tests/docs/test_root_conftest_hooks.py``
   drives it in every branch.
@@ -57,7 +59,8 @@ Clauses, each cheap and each falsifiable:
 
 (c)'s entry points, (d)'s exit status and (g) answer a Copilot review of PR #160;
 the first version read a step's metadata and its paths, never what ran. A second
-review added (d)'s ``exec`` and compound-nested early ends, and (f)'s root file.
+review added (d)'s ``exec`` and compound-nested early ends, and (f)'s root file; a
+third, (d)'s conditional ``set -e`` and traps (with their neighbours) and (f)'s imports.
 
 The required mutations -- the selecting step deleted, its ``-m`` flipped to
 ``not fem_required``, ``ALPHAGALERKIN_REQUIRE_EXTRAS`` dropped, a marker in a
@@ -107,8 +110,19 @@ Copilot review 2 (2026-10-12), same protocol; each passed the guard at ``4c20d2a
 The root hook removing fem items when scikit-fem is installed passes this file -- the hook is
 allowed by name -- and fails ``tests/docs/test_root_conftest_hooks.py``.
 
-14/14 planted defects killed, plus two controls; ``TestPlantedDefects`` re-plants 6-11 and
-13-15 on copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``, ``ROOT_FILTER_PLANTS``, the no-op).
+Copilot review 3 (2026-10-15), same protocol; at ``5a5e89e`` only the no-op plant's anchor
+noticed 17-20, and nothing noticed 21-22:
+
+17. ``set +e``, then ``false && set -e``, before the selecting command and ``; true`` after ->
+    ``test_a_step_selecting_it_fails_loud``. 18. ``true || set -e`` instead -> the same test.
+19. ``trap 'exit 0' EXIT`` before it -> the same test. 20. ``trap 'exit 0' ERR`` -> the same.
+21. ``from helpers import collect_ignore`` in ``tests/pde/conftest.py`` ->
+    ``test_no_conftest_on_its_path_filters_collection``. 22. ``... import hide as
+    pytest_ignore_collect`` -> the same test. 23. Control: an unconditional ``set -e`` instead.
+
+20/20 planted defects killed, plus three controls; ``TestPlantedDefects`` re-plants 6-11,
+13-15 and 17-22 on copies (``STATUS_PLANTS``, ``EARLY_SKIP_PLANTS``, ``ROOT_FILTER_PLANTS``,
+the no-op), and ``tests/docs/test_shell_status.py`` runs every status row in the real shell.
 """
 
 from __future__ import annotations
@@ -131,6 +145,7 @@ from packaging.utils import canonicalize_name
 
 from tests.support.collection_hooks import (
     CONFTEST,
+    STAR_IMPORT,
     FakeItem,
     conftest_filters_on_path,
     import_time_calls_with,
@@ -274,6 +289,12 @@ STATUS_PLANTS: Final[dict[str, tuple[str, str, str | None, bool]]] = {
     "exec-first": ("exec true\n", "", None, False),
     "exec-redirect-first": ("exec 2>&1\n", "", None, True),
     "exit-inside-if": ('if [ -n "$CI" ]; then exit 0; fi\n', "", None, False),
+    # Copilot review 3: a `set -e` that may not run re-enables nothing; a trap's action
+    # replaces the failing status.
+    "set-e-behind-and": ("set +e\nfalse && set -e\n", "; true", None, False),
+    "set-e-behind-or": ("set +e\ntrue || set -e\n", "; true", None, False),
+    "trap-err": ("trap 'exit 0' ERR\n", "", None, False),
+    "trap-exit": ("trap 'exit 0' EXIT\n", "", None, False),
 }
 
 #: Collection filters appended to a copy of the root ``conftest.py`` (Copilot review 2, PR
@@ -291,6 +312,17 @@ ROOT_FILTER_PLANTS: Final[dict[str, tuple[str, str]]] = {
         "def pytest_pycollect_makeitem(collector, name, obj):\n    return None\n",
         "pytest_pycollect_makeitem",
     ),
+    # Copilot review 3: an import binds a filter as surely as `=`; then the other bindings a
+    # name-by-assignment scan missed, and the two whose names cannot be read at all.
+    "imported-list": ("from helpers import collect_ignore\n", "collect_ignore"),
+    "imported-hook-alias": (
+        "from helpers import hide as pytest_ignore_collect\n",
+        "pytest_ignore_collect",
+    ),
+    "imported-plugins": ("import helpers as pytest_plugins\n", "pytest_plugins"),
+    "tuple-unpacking": ('collect_ignore, _ = ["tests/pde"], None\n', "collect_ignore"),
+    "star-import": ("from helpers import *\n", STAR_IMPORT),
+    "dynamic-binding": ('globals()["collect_ignore"] = ["tests/pde"]\n', "globals"),
 }
 
 

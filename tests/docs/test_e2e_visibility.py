@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import ast
 import re
-import shlex
 from pathlib import Path
 from typing import Final
 
@@ -45,7 +44,7 @@ from tests.support.marker_expr import (
     expression_excludes,
     expression_requires,
     expression_selects_plainly,
-    marker_expressions,
+    pytest_invocation,
 )
 from tests.support.shell_status import step_failure_obstacles
 from tests.support.workflows import (
@@ -218,20 +217,25 @@ def marker_sites(source: str) -> dict[str, set[str]]:
 
 
 def selects_e2e_directory(command: str) -> bool:
-    """Whether a shell command selects ``tests/e2e/`` as a whole directory.
+    """Whether a shell command runs pytest over ``tests/e2e/`` as a whole directory.
 
-    Token equality, not substring containment: ``--ignore=tests/e2e/`` and
-    ``tests/e2e/test_chess_training_e2e.py`` both *contain* the path and both
-    select nothing of the tier at large. Only a standalone path token counts.
+    Read through :func:`~tests.support.marker_expr.pytest_invocation`, as are the ``-m``
+    and ``-k`` readers below, so every selection helper asks one parse. Only a real entry
+    point counts: ``echo pytest tests/e2e/ ...`` runs no tests, yet a token scan counted
+    it as selected and, with no status obstacle, as fail-loud (Copilot review 3, PR #160).
+    Only a path pytest collects counts: ``--ignore=tests/e2e/``, ``--ignore tests/e2e/``
+    and ``tests/e2e/test_chess_training_e2e.py`` all *contain* the path and select
+    nothing of the tier at large.
 
     Args:
         command: One logical shell command.
 
     Returns:
-        True if some argument is exactly ``tests/e2e`` or ``tests/e2e/``.
+        True if pytest runs and one of its paths is exactly ``tests/e2e`` or ``tests/e2e/``.
 
     """
-    return any(token in E2E_DIRECTORY_TOKENS for token in command.split())
+    invocation = pytest_invocation(command)
+    return invocation is not None and any(path in E2E_DIRECTORY_TOKENS for path in invocation.paths)
 
 
 def effective_marker_expression(command: str) -> str:
@@ -243,11 +247,11 @@ def effective_marker_expression(command: str) -> str:
     Returns:
         The last marker expression in the command (pytest keeps the last
         ``-m``), or the empty string when there is none -- which selects
-        everything.
+        everything -- or when the command runs no pytest.
 
     """
-    expressions = marker_expressions(command)
-    return expressions[-1] if expressions else ""
+    invocation = pytest_invocation(command)
+    return invocation.marker_expression if invocation is not None else ""
 
 
 def e2e_selecting_commands() -> list[tuple[RunScript, str]]:
@@ -683,6 +687,25 @@ class TestSelectionPredicates:
         """``test-chess`` names one file; that is not the tier."""
         assert not selects_e2e_directory("pytest tests/e2e/test_chess_training_e2e.py -q")
 
+    def test_an_ignore_with_a_separate_value_is_not_a_selection(self) -> None:
+        """``--ignore tests/e2e/`` names the directory as a value, not a path to collect."""
+        assert not selects_e2e_directory("pytest tests/ --ignore tests/e2e/ -q")
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            'echo pytest tests/e2e/ -m "not gpu_required and not fem_required" -k "chess"',
+            "echo -m pytest tests/e2e/ -q",
+            "python script.py -m pytest tests/e2e/ -q",
+            "true tests/e2e/",
+        ],
+    )
+    def test_a_command_that_runs_no_pytest_is_not_a_selection(self, command: str) -> None:
+        """Copilot review 3 of PR #160: ``echo`` in front of a half's command ran no tests."""
+        assert not selects_e2e_directory(command)
+        assert effective_marker_expression(command) == ""
+        assert effective_k_expression(command) == ""
+
     def test_effective_expression_is_the_last_one(self) -> None:
         assert effective_marker_expression('pytest tests/e2e/ -m "a" -m "b"') == "b"
 
@@ -771,15 +794,32 @@ def effective_k_expression(command: str) -> str:
         command: One logical shell command.
 
     Returns:
-        The expression, or ``""`` when the command has no ``-k``.
+        The expression, or ``""`` when the command has no ``-k`` or runs no pytest.
 
     """
-    tokens = shlex.split(command)
-    expression = ""
-    for index, token in enumerate(tokens[:-1]):
-        if token == "-k":
-            expression = tokens[index + 1]
-    return expression
+    invocation = pytest_invocation(command)
+    return invocation.keyword_expression if invocation is not None else ""
+
+
+def k_partition_problem(observed: set[str]) -> str | None:
+    """Why the ``-k`` filters of the steps running the tier leave some of it nowhere.
+
+    Args:
+        observed: The effective ``-k`` of every command that runs the tier broadly.
+
+    Returns:
+        The problem, or ``None`` for one unfiltered step or the complete
+        :data:`E2E_REQUIRED_K_PARTITION`.
+
+    """
+    if observed in (E2E_UNFILTERED, E2E_REQUIRED_K_PARTITION):
+        return None
+    return (
+        f"the `-k` filters on the steps running tests/e2e/ are {sorted(observed)!r}, which is "
+        f"neither a single unfiltered step nor the complete partition "
+        f"{sorted(E2E_REQUIRED_K_PARTITION)!r}. Half the tier is running nowhere -- the "
+        "invisibility this file guards, reintroduced through the memory workaround."
+    )
 
 
 def test_the_e2e_k_partition_is_complete() -> None:
@@ -790,12 +830,8 @@ def test_the_e2e_k_partition_is_complete() -> None:
     deleted, or a third filter added -- means some journeys run nowhere.
     """
     observed = {effective_k_expression(command) for _run, command in e2e_selecting_ci_commands()}
-    assert observed in (E2E_UNFILTERED, E2E_REQUIRED_K_PARTITION), (
-        f"the `-k` filters on the steps running tests/e2e/ are {sorted(observed)!r}, which is "
-        f"neither a single unfiltered step nor the complete partition "
-        f"{sorted(E2E_REQUIRED_K_PARTITION)!r}. Half the tier is running nowhere -- the "
-        "invisibility this file guards, reintroduced through the memory workaround."
-    )
+    problem = k_partition_problem(observed)
+    assert problem is None, problem
 
 
 class TestKExpressionParsing:
@@ -1121,12 +1157,19 @@ def test_a_clause_count_is_a_word_bound_to_clauses(row: str, count: int, states:
 # stays green. The shared helper weakened in place: `continue-on-error` ignored ->
 # `[continue-on-error]`; `if:` ignored -> `[skippable-if]`; the exit-status model
 # dropped -> `[or-true]`, `[set-plus-e]` and the fem guard's status plants.
+#
+# Copilot review 3 of PR #160 (2026-10-15), same protocol; each passed this file at
+# `5a5e89e`: `set +e` then `false && set -e` before both steps' pytest and `; true`
+# after, and `trap 'exit 0' EXIT` or `ERR` before it -> this clause's live test; `echo`
+# in front of either half's pytest -> `test_the_e2e_k_partition_is_complete`
+# (`TestPlantedNoOpCommands` keeps that one running on copies).
 
 #: Rewrites of every step running the tier, ``name -> (prefix, suffix, step keys,
 #: still loud)``. `|| true`, `set +e` then `; true`, `continue-on-error` and an `if:`
 #: are the defects; an untouched round trip and `; true` under GitHub's default
 #: `bash -e` (it exits at the failing pytest) are the controls a model that rejects
-#: everything would fail.
+#: everything would fail. Copilot review 3 of PR #160 added the last three: a `set -e`
+#: behind `&&` that never ran, and a trap whose `exit 0` replaces the status.
 E2E_STATUS_PLANTS: Final[dict[str, tuple[str, str, dict[str, object], bool]]] = {
     "unmutated": ("", "", {}, True),
     "semicolon-true": ("", "; true", {}, True),
@@ -1134,6 +1177,9 @@ E2E_STATUS_PLANTS: Final[dict[str, tuple[str, str, dict[str, object], bool]]] = 
     "set-plus-e": ("set +e\n", "; true", {}, False),
     "continue-on-error": ("", "", {"continue-on-error": True}, False),
     "skippable-if": ("", "", {"if": "github.event_name == 'schedule'"}, False),
+    "set-e-behind-and": ("set +e\nfalse && set -e\n", "; true", {}, False),
+    "trap-err": ("trap 'exit 0' ERR\n", "", {}, False),
+    "trap-exit": ("trap 'exit 0' EXIT\n", "", {}, False),
 }
 
 
@@ -1193,6 +1239,13 @@ def test_every_step_running_the_tier_fails_loud() -> None:
     )
 
 
+def _write_planted(tmp_path: Path, document: dict[str, object]) -> Path:
+    """A planted copy of ``ci.yml`` under ``tmp_path``."""
+    planted = tmp_path / CI_WORKFLOW_FILENAME
+    planted.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    return planted
+
+
 class TestPlantedLoudnessDefects:
     """B46's defects, planted on copies of ``ci.yml`` so they keep running in CI."""
 
@@ -1205,9 +1258,31 @@ class TestPlantedLoudnessDefects:
             raw = document["jobs"][step.job]["steps"][step.index]
             raw["run"] = f"{prefix}{commands[position].text}{suffix}\n"
             raw.update(keys)
-        planted = tmp_path / CI_WORKFLOW_FILENAME
-        planted.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-        mutated = e2e_selecting_steps(planted)
+        mutated = e2e_selecting_steps(_write_planted(tmp_path, document))
         assert len(mutated) == len(live) > 0, "the plant must keep every step selecting the tier"
         failures = unloud_steps(mutated)
         assert (not failures) == loud, failures
+
+
+class TestPlantedNoOpCommands:
+    """A command that runs no pytest runs none of the tier (Copilot review 3, PR #160).
+
+    ``echo`` in front of one half's pytest kept that half "selected" and, with no status
+    obstacle, "fail-loud": 82 passed with it planted on the chess step (2026-10-14). Planted
+    on the real ``ci.yml`` after the fix, it fails ``test_the_e2e_k_partition_is_complete``;
+    with :func:`selects_e2e_directory` back to a token scan, this class, the four
+    ``test_a_command_that_runs_no_pytest_is_not_a_selection`` cases and
+    ``test_an_ignore_with_a_separate_value_is_not_a_selection`` fail.
+    """
+
+    def test_a_command_behind_echo_no_longer_runs_the_tier(self, tmp_path: Path) -> None:
+        live = e2e_selecting_steps()
+        assert live, "no step runs the tier; clause (b) says why"
+        for step, commands, position in live:
+            document = load_workflow(CI_WORKFLOW)
+            raw = document["jobs"][step.job]["steps"][step.index]
+            raw["run"] = f"echo {commands[position].text}\n"
+            mutated = e2e_selecting_steps(_write_planted(tmp_path, document))
+            assert len(mutated) < len(live), f"`echo` in front of {step} still runs the tier"
+            observed = {effective_k_expression(c[p].text) for _s, c, p in mutated}
+            assert k_partition_problem(observed), f"`echo` in front of {step} went unreported"

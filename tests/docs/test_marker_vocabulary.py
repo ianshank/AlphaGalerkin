@@ -48,7 +48,6 @@ from tests.support.marker_expr import (
     parse_terms,
     pytest_invocation,
 )
-from tests.support.shell_status import exit_status_obstacles
 from tests.support.workflows import (
     MAKE_RECIPE_PREFIXES,
     MAKEFILE,
@@ -530,55 +529,12 @@ class TestShellCommentStripping:
         assert makefile_commands(), "the Makefile parsed to no commands at all"
 
 
-#: ``(script, index of the command under test, shell:, whether its failure fails the step)``.
-#: Copilot review, PR #160: the fem guard read only a step's metadata, so ``pytest ... || true``
-#: counted as a loud test step. ``; true`` is *not* a mask under GitHub's ``bash -e`` -- the shell
-#: exits at ``pytest`` -- so it is a control here, and ``set +e`` is what makes it one.
-_STATUS_CASES: tuple[tuple[str, int, str | None, bool], ...] = (
-    ("pytest x", 0, None, True),
-    ("pytest x; true", 0, None, True),
-    ("pytest x || true", 0, None, False),
-    ("pytest x ||\n  true", 0, None, False),
-    ("set +e\npytest x\ntrue", 1, None, False),
-    ("set +o errexit\npytest x; true", 1, None, False),
-    ("set +e\npytest x", 1, None, True),
-    ("set -- a -e\npytest x; true", 1, None, True),
-    ("set +e\nset -euo pipefail\npytest x | tee log\ntrue", 2, None, True),
-    ("pytest x | tee log", 0, None, False),
-    ("pytest x | tee log", 0, "bash", True),
-    ("echo | pytest x", 1, None, True),
-    ("true || pytest x", 1, None, False),
-    ("cd d && pytest x", 1, None, True),
-    ("cd d && pytest x\necho done", 1, None, False),
-    ("pytest x && echo ok", 0, None, True),
-    ("pytest x && echo ok\necho done", 0, None, False),
-    ("exit 0\npytest x", 1, None, False),
-    ("exit 1\npytest x", 1, None, True),
-    ('if [ -n "$CI" ]; then\n  pytest x\nfi', 2, None, False),
-    ('if [ -n "$CI" ]; then\n  true\nfi\npytest x', 4, None, True),
-    ("run() {\n  pytest x\n}", 1, None, False),
-    ("pytest x &\nwait", 0, None, False),
-    ("pytest x", 0, "sh", True),
-    ("pytest x", 0, "pwsh", False),
-    # Copilot review 2 (PR #160): an `exec` naming a command replaces the shell; one that only
-    # redirects does not. Then the same early end, and a weakening `set`, inside a compound.
-    ("exec true\npytest x", 1, None, False),
-    ("exec -a name true\npytest x", 1, None, False),
-    ("exec 2>&1\npytest x", 1, None, True),
-    ("exec > >(tee log) 2>&1\npytest x", 1, None, True),
-    ('if [ -n "$CI" ]; then\n  exit 0\nfi\npytest x', 4, None, False),
-    ('if [ -n "$CI" ]; then exit 0; fi\npytest x', 3, None, False),
-    ("{ exec true; }\npytest x", 2, None, False),
-    ('case "$X" in\n  a) exit 0 ;;\nesac\npytest x', 3, None, False),
-    ('if [ -n "$CI" ]; then\n  exit 1\nfi\npytest x', 4, None, True),
-    ("die() {\n  return 0\n}\npytest x", 3, None, True),
-    ('if [ -n "$CI" ]; then set +e; fi\npytest x; true', 3, None, False),
-    ('set +e\nif [ -n "$CI" ]; then\n  set -e\nfi\npytest x; true', 5, None, False),
-)
-
-
 class TestExitStatusPropagation:
-    """``iter_shell_commands`` keeps the operators; ``exit_status_obstacles`` reads them."""
+    """``iter_shell_commands`` keeps the operators ``tests/support/shell_status.py`` reads.
+
+    That model's rows, and the real-shell checks behind them, are in
+    ``tests/docs/test_shell_status.py``.
+    """
 
     def test_operators_are_recorded_on_both_sides(self) -> None:
         commands = iter_shell_commands("a || b && c | d; e\nf")
@@ -599,16 +555,3 @@ class TestExitStatusPropagation:
         scripts = [run.script for run in iter_run_scripts()]
         assert len(scripts) >= MIN_MARKER_EXPRESSIONS
         assert all([c.text for c in iter_shell_commands(s)] == iter_commands(s) for s in scripts)
-
-    @pytest.mark.parametrize(("script", "position", "shell", "loud"), _STATUS_CASES)
-    def test_a_failure_reaches_the_step_only_when_nothing_absorbs_it(
-        self, script: str, position: int, shell: str | None, loud: bool
-    ) -> None:
-        commands = iter_shell_commands(script)
-        assert "pytest x" in commands[position].text, "the row indexes the wrong command"
-        obstacles = exit_status_obstacles(commands, position, shell)
-        assert (not obstacles) == loud, obstacles
-
-    def test_both_outcomes_are_exercised(self) -> None:
-        """Vacuity: a model that rejects everything passes every masked row."""
-        assert {loud for *_, loud in _STATUS_CASES} == {True, False}

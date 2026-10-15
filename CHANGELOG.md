@@ -754,6 +754,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check was vacuous at ten -- a substring test, and "written" contains "ten" -- so it now matches
   the spelled number as a whole word bound to "clauses". All defects killed by named tests, live
   and re-planted on copies; the helper weakened three ways was caught each time.
+- **Both visibility guards close four more bypasses, and the shell model is checked against the
+  real shell** (third Copilot review of PR #160). Each was reproduced first, passed the guards at
+  `5a5e89e`, and now fails a named test. The E2E guard counted `echo pytest tests/e2e/ ...` as
+  running the tier, and as fail-loud; its selection helpers now read every command through
+  `pytest_invocation`, as the `fem_required` guard does, so only a real entry point and a path
+  pytest collects count (`--ignore tests/e2e/` with a space no longer reads as a selection). A
+  `set -e` behind `&&`/`||` or in a pipeline counted as re-enabling errexit, and a `trap 'exit 0'`
+  on `ERR` or `EXIT` passed while it replaced pytest's status: with a stub `pytest` exiting 7,
+  `bash -e` exits 0 for all four. `exit_status_obstacles` now lets a `set` or `shopt -o` switch an
+  option back on only where it surely runs in this shell, and reports a trap that installs an
+  action -- and the neighbours, each reproduced the same way: `eval`, `source`/`.`, `builtin`/
+  `command set +e`, a function head in `function f` or `f ()` form, and a function or alias named
+  like the command. The conftest scan read only `=` bindings, so `from helpers import
+  collect_ignore` or `... import hide as pytest_ignore_collect` hid a module unseen; it now reads
+  every binding (imports with their aliases, tuple unpacking, `for`/`with`/`:=` targets, `except
+  ... as`) and reports a star import and a run-time binder (`globals()`, `exec`, `setattr`). The
+  status rows move to the new `tests/docs/test_shell_status.py`, which also runs every row in
+  the shell GitHub would: wherever the model finds no obstacle the script must exit non-zero, and
+  every masked row must exit 0 or say why the model over-reports. 13 new checks weakened in place,
+  each caught; six live plants on the fem guard and three on the E2E guard killed, with an
+  unconditional `set -e` as the control.
 - **Front-door performance figures must be recorded measurements, not merely hardware-tagged
   citations.** A latency, throughput or speedup figure on README.md or an `mkdocs.yml` nav page
   is backed only when it equals, at its written precision and to at least two significant

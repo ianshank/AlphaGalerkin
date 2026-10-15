@@ -157,7 +157,7 @@ ALLOWLIST_TESTS: dict[str, tuple[int, str]] = {
     "tests/training/test_trainer_coverage.py": (1377, "trainer coverage sweep"),
     "tests/poc/test_complexity_scenario.py": (1148, "scenario suite"),
     "tests/training/test_checkpoint.py": (1102, "checkpoint suite; follows plan 1.3"),
-    "tests/docs/test_e2e_visibility.py": (1213, "itself a guard; grows one clause at a time"),
+    "tests/docs/test_e2e_visibility.py": (1288, "itself a guard; grows one clause at a time"),
     "tests/research/test_baselines.py": (1069, "baseline suite incl. shared primitives"),
     "tests/training/test_trainer_physics.py": (1001, "physics trainer suite; one line over"),
 }

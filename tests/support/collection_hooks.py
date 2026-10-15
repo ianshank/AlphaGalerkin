@@ -25,8 +25,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Final
 
-from tests.support.marker_expr import assigned_names
-
 #: The file name pytest reads hooks and ``collect_ignore`` from, in every directory.
 CONFTEST: Final[str] = "conftest.py"
 
@@ -55,15 +53,60 @@ COLLECTION_FILTERS: Final[frozenset[str]] = frozenset(
 #: What the root ``conftest.py`` may bind: its hook, because a guard drives it in every branch.
 ROOT_DRIVEN_HOOKS: Final[frozenset[str]] = frozenset({COLLECTION_HOOK})
 
+#: Reported for ``from module import *``: which names it binds is not readable here.
+STAR_IMPORT: Final[str] = "*"
+#: Reported for a call that can bind any name at run time (``globals()["collect_ignore"]
+#: = ...``, ``exec``, ``setattr`` on the module); named, unlike a binding, by the builtin called.
+DYNAMIC_BINDERS: Final[frozenset[str]] = frozenset({"globals", "vars", "exec", "setattr"})
+#: Nodes that bind the name in their ``name`` field (``None`` for a bare ``except:``).
+_NAMED_BINDINGS: Final[tuple[type[ast.AST], ...]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.ExceptHandler,
+    ast.MatchAs,
+    ast.MatchStar,
+)
+
+
+def _imported_names(node: ast.Import | ast.ImportFrom) -> set[str]:
+    """Names an import binds: ``import a.b`` binds ``a``; ``from m import x as y`` binds ``y``."""
+    if isinstance(node, ast.Import):
+        return {alias.asname or alias.name.partition(".")[0] for alias in node.names}
+    return {alias.asname or alias.name for alias in node.names}
+
+
+def bound_names(tree: ast.AST) -> set[str]:
+    """Every name ``tree`` binds, at any depth, however it is bound.
+
+    ``=`` in any form (tuple unpacking, ``for``/``with`` targets, ``:=``), ``def`` and
+    ``class``, ``except ... as``, a ``match`` capture, and imports with their aliases.
+    """
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            found.add(node.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            found |= _imported_names(node)
+        elif isinstance(node, _NAMED_BINDINGS) and node.name:
+            found.add(node.name)
+    return found
+
 
 def collection_filters(source: str) -> set[str]:
-    """Collection-filtering names a conftest binds or defines, at any depth."""
-    found: set[str] = set()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            found |= {node.name} & COLLECTION_FILTERS
-        elif isinstance(node, ast.stmt):
-            found |= assigned_names(node) & COLLECTION_FILTERS
+    """Collection-filtering names a conftest binds or defines, at any depth.
+
+    Imports count: ``from helpers import collect_ignore`` and ``from helpers import hide as
+    pytest_ignore_collect`` bind a filter as surely as ``=`` (Copilot review 3, PR #160). A
+    star import (:data:`STAR_IMPORT`) and a call that binds at run time
+    (:data:`DYNAMIC_BINDERS`, reported by name) are reported, since what they bind is not
+    readable here.
+    """
+    tree = ast.parse(source)
+    found = bound_names(tree) & (COLLECTION_FILTERS | {STAR_IMPORT})
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            found |= {node.func.id} & DYNAMIC_BINDERS
     return found
 
 

@@ -8,10 +8,13 @@ Features:
     - Dynamic shape support for resolution independence
     - Automatic optimization
     - Metadata embedding
+    - Structured outputs (a dataclass such as ``ModelOutput``) flattened to a
+      tuple of tensors, which both ``torch.export`` and ``torch.jit.trace`` need
 """
 
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,6 +29,86 @@ if TYPE_CHECKING:
     from src.modeling.model import AlphaGalerkinModel
 
 logger = structlog.get_logger(__name__)
+
+
+def _is_dataclass_instance(output: Any) -> bool:
+    """True for a dataclass instance (``is_dataclass`` is also true of the class)."""
+    return dataclasses.is_dataclass(output) and not isinstance(output, type)
+
+
+def _dataclass_tensor_fields(output: Any) -> tuple[tuple[str, Tensor], ...]:
+    """``(name, tensor)`` per field in declaration order, ``None`` fields dropped.
+
+    Any other value raises ``TypeError``: an ONNX graph output must be a tensor,
+    and dropping the value silently would export a model that lost an output.
+    """
+    fields: list[tuple[str, Tensor]] = []
+    for field in dataclasses.fields(output):
+        value = getattr(output, field.name)
+        if value is None:
+            continue
+        if not isinstance(value, Tensor):
+            raise TypeError(
+                f"Cannot export {type(output).__name__}.{field.name}: it holds a "
+                f"{type(value).__name__}, but an ONNX graph output must be a tensor."
+            )
+        fields.append((field.name, value))
+    return tuple(fields)
+
+
+def flatten_model_output(output: Any) -> tuple[Tensor, ...]:
+    """Return a model output as the tuple of tensors its ONNX graph emits.
+
+    Shared by the export path (inside :class:`TupleOutputWrapper`) and
+    ``ModelValidator`` (on the PyTorch side), so both order outputs alike. A
+    ``Tensor`` becomes ``(output,)``; a ``tuple`` is returned unchanged and a
+    ``list`` as a tuple; a dataclass becomes its tensor fields in declaration
+    order, ``None`` fields dropped. For ``ModelOutput`` that is
+    ``policy_logits``, ``value``, then ``lbb_constant`` only when it is not
+    ``None`` -- the order ``ExportConfig.output_names`` (``["policy",
+    "value"]``) and ``ONNXRuntime.run`` assume.
+
+    Raises:
+        TypeError: Any other output type, or a non-tensor dataclass field
+            (for example ``ModelOutput.vector_fields``).
+
+    """
+    if isinstance(output, Tensor):
+        return (output,)
+    if isinstance(output, tuple):
+        return output
+    if isinstance(output, list):
+        return tuple(output)
+    if _is_dataclass_instance(output):
+        return tuple(tensor for _, tensor in _dataclass_tensor_fields(output))
+    raise TypeError(
+        f"Cannot flatten a model output of type {type(output).__name__}: expected a "
+        "Tensor, a tuple or list of tensors, or a dataclass of tensors."
+    )
+
+
+class TupleOutputWrapper(nn.Module):
+    """Export adapter: the wrapped model's output through :func:`flatten_model_output`.
+
+    ``ModelOutput`` is a frozen dataclass, and a dataclass -- unlike the
+    ``NamedTuple`` it replaced -- is not a pytree, so ``torch.export`` (behind
+    ``torch.onnx.export`` since torch 2.9) and ``torch.jit.trace`` both reject
+    it as a graph output. :class:`ONNXExporter` wraps a model only when it
+    returns a dataclass. The wrapper copies the model's training flag onto
+    itself only, leaving the model's submodules as they are.
+
+    ``forward`` names its first input: ``torch.export`` binds inputs by this
+    signature, and a bare ``*args`` would bind the sample as one tuple that
+    ``torch.onnx.export``'s ``dynamic_axes`` conversion cannot match.
+    """
+
+    def __init__(self, model: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+        self.training = model.training
+
+    def forward(self, x: Tensor, *args: Tensor) -> tuple[Tensor, ...]:
+        return flatten_model_output(self.model(x, *args))
 
 
 class ONNXExporter:
@@ -94,13 +177,17 @@ class ONNXExporter:
             input_shapes=[tuple(t.shape) for t in input_tensors],
         )
 
+        # Every export method receives the same module: the model itself, or
+        # TupleOutputWrapper when its output is a dataclass.
+        export_target = self._wrap_structured_output(model, input_tensors)
+
         # Select export method
         if self.config.export_method == "dynamo":
-            self._export_dynamo(model, input_tensors, output_path, **kwargs)
+            self._export_dynamo(export_target, input_tensors, output_path, **kwargs)
         elif self.config.export_method == "script":
-            self._export_script(model, input_tensors, output_path, **kwargs)
+            self._export_script(export_target, input_tensors, output_path, **kwargs)
         else:
-            self._export_trace(model, input_tensors, output_path, **kwargs)
+            self._export_trace(export_target, input_tensors, output_path, **kwargs)
 
         # Optimize if requested
         if self.config.optimization_level != "none":
@@ -116,6 +203,30 @@ class ONNXExporter:
         )
 
         return output_path
+
+    def _wrap_structured_output(
+        self,
+        model: nn.Module,
+        input_tensors: tuple[Tensor, ...],
+    ) -> nn.Module:
+        """Return ``model``, or :class:`TupleOutputWrapper` around it if it returns a dataclass.
+
+        One forward pass on the sample input decides. Any other output returns
+        ``model`` itself, so tensor- and tuple-returning models export exactly
+        as before. Raises ``TypeError`` for a non-tensor dataclass field.
+        """
+        with torch.no_grad():
+            sample_output = model(*input_tensors)
+        if not _is_dataclass_instance(sample_output):
+            return model
+
+        self._logger.info(
+            "model_output_flattened",
+            output_type=type(sample_output).__name__,
+            fields=[name for name, _ in _dataclass_tensor_fields(sample_output)],
+            output_names=self.config.output_names,
+        )
+        return TupleOutputWrapper(model)
 
     def _export_trace(
         self,

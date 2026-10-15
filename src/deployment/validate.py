@@ -22,6 +22,7 @@ import torch
 from torch import Tensor, nn
 
 from src.constants import DEFAULT_BOARD_SIZES
+from src.deployment.export_adapters import flatten_model_output
 
 if TYPE_CHECKING:
     pass
@@ -142,20 +143,15 @@ class ModelValidator:
                 pytorch_time = (time.perf_counter() - start) * 1000
                 pytorch_times.append(pytorch_time)
 
-                # Convert PyTorch output to numpy
-                if hasattr(pytorch_output, "policy_logits"):
-                    pytorch_policy = pytorch_output.policy_logits.cpu().numpy()
-                    pytorch_value = pytorch_output.value.cpu().numpy()
-                elif isinstance(pytorch_output, tuple):
-                    pytorch_policy = pytorch_output[0].cpu().numpy()
-                    pytorch_value = (
-                        pytorch_output[1].cpu().numpy()
-                        if len(pytorch_output) > 1
-                        else np.array([0.0])
-                    )
-                else:
-                    pytorch_policy = pytorch_output.cpu().numpy()
-                    pytorch_value = np.array([0.0])
+                # Flatten with the exporter's own helper, so outputs are
+                # compared in the order the ONNX graph emits them.
+                pytorch_outputs = flatten_model_output(pytorch_output)
+                pytorch_policy = pytorch_outputs[0].cpu().numpy()
+                pytorch_value = (
+                    pytorch_outputs[1].cpu().numpy()
+                    if len(pytorch_outputs) > 1
+                    else np.array([0.0])
+                )
 
                 # ONNX Runtime inference
                 input_numpy = input_tensor.cpu().numpy()

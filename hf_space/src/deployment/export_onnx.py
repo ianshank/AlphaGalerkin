@@ -26,6 +26,7 @@ from torch import Tensor, nn
 from src.deployment.config import ExportConfig
 from src.deployment.export_adapters import (
     TupleOutputWrapper,
+    dynamic_shapes_from_axes,
     enlarge_size_one_dynamic_axes,
     is_structured_output,
     structured_output_fields,
@@ -176,7 +177,13 @@ class ONNXExporter:
         output_path: Path,
         **kwargs: Any,
     ) -> None:
-        """Export using torch.jit.trace.
+        """Export with ``torch.onnx.export``'s dynamo exporter, which traces via torch.export.
+
+        ``ExportConfig.dynamic_axes`` reaches it as ``dynamic_shapes``: given
+        ``dynamic_axes``, it converts them through a function deprecated for
+        removal. ``dynamo=True`` is explicit because torch before 2.9 defaults
+        to the legacy exporter, which rejects ``dynamic_shapes`` and mis-exports
+        ``AlphaGalerkinModel`` (hygiene B48).
 
         Args:
             model: Model to export.
@@ -185,6 +192,12 @@ class ONNXExporter:
             **kwargs: Additional arguments.
 
         """
+        dynamic_shapes = dynamic_shapes_from_axes(
+            self.config.input_names,
+            self.config.output_names,
+            self.config.dynamic_axes,
+            len(input_tensors),
+        )
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
@@ -194,7 +207,8 @@ class ONNXExporter:
                 str(output_path),
                 input_names=self.config.input_names,
                 output_names=self.config.output_names,
-                dynamic_axes=self.config.dynamic_axes,
+                dynamic_shapes=dynamic_shapes,
+                dynamo=True,
                 opset_version=self.config.opset_version,
                 do_constant_folding=self.config.do_constant_folding,
                 export_params=self.config.export_params,

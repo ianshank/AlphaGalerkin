@@ -1,4 +1,4 @@
-"""Export adapters: structured outputs and size-1 dynamic axes (hygiene B45).
+"""Export adapters: structured outputs, size-1 dynamic axes, ``dynamic_shapes`` (B45, B50).
 
 Two defect classes stopped the real ``AlphaGalerkinModel`` from exporting:
 
@@ -11,6 +11,10 @@ Two defect classes stopped the real ``AlphaGalerkinModel`` from exporting:
 - A declared-dynamic axis seen at size 1 in the sample was pinned to 1 by
   ``torch.export``, so the exported graph failed at any other size. The
   exporter now traces a size-2 sample on such axes, and nowhere else.
+- ``ExportConfig.dynamic_axes`` reached ``torch.onnx.export`` as
+  ``dynamic_axes``, which its dynamo path converts through a function
+  deprecated for removal (B50). The exporter now derives ``dynamic_shapes``
+  (``dynamic_shapes_from_axes``) and passes that, with ``dynamo=True``.
 
 Every test here runs on torch alone, with no onnx, onnxruntime or onnxscript:
 export backends are replaced by recorders, ``ONNXRuntime`` by a stub, and the
@@ -36,7 +40,7 @@ Planted defects (harden-a-guard), 12/12 killed, each by the named test(s):
    promise for tensor and tuple outputs:
    ``TestExportDispatch::test_tensor_output_reaches_every_backend_unchanged``,
    ``...::test_tuple_output_reaches_every_backend_unchanged`` (all three
-   methods) and ``...::test_tensor_output_trace_call_is_the_historical_one``.
+   methods) and ``...::test_tensor_output_trace_call_is_pinned``.
 4. Fields flattened in reverse declaration order:
    ``TestFieldOrder::test_flattened_order_matches_export_output_names`` and
    six more, starting with ``TestFlattenModelOutput::test_model_output
@@ -55,12 +59,12 @@ Planted defects (harden-a-guard), 12/12 killed, each by the named test(s):
    [2]`` and ``[4]``.
 8. Every size-1 axis enlarged, declared dynamic or not:
    ``TestEnlargeSizeOneDynamicAxes::test_static_axis_at_size_one_is_left
-   _alone`` and ``TestExportDispatch::test_tensor_output_trace_call_is_the
-   _historical_one[static-batch-at-1]``, among five.
+   _alone`` and ``TestExportDispatch::test_tensor_output_trace_call_is
+   _pinned[static-batch-at-1]``, among five.
 9. Every declared-dynamic axis enlarged at size 1 or more, not only at 1:
    ``TestEnlargeSizeOneDynamicAxes::test_dynamic_axis_already_at_two_or
    _more_is_left_alone`` and ``TestExportDispatch::test_tensor_output_trace
-   _call_is_the_historical_one[dynamic-batch-already-2]``, among nine.
+   _call_is_pinned[dynamic-batch-already-2]``, among nine.
 10. The repeat count left at 1, so nothing grows:
     ``TestEnlargeSizeOneDynamicAxes::test_size_one_dynamic_batch_is_repeated
     _to_two`` and the enlarged-dispatch tests of (7).
@@ -69,6 +73,34 @@ Planted defects (harden-a-guard), 12/12 killed, each by the named test(s):
 12. Every input matched to the first name's axes:
     ``TestEnlargeSizeOneDynamicAxes::test_inputs_are_matched_to_names_by
     _position``.
+
+B50, 8 of its 9 planted defects killed here (the ninth, a reworded torch
+warning, by ``test_onnx_runtime_regressions.py``'s premise test). "Pinned"
+is ``TestExportDispatch::test_tensor_output_trace_call_is_pinned``:
+
+13. ``dynamic_axes`` passed again, without ``dynamic_shapes`` or ``dynamo``
+    (the pre-fix call): pinned, all three cases; with ONNX installed also
+    the no-warning tests in ``test_onnx_runtime_regressions.py`` and
+    ``test_export_onnx_integration.py``.
+14. ``dynamic_shapes`` and ``dynamic_axes`` both passed: pinned, all three.
+    torch ignores ``dynamic_axes`` when given ``dynamic_shapes``, so this
+    exports without either warning and only the pinned call catches it.
+15. ``dynamo=True`` dropped: pinned, all three. Harmless on torch >= 2.9,
+    where it is the default; on 2.6-2.8 the export would take the legacy
+    exporter, which rejects ``dynamic_shapes``.
+16. Every input passed as static: pinned ``[dynamic-batch-already-2]`` and
+    ``[batch-at-1-another-axis-dynamic]``; with ONNX installed also the
+    parity tests at untraced shapes.
+17. Specs ordered by the mapping, not the inputs (torch's own conversion):
+    ``TestDynamicShapesFromAxes::test_axes_are_matched_to_inputs_by_position
+    _not_mapping_order``.
+18. Unknown names ignored instead of raising: ``TestDynamicShapesFromAxes::
+    test_axes_for_an_unknown_name_raise_naming_it`` and ``...::test_axes_for
+    _a_named_input_that_was_not_passed_raise``.
+19. Output axes given slots of their own: ``TestDynamicShapesFromAxes::
+    test_output_axes_are_left_to_torch`` and pinned, all three, among seven.
+20. The config's own mappings returned, uncopied: ``TestDynamicShapesFromAxes
+    ::test_specs_are_copies_of_the_configs_mappings``.
 
 All killers run under ``-m "not gpu_required and not fem_required"``.
 """
@@ -93,6 +125,7 @@ from src.deployment.export_adapters import (
     SPECIALIZED_SAMPLE_SIZE,
     AxisEnlargement,
     TupleOutputWrapper,
+    dynamic_shapes_from_axes,
     enlarge_size_one_dynamic_axes,
     flatten_model_output,
 )
@@ -126,14 +159,24 @@ FIELD_FOR_OUTPUT_NAME = {"policy": "policy_logits", "value": "value"}
 # The default ExportConfig's only input, whose axes 0, 2 and 3 it declares dynamic.
 BOARD_INPUT = ExportConfig().input_names[0]
 
-# Exports in which no axis may be enlarged: (sample shape, dynamic_axes), where
-# None keeps the default ExportConfig's axes.
-UNENLARGED_EXPORTS: dict[str, tuple[tuple[int, ...], dict[str, dict[int, str]] | None]] = {
-    "dynamic-batch-already-2": ((BATCH, IN_FEATURES), None),
-    "static-batch-at-1": ((SPECIALIZED_SAMPLE_SIZE, IN_FEATURES), {}),
+# The ``dynamic_shapes`` spec the default ExportConfig's axes give its one input:
+# written out, not derived, so the pinned call below cannot agree with a broken
+# derivation by calling it.
+DEFAULT_BOARD_SHAPES: dict[int, str] = {0: "batch", 2: "height", 3: "width"}
+
+# Exports in which no axis may be enlarged: (sample shape, dynamic_axes, the
+# dynamic_shapes torch.onnx.export must receive), where None keeps the default
+# ExportConfig's axes.
+UNENLARGED_EXPORTS: dict[
+    str,
+    tuple[tuple[int, ...], dict[str, dict[int, str]] | None, tuple[dict[int, str] | None, ...]],
+] = {
+    "dynamic-batch-already-2": ((BATCH, IN_FEATURES), None, (DEFAULT_BOARD_SHAPES,)),
+    "static-batch-at-1": ((SPECIALIZED_SAMPLE_SIZE, IN_FEATURES), {}, (None,)),
     "batch-at-1-another-axis-dynamic": (
         (SPECIALIZED_SAMPLE_SIZE, IN_FEATURES),
         {BOARD_INPUT: {1: "features"}},
+        ({1: "features"},),
     ),
 }
 
@@ -533,6 +576,60 @@ class TestEnlargeSizeOneDynamicAxes:
         assert [record.input_name for record in records] == [BOARD_INPUT]
 
 
+class TestDynamicShapesFromAxes:
+    """``ExportConfig.dynamic_axes`` as the positional ``dynamic_shapes`` torch.export binds."""
+
+    def test_default_config_gives_the_board_axes(self) -> None:
+        config = ExportConfig()
+        shapes = dynamic_shapes_from_axes(
+            config.input_names, config.output_names, config.dynamic_axes, n_inputs=1
+        )
+        assert shapes == (DEFAULT_BOARD_SHAPES,)
+
+    def test_axes_are_matched_to_inputs_by_position_not_mapping_order(self) -> None:
+        """Torch's own conversion used the mapping's insertion order, not the inputs'."""
+        axes = {"second": {1: "features"}, "first": {0: "batch"}}
+        shapes = dynamic_shapes_from_axes(["first", "second"], [], axes, n_inputs=2)
+        assert shapes == ({0: "batch"}, {1: "features"})
+
+    def test_an_input_without_axes_is_static(self) -> None:
+        shapes = dynamic_shapes_from_axes(["a", "b"], [], {"a": {0: "batch"}}, n_inputs=2)
+        assert shapes == ({0: "batch"}, None)
+
+    def test_an_input_without_a_name_is_static(self) -> None:
+        shapes = dynamic_shapes_from_axes(["a"], [], {"a": {0: "batch"}}, n_inputs=2)
+        assert shapes == ({0: "batch"}, None)
+
+    def test_no_dynamic_axes_gives_one_static_spec_per_input(self) -> None:
+        assert dynamic_shapes_from_axes(["a", "b"], ["y"], {}, n_inputs=2) == (None, None)
+
+    def test_output_axes_are_left_to_torch(self) -> None:
+        """Output dims follow from the inputs' symbols: ``dynamic_shapes`` has no slot for them."""
+        axes = {"a": {0: "batch"}, "y": {0: "batch"}, "z": {1: "rows"}}
+        shapes = dynamic_shapes_from_axes(["a"], ["y", "z"], axes, n_inputs=1)
+        assert shapes == ({0: "batch"},)
+
+    def test_axes_for_an_unknown_name_raise_naming_it(self) -> None:
+        """Torch's conversion failed on these too, with a pytree error; this names the key."""
+        with pytest.raises(ValueError, match="'bogus'"):
+            dynamic_shapes_from_axes(
+                ["a"], ["y"], {"a": {0: "batch"}, "bogus": {0: "b"}}, n_inputs=1
+            )
+
+    def test_axes_for_a_named_input_that_was_not_passed_raise(self) -> None:
+        with pytest.raises(ValueError, match="'b'"):
+            dynamic_shapes_from_axes(["a", "b"], [], {"b": {0: "batch"}}, n_inputs=1)
+
+    def test_specs_are_copies_of_the_configs_mappings(self) -> None:
+        config = ExportConfig()
+        (spec,) = dynamic_shapes_from_axes(
+            config.input_names, config.output_names, config.dynamic_axes, n_inputs=1
+        )
+        assert spec is not None
+        spec[1] = "channels"
+        assert config.dynamic_axes[BOARD_INPUT] == DEFAULT_BOARD_SHAPES
+
+
 class TestExportDispatch:
     """Which module each export method receives, with the backends recorded."""
 
@@ -566,16 +663,24 @@ class TestExportDispatch:
         assert all(received is model for received in backends.modules)
 
     @pytest.mark.parametrize(
-        ("shape", "dynamic_axes"), list(UNENLARGED_EXPORTS.values()), ids=list(UNENLARGED_EXPORTS)
+        ("shape", "dynamic_axes", "expected_shapes"),
+        list(UNENLARGED_EXPORTS.values()),
+        ids=list(UNENLARGED_EXPORTS),
     )
-    def test_tensor_output_trace_call_is_the_historical_one(
+    def test_tensor_output_trace_call_is_pinned(
         self,
         shape: tuple[int, ...],
         dynamic_axes: dict[str, dict[int, str]] | None,
+        expected_shapes: tuple[dict[int, str] | None, ...],
         backends: _Backends,
         tmp_path: Path,
     ) -> None:
-        """The full ``torch.onnx.export`` call, argument by argument, where nothing is enlarged."""
+        """The full ``torch.onnx.export`` call, argument by argument, where nothing is enlarged.
+
+        B45 pinned this as the historical call. B50 changes one thing: the
+        input axes arrive as ``dynamic_shapes``, with the dynamo exporter
+        requested explicitly, and ``dynamic_axes`` is no longer passed.
+        """
         model = _TensorModel()
         torch.manual_seed(0)
         sample = torch.randn(*shape)
@@ -590,7 +695,8 @@ class TestExportDispatch:
         assert kwargs == {
             "input_names": config.input_names,
             "output_names": config.output_names,
-            "dynamic_axes": config.dynamic_axes,
+            "dynamic_shapes": expected_shapes,
+            "dynamo": True,
             "opset_version": config.opset_version,
             "do_constant_folding": config.do_constant_folding,
             "export_params": config.export_params,

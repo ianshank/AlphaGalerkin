@@ -14,6 +14,10 @@ Two mismatches stop a model from exporting the way it runs:
   fallback then exports a graph with that 1 baked in.
   :func:`enlarge_size_one_dynamic_axes` exports from a size-2 sample on
   such axes instead.
+
+The axes themselves reach ``torch.onnx.export`` as ``dynamic_shapes``
+(:func:`dynamic_shapes_from_axes`): handed ``dynamic_axes``, its dynamo path
+converts them through a function deprecated for removal (hygiene B50).
 """
 
 from __future__ import annotations
@@ -156,11 +160,51 @@ def enlarge_size_one_dynamic_axes(
     return tuple(tensors), tuple(enlargements)
 
 
+def dynamic_shapes_from_axes(
+    input_names: Sequence[str],
+    output_names: Sequence[str],
+    dynamic_axes: Mapping[str, Mapping[int, str]],
+    n_inputs: int,
+) -> tuple[dict[int, str] | None, ...]:
+    """Return ``dynamic_axes`` as the ``dynamic_shapes`` the dynamo exporter takes.
+
+    One spec per input, in positional order: a copy of the input's
+    ``{axis: name}`` mapping, or ``None`` when it has no entry or no name.
+    torch turns each name into ``torch.export.Dim.DYNAMIC`` and gives the
+    graph's dimension that name, as its deprecated ``dynamic_axes``
+    conversion does. Output axes have no slot; their dimensions follow from
+    the inputs'. Inputs are matched to ``input_names`` by position, as in
+    :func:`enlarge_size_one_dynamic_axes`, where torch's conversion used the
+    mapping's order.
+
+    Args:
+        input_names: ONNX input names, as in ``ExportConfig.input_names``.
+        output_names: ONNX output names, as in ``ExportConfig.output_names``.
+        dynamic_axes: As in ``ExportConfig.dynamic_axes``.
+        n_inputs: Number of tensors passed to the export.
+
+    Raises:
+        ValueError: An entry names neither a passed input nor an output.
+            torch's conversion failed on these too, with a pytree length error.
+
+    """
+    passed = list(input_names[:n_inputs])
+    unknown = [name for name in dynamic_axes if name not in passed and name not in output_names]
+    if unknown:
+        raise ValueError(
+            f"dynamic_axes has entries for {unknown}, which name neither an input passed "
+            f"to the export ({passed}) nor an output ({list(output_names)})."
+        )
+    specs = [dict(dynamic_axes[name]) if name in dynamic_axes else None for name in passed]
+    return (*specs, *([None] * (n_inputs - len(passed))))
+
+
 __all__ = [
     "DYNAMIC_AXIS_SAMPLE_SIZE",
     "SPECIALIZED_SAMPLE_SIZE",
     "AxisEnlargement",
     "TupleOutputWrapper",
+    "dynamic_shapes_from_axes",
     "enlarge_size_one_dynamic_axes",
     "flatten_model_output",
     "is_structured_output",
